@@ -1,0 +1,9 @@
+{
+  "family": "suse",
+  "provider": "baremetal",
+  "release_model": "rolling",
+  "tier": "tested",
+  "warnings_contain": [
+    "Rolling release"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "outcome": "unsupported",
+  "tier": "unsupported",
+  "unsupported_contains": [
+    "systemd.unified_cgroup_hierarchy=1"
+  ]
+}

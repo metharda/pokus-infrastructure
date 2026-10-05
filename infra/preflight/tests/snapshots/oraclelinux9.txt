@@ -1,0 +1,30 @@
+Pokus preflight: DEGRADED (exit 10)
+  tier experimental (os experimental, arch supported) · release model fixed · provider baremetal
+
+Environment
+  class baremetal, confidence high
+OS and kernel
+  Oracle Linux Server 9.6 [ol 9.6, family redhat, parent release 9]
+  arch x86_64, kernel 5.15.0-310.184.5.el9uek.x86_64
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pokus: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  none
+  - no NVIDIA GPU on the PCI bus
+Capabilities
+  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
+  MAC selinux (enforcing), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+Network: skipped (--offline)
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+
+Notes
+  - Experimental tier: continue only with --accept-experimental or interactive confirmation.
+  - dcgm_metrics disabled (unmet: nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

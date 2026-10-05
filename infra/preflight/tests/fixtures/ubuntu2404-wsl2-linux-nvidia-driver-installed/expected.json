@@ -1,0 +1,6 @@
+{
+  "conflicts": [
+    "linux_nvidia_driver_in_wsl"
+  ],
+  "outcome": "unsupported"
+}

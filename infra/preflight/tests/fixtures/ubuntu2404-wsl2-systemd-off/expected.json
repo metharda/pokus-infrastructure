@@ -1,0 +1,10 @@
+{
+  "needs_action": [
+    "wsl_enable_systemd"
+  ],
+  "outcome": "needs_action",
+  "provider": "wsl2",
+  "warnings_contain": [
+    "Windows interop is enabled"
+  ]
+}

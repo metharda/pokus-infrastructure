@@ -1,0 +1,17 @@
+# Managed by pokus-infra (.gitattributes).
+# Every text file uses LF line endings, also when checked out on Windows
+# (contrib/windows helpers are copied to Windows by hand and work with LF).
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.j2 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.png binary
+*.svg text eol=lf
+*.tar binary
+*.gz binary
+*.zst binary

@@ -1,0 +1,58 @@
+{
+  "commands": {
+    "chronyc -n tracking": {
+      "rc": 127,
+      "stderr": "",
+      "stdout": ""
+    },
+    "df --output=fstype,size,avail -B1 /srv": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "Type 1B-blocks Avail\next4 1073741824000 536870912000\n"
+    },
+    "df --output=fstype,size,avail -B1 /var/lib": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "Type 1B-blocks Avail\next4 1073741824000 429496729600\n"
+    },
+    "stat -f -c %T /sys/fs/cgroup": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "cgroup2fs\n"
+    },
+    "systemctl is-system-running": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "running\n"
+    },
+    "systemd-detect-virt": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "wsl\n"
+    },
+    "systemd-detect-virt --container": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "wsl\n"
+    },
+    "systemd-detect-virt --vm": {
+      "rc": 1,
+      "stderr": "",
+      "stdout": "none\n"
+    },
+    "timedatectl show": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "NTP=yes\nNTPSynchronized=yes\nTimeUSec=Mon 2026-10-05 09:12:44 UTC\n"
+    },
+    "timedatectl timesync-status": {
+      "rc": 1,
+      "stderr": "",
+      "stdout": ""
+    }
+  },
+  "cpu_count": 24,
+  "euid": 0,
+  "machine": "x86_64",
+  "now": "2026-10-05T09:12:44Z"
+}

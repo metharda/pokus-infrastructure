@@ -1,0 +1,7 @@
+{
+  "outcome": "unsupported",
+  "storage_backend": null,
+  "unsupported_contains": [
+    "No quota-capable storage"
+  ]
+}

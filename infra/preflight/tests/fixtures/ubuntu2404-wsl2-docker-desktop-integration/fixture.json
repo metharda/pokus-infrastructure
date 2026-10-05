@@ -1,0 +1,13 @@
+{
+  "char_devices": [
+    "/dev/dxg",
+    "/dev/net/tun"
+  ],
+  "rw_openable": [
+    "/dev/dxg",
+    "/dev/net/tun"
+  ],
+  "symlinks": {
+    "/var/run/docker.sock": "/mnt/wsl/shared-docker/docker.sock"
+  }
+}

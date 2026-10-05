@@ -1,0 +1,594 @@
+"""Tests for bootstrap.sh and its libraries (BUILD_PROMPT §5).
+
+Nothing here provisions anything. ``bootstrap.sh`` itself only runs as an
+unprivileged user (it stops at the root check), and ``main`` only runs with
+every ``stage_*`` function replaced by a stub.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+import pytest
+from bashlib import BOOTSTRAP, INFRA, bash, q
+
+FIXTURES = INFRA / "preflight" / "tests" / "fixtures"
+UNPRIVILEGED = (
+    ["setpriv", "--reuid=65534", "--regid=65534", "--clear-groups"] if os.geteuid() == 0 else []
+)
+
+
+def run_unprivileged(
+    script: Sequence[str], cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run a command as an unprivileged user (nobody when the tests run as root)."""
+    return subprocess.run(
+        [*UNPRIVILEGED, *script],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=cwd,
+        stdin=subprocess.DEVNULL,
+    )
+
+
+def profile(tmp_path: Path, fixture: str, name: str = "profile.json") -> Path:
+    """Write the host profile preflight produces for a fixture."""
+    path = tmp_path / name
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pokus_preflight",
+            "--root",
+            str(FIXTURES / fixture),
+            "--offline",
+            "--quiet",
+            "--output",
+            str(path),
+        ],
+        cwd=INFRA / "preflight",
+        check=False,
+        capture_output=True,
+    )
+    assert path.exists()
+    return path
+
+
+# --- command line --------------------------------------------------------------
+
+
+def test_help_lists_every_option() -> None:
+    res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), "--help"])
+    assert res.returncode == 0
+    assert res.stdout.startswith("Usage: sudo ./bootstrap/bootstrap.sh --machine <name> [options]")
+    for option in (
+        "--machine",
+        "--ref",
+        "--restore",
+        "--tags",
+        "--skip-tags",
+        "--check",
+        "--accept-degraded",
+        "--accept-experimental",
+        "--force-unsupported",
+        "--refresh-profile",
+        "--allow-reboot",
+        "--allow-dirty",
+        "--adopt-incus",
+        "--allow-community-repos",
+        "--offline",
+        "--non-interactive",
+        "--vault-password-file",
+        "--answers",
+        "--tui",
+        "--no-tui",
+        "--help",
+    ):
+        assert option in res.stdout
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        ([], "--machine is required"),
+        (["--bogus"], "unknown option: --bogus"),
+        (["--machine"], "option --machine needs a value"),
+        (["--machine", "Bad_Name"], "invalid machine name"),
+        (["--machine", "-starts-with-dash"], "invalid machine name"),
+        (["--machine", "lab1", "--tags", "base images"], "invalid tag list"),
+        (["--machine", "lab1", "--skip-tags", "images,"], "invalid tag list"),
+        (["--machine", "lab1", "--tui", "--non-interactive"], "exclude each other"),
+        (["--machine", "lab1", "--answers", "/nonexistent/answers.yml"], "is not readable"),
+        (["--machine", "lab1", "--vault-password-file", "/nonexistent/pass"], "is not readable"),
+    ],
+)
+def test_usage_errors_exit_64(args: list[str], message: str) -> None:
+    res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), *args])
+    assert res.returncode == 64
+    assert message in res.stderr
+
+
+def test_requires_root() -> None:
+    res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), "--machine", "lab1"])
+    assert res.returncode == 77
+    assert "must run as root" in res.stderr
+    assert "sudo" in res.stderr
+
+
+def test_interactive_and_tui_decisions() -> None:
+    script = """
+    OPT_NON_INTERACTIVE=true; is_interactive && echo interactive || echo plain
+    OPT_NON_INTERACTIVE=false; OPT_TUI=on; use_tui && echo tui-on
+    OPT_TUI=off; use_tui || echo tui-off
+    OPT_TUI=auto; use_tui || echo tui-auto-no-tty
+    """
+    res = bash(script)
+    assert res.stdout.split() == ["plain", "tui-on", "tui-off", "tui-auto-no-tty"]
+
+
+# --- logging and events ------------------------------------------------------------
+
+
+def test_json_escape_and_events(tmp_path: Path) -> None:
+    events = tmp_path / "events.jsonl"
+    text = 'quote " backslash \\ tab \t newline \n bell \a end'
+    res = bash(
+        f"""
+        emit_event bootstrap.stage git started
+        emit_event bootstrap.signal ansible signaled 75 {q(text)}
+        """,
+        env={"POKUS_EVENTS_FILE": str(events)},
+    )
+    assert res.returncode == 0, res.stderr
+    lines = [json.loads(line) for line in events.read_text().splitlines()]
+    assert lines[0]["type"] == "bootstrap.stage"
+    assert lines[0]["status"] == "started"
+    assert "exit_code" not in lines[0]
+    assert lines[1]["exit_code"] == 75
+    assert lines[1]["message"] == text
+    assert lines[1]["ts"].endswith("Z")
+
+
+def test_no_events_without_events_file() -> None:
+    res = bash("emit_event bootstrap.stage git started; echo done", env={"POKUS_EVENTS_FILE": ""})
+    assert res.stdout.strip() == "done"
+
+
+# --- preflight gate ------------------------------------------------------------------
+
+
+def gate(
+    tmp_path: Path,
+    fixture: str,
+    *,
+    flags: str = "",
+    interactive: bool = False,
+    answer: str = "",
+    outcome: str | None = None,
+    needs_action: str | None = None,
+) -> tuple[int, str, str]:
+    """Run gate_check on a fixture profile; returns (code, granted overrides, stderr)."""
+    path = profile(tmp_path, fixture)
+    data = json.loads(path.read_text())
+    actions = needs_action if needs_action is not None else json.dumps(data["needs_action"])
+    script = f"""
+    {flags}
+    INTERACTIVE={"true" if interactive else "false"}
+    rc=0
+    gate_check {q(outcome or data["outcome"])} {q(data["tier"])} {q(actions)} {q(path)} || rc=$?
+    echo "$rc ${{GRANTED_OVERRIDES[*]}}"
+    """
+    res = bash(script, stdin=answer)
+    code, _, granted = res.stdout.strip().partition(" ")
+    return int(code), granted, res.stderr
+
+
+def test_gate_supported(tmp_path: Path) -> None:
+    assert gate(tmp_path, "ubuntu2404-baremetal-nvidia-driver-loaded")[:2] == (0, "")
+
+
+def test_gate_degraded_needs_consent(tmp_path: Path) -> None:
+    code, granted, err = gate(tmp_path, "ubuntu2404-wsl2-gpu-nokvm")
+    assert (code, granted) == (10, "")
+    assert "vm_targets" in err  # the disabled features are listed
+    assert "--accept-degraded" in err
+
+
+def test_gate_degraded_with_flag(tmp_path: Path) -> None:
+    flags = "OPT_ACCEPT_DEGRADED=true"
+    assert gate(tmp_path, "ubuntu2404-wsl2-gpu-nokvm", flags=flags)[:2] == (0, "")
+
+
+def test_gate_degraded_interactive(tmp_path: Path) -> None:
+    yes = gate(tmp_path, "ubuntu2404-wsl2-gpu-nokvm", interactive=True, answer="yes\n")
+    assert yes[:2] == (0, "accept_degraded")
+    assert "Continue with these features disabled? [y/N]" in yes[2]
+    no = gate(tmp_path, "ubuntu2404-wsl2-gpu-nokvm", interactive=True, answer="\n")
+    assert no[:2] == (10, "")
+
+
+def test_gate_unsupported(tmp_path: Path) -> None:
+    assert gate(tmp_path, "docker-container")[0] == 20
+    forced = gate(tmp_path, "docker-container", flags="OPT_FORCE_UNSUPPORTED=true")
+    assert forced[0] == 0
+    assert "--force-unsupported" in forced[2]
+
+
+def test_gate_force_does_not_skip_needed_actions(tmp_path: Path) -> None:
+    code, _, err = gate(
+        tmp_path,
+        "docker-container",
+        flags="OPT_FORCE_UNSUPPORTED=true",
+        needs_action='[{"id": "x"}]',
+    )
+    assert code == 30
+    assert "does not skip it" in err
+
+
+def test_gate_needs_action(tmp_path: Path) -> None:
+    assert gate(tmp_path, "ubuntu2404-wsl2-systemd-off")[0] == 30
+    forced = gate(tmp_path, "ubuntu2404-wsl2-systemd-off", flags="OPT_FORCE_UNSUPPORTED=true")
+    assert forced[0] == 30
+
+
+def test_gate_experimental(tmp_path: Path) -> None:
+    fixture = "linuxmint22-baremetal"  # experimental tier, degraded outcome
+    assert gate(tmp_path, fixture, flags="OPT_ACCEPT_DEGRADED=true")[0] == 11
+    both = "OPT_ACCEPT_DEGRADED=true; OPT_ACCEPT_EXPERIMENTAL=true"
+    assert gate(tmp_path, fixture, flags=both)[:2] == (0, "")
+    asked = gate(tmp_path, fixture, interactive=True, answer="y\ny\n")
+    assert asked[:2] == (0, "accept_degraded accept_experimental")
+    assert "experimental tier" in asked[2]
+
+
+def test_gate_unknown_outcome(tmp_path: Path) -> None:
+    assert gate(tmp_path, "ubuntu2404-baremetal-no-gpu", outcome="maybe")[0] == 40
+
+
+# --- Ansible signals and the profile change rule -------------------------------------
+
+
+def signal_result(tmp_path: Path, rc: int, content: str | None) -> tuple[int, str]:
+    signal = tmp_path / "signal.json"
+    if content is not None:
+        signal.write_text(content)
+    res = bash(
+        f"""
+        code=0
+        playbook_result {rc} {q(signal)} || code=$?
+        printf '%s|%s|%s' "$code" "$SIGNAL_CODE" "$SIGNAL_MESSAGE"
+        """
+    )
+    code, signal_code, message = res.stdout.split("|", 2)
+    return int(code), f"{signal_code}|{message}"
+
+
+@pytest.mark.parametrize("code", [75, 76, 77])
+def test_playbook_signal(tmp_path: Path, code: int) -> None:
+    message = "Run on Windows: wsl --terminate <distro>\nthen re-run bootstrap"
+    content = json.dumps({"code": code, "message": message})
+    assert signal_result(tmp_path, 2, content) == (code, f"{code}|{message}")
+
+
+@pytest.mark.parametrize(
+    ("rc", "content", "expected"),
+    [
+        (0, None, 0),
+        (0, '{"code": 75, "message": "stale"}', 0),
+        (2, None, 60),
+        (4, "not json", 60),
+        (2, '{"code": 99, "message": "unknown"}', 60),
+        (2, '{"message": "no code"}', 60),
+    ],
+)
+def test_playbook_results_without_signal(
+    tmp_path: Path, rc: int, content: str | None, expected: int
+) -> None:
+    assert signal_result(tmp_path, rc, content) == (expected, "|")
+
+
+@pytest.mark.parametrize(
+    ("state", "accepted"),
+    [
+        (None, False),
+        ({"result": "success"}, False),
+        ({"result": "signal"}, True),
+        ("garbage", False),
+    ],
+)
+def test_profile_change_accepted(tmp_path: Path, state: object, accepted: bool) -> None:
+    path = tmp_path / "bootstrap-state.json"
+    if isinstance(state, dict):
+        path.write_text(json.dumps(state))
+    elif state is not None:
+        path.write_text(str(state))
+    res = bash(f"profile_change_accepted {q(path)} && echo yes || echo no")
+    assert res.stdout.strip() == ("yes" if accepted else "no")
+
+
+# --- state file and Ansible variables --------------------------------------------------
+
+
+STATE_SETUP = """
+OPT_MACHINE=lab1 OPT_TAGS=base,ssh OPT_SKIP_TAGS='' OPT_ACCEPT_DEGRADED=false
+OPT_FORCE_UNSUPPORTED=true OPT_ALLOW_DIRTY=true OPT_RESTORE=true
+GIT_COMMIT=0123456789abcdef0123456789abcdef01234567
+GIT_INFRA_TREE=fedcba9876543210fedcba9876543210fedcba98
+GIT_INFRA_DIRTY=true STARTED_AT=2026-10-05T09:00:00Z LOG_FILE='/var/log/pokus-bootstrap/x "y".log'
+LAST_STAGE=doctor GRANTED_OVERRIDES=(accept_degraded)
+"""
+
+
+def test_state_json(tmp_path: Path) -> None:
+    res = bash(STATE_SETUP + "state_json 1 2026-10-05T10:00:00Z")
+    state = json.loads(res.stdout)
+    assert state["schema_version"] == 1
+    assert state["machine"] == "lab1"
+    assert state["repo_commit"].startswith("0123")
+    assert state["infra_dirty"] is True
+    assert state["ref"] == "HEAD"
+    assert state["tags"] == ["base", "ssh"]
+    assert state["skip_tags"] == []
+    assert state["overrides"]["accept_degraded"] is True  # granted interactively
+    assert state["overrides"]["force_unsupported"] is True
+    assert state["overrides"]["accept_experimental"] is False
+    assert state["result"] == "doctor_warnings"
+    assert state["exit_code"] == 1
+    assert state["signal"] is None
+    assert state["log_file"] == '/var/log/pokus-bootstrap/x "y".log'
+    assert (state["started_at"], state["finished_at"]) == (
+        "2026-10-05T09:00:00Z",
+        "2026-10-05T10:00:00Z",
+    )
+
+
+@pytest.mark.parametrize(
+    ("rc", "signal", "result"),
+    [(0, "", "success"), (2, "", "doctor_failures"), (60, "", "failed"), (76, "76", "signal")],
+)
+def test_state_result_names(rc: int, signal: str, result: str) -> None:
+    script = (
+        STATE_SETUP + f"SIGNAL_CODE={q(signal)} SIGNAL_MESSAGE='reboot now'\nstate_json {rc} now"
+    )
+    state = json.loads(bash(script).stdout)
+    assert state["result"] == result
+    if signal:
+        assert state["signal"] == {"code": 76, "message": "reboot now"}
+
+
+def test_write_state_is_atomic_and_world_readable(tmp_path: Path) -> None:
+    target = tmp_path / "etc" / "bootstrap-state.json"
+    res = bash(STATE_SETUP + f"write_state 0 {q(target)}")
+    assert res.returncode == 0, res.stderr
+    assert json.loads(target.read_text())["result"] == "success"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    assert [p.name for p in target.parent.iterdir()] == ["bootstrap-state.json"]
+
+
+def test_extra_vars_json(tmp_path: Path) -> None:
+    path = profile(tmp_path, "ubuntu2404-wsl2-gpu-nokvm")
+    res = bash(STATE_SETUP + f"OPT_CHECK=true OPT_ALLOW_REBOOT=false\nextra_vars_json {q(path)}")
+    data = json.loads(res.stdout)
+    assert data["host_profile"] == json.loads(path.read_text())
+    assert data["pokus_bootstrap"]["check"] is True
+    assert data["pokus_bootstrap"]["allow_reboot"] is False
+    assert data["pokus_bootstrap"]["machine"] == "lab1"
+    assert data["pokus_bootstrap"]["signal_file"] == "/run/pokus/bootstrap-signal.json"
+
+
+def test_vault_args(tmp_path: Path) -> None:
+    pass_file = tmp_path / "pass"
+    pass_file.write_text("x")
+    res = bash(
+        f"""
+        OPT_VAULT_PASSWORD_FILE={q(pass_file)}; vault_args | paste -sd' '
+        OPT_VAULT_PASSWORD_FILE=''; INTERACTIVE=true; vault_args
+        INTERACTIVE=false; vault_args || echo no-password
+        """
+    )
+    lines = res.stdout.splitlines()
+    assert lines[0] == f"--vault-password-file {pass_file}"
+    # /etc/pokus/secrets/vault-pass does not exist on a development machine
+    assert lines[1:] == ["--ask-vault-pass", "no-password"]
+
+
+# --- tooling helpers -------------------------------------------------------------------
+
+
+def test_verify_sha256(tmp_path: Path) -> None:
+    target = tmp_path / "file"
+    target.write_text("pokus\n")
+    wrong = "0" * 64
+    digest = subprocess.run(
+        ["sha256sum", str(target)], capture_output=True, text=True, check=True
+    ).stdout.split()[0]
+    assert digest != wrong
+    res = bash(
+        f"""
+        verify_sha256 {q(target)} {digest} && echo ok
+        verify_sha256 {q(target)} {wrong} || echo mismatch
+        verify_sha256 {q(target)} 'TODO(verify)' || echo unverified
+        """
+    )
+    assert res.stdout.split() == ["ok", "mismatch", "unverified"]
+    assert "checksum mismatch" in res.stderr
+    assert "no verified sha256" in res.stderr
+
+
+def test_uv_assets_match_the_lock() -> None:
+    res = bash("uv_asset x86_64; uv_asset aarch64; uv_asset riscv64 || echo none")
+    lines = res.stdout.splitlines()
+    assert lines[0].startswith("https://github.com/astral-sh/uv/releases/download/")
+    assert "x86_64-unknown-linux-gnu.tar.gz" in lines[0]
+    assert "aarch64-unknown-linux-gnu.tar.gz" in lines[1]
+    assert lines[2] == "none"
+
+
+def test_check_versions_sync(tmp_path: Path) -> None:
+    lock = INFRA / "versions.lock.yml"
+    versions = INFRA / "ansible" / "group_vars" / "all" / "versions.yml"
+    assert bash(f"check_versions_sync {q(lock)} {q(versions)} && echo ok").stdout.strip() == "ok"
+    changed = tmp_path / "versions.lock.yml"
+    changed.write_text(lock.read_text() + "\n# changed\n")
+    res = bash(f"check_versions_sync {q(changed)} {q(versions)} || echo drift")
+    assert res.stdout.strip() == "drift"
+    assert "make generate" in res.stderr
+
+
+# --- git provenance ----------------------------------------------------------------------
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    root = tmp_path / "repo"
+    (root / "infra" / "bootstrap").mkdir(parents=True)
+    (root / "platform").mkdir()
+    (root / "infra" / "bootstrap" / "x.sh").write_text("echo\n")
+    (root / "platform" / "y.txt").write_text("y\n")
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    git(root, "add", ".")
+    git(root, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-qm", "init")
+    return root
+
+
+def git_state_of(infra: Path, env: dict[str, str] | None = None) -> dict[str, str]:
+    res = bash(
+        f"""
+        rc=0
+        git_state {q(infra)} || rc=$?
+        printf 'rc=%s\\ncommit=%s\\ntree=%s\\ndirty=%s\\nsubdir=%s\\n' \
+          "$rc" "$GIT_COMMIT" "$GIT_INFRA_TREE" "$GIT_INFRA_DIRTY" "$GIT_INFRA_SUBDIR"
+        """,
+        env=env,
+    )
+    return dict(line.split("=", 1) for line in res.stdout.splitlines())
+
+
+def test_git_state_records_commit_tree_and_dirty_flag(repo: Path) -> None:
+    state = git_state_of(repo / "infra")
+    assert state["rc"] == "0"
+    assert state["commit"] == git(repo, "rev-parse", "HEAD")
+    assert state["tree"] == git(repo, "rev-parse", "HEAD:infra")
+    assert state["subdir"] == "infra"
+    assert state["dirty"] == "false"
+    (repo / "platform" / "y.txt").write_text("changed outside infra\n")
+    assert git_state_of(repo / "infra")["dirty"] == "false"
+    (repo / "infra" / "new-file").write_text("untracked\n")
+    assert git_state_of(repo / "infra")["dirty"] == "true"
+
+
+def test_git_state_outside_a_checkout(tmp_path: Path) -> None:
+    plain = tmp_path / "plain" / "infra"
+    plain.mkdir(parents=True)
+    assert git_state_of(plain)["rc"] == "1"
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="changing a file owner needs root")
+def test_git_state_refuses_a_foreign_checkout(repo: Path) -> None:
+    os.chown(repo, 4242, 4242)
+    assert git_state_of(repo / "infra", env={"SUDO_UID": "1000"})["rc"] == "2"
+    assert git_state_of(repo / "infra", env={"SUDO_UID": "4242"})["rc"] == "0"
+
+
+def test_ref_matches_head(repo: Path) -> None:
+    git(repo, "tag", "infra-v0.1.0")
+    res = bash(
+        f"""
+        git_state {q(repo / "infra")}
+        ref_matches_head infra-v0.1.0 && echo tag
+        ref_matches_head HEAD && echo head
+        ref_matches_head no-such-ref || echo missing
+        """
+    )
+    assert res.stdout.split() == ["tag", "head", "missing"]
+
+
+# --- orchestration with stubbed stages ----------------------------------------------------
+
+
+def main_with_stubs(tmp_path: Path, args: str, overrides: str = "") -> tuple[int, list[str], str]:
+    """Run main() of bootstrap.sh with every stage replaced by a recording stub."""
+    calls = tmp_path / "calls"
+    script = f"""
+    source {q(BOOTSTRAP / "bootstrap.sh")}
+    for stage in $(compgen -A function stage_); do
+      eval "$stage() {{ echo $stage >>{q(calls)}; }}"
+    done
+    stage_doctor() {{ echo stage_doctor >>{q(calls)}; FINAL_RC=1; }}
+    {overrides}
+    main {args}
+    """
+    res = bash(script, load=False)
+    lines = calls.read_text().split() if calls.exists() else []
+    return res.returncode, lines, res.stderr
+
+
+def test_main_runs_the_stages_in_order(tmp_path: Path) -> None:
+    code, calls, err = main_with_stubs(tmp_path, "--machine lab1 --restore")
+    assert code == 1  # doctor's exit code
+    assert calls == [
+        "stage_root",
+        "stage_logging",
+        "stage_git",
+        "stage_prepreflight",
+        "stage_tooling",
+        "stage_frontend",
+        "stage_preflight",
+        "stage_ansible_env",
+        "stage_ansible",
+        "stage_restore",
+        "stage_doctor",
+    ]
+    assert "doctor warnings" in err
+
+
+def test_main_skips_restore_by_default(tmp_path: Path) -> None:
+    _, calls, _ = main_with_stubs(tmp_path, "--machine lab1")
+    assert "stage_restore" not in calls
+
+
+def test_deliberate_exit_codes_pass_through(tmp_path: Path) -> None:
+    code, calls, err = main_with_stubs(tmp_path, "--machine lab1", "stage_tooling() { return 50; }")
+    assert code == 50
+    assert calls[-1] == "stage_prepreflight"
+    assert "tooling failed" in err
+
+
+def test_unexpected_failures_are_internal_errors(tmp_path: Path) -> None:
+    code, _, err = main_with_stubs(tmp_path, "--machine lab1", "stage_tooling() { false; }")
+    assert code == 70
+    assert "internal error: 'false' failed with exit status 1" in err
+
+
+def test_fail_ends_with_its_code_and_message(tmp_path: Path) -> None:
+    code, _, err = main_with_stubs(
+        tmp_path, "--machine lab1", 'stage_git() { fail "$EXIT_OPERATOR" "commit infra/ first"; }'
+    )
+    assert code == 77
+    assert "commit infra/ first" in err
+    assert "operator action required" in err
+
+
+def test_help_does_not_run_any_stage(tmp_path: Path) -> None:
+    code, calls, _ = main_with_stubs(tmp_path, "--help")
+    assert (code, calls) == (0, [])
+
+
+def test_bootstrap_sh_is_executable() -> None:
+    for script in ("bootstrap.sh", "lib/prepreflight.sh"):
+        assert os.access(BOOTSTRAP / script, os.X_OK), script
+    assert shutil.which("bash")

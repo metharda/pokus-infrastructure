@@ -1,0 +1,7 @@
+{
+  "outcome": "unsupported",
+  "tier": "unsupported",
+  "unsupported_contains": [
+    "Debian 12"
+  ]
+}

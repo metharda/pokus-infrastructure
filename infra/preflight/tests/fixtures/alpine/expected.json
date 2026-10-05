@@ -1,0 +1,7 @@
+{
+  "conflicts": [
+    "non_systemd_init",
+    "musl_libc"
+  ],
+  "outcome": "unsupported"
+}

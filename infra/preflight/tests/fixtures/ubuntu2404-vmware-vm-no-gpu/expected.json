@@ -1,0 +1,8 @@
+{
+  "features": {
+    "gpu_inference": false
+  },
+  "hypervisor": "vmware",
+  "outcome": "degraded",
+  "provider": "vm"
+}

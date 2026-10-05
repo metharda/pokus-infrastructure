@@ -1,0 +1,11 @@
+# Managed by pokus-infra (ansible/restore.yml). Local changes will be overwritten.
+#
+# Restore play run by `bootstrap.sh --restore` (BUILD_PROMPT §5.2 step 10).
+# Temporary stub of implementation step 3: restore is implemented in step 9.
+- name: Restore the Pokus lab host from a backup
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Stop because restore is not implemented yet
+      ansible.builtin.fail:
+        msg: "restore.yml is not implemented in this version; run bootstrap without --restore."

@@ -1,0 +1,7 @@
+{
+  "features": {
+    "gpu_inference": false
+  },
+  "outcome": "degraded",
+  "tier": "experimental"
+}

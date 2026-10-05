@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pokus documentation page front matter",
+  "description": "Front matter required on every documentation page (Pokus Documentation Specification, A.2 and A.4). Dates are ISO 8601 calendar dates (UTC).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "type", "audience", "applies_to", "last_verified"],
+  "properties": {
+    "title": {
+      "description": "What the reader achieves or learns on this page.",
+      "type": "string",
+      "minLength": 3
+    },
+    "type": {
+      "description": "Diataxis page type; every page has exactly one.",
+      "enum": ["tutorial", "how-to", "reference", "explanation"]
+    },
+    "audience": {
+      "description": "Readers the page is written for.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["researcher", "operator", "scenario-author", "developer", "qa", "reader"]}
+    },
+    "applies_to": {
+      "description": "Component versions the page applies to, as PEP 440 version specifiers.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "infra": {"type": "string", "minLength": 1},
+        "platform": {"type": "string", "minLength": 1},
+        "catalog": {"type": "string", "minLength": 1},
+        "docs": {"type": "string", "minLength": 1}
+      }
+    },
+    "last_verified": {
+      "description": "Last verification run of this page. All three fields are null until a verification run has executed the page; values are never fabricated.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "rc", "by"],
+      "properties": {
+        "date": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "rc": {"type": ["string", "null"], "minLength": 1},
+        "by": {"type": ["string", "null"], "minLength": 1}
+      }
+    },
+    "description": {
+      "description": "Optional one-sentence summary used by search and link previews.",
+      "type": "string"
+    },
+    "hide": {
+      "description": "Optional Material for MkDocs page layout switches.",
+      "type": "array",
+      "items": {"enum": ["navigation", "toc", "footer", "path", "tags"]}
+    }
+  }
+}

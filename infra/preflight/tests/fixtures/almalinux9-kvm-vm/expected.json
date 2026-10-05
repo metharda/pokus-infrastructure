@@ -1,0 +1,7 @@
+{
+  "family": "redhat",
+  "hypervisor": "kvm",
+  "outcome": "degraded",
+  "provider": "vm",
+  "tier": "tested"
+}

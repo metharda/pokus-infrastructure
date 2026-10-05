@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pokus support matrix",
+  "description": "preflight/support-matrix.yml (pokus-infra BUILD_PROMPT §2.3), validated by `make lint` before it is compiled to JSON. Only the keys the evaluator understands are allowed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "families",
+    "tiers",
+    "tier_notes",
+    "release_model_notes",
+    "lifecycle_sources",
+    "os",
+    "arch",
+    "environment",
+    "minimums",
+    "core_requirements",
+    "storage",
+    "features",
+    "provider_rules"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "families": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/family"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pkg"],
+        "properties": {"pkg": {"enum": ["apt", "dnf", "zypper", "pacman"]}}
+      }
+    },
+    "tiers": {"const": ["supported", "tested", "experimental", "unsupported"]},
+    "tier_notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tested", "experimental"],
+      "properties": {"tested": {"$ref": "#/$defs/text"}, "experimental": {"$ref": "#/$defs/text"}}
+    },
+    "release_model_notes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {"fast": {"$ref": "#/$defs/text"}, "rolling": {"$ref": "#/$defs/text"}}
+    },
+    "lifecycle_sources": {"type": "object", "additionalProperties": {"$ref": "#/$defs/text"}},
+    "os": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/os_rule"},
+      "description": "First match wins; the last rule must match anything."
+    },
+    "arch": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["match", "tier"],
+        "properties": {
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1,
+            "properties": {"machine": {"type": "string"}, "any": {"const": true}}
+          },
+          "tier": {"$ref": "#/$defs/tier"},
+          "note": {"$ref": "#/$defs/text"},
+          "reason": {"$ref": "#/$defs/text"}
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baremetal", "wsl2", "vm", "wsl1", "container", "unknown"],
+      "patternProperties": {
+        "^(baremetal|wsl2|vm|wsl1|container|unknown)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tier"],
+          "properties": {
+            "tier": {"$ref": "#/$defs/tier"},
+            "provider": {"enum": ["baremetal", "wsl2", "vm"]},
+            "note": {"$ref": "#/$defs/text"},
+            "reason": {"$ref": "#/$defs/text"}
+          }
+        }
+      }
+    },
+    "minimums": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_gib", "cpu_threads", "free_disk_gib"],
+      "properties": {
+        "memory_gib": {"$ref": "#/$defs/minimum"},
+        "cpu_threads": {"$ref": "#/$defs/minimum"},
+        "free_disk_gib": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["var_lib", "srv_pokus"],
+          "properties": {
+            "var_lib": {"$ref": "#/$defs/minimum"},
+            "srv_pokus": {"$ref": "#/$defs/minimum"}
+          }
+        }
+      }
+    },
+    "core_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "remediation"],
+        "properties": {
+          "id": {"$ref": "#/$defs/identifier"},
+          "values": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "remediation": {"$ref": "#/$defs/text"}
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backends", "none_reason"],
+      "properties": {
+        "backends": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["feature", "backend"],
+            "properties": {
+              "feature": {"$ref": "#/$defs/identifier"},
+              "backend": {"enum": ["btrfs", "lvm"]}
+            }
+          }
+        },
+        "none_reason": {"$ref": "#/$defs/text"}
+      }
+    },
+    "features": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requires", "on_missing", "impact"],
+        "properties": {
+          "requires": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/requirement"}},
+          "on_missing": {"enum": ["degrade", "fallback"]},
+          "fallback": {"$ref": "#/$defs/identifier"},
+          "only_if_missing": {"$ref": "#/$defs/identifier"},
+          "impact": {"$ref": "#/$defs/text"}
+        }
+      }
+    },
+    "provider_rules": {
+      "type": "object",
+      "propertyNames": {"enum": ["baremetal", "wsl2", "vm"]},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "needs_action": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "when", "action"],
+              "properties": {
+                "id": {"$ref": "#/$defs/identifier"},
+                "when": {"$ref": "#/$defs/when"},
+                "resolves": {"type": "array", "items": {"$ref": "#/$defs/identifier"}},
+                "action": {"$ref": "#/$defs/text"}
+              }
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["when", "message"],
+              "properties": {"when": {"$ref": "#/$defs/when"}, "message": {"$ref": "#/$defs/text"}}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "identifier": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "family": {"enum": ["debian", "redhat", "suse", "archlinux"]},
+    "tier": {"enum": ["supported", "tested", "experimental", "unsupported"]},
+    "strings": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "lock_reference": {"type": "string", "pattern": "^@versions\\.lock:[a-z0-9_]+(\\.[a-z0-9_]+)*$"},
+    "minimum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "recommended"],
+      "properties": {"required": {"type": "number", "minimum": 0}, "recommended": {"type": "number", "minimum": 0}}
+    },
+    "os_match": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "any": {"const": true},
+        "id": {"type": "string"},
+        "id_in": {"$ref": "#/$defs/strings"},
+        "version_id": {"type": "string"},
+        "version_id_in": {"oneOf": [{"$ref": "#/$defs/strings"}, {"$ref": "#/$defs/lock_reference"}]},
+        "version_major_in": {"$ref": "#/$defs/strings"},
+        "id_like_contains": {"type": "string"},
+        "id_like_contains_any": {"$ref": "#/$defs/strings"},
+        "id_or_like_in": {"$ref": "#/$defs/strings"}
+      }
+    },
+    "os_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["match", "tier"],
+      "properties": {
+        "match": {"$ref": "#/$defs/os_match"},
+        "family": {"$ref": "#/$defs/family"},
+        "tier": {"$ref": "#/$defs/tier"},
+        "release_model": {"enum": ["fixed", "fast", "rolling"]},
+        "parent_from": {"enum": ["UBUNTU_CODENAME", "DEBIAN_CODENAME", "VERSION_ID"]},
+        "lifecycle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source"],
+          "properties": {
+            "released": {"type": "string", "format": "date"},
+            "end_of_support": {"type": "string", "format": "date"},
+            "source": {"type": "string", "minLength": 1}
+          }
+        },
+        "reason": {"$ref": "#/$defs/text"},
+        "note": {"$ref": "#/$defs/text"}
+      },
+      "if": {"properties": {"tier": {"const": "unsupported"}}},
+      "then": {"required": ["reason"]},
+      "else": {"required": ["family", "release_model"]}
+    },
+    "requirement": {
+      "oneOf": [
+        {"$ref": "#/$defs/identifier"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 1,
+          "properties": {
+            "gpu_vram_gib_min": {"type": "number", "minimum": 0},
+            "gpu_compute_capability_min": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+            "environment_in": {"$ref": "#/$defs/strings"}
+          }
+        }
+      ]
+    },
+    "when": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {"$ref": "#/$defs/identifier"},
+      "additionalProperties": {"type": ["string", "boolean", "number", "array"]}
+    }
+  }
+}

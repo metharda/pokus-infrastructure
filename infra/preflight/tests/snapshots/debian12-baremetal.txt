@@ -1,0 +1,32 @@
+Pokus preflight: UNSUPPORTED (exit 20)
+  tier unsupported (os unsupported, arch supported) · release model - · provider baremetal
+
+Environment
+  class baremetal, confidence high
+OS and kernel
+  Debian GNU/Linux 12 (bookworm) [debian 12, family -, parent release bookworm]
+  arch x86_64, kernel 6.1.0-40-amd64
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pokus: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  none
+  - no NVIDIA GPU on the PCI bus
+Capabilities
+  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
+  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+Network: skipped (--offline)
+
+Unsupported
+  - Debian 12 reached the end of regular security support on 2026-07-11 (Debian LTS continues until 2028-06-30). Upgrade to Debian 13.
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+
+Notes
+  - dcgm_metrics disabled (unmet: nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

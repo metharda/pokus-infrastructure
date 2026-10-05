@@ -1,0 +1,9 @@
+{
+  "conflicts": [],
+  "firewall_backend": "ufw",
+  "mac": [
+    "apparmor",
+    "enabled"
+  ],
+  "outcome": "supported"
+}

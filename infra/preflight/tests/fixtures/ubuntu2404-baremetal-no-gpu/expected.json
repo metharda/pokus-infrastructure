@@ -1,0 +1,11 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "features": {
+    "gpu_inference": false,
+    "vm_targets": true
+  },
+  "outcome": "degraded",
+  "provider": "baremetal"
+}

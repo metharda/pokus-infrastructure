@@ -1,0 +1,6 @@
+NAME="Devuan GNU/Linux"
+ID="devuan"
+ID_LIKE="debian"
+VERSION_ID="6"
+VERSION_CODENAME="excalibur"
+PRETTY_NAME="Devuan GNU/Linux 6 (excalibur)"

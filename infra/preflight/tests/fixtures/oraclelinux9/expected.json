@@ -1,0 +1,5 @@
+{
+  "family": "redhat",
+  "parent_release": "9",
+  "tier": "experimental"
+}

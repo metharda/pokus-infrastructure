@@ -1,0 +1,12 @@
+{
+  "features": {
+    "gpu_inference": false,
+    "vm_targets": false
+  },
+  "hypervisor": "microsoft",
+  "outcome": "degraded",
+  "provider": "vm",
+  "warnings_contain": [
+    "Nested virtualization unavailable"
+  ]
+}

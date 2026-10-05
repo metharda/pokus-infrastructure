@@ -1,0 +1,36 @@
+Pokus preflight: UNSUPPORTED (exit 20)
+  tier tested (os tested, arch supported) · release model fast · provider baremetal
+
+Environment
+  class baremetal, confidence high
+OS and kernel
+  Fedora Linux 44 (Silverblue) [fedora 44, family redhat, parent release 44]
+  arch x86_64, kernel 6.16.9-200.fc44.x86_64
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pokus: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  none
+  - no NVIDIA GPU on the PCI bus
+Capabilities
+  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
+  MAC selinux (enforcing), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+Network: skipped (--offline)
+
+Unsupported
+  - blocking conflict: Unsupported image-based OS: image-based OS (/run/ostree-booted). Run a supported distribution in a VM on this host (vm provider) and install the lab inside it; see docs/providers/vm.md.
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+
+Warnings
+  - Fast-moving release: only the current and the previous release are in the matrix.
+
+Notes
+  - Tested tier: full provisioning is tested in VMs; GPU paths are not hardware-tested on this distribution.
+  - dcgm_metrics disabled (unmet: nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

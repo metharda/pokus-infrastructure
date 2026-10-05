@@ -1,0 +1,36 @@
+# Managed by pokus-infra (.pre-commit-config.yaml).
+# Local hooks only: they call the same make targets as CI, so no hook code is
+# fetched from the network. Install with: .venv/bin/pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: privacy
+        name: privacy scan
+        entry: make privacy
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: lint-python
+        name: ruff, ruff format, mypy
+        entry: make lint-python
+        language: system
+        pass_filenames: false
+        types: [python]
+      - id: lint-shell
+        name: shellcheck, shfmt
+        entry: make lint-shell
+        language: system
+        pass_filenames: false
+        types: [shell]
+      - id: lint-yaml
+        name: yamllint
+        entry: make lint-yaml
+        language: system
+        pass_filenames: false
+        types: [yaml]
+      - id: lint-markdown
+        name: markdownlint, cspell, docs lint
+        entry: bash -c 'make lint-markdown lint-spelling lint-docs'
+        language: system
+        pass_filenames: false
+        types: [markdown]

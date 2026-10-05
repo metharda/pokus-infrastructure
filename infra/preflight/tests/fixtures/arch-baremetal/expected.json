@@ -1,0 +1,9 @@
+{
+  "family": "archlinux",
+  "provider": "baremetal",
+  "release_model": "rolling",
+  "tier": "tested",
+  "warnings_contain": [
+    "Rolling release"
+  ]
+}

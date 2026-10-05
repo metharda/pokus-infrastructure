@@ -1,0 +1,6 @@
+{
+  "conflicts": [
+    "immutable_os"
+  ],
+  "outcome": "unsupported"
+}

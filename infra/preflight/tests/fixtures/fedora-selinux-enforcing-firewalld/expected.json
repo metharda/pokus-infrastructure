@@ -1,0 +1,10 @@
+{
+  "conflicts": [],
+  "firewall_backend": "firewalld",
+  "mac": [
+    "selinux",
+    "enforcing"
+  ],
+  "outcome": "supported",
+  "tier": "tested"
+}

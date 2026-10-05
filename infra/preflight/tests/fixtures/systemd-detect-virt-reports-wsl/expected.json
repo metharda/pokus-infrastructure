@@ -1,0 +1,5 @@
+{
+  "env_class": "wsl2",
+  "outcome": "degraded",
+  "provider": "wsl2"
+}

@@ -1,0 +1,6 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "memory_gib"
+  ]
+}

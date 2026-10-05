@@ -1,0 +1,26 @@
+# Managed by pokus-infra (.gitignore).
+
+# Development environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+
+# Build outputs
+/site/
+/build/
+
+# Real deployment data never belongs in the public project (privacy
+# invariant, docs/BUILD_PROMPT.md §13.12). Keep it in your lab's own private
+# fork or configuration repository; the installer adds these files there.
+/ansible/inventory/host_vars/*
+!/ansible/inventory/host_vars/example-machine.yml
+/users/*.pub
+/installer-answers/*
+!/installer-answers/README.md
+/ansible/group_vars/all/vault.yml
+*.vault-pass
+.vault-pass*

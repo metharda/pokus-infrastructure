@@ -1,0 +1,9 @@
+{
+  "conflicts": [
+    "immutable_os"
+  ],
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "vm provider"
+  ]
+}

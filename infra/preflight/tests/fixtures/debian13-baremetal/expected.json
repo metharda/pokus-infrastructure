@@ -1,0 +1,7 @@
+{
+  "family": "debian",
+  "outcome": "degraded",
+  "provider": "baremetal",
+  "release_model": "fixed",
+  "tier": "supported"
+}

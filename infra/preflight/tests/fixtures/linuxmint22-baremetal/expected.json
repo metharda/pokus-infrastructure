@@ -1,0 +1,6 @@
+{
+  "family": "debian",
+  "parent_release": "noble",
+  "provider": "baremetal",
+  "tier": "experimental"
+}

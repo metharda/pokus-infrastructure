@@ -1,0 +1,132 @@
+# Managed by pokus-infra (preflight/endpoints.yml).
+#
+# Endpoints probed by preflight (BUILD_PROMPT §2.2 "Network reachability"):
+# the distribution's package mirrors, the third-party repositories the
+# component source matrix selects, container registries, Hugging Face and
+# GitHub. Compiled to endpoints.json by `make generate`.
+#
+# when: families / distros (lists the host must be in), gpu_present (bool).
+# required: true → unreachable makes the outcome needs_action; false → warning.
+# A probe succeeds on any HTTP answer below 500.
+schema_version: 1
+endpoints:
+  # Distribution mirrors
+  - id: ubuntu-archive
+    url: http://archive.ubuntu.com/ubuntu/
+    purpose: Ubuntu package archive
+    required: true
+    when: {distros: [ubuntu]}
+  - id: ubuntu-security
+    url: http://security.ubuntu.com/ubuntu/
+    purpose: Ubuntu security updates
+    required: true
+    when: {distros: [ubuntu]}
+  - id: debian-archive
+    url: https://deb.debian.org/debian/  # TODO(verify)
+    purpose: Debian package archive
+    required: true
+    when: {distros: [debian]}
+  - id: debian-security
+    url: https://security.debian.org/debian-security/  # TODO(verify)
+    purpose: Debian security updates
+    required: true
+    when: {distros: [debian]}
+  - id: fedora-mirrors
+    url: https://mirrors.fedoraproject.org/  # TODO(verify)
+    purpose: Fedora mirror list
+    required: true
+    when: {distros: [fedora]}
+  - id: almalinux-repo
+    url: https://repo.almalinux.org/  # TODO(verify)
+    purpose: AlmaLinux package repositories
+    required: true
+    when: {distros: [almalinux]}
+  - id: rocky-repo
+    url: https://dl.rockylinux.org/  # TODO(verify)
+    purpose: Rocky Linux package repositories
+    required: true
+    when: {distros: [rocky]}
+  - id: centos-stream-mirror
+    url: https://mirror.stream.centos.org/  # TODO(verify)
+    purpose: CentOS Stream package repositories
+    required: true
+    when: {distros: [centos]}
+  - id: opensuse-download
+    url: https://download.opensuse.org/  # TODO(verify)
+    purpose: openSUSE package repositories
+    required: true
+    when: {families: [suse]}
+  - id: arch-mirror
+    url: https://geo.mirror.pkgbuild.com/  # TODO(verify)
+    purpose: Arch Linux package mirror
+    required: true
+    when: {families: [archlinux]}
+  # Third-party package repositories (vendor repositories of the component source matrix)
+  - id: docker-repo
+    url: https://download.docker.com/
+    purpose: Docker Engine packages
+    required: true
+    when: {families: [debian, redhat]}
+  - id: nvidia-container-toolkit-repo
+    url: https://nvidia.github.io/libnvidia-container/  # TODO(verify)
+    purpose: NVIDIA Container Toolkit packages
+    required: false
+    when: {families: [debian, redhat, suse], gpu_present: true}
+  - id: tailscale-repo
+    url: https://pkgs.tailscale.com/  # TODO(verify)
+    purpose: Tailscale packages
+    required: true
+    when: {families: [debian, redhat, suse]}
+  - id: zabbly-repo
+    url: https://pkgs.zabbly.com/  # TODO(verify)
+    purpose: Incus packages for Debian and Ubuntu
+    required: true
+    when: {distros: [ubuntu, debian]}
+  # Python packages and Ansible collections (bootstrap)
+  - id: pypi
+    url: https://pypi.org/simple/
+    purpose: Python packages for the pinned Ansible and installer environments
+    required: true
+  - id: ansible-galaxy
+    url: https://galaxy.ansible.com/  # TODO(verify)
+    purpose: Pinned Ansible collections
+    required: true
+  # Container registries
+  - id: docker-hub
+    url: https://registry-1.docker.io/v2/
+    purpose: Container images of the lab services
+    required: true
+  - id: ghcr
+    url: https://ghcr.io/v2/
+    purpose: Container images hosted on GitHub
+    required: false
+  - id: quay
+    url: https://quay.io/v2/  # TODO(verify)
+    purpose: Container images hosted on Quay
+    required: false
+  - id: nvcr
+    url: https://nvcr.io/v2/  # TODO(verify)
+    purpose: NVIDIA container images (DCGM exporter)
+    required: false
+    when: {gpu_present: true}
+  # Downloads and models
+  - id: github
+    url: https://github.com/
+    purpose: Release downloads (uv, restic, Quarto)
+    required: true
+  - id: github-release-assets
+    # GitHub answers release downloads with a redirect to this host (verified
+    # with the uv 0.12.23 release assets on 2026-10-05).
+    url: https://release-assets.githubusercontent.com/
+    purpose: Release asset downloads
+    required: true
+  - id: astral-python-downloads
+    # uv 0.12.23 downloads CPython builds from this host (`uv python list
+    # --only-downloads`); the root URL's answer is not verified.
+    url: https://releases.astral.sh/  # TODO(verify)
+    purpose: CPython builds installed by uv into /opt/pokus/python
+    required: true
+  - id: huggingface
+    url: https://huggingface.co/  # TODO(verify)
+    purpose: Model weights (only when a model is selected)
+    required: false

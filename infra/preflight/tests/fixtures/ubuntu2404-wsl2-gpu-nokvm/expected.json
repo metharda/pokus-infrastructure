@@ -1,0 +1,14 @@
+{
+  "disabled": [
+    "vm_targets"
+  ],
+  "env_class": "wsl2",
+  "features": {
+    "dcgm_metrics": false,
+    "gpu_inference": true,
+    "vm_targets": false
+  },
+  "hypervisor": "microsoft",
+  "outcome": "degraded",
+  "provider": "wsl2"
+}

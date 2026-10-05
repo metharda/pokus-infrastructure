@@ -1,0 +1,5 @@
+{
+  "family": "archlinux",
+  "provider": "baremetal",
+  "tier": "experimental"
+}

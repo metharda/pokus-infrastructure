@@ -1,0 +1,6 @@
+{
+  "conflicts": [
+    "non_systemd_init"
+  ],
+  "outcome": "unsupported"
+}

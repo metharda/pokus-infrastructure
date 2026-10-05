@@ -1,0 +1,7 @@
+{
+  "conflicts": [
+    "docker_desktop_wsl"
+  ],
+  "outcome": "unsupported",
+  "provider": "wsl2"
+}
