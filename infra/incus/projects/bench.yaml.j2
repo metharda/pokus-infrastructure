@@ -1,0 +1,22 @@
+# Managed by pokus-infra (incus/projects/bench.yaml.j2). Local changes will be overwritten.
+#
+# Official benchmark runs (BUILD_PROMPT §7.7). The platform's service
+# certificates are restricted to this project (contracts.md#incus).
+name: bench
+description: Pokus official benchmark runs
+config:
+  # Golden images are published to the default project's image store, and run
+  # networks are bridges, which Incus keeps in the default project.
+  features.images: "false"
+  features.networks: "false"
+  features.profiles: "true"
+  features.storage.volumes: "true"
+  restricted: "true"
+  restricted.containers.nesting: allow
+  # Telemetry reaches the collector through proxy devices (contracts.md#telemetry).
+  restricted.devices.proxy: allow
+  restricted.snapshots: allow
+  limits.virtual-machines: "{{ incus_max_virtual_machines if pokus_features.vm_targets else 0 }}"
+{% for key, value in incus_bench_limits.items() %}
+  {{ key }}: "{{ value }}"
+{% endfor %}

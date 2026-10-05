@@ -136,12 +136,20 @@ def role_vars(role: str, family: str | None = None, **extra: Any) -> dict[str, A
     return ansible_vars(*paths, **extra)
 
 
+@functools.cache
+def init_plugins() -> None:
+    """Set up Ansible's plugin loader like the CLI does (ansible.builtin lookups, our filters)."""
+    from ansible.plugins.loader import filter_loader, init_plugin_loader  # noqa: PLC0415
+
+    init_plugin_loader([str(INFRA / ".ansible-collections")])
+    filter_loader.add_directory(str(ANSIBLE / "filter_plugins"))
+
+
 def _templar(variables: Mapping[str, Any]) -> Any:
     from ansible.parsing.dataloader import DataLoader  # noqa: PLC0415 - heavy import
-    from ansible.plugins.loader import filter_loader  # noqa: PLC0415
     from ansible.template import Templar  # noqa: PLC0415
 
-    filter_loader.add_directory(str(ANSIBLE / "filter_plugins"))
+    init_plugins()
     return Templar(loader=DataLoader(), variables=dict(variables))
 
 
@@ -156,11 +164,23 @@ def render_template(role: str, name: str, variables: Mapping[str, Any]) -> str:
     Returns:
         The rendered text.
     """
+    return render_file(ROLES / role / "templates" / name, variables)
+
+
+def render_file(path: Path, variables: Mapping[str, Any]) -> str:
+    """Render any template file like ``ansible.builtin.template``.
+
+    Args:
+        path: Template file.
+        variables: Template variables.
+
+    Returns:
+        The rendered text.
+    """
     from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
 
-    source = (ROLES / role / "templates" / name).read_text(encoding="utf-8")
     result = _templar(variables).template(
-        trust_as_template(source),
+        trust_as_template(path.read_text(encoding="utf-8")),
         escape_backslashes=False,
         overrides={"trim_blocks": True, "lstrip_blocks": False, "newline_sequence": "\n"},
     )

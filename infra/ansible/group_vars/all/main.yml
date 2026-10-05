@@ -134,3 +134,6 @@ pokus_ports:
 # Incus bridges the firewall treats as Incus networks (contracts.md: run
 # networks are named r-<short>; image builds use pokus-build0).
 pokus_incus_bridge_patterns: ["r-*", "pokus-build0"]
+# Bridges of the researchers' personal Incus projects (incusbr-<uid>); unlike
+# run networks they have NAT and an uplink.
+pokus_incus_personal_bridge_patterns: ["incusbr-*"]

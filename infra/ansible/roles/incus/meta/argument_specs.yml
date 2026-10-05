@@ -1,0 +1,110 @@
+# Managed by pokus-infra (ansible/roles/incus/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Incus LTS with the pool, networks, run ACL, projects, profiles and service certificates.
+    options:
+      researchers:
+        type: list
+        elements: dict
+        required: true
+        description: Researchers; each gets a personal project and joins the Incus user group.
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile (storage_backend, hardware) passed by bootstrap.
+      pokus_bootstrap:
+        type: dict
+        required: true
+        description: Bootstrap options (adopt_incus, interactive).
+      pokus_infra_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (incus/ templates).
+      incus_pool_name:
+        type: str
+        default: pokus-targets
+        description: Storage pool of all instances.
+      incus_pool_source:
+        type: str
+        default: loop
+        choices: [loop, device]
+        description: A loop file in the root filesystem, or a dedicated device.
+      incus_pool_size:
+        type: str
+        default: 300GiB
+        description: Size of a loop pool.
+      incus_pool_device:
+        type: str
+        default: ""
+        description: Dedicated device for the pool (use /dev/disk/by-id/...).
+      incus_pool_device_confirm:
+        type: str
+        default: ""
+        description: Must repeat incus_pool_device exactly, or nothing is formatted.
+      incus_pool_device_force_wipe:
+        type: bool
+        default: false
+        description: Format the device even though it carries a filesystem, LVM or RAID signature.
+      incus_https_address:
+        type: str
+        default: 127.0.0.1:8443
+        description: Address of the Incus HTTPS API (restricted TLS clients and metrics).
+      incus_build_network:
+        type: str
+        default: pokus-build0
+        description: NAT bridge of the build project.
+      incus_run_acl:
+        type: str
+        default: pokus-run-default
+        description: Network ACL the platform attaches to every run network.
+      incus_max_virtual_machines:
+        type: int
+        default: 4
+        description: Most VMs at once in the bench and build projects (with the vm_targets feature).
+      incus_bench_limits:
+        type: dict
+        description: Project limits of bench (derived from the host's memory and CPUs).
+      incus_target_container:
+        type: dict
+        default: {cpu: "1", memory: 1GiB, root_size: 8GiB}
+        description: Default limits and root disk of the target-container profile.
+      incus_target_vm:
+        type: dict
+        default: {cpu: "2", memory: 2GiB, root_size: 16GiB}
+        description: Default limits and root disk of the target-vm profile.
+      incus_probe_client:
+        type: dict
+        default: {cpu: "1", memory: 512MiB, root_size: 4GiB}
+        description: Limits and root disk of the probe-client profile.
+      incus_build_instance:
+        type: dict
+        default: {cpu: "2", memory: 2GiB, root_size: 16GiB}
+        description: Limits and root disk of the build profile.
+      incus_user_limits:
+        type: dict
+        default: {limits.instances: "5", limits.cpu: "4", limits.memory: 8GiB, limits.disk: 60GiB}
+        description: Project limits of each personal project.
+      incus_user_instance:
+        type: dict
+        default: {cpu: "1", memory: 1GiB, root_size: 10GiB}
+        description: Default limits and root disk of instances in personal projects.
+      incus_cert_dir:
+        type: path
+        default: /etc/pokus/incus
+        description: Directory of the client certificates (one subdirectory per service).
+      incus_service_certificates:
+        type: list
+        elements: dict
+        description: Platform services that get a restricted client certificate ({account, short, projects}).
+      incus_metrics_certificate:
+        type: dict
+        default: {account: root, short: metrics, type: metrics}
+        description: The metrics-only certificate for Prometheus.
+      incus_certificate_days:
+        type: int
+        default: 3650
+        description: Validity of generated client certificates in days.
+      incus_events_identifier:
+        type: str
+        default: pokus-incus-events
+        description: Journal identifier of the Incus event feed.

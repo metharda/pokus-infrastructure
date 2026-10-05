@@ -1,0 +1,27 @@
+# Managed by pokus-infra (incus/projects/user.yaml.j2). Local changes will be overwritten.
+#
+# Personal project of one researcher, as incus-user would create it (same name
+# and restrictions, Incus 6.0.6 cmd/incus-user/server.go), plus resource limits
+# and without GPU access. Pokus creates it in advance because incus-user
+# applies no limits and points its profile at a pool named "default".
+name: "user-{{ incus_user.uid }}"
+description: "Personal project of {{ incus_user.name }}"
+config:
+  features.images: "true"
+  features.networks: "false"
+  features.networks.zones: "true"
+  features.profiles: "true"
+  features.storage.volumes: "true"
+  features.storage.buckets: "true"
+  restricted: "true"
+  restricted.containers.nesting: allow
+  restricted.devices.disk: allow
+  restricted.devices.disk.paths: "{{ incus_user.home }}"
+  restricted.devices.gpu: block
+  restricted.idmap.uid: "{{ incus_user.uid }}"
+  restricted.idmap.gid: "{{ incus_user.gid }}"
+  restricted.networks.access: "{{ incus_user.network }}"
+  limits.virtual-machines: "{{ incus_user_limits['limits.instances'] if pokus_features.vm_targets else 0 }}"
+{% for key, value in incus_user_limits.items() %}
+  {{ key }}: "{{ value }}"
+{% endfor %}

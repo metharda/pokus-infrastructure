@@ -84,3 +84,21 @@
       ansible.builtin.import_role:
         name: tailscale
       tags: [tailscale]
+
+    - name: Docker Engine
+      ansible.builtin.import_role:
+        name: docker
+      tags: [docker]
+
+    - name: NVIDIA Container Toolkit
+      ansible.builtin.include_role:
+        name: nvidia_container_toolkit
+        apply:
+          tags: [nvidia_container_toolkit]
+      when: pokus_features.gpu_inference | default(false)
+      tags: [nvidia_container_toolkit]
+
+    - name: Incus
+      ansible.builtin.import_role:
+        name: incus
+      tags: [incus]

@@ -254,6 +254,12 @@ Incus bridges the firewall treats as Incus networks (contracts.md: run networks 
 
 - Default: `[r-*, pokus-build0]`
 
+### `pokus_incus_personal_bridge_patterns`
+
+Bridges of the researchers' personal Incus projects (incusbr-&lt;uid&gt;); unlike run networks they have NAT and an uplink.
+
+- Default: `[incusbr-*]`
+
 ## base
 
 Base system.
@@ -378,6 +384,54 @@ Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
 - Type: `path`
 - Default: `{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}`
 
+## docker
+
+Docker Engine with Compose and buildx, pinned and held, and its daemon configuration.
+
+Entry points: `main` (Docker Engine with Compose and buildx, pinned and held, and its daemon configuration). Role README: `ansible/roles/docker/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `break_glass_docker` | [lab-wide](#break_glass_docker) | Admins added to the docker group (root-equivalent), logged and recorded in the fingerprint. |
+| `researchers` | [lab-wide](#researchers) | Researchers; break-glass Docker access is only allowed for admins. |
+
+### `docker_data_root`
+
+Root of Docker's images, containers and volumes.
+
+- Type: `path`
+- Default: `/var/lib/docker`
+
+### `docker_address_pools`
+
+Address pools for Docker networks; must not overlap Incus bridges, Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
+
+- Type: `list` of `dict`
+- Default: `- {base: 172.30.0.0/16, size: 24}`
+
+### `docker_log_max_size`
+
+Maximum size of one log file of the local log driver.
+
+- Type: `str`
+- Default: `20m`
+
+### `docker_log_max_file`
+
+Number of log files kept per container by the local log driver.
+
+- Type: `int`
+- Default: `5`
+
+### `docker_cdi_min_major`
+
+First Docker Engine major version with CDI device support; older engines get the NVIDIA runtime.
+
+- Type: `int`
+- Default: `25`
+
 ## firewall
 
 Firewall policy with the nftables, firewalld or ufw backend.
@@ -390,6 +444,7 @@ Variables the role reads from elsewhere:
 | --- | --- | --- |
 | `grafana_tailscale_serve` | [lab-wide](#grafana_tailscale_serve) | Open the Grafana serve port on the tailnet interface. |
 | `pokus_incus_bridge_patterns` | [lab-wide](#pokus_incus_bridge_patterns) | Interface name patterns of Incus bridges (run networks and the build bridge). |
+| `pokus_incus_personal_bridge_patterns` | [lab-wide](#pokus_incus_personal_bridge_patterns) | Interface name patterns of the bridges of personal Incus projects. |
 | `ssh_extra_allowed_interfaces` | [lab-wide](#ssh_extra_allowed_interfaces) | Interfaces besides tailscale0 on which SSH is reachable. |
 
 ### `firewall_tailnet_interface`
@@ -419,6 +474,222 @@ UDP port of the WireGuard transport of tailscaled.
 
 - Type: `int`
 - Default: `41641`
+
+### `firewall_run_bridge_pattern`
+
+Name pattern of the per-run networks; nothing is forwarded out of them.
+
+- Type: `str`
+- Default: `r-*`
+
+### `firewall_incus_bridge_patterns`
+
+Every Incus bridge that may use DHCP and DNS on the host (derived).
+
+- Type: `list` of `str`
+- Default: `{{ pokus_incus_bridge_patterns + pokus_incus_personal_bridge_patterns }}`
+
+### `firewall_uplink_bridge_patterns`
+
+Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
+
+- Type: `list` of `str`
+- Default: `{{ ['pokus-build0'] + pokus_incus_personal_bridge_patterns }}`
+
+## incus
+
+Incus LTS with the pool, networks, run ACL, projects, profiles and service certificates.
+
+Entry points: `main` (Incus LTS with the pool, networks, run ACL, projects, profiles and service certificates). Role README: `ansible/roles/incus/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware) passed by bootstrap. |
+| `pokus_bootstrap` | bootstrap.sh | Bootstrap options (adopt_incus, interactive). |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (incus/ templates). |
+| `researchers` | [lab-wide](#researchers) | Researchers; each gets a personal project and joins the Incus user group. |
+
+### `incus_pool_name`
+
+Storage pool of all instances.
+
+- Type: `str`
+- Default: `pokus-targets`
+
+### `incus_pool_source`
+
+A loop file in the root filesystem, or a dedicated device.
+
+- Type: `str`
+- Choices: `loop`, `device`
+- Default: `loop`
+
+### `incus_pool_size`
+
+Size of a loop pool.
+
+- Type: `str`
+- Default: `300GiB`
+
+### `incus_pool_device`
+
+Dedicated device for the pool (use /dev/disk/by-id/...).
+
+- Type: `str`
+- Default: `''`
+
+### `incus_pool_device_confirm`
+
+Must repeat incus_pool_device exactly, or nothing is formatted.
+
+- Type: `str`
+- Default: `''`
+
+### `incus_pool_device_force_wipe`
+
+Format the device even though it carries a filesystem, LVM or RAID signature.
+
+- Type: `bool`
+- Default: `false`
+
+### `incus_https_address`
+
+Address of the Incus HTTPS API (restricted TLS clients and metrics).
+
+- Type: `str`
+- Default: `127.0.0.1:8443`
+
+### `incus_build_network`
+
+NAT bridge of the build project.
+
+- Type: `str`
+- Default: `pokus-build0`
+
+### `incus_run_acl`
+
+Network ACL the platform attaches to every run network.
+
+- Type: `str`
+- Default: `pokus-run-default`
+
+### `incus_max_virtual_machines`
+
+Most VMs at once in the bench and build projects (with the vm_targets feature).
+
+- Type: `int`
+- Default: `4`
+
+### `incus_bench_limits`
+
+Project limits of bench (derived from the host's memory and CPUs).
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    {limits.memory: '{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB',
+      limits.cpu: '{{ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}',
+      limits.instances: '40'}
+    ```
+
+### `incus_target_container`
+
+Default limits and root disk of the target-container profile.
+
+- Type: `dict`
+- Default: `{cpu: '1', memory: 1GiB, root_size: 8GiB}`
+
+### `incus_target_vm`
+
+Default limits and root disk of the target-vm profile.
+
+- Type: `dict`
+- Default: `{cpu: '2', memory: 2GiB, root_size: 16GiB}`
+
+### `incus_probe_client`
+
+Limits and root disk of the probe-client profile.
+
+- Type: `dict`
+- Default: `{cpu: '1', memory: 512MiB, root_size: 4GiB}`
+
+### `incus_build_instance`
+
+Limits and root disk of the build profile.
+
+- Type: `dict`
+- Default: `{cpu: '2', memory: 2GiB, root_size: 16GiB}`
+
+### `incus_user_limits`
+
+Project limits of each personal project.
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    {limits.instances: '5', limits.cpu: '4', limits.memory: 8GiB, limits.disk: 60GiB}
+    ```
+
+### `incus_user_instance`
+
+Default limits and root disk of instances in personal projects.
+
+- Type: `dict`
+- Default: `{cpu: '1', memory: 1GiB, root_size: 10GiB}`
+
+### `incus_cert_dir`
+
+Directory of the client certificates (one subdirectory per service).
+
+- Type: `path`
+- Default: `/etc/pokus/incus`
+
+### `incus_service_certificates`
+
+Platform services that get a restricted client certificate ({account, short, projects}).
+
+- Type: `list` of `dict`
+- Default:
+
+    ```yaml
+    - account: pokus-orch
+      short: orch
+      projects: [bench, build]
+    - account: pokus-exec
+      short: exec
+      projects: [bench]
+    - account: pokus-inject
+      short: inject
+      projects: [bench]
+    - account: pokus-verify
+      short: verify
+      projects: [bench]
+    ```
+
+### `incus_metrics_certificate`
+
+The metrics-only certificate for Prometheus.
+
+- Type: `dict`
+- Default: `{account: root, short: metrics, type: metrics}`
+
+### `incus_certificate_days`
+
+Validity of generated client certificates in days.
+
+- Type: `int`
+- Default: `3650`
+
+### `incus_events_identifier`
+
+Journal identifier of the Incus event feed.
+
+- Type: `str`
+- Default: `pokus-incus-events`
 
 ## layout
 
@@ -467,6 +738,40 @@ Run restorecon on every play, not only when a rule changed.
 
 - Type: `bool`
 - Default: `false`
+
+## nvidia_container_toolkit
+
+NVIDIA Container Toolkit with CDI GPU access and a containerized GPU check.
+
+Entry points: `main` (NVIDIA Container Toolkit with CDI GPU access and a containerized GPU check). Role README: `ansible/roles/nvidia_container_toolkit/README.md`.
+
+### `nvidia_container_toolkit_verify_dir`
+
+Directory of the GPU check record gpu-docker.txt.
+
+- Type: `path`
+- Default: `/var/lib/pokus/verify`
+
+### `nvidia_container_toolkit_cdi_device`
+
+CDI device name that containers request.
+
+- Type: `str`
+- Default: `nvidia.com/gpu=all`
+
+### `nvidia_container_toolkit_query`
+
+Fields of nvidia-smi --query-gpu recorded by the check (stable values only).
+
+- Type: `str`
+- Default: `name,driver_version,memory.total,compute_cap`
+
+### `nvidia_container_toolkit_image`
+
+The pinned CUDA base image of the GPU check, by digest (from versions.lock.yml).
+
+- Type: `str`
+- Default: `{{ pokus_versions.containers.images.cuda_base_test.image }}@{{ pokus_versions.containers.images.cuda_base_test.digest }}`
 
 ## pkg
 

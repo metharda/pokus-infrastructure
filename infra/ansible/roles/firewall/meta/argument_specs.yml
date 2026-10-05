@@ -17,6 +17,11 @@ argument_specs:
         elements: str
         required: true
         description: Interface name patterns of Incus bridges (run networks and the build bridge).
+      pokus_incus_personal_bridge_patterns:
+        type: list
+        elements: str
+        required: true
+        description: Interface name patterns of the bridges of personal Incus projects.
       firewall_tailnet_interface:
         type: str
         default: tailscale0
@@ -34,3 +39,15 @@ argument_specs:
         type: int
         default: 41641
         description: UDP port of the WireGuard transport of tailscaled.
+      firewall_run_bridge_pattern:
+        type: str
+        default: r-*
+        description: Name pattern of the per-run networks; nothing is forwarded out of them.
+      firewall_incus_bridge_patterns:
+        type: list
+        elements: str
+        description: Every Incus bridge that may use DHCP and DNS on the host (derived).
+      firewall_uplink_bridge_patterns:
+        type: list
+        elements: str
+        description: Incus bridges with NAT and an uplink, trusted as Incus documents (derived).

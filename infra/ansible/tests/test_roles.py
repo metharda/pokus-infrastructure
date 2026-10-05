@@ -56,7 +56,11 @@ def managed_files() -> list[Path]:
     files += sorted((ANSIBLE / "group_vars").rglob("*.yml*"))
     files += sorted((ANSIBLE / "inventory").rglob("*.yml"))
     for role in ROLE_NAMES:
-        files += sorted(p for p in (ROLES / role).rglob("*") if p.is_file() and p.suffix != ".md")
+        files += sorted(
+            p
+            for p in (ROLES / role).rglob("*")
+            if p.is_file() and p.suffix not in (".md", ".pyc") and "__pycache__" not in p.parts
+        )
     return files
 
 

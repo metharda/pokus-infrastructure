@@ -127,6 +127,10 @@ the prompt text where they differ.
 - `ansible/tests/` checks role structure, templates (rendered like the
   template module; nft rulesets with `nft -c` in a private network
   namespace) and data consistency; add a render test for every new template.
+- Incus objects are only changed through the incus role's module
+  `pokus_incus_object` (create or update, never delete); the pool and the
+  networks are created once and never rewritten. Only the docker role writes
+  `/etc/docker/daemon.json`.
 
 ## Code style (BUILD_PROMPT §14)
 

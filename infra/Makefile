@@ -28,7 +28,8 @@ BUILD := build
 DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
 DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
 
-PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins ansible/tests
+PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
+  ansible/roles/incus/library ansible/tests
 PLAYBOOKS := ansible/site.yml ansible/restore.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -70,7 +71,8 @@ lint: lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portabilit
 lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff check $(PY_SOURCES)
 	$(BIN)/ruff format --check $(PY_SOURCES)
-	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins ansible/tests
+	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
+	  ansible/roles/incus/library ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 

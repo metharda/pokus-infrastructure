@@ -1,0 +1,159 @@
+# Managed by pokus-infra (ansible/roles/nvidia_container_toolkit/tasks/main.yml). Local changes will be overwritten.
+#
+# NVIDIA Container Toolkit (BUILD_PROMPT §7.6), only on hosts with the
+# gpu_inference feature. Containers reach the GPU through CDI where Docker
+# supports it: the toolkit's own nvidia-cdi-refresh units (toolkit 1.18 and
+# later) write /var/run/cdi/nvidia.yaml whenever the driver or the toolkit
+# changes, in WSL mode on WSL2. Docker releases without CDI get the NVIDIA
+# runtime instead; the docker role writes either into daemon.json. A pinned
+# CUDA image, run by digest, proves that a container sees the GPU.
+- name: Look up the NVIDIA Container Toolkit source
+  ansible.builtin.set_fact:
+    nvidia_container_toolkit_source: >-
+      {{ pokus_component_sources | pokus_component_source('nvidia_container_toolkit', pokus_source_group) }}
+    nvidia_container_toolkit_versions: >-
+      {{ pokus_versions.packages | pokus_lock_packages('nvidia_container_toolkit', pokus_release_key) }}
+
+- name: Refuse an unverified NVIDIA Container Toolkit source
+  ansible.builtin.assert:
+    that:
+      - nvidia_container_toolkit_source.verify is not defined
+    fail_msg: >-
+      ansible/component-sources.yml marks the NVIDIA Container Toolkit source for
+      {{ pokus_source_group }} as unverified ({{ nvidia_container_toolkit_source.verify | default('') }}).
+    quiet: true
+
+- name: Add the NVIDIA Container Toolkit repository
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: repo
+  vars:
+    pkg_repo_name: "{{ nvidia_container_toolkit_source.repo }}"
+  when: nvidia_container_toolkit_source.source == 'vendor_repo'
+
+- name: Install the NVIDIA Container Toolkit
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: "{{ nvidia_container_toolkit_source.packages }}"
+    pkg_versions: "{{ nvidia_container_toolkit_versions }}"
+
+- name: Hold the NVIDIA Container Toolkit packages
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: hold
+  vars:
+    pkg_hold_name: nvidia_container_toolkit
+    pkg_hold_packages: "{{ nvidia_container_toolkit_source.packages }}"
+    pkg_versions: "{{ nvidia_container_toolkit_versions }}"
+
+- name: Create the drop-in directory of nvidia-cdi-refresh.service
+  ansible.builtin.file:
+    path: /etc/systemd/system/nvidia-cdi-refresh.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: pokus_provider == 'wsl2'
+
+- name: Generate the CDI specification in WSL mode on WSL2
+  ansible.builtin.template:
+    src: nvidia-cdi-refresh-pokus.conf.j2
+    dest: /etc/systemd/system/nvidia-cdi-refresh.service.d/50-pokus.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: pokus_provider == 'wsl2'
+  notify: Regenerate the CDI specification
+
+- name: Keep the CDI specification current
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    daemon_reload: true
+  loop: [nvidia-cdi-refresh.path, nvidia-cdi-refresh.service]
+
+- name: Watch for driver and toolkit changes
+  ansible.builtin.systemd_service:
+    name: nvidia-cdi-refresh.path
+    state: started
+
+- name: Apply a changed CDI configuration now
+  ansible.builtin.meta: flush_handlers
+
+- name: Read the Docker daemon configuration
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: nvidia_container_toolkit_daemon_json
+  when: not ansible_check_mode
+
+- name: Read how Docker gives containers the GPU (written by the docker role)
+  ansible.builtin.set_fact:
+    nvidia_container_toolkit_method: >-
+      {{ 'cdi' if (nvidia_container_toolkit_daemon.features | default({})).cdi | default(false)
+         else ('runtime' if 'nvidia' in (nvidia_container_toolkit_daemon.runtimes | default({})) else 'none') }}
+  vars:
+    nvidia_container_toolkit_daemon: "{{ nvidia_container_toolkit_daemon_json.content | b64decode | from_json }}"
+  when: not ansible_check_mode
+
+- name: Check that Docker is configured for the GPU
+  when: not ansible_check_mode
+  ansible.builtin.assert:
+    that:
+      - nvidia_container_toolkit_method in ['cdi', 'runtime']
+    fail_msg: >-
+      /etc/docker/daemon.json enables neither CDI nor the NVIDIA runtime; apply the docker
+      role first (it configures GPU access on hosts with the gpu_inference feature).
+    quiet: true
+
+- name: List the CDI devices
+  ansible.builtin.command:
+    argv: [nvidia-ctk, cdi, list]
+  register: nvidia_container_toolkit_cdi
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - nvidia_container_toolkit_method == 'cdi'
+
+- name: Generate the CDI specification
+  ansible.builtin.systemd_service:
+    name: nvidia-cdi-refresh.service
+    state: started
+  when:
+    - not ansible_check_mode
+    - nvidia_container_toolkit_method == 'cdi'
+    - nvidia_container_toolkit_cdi_device not in nvidia_container_toolkit_cdi.stdout
+
+- name: Check the GPU from a container and record it
+  when: not ansible_check_mode
+  block:
+    - name: Create the verification directory
+      ansible.builtin.file:
+        path: "{{ nvidia_container_toolkit_verify_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Run nvidia-smi in the pinned CUDA image
+      ansible.builtin.command:
+        argv: >-
+          {{ ['docker', 'run', '--rm', '--pull', 'missing']
+             + (['--device', nvidia_container_toolkit_cdi_device] if nvidia_container_toolkit_method == 'cdi'
+                else ['--runtime', 'nvidia', '--gpus', 'all'])
+             + [nvidia_container_toolkit_image, 'nvidia-smi',
+                '--query-gpu=' ~ nvidia_container_toolkit_query, '--format=csv'] }}
+      register: nvidia_container_toolkit_smi
+      changed_when: false
+
+    - name: Record the GPU seen by containers
+      ansible.builtin.copy:
+        dest: "{{ nvidia_container_toolkit_verify_dir }}/gpu-docker.txt"
+        content: |
+          # Written by pokus-infra (nvidia_container_toolkit): nvidia-smi in the pinned CUDA image
+          image: {{ nvidia_container_toolkit_image }}
+          method: {{ nvidia_container_toolkit_method }}
+          {{ nvidia_container_toolkit_smi.stdout }}
+        owner: root
+        group: root
+        mode: "0644"

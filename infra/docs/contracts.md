@@ -227,7 +227,7 @@ the paired node's tailnet name; `<port>` is chosen by the deployer.
 | Network ACL | `pokus-run-default`: deny all egress except within the run network |
 | Firewall compatibility | infra treats bridges matching `r-*` and `pokus-build0` as Incus bridges |
 | Profiles | `target-container`, `target-vm` (only if `vm_targets`), `probe-client`, `build` |
-| Guest API | target profiles disable it (`security.guestapi=false`; key name verified in infra step 6) |
+| Guest API | target profiles disable it (`security.guestapi=false`, the Incus 6.0 key for `/dev/incus`) |
 | Golden images | aliases `<blueprint>/<version>` with properties `pokus.recipe_commit`, `pokus.built_at`, `pokus.base_fingerprint` |
 
 ## Telemetry
@@ -236,7 +236,7 @@ the paired node's tailnet name; `<port>` is chosen by the deployer.
 | --- | --- |
 | OTLP for services | `127.0.0.1:4317` (gRPC), `127.0.0.1:4318` (HTTP) |
 | Containers | the platform adds a proxy device to each target instance: `listen=tcp:127.0.0.1:4317` (inside) → `connect=tcp:127.0.0.1:4317` (host), `bind=instance` |
-| VMs | if Incus proxy devices with `bind=instance` are not supported for VMs (verified in infra step 6), an ACL-restricted route from the run network to a dedicated collector listener; infra documents the listener here when step 6 has verified it (C4) |
+| VMs | Incus 6.0 supports proxy devices on VMs only in NAT mode, which requires `bind=host`, so a VM cannot reach the collector through a proxy device. VMs use an ACL-restricted route from the run network to a dedicated collector listener (C4); infra documents the listener here together with the collector (infra step 7) |
 | Identity | the platform sets `OTEL_RESOURCE_ATTRIBUTES=pokus.run_id=<run_id>,pokus.node=<node_alias>` in the instance environment at launch; the in-image agent attaches them. `run_id` is an opaque ULID. No scenario identifier ever enters an instance. |
 
 ## Policy engine (OPA)

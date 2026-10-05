@@ -10,7 +10,7 @@ table inet pokus_filter {
 	set incus_bridges {
 		type ifname
 		flags interval
-		elements = { {{ pokus_incus_bridge_patterns | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} }
+		elements = { {{ firewall_incus_bridge_patterns | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} }
 	}
 
 	chain input {
@@ -40,7 +40,9 @@ table inet pokus_filter {
 		type filter hook forward priority filter; policy accept;
 		# Run networks reach nothing outside run networks, and nothing outside
 		# starts connections into them.
-		iifname "r-*" oifname != "r-*" drop
-		oifname "r-*" iifname != "r-*" ct state new drop
+		# Between two run networks, the Incus ACL pokus-run-default drops the
+		# traffic at the bridge boundary.
+		iifname "{{ firewall_run_bridge_pattern }}" oifname != "{{ firewall_run_bridge_pattern }}" drop
+		oifname "{{ firewall_run_bridge_pattern }}" iifname != "{{ firewall_run_bridge_pattern }}" ct state new drop
 	}
 }

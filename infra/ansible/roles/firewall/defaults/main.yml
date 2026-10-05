@@ -8,3 +8,10 @@ firewall_grafana_serve_port: 443
 firewall_tailnet_tcp_ports: "{{ [22] + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else []) }}"
 # UDP port of the WireGuard transport of tailscaled.
 firewall_tailscale_udp_port: 41641
+# Name pattern of the per-run networks (contracts.md: r-<short>).
+firewall_run_bridge_pattern: "r-*"
+# Every Incus bridge that gets DHCP and DNS from the host.
+firewall_incus_bridge_patterns: "{{ pokus_incus_bridge_patterns + pokus_incus_personal_bridge_patterns }}"
+# Bridges with NAT and an uplink (image builds, personal projects), trusted like
+# Incus documents for firewalld and ufw hosts.
+firewall_uplink_bridge_patterns: "{{ ['pokus-build0'] + pokus_incus_personal_bridge_patterns }}"

@@ -1,0 +1,88 @@
+# Managed by pokus-infra (ansible/roles/incus/tasks/pool_device.yml). Local changes will be overwritten.
+#
+# Safety invariant 1 (BUILD_PROMPT §13): a device is formatted only if
+# incus_pool_device_confirm repeats incus_pool_device exactly, it is not
+# mounted, and it carries no filesystem, LVM or RAID signature (unless
+# incus_pool_device_force_wipe), and, when bootstrap runs interactively, the
+# operator confirms it after seeing model, size and serial.
+- name: Check that the device is confirmed
+  ansible.builtin.assert:
+    that:
+      - incus_pool_device is match('^/dev/')
+      - incus_pool_device_confirm == incus_pool_device
+    fail_msg: >-
+      incus_pool_source is device, but incus_pool_device_confirm does not repeat
+      incus_pool_device exactly. Nothing was formatted.
+    quiet: true
+
+- name: Read the device
+  ansible.builtin.stat:
+    path: "{{ incus_pool_device }}"
+    follow: true
+  register: incus_device_stat
+
+- name: Check that the device is a block device
+  ansible.builtin.assert:
+    that:
+      - incus_device_stat.stat.exists
+      - incus_device_stat.stat.isblk
+    fail_msg: "{{ incus_pool_device }} is not a block device. Nothing was formatted."
+    quiet: true
+
+- name: Describe the device and its partitions
+  ansible.builtin.command:
+    argv: [lsblk, --json, --bytes, --output, "PATH,SIZE,MODEL,SERIAL,FSTYPE,MOUNTPOINTS", "{{ incus_pool_device }}"]
+  register: incus_device_lsblk
+  changed_when: false
+  check_mode: false
+
+- name: List signatures on the device (no changes)
+  ansible.builtin.command:
+    argv: [wipefs, --no-act, "{{ incus_pool_device }}"]
+  register: incus_device_wipefs
+  changed_when: false
+  check_mode: false
+
+- name: Summarize the device
+  ansible.builtin.set_fact:
+    incus_device: "{{ (incus_device_lsblk.stdout | from_json).blockdevices[0] }}"
+    incus_device_tree: >-
+      {{ [(incus_device_lsblk.stdout | from_json).blockdevices[0]]
+         + ((incus_device_lsblk.stdout | from_json).blockdevices[0].children | default([])) }}
+
+- name: Refuse a mounted device
+  ansible.builtin.assert:
+    that:
+      - incus_device_tree | map(attribute='mountpoints') | flatten | select | list | length == 0
+    fail_msg: "{{ incus_pool_device }} or one of its partitions is mounted. Nothing was formatted."
+    quiet: true
+
+- name: Refuse a device with data on it
+  ansible.builtin.assert:
+    that:
+      - incus_pool_device_force_wipe | bool or
+        (incus_device_wipefs.stdout | trim | length == 0 and incus_device_tree | map(attribute='fstype') | select | list | length == 0)
+    fail_msg: >-
+      {{ incus_pool_device }} carries a filesystem, LVM or RAID signature. Set
+      incus_pool_device_force_wipe: true only if its contents may be destroyed. Nothing was formatted.
+    quiet: true
+
+- name: Show the device that will be formatted
+  ansible.builtin.debug:
+    msg: >-
+      Incus will format {{ incus_pool_device }}: model {{ incus_device.model | default('?') }},
+      size {{ (incus_device.size | int / 1073741824) | round(1) }} GiB, serial {{ incus_device.serial | default('?') }}.
+
+- name: Ask the operator to confirm
+  ansible.builtin.pause:
+    prompt: "Type the device path {{ incus_pool_device }} to format it, anything else to stop"
+  register: incus_device_answer
+  when: pokus_bootstrap.interactive | default(false)
+
+- name: Stop unless the operator confirmed
+  ansible.builtin.assert:
+    that:
+      - incus_device_answer.user_input | default('') | trim == incus_pool_device
+    fail_msg: "The device was not confirmed. Nothing was formatted."
+    quiet: true
+  when: pokus_bootstrap.interactive | default(false)

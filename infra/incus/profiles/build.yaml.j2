@@ -1,0 +1,23 @@
+# Managed by pokus-infra (incus/profiles/build.yaml.j2). Local changes will be overwritten.
+#
+# Golden image builds, with internet access through pokus-build0. Nesting is
+# allowed so that blueprints with container engines can be tested during the
+# build.
+name: build
+project: build
+description: Pokus golden image build
+config:
+  limits.cpu: "{{ incus_build_instance.cpu }}"
+  limits.memory: "{{ incus_build_instance.memory }}"
+  security.nesting: "true"
+  boot.autostart: "false"
+devices:
+  root:
+    type: disk
+    path: /
+    pool: "{{ incus_pool_name }}"
+    size: "{{ incus_build_instance.root_size }}"
+  eth0:
+    type: nic
+    name: eth0
+    network: "{{ incus_build_network }}"

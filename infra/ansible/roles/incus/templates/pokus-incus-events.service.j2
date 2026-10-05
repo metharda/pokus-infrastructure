@@ -1,0 +1,17 @@
+# Managed by pokus-infra (ansible/roles/incus/templates/pokus-incus-events.service.j2). Local changes will be overwritten.
+#
+# Incus lifecycle and logging events of all projects as JSON lines in the
+# journal (`incus monitor` prints a blank line after each event).
+[Unit]
+Description=Pokus: Incus events to the journal
+After={{ incus_units.daemon }}
+PartOf={{ incus_units.daemon }}
+
+[Service]
+ExecStart={{ incus_cli }} monitor --all-projects --type=lifecycle --type=logging --format=json
+SyslogIdentifier={{ incus_events_identifier }}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

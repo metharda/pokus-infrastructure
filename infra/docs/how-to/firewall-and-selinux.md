@@ -69,12 +69,15 @@ Each backend shows Pokus's part with its own tool:
 | Backend | Command | What you should see |
 | --- | --- | --- |
 | nftables | `sudo nft list table inet pokus_filter` | input policy `drop`, `tcp dport { 22 }` on `tailscale0` |
-| firewalld | `sudo firewall-cmd --zone=pokus-tailnet --list-all` | interface `tailscale0`, port `22/tcp` |
-| ufw | `sudo ufw status verbose` | `22/tcp on tailscale0 ALLOW IN` with comment `pokus-infra` |
+| firewalld | `sudo firewall-cmd --zone=pokus-tailnet --list-all` and `--zone=pokus-run` | interface `tailscale0`, port `22/tcp`; interface `r-+` with the services `dhcp`, `dhcpv6`, `dns` |
+| ufw | `sudo ufw status verbose` | `22/tcp on tailscale0 ALLOW IN` and DHCP/DNS rules on `r-+`, all with comment `pokus-infra` |
 
+Run networks (`r-*`) only get DHCP and DNS from the host; the build bridge
+and the researchers' bridges (`incusbr-*`) are trusted as Incus documents.
 On every backend `pokus-docker-incus-compat.service` keeps Incus bridges
 working next to Docker by adding `ACCEPT` rules to Docker's `DOCKER-USER`
-chain.
+chain. How runs are kept apart is explained in
+[How benchmark targets are isolated](../explanation/target-isolation.md).
 
 ## Work with SELinux enforcing
 

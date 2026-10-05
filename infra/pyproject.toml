@@ -65,6 +65,7 @@ known-first-party = [
   "pokus_preflight",
   "pokus_lockcheck",
   "pokus",
+  "pokus_incus_object",
   "ansible_testlib",
 ]
 
@@ -75,10 +76,11 @@ convention = "google"
 "**/tests/**" = ["S101", "D", "ANN", "PLR2004"]
 "bootstrap/tests/**" = ["S603", "S607"]  # the tests drive bash, git and setpriv
 "ansible/tests/**" = ["S603", "S607"]  # the tests run nft, ShellCheck, sh and visudo
+"ansible/roles/*/library/*.py" = ["E501"]  # managed header and module documentation lines
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/tests"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/tests"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -104,5 +106,6 @@ pythonpath = [
   "tools/lockcheck",
   "bootstrap/tests",
   "ansible/filter_plugins",
+  "ansible/roles/incus/library",
   "ansible/tests",
 ]

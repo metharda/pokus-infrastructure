@@ -339,8 +339,8 @@ owner approval. No change after version 1 yet.
 | 2 | Preflight | done | `8df9199` |
 | 3 | bootstrap.sh | done | `8df9199` |
 | 4 | versions.lock.yml + lock-check | done | `8df9199` |
-| 5 | Ansible foundation roles (four families) | done | commit "feat(infra): add Ansible foundation roles for all four families" (SHA recorded with step 6) |
-| 6 | docker, nvidia_container_toolkit, incus | pending | — |
+| 5 | Ansible foundation roles (four families) | done | `ced6b6d` |
+| 6 | docker, nvidia_container_toolkit, incus | done | commit "feat(infra): add Docker, NVIDIA Container Toolkit and Incus roles" (SHA recorded with step 7) |
 | 7 | postgres, observability, opa, vllm, models | pending | — |
 | 8 | images | pending | — |
 | 9 | lab_session, backup, restore.yml, rotate.yml | pending | — |
@@ -395,6 +395,16 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   tests deferred to step 12; run networks on firewalld and ufw hosts relying
   on Incus until step 6; the Secure Boot MOK password on non-interactive
   driver installs.
+- From step 6 ("Findings to report (step 6)" and "Interpretations awaiting
+  owner confirmation (step 6)"): **a contract question**: a certificate
+  restricted to `bench` can create run networks but cannot delete them
+  (bridges live in the default project); proposed: a socket-activated root
+  helper for `r-*` networks, like C3, reachable only by `pokus-orch`. Also:
+  staying on Incus 6.0 although a 7.0 branch exists; `bench` cannot limit
+  network access to `r-*` by name; personal projects created in advance with
+  limits and without GPU; personal bridges trusted like the build bridge; the
+  `daemon.json` label as managed header; the GPU check's device flags; preseed
+  once, then convergence; bench limit defaults; Compose units in step 7.
 
 ## Owner deliverables pending
 
@@ -411,9 +421,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (97 after step 5; details
+`make verify-todos` lists every marker in the tree (98 after step 6; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" and "after step 5"):
+step 4", "after step 5" and "after step 6"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -438,12 +448,14 @@ step 4" and "after step 5"):
   behavior, Incus's firewalld/ufw/Docker guidance, the WSL library path, the
   `tailscale serve` status format, the Secure Boot MOK flow); the Windows
   helper `infra/contrib/windows/pokus-wsl.ps1` (not run on Windows).
+- Step 6: resolved the three firewall and Docker coexistence notes from
+  Incus's documentation; added the Incus group, unit and path names of
+  Zabbly's packages and of the Red Hat, SUSE and Arch families
+  (`infra/ansible/roles/incus/vars/`).
 
 Known items for later steps (each becomes a `TODO(verify)` entry when its file
 is written, unless verified first):
 
-- infra step 6: Incus guest API key name (`security.guestapi`), proxy devices
-  with `bind=instance` for VMs, the newest packaged Incus LTS line.
 - infra step 7: vLLM TLS options for the inference node, OPA authorization
   behavior, Loki native OTLP ingestion.
 
@@ -462,9 +474,9 @@ is written, unless verified first):
   applies the foundation roles (step 5) but `pokus-lab` (doctor) does not
   exist yet, so a real run ends with exit code 60. Its stages and the roles
   are covered by tests that never provision.
-- On firewalld and ufw hosts, per-run Incus bridges cannot be listed in
-  advance; their DHCP/DNS and isolation rely on Incus until step 6 verifies
-  Incus's documented setup for those backends.
+- Run networks can be created but not deleted by the platform's restricted
+  certificates (see the step 6 contract question); until the owner decides,
+  the contract is unchanged and nothing works around it.
 - `make setup` installs the pinned Ansible collections from Galaxy, which the
   build environment cannot reach; here they were installed from their release
   tags on GitHub into the git-ignored `infra/.ansible-collections/`.
@@ -488,8 +500,8 @@ is written, unless verified first):
 
 ## Next step
 
-Infra step 6 (`docker`, `nvidia_container_toolkit`, `incus` for all four
-families: Docker Engine with `daemon.json`, CDI GPU access, the Incus pool with
-the disk safety rules, profiles, projects, run network ACL and per-user
-projects; resolve the NVIDIA rpm `gpgcheck` and the firewalld/ufw run-network
-findings; ADRs for Incus, native Docker Engine and btrfs/LVM thin).
+Infra step 7 (`postgres`, `observability`, `opa`, `vllm`, `models` with the
+Compose units, `config/**`, Grafana dashboards, vLLM profiles,
+`models.catalog.yml` and `models.lock.yml`; the dedicated collector listener
+for VM telemetry (C4); the model candidates need owner approval (E7) before
+they are pinned; ADRs for Postgres socket-only access and OTel telemetry).

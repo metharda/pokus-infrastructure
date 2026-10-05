@@ -1,0 +1,20 @@
+# Managed by pokus-infra (ansible/roles/nvidia_container_toolkit/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: NVIDIA Container Toolkit with CDI GPU access and a containerized GPU check.
+    options:
+      nvidia_container_toolkit_verify_dir:
+        type: path
+        default: /var/lib/pokus/verify
+        description: Directory of the GPU check record gpu-docker.txt.
+      nvidia_container_toolkit_cdi_device:
+        type: str
+        default: nvidia.com/gpu=all
+        description: CDI device name that containers request.
+      nvidia_container_toolkit_query:
+        type: str
+        default: name,driver_version,memory.total,compute_cap
+        description: Fields of nvidia-smi --query-gpu recorded by the check (stable values only).
+      nvidia_container_toolkit_image:
+        type: str
+        description: The pinned CUDA base image of the GPU check, by digest (from versions.lock.yml).

@@ -3,14 +3,15 @@
 #
 # Docker sets the FORWARD policy to DROP and loads br_netfilter, which breaks
 # Incus bridge traffic. Accept Incus bridge traffic in DOCKER-USER, the chain
-# Docker reserves for its users. Idempotent: rules are only inserted if missing.
-# TODO(verify): the approach Incus currently documents for Docker coexistence
-# (linuxcontainers.org is not reachable from the build environment).
+# Docker reserves for its users, exactly as Incus documents it ("Prevent
+# connectivity issues with Incus and Docker", doc/howto/network_bridge_firewalld.md
+# of Incus 6.0.6). "+" is the iptables interface wildcard. Idempotent: rules
+# are only inserted if missing.
 set -eu
 for ipt in iptables ip6tables; do
   command -v "$ipt" >/dev/null 2>&1 || continue
   "$ipt" -n -L DOCKER-USER >/dev/null 2>&1 || continue
-{% for pattern in pokus_incus_bridge_patterns %}
+{% for pattern in firewall_incus_bridge_patterns %}
   if ! "$ipt" -C DOCKER-USER -i "{{ pattern | replace('*', '+') }}" -j ACCEPT 2>/dev/null; then
     "$ipt" -I DOCKER-USER -i "{{ pattern | replace('*', '+') }}" -j ACCEPT
   fi

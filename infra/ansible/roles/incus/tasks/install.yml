@@ -1,0 +1,70 @@
+# Managed by pokus-infra (ansible/roles/incus/tasks/install.yml). Local changes will be overwritten.
+#
+# Incus from the source of the component source matrix (Zabbly's LTS
+# repository on Debian and Ubuntu, the distribution or EPEL/COPR/OBS
+# elsewhere), pinned and held. The channel (lts or non_lts) is recorded for
+# the fingerprint.
+- name: Look up the Incus source
+  ansible.builtin.set_fact:
+    incus_source: "{{ pokus_component_sources | pokus_component_source('incus', pokus_source_group) }}"
+    incus_versions: "{{ pokus_versions.packages | pokus_lock_packages('incus', pokus_release_key) }}"
+
+- name: Refuse an unverified Incus source
+  ansible.builtin.assert:
+    that:
+      - incus_source.verify is not defined
+    fail_msg: >-
+      ansible/component-sources.yml marks the Incus source for {{ pokus_source_group }}
+      as unverified ({{ incus_source.verify | default('') }}); verify it first
+      (docs/how-to/update-versions.md).
+    quiet: true
+
+- name: Stop when Incus comes from a community repository without consent
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      Incus for this distribution comes from a community repository. Re-run bootstrap with
+      --allow-community-repos (recorded in the fingerprint).
+  when:
+    - incus_source.source == 'community'
+    - not pokus_community_repos_allowed
+
+- name: Add the Incus repository
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: repo
+  vars:
+    pkg_repo_name: "{{ incus_source.repo }}"
+  when: incus_source.source == 'vendor_repo'
+
+- name: Install Incus
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: "{{ incus_source.packages }}"
+    pkg_versions: "{{ incus_versions }}"
+
+- name: Hold the Incus packages
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: hold
+  vars:
+    pkg_hold_name: incus
+    pkg_hold_packages: "{{ incus_source.packages }}"
+    pkg_versions: "{{ incus_versions }}"
+
+- name: Record the Incus source and channel
+  ansible.builtin.copy:
+    dest: /etc/pokus/incus-source.json
+    content: "{{ {'source': incus_source.source, 'channel': incus_source.channel, 'packages': incus_source.packages} | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start Incus
+  ansible.builtin.systemd_service:
+    name: "{{ incus_units.daemon }}"
+    enabled: true
+    state: started

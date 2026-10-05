@@ -1,0 +1,95 @@
+# Managed by pokus-infra (ansible/roles/incus/tasks/desired.yml). Local changes will be overwritten.
+#
+# The desired Incus objects, rendered from incus/projects/*.yaml.j2 and
+# incus/profiles/*.yaml.j2. The preseed and the convergence use the same data.
+- name: Check that the host has quota-capable storage
+  ansible.builtin.assert:
+    that:
+      - host_profile.storage_backend in ['btrfs', 'lvm']
+      - incus_pool_source in ['loop', 'device']
+    fail_msg: "Incus needs a btrfs or LVM thin pool (host profile storage_backend) and incus_pool_source loop or device."
+    quiet: true
+
+- name: Read the researchers' accounts
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Describe the researchers' personal projects
+  ansible.builtin.set_fact:
+    incus_researchers: >-
+      {{ incus_researchers | default([]) + [{
+           'name': item.name,
+           'uid': ansible_facts.getent_passwd[item.name][1] | int,
+           'gid': ansible_facts.getent_passwd[item.name][2] | int,
+           'home': ansible_facts.getent_passwd[item.name][4],
+           'network': 'incusbr-' ~ ansible_facts.getent_passwd[item.name][1]}] }}
+  loop: "{{ researchers }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.name in ansible_facts.getent_passwd
+
+- name: Check that personal bridge names fit the interface name limit
+  ansible.builtin.assert:
+    that:
+      - item.network | length <= 15
+    fail_msg: "The UID of {{ item.name }} is too long for a bridge name incusbr-<uid> (15 characters)."
+    quiet: true
+  loop: "{{ incus_researchers | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Describe the server, the pool and the networks
+  ansible.builtin.set_fact:
+    incus_server_config:
+      core.https_address: "{{ incus_https_address }}"
+    incus_pool:
+      name: "{{ incus_pool_name }}"
+      description: Pokus instances
+      driver: "{{ 'btrfs' if host_profile.storage_backend == 'btrfs' else 'lvm' }}"
+      config: >-
+        {{ ({'size': incus_pool_size} if incus_pool_source == 'loop' else {'source': incus_pool_device})
+           | combine({'lvm.use_thinpool': 'true'} if host_profile.storage_backend == 'lvm' else {}) }}
+    incus_networks:
+      - name: "{{ incus_build_network }}"
+        type: bridge
+        description: Pokus image builds (NAT)
+        config: {ipv4.address: auto, ipv4.nat: "true", ipv6.address: none}
+    incus_projects: []
+    incus_profiles: []
+
+- name: Describe the personal project networks
+  ansible.builtin.set_fact:
+    incus_networks: >-
+      {{ incus_networks + [{'name': item.network, 'type': 'bridge',
+                            'description': 'Personal project network (NAT)', 'config': {}}] }}
+  loop: "{{ incus_researchers | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render the shared projects
+  ansible.builtin.set_fact:
+    incus_projects: "{{ incus_projects + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/projects/' ~ item ~ '.yaml.j2') | from_yaml] }}"
+  loop: [bench, build]
+
+- name: Render the personal projects
+  ansible.builtin.set_fact:
+    incus_projects: >-
+      {{ incus_projects + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/projects/user.yaml.j2',
+                                  template_vars={'incus_user': item}) | from_yaml] }}
+  loop: "{{ incus_researchers | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render the shared profiles
+  ansible.builtin.set_fact:
+    incus_profiles: "{{ incus_profiles + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/profiles/' ~ item ~ '.yaml.j2') | from_yaml] }}"
+  loop: "{{ ['target-container', 'probe-client', 'build'] + (['target-vm'] if pokus_features.vm_targets else []) }}"
+
+- name: Render the default profiles of the personal projects
+  ansible.builtin.set_fact:
+    incus_profiles: >-
+      {{ incus_profiles + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/profiles/user-default.yaml.j2',
+                                  template_vars={'incus_user': item}) | from_yaml] }}
+  loop: "{{ incus_researchers | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"

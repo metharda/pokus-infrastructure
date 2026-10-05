@@ -1,0 +1,12 @@
+# Managed by pokus-infra (ansible/roles/nvidia_container_toolkit/defaults/main.yml). Local changes will be overwritten.
+
+# Where the GPU checks are recorded (BUILD_PROMPT §7.6).
+nvidia_container_toolkit_verify_dir: /var/lib/pokus/verify
+# CDI device that containers request (services use nvidia.com/gpu=all).
+nvidia_container_toolkit_cdi_device: nvidia.com/gpu=all
+# Fields of `nvidia-smi --query-gpu` recorded by the check: stable values only,
+# so an unchanged GPU and driver leave the record unchanged.
+nvidia_container_toolkit_query: name,driver_version,memory.total,compute_cap
+# The pinned CUDA base image of the check, by digest (versions.lock.yml).
+nvidia_container_toolkit_image: >-
+  {{ pokus_versions.containers.images.cuda_base_test.image }}@{{ pokus_versions.containers.images.cuda_base_test.digest }}

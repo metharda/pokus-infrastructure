@@ -1,0 +1,87 @@
+# Managed by pokus-infra (ansible/roles/incus/tasks/certificates.yml). Local changes will be overwritten.
+#
+# One client certificate per platform service, generated on this host and
+# trusted as restricted to its projects (BUILD_PROMPT §7.7, contracts.md#paths),
+# plus a metrics-only certificate for Prometheus. Keys never leave the host.
+- name: Create the certificate directories
+  ansible.builtin.file:
+    path: "{{ incus_cert_dir }}/{{ item.short }}"
+    state: directory
+    owner: "{{ item.account }}"
+    group: root
+    mode: "0700"
+  loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+  loop_control:
+    label: "{{ item.short }}"
+
+- name: Generate the private keys
+  community.crypto.openssl_privatekey:
+    path: "{{ incus_cert_dir }}/{{ item.short }}/client.key"
+    type: ECC
+    curve: secp384r1
+    owner: "{{ item.account }}"
+    group: root
+    mode: "0600"
+  loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+  loop_control:
+    label: "{{ item.short }}"
+
+- name: Create the certificate requests
+  community.crypto.openssl_csr_pipe:
+    privatekey_path: "{{ incus_cert_dir }}/{{ item.short }}/client.key"
+    common_name: "pokus-{{ item.short }}"
+  register: incus_csrs
+  loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+  loop_control:
+    label: "{{ item.short }}"
+  when: not ansible_check_mode
+
+- name: Issue the client certificates
+  community.crypto.x509_certificate:
+    path: "{{ incus_cert_dir }}/{{ item.item.short }}/client.crt"
+    csr_content: "{{ item.csr }}"
+    privatekey_path: "{{ incus_cert_dir }}/{{ item.item.short }}/client.key"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ incus_certificate_days }}d"
+    owner: "{{ item.item.account }}"
+    group: root
+    mode: "0600"
+  loop: "{{ incus_csrs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.short }}"
+  when: not ansible_check_mode
+
+- name: Give each service the Incus server certificate
+  ansible.builtin.copy:
+    src: "{{ incus_server_certificate }}"
+    remote_src: true
+    dest: "{{ incus_cert_dir }}/{{ item.short }}/server.crt"
+    owner: "{{ item.account }}"
+    group: root
+    mode: "0600"
+  loop: "{{ incus_service_certificates }}"
+  loop_control:
+    label: "{{ item.short }}"
+  when: not ansible_check_mode
+
+- name: Read the client certificates
+  ansible.builtin.slurp:
+    src: "{{ incus_cert_dir }}/{{ item.short }}/client.crt"
+  register: incus_client_certs
+  loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+  loop_control:
+    label: "{{ item.short }}"
+  when: not ansible_check_mode
+
+- name: Trust the client certificates
+  pokus_incus_object:
+    kind: certificate
+    name: "pokus-{{ item.item.short }}"
+    type: "{{ item.item.type | default('client') }}"
+    certificate: "{{ item.content | b64decode }}"
+    restricted: "{{ item.item.projects | default([]) | length > 0 }}"
+    projects: "{{ item.item.projects | default([]) }}"
+  loop: "{{ incus_client_certs.results | default([]) }}"
+  loop_control:
+    label: "pokus-{{ item.item.short }}"
+  when: not ansible_check_mode

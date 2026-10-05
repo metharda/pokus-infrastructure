@@ -50,8 +50,9 @@ repositories:
     components: []
   nvidia-container-toolkit-rpm:
     # NVIDIA's own .repo file sets gpgcheck=0 with repo_gpgcheck=1; Pokus
-    # requires gpgcheck=1 (BUILD_PROMPT §7.2). Whether the packages are signed
-    # is checked in implementation step 6.
+    # requires gpgcheck=1 (BUILD_PROMPT §7.2). The packages are signed: the
+    # 1.20.1 RPMs carry an RSA header signature by the key pinned in
+    # versions.lock.yml (repository_keys.keys.nvidia-container-toolkit).
     type: rpm
     key: nvidia-container-toolkit
     baseurl: "https://nvidia.github.io/libnvidia-container/stable/rpm/$basearch"

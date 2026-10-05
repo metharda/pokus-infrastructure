@@ -26,6 +26,7 @@ firewalled
 FQCN
 fsmonitor
 getenforce
+incusbr
 IOMMU
 iotop
 libnvidia
@@ -33,6 +34,7 @@ linuxcontainers
 lockfiles
 micromamba
 mkinitcpio
+moby
 netfilter
 nftables
 nistp
@@ -44,6 +46,7 @@ peercred
 pids
 pokus
 prepreflight
+preseed
 repodata
 Resolv
 restic

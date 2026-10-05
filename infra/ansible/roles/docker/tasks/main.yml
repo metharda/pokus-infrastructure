@@ -1,0 +1,108 @@
+# Managed by pokus-infra (ansible/roles/docker/tasks/main.yml). Local changes will be overwritten.
+#
+# Docker Engine with the Compose v2 plugin and buildx (BUILD_PROMPT §7.6) from
+# the source the component source matrix selects, pinned and held. Only the
+# docker role writes /etc/docker/daemon.json; GPU access is configured in it
+# (CDI, or the NVIDIA runtime on Docker releases without CDI) so that no
+# other tool rewrites the file.
+- name: Look up the Docker source
+  ansible.builtin.set_fact:
+    docker_source: "{{ pokus_component_sources | pokus_component_source('docker', pokus_source_group) }}"
+    docker_versions: "{{ pokus_versions.packages | pokus_lock_packages('docker', pokus_release_key) }}"
+
+- name: Refuse an unverified Docker source
+  ansible.builtin.assert:
+    that:
+      - docker_source.verify is not defined
+    fail_msg: >-
+      ansible/component-sources.yml marks the Docker source for {{ pokus_source_group }}
+      as unverified ({{ docker_source.verify | default('') }}); verify it first
+      (docs/how-to/update-versions.md).
+    quiet: true
+
+- name: Add the Docker repository
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: repo
+  vars:
+    pkg_repo_name: "{{ docker_source.repo }}"
+  when: docker_source.source == 'vendor_repo'
+
+- name: Install Docker Engine, Compose and buildx
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: "{{ docker_source.packages }}"
+    pkg_versions: "{{ docker_versions }}"
+
+- name: Hold the Docker packages
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: hold
+  vars:
+    pkg_hold_name: docker
+    pkg_hold_packages: "{{ docker_source.packages }}"
+    pkg_versions: "{{ docker_versions }}"
+
+- name: Read the Docker Engine version
+  ansible.builtin.command:
+    argv: [dockerd, --version]
+  register: docker_dockerd_version
+  changed_when: false
+  check_mode: false
+  # In check mode on a new host Docker is not installed yet.
+  failed_when: docker_dockerd_version.rc != 0 and not ansible_check_mode
+
+- name: Record the Docker Engine major version
+  ansible.builtin.set_fact:
+    docker_engine_major: >-
+      {{ (docker_dockerd_version.stdout | default('') | regex_search('version ([0-9]+)', '\\1') or [docker_cdi_min_major]) | first | int }}
+
+- name: Decide how containers reach the GPU
+  ansible.builtin.set_fact:
+    docker_gpu_method: >-
+      {{ 'none' if not (pokus_features.gpu_inference | default(false))
+         else ('cdi' if docker_engine_major | int >= docker_cdi_min_major else 'runtime') }}
+
+- name: Create /etc/docker
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the Docker daemon
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+    validate: dockerd --validate --config-file=%s
+    backup: true  # an existing file that Pokus did not write is kept as a backup
+  notify: Restart Docker
+
+- name: Enable Docker
+  ansible.builtin.systemd_service:
+    name: docker.service
+    enabled: true
+    state: started
+
+- name: Apply a changed daemon configuration now
+  ansible.builtin.meta: flush_handlers
+
+- name: Check that break-glass Docker access is only given to admins
+  ansible.builtin.assert:
+    that:
+      - item in (researchers | selectattr('admin', 'true') | map(attribute='name') | list)
+    fail_msg: "break_glass_docker lists {{ item }}, who is not an admin researcher."
+    quiet: true
+  loop: "{{ break_glass_docker }}"
+
+- name: Add break-glass admins to the docker group (root-equivalent; recorded in the fingerprint)
+  ansible.builtin.user:
+    name: "{{ item }}"
+    groups: [docker]
+    append: true
+  loop: "{{ break_glass_docker }}"

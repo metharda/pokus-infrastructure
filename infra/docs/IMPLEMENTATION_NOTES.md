@@ -663,3 +663,131 @@ items, 2 preflight command formats, 20 notes in role files (package and
 service names per family, dnf5, zypper, Incus's firewalld/ufw and Docker
 guidance, the WSL library path, the `tailscale serve` status format, the
 Secure Boot MOK flow) and the Windows helper.
+
+## Step 6: docker, nvidia_container_toolkit, incus
+
+Built: roles `docker` (pinned and held engine, Compose and buildx;
+`daemon.json` with the local log driver, live-restore, address pools,
+data-root, SELinux and GPU access; break-glass group membership),
+`nvidia_container_toolkit` (pinned and held; CDI through the toolkit's
+`nvidia-cdi-refresh` units, WSL mode on WSL2; NVIDIA runtime only for Docker
+before 25.0; a GPU check with the pinned CUDA image by digest) and `incus`
+(install, ownership check with `--adopt-incus`, the pool with the device
+safety checks, `pokus-build0`, the ACL `pokus-run-default`, projects
+`bench`, `build` and one per researcher, the target, probe and build
+profiles, restricted client certificates per service and a metrics
+certificate, the HTTPS API on `127.0.0.1:8443`,
+`pokus-incus-events.service`, the marker file); `incus/preseed.yaml.j2`,
+`incus/projects/*.yaml.j2`, `incus/profiles/*.yaml.j2`; the role module
+`pokus_incus_object` (create or update one Incus object through
+`incus query`, never delete); firewall rules for run, build and personal
+bridges on all three backends; `docs/explanation/target-isolation.md`;
+ADRs 0007-0009.
+
+### Verified in step 6
+
+From upstream sources reachable through git and the Ubuntu archive:
+
+- **Incus 6.0.6** (lxc/incus tag `v6.0.6`): `security.guestapi` is the key for
+  `/dev/incus` (contract item); proxy devices on VMs support NAT mode only and
+  NAT mode requires `bind=host` (contract item C4: VMs need the ACL-restricted
+  route); bridge ACLs apply at the bridge-to-host boundary, so an ACL without
+  rules rejects everything leaving a run bridge while Incus's DHCP and DNS
+  baseline rules still apply; only OVN networks may live in network-enabled
+  projects; `incus-user` creates `user-<uid>` projects with a bridge
+  `incusbr-<uid>` and a profile on a pool named `default`, without limits;
+  `incus monitor` flags (`--all-projects`, `--type`, `--format json`);
+  `incus config trust add-certificate` flags; `incus admin init --preseed`
+  creates or updates pools, networks, projects and profiles; the Docker
+  coexistence rules and the firewalld/ufw guidance of
+  `doc/howto/network_bridge_firewalld.md`. Ubuntu's `incus` 6.0.0-1 package
+  (noble, sha256 checked against the archive index) creates the groups
+  `incus` and `incus-admin` and the sockets `/var/lib/incus/unix.socket`
+  (group `incus-admin`) and `/var/lib/incus/unix.socket.user` (group `incus`).
+- **Docker Engine 29.8.2** (moby tag `docker-v29.8.2`): `daemon.json` keys
+  (`labels`, `log-driver`, `log-opts`, `live-restore`,
+  `default-address-pools` with `base`/`size`, `data-root`, `features.cdi`,
+  `selinux-enabled`, `runtimes`); CDI is enabled by default on Linux unless
+  `features.cdi` is false; the local driver's defaults are 20 MiB and 5 files;
+  `dockerd --validate --config-file` exists; engine labels only need
+  `key=value`.
+- **NVIDIA Container Toolkit 1.20.1** (tag `v1.20.1`):
+  `nvidia-cdi-refresh.path`/`.service` in `nvidia-container-toolkit-base`
+  write `/var/run/cdi/nvidia.yaml`; auto mode resolves to `wsl` on WSL;
+  `NVIDIA_CTK_CDI_GENERATE_MODE` sets the mode; `nvidia-ctk runtime
+  configure` writes `runtimes.nvidia` with `path` and empty `args`.
+- **NVIDIA rpm signatures** (finding of step 4): the 1.20.1 RPMs in NVIDIA's
+  repository carry an RSA header signature whose issuer fingerprint is the
+  pinned key `C95B321B61E88C1809C4F759DDCAE044F796ECB0`, so `gpgcheck=1`
+  works; the role keeps it.
+- **firewalld** accepts interface names ending in `+` as wildcards (nftables
+  backend since 0.7.0); **ufw** 0.36.2 (Ubuntu 24.04 package) accepts `+` in
+  interface names and passes it to iptables.
+- Tests: the module against an in-memory Incus API (create, update, create
+  only, project-scoped profiles, ACL rules, server config, certificates by
+  fingerprint, check mode); `desired.yml` evaluated task by task as Ansible
+  runs it; every new template rendered (`daemon.json` for each GPU method,
+  the CDI drop-in, the events unit, every Incus project and profile, the
+  preseed).
+
+### Findings to report (step 6)
+
+- **Run networks and restricted certificates (contract).** With
+  `features.networks=false` (required, because bridges can only exist in the
+  default project), a certificate restricted to `bench` can create a run
+  network but cannot change or delete it: Incus authorizes network objects
+  against the network's project, which is `default`. The platform, as the
+  contract stands, could not delete run networks. Proposed resolution (needs
+  owner approval and a contract change; nothing is implemented yet): a
+  socket-activated root helper like C3 that creates and deletes `r-<short>`
+  bridges with the fixed settings (no NAT, no uplink, ACL `pokus-run-default`),
+  reachable only by `pokus-orch` (peer credentials). Alternatives: a second
+  restricted project for networks is not possible for bridges; giving the
+  orchestrator's certificate the default project would let it change golden
+  images and personal networks.
+- **Incus 7.0.** Tags up to `v7.5.1` and a `stable-7.0` branch exist and the
+  support page mentions "Incus 7.0 LTS' release", while its list still names
+  only 6.0 as LTS. BUILD_PROMPT §7.7 asks for 6.0.x; the roles stay on 6.0.
+- **Bench network access.** `restricted.networks.access` takes exact names, so
+  `bench` cannot be limited to `r-*` networks; the platform's services must
+  only attach run networks (its integrity check can verify it from the events
+  feed).
+- **VM telemetry.** Confirmed that the contract's alternative (C4) applies;
+  the dedicated collector listener and its ACL rule are defined with the
+  collector in step 7.
+
+### Interpretations awaiting owner confirmation (step 6)
+
+1. **Personal projects in advance.** Pokus creates `user-<uid>`,
+   `incusbr-<uid>` and the project's default profile before `incus-user` does,
+   with incus-user's restrictions plus limits (`incus_user_limits`) and
+   without GPU access (incus-user allows GPUs; the GPU is reserved for vLLM).
+   incus-user then only adds the researcher's certificate.
+2. **Personal bridges** get DHCP, DNS and forwarding like the build bridge
+   (trusted zone on firewalld, allow and route rules on ufw), as Incus
+   documents; they are infra-internal and not part of the contract.
+3. **daemon.json header.** JSON has no comments and dockerd rejects unknown
+   keys, so the managed header is the engine label `org.pokus.managed=...`;
+   preflight's marker check finds it there.
+4. **GPU check.** BUILD_PROMPT §7.6 says `--gpus all`; with CDI the check
+   requests `--device nvidia.com/gpu=all` (what the services use), with the
+   NVIDIA runtime `--runtime nvidia --gpus all`. It records stable
+   `nvidia-smi --query-gpu` fields so a second run changes nothing.
+5. **Preseed plus convergence.** The preseed initializes a new installation
+   once; every run converges the same objects with `pokus_incus_object`
+   (re-applying a preseed would rewrite `auto` network addresses). The pool
+   and networks are created once and never updated.
+6. **Bench limits** default to 60 % of the host's memory and all effective
+   CPUs but two; `limits.virtual-machines` is 0 without `vm_targets`, else
+   `incus_max_virtual_machines` (4).
+7. **Compose units** (`pokus-core.service` and the others, BUILD_PROMPT §7.6)
+   are written in step 7 with the services they run.
+8. **Fingerprint inputs.** The installed Docker and Incus versions are read by
+   the fingerprint in step 10; Incus's source and channel are recorded in
+   `/etc/pokus/incus-source.json`.
+
+### Open `TODO(verify)` items after step 6
+
+98 markers: as after step 5, minus the three firewall and Docker coexistence
+notes resolved from Incus's documentation, plus the Incus group, unit and path
+names of Zabbly's packages and of the Red Hat, SUSE and Arch families.

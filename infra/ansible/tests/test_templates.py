@@ -36,6 +36,10 @@ TESTED_TEMPLATES = {
     ("provider_wsl2", "wsl.conf.j2"),
     ("provider_wsl2", "wslconfig.recommended.j2"),
     ("ssh", "10-pokus.conf.j2"),
+    # Tested in test_incus_role.py:
+    ("docker", "daemon.json.j2"),
+    ("nvidia_container_toolkit", "nvidia-cdi-refresh-pokus.conf.j2"),
+    ("incus", "pokus-incus-events.service.j2"),
 }
 
 
@@ -111,7 +115,7 @@ def test_nft_ruleset_policy() -> None:
         "table inet pokus_filter {",
     ]
     assert "type filter hook input priority filter; policy drop;" in lines
-    assert 'elements = { "r-*", "pokus-build0" }' in lines
+    assert 'elements = { "r-*", "pokus-build0", "incusbr-*" }' in lines
     assert 'iifname "tailscale0" tcp dport { 22 } accept' in lines
     assert 'iifname "r-*" oifname != "r-*" drop' in lines
     assert 'oifname "r-*" iifname != "r-*" ct state new drop' in lines
@@ -139,7 +143,7 @@ def test_docker_incus_compat_script(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stdout
     assert subprocess.run(["sh", "-n", str(path)], check=False).returncode == 0
     # iptables writes interface wildcards with "+".
-    for bridge in ("r-+", "pokus-build0"):
+    for bridge in ("r-+", "pokus-build0", "incusbr-+"):
         assert f'-I DOCKER-USER -i "{bridge}" -j ACCEPT' in text
     assert "*" not in text.split("set -eu", 1)[1]
 

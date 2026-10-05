@@ -38,18 +38,22 @@ distribution's tooling and break whatever else the operator configured.
 4. Docker and Incus coexist through `pokus-docker-incus-compat.service`, which
    inserts `ACCEPT` rules for Incus bridges into Docker's `DOCKER-USER` chain
    after Docker starts.
-5. Run networks are isolated by Incus network ACLs on every backend; on
-   nftables hosts the Pokus table also drops forwarding between run networks
-   and anything else.
+5. Run networks are isolated by the Incus network ACL `pokus-run-default` on
+   every backend (nothing leaves a run bridge except DHCP and DNS to the
+   host). Each backend adds its own layer for the run bridges, matched by
+   interface wildcard (`r-*` in nftables, `r-+` in firewalld and ufw): only
+   DHCP and DNS are accepted from them, and on nftables nothing is forwarded
+   out of them.
 
 ## Consequences
 
 - Operators keep using their distribution's firewall tools; Pokus's rules are
   visible there and labelled.
 - Three backends must be tested (`make test-distros` has one variant each).
-- firewalld and ufw cannot express interface wildcards for dynamically created
-  run bridges the way nftables can, so run-network isolation relies on Incus
-  ACLs there; the Docker compatibility hook is the same on all backends.
+- Run bridges are created at run time; all three backends match them with
+  interface wildcards (firewalld since 0.7.0, ufw passes `+` to iptables), so
+  no rule has to be added per run. The Docker compatibility hook is the same
+  on all backends.
 
 ## Alternatives considered
 

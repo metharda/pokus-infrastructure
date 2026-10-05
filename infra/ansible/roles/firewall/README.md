@@ -9,13 +9,20 @@ else ufw if active, else nftables):
   `tailscale0` and `ssh_extra_allowed_interfaces`, DHCP and DNS from Incus
   bridges to the host; everything else is dropped;
 - forward: nothing leaves a run network (`r-*`) and nothing from outside
-  starts a connection into one.
+  starts a connection into one. Between two run networks, Incus's ACL
+  `pokus-run-default` (incus role) drops traffic at the bridge boundary on
+  every backend.
 
 | Backend | Implementation |
 | --- | --- |
 | `nftables` | own table `inet pokus_filter` in `/etc/pokus/nftables/pokus.nft`, loaded by `pokus-nftables.service`; the distribution's nftables configuration is untouched |
-| `firewalld` | zone `pokus-tailnet` for `tailscale0`; the build bridge in the `trusted` zone; Docker's zone untouched |
-| `ufw` | `allow in on tailscale0` rules; ufw's defaults untouched |
+| `firewalld` | zone `pokus-tailnet` for `tailscale0`; zone `pokus-run` for `r-+` with DHCP, DHCPv6 and DNS only; the build and personal bridges in the `trusted` zone; Docker's zone untouched |
+| `ufw` | `allow in on tailscale0` rules; DHCP and DNS from `r-+`; allow and route rules for the build and personal bridges; ufw's defaults untouched |
+
+The Incus bridge rules follow Incus's firewall guide
+(`doc/howto/network_bridge_firewalld.md`, Incus 6.0.6). Run networks are
+created at run time and matched with interface wildcards (`r-*` in nftables,
+`r-+` in firewalld and ufw).
 
 Docker sets the FORWARD policy to DROP, which breaks Incus bridges:
 `pokus-docker-incus-compat.service` (after `docker.service` and
@@ -24,10 +31,6 @@ Docker sets the FORWARD policy to DROP, which breaks Incus bridges:
 Pokus never flushes or rewrites tables owned by Docker, Incus, firewalld or
 ufw. Doctor verifies the effective policy with connection tests, not by
 reading rules.
-
-Run networks are created at run time; firewalld and ufw cannot name them in
-advance. With those backends only the build bridge is configured (to be
-resolved with the Incus network design in implementation step 6).
 
 ## Variables
 

@@ -91,6 +91,7 @@ nav:
       - How the preflight gate decides: explanation/preflight-gate.md
       - How bootstrap works: explanation/bootstrap.md
       - Portability: explanation/portability.md
+      - How benchmark targets are isolated: explanation/target-isolation.md
       - Providers:
           - WSL2 hosts: providers/wsl2.md
           - Bare-metal hosts: providers/baremetal.md
@@ -106,3 +107,6 @@ nav:
       - "ADR-0004: Family-based portability": adr/0004-family-based-portability.md
       - "ADR-0005: uv-managed Python": adr/0005-uv-managed-python.md
       - "ADR-0006: Firewall backend integration": adr/0006-firewall-backend-integration.md
+      - "ADR-0007: Incus for benchmark targets": adr/0007-incus-for-targets.md
+      - "ADR-0008: Native Docker Engine": adr/0008-native-docker-engine.md
+      - "ADR-0009: btrfs or LVM thin pool": adr/0009-btrfs-or-lvm-thin-pool.md

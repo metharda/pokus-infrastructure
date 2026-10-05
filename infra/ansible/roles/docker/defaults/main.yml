@@ -1,0 +1,13 @@
+# Managed by pokus-infra (ansible/roles/docker/defaults/main.yml). Local changes will be overwritten.
+
+# Root of Docker's images, containers and volumes (host_vars docker_data_root).
+docker_data_root: /var/lib/docker
+# Address pools for Docker networks. They must not overlap Incus bridges,
+# Tailscale's 100.64.0.0/10 or common home LANs (192.168.0.0/16).
+docker_address_pools:
+  - {base: 172.30.0.0/16, size: 24}
+# Size limits of the `local` log driver per container (Docker's own defaults).
+docker_log_max_size: 20m
+docker_log_max_file: 5
+# First Docker Engine major version with CDI device support (Docker 25.0).
+docker_cdi_min_major: 25
