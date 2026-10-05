@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pokus_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pokus_versions_lock_sha256: "fafa14a1c6bfcab14c70e720292c7b9fb22512e22a2b98706fea41de9c545932"
+pokus_versions_lock_sha256: "09ecdbbf3201492a26e86496fc6e542df0ca47dcbbc8bf632aaea8fcb9abae0f"
 pokus_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -293,6 +293,18 @@ pokus_versions:
     incus:
       ubuntu-24.04: TODO(verify)
       ubuntu-22.04: TODO(verify)
+      debian-13: TODO(verify)
+      fedora-43: TODO(verify)
+      fedora-44: TODO(verify)
+      el-9: TODO(verify)
+      el-10: TODO(verify)
+      opensuse-leap-15.6: TODO(verify)
+      opensuse-leap-16.0: TODO(verify)
+    nvidia_driver:
+      ubuntu-24.04:
+        nvidia-driver-580-open: 580.178.04-0ubuntu0.24.04.1
+      ubuntu-22.04:
+        nvidia-driver-580-open: 580.178.04-0ubuntu0.22.04.1
       debian-13: TODO(verify)
       fedora-43: TODO(verify)
       fedora-44: TODO(verify)

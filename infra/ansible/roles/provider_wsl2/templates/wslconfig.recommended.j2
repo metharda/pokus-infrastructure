@@ -1,0 +1,13 @@
+# Managed by pokus-infra (ansible/roles/provider_wsl2/templates/wslconfig.recommended.j2). Local changes will be overwritten.
+#
+# Recommended %UserProfile%\.wslconfig for this lab (machine {{ machine_name }}).
+# Copy it on the Windows side yourself; Pokus never changes Windows. Then run
+# `wsl --shutdown` and start the distribution again. Doctor warns when the
+# effective values differ from host_vars `expected`.
+[wsl2]
+memory={{ ((expected | default({})).memory_gib | default(provider_wsl2_default_memory_gib)) | int }}GB
+processors={{ ((expected | default({})).cpu_threads | default(provider_wsl2_default_cpu_threads)) | int }}
+swap={{ provider_wsl2_swap_gib | int }}GB
+nestedVirtualization=true
+# Lab services bind to 127.0.0.1 inside WSL; do not forward them to Windows.
+localhostForwarding=false

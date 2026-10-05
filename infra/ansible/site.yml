@@ -2,13 +2,16 @@
 #
 # Provisioning play run by bootstrap.sh (BUILD_PROMPT §5.2 step 8) with
 # `-e machine=<name>` and the variables host_profile and pokus_bootstrap.
-# Temporary stub of implementation step 3: the roles are added from step 5 on.
+# Every role is tagged with its name; platform_facts and preflight_gate always
+# run, so `--tags <role>` still works on the validated facts.
 - name: Provision the Pokus lab host
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   vars_files:
     - "inventory/host_vars/{{ machine }}.yml"
-  tasks:
+  vars:
+    pokus_infra_dir: "{{ playbook_dir | dirname }}"
+  pre_tasks:
     - name: Check the variables passed by bootstrap
       ansible.builtin.assert:
         that:
@@ -18,7 +21,66 @@
           - pokus_bootstrap is mapping
         fail_msg: "Run this play through bootstrap/bootstrap.sh, which passes machine, host_profile and pokus_bootstrap."
         quiet: true
+      tags: [always]
 
-    - name: Report that no provisioning roles exist yet
-      ansible.builtin.debug:
-        msg: "No provisioning roles yet (implementation step 3 stub); host profile outcome: {{ host_profile.outcome }}."
+  tasks:
+    - name: Derive the platform facts
+      ansible.builtin.import_role:
+        name: platform_facts
+      tags: [platform_facts, always]
+
+    - name: Re-validate the host profile
+      ansible.builtin.import_role:
+        name: preflight_gate
+      tags: [preflight_gate, always]
+
+    - name: Apply the provider
+      ansible.builtin.include_role:
+        name: "provider_{{ pokus_provider }}"
+        apply:
+          tags: ["provider_{{ pokus_provider }}", providers]
+      tags: [provider_wsl2, provider_baremetal, provider_vm, providers]
+
+    - name: Base system
+      ansible.builtin.import_role:
+        name: base
+      tags: [base]
+
+    - name: Groups and accounts
+      ansible.builtin.import_role:
+        name: users_groups
+      tags: [users_groups]
+
+    - name: SSH
+      ansible.builtin.import_role:
+        name: ssh
+      tags: [ssh]
+
+    - name: Research space layout
+      ansible.builtin.import_role:
+        name: layout
+      tags: [layout]
+
+    - name: Provider files that need the layout
+      ansible.builtin.include_role:
+        name: provider_wsl2
+        tasks_from: post_layout
+        apply:
+          tags: [provider_wsl2, providers]
+      when: pokus_provider == 'wsl2'
+      tags: [provider_wsl2, providers]
+
+    - name: Mandatory access control
+      ansible.builtin.import_role:
+        name: mac
+      tags: [mac]
+
+    - name: Firewall
+      ansible.builtin.import_role:
+        name: firewall
+      tags: [firewall]
+
+    - name: Tailscale
+      ansible.builtin.import_role:
+        name: tailscale
+      tags: [tailscale]

@@ -1,0 +1,4 @@
+# Managed by pokus-infra (ansible/roles/bootstrap_signal/defaults/main.yml). Local changes will be overwritten.
+
+# File that bootstrap.sh reads after a failed play.
+bootstrap_signal_file: "{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}"

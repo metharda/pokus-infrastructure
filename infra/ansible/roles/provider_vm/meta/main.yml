@@ -1,0 +1,23 @@
+# Managed by pokus-infra (ansible/roles/provider_vm/meta/main.yml). Local changes will be overwritten.
+galaxy_info:
+  role_name: provider_vm
+  namespace: pokus
+  author: Pokus project
+  description: VM provider - guest agent, NVIDIA driver with GPU passthrough, power policy
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [trixie]
+    - name: Fedora
+      versions: ["43", "44"]
+    - name: EL
+      versions: ["9", "10"]
+    - name: opensuse
+      versions: [all]
+    - name: ArchLinux
+      versions: [all]
+  galaxy_tags: [pokus]
+dependencies: []

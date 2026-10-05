@@ -1,0 +1,58 @@
+# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/power.yml). Local changes will be overwritten.
+#
+# Power policy (BUILD_PROMPT §3.2): never_sleep masks the sleep targets;
+# lab_session_inhibit holds a sleep inhibitor while pokus-lab.target is up;
+# os_default changes nothing. Targets masked by Pokus are unmasked again when
+# the policy changes.
+- name: Mask the sleep targets (never_sleep)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: true
+  loop: "{{ provider_baremetal_sleep_targets }}"
+  when: power_policy == 'never_sleep'
+
+- name: Read which sleep targets Pokus masked before
+  ansible.builtin.stat:
+    path: /etc/pokus/power-policy-masked
+  register: provider_baremetal_masked_marker
+
+- name: Record that Pokus masked the sleep targets
+  ansible.builtin.copy:
+    dest: /etc/pokus/power-policy-masked
+    content: "{{ provider_baremetal_sleep_targets | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: power_policy == 'never_sleep'
+
+- name: Unmask the sleep targets Pokus masked (policy changed)
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    masked: false
+  loop: "{{ provider_baremetal_sleep_targets }}"
+  when:
+    - power_policy != 'never_sleep'
+    - provider_baremetal_masked_marker.stat.exists
+
+- name: Remove the masked-targets record
+  ansible.builtin.file:
+    path: /etc/pokus/power-policy-masked
+    state: absent
+  when: power_policy != 'never_sleep'
+
+- name: Install the lab session sleep inhibitor
+  ansible.builtin.template:
+    src: pokus-sleep-inhibit.service.j2
+    dest: /etc/systemd/system/pokus-sleep-inhibit.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+  when: power_policy == 'lab_session_inhibit'
+
+- name: Remove the lab session sleep inhibitor (policy changed)
+  ansible.builtin.file:
+    path: /etc/systemd/system/pokus-sleep-inhibit.service
+    state: absent
+  notify: Reload systemd
+  when: power_policy != 'lab_session_inhibit'

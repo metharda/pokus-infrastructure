@@ -69,19 +69,40 @@ nav:
   - Home: index.md
   - How-to guides:
       - Check whether a machine can host the lab: how-to/check-a-host.md
+      - Add, remove or lock a researcher: how-to/manage-researchers.md
+      - Configure the firewall backend and SELinux: how-to/firewall-and-selinux.md
       - Add a preflight fixture: how-to/add-preflight-fixture.md
+      - Add a distribution family: distros/adding-a-family.md
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
       - Update pinned versions: how-to/update-versions.md
   - Reference:
       - Support matrix: support-matrix.md
+      - Component sources: reference/component-sources.md
       - "CLI: bootstrap.sh": reference/cli/bootstrap.md
       - "CLI: pokus-preflight": reference/cli/pokus-preflight.md
       - Exit codes: reference/exit-codes.md
+      - Ansible variables: reference/ansible-variables.md
+      - Accounts and groups: reference/accounts.md
       - Host profile schema: reference/host-profile.md
       - Pinned versions: reference/versions.md
       - Integration contract: contracts.md
   - Explanation:
+      - Lab host architecture: architecture.md
       - How the preflight gate decides: explanation/preflight-gate.md
       - How bootstrap works: explanation/bootstrap.md
+      - Portability: explanation/portability.md
+      - Providers:
+          - WSL2 hosts: providers/wsl2.md
+          - Bare-metal hosts: providers/baremetal.md
+          - Virtual machine hosts: providers/vm.md
+      - Distribution families:
+          - Debian family: distros/debian.md
+          - Red Hat family: distros/redhat.md
+          - SUSE family: distros/suse.md
+          - Arch family: distros/archlinux.md
       - "ADR-0001: Standard-library-only preflight": adr/0001-stdlib-only-preflight.md
       - "ADR-0002: Bootstrap exit codes and error handling": adr/0002-bootstrap-exit-codes.md
+      - "ADR-0003: One provider role per host environment": adr/0003-provider-model.md
+      - "ADR-0004: Family-based portability": adr/0004-family-based-portability.md
+      - "ADR-0005: uv-managed Python": adr/0005-uv-managed-python.md
+      - "ADR-0006: Firewall backend integration": adr/0006-firewall-backend-integration.md

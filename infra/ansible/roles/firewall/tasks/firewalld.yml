@@ -1,0 +1,59 @@
+# Managed by pokus-infra (ansible/roles/firewall/tasks/firewalld.yml). Local changes will be overwritten.
+#
+# A dedicated zone pokus-tailnet for tailscale0 with the ssh service; Docker's
+# own zone stays intact. TODO(verify): Incus's documented firewalld setup for
+# bridges (trusted zone); run networks (r-*) are created at run time and
+# cannot be listed in a zone in advance.
+- name: Create the pokus-tailnet zone
+  ansible.posix.firewalld:
+    zone: pokus-tailnet
+    state: present
+    permanent: true
+  notify: Reload firewalld
+
+- name: Reload firewalld so the new zone exists
+  ansible.builtin.meta: flush_handlers
+
+- name: Put tailscale0 in the pokus-tailnet zone
+  ansible.posix.firewalld:
+    zone: pokus-tailnet
+    interface: "{{ firewall_tailnet_interface }}"
+    state: enabled
+    permanent: true
+    immediate: true
+
+- name: Allow SSH and the serve port in the pokus-tailnet zone
+  ansible.posix.firewalld:
+    zone: pokus-tailnet
+    port: "{{ item }}/tcp"
+    state: enabled
+    permanent: true
+    immediate: true
+  loop: "{{ firewall_tailnet_tcp_ports }}"
+
+- name: Find the zones of the extra SSH interfaces
+  ansible.builtin.command:
+    argv: [firewall-cmd, "--get-zone-of-interface={{ item }}"]
+  loop: "{{ ssh_extra_allowed_interfaces }}"
+  register: firewall_extra_zones
+  changed_when: false
+  check_mode: false
+
+- name: Allow SSH on the extra interfaces
+  ansible.posix.firewalld:
+    zone: "{{ item.stdout | trim }}"
+    service: ssh
+    state: enabled
+    permanent: true
+    immediate: true
+  loop: "{{ firewall_extra_zones.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Trust the image build bridge
+  ansible.posix.firewalld:
+    zone: trusted
+    interface: pokus-build0
+    state: enabled
+    permanent: true
+    immediate: true

@@ -279,6 +279,42 @@ def test_playbook_signal(tmp_path: Path, code: int) -> None:
 
 
 @pytest.mark.parametrize(
+    ("code", "allow", "check", "rebooted"),
+    [
+        (76, "true", "false", True),
+        (76, "false", "false", False),
+        (76, "true", "true", False),
+        (75, "true", "false", False),
+        (77, "true", "false", False),
+    ],
+)
+def test_reboot_only_with_allow_reboot(
+    tmp_path: Path, code: int, allow: str, check: str, rebooted: bool
+) -> None:
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    calls = tmp_path / "shutdown.calls"
+    shutdown = stubs / "shutdown"
+    shutdown.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >>{q(calls)}\n')
+    shutdown.chmod(0o755)
+    signal = tmp_path / "bootstrap-signal.json"
+    signal.write_text(json.dumps({"code": code, "message": "A reboot is required."}))
+    res = bash(
+        f"""
+        OPT_ALLOW_REBOOT={allow} OPT_CHECK={check} PATH={q(stubs)}:$PATH
+        code=0
+        playbook_result 2 {q(signal)} || code=$?
+        printf '\n%s' "$code"
+        """
+    )
+    assert res.stdout.splitlines()[-1] == str(code), res.stderr
+    assert calls.exists() is rebooted
+    if rebooted:
+        assert calls.read_text().startswith("-r +1 ")
+        assert "reboots in one minute" in res.stderr
+
+
+@pytest.mark.parametrize(
     ("rc", "content", "expected"),
     [
         (0, None, 0),

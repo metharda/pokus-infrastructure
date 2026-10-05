@@ -1,0 +1,13 @@
+# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/reboot_archlinux.yml). Local changes will be overwritten.
+#
+# Arch replaces the running kernel's modules on upgrade: when the module
+# directory of the running kernel is gone, a reboot is needed.
+- name: Look for the modules of the running kernel
+  ansible.builtin.stat:
+    path: "/usr/lib/modules/{{ ansible_facts['kernel'] }}"
+  register: provider_baremetal_running_modules
+
+- name: Record the reboot state
+  ansible.builtin.set_fact:
+    provider_baremetal_reboot_required: "{{ not provider_baremetal_running_modules.stat.exists }}"
+    provider_baremetal_reboot_reason: the running kernel's modules were replaced

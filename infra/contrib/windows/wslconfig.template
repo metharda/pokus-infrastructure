@@ -1,0 +1,19 @@
+# Managed by pokus-infra (contrib/windows/wslconfig.template). Local changes will be overwritten.
+#
+# Template for %UserProfile%\.wslconfig on the Windows side of a Pokus lab
+# (docs/providers/wsl2.md). Pokus never changes Windows: copy this file
+# yourself, adjust the values, then run `wsl --shutdown` and open the
+# distribution again. A provisioned host also renders a recommendation for
+# its own hardware into /srv/pokus/services/contrib/wslconfig.recommended.
+[wsl2]
+# Memory of the WSL virtual machine. vLLM and the targets need most of it;
+# leave a few GB for Windows. Match host_vars expected.memory_gib.
+memory=16GB
+# Logical CPUs of the virtual machine. Match host_vars expected.cpu_threads.
+processors=8
+# A small swap keeps memory pressure from killing lab services.
+swap=8GB
+# VM targets need /dev/kvm inside WSL.
+nestedVirtualization=true
+# Lab services listen on 127.0.0.1 inside WSL; do not forward them to Windows.
+localhostForwarding=false

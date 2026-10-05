@@ -83,10 +83,14 @@ the prompt text where they differ.
 - Never edit generated files by hand: `preflight/support-matrix.json`,
   `preflight/endpoints.json`, `docs/support-matrix.md`,
   `docs/reference/{cli/pokus-preflight,cli/bootstrap,exit-codes,host-profile}.md`,
-  `docs/reference/versions.md`, `bootstrap/lib/pins.sh`,
+  `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
+  the layout table between the `generated:layout` markers of
+  `docs/architecture.md`, `bootstrap/lib/pins.sh`,
   `bootstrap/requirements.in`, `ansible/requirements.yml` and
   `ansible/group_vars/all/versions.yml` come from `tools/gen`
   (`make generate`); `make docs` fails on drift or missing reference entries.
+  Every top-level key of `group_vars/all/main.yml` needs a comment (above it or
+  at the end of its line): it becomes the key's reference text.
   `bootstrap/requirements.lock` is compiled with `make bootstrap-lock` (the
   drift check fails if it does not pin the versions of `requirements.in`).
 - Bootstrap exit codes are defined once, in `bootstrap/lib/exitcodes.sh`
@@ -108,6 +112,21 @@ the prompt text where they differ.
   dirty-tree check covers `infra/` only (B3).
 - Release tags are `infra-vX.Y.Z` (B4).
 - `docs/contracts.md` must stay byte-identical to `../platform/docs/contracts.md`.
+
+## Ansible portability (BUILD_PROMPT §19)
+
+- Only `platform_facts` interprets the distribution; every other role uses the
+  `pokus_*` facts. `make lint-portability` fails on `ansible_distribution*`,
+  `ansible_os_family`, `ansible_pkg_mgr` or `ansible_lsb` anywhere else.
+- Distribution differences live only in the support matrix,
+  `ansible/component-sources.yml`, `roles/<role>/vars/<family>.yml` and
+  `roles/<role>/tasks/<name>_<family>.yml`, for all four families at once.
+- Packages are installed, pinned and held only through the `pkg` role.
+  Anything unverified in `component-sources.yml` carries
+  `verify: "TODO(verify): ..."` and is refused by the play.
+- `ansible/tests/` checks role structure, templates (rendered like the
+  template module; nft rulesets with `nft -c` in a private network
+  namespace) and data consistency; add a render test for every new template.
 
 ## Code style (BUILD_PROMPT §14)
 

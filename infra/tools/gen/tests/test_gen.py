@@ -48,7 +48,7 @@ def test_coverage_is_complete_and_detects_gaps(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cli.coverage(ROOT) == 0
-    for rel in ("preflight", "docs", "bootstrap"):
+    for rel in ("preflight", "docs", "bootstrap", "ansible"):
         shutil.copytree(ROOT / rel, tmp_path / rel)
     ref = tmp_path / "docs/reference/cli/pokus-preflight.md"
     ref.write_text(

@@ -1,0 +1,136 @@
+# Managed by pokus-infra (ansible/group_vars/all/main.yml). Local changes will be overwritten.
+#
+# Lab-wide settings shared by every host (BUILD_PROMPT §6, §8). Per-machine
+# values and overrides belong in inventory/host_vars/<machine>.yml; secrets in
+# the Ansible Vault file group_vars/all/vault.yml (shape: vault.yml.example).
+# Names are placeholders: real researchers are entered on the deployed host
+# and live only in the lab's private configuration (owner answer E1).
+
+# --- Machine defaults (host_vars override them; see example-machine.yml) ----
+
+# Host name of the machine in the tailnet, in /etc/wsl.conf and in the fingerprint.
+machine_name: pokus-lab
+# production, or staging for QA environments (own vault, Tailscale tag and
+# signing key; never pairs with a production host).
+lab_mode: production
+# Provider role: auto (the provider preflight detected), baremetal, wsl2 or vm.
+# Any other value than auto must match the detected provider.
+lab_provider: auto
+# Power policy on bare metal and VMs: never_sleep (sleep targets masked),
+# lab_session_inhibit (a sleep inhibitor while pokus-lab.target is up) or os_default.
+power_policy: lab_session_inhibit
+# What this host runs: full (everything), lab (everything except vLLM) or
+# inference (only the inference stack).
+node_role: full
+# Firewall backend: auto (firewalld if active, else ufw if active, else
+# nftables), nftables, firewalld or ufw.
+firewall_backend: auto
+# NVIDIA driver: auto (install with the family's method), manual (the operator
+# installs it) or skip. Ignored on WSL2, where the driver comes from Windows.
+install_nvidia_driver: auto
+# Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded
+# in the fingerprint. bootstrap.sh --allow-community-repos does the same.
+allow_community_repos: false
+# Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
+grafana_tailscale_serve: false
+# Interfaces besides tailscale0 on which sshd accepts connections.
+ssh_extra_allowed_interfaces: []
+# Root of the research space (BUILD_PROMPT §6.2).
+pokus_root: /srv/pokus
+# Let automatic security updates update the kernel on bare metal (held by default).
+allow_kernel_updates: false
+# Tailscale tag of the host per lab_mode (owner answer E2).
+pokus_tailscale_tags:
+  production: tag:pokus-lab
+  staging: tag:pokus-qa
+
+# --- Groups and accounts (BUILD_PROMPT §6.1, contracts.md) ---------------------
+
+# Groups created by users_groups.
+pokus_groups:
+  - {name: pokus, system: false, description: all researchers}
+  - {name: pokus-admin, system: false, description: researchers with sudo}
+  - {name: pokus-gt, system: true, description: may read the ground truth and the catalog}
+  - {name: pokus-svc, system: true, description: all service accounts}
+  - {name: pokus-exec-clients, system: true, description: may call the executor socket (agent and orchestrator)}
+  - {name: pokus-gw-clients, system: true, description: "may call the gateway's agent socket (agent only)"}
+
+# Placeholders (owner answer E1). keys_file is relative to the infra directory;
+# key files are never committed (users/*.pub is excluded by .gitignore).
+researchers:
+  - {name: researcher1, admin: true, shell: /bin/bash, keys_file: users/researcher1.pub}
+  - {name: researcher2, admin: false, shell: /bin/bash, keys_file: users/researcher2.pub}
+  - {name: researcher3, admin: false, shell: /bin/bash, keys_file: users/researcher3.pub}
+
+# Researchers that left: locked (usermod -L, nologin), never deleted; data kept.
+researchers_removed: []
+
+# Admins that are explicitly allowed into the docker group (logged loudly).
+break_glass_docker: []
+
+# System accounts of the platform services: no login, no password, no SSH keys.
+# pokus-agent never gets pokus-gt, incus, docker or database access.
+service_accounts:
+  - {name: pokus-orch, groups: [pokus-svc, pokus-gt, pokus-exec-clients], description: orchestrator}
+  - {name: pokus-agent, groups: [pokus-svc, pokus-exec-clients, pokus-gw-clients], description: agent runtime}
+  - {name: pokus-gw, groups: [pokus-svc], description: LLM gateway}
+  - {name: pokus-exec, groups: [pokus-svc], description: tool executor}
+  - {name: pokus-inject, groups: [pokus-svc, pokus-gt], description: fault injector}
+  - {name: pokus-verify, groups: [pokus-svc, pokus-gt], description: verifier}
+  - {name: pokus-eval, groups: [pokus-svc, pokus-gt], description: evaluator}
+
+# Parent of the service account homes (/var/lib/pokus/<account>).
+pokus_service_home: /var/lib/pokus
+
+# Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
+pokus_python: /opt/pokus/python/bin/python3
+
+# --- Layout (BUILD_PROMPT §6.2) -------------------------------------------------
+
+# The research space layout, the single source of truth: the layout role
+# creates exactly these entries, and tools/gen renders them into
+# docs/architecture.md. `path` is relative to pokus_root ("" is pokus_root itself).
+pokus_layout:
+  - {path: "", owner: root, group: pokus, mode: "2775", notes: "research space root"}
+  - {path: deploy, owner: root, group: root, mode: "0755", notes: "read-only deployments of platform and catalog tags"}
+  - {path: catalog, owner: root, group: pokus-gt, mode: "0750", notes: "scenario catalog including ground truth"}
+  - {path: models, owner: pokus-orch, group: pokus, mode: "0755", notes: "model weights, 0444 after verification"}
+  - {path: datasets, owner: root, group: pokus, mode: "2775", default_acl: ["group:pokus:rwX"], notes: "shared datasets"}
+  - {path: artifacts, owner: pokus-orch, group: pokus, mode: "0750", notes: "content-addressed, write-once 0440"}
+  - {path: reports, owner: pokus-eval, group: pokus, mode: "2775", notes: "evaluation reports"}
+  - {path: images, owner: root, group: pokus-admin, mode: "0750", notes: "exported golden image tarballs with sha256"}
+  - {path: shared, owner: root, group: pokus, mode: "2770", default_acl: ["group:pokus:rwX"], notes: "shared files"}
+  - {path: users, owner: root, group: root, mode: "0755", notes: "parent of the per-researcher directories"}
+  - {path: services, owner: root, group: pokus-admin, mode: "0750", notes: "rendered compose and config, never plaintext secrets readable by all"}
+  - {path: state, owner: root, group: root, mode: "0755", notes: "parent of state/<service>/ (container UID, 0700), created by the service roles"}
+  - {path: backups, owner: root, group: root, mode: "0700", notes: "local backup staging only"}
+
+# Per-researcher directory: users/<name>/ owned by <name>:<name>, mode 0700.
+pokus_layout_user_mode: "0700"
+
+# Host paths outside pokus_root (absolute).
+pokus_system_layout:
+  - {path: /etc/pokus, owner: root, group: root, mode: "0755", notes: "host profile, bootstrap state, rendered non-secret config"}
+  - {path: /etc/pokus/secrets, owner: root, group: pokus-svc, mode: "0750", notes: "rendered secrets (files 0640 or per-service 0600)"}
+  - {path: /var/lib/pokus, owner: root, group: root, mode: "0755", notes: "service homes and lab state"}
+
+# --- Ports (contracts.md, resolution C10; every listener on 127.0.0.1) --------
+
+# Listener ports of the lab services (contracts.md#ports).
+pokus_ports:
+  otlp_grpc: 4317
+  otlp_http: 4318
+  opa: 8181
+  incus_https: 8443
+  grafana: 18700
+  prometheus: 18701
+  loki: 18702
+  tempo: 18703
+  vllm: 18704
+  gateway_adhoc: 18705
+  docs_serve: 18706
+  inference_control: 18710
+
+# Incus bridges the firewall treats as Incus networks (contracts.md: run
+# networks are named r-<short>; image builds use pokus-build0).
+pokus_incus_bridge_patterns: ["r-*", "pokus-build0"]

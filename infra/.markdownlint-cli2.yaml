@@ -16,6 +16,7 @@ globs:
 ignores:
   - "node_modules/**"
   - ".venv/**"
+  - ".ansible-collections/**"
   - "site/**"
   - "build/**"
   - "docs/BUILD_PROMPT.md"

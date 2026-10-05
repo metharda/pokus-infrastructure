@@ -1,0 +1,9 @@
+# Managed by pokus-infra (ansible/roles/base/templates/pokus-security-patch.service.j2). Local changes will be overwritten.
+[Unit]
+Description=Pokus: install security patches (no reboot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zypper --non-interactive patch --category security

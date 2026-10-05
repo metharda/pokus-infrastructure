@@ -1,0 +1,8 @@
+# Managed by pokus-infra (ansible/roles/pkg/tasks/hold.yml). Local changes will be overwritten.
+#
+# Hold packages at their installed versions (BUILD_PROMPT §19.5) with the
+# family's method: apt preferences pins, dnf versionlock, zypper locks, or
+# pacman IgnorePkg. Automatic updates then leave them alone.
+- name: Hold the packages of {{ pkg_hold_name }}
+  ansible.builtin.include_tasks: "hold_{{ pokus_version_hold_method }}.yml"
+  when: pkg_hold_packages | length > 0

@@ -1,0 +1,18 @@
+# Managed by pokus-infra (ansible/roles/tailscale/defaults/main.yml). Local changes will be overwritten.
+
+# Tag of this host (owner answer E2): tag:pokus-lab, or tag:pokus-qa on staging hosts.
+tailscale_tag: "{{ pokus_tailscale_tags[lab_mode] }}"
+# MagicDNS must not change host name resolution.
+tailscale_accept_dns: false
+# `tailscale up` arguments (the auth key is added separately, never logged).
+tailscale_up_argv:
+  - tailscale
+  - up
+  - "--hostname={{ machine_name }}"
+  - "--advertise-tags={{ tailscale_tag }}"
+  - "--accept-dns={{ tailscale_accept_dns | bool | lower }}"
+  - --ssh=false
+# Seconds to wait for an interactive login.
+tailscale_login_timeout: 600
+# HTTPS port of `tailscale serve` for Grafana (grafana_tailscale_serve).
+tailscale_grafana_serve_port: 443

@@ -173,6 +173,20 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 | opensuse-leap-15.6 | — | TODO(verify) |
 | opensuse-leap-16.0 | — | TODO(verify) |
 
+### nvidia_driver
+
+| Release | Package | Version |
+| --- | --- | --- |
+| ubuntu-24.04 | nvidia-driver-580-open | `580.178.04-0ubuntu0.24.04.1` |
+| ubuntu-22.04 | nvidia-driver-580-open | `580.178.04-0ubuntu0.22.04.1` |
+| debian-13 | — | TODO(verify) |
+| fedora-43 | — | TODO(verify) |
+| fedora-44 | — | TODO(verify) |
+| el-9 | — | TODO(verify) |
+| el-10 | — | TODO(verify) |
+| opensuse-leap-15.6 | — | TODO(verify) |
+| opensuse-leap-16.0 | — | TODO(verify) |
+
 ### tailscale
 
 | Release | Package | Version |

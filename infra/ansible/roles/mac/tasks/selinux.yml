@@ -1,0 +1,25 @@
+# Managed by pokus-infra (ansible/roles/mac/tasks/selinux.yml). Local changes will be overwritten.
+- name: Load the SELinux tools of this family
+  ansible.builtin.include_vars:
+    file: "{{ pokus_family }}.yml"
+
+- name: Install the SELinux management tools and container policy
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: "{{ mac_selinux_packages }}"
+
+- name: Add persistent file context rules for the research space
+  community.general.sefcontext:
+    target: "{{ item.target }}"
+    setype: "{{ item.setype }}"
+    state: present
+  loop: "{{ mac_selinux_fcontexts }}"
+  register: mac_fcontext
+
+- name: Apply the file contexts to the research space
+  ansible.builtin.command:
+    argv: [restorecon, -R, -v, "{{ pokus_root }}"]
+  register: mac_restorecon
+  changed_when: mac_restorecon.stdout | length > 0
+  when: mac_fcontext is changed or mac_restorecon_always | bool

@@ -1,0 +1,10 @@
+# Managed by pokus-infra (ansible/roles/pkg/tasks/hold_apt_preferences.yml). Local changes will be overwritten.
+- name: Pin in /etc/apt/preferences.d/pokus-pins the packages of {{ pkg_hold_name }}
+  ansible.builtin.blockinfile:
+    path: /etc/apt/preferences.d/pokus-pins
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    marker: "# {mark} pokus-infra {{ pkg_hold_name }}"
+    block: "{{ pkg_versions | dict2items | selectattr('key', 'in', pkg_hold_packages) | items2dict | pokus_apt_pin_block }}"

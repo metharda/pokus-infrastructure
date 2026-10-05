@@ -556,3 +556,110 @@ exporter image; Tailscale and Zabbly keys; Docker packages for openSUSE Leap;
 Incus and Tailscale packages for every release; Incus base image
 fingerprints; GitHub SSH host keys), 16 endpoint URLs, 2 support-matrix
 items, and the two command formats from step 2.
+
+## Step 5: Ansible foundation roles
+
+Built: the shared data (`group_vars/all/main.yml` with groups, accounts,
+layout and ports; `vault.yml.example`; the commented
+`inventory/host_vars/example-machine.yml`; `ansible/component-sources.yml`);
+the filter plugin `ansible/filter_plugins/pokus.py` (release identity,
+component source lookup, lock pins, package specs, repository URLs, apt pins,
+key fingerprints); `site.yml` with the role order of BUILD_PROMPT §5.2; roles
+`platform_facts`, `pkg`, `bootstrap_signal`, `preflight_gate`,
+`provider_wsl2`, `provider_baremetal`, `provider_vm`, `base`, `mac`,
+`users_groups`, `ssh`, `layout`, `firewall` (nftables, firewalld, ufw) and
+`tailscale`, each with `README.md`, `meta/argument_specs.yml` and family vars
+for all four families where the role needs them; the distribution-fact check
+(`make lint-portability`); bootstrap's reboot scheduling for `--allow-reboot`;
+`contrib/windows/` (keep-alive helper and `.wslconfig` template); generated
+`docs/reference/{ansible-variables,component-sources,accounts}.md` and the
+layout table in `docs/architecture.md`; `docs/explanation/portability.md`,
+`docs/providers/*.md`, `docs/distros/*.md`, two how-tos (researchers,
+firewall and SELinux) and ADRs 0003-0006.
+
+### Verified in step 5
+
+- `ansible-lint` (production profile) passes on every role and playbook,
+  `--syntax-check` passes for `site.yml` and `restore.yml`. The pinned
+  collections were installed for linting from their release tags on GitHub
+  into `.ansible-collections/` (Galaxy is not reachable from the build
+  environment); `make setup` installs them from Galaxy elsewhere.
+- Tests in `ansible/tests/` (311): the filters on the preflight fixture
+  profiles; consistency of the component source matrix with
+  `versions.lock.yml` and with the supported and tested releases of the
+  support matrix; role structure (required files, managed headers, prefixed
+  and documented defaults, complete family files, every dynamically included
+  task file, role and notified handler exists, every role applied by
+  `site.yml` with its tag); group_vars against BUILD_PROMPT §6 and the port
+  table of `contracts.md`; every role template rendered like
+  `ansible.builtin.template`, with the nftables ruleset checked by
+  `nft -c -f` in a private network namespace, the Docker/Incus script by
+  ShellCheck and `sh -n`, and the sudoers drop-in by `visudo -c`.
+- Ubuntu NVIDIA driver pins (`nvidia-driver-580-open` 580.178.04 for 24.04 and
+  22.04) from the archive indexes; Ubuntu guest agent package names.
+- `contrib/windows/pokus-wsl.ps1` parses with PowerShell 7.5.9 (release
+  archive checked against its published sha256, used only in a scratch
+  directory) and its `wsl` wrapper starts the keep-alive only for the lab
+  distribution (tested with the Windows calls stubbed). It has not run on
+  Windows (`TODO(verify)` in the file).
+
+### Findings to report (step 5)
+
+- **Run networks on firewalld and ufw hosts.** Per-run bridges `r-<short>` are
+  created at run time, so they cannot be listed in a firewalld zone or as ufw
+  rules in advance; DHCP/DNS to the host and forward isolation for them rely
+  on Incus (its own firewall rules and the `pokus-run-default` ACL) on those
+  backends, while the nftables backend also matches `r-*` itself. Step 6
+  verifies Incus's documented firewalld and ufw setup (including interface
+  wildcards) and closes the gap if a backend allows it.
+- **NVIDIA rpm repository** (from step 4): `repo_rpm` always writes
+  `gpgcheck=1`; step 6 checks whether NVIDIA signs the RPMs.
+- **Secure Boot on Ubuntu:** how the MOK password is set during a
+  non-interactive driver install, and whether Ubuntu's signed prebuilt
+  modules avoid the MOK step, can only be verified on hardware
+  (`TODO(verify)` in `provider_baremetal/tasks/nvidia.yml`).
+- **Unverified family data** (mirrors of Fedora, EL, openSUSE and Arch are not
+  reachable): base, MAC and guest-agent package names, dnf5 behavior
+  (`dnf-automatic`, the `versionlock` plugin, `needs-restarting`) and `zypper` exit codes
+  are marked `TODO(verify)` where they are used.
+
+### Interpretations awaiting owner confirmation (step 5)
+
+1. **Unverified sources are data.** Entries of `component-sources.yml` that
+   could not be verified carry `verify: "TODO(verify): ..."` instead of a
+   comment; the `tailscale` role and the `pkg` role refuse them, and the NVIDIA
+   driver tasks treat them like "no verified method" (exit code 77). The
+   generated component sources page shows them as unverified.
+2. **Bridge pattern.** BUILD_PROMPT §7.5 names a variable
+   `incus_bridge_prefix`; the contract fixes the bridge names (`r-*` and
+   `pokus-build0`), so the roles use `pokus_incus_bridge_patterns` from
+   group_vars, checked against `contracts.md` by a test.
+3. **Distribution-fact check** as a repository check (`make lint-portability`,
+   BUILD_PROMPT §19.1 allows a grep check) rather than a custom ansible-lint
+   rule. It also flags commented-out uses.
+4. **Rebooting.** The play cannot reboot its own host mid-run; with
+   `--allow-reboot` bootstrap schedules `shutdown -r +1` after a reboot
+   signal (76), writes its state file and exits with 76. Never in check mode.
+5. **Removed researchers** are also taken out of `pokus-admin` (BUILD_PROMPT
+   §6.1 only requires locking); their data stays.
+6. **Incus's per-user group** for researchers is added by the `incus` role
+   (step 6): the group exists only once Incus is installed.
+7. **Generated pages.** Lab-wide variables are documented by the comment above
+   (or at the end of) each key in `group_vars/all/main.yml`; generation fails
+   on an undocumented key. Groups and service accounts carry a `description`
+   field for the accounts page. The layout table lives in
+   `docs/architecture.md` (BUILD_PROMPT §6.2, §15) between generated markers;
+   `docs/reference/accounts.md` links to it instead of repeating it.
+8. **Role tests.** Step 5 tests the roles without running them (rendering,
+   structure, data); check-mode runs in disposable containers (`make
+   test-roles`) belong to step 12 with the distribution test harness.
+
+### Open `TODO(verify)` items after step 5
+
+`make verify-todos` lists 97 markers: 39 lines in `versions.lock.yml` (the 32
+from step 4 and the NVIDIA driver pins of the releases other than Ubuntu), 17
+entries of `ansible/component-sources.yml`, 16 endpoint URLs, 2 support-matrix
+items, 2 preflight command formats, 20 notes in role files (package and
+service names per family, dnf5, zypper, Incus's firewalld/ufw and Docker
+guidance, the WSL library path, the `tailscale serve` status format, the
+Secure Boot MOK flow) and the Windows helper.

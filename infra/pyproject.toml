@@ -64,6 +64,8 @@ known-first-party = [
   "pokus_infra_gen",
   "pokus_preflight",
   "pokus_lockcheck",
+  "pokus",
+  "ansible_testlib",
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -72,12 +74,17 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101", "D", "ANN", "PLR2004"]
 "bootstrap/tests/**" = ["S603", "S607"]  # the tests drive bash, git and setpriv
+"ansible/tests/**" = ["S603", "S607"]  # the tests run nft, ShellCheck, sh and visudo
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/tests"
 python_version = "3.12"
 warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["ansible", "ansible.*"]
+ignore_missing_imports = true  # ansible-core ships no type information
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"
@@ -87,6 +94,7 @@ testpaths = [
   "tools/gen/tests",
   "tools/lockcheck/tests",
   "bootstrap/tests",
+  "ansible/tests",
 ]
 pythonpath = [
   "tools/repo-checks",
@@ -95,4 +103,6 @@ pythonpath = [
   "tools/gen",
   "tools/lockcheck",
   "bootstrap/tests",
+  "ansible/filter_plugins",
+  "ansible/tests",
 ]

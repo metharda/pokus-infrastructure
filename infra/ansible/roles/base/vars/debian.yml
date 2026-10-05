@@ -1,0 +1,28 @@
+# Managed by pokus-infra (ansible/roles/base/vars/debian.yml). Local changes will be overwritten.
+#
+# Logical package names -> Debian-family packages (verified in the Ubuntu
+# 22.04 and 24.04 archives on 2026-10-05).
+base_package_names:
+  ca_certificates: ca-certificates
+  curl: curl
+  gpg: gpg
+  jq: jq
+  git: git
+  acl: acl
+  btrfs_tools: btrfs-progs
+  lvm2: lvm2
+  thin_provisioning_tools: thin-provisioning-tools
+  nftables: nftables
+  rsync: rsync
+  tmux: tmux
+  htop: htop
+  iotop: iotop
+  sysstat: sysstat
+  sudo: sudo
+  xz: xz-utils
+  zstd: zstd
+  bzip2: bzip2
+  tar: tar
+base_package_overrides: {}
+base_timesync_default_package: systemd-timesyncd
+base_timesync_default_service: systemd-timesyncd

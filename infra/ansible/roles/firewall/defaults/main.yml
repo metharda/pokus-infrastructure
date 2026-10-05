@@ -1,0 +1,10 @@
+# Managed by pokus-infra (ansible/roles/firewall/defaults/main.yml). Local changes will be overwritten.
+
+# The tailnet interface; SSH is reachable here (plus ssh_extra_allowed_interfaces).
+firewall_tailnet_interface: tailscale0
+# Port of `tailscale serve` for Grafana (grafana_tailscale_serve).
+firewall_grafana_serve_port: 443
+# TCP ports open on the tailnet interface.
+firewall_tailnet_tcp_ports: "{{ [22] + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else []) }}"
+# UDP port of the WireGuard transport of tailscaled.
+firewall_tailscale_udp_port: 41641

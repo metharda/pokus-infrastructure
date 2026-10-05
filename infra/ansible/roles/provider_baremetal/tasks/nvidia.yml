@@ -1,0 +1,95 @@
+# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/nvidia.yml). Local changes will be overwritten.
+#
+# NVIDIA driver per family (BUILD_PROMPT §19.8). Only the Ubuntu and Debian
+# methods are `supported`; elsewhere the TUI recommends install_nvidia_driver:
+# manual. Never on WSL2 (provider_wsl2 has no driver tasks at all).
+- name: Look up the NVIDIA driver source
+  ansible.builtin.set_fact:
+    provider_baremetal_driver: "{{ pokus_component_sources | pokus_component_source('nvidia_driver', pokus_source_group) }}"
+
+- name: Stop when the driver must be installed by hand
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      No usable NVIDIA driver is loaded. {{ 'install_nvidia_driver is manual: install' if install_nvidia_driver == 'manual'
+      else 'Pokus has no verified installation method for this distribution; install' }} the driver
+      following your distribution's documentation, then re-run bootstrap (or set install_nvidia_driver: skip).
+  when:
+    - not host_profile.gpu.usable
+    - >-
+      install_nvidia_driver == 'manual' or provider_baremetal_driver.packages | length == 0
+      or provider_baremetal_driver.verify is defined
+
+- name: Stop when the driver source needs consent to a community repository
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      The NVIDIA driver for this distribution comes from a community repository
+      ({{ provider_baremetal_driver.packages | join(', ') }}). Re-run bootstrap with
+      --allow-community-repos (recorded in the fingerprint) or use install_nvidia_driver: manual.
+  when:
+    - not host_profile.gpu.usable
+    - provider_baremetal_driver.source == 'community'
+    - not pokus_community_repos_allowed
+
+- name: Install the NVIDIA driver
+  when: not host_profile.gpu.usable
+  block:
+    - name: Blacklist nouveau
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/pokus-blacklist-nouveau.conf
+        content: |
+          # Managed by pokus-infra (ansible/roles/provider_baremetal). Local changes will be overwritten.
+          blacklist nouveau
+          options nouveau modeset=0
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Rebuild the initramfs
+
+    - name: Install the pinned NVIDIA driver packages
+      ansible.builtin.include_role:
+        name: pkg
+      vars:
+        pkg_packages: "{{ provider_baremetal_driver.packages }}"
+        pkg_versions: "{{ pokus_versions.packages | pokus_lock_packages('nvidia_driver', pokus_release_key) }}"
+
+    - name: Hold the NVIDIA driver packages
+      ansible.builtin.include_role:
+        name: pkg
+        tasks_from: hold
+      vars:
+        pkg_hold_name: nvidia_driver
+        pkg_hold_packages: "{{ provider_baremetal_driver.packages }}"
+        pkg_versions: "{{ pokus_versions.packages | pokus_lock_packages('nvidia_driver', pokus_release_key) }}"
+
+    - name: Rebuild the initramfs now
+      ansible.builtin.meta: flush_handlers
+
+# TODO(verify) on reference hardware: how the MOK password is set when the
+# driver is installed non-interactively (debconf of shim-signed on Ubuntu), and
+# whether Ubuntu's signed prebuilt modules make the MOK step unnecessary.
+- name: Check for a pending Machine Owner Key enrollment
+  ansible.builtin.command:
+    argv: [mokutil, --list-new]
+  register: provider_baremetal_mok
+  failed_when: false
+  changed_when: false
+  check_mode: false
+  when: host_profile.capabilities.secure_boot == 'enabled'
+
+- name: Ask for a reboot to enroll the MOK
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 76
+    bootstrap_signal_message: >-
+      Secure Boot is on and a Machine Owner Key is waiting for enrollment. Reboot, choose
+      "Enroll MOK" at the blue MOK Manager screen, confirm with the MOK password, then re-run bootstrap.
+  when:
+    - host_profile.capabilities.secure_boot == 'enabled'
+    - provider_baremetal_mok.stdout | default('') | length > 0

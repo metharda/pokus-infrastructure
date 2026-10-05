@@ -28,10 +28,13 @@ BUILD := build
 DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
 DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
 
-PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests
+PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins ansible/tests
 PLAYBOOKS := ansible/site.yml ansible/restore.yml
+# Pinned Ansible collections for linting (ansible/requirements.yml).
+DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/.
-ANSIBLE_ENV := PATH="$(CURDIR)/$(BIN):$$PATH" ANSIBLE_HOME=$(CURDIR)/$(BUILD)/ansible-home ANSIBLE_CONFIG=ansible/ansible.cfg
+ANSIBLE_ENV := PATH="$(CURDIR)/$(BIN):$$PATH" ANSIBLE_HOME=$(CURDIR)/$(BUILD)/ansible-home \
+  ANSIBLE_CONFIG=ansible/ansible.cfg ANSIBLE_COLLECTIONS_PATH=$(CURDIR)/$(DEV_COLLECTIONS)
 # CPython version of /opt/pokus/ansible-venv (generated from versions.lock.yml).
 BOOTSTRAP_PYTHON = $(shell sed -n "s/^readonly POKUS_PYTHON_VERSION=//p" bootstrap/lib/pins.sh)
 # A browser for mermaid-cli; CI sets it to the runner's Chrome.
@@ -46,10 +49,14 @@ help: ## List targets
 	@grep -E '^[a-z][a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: $(VENV)/.synced node_modules/.installed ## Install pinned development tools (user space only)
+setup: $(VENV)/.synced node_modules/.installed $(DEV_COLLECTIONS)/.installed ## Install pinned development tools (user space only)
 
 $(VENV)/.synced: pyproject.toml uv.lock
 	$(UV) sync --frozen
+	@touch $@
+
+$(DEV_COLLECTIONS)/.installed: ansible/requirements.yml $(VENV)/.synced
+	$(ANSIBLE_ENV) $(BIN)/ansible-galaxy collection install -r ansible/requirements.yml -p $(DEV_COLLECTIONS)
 	@touch $@
 
 node_modules/.installed: package.json package-lock.json
@@ -57,13 +64,13 @@ node_modules/.installed: package.json package-lock.json
 	@touch $@
 
 .PHONY: lint
-lint: lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-markdown lint-spelling lint-docs lint-mermaid privacy ## Run every linter and the privacy scan
+lint: lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-markdown lint-spelling lint-docs lint-mermaid privacy ## Run every linter and the privacy scan
 
 .PHONY: lint-python
 lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff check $(PY_SOURCES)
 	$(BIN)/ruff format --check $(PY_SOURCES)
-	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests
+	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 
@@ -89,6 +96,10 @@ lint-ansible: setup ## ansible-lint (production profile) and --syntax-check of e
 	  echo "syntax-check $$playbook"; \
 	  $(ANSIBLE_ENV) $(BIN)/ansible-playbook --syntax-check -e machine=example-machine "$$playbook"; \
 	done
+
+.PHONY: lint-portability
+lint-portability: ## Only platform_facts may read distribution facts (BUILD_PROMPT §19.1)
+	PYTHONPATH=tools/repo-checks python3 -m pokus_repo_checks portability --ansible-dir ansible
 
 .PHONY: lint-markdown
 lint-markdown: setup ## markdownlint

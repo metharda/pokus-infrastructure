@@ -1,0 +1,14 @@
+# Managed by pokus-infra (ansible/roles/provider_baremetal/templates/pokus-sleep-inhibit.service.j2). Local changes will be overwritten.
+#
+# Holds a sleep inhibitor for as long as the lab is up (power_policy:
+# lab_session_inhibit); pokus-lab.target pulls it in.
+[Unit]
+Description=Pokus lab: keep the host awake while the lab is up
+PartOf=pokus-lab.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --mode=block --who=pokus-lab --why="Pokus lab session" /usr/bin/sleep infinity
+
+[Install]
+WantedBy=pokus-lab.target

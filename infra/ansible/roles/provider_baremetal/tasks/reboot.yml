@@ -1,0 +1,20 @@
+# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/reboot.yml). Local changes will be overwritten.
+#
+# A driver or kernel change that needs a reboot stops the play with bootstrap
+# signal 76. Bootstrap reboots by itself only with --allow-reboot (BUILD_PROMPT
+# §3.2, §13.7): the play runs on this host, so it cannot reboot from inside.
+- name: Check whether the distribution asks for a reboot
+  ansible.builtin.include_tasks: "reboot_{{ pokus_family }}.yml"
+
+- name: Ask for a reboot
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 76
+    bootstrap_signal_message: >-
+      A reboot is required ({{ provider_baremetal_reboot_reason }}).
+      {{ 'Bootstrap reboots the host in one minute (--allow-reboot); re-run it afterwards.'
+         if pokus_bootstrap.allow_reboot | default(false) else 'Reboot the host, then re-run bootstrap.' }}
+  when:
+    - not ansible_check_mode
+    - provider_baremetal_reboot_required | bool

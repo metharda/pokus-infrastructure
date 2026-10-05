@@ -1,0 +1,49 @@
+# Managed by pokus-infra (ansible/roles/pkg/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Install packages, pinned where versions are given.
+    options:
+      pkg_packages:
+        type: list
+        elements: str
+        default: []
+        description: Package names to install.
+      pkg_versions:
+        type: dict
+        default: {}
+        description: Pinned versions by package name, from versions.lock.yml.
+      pkg_deb_arches:
+        type: dict
+        default: {x86_64: amd64, aarch64: arm64}
+        description: Debian architecture names for ansible_facts.architecture.
+  repo:
+    short_description: Add a vendor repository after verifying its key fingerprint.
+    options:
+      pkg_repo_name:
+        type: str
+        required: true
+        description: Repository name in ansible/component-sources.yml.
+      pkg_deb_arches:
+        type: dict
+        default: {x86_64: amd64, aarch64: arm64}
+        description: Debian architecture names for ansible_facts.architecture.
+  hold:
+    short_description: Hold packages at their installed versions.
+    options:
+      pkg_hold_packages:
+        type: list
+        elements: str
+        default: []
+        description: Package names to hold.
+      pkg_hold_name:
+        type: str
+        required: true
+        description: Component name, used in the markers of managed blocks.
+      pkg_versions:
+        type: dict
+        default: {}
+        description: Pinned versions (apt preferences need them).
+      pkg_versionlock_package:
+        type: str
+        default: python3-dnf-plugin-versionlock
+        description: dnf plugin package that provides `dnf versionlock`.

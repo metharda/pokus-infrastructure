@@ -76,6 +76,14 @@ def build_parser() -> argparse.ArgumentParser:
     links.add_argument("paths", nargs="*", type=Path, default=[Path()])
     links.add_argument("--timeout", type=float, default=15.0, help="seconds per request")
 
+    portability = sub.add_parser(
+        "portability",
+        help="fail if Ansible code outside platform_facts reads distribution facts",
+    )
+    portability.add_argument(
+        "--ansible-dir", type=Path, default=Path("ansible"), help="the Ansible directory"
+    )
+
     mermaid = sub.add_parser(
         "mermaid-extract",
         help="write each Mermaid block of the documentation to its own .mmd file",
@@ -114,6 +122,10 @@ def main(argv: list[str]) -> int:
         from pokus_repo_checks import links  # noqa: PLC0415 - stdlib-only path
 
         return links.run(args.paths, timeout=args.timeout)
+    if args.command == "portability":
+        from pokus_repo_checks import portability  # noqa: PLC0415 - stdlib-only path
+
+        return portability.run(args.ansible_dir)
     if args.command == "mermaid-extract":
         from pokus_repo_checks import docs_lint  # noqa: PLC0415 - needs dev dependencies
 

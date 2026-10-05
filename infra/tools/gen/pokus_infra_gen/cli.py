@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from pokus_infra_gen import bootstrap, pages, sources, versions
+from pokus_infra_gen import ansible_docs, bootstrap, pages, sources, versions
 from pokus_preflight.cli import build_parser as preflight_parser
 from pokus_preflight.matrix import EXIT_CODES, OUTCOME_MEANINGS
 
@@ -44,6 +44,10 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         "ansible/group_vars/all/versions.yml": lambda: bootstrap.versions_yml(root),
         "ansible/requirements.yml": lambda: versions.requirements_yml(root),
         "docs/reference/versions.md": lambda: versions.versions_page(root),
+        "docs/reference/ansible-variables.md": lambda: ansible_docs.ansible_variables_page(root),
+        "docs/reference/component-sources.md": lambda: ansible_docs.component_sources_page(root),
+        "docs/reference/accounts.md": lambda: ansible_docs.accounts_page(root),
+        "docs/architecture.md": lambda: ansible_docs.architecture_page(root),
     }
 
 
@@ -126,7 +130,26 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
         (f"host profile field {row[0]}", "docs/reference/host-profile.md", str(row[0]))
         for row in pages.schema_rows(schema, "")
     ]
+    entries += ansible_docs.ansible_variable_entries(root)
+    layout = load_layout(root)
+    entries += [(f"layout path {path}", "docs/architecture.md", f"`{path}`") for path in layout]
     return entries
+
+
+def load_layout(root: Path) -> list[str]:
+    """List the layout paths the architecture page must show.
+
+    Args:
+        root: Component root.
+
+    Returns:
+        Absolute paths with a trailing slash.
+    """
+    data = sources.load_yaml(root / ansible_docs.GROUP_VARS)
+    base = data["pokus_root"]
+    paths = [f"{e['path']}/" for e in data["pokus_system_layout"]]
+    paths += [f"{base}/{e['path']}/" if e["path"] else f"{base}/" for e in data["pokus_layout"]]
+    return paths
 
 
 def coverage(root: Path) -> int:

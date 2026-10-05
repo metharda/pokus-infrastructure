@@ -1,0 +1,47 @@
+# Managed by pokus-infra (ansible/roles/provider_vm/tasks/main.yml). Local changes will be overwritten.
+#
+# VM provider (BUILD_PROMPT §3.3): like bare metal for drivers and power, but
+# the GPU only with passthrough; installs the hypervisor's guest agent.
+- name: Load the guest agents of this family
+  ansible.builtin.include_vars:
+    file: "{{ pokus_family }}.yml"
+
+- name: Note the virtualization overhead
+  ansible.builtin.debug:
+    msg: >-
+      Running in a {{ host_profile.environment.hypervisor }} VM: latency and resource measurements
+      include virtualization overhead; the hypervisor is recorded in the fingerprint.
+
+- name: Install the guest agent
+  when: host_profile.environment.hypervisor in provider_vm_guest_agents
+  block:
+    - name: Install the guest agent package
+      ansible.builtin.include_role:
+        name: pkg
+      vars:
+        pkg_packages: "{{ provider_vm_guest_agents[host_profile.environment.hypervisor].packages }}"
+
+    - name: Enable the guest agent
+      ansible.builtin.systemd_service:
+        name: "{{ provider_vm_guest_agents[host_profile.environment.hypervisor].service }}"
+        enabled: true
+        state: started
+
+- name: Install or check the NVIDIA driver (GPU passthrough)
+  ansible.builtin.include_role:
+    name: provider_baremetal
+    tasks_from: nvidia
+  when:
+    - host_profile.gpu.vendor == 'nvidia'
+    - host_profile.gpu.path == 'passthrough'
+    - install_nvidia_driver != 'skip'
+
+- name: Apply the power policy
+  ansible.builtin.include_role:
+    name: provider_baremetal
+    tasks_from: power
+
+- name: Check whether a reboot is pending
+  ansible.builtin.include_role:
+    name: provider_baremetal
+    tasks_from: reboot

@@ -1,0 +1,15 @@
+# Managed by pokus-infra (ansible/roles/provider_wsl2/defaults/main.yml). Local changes will be overwritten.
+
+# /etc/wsl.conf (BUILD_PROMPT §3.1). systemd is always enabled.
+provider_wsl2_automount: false
+provider_wsl2_mount_fstab: false
+provider_wsl2_interop: false
+provider_wsl2_append_windows_path: false
+provider_wsl2_generate_hosts: true
+provider_wsl2_generate_resolv_conf: true
+# Name printed in the `wsl --terminate` instruction (sudo usually drops WSL_DISTRO_NAME).
+provider_wsl2_distro_name: "{{ ansible_facts['env']['WSL_DISTRO_NAME'] | default('<distro>') }}"
+# Values of the recommended .wslconfig when host_vars `expected` does not set them.
+provider_wsl2_default_memory_gib: 16
+provider_wsl2_default_cpu_threads: 8
+provider_wsl2_swap_gib: 8

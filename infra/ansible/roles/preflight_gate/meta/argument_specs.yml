@@ -1,0 +1,23 @@
+# Managed by pokus-infra (ansible/roles/preflight_gate/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Re-run preflight and stop if the host changed.
+    description:
+      - Sets pokus_host_profile (the fresh profile) and pokus_features (its feature flags).
+    options:
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile validated by bootstrap.sh for this run.
+      pokus_root:
+        type: path
+        required: true
+        description: Research space; preflight measures its free disk space.
+      preflight_gate_command:
+        type: path
+        default: "{{ pokus_infra_dir }}/preflight/pokus-preflight"
+        description: Preflight wrapper of this checkout.
+      preflight_gate_profile_path:
+        type: path
+        default: /etc/pokus/host-profile.json
+        description: Profile to compare with; bootstrap passes the profile it validated (pokus_bootstrap.profile_path).

@@ -1,0 +1,23 @@
+# Managed by pokus-infra (ansible/roles/firewall/meta/main.yml). Local changes will be overwritten.
+galaxy_info:
+  role_name: firewall
+  namespace: pokus
+  author: Pokus project
+  description: Firewall policy with the nftables, firewalld or ufw backend and Docker-Incus coexistence
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [trixie]
+    - name: Fedora
+      versions: ["43", "44"]
+    - name: EL
+      versions: ["9", "10"]
+    - name: opensuse
+      versions: [all]
+    - name: ArchLinux
+      versions: [all]
+  galaxy_tags: [pokus]
+dependencies: []

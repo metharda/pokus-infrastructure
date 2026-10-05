@@ -318,6 +318,20 @@ packages:
     el-10: "TODO(verify)"
     opensuse-leap-15.6: "TODO(verify)"
     opensuse-leap-16.0: "TODO(verify)"
+  nvidia_driver:
+    # Bare-metal and VM hosts with install_nvidia_driver: auto (BUILD_PROMPT
+    # §19.8). Branch 580 is the one that provides CUDA 13.0, which the pinned
+    # vLLM image needs; Ubuntu's restricted pocket (-updates) read on
+    # 2026-10-05. The other families are not reachable from the build environment.
+    ubuntu-24.04: {nvidia-driver-580-open: "580.178.04-0ubuntu0.24.04.1"}
+    ubuntu-22.04: {nvidia-driver-580-open: "580.178.04-0ubuntu0.22.04.1"}
+    debian-13: "TODO(verify)"
+    fedora-43: "TODO(verify)"
+    fedora-44: "TODO(verify)"
+    el-9: "TODO(verify)"
+    el-10: "TODO(verify)"
+    opensuse-leap-15.6: "TODO(verify)"
+    opensuse-leap-16.0: "TODO(verify)"
   tailscale:
     # Latest stable upstream release is v1.104.0 (git tag); the package indexes
     # of pkgs.tailscale.com are not reachable from the build environment.

@@ -31,18 +31,19 @@ are created in their phases.
 
 ## Process rules in force
 
-- **Commits (owner answer A2, amends §4 of the master prompt for this cloud
-  environment only).** The assistant never commits on its own initiative. When
-  a step is done it proposes the commit(s) (file list + Conventional Commit
-  message) and waits. Only when the owner replies "commit" (optionally naming a
-  proposal) it runs exactly `git add <listed files>`,
-  `git commit -m "<proposed message>"`,
-  `git push -u origin main`; no amend, no force push.
-  Before the first commit the assistant shows `git config user.name` and
-  `git config user.email` and waits for confirmation; the identity is never
-  written into any repository file. All work lands directly on `main` of the
-  repository (owner instruction at the first commit, replacing the original
-  working branch `claude/zen-albattani-qfwwps`).
+- **Commits (owner answer A2, amended by later owner instructions; cloud
+  environment only).** Infra steps 1-4 were committed on the owner's
+  "commit". For the rest of infra (steps 5-14) the owner instructed: commit
+  and push each step to `main` as soon as it passes `make lint test docs`,
+  without waiting for "commit" (`git add <step files>`,
+  `git commit -m "<Conventional Commit message>"`, `git push -u origin main`);
+  no amend, no force push, no history rewrite. After infra is finished the
+  assistant stops and waits before the platform phase. Commit messages carry
+  no co-author or session trailers: only the owner's git identity appears.
+  The identity is set in the local git configuration only and never written
+  into any repository file. All work lands directly on `main` (owner
+  instruction at the first commit, replacing the original working branch
+  `claude/zen-albattani-qfwwps`).
 - **Tags** are never created by the assistant; it proposes tag commands.
 - **Privacy.** No file may contain real personal or installation-specific data.
   The project's public repository URL is added only once it is published (H2);
@@ -334,11 +335,11 @@ owner approval. No change after version 1 yet.
 
 | Step | Content | Status | Commit |
 | --- | --- | --- | --- |
-| 1 | Skeleton, tooling, CLAUDE.md, IMPLEMENTATION_NOTES | done, committed on `main` | — |
-| 2 | Preflight | done, committed on `main` | — |
-| 3 | bootstrap.sh | done, committed on `main` | — |
-| 4 | versions.lock.yml + lock-check | done, committed on `main` | — |
-| 5 | Ansible foundation roles (four families) | pending | — |
+| 1 | Skeleton, tooling, CLAUDE.md, IMPLEMENTATION_NOTES | done | `8df9199` (with steps 2-4; root files in `0503e86`) |
+| 2 | Preflight | done | `8df9199` |
+| 3 | bootstrap.sh | done | `8df9199` |
+| 4 | versions.lock.yml + lock-check | done | `8df9199` |
+| 5 | Ansible foundation roles (four families) | done | commit "feat(infra): add Ansible foundation roles for all four families" (SHA recorded with step 6) |
 | 6 | docker, nvidia_container_toolkit, incus | pending | — |
 | 7 | postgres, observability, opa, vllm, models | pending | — |
 | 8 | images | pending | — |
@@ -384,6 +385,16 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   failing `lock-check` CI job; staying on Incus 6.0 LTS although `v7.0.x` tags
   exist; NVIDIA's rpm repository file using `gpgcheck=0` (to be resolved in
   step 6).
+- From step 5 ("Interpretations awaiting owner confirmation (step 5)" and
+  "Findings to report (step 5)"): unverified component sources as `verify`
+  data that the play refuses; `pokus_incus_bridge_patterns` from the contract
+  instead of `incus_bridge_prefix`; the distribution-fact check as a
+  repository check; `--allow-reboot` scheduling `shutdown -r +1` after signal
+  76; removed researchers also leaving `pokus-admin`; Incus's per-user group
+  added in step 6; how lab-wide variables are documented; role check-mode
+  tests deferred to step 12; run networks on firewalld and ufw hosts relying
+  on Incus until step 6; the Secure Boot MOK password on non-interactive
+  driver installs.
 
 ## Owner deliverables pending
 
@@ -393,15 +404,16 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   other listed hosts and `releases.astral.sh` (CPython builds for uv) are
   still blocked.
 - The owner supplied the git identity to use (A2); it is set in the local git
-  configuration only and not recorded in any repository file. The owner gave
-  "commit" for steps 1-4 on `main`; the commit SHAs are recorded in the step
-  table with the next commit.
+  configuration only and not recorded in any repository file. Steps 1-4 are
+  committed on `main` (`0503e86`, `8df9199`); those two commits still carry
+  co-author and session trailers, which the owner no longer wants, and
+  removing them would need a history rewrite that the process forbids.
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (52 after step 4; details
+`make verify-todos` lists every marker in the tree (97 after step 5; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4"):
+step 4" and "after step 5"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -418,13 +430,18 @@ step 4"):
   Incus and Tailscale packages for every pinned release; Incus base image
   fingerprints; GitHub SSH host keys (api.github.com/meta is not readable
   from this environment).
+- Step 5: 7 more lock lines (NVIDIA driver pins for the releases other than
+  Ubuntu); 17 `verify` entries of `infra/ansible/component-sources.yml`
+  (Tailscale and Zabbly repository layouts; Docker, Incus and NVIDIA package
+  names and methods outside Ubuntu); 20 notes in role files (package and
+  service names of the Red Hat, SUSE and Arch families, dnf5 and zypper
+  behavior, Incus's firewalld/ufw/Docker guidance, the WSL library path, the
+  `tailscale serve` status format, the Secure Boot MOK flow); the Windows
+  helper `infra/contrib/windows/pokus-wsl.ps1` (not run on Windows).
 
 Known items for later steps (each becomes a `TODO(verify)` entry when its file
 is written, unless verified first):
 
-- infra step 5: repository keys and package pins for the Incus sources on
-  Fedora, RHEL-compatible and openSUSE (EPEL/COPR/OBS) once
-  `component-sources.yml` selects them.
 - infra step 6: Incus guest API key name (`security.guestapi`), proxy devices
   with `bind=instance` for VMs, the newest packaged Incus LTS line.
 - infra step 7: vLLM TLS options for the inference node, OPA authorization
@@ -441,10 +458,16 @@ is written, unless verified first):
   still hit the limit.
 - `ansible-playbook` is run with `LC_ALL=C.UTF-8`; its availability on every
   supported family is to be confirmed on real hosts (Phase 5).
-- Bootstrap cannot be run end to end before infra step 10: the stub
-  `site.yml` provisions nothing and `pokus-lab` (doctor) does not exist yet,
-  so a real run ends with exit code 60. Its stages are covered by unit tests
-  that never provision.
+- Bootstrap cannot be run end to end before infra step 10: `site.yml`
+  applies the foundation roles (step 5) but `pokus-lab` (doctor) does not
+  exist yet, so a real run ends with exit code 60. Its stages and the roles
+  are covered by tests that never provision.
+- On firewalld and ufw hosts, per-run Incus bridges cannot be listed in
+  advance; their DHCP/DNS and isolation rely on Incus until step 6 verifies
+  Incus's documented setup for those backends.
+- `make setup` installs the pinned Ansible collections from Galaxy, which the
+  build environment cannot reach; here they were installed from their release
+  tags on GitHub into the git-ignored `infra/.ansible-collections/`.
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
   for MkDocs team announces that MkDocs 2.0 removes plugins. Builds work with
   the pin; the replacement decision belongs to the docs-site plugin review
@@ -465,8 +488,8 @@ is written, unless verified first):
 
 ## Next step
 
-Record the step 1-4 commit SHAs in the step table, collect the owner's answers
-to the open interpretations, and start infra step 5 (Ansible foundation roles for all
-four families: `platform_facts`, component source matrix and family vars,
-`preflight_gate`, providers, `base`, `mac`, `users_groups`, `ssh`, `layout`,
-`firewall` with all three backends, `tailscale`).
+Infra step 6 (`docker`, `nvidia_container_toolkit`, `incus` for all four
+families: Docker Engine with `daemon.json`, CDI GPU access, the Incus pool with
+the disk safety rules, profiles, projects, run network ACL and per-user
+projects; resolve the NVIDIA rpm `gpgcheck` and the firewalld/ufw run-network
+findings; ADRs for Incus, native Docker Engine and btrfs/LVM thin).

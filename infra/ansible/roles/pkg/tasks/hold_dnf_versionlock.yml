@@ -1,0 +1,22 @@
+# Managed by pokus-infra (ansible/roles/pkg/tasks/hold_dnf_versionlock.yml). Local changes will be overwritten.
+#
+# TODO(verify): the versionlock plugin package on Fedora's dnf5 (dnf 4 on EL 9
+# ships it as python3-dnf-plugin-versionlock).
+- name: Install the dnf versionlock plugin
+  ansible.builtin.dnf:
+    name: "{{ pkg_versionlock_package }}"
+    state: present
+
+- name: Read the current version locks
+  ansible.builtin.command:
+    argv: [dnf, versionlock, list]
+  register: pkg_versionlock_list
+  check_mode: false
+  changed_when: false
+
+- name: Lock at their installed versions the packages of {{ pkg_hold_name }}
+  ansible.builtin.command:
+    argv: [dnf, versionlock, add, "{{ item }}"]
+  loop: "{{ pkg_hold_packages }}"
+  when: item not in pkg_versionlock_list.stdout
+  changed_when: true

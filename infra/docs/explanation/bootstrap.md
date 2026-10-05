@@ -123,6 +123,11 @@ and when the play fails it reads the file: codes 75, 76 and 77 become the exit
 code and the message is printed and recorded. A play that fails without a
 valid signal ends with 60.
 
+The play runs on the host it provisions, so it never reboots the host itself.
+After signal 76, bootstrap schedules a reboot one minute later only if it was
+started with `--allow-reboot` and not in check mode; the state file is written
+before the reboot happens, and the next run continues where this one stopped.
+
 ## What bootstrap records
 
 | Record | Where | Content |

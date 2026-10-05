@@ -186,6 +186,11 @@ enrollment is pending. Reboot the host. If the blue MOK Manager screen
 appears, choose to enroll the key and confirm it with the MOK password set
 during provisioning. Then run bootstrap again.
 
+Bootstrap never reboots on its own. If you started it with `--allow-reboot`,
+it schedules the reboot itself (`shutdown -r +1`) after writing its state
+file, and still ends with exit code 76; cancel a scheduled reboot with
+`shutdown -c`. In check mode it never reboots.
+
 ## Exit code 77: operator action required {#exit-code-77}
 
 Bootstrap stopped and printed what to do. Common messages:
@@ -203,6 +208,10 @@ Bootstrap stopped and printed what to do. Common messages:
 | versions.yml does not match versions.lock.yml | Run `make generate` in `infra/` and commit the result. |
 | another bootstrap is running | Wait for the other run to finish. |
 | this version does not include the installer TUI yet | Use `--no-tui`, and leave out `--answers`. |
+| The host changed since bootstrap validated it | The play's preflight gate found a different outcome, provider or feature set; check the listed changes, then add `--refresh-profile`. |
+| No usable NVIDIA driver is loaded | Install the driver as your distribution documents it, or set `install_nvidia_driver: skip` in host_vars. See [Bare-metal hosts](../providers/baremetal.md). |
+| The NVIDIA driver for this distribution comes from a community repository | Add `--allow-community-repos` (recorded in the fingerprint), or install the driver yourself with `install_nvidia_driver: manual`. |
+| Tailscale needs a login | Put an auth key into `vault_tailscale_authkey` in the vault, or run bootstrap interactively and open the login URL it prints. |
 
 `<machine>` is the name you pass with `--machine`; `<file>` is a file that
 contains the vault password.

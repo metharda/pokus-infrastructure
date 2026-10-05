@@ -1,0 +1,19 @@
+# Managed by pokus-infra (ansible/roles/provider_vm/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: VM provider.
+    options:
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile (environment.hypervisor, gpu.path).
+      install_nvidia_driver:
+        type: str
+        required: true
+        choices: [auto, manual, skip]
+        description: Driver handling for a passed-through NVIDIA GPU.
+      power_policy:
+        type: str
+        required: true
+        choices: [never_sleep, lab_session_inhibit, os_default]
+        description: Sleep behavior of the VM.

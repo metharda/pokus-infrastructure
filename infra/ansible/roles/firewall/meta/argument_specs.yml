@@ -1,0 +1,36 @@
+# Managed by pokus-infra (ansible/roles/firewall/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Firewall policy with the nftables, firewalld or ufw backend.
+    options:
+      grafana_tailscale_serve:
+        type: bool
+        required: true
+        description: Open the Grafana serve port on the tailnet interface.
+      ssh_extra_allowed_interfaces:
+        type: list
+        elements: str
+        required: true
+        description: Interfaces besides tailscale0 on which SSH is reachable.
+      pokus_incus_bridge_patterns:
+        type: list
+        elements: str
+        required: true
+        description: Interface name patterns of Incus bridges (run networks and the build bridge).
+      firewall_tailnet_interface:
+        type: str
+        default: tailscale0
+        description: Tailnet interface.
+      firewall_grafana_serve_port:
+        type: int
+        default: 443
+        description: TCP port of `tailscale serve` for Grafana.
+      firewall_tailnet_tcp_ports:
+        type: list
+        elements: int
+        default: [22]
+        description: TCP ports open on the tailnet interface (22, plus the serve port if enabled).
+      firewall_tailscale_udp_port:
+        type: int
+        default: 41641
+        description: UDP port of the WireGuard transport of tailscaled.

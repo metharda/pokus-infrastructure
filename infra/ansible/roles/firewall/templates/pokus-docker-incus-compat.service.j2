@@ -1,0 +1,14 @@
+# Managed by pokus-infra (ansible/roles/firewall/templates/pokus-docker-incus-compat.service.j2). Local changes will be overwritten.
+[Unit]
+Description=Pokus: let Incus bridge traffic pass Docker's FORWARD policy
+After=docker.service incus.service
+PartOf=docker.service
+ConditionPathExists=/usr/bin/docker
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/pokus/docker-incus-compat
+
+[Install]
+WantedBy=multi-user.target docker.service

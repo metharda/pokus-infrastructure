@@ -159,6 +159,21 @@ print(message)
 ' "$1"
 }
 
+# schedule_reboot: after a reboot signal (76) with --allow-reboot, reboot in one
+# minute, so that bootstrap still writes its state file and exits with 76
+# (BUILD_PROMPT §3.2, §13.7). Never in check mode.
+schedule_reboot() {
+  if "$OPT_CHECK"; then
+    log_info "check mode: not rebooting"
+    return 0
+  fi
+  if shutdown -r +1 "Pokus bootstrap: reboot required (--allow-reboot)"; then
+    log_warn "the host reboots in one minute (--allow-reboot); run bootstrap again afterwards"
+  else
+    log_error "could not schedule the reboot; reboot the host yourself, then run bootstrap again"
+  fi
+}
+
 # playbook_result RC SIGNAL_FILE: map an ansible-playbook exit status and the
 # bootstrap signal file to a bootstrap exit code (BUILD_PROMPT §5.2 step 9).
 # Sets SIGNAL_CODE and SIGNAL_MESSAGE for a valid signal.
@@ -177,6 +192,9 @@ playbook_result() {
       SIGNAL_MESSAGE=${text#*$'\n'}
       log_error "$SIGNAL_MESSAGE"
       emit_event bootstrap.signal "$CURRENT_STAGE" signaled "$code" "$SIGNAL_MESSAGE"
+      if ((code == EXIT_REBOOT)) && "$OPT_ALLOW_REBOOT"; then
+        schedule_reboot
+      fi
       return "$code"
     fi
     log_warn "ignoring $file: unknown signal code '$code'"

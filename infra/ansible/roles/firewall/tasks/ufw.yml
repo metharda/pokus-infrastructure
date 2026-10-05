@@ -1,0 +1,31 @@
+# Managed by pokus-infra (ansible/roles/firewall/tasks/ufw.yml). Local changes will be overwritten.
+#
+# ufw rules only; ufw's default policies and other rules are left alone.
+# TODO(verify): Incus's documented ufw rules for bridges; run networks (r-*)
+# are created at run time and cannot be listed in advance.
+- name: Allow SSH and the serve port on tailscale0
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: "{{ firewall_tailnet_interface }}"
+    port: "{{ item | string }}"
+    proto: tcp
+    comment: pokus-infra
+  loop: "{{ firewall_tailnet_tcp_ports }}"
+
+- name: Allow SSH on the extra interfaces
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: "{{ item }}"
+    port: "22"
+    proto: tcp
+    comment: pokus-infra
+  loop: "{{ ssh_extra_allowed_interfaces }}"
+
+- name: Allow traffic from the image build bridge to the host
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: pokus-build0
+    comment: pokus-infra

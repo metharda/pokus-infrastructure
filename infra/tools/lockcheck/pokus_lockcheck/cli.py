@@ -28,10 +28,15 @@ TODO_EXCLUDES = (
     "docs/IMPLEMENTATION_NOTES.md",
     "docs/how-to/update-versions.md",
     "docs/reference/versions.md",
+    "docs/reference/component-sources.md",
     "ansible/group_vars/all/versions.yml",
     "tools/lockcheck/",
     "tools/gen/pokus_infra_gen/versions.py",
     "bootstrap/tests/",
+    "ansible/tests/",
+    "ansible/filter_plugins/pokus.py",
+    "tools/gen/tests/",
+    "docs/distros/adding-a-family.md",
 )
 
 
