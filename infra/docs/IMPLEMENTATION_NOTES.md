@@ -1593,6 +1593,12 @@ not (see PROGRESS, known issues).
    python3-libdnf5 and keep their package metadata; they also carry procps,
    whose `sysctl` the base role's `sysctl` module needs and which every real
    host has.
+4. **Second run**: Ubuntu 24.04, Debian 13, Fedora 44, openSUSE Leap 15.6
+   and Arch Linux pass. AlmaLinux 9 found a real role bug: minimal, cloud and
+   container installs of EL 9 (and Fedora) ship `curl-minimal`, which
+   conflicts with the `curl` package the base role installed. The redhat
+   family now names curl by its file, `/usr/bin/curl`, which either package
+   satisfies.
 
 ### Interpretations awaiting owner confirmation (step 12)
 

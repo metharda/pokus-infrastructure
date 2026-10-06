@@ -2,10 +2,12 @@
 #
 # TODO(verify): package names (Fedora and EL mirrors are not reachable from
 # the build environment). RHEL-compatible releases ship neither btrfs-progs nor
-# htop in their base repositories.
+# htop in their base repositories. curl is named by its file: minimal and
+# container installs ship curl-minimal, which conflicts with the curl package
+# and provides /usr/bin/curl as well (found by the CI fast lane on EL 9).
 base_package_names:
   ca_certificates: ca-certificates
-  curl: curl
+  curl: /usr/bin/curl
   gpg: gnupg2
   jq: jq
   git: git
