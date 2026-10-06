@@ -192,10 +192,22 @@ def test_filters_are_registered_with_ansible() -> None:
         "pokus_scram_verifier",
         "pokus_scram_matches",
         "pokus_config_hashes",
+        "pokus_image_by_alias",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pokus_release_identity(c)", {"p": profile, "c": debian_codenames()})
     assert result["release_key"] == "debian-13"
+
+
+def test_image_by_alias() -> None:
+    images: list[dict[str, Any]] = [
+        {"fingerprint": "a", "aliases": None},
+        {"fingerprint": "b", "aliases": []},
+        {"fingerprint": "c", "aliases": [{"name": "web/1.0.0"}, {"name": "_base/1.0.0"}]},
+    ]
+    assert pokus.image_by_alias(images, "_base/1.0.0")["fingerprint"] == "c"
+    assert pokus.image_by_alias(images, "_base/2.0.0") == {}
+    assert pokus.image_by_alias(None, "_base/1.0.0") == {}
 
 
 # RFC 7677 section 3 exchange (user "user", password "pencil"); StoredKey and

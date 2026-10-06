@@ -366,6 +366,22 @@ def config_hashes(files: Iterable[Mapping[str, Any]], root: str) -> dict[str, st
     }
 
 
+def image_by_alias(images: Iterable[Mapping[str, Any]] | None, alias: str) -> dict[str, Any]:
+    """Find the image an Incus alias points to.
+
+    Args:
+        images: Output of ``incus image list --format json``.
+        alias: Alias name, such as ``_base/1.0.0``.
+
+    Returns:
+        The image, or an empty dict if no image carries the alias.
+    """
+    for image in images or []:
+        if any(entry.get("name") == alias for entry in image.get("aliases") or []):
+            return dict(image)
+    return {}
+
+
 class FilterModule:
     """Ansible filter plugin entry point."""
 
@@ -386,4 +402,5 @@ class FilterModule:
             "pokus_scram_verifier": scram_verifier,
             "pokus_scram_matches": scram_matches,
             "pokus_config_hashes": config_hashes,
+            "pokus_image_by_alias": image_by_alias,
         }

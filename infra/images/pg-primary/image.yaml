@@ -1,0 +1,18 @@
+# Managed by pokus-infra (images/pg-primary/image.yaml). Local changes will be overwritten.
+#
+# Golden image blueprint `pg-primary` (BUILD_PROMPT §7.13): PostgreSQL from
+# the Ubuntu archive with a database `appdb` owned by the role `app`.
+# Network access to it is configured by whoever uses the target.
+schema_version: 1
+name: pg-primary
+version: "1.0.0"
+description: PostgreSQL server with an application database
+base: {blueprint: _base}
+type: container
+nesting: false
+packages: [postgresql]
+docker_images: []
+services: [postgresql]
+telemetry:
+  log_files: []
+tests: [tests/test_pg.sh]

@@ -27,6 +27,8 @@ Downloaded by bootstrap or the roles and checked against the sha256.
 | restic | `0.19.1` | aarch64 | `https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_arm64.bz2` | `a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465` |
 | quarto | `1.10.18` | x86_64 | `https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-amd64.tar.gz` | `afad071b5bd22c02f2d300695743189d3650e0537a53073e654b630cff2b0c73` |
 | quarto | `1.10.18` | aarch64 | `https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-arm64.tar.gz` | `f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c` |
+| otelcol_contrib | `0.162.0` | x86_64 | `https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.162.0/otelcol-contrib_0.162.0_linux_amd64.deb` | `0b2b37eeb83db8e19a5f9dfc60894d058c739384a226ac085e674561befaad44` |
+| otelcol_contrib | `0.162.0` | aarch64 | `https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.162.0/otelcol-contrib_0.162.0_linux_arm64.deb` | `b6163e6639989ac608ae2ba58b891128f2f31bba1b0af31a937ac5d0de7b0c23` |
 | opa | `1.21.1` | x86_64 | `https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_amd64_static` | `668506eb17a2eaa1fce6cc0d1f42ef85125d4ac5bda5fc74d1152d0c77145031` |
 | opa | `1.21.1` | aarch64 | `https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_arm64_static` | `9a1f3625529c6f01240fe68286dde06aa0b23c5253da700ac48f4d943ff8a4de` |
 
@@ -61,6 +63,12 @@ Every image is used by digest; the tag is informational. Verified on 2026-10-05.
 | opa | `docker.io/openpolicyagent/opa` | `1.21.1-static` | `sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e` | linux/amd64, linux/arm64 |
 | vllm | `docker.io/vllm/vllm-openai` | `v0.31.0` | `sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3` | linux/amd64, linux/arm64 |
 | cuda_base_test | `docker.io/nvidia/cuda` | `13.0.2-base-ubuntu24.04` | `sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701` | linux/amd64, linux/arm64 |
+
+Pulled inside golden images by blueprints with a container engine (`docker_images` of `images/<blueprint>/image.yaml`), never on the host:
+
+| Name | Image | Tag | Digest | Platforms |
+| --- | --- | --- | --- | --- |
+| docker_host_web | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 |
 
 ## Repository keys
 

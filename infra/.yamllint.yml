@@ -7,6 +7,9 @@ rules:
     max: 160
   comments:
     min-spaces-from-content: 1
+    # cloud-init user data must start with the line "#cloud-config".
+    ignore: |
+      images/*/cloud-init.yaml
   comments-indentation: false
   braces:
     max-spaces-inside: 1

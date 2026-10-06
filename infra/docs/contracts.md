@@ -229,7 +229,7 @@ the paired node's tailnet name; `<port>` is chosen by the deployer.
 | Firewall compatibility | infra treats bridges matching `r-*` and `pokus-build0` as Incus bridges |
 | Profiles | `target-container`, `target-vm` (only if `vm_targets`), `probe-client`, `build` |
 | Guest API | target profiles disable it (`security.guestapi=false`, the Incus 6.0 key for `/dev/incus`) |
-| Golden images | aliases `<blueprint>/<version>` with properties `pokus.recipe_commit`, `pokus.built_at`, `pokus.base_fingerprint` |
+| Golden images | aliases `<blueprint>/<version>` with properties `pokus.recipe_commit`, `pokus.built_at`, `pokus.base_fingerprint`; the Incus property `requirements.nesting` is `true` for blueprints that need nesting (a container engine inside the target), which the platform then launches with `security.nesting=true` |
 
 ## Telemetry
 

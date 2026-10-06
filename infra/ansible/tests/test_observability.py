@@ -113,11 +113,11 @@ def test_collector_pipelines_use_defined_components(vm: bool) -> None:
         assert set(pipeline["receivers"]) == receivers, name
         assert pipeline["processors"] == ["memory_limiter", "resource", "batch"], name
         assert set(pipeline["exporters"]) <= set(config["exporters"]), name
-    assert config["exporters"]["otlphttp/loki"]["endpoint"] == "http://127.0.0.1:18702/otlp"
+    assert config["exporters"]["otlp_http/loki"]["endpoint"] == "http://127.0.0.1:18702/otlp"
     assert config["exporters"]["prometheus"]["resource_to_telemetry_conversion"]["enabled"]
     journald = rendered("otel/journald.yaml")
     assert journald["receivers"]["journald"]["root_path"] == "/hostfs"
-    assert journald["exporters"]["otlp/gateway"]["endpoint"] == "127.0.0.1:4317"
+    assert journald["exporters"]["otlp_grpc/gateway"]["endpoint"] == "127.0.0.1:4317"
     assert "otlp" not in journald["receivers"]  # accepts nothing from targets
 
 

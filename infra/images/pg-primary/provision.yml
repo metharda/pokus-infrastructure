@@ -1,0 +1,26 @@
+# Managed by pokus-infra (images/pg-primary/provision.yml). Local changes will be overwritten.
+#
+# PostgreSQL and the application database (BUILD_PROMPT §7.13), on top of `_base`.
+- name: Provision the PostgreSQL blueprint
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install the packages
+      ansible.builtin.apt:
+        name: "{{ image.packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    - name: Start PostgreSQL
+      ansible.builtin.systemd_service:
+        name: postgresql.service
+        enabled: true
+        state: started
+
+    - name: Create the application role and database
+      ansible.builtin.command:
+        argv: [runuser, -u, postgres, --, psql, --no-psqlrc, --set=ON_ERROR_STOP=1, --file, /dev/stdin]
+        stdin: "{{ lookup('ansible.builtin.file', 'files/appdb.sql') }}"
+      register: pg_appdb
+      changed_when: "'CREATE' in pg_appdb.stdout"

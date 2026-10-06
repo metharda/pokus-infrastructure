@@ -21,7 +21,8 @@ LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pokus_lockcheck
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
   preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
   models.lock.yml=tools/lockcheck/schema/models-lock.schema.json \
-  models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json
+  models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json \
+  $(foreach f,$(sort $(wildcard images/*/image.yaml)),$(f)=tools/lockcheck/schema/image-blueprint.schema.json)
 # Oldest Python preflight must run on (BUILD_PROMPT §2.1).
 PREFLIGHT_MIN_PYTHON := 3.9
 BUILD := build
@@ -31,8 +32,9 @@ DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
 DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
-  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/tests
-PLAYBOOKS := ansible/site.yml ansible/restore.yml
+  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
+  ansible/tests
+PLAYBOOKS := ansible/site.yml ansible/restore.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/.
@@ -83,7 +85,8 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff check $(PY_SOURCES)
 	$(BIN)/ruff format --check $(PY_SOURCES)
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
-	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/tests
+	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
+	  ansible/roles/images/files ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 
@@ -99,7 +102,7 @@ lint-yaml: setup ## yamllint (strict)
 	$(BIN)/yamllint --strict .
 
 .PHONY: lint-schemas
-lint-schemas: setup ## JSON Schema validation of versions.lock.yml and the support matrix
+lint-schemas: setup ## JSON Schema validation of the locks, the support matrix and the blueprints
 	$(LOCKCHECK) validate $(SCHEMA_PAIRS)
 
 .PHONY: lint-ansible

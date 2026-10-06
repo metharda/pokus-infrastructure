@@ -144,6 +144,16 @@
           "additionalProperties": {
             "$ref": "#/$defs/image"
           }
+        },
+        "target_images": {
+          "type": "object",
+          "description": "Images preloaded inside golden images (BUILD_PROMPT \u00a77.13), never run by the lab itself.",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/image"
+          }
         }
       },
       "unevaluatedProperties": false
@@ -459,7 +469,8 @@
           "enum": [
             "tar.gz",
             "bzip2",
-            "binary"
+            "binary",
+            "deb"
           ]
         },
         "assets": {

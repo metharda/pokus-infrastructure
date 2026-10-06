@@ -1,0 +1,26 @@
+# Managed by pokus-infra (ansible/roles/images/tasks/import.yml). Local changes will be overwritten.
+#
+# The blueprint's alias is missing but its export exists (after a restore or a
+# deleted alias): import the exported image instead of building a different one.
+
+- name: Check the export before importing it
+  ansible.builtin.command:
+    argv: ["{{ images_files_helper }}", verify, --dir, "{{ images_export_dir }}", --fingerprint, "{{ images_record.fingerprint }}"]
+  register: images_import_files
+  changed_when: false
+  failed_when: images_import_files.rc != 0 or not (images_import_files.stdout | from_json).ok
+
+- name: Import the exported image
+  ansible.builtin.command:
+    argv: >-
+      {{ ['incus', 'image', 'import']
+         + ((images_import_files.stdout | from_json).files | map('regex_replace', '^', images_export_dir ~ '/') | list)
+         + ['--alias', images_alias] }}
+  changed_when: true
+  when: images_record.fingerprint not in (images_list.stdout | from_json | map(attribute='fingerprint') | list)
+
+- name: Point the alias at the image that is already in the store
+  ansible.builtin.command:
+    argv: [incus, image, alias, create, "{{ images_alias }}", "{{ images_record.fingerprint }}"]
+  changed_when: true
+  when: images_record.fingerprint in (images_list.stdout | from_json | map(attribute='fingerprint') | list)

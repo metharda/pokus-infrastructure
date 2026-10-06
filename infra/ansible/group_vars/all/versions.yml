@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pokus_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pokus_versions_lock_sha256: "797ee313071bde4ab375c0313a4f919b97a519d17935a55edcead152540fa7ef"
+pokus_versions_lock_sha256: "d9d09af1228d29ee914d061fc0e565a149f6797dd04ec84b0d361dc78eadce3d"
 pokus_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -55,6 +55,19 @@ pokus_versions:
         aarch64:
           url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-arm64.tar.gz
           sha256: f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c
+    otelcol_contrib:
+      version: 0.162.0
+      verified_on: '2026-10-06'
+      source: GitHub release open-telemetry/opentelemetry-collector-releases v0.162.0; both packages downloaded
+        and hashed, matching the release's per-file .sha256 files
+      format: deb
+      assets:
+        x86_64:
+          url: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.162.0/otelcol-contrib_0.162.0_linux_amd64.deb
+          sha256: 0b2b37eeb83db8e19a5f9dfc60894d058c739384a226ac085e674561befaad44
+        aarch64:
+          url: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.162.0/otelcol-contrib_0.162.0_linux_arm64.deb
+          sha256: b6163e6639989ac608ae2ba58b891128f2f31bba1b0af31a937ac5d0de7b0c23
     opa:
       version: 1.21.1
       verified_on: '2026-10-05'
@@ -180,6 +193,14 @@ pokus_versions:
         image: docker.io/nvidia/cuda
         tag: 13.0.2-base-ubuntu24.04
         digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
+        platforms:
+          - linux/amd64
+          - linux/arm64
+    target_images:
+      docker_host_web:
+        image: docker.io/library/nginx
+        tag: 1.30.5-alpine
+        digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
         platforms:
           - linux/amd64
           - linux/arm64

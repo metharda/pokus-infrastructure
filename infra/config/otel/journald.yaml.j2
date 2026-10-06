@@ -34,7 +34,7 @@ processors:
   batch: {}
 
 exporters:
-  otlp/gateway:
+  otlp_grpc/gateway:
     endpoint: 127.0.0.1:{{ pokus_ports.otlp_grpc }}
     tls:
       insecure: true
@@ -53,4 +53,4 @@ service:
     logs:
       receivers: [journald]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/gateway]
+      exporters: [otlp_grpc/gateway]

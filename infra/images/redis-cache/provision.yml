@@ -1,0 +1,19 @@
+# Managed by pokus-infra (images/redis-cache/provision.yml). Local changes will be overwritten.
+#
+# Redis (BUILD_PROMPT §7.13), on top of `_base`.
+- name: Provision the Redis blueprint
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install the packages
+      ansible.builtin.apt:
+        name: "{{ image.packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    - name: Start Redis
+      ansible.builtin.systemd_service:
+        name: redis-server.service
+        enabled: true
+        state: started

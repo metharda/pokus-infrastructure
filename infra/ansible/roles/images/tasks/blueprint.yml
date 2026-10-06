@@ -1,0 +1,83 @@
+# Managed by pokus-infra (ansible/roles/images/tasks/blueprint.yml). Local changes will be overwritten.
+#
+# One blueprint (images_name): build it when neither its alias nor its export
+# exist, import it from its export when only the alias is missing, export it
+# when only the export is missing. images_rebuild builds it again.
+
+- name: Describe the blueprint
+  ansible.builtin.set_fact:
+    images_spec: "{{ images_specs[images_name] }}"
+    images_alias: "{{ images_name }}/{{ images_specs[images_name].version }}"
+    images_export_dir: "{{ images_export_root }}/{{ images_name }}/{{ images_specs[images_name].version }}"
+    images_packages_text: ""
+
+- name: List the images of the image store
+  ansible.builtin.command:
+    argv: [incus, image, list, --format, json]
+  register: images_list
+  changed_when: false
+  check_mode: false
+
+- name: Look for the export record of the blueprint
+  ansible.builtin.stat:
+    path: "{{ images_export_dir }}/build.json"
+  register: images_record_file
+
+- name: Read the export record of the blueprint
+  ansible.builtin.slurp:
+    src: "{{ images_export_dir }}/build.json"
+  register: images_record_raw
+  when: images_record_file.stat.exists
+
+- name: Decide what the blueprint needs
+  ansible.builtin.set_fact:
+    images_image: "{{ images_list.stdout | from_json | pokus_image_by_alias(images_alias) }}"
+    images_record: "{{ (images_record_raw.content | b64decode | from_json) if images_record_file.stat.exists else {} }}"
+
+- name: Choose the action for the blueprint
+  ansible.builtin.set_fact:
+    images_action: >-
+      {{ 'build' if images_rebuild | bool or (images_image == {} and images_record == {})
+         else 'import' if images_image == {}
+         else 'export' if images_record.fingerprint | default('') != images_image.fingerprint
+         else 'none' }}
+
+- name: Report the planned action in check mode
+  ansible.builtin.debug:
+    msg: "{{ images_alias }}: {{ images_action }}"
+  when: ansible_check_mode
+
+- name: Make the upstream base image available and exported
+  ansible.builtin.include_tasks: upstream.yml
+  when:
+    - images_spec.base.image is defined
+    - not ansible_check_mode
+
+- name: Use the base blueprint's image
+  ansible.builtin.set_fact:
+    images_base_fingerprint: >-
+      {{ (images_list.stdout | from_json
+          | pokus_image_by_alias(images_spec.base.blueprint ~ '/' ~ images_specs[images_spec.base.blueprint].version)).fingerprint
+         | mandatory('the base blueprint ' ~ images_spec.base.blueprint ~ ' has no image') }}
+  when:
+    - images_spec.base.blueprint is defined
+    - images_action == 'build'
+    - not ansible_check_mode
+
+- name: Build the blueprint
+  ansible.builtin.include_tasks: build.yml
+  when:
+    - images_action == 'build'
+    - not ansible_check_mode
+
+- name: Import the blueprint's image from its export
+  ansible.builtin.include_tasks: import.yml
+  when:
+    - images_action == 'import'
+    - not ansible_check_mode
+
+- name: Export the blueprint's image
+  ansible.builtin.include_tasks: export.yml
+  when:
+    - images_action in ['build', 'export']
+    - not ansible_check_mode

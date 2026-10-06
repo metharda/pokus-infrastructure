@@ -962,3 +962,137 @@ and the run ACL rule of the VM listener; per-account primary groups in
 explanatory lines of `models.catalog.yml`, and two in
 `docs/how-to/add-a-model.md` (the Hub's tree API fields, and the catalog
 warning).
+
+## Step 8: images
+
+Built: the `images` role (per blueprint: build when neither alias nor export
+exists, import the export when only the alias is missing, export when only
+the export is missing; the pinned upstream base copied by fingerprint and
+exported once to `/srv/pokus/images/_upstream/<base>/<fingerprint>/`; the
+build in project `build` with launch, cloud-init wait, leakage baseline,
+nested `ansible-playbook` over `community.general.incus`, tests, package
+record, leakage check, clean, stop, `incus publish` with the contract's
+properties, export with `SHA256SUMS`, `packages.txt` and `build.json`); the
+leakage lint `files/pokus_leakage_lint.py` (runs inside the build instance);
+the export helper `/usr/local/libexec/pokus/image-files`; the clean script;
+six blueprints in `images/` (`_base`, `web-nginx-flask`, `pg-primary`,
+`redis-cache`, `docker-host`, `probe-client`) with tests, and
+`images/_base/agent.yml`, which configures the in-image OpenTelemetry agent
+after every blueprint; the blueprint schema
+`tools/lockcheck/schema/image-blueprint.schema.json` (checked by `make
+lint-schemas`, the playbooks by `make lint-ansible`'s syntax check); the lock
+entries `binaries.otelcol_contrib` (format `deb`) and
+`containers.target_images.docker_host_web`, which `make lock-check` verifies
+like the other images; the filter `pokus_image_by_alias`;
+`docs/how-to/build-golden-images.md`, `docs/explanation/golden-images.md` and
+ADR-0012.
+
+Also in this step: the collector configurations of step 7 use the component
+names of otelcol-contrib 0.162 (`otlp_grpc`, `otlp_http`, `host_metrics`,
+`resource_detection`, `file_log`); the old names are deprecated aliases that
+0.162 accepts with a warning. Both configurations validate again without
+warnings.
+
+### Verified in step 8
+
+- **otelcol-contrib 0.162.0 packages**: both `.deb` files downloaded, sha256
+  equal to the release's per-file `.sha256` files (pinned with `verified_on`).
+  The agent configuration rendered for `_base`, `web-nginx-flask` (with
+  `file_log`) and `pg-primary` passes `otelcol-contrib validate` without
+  warnings.
+- **nginx 1.30.5-alpine**: index digest read from the registry API (nginx's
+  stable line), platforms amd64 and arm64.
+- **Incus 6.0.6** (source of the tag): the CLI options used (`launch
+  --profile --config --vm`, global `--project`, `file push --create-dirs
+  --recursive --mode`, `publish --alias --reuse key=value...`, `image copy
+  <remote>:<fingerprint> local: --vm`, `image import <metadata> <root file
+  system> --alias`, `image alias create`); `image export <fingerprint> <dir>/` writes
+  `<fingerprint><ext>` for a unified image and `meta-<fingerprint><ext>` plus
+  `<fingerprint><ext>` for a split one, whose fingerprint is the sha256 of the
+  metadata followed by the root file system; `publish` starts from the
+  instance's metadata (inherited from its base image) and merges the given
+  properties, which travel inside the metadata through export and import;
+  `requirements.nesting=true` stops an instance without `security.nesting`
+  from starting; a project with `features.images=false` uses the default
+  project's images.
+- **cloud-init 26.1** (Ubuntu 24.04 updates): `cloud-init clean --logs
+  --machine-id --seed` exists (the machine-id becomes `uninitialized`, which
+  systemd replaces on first boot); `cc_ssh` deletes and regenerates the SSH
+  host keys of every new instance by default.
+- **Leakage lint calibration.** The specified patterns, applied as
+  substrings, find 523 tokens in a stock Ubuntu 24.04 cloud root file system
+  (`default` and its compounds, `ISO-8859-*`, `TIS-620`, `FIPS-140-2`,
+  `CVE-*`, `scenario` in `faillock.conf`, `fault` in `lvm.conf`); all of them
+  are baseline. The 33 packages that the six blueprints add to that root
+  (dependency closure over the noble, noble-updates and universe indexes,
+  downloaded from archive.ubuntu.com and checked against the indexes' sha256)
+  plus the agent package add 26 tokens: `default` compounds and
+  `scenario`/`scenarios` in the comments of `/etc/redis/redis.conf`. With the
+  two default allow rules the check reports none. The rendered recipe files
+  pass the lint (a test).
+- **Package contents**: `/usr/bin/gunicorn` (universe; the cloud images
+  enable main, universe, restricted and multiverse), the units `nginx`,
+  `postgresql`, `redis-server`, `docker` and `containerd`, `ab`,
+  `redis-cli` and `psql` where the tests expect them.
+
+### Findings to report (step 8)
+
+- **No build was run.** This environment has no Incus daemon and must not be
+  provisioned; the build flow is checked by syntax checks, ansible-lint, unit
+  tests of its decisions and expressions, and the CLI behavior read from the
+  Incus source. The first real build happens on a lab host (Phase 5
+  self-test).
+- **Every build waits for the base fingerprint.** `incus_base_images` is
+  still `TODO(verify)` (images.linuxcontainers.org is blocked here); the role
+  refuses to build until it is pinned. The how-to shows how to read it.
+- **In-image files name the project.** Files installed into images carry the
+  repository's managed-file header ("Managed by pokus-infra (...)"), as
+  BUILD_PROMPT §14 requires of templates. The word `pokus` is not one of the
+  specified leakage patterns, so the lint does not object; adding `(?i)pokus`
+  to `images_leakage_patterns` and dropping the header from in-image files is
+  possible if the owner wants images not to name the project.
+
+### Interpretations awaiting owner confirmation (step 8)
+
+1. **Leakage lint design** (ADR-0012): a baseline of the base image taken
+   inside the build instance before provisioning; findings are whole tokens;
+   allow rules name benign words that are cut out before the patterns are
+   applied again. The specified patterns are kept as substrings, `fault`,
+   `inject` and `scenario` case-insensitive and `ground_truth` also as
+   `ground-truth`/`groundtruth` (stricter than specified). Default allow
+   rules: `(?i)default`, and `(?i)scenarios?` in `etc/redis/redis.conf`.
+2. **Distribution packages are not version-pinned** in blueprints (the Ubuntu
+   archive keeps one version per package); the installed versions are recorded
+   in the export's `packages.txt`, and the base is pinned by fingerprint.
+3. **Image properties beyond the three of the contract**: Incus's
+   `requirements.nesting` (true for blueprints with `nesting`, so the platform
+   knows to launch them with `security.nesting=true`; proposed contract
+   addition) and `description`; both are always set because a published image
+   inherits its base's metadata.
+4. **`pokus.recipe_commit`** is the repository commit bootstrap records, with
+   `-dirty` appended when the infra tree had changes (`--allow-dirty`).
+5. **Exports**: the sum file is `SHA256SUMS` in `sha256sum` format; every
+   export has `build.json` (written last; its presence marks a complete
+   export); the upstream base goes to `_upstream/<base>/<fingerprint>/` with
+   `source.json`; files 0640 and directories 0750, root:pokus-admin.
+6. **Missing alias with an export** is restored by importing the export (or
+   by re-creating the alias when the image is still in the store), never by
+   building a different image; `images_rebuild` forces a build.
+7. **A failed build keeps its instance** `build-<blueprint>` for inspection;
+   the next run deletes and replaces it. Successful builds delete theirs.
+8. **Nesting per build instance**: the `build` profile enables nesting; each
+   build instance sets `security.nesting` to its blueprint's value.
+9. **Telemetry settings**: the agent always reads the whole journal; a
+   blueprint adds log files that do not go to the journal
+   (`telemetry.log_files`). `_base/agent.yml` renders the agent configuration
+   after every blueprint's provisioning, so each image has its own.
+10. **Tests**: a build runs its own blueprint's tests; derived blueprints do
+    not repeat `_base`'s.
+11. **Where the role runs**: `node_role` `full` and `lab`, last in `site.yml`;
+    in check mode it reports each blueprint's planned action and changes
+    nothing.
+
+### Open `TODO(verify)` items after step 8
+
+107 markers, unchanged: step 8 resolved nothing and added nothing. The Incus
+base image fingerprints (two lock lines) now block every image build.

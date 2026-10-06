@@ -1,0 +1,17 @@
+# Managed by pokus-infra (images/web-nginx-flask/files/webapp.service). Local changes will be overwritten.
+[Unit]
+Description=Web application (gunicorn)
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/srv/webapp
+ExecStart=/usr/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 --access-logfile - app:app
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

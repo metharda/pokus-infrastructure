@@ -135,3 +135,11 @@
           tags: [vllm]
       when: *pokus_serves_inference
       tags: [vllm]
+
+    - name: Golden images
+      ansible.builtin.include_role:
+        name: images
+        apply:
+          tags: [images]
+      when: node_role in ['full', 'lab']
+      tags: [images]

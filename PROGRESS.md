@@ -344,6 +344,13 @@ Proposed in infra step 7 (awaiting owner approval; written into
 - Inference: the deploy helper also renders `current.yaml` (the
   `vllm serve --config` file) next to `current.env`.
 
+Proposed in infra step 8 (same status; details in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 8"):
+
+- Golden images: the Incus property `requirements.nesting` is `true` for
+  blueprints that need nesting (a container engine inside the target), so the
+  platform launches them with `security.nesting=true`.
+
 ## Step status
 
 ### Phase 1 — infra/
@@ -356,8 +363,8 @@ Proposed in infra step 7 (awaiting owner approval; written into
 | 4 | versions.lock.yml + lock-check | done | `8df9199` |
 | 5 | Ansible foundation roles (four families) | done | `ced6b6d` |
 | 6 | docker, nvidia_container_toolkit, incus | done | `ea46ba3` |
-| 7 | postgres, observability, opa, vllm, models | done | commit "feat(infra): add the lab services: PostgreSQL, OPA, observability, vLLM and models" (SHA recorded with step 8) |
-| 8 | images | pending | — |
+| 7 | postgres, observability, opa, vllm, models | done | `99768ea` |
+| 8 | images | done | commit "feat(infra): add the golden image pipeline and six blueprints" (SHA recorded with step 9) |
 | 9 | lab_session, backup, restore.yml, rotate.yml | pending | — |
 | 10 | pokus-lab CLI with doctor and fingerprint | pending | — |
 | 11 | catalog and platform roles | pending | — |
@@ -435,6 +442,19 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   directories apart; service accounts now get their own primary groups; the
   run explorer's database panel assumes a table `public.runs` until the
   platform's migrations exist.
+- From step 8 ("Findings to report (step 8)" and "Interpretations awaiting
+  owner confirmation (step 8)"): the leakage lint's design (baseline of the
+  base image, whole-token findings, benign words; ADR-0012) and its default
+  allow rules; unpinned distribution packages recorded in `packages.txt`; the
+  extra image properties `requirements.nesting` and `description`; `-dirty`
+  in `pokus.recipe_commit`; the export layout (`SHA256SUMS`, `build.json`,
+  `_upstream/`); importing an export instead of rebuilding; failed builds
+  kept for inspection; nesting per build instance; the agent reading the
+  whole journal plus per-blueprint log files; each blueprint running only its
+  own tests; the role on `full` and `lab` nodes. Findings: no build could be
+  run here (no Incus); every build waits for the Incus base image
+  fingerprints; in-image files carry the managed-file header that names the
+  project, which the default leakage patterns allow.
 
 ## Owner deliverables pending
 
@@ -456,9 +476,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (107 after step 7; details
+`make verify-todos` lists every marker in the tree (107 after step 8; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 7"):
+step 4" through "after step 8"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -491,6 +511,9 @@ step 4" through "after step 7"):
   `infra/models.catalog.yml` (with two explanatory lines) and the field names
   of the Hugging Face tree API in `infra/docs/how-to/add-a-model.md` (with the
   catalog warning); Hugging Face is not reachable from the build environment.
+- Step 8: nothing added or resolved; the Incus base image fingerprints now
+  block every golden image build (images.linuxcontainers.org is not reachable
+  from the build environment).
 
 Known items for later steps (each becomes a `TODO(verify)` entry when its file
 is written, unless verified first):
@@ -542,8 +565,7 @@ is written, unless verified first):
 
 ## Next step
 
-Infra step 8 (`images`: the golden image pipeline with the `_base`,
-`web-nginx-flask`, `pg-primary`, `redis-cache`, `docker-host` and
-`probe-client` blueprints, their tests and the leakage lint; the in-image
-OTel agent sends to `127.0.0.1:4317` inside the instance, and to the VM
-listener for VM blueprints).
+Infra step 9 (`lab_session`, `backup`, `restore.yml` and `rotate.yml`:
+restic backups of `/srv/pokus` and `/etc/pokus`, PostgreSQL dumps, the
+restore play that also re-imports golden images from their exports and
+checks their fingerprints, and secret and certificate rotation).

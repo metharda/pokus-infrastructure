@@ -598,6 +598,93 @@ Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
 - Type: `list` of `str`
 - Default: `{{ ['pokus-build0'] + pokus_incus_personal_bridge_patterns }}`
 
+## images
+
+Build, test, leakage-lint, publish and export the golden images of images/.
+
+Entry points: `main` (Build, test, leakage-lint, publish and export the golden images of images/). Role README: `ansible/roles/images/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `pokus_bootstrap` | bootstrap.sh | Bootstrap options; repo_commit and infra_dirty become the pokus.recipe_commit property. |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (images/ recipes). |
+| `pokus_root` | [lab-wide](#pokus_root) | Research space root; the exports go to its images/ directory. |
+| `pokus_versions` | host_vars | The pinned versions (generated group_vars versions.yml): the base images, the agent and the target container images. |
+
+### `images_blueprints`
+
+Blueprints to build, in build order (a base blueprint before the blueprints that start from it).
+
+- Type: `list` of `str`
+- Default: `[_base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]`
+
+### `images_rebuild`
+
+Build the listed blueprints again although their alias and export exist; the new image replaces the alias and the export of the same version.
+
+- Type: `bool`
+- Default: `false`
+
+### `images_export_root`
+
+Root of the exports, &lt;blueprint&gt;/&lt;version&gt;/ and _upstream/&lt;base&gt;/&lt;fingerprint&gt;/ (pokus_root/images).
+
+- Type: `path`
+- Default: `{{ pokus_root }}/images`
+
+### `images_project`
+
+Incus project of the build instances.
+
+- Type: `str`
+- Default: `build`
+
+### `images_profile`
+
+Incus profile of the build instances.
+
+- Type: `str`
+- Default: `build`
+
+### `images_boot_timeout`
+
+Seconds to wait for cloud-init in a new build instance.
+
+- Type: `int`
+- Default: `900`
+
+### `images_leakage_paths`
+
+Directories whose file names and contents the leakage lint checks (unit names, the host name and .git directories are always checked).
+
+- Type: `list` of `str`
+- Default: `[/etc, /opt, /srv, /usr/local]`
+
+### `images_leakage_patterns`
+
+Python regular expressions that fail the build when the build adds a match.
+
+- Type: `list` of `str`
+- Default:
+
+    ```yaml
+    ['[A-Z]+-[0-9]{3}', '(?i)fault', '(?i)inject', '(?i)ground[_-]?truth', '(?i)scenario']
+    ```
+
+### `images_leakage_allow`
+
+Benign words ({match, optional path}, regular expressions) cut out of a finding before the patterns are applied again.
+
+- Type: `list` of `dict`
+- Default:
+
+    ```yaml
+    - {match: '(?i)default'}
+    - {match: '(?i)scenarios?', path: etc/redis/redis\.conf}
+    ```
+
 ## incus
 
 Incus LTS with the pool, networks, run ACL, projects, profiles and service certificates.

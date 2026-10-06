@@ -1,0 +1,66 @@
+# Managed by pokus-infra (ansible/roles/images/tasks/main.yml). Local changes will be overwritten.
+#
+# Golden image pipeline (BUILD_PROMPT §7.13): build every listed blueprint
+# that has no image yet, publish it as <blueprint>/<version> and export it
+# with its upstream base to images_export_root.
+
+- name: Read the blueprints
+  ansible.builtin.set_fact:
+    images_specs: >-
+      {{ images_specs | default({})
+         | combine({item: lookup('ansible.builtin.file', images_recipe_root ~ '/' ~ item ~ '/image.yaml') | from_yaml}) }}
+  loop: "{{ images_blueprints }}"
+
+- name: Check the blueprints against the build order and the pinned versions
+  ansible.builtin.assert:
+    that:
+      - images_spec.name == item
+      - images_spec.base.blueprint is not defined
+        or images_spec.base.blueprint in images_blueprints[:images_index]
+      - images_spec.base.image is not defined
+        or images_spec.base.image in pokus_versions.incus_base_images.images
+      - images_spec.base.image is not defined
+        or images_instance_types[images_spec.type] == pokus_versions.incus_base_images.images[images_spec.base.image].type
+      - images_spec.base.blueprint is not defined
+        or images_spec.type == images_specs[images_spec.base.blueprint].type | default('')
+      - images_spec.docker_images | difference(pokus_versions.containers.target_images | default({}) | list) == []
+    fail_msg: >-
+      Blueprint {{ item }}: the name must match its directory, a base blueprint must come
+      earlier in images_blueprints and have the same type, a base image must be a key of
+      versions.lock.yml incus_base_images with the same type, and docker_images must be keys
+      of containers.target_images.
+    quiet: true
+  loop: "{{ images_blueprints }}"
+  loop_control:
+    index_var: images_index
+  vars:
+    images_spec: "{{ images_specs[item] }}"
+
+- name: Create the directories of the exports and the build state
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ images_export_root }}", group: pokus-admin, mode: "0750"}
+    - {path: "{{ images_upstream_dir }}", group: pokus-admin, mode: "0750"}
+    - {path: "{{ images_work_dir }}", group: root, mode: "0700"}
+    - {path: "{{ images_files_helper | dirname }}", group: root, mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the export helper
+  ansible.builtin.copy:
+    src: pokus_image_files.py
+    dest: "{{ images_files_helper }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Process the blueprints
+  ansible.builtin.include_tasks: blueprint.yml
+  loop: "{{ images_blueprints }}"
+  loop_control:
+    loop_var: images_name

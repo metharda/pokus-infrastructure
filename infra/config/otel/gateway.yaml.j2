@@ -42,9 +42,9 @@ processors:
   batch: {}
 
 exporters:
-  otlphttp/loki:
+  otlp_http/loki:
     endpoint: http://127.0.0.1:{{ pokus_ports.loki }}/otlp
-  otlp/tempo:
+  otlp_grpc/tempo:
     endpoint: 127.0.0.1:{{ pokus_internal_ports.tempo_otlp_grpc }}
     tls:
       insecure: true
@@ -69,7 +69,7 @@ service:
     logs:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/loki]
+      exporters: [otlp_http/loki]
     metrics:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
@@ -77,4 +77,4 @@ service:
     traces:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/tempo]
+      exporters: [otlp_grpc/tempo]

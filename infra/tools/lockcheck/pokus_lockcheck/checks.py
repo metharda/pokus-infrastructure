@@ -141,8 +141,12 @@ def container_findings(
         Errors for missing digests, warnings for moved tags.
     """
     findings: list[Finding] = []
-    for name, entry in doc["containers"]["images"].items():
-        where = f"containers.images.{name}"
+    pinned = [
+        (f"containers.{group}.{name}", entry)
+        for group in ("images", "target_images")
+        for name, entry in doc["containers"].get(group, {}).items()
+    ]
+    for where, entry in pinned:
         image, tag, digest = entry["image"], entry["tag"], entry["digest"]
         if not _verified(tag, digest):
             continue

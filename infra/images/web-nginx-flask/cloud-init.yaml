@@ -1,0 +1,7 @@
+#cloud-config
+# Managed by pokus-infra (images/web-nginx-flask/cloud-init.yaml). Local changes will be overwritten.
+#
+# User data of the build instance; provisioning happens in provision.yml.
+package_update: false
+package_upgrade: false
+ssh_pwauth: false

@@ -1,0 +1,81 @@
+# Managed by pokus-infra (images/_base/provision.yml). Local changes will be overwritten.
+#
+# Provisioning of `_base` inside the build instance (BUILD_PROMPT §7.13),
+# run by the images role through the community.general.incus connection.
+# Variables: image (image.yaml), otel_agent (versions.lock.yml
+# binaries.otelcol_contrib with this architecture's asset). The agent is
+# configured and started by agent.yml, which runs after the provisioning of
+# every blueprint.
+- name: Provision the base image
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Install the packages
+      ansible.builtin.apt:
+        name: "{{ image.packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    - name: Keep the image unchanged after the build
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: false
+        masked: true
+      loop: [apt-daily.timer, apt-daily-upgrade.timer, unattended-upgrades.service]
+      register: base_masked
+      # unattended-upgrades is absent from some base images; any other failure counts.
+      failed_when: base_masked is failed and 'not found' not in (base_masked.msg | default(''))
+
+    - name: Create the directories of the configuration drop-ins
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /etc/systemd/journald.conf.d
+        - /etc/systemd/system/otelcol-contrib.service.d
+        - /usr/local/libexec/otel-agent
+
+    - name: Keep the journal on disk
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/50-persistent.conf
+        content: |
+          [Journal]
+          Storage=persistent
+        mode: "0644"
+
+    - name: Set the time zone to UTC
+      ansible.builtin.file:
+        src: /usr/share/zoneinfo/Etc/UTC
+        dest: /etc/localtime
+        state: link
+        force: true
+
+    - name: Record the time zone
+      ansible.builtin.copy:
+        dest: /etc/timezone
+        content: "Etc/UTC\n"
+        mode: "0644"
+
+    - name: Download the OpenTelemetry agent
+      ansible.builtin.get_url:
+        url: "{{ otel_agent.url }}"
+        checksum: "sha256:{{ otel_agent.sha256 }}"
+        dest: /tmp/otelcol-contrib.deb
+        mode: "0644"
+
+    - name: Install the OpenTelemetry agent
+      ansible.builtin.apt:
+        deb: /tmp/otelcol-contrib.deb
+
+    - name: Remove the agent package file
+      ansible.builtin.file:
+        path: /tmp/otelcol-contrib.deb
+        state: absent
+
+    - name: Install the resource attribute helper
+      ansible.builtin.copy:
+        src: files/resource-env.sh
+        dest: /usr/local/libexec/otel-agent/resource-env
+        mode: "0755"

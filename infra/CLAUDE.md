@@ -134,6 +134,16 @@ the prompt text where they differ.
   networks are created once and never rewritten. Only the docker role writes
   `/etc/docker/daemon.json`.
 
+## Golden images (BUILD_PROMPT §7.13)
+
+- Blueprints live in `images/<blueprint>/`; `make lint-schemas` checks every
+  `image.yaml`, `make lint-ansible` syntax-checks every `provision.yml`.
+- Raise a blueprint's `version` whenever its recipe or its base changes; the
+  role never rebuilds an existing `<blueprint>/<version>`.
+- Files installed into images must pass the leakage lint
+  (`ansible/tests/test_images.py`); never weaken `images_leakage_patterns`,
+  add a narrow benign word to `images_leakage_allow` instead (ADR-0012).
+
 ## Code style (BUILD_PROMPT §14)
 
 - Bash: `set -Eeuo pipefail`, `local` in functions, quoted expansions,

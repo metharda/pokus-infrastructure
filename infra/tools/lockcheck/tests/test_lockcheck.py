@@ -95,6 +95,11 @@ def test_committed_lock_matches_its_schema(lock: dict[str, Any]) -> None:
             "binaries.restic.assets.x86_64.url",
         ),
         (
+            ("containers", "target_images", "docker_host_web", "tag"),
+            "latest",
+            "containers.target_images.docker_host_web.tag",
+        ),
+        (
             ("repository_keys", "keys", "docker-deb", "fingerprint"),
             "9dc8",
             "repository_keys.keys.docker-deb.fingerprint",
@@ -158,6 +163,25 @@ def test_missing_digest_and_registry_errors() -> None:
     assert "registry request failed" in checks.container_findings(image_doc(), failing)[0].message
 
 
+def test_target_images_are_checked_too() -> None:
+    doc = image_doc()
+    doc["containers"]["target_images"] = {"web": doc["containers"]["images"]["x"]}
+    findings = checks.container_findings(doc, lambda image, ref: None)
+    assert [f.where for f in findings] == ["containers.images.x", "containers.target_images.web"]
+
+
+def test_committed_target_images_and_agent_package(lock: dict[str, Any]) -> None:
+    targets = lock["containers"]["target_images"]
+    assert targets, "the docker-host blueprint needs a pinned image"
+    for entry in targets.values():
+        assert entry["digest"].startswith("sha256:")
+        assert entry["tag"] != "latest"
+    agent = lock["binaries"]["otelcol_contrib"]
+    assert agent["format"] == "deb"
+    assert sorted(agent["assets"]) == ["aarch64", "x86_64"]
+    assert all(a["url"].endswith(".deb") for a in agent["assets"].values())
+
+
 def test_unverified_images_are_skipped() -> None:
     def never(image: str, ref: str) -> str:
         raise AssertionError("must not be called")
@@ -209,6 +233,7 @@ def test_fetch_binary_installs_verified_executables(tmp_path: Path) -> None:
     [
         (binary_doc(), "other", "x86_64", "no binary"),
         (binary_doc("tar.gz"), "tool", "x86_64", "not a single binary"),
+        (binary_doc("deb"), "tool", "x86_64", "not a single binary"),
         (binary_doc(), "tool", "riscv64", "no asset for riscv64"),
         (binary_doc(sha256="TODO(verify)"), "tool", "x86_64", "not verified"),
         (binary_doc(sha256="0" * 64), "tool", "x86_64", "sha256 is"),

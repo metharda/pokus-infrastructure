@@ -1,0 +1,45 @@
+# Managed by pokus-infra (images/docker-host/provision.yml). Local changes will be overwritten.
+#
+# Docker Engine and the containerized web service (BUILD_PROMPT §7.13), on
+# top of `_base`. Variables: target_images (versions.lock.yml
+# containers.target_images of image.docker_images).
+- name: Provision the Docker host blueprint
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install the packages
+      ansible.builtin.apt:
+        name: "{{ image.packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    - name: Start Docker
+      ansible.builtin.systemd_service:
+        name: docker.service
+        enabled: true
+        state: started
+
+    - name: Preload the images by digest
+      ansible.builtin.command:
+        argv: [docker, pull, "{{ item.image }}@{{ item.digest }}"]
+      register: docker_pull
+      changed_when: "'Downloaded newer image' in docker_pull.stdout"
+      loop: "{{ target_images }}"
+      loop_control:
+        label: "{{ item.image }}@{{ item.digest }}"
+
+    - name: Install the web service's unit
+      ansible.builtin.template:
+        src: files/web-container.service.j2
+        dest: /etc/systemd/system/web-container.service
+        mode: "0644"
+      vars:
+        web_image: "{{ target_images[0].image }}@{{ target_images[0].digest }}"
+
+    - name: Start the web service
+      ansible.builtin.systemd_service:
+        name: web-container.service
+        enabled: true
+        state: restarted
+        daemon_reload: true

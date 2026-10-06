@@ -88,12 +88,23 @@ def _containers(lock: dict[str, Any]) -> list[str]:
         [name, f"`{e['image']}`", _code(e["tag"]), _code(e["digest"]), e["platforms"]]
         for name, e in section["images"].items()
     ]
-    return [
+    targets = [
+        [name, f"`{e['image']}`", _code(e["tag"]), _code(e["digest"]), e["platforms"]]
+        for name, e in section.get("target_images", {}).items()
+    ]
+    parts = [
         "\n## Container images\n\n",
         "Every image is used by digest; the tag is informational. ",
         _section_note(section),
         pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], rows),
     ]
+    if targets:
+        parts += [
+            "\nPulled inside golden images by blueprints with a container engine "
+            "(`docker_images` of `images/<blueprint>/image.yaml`), never on the host:\n\n",
+            pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], targets),
+        ]
+    return parts
 
 
 def _keys(lock: dict[str, Any]) -> list[str]:
