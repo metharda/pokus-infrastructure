@@ -142,6 +142,14 @@ which catches package names and module arguments that do not fit a family
 without provisioning anything. [How to test the
 distributions](../how-to/test-distributions.md) has the commands.
 
+Check mode changes nothing, so on a fresh host a unit, file or account that
+an earlier task would create is still missing when a later task manages it.
+`platform_facts` therefore records in check mode what exists when the play
+starts (`pokus_present`: systemd units and accounts), and such later tasks
+carry `when: not ansible_check_mode or <it exists>`. Outside check mode the
+condition is always true. A test fails when a fast-lane role manages a unit,
+`lineinfile` target, authorized key or ACL without such a condition.
+
 ## When a host cannot be supported
 
 Immutable distributions, non-systemd distributions, musl-based

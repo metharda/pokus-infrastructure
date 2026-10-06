@@ -20,3 +20,5 @@
     name: dnf-automatic.timer
     enabled: "{{ base_auto_updates_effective }}"
     state: "{{ 'started' if base_auto_updates_effective else 'stopped' }}"
+  # In check mode the package above is not installed (pokus_present: platform_facts).
+  when: not ansible_check_mode or 'dnf-automatic.timer' in pokus_present.units

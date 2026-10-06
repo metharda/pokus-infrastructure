@@ -36,3 +36,5 @@
     enabled: true
     state: started
     daemon_reload: true
+  # In check mode the unit above is not written (pokus_present: platform_facts).
+  when: not ansible_check_mode or 'pokus-nftables.service' in pokus_present.units

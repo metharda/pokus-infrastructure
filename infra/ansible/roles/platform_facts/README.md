@@ -25,6 +25,7 @@ facts (`make lint` enforces this).
 | `pokus_firewall_backend` | `nftables`, `firewalld` or `ufw` |
 | `pokus_repositories`, `pokus_component_sources` | the component source matrix |
 | `pokus_community_repos_allowed` | consent to community repositories |
+| `pokus_present` | check mode only: the systemd units (`units`) and accounts (`users`) that exist when the play starts; empty lists otherwise |
 
 ## Variables
 
@@ -36,4 +37,5 @@ None.
 
 ## Idempotency
 
-Sets facts only; changes nothing on the host.
+Sets facts only; changes nothing on the host. In check mode it lists the unit
+files and reads the account database for `pokus_present`.

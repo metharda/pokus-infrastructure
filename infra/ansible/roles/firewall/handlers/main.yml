@@ -4,6 +4,8 @@
     name: pokus-nftables.service
     state: reloaded
     daemon_reload: true
+  # In check mode the unit is not written (pokus_present: platform_facts).
+  when: not ansible_check_mode or 'pokus-nftables.service' in pokus_present.units
 
 - name: Reload firewalld
   ansible.builtin.systemd_service:
@@ -15,3 +17,4 @@
     name: pokus-docker-incus-compat.service
     state: restarted
     daemon_reload: true
+  when: not ansible_check_mode or 'pokus-docker-incus-compat.service' in pokus_present.units

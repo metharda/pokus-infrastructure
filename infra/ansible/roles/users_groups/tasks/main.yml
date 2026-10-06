@@ -49,6 +49,7 @@
   ansible.builtin.getent:
     database: group
     key: pokus-admin
+    fail_key: false  # in check mode the group above is not created
 
 - name: Remove non-admins and removed researchers from pokus-admin
   ansible.builtin.command:

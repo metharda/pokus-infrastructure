@@ -13,3 +13,5 @@
     name: "{{ pokus_service_names.ssh }}"
     state: reloaded
   listen: sshd configuration changed
+  # In check mode the OpenSSH server may not be installed (pokus_present: platform_facts).
+  when: not ansible_check_mode or (pokus_service_names.ssh ~ '.service') in pokus_present.units

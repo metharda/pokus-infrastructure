@@ -24,6 +24,8 @@
     name: "{{ base_timesync_service or base_timesync_default_service }}"
     enabled: true
     state: started
+  # In check mode the default package above is not installed.
+  when: not ansible_check_mode or base_timesync_service != ''
 
 - name: Read the synchronization state
   ansible.builtin.command:

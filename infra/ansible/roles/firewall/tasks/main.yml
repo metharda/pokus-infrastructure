@@ -31,3 +31,5 @@
     name: pokus-docker-incus-compat.service
     enabled: true
     daemon_reload: true
+  # In check mode the unit above is not written (pokus_present: platform_facts).
+  when: not ansible_check_mode or 'pokus-docker-incus-compat.service' in pokus_present.units

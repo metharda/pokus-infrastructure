@@ -1562,6 +1562,38 @@ not (see PROGRESS, known issues).
   remote could be verified here; one is added once verified (BUILD_PROMPT
   §19.9 asks for one "if an image is available").
 
+### Fast lane findings (follow-up commits)
+
+1. **First run**: every family stopped before Ansible because preflight was
+   copied into the container's `/tmp`, a tmpfs, which `docker cp` cannot
+   write into. Preflight now goes to `/opt/pokus-ci/preflight`, and an empty
+   report names preflight's exit status and error output.
+2. **Check mode on a fresh host** (found by reading the modules while the
+   first run was red; BUILD_PROMPT §17 also asks for `bootstrap.sh --check`
+   on a fresh test host):
+   - ansible-core 2.21's `systemd_service` fails in check mode on a unit
+     that does not exist, so it fails on units whose package or unit file an
+     earlier task would install;
+   - `lineinfile` fails on a missing file (`sshd_config` before
+     openssh-server);
+   - `authorized_key` fails for an account the run would create;
+   - `acl` fails on a directory the run would create;
+   - `getent` fails on a group the run would create.
+
+   `platform_facts` now records in check mode what exists when the play
+   starts (`pokus_present`). The fast-lane roles skip such tasks in check
+   mode while the object is missing; `getent` no longer fails on a missing
+   key. `ansible/tests/test_roles.py` fails when a fast-lane role manages a
+   unit, `lineinfile` target, authorized key or ACL without such a guard.
+   The other roles get the same treatment before the infra acceptance run
+   (`bootstrap.sh --check`).
+3. **Package modules in check mode**: `apt` and `dnf5` install their Python
+   bindings on demand, but not in check mode, and `apt` does not refresh its
+   lists in check mode. The CI containers therefore carry python3-apt or
+   python3-libdnf5 and keep their package metadata; they also carry procps,
+   whose `sysctl` the base role's `sysctl` module needs and which every real
+   host has.
+
 ### Interpretations awaiting owner confirmation (step 12)
 
 1. **Images**: test VMs use the `images` remote's aliases, resolved when the

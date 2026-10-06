@@ -23,7 +23,9 @@ from pokus_test_distros.incus import Result, Runner
 INFRA = Path(__file__).resolve().parents[3]
 CONTAINERS = INFRA / "tests" / "distros" / "containers"
 PLAYBOOK = INFRA / "ansible" / "check-mode.yml"
-GUEST_PREFLIGHT = "/tmp/pokus-preflight"  # noqa: S108 - inside the disposable container
+# Not below /tmp: that is a tmpfs in the container, and docker cp cannot write into tmpfs mounts.
+GUEST_DIR = "/opt/pokus-ci"
+GUEST_PREFLIGHT = f"{GUEST_DIR}/preflight"
 SYSTEMD_STATES = ("running", "degraded")
 
 
@@ -173,7 +175,11 @@ class CheckMode:
 
         Returns:
             The extra variables with its host profile.
+
+        Raises:
+            CheckModeError: If preflight printed no report.
         """
+        self._check(self._exec("mkdir", "-p", GUEST_DIR), "creating the preflight directory")
         self._check(
             self._docker("cp", str(INFRA / "preflight"), f"{self.name}:{GUEST_PREFLIGHT}"),
             "docker cp",
@@ -191,6 +197,11 @@ class CheckMode:
             "--offline",
             "--quiet",
         )
+        if not report.stdout.strip():
+            raise CheckModeError(
+                f"preflight printed no report (exit status {report.returncode}): "
+                f"{report.stderr.strip()[-600:]}"
+            )
         return extra_vars(report.stdout, interpreter)
 
     def play(self, variables: dict[str, Any]) -> Result:

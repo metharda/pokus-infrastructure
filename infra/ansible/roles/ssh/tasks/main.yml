@@ -20,6 +20,8 @@
     group: root
     mode: "0644"
   notify: sshd configuration changed
+  # In check mode the package above is not installed (pokus_present: platform_facts).
+  when: not ansible_check_mode or (pokus_service_names.ssh ~ '.service') in pokus_present.units
 
 - name: Install the Pokus sshd drop-in
   ansible.builtin.template:
@@ -35,3 +37,4 @@
     name: "{{ pokus_service_names.ssh }}"
     enabled: true
     state: started
+  when: not ansible_check_mode or (pokus_service_names.ssh ~ '.service') in pokus_present.units

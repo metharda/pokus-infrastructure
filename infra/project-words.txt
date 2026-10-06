@@ -34,6 +34,7 @@ incusbr
 IOMMU
 iotop
 journalctl
+libdnf
 libexec
 libnvidia
 libpq
@@ -56,6 +57,7 @@ pids
 pokus
 prepreflight
 preseed
+procps
 qwen
 rego
 repodata
@@ -71,6 +73,7 @@ sysstat
 tailnet
 tailscaled
 timesyncd
+tmpfs
 typst
 versionlock
 veth

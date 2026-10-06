@@ -348,10 +348,16 @@ PROFILE = {"schema_version": 1, "provider": None, "family": "debian", "outcome":
 class FakeDocker:
     """Answers docker and ansible-playbook for one fast-lane run."""
 
-    def __init__(self, profile: dict[str, Any] | None = None, ansible_rc: int = 0) -> None:
+    def __init__(
+        self,
+        profile: dict[str, Any] | None = None,
+        ansible_rc: int = 0,
+        preflight_crash: str = "",
+    ) -> None:
         self.calls: list[tuple[str, ...]] = []
         self.profile = PROFILE if profile is None else profile
         self.ansible_rc = ansible_rc
+        self.preflight_crash = preflight_crash
         self.boot = iter(["starting", "", "degraded"])
 
     def __call__(self, argv: Sequence[str], *, timeout: float | None = None) -> Result:
@@ -365,6 +371,8 @@ class FakeDocker:
         elif args[1] == "exec" and args[3] == "sh":
             out = "/usr/bin/python3\n"
         elif args[1] == "exec" and "pokus_preflight" in args:
+            if self.preflight_crash:
+                return Result(args, 1, "", self.preflight_crash)
             rc, out = 20, json.dumps(self.profile)
         return Result(args, rc, out, "")
 
@@ -383,6 +391,11 @@ def test_check_mode_run(tmp_path: Path) -> None:
     assert f"BASE={pinned['image']}@{pinned['digest']}" in build
     play = next(c for c in fake.calls if c[0] == "ansible-playbook")
     assert "--check" in play and play[-1].endswith("ansible/check-mode.yml")
+    # Preflight is copied outside /tmp, a tmpfs that docker cp cannot write into.
+    mkdir = next(i for i, c in enumerate(fake.calls) if c[1:2] == ("exec",) and c[3] == "mkdir")
+    copy = next(c for c in fake.calls if c[:2] == ("docker", "cp"))
+    assert fake.calls[mkdir][-1] == "/opt/pokus-ci" and verbs.index("cp") > mkdir
+    assert copy[-1] == "pokus-ci-debian-13:/opt/pokus-ci/preflight"
     variables = json.loads((tmp_path / "debian_13-vars.json").read_text())
     assert variables["host_profile"]["provider"] == "baremetal"  # treated like bare metal
     assert variables["ansible_python_interpreter"] == "/usr/bin/python3"
@@ -402,6 +415,9 @@ def test_check_mode_failures(tmp_path: Path) -> None:
     assert checkmode.main("debian_13", broken, tmp_path, write=printed.append, sleep=NO_SLEEP) == 2
     assert "no host profile" in printed[-1]
     assert broken.calls[-1][:2] == ("docker", "rm")  # removed although it failed
+    crash = FakeDocker(preflight_crash="No module named pokus_preflight")
+    assert checkmode.main("debian_13", crash, tmp_path, write=printed.append, sleep=NO_SLEEP) == 2
+    assert "exit status 1" in printed[-1] and "No module named pokus_preflight" in printed[-1]
     assert (
         checkmode.main(
             "debian_13", FakeDocker(ansible_rc=2), tmp_path, write=printed.append, sleep=NO_SLEEP

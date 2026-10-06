@@ -12,7 +12,10 @@
     manage_dir: true
     state: present
   loop: "{{ researchers }}"
-  when: (pokus_infra_dir ~ '/' ~ item.keys_file) is file
+  when:
+    - (pokus_infra_dir ~ '/' ~ item.keys_file) is file
+    # In check mode new accounts are not created (pokus_present: platform_facts).
+    - not ansible_check_mode or item.name in pokus_present.users
 
 - name: Report researchers without a key file
   ansible.builtin.debug:

@@ -18,3 +18,5 @@
     enabled: "{{ base_auto_updates_effective }}"
     state: "{{ 'started' if base_auto_updates_effective else 'stopped' }}"
     daemon_reload: true
+  # In check mode the units above are not written (pokus_present: platform_facts).
+  when: not ansible_check_mode or 'pokus-security-patch.timer' in pokus_present.units

@@ -236,3 +236,47 @@ def test_site_applies_every_role_tagged_with_its_name() -> None:
     assert sorted(set(ROLE_NAMES) - HELPER_ROLES - set(applied)) == []
     for name, tags in applied.items():
         assert name in tags, name
+
+
+# Modules that fail in check mode when the unit, file, account or directory
+# they manage does not exist yet, as on a fresh host where only an earlier
+# task of the same run would create it.
+NEEDS_EXISTING = (
+    "ansible.builtin.systemd_service",
+    "ansible.builtin.lineinfile",
+    "ansible.posix.authorized_key",
+    "ansible.posix.acl",
+)
+# Units that exist before any role runs.
+PREEXISTING_UNITS = {
+    "systemd-journald": "part of systemd",
+    "firewalld": "the firewalld backend is only chosen when firewalld is installed",
+}
+
+
+def check_mode_roles() -> list[str]:
+    play = load_yaml(ANSIBLE / "check-mode.yml")[0]
+    return [t[m]["name"] for t in play["tasks"] for m in INCLUDE_ROLE if m in t]
+
+
+def test_check_mode_roles_skip_what_the_run_would_create() -> None:
+    """The CI fast lane runs these roles in check mode on fresh containers (§19.9)."""
+    roles = check_mode_roles()
+    assert {"platform_facts", "base", "ssh", "firewall"} <= set(roles)
+    facts = load_yaml(ROLES / "platform_facts" / "tasks" / "main.yml")
+    assert any("pokus_present" in t.get("ansible.builtin.set_fact", {}) for t in facts)
+    for role in roles:
+        paths = task_files(role) + sorted((ROLES / role / "handlers").glob("main.yml"))
+        for path in paths:
+            for task in walk_tasks(load_yaml(path)):
+                module = next((m for m in NEEDS_EXISTING if m in task), None)
+                if module is None:
+                    continue
+                params = task[module]
+                if module == "ansible.builtin.systemd_service" and (
+                    "name" not in params or params["name"] in PREEXISTING_UNITS
+                ):
+                    continue
+                if module == "ansible.builtin.lineinfile" and params.get("create"):
+                    continue
+                assert "ansible_check_mode" in str(task.get("when", "")), (path, task["name"])

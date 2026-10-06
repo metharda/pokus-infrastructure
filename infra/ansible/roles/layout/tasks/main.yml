@@ -25,6 +25,16 @@
   loop_control:
     label: "{{ item.path or '.' }}"
 
+- name: Find the directories with default ACLs that exist already (check mode)
+  ansible.builtin.stat:
+    path: "{{ pokus_root }}/{{ item.path }}"
+    get_checksum: false
+  loop: "{{ pokus_layout | selectattr('default_acl', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: layout_acl_dirs
+  when: ansible_check_mode
+
 - name: Set the default ACLs
   ansible.posix.acl:
     path: "{{ pokus_root }}/{{ item.0.path }}"
@@ -36,6 +46,10 @@
   loop: "{{ pokus_layout | subelements('default_acl', skip_missing=True) }}"
   loop_control:
     label: "{{ item.0.path }} {{ item.1 }}"
+  # In check mode the directories above are not created.
+  when: >-
+    not ansible_check_mode
+    or item.0.path in (layout_acl_dirs.results | selectattr('stat.exists') | map(attribute='item.path'))
 
 - name: Create the per-researcher directories
   ansible.builtin.file:
