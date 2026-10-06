@@ -1,0 +1,87 @@
+# Managed by pokus-infra (ansible/roles/lab_session/tasks/main.yml). Local changes will be overwritten.
+#
+# pokus-lab.target with the health gate and the session record (BUILD_PROMPT
+# §7.16). Sleep inhibition belongs to the provider roles (power_policy).
+
+- name: Create the directories of the helpers and the session records
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ lab_session_libexec }}"
+    - "{{ lab_session_sessions_dir }}"
+
+- name: Install the helpers
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ lab_session_libexec }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - {src: pokus_health_gate.py, dest: health-gate}
+    - {src: pokus_session_start.py, dest: session-start}
+
+- name: Read the Docker daemon configuration (how containers get the GPU)
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: lab_session_daemon_json
+  failed_when: false
+  when: lab_session_gpu
+
+- name: Describe the checks of the health gate
+  ansible.builtin.set_fact:
+    lab_session_checks: >-
+      {{ {'time': {'wsl': pokus_provider == 'wsl2', 'ntp_reference': lab_session_ntp_reference,
+                   'max_offset': lab_session_max_clock_offset | float},
+          'collector': {'url': lab_session_collector_health}}
+         | combine({'postgres': {'container': lab_session_postgres_container}, 'incus': {}}
+                   if node_role in ['full', 'lab'] else {})
+         | combine({'gpu': {'image': lab_session_gpu_image, 'device_args': lab_session_gpu_args}}
+                   if lab_session_gpu else {}) }}
+  vars:
+    lab_session_docker: "{{ (lab_session_daemon_json.content | default('e30=')) | b64decode | from_json }}"
+    lab_session_gpu_args: >-
+      {{ ['--device', 'nvidia.com/gpu=all'] if (lab_session_docker.features | default({})).cdi | default(false)
+         else ['--runtime', 'nvidia', '--gpus', 'all'] }}
+
+- name: Write the health gate's configuration
+  ansible.builtin.copy:
+    dest: "{{ lab_session_gate_config }}"
+    content: >-
+      {{ {'schema_version': 1, 'timeout': lab_session_gate_timeout | int,
+          'interval': lab_session_gate_interval | int, 'checks': lab_session_checks} | to_nice_json }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the lab session units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ lab_session_units }}"
+  register: lab_session_unit_files
+
+- name: Enable the health gate and the session record
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    daemon_reload: "{{ lab_session_unit_files is changed }}"
+  loop: [pokus-health-gate.service, pokus-session-start.service]
+
+- name: Start the lab at boot or not
+  ansible.builtin.systemd_service:
+    name: pokus-lab.target
+    enabled: "{{ lab_session_autostart | bool }}"
+
+- name: Bring the lab up (waits for the health gate and the session record)
+  ansible.builtin.systemd_service:
+    name: pokus-lab.target
+    state: started
+  when: not ansible_check_mode

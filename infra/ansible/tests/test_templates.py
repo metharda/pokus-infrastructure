@@ -50,6 +50,13 @@ TESTED_TEMPLATES = {
     # Tested in test_vllm.py:
     ("vllm", "pokus-vllm-deploy.socket.j2"),
     ("vllm", "pokus-vllm-deploy@.service.j2"),
+    # Tested in test_lab_session.py:
+    ("lab_session", "pokus-lab.target.j2"),
+    ("lab_session", "pokus-health-gate.service.j2"),
+    ("lab_session", "pokus-session-start.service.j2"),
+    # Tested in test_backup.py:
+    ("backup", "backup-job.service.j2"),
+    ("backup", "backup-job.timer.j2"),
 }
 
 

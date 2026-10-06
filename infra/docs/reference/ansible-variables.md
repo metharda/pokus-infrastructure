@@ -278,6 +278,112 @@ Bridges of the researchers' personal Incus projects (incusbr-&lt;uid&gt;); unlik
 
 - Default: `[incusbr-*]`
 
+## backup
+
+restic backups of pokus_root and /etc/pokus, PostgreSQL dumps, retention and backup metrics.
+
+Entry points: `main` (restic backups of pokus_root and /etc/pokus, PostgreSQL dumps, retention and backup metrics). Role README: `ansible/roles/backup/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `machine_name` | [lab-wide](#machine_name) | Host name recorded in the snapshots; prune and restore select this host's snapshots. |
+| `node_role` | [lab-wide](#node_role) | PostgreSQL is dumped on full and lab nodes. |
+| `pokus_root` | [lab-wide](#pokus_root) | Research space root; its directories of backup_include are backed up. |
+| `pokus_versions` | host_vars | The pinned versions (the restic binary). |
+
+### `backup_repository`
+
+restic repository (default vault_restic_repository); empty means backups are not configured.
+
+- Type: `str`
+- Default: `{{ vault_restic_repository | default('') }}`
+
+### `backup_password`
+
+Repository password (default vault_restic_password); written once, changed by rotate.yml.
+
+- Type: `str`
+- Default: `{{ vault_restic_password | default('') }}`
+
+### `backup_sftp_known_hosts`
+
+known_hosts lines of the SFTP backup server, required for an sftp repository.
+
+- Type: `list` of `str`
+- Default: `[]`
+
+### `backup_include`
+
+Directories below pokus_root that are backed up.
+
+- Type: `list` of `str`
+- Default: `[catalog, artifacts, reports, images, datasets, shared, users, backups/pg]`
+
+### `backup_include_models`
+
+Also back up the model weights (re-downloaded and verified on restore otherwise).
+
+- Type: `bool`
+- Default: `false`
+
+### `backup_include_state`
+
+Directories of pokus_root/state to back up as well (prometheus, loki, tempo).
+
+- Type: `list` of `str`
+- Default: `[]`
+
+### `backup_include_secrets`
+
+Also back up the secret material under /etc/pokus (needs backup_secrets_acknowledged).
+
+- Type: `bool`
+- Default: `false`
+
+### `backup_secrets_acknowledged`
+
+Confirms that only the repository's encryption protects backed-up secrets.
+
+- Type: `bool`
+- Default: `false`
+
+### `backup_pgdump_keep`
+
+Local PostgreSQL dumps kept.
+
+- Type: `int`
+- Default: `7`
+
+### `backup_pgdump_schedule`
+
+OnCalendar of the PostgreSQL dump.
+
+- Type: `str`
+- Default: `*-*-* 02:30:00`
+
+### `backup_schedule`
+
+OnCalendar of the restic backup.
+
+- Type: `str`
+- Default: `*-*-* 03:00:00`
+
+### `backup_prune_schedule`
+
+OnCalendar of the retention and prune job.
+
+- Type: `str`
+- Default: `Sun *-*-* 04:00:00`
+
+### `backup_retention`
+
+Snapshots kept by the prune job (keep-daily, keep-weekly, keep-monthly).
+
+- Type: `dict`
+- Default: `{daily: 7, weekly: 4, monthly: 12}`
+
 ## base
 
 Base system.
@@ -892,6 +998,56 @@ Journal identifier of the Incus event feed.
 - Type: `str`
 - Default: `pokus-incus-events`
 
+## lab_session
+
+pokus-lab.target, the startup health gate and the per-boot session record.
+
+Entry points: `main` (pokus-lab.target, the startup health gate and the per-boot session record). Role README: `ansible/roles/lab_session/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `node_role` | [lab-wide](#node_role) | full, lab or inference; selects the checks of the health gate. |
+| `pokus_features` | host_vars | Feature flags of the host profile (gpu_inference adds the GPU check). |
+| `pokus_provider` | host_vars | Provider of this host; on wsl2 the gate also compares the clock with an NTP reference. |
+| `pokus_versions` | host_vars | The pinned versions (the CUDA image of the GPU check). |
+
+### `lab_session_autostart`
+
+Start the lab at boot (multi-user.target wants pokus-lab.target).
+
+- Type: `bool`
+- Default: `true`
+
+### `lab_session_gate_timeout`
+
+Seconds the health gate keeps checking before it fails.
+
+- Type: `int`
+- Default: `600`
+
+### `lab_session_gate_interval`
+
+Seconds between two rounds of checks.
+
+- Type: `int`
+- Default: `5`
+
+### `lab_session_ntp_reference`
+
+WSL only; NTP server the wall clock is compared with ("" for none). An unreachable server skips the comparison.
+
+- Type: `str`
+- Default: `pool.ntp.org`
+
+### `lab_session_max_clock_offset`
+
+WSL only; largest clock offset to the NTP reference, in seconds.
+
+- Type: `float`
+- Default: `1.0`
+
 ## layout
 
 Create the research space and the lab's host paths.
@@ -980,6 +1136,13 @@ Hugging Face token for gated entries (default vault_hf_token).
 
 - Type: `str`
 - Default: `{{ vault_hf_token | default('') }}`
+
+### `models_reverify`
+
+Hash verified files again (restore.yml) and re-download missing or changed ones.
+
+- Type: `bool`
+- Default: `false`
 
 ## nvidia_container_toolkit
 

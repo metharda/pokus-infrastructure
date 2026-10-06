@@ -351,6 +351,14 @@ Proposed in infra step 8 (same status; details in
   blueprints that need nesting (a container engine inside the target), so the
   platform launches them with `security.nesting=true`.
 
+Proposed in infra step 9 (same status; details in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 9"):
+
+- Session records: the record's fields (`schema_version`, `boot_id`,
+  `started_at`, `fingerprint_hash`, `fingerprint`, `preflight_outcome`,
+  `errors`), matching the platform's `lab_sessions` table; a field that could
+  not be computed is `null` with its reason under `errors`.
+
 ## Step status
 
 ### Phase 1 — infra/
@@ -364,8 +372,8 @@ Proposed in infra step 8 (same status; details in
 | 5 | Ansible foundation roles (four families) | done | `ced6b6d` |
 | 6 | docker, nvidia_container_toolkit, incus | done | `ea46ba3` |
 | 7 | postgres, observability, opa, vllm, models | done | `99768ea` |
-| 8 | images | done | commit "feat(infra): add the golden image pipeline and six blueprints" (SHA recorded with step 9) |
-| 9 | lab_session, backup, restore.yml, rotate.yml | pending | — |
+| 8 | images | done | `5526e43` |
+| 9 | lab_session, backup, restore.yml, rotate.yml | done | commit "feat(infra): add the lab session, backups, restore and rotation" (SHA recorded with step 10) |
 | 10 | pokus-lab CLI with doctor and fingerprint | pending | — |
 | 11 | catalog and platform roles | pending | — |
 | 12 | test-distros harness | pending | — |
@@ -455,6 +463,20 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   run here (no Incus); every build waits for the Incus base image
   fingerprints; in-image files carry the managed-file header that names the
   project, which the default leakage patterns allow.
+- From step 9 ("Findings to report (step 9)" and "Interpretations awaiting
+  owner confirmation (step 9)"): what a restore brings back (the research
+  space directories, and from `/etc/pokus` only vLLM deployments and QA
+  files; newer files kept; secrets never restored); the wider set of secret
+  paths excluded from backups; the snapshot prompt and `restore_snapshot`;
+  the repository password changed only by `rotate.yml` (`restic key
+  passwd`); initializing the repository on first use; the SFTP key and pinned
+  host keys; the health gate's checks and thresholds (WSL clock within 1 s of
+  `pool.ntp.org`); autostart of `pokus-lab.target`; the scope of `rotate.yml`
+  (including removing replaced Incus trust entries); schedules and
+  retention; backup timers outside the lab target. Findings: nothing could be
+  run against real services here; session records and the restore's doctor
+  run depend on `pokus-lab` (step 10); a restore drill must disable the spare
+  machine's backup timers.
 
 ## Owner deliverables pending
 
@@ -476,9 +498,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (107 after step 8; details
+`make verify-todos` lists every marker in the tree (107 after step 9; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 8"):
+step 4" through "after step 9"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -514,6 +536,7 @@ step 4" through "after step 8"):
 - Step 8: nothing added or resolved; the Incus base image fingerprints now
   block every golden image build (images.linuxcontainers.org is not reachable
   from the build environment).
+- Step 9: nothing added or resolved.
 
 Known items for later steps (each becomes a `TODO(verify)` entry when its file
 is written, unless verified first):
@@ -565,7 +588,9 @@ is written, unless verified first):
 
 ## Next step
 
-Infra step 9 (`lab_session`, `backup`, `restore.yml` and `rotate.yml`:
-restic backups of `/srv/pokus` and `/etc/pokus`, PostgreSQL dumps, the
-restore play that also re-imports golden images from their exports and
-checks their fingerprints, and secret and certificate rotation).
+Infra step 10 (`pokus-lab`, the operator CLI: preflight, doctor with all
+checks of BUILD_PROMPT §9 and `--smoke`, status, start/stop with draining,
+fingerprint with the root-computed cache (C9c), backup, restore, images, user
+and WSL helpers). It also completes what step 9 left to it: the session
+record's fingerprint and preflight outcome, and doctor at the end of a
+restore.

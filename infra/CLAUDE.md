@@ -131,8 +131,10 @@ the prompt text where they differ.
   namespace) and data consistency; add a render test for every new template.
 - Incus objects are only changed through the incus role's module
   `pokus_incus_object` (create or update, never delete); the pool and the
-  networks are created once and never rewritten. Only the docker role writes
-  `/etc/docker/daemon.json`.
+  networks are created once and never rewritten. The one deletion is
+  `rotate.yml` removing the trust entries of replaced client certificates;
+  build instances and images of the images role are not such objects. Only
+  the docker role writes `/etc/docker/daemon.json`.
 
 ## Golden images (BUILD_PROMPT §7.13)
 

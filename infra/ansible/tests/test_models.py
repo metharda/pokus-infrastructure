@@ -110,6 +110,21 @@ def test_only_missing_files_are_downloaded(tmp_path: Path) -> None:
     assert hub.calls[1][0][4] == "--revision"
 
 
+def test_reverify_hashes_again_and_repairs_changed_files(tmp_path: Path) -> None:
+    hub = FakeHub()
+    run_fetch(tmp_path, hub, entry())
+    dest = tmp_path / "example-org" / "test-model" / REVISION
+    name = next(iter(FILES))
+    (dest / name).chmod(0o644)
+    (dest / name).write_bytes(bytes(len(FILES[name])))  # same size, other content
+    assert run_fetch(tmp_path, hub, entry())["changed"] is False  # the manifest is trusted
+    assert run_fetch(tmp_path, hub, entry(), reverify=True)["changed"] is True
+    assert (dest / name).read_bytes() == FILES[name]
+    assert hub.calls[-1][0][3:4] == [name]
+    assert run_fetch(tmp_path, hub, entry(), reverify=True)["changed"] is False
+    assert len(hub.calls) == 2
+
+
 def test_hash_mismatch_fails_and_removes_the_file(tmp_path: Path) -> None:
     hub = FakeHub({**FILES, "model.safetensors": b"tampered"})
     with pytest.raises(fetch.FetchError, match=r"model\.safetensors is"):

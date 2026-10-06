@@ -73,6 +73,8 @@ nav:
       - Add a model and activate a deployment: how-to/add-a-model.md
       - Reach Grafana and the lab database: how-to/reach-grafana.md
       - Build, test and export golden images: how-to/build-golden-images.md
+      - Back up, restore and run a restore drill: how-to/backup-and-restore.md
+      - Rotate secrets and certificates: how-to/rotate-secrets.md
       - Configure the firewall backend and SELinux: how-to/firewall-and-selinux.md
       - Add a preflight fixture: how-to/add-preflight-fixture.md
       - Add a distribution family: distros/adding-a-family.md
@@ -97,6 +99,7 @@ nav:
       - How benchmark targets are isolated: explanation/target-isolation.md
       - How telemetry, metrics and logs flow: explanation/telemetry.md
       - How golden images are built: explanation/golden-images.md
+      - How the lab comes up: explanation/lab-session.md
       - Providers:
           - WSL2 hosts: providers/wsl2.md
           - Bare-metal hosts: providers/baremetal.md

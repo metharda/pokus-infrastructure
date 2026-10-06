@@ -1,0 +1,13 @@
+# Managed by pokus-infra (ansible/roles/backup/templates/backup-job.timer.j2). Local changes will be overwritten.
+#
+# The host is not always on: Persistent=true runs a missed job after boot.
+[Unit]
+Description=Pokus {{ item.description }} (timer)
+
+[Timer]
+OnCalendar={{ item.schedule }}
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

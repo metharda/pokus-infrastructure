@@ -25,3 +25,7 @@ argument_specs:
       models_hf_token:
         type: str
         description: Hugging Face token for gated entries (default vault_hf_token).
+      models_reverify:
+        type: bool
+        default: false
+        description: Hash verified files again (restore.yml) and re-download missing or changed ones.

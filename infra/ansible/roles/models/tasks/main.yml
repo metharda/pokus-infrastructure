@@ -65,23 +65,14 @@
     # The token of gated entries goes in on stdin, never on a command line.
     - name: Download and verify the entries
       ansible.builtin.command:
-        argv:
-          - /usr/local/libexec/pokus/models-fetch
-          - --kind
-          - "{{ item.0.kind }}"
-          - --entry
-          - "{{ item.1 | to_json }}"
-          - --root
-          - "{{ models_root }}"
-          - --hf
-          - "{{ models_venv }}/bin/hf"
-          - --uid
-          - "{{ ansible_facts.getent_passwd['pokus-orch'][1] }}"
-          - --gid
-          - "{{ ansible_facts.getent_group['pokus'][1] }}"
-          - --tool-version
-          - "{{ pokus_versions.python.model_tools['huggingface-hub'] }}"
-          - "{{ '--token-stdin' if item.1.gated else '--no-token' }}"
+        argv: >-
+          {{ ['/usr/local/libexec/pokus/models-fetch', '--kind', item.0.kind, '--entry', item.1 | to_json,
+              '--root', models_root, '--hf', models_venv ~ '/bin/hf',
+              '--uid', ansible_facts.getent_passwd['pokus-orch'][1],
+              '--gid', ansible_facts.getent_group['pokus'][1],
+              '--tool-version', pokus_versions.python.model_tools['huggingface-hub'],
+              '--token-stdin' if item.1.gated else '--no-token']
+             + (['--reverify'] if models_reverify | bool else []) }}
         stdin: "{{ models_hf_token if item.1.gated else omit }}"
       loop: >-
         {{ [{'kind': 'model', 'entries': models_lock.models},

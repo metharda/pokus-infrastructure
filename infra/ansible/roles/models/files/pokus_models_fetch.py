@@ -8,6 +8,8 @@ Installed as ``/usr/local/libexec/pokus/models-fetch`` by the models role
 match the lock, files become 0444, and ``MANIFEST.json`` records what was
 verified. An entry whose manifest matches the lock and whose files have the
 recorded sizes is not touched again: verified files are never re-downloaded.
+``--reverify`` (used by ``restore.yml``) hashes the files again instead and
+downloads whatever is missing or changed.
 
 Prints one JSON line: ``{"changed": bool, "path": "<directory>"}``.
 """
@@ -102,6 +104,23 @@ def manifest_matches(dest: Path, entry: Mapping[str, Any]) -> bool:
     return True
 
 
+def hashes_match(dest: Path, entry: Mapping[str, Any]) -> bool:
+    """Hash every file of an entry again.
+
+    Args:
+        dest: Entry directory.
+        entry: Lock entry.
+
+    Returns:
+        True if every pinned file exists with its pinned sha256.
+    """
+    for record in entry["files"]:
+        file = dest / record["path"]
+        if not file.is_file() or sha256_file(file) != record["sha256"]:
+            return False
+    return True
+
+
 def _safe_path(dest: Path, relative: str) -> Path:
     path = (dest / relative).resolve()
     if not path.is_relative_to(dest.resolve()):
@@ -128,6 +147,7 @@ def fetch(
     tool_version: str = "",
     now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
     token: str = "",
+    reverify: bool = False,
 ) -> dict[str, Any]:
     """Download what is missing, verify every file and write the manifest.
 
@@ -141,6 +161,7 @@ def fetch(
         tool_version: huggingface_hub version recorded in the manifest.
         now: Clock (UTC).
         token: Hugging Face token for gated entries (passed as HF_TOKEN).
+        reverify: Hash the files of a matching manifest again instead of trusting it.
 
     Returns:
         ``{"changed": bool, "path": str}``.
@@ -149,7 +170,7 @@ def fetch(
         FetchError: On a hash mismatch or a file outside the entry directory.
     """
     dest = target_dir(root, kind, entry)
-    if manifest_matches(dest, entry):
+    if manifest_matches(dest, entry) and (not reverify or hashes_match(dest, entry)):
         return {"changed": False, "path": str(dest)}
     dest.mkdir(parents=True, exist_ok=True)
     _make_writable(dest)
@@ -219,6 +240,7 @@ def main(argv: Sequence[str]) -> int:
     parser.add_argument("--uid", type=int)
     parser.add_argument("--gid", type=int)
     parser.add_argument("--tool-version", default="")
+    parser.add_argument("--reverify", action="store_true", help="hash verified files again")
     token = parser.add_mutually_exclusive_group(required=True)
     token.add_argument("--token-stdin", action="store_true", help="read the token of a gated entry")
     token.add_argument("--no-token", action="store_true", help="public entry, no token")
@@ -238,6 +260,7 @@ def main(argv: Sequence[str]) -> int:
             owner=owner,
             tool_version=args.tool_version,
             token=hf_token,
+            reverify=args.reverify,
         )
     except (FetchError, subprocess.CalledProcessError, OSError) as exc:
         sys.stderr.write(f"models-fetch: {exc}\n")

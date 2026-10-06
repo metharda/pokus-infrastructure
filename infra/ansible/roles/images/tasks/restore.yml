@@ -1,0 +1,27 @@
+# Managed by pokus-infra (ansible/roles/images/tasks/restore.yml). Local changes will be overwritten.
+#
+# Entry point of restore.yml (BUILD_PROMPT §7.15): re-import every exported
+# golden image whose alias is missing, keeping the alias and checking that the
+# image has the fingerprint its export recorded.
+
+- name: Install the export helper
+  ansible.builtin.copy:
+    src: pokus_image_files.py
+    dest: "{{ images_files_helper }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Find the exported golden images
+  ansible.builtin.find:
+    paths: "{{ images_export_root }}"
+    patterns: build.json
+    recurse: true
+    depth: 3
+  register: images_exports
+
+- name: Re-import each export
+  ansible.builtin.include_tasks: restore_one.yml
+  loop: "{{ images_exports.files | map(attribute='path') | sort }}"
+  loop_control:
+    loop_var: images_record_path

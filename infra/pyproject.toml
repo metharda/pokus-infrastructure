@@ -81,7 +81,7 @@ convention = "google"
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/tests"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/tests"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -111,5 +111,7 @@ pythonpath = [
   "ansible/roles/models/files",
   "ansible/roles/vllm/files",
   "ansible/roles/images/files",
+  "ansible/roles/lab_session/files",
+  "ansible/roles/backup/files",
   "ansible/tests",
 ]

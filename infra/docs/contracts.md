@@ -291,7 +291,7 @@ no training or adapter-creation flow.
 
 | Item | Value |
 | --- | --- |
-| Session records | `/var/lib/pokus/sessions/<boot_id>.json`, written by `pokus-session-start.service`; the orchestrator imports them |
+| Session records | `/var/lib/pokus/sessions/<boot_id>.json`, written once per boot by `pokus-session-start.service`; the orchestrator imports them. JSON object: `schema_version` (1), `boot_id`, `started_at` (UTC, ISO 8601 with `Z`), `fingerprint_hash`, `fingerprint` (the output of `pokus-lab fingerprint --json`), `preflight_outcome`, and `errors` (field name to reason; a field that could not be computed is `null`) |
 | Fingerprint | `pokus-lab fingerprint --json`, callable by `pokus-orch`. Run as root it computes the fingerprint and refreshes the cache; run as any other user it prints the cached root-computed fingerprint from `/var/lib/pokus/fingerprint/current.json` with its `computed_at` time and never escalates (C9c). |
 
 ## Run-manifest signing (C9d)

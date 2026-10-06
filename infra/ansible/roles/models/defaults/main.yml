@@ -8,3 +8,5 @@ models_venv: /opt/pokus/models-venv
 models_uv: /opt/pokus/bin/uv
 # Hugging Face token for gated entries (vault; empty for public models).
 models_hf_token: "{{ vault_hf_token | default('') }}"
+# Hash verified files again (restore.yml) instead of trusting their manifest.
+models_reverify: false

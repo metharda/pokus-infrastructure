@@ -33,8 +33,8 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
-  ansible/tests
-PLAYBOOKS := ansible/site.yml ansible/restore.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
+  ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests
+PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/.
@@ -86,7 +86,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff format --check $(PY_SOURCES)
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
 	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
-	  ansible/roles/images/files ansible/tests
+	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 

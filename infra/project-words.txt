@@ -47,6 +47,7 @@ oneshot
 osinfo
 pacman
 peercred
+pgdump
 pgpass
 pids
 pokus
@@ -62,6 +63,7 @@ semanage
 setype
 simplestreams
 SLES
+SNTP
 sysstat
 tailnet
 tailscaled

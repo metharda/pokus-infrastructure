@@ -1096,3 +1096,111 @@ warnings.
 
 107 markers, unchanged: step 8 resolved nothing and added nothing. The Incus
 base image fingerprints (two lock lines) now block every image build.
+
+## Step 9: lab_session, backup, restore.yml, rotate.yml
+
+Built: the `lab_session` role (`pokus-lab.target`, `pokus-health-gate.service`
+with `/usr/local/libexec/pokus/health-gate` and `/etc/pokus/health-gate.json`,
+`pokus-session-start.service` with `/usr/local/libexec/pokus/session-start`);
+the `backup` role (pinned restic, repository and password files, SFTP key and
+pinned host keys, `/usr/local/libexec/pokus/backup` with `pgdump`, `run`,
+`prune`, `snapshots`, `restore`, `pgrestore` and `passwd`, three services with
+persistent timers, textfile metrics); `restore.yml` (replacing the step 3
+stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
+`postgres/tasks/rotate.yml`, `incus/tasks/rotate_certificates.yml` and
+`backup/tasks/rotate.yml`; `models-fetch --reverify` (`models_reverify`);
+`docs/how-to/backup-and-restore.md`, `docs/how-to/rotate-secrets.md`,
+`docs/explanation/lab-session.md`.
+
+### Verified in step 9
+
+- **restic 0.19.1** (source of the tag): `RESTIC_REPOSITORY_FILE`,
+  `RESTIC_PASSWORD_FILE`, `RESTIC_CACHE_DIR`; exit codes 0, 1, 3 (backup could
+  not read some data), 10 (repository does not exist, since 0.17.0), 11, 12,
+  130; `cat config` to test for a repository; the `--json` summary message of
+  `backup` (`message_type: summary`, `snapshot_id`, `data_added`,
+  `total_files_processed`, `total_duration`) and the fields of `snapshots
+  --json`; `backup --files-from --exclude-file --tag --host`; `forget
+  --keep-daily --keep-weekly --keep-monthly --host --tag --prune`; `restore
+  <id> --target --include` (an included directory brings its contents, the
+  pattern `/foo` matches `/foo/bar`); `latest`; `key passwd
+  --new-password-file` (adds a key, validates it, removes the old key); the
+  SFTP option `sftp.args`, split like a shell command, which cannot be
+  combined with `sftp.command`.
+- **Incus 6.0.6**: `incus config trust remove <fingerprint>`; `trust list`
+  columns (`--columns nfi` for name, fingerprint and issue date).
+- **otelcol-contrib 0.162.0**: the `health_check` extension answers `GET /`
+  with 200 and `{"status":"Server available",...}` (run with a minimal
+  configuration).
+- The SNTP client of the health gate against a local fake server (test).
+
+### Findings to report (step 9)
+
+- **Nothing here could be run against real services**: no systemd, Docker,
+  PostgreSQL container, Incus or restic repository are available, and the
+  host must not be provisioned. The helpers are tested with fake runners,
+  the plays with syntax checks, ansible-lint and expression tests.
+- **The session record needs `pokus-lab`** (infra step 10) for the
+  fingerprint and the fresh preflight. Until it exists, records are written
+  with `fingerprint`, `fingerprint_hash` and `preflight_outcome` set to
+  `null` and the reason under `errors`. Step 10 must print
+  `{"hash": ..., ...}` from `pokus-lab fingerprint --json` and a preflight
+  report with `outcome` from `pokus-lab preflight --json`.
+- **Doctor at the end of a restore** runs only when `/usr/local/bin/pokus-lab`
+  exists (step 10); before that the play says so.
+- **Restore drill and the repository.** A spare machine restored for a drill
+  uses the production repository under the same machine name; its backup and
+  prune timers must be disabled right after the restore (documented), or its
+  snapshots would mix with production's and its retention job would count
+  them together.
+
+### Interpretations awaiting owner confirmation (step 9)
+
+1. **What a restore brings back.** All directories of the snapshot below
+   `/srv/pokus`, and from `/etc/pokus` only what bootstrap cannot render:
+   `vllm/deployments`, `vllm/current.yml` and `qa/`. Host profile, bootstrap
+   state, nftables rules, Incus certificates and other rendered files come
+   from the bootstrap run that precedes the restore. Files newer than the
+   snapshot are kept (no `--delete`). Secrets are never restored, even when
+   they were backed up.
+2. **Which files count as secrets** for `backup_include_secrets`:
+   `/etc/pokus/secrets`, `/etc/pokus/postgres-reader`, `/etc/pokus/incus`,
+   `/etc/pokus/signing` and `/etc/pokus/inference` (private keys and
+   passwords), not only `/etc/pokus/secrets`.
+3. **Snapshot choice.** An interactive restore prompts (empty answer: the
+   newest); a non-interactive one needs `restore_snapshot` (ID, prefix of at
+   least eight characters, or `latest`) in host_vars and otherwise stops.
+4. **Repository password.** The password file is written once; a changed
+   `vault_restic_password` is reported by bootstrap and applied only by
+   `rotate.yml --tags restic` (`restic key passwd`), because rewriting the
+   file would lock the lab out of its repository.
+5. **The repository is initialized on first use** by the backup helper (exit
+   10 of `restic cat config`), not by the role, so that an unreachable backup
+   server does not stop bootstrap.
+6. **SFTP authentication**: a dedicated ed25519 key generated on the host and
+   host keys from `backup_sftp_known_hosts` (`StrictHostKeyChecking=yes`);
+   bootstrap refuses an SFTP repository without host keys.
+7. **Health gate checks and thresholds**: timeout 600 s, interval 5 s; WSL
+   clock limit 1 s against `pool.ntp.org` (configurable, skipped when it does
+   not answer); PostgreSQL and Incus checked on `full` and `lab` nodes; the GPU
+   checked with `docker run --pull never` of the pinned CUDA image with the GPU
+   method of `daemon.json`.
+8. **Autostart**: `multi-user.target` wants `pokus-lab.target` by default
+   (`lab_session_autostart`); bootstrap starts the target, which waits for the
+   gate and the session record.
+9. **`rotate.yml` scope**: host-generated secrets (database superuser with a
+   staged change, exporter), Incus client certificates (the one Incus
+   deletion: the replaced trust entries) and the restic password. Vault
+   passwords change by editing the vault and running bootstrap. The signing
+   key belongs to the platform role (step 11) and its rotation is added there.
+   `rotate.yml` is run with `ansible-playbook` directly (bootstrap has no
+   rotate option) and reads the host profile itself.
+10. **Schedules and retention**: dump 02:30, backup 03:00, prune Sunday
+    04:00 (each with up to 5 minutes of random delay), keep 7 daily, 4 weekly
+    and 12 monthly snapshots, 7 local dumps.
+11. **Timers outside the lab target**: backups run whether or not the lab is
+    up.
+
+### Open `TODO(verify)` items after step 9
+
+107 markers, unchanged.

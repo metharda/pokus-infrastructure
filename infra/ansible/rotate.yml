@@ -1,0 +1,93 @@
+# Managed by pokus-infra (ansible/rotate.yml). Local changes will be overwritten.
+#
+# Rotation of the secrets and certificates the host holds (BUILD_PROMPT §4,
+# docs/how-to/rotate-secrets.md). Run it as root with the pinned Ansible and
+# the lab's vault, during a maintenance window (it restarts the lab):
+#
+#   ansible-playbook ansible/rotate.yml -e machine=<machine> [--tags postgres,incus,restic]
+#
+# - postgres: new superuser and exporter passwords (generated on the host);
+# - incus: new client certificates of the platform services and Prometheus,
+#   the old ones removed from the Incus trust store;
+# - restic: the repository password now in the vault (vault_restic_password).
+#
+# Passwords that live in the vault (database roles, Grafana) change by editing
+# the vault and running bootstrap; nothing has to be rotated here for them.
+- name: Rotate the lab's secrets and certificates
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - "inventory/host_vars/{{ machine }}.yml"
+  vars:
+    pokus_infra_dir: "{{ playbook_dir | dirname }}"
+  pre_tasks:
+    - name: Require the machine name
+      ansible.builtin.assert:
+        that: machine is defined
+        fail_msg: "Pass -e machine=<name of the host_vars file>."
+        quiet: true
+      tags: [always]
+
+    - name: Read the host profile
+      ansible.builtin.slurp:
+        src: /etc/pokus/host-profile.json
+      register: rotate_profile
+      when: host_profile is not defined
+      tags: [always]
+
+    - name: Use the host profile and no bootstrap options
+      ansible.builtin.set_fact:
+        host_profile: "{{ host_profile | default(rotate_profile.content | b64decode | from_json) }}"
+        pokus_bootstrap: "{{ pokus_bootstrap | default({}) }}"
+      tags: [always]
+
+  tasks:
+    - name: Derive the platform facts
+      ansible.builtin.import_role:
+        name: platform_facts
+      tags: [always]
+
+    - name: Stop the lab
+      ansible.builtin.systemd_service:
+        name: pokus-lab.target
+        state: stopped
+      when: not ansible_check_mode
+      tags: [postgres, incus]
+
+    - name: New database passwords of the superuser and the exporter
+      ansible.builtin.include_role:
+        name: postgres
+        tasks_from: rotate
+        apply:
+          tags: [postgres]
+      when:
+        - node_role in ['full', 'lab']
+        - not ansible_check_mode
+      tags: [postgres]
+
+    - name: New Incus client certificates
+      ansible.builtin.include_role:
+        name: incus
+        tasks_from: rotate_certificates
+        apply:
+          tags: [incus]
+      when:
+        - node_role in ['full', 'lab']
+        - not ansible_check_mode
+      tags: [incus]
+
+    - name: The repository password from the vault
+      ansible.builtin.include_role:
+        name: backup
+        tasks_from: rotate
+        apply:
+          tags: [restic]
+      when: not ansible_check_mode
+      tags: [restic]
+
+    - name: Start the lab
+      ansible.builtin.systemd_service:
+        name: pokus-lab.target
+        state: started
+      when: not ansible_check_mode
+      tags: [postgres, incus]

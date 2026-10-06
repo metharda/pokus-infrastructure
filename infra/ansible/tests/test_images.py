@@ -549,3 +549,18 @@ def test_clean_step_removes_identity_and_history() -> None:
         "/var/tmp/*",  # noqa: S108 - a string the clean script must contain, not a path used here
     ):
         assert needle in script, needle
+
+
+@pytest.mark.parametrize(
+    ("image", "ok"),
+    [({}, True), ({"fingerprint": "f" * 64}, True), ({"fingerprint": "e" * 64}, False)],
+)
+def test_restore_keeps_aliases_and_checks_fingerprints(image: dict[str, Any], ok: bool) -> None:
+    check = task("restore_one.yml", "Refuse an alias that points to a different image")
+    assert (
+        evaluate(
+            check["ansible.builtin.assert"]["that"],
+            {"images_image": image, "images_record": {"fingerprint": "f" * 64}},
+        )
+        is ok
+    )

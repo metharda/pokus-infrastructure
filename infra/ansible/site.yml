@@ -143,3 +143,13 @@
           tags: [images]
       when: node_role in ['full', 'lab']
       tags: [images]
+
+    - name: Backups
+      ansible.builtin.import_role:
+        name: backup
+      tags: [backup]
+
+    - name: Lab session (target, health gate, session record)
+      ansible.builtin.import_role:
+        name: lab_session
+      tags: [lab_session]

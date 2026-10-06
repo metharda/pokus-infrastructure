@@ -47,12 +47,13 @@ VALUES = {
     "pkg_repo.type": ("apt", "rpm"),
 }
 EXPRESSION_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
+PLAYS = [ANSIBLE / "site.yml", ANSIBLE / "restore.yml", ANSIBLE / "rotate.yml"]
 INCLUDE_TASKS = ("ansible.builtin.include_tasks", "ansible.builtin.import_tasks")
 INCLUDE_ROLE = ("ansible.builtin.include_role", "ansible.builtin.import_role")
 
 
 def managed_files() -> list[Path]:
-    files = [ANSIBLE / "site.yml", ANSIBLE / "restore.yml", ANSIBLE / "component-sources.yml"]
+    files = [*PLAYS, ANSIBLE / "component-sources.yml"]
     files += sorted((ANSIBLE / "group_vars").rglob("*.yml*"))
     files += sorted((ANSIBLE / "inventory").rglob("*.yml"))
     for role in ROLE_NAMES:
@@ -94,10 +95,11 @@ def all_tasks() -> Iterator[tuple[str, Path, dict[str, Any]]]:
         for path in task_files(role):
             for task in walk_tasks(load_yaml(path)):
                 yield role, path, task
-    for play in load_yaml(ANSIBLE / "site.yml"):
-        for section in ("pre_tasks", "tasks", "post_tasks"):
-            for task in walk_tasks(play.get(section)):
-                yield "", ANSIBLE / "site.yml", task
+    for path in PLAYS:
+        for play in load_yaml(path):
+            for section in ("pre_tasks", "tasks", "post_tasks"):
+                for task in walk_tasks(play.get(section)):
+                    yield "", path, task
 
 
 @pytest.mark.parametrize("role", ROLE_NAMES)
