@@ -33,7 +33,8 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
-  ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests tools/pokus-lab
+  ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
+  ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pokus-lab
 PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -86,7 +87,9 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff format --check $(PY_SOURCES)
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
 	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
-	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests
+	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
+	  ansible/roles/deploy_source/files ansible/roles/platform/files ansible/roles/inference_control/files \
+	  ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 	$(BIN)/mypy --python-version 3.10 tools/pokus-lab/pokus_lab tools/pokus-lab/tests

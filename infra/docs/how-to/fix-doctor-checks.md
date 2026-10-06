@@ -90,7 +90,9 @@ A process listens on an address other than `127.0.0.1` or `::1`. Only sshd
 clients and time daemons may. Find the process with `sudo ss -lntup`, then
 stop it or bind it to `127.0.0.1`. If a host service must listen, add its
 process name to `doctor_listener_processes` in the host_vars file and run
-bootstrap with `--tags doctor`.
+bootstrap with `--tags doctor`. Split inference adds listeners on the node's
+tailnet address (`tailscale ip`): ports 18704 and 18710 on an inference node,
+4317 on its paired lab node; anything else there is unexpected.
 
 ## `network.firewall`: firewall rules are missing {#check-network-firewall}
 
@@ -124,6 +126,25 @@ log with `journalctl -u pokus-inference.service -b` and
 `sudo docker logs pokus-vllm`. Loading a model can take minutes; check again
 before acting. See [How to add a model](add-a-model.md) for activating a
 deployment again.
+
+## `inference.pairing`: a split-inference node is not paired as configured {#check-inference-pairing}
+
+Lab and inference nodes only (`node_role: lab` or `inference`). One of these
+is wrong:
+
+- `/etc/pokus/inference/self.crt` or `self.key` is missing: run bootstrap
+  with `--tags inference_control`.
+- The node is paired, but its host_vars file does not name the peer: set
+  `inference_lab_node` (inference node) or `inference_remote_node` (lab node)
+  to the node in `/etc/pokus/inference/peer.json` and apply it as
+  [How to pair an inference node](pair-inference-node.md) describes.
+- The host_vars name another node than the pairing, or `peer.crt` is missing:
+  pair the nodes again.
+- A certificate expires within `doctor_certificate_renew_days` (30): delete
+  `self.crt` on that node, run bootstrap with `--tags inference_control`
+  (it issues a new certificate) and pair the nodes again.
+
+The check is skipped on a node that is neither paired nor configured.
 
 ## `incus.pool`: wrong backend or little free space {#check-incus-pool}
 
@@ -187,15 +208,24 @@ mirror with bootstrap.
 
 ## `systemd.hardening`: a platform unit lacks its hardening {#check-systemd-hardening}
 
-A platform unit's systemd properties differ from what the platform role
-installs, for example the agent runner can reach the catalog. Run bootstrap
-with `--tags platform`. Skipped until the platform is deployed.
+A platform unit's systemd properties (account, `NoNewPrivileges`,
+`ProtectSystem` and the rest of the baseline, `InaccessiblePaths`) differ from
+what the platform role installs, for example the agent runner can reach the
+catalog. Compare with `systemctl show UNIT` and run bootstrap with
+`--tags platform`. On an inference node the check covers
+`pokus-inference-control.service`; run bootstrap with
+`--tags inference_control` there. Skipped on a full or lab node until the
+platform is deployed.
 
 ## `sockets.permissions`: a platform socket has the wrong owner, mode or ACL {#check-sockets-permissions}
 
 A socket under `/run/pokus/` differs from the contract (resolution C8).
-Restart the owning service; if that does not help, run bootstrap with
-`--tags platform`. Skipped until the platform is deployed.
+With ACL entries, `ls -l` shows the ACL mask in the group bits (a 0600 socket
+with `user:pokus-orch:rw-` shows as 0660); the expected values are in
+`/etc/pokus/platform/sockets.json`, and `getfacl SOCKET` shows the entries.
+Restart the owning service, which sets them again when it starts; if that
+does not help, run bootstrap with `--tags platform`. Skipped until the
+platform is deployed.
 
 ## `postgres.roles`: database roles or settings are wrong {#check-postgres-roles}
 

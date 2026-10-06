@@ -242,11 +242,116 @@ def test_compose_services_bind_loopback() -> None:
     assert grafana["GF_AUTH_ANONYMOUS_ENABLED"] == "false"
     journald = compose["services"]["otel_journald"]
     assert journald["cap_add"] == ["SYS_CHROOT"]
-    gateway_mounts = compose["services"]["otel_gateway"]["volumes"]
-    assert gateway_mounts == ["./config/otel:/etc/otelcol:ro"]  # no host files
+    gateway = compose["services"]["otel_gateway"]
+    # No host files besides the gateway's own read-only copy of the pairing material.
+    assert gateway["volumes"] == [
+        "./config/otel:/etc/otelcol:ro",
+        "/etc/pokus/secrets/containers/otel-pairing:/etc/pokus-pairing:ro",
+    ]
+    assert gateway["user"] == "10001:10001"
+    stores = {
+        name
+        for name, service in compose["services"].items()
+        if "stores" in service.get("profiles", [])
+    }
+    assert stores == {"prometheus", "loki", "tempo", "grafana"}
 
 
 def test_derived_flags() -> None:
     assert evaluate("observability_otlp_receivers", obs_vars(vm=True)) == ["otlp", "otlp/vm"]
     assert evaluate("observability_vllm", obs_vars(gpu=True, node_role="lab")) is False
     assert evaluate("observability_vllm", obs_vars(gpu=True, node_role="inference")) is True
+
+
+def split_vars(node_role: str, peer: str = "") -> dict[str, Any]:
+    """Variables of a split-inference node, paired with ``peer`` if given."""
+    variables = obs_vars(gpu=node_role == "inference", node_role=node_role, vm=True)
+    if node_role == "inference":
+        variables.update(inference_lab_node=peer, observability_forward_address="100.64.0.1")
+    else:
+        variables.update(inference_remote_node=peer, observability_tailnet_address="100.64.0.1")
+    return variables
+
+
+def gateway(variables: dict[str, Any]) -> Any:
+    return yaml.safe_load(render_file(CONFIG / "otel/gateway.yaml.j2", variables))
+
+
+PAIRING_TLS = {
+    "cert_file": "/etc/pokus-pairing/self.crt",
+    "key_file": "/etc/pokus-pairing/self.key",
+    "min_version": "1.3",
+}
+
+
+def test_inference_node_forwards_only_once_paired() -> None:
+    unpaired = gateway(split_vars("inference"))
+    assert set(unpaired["exporters"]) == {"nop"}  # nothing leaves an unpaired node
+    for pipeline in unpaired["service"]["pipelines"].values():
+        assert pipeline["exporters"] == ["nop"]
+    paired = gateway(split_vars("inference", "pokus-lab"))
+    assert set(paired["exporters"]) == {"otlp_grpc/lab"}
+    lab = paired["exporters"]["otlp_grpc/lab"]
+    assert lab["endpoint"] == "100.64.0.1:4317"
+    assert lab["tls"] == {
+        **PAIRING_TLS,
+        "ca_file": "/etc/pokus-pairing/peer.crt",
+        "server_name_override": "pokus-lab",
+    }
+    assert set(paired["service"]["pipelines"]) == {"logs", "metrics", "traces"}
+    for name, pipeline in paired["service"]["pipelines"].items():
+        assert pipeline["exporters"] == ["otlp_grpc/lab"], name
+        assert pipeline["processors"] == ["memory_limiter", "resource", "batch"], name
+    # No VM listener (no Incus on an inference node); the exporters are scraped locally.
+    assert set(paired["receivers"]) == {"otlp", "prometheus"}
+    assert paired["service"]["pipelines"]["metrics"]["receivers"] == ["otlp", "prometheus"]
+    jobs = paired["receivers"]["prometheus"]["config"]["scrape_configs"]
+    assert {job["job_name"] for job in jobs} == {
+        "otel-collector",
+        "node",
+        "cadvisor",
+        "gpu",
+        "vllm",
+    }
+    for job in jobs:
+        for group in job["static_configs"]:
+            assert all(t.startswith("127.0.0.1:") for t in group["targets"]), job
+
+
+def test_lab_node_receives_the_paired_node_over_mutual_tls() -> None:
+    assert "otlp/inference" not in gateway(split_vars("lab"))["receivers"]
+    paired = gateway(split_vars("lab", "pokus-gpu"))
+    receiver = paired["receivers"]["otlp/inference"]["protocols"]
+    assert set(receiver) == {"grpc"}
+    assert receiver["grpc"]["endpoint"] == "100.64.0.1:4317"
+    assert receiver["grpc"]["tls"] == {
+        **PAIRING_TLS,
+        "client_ca_file": "/etc/pokus-pairing/peer.crt",
+    }
+    attributes = {a["key"]: a for a in paired["processors"]["resource/inference"]["attributes"]}
+    assert attributes["pokus.machine"] == {
+        "key": "pokus.machine",
+        "value": "pokus-gpu",
+        "action": "upsert",
+    }
+    pipelines = paired["service"]["pipelines"]
+    expected = {"logs": "otlp_http/loki", "metrics": "prometheus", "traces": "otlp_grpc/tempo"}
+    for signal, exporter in expected.items():
+        local, remote = pipelines[signal], pipelines[f"{signal}/inference"]
+        assert "otlp/inference" not in local["receivers"]
+        assert remote["receivers"] == ["otlp/inference"]
+        assert remote["processors"] == ["memory_limiter", "resource/inference", "batch"]
+        assert local["exporters"] == remote["exporters"] == [exporter]
+
+
+def test_stores_by_node_role() -> None:
+    for role, stores in (("full", True), ("lab", True), ("inference", False)):
+        assert evaluate("observability_stores", obs_vars(node_role=role)) is stores
+    assert evaluate("observability_vm_listener", obs_vars(vm=True, node_role="inference")) is False
+    assert evaluate("observability_vm_listener", obs_vars(vm=True, node_role="lab")) is True
+    compose = load_yaml(INFRA / "compose/observability/compose.yml")
+    uid = evaluate("observability_gateway_uid", obs_vars())
+    assert compose["services"]["otel_gateway"]["user"] == f"{uid}:{uid}"
+    assert evaluate("observability_pairing_dir", obs_vars()).endswith(
+        compose["services"]["otel_gateway"]["volumes"][1].split(":")[0].rsplit("/", 1)[1]
+    )

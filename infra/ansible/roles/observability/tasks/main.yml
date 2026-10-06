@@ -4,24 +4,31 @@
 # collector gateway and the journald collector, Prometheus, Loki, Tempo,
 # Grafana, node_exporter, cAdvisor and, with gpu_inference, the GPU exporter.
 # Every container uses the host network and binds 127.0.0.1; the VM listener
-# address (C4) exists only with vm_targets.
+# address (C4) exists only with vm_targets. An inference node runs no stores
+# (Prometheus, Loki, Tempo, Grafana): its gateway forwards everything to the
+# paired lab node over mutual TLS (BUILD_PROMPT §19.10, pairing.yml).
 - name: Check the secrets and the GPU exporter choice
   ansible.builtin.assert:
     that:
-      - vault_grafana_admin_password is defined
-      - vault_grafana_admin_password | length >= 8
-      - vault_postgres_passwords.pokus_grafana is defined
-      - "'$' not in vault_postgres_passwords.pokus_grafana"
-      - researchers | map(attribute='name') | difference(observability_grafana_user_passwords.keys() | list) | length == 0
+      - not observability_stores or vault_grafana_admin_password is defined
+      - not observability_stores or vault_grafana_admin_password | length >= 8
+      - not observability_stores or vault_postgres_passwords.pokus_grafana is defined
+      - not observability_stores or "'$' not in vault_postgres_passwords.pokus_grafana"
+      - >-
+        not observability_stores or researchers | map(attribute='name')
+        | difference(observability_grafana_user_passwords.keys() | list) | length == 0
       - observability_gpu_exporter in ['nvidia_smi', 'dcgm']
       - observability_gpu_exporter != 'dcgm' or pokus_versions.containers.images.dcgm_exporter.digest is match('sha256:')
     fail_msg: >-
       group_vars/all/vault.yml needs vault_grafana_admin_password (8 or more
       characters), vault_postgres_passwords.pokus_grafana (without "$", which
       Grafana's provisioning expands) and vault_grafana_user_passwords for
-      every researcher; observability_gpu_exporter is nvidia_smi or dcgm, and
-      dcgm only once its image is verified in versions.lock.yml.
+      every researcher (full and lab nodes); observability_gpu_exporter is
+      nvidia_smi or dcgm, and dcgm only once its image is verified in versions.lock.yml.
     quiet: true
+
+- name: Prepare the forwarding between paired nodes
+  ansible.builtin.include_tasks: pairing.yml
 
 - name: Set up the VM telemetry listener
   ansible.builtin.include_tasks: vm_listener.yml
@@ -33,9 +40,13 @@
     owner: "{{ item.uid }}"
     group: "{{ item.gid }}"
     mode: "0700"
-  loop: "{{ observability_state_dirs }}"
+  loop: "{{ observability_state_dirs | selectattr('name', 'in', observability_state_names) }}"
   loop_control:
     label: "{{ item.name }}"
+  vars:
+    observability_state_names: >-
+      {{ ['prometheus', 'loki', 'tempo', 'grafana', 'otelcol-journald'] if observability_stores
+         else ['otelcol-journald'] }}
 
 - name: Create the textfile collector directory
   ansible.builtin.file:
@@ -77,14 +88,11 @@
     owner: root
     group: root
     mode: "0644"
-  loop:
-    - otel/gateway.yaml
-    - otel/journald.yaml
-    - prometheus/prometheus.yml
-    - loki/loki.yaml
-    - tempo/tempo.yaml
-    - grafana/provisioning/datasources/pokus.yaml
-    - grafana/provisioning/dashboards/pokus.yaml
+  loop: >-
+    {{ ['otel/gateway.yaml', 'otel/journald.yaml']
+       + (['prometheus/prometheus.yml', 'loki/loki.yaml', 'tempo/tempo.yaml',
+           'grafana/provisioning/datasources/pokus.yaml', 'grafana/provisioning/dashboards/pokus.yaml']
+          if observability_stores else []) }}
 
 - name: Install the dashboards
   ansible.builtin.copy:
@@ -93,6 +101,7 @@
     owner: root
     group: root
     mode: "0644"
+  when: observability_stores
 
 - name: Start the observability services
   ansible.builtin.include_role:
@@ -101,9 +110,11 @@
     compose_project: observability
     compose_description: telemetry, metrics, logs, traces and dashboards
     compose_gpu: "{{ observability_gpu }}"
+    compose_profiles: "{{ ['stores'] if observability_stores else [] }}"
     compose_extra_env:
       PROMETHEUS_RETENTION: "{{ observability_prometheus_retention }}"
       GRAFANA_AUTO_ASSIGN_ORG_ROLE: "{{ observability_grafana_user_role }}"
+      OTEL_PAIRING_HASH: "{{ observability_pairing_hash | default('') }}"
 
 - name: Wait until the services answer
   ansible.builtin.uri:
@@ -113,15 +124,17 @@
   retries: 30
   delay: 5
   until: observability_ready.status == 200
-  loop:
-    - "http://127.0.0.1:{{ pokus_internal_ports.collector_health }}/"
-    - "http://127.0.0.1:{{ pokus_internal_ports.journald_health }}/"
-    - "http://127.0.0.1:{{ pokus_ports.prometheus }}/-/ready"
-    - "http://127.0.0.1:{{ pokus_ports.loki }}/ready"
-    - "http://127.0.0.1:{{ pokus_ports.tempo }}/ready"
-    - "{{ observability_grafana_url }}/api/health"
+  loop: >-
+    {{ ['http://127.0.0.1:' ~ pokus_internal_ports.collector_health ~ '/',
+        'http://127.0.0.1:' ~ pokus_internal_ports.journald_health ~ '/']
+       + (['http://127.0.0.1:' ~ pokus_ports.prometheus ~ '/-/ready',
+           'http://127.0.0.1:' ~ pokus_ports.loki ~ '/ready',
+           'http://127.0.0.1:' ~ pokus_ports.tempo ~ '/ready',
+           observability_grafana_url ~ '/api/health'] if observability_stores else []) }}
   when: not ansible_check_mode
 
 - name: Provision the Grafana accounts
   ansible.builtin.include_tasks: grafana_users.yml
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - observability_stores

@@ -76,22 +76,31 @@ def _text(text: str) -> str:
     return text.replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _block(language: str, text: str) -> str:
+    """A fenced block, indented so that it stays inside the list item."""
+    block = [f"```{language}", *text.rstrip("\n").splitlines(), "```"]
+    return "\n\n" + "\n".join(f"    {line}".rstrip() for line in block)
+
+
 def _default(value: Any) -> str:  # noqa: ANN401 - YAML value
     """Render a default value: inline code when short, a YAML block otherwise."""
     if isinstance(value, (dict, list)) and value:
         text = yaml.safe_dump(value, default_flow_style=None, sort_keys=False, width=88)
         if "\n" in text.rstrip("\n") or len(text) > INLINE_DEFAULT_MAX:
-            block = ["```yaml", *text.rstrip("\n").splitlines(), "```"]
-            # Indented so that the block stays inside the list item.
-            return "\n\n" + "\n".join(f"    {line}" for line in block)
+            return _block("yaml", text)
         return f" `{text.strip()}`"
+    if isinstance(value, str) and "\n" in value.strip():
+        # A folded expression keeps the lines of its more-indented parts.
+        return _block("jinja", value.strip())
     if isinstance(value, bool):
-        return f" `{str(value).lower()}`"
-    if value is None:
-        return " `null`"
-    if value in ("", [], {}):
-        return f" `{yaml.safe_dump(value, default_flow_style=True).strip()}`"
-    return f" `{value}`"
+        inline = str(value).lower()
+    elif value is None:
+        inline = "null"
+    elif value in ("", [], {}):
+        inline = yaml.safe_dump(value, default_flow_style=True).strip()
+    else:
+        inline = str(value)
+    return f" `{inline}`"
 
 
 def role_names(root: Path) -> list[str]:

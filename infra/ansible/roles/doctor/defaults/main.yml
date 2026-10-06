@@ -14,3 +14,6 @@ doctor_drain_timeout: 1800
 # Processes that may listen outside loopback: sshd (firewalled), Tailscale,
 # Incus's DNS and DHCP server on its bridges, DHCP clients and time daemons.
 doctor_listener_processes: [sshd, tailscaled, dnsmasq, systemd-network, dhclient, NetworkManager, chronyd]
+# Days before the expiry of a node's pairing certificate at which doctor
+# fails inference.pairing (a new certificate means pairing again).
+doctor_certificate_renew_days: 30

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 import time
 import uuid
 from collections.abc import Sequence
@@ -256,6 +257,12 @@ def check_listeners(ctx: Context) -> Outcome:
         return failed(f"ss failed: {done.stderr.strip()}")
     allowed_processes = set(ctx.config.get("listeners", "processes", default=["sshd"]))
     allowed_addresses = set(ctx.config.get("listeners", "addresses", default=[]))
+    # Split inference: the control endpoint or the collector on the tailnet address.
+    tailnet_ports = set(ctx.config.get("listeners", "tailnet_ports", default=[]))
+    tailnet: set[str] = set()
+    if tailnet_ports:
+        shown = ctx.system.run(["tailscale", "ip"])
+        tailnet = set(shown.stdout.split()) if shown.ok else set()
     unexpected = sorted(
         {
             f"{proto} {address}:{port} ({process or 'unknown process'})"
@@ -263,6 +270,7 @@ def check_listeners(ctx: Context) -> Outcome:
             if not is_loopback(address)
             and process not in allowed_processes
             and address not in allowed_addresses
+            and not (address in tailnet and port in tailnet_ports)
         }
     )
     if unexpected:
@@ -376,6 +384,57 @@ def check_vllm(ctx: Context) -> Outcome:
     if response.status != 200:  # noqa: PLR2004
         return failed(f"/health answered {response.status or 'nothing'}")
     return passed("vLLM is healthy")
+
+
+def _days_left(ctx: Context, path: str) -> int | None:
+    """Whole days until a certificate expires, or None if openssl cannot tell."""
+    done = ctx.system.run(["openssl", "x509", "-noout", "-enddate", "-in", path])
+    if not done.ok or not done.stdout.startswith("notAfter="):
+        return None
+    try:
+        end = ssl.cert_time_to_seconds(done.stdout.strip().split("=", 1)[1])
+    except ValueError:
+        return None
+    return int((end - ctx.system.now().timestamp()) // 86400)
+
+
+def check_pairing(ctx: Context) -> Outcome:
+    """Split inference: the node's certificate is valid; it is paired with the configured node."""
+    if ctx.config.node_role not in ("lab", "inference"):
+        return skipped("a full node serves inference itself")
+    directory = str(ctx.config.get("inference", "dir", default="/etc/pokus/inference"))
+    configured = str(ctx.config.get("inference", "peer", default=""))
+    variable = (
+        "inference_lab_node" if ctx.config.node_role == "inference" else "inference_remote_node"
+    )
+    problems = [
+        f"{directory}/{name} missing"
+        for name in ("self.crt", "self.key")
+        if ctx.system.info(f"{directory}/{name}") is None
+    ]
+    try:
+        record = json.loads(ctx.system.read_text(f"{directory}/peer.json") or "{}")
+    except ValueError:
+        record = {}
+    paired = str(record.get("node", "")) if isinstance(record, dict) else ""
+    if not configured and not problems:
+        if paired:
+            return failed(f"paired with {paired}, but {variable} is not set in the host_vars")
+        return skipped("not paired yet")
+    if configured and paired != configured:
+        problems.append(
+            f"{variable} is {configured}, but the node is paired with {paired or 'none'}"
+        )
+    if configured and ctx.system.info(f"{directory}/peer.crt") is None:
+        problems.append(f"{directory}/peer.crt missing")
+    renew = int(ctx.config.get("inference", "renew_days", default=30))
+    for name in ("self.crt", "peer.crt"):
+        days = _days_left(ctx, f"{directory}/{name}")
+        if days is not None and days < renew:
+            problems.append(f"{name} expires in {days} day(s)")
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"paired with {configured}, certificates valid for {renew}+ days")
 
 
 # --- Incus ---------------------------------------------------------------------------------
@@ -549,7 +608,8 @@ def check_hardening(ctx: Context) -> Outcome:
         for name, wanted in unit.get("properties", {}).items():
             if values.get(name) != wanted:
                 problems.append(f"{unit['unit']}: {name}={values.get(name)!r}, expected {wanted!r}")
-        paths = set(values.get("InaccessiblePaths", "").replace("-", "").split())
+        # systemd prefixes paths that may be missing with "-"; hyphens inside paths stay.
+        paths = {p.lstrip("-") for p in values.get("InaccessiblePaths", "").split()}
         missing = [p for p in unit.get("inaccessible_paths", []) if p not in paths]
         if missing:
             problems.append(f"{unit['unit']}: InaccessiblePaths lacks {', '.join(missing)}")
@@ -569,13 +629,18 @@ def check_sockets(ctx: Context) -> Outcome:
         if info is None:
             problems.append(f"{entry['path']} missing")
             continue
-        want = (entry["owner"], entry["group"], int(str(entry["mode"]), 8))
+        # The platform role records the effective mode and ACL: with ACL entries
+        # the group bits show the mask.
+        mode = entry.get("expect_mode", entry.get("mode"))
+        want = (entry["owner"], entry["group"], int(str(mode), 8))
         if (info.owner, info.group, info.mode) != want:
             problems.append(f"{entry['path']} is {info.owner}:{info.group} {info.mode:04o}")
-        if entry.get("acl"):
+        acls = entry.get("expect_acl", entry.get("acl")) or []
+        if acls:
             done = ctx.system.run(["getfacl", "--omit-header", "--absolute-names", entry["path"]])
-            for acl in entry["acl"]:
-                if acl not in done.stdout:
+            lines = {line.split()[0] for line in done.stdout.splitlines() if line.strip()}
+            for acl in acls:
+                if acl not in lines:
                     problems.append(f"{entry['path']} lacks ACL {acl}")
     if problems:
         return failed("; ".join(problems))
@@ -962,6 +1027,13 @@ CHECKS: tuple[Check, ...] = (
         "error",
         "`journalctl -u pokus-inference.service`; reactivate the deployment.",
         check_vllm,
+    ),
+    Check(
+        "inference.pairing",
+        "Lab and inference nodes: certificate valid, paired with the node the host_vars name.",
+        "error",
+        "Pair the nodes and set the peer in host_vars (pair-inference-node how-to).",
+        check_pairing,
     ),
     Check(
         "incus.pool",

@@ -71,6 +71,7 @@ sysstat
 tailnet
 tailscaled
 timesyncd
+typst
 versionlock
 veth
 VFIO

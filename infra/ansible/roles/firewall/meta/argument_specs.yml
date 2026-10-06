@@ -7,6 +7,18 @@ argument_specs:
         type: bool
         required: true
         description: Open the Grafana serve port on the tailnet interface.
+      node_role:
+        type: str
+        required: true
+        description: Inference nodes and paired lab nodes open the split-inference ports.
+      inference_remote_node:
+        type: str
+        default: ""
+        description: The paired inference node of a lab node; its telemetry arrives on OTLP gRPC.
+      pokus_ports:
+        type: dict
+        required: true
+        description: Contract ports (vllm, inference_control, otlp_grpc).
       ssh_extra_allowed_interfaces:
         type: list
         elements: str
@@ -34,7 +46,9 @@ argument_specs:
         type: list
         elements: int
         default: [22]
-        description: TCP ports open on the tailnet interface (22, plus the serve port if enabled).
+        description: >-
+          TCP ports open on the tailnet interface (derived: 22, the serve port if enabled,
+          18704 and 18710 on an inference node, 4317 on a paired lab node).
       firewall_tailscale_udp_port:
         type: int
         default: 41641

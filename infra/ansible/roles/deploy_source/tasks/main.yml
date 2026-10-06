@@ -1,0 +1,86 @@
+# Managed by pokus-infra (ansible/roles/deploy_source/tasks/main.yml). Local changes will be overwritten.
+#
+# The root-only bare mirror of the Pokus repository (resolution B2, owner
+# answers E3 and E16): the deployment helper, the SSH deploy key and the
+# pinned host keys (SSH sources), the allowed signers of signed tags, and a
+# fetch of every branch and tag. Included by the catalog and platform roles,
+# which then deploy their subtree with tasks_from: deploy.
+
+- name: Check the source repository
+  ansible.builtin.assert:
+    that:
+      - pokus_source_repo | length > 0
+      - deploy_source_transport != 'invalid'
+      - deploy_source_transport != 'ssh' or deploy_source_known_host_lines | length > 0
+      - not require_signed_tags or pokus_allowed_signers | length > 0
+    fail_msg: >-
+      pokus_source_repo must be an SSH URL (git@host:path, ssh://...) or an anonymous
+      https:// URL without credentials (owner answer E3). An SSH source needs pinned host
+      keys: GitHub's come from versions.lock.yml once verified, other hosts need
+      pokus_source_known_hosts. require_signed_tags needs pokus_allowed_signers.
+    quiet: true
+
+- name: Create the mirror directory (root only)
+  ansible.builtin.file:
+    path: "{{ deploy_source_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install the deployment helper
+  ansible.builtin.copy:
+    src: pokus_deploy_source.py
+    dest: "{{ deploy_source_helper }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate the read-only deploy key
+  community.crypto.openssh_keypair:
+    path: "{{ deploy_source_key }}"
+    type: ed25519
+    comment: "pokus-deploy@{{ machine_name }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: deploy_source_keypair
+  when: deploy_source_transport == 'ssh'
+
+- name: Show the deploy key (add it to the Git host as a read-only deploy key)
+  ansible.builtin.debug:
+    msg: >-
+      Deploy key of this host for {{ pokus_source_repo }} (read-only):
+      {{ deploy_source_keypair.public_key | default('') }}
+  when: deploy_source_transport == 'ssh'
+
+- name: Pin the Git host keys
+  ansible.builtin.copy:
+    dest: "{{ deploy_source_known_hosts }}"
+    content: "{{ deploy_source_known_host_lines | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: deploy_source_transport == 'ssh'
+
+- name: Write the allowed signers of signed tags
+  ansible.builtin.copy:
+    dest: "{{ deploy_source_allowed_signers }}"
+    content: "{{ (pokus_allowed_signers | join('\n') ~ '\n') if pokus_allowed_signers else '' }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Fetch the source repository into the mirror
+  ansible.builtin.command:
+    argv: >-
+      {{ [deploy_source_helper, 'fetch', '--mirror', deploy_source_mirror, '--repo', pokus_source_repo]
+         + (['--ssh-key', deploy_source_key, '--known-hosts', deploy_source_known_hosts]
+            if deploy_source_transport == 'ssh' else []) }}
+  register: deploy_source_fetch
+  changed_when: (deploy_source_fetch.stdout | from_json).changed
+  failed_when: >-
+    deploy_source_fetch.rc != 0
+    or 'error' in (deploy_source_fetch.stdout | default('{}', true) | from_json)
+  check_mode: false
+  when: not ansible_check_mode

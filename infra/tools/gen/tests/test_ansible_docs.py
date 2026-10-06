@@ -61,6 +61,10 @@ def test_group_var_docs_requires_descriptions(tmp_path: Path) -> None:
             "\n\n    ```yaml\n    - {path: p0, mode: '0755'}\n    - {path: p1, mode: '0755'}\n"
             "    - {path: p2, mode: '0755'}\n    - {path: p3, mode: '0755'}\n    ```",
         ),
+        (
+            "{{ [22]\n   + ([443] if serve else []) }}",
+            "\n\n    ```jinja\n    {{ [22]\n       + ([443] if serve else []) }}\n    ```",
+        ),
     ],
 )
 def test_default_rendering(value: object, rendered: str) -> None:

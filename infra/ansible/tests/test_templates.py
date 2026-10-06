@@ -57,6 +57,9 @@ TESTED_TEMPLATES = {
     # Tested in test_backup.py:
     ("backup", "backup-job.service.j2"),
     ("backup", "backup-job.timer.j2"),
+    # Tested in test_platform.py:
+    ("platform", "pokus-platform.service.j2"),
+    ("inference_control", "pokus-inference-control.service.j2"),
 }
 
 
@@ -393,3 +396,16 @@ def test_tailnet_ports() -> None:
         22,
         443,
     ]
+    inference = firewall_vars(node_role="inference")
+    assert evaluate("firewall_tailnet_tcp_ports", inference) == [22, 18704, 18710]
+    assert evaluate("firewall_tailnet_tcp_ports", firewall_vars(node_role="lab")) == [22]
+    paired = firewall_vars(node_role="lab", inference_remote_node="pokus-gpu")
+    assert evaluate("firewall_tailnet_tcp_ports", paired) == [22, 4317]
+
+    features = {"vm_targets": True}
+    assert evaluate("firewall_vm_otlp_ports", firewall_vars(pokus_features=features)) == [
+        4317,
+        4318,
+    ]
+    no_targets = firewall_vars(pokus_features=features, node_role="inference")
+    assert evaluate("firewall_vm_otlp_ports", no_targets) == []

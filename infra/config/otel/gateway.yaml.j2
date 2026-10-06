@@ -6,6 +6,11 @@
 #   logs:    otlp (services, targets, the journald collector) -> Loki (native OTLP)
 #   metrics: otlp -> Prometheus exporter, scraped by Prometheus (owner answer E14)
 #   traces:  otlp -> Tempo
+# Split inference (BUILD_PROMPT §19.10): an inference node also scrapes its
+# exporters and vLLM and forwards every signal to the paired lab node over
+# mutual TLS (nothing leaves it before pairing); the lab node receives them
+# on its tailnet address and stores them with pokus.machine set to the
+# inference node.
 extensions:
   health_check:
     endpoint: 127.0.0.1:{{ pokus_internal_ports.collector_health }}
@@ -25,6 +30,44 @@ receivers:
       http:
         endpoint: {{ pokus_vm_otlp.address }}:{{ pokus_ports.otlp_http }}
 {% endif %}
+{% if observability_inference_node %}
+  otlp/inference:
+    protocols:
+      grpc:
+        endpoint: {{ observability_tailnet_address }}:{{ pokus_ports.otlp_grpc }}
+        tls:
+          cert_file: /etc/pokus-pairing/self.crt
+          key_file: /etc/pokus-pairing/self.key
+          client_ca_file: /etc/pokus-pairing/peer.crt
+          min_version: "1.3"
+{% endif %}
+{% if not observability_stores %}
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          static_configs:
+            - targets: ["127.0.0.1:{{ pokus_internal_ports.collector_telemetry }}"]
+              labels: {collector: gateway}
+            - targets: ["127.0.0.1:{{ pokus_internal_ports.journald_telemetry }}"]
+              labels: {collector: journald}
+        - job_name: node
+          static_configs:
+            - targets: ["127.0.0.1:{{ pokus_internal_ports.node_exporter }}"]
+        - job_name: cadvisor
+          static_configs:
+            - targets: ["127.0.0.1:{{ pokus_internal_ports.cadvisor }}"]
+{% if observability_gpu %}
+        - job_name: gpu
+          static_configs:
+            - targets: ["127.0.0.1:{{ pokus_internal_ports.gpu_exporter }}"]
+{% endif %}
+{% if observability_vllm %}
+        - job_name: vllm
+          static_configs:
+            - targets: ["127.0.0.1:{{ pokus_ports.vllm }}"]
+{% endif %}
+{% endif %}
 
 processors:
   memory_limiter:
@@ -40,8 +83,20 @@ processors:
         value: {{ lab_mode | to_json }}
         action: upsert
   batch: {}
+{% if observability_inference_node %}
+  # Mutual TLS proved the sender is the paired node.
+  resource/inference:
+    attributes:
+      - key: pokus.machine
+        value: {{ observability_inference_node | to_json }}
+        action: upsert
+      - key: pokus.lab_mode
+        value: {{ lab_mode | to_json }}
+        action: upsert
+{% endif %}
 
 exporters:
+{% if observability_stores %}
   otlp_http/loki:
     endpoint: http://127.0.0.1:{{ pokus_ports.loki }}/otlp
   otlp_grpc/tempo:
@@ -54,6 +109,19 @@ exporters:
     # so dashboards can filter target metrics by run.
     resource_to_telemetry_conversion:
       enabled: true
+{% elif observability_forward_node %}
+  # The lab node's tailnet address; its certificate names it by tailnet name.
+  otlp_grpc/lab:
+    endpoint: {{ observability_forward_address }}:{{ pokus_ports.otlp_grpc }}
+    tls:
+      ca_file: /etc/pokus-pairing/peer.crt
+      cert_file: /etc/pokus-pairing/self.crt
+      key_file: /etc/pokus-pairing/self.key
+      server_name_override: {{ observability_forward_node | to_json }}
+      min_version: "1.3"
+{% else %}
+  nop: {}
+{% endif %}
 
 service:
   extensions: [health_check]
@@ -69,12 +137,26 @@ service:
     logs:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp_http/loki]
+      exporters: [{{ observability_exporters.logs }}]
     metrics:
-      receivers: [{{ observability_otlp_receivers | join(', ') }}]
+      receivers: [{{ observability_metrics_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
-      exporters: [prometheus]
+      exporters: [{{ observability_exporters.metrics }}]
     traces:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
+      exporters: [{{ observability_exporters.traces }}]
+{% if observability_inference_node %}
+    logs/inference:
+      receivers: [otlp/inference]
+      processors: [memory_limiter, resource/inference, batch]
+      exporters: [otlp_http/loki]
+    metrics/inference:
+      receivers: [otlp/inference]
+      processors: [memory_limiter, resource/inference, batch]
+      exporters: [prometheus]
+    traces/inference:
+      receivers: [otlp/inference]
+      processors: [memory_limiter, resource/inference, batch]
       exporters: [otlp_grpc/tempo]
+{% endif %}

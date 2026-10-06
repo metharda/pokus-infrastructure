@@ -4,7 +4,7 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Change vault passwords with bootstrap, and rotate the host-generated database passwords, the Incus client certificates and the backup repository password with rotate.yml.
+description: Change vault passwords with bootstrap, and rotate the host-generated database passwords, the Incus client certificates, the backup repository password and the run-manifest signing key with rotate.yml.
 ---
 
 # How to rotate secrets and certificates
@@ -49,7 +49,7 @@ certificates restarts the lab, so do it in a maintenance window.
 ## Rotate the host's own secrets
 
 Run `rotate.yml` with the pinned Ansible of bootstrap. Without `--tags` it
-rotates everything; `postgres`, `incus` and `restic` select parts:
+rotates everything; `postgres`, `incus`, `restic` and `signing` select parts:
 
 <!-- qa:skip reason="rotates secrets on the lab host" -->
 ```bash
@@ -69,6 +69,10 @@ sudo ANSIBLE_CONFIG=$PWD/ansible.cfg /opt/pokus/ansible-venv/bin/ansible-playboo
 - `incus`: issues new client certificates for the platform services and
   Prometheus, trusts them, and removes the old certificates from the Incus
   trust store, so the old keys stop working;
+- `signing` (with the platform enabled): generates a new run-manifest signing
+  key for the orchestrator and publishes its public key in
+  `/srv/pokus/shared/signing-keys/<machine>-<date>.pub`; the old public keys
+  stay published, so manifests signed before the rotation remain verifiable;
 
 and starts the lab again.
 

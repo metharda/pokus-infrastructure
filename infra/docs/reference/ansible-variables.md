@@ -278,6 +278,48 @@ Bridges of the researchers' personal Incus projects (incusbr-&lt;uid&gt;); unlik
 
 - Default: `[incusbr-*]`
 
+### `pokus_source_repo`
+
+The deployer's copy of the Pokus repository, required when the platform or the catalog is enabled (owner answer E3): an SSH URL (read-only deploy key generated on the host) or an anonymous HTTPS URL. Never a URL with credentials.
+
+- Default: `''`
+
+### `pokus_source_known_hosts`
+
+Extra known_hosts lines for an SSH source (GitHub's keys come from versions.lock.yml).
+
+- Default: `[]`
+
+### `require_signed_tags`
+
+Deploy only tags carrying a valid SSH signature of an allowed signer (owner answer E16).
+
+- Default: `false`
+
+### `pokus_allowed_signers`
+
+Allowed signers for signed tags, ssh-keygen allowed_signers lines ("&lt;principal&gt; &lt;key type&gt; &lt;key&gt;").
+
+- Default: `[]`
+
+### `inference_remote_node`
+
+Tailnet name of the paired inference node of a lab node (node_role: lab, BUILD_PROMPT §19.10); set when the nodes are paired.
+
+- Default: `''`
+
+### `inference_lab_node`
+
+Tailnet name of the paired lab node of an inference node (node_role: inference), which receives its telemetry; set when the nodes are paired.
+
+- Default: `''`
+
+### `qa_trusted_keys`
+
+QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of {name: &lt;file name without .pem&gt;, pem: &lt;PEM public key&gt;}.
+
+- Default: `[]`
+
 ## backup
 
 restic backups of pokus_root and /etc/pokus, PostgreSQL dumps, retention and backup metrics.
@@ -508,6 +550,33 @@ Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
 - Type: `path`
 - Default: `{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}`
 
+## catalog
+
+Deploy the scenario catalog at catalog_ref into /srv/pokus/catalog (only if enabled).
+
+Entry points: `main` (Deploy the scenario catalog at catalog_ref into /srv/pokus/catalog (only if enabled)). Role README: `ansible/roles/catalog/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `node_role` | [lab-wide](#node_role) | The catalog is deployed on full and lab nodes only. |
+| `pokus_root` | [lab-wide](#pokus_root) | Research space root. |
+
+### `catalog_enabled`
+
+Deploy the catalog.
+
+- Type: `bool`
+- Default: `false`
+
+### `catalog_ref`
+
+A catalog-v tag (recommended), another tag, a branch or a full commit.
+
+- Type: `str`
+- Default: `''`
+
 ## compose
 
 Install and start one Compose project of the lab services under systemd.
@@ -538,6 +607,13 @@ Description of pokus-&lt;project&gt;.service.
 ### `compose_services`
 
 Services to start now; empty starts every service of the project.
+
+- Type: `list` of `str`
+- Default: `[]`
+
+### `compose_profiles`
+
+Compose profiles to enable besides the GPU profile (observability uses stores).
 
 - Type: `list` of `str`
 - Default: `[]`
@@ -583,6 +659,88 @@ Further variables for the project's .env file (the same for every role of a proj
 
 - Type: `dict`
 - Default: `{}`
+
+## deploy_source
+
+Install the deployment helper and fetch the Pokus repository into the root-only bare mirror.
+
+Entry points: `main` (Install the deployment helper and fetch the Pokus repository into the root-only bare mirror), `deploy` (Extract one component at a ref into its deployment directory with DEPLOYED_FROM.json), `activate` (Point the deployment root's current link at a prepared deployment, atomically). Role README: `ansible/roles/deploy_source/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `machine_name` | [lab-wide](#machine_name) | Machine name, the comment of the deploy key. |
+| `pokus_allowed_signers` | [lab-wide](#pokus_allowed_signers) | ssh-keygen allowed_signers lines for signed tags. |
+| `pokus_source_known_hosts` | [lab-wide](#pokus_source_known_hosts) | Extra known_hosts lines for an SSH source. |
+| `pokus_source_repo` | [lab-wide](#pokus_source_repo) | SSH or anonymous HTTPS URL of the deployer's copy of the Pokus repository (owner answer E3). |
+| `pokus_versions` | host_vars | The pinned versions (GitHub's SSH host keys). |
+| `require_signed_tags` | [lab-wide](#require_signed_tags) | Deploy only validly SSH-signed component tags (owner answer E16). |
+
+### `deploy_source_component`
+
+Component to deploy (its subdirectory of the repository).
+
+- Type: `str`
+- Choices: `platform`, `catalog`
+- Default: `''`
+- Entry points: `deploy`, `activate`
+
+### `deploy_source_ref`
+
+A component tag, another tag, a branch or a full commit.
+
+- Type: `str`
+- Default: `''`
+- Entry points: `deploy`, `activate`
+
+### `deploy_source_root`
+
+Deployment root (/srv/pokus/deploy/platform or /srv/pokus/catalog).
+
+- Type: `path`
+- Default: `''`
+- Entry points: `deploy`, `activate`
+
+### `deploy_source_owner`
+
+Owner of the deployed tree.
+
+- Type: `str`
+- Default: `root`
+- Entry points: `deploy`
+
+### `deploy_source_group`
+
+Group of the deployed tree.
+
+- Type: `str`
+- Default: `root`
+- Entry points: `deploy`
+
+### `deploy_source_dir_mode`
+
+Mode of directories and executable files.
+
+- Type: `str`
+- Default: `0755`
+- Entry points: `deploy`
+
+### `deploy_source_file_mode`
+
+Mode of other files.
+
+- Type: `str`
+- Default: `0644`
+- Entry points: `deploy`
+
+### `deploy_source_name`
+
+Name of the prepared deployment directory.
+
+- Type: `str`
+- Default: `''`
+- Entry points: `activate`
 
 ## docker
 
@@ -686,6 +844,13 @@ Seconds doctor --smoke waits for a throwaway target's logs in Loki.
 - Type: `int`
 - Default: `120`
 
+### `doctor_certificate_renew_days`
+
+Days before a pairing certificate expires at which doctor fails inference.pairing.
+
+- Type: `int`
+- Default: `30`
+
 ### `doctor_drain_timeout`
 
 Seconds `pokus-lab update-host` gives the orchestrator to drain.
@@ -711,8 +876,11 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `grafana_tailscale_serve` | [lab-wide](#grafana_tailscale_serve) | Open the Grafana serve port on the tailnet interface. |
+| `inference_remote_node` | [lab-wide](#inference_remote_node) | The paired inference node of a lab node; its telemetry arrives on OTLP gRPC. |
+| `node_role` | [lab-wide](#node_role) | Inference nodes and paired lab nodes open the split-inference ports. |
 | `pokus_incus_bridge_patterns` | [lab-wide](#pokus_incus_bridge_patterns) | Interface name patterns of Incus bridges (run networks and the build bridge). |
 | `pokus_incus_personal_bridge_patterns` | [lab-wide](#pokus_incus_personal_bridge_patterns) | Interface name patterns of the bridges of personal Incus projects. |
+| `pokus_ports` | [lab-wide](#pokus_ports) | Contract ports (vllm, inference_control, otlp_grpc). |
 | `pokus_vm_otlp` | [lab-wide](#pokus_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
 | `ssh_extra_allowed_interfaces` | [lab-wide](#ssh_extra_allowed_interfaces) | Interfaces besides tailscale0 on which SSH is reachable. |
 
@@ -732,10 +900,17 @@ TCP port of `tailscale serve` for Grafana.
 
 ### `firewall_tailnet_tcp_ports`
 
-TCP ports open on the tailnet interface (22, plus the serve port if enabled).
+TCP ports open on the tailnet interface (derived: 22, the serve port if enabled, 18704 and 18710 on an inference node, 4317 on a paired lab node).
 
 - Type: `list` of `int`
-- Default: `{{ [22] + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else []) }}`
+- Default:
+
+    ```jinja
+    {{ [22]
+       + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else [])
+       + ([pokus_ports.vllm, pokus_ports.inference_control] if node_role == 'inference' else [])
+       + ([pokus_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
+    ```
 
 ### `firewall_tailscale_udp_port`
 
@@ -756,7 +931,12 @@ Name pattern of the per-run networks; nothing is forwarded out of them.
 OTLP ports VM targets may reach on the listener address (derived; empty without vm_targets).
 
 - Type: `list` of `int`
-- Default: `{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] if pokus_features.vm_targets | default(false) else [] }}`
+- Default:
+
+    ```jinja
+    {{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http]
+       if (pokus_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}
+    ```
 
 ### `firewall_incus_bridge_patterns`
 
@@ -944,11 +1124,15 @@ Network ACL the platform attaches to every run network.
 Egress rules of the run ACL (derived; OTLP to the VM listener with vm_targets).
 
 - Type: `list` of `dict`
-- Default: `{{ [{'action': 'allow', 'state': 'enabled', 'protocol': 'tcp',
-     'destination': pokus_vm_otlp.address ~ '/32',
-     'destination_port': pokus_ports.otlp_grpc ~ ',' ~ pokus_ports.otlp_http,
-     'description': 'OTLP to the collector listener for VM targets'}]
-   if pokus_features.vm_targets | default(false) else [] }}`
+- Default:
+
+    ```jinja
+    {{ [{'action': 'allow', 'state': 'enabled', 'protocol': 'tcp',
+         'destination': pokus_vm_otlp.address ~ '/32',
+         'destination_port': pokus_ports.otlp_grpc ~ ',' ~ pokus_ports.otlp_http,
+         'description': 'OTLP to the collector listener for VM targets'}]
+       if pokus_features.vm_targets | default(false) else [] }}
+    ```
 
 ### `incus_max_virtual_machines`
 
@@ -1065,6 +1249,36 @@ Journal identifier of the Incus event feed.
 
 - Type: `str`
 - Default: `pokus-incus-events`
+
+## inference_control
+
+Pairing identity on lab and inference nodes; the control endpoint on an inference node.
+
+Entry points: `main` (Pairing identity on lab and inference nodes; the control endpoint on an inference node). Role README: `ansible/roles/inference_control/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `inference_lab_node` | [lab-wide](#inference_lab_node) | Inference node only. Tailnet name of the paired lab node; must match peer.json. |
+| `inference_remote_node` | [lab-wide](#inference_remote_node) | Lab node only. Tailnet name of the paired inference node; must match peer.json. |
+| `machine_name` | [lab-wide](#machine_name) | Tailnet name of this node; the subject alternative name of its certificate. |
+| `node_role` | [lab-wide](#node_role) | The role runs on lab and inference nodes only. |
+| `pokus_root` | [lab-wide](#pokus_root) | Research space root (model weights under models/). |
+
+### `inference_control_certificate_days`
+
+Validity of the self-signed identity certificate in days.
+
+- Type: `int`
+- Default: `3650`
+
+### `inference_control_verify_wait`
+
+Seconds the verification call waits for vLLM's health.
+
+- Type: `int`
+- Default: `60`
 
 ## lab_session
 
@@ -1426,6 +1640,65 @@ dnf plugin package that provides `dnf versionlock`.
 - Type: `str`
 - Default: `python3-dnf-plugin-versionlock`
 - Entry points: `hold`
+
+## platform
+
+Deploy the platform services at platform_ref with hardened units (only if enabled).
+
+Entry points: `main` (Deploy the platform services at platform_ref with hardened units (only if enabled)), `rotate_signing` (Replace the run-manifest signing key; old public keys stay published). Role README: `ansible/roles/platform/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `inference_remote_node` | [lab-wide](#inference_remote_node) | Tailnet name of the paired inference node (remote mode). |
+| `lab_mode` | [lab-wide](#lab_mode) | production or staging; scripted inference needs staging. |
+| `machine_name` | [lab-wide](#machine_name) | Machine name (endpoints.toml, published signing keys). |
+| `node_role` | [lab-wide](#node_role) | The platform runs on full and lab nodes only. |
+| `pokus_features` | host_vars | Feature flags (gpu_inference decides local inference). |
+| `pokus_versions` | host_vars | The pinned versions (Quarto). |
+| `qa_trusted_keys` | [lab-wide](#qa_trusted_keys) | QA public keys trusted for attestations, {name, pem}. |
+
+### `platform_enabled`
+
+Deploy the platform; when false, installed platform units are stopped and disabled.
+
+- Type: `bool`
+- Default: `false`
+- Entry points: `main`, `rotate_signing`
+
+### `platform_ref`
+
+A platform-v tag (recommended), another tag, a branch or a full commit.
+
+- Type: `str`
+- Default: `''`
+- Entry points: `main`
+
+### `platform_settings`
+
+Non-secret settings per service short name, rendered into /etc/pokus/platform/&lt;svc&gt;.toml and checked against the platform's schemas (C9b).
+
+- Type: `dict`
+- Default: `{}`
+- Entry points: `main`
+
+### `platform_inference_mode`
+
+Inference backend of endpoints.toml; auto is local where this node serves inference, otherwise remote.
+
+- Type: `str`
+- Choices: `auto`, `local`, `remote`, `scripted`
+- Default: `auto`
+- Entry points: `main`
+
+### `platform_scripted_api_url`
+
+OpenAI-compatible endpoint of the scripted backend (staging only, D3).
+
+- Type: `str`
+- Default: `''`
+- Entry points: `main`
 
 ## platform_facts
 

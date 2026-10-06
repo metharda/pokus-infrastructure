@@ -1,9 +1,33 @@
 # Managed by pokus-infra (ansible/roles/observability/vars/main.yml). Local changes will be overwritten.
 
-# The dedicated OTLP listener for VM targets exists only with vm_targets (C4).
-observability_vm_listener: "{{ pokus_features.vm_targets | default(false) | bool }}"
+# Prometheus, Loki, Tempo and Grafana run on full and lab nodes; an inference
+# node runs the collectors and exporters only and forwards everything to its
+# paired lab node (BUILD_PROMPT §19.10).
+observability_stores: "{{ node_role in ['full', 'lab'] }}"
+# Inference node: the paired lab node that receives its telemetry (empty until paired).
+observability_forward_node: "{{ inference_lab_node if node_role == 'inference' else '' }}"
+# Lab node: the paired inference node whose telemetry arrives over mutual TLS.
+observability_inference_node: "{{ inference_remote_node if node_role == 'lab' else '' }}"
+# The collector gateway's copy of the pairing material (/etc/pokus/inference),
+# readable by its container user only.
+observability_pairing_dir: "{{ observability_secrets_dir }}/otel-pairing"
+observability_pairing_files: [self.crt, self.key, peer.crt]
+# Container user of the collector gateway (compose/observability/compose.yml).
+observability_gateway_uid: 10001
+# The dedicated OTLP listener for VM targets exists only with vm_targets (C4),
+# on nodes that run Incus.
+observability_vm_listener: "{{ (pokus_features.vm_targets | default(false) | bool) and observability_stores }}"
 # OTLP receivers of the gateway's pipelines.
 observability_otlp_receivers: "{{ ['otlp'] + (['otlp/vm'] if observability_vm_listener else []) }}"
+# An inference node's gateway scrapes the local exporters itself (receiver prometheus).
+observability_metrics_receivers: "{{ observability_otlp_receivers + ([] if observability_stores else ['prometheus']) }}"
+# Exporters by signal: the local stores, the paired lab node, or nowhere
+# (nop) on an inference node that is not paired yet.
+observability_exporters: >-
+  {{ {'logs': 'otlp_http/loki', 'metrics': 'prometheus', 'traces': 'otlp_grpc/tempo'} if observability_stores
+     else ({'logs': 'otlp_grpc/lab', 'metrics': 'otlp_grpc/lab', 'traces': 'otlp_grpc/lab'}
+           if observability_forward_node | length > 0
+           else {'logs': 'nop', 'metrics': 'nop', 'traces': 'nop'}) }}
 # GPU metrics only with gpu_inference.
 observability_gpu: "{{ pokus_features.gpu_inference | default(false) | bool }}"
 # vLLM serves on this host (node_role full or inference) with gpu_inference.

@@ -85,6 +85,13 @@
         name: tailscale
       tags: [tailscale]
 
+    # Needs the tailnet address; before observability, which forwards over the pairing.
+    - name: Pairing identity and the inference control endpoint
+      ansible.builtin.import_role:
+        name: inference_control
+      when: node_role in ['lab', 'inference']
+      tags: [inference_control]
+
     - name: Docker Engine
       ansible.builtin.import_role:
         name: docker
@@ -98,19 +105,36 @@
       when: pokus_features.gpu_inference | default(false)
       tags: [nvidia_container_toolkit]
 
+    # An inference node runs only the inference stack (BUILD_PROMPT §19.10).
     - name: Incus
       ansible.builtin.import_role:
         name: incus
+      when: &pokus_runs_lab node_role in ['full', 'lab']
       tags: [incus]
 
     - name: PostgreSQL
       ansible.builtin.import_role:
         name: postgres
+      when: *pokus_runs_lab
       tags: [postgres]
+
+    # Before OPA, which then serves the deployed platform's policy bundle.
+    - name: Scenario catalog
+      ansible.builtin.import_role:
+        name: catalog
+      when: *pokus_runs_lab
+      tags: [catalog]
+
+    - name: Platform services
+      ansible.builtin.import_role:
+        name: platform
+      when: *pokus_runs_lab
+      tags: [platform]
 
     - name: Open Policy Agent
       ansible.builtin.import_role:
         name: opa
+      when: *pokus_runs_lab
       tags: [opa]
 
     - name: Observability
@@ -141,7 +165,7 @@
         name: images
         apply:
           tags: [images]
-      when: node_role in ['full', 'lab']
+      when: *pokus_runs_lab
       tags: [images]
 
     - name: Backups

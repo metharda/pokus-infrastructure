@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pokus-lab",
         description="Operate a Pokus lab host: health checks, fingerprint, start and stop, "
-        "backups, golden images, researchers and host updates.",
+        "backups, golden images, researchers, inference node pairing and host updates.",
         epilog=EPILOG,
     )
     parser.add_argument(
@@ -111,6 +111,18 @@ def build_parser() -> argparse.ArgumentParser:
     keys.add_argument(
         "--key-file", required=True, metavar="FILE", help="the new OpenSSH public key(s)"
     )
+
+    pair = sub.add_parser(
+        "pair", help="pair a lab node with an inference node over the tailnet (root)"
+    )
+    pair_sub = pair.add_subparsers(dest="pair_action", required=True, metavar="ACTION")
+    show = pair_sub.add_parser("show", help="on the inference node: show a code and wait")
+    show.add_argument(
+        "--timeout", type=float, default=600, metavar="SECONDS", help="how long to wait"
+    )
+    connect = pair_sub.add_parser("connect", help="on the lab node: pair with the inference node")
+    connect.add_argument("node", help="tailnet name of the inference node")
+    connect.add_argument("code", help="the code the inference node shows")
 
     sub.add_parser("wsl-helpers", help="where the optional Windows helpers are (wsl2 only)")
     update = sub.add_parser(
@@ -210,6 +222,10 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
         if args.images_action == "build":
             return commands.images_build(system, config, args.blueprint, args.rebuild, [])
         return commands.images_export(system, config, [])
+    if args.command == "pair":
+        if args.pair_action == "show":
+            return commands.pair_show(system, config, args.timeout)
+        return commands.pair_connect(system, config, args.node, args.code)
     if args.user_action == "add":
         return commands.user_add(system, config, args.name, args.key_file, args.admin)
     if args.user_action == "remove":

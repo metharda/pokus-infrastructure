@@ -11,6 +11,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import json
 import re
 import secrets
 from collections.abc import Iterable, Mapping
@@ -382,6 +383,153 @@ def image_by_alias(images: Iterable[Mapping[str, Any]] | None, alias: str) -> di
     return {}
 
 
+TOML_BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _toml_key(key: str) -> str:
+    return key if TOML_BARE_KEY.match(key) else json.dumps(key)
+
+
+def _toml_value(value: Any) -> str:  # noqa: ANN401 - TOML value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_toml_value(v) for v in value) + "]"
+    if isinstance(value, Mapping):
+        pairs = (f"{_toml_key(str(k))} = {_toml_value(v)}" for k, v in value.items())
+        return "{" + ", ".join(pairs) + "}"
+    raise TypeError(f"no TOML representation for {type(value).__name__}: {value!r}")
+
+
+def _toml_table(data: Mapping[str, Any], path: list[str], out: list[str]) -> None:
+    scalars = [(k, v) for k, v in data.items() if not isinstance(v, Mapping)]
+    tables = [(k, v) for k, v in data.items() if isinstance(v, Mapping)]
+    if path and (scalars or not tables):
+        out.append(f"[{'.'.join(_toml_key(p) for p in path)}]")
+    out.extend(f"{_toml_key(str(k))} = {_toml_value(v)}" for k, v in scalars)
+    for key, value in tables:
+        if out and out[-1] != "":
+            out.append("")
+        _toml_table(value, [*path, str(key)], out)
+
+
+def to_toml(data: Mapping[str, Any], header: str = "") -> str:
+    """Serialize a mapping as TOML (tables for nested mappings, inline arrays).
+
+    Args:
+        data: The document; None values are not representable.
+        header: Comment lines put first.
+
+    Returns:
+        TOML text ending with a newline.
+
+    Raises:
+        TypeError: For values TOML cannot represent (such as None).
+    """
+    out: list[str] = [f"# {line}" if line else "#" for line in header.splitlines()]
+    if out:
+        out.append("")
+    _toml_table(data, [], out)
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def _perm_bits(perms: str) -> int:
+    return sum(bit for char, bit in zip(perms, (4, 2, 1), strict=True) if char != "-")
+
+
+def _perm_text(bits: int) -> str:
+    return "".join(char if bits & bit else "-" for char, bit in zip("rwx", (4, 2, 1), strict=True))
+
+
+def socket_specs(sockets: Iterable[Mapping[str, Any]], acls: bool) -> list[dict[str, Any]]:
+    """The effective permissions of platform sockets (contracts.md#sockets, C8).
+
+    Without POSIX ACL support on /run a socket with ACL entries uses its
+    fallback group and mode. With ACLs, setfacl recalculates the mask, so the
+    group bits ``stat`` reports become the mask (the union of the group class
+    entries), and getfacl shows the owning group's own entry.
+
+    Args:
+        sockets: Socket entries (path, owner, group, mode, acl, optional fallback).
+        acls: Whether /run supports POSIX ACLs.
+
+    Returns:
+        One entry per socket: path, owner, group, mode and acl to apply, and
+        expect_mode and expect_acl as doctor reads them back.
+    """
+    specs = []
+    for socket in sockets:
+        entry = dict(socket)
+        if entry.get("acl") and not acls:
+            entry.update(entry.get("fallback") or {})
+            entry["acl"] = []
+        entry.pop("fallback", None)
+        mode = int(str(entry["mode"]), 8)
+        acl = list(entry.get("acl") or [])
+        expect_mode, expect_acl = mode, []
+        if acl:
+            group_bits = (mode >> 3) & 0o7
+            mask = group_bits
+            for item in acl:
+                mask |= _perm_bits(item.rsplit(":", 1)[1])
+            expect_mode = (mode & 0o7707) | (mask << 3)
+            expect_acl = [*acl, f"group::{_perm_text(group_bits)}", f"mask::{_perm_text(mask)}"]
+        entry["acl"] = acl
+        entry["expect_mode"] = f"{expect_mode:04o}"
+        entry["expect_acl"] = expect_acl
+        specs.append(entry)
+    return specs
+
+
+# systemd hardening every Pokus service unit carries (BUILD_PROMPT §7.14), as
+# `systemctl show` reports it; doctor compares them (systemd.hardening).
+UNIT_HARDENING = {
+    "NoNewPrivileges": "yes",
+    "ProtectSystem": "strict",
+    "ProtectHome": "yes",
+    "PrivateTmp": "yes",
+    "PrivateDevices": "yes",
+    "RestrictSUIDSGID": "yes",
+    "LockPersonality": "yes",
+}
+
+
+def unit_hardening(
+    units: Iterable[Mapping[str, Any]],
+    denied: Iterable[str],
+    agent_denied: Iterable[str] = (),
+) -> list[dict[str, Any]]:
+    """What doctor expects of hardened service units.
+
+    Args:
+        units: Units with ``unit``, ``account`` and optionally
+            ``memory_deny_write_execute`` (default true) and ``agent``.
+        denied: InaccessiblePaths of every unit.
+        agent_denied: Further InaccessiblePaths of agent units.
+
+    Returns:
+        One entry per unit: unit, properties (``systemctl show`` values) and
+        inaccessible_paths.
+    """
+    expected = []
+    for unit in units:
+        mdwe = unit.get("memory_deny_write_execute", True)
+        properties = {
+            **UNIT_HARDENING,
+            "User": str(unit["account"]),
+            "MemoryDenyWriteExecute": "yes" if mdwe else "no",
+        }
+        paths = [*denied, *(agent_denied if unit.get("agent") else ())]
+        expected.append(
+            {"unit": unit["unit"], "properties": properties, "inaccessible_paths": paths}
+        )
+    return expected
+
+
 class FilterModule:
     """Ansible filter plugin entry point."""
 
@@ -403,4 +551,7 @@ class FilterModule:
             "pokus_scram_matches": scram_matches,
             "pokus_config_hashes": config_hashes,
             "pokus_image_by_alias": image_by_alias,
+            "pokus_to_toml": to_toml,
+            "pokus_socket_specs": socket_specs,
+            "pokus_unit_hardening": unit_hardening,
         }

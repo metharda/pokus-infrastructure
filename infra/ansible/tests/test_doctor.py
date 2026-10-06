@@ -22,6 +22,8 @@ IMPORTED_ROLES = (
     "firewall",
     "lab_session",
     "observability",
+    "platform",
+    "inference_control",
 )
 SOURCES = INFRA / "tools" / "pokus-lab" / "pokus_lab"
 CONFIG_READ = re.compile(r"config\.get\(((?:\s*\"[a-z_]+\",?)+)")
@@ -173,20 +175,70 @@ def test_containers_carry_their_pinned_digests() -> None:
     ("node_role", "gpu", "expected"),
     [
         ("lab", False, {"pokus-postgres", "pokus-opa", "pokus-loki"}),
-        ("inference", True, {"pokus-gpu-exporter", "pokus-loki"}),
+        ("inference", True, {"pokus-gpu-exporter", "pokus-otel-gateway", "pokus-node-exporter"}),
     ],
 )
 def test_node_roles(node_role: str, gpu: bool, expected: set[str]) -> None:
-    data = render(node_role=node_role, pokus_features={"gpu_inference": gpu, "vm_targets": False})
+    data = render(node_role=node_role, pokus_features={"gpu_inference": gpu, "vm_targets": True})
     assert expected <= set(data["containers"])
     if node_role == "inference":
         assert "pokus-postgres" not in data["containers"]
+        # Only the inference stack; telemetry goes to the paired lab node (§19.10).
+        stores = {"pokus-prometheus", "pokus-loki", "pokus-tempo", "pokus-grafana"}
+        assert not stores & set(data["containers"])
+        assert data["observability"] == {}
         assert "pokus-core.service" not in data["units"]
         assert data["incus"] == {}
         assert data["images"]["blueprints"] == []
         assert data["postgres"]["roles"] == []
+        assert data["listeners"] == {
+            "processes": data["listeners"]["processes"],
+            "addresses": [],  # no VM listener without Incus
+            "tailnet_ports": [18704, 18710],
+        }
+        assert [h["unit"] for h in data["hardening"]] == ["pokus-inference-control.service"]
     else:
         assert "pokus-gpu-exporter" not in data["containers"]
+        assert data["listeners"]["tailnet_ports"] == []
+        assert data["observability"]["loki"] == "http://127.0.0.1:18702"
+        assert data["hardening"] == []  # the platform is not enabled
+
+
+def test_split_inference_pairing() -> None:
+    unpaired = render(node_role="inference")
+    assert unpaired["inference"] == {
+        "dir": "/etc/pokus/inference",
+        "control_port": 18710,
+        "peer": "",
+        "renew_days": 30,
+    }
+    assert "pokus-inference-control.service" not in unpaired["units"]
+    paired = render(node_role="inference", inference_lab_node="pokus-lab")
+    assert paired["inference"]["peer"] == "pokus-lab"
+    assert paired["units"][-1] == "pokus-inference-control.service"
+    lab = render(node_role="lab", inference_remote_node="pokus-gpu")
+    assert lab["inference"]["peer"] == "pokus-gpu"
+    assert lab["listeners"]["tailnet_ports"] == [4317]
+    assert render()["inference"]["peer"] == ""
+
+
+def test_platform_units_and_sockets() -> None:
+    sockets = [{"path": "/run/pokus/gw/svc.sock", "expect_mode": "0660", "expect_acl": []}]
+    content = base64.b64encode(json.dumps(sockets).encode()).decode()
+    data = render(platform_enabled=True, doctor_platform_sockets={"content": content})
+    assert data["sockets"] == sockets
+    hardening = {h["unit"]: h for h in data["hardening"]}
+    assert len(hardening) == 8
+    agent = hardening["pokus-agent-runner.service"]
+    assert agent["properties"]["User"] == "pokus-agent"
+    assert "/etc/pokus/inference" in agent["inaccessible_paths"]
+    gateway = hardening["pokus-llm-gateway.service"]
+    assert "/etc/pokus/inference" not in gateway["inaccessible_paths"]  # its remote backend
+    evaluator = hardening["pokus-evaluator.service"]["properties"]
+    assert evaluator["MemoryDenyWriteExecute"] == "no"
+    assert "pokus-orchestrator.service" in data["units"]
+    assert "pokus-reconcile.service" not in data["units"]  # oneshot
+    assert render(doctor_platform_sockets={"content": content})["sockets"] == []
 
 
 def test_incus_and_images() -> None:

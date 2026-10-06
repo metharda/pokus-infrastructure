@@ -1,0 +1,39 @@
+# Managed by pokus-infra (ansible/roles/platform/tasks/quarto.yml). Local changes will be overwritten.
+#
+# The pinned Quarto CLI for the evaluator's HTML and PDF reports (BUILD_PROMPT
+# §7.14); PDF goes through the Typst engine bundled with Quarto, no TeX.
+
+- name: Create the Quarto directory
+  ansible.builtin.file:
+    path: "{{ platform_quarto_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the pinned Quarto
+  ansible.builtin.get_url:
+    url: "{{ platform_quarto_asset.url }}"
+    checksum: "sha256:{{ platform_quarto_asset.sha256 }}"
+    dest: "{{ platform_quarto_dir }}.tar.gz"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Unpack Quarto
+  ansible.builtin.unarchive:
+    src: "{{ platform_quarto_dir }}.tar.gz"
+    dest: "{{ platform_quarto_dir }}"
+    remote_src: true
+    extra_opts: [--strip-components=1, --no-same-owner]
+    creates: "{{ platform_quarto_dir }}/bin/quarto"
+  when: not ansible_check_mode
+
+- name: Put Quarto on the PATH
+  ansible.builtin.file:
+    src: "{{ platform_quarto_dir }}/bin/quarto"
+    dest: "{{ platform_quarto_link }}"
+    state: link
+    force: true
+    owner: root
+    group: root

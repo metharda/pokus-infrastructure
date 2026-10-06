@@ -1332,3 +1332,178 @@ width of the machine that generates them (`COLUMNS`).
 ### Open `TODO(verify)` items after step 10
 
 107 markers, unchanged.
+
+## Step 11: catalog, platform and split inference
+
+Built: the helper role `deploy_source` (included only; the root-only bare
+mirror `/var/lib/pokus/git/pokus.git`, an SSH deploy key generated on the
+host or an anonymous HTTPS source, pinned host keys, SSH-signed tags with
+`require_signed_tags`, `git archive <commit>:<component>` extracted with
+Python's `data` filter through a temporary directory, `DEPLOYED_FROM.json`,
+an atomic `current` switch; helper `/usr/local/libexec/pokus/deploy-source`);
+the roles `catalog` (root:pokus-gt, 0750/0640) and `platform` (uv
+environment of the release, `endpoints.toml` and one `<svc>.toml` per
+service checked against the release's own schemas, secrets directories, the
+run-manifest signing key with its published public key and `rotate.yml
+--tags signing`, QA trusted keys, the pinned Quarto CLI, eight hardened
+units with the socket helper `socket-perms`, migrations once per commit,
+`/usr/local/bin/pokus`); the role `inference_control` (identity certificates
+on lab and inference nodes, the gateway's ACL on lab nodes, the inference
+control endpoint `pokus-inference-control.service` on inference nodes);
+`pokus-lab pair show` and `pair connect` with the pairing protocol
+(`pokus_lab/pairing.py`); split-inference telemetry in the observability role
+(Compose profile `stores`, forwarding and receiving over mutual TLS, a
+private copy of the pairing material for the collector); the
+split-inference ports in the firewall; node-role gating in `site.yml`
+(`incus`, `postgres`, `catalog`, `platform`, `opa` and `images` on `full`
+and `lab` nodes only, `inference_control` on `lab` and `inference` nodes);
+the filters `pokus_to_toml`, `pokus_socket_specs` and
+`pokus_unit_hardening`; in the lab description the platform's and the
+control endpoint's hardening, the platform's socket expectations (from
+`/etc/pokus/platform/sockets.json`), the `inference` section and the
+tailnet ports; the doctor check `inference.pairing` (29 checks); docs
+`how-to/deploy-platform.md`, `how-to/pair-inference-node.md`,
+`node-roles.md`, a split-inference section in `explanation/telemetry.md`
+and updates to `how-to/fix-doctor-checks.md`, `how-to/rotate-secrets.md`
+and `architecture.md`.
+
+Fixed on the way: doctor's `systemd.hardening` compared `InaccessiblePaths`
+with systemd's `-` prefixes still on; doctor's `sockets.permissions` now
+compares the effective mode and ACL (with ACL entries the group bits are the
+mask) and matches whole `getfacl` entries; the variables reference renders
+multi-line defaults as code blocks instead of broken list items.
+
+### Verified in step 11
+
+- vLLM 0.31.0's TLS options in its source
+  (`vllm/entrypoints/launchers/cli_args.py`): `--ssl-keyfile`,
+  `--ssl-certfile`, `--ssl-ca-certs`, `--enable-ssl-refresh` and
+  `--ssl-cert-reqs` (an integer, `ssl.CERT_NONE` by default). They are not
+  used (interpretation 9).
+- `git archive <commit>:<subdirectory>` writes the subtree without a prefix,
+  and `git tag --points-at` finds the component tag (tests against a real
+  repository).
+- uv 0.12.23 has every `uv sync` option the platform role uses.
+- The Quarto 1.10.18 archive matches its locked sha256 and unpacks to
+  `quarto-1.10.18/bin/quarto` with Typst bundled under `bin/tools/<arch>/`.
+- `systemd-analyze verify` (systemd 255) accepts all eight platform units
+  and the control endpoint's unit without a warning, and reports unknown
+  keys and bad values (tests).
+- The TOML writer's output reads back with `tomllib` unchanged (tests).
+- The pinned collector 0.162.0 validates the gateway configuration of a
+  full node, an unpaired and a paired inference node and a paired lab node,
+  and rejects an unknown TLS key. Two collectors run from those
+  configurations with certificates made by community.crypto 3.4.0 exactly as
+  the role requests them: the inference node's metrics arrive on the lab
+  node labelled `pokus_machine`; a certificate with the same name and
+  another key is refused ("unknown certificate authority").
+- Those certificates carry the subject alternative name, server and client
+  authentication, a critical `CA:FALSE` and a subject key identifier, and no
+  authority key identifier. OpenSSL 3 through CPython 3.12 and 3.9, with
+  `VERIFY_X509_STRICT` (the default of `ssl.create_default_context` from
+  Python 3.13), accepts each one as its own trust anchor and refuses any
+  other certificate.
+- The control endpoint, run with real mutual TLS: forwarding to vLLM, every
+  control request, the request limits, and refusal of other certificates
+  and of clients without a certificate (tests). Pairing over TLS: wrong
+  codes, a certificate swapped in between, a `lab_mode` mismatch and the
+  limit of five attempts (tests, also on CPython 3.9).
+- `ansible-lint` (production profile) and `--syntax-check` pass with the
+  new roles; the collections' module options were read with `ansible-doc`.
+
+### Findings to report (step 11)
+
+- **Nothing ran against a real host** (no systemd manager, Docker, Tailscale,
+  `setfacl` or GPU here). The ACL mask arithmetic follows setfacl(1); the
+  `systemctl show` values doctor compares follow systemd's documentation.
+- **The SSH-signed tag test is skipped here** (no `ssh-keygen` in this
+  environment); it runs where OpenSSH is installed, as in CI.
+- **GitHub's SSH host keys stay `TODO(verify)`** (`api.github.com/meta` and
+  `docs.github.com` are not reachable from here). The role refuses an SSH
+  source on github.com until they are verified, unless the deployer supplies
+  `pokus_source_known_hosts`; HTTPS sources work.
+- **Contract gap, gateway access to the mTLS material**: the contract gives
+  `/etc/pokus/inference/` to root:pokus-orch 0750, but the LLM gateway
+  (`pokus-gw`) talks to the remote inference node too. Infra adds
+  `u:pokus-gw:r-x` on the directory and `u:pokus-gw:r--` on `self.key` on
+  lab nodes (proposed contract addition).
+- **Contract question, the agent's secrets**: the contract creates
+  `/etc/pokus/secrets/<svc>/` for every service and also puts
+  `/etc/pokus/secrets` into the agent runner's `InaccessiblePaths` (C2), so
+  the agent cannot read `/etc/pokus/secrets/agent/`. Infra implements both
+  as written; if the agent needs a secret, systemd's `LoadCredential=` would
+  hand it over without opening the directory (proposal).
+- **Further contract additions (proposed)**: the control API (requests and
+  JSON fields as in `node-roles.md`), pairing on port 18710 while the
+  control endpoint is stopped, and OTLP gRPC on port 4317 of a paired lab
+  node's tailnet address for the inference node's telemetry.
+- **`InaccessiblePaths` needs existing paths**: a path is masked only if it
+  exists when the unit starts, so the agent runner starts after, and is
+  `PartOf`, the services whose sockets it must not reach.
+- **Existing hosts**: the gateway collector now runs as 10001:10001 with the
+  pairing mount, and the four stores carry the `stores` profile; the first
+  run after this step may recreate those containers once.
+
+### Interpretations awaiting owner confirmation (step 11)
+
+1. **Deployment directories** are named after the component tag
+   (`platform-v…`, `catalog-v…`) the commit carries, otherwise after the full
+   commit; a tag that moved to another commit is refused; a ref already
+   deployed with the same commit and tree is not extracted again; old
+   deployments stay until removed by hand.
+2. **Sources**: an SSH URL with a read-only deploy key generated on the host
+   (shown once by the play) or an anonymous HTTPS URL; URLs with credentials
+   and personal tokens are refused. Signed tags use git's SSH signature
+   format with an `allowed_signers` file.
+3. **The platform environment** is created with `uv sync --frozen
+   --all-packages --no-dev --no-editable --compile-bytecode` and the pinned
+   CPython, without Python downloads, and the play checks that every console
+   script of the contract exists.
+4. **Configuration checks** (C9b) run each `<svc>.toml` through the
+   release's `schemas/config/<svc>.schema.json` with the release's own
+   interpreter before installing it.
+5. **Socket permissions** (C8): the units keep `UMask=0077`; a root helper
+   from `ExecStartPost=+` waits for each socket and sets owner, group, mode
+   and ACL; without ACL support on `/run` (probed once) the contract's
+   fallback groups apply, and `sockets.json` records what doctor expects.
+6. **Migrations** run with the new release before `current` switches, once
+   per commit (`/var/lib/pokus/platform/migrated-commit`).
+7. **The evaluator** runs without `MemoryDenyWriteExecute`, because Quarto's
+   Deno and Typst generate code at run time; every other unit keeps it.
+8. **Disabling the platform** stops and disables its installed units but
+   removes nothing.
+9. **vLLM stays on 127.0.0.1 on an inference node**; the control endpoint
+   terminates mutual TLS on the tailnet address and forwards port 18704 byte
+   for byte (contract wording: "bound to `tailscale0` with mutual TLS"). One
+   TLS terminator checks the exact peer certificate for both ports, and the
+   loopback listener that the deploy helper's restart, the serving
+   verification, doctor and the scrapes use stays as on a full node.
+10. **Pairing protocol**: self-signed ECDSA P-256 identities valid for
+    3650 days (subject alternative name = tailnet name), a 12-character code
+    from a 32-symbol alphabet (60 bits), HMAC-SHA256 keyed with the code over
+    `pokus-pair-v1|side|own fingerprint|peer fingerprint|node|lab_mode`, at
+    most five attempts, equal `lab_mode` required; each node trusts exactly
+    the other's certificate. A new certificate means pairing again.
+11. **Inference node contents**: no Incus, PostgreSQL, OPA, catalog,
+    platform, golden images or stores; `gpu_inference` is required. Its
+    collector scrapes the local exporters and vLLM and forwards every signal
+    to the lab node; before pairing it exports to `nop`. The lab node sets
+    `pokus.machine` of received data to the configured peer.
+12. **Tailnet addresses** are read at bootstrap (`tailscale ip -4`, and
+    `tailscale ip -4 <peer>` for the collector's export target with the peer
+    name as TLS server name) instead of resolving MagicDNS names inside
+    containers.
+13. **Firewall**: ports 18704 and 18710 on an inference node and 4317 on a
+    paired lab node are open on `tailscale0` to any tailnet peer; mutual TLS
+    and the tailnet policy restrict them (the how-to shows an ACL rule).
+14. **Doctor on split nodes**: `inference.pairing` (error) fails on missing
+    identity files, a pairing the host_vars do not name, a mismatch, a
+    missing `peer.crt` or a certificate expiring within 30 days, and is
+    skipped before pairing; the telemetry round trip is skipped on inference
+    nodes; listeners on the tailnet address are allowed only on the
+    split-inference ports.
+
+### Open `TODO(verify)` items after step 11
+
+107 markers, unchanged; the planned note on vLLM's TLS options was verified
+instead (see above).

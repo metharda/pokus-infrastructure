@@ -193,6 +193,9 @@ def test_filters_are_registered_with_ansible() -> None:
         "pokus_scram_matches",
         "pokus_config_hashes",
         "pokus_image_by_alias",
+        "pokus_to_toml",
+        "pokus_socket_specs",
+        "pokus_unit_hardening",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pokus_release_identity(c)", {"p": profile, "c": debian_codenames()})

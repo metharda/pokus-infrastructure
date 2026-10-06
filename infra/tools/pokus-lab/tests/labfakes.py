@@ -45,7 +45,17 @@ LAB: dict[str, Any] = {
     "lab": {"drain_timeout": 0},
     "units": ["pokus-health-gate.service", "pokus-core.service"],
     "containers": {"pokus-postgres": "docker.io/library/postgres@" + DIGEST},
-    "listeners": {"processes": ["sshd", "dnsmasq"], "addresses": ["198.18.0.1"]},
+    "listeners": {
+        "processes": ["sshd", "dnsmasq"],
+        "addresses": ["198.18.0.1"],
+        "tailnet_ports": [],
+    },
+    "inference": {
+        "dir": "/etc/pokus/inference",
+        "control_port": 18710,
+        "peer": "",
+        "renew_days": 30,
+    },
     "firewall": {"backend": "nftables", "incus_bridge_patterns": ["r-*"]},
     "tailscale": {"enabled": True, "hostname": "pokus-lab", "tag": "tag:pokus-lab"},
     "gpu": {

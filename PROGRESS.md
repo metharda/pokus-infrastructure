@@ -371,6 +371,28 @@ Proposed in infra step 10 (same status; details in
   `api.sock`, called as root by `pokus-lab stop` and `update-host`; runs still
   active when the lab stops are recorded as interrupted.
 
+Proposed in infra step 11 (same status; details in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 11"; `contracts.md` itself is
+unchanged):
+
+- Inference mTLS material: on lab nodes also `u:pokus-gw:r-x` on
+  `/etc/pokus/inference/` and `u:pokus-gw:r--` on `self.key`, because the LLM
+  gateway calls the remote inference node too.
+- Inference control API: `GET /health` (`ok`, `vllm_status`, `deployment`,
+  `fingerprint` with `hash` and `computed_at`), `GET /model` (`deployment`,
+  `models`, the served model's verified `manifest`), `GET /metrics`,
+  `POST /activate` with `{"deployment": "<id>@<version>"}` (the deploy
+  helper's answer) and `POST /verify` (the serving verification's report).
+- Ports: pairing uses 18710 while the control endpoint is stopped; a paired
+  lab node receives the inference node's telemetry with OTLP gRPC on 4317 of
+  its tailnet address (mutual TLS).
+- Inference node: vLLM stays on `127.0.0.1:18704`; the control endpoint
+  terminates mutual TLS on the tailnet address and forwards 18704 (instead
+  of vLLM itself bound to `tailscale0`).
+- Question: the agent runner cannot read `/etc/pokus/secrets/agent/`
+  because `/etc/pokus/secrets` is in its `InaccessiblePaths` (C2); proposed
+  `LoadCredential=` if the agent needs a secret.
+
 ## Step status
 
 ### Phase 1 — infra/
@@ -386,8 +408,8 @@ Proposed in infra step 10 (same status; details in
 | 7 | postgres, observability, opa, vllm, models | done | `99768ea` |
 | 8 | images | done | `5526e43` |
 | 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
-| 10 | pokus-lab CLI with doctor and fingerprint | done | commit "feat(infra): add the pokus-lab CLI with doctor and fingerprint" (SHA recorded with step 11) |
-| 11 | catalog and platform roles | pending | — |
+| 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
+| 11 | catalog and platform roles, split inference | done | commit "feat(infra): add the catalog, platform and split-inference roles" (SHA recorded with step 12) |
 | 12 | test-distros harness | pending | — |
 | 13 | Installer TUI | pending | — |
 | 14 | Documentation completion | pending | — |
@@ -504,6 +526,24 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   implement the drain endpoints); `site.yml` still applies `postgres` and
   `opa` on inference nodes (aligned in step 11); the step 5 sleep inhibitor
   was never enabled (fixed); `pokus-lab docs serve` follows in step 14.
+- From step 11 ("Findings to report (step 11)" and "Interpretations awaiting
+  owner confirmation (step 11)"): deployment directory names, refusing moved
+  tags, keeping old deployments; SSH deploy keys or anonymous HTTPS only;
+  SSH-signed tags; the uv environment and console-script check; schema
+  checks with the release's interpreter; socket permissions from a root
+  `ExecStartPost=+` helper with the ACL fallback; migrations before `current`
+  switches, once per commit; the evaluator without `MemoryDenyWriteExecute`;
+  disabling the platform stops but removes nothing; vLLM on loopback behind
+  the control endpoint on an inference node; the pairing protocol (P-256
+  identities for 3650 days, 60-bit code, HMAC over both fingerprints, five
+  attempts, equal `lab_mode`); what an inference node runs and how its
+  telemetry reaches the lab node; tailnet addresses read at bootstrap; the
+  split-inference firewall ports; doctor on split nodes. Findings: nothing
+  ran against a real host; the SSH-signed tag test needs `ssh-keygen`;
+  GitHub's SSH host keys are still unverified (SSH sources on github.com are
+  refused until then); the contract proposals above; `InaccessiblePaths`
+  needs existing paths (unit ordering); existing hosts may recreate the
+  collector and store containers once.
 
 ## Owner deliverables pending
 
@@ -525,9 +565,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (107 after step 10; details
+`make verify-todos` lists every marker in the tree (107 after step 11; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 10"):
+step 4" through "after step 11"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -565,13 +605,9 @@ step 4" through "after step 10"):
   from the build environment).
 - Step 9: nothing added or resolved.
 - Step 10: nothing added or resolved.
-
-Known items for later steps (each becomes a `TODO(verify)` entry when its file
-is written, unless verified first):
-
-- infra step 11 (`inference_control`): vLLM TLS options for the inference
-  node. (OPA authorization and Loki's native OTLP ingestion were verified in
-  step 7 by running the pinned releases.)
+- Step 11: nothing added or resolved; vLLM's TLS options, planned as a
+  marker, were verified in vLLM's source (and are not used). GitHub's SSH
+  host keys (above) now also gate SSH deployments from github.com.
 
 ## Known issues
 
@@ -613,13 +649,19 @@ is written, unless verified first):
 - Several command output formats are modeled in the preflight fixtures from
   upstream knowledge and must be confirmed on real hosts in Phase 5 (list in
   `infra/docs/IMPLEMENTATION_NOTES.md`).
+- The build environment has no `ssh-keygen` and no `setfacl`: the test of
+  SSH-signed tag deployments is skipped here (it runs where OpenSSH is
+  installed, as in CI), and the socket ACL handling is tested with a fake
+  `setfacl` only.
 
 ## Next step
 
-Infra step 11 (catalog and platform roles: the root-only bare mirror and
-`git archive` deployments with `DEPLOYED_FROM.json` (B2), platform service
-accounts, units with their systemd hardening and sockets (C8), the signing
-key and its rotation in `rotate.yml`, and `inference_control` with pairing
-for `node_role: inference`). It also fills the `hardening` and `sockets`
-entries of the lab description so that doctor checks them, and limits the
-`postgres` and `opa` roles to `full` and `lab` nodes.
+Infra step 12: the `make test-distros` harness (BUILD_PROMPT §19.9) — one VM
+per supported and tested distribution (and per firewall backend, plus the
+SELinux-enforcing and derivative variants) running a full bootstrap without
+GPU, a second run with `changed=0` and `pokus-lab doctor --smoke`, the CI fast
+lane (`ansible-playbook --check` in systemd-enabled containers per family,
+all preflight fixtures), and the generated support matrix with test dates.
+Then step 13 (installer TUI, including the pairing screens) and step 14
+(documentation completion, `pokus-lab docs serve`); after step 14 the
+assistant stops and waits for the platform phase.

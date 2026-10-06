@@ -55,6 +55,10 @@ argument_specs:
         type: int
         default: 120
         description: Seconds doctor --smoke waits for a throwaway target's logs in Loki.
+      doctor_certificate_renew_days:
+        type: int
+        default: 30
+        description: Days before a pairing certificate expires at which doctor fails inference.pairing.
       doctor_drain_timeout:
         type: int
         default: 1800

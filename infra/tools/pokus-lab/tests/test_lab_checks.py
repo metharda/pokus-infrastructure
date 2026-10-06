@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import unittest
 from collections.abc import Sequence
@@ -170,6 +171,29 @@ class NetworkTest(Base):
             run(checks.check_listeners, system), "fail", "tcp 0.0.0.0:18700 (grafana)"
         )
         self.assertOutcome(run(checks.check_listeners, FakeSystem()), "fail", "ss failed")
+
+    def test_split_inference_listeners(self) -> None:
+        endpoint = (
+            'tcp LISTEN 0 100 100.64.0.7:18710 0.0.0.0:* users:(("inference-contr",pid=20,fd=6))\n'
+        )
+        system = FakeSystem(
+            {"ss -H -lntup": (0, SS + endpoint), "tailscale ip": (0, "100.64.0.7\nfd7a::7\n")}
+        )
+        ports = [18704, 18710]
+        self.assertOutcome(
+            run(checks.check_listeners, system, listeners__tailnet_ports=ports), "pass"
+        )
+        for wrong in ([18704], []):
+            self.assertOutcome(
+                run(checks.check_listeners, system, listeners__tailnet_ports=wrong),
+                "fail",
+                "tcp 100.64.0.7:18710 (inference-contr)",
+            )
+        # Another address than the tailnet's is never allowed by port.
+        system.commands["tailscale ip"] = (0, "100.64.0.8\n")
+        self.assertOutcome(
+            run(checks.check_listeners, system, listeners__tailnet_ports=ports), "fail", "18710"
+        )
 
     def firewall(self, **commands: Any) -> FakeSystem:
         table = {
@@ -415,13 +439,19 @@ class LayoutAccountsTest(Base):
         unit = {
             "unit": "pokus-agent-runner.service",
             "properties": {"NoNewPrivileges": "yes"},
-            "inaccessible_paths": ["/srv/pokus/catalog"],
+            "inaccessible_paths": ["/srv/pokus/catalog", "/run/pokus/vllm-deploy.sock"],
         }
         show = (
             "systemctl show pokus-agent-runner.service --property=NoNewPrivileges,InaccessiblePaths"
         )
         good = FakeSystem(
-            {show: (0, "NoNewPrivileges=yes\nInaccessiblePaths=-/srv/pokus/catalog /etc/pokus\n")}
+            {
+                show: (
+                    0,
+                    "NoNewPrivileges=yes\n"
+                    "InaccessiblePaths=-/srv/pokus/catalog /etc/pokus -/run/pokus/vllm-deploy.sock\n",
+                )
+            }
         )
         self.assertOutcome(run(checks.check_hardening, good, hardening=[unit]), "pass")
         bad = FakeSystem({show: (0, "NoNewPrivileges=no\nInaccessiblePaths=\n")})
@@ -446,6 +476,34 @@ class LayoutAccountsTest(Base):
         self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "pass")
         system.commands[getfacl] = (0, "user::rw-\n")
         self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "fail", "lacks ACL")
+
+    def test_sockets_with_a_mask(self) -> None:
+        path = "/run/pokus/gw/svc.sock"
+        entry = {
+            "path": path,
+            "owner": "pokus-gw",
+            "group": "pokus-gw",
+            "mode": "0600",
+            "acl": ["user:pokus-orch:rw-"],
+            "expect_mode": "0660",
+            "expect_acl": ["user:pokus-orch:rw-", "group::---", "mask::rw-"],
+        }
+        getfacl = f"getfacl --omit-header --absolute-names {path}"
+        acl = "user::rw-\nuser:pokus-orch:rw-\ngroup::---\nmask::rw-\nother::---\n"
+        system = FakeSystem({getfacl: (0, acl)}, infos={path: info("pokus-gw", "pokus-gw", 0o660)})
+        self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "pass")
+        # A narrower mask: getfacl marks the entry's effective rights.
+        system.commands[getfacl] = (
+            0,
+            "user::rw-\nuser:pokus-orch:rw-\t#effective:r--\ngroup::---\nmask::r--\nother::---\n",
+        )
+        self.assertOutcome(
+            run(checks.check_sockets, system, sockets=[entry]), "fail", "lacks ACL mask::rw-"
+        )
+        system.infos[path] = info("pokus-gw", "pokus-gw", 0o600)
+        self.assertOutcome(
+            run(checks.check_sockets, system, sockets=[entry]), "fail", "pokus-gw:pokus-gw 0600"
+        )
 
 
 def psql_answers(roles: Sequence[str], gt: dict[str, bool], settings: dict[str, str]) -> Any:
@@ -661,3 +719,47 @@ class WslTest(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PairingTest(Base):
+    DIR = "/etc/pokus/inference"
+
+    def system(self, peer: str = "pokus-lab", days: int = 3650, files: bool = True) -> FakeSystem:
+        end = (NOW + dt.timedelta(days=days)).strftime("%b %d %H:%M:%S %Y GMT")
+        infos = (
+            {
+                f"{self.DIR}/{n}": info("root", "pokus-orch", 0o640)
+                for n in ("self.crt", "self.key", "peer.crt")
+            }
+            if files
+            else {}
+        )
+        records = {f"{self.DIR}/peer.json": json.dumps({"node": peer})} if peer else {}
+        return FakeSystem({"openssl *": (0, f"notAfter={end}\n")}, files=records, infos=infos)
+
+    def check(self, system: FakeSystem, peer: str = "", role: str = "inference") -> Outcome:
+        return run(checks.check_pairing, system, node_role=role, inference__peer=peer)
+
+    def test_not_split(self) -> None:
+        self.assertOutcome(self.check(self.system(), role="full"), "skip", "full node")
+
+    def test_before_pairing(self) -> None:
+        self.assertOutcome(self.check(self.system(peer="")), "skip", "not paired yet")
+        self.assertOutcome(self.check(self.system(), role="lab"), "fail", "inference_remote_node")
+        self.assertOutcome(self.check(self.system(files=False)), "fail", "self.crt missing")
+
+    def test_paired(self) -> None:
+        self.assertOutcome(self.check(self.system(), "pokus-lab"), "pass", "paired with pokus-lab")
+        self.assertOutcome(
+            self.check(self.system(peer="other"), "pokus-lab"),
+            "fail",
+            "inference_lab_node is pokus-lab, but the node is paired with other",
+        )
+        missing = self.system()
+        del missing.infos[f"{self.DIR}/peer.crt"]
+        self.assertOutcome(self.check(missing, "pokus-lab"), "fail", "peer.crt missing")
+        self.assertOutcome(self.check(self.system(days=10), "pokus-lab"), "fail", "expires in 10")
+        # Without openssl the expiry is not checked.
+        unknown = self.system()
+        unknown.commands = {}
+        self.assertOutcome(self.check(unknown, "pokus-lab"), "pass")

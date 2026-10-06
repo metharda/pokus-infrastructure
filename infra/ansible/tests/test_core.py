@@ -44,7 +44,9 @@ VAULT = {
 }
 LOCK = load_yaml(INFRA / "versions.lock.yml")
 # Role defaults that the include_role vars refer to.
-DEFAULTS = ansible_vars(ROLES / "observability" / "defaults" / "main.yml")
+DEFAULTS = ansible_vars(
+    ROLES / "observability" / "defaults" / "main.yml", ROLES / "observability" / "vars" / "main.yml"
+)
 PROJECTS = sorted(p.parent.name for p in (INFRA / "compose").glob("*/compose.yml"))
 
 
@@ -155,8 +157,15 @@ def test_compose_config_is_valid(project: str, gpu_method: str, tmp_path: Path) 
         for key, value in include.get("compose_extra_env", {}).items()
     }
     gpu = bool(include.get("compose_gpu"))
+    profiles = (
+        evaluate(include["compose_profiles"].strip("{} "), variables | DEFAULTS)
+        if "compose_profiles" in include
+        else []
+    )
     text = render_template(
-        "compose", "env.j2", {**variables, "compose_extra_env": extra, "compose_gpu": gpu}
+        "compose",
+        "env.j2",
+        {**variables, "compose_extra_env": extra, "compose_gpu": gpu, "compose_profiles": profiles},
     )
     (tmp_path / ".env").write_text(text)
     result = subprocess.run(

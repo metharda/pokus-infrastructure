@@ -13,13 +13,14 @@ import os
 import re
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from pokus_lab.config import LabConfig
 from pokus_lab.system import System
 
 ORCH_API = "/run/pokus/orch/api.sock"
+CONTROL_UNIT = "pokus-inference-control.service"
 NAME_RE = re.compile(r"^[a-z][a-z0-9]{1,31}$")
 KEY_RE = re.compile(
     r"^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) \S+"
@@ -578,6 +579,133 @@ def user_keys(system: System, config: LabConfig, name: str, key_file: str) -> in
 def _remind(config: LabConfig, tags: str) -> None:
     out("Changed the lab's configuration only. Commit it in the lab's private configuration")
     out(f"and apply it: sudo {' '.join(bootstrap_argv(config, '--tags', tags))}")
+
+
+# --- pairing (BUILD_PROMPT §19.10) ------------------------------------------------------------
+
+
+def _identity(system: System, config: LabConfig) -> tuple[str, Any]:
+    from pokus_lab import pairing  # noqa: PLC0415 - only for pairing
+
+    directory = str(config.get("inference", "dir", default="/etc/pokus/inference"))
+    cert = system.read_text(f"{directory}/self.crt")
+    if not cert:
+        raise CommandError(f"{directory}/self.crt is missing; run bootstrap first")
+    return directory, pairing.Identity(config.machine, str(config.get("lab_mode")), cert)
+
+
+def _store_peer(system: System, directory: str, peer: Any) -> None:  # noqa: ANN401 - pairing.Peer
+    system.write_text(f"{directory}/peer.crt", peer.cert_pem.strip() + "\n", 0o644)
+    record = peer.record(system.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
+    system.write_text(f"{directory}/peer.json", json.dumps(record, indent=2) + "\n", 0o644)
+
+
+def pair_show(
+    system: System,
+    config: LabConfig,
+    timeout: float,
+    serve: Callable[..., Any] | None = None,
+) -> int:
+    """On an inference node: show a one-time code and wait for the lab node.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        timeout: Seconds to wait.
+        serve: Pairing server (``pairing.serve_once``; tests replace it).
+
+    Returns:
+        0 once paired.
+
+    Raises:
+        CommandError: On another node role, missing files or a failed pairing.
+    """
+    from pokus_lab import pairing  # noqa: PLC0415 - only for pairing
+
+    require_root(system, "pair show")
+    if config.node_role != "inference":
+        raise CommandError("pair show runs on the inference node; use pair connect on the lab node")
+    directory, me = _identity(system, config)
+    settings = json.loads(system.read_text(f"{directory}/control.json") or "{}")
+    if not settings.get("listen"):
+        raise CommandError(f"{directory}/control.json has no tailnet address; run bootstrap first")
+    system.run(["systemctl", "stop", CONTROL_UNIT])
+    code = pairing.new_code()
+    out(f"Pairing code: {code}")
+    out(f"On the lab node run: sudo pokus-lab pair connect {config.machine} {code}")
+    port = int(settings.get("control_port", 18710))
+    out(f"Waiting up to {timeout:g} s on {settings['listen']}:{port} ...")
+    try:
+        peer = (serve or pairing.serve_once)(
+            pairing.normalize(code),
+            me,
+            f"{directory}/self.crt",
+            f"{directory}/self.key",
+            str(settings["listen"]),
+            port,
+            timeout,
+            log=out,
+        )
+    except pairing.PairingError as exc:
+        raise CommandError(str(exc)) from exc
+    _store_peer(system, directory, peer)
+    system.run(["systemctl", "restart", CONTROL_UNIT])
+    out(f"Paired with lab node {peer.node} ({pairing.cert_sha256(peer.cert_pem)[:16]}...).")
+    out(f"Set inference_lab_node: {peer.node} in the host_vars file and apply it:")
+    tags = "inference_control,observability,firewall"
+    out(f"sudo {' '.join(bootstrap_argv(config, '--tags', tags))}")
+    return 0
+
+
+def pair_connect(
+    system: System,
+    config: LabConfig,
+    node: str,
+    code: str,
+    connect: Callable[..., Any] | None = None,
+) -> int:
+    """On a lab node: pair with the inference node that shows the code.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        node: Tailnet name of the inference node.
+        code: The code it shows.
+        connect: Pairing client (``pairing.connect``; tests replace it).
+
+    Returns:
+        0 once paired.
+
+    Raises:
+        CommandError: On another node role, missing files or a failed pairing.
+    """
+    from pokus_lab import pairing  # noqa: PLC0415 - only for pairing
+
+    require_root(system, "pair connect")
+    if config.node_role != "lab":
+        raise CommandError("pair connect runs on a lab node (node_role: lab)")
+    if not re.match(r"^[a-z0-9][a-z0-9.-]{0,62}$", node):
+        raise CommandError(f"not a tailnet node name: {node!r}")
+    directory, me = _identity(system, config)
+    try:
+        peer = (connect or pairing.connect)(
+            pairing.normalize(code),
+            me,
+            node,
+            int(config.get("inference", "control_port", default=18710)),
+        )
+    except pairing.PairingError as exc:
+        raise CommandError(str(exc)) from exc
+    _store_peer(system, directory, peer)
+    out(f"Paired with inference node {peer.node} ({pairing.cert_sha256(peer.cert_pem)[:16]}...).")
+    out(f"Set inference_remote_node: {peer.node} in the host_vars file and apply it:")
+    out(
+        "sudo "
+        + " ".join(
+            bootstrap_argv(config, "--tags", "inference_control,platform,observability,firewall")
+        )
+    )
+    return 0
 
 
 # --- WSL and updates ----------------------------------------------------------------------------

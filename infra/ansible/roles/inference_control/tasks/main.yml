@@ -1,0 +1,86 @@
+# Managed by pokus-infra (ansible/roles/inference_control/tasks/main.yml). Local changes will be overwritten.
+#
+# Split inference (BUILD_PROMPT §19.10, contracts.md#inference): every lab and
+# inference node gets a self-signed identity certificate in
+# /etc/pokus/inference; `pokus-lab pair` exchanges the certificates. On a lab
+# node the LLM gateway may read the client key (POSIX ACL); an inference node
+# runs pokus-inference-control, mutual TLS on its tailnet address, once paired.
+- name: Check the node role
+  ansible.builtin.assert:
+    that:
+      - node_role in ['lab', 'inference']
+      - node_role != 'inference' or (pokus_features.gpu_inference | default(false))
+    fail_msg: >-
+      The inference_control role runs on lab and inference nodes only, and an
+      inference node needs the gpu_inference feature (node_role: {{ node_role }}).
+    quiet: true
+
+- name: Create the directory of the mTLS material
+  ansible.builtin.file:
+    path: "{{ inference_control_dir }}"
+    state: directory
+    owner: root
+    group: pokus-orch
+    mode: "0750"
+
+- name: Create the node's private key
+  community.crypto.openssl_privatekey:
+    path: "{{ inference_control_key }}"
+    type: ECC
+    curve: secp256r1
+    owner: root
+    group: pokus-orch
+    mode: "0640"
+
+# The tailnet name is the subject alternative name: the gateway, the
+# orchestrator and the collectors verify the peer by it.
+- name: Create the node's identity certificate
+  when: not ansible_check_mode
+  block:
+    - name: Create the certificate request
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ inference_control_key }}"
+        common_name: "{{ machine_name }}"
+        subject_alt_name: ["DNS:{{ machine_name }}"]
+        use_common_name_for_san: false
+        basic_constraints: ["CA:FALSE"]
+        basic_constraints_critical: true
+        extended_key_usage: [serverAuth, clientAuth]
+      register: inference_control_csr
+
+    - name: Issue the self-signed certificate
+      community.crypto.x509_certificate:
+        path: "{{ inference_control_cert }}"
+        csr_content: "{{ inference_control_csr.csr }}"
+        privatekey_path: "{{ inference_control_key }}"
+        provider: selfsigned
+        selfsigned_not_after: "+{{ inference_control_certificate_days }}d"
+        owner: root
+        group: pokus-orch
+        mode: "0644"
+      notify: Restart the inference control endpoint
+
+# The contract gives the directory to pokus-orch; the gateway's remote
+# backend also needs the client key (IMPLEMENTATION_NOTES, step 11).
+- name: Let the LLM gateway read the client key
+  ansible.posix.acl:
+    path: "{{ item.path }}"
+    entity: pokus-gw
+    etype: user
+    permissions: "{{ item.permissions }}"
+    state: present
+  loop:
+    - {path: "{{ inference_control_dir }}", permissions: rx}
+    - {path: "{{ inference_control_key }}", permissions: r}
+  loop_control:
+    label: "{{ item.path }}"
+  when:
+    - node_role == 'lab'
+    - not ansible_check_mode
+
+- name: Check the pairing
+  ansible.builtin.include_tasks: pairing.yml
+
+- name: Set up the control endpoint
+  ansible.builtin.include_tasks: endpoint.yml
+  when: node_role == 'inference'

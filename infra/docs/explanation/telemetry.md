@@ -106,6 +106,20 @@ variable opens one trace.
 | `pokus.lab_mode` | collector gateway | `pokus_lab_mode` |
 | `pokus.deployment`, `pokus.model_id` | vLLM's environment | traces of vLLM |
 
+## Split inference: an inference node forwards everything
+
+An inference node (`node_role: inference`, see [node roles](../node-roles.md))
+runs the collectors, node_exporter, cAdvisor and the GPU exporter, but no
+Prometheus, Loki, Tempo or Grafana (their Compose profile `stores` is off).
+Its collector gateway scrapes the local exporters and vLLM itself and sends
+every log record, metric and span to the paired lab node with OTLP over gRPC
+and mutual TLS (port 4317 of the lab node's tailnet address). Until the node
+is paired, nothing leaves it. On the lab node a separate receiver accepts
+only the paired node's certificate and sets `pokus.machine` to that node's
+name, so its data shows up with `pokus_machine="<inference-node>"` next to
+the lab node's own. The collector's container user (10001) reads a private
+copy of the pairing material in `/etc/pokus/secrets/containers/otel-pairing`.
+
 ## Why every service uses the host network on 127.0.0.1
 
 The observability containers use the host network and bind `127.0.0.1` only;
@@ -115,7 +129,8 @@ interfaces; neither is reachable from a container on a Docker bridge network.
 On the host network, every listener is a deliberate one: Loki and Tempo keep
 their rings in memory, so they open no cluster ports, and the configuration
 tests check that every listen address is `127.0.0.1` (or the VM listener
-address). The configurations were run once with the pinned releases while
+address, or on a paired lab node the tailnet address of the split-inference
+receiver). The configurations were run once with the pinned releases while
 they were written, and every process listened only on `127.0.0.1`.
 
 PostgreSQL is the exception the other way round: its container has no

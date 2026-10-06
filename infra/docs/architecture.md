@@ -75,6 +75,10 @@ stages is described in [How bootstrap works](explanation/bootstrap.md); how the
 same roles work on every distribution is in
 [Portability](explanation/portability.md).
 
+This is a `full` node. A host without a suitable GPU can run as a `lab` node
+that uses vLLM on a paired `inference` node over the tailnet with mutual TLS;
+[Node roles and split inference](node-roles.md) describes what runs where.
+
 ## Data flows
 
 - **Telemetry.** Services send OpenTelemetry data to the collector on

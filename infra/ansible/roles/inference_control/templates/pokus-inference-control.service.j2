@@ -1,0 +1,42 @@
+# Managed by pokus-infra (ansible/roles/inference_control/templates/pokus-inference-control.service.j2). Local changes will be overwritten.
+#
+# Inference control endpoint of an inference node (BUILD_PROMPT §19.10,
+# contracts.md#inference): mutual TLS 1.3 on the tailnet address, the vLLM
+# API forwarded on {{ pokus_ports.vllm }} and the control API on
+# {{ pokus_ports.inference_control }}. Skipped until the node is paired.
+[Unit]
+Description=Pokus inference control endpoint (mutual TLS on the tailnet)
+Wants=network-online.target
+After=network-online.target tailscaled.service pokus-inference.service
+ConditionPathExists={{ inference_control_peer_cert }}
+PartOf=pokus-lab.target
+
+[Service]
+Type=simple
+ExecStart={{ inference_control_program }} --config {{ inference_control_config }}
+# The tailnet address may come up after the unit starts at boot.
+Restart=on-failure
+RestartSec=10
+User=pokus-orch
+Group=pokus-orch
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StateDirectory={{ inference_control_state_dir | regex_replace('^/var/lib/', '') }}
+InaccessiblePaths={{ inference_control_denied_paths | map('regex_replace', '^', '-') | join(' ') }}
+
+[Install]
+WantedBy=pokus-lab.target

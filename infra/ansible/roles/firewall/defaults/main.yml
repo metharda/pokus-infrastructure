@@ -4,8 +4,15 @@
 firewall_tailnet_interface: tailscale0
 # Port of `tailscale serve` for Grafana (grafana_tailscale_serve).
 firewall_grafana_serve_port: 443
-# TCP ports open on the tailnet interface.
-firewall_tailnet_tcp_ports: "{{ [22] + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else []) }}"
+# TCP ports open on the tailnet interface: SSH, the Grafana serve port, and for
+# split inference (BUILD_PROMPT §19.10) the forwarded vLLM API and the control
+# endpoint on an inference node, OTLP gRPC from the paired inference node on a
+# lab node. Mutual TLS guards the split-inference ports.
+firewall_tailnet_tcp_ports: >-
+  {{ [22]
+     + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else [])
+     + ([pokus_ports.vllm, pokus_ports.inference_control] if node_role == 'inference' else [])
+     + ([pokus_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
 # UDP port of the WireGuard transport of tailscaled.
 firewall_tailscale_udp_port: 41641
 # Name pattern of the per-run networks (contracts.md: r-<short>).
@@ -16,5 +23,8 @@ firewall_incus_bridge_patterns: "{{ pokus_incus_bridge_patterns + pokus_incus_pe
 # Incus documents for firewalld and ufw hosts.
 firewall_uplink_bridge_patterns: "{{ ['pokus-build0'] + pokus_incus_personal_bridge_patterns }}"
 # OTLP ports of the dedicated collector listener that VM targets reach from the
-# run networks (contracts.md#telemetry, C4); empty without vm_targets.
-firewall_vm_otlp_ports: "{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] if pokus_features.vm_targets | default(false) else [] }}"
+# run networks (contracts.md#telemetry, C4); empty without vm_targets and on
+# inference nodes, which run no targets.
+firewall_vm_otlp_ports: >-
+  {{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http]
+     if (pokus_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}

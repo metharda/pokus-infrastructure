@@ -17,7 +17,7 @@ description: Every command and option of pokus-lab.
 pokus-lab [-h] [--config FILE] [--version] COMMAND ...
 ```
 
-Operate a Pokus lab host: health checks, fingerprint, start and stop, backups, golden images, researchers and host updates.
+Operate a Pokus lab host: health checks, fingerprint, start and stop, backups, golden images, researchers, inference node pairing and host updates.
 
 ## Global options
 
@@ -49,6 +49,9 @@ Every command also accepts `-h`, `--help`.
 | `pokus-lab user add` | add a researcher |
 | `pokus-lab user remove` | lock a researcher (moved to researchers_removed) |
 | `pokus-lab user keys` | replace a researcher's public keys |
+| `pokus-lab pair` | pair a lab node with an inference node over the tailnet (root) |
+| `pokus-lab pair show` | on the inference node: show a code and wait |
+| `pokus-lab pair connect` | on the lab node: pair with the inference node |
 | `pokus-lab wsl-helpers` | where the optional Windows helpers are (wsl2 only) |
 | `pokus-lab update-host` | drain, update the OS keeping the holds, bootstrap, doctor, fingerprint diff (root) |
 
@@ -224,6 +227,39 @@ pokus-lab user keys [-h] --key-file FILE name
 | --- | --- | --- | --- |
 | `name` | — | — | — |
 | `--key-file` | `FILE` | — | the new OpenSSH public key(s) |
+
+### pokus-lab pair
+
+Pair a lab node with an inference node over the tailnet (root).
+
+```text
+pokus-lab pair [-h] ACTION ...
+```
+
+### pokus-lab pair show
+
+On the inference node: show a code and wait.
+
+```text
+pokus-lab pair show [-h] [--timeout SECONDS]
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--timeout` | `SECONDS` | `600` | how long to wait |
+
+### pokus-lab pair connect
+
+On the lab node: pair with the inference node.
+
+```text
+pokus-lab pair connect [-h] node code
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `node` | — | — | tailnet name of the inference node |
+| `code` | — | — | the code the inference node shows |
 
 ### pokus-lab wsl-helpers
 

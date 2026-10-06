@@ -21,6 +21,11 @@ argument_specs:
         elements: str
         default: []
         description: Services to start now; empty starts every service of the project.
+      compose_profiles:
+        type: list
+        elements: str
+        default: []
+        description: Compose profiles to enable besides the GPU profile (observability uses stores).
       compose_gpu:
         type: bool
         default: false

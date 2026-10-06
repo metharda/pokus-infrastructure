@@ -1,0 +1,60 @@
+# Managed by pokus-infra (ansible/roles/inference_control/tasks/endpoint.yml). Local changes will be overwritten.
+#
+# pokus-inference-control on an inference node: the program, its settings
+# with the tailnet address, and the unit. It starts only once peer.crt exists.
+- name: Read the tailnet address
+  ansible.builtin.command:
+    argv: [tailscale, ip, "-4"]
+  register: inference_control_tailnet
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Check the tailnet address
+  ansible.builtin.assert:
+    that:
+      - inference_control_tailnet.rc == 0
+      - inference_control_tailnet.stdout_lines | length > 0
+      - inference_control_tailnet.stdout_lines[0] is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+    fail_msg: "tailscale ip -4 gave no address; the node must be on the tailnet (tailscale role)."
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Install the control endpoint
+  ansible.builtin.copy:
+    src: pokus_inference_control.py
+    dest: "{{ inference_control_program }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart the inference control endpoint
+
+- name: Write the endpoint's settings
+  ansible.builtin.copy:
+    content: "{{ inference_control_settings | to_nice_json }}\n"
+    dest: "{{ inference_control_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the inference control endpoint
+
+- name: Install the endpoint's unit
+  ansible.builtin.template:
+    src: pokus-inference-control.service.j2
+    dest: "/etc/systemd/system/{{ inference_control_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the inference control endpoint
+
+- name: Enable the control endpoint
+  ansible.builtin.systemd_service:
+    name: "{{ inference_control_unit }}"
+    enabled: true
+    daemon_reload: true
+
+- name: Start the control endpoint (skipped by systemd until paired)
+  ansible.builtin.systemd_service:
+    name: "{{ inference_control_unit }}"
+    state: started
+  when: not ansible_check_mode

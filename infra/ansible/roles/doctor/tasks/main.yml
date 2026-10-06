@@ -155,6 +155,15 @@
   failed_when: false
   when: doctor_serves_inference
 
+# Written by the platform role with the effective modes and ACLs (with or
+# without ACL support on /run).
+- name: Read the platform's socket expectations
+  ansible.builtin.slurp:
+    src: /etc/pokus/platform/sockets.json
+  register: doctor_platform_sockets
+  failed_when: false
+  when: doctor_platform
+
 - name: Write the lab description
   ansible.builtin.copy:
     dest: "{{ doctor_config }}"
@@ -192,7 +201,8 @@
       containers: "{{ doctor_containers }}"
       listeners:
         processes: "{{ doctor_listener_processes }}"
-        addresses: "{{ [pokus_vm_otlp.address] if pokus_features.vm_targets | default(false) else [] }}"
+        addresses: "{{ [pokus_vm_otlp.address] if observability_vm_listener else [] }}"
+        tailnet_ports: "{{ doctor_tailnet_ports }}"
       firewall:
         backend: "{{ pokus_firewall_backend }}"
         incus_bridge_patterns: "{{ firewall_incus_bridge_patterns if doctor_runs_lab else [] }}"
@@ -206,6 +216,13 @@
           {{ ['--device', 'nvidia.com/gpu=all'] if (doctor_docker.features | default({})).cdi | default(false)
              else ['--runtime', 'nvidia', '--gpus', 'all'] }}
         nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pokus_provider == 'wsl2' else 'nvidia-smi' }}"
+      inference:
+        dir: "{{ inference_control_dir }}"
+        control_port: "{{ pokus_ports.inference_control | int }}"
+        peer: >-
+          {{ inference_lab_node if node_role == 'inference'
+             else (inference_remote_node if node_role == 'lab' else '') }}
+        renew_days: "{{ doctor_certificate_renew_days | int }}"
       vllm:
         current: /etc/pokus/vllm/current.yml
         health_url: "http://127.0.0.1:{{ pokus_ports.vllm }}/health"
@@ -216,22 +233,18 @@
         restricted_roles: "{{ [postgres_reader_role, postgres_grafana_role] if doctor_runs_lab else [] }}"
       opa:
         url: "http://127.0.0.1:{{ pokus_ports.opa }}"
-      observability:
-        otlp_http: "http://127.0.0.1:{{ pokus_ports.otlp_http }}"
-        loki: "http://127.0.0.1:{{ pokus_ports.loki }}"
-        tempo: "http://127.0.0.1:{{ pokus_ports.tempo }}"
-        prometheus: "http://127.0.0.1:{{ pokus_ports.prometheus }}"
-        wait_seconds: "{{ doctor_telemetry_wait | int }}"
-        smoke_wait_seconds: "{{ doctor_smoke_wait | int }}"
-        poll_seconds: 5
+      # An inference node has no stores: its telemetry is checked on the lab node.
+      observability: "{{ doctor_observability if doctor_runs_lab else {} }}"
       layout: "{{ doctor_layout | default([]) }}"
       accounts:
         researchers: "{{ researchers | map(attribute='name') | list }}"
         service_accounts: "{{ service_accounts | map(attribute='name') | list }}"
         privileged_groups: [docker, incus-admin]
         break_glass_docker: "{{ break_glass_docker }}"
-      hardening: []
-      sockets: []
+      hardening: "{{ doctor_hardening }}"
+      sockets: >-
+        {{ (doctor_platform_sockets.content | b64decode | from_json)
+           if doctor_platform and doctor_platform_sockets.content is defined else [] }}
       images:
         blueprints: "{{ doctor_blueprints | default([]) }}"
         bench_project: bench

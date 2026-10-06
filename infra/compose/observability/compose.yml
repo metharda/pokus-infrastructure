@@ -6,7 +6,9 @@
 # researchers' SSH forwards reach the contract ports); the gateway collector
 # also binds the VM listener address when the vm_targets feature is on.
 # Variables come from .env (compose role): images pinned by digest, ports,
-# paths, configuration hashes and the GPU profile.
+# paths, configuration hashes and the profiles: "stores" (Prometheus, Loki,
+# Tempo and Grafana; full and lab nodes, not inference nodes, BUILD_PROMPT
+# §19.10) and the GPU profile.
 name: pokus-observability
 
 x-hardened: &hardened
@@ -29,9 +31,14 @@ services:
     container_name: pokus-otel-gateway
     labels:
       org.pokus.config-hash: ${OTEL_CONFIG_HASH:-}
+      org.pokus.pairing-hash: ${OTEL_PAIRING_HASH:-}
+    # Fixed so the copy of the pairing material can be given to it (observability role).
+    user: "10001:10001"
     command: ["--config=/etc/otelcol/gateway.yaml"]
     volumes:
       - ./config/otel:/etc/otelcol:ro
+      # Split inference: mutual TLS to or from the paired node (empty otherwise).
+      - /etc/pokus/secrets/containers/otel-pairing:/etc/pokus-pairing:ro
 
   # Reads the host journal through the host's journalctl (chroot into the
   # read-only host root, which needs root and CAP_SYS_CHROOT) and forwards it
@@ -52,6 +59,7 @@ services:
 
   prometheus:
     <<: *hardened
+    profiles: [stores]
     image: ${PROMETHEUS_IMAGE:?pinned image missing}
     container_name: pokus-prometheus
     labels:
@@ -68,6 +76,7 @@ services:
 
   loki:
     <<: *hardened
+    profiles: [stores]
     image: ${LOKI_IMAGE:?pinned image missing}
     container_name: pokus-loki
     labels:
@@ -79,6 +88,7 @@ services:
 
   tempo:
     <<: *hardened
+    profiles: [stores]
     image: ${TEMPO_IMAGE:?pinned image missing}
     container_name: pokus-tempo
     labels:
@@ -90,6 +100,7 @@ services:
 
   grafana:
     <<: *hardened
+    profiles: [stores]
     image: ${GRAFANA_IMAGE:?pinned image missing}
     container_name: pokus-grafana
     labels:

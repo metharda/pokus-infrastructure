@@ -6,6 +6,8 @@ compose_project: ""
 compose_description: ""
 # Services to start now (empty: all services of the project).
 compose_services: []
+# Compose profiles to enable besides the GPU profile (observability: stores).
+compose_profiles: []
 # Whether the project's GPU services run (Compose profile gpu-cdi or
 # gpu-runtime, after the method in /etc/docker/daemon.json).
 compose_gpu: false

@@ -1,0 +1,69 @@
+# Managed by pokus-infra (ansible/roles/platform/tasks/signing.yml). Local changes will be overwritten.
+#
+# The run-manifest signing key (contracts.md, C9d): ed25519, PEM PKCS#8,
+# generated on the host, readable only by pokus-orch. Its public key
+# (SubjectPublicKeyInfo) is published as
+# <pokus_root>/shared/signing-keys/<machine>-<YYYYMMDD>.pub and kept forever.
+
+- name: Create the signing key directory
+  ansible.builtin.file:
+    path: "{{ platform_signing_dir }}"
+    state: directory
+    owner: root
+    group: pokus-orch
+    mode: "0750"
+
+- name: Generate the signing key
+  community.crypto.openssl_privatekey:
+    path: "{{ platform_signing_key }}"
+    type: Ed25519
+    format: pkcs8
+    owner: pokus-orch
+    group: pokus-orch
+    mode: "0400"
+    regenerate: never
+
+- name: Write the signing key's public key
+  community.crypto.openssl_publickey:
+    path: "{{ platform_signing_pub }}"
+    privatekey_path: "{{ platform_signing_key }}"
+    format: PEM
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the directory of published signing keys
+  ansible.builtin.file:
+    path: "{{ platform_signing_published }}"
+    state: directory
+    owner: root
+    group: pokus
+    mode: "0755"
+
+- name: Read the public key
+  ansible.builtin.stat:
+    path: "{{ platform_signing_pub }}"
+    checksum_algorithm: sha256
+  register: platform_signing_pub_stat
+
+- name: Find the published keys of this machine
+  ansible.builtin.find:
+    paths: "{{ platform_signing_published }}"
+    patterns: ["{{ machine_name }}-*.pub"]
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: platform_signing_published_keys
+
+- name: Publish the public key (kept forever)
+  ansible.builtin.copy:
+    src: "{{ platform_signing_pub }}"
+    dest: "{{ platform_signing_published }}/{{ machine_name }}-{{ now(utc=true).strftime('%Y%m%d') }}.pub"
+    remote_src: true
+    force: false
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - not ansible_check_mode
+    - platform_signing_pub_stat.stat.checksum | default('') not in
+      (platform_signing_published_keys.files | map(attribute='checksum') | list)

@@ -161,3 +161,25 @@ pokus_incus_bridge_patterns: ["r-*", "pokus-build0"]
 # Bridges of the researchers' personal Incus projects (incusbr-<uid>); unlike
 # run networks they have NAT and an uplink.
 pokus_incus_personal_bridge_patterns: ["incusbr-*"]
+
+# --- Platform and catalog deployments (BUILD_PROMPT §7.14, contracts.md) -------
+
+# The deployer's copy of the Pokus repository, required when the platform or
+# the catalog is enabled (owner answer E3): an SSH URL (read-only deploy key
+# generated on the host) or an anonymous HTTPS URL. Never a URL with credentials.
+pokus_source_repo: ""
+# Extra known_hosts lines for an SSH source (GitHub's keys come from versions.lock.yml).
+pokus_source_known_hosts: []
+# Deploy only tags carrying a valid SSH signature of an allowed signer (owner answer E16).
+require_signed_tags: false
+# Allowed signers for signed tags, ssh-keygen allowed_signers lines ("<principal> <key type> <key>").
+pokus_allowed_signers: []
+# Tailnet name of the paired inference node of a lab node (node_role: lab,
+# BUILD_PROMPT §19.10); set when the nodes are paired.
+inference_remote_node: ""
+# Tailnet name of the paired lab node of an inference node (node_role:
+# inference), which receives its telemetry; set when the nodes are paired.
+inference_lab_node: ""
+# QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of
+# {name: <file name without .pem>, pem: <PEM public key>}.
+qa_trusted_keys: []
