@@ -32,7 +32,9 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         "preflight/endpoints.json": lambda: sources.endpoints_json(root),
         "docs/support-matrix.md": lambda: pages.support_matrix_page(root),
         "docs/reference/cli/pokus-preflight.md": lambda: pages.cli_page(
-            preflight_parser(), title="pokus-preflight command", intro=PREFLIGHT_INTRO
+            pages.relative_defaults(preflight_parser(), root),
+            title="pokus-preflight command",
+            intro=PREFLIGHT_INTRO,
         ),
         "docs/reference/exit-codes.md": lambda: pages.exit_codes_page(
             OUTCOME_MEANINGS, EXIT_CODES, bootstrap.exit_codes(root), lab.exit_code_rows()

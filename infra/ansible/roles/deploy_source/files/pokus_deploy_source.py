@@ -396,7 +396,8 @@ def prepare(
         _apply_modes(staging, uid, gid, dir_mode, file_mode)
         record = staging / PROVENANCE
         record.write_text(json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
-        os.chown(record, 0, 0)
+        # Owned like the deployment: root in both roles (contracts.md: 0644 root).
+        os.chown(record, uid, gid)
         record.chmod(0o644)
         staging.rename(target)
     except BaseException:

@@ -125,6 +125,7 @@ def test_prepare_a_component_tag(tmp_path: Path, mirror: Path, source: Path) -> 
     assert stat.S_IMODE((target / "pkg" / "run.sh").stat().st_mode) == 0o755
     assert stat.S_IMODE((target / "pyproject.toml").stat().st_mode) == 0o644
     assert stat.S_IMODE((target / "DEPLOYED_FROM.json").stat().st_mode) == 0o644
+    assert (target / "DEPLOYED_FROM.json").stat().st_uid == pwd.getpwnam(ME).pw_uid
     assert not list(target.rglob(".git"))
     assert not list((tmp_path / "deploy" / "platform").glob(".platform-v0.1.0.*"))
 

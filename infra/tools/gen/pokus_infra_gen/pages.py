@@ -262,6 +262,23 @@ def _option_rows(parser: argparse.ArgumentParser) -> Iterator[list[Any]]:
         yield [names, value, f"`{default}`" if default != "" else "", action.help or ""]
 
 
+def relative_defaults(parser: argparse.ArgumentParser, root: Path) -> argparse.ArgumentParser:
+    """Show defaults inside the checkout relative to it, not as this machine's paths.
+
+    Args:
+        parser: The parser; its defaults are changed in place.
+        root: Component root (``infra/``).
+
+    Returns:
+        The parser.
+    """
+    prefix = str(root.resolve()) + "/"
+    for action in parser._actions:
+        if isinstance(action.default, str) and action.default.startswith(prefix):
+            action.default = "infra/" + action.default[len(prefix) :]
+    return parser
+
+
 def usage(parser: argparse.ArgumentParser) -> str:
     """The usage line of a parser, independent of the terminal width.
 

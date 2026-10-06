@@ -501,7 +501,13 @@ def repo(tmp_path: Path) -> Path:
     return root
 
 
+# Bootstrap runs under sudo: the checkout belongs to root or to the invoking
+# user (SUDO_UID). Tests run as either, so they name the current user.
+AS_SUDO_USER = {"SUDO_UID": str(os.getuid())}
+
+
 def git_state_of(infra: Path, env: dict[str, str] | None = None) -> dict[str, str]:
+    env = AS_SUDO_USER if env is None else env
     res = bash(
         f"""
         rc=0
@@ -548,7 +554,8 @@ def test_ref_matches_head(repo: Path) -> None:
         ref_matches_head infra-v0.1.0 && echo tag
         ref_matches_head HEAD && echo head
         ref_matches_head no-such-ref || echo missing
-        """
+        """,
+        env=AS_SUDO_USER,
     )
     assert res.stdout.split() == ["tag", "head", "missing"]
 

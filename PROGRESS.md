@@ -649,6 +649,13 @@ step 4" through "after step 11"):
 - Several command output formats are modeled in the preflight fixtures from
   upstream knowledge and must be confirmed on real hosts in Phase 5 (list in
   `infra/docs/IMPLEMENTATION_NOTES.md`).
+- CI's `test` and `docs` jobs failed from infra step 7 through step 11
+  although `make test docs` passed here: this environment runs as root, CI
+  does not. The bootstrap git-state tests and the deploy helper's tests
+  assumed root, and the generated `pokus-preflight` reference contained this
+  checkout's absolute paths. Fixed after step 11; the suite now also passes
+  as an unprivileged user from another checkout path. `lock-check` stays red
+  while `TODO(verify)` markers remain (by design).
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
   SSH-signed tag deployments is skipped here (it runs where OpenSSH is
   installed, as in CI), and the socket ACL handling is tested with a fake

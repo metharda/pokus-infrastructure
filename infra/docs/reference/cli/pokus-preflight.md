@@ -43,8 +43,8 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--color` | `auto`, `always`, `never` | `auto` | color the summary (auto: only on a terminal and without NO_COLOR) |
 | `--quiet` | — | — | do not print the summary |
 | `--repo-commit` | `SHA` | — | commit to record as repo_commit (default: detected with git) |
-| `--matrix` | `FILE` | `/home/user/pokus/infra/preflight/support-matrix.json` | compiled support matrix (JSON) |
-| `--endpoints` | `FILE` | `/home/user/pokus/infra/preflight/endpoints.json` | compiled endpoint list (JSON) |
+| `--matrix` | `FILE` | `infra/preflight/support-matrix.json` | compiled support matrix (JSON) |
+| `--endpoints` | `FILE` | `infra/preflight/endpoints.json` | compiled endpoint list (JSON) |
 | `--version` | — | — | show program's version number and exit |
 
 Exit codes: 0 supported, 10 degraded, 20 unsupported, 30 needs_action, 40 preflight_error. See [Exit codes](../exit-codes.md).
