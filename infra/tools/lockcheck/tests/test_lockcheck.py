@@ -163,11 +163,16 @@ def test_missing_digest_and_registry_errors() -> None:
     assert "registry request failed" in checks.container_findings(image_doc(), failing)[0].message
 
 
-def test_target_images_are_checked_too() -> None:
+def test_target_and_ci_images_are_checked_too() -> None:
     doc = image_doc()
     doc["containers"]["target_images"] = {"web": doc["containers"]["images"]["x"]}
+    doc["containers"]["ci_images"] = {"base": doc["containers"]["images"]["x"]}
     findings = checks.container_findings(doc, lambda image, ref: None)
-    assert [f.where for f in findings] == ["containers.images.x", "containers.target_images.web"]
+    assert [f.where for f in findings] == [
+        "containers.images.x",
+        "containers.target_images.web",
+        "containers.ci_images.base",
+    ]
 
 
 def test_committed_target_images_and_agent_package(lock: dict[str, Any]) -> None:

@@ -154,6 +154,16 @@
           "additionalProperties": {
             "$ref": "#/$defs/image"
           }
+        },
+        "ci_images": {
+          "type": "object",
+          "description": "Base images of the CI fast lane's systemd containers (BUILD_PROMPT \u00a719.9), never run on a lab host.",
+          "propertyNames": {
+            "$ref": "#/$defs/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/image"
+          }
         }
       },
       "unevaluatedProperties": false

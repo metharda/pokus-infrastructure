@@ -82,6 +82,7 @@ nav:
       - Configure the firewall backend and SELinux: how-to/firewall-and-selinux.md
       - Add a preflight fixture: how-to/add-preflight-fixture.md
       - Add a distribution family: distros/adding-a-family.md
+      - Test the distributions: how-to/test-distributions.md
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md

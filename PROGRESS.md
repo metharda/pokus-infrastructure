@@ -409,8 +409,8 @@ unchanged):
 | 8 | images | done | `5526e43` |
 | 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
 | 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
-| 11 | catalog and platform roles, split inference | done | commit "feat(infra): add the catalog, platform and split-inference roles" (SHA recorded with step 12) |
-| 12 | test-distros harness | pending | — |
+| 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
+| 12 | test-distros harness and CI fast lane | done | commit "feat(infra): add the distribution tests and the CI fast lane" (SHA recorded with step 13) |
 | 13 | Installer TUI | pending | — |
 | 14 | Documentation completion | pending | — |
 
@@ -526,6 +526,16 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   implement the drain endpoints); `site.yml` still applies `postgres` and
   `opa` on inference nodes (aligned in step 11); the step 5 sleep inhibitor
   was never enabled (fixed); `pokus-lab docs serve` follows in step 14.
+- From step 12 ("Findings to report (step 12)" and "Interpretations awaiting
+  owner confirmation (step 12)"): test images resolved at run time with the
+  fingerprint recorded; results valid for 90 days shown as a *Valid until*
+  date; the stages of a test (first backup before `doctor --smoke`); test VMs
+  as staging labs on a test tailnet with an ephemeral key; the harness's
+  safety rules; the fast lane's roles, base images (Leap instead of
+  Tumbleweed) and profile. Findings: no distribution test has run (no Incus;
+  image aliases unverified); `make test-distros` needs the answers replay of
+  step 13; the fast lane runs for the first time in CI with this step; no
+  derivative target yet.
 - From step 11 ("Findings to report (step 11)" and "Interpretations awaiting
   owner confirmation (step 11)"): deployment directory names, refusing moved
   tags, keeping old deployments; SSH deploy keys or anonymous HTTPS only;
@@ -565,9 +575,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (107 after step 11; details
+`make verify-todos` lists every marker in the tree (108 after step 12; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 11"):
+step 4" through "after step 12"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -608,6 +618,8 @@ step 4" through "after step 11"):
 - Step 11: nothing added or resolved; vLLM's TLS options, planned as a
   marker, were verified in vLLM's source (and are not used). GitHub's SSH
   host keys (above) now also gate SSH deployments from github.com.
+- Step 12: the VM image aliases of `infra/tests/distros/targets.yml`
+  (images.linuxcontainers.org is not reachable from the build environment).
 
 ## Known issues
 
@@ -663,12 +675,11 @@ step 4" through "after step 11"):
 
 ## Next step
 
-Infra step 12: the `make test-distros` harness (BUILD_PROMPT §19.9) — one VM
-per supported and tested distribution (and per firewall backend, plus the
-SELinux-enforcing and derivative variants) running a full bootstrap without
-GPU, a second run with `changed=0` and `pokus-lab doctor --smoke`, the CI fast
-lane (`ansible-playbook --check` in systemd-enabled containers per family,
-all preflight fixtures), and the generated support matrix with test dates.
-Then step 13 (installer TUI, including the pairing screens) and step 14
-(documentation completion, `pokus-lab docs serve`); after step 14 the
-assistant stops and waits for the platform phase.
+Infra step 13: the installer TUI (BUILD_PROMPT §18): Textual screens with the
+answers file (`installer/schema/answers.schema.json`, which
+`infra/tests/answers/ci.yml` must satisfy), its replay through
+`bootstrap.sh --answers` (which also enables `make test-distros` end to end),
+secrets into the vault, the Ansible progress callback, resume state, and the
+pairing screens for split inference. Then step 14 (documentation completion,
+`pokus-lab docs serve`); after step 14 the assistant stops and waits for the
+platform phase.

@@ -70,6 +70,17 @@ Pulled inside golden images by blueprints with a container engine (`docker_image
 | --- | --- | --- | --- | --- |
 | docker_host_web | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 |
 
+Base images of the CI fast lane's systemd containers (check mode of the provider-agnostic roles per family), never on a lab host:
+
+| Name | Image | Tag | Digest | Platforms |
+| --- | --- | --- | --- | --- |
+| ubuntu_2404 | `docker.io/library/ubuntu` | `24.04` | `sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55` | linux/amd64 |
+| debian_13 | `docker.io/library/debian` | `13` | `sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5` | linux/amd64 |
+| fedora_44 | `docker.io/library/fedora` | `44` | `sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80` | linux/amd64 |
+| almalinux_9 | `docker.io/library/almalinux` | `9` | `sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16` | linux/amd64 |
+| opensuse_leap_156 | `docker.io/opensuse/leap` | `15.6` | `sha256:79be7751205ea84559990fb76b1bec71e38d6fad41c70a4f6c921b803b58f421` | linux/amd64 |
+| archlinux | `docker.io/library/archlinux` | `base-20261004.0.606936` | `sha256:4e77cf2ea5f410e6f8be5abf93ccf17ce2436e87a138c167208356711a405dbd` | linux/amd64 |
+
 ## Repository keys
 
 Verified on 2026-10-05. Source: Keys downloaded from the listed URLs and fingerprinted with gpg and with the lock checker's own OpenPGP parser

@@ -15,7 +15,7 @@ VENV := .venv
 BIN := $(VENV)/bin
 NODE_BIN := node_modules/.bin
 REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pokus_repo_checks
-GEN := PYTHONPATH=tools/gen:preflight:tools/pokus-lab $(BIN)/python -m pokus_infra_gen
+GEN := PYTHONPATH=tools/gen:preflight:tools/pokus-lab:tools/test-distros $(BIN)/python -m pokus_infra_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pokus_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
@@ -34,8 +34,9 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
-  ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pokus-lab
-PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
+  ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pokus-lab \
+  tools/test-distros
+PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml ansible/check-mode.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/.
@@ -89,7 +90,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
 	  ansible/roles/deploy_source/files ansible/roles/platform/files ansible/roles/inference_control/files \
-	  ansible/tests
+	  ansible/tests tools/test-distros/pokus_test_distros tools/test-distros/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 	$(BIN)/mypy --python-version 3.10 tools/pokus-lab/pokus_lab tools/pokus-lab/tests
@@ -157,6 +158,14 @@ links: ## Check external links in Markdown files (network; weekly in CI)
 .PHONY: test
 test: setup test-py39 ## Unit tests (pytest) and the preflight suite on the oldest supported Python
 	$(BIN)/pytest
+
+.PHONY: test-distros
+test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
+	PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros run $(TEST_DISTROS_ARGS)
+
+.PHONY: check-mode
+check-mode: setup ## CI fast lane (§19.9): provider-agnostic roles in check mode in a systemd container; CI_IMAGE=<containers.ci_images key>
+	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: test-py39
 test-py39: ## Preflight and pokus-lab test suites with plain unittest on CPython 3.9 (stdlib only)

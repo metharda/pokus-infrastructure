@@ -64,8 +64,14 @@ step and, for a fixed release, version pins.
    `packages.<component>.<release key>` entries to `versions.lock.yml`, then
    run `make generate` again.
 
-8. **Distribution tests.** Add the image to the `make test-distros` harness
-   and run it; when it passes, move the rows to `tested` in the matrix.
+8. **Distribution tests.** Add a target per release to
+   `tests/distros/targets.yml` (image alias, `os` fields, firewall backend)
+   and run it with `make test-distros`; when it passes, move the rows to
+   `tested` in the matrix and commit `tests/distros/results.yml`. Add a
+   pinned base image of the family to `containers.ci_images` in
+   `versions.lock.yml` and an `image:` entry to the `check-mode` job of both
+   CI workflows, so the CI fast lane checks the family on every push; see
+   [How to test the distributions](../how-to/test-distributions.md).
 
 9. **Documentation.** Write `docs/distros/<family>.md` following the existing
    family pages and add it to `mkdocs.yml`.

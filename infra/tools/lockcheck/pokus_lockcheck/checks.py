@@ -143,7 +143,7 @@ def container_findings(
     findings: list[Finding] = []
     pinned = [
         (f"containers.{group}.{name}", entry)
-        for group in ("images", "target_images")
+        for group in ("images", "target_images", "ci_images")
         for name, entry in doc["containers"].get(group, {}).items()
     ]
     for where, entry in pinned:

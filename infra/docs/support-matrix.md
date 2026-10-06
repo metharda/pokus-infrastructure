@@ -125,4 +125,23 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 
 ## Last test results
 
-No `make test-distros` results are recorded yet. The harness (BUILD_PROMPT §19.9) adds the test date and the result per stage for every distribution.
+`make test-distros` ([How to test the distributions](how-to/test-distributions.md)) bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which must change nothing, and then `pokus-lab doctor --smoke`. A result counts for 90 days after its test date (*Valid until*); a target whose last result failed or has expired counts as untested.
+
+| Target | Release | Variant | Tested on | Commit | Launch | Prepare | Bootstrap | Second run | Doctor --smoke | Valid until | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ubuntu-24.04` | ubuntu 24.04 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `ubuntu-24.04-ufw` | ubuntu 24.04 | ufw | — | — | — | — | — | — | — | — | not tested |
+| `debian-13` | debian 13 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `ubuntu-22.04` | ubuntu 22.04 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `fedora-43` | fedora 43 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | not tested |
+| `fedora-44` | fedora 44 | firewalld | — | — | — | — | — | — | — | — | not tested |
+| `almalinux-9` | almalinux 9 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | not tested |
+| `almalinux-10` | almalinux 10 | firewalld | — | — | — | — | — | — | — | — | not tested |
+| `rockylinux-9` | rocky 9 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `rockylinux-10` | rocky 10 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `centos-stream-9` | centos 9 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `centos-stream-10` | centos 10 | nftables | — | — | — | — | — | — | — | — | not tested |
+| `opensuse-leap-15.6` | opensuse-leap 15.6 | firewalld | — | — | — | — | — | — | — | — | not tested |
+| `opensuse-leap-16.0` | opensuse-leap 16.0 | firewalld | — | — | — | — | — | — | — | — | not tested |
+| `opensuse-tumbleweed` | opensuse-tumbleweed | firewalld | — | — | — | — | — | — | — | — | not tested |
+| `archlinux` | arch | nftables | — | — | — | — | — | — | — | — | not tested |

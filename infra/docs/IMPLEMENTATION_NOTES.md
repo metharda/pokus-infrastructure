@@ -1507,3 +1507,96 @@ multi-line defaults as code blocks instead of broken list items.
 
 107 markers, unchanged; the planned note on vLLM's TLS options was verified
 instead (see above).
+
+## Step 12: distribution tests (`make test-distros`) and the CI fast lane
+
+Built: `tools/test-distros/` (`pokus_test_distros`: targets, an `incus`
+command-line wrapper, the test pipeline, the results file and the
+command line), `tests/distros/targets.yml` (16 targets: every `supported`
+and `tested` release, ufw, firewalld and nftables variants, SELinux
+enforcing on Fedora 43 and AlmaLinux 9), `tests/distros/results.yml`
+(empty), the CI answers template `tests/answers/ci.yml`, `make
+test-distros`; the generated *Last test results* table of
+`docs/support-matrix.md`; the CI fast lane: `containers.ci_images` in
+`versions.lock.yml` (six base images pinned by digest, verified with the
+registry API), `tests/distros/containers/` (systemd container recipe),
+`ansible/check-mode.yml`, `make check-mode` and a `check-mode` job with one
+entry per base image in both CI workflows; docs
+`how-to/test-distributions.md` and updates to `distros/adding-a-family.md`
+and `explanation/portability.md`.
+
+Fixed after step 11 (separate commit `7955dde`): CI's `test` and `docs` jobs
+had failed since step 7 because this environment runs as root and CI does
+not (see PROGRESS, known issues).
+
+### Verified in step 12
+
+- The six CI base images resolve to the recorded digests (registry API,
+  2026-10-06); lock-check verifies them from now on (`ci_images` group).
+- Preflight inside a container yields a usable host profile (family,
+  release, package manager, firewall backend from the real image; no
+  provider), and `platform_facts` derives its facts from it (a check-mode
+  run against this build environment, which went as far as the first package
+  module; that module failed on the environment's own Python bindings, so the
+  fast lane's real proof is the CI job).
+- The harness pipeline, the results file, the generated table and the
+  fast-lane command against fake `incus` and `docker` tools (20 tests).
+
+### Findings to report (step 12)
+
+- **No distribution test has run**: there is no Incus here, and the image
+  aliases of the `images` remote cannot be verified from this environment
+  (one `TODO(verify)` marker in `tests/distros/targets.yml`; the harness runs
+  only with `--accept-unverified-images` until then). The first run needs a
+  machine with Incus VM support and an ephemeral auth key of a test tailnet.
+- **The harness depends on the installer's answers replay (step 13)**:
+  bootstrap stops with 77 for `--answers` until the installer exists, so
+  `make test-distros` can run end to end only after step 13; the CI answers
+  file follows the answers format that step 13 defines (and checks).
+- **The fast lane runs for the first time with this commit in CI**; role
+  findings it reports are fixed in follow-up commits.
+- **Golden images and GPU paths are not part of the distribution tests**:
+  the CI answers build no images (their base image fingerprints are still
+  unverified) and select no model.
+- **No derivative target**: none of the derivative images on the `images`
+  remote could be verified here; one is added once verified (BUILD_PROMPT
+  §19.9 asks for one "if an image is available").
+
+### Interpretations awaiting owner confirmation (step 12)
+
+1. **Images**: test VMs use the `images` remote's aliases, resolved when the
+   test runs; the result records the fingerprint used (the remote keeps only
+   recent builds, so fixed fingerprints would expire within days).
+2. **Results** stay valid for 90 days from the test date; the generated table
+   shows a *Valid until* date instead of computing "expired" at generation
+   time, so the generated page does not change by itself (drift check).
+3. **What a test is**: launch, prepare (firewall variant, SELinux, copy of a
+   clone of `HEAD`, answers with the VM name as machine name, a generated
+   vault password, the test researcher's key), bootstrap with
+   `--answers installer-answers/<vm>.yml --accept-degraded` (exit 0 or 1, and
+   the host profile must show the expected firewall backend), a second
+   bootstrap whose PLAY RECAP must show `changed=0`, then `pokus-lab backup
+   now` and `pokus-lab doctor --smoke` with exit 0. The first backup runs
+   before doctor because `backup.recent` warns on a lab that never backed up.
+4. **Test VMs are staging labs** (`lab_mode: staging`, `tag:pokus-qa`) that
+   join a test tailnet with an ephemeral auth key from
+   `POKUS_TEST_TAILSCALE_AUTHKEY`; the key reaches the VM in a 0600 file,
+   never on a command line, and the VM logs out of the tailnet before it is
+   deleted.
+5. **Safety**: the harness refuses to run on a lab host while
+   `pokus-lab.target` is active, uses its own Incus project
+   (`pokus-test-distros`, sharing the default project's images and
+   profiles) and tests only committed `HEAD`.
+6. **Fast lane**: the roles `platform_facts`, `base`, `users_groups`, `ssh`,
+   `layout`, `mac` and `firewall` with `--check` against a container per
+   family (Ubuntu 24.04, Debian 13, Fedora 44, AlmaLinux 9, openSUSE Leap
+   15.6, Arch Linux), with the host profile preflight writes inside the
+   container and the provider set to `baremetal`. Leap rather than
+   Tumbleweed because Docker Hub's only Tumbleweed tag is `latest`, which the
+   lock schema refuses; Python 3.11 on Leap because its `python3` is too old
+   for Ansible. The containers' own packages (systemd, Python, sudo) are not
+   pinned; they exist for one CI job.
+
+### Open `TODO(verify)` items after step 12
+
+108 markers: one more, the image aliases of `tests/distros/targets.yml`.

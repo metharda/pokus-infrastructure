@@ -81,7 +81,7 @@ convention = "google"
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/deploy_source/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pokus-lab:tools/pokus-lab/tests"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/deploy_source/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pokus-lab:tools/pokus-lab/tests:tools/test-distros:tools/test-distros/tests"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -99,6 +99,7 @@ testpaths = [
   "bootstrap/tests",
   "ansible/tests",
   "tools/pokus-lab/tests",
+  "tools/test-distros/tests",
 ]
 pythonpath = [
   "tools/repo-checks",
@@ -120,4 +121,5 @@ pythonpath = [
   "ansible/tests",
   "tools/pokus-lab",
   "tools/pokus-lab/tests",
+  "tools/test-distros",
 ]

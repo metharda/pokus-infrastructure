@@ -129,6 +129,19 @@ enforcing on hosts that use it; the `mac` role labels the research space so
 containers can use it. Both are described in
 [How to configure the firewall backend and SELinux](../how-to/firewall-and-selinux.md).
 
+## How portability is proven
+
+Two test layers cover the families. `make test-distros` bootstraps the whole
+lab in a disposable Incus VM for every `supported` and `tested` release and
+for the firewall and SELinux variants; a second bootstrap must change
+nothing, and `pokus-lab doctor --smoke` must pass. The results, with their
+dates, are in the [support matrix](../support-matrix.md#last-test-results)
+and count for 90 days. On every push, the CI fast lane runs the
+provider-agnostic roles in check mode in a systemd container per family,
+which catches package names and module arguments that do not fit a family
+without provisioning anything. [How to test the
+distributions](../how-to/test-distributions.md) has the commands.
+
 ## When a host cannot be supported
 
 Immutable distributions, non-systemd distributions, musl-based

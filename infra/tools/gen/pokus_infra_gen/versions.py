@@ -104,6 +104,16 @@ def _containers(lock: dict[str, Any]) -> list[str]:
             "(`docker_images` of `images/<blueprint>/image.yaml`), never on the host:\n\n",
             pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], targets),
         ]
+    ci = [
+        [name, f"`{e['image']}`", _code(e["tag"]), _code(e["digest"]), e["platforms"]]
+        for name, e in section.get("ci_images", {}).items()
+    ]
+    if ci:
+        parts += [
+            "\nBase images of the CI fast lane's systemd containers (check mode of the "
+            "provider-agnostic roles per family), never on a lab host:\n\n",
+            pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], ci),
+        ]
     return parts
 
 
