@@ -293,6 +293,8 @@ no training or adapter-creation flow.
 | --- | --- |
 | Session records | `/var/lib/pokus/sessions/<boot_id>.json`, written once per boot by `pokus-session-start.service`; the orchestrator imports them. JSON object: `schema_version` (1), `boot_id`, `started_at` (UTC, ISO 8601 with `Z`), `fingerprint_hash`, `fingerprint` (the output of `pokus-lab fingerprint --json`), `preflight_outcome`, and `errors` (field name to reason; a field that could not be computed is `null`) |
 | Fingerprint | `pokus-lab fingerprint --json`, callable by `pokus-orch`. Run as root it computes the fingerprint and refreshes the cache; run as any other user it prints the cached root-computed fingerprint from `/var/lib/pokus/fingerprint/current.json` with its `computed_at` time and never escalates (C9c). |
+| Fingerprint document | JSON object `fingerprint_schema_version` (1), `hash` (`sha256:<hex>` of the canonical JSON of `fingerprint`: sorted keys, no whitespace, UTF-8), `fingerprint` (the hashed fields), `computed_at` and `boot_id` (volatile, not hashed); JSON Schema `infra/tools/pokus-lab/schema/fingerprint.schema.json` |
+| Lab drain | `pokus-lab stop` and `pokus-lab update-host`, as root, send `POST /lab/drain` with `{"timeout_seconds": <int>}` to `/run/pokus/orch/api.sock`; the orchestrator answers 200 or 202, starts no new runs and lets active runs continue. `GET /lab/status` answers `{"active_runs": <int>}`; `pokus-lab` polls it until 0 or the timeout, then stops `pokus-lab.target`. Runs still active then are recorded as interrupted. |
 
 ## Run-manifest signing (C9d)
 

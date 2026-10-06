@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from pokus_infra_gen import ansible_docs, bootstrap, pages, sources, versions
+from pokus_infra_gen import ansible_docs, bootstrap, lab, pages, sources, versions
 from pokus_preflight.cli import build_parser as preflight_parser
 from pokus_preflight.matrix import EXIT_CODES, OUTCOME_MEANINGS
 
@@ -35,8 +35,16 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
             preflight_parser(), title="pokus-preflight command", intro=PREFLIGHT_INTRO
         ),
         "docs/reference/exit-codes.md": lambda: pages.exit_codes_page(
-            OUTCOME_MEANINGS, EXIT_CODES, bootstrap.exit_codes(root)
+            OUTCOME_MEANINGS, EXIT_CODES, bootstrap.exit_codes(root), lab.exit_code_rows()
         ),
+        lab.CLI_PAGE: lab.cli_page,
+        lab.FINGERPRINT_PAGE: lambda: pages.schema_page(
+            root,
+            lab.FINGERPRINT_SCHEMA,
+            "Fingerprint schema",
+            "Every field of the environment fingerprint printed by pokus-lab fingerprint.",
+        ),
+        lab.CHECKS_PAGE: lab.checks_page,
         "docs/reference/host-profile.md": lambda: pages.host_profile_page(root),
         "docs/reference/cli/bootstrap.md": lambda: pages.bootstrap_cli_page(root),
         "bootstrap/lib/pins.sh": lambda: bootstrap.pins_sh(root),
@@ -135,6 +143,12 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
         for row in pages.schema_rows(schema, "")
     ]
     entries += ansible_docs.ansible_variable_entries(root)
+    entries += lab.reference_entries()
+    fingerprint_schema = json.loads((root / lab.FINGERPRINT_SCHEMA).read_text(encoding="utf-8"))
+    entries += [
+        (f"fingerprint field {row[0]}", lab.FINGERPRINT_PAGE, str(row[0]))
+        for row in pages.schema_rows(fingerprint_schema, "")
+    ]
     layout = load_layout(root)
     entries += [(f"layout path {path}", "docs/architecture.md", f"`{path}`") for path in layout]
     return entries
@@ -159,8 +173,8 @@ def load_layout(root: Path) -> list[str]:
 def coverage(root: Path) -> int:
     """Check that every CLI option, exit code and schema field has a reference entry.
 
-    Covers pokus-preflight and bootstrap.sh options, both exit code tables and the
-    host profile schema.
+    Covers pokus-preflight, bootstrap.sh and pokus-lab options and commands, the exit
+    code tables, the doctor checks and the host profile schema.
 
     Args:
         root: Component root.

@@ -19,3 +19,8 @@ images_otlp_endpoint:
 images_guest_python: /usr/bin/python3
 # Incus instance types of the blueprint types (image.yaml `type`).
 images_instance_types: {container: container, vm: virtual-machine}
+# Selection by `pokus-lab images build <blueprint> [--rebuild]`, passed
+# through bootstrap's environment: the blueprints to process (a blueprint and
+# the ones it starts from) and the ones to build again.
+images_selected: "{{ lookup('ansible.builtin.env', 'POKUS_IMAGES_BLUEPRINTS') | default('', true) }}"
+images_rebuild_selected: "{{ lookup('ansible.builtin.env', 'POKUS_IMAGES_REBUILD') | default('', true) }}"

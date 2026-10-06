@@ -449,27 +449,58 @@ IMAGE = {"fingerprint": "f" * 64, "aliases": [{"name": "_base/1.0.0"}]}
 
 
 @pytest.mark.parametrize(
-    ("rebuild", "image", "record", "action"),
+    ("rebuild", "names", "image", "record", "action"),
     [
-        (False, {}, {}, "build"),
-        (False, IMAGE, {"fingerprint": "f" * 64}, "none"),
-        (False, {}, {"fingerprint": "f" * 64}, "import"),
-        (False, IMAGE, {}, "export"),
-        (False, IMAGE, {"fingerprint": "e" * 64}, "export"),
-        (True, IMAGE, {"fingerprint": "f" * 64}, "build"),
+        (False, [], {}, {}, "build"),
+        (False, [], IMAGE, {"fingerprint": "f" * 64}, "none"),
+        (False, [], {}, {"fingerprint": "f" * 64}, "import"),
+        (False, [], IMAGE, {}, "export"),
+        (False, [], IMAGE, {"fingerprint": "e" * 64}, "export"),
+        (True, [], IMAGE, {"fingerprint": "f" * 64}, "build"),
+        (False, ["_base"], IMAGE, {"fingerprint": "f" * 64}, "build"),
+        (False, ["probe-client"], IMAGE, {"fingerprint": "f" * 64}, "none"),
     ],
 )
 def test_action_of_a_blueprint(
-    rebuild: bool, image: dict[str, Any], record: dict[str, Any], action: str
+    rebuild: bool, names: list[str], image: dict[str, Any], record: dict[str, Any], action: str
 ) -> None:
     template = task("blueprint.yml", "Choose the action for the blueprint")[
         "ansible.builtin.set_fact"
     ]
     result = evaluate(
         expression(template["images_action"]),
-        {"images_rebuild": rebuild, "images_image": image, "images_record": record},
+        {
+            "images_rebuild": rebuild,
+            "images_rebuild_names": names,
+            "images_name": "_base",
+            "images_image": image,
+            "images_record": record,
+        },
     )
     assert result.strip() == action
+
+
+@pytest.mark.parametrize(
+    ("selected", "rebuild", "order", "names"),
+    [
+        ("", "", None, []),
+        ("_base,probe-client", "probe-client", ["_base", "probe-client"], ["probe-client"]),
+    ],
+)
+def test_blueprints_of_a_run(
+    selected: str, rebuild: str, order: list[str] | None, names: list[str]
+) -> None:
+    """``pokus-lab images build`` selects blueprints through the environment."""
+    facts = task("main.yml", "Choose the blueprints of this run")["ansible.builtin.set_fact"]
+    variables = {
+        "images_selected": selected,
+        "images_rebuild_selected": rebuild,
+        "images_blueprints": DEFAULTS["images_blueprints"],
+    }
+    assert evaluate(expression(facts["images_order"]), variables) == (
+        order or DEFAULTS["images_blueprints"]
+    )
+    assert evaluate(expression(facts["images_rebuild_names"]), variables) == names
 
 
 def test_image_by_alias_filter() -> None:

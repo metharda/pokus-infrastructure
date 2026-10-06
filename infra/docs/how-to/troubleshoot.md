@@ -58,8 +58,9 @@ Bootstrap finished and `pokus-lab doctor` reported no warnings. Nothing to do.
 ## Exit code 1: doctor warnings {#exit-code-1}
 
 Provisioning finished; `pokus-lab doctor` found warnings. Each warning in the
-doctor summary comes with a remediation. Act on the ones that matter for your
-lab, then check again:
+doctor summary comes with a remediation, and
+[How to fix a failed doctor check](fix-doctor-checks.md) has a section per
+check ID. Act on the ones that matter for your lab, then check again:
 
 <!-- qa:run env=E2 -->
 ```bash
@@ -70,7 +71,9 @@ sudo pokus-lab doctor
 
 Provisioning finished, but `pokus-lab doctor` reports failed checks; bootstrap
 also reports 2 if doctor itself ended unexpectedly. Fix each failed check as
-its remediation says, then run bootstrap again (see
+its remediation and its section in
+[How to fix a failed doctor check](fix-doctor-checks.md) say, then run
+bootstrap again (see
 [Verify the fix](#verify-the-fix)) so that the play can repair what it manages.
 
 ## Exit code 10: degraded {#exit-code-10}

@@ -82,7 +82,8 @@ the prompt text where they differ.
 
 - Never edit generated files by hand: `preflight/support-matrix.json`,
   `preflight/endpoints.json`, `docs/support-matrix.md`,
-  `docs/reference/{cli/pokus-preflight,cli/bootstrap,exit-codes,host-profile}.md`,
+  `docs/reference/{cli/pokus-preflight,cli/bootstrap,cli/pokus-lab,exit-codes,host-profile}.md`,
+  `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
   the layout table between the `generated:layout` markers of
   `docs/architecture.md`, `bootstrap/lib/pins.sh`,
@@ -135,6 +136,20 @@ the prompt text where they differ.
   `rotate.yml` removing the trust entries of replaced client certificates;
   build instances and images of the images role are not such objects. Only
   the docker role writes `/etc/docker/daemon.json`.
+
+## pokus-lab (BUILD_PROMPT §9, §10.2)
+
+- `tools/pokus-lab/` is Python standard library only and source-compatible
+  with Python 3.9, like preflight; every host access goes through
+  `pokus_lab.system.System` so the tests use a fake host. Its tests are
+  unittest-style and also run on CPython 3.9 (`make test-py39`).
+- The CLI reads only `/etc/pokus/lab.json`, rendered by the `doctor` role;
+  a new key the CLI reads must be rendered there
+  (`ansible/tests/test_doctor.py` fails otherwise).
+- Every doctor check needs an ID, a description, a severity, a remediation
+  and a section in `docs/how-to/fix-doctor-checks.md` (`{#check-<id>}`);
+  the docs coverage check enforces it. The fingerprint's fields are defined
+  by `tools/pokus-lab/schema/fingerprint.schema.json`.
 
 ## Golden images (BUILD_PROMPT §7.13)
 

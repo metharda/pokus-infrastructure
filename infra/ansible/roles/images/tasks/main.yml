@@ -4,19 +4,24 @@
 # that has no image yet, publish it as <blueprint>/<version> and export it
 # with its upstream base to images_export_root.
 
+- name: Choose the blueprints of this run
+  ansible.builtin.set_fact:
+    images_order: "{{ images_selected.split(',') if images_selected else images_blueprints }}"
+    images_rebuild_names: "{{ images_rebuild_selected.split(',') if images_rebuild_selected else [] }}"
+
 - name: Read the blueprints
   ansible.builtin.set_fact:
     images_specs: >-
       {{ images_specs | default({})
          | combine({item: lookup('ansible.builtin.file', images_recipe_root ~ '/' ~ item ~ '/image.yaml') | from_yaml}) }}
-  loop: "{{ images_blueprints }}"
+  loop: "{{ images_order }}"
 
 - name: Check the blueprints against the build order and the pinned versions
   ansible.builtin.assert:
     that:
       - images_spec.name == item
       - images_spec.base.blueprint is not defined
-        or images_spec.base.blueprint in images_blueprints[:images_index]
+        or images_spec.base.blueprint in images_order[:images_index]
       - images_spec.base.image is not defined
         or images_spec.base.image in pokus_versions.incus_base_images.images
       - images_spec.base.image is not defined
@@ -26,11 +31,11 @@
       - images_spec.docker_images | difference(pokus_versions.containers.target_images | default({}) | list) == []
     fail_msg: >-
       Blueprint {{ item }}: the name must match its directory, a base blueprint must come
-      earlier in images_blueprints and have the same type, a base image must be a key of
+      earlier in the list of blueprints and have the same type, a base image must be a key of
       versions.lock.yml incus_base_images with the same type, and docker_images must be keys
       of containers.target_images.
     quiet: true
-  loop: "{{ images_blueprints }}"
+  loop: "{{ images_order }}"
   loop_control:
     index_var: images_index
   vars:
@@ -61,6 +66,6 @@
 
 - name: Process the blueprints
   ansible.builtin.include_tasks: blueprint.yml
-  loop: "{{ images_blueprints }}"
+  loop: "{{ images_order }}"
   loop_control:
     loop_var: images_name

@@ -10,6 +10,7 @@ binfmt
 btrfs
 cadvisor
 checksummed
+chrony
 chronyd
 COPR
 cpuset
@@ -27,10 +28,12 @@ firewalled
 FQCN
 fsmonitor
 getenforce
+gpasswd
 huggingface
 incusbr
 IOMMU
 iotop
+journalctl
 libexec
 libnvidia
 libpq
@@ -68,6 +71,7 @@ sysstat
 tailnet
 tailscaled
 timesyncd
+versionlock
 veth
 VFIO
 vllm

@@ -149,6 +149,11 @@
         name: backup
       tags: [backup]
 
+    - name: Operator CLI pokus-lab and the lab description
+      ansible.builtin.import_role:
+        name: doctor
+      tags: [doctor]
+
     - name: Lab session (target, health gate, session record)
       ansible.builtin.import_role:
         name: lab_session

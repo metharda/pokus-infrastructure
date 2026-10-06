@@ -12,7 +12,9 @@ Generated files:
 * ``docs/support-matrix.md``;
 * ``docs/reference/cli/pokus-preflight.md``;
 * ``docs/reference/exit-codes.md``;
-* ``docs/reference/host-profile.md``.
+* ``docs/reference/host-profile.md``;
+* ``docs/reference/cli/pokus-lab.md`` and ``docs/reference/doctor-checks.md``
+  (from the pokus-lab parser and check registry).
 """
 
 __version__ = "0.1.0"

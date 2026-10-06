@@ -8,8 +8,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pokus_lab.cli import build_parser
 
-from pokus_infra_gen import bootstrap, cli, pages, sources
+from pokus_infra_gen import bootstrap, cli, lab, pages, sources
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -31,7 +32,14 @@ def test_committed_files_are_current() -> None:
 
 
 def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
-    for rel in ("preflight", "docs", "bootstrap", "ansible", "versions.lock.yml"):
+    for rel in (
+        "preflight",
+        "docs",
+        "bootstrap",
+        "ansible",
+        "versions.lock.yml",
+        "tools/pokus-lab/schema",
+    ):
         src = ROOT / rel
         if src.is_dir():
             shutil.copytree(src, tmp_path / rel)
@@ -48,14 +56,31 @@ def test_coverage_is_complete_and_detects_gaps(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cli.coverage(ROOT) == 0
-    for rel in ("preflight", "docs", "bootstrap", "ansible"):
+    for rel in ("preflight", "docs", "bootstrap", "ansible", "tools/pokus-lab/schema"):
         shutil.copytree(ROOT / rel, tmp_path / rel)
     ref = tmp_path / "docs/reference/cli/pokus-preflight.md"
     ref.write_text(
         ref.read_text(encoding="utf-8").replace("`--offline`", "offline"), encoding="utf-8"
     )
+    fix = tmp_path / "docs/how-to/fix-doctor-checks.md"
+    fix.write_text(
+        fix.read_text(encoding="utf-8").replace("{#check-time-sync}", ""), encoding="utf-8"
+    )
     assert cli.coverage(tmp_path) == 1
-    assert "pokus-preflight option --offline" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "pokus-preflight option --offline" in out
+    assert "troubleshooting section for doctor check time.sync" in out
+
+
+def test_lab_pages_cover_every_command() -> None:
+    page = lab.cli_page()
+    for name, _, _ in lab.commands(build_parser()):
+        assert f"### pokus-lab {name}\n" in page
+    assert "`pokus-lab images build`" in page
+    assert lab.anchor("lab.health_gate") == "check-lab-health_gate"
+    assert "| 2 | `pokus-lab doctor` |" in "".join(
+        f"| {' | '.join(r)} |" for r in lab.exit_code_rows()
+    )
 
 
 def test_table_escapes_pipes() -> None:

@@ -45,4 +45,15 @@ The exit code is the outcome of the support-matrix decision (see [Support matrix
 | 30 | `needs_action` | Fixable by operator action (reboot, wsl --terminate, enroll MOK, remove a conflict). | Bootstrap prints the exact remediation steps and aborts; re-run after the action. |
 | 40 | `preflight_error` | Detection itself failed unexpectedly. | Bootstrap aborts with the traceback in the log. |
 
-The exit codes of the other `pokus-lab` commands are added to this page with the tools that define them.
+## pokus-lab
+
+`pokus-lab preflight` passes the exit code of pokus-preflight through. See [Doctor checks](doctor-checks.md) for the severity of every check.
+
+| Code | Command | Meaning |
+| --- | --- | --- |
+| 0 | `pokus-lab doctor` | every check passed or was skipped |
+| 1 | `pokus-lab doctor` | only checks of severity warning failed |
+| 2 | `pokus-lab doctor` | a check of severity error failed, or doctor could not run |
+| 0 | other commands | success |
+| 1 | other commands | failure; the message says why |
+| 2 | any | usage error (unknown command or option) |

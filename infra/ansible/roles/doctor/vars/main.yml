@@ -1,0 +1,78 @@
+# Managed by pokus-infra (ansible/roles/doctor/vars/main.yml). Local changes will be overwritten.
+
+# Installed CLI (BUILD_PROMPT §7.17, §9): the packages, the wrapper and the lab description.
+doctor_lib: /usr/local/lib/pokus
+doctor_bin: /usr/local/bin/pokus-lab
+doctor_config: /etc/pokus/lab.json
+doctor_fingerprint_dir: /var/lib/pokus/fingerprint
+# Python packages copied below doctor_lib (src relative to the infra directory).
+doctor_packages:
+  - {src: tools/pokus-lab/pokus_lab, dest: pokus-lab/pokus_lab}
+  - {src: preflight/pokus_preflight, dest: preflight/pokus_preflight}
+
+# What this node runs (BUILD_PROMPT §19.10).
+doctor_runs_lab: "{{ node_role in ['full', 'lab'] }}"
+doctor_serves_inference: "{{ (pokus_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
+
+# Units of pokus-lab.target that must be active. The inference project is not
+# listed: it runs only while a deployment is active (doctor's gpu.vllm check).
+doctor_units: >-
+  {{ ['pokus-health-gate.service', 'pokus-session-start.service']
+     + (['pokus-core.service'] if doctor_runs_lab else [])
+     + ['pokus-observability.service']
+     + (['pokus-sleep-inhibit.service']
+        if pokus_provider in ['baremetal', 'vm'] and power_policy == 'lab_session_inhibit' else []) }}
+
+# Lab containers and the pinned image (versions.lock.yml containers.images) each runs.
+doctor_core_containers:
+  pokus-postgres: postgres
+  pokus-postgres-exporter: postgres_exporter
+  pokus-opa: opa
+doctor_observability_containers:
+  pokus-otel-gateway: otel_collector
+  pokus-otel-journald: otel_collector
+  pokus-prometheus: prometheus
+  pokus-loki: loki
+  pokus-tempo: tempo
+  pokus-grafana: grafana
+  pokus-node-exporter: node_exporter
+  pokus-cadvisor: cadvisor
+doctor_gpu_containers:
+  pokus-gpu-exporter: gpu_exporter
+doctor_container_keys: >-
+  {{ (doctor_core_containers if doctor_runs_lab else {})
+     | combine(doctor_observability_containers,
+               doctor_gpu_containers if pokus_features.gpu_inference | default(false) else {}) }}
+# Container name -> pinned reference <image>@<digest>.
+doctor_containers: >-
+  {{ dict(doctor_container_keys.keys() | list
+          | zip(doctor_container_keys.values() | map('extract', pokus_versions.containers.images)
+                | map(attribute='image')
+                | zip(doctor_container_keys.values() | map('extract', pokus_versions.containers.images)
+                      | map(attribute='digest'))
+                | map('join', '@'))) }}
+
+# The CUDA image of the GPU check (pulled by nvidia_container_toolkit).
+doctor_gpu_image: >-
+  {{ pokus_versions.containers.images.cuda_base_test.image }}@{{ pokus_versions.containers.images.cuda_base_test.digest }}
+
+# Incus objects doctor expects (the incus role creates them; personal projects
+# depend on UIDs and are not checked).
+doctor_incus:
+  pool: "{{ incus_pool_name }}"
+  backend: "{{ host_profile.storage_backend }}"
+  min_free_gib: "{{ doctor_min_pool_free_gib }}"
+  run_acl: "{{ incus_run_acl }}"
+  events_unit: pokus-incus-events.service
+  projects: [bench, build]
+  profiles: >-
+    {{ [{'name': 'target-container', 'project': 'bench'}, {'name': 'probe-client', 'project': 'bench'},
+        {'name': 'build', 'project': 'build'}]
+       + ([{'name': 'target-vm', 'project': 'bench'}] if pokus_features.vm_targets | default(false) else []) }}
+  cert_dir: "{{ incus_cert_dir }}"
+  certificates: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+
+# Golden images: the images role is included only on lab nodes, so its
+# defaults are read from its files (doctor_images_defaults) unless host_vars
+# override them.
+doctor_images_blueprints: "{{ images_blueprints | default(doctor_images_defaults.images_blueprints) }}"

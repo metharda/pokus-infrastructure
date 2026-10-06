@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pokus environment fingerprint",
+  "description": "Output of `pokus-lab fingerprint --json` and the `fingerprint` field of every session record (pokus-infra BUILD_PROMPT §10.2, contracts.md C9c). `hash` is the sha256 of the canonical JSON of `fingerprint` (sorted keys, no whitespace, UTF-8); `computed_at` and `boot_id` are volatile and not hashed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fingerprint_schema_version", "hash", "fingerprint", "computed_at", "boot_id"],
+  "properties": {
+    "fingerprint_schema_version": {"description": "Version of this schema.", "const": 1},
+    "hash": {
+      "description": "`sha256:` and the hex digest of the canonical JSON of `fingerprint`.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "fingerprint": {"description": "The hashed fields.", "$ref": "#/$defs/fingerprint"},
+    "computed_at": {
+      "description": "When it was computed (UTC, ISO 8601 with `Z`); not hashed.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "boot_id": {"description": "Kernel boot ID at that time; not hashed.", "type": ["string", "null"]}
+  },
+  "$defs": {
+    "nullable_string": {"type": ["string", "null"]},
+    "deployment": {
+      "description": "Provenance of a deployed component (`DEPLOYED_FROM.json`), or null when it is not deployed.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["component", "tag", "commit", "tree"],
+      "properties": {
+        "component": {"description": "Component name (`platform`, `catalog`).", "type": ["string", "null"]},
+        "tag": {"description": "Release tag deployed.", "type": ["string", "null"]},
+        "commit": {"description": "Commit the tag points to.", "type": ["string", "null"]},
+        "tree": {"description": "Tree hash of the deployed subtree.", "type": ["string", "null"]}
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint_schema_version",
+        "machine",
+        "node_role",
+        "lab_mode",
+        "host",
+        "hardware",
+        "software",
+        "config"
+      ],
+      "properties": {
+        "fingerprint_schema_version": {"description": "Version of this schema (hashed).", "const": 1},
+        "machine": {"description": "Machine name.", "type": "string", "minLength": 1},
+        "node_role": {"description": "Node role.", "enum": ["full", "lab", "inference"]},
+        "lab_mode": {"description": "Lab mode.", "enum": ["production", "staging", null]},
+        "host": {
+          "description": "Host profile essentials.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "environment_class",
+            "hypervisor",
+            "os_id",
+            "os_version",
+            "arch",
+            "kernel",
+            "tier",
+            "release_model",
+            "overrides"
+          ],
+          "properties": {
+            "provider": {"description": "Provider role (baremetal, wsl2, vm).", "type": ["string", "null"]},
+            "environment_class": {"description": "Detected environment class.", "type": ["string", "null"]},
+            "hypervisor": {"description": "Detected hypervisor.", "type": ["string", "null"]},
+            "os_id": {"description": "os-release ID.", "type": ["string", "null"]},
+            "os_version": {"description": "os-release VERSION_ID.", "type": ["string", "null"]},
+            "arch": {"description": "Machine architecture.", "type": ["string", "null"]},
+            "kernel": {"description": "Kernel release.", "type": ["string", "null"]},
+            "tier": {"description": "Support tier.", "type": ["string", "null"]},
+            "release_model": {"description": "Release model (fixed, fast, rolling).", "type": ["string", "null"]},
+            "overrides": {"description": "Operator overrides recorded in the host profile.", "type": "object"}
+          }
+        },
+        "hardware": {
+          "description": "Hardware the measurements ran on.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cpu_model", "cpu_threads", "memory_gib", "gpu"],
+          "properties": {
+            "cpu_model": {"description": "CPU model name.", "type": ["string", "null"]},
+            "cpu_threads": {"description": "Effective CPU threads.", "type": ["integer", "null"]},
+            "memory_gib": {"description": "Memory in GiB.", "type": ["number", "null"]},
+            "gpu": {
+              "description": "The GPU, all null without one.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "count", "vram_gib", "driver", "compute_capability", "path"],
+              "properties": {
+                "name": {"description": "GPU name.", "type": ["string", "null"]},
+                "count": {"description": "Number of GPUs.", "type": ["integer", "null"]},
+                "vram_gib": {"description": "Memory per GPU in GiB.", "type": ["number", "null"]},
+                "driver": {"description": "Driver version.", "type": ["string", "null"]},
+                "compute_capability": {"description": "CUDA compute capability.", "type": ["string", "null"]},
+                "path": {"description": "GPU path: wsl-dxg, native or passthrough.", "type": ["string", "null"]}
+              }
+            }
+          }
+        },
+        "software": {
+          "description": "Installed and running software.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["versions", "containers", "golden_images"],
+          "properties": {
+            "versions": {
+              "description": "Versions reported by the installed programs (null if missing).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "docker",
+                "containerd",
+                "nvidia_container_toolkit",
+                "incus",
+                "tailscale",
+                "python",
+                "ansible_core"
+              ],
+              "properties": {
+                "docker": {"$ref": "#/$defs/nullable_string"},
+                "containerd": {"$ref": "#/$defs/nullable_string"},
+                "nvidia_container_toolkit": {"$ref": "#/$defs/nullable_string"},
+                "incus": {"$ref": "#/$defs/nullable_string"},
+                "tailscale": {"$ref": "#/$defs/nullable_string"},
+                "python": {"$ref": "#/$defs/nullable_string"},
+                "ansible_core": {"$ref": "#/$defs/nullable_string"}
+              }
+            },
+            "containers": {
+              "description": "Lab container name to the image reference it runs (`<image>@<digest>`), null if missing.",
+              "type": "object",
+              "additionalProperties": {"type": ["string", "null"]}
+            },
+            "golden_images": {
+              "description": "Golden image alias (`<blueprint>/<version>`) to Incus image fingerprint.",
+              "type": "object",
+              "additionalProperties": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "config": {
+          "description": "The configuration the lab was built from.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "infra_commit",
+            "infra_tree",
+            "infra_dirty",
+            "versions_lock_sha256",
+            "host_vars_sha256",
+            "platform",
+            "catalog"
+          ],
+          "properties": {
+            "infra_commit": {"description": "Repository commit bootstrap ran from.", "type": ["string", "null"]},
+            "infra_tree": {"description": "Tree hash of `infra/`.", "type": ["string", "null"]},
+            "infra_dirty": {"description": "Whether `infra/` had uncommitted changes.", "type": ["boolean", "null"]},
+            "versions_lock_sha256": {"description": "sha256 of `versions.lock.yml`.", "type": ["string", "null"]},
+            "host_vars_sha256": {"description": "sha256 of the host_vars file.", "type": ["string", "null"]},
+            "platform": {"description": "Deployed platform.", "$ref": "#/$defs/deployment"},
+            "catalog": {"description": "Deployed catalog.", "$ref": "#/$defs/deployment"}
+          }
+        },
+        "wsl": {
+          "description": "WSL hosts only.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wsl_conf", "kernel_string", "windows_build"],
+          "properties": {
+            "wsl_conf": {
+              "description": "Effective `/etc/wsl.conf`: section to key to value.",
+              "type": "object",
+              "additionalProperties": {"type": "object", "additionalProperties": {"type": "string"}}
+            },
+            "kernel_string": {"description": "`/proc/version`.", "type": ["string", "null"]},
+            "windows_build": {
+              "description": "Always null: with interop off the Windows build cannot be read from Linux.",
+              "type": "null"
+            }
+          }
+        }
+      }
+    }
+  }
+}

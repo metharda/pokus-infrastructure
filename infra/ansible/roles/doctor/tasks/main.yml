@@ -1,0 +1,250 @@
+# Managed by pokus-infra (ansible/roles/doctor/tasks/main.yml). Local changes will be overwritten.
+#
+# The operator CLI pokus-lab (BUILD_PROMPT §9): the pokus_lab package and a
+# copy of preflight under /usr/local/lib/pokus, the wrapper
+# /usr/local/bin/pokus-lab, and the lab description /etc/pokus/lab.json that
+# doctor, status and the fingerprint compare the host with. It runs before
+# lab_session: the session record calls `pokus-lab fingerprint` at boot.
+
+- name: Create the directories of the CLI and the fingerprint cache
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ doctor_lib }}"
+    - "{{ doctor_lib }}/pokus-lab"
+    - "{{ doctor_lib }}/preflight"
+    - "{{ doctor_lib }}/preflight/schema"
+    - "{{ doctor_fingerprint_dir }}"
+
+- name: Find the modules of pokus-lab and preflight
+  ansible.builtin.find:
+    paths: "{{ pokus_infra_dir }}/{{ item.src }}"
+    patterns: ["*.py"]
+    recurse: true
+  loop: "{{ doctor_packages }}"
+  loop_control:
+    label: "{{ item.src }}"
+  register: doctor_sources
+
+- name: Find the installed modules
+  ansible.builtin.find:
+    paths: "{{ doctor_lib }}/{{ item.dest }}"
+    patterns: ["*.py"]
+    recurse: true
+  loop: "{{ doctor_packages }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  register: doctor_installed
+
+- name: List the modules to install
+  ansible.builtin.set_fact:
+    doctor_modules: >-
+      {{ doctor_modules | default([])
+         + item.files | map(attribute='path')
+           | map('relpath', pokus_infra_dir ~ '/' ~ item.item.src)
+           | map('regex_replace', '^', item.item.dest ~ '/') | list }}
+    doctor_module_sources: >-
+      {{ doctor_module_sources | default({})
+         | combine(dict(item.files | map(attribute='path')
+                        | map('relpath', pokus_infra_dir ~ '/' ~ item.item.src)
+                        | map('regex_replace', '^', item.item.dest ~ '/') | list
+                        | zip(item.files | map(attribute='path') | list))) }}
+  loop: "{{ doctor_sources.results }}"
+  loop_control:
+    label: "{{ item.item.src }}"
+
+- name: Create the package directories
+  ansible.builtin.file:
+    path: "{{ doctor_lib }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ doctor_modules | map('dirname') | unique | sort }}"
+
+- name: Install the modules
+  ansible.builtin.copy:
+    src: "{{ doctor_module_sources[item] }}"
+    dest: "{{ doctor_lib }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ doctor_modules | sort }}"
+
+- name: Remove modules that are no longer shipped
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ doctor_installed.results | map(attribute='files') | flatten | map(attribute='path')
+       | map('relpath', doctor_lib) | difference(doctor_modules) | map('regex_replace', '^', doctor_lib ~ '/')
+       | sort }}
+
+- name: Install the data files of preflight
+  ansible.builtin.copy:
+    src: "{{ pokus_infra_dir }}/preflight/{{ item.name }}"
+    dest: "{{ doctor_lib }}/preflight/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {name: pokus-preflight, mode: "0755"}
+    - {name: support-matrix.json, mode: "0644"}
+    - {name: endpoints.json, mode: "0644"}
+    - {name: schema/host-profile.schema.json, mode: "0644"}
+    - {name: schema/support-matrix.schema.json, mode: "0644"}
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install the pokus-lab command
+  ansible.builtin.copy:
+    src: "{{ pokus_infra_dir }}/tools/pokus-lab/pokus-lab"
+    dest: "{{ doctor_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Read the configuration the fingerprint records
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - "{{ pokus_infra_dir }}/versions.lock.yml"
+    - "{{ pokus_infra_dir }}/ansible/inventory/host_vars/{{ machine }}.yml"
+  register: doctor_config_files
+
+- name: Read the defaults of the images role (included only on lab nodes)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../images/defaults/main.yml"
+    name: doctor_images_defaults
+
+- name: Read the variables of the images role
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../images/vars/main.yml"
+    name: doctor_images_vars
+
+- name: Describe the blueprints
+  ansible.builtin.set_fact:
+    doctor_blueprints: >-
+      {{ doctor_blueprints | default([])
+         + [{'name': doctor_spec.name, 'type': doctor_spec.type, 'nesting': doctor_spec.nesting | default(false),
+             'services': doctor_spec.services | default([]),
+             'base_blueprint': doctor_spec.base.blueprint | default(none)}] }}
+  vars:
+    doctor_spec: "{{ lookup('ansible.builtin.file', pokus_infra_dir ~ '/images/' ~ item ~ '/image.yaml') | from_yaml }}"
+  loop: "{{ doctor_images_blueprints if doctor_runs_lab else [] }}"
+
+- name: Describe the layout (absolute paths)
+  ansible.builtin.set_fact:
+    doctor_layout: >-
+      {{ doctor_layout | default([])
+         + [item | combine({'path': item.path if item.path is abs
+                                   else (pokus_root ~ '/' ~ item.path) | regex_replace('/$', '')})] }}
+  loop: "{{ pokus_system_layout + pokus_layout }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Read the Docker daemon configuration (how containers get the GPU)
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: doctor_daemon_json
+  failed_when: false
+  when: doctor_serves_inference
+
+- name: Write the lab description
+  ansible.builtin.copy:
+    dest: "{{ doctor_config }}"
+    content: "{{ doctor_lab | to_nice_json(sort_keys=true) }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    doctor_docker: "{{ (doctor_daemon_json.content | default('e30=')) | b64decode | from_json }}"
+    doctor_lab:
+      schema_version: 1
+      machine: "{{ machine_name }}"
+      host_vars: "{{ machine }}"
+      infra_dir: "{{ pokus_infra_dir }}"
+      pokus_root: "{{ pokus_root }}"
+      node_role: "{{ node_role }}"
+      provider: "{{ pokus_provider }}"
+      features: "{{ pokus_features }}"
+      lab_mode: "{{ lab_mode }}"
+      paths:
+        preflight: "{{ doctor_lib }}/preflight/pokus-preflight"
+        host_profile: "{{ pokus_bootstrap.profile_path | default('/etc/pokus/host-profile.json') }}"
+        bootstrap_state: /etc/pokus/bootstrap-state.json
+        health_gate_status: "{{ lab_session_gate_status }}"
+        sessions: "{{ lab_session_sessions_dir }}"
+        python: "{{ pokus_python }}"
+        ansible: /opt/pokus/ansible-venv/bin/ansible
+      fingerprint:
+        cache: "{{ doctor_fingerprint_dir }}/current.json"
+        versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
+        host_vars_sha256: "{{ doctor_config_files.results[1].stat.checksum | default(none) }}"
+      lab:
+        drain_timeout: "{{ doctor_drain_timeout | int }}"
+      units: "{{ doctor_units }}"
+      containers: "{{ doctor_containers }}"
+      listeners:
+        processes: "{{ doctor_listener_processes }}"
+        addresses: "{{ [pokus_vm_otlp.address] if pokus_features.vm_targets | default(false) else [] }}"
+      firewall:
+        backend: "{{ pokus_firewall_backend }}"
+        incus_bridge_patterns: "{{ firewall_incus_bridge_patterns if doctor_runs_lab else [] }}"
+      tailscale:
+        enabled: true
+        hostname: "{{ machine_name }}"
+        tag: "{{ tailscale_tag }}"
+      gpu:
+        image: "{{ doctor_gpu_image }}"
+        device_args: >-
+          {{ ['--device', 'nvidia.com/gpu=all'] if (doctor_docker.features | default({})).cdi | default(false)
+             else ['--runtime', 'nvidia', '--gpus', 'all'] }}
+        nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pokus_provider == 'wsl2' else 'nvidia-smi' }}"
+      vllm:
+        current: /etc/pokus/vllm/current.yml
+        health_url: "http://127.0.0.1:{{ pokus_ports.vllm }}/health"
+      incus: "{{ doctor_incus if doctor_runs_lab else {} }}"
+      postgres:
+        container: "{{ postgres_container }}"
+        roles: "{{ postgres_all_roles if doctor_runs_lab else [] }}"
+        restricted_roles: "{{ [postgres_reader_role, postgres_grafana_role] if doctor_runs_lab else [] }}"
+      opa:
+        url: "http://127.0.0.1:{{ pokus_ports.opa }}"
+      observability:
+        otlp_http: "http://127.0.0.1:{{ pokus_ports.otlp_http }}"
+        loki: "http://127.0.0.1:{{ pokus_ports.loki }}"
+        tempo: "http://127.0.0.1:{{ pokus_ports.tempo }}"
+        prometheus: "http://127.0.0.1:{{ pokus_ports.prometheus }}"
+        wait_seconds: "{{ doctor_telemetry_wait | int }}"
+        smoke_wait_seconds: "{{ doctor_smoke_wait | int }}"
+        poll_seconds: 5
+      layout: "{{ doctor_layout | default([]) }}"
+      accounts:
+        researchers: "{{ researchers | map(attribute='name') | list }}"
+        service_accounts: "{{ service_accounts | map(attribute='name') | list }}"
+        privileged_groups: [docker, incus-admin]
+        break_glass_docker: "{{ break_glass_docker }}"
+      hardening: []
+      sockets: []
+      images:
+        blueprints: "{{ doctor_blueprints | default([]) }}"
+        bench_project: bench
+        export_root: "{{ images_export_root | default(doctor_images_defaults.images_export_root) }}"
+        files_helper: "{{ doctor_images_vars.images_files_helper }}"
+      backup:
+        configured: "{{ backup_configured | bool }}"
+        helper: "{{ backup_helper }}"
+        state: "{{ backup_state_dir }}/state.json"
+        max_age_hours: "{{ doctor_backup_max_age_hours | int }}"
+      time:
+        max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
+      wsl:
+        memory_gib: "{{ (expected | default({})).memory_gib | default(none) }}"
+        cpus: "{{ (expected | default({})).cpu_threads | default(none) }}"
+        kvm_expected: "{{ pokus_features.vm_targets | default(false) | bool }}"

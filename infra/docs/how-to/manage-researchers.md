@@ -28,6 +28,12 @@ never deleted: a researcher who leaves is locked and their files are kept.
 
 ## Add a researcher
 
+!!! tip "Shortcut"
+    `sudo pokus-lab user add <name> --key-file <key-file>` (with `--admin` for
+    sudo) does steps 1 and 2 and prints the command of step 3. It needs the
+    `researchers` list written with one `{name: ...}` entry per line, as below,
+    and never changes the host itself.
+
 1. Copy the researcher's public key into the infra checkout, one file per
    researcher (it may hold several keys, one per line):
 
@@ -68,7 +74,8 @@ never deleted: a researcher who leaves is locked and their files are kept.
 
 ## Rotate a researcher's SSH key
 
-Replace the key file and apply the role again. The file is the only source of
+`sudo pokus-lab user keys <name> --key-file <key-file>` replaces the key file
+for you. Either way, replace the key file and apply the role again. The file is the only source of
 the account's `authorized_keys`: a key that is no longer in the file is
 removed from the host.
 
@@ -81,6 +88,10 @@ sudo ./bootstrap/bootstrap.sh --machine <machine> --tags users_groups
 `<key-file>` is the new key, `<name>` the account and `<machine>` this host.
 
 ## Lock a researcher who left
+
+!!! tip "Shortcut"
+    `sudo pokus-lab user remove <name>` does step 1 and prints the command of
+    step 2.
 
 1. In `ansible/inventory/host_vars/<machine>.yml`, remove the researcher from
    `researchers` and add the name to `researchers_removed`:

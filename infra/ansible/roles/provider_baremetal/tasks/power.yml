@@ -47,12 +47,22 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Reload systemd
+  register: provider_baremetal_inhibitor
+  when: power_policy == 'lab_session_inhibit'
+
+- name: Let pokus-lab.target pull in the sleep inhibitor
+  ansible.builtin.systemd_service:
+    name: pokus-sleep-inhibit.service
+    enabled: true
+    daemon_reload: "{{ provider_baremetal_inhibitor is changed }}"
   when: power_policy == 'lab_session_inhibit'
 
 - name: Remove the lab session sleep inhibitor (policy changed)
   ansible.builtin.file:
-    path: /etc/systemd/system/pokus-sleep-inhibit.service
+    path: "{{ item }}"
     state: absent
+  loop:
+    - /etc/systemd/system/pokus-lab.target.wants/pokus-sleep-inhibit.service
+    - /etc/systemd/system/pokus-sleep-inhibit.service
   notify: Reload systemd
   when: power_policy != 'lab_session_inhibit'

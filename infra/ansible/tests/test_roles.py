@@ -186,7 +186,11 @@ def test_dynamic_includes_exist() -> None:
                     checked += 1
         if "ansible.builtin.include_vars" in task and role:
             name = task["ansible.builtin.include_vars"]["file"]
-            if "playbook_dir" not in name:
+            if name.startswith("{{ role_path }}/"):
+                target = ROLES / role / name.removeprefix("{{ role_path }}/")
+                assert target.resolve().is_file(), (role, name)
+                checked += 1
+            elif "playbook_dir" not in name:
                 for candidate in expand(name):
                     assert (ROLES / role / "vars" / candidate).is_file(), (role, candidate)
                     checked += 1

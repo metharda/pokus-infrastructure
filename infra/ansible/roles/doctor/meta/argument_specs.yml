@@ -1,0 +1,66 @@
+# Managed by pokus-infra (ansible/roles/doctor/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: The pokus-lab operator CLI, a copy of preflight it runs, and the lab description /etc/pokus/lab.json.
+    options:
+      machine:
+        type: str
+        required: true
+        description: Name of the host_vars file (bootstrap --machine); pokus-lab passes it back to bootstrap.
+      machine_name:
+        type: str
+        required: true
+        description: Machine name; the Tailscale host name doctor expects.
+      pokus_infra_dir:
+        type: str
+        required: true
+        description: Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints.
+      pokus_provider:
+        type: str
+        required: true
+        description: Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path).
+      node_role:
+        type: str
+        required: true
+        description: full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks.
+      pokus_features:
+        type: dict
+        required: true
+        description: Feature flags of the host profile (gpu_inference, vm_targets).
+      pokus_versions:
+        type: dict
+        required: true
+        description: The pinned versions (the image and digest every lab container must run).
+      host_profile:
+        type: dict
+        required: true
+        description: The validated host profile (storage backend of the Incus pool).
+      doctor_max_clock_offset:
+        type: float
+        default: 1.0
+        description: Largest clock offset doctor accepts, in seconds.
+      doctor_min_pool_free_gib:
+        type: int
+        default: 20
+        description: Free space of the Incus pool below which doctor warns, in GiB.
+      doctor_backup_max_age_hours:
+        type: int
+        default: 26
+        description: Age of the last successful backup after which doctor warns, in hours.
+      doctor_telemetry_wait:
+        type: int
+        default: 60
+        description: Seconds doctor waits for its telemetry probe to arrive in Loki, Tempo and Prometheus.
+      doctor_smoke_wait:
+        type: int
+        default: 120
+        description: Seconds doctor --smoke waits for a throwaway target's logs in Loki.
+      doctor_drain_timeout:
+        type: int
+        default: 1800
+        description: Seconds `pokus-lab update-host` gives the orchestrator to drain.
+      doctor_listener_processes:
+        type: list
+        elements: str
+        default: [sshd, tailscaled, dnsmasq, systemd-network, dhclient, NetworkManager, chronyd]
+        description: Processes that may listen outside loopback (names as `ss -p` shows them).

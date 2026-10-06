@@ -359,6 +359,18 @@ Proposed in infra step 9 (same status; details in
   `errors`), matching the platform's `lab_sessions` table; a field that could
   not be computed is `null` with its reason under `errors`.
 
+Proposed in infra step 10 (same status; details in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 10"):
+
+- Fingerprint document: `fingerprint_schema_version`, `hash`
+  (`sha256:<hex>` of the canonical JSON of `fingerprint`), `fingerprint`,
+  `computed_at` and `boot_id` (not hashed), with the JSON Schema
+  `infra/tools/pokus-lab/schema/fingerprint.schema.json`.
+- Lab drain: `POST /lab/drain` with `{"timeout_seconds": <int>}` and
+  `GET /lab/status` answering `{"active_runs": <int>}` on the orchestrator's
+  `api.sock`, called as root by `pokus-lab stop` and `update-host`; runs still
+  active when the lab stops are recorded as interrupted.
+
 ## Step status
 
 ### Phase 1 — infra/
@@ -373,8 +385,8 @@ Proposed in infra step 9 (same status; details in
 | 6 | docker, nvidia_container_toolkit, incus | done | `ea46ba3` |
 | 7 | postgres, observability, opa, vllm, models | done | `99768ea` |
 | 8 | images | done | `5526e43` |
-| 9 | lab_session, backup, restore.yml, rotate.yml | done | commit "feat(infra): add the lab session, backups, restore and rotation" (SHA recorded with step 10) |
-| 10 | pokus-lab CLI with doctor and fingerprint | pending | — |
+| 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
+| 10 | pokus-lab CLI with doctor and fingerprint | done | commit "feat(infra): add the pokus-lab CLI with doctor and fingerprint" (SHA recorded with step 11) |
 | 11 | catalog and platform roles | pending | — |
 | 12 | test-distros harness | pending | — |
 | 13 | Installer TUI | pending | — |
@@ -477,6 +489,21 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   run against real services here; session records and the restore's doctor
   run depend on `pokus-lab` (step 10); a restore drill must disable the spare
   machine's backup timers.
+- From step 10 ("Findings to report (step 10)" and "Interpretations awaiting
+  owner confirmation (step 10)"): the lab description `/etc/pokus/lab.json`
+  as the CLI's only input; package copies (with a copy of preflight) under
+  `/usr/local/lib/pokus/`; doctor needing root and exiting 2 when it cannot
+  run; which checks are warnings (a fresh lab without a backup repository
+  ends bootstrap with 1); the listener allowlist; the telemetry round trip
+  and the smoke checks' assertions (VM blueprints skipped); the inference
+  project left out of the unit list; `pokus-lab restore -- <options>`;
+  `status` needing root for containers and Incus; the reboot notice from
+  `/var/run/reboot-required`; `pokus-lab user` refusing host_vars files it
+  cannot edit line by line. Findings: nothing ran against a real lab; the
+  proposed fingerprint and drain contract additions (the platform must
+  implement the drain endpoints); `site.yml` still applies `postgres` and
+  `opa` on inference nodes (aligned in step 11); the step 5 sleep inhibitor
+  was never enabled (fixed); `pokus-lab docs serve` follows in step 14.
 
 ## Owner deliverables pending
 
@@ -498,9 +525,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (107 after step 9; details
+`make verify-todos` lists every marker in the tree (107 after step 10; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 9"):
+step 4" through "after step 10"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -537,6 +564,7 @@ step 4" through "after step 9"):
   block every golden image build (images.linuxcontainers.org is not reachable
   from the build environment).
 - Step 9: nothing added or resolved.
+- Step 10: nothing added or resolved.
 
 Known items for later steps (each becomes a `TODO(verify)` entry when its file
 is written, unless verified first):
@@ -556,10 +584,10 @@ is written, unless verified first):
   still hit the limit.
 - `ansible-playbook` is run with `LC_ALL=C.UTF-8`; its availability on every
   supported family is to be confirmed on real hosts (Phase 5).
-- Bootstrap cannot be run end to end before infra step 10: `site.yml`
-  applies the foundation roles (step 5) but `pokus-lab` (doctor) does not
-  exist yet, so a real run ends with exit code 60. Its stages and the roles
-  are covered by tests that never provision.
+- Bootstrap has not been run end to end on a real host (the build
+  environment must not be provisioned); since step 10 its last stage runs
+  `pokus-lab doctor`. Its stages, the roles and the doctor checks are
+  covered by tests that never provision; Phase 5 runs them on real hosts.
 - Run networks can be created but not deleted by the platform's restricted
   certificates (see the step 6 contract question); until the owner decides,
   the contract is unchanged and nothing works around it.
@@ -576,9 +604,9 @@ is written, unless verified first):
   pinned uv is installed in a user-space scratch directory and put first on
   `PATH` for all make runs. CPython 3.9.25 and 3.12.11 are installed in user
   space by uv.
-- mypy 2.x cannot type-check for Python 3.9; preflight's 3.9 compatibility is
-  enforced by ruff (`py39` target) and by running its test suite on CPython 3.9
-  (ADR-0001).
+- mypy 2.x cannot type-check for Python 3.9; the 3.9 compatibility of
+  preflight and `pokus-lab` is enforced by ruff (`py39` target) and by running
+  their test suites on CPython 3.9 (ADR-0001).
 - Preflight fixture paths contain colons (sysfs PCI addresses such as
   `0000:01:00.0`), so the repository cannot be checked out on a Windows
   filesystem; clone it inside WSL or on Linux (the lab is Linux-only anyway).
@@ -588,9 +616,10 @@ is written, unless verified first):
 
 ## Next step
 
-Infra step 10 (`pokus-lab`, the operator CLI: preflight, doctor with all
-checks of BUILD_PROMPT §9 and `--smoke`, status, start/stop with draining,
-fingerprint with the root-computed cache (C9c), backup, restore, images, user
-and WSL helpers). It also completes what step 9 left to it: the session
-record's fingerprint and preflight outcome, and doctor at the end of a
-restore.
+Infra step 11 (catalog and platform roles: the root-only bare mirror and
+`git archive` deployments with `DEPLOYED_FROM.json` (B2), platform service
+accounts, units with their systemd hardening and sockets (C8), the signing
+key and its rotation in `rotate.yml`, and `inference_control` with pairing
+for `node_role: inference`). It also fills the `hardening` and `sockets`
+entries of the lab description so that doctor checks them, and limits the
+`postgres` and `opa` roles to `full` and `lab` nodes.

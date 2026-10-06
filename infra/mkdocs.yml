@@ -69,6 +69,8 @@ nav:
   - Home: index.md
   - How-to guides:
       - Check whether a machine can host the lab: how-to/check-a-host.md
+      - Start, stop and drain the lab: how-to/start-stop-drain.md
+      - Update the host operating system: how-to/update-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
       - Add a model and activate a deployment: how-to/add-a-model.md
       - Reach Grafana and the lab database: how-to/reach-grafana.md
@@ -79,16 +81,20 @@ nav:
       - Add a preflight fixture: how-to/add-preflight-fixture.md
       - Add a distribution family: distros/adding-a-family.md
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
+      - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
   - Reference:
       - Support matrix: support-matrix.md
       - Component sources: reference/component-sources.md
       - "CLI: bootstrap.sh": reference/cli/bootstrap.md
       - "CLI: pokus-preflight": reference/cli/pokus-preflight.md
+      - "CLI: pokus-lab": reference/cli/pokus-lab.md
+      - Doctor checks: reference/doctor-checks.md
       - Exit codes: reference/exit-codes.md
       - Ansible variables: reference/ansible-variables.md
       - Accounts and groups: reference/accounts.md
       - Host profile schema: reference/host-profile.md
+      - Fingerprint schema: reference/fingerprint.md
       - Pinned versions: reference/versions.md
       - Integration contract: contracts.md
   - Explanation:
@@ -100,6 +106,7 @@ nav:
       - How telemetry, metrics and logs flow: explanation/telemetry.md
       - How golden images are built: explanation/golden-images.md
       - How the lab comes up: explanation/lab-session.md
+      - Reproducibility, fingerprints and sessions: reproducibility.md
       - Providers:
           - WSL2 hosts: providers/wsl2.md
           - Bare-metal hosts: providers/baremetal.md

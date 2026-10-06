@@ -37,7 +37,8 @@
 - name: Choose the action for the blueprint
   ansible.builtin.set_fact:
     images_action: >-
-      {{ 'build' if images_rebuild | bool or (images_image == {} and images_record == {})
+      {{ 'build' if images_rebuild | bool or images_name in images_rebuild_names
+                     or (images_image == {} and images_record == {})
          else 'import' if images_image == {}
          else 'export' if images_record.fingerprint | default('') != images_image.fingerprint
          else 'none' }}

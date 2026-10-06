@@ -262,6 +262,21 @@ def _option_rows(parser: argparse.ArgumentParser) -> Iterator[list[Any]]:
         yield [names, value, f"`{default}`" if default != "" else "", action.help or ""]
 
 
+def usage(parser: argparse.ArgumentParser) -> str:
+    """The usage line of a parser, independent of the terminal width.
+
+    Args:
+        parser: The parser.
+
+    Returns:
+        Usage text as ``format_usage`` prints it on an 80-column terminal (78
+        columns), without the ``usage:`` prefix.
+    """
+    formatter = argparse.HelpFormatter(parser.prog, width=78)
+    formatter.add_usage(parser.usage, parser._actions, parser._mutually_exclusive_groups)
+    return formatter.format_help().replace("usage: ", "", 1).strip()
+
+
 def cli_page(parser: argparse.ArgumentParser, *, title: str, intro: str) -> str:
     """Render a CLI reference page from an argument parser.
 
@@ -273,11 +288,10 @@ def cli_page(parser: argparse.ArgumentParser, *, title: str, intro: str) -> str:
     Returns:
         Page text.
     """
-    usage = parser.format_usage().replace("usage: ", "").strip()
     out = [
         front_matter(title, ["operator", "developer"], f"Every option of {parser.prog}."),
         f"# {title}\n\n{intro}\n\n",
-        f"```text\n{usage}\n```\n\n",
+        f"```text\n{usage(parser)}\n```\n\n",
         f"{parser.description}\n\n",
         "## Options\n\n",
         table(["Option", "Value", "Default", "Description"], list(_option_rows(parser))),
@@ -291,6 +305,7 @@ def exit_codes_page(
     meanings: dict[str, tuple[str, str]],
     codes: dict[str, int],
     bootstrap_codes: list[bootstrap.ExitCode],
+    lab_rows: list[list[str]],
 ) -> str:
     """Render ``docs/reference/exit-codes.md``.
 
@@ -298,6 +313,7 @@ def exit_codes_page(
         meanings: Outcome to ``(meaning, bootstrap behavior)``.
         codes: Outcome to exit code.
         bootstrap_codes: Exit codes of ``bootstrap.sh``.
+        lab_rows: ``[code, command, meaning]`` rows of ``pokus-lab``.
 
     Returns:
         Page text.
@@ -331,8 +347,10 @@ def exit_codes_page(
             "The exit code is the outcome of the support-matrix decision "
             "(see [Support matrix](../support-matrix.md)).\n\n",
             table(["Code", "Outcome", "Meaning", "Bootstrap behavior"], rows),
-            "\nThe exit codes of the other `pokus-lab` commands are added to this page with the "
-            "tools that define them.\n",
+            "\n## pokus-lab\n\n",
+            "`pokus-lab preflight` passes the exit code of pokus-preflight through. "
+            "See [Doctor checks](doctor-checks.md) for the severity of every check.\n\n",
+            table(["Code", "Command", "Meaning"], lab_rows),
         ]
     )
 
@@ -416,18 +434,31 @@ def host_profile_page(root: Path) -> str:
     Returns:
         Page text.
     """
-    schema = json.loads(
-        (root / "preflight/schema/host-profile.schema.json").read_text(encoding="utf-8")
+    return schema_page(
+        root,
+        "preflight/schema/host-profile.schema.json",
+        "Host profile schema",
+        "Every field of the host profile written by pokus-preflight.",
     )
+
+
+def schema_page(root: Path, schema_file: str, title: str, summary: str) -> str:
+    """Render a reference page from a JSON Schema.
+
+    Args:
+        root: Component root.
+        schema_file: Schema path relative to the root.
+        title: Page title.
+        summary: Front matter description.
+
+    Returns:
+        Page text.
+    """
+    schema = json.loads((root / schema_file).read_text(encoding="utf-8"))
     out = [
-        front_matter(
-            "Host profile schema",
-            ["operator", "developer"],
-            "Every field of the host profile written by pokus-preflight.",
-        ),
-        "# Host profile schema\n\n",
-        f"{schema['description']} Schema file: `preflight/schema/host-profile.schema.json` "
-        "(JSON Schema draft 2020-12).\n\n",
+        front_matter(title, ["operator", "developer"], summary),
+        f"# {title}\n\n",
+        f"{schema['description']} Schema file: `{schema_file}` (JSON Schema draft 2020-12).\n\n",
         table(["Field", "Type", "Required", "Description"], list(schema_rows(schema, ""))),
         "\n## Definitions\n\n",
     ]

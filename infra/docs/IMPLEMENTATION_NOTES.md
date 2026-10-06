@@ -1204,3 +1204,131 @@ stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
 ### Open `TODO(verify)` items after step 9
 
 107 markers, unchanged.
+
+## Step 10: pokus-lab CLI with doctor and fingerprint
+
+Built: `tools/pokus-lab/` (the `pokus_lab` package, standard library only and
+source-compatible with Python 3.9: `cli`, `config`, `system`, `doctor`,
+`checks` with 28 checks, `smoke`, `fingerprint`, `commands`; the POSIX shell
+wrapper `pokus-lab`; the JSON Schema `schema/fingerprint.schema.json`; 113
+unittest-style tests that also run on CPython 3.9 in `make test-py39`); the
+`doctor` role (installs the package and a copy of preflight under
+`/usr/local/lib/pokus/`, the wrapper as `/usr/local/bin/pokus-lab`, and
+renders the lab description `/etc/pokus/lab.json`), placed in `site.yml`
+before `lab_session`; environment selection of blueprints in the images role
+(`POKUS_IMAGES_BLUEPRINTS`, `POKUS_IMAGES_REBUILD`) for `pokus-lab images
+build`; generated reference pages `reference/cli/pokus-lab.md`,
+`reference/doctor-checks.md`, `reference/fingerprint.md` and a pokus-lab
+section in `reference/exit-codes.md`, all covered by the docs coverage check
+(every command, option, check, troubleshooting section and schema field);
+`docs/reproducibility.md`, `how-to/start-stop-drain.md`,
+`how-to/update-host.md`, `how-to/fix-doctor-checks.md` (one section per check
+ID); `pokus-lab user` shortcuts in `how-to/manage-researchers.md`.
+
+Fixed on the way: the sleep inhibitor of `power_policy: lab_session_inhibit`
+(step 5) was installed but never enabled, so `pokus-lab.target` never pulled
+it in; it is now enabled, and removed together with its wants link when the
+policy changes. CLI reference usage lines no longer depend on the terminal
+width of the machine that generates them (`COLUMNS`).
+
+### Verified in step 10
+
+- The package imports and its tests pass on CPython 3.9 and 3.12; the shell
+  wrapper runs isolated (`-I`), ignores `PYTHONPATH` and reaches the CLI
+  (test).
+- `RealSystem` against real processes, files, a loopback HTTP server and an
+  HTTP server on a Unix socket (tests); a failed Unix socket connection no
+  longer leaks the socket.
+- argparse on 3.9, 3.11 and 3.12 puts every option after `--` into
+  `pokus-lab restore`'s bootstrap options; `argparse.REMAINDER` did not take
+  a leading option and was replaced.
+- The rendered lab description: every key path the CLI reads exists for a
+  `full` node, and node roles, WSL, GPU methods and VM targets change it as
+  expected (Ansible's own templating, `ansible/tests/test_doctor.py`).
+- Fingerprint documents (bare metal, WSL, minimal profile) validate against
+  the fingerprint schema with preflight's validator.
+- Statically imported roles expose their defaults to the doctor role even
+  with `--tags doctor`; dynamically included roles (images, vllm) do not, so
+  the role reads the images role's defaults and vars files explicitly
+  (`ansible-playbook --check` of a scratch play).
+- The gateway collector's `resource_to_telemetry_conversion` and Loki's
+  structured metadata make `pokus_run_id` queryable in Prometheus and Loki,
+  which the telemetry round trip and the smoke checks use.
+
+### Findings to report (step 10)
+
+- **Nothing could be run against a real lab**: no systemd, Docker, Incus,
+  Tailscale, PostgreSQL or GPU here. Every check is tested against a fake
+  host built from tables; the command lines and output formats they parse
+  (`ss -H -lntup`, `getfacl`, `tailscale status --json`, `incus query`,
+  `systemctl show`, Loki, Tempo and Prometheus query APIs) follow their
+  documentation and the upstream sources read in earlier steps, but a first
+  `pokus-lab doctor` on a provisioned host is the real test.
+- **Contract additions (proposed)**: the fingerprint document format and its
+  schema, and the drain endpoints `POST /lab/drain` and `GET /lab/status` on
+  the orchestrator's `api.sock` (`contracts.md`, "Session records and
+  fingerprint"). The platform must implement the drain endpoints for
+  `pokus-lab stop` to drain; until then there is no socket and nothing to
+  drain.
+- **PostgreSQL and OPA on inference nodes**: `site.yml` still applies the
+  `postgres` and `opa` roles on every node; BUILD_PROMPT §19.10 gives an
+  inference node only the inference stack. The lab description and doctor
+  already treat inference nodes that way; the plays are aligned in step 11
+  together with `inference_control`.
+- **`pokus-lab docs serve`** (owner answer H9, port 18706) belongs to the
+  documentation work and is added in step 14.
+
+### Interpretations awaiting owner confirmation (step 10)
+
+1. **The lab description `/etc/pokus/lab.json`** is the CLI's only input
+   besides the host: rendered by the doctor role from the host's variables
+   (units, containers with pinned digests, layout, accounts, Incus objects,
+   PostgreSQL roles, endpoints, blueprints, thresholds). `pokus-lab` never
+   reads the repository or the vault.
+2. **Installation**: package copies under `/usr/local/lib/pokus/` (root, 0644)
+   instead of running from the checkout, with a copy of preflight so that
+   `pokus-lab preflight` and doctor do not depend on the checkout; modules
+   removed from the sources are deleted. The wrapper prefers the pinned
+   CPython and falls back to `python3` 3.9 or newer.
+3. **Doctor needs root** (several checks read root-only state) and exits 2
+   when it cannot run at all (no lab description, not root). Other commands
+   exit 0 or 1; usage errors 2.
+4. **Severities**: warnings are `preflight.drift`, `incus.pool`,
+   `incus.metrics`, `incus.events`, `backup.recent`, `lab.session`,
+   `lab.rolling_drift` and `wsl.config`; everything else is an error. Without
+   a backup repository `backup.recent` fails as a warning (owner answer E4),
+   so a fresh lab ends bootstrap with exit code 1 until backups are set up.
+5. **Listeners**: besides sshd, the processes `tailscaled`, `dnsmasq`
+   (Incus's DHCP and DNS on its bridges), `systemd-network`, `dhclient`,
+   `NetworkManager` and `chronyd` may listen outside loopback
+   (`doctor_listener_processes`), and with `vm_targets` the collector's VM
+   listener address.
+6. **Telemetry round trip**: one log record, span and gauge sent as OTLP/HTTP
+   JSON to the gateway with `pokus.run_id=doctor-<12 hex>`, then queried in
+   Loki, Tempo and Prometheus for up to `doctor_telemetry_wait` (60 s).
+7. **Smoke checks**: VM blueprints are skipped; the telemetry assertion is a
+   log line in Loki tagged with the throwaway run ID (end to end through the
+   gateway); "no route to lab services" is tested by connecting from the
+   target to the run network's gateway address on the lab's ports
+   (OPA, Grafana, Prometheus, Loki, Tempo, vLLM); a missing `curl` or `nc`
+   counts as a failure, not a pass.
+8. **Unit and container lists**: the inference Compose project is not in the
+   unit list (it runs only while a deployment is active; `gpu.vllm` covers
+   it); `pokus-incus-events.service` is checked separately because it is not
+   part of `pokus-lab.target`.
+9. **`pokus-lab restore`** takes bootstrap options after `--`
+   (`pokus-lab restore -- --non-interactive`).
+10. **`pokus-lab status`** shows units to everyone; containers and Incus
+    instances need root (researchers are never in `docker` or `incus-admin`),
+    and it says so.
+11. **`update-host`**: the update commands per family as in
+    `how-to/update-host.md`; the reboot notice uses
+    `/var/run/reboot-required` (Debian family only; the page lists the other
+    families' commands).
+12. **`pokus-lab user`** edits `users/<name>.pub` and the host_vars file only
+    when the `researchers` list is written with one flow mapping per line; it
+    refuses otherwise instead of rewriting the file.
+
+### Open `TODO(verify)` items after step 10
+
+107 markers, unchanged.

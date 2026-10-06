@@ -632,6 +632,74 @@ First Docker Engine major version with CDI device support; older engines get the
 - Type: `int`
 - Default: `25`
 
+## doctor
+
+The pokus-lab operator CLI, a copy of preflight it runs, and the lab description /etc/pokus/lab.json.
+
+Entry points: `main` (The pokus-lab operator CLI, a copy of preflight it runs, and the lab description /etc/pokus/lab.json). Role README: `ansible/roles/doctor/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `host_profile` | bootstrap.sh | The validated host profile (storage backend of the Incus pool). |
+| `machine` | bootstrap.sh | Name of the host_vars file (bootstrap --machine); pokus-lab passes it back to bootstrap. |
+| `machine_name` | [lab-wide](#machine_name) | Machine name; the Tailscale host name doctor expects. |
+| `node_role` | [lab-wide](#node_role) | full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks. |
+| `pokus_features` | host_vars | Feature flags of the host profile (gpu_inference, vm_targets). |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints. |
+| `pokus_provider` | host_vars | Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path). |
+| `pokus_versions` | host_vars | The pinned versions (the image and digest every lab container must run). |
+
+### `doctor_max_clock_offset`
+
+Largest clock offset doctor accepts, in seconds.
+
+- Type: `float`
+- Default: `1.0`
+
+### `doctor_min_pool_free_gib`
+
+Free space of the Incus pool below which doctor warns, in GiB.
+
+- Type: `int`
+- Default: `20`
+
+### `doctor_backup_max_age_hours`
+
+Age of the last successful backup after which doctor warns, in hours.
+
+- Type: `int`
+- Default: `26`
+
+### `doctor_telemetry_wait`
+
+Seconds doctor waits for its telemetry probe to arrive in Loki, Tempo and Prometheus.
+
+- Type: `int`
+- Default: `60`
+
+### `doctor_smoke_wait`
+
+Seconds doctor --smoke waits for a throwaway target's logs in Loki.
+
+- Type: `int`
+- Default: `120`
+
+### `doctor_drain_timeout`
+
+Seconds `pokus-lab update-host` gives the orchestrator to drain.
+
+- Type: `int`
+- Default: `1800`
+
+### `doctor_listener_processes`
+
+Processes that may listen outside loopback (names as `ss -p` shows them).
+
+- Type: `list` of `str`
+- Default: `[sshd, tailscaled, dnsmasq, systemd-network, dhclient, NetworkManager, chronyd]`
+
 ## firewall
 
 Firewall policy with the nftables, firewalld or ufw backend.

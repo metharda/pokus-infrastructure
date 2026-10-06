@@ -15,7 +15,7 @@ VENV := .venv
 BIN := $(VENV)/bin
 NODE_BIN := node_modules/.bin
 REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pokus_repo_checks
-GEN := PYTHONPATH=tools/gen:preflight $(BIN)/python -m pokus_infra_gen
+GEN := PYTHONPATH=tools/gen:preflight:tools/pokus-lab $(BIN)/python -m pokus_infra_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pokus_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
@@ -33,7 +33,7 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
-  ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests
+  ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests tools/pokus-lab
 PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -89,6 +89,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
+	$(BIN)/mypy --python-version 3.10 tools/pokus-lab/pokus_lab tools/pokus-lab/tests
 
 .PHONY: lint-shell
 lint-shell: setup ## shellcheck and shfmt on every shell script
@@ -155,9 +156,11 @@ test: setup test-py39 ## Unit tests (pytest) and the preflight suite on the olde
 	$(BIN)/pytest
 
 .PHONY: test-py39
-test-py39: ## Preflight test suite with plain unittest on CPython 3.9 (stdlib only)
+test-py39: ## Preflight and pokus-lab test suites with plain unittest on CPython 3.9 (stdlib only)
 	cd preflight && PYTHONPATH=.:tests $(UV) run --no-project --python $(PREFLIGHT_MIN_PYTHON) \
 	  python -m unittest discover -s tests -t tests
+	cd tools/pokus-lab && PYTHONPATH=.:tests:../../preflight $(UV) run --no-project \
+	  --python $(PREFLIGHT_MIN_PYTHON) python -m unittest discover -s tests -t tests
 
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)
