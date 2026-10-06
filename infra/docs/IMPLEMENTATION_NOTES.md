@@ -791,3 +791,174 @@ From upstream sources reachable through git and the Ubuntu archive:
 98 markers: as after step 5, minus the three firewall and Docker coexistence
 notes resolved from Incus's documentation, plus the Incus group, unit and path
 names of Zabbly's packages and of the Red Hat, SUSE and Arch families.
+
+## Step 7: postgres, observability, opa, vllm, models
+
+Built: the helper role `compose` (Compose project under
+`/srv/pokus/services/<project>/`, `.env` with images by digest, ports, the
+groups' GIDs, the Docker data root, the GPU profile and one configuration hash
+per `config/<name>/` directory used as a service label, so a changed file
+recreates exactly its service; `pokus-<project>.service`, oneshot with
+`RemainAfterExit`, `up --wait`/`down`, part of `pokus-lab.target`); roles
+`postgres` (socket directories, generated superuser and exporter passwords,
+password files, the reader's pgpass, the bootstrap SQL, SCRAM password
+convergence, durability assertions), `opa` (authorization policy, deny-all
+placeholder, policy link), `observability` (collector gateway and journald
+collector, Prometheus, Loki, Tempo, Grafana with data sources, five
+dashboards and researcher accounts, node_exporter, cAdvisor, the nvidia-smi
+GPU exporter, the VM listener of C4), `vllm` (serving profile `ada-12g`,
+deploy helper behind `pokus-vllm-deploy.socket`, default deployment, serving
+verification) and `models` (pinned `hf` CLI in a hash-locked uv environment,
+`models-fetch`); `compose/{core,observability,inference}/compose.yml`;
+`config/{postgres,opa,otel,prometheus,loki,tempo,grafana}/`;
+`models.lock.yml`, `models.catalog.yml` (proposed) and their schemas; filters
+`pokus_scram_verifier`, `pokus_scram_matches`, `pokus_config_hashes`;
+`pokus-lockcheck fetch` and the pinned OPA CLI for tests; the firewall rule
+and the run ACL rule of the VM listener; per-account primary groups in
+`users_groups`; `docs/explanation/telemetry.md`,
+`docs/how-to/add-a-model.md`, `docs/how-to/reach-grafana.md`, ADRs 0010-0011.
+
+### Verified in step 7
+
+- **Configurations against the pinned releases** (downloaded into a scratch
+  directory, checksums matched against the published lists, nothing
+  committed): `otelcol-contrib 0.162.0 validate` accepts both collector
+  configurations (the journald one up to the host root, which only exists in
+  the container); `promtool check config` (Prometheus 3.15.0); `loki
+  -verify-config` (3.7.8); `tempo -config.verify` (2.10.8). Loki, Tempo,
+  Prometheus and the gateway were then run with these configurations: every
+  listening socket was on `127.0.0.1` (no ring or cluster port), and an
+  OTLP log, span and metric sent to the gateway arrived in Loki (filterable by
+  `pokus_run_id`), Tempo and the Prometheus exporter (label `pokus_run_id`).
+- **OPA 1.21.1**: the static binaries of the release match their `.sha256`
+  files (pinned as `binaries.opa` for tests); the authorizer's input is
+  `{path: [segments], method}`; `decision_logs.console` exists. The Rego unit
+  tests and a live server test show that decision queries and `/health` work
+  and every policy or data write, the policy listing and other APIs get 401.
+- **PostgreSQL**: the rendered `postgresql.conf` and `pg_hba.conf` and the
+  bootstrap SQL ran against a real server (PostgreSQL 16 of the build
+  environment and of CI; the pinned image runs 18, the SQL is the same):
+  the bootstrap is idempotent, `pg_hba` admits only the contract's roles,
+  `pokus_reader` and `pokus_grafana` are denied `gt` and a mistaken grant is
+  revoked on the next run, the SCRAM filters match secrets PostgreSQL stored
+  and PostgreSQL accepts the secrets they compute. The SCRAM implementation
+  also reproduces the RFC 7677 test vector. libpq (REL_18) ignores a password
+  file with group access (finding below). The official image's entrypoint
+  reads `POSTGRES_PASSWORD_FILE` as root and as `postgres` (UID 999).
+- **Grafana 13.0.10**: provisioning files expand `$__file{}` (and trim the
+  file), `$$` is a literal `$`, and the result passes through
+  `os.ExpandEnv` (hence no `$` in the database password); the PostgreSQL data
+  source takes a socket directory as URL; `grafana cli admin
+  reset-admin-password --password-from-stdin` exists; the admin user API
+  routes used by the role exist.
+- **postgres_exporter 0.20.1** builds `postgresql://user:pass@` +
+  `DATA_SOURCE_URI` and opens it with lib/pq 1.10.9, whose `ParseURL` sorts
+  its parameters, so the socket is given with an empty URL host
+  (`/pokus?host=/run/pokus/postgres`).
+- **Image users** from the images' Dockerfile at each pinned tag: Prometheus and
+  node_exporter `nobody`, Loki, Tempo and the collector 10001, Grafana 472:0,
+  the GPU exporter 65534, cAdvisor root; vLLM runs as root (`vllm serve`
+  entrypoint).
+- **Incus 6.0.6** generates its server certificate with the host's addresses
+  (127.0.0.1 included), so Prometheus verifies it as `ca_file`.
+- **Compose 5.6.0** prints `Created`, `Recreated` and `Started` events in its
+  plain progress output (the role's change detection).
+- **vLLM 0.31.0**: `vllm serve --config <yaml>` with `model` in the file;
+  booleans, lists and nested mappings in the file; the tool-call parser names
+  used (`hermes`, `phi4_mini_json`, `llama3_json`);
+  `--override-generation-config`, `--otlp-traces-endpoint` (OpenTelemetry is
+  part of vLLM's common requirements), `--enable-lora`, `--max-loras`,
+  `--max-lora-rank`; metric names for the dashboards.
+- **huggingface_hub 2.1.1**: the wheel matches PyPI's sha256; it installs the
+  `hf` CLI with `hf download REPO FILES --revision --local-dir` (token from
+  `HF_TOKEN`); the hash-locked environment installs on CPython 3.12.15 with
+  uv, and a second `uv pip sync` reports "Checked", which the role treats as
+  no change.
+
+### Findings to report (step 7)
+
+- **Reader credential and libpq.** Owner answer E13 makes the reader
+  credential 0640 root:pokus, but libpq ignores a password file that its group
+  may read. The file keeps its contract path and pgpass format; researchers
+  copy it to `~/.pgpass` with mode 0600 (documented), the platform reads the
+  password itself.
+- **pg_hba and two socket directories.** `pg_hba` cannot distinguish socket
+  directories, so the contract's "role `pokus_reader` only (`pg_hba`)" for
+  the reader directory cannot be enforced by `pg_hba`. The directory groups
+  decide who reaches a socket, the password files decide the role; the
+  contract's socket table now says so (proposed contract change).
+- **Service account groups.** The contract owns sockets and password files by
+  groups named after service accounts (`pokus-orch`, `pokus-gw`, ...), which
+  `useradd` creates only where `USERGROUPS_ENAB` is set (not on openSUSE).
+  `users_groups` now creates them explicitly.
+- **Model candidates.** Hugging Face is blocked from the build environment, so
+  the catalog's candidates (Qwen3-8B-AWQ, Qwen3-4B-AWQ,
+  Qwen2.5-7B-Instruct-AWQ, Phi-4-mini-instruct; Llama 3.1 8B AWQ under
+  `restricted`) are proposals from prior knowledge with `TODO(verify)`
+  revisions and estimated VRAM; they need the owner's approval (E7) and a
+  check on the Hub before any enters the lock.
+- **Run explorer and platform tables.** The run explorer's database panel
+  queries `public.runs` by `run_id`; the platform's migrations decide the real
+  table (to align in platform phase).
+
+### Interpretations awaiting owner confirmation (step 7)
+
+1. **Observability on the host network.** BUILD_PROMPT §7.9 asks Prometheus to
+   scrape the Incus metrics with the metrics certificate; Incus listens on
+   `127.0.0.1` only, which no container on a Docker bridge can reach. All
+   observability containers therefore use the host network and bind
+   `127.0.0.1` explicitly (no published ports); tests check every listen
+   address (ADR-0011).
+2. **Grafana and the exporter on sockets.** BUILD_PROMPT §7.8 lets Grafana
+   connect over an internal Docker network; with the host network it connects
+   through the reader socket directory instead (as `pokus_grafana`), the
+   exporter through the service directory (as `pokus_monitor`), and
+   PostgreSQL has no network at all (ADR-0010; proposed contract change for
+   the socket peers).
+3. **A second collector for the journal.** The journald receiver needs the
+   host root file system; it runs in a separate collector instance that
+   forwards to the gateway, so the instance that accepts OTLP from targets has
+   no access to host files.
+4. **VM listener.** `198.18.0.1/32` (RFC 2544 benchmarking range, configurable
+   as `pokus_vm_otlp`) on the dummy interface `pokus-otlp0`, created before
+   Docker starts; the gateway listens there with `vm_targets` only. It is the
+   one non-loopback lab listener, admitted by C4 and restricted by the run
+   ACL and the firewall to run networks and the OTLP ports.
+5. **vLLM on 127.0.0.1 only.** BUILD_PROMPT §7.11 mentions an internal Docker
+   network plus `127.0.0.1`; vLLM uses the host network (so its OTLP traces
+   reach the gateway on loopback) and binds `127.0.0.1:18704` only.
+6. **Rendered vLLM configuration.** The deploy helper renders
+   `current.yaml` (a `vllm serve --config` file) next to the contract's
+   `current.env`, which carries the configuration's hash so that Compose
+   recreates vLLM on a change. Overrides are limited to the profile's
+   `overridable` keys and sampling defaults to numeric generation keys;
+   chat templates must be verified files of the model.
+7. **Deployment files are immutable**: the role refuses a different default
+   spec under an existing `<id>@<version>`; once `current.yml` exists, the
+   role re-renders it and never replaces the orchestrator's choice.
+8. **Generated database passwords.** The superuser and exporter passwords are
+   not in the vault (BUILD_PROMPT §8.2 lists only the contract roles); they
+   are generated on the host once. Container secrets live in
+   `/etc/pokus/secrets/containers/` (0700 root), each file 0400 owned by the
+   UID of the container that reads it.
+9. **Adapters in `models.lock.yml`.** C9e defines adapter directories by the
+   sha256 of the weights; the lock lists adapters like models, with a
+   `weights` file and `base_model_id`, and `models-fetch` downloads and
+   verifies them.
+10. **Pinned OPA CLI for tests.** `binaries.opa` (format `binary`, a new
+    lock format) is a development and CI tool, fetched and checked by `make
+    setup`; it is the release of the pinned OPA image.
+11. **GPU services per method.** Compose cannot add a device conditionally;
+    each GPU service exists twice, in the profiles `gpu-cdi` (CDI device) and
+    `gpu-runtime` (NVIDIA runtime), and `.env` enables the one matching
+    `daemon.json`.
+12. **Models and vLLM only on serving nodes.** Both roles run with
+    `gpu_inference` on `full` and `inference` nodes; how the other roles
+    behave on `inference` nodes is step 11 (`inference_control`).
+
+### Open `TODO(verify)` items after step 7
+
+107 markers: the 98 of step 6, the five catalog revisions and two
+explanatory lines of `models.catalog.yml`, and two in
+`docs/how-to/add-a-model.md` (the Hub's tree API fields, and the catalog
+warning).

@@ -1,0 +1,20 @@
+# Managed by pokus-infra (ansible/roles/opa/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: OPA on 127.0.0.1:8181 serving the platform policy or a deny-all placeholder.
+    options:
+      pokus_infra_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (config/opa/).
+      opa_platform_policy_dir:
+        type: path
+        description: >-
+          Policy directory of the deployed platform (pokus_root/deploy/platform/current/policy);
+          the placeholder is used while it does not exist.
+      opa_config_dir:
+        type: path
+        description: Rendered configuration (pokus_root/services/core/config/opa), mounted at /config.
+      opa_policy_link:
+        type: path
+        description: Symbolic link to the active policy directory (pokus_root/services/core/policy), mounted at /policy.

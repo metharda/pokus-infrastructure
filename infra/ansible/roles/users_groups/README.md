@@ -4,7 +4,9 @@ Groups and accounts (BUILD_PROMPT §6.1, `docs/contracts.md`).
 
 - Groups from `pokus_groups`.
 - Service accounts from `service_accounts`: system users, shell `nologin`,
-  home `/var/lib/pokus/<name>`, locked password, exactly the listed groups.
+  home `/var/lib/pokus/<name>`, locked password, a primary group of the same
+  name (the contract's sockets and password files use it) and exactly the
+  listed supplementary groups.
 - Researchers from `researchers`: members of `pokus` (admins also
   `pokus-admin`, with sudo through `/etc/sudoers.d/90-pokus-admin`, checked
   with `visudo -cf`). Incus's per-user group is added by the incus role.

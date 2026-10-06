@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from typing import BinaryIO
 
 TIMEOUT = 120
 CHUNK = 1 << 20
@@ -78,11 +79,12 @@ def download(url: str) -> bytes:
         raise FetchError(f"{url}: HTTP {exc.code}") from exc
 
 
-def sha256_of_url(url: str) -> str:
+def sha256_of_url(url: str, out: BinaryIO | None = None) -> str:
     """Stream a download and return its sha256.
 
     Args:
         url: https URL.
+        out: File that receives the content, if given.
 
     Returns:
         Hex digest.
@@ -95,6 +97,8 @@ def sha256_of_url(url: str) -> str:
         with _open(urllib.request.Request(url)) as response:  # noqa: S310 - https only
             while chunk := response.read(CHUNK):
                 digest.update(chunk)
+                if out is not None:
+                    out.write(chunk)
     except urllib.error.HTTPError as exc:
         raise FetchError(f"{url}: HTTP {exc.code}") from exc
     return digest.hexdigest()

@@ -1,0 +1,94 @@
+# Managed by pokus-infra (ansible/roles/models/tasks/main.yml). Local changes will be overwritten.
+#
+# Models and LoRA adapters of models.lock.yml (BUILD_PROMPT §7.12,
+# contracts.md#paths): the pinned huggingface_hub CLI in an isolated uv
+# environment, then one models-fetch run per entry, which downloads only what
+# is missing, verifies every sha256, makes the files 0444 and writes
+# MANIFEST.json. Verified entries are never downloaded again. Tag: models.
+- name: Read the model lock
+  ansible.builtin.set_fact:
+    models_lock: "{{ lookup('ansible.builtin.file', pokus_infra_dir ~ '/models.lock.yml') | from_yaml }}"
+
+- name: Fetch the pinned models and adapters
+  when: (models_lock.models + models_lock.adapters) | length > 0
+  block:
+    - name: Create the environment of the download tool
+      ansible.builtin.command:
+        argv: ["{{ models_uv }}", venv, --python, "{{ pokus_python }}", "{{ models_venv }}"]
+        creates: "{{ models_venv }}/bin/python"
+      environment: &models_uv_env
+        UV_NO_CONFIG: "1"
+        UV_CACHE_DIR: /var/cache/pokus/uv
+        UV_PYTHON_DOWNLOADS: never
+
+    - name: Copy the hash-locked requirements
+      ansible.builtin.copy:
+        src: requirements.lock
+        dest: "{{ models_venv }}/requirements.lock"
+        owner: root
+        group: root
+        mode: "0644"
+
+    # uv reports "Checked N packages" when the environment already matches the lock.
+    - name: Install the pinned huggingface_hub
+      ansible.builtin.command:
+        argv:
+          - "{{ models_uv }}"
+          - pip
+          - sync
+          - --require-hashes
+          - --python
+          - "{{ models_venv }}/bin/python"
+          - "{{ models_venv }}/requirements.lock"
+      environment: *models_uv_env
+      register: models_sync
+      changed_when: models_sync.stderr is search('(Installed|Uninstalled) [0-9]+ package')
+
+    - name: Install models-fetch
+      ansible.builtin.copy:
+        src: pokus_models_fetch.py
+        dest: /usr/local/libexec/pokus/models-fetch
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Read the owner of the weights
+      ansible.builtin.getent:
+        database: passwd
+        key: pokus-orch
+
+    - name: Read the group of the weights
+      ansible.builtin.getent:
+        database: group
+        key: pokus
+
+    # The token of gated entries goes in on stdin, never on a command line.
+    - name: Download and verify the entries
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/pokus/models-fetch
+          - --kind
+          - "{{ item.0.kind }}"
+          - --entry
+          - "{{ item.1 | to_json }}"
+          - --root
+          - "{{ models_root }}"
+          - --hf
+          - "{{ models_venv }}/bin/hf"
+          - --uid
+          - "{{ ansible_facts.getent_passwd['pokus-orch'][1] }}"
+          - --gid
+          - "{{ ansible_facts.getent_group['pokus'][1] }}"
+          - --tool-version
+          - "{{ pokus_versions.python.model_tools['huggingface-hub'] }}"
+          - "{{ '--token-stdin' if item.1.gated else '--no-token' }}"
+        stdin: "{{ models_hf_token if item.1.gated else omit }}"
+      loop: >-
+        {{ [{'kind': 'model', 'entries': models_lock.models},
+            {'kind': 'adapter', 'entries': models_lock.adapters}] | subelements('entries') }}
+      loop_control:
+        label: "{{ item.0.kind }} {{ item.1.id | default(item.1.name) }}"
+      register: models_fetch
+      changed_when: (models_fetch.stdout | from_json).changed
+      no_log: "{{ (models_lock.models + models_lock.adapters) | selectattr('gated') | list | length > 0 }}"
+      when: not ansible_check_mode

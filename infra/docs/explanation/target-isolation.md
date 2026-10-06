@@ -85,9 +85,13 @@ Target containers send OpenTelemetry data to `127.0.0.1:4317` inside the
 container. An Incus proxy device listens there and connects to the
 collector on the host's loopback address, so the container needs no route to
 the host. VMs cannot use this path: Incus supports proxy devices on VMs only
-in NAT mode, which listens on the host side. VMs therefore reach a dedicated
-collector listener through a narrow ACL rule instead
-([integration contract](../contracts.md#telemetry)).
+in NAT mode, which listens on the host side. With the `vm_targets` feature,
+VMs therefore reach a dedicated collector listener on `198.18.0.1` (an
+address on the dummy interface `pokus-otlp0`): the run ACL `pokus-run-default`
+gets one egress rule for that address and TCP `4317`/`4318`, and the firewall
+accepts nothing else from run networks
+([integration contract](../contracts.md#telemetry),
+[How telemetry flows](telemetry.md)).
 
 ## Watching what happens
 

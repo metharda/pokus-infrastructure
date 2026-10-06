@@ -27,7 +27,7 @@ REQUIRED_FILES = (
     "tasks/main.yml",
 )
 # Roles that are only included by other roles, never applied by site.yml.
-HELPER_ROLES = {"pkg", "bootstrap_signal"}
+HELPER_ROLES = {"pkg", "bootstrap_signal", "compose"}
 HOLD_METHODS = sorted(
     {
         load_yaml(ROLES / "platform_facts" / "vars" / f"{f}.yml")["platform_facts_family"][

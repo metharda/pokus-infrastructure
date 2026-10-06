@@ -18,9 +18,17 @@ incus_pool_device_force_wipe: false
 incus_https_address: 127.0.0.1:8443
 # NAT bridge of the build project.
 incus_build_network: pokus-build0
-# ACL the platform attaches to every run network: no rules, so everything that
-# leaves the bridge is rejected except DHCP and DNS to the host.
+# ACL the platform attaches to every run network: everything that leaves the
+# bridge is rejected except DHCP and DNS to the host and, with vm_targets, OTLP
+# to the collector's VM listener (contracts.md#telemetry, C4).
 incus_run_acl: pokus-run-default
+# Egress rules of the run ACL (derived from pokus_vm_otlp and the vm_targets feature).
+incus_run_acl_egress: >-
+  {{ [{'action': 'allow', 'state': 'enabled', 'protocol': 'tcp',
+       'destination': pokus_vm_otlp.address ~ '/32',
+       'destination_port': pokus_ports.otlp_grpc ~ ',' ~ pokus_ports.otlp_http,
+       'description': 'OTLP to the collector listener for VM targets'}]
+     if pokus_features.vm_targets | default(false) else [] }}
 # Most VMs at once in a project, when the vm_targets feature is on.
 incus_max_virtual_machines: 4
 

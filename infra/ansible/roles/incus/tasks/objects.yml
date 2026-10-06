@@ -33,9 +33,9 @@
   pokus_incus_object:
     kind: network_acl
     name: "{{ incus_run_acl }}"
-    description: "Pokus run networks: nothing leaves the bridge except DHCP and DNS to the host"
+    description: "Pokus run networks: nothing leaves the bridge except DHCP, DNS and the VM telemetry listener"
     ingress: []
-    egress: []
+    egress: "{{ incus_run_acl_egress }}"
 
 - name: Converge the projects
   pokus_incus_object:

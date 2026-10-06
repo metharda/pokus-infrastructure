@@ -343,7 +343,9 @@ def accounts_page(root: Path) -> str:
             "`researchers_removed` are locked, never deleted.\n\n",
             "## Service accounts\n\n",
             f"System users with the shell `/usr/sbin/nologin`, home "
-            f"`{data['pokus_service_home']}/<account>`, no password and no SSH keys.\n\n",
+            f"`{data['pokus_service_home']}/<account>`, no password and no SSH keys. "
+            "Each account's primary group is a system group of the same name, which "
+            "the contract uses for socket and password-file ownership.\n\n",
             pages.table(["Account", "Runs", "Groups"], accounts),
         ]
     )

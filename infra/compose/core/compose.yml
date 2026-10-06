@@ -1,0 +1,92 @@
+# Managed by pokus-infra (compose/core/compose.yml). Local changes will be overwritten.
+#
+# Core services (BUILD_PROMPT §7.8, §7.10, contracts.md): PostgreSQL on Unix
+# sockets only (the container has no network; Grafana and the exporter use the
+# sockets too) and OPA on 127.0.0.1. Variables come from .env,
+# written by the compose role: images pinned by digest, ports, paths, and the
+# hash of each configuration directory, used as a label so that a changed
+# configuration recreates its service.
+name: pokus-core
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?pinned image missing}
+    container_name: pokus-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    labels:
+      org.pokus.config-hash: ${POSTGRES_CONFIG_HASH:-}
+    environment:
+      POSTGRES_DB: pokus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser
+      POSTGRES_INITDB_ARGS: --data-checksums --auth-local=scram-sha-256 --auth-host=scram-sha-256
+    volumes:
+      - ${POKUS_ROOT:?}/state/postgres:/var/lib/postgresql
+      - ./config/postgres:/etc/postgresql:ro
+      - /run/pokus/postgres:/run/pokus/postgres
+      - /run/pokus/postgres-reader:/run/pokus/postgres-reader
+      - /etc/pokus/secrets/containers/postgres-superuser:/run/secrets/postgres-superuser:ro
+    shm_size: 256mb
+    stop_grace_period: 60s
+    network_mode: none
+    healthcheck:
+      test: ["CMD", "pg_isready", "--host", "/var/run/postgresql", "--dbname", "pokus", "--username", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # Host network on 127.0.0.1 for Prometheus; the database through the
+  # service socket directory (group pokus-svc).
+  postgres_exporter:
+    image: ${POSTGRES_EXPORTER_IMAGE:?pinned image missing}
+    container_name: pokus-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+    network_mode: host
+    user: "65534:65534"
+    group_add: ["${POKUS_SVC_GID:?}"]
+    command: ["--web.listen-address=127.0.0.1:${POSTGRES_EXPORTER_PORT:?}"]
+    environment:
+      DATA_SOURCE_URI: /pokus?host=/run/pokus/postgres&sslmode=disable
+      DATA_SOURCE_USER: pokus_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/pokus-monitor
+    volumes:
+      - /run/pokus/postgres:/run/pokus/postgres
+      - /etc/pokus/secrets/containers/pokus-monitor:/run/secrets/pokus-monitor:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  opa:
+    image: ${OPA_IMAGE:?pinned image missing}
+    container_name: pokus-opa
+    restart: unless-stopped
+    # Authorization on: /config/authz.rego (package system.authz) allows only
+    # decision queries and health checks (resolution C6). ./policy is a
+    # symbolic link to the deployed platform's policy directory or to the
+    # deny-all placeholder (opa role); Docker resolves it when the container starts.
+    labels:
+      org.pokus.config-hash: ${OPA_CONFIG_HASH:-}
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --authorization=basic
+      - --config-file=/config/opa.yaml
+      - /config/authz.rego
+      - /policy
+    ports:
+      - 127.0.0.1:${OPA_PORT:?}:8181
+    volumes:
+      - ./config/opa:/config:ro
+      - ./policy:/policy:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # Decision logs go to the console and through journald to the collector.
+    logging:
+      driver: journald
+      options: {tag: pokus-opa}

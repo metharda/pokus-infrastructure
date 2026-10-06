@@ -1,0 +1,45 @@
+# Managed by pokus-infra (ansible/roles/compose/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Install and start one Compose project of the lab services under systemd.
+    options:
+      pokus_infra_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (compose/<project>/compose.yml).
+      compose_project:
+        type: str
+        required: true
+        choices: [core, observability, inference]
+        description: Compose project.
+      compose_description:
+        type: str
+        default: ""
+        description: Description of pokus-<project>.service.
+      compose_services:
+        type: list
+        elements: str
+        default: []
+        description: Services to start now; empty starts every service of the project.
+      compose_gpu:
+        type: bool
+        default: false
+        description: Run the project's GPU services (profile gpu-cdi or gpu-runtime after /etc/docker/daemon.json).
+      compose_start:
+        type: bool
+        default: true
+        description: Start the services and enable the unit; false installs the unit disabled.
+      compose_wait_timeout:
+        type: int
+        default: 300
+        description: Seconds `docker compose up --wait` waits for healthy containers.
+      compose_root:
+        type: path
+        description: Directory of the rendered projects (pokus_root/services).
+      compose_images:
+        type: dict
+        description: Images pinned by digest (versions.lock.yml containers.images).
+      compose_extra_env:
+        type: dict
+        default: {}
+        description: Further variables for the project's .env file (the same for every role of a project).

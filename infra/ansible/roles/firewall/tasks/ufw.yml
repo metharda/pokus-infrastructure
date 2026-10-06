@@ -41,6 +41,18 @@
     - {port: "53", proto: udp}
     - {port: "53", proto: tcp}
 
+- name: Allow OTLP from the run networks to the VM listener
+  community.general.ufw:
+    rule: allow
+    direction: in
+    interface: "{{ firewall_run_bridge_pattern | replace('*', '+') }}"
+    to_ip: "{{ pokus_vm_otlp.address }}"
+    to_port: "{{ item | string }}"
+    proto: tcp
+    comment: pokus-infra
+    delete: "{{ firewall_vm_otlp_ports | length == 0 }}"
+  loop: "{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] }}"
+
 - name: Allow traffic from the bridges with an uplink to the host
   community.general.ufw:
     rule: allow

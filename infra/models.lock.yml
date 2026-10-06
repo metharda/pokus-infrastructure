@@ -1,0 +1,16 @@
+# Managed by pokus-infra (models.lock.yml). Local changes will be overwritten.
+#
+# Models and LoRA adapters selected for this lab, pinned (BUILD_PROMPT §7.12,
+# contracts.md#inference). The models role downloads each entry with the
+# pinned `hf` CLI into /srv/pokus/models/<hf_repo>/<revision>/ (adapters into
+# /srv/pokus/models/adapters/<name>/<sha256 of the weights file>/), checks
+# every sha256 and writes MANIFEST.json. Entries are only ever added with a
+# full commit hash and the per-file sha256 from Hugging Face's file metadata
+# (the installer TUI resolves them; see docs/how-to/add-a-model.md); there is
+# no TODO(verify) in this file. Schema: tools/lockcheck/schema/models-lock.schema.json.
+#
+# Empty until the owner approves candidates of models.catalog.yml (owner
+# answer E7) and a lab selects one.
+schema_version: 1
+models: []
+adapters: []

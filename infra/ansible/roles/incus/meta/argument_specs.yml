@@ -53,10 +53,18 @@ argument_specs:
         type: str
         default: pokus-build0
         description: NAT bridge of the build project.
+      pokus_vm_otlp:
+        type: dict
+        required: true
+        description: Interface and address of the collector listener for VM targets (C4).
       incus_run_acl:
         type: str
         default: pokus-run-default
         description: Network ACL the platform attaches to every run network.
+      incus_run_acl_egress:
+        type: list
+        elements: dict
+        description: Egress rules of the run ACL (derived; OTLP to the VM listener with vm_targets).
       incus_max_virtual_machines:
         type: int
         default: 4

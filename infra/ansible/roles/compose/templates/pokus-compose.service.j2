@@ -1,0 +1,22 @@
+# Managed by pokus-infra (ansible/roles/compose/templates/pokus-compose.service.j2). Local changes will be overwritten.
+#
+# Compose project pokus-{{ compose_project }} (BUILD_PROMPT §7.6, owner answer
+# E15): oneshot with RemainAfterExit, `up --wait` to start and `down` to stop.
+[Unit]
+Description=Pokus {{ compose_project }} services ({{ compose_description }})
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+PartOf=pokus-lab.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ compose_root }}/{{ compose_project }}
+ExecStart=/usr/bin/docker compose up --detach --wait --wait-timeout {{ compose_wait_timeout }} --remove-orphans
+ExecReload=/usr/bin/docker compose up --detach --wait --wait-timeout {{ compose_wait_timeout }} --remove-orphans
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec={{ compose_wait_timeout + 60 }}
+
+[Install]
+WantedBy=pokus-lab.target

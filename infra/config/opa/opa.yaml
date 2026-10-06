@@ -1,0 +1,6 @@
+# Managed by pokus-infra (config/opa/opa.yaml). Local changes will be overwritten.
+#
+# OPA configuration: decision logs go to the console, from there through
+# journald (container tag pokus-opa) to the collector's journald receiver.
+decision_logs:
+  console: true

@@ -1,0 +1,48 @@
+# Managed by pokus-infra (config/loki/loki.yaml.j2). Local changes will be overwritten.
+#
+# Loki single binary (BUILD_PROMPT §7.9): host network, HTTP and gRPC on
+# 127.0.0.1, filesystem storage under /srv/pokus/state/loki, native OTLP
+# ingestion at /otlp (resource attributes that are not labels become
+# structured metadata, e.g. pokus_run_id), retention by the compactor.
+auth_enabled: false
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: {{ pokus_ports.loki }}
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: {{ pokus_internal_ports.loki_grpc }}
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: "2026-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  allow_structured_metadata: true
+  retention_period: {{ observability_loki_retention }}
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

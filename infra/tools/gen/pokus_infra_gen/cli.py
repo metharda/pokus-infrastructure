@@ -41,6 +41,9 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         "docs/reference/cli/bootstrap.md": lambda: pages.bootstrap_cli_page(root),
         "bootstrap/lib/pins.sh": lambda: bootstrap.pins_sh(root),
         "bootstrap/requirements.in": lambda: bootstrap.requirements_in(root),
+        bootstrap.MODEL_REQUIREMENTS.source: lambda: bootstrap.requirements_in(
+            root, bootstrap.MODEL_REQUIREMENTS
+        ),
         "ansible/group_vars/all/versions.yml": lambda: bootstrap.versions_yml(root),
         "ansible/requirements.yml": lambda: versions.requirements_yml(root),
         "docs/reference/versions.md": lambda: versions.versions_page(root),
@@ -87,6 +90,7 @@ def check(root: Path) -> int:
     for rel in stale:
         print(f"{rel}: out of date; run 'make generate' and commit the result")
     lock_problems = bootstrap.requirements_lock_problems(root)
+    lock_problems += bootstrap.requirements_lock_problems(root, bootstrap.MODEL_REQUIREMENTS)
     for problem in lock_problems:
         print(problem)
     print(f"drift check: {len(targets(root))} generated files, {len(stale)} stale", file=sys.stderr)

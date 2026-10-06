@@ -3,7 +3,8 @@
 ``versions.lock.yml`` is the single source of truth. From it come
 ``bootstrap/lib/pins.sh`` (the uv and CPython pins bootstrap reads before any
 Python exists), ``bootstrap/requirements.in`` (compiled to the hash-locked
-``requirements.lock`` by ``make bootstrap-lock``) and
+``requirements.lock`` by ``make bootstrap-lock``), the models role's
+``requirements.in`` (``make models-lock``) and
 ``ansible/group_vars/all/versions.yml``. The CLI reference is rendered from the
 usage text in ``bootstrap/lib/args.sh``, the exit codes from
 ``bootstrap/lib/exitcodes.sh``.
@@ -29,6 +30,42 @@ OPTION_LINE = re.compile(r"^  (-\S.*?)\s{2,}(\S.*)$")
 OPTION_NAME = re.compile(r"--?[a-z][a-z-]*")
 OPTION_WITH_SEPARATOR = re.compile(r"--?[a-z][a-z-]*(,|\s*\|)?")
 REQUIREMENT = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==(\S+)$")
+
+
+@dataclass(frozen=True)
+class RequirementSet:
+    """A hash-locked Python environment pinned in ``versions.lock.yml``.
+
+    Attributes:
+        key: Key under ``python`` in the lock.
+        source: ``requirements.in`` path, relative to the component root.
+        lock: Hash-locked ``requirements.lock`` path.
+        purpose: What the environment is for (comment line).
+        target: Make target that compiles the lock.
+    """
+
+    key: str
+    source: str
+    lock: str
+    purpose: str
+    target: str
+
+
+BOOTSTRAP_REQUIREMENTS = RequirementSet(
+    "packages",
+    "bootstrap/requirements.in",
+    "bootstrap/requirements.lock",
+    "Python packages of /opt/pokus/ansible-venv (BUILD_PROMPT §5.2 step 5);",
+    "bootstrap-lock",
+)
+MODEL_REQUIREMENTS = RequirementSet(
+    "model_tools",
+    "ansible/roles/models/files/requirements.in",
+    "ansible/roles/models/files/requirements.lock",
+    "Python packages of /opt/pokus/models-venv, the models role's download tool "
+    "(BUILD_PROMPT §7.12);",
+    "models-lock",
+)
 
 
 @dataclass(frozen=True)
@@ -113,21 +150,22 @@ def pins_sh(root: Path) -> str:
     return "\n".join(lines) + "\n"
 
 
-def requirements_in(root: Path) -> str:
-    """Render ``bootstrap/requirements.in``.
+def requirements_in(root: Path, spec: RequirementSet = BOOTSTRAP_REQUIREMENTS) -> str:
+    """Render a ``requirements.in`` from the lock.
 
     Args:
         root: Component root.
+        spec: The environment (the bootstrap's Ansible environment by default).
 
     Returns:
         Requirements text.
     """
-    packages = _lock(root)["python"]["packages"]
+    packages = _lock(root)["python"][spec.key]
     lines = [
-        "# Managed by pokus-infra (bootstrap/requirements.in). Local changes will be overwritten.",
-        "# Generated from versions.lock.yml (python.packages) by tools/gen (make generate).",
-        "# Python packages of /opt/pokus/ansible-venv (BUILD_PROMPT §5.2 step 5);",
-        "# `make bootstrap-lock` compiles the hash-locked requirements.lock from it.",
+        f"# Managed by pokus-infra ({spec.source}). Local changes will be overwritten.",
+        f"# Generated from versions.lock.yml (python.{spec.key}) by tools/gen (make generate).",
+        f"# {spec.purpose}",
+        f"# `make {spec.target}` compiles the hash-locked requirements.lock from it.",
     ]
     lines += [f"{name}=={packages[name]}" for name in sorted(packages)]
     return "\n".join(lines) + "\n"
@@ -168,26 +206,29 @@ def versions_yml(root: Path) -> str:
     )
 
 
-def requirements_lock_problems(root: Path) -> list[str]:
-    """Check that ``requirements.lock`` pins exactly the versions of ``requirements.in``.
+def requirements_lock_problems(
+    root: Path, spec: RequirementSet = BOOTSTRAP_REQUIREMENTS
+) -> list[str]:
+    """Check that a ``requirements.lock`` pins exactly the versions of its ``requirements.in``.
 
     Args:
         root: Component root.
+        spec: The environment (the bootstrap's Ansible environment by default).
 
     Returns:
         One message per missing or different pin.
     """
-    lock_text = (root / "bootstrap/requirements.lock").read_text(encoding="utf-8")
+    lock_text = (root / spec.lock).read_text(encoding="utf-8")
     requirements = (line.split(" ;")[0].rstrip(" \\") for line in lock_text.splitlines())
     pinned = {m.group(1).lower(): m.group(2) for m in map(REQUIREMENT.match, requirements) if m}
     problems = []
-    for line in requirements_in(root).splitlines():
+    for line in requirements_in(root, spec).splitlines():
         m = REQUIREMENT.match(line)
         if m and pinned.get(m.group(1).lower()) != m.group(2):
             problems.append(
-                f"bootstrap/requirements.lock: {m.group(1)} is "
+                f"{spec.lock}: {m.group(1)} is "
                 f"{pinned.get(m.group(1).lower(), 'missing')}, requirements.in pins {m.group(2)}; "
-                "run 'make bootstrap-lock'"
+                f"run 'make {spec.target}'"
             )
     return problems
 

@@ -11,9 +11,20 @@
     state: present
   loop: "{{ pokus_groups }}"
 
+# Each service account has a primary group of its own name: the contract's
+# sockets and password files are owned by it (contracts.md#sockets, #paths),
+# and useradd only creates one where USERGROUPS_ENAB is set.
+- name: Create the groups of the service accounts
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    system: true
+    state: present
+  loop: "{{ service_accounts }}"
+
 - name: Create the service accounts
   ansible.builtin.user:
     name: "{{ item.name }}"
+    group: "{{ item.name }}"
     system: true
     shell: "{{ users_groups_nologin_shell }}"
     home: "{{ pokus_service_home }}/{{ item.name }}"

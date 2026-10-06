@@ -1,0 +1,31 @@
+# Managed by pokus-infra (ansible/roles/vllm/templates/pokus-vllm-deploy@.service.j2). Local changes will be overwritten.
+#
+# One vLLM deploy helper per connection (contracts.md#inference, C3). Runs as
+# root because it rewrites /etc/pokus/vllm and restarts
+# pokus-inference.service; it checks the peer is pokus-orch itself.
+[Unit]
+Description=Pokus vLLM deploy helper
+CollectMode=inactive-or-failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/pokus/vllm-deploy serve
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=120
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+ReadWritePaths=/etc/pokus/vllm
+ReadOnlyPaths={{ pokus_root }}/models

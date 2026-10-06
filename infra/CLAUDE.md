@@ -91,8 +91,10 @@ the prompt text where they differ.
   (`make generate`); `make docs` fails on drift or missing reference entries.
   Every top-level key of `group_vars/all/main.yml` needs a comment (above it or
   at the end of its line): it becomes the key's reference text.
-  `bootstrap/requirements.lock` is compiled with `make bootstrap-lock` (the
-  drift check fails if it does not pin the versions of `requirements.in`).
+  `bootstrap/requirements.lock` is compiled with `make bootstrap-lock` and
+  `ansible/roles/models/files/requirements.lock` (from the generated
+  `requirements.in` next to it) with `make models-lock`; the drift check fails
+  if either does not pin the versions of its `requirements.in`.
 - Bootstrap exit codes are defined once, in `bootstrap/lib/exitcodes.sh`
   (`readonly EXIT_NAME=<code> # <title>: <meaning>`); every code needs a
   section in `docs/how-to/troubleshoot.md`.

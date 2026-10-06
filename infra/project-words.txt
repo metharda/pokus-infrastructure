@@ -14,6 +14,7 @@ chronyd
 COPR
 cpuset
 cuda
+dbname
 DCGM
 distros
 DKMS
@@ -26,10 +27,13 @@ firewalled
 FQCN
 fsmonitor
 getenforce
+huggingface
 incusbr
 IOMMU
 iotop
+libexec
 libnvidia
+libpq
 linuxcontainers
 lockfiles
 micromamba
@@ -43,10 +47,13 @@ oneshot
 osinfo
 pacman
 peercred
+pgpass
 pids
 pokus
 prepreflight
 preseed
+qwen
+rego
 repodata
 Resolv
 restic

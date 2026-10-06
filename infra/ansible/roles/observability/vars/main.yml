@@ -1,0 +1,26 @@
+# Managed by pokus-infra (ansible/roles/observability/vars/main.yml). Local changes will be overwritten.
+
+# The dedicated OTLP listener for VM targets exists only with vm_targets (C4).
+observability_vm_listener: "{{ pokus_features.vm_targets | default(false) | bool }}"
+# OTLP receivers of the gateway's pipelines.
+observability_otlp_receivers: "{{ ['otlp'] + (['otlp/vm'] if observability_vm_listener else []) }}"
+# GPU metrics only with gpu_inference.
+observability_gpu: "{{ pokus_features.gpu_inference | default(false) | bool }}"
+# vLLM serves on this host (node_role full or inference) with gpu_inference.
+observability_vllm: "{{ observability_gpu and node_role in ['full', 'inference'] }}"
+# Data directories under pokus_root/state with the UID and GID of the image's user.
+observability_state_dirs:
+  - {name: prometheus, uid: 65534, gid: 65534}
+  - {name: loki, uid: 10001, gid: 10001}
+  - {name: tempo, uid: 10001, gid: 10001}
+  - {name: grafana, uid: 472, gid: 0}
+  - {name: otelcol-journald, uid: 0, gid: 0}
+# Secrets mounted into containers (directory 0700 root; files 0400 owned by the reader's UID).
+observability_secrets_dir: /etc/pokus/secrets/containers
+# The Incus metrics certificate (incus role) and its copy for Prometheus.
+observability_incus_cert_dir: /etc/pokus/incus/metrics
+observability_incus_server_cert: /var/lib/incus/server.crt
+# Grafana's HTTP API on the host.
+observability_grafana_url: "http://127.0.0.1:{{ pokus_ports.grafana }}"
+# Directory of the node exporter's textfile collector (backup and other host metrics).
+observability_textfile_dir: /var/lib/pokus/node-exporter

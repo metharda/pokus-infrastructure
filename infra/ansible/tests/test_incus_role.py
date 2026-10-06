@@ -19,6 +19,7 @@ import yaml
 from ansible_testlib import (
     INFRA,
     ROLES,
+    evaluate,
     fixture_profile,
     init_plugins,
     render_file,
@@ -295,3 +296,21 @@ def test_cdi_refresh_drop_in() -> None:
     unit.optionxform = str  # type: ignore[assignment,method-assign]
     unit.read_string(text)
     assert unit["Service"]["Environment"] == "NVIDIA_CTK_CDI_GENERATE_MODE=wsl"
+
+
+@pytest.mark.parametrize("vm_targets", [False, True])
+def test_run_acl_admits_only_the_vm_listener(vm_targets: bool) -> None:
+    rules = evaluate("incus_run_acl_egress", incus_vars(vm_targets=vm_targets, researchers=[]))
+    if not vm_targets:
+        assert rules == []
+        return
+    assert rules == [
+        {
+            "action": "allow",
+            "state": "enabled",
+            "protocol": "tcp",
+            "destination": "198.18.0.1/32",
+            "destination_port": "4317,4318",
+            "description": "OTLP to the collector listener for VM targets",
+        }
+    ]

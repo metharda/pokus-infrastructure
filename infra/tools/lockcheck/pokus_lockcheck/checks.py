@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
+import platform
 import re
+import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import jsonschema
 import yaml
@@ -35,6 +38,9 @@ WARNING = "warning"
 Resolver = Callable[[str, str], str | None]
 Hasher = Callable[[str], str]
 Fetcher = Callable[[str], bytes]
+Downloader = Callable[[str, BinaryIO], str]
+# platform.machine() names of the lock's architectures.
+MACHINES = {"x86_64": "x86_64", "amd64": "x86_64", "aarch64": "aarch64", "arm64": "aarch64"}
 
 
 @dataclass(frozen=True)
@@ -189,6 +195,65 @@ def binary_findings(doc: Mapping[str, Any], hasher: Hasher = net.sha256_of_url) 
         if actual != sha256:
             findings.append(Finding(ERROR, where, f"sha256 is {actual}, pinned {sha256}"))
     return findings
+
+
+class FetchRefusedError(RuntimeError):
+    """A pinned binary cannot be fetched (unknown, unverified, unsupported or mismatching)."""
+
+
+def fetch_binary(
+    doc: Mapping[str, Any],
+    name: str,
+    dest: Path,
+    *,
+    machine: str | None = None,
+    downloader: Downloader = net.sha256_of_url,
+) -> str:
+    """Download a pinned single-file binary, verify its sha256 and install it.
+
+    The file is written next to ``dest`` and renamed into place only after the
+    checksum matched, so ``dest`` never holds unverified content.
+
+    Args:
+        doc: Lock document.
+        name: Entry under ``binaries`` with ``format: binary``.
+        dest: Path of the executable to write.
+        machine: ``platform.machine()`` value; the running machine by default.
+        downloader: ``(url, file) -> sha256`` that writes the content to ``file``.
+
+    Returns:
+        The verified sha256.
+
+    Raises:
+        FetchRefusedError: If the entry is unknown, unverified, not a single
+            binary, has no asset for the machine, or the checksum differs.
+    """
+    entry = doc["binaries"].get(name)
+    if entry is None:
+        raise FetchRefusedError(f"no binary {name!r} in the lock")
+    if entry["format"] != "binary":
+        raise FetchRefusedError(f"binaries.{name} is {entry['format']}, not a single binary")
+    arch = MACHINES.get(machine or platform.machine())
+    asset = entry["assets"].get(arch or "")
+    if asset is None:
+        raise FetchRefusedError(f"binaries.{name} has no asset for {machine or platform.machine()}")
+    if not _verified(asset["url"], asset["sha256"]):
+        raise FetchRefusedError(f"binaries.{name}.assets.{arch} is not verified")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    handle, temp_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.")
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(handle, "wb") as out:
+            actual = downloader(asset["url"], out)
+        if actual != asset["sha256"]:
+            raise FetchRefusedError(
+                f"binaries.{name}.assets.{arch}: sha256 is {actual}, pinned {asset['sha256']}"
+            )
+        temp.chmod(0o755)
+        temp.replace(dest)
+    finally:
+        temp.unlink(missing_ok=True)
+    return actual
 
 
 def key_findings(doc: Mapping[str, Any], fetch: Fetcher = net.download) -> list[Finding]:

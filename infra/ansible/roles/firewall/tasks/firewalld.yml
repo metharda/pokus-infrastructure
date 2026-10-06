@@ -70,6 +70,17 @@
     immediate: true
   loop: [dhcp, dhcpv6, dns]
 
+- name: Allow OTLP from the run networks to the VM listener
+  ansible.posix.firewalld:
+    zone: pokus-run
+    rich_rule: >-
+      rule family="ipv4" destination address="{{ pokus_vm_otlp.address }}"
+      port port="{{ item }}" protocol="tcp" accept
+    state: "{{ 'enabled' if firewall_vm_otlp_ports | length > 0 else 'disabled' }}"
+    permanent: true
+    immediate: true
+  loop: "{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] }}"
+
 - name: Trust the bridges with an uplink (image builds, personal projects)
   ansible.posix.firewalld:
     zone: trusted

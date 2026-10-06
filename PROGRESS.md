@@ -327,7 +327,22 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 
 `contract_version 1` is defined by `infra/docs/contracts.md` (resolutions B2,
 B3, B4, C2-C10, D1-D3, E3, E13). The ports table (C10) is proposed and awaits
-owner approval. No change after version 1 yet.
+owner approval.
+
+Proposed in infra step 7 (awaiting owner approval; written into
+`infra/docs/contracts.md`, details in `infra/docs/IMPLEMENTATION_NOTES.md`,
+"Step 7"):
+
+- Telemetry, VMs (C4): the dedicated collector listener `198.18.0.1:4317`/
+  `4318` on the dummy interface `pokus-otlp0`, one egress rule in
+  `pokus-run-default`, nothing else from run networks; listed in the ports table.
+- Sockets: `/run/pokus/postgres/` also serves infra's metrics exporter
+  (`pokus_monitor`); `/run/pokus/postgres-reader/` also serves Grafana as
+  `pokus_grafana`; `pg_hba` cannot tell the directories apart, the password
+  files decide the role (replaces "role `pokus_reader` only (`pg_hba`)").
+- PostgreSQL: no TCP listener at all; the infra-internal role `pokus_monitor`.
+- Inference: the deploy helper also renders `current.yaml` (the
+  `vllm serve --config` file) next to `current.env`.
 
 ## Step status
 
@@ -340,8 +355,8 @@ owner approval. No change after version 1 yet.
 | 3 | bootstrap.sh | done | `8df9199` |
 | 4 | versions.lock.yml + lock-check | done | `8df9199` |
 | 5 | Ansible foundation roles (four families) | done | `ced6b6d` |
-| 6 | docker, nvidia_container_toolkit, incus | done | commit "feat(infra): add Docker, NVIDIA Container Toolkit and Incus roles" (SHA recorded with step 7) |
-| 7 | postgres, observability, opa, vllm, models | pending | — |
+| 6 | docker, nvidia_container_toolkit, incus | done | `ea46ba3` |
+| 7 | postgres, observability, opa, vllm, models | done | commit "feat(infra): add the lab services: PostgreSQL, OPA, observability, vLLM and models" (SHA recorded with step 8) |
 | 8 | images | pending | — |
 | 9 | lab_session, backup, restore.yml, rotate.yml | pending | — |
 | 10 | pokus-lab CLI with doctor and fingerprint | pending | — |
@@ -405,8 +420,28 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   limits and without GPU; personal bridges trusted like the build bridge; the
   `daemon.json` label as managed header; the GPU check's device flags; preseed
   once, then convergence; bench limit defaults; Compose units in step 7.
+- From step 7 ("Findings to report (step 7)" and "Interpretations awaiting
+  owner confirmation (step 7)"): the observability stack on the host network
+  bound to `127.0.0.1` (Prometheus must reach the loopback-only Incus API);
+  Grafana and the exporter on the PostgreSQL sockets and no TCP listener at
+  all (ADR-0010); a second collector instance for the host journal; the VM
+  listener address `198.18.0.1` on `pokus-otlp0`; vLLM on the host network on
+  `127.0.0.1` only; `current.yaml` rendered next to `current.env` and the
+  limits on deployment overrides; immutable deployment files; generated
+  superuser and exporter passwords; adapters in `models.lock.yml`; the pinned
+  OPA CLI for tests; one GPU service per GPU method; models and vLLM only on
+  serving nodes. Findings: libpq ignores the group-readable reader credential
+  (researchers copy it to `~/.pgpass`); `pg_hba` cannot tell socket
+  directories apart; service accounts now get their own primary groups; the
+  run explorer's database panel assumes a table `public.runs` until the
+  platform's migrations exist.
 
 ## Owner deliverables pending
+
+- Approval of the model candidates in `infra/models.catalog.yml` (owner answer
+  E7): four permissive candidates and one restricted one, all `proposed`, with
+  `TODO(verify)` revisions because Hugging Face is not reachable from the build
+  environment.
 
 - Domain allowlist for the environment (A3); the list is in
   `infra/docs/IMPLEMENTATION_NOTES.md`. Since step 3, GitHub release
@@ -421,9 +456,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (98 after step 6; details
+`make verify-todos` lists every marker in the tree (107 after step 7; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4", "after step 5" and "after step 6"):
+step 4" through "after step 7"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -452,12 +487,17 @@ step 4", "after step 5" and "after step 6"):
   Incus's documentation; added the Incus group, unit and path names of
   Zabbly's packages and of the Red Hat, SUSE and Arch families
   (`infra/ansible/roles/incus/vars/`).
+- Step 7: the revisions of the five candidate models in
+  `infra/models.catalog.yml` (with two explanatory lines) and the field names
+  of the Hugging Face tree API in `infra/docs/how-to/add-a-model.md` (with the
+  catalog warning); Hugging Face is not reachable from the build environment.
 
 Known items for later steps (each becomes a `TODO(verify)` entry when its file
 is written, unless verified first):
 
-- infra step 7: vLLM TLS options for the inference node, OPA authorization
-  behavior, Loki native OTLP ingestion.
+- infra step 11 (`inference_control`): vLLM TLS options for the inference
+  node. (OPA authorization and Loki's native OTLP ingestion were verified in
+  step 7 by running the pinned releases.)
 
 ## Known issues
 
@@ -477,6 +517,8 @@ is written, unless verified first):
 - Run networks can be created but not deleted by the platform's restricted
   certificates (see the step 6 contract question); until the owner decides,
   the contract is unchanged and nothing works around it.
+- `make setup` also downloads the pinned OPA CLI (`binaries.opa`) from GitHub
+  releases and checks its sha256; the OPA policy tests need it.
 - `make setup` installs the pinned Ansible collections from Galaxy, which the
   build environment cannot reach; here they were installed from their release
   tags on GitHub into the git-ignored `infra/.ansible-collections/`.
@@ -500,8 +542,8 @@ is written, unless verified first):
 
 ## Next step
 
-Infra step 7 (`postgres`, `observability`, `opa`, `vllm`, `models` with the
-Compose units, `config/**`, Grafana dashboards, vLLM profiles,
-`models.catalog.yml` and `models.lock.yml`; the dedicated collector listener
-for VM telemetry (C4); the model candidates need owner approval (E7) before
-they are pinned; ADRs for Postgres socket-only access and OTel telemetry).
+Infra step 8 (`images`: the golden image pipeline with the `_base`,
+`web-nginx-flask`, `pg-primary`, `redis-cache`, `docker-host` and
+`probe-client` blueprints, their tests and the leakage lint; the in-image
+OTel agent sends to `127.0.0.1:4317` inside the instance, and to the VM
+listener for VM blueprints).

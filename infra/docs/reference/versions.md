@@ -27,10 +27,12 @@ Downloaded by bootstrap or the roles and checked against the sha256.
 | restic | `0.19.1` | aarch64 | `https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_arm64.bz2` | `a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465` |
 | quarto | `1.10.18` | x86_64 | `https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-amd64.tar.gz` | `afad071b5bd22c02f2d300695743189d3650e0537a53073e654b630cff2b0c73` |
 | quarto | `1.10.18` | aarch64 | `https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-arm64.tar.gz` | `f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c` |
+| opa | `1.21.1` | x86_64 | `https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_amd64_static` | `668506eb17a2eaa1fce6cc0d1f42ef85125d4ac5bda5fc74d1152d0c77145031` |
+| opa | `1.21.1` | aarch64 | `https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_arm64_static` | `9a1f3625529c6f01240fe68286dde06aa0b23c5253da700ac48f4d943ff8a4de` |
 
 ## Python
 
-CPython installed by uv into `/opt/pokus/python` and the packages of the Ansible environment (hash-locked in `bootstrap/requirements.lock`). Verified on 2026-10-05. Source: PyPI JSON API (pypi.org/pypi/&lt;name&gt;/&lt;version&gt;/json) for the packages; `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the CPython build
+CPython installed by uv into `/opt/pokus/python` and the packages of the Ansible environment (hash-locked in `bootstrap/requirements.lock`). Verified on 2026-10-06. Source: PyPI JSON API (pypi.org/pypi/&lt;name&gt;/&lt;version&gt;/json) for the packages (the huggingface-hub 2.1.1 wheel downloaded and matched against its published sha256); `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the CPython build
 
 | Name | Version |
 | --- | --- |

@@ -1,0 +1,74 @@
+# Managed by pokus-infra (ansible/roles/opa/tasks/main.yml). Local changes will be overwritten.
+#
+# OPA in the core Compose project (BUILD_PROMPT §7.10, resolution C6) on
+# 127.0.0.1:8181 with --authorization=basic: config/opa/authz.rego allows only
+# decision queries below /v1/data/pokus and health checks. The policy is the
+# deployed platform's, or the deny-all placeholder. Decision logs go to the
+# console and through journald to the collector.
+- name: Create the configuration directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ opa_config_dir | dirname | dirname }}", group: pokus-admin, mode: "0750"}
+    - {path: "{{ opa_config_dir | dirname }}", group: root, mode: "0755"}
+    - {path: "{{ opa_config_dir }}", group: root, mode: "0755"}
+    - {path: "{{ opa_config_dir }}/placeholder", group: root, mode: "0755"}
+    - {path: "{{ opa_config_dir }}/placeholder/pokus", group: root, mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the authorization policy, the configuration and the placeholder
+  ansible.builtin.copy:
+    src: "{{ pokus_infra_dir }}/config/opa/{{ item }}"
+    dest: "{{ opa_config_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - authz.rego
+    - opa.yaml
+    - placeholder/pokus/placeholder.rego
+    - placeholder/pokus/action.rego
+
+- name: Look for the deployed platform policy
+  ansible.builtin.stat:
+    path: "{{ opa_platform_policy_dir }}"
+  register: opa_platform_policy
+
+- name: Choose the policy directory
+  ansible.builtin.set_fact:
+    opa_policy_source: >-
+      {{ opa_platform_policy_dir if opa_platform_policy.stat.isdir | default(false)
+         else opa_config_dir ~ '/placeholder' }}
+
+# Docker resolves the link when the container starts. Its resolved target is
+# part of the configuration hash, so a new platform deployment recreates OPA
+# the next time this role runs.
+- name: Point the policy link at the policy directory
+  ansible.builtin.file:
+    src: "{{ opa_policy_source }}"
+    dest: "{{ opa_policy_link }}"
+    state: link
+    force: true
+    owner: root
+    group: root
+
+- name: Record the resolved policy directory
+  ansible.builtin.copy:
+    content: "{{ opa_policy_source | realpath }}\n"
+    dest: "{{ opa_config_dir }}/policy-source"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start OPA
+  ansible.builtin.include_role:
+    name: compose
+  vars:
+    compose_project: core
+    compose_description: PostgreSQL and OPA
+    compose_services: [opa]

@@ -102,3 +102,36 @@
       ansible.builtin.import_role:
         name: incus
       tags: [incus]
+
+    - name: PostgreSQL
+      ansible.builtin.import_role:
+        name: postgres
+      tags: [postgres]
+
+    - name: Open Policy Agent
+      ansible.builtin.import_role:
+        name: opa
+      tags: [opa]
+
+    - name: Observability
+      ansible.builtin.import_role:
+        name: observability
+      tags: [observability]
+
+    - name: Model weights
+      ansible.builtin.include_role:
+        name: models
+        apply:
+          tags: [models]
+      when: &pokus_serves_inference
+        - pokus_features.gpu_inference | default(false)
+        - node_role in ['full', 'inference']
+      tags: [models]
+
+    - name: Inference server (vLLM)
+      ansible.builtin.include_role:
+        name: vllm
+        apply:
+          tags: [vllm]
+      when: *pokus_serves_inference
+      tags: [vllm]

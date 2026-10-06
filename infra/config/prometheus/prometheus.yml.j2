@@ -1,0 +1,75 @@
+# Managed by pokus-infra (config/prometheus/prometheus.yml.j2). Local changes will be overwritten.
+#
+# Prometheus (BUILD_PROMPT §7.9): host network, listening on
+# 127.0.0.1:{{ pokus_ports.prometheus }}; every target is on 127.0.0.1.
+# Retention is a command-line flag (compose/observability/compose.yml).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_ports.prometheus }}"]
+
+  # OTLP metrics of services and targets, through the gateway's Prometheus
+  # exporter (owner answer E14). Labels come from the resource attributes.
+  - job_name: otlp
+    honor_labels: true
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.collector_metrics }}"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.collector_telemetry }}"]
+        labels: {collector: gateway}
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.journald_telemetry }}"]
+        labels: {collector: journald}
+
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.node_exporter }}"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.cadvisor }}"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.postgres_exporter }}"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_ports.loki }}"]
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_ports.tempo }}"]
+
+  - job_name: grafana
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_ports.grafana }}"]
+
+  # Incus metrics with the metrics-only client certificate (BUILD_PROMPT §7.7);
+  # the Incus server certificate lists 127.0.0.1 among its addresses.
+  - job_name: incus
+    scheme: https
+    metrics_path: /1.0/metrics
+    tls_config:
+      ca_file: /etc/prometheus/incus/server.crt
+      cert_file: /etc/prometheus/incus/client.crt
+      key_file: /etc/prometheus/incus/client.key
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_ports.incus_https }}"]
+{% if observability_gpu %}
+
+  - job_name: gpu
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_internal_ports.gpu_exporter }}"]
+{% endif %}
+{% if observability_vllm %}
+
+  - job_name: vllm
+    static_configs:
+      - targets: ["127.0.0.1:{{ pokus_ports.vllm }}"]
+{% endif %}

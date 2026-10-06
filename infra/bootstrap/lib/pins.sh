@@ -3,7 +3,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # shellcheck disable=SC2034 # read by tooling.sh
 
-readonly POKUS_LOCK_SHA256=09ecdbbf3201492a26e86496fc6e542df0ca47dcbbc8bf632aaea8fcb9abae0f
+readonly POKUS_LOCK_SHA256=797ee313071bde4ab375c0313a4f919b97a519d17935a55edcead152540fa7ef
 readonly POKUS_UV_VERSION=0.12.23
 readonly POKUS_UV_URL_X86_64=https://github.com/astral-sh/uv/releases/download/0.12.23/uv-x86_64-unknown-linux-gnu.tar.gz
 readonly POKUS_UV_SHA256_X86_64=9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6

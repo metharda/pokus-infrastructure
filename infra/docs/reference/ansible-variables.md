@@ -248,6 +248,24 @@ Listener ports of the lab services (contracts.md#ports).
       loki: 18702, tempo: 18703, vllm: 18704, gateway_adhoc: 18705, docs_serve: 18706, inference_control: 18710}
     ```
 
+### `pokus_internal_ports`
+
+Loopback ports of lab-internal listeners: exporters, the collectors' own metrics and health checks, Loki's and Tempo's internal servers. Not part of the contract; every observability container uses the host network and binds 127.0.0.1 (BUILD_PROMPT §7.9).
+
+- Default:
+
+    ```yaml
+    {collector_metrics: 18720, collector_telemetry: 18721, journald_telemetry: 18722, node_exporter: 18723,
+      cadvisor: 18724, postgres_exporter: 18725, gpu_exporter: 18726, tempo_otlp_grpc: 18727,
+      loki_grpc: 18728, tempo_grpc: 18729, collector_health: 18730, journald_health: 18731}
+    ```
+
+### `pokus_vm_otlp`
+
+Dedicated collector listener for VM targets (contracts.md#telemetry, C4): an address on a dummy interface, reachable only from run networks through the run ACL and the firewall, OTLP gRPC and HTTP on the ports of pokus_ports. Set up only with the vm_targets feature.
+
+- Default: `{interface: pokus-otlp0, address: 198.18.0.1}`
+
 ### `pokus_incus_bridge_patterns`
 
 Incus bridges the firewall treats as Incus networks (contracts.md: run networks are named r-&lt;short&gt;; image builds use pokus-build0).
@@ -384,6 +402,82 @@ Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
 - Type: `path`
 - Default: `{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}`
 
+## compose
+
+Install and start one Compose project of the lab services under systemd.
+
+Entry points: `main` (Install and start one Compose project of the lab services under systemd). Role README: `ansible/roles/compose/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (compose/&lt;project&gt;/compose.yml). |
+
+### `compose_project`
+
+Compose project.
+
+- Type: `str`
+- Choices: `core`, `observability`, `inference`
+- Default: `''`
+
+### `compose_description`
+
+Description of pokus-&lt;project&gt;.service.
+
+- Type: `str`
+- Default: `''`
+
+### `compose_services`
+
+Services to start now; empty starts every service of the project.
+
+- Type: `list` of `str`
+- Default: `[]`
+
+### `compose_gpu`
+
+Run the project's GPU services (profile gpu-cdi or gpu-runtime after /etc/docker/daemon.json).
+
+- Type: `bool`
+- Default: `false`
+
+### `compose_start`
+
+Start the services and enable the unit; false installs the unit disabled.
+
+- Type: `bool`
+- Default: `true`
+
+### `compose_wait_timeout`
+
+Seconds `docker compose up --wait` waits for healthy containers.
+
+- Type: `int`
+- Default: `300`
+
+### `compose_root`
+
+Directory of the rendered projects (pokus_root/services).
+
+- Type: `path`
+- Default: `{{ pokus_root }}/services`
+
+### `compose_images`
+
+Images pinned by digest (versions.lock.yml containers.images).
+
+- Type: `dict`
+- Default: `{{ pokus_versions.containers.images }}`
+
+### `compose_extra_env`
+
+Further variables for the project's .env file (the same for every role of a project).
+
+- Type: `dict`
+- Default: `{}`
+
 ## docker
 
 Docker Engine with Compose and buildx, pinned and held, and its daemon configuration.
@@ -445,6 +539,7 @@ Variables the role reads from elsewhere:
 | `grafana_tailscale_serve` | [lab-wide](#grafana_tailscale_serve) | Open the Grafana serve port on the tailnet interface. |
 | `pokus_incus_bridge_patterns` | [lab-wide](#pokus_incus_bridge_patterns) | Interface name patterns of Incus bridges (run networks and the build bridge). |
 | `pokus_incus_personal_bridge_patterns` | [lab-wide](#pokus_incus_personal_bridge_patterns) | Interface name patterns of the bridges of personal Incus projects. |
+| `pokus_vm_otlp` | [lab-wide](#pokus_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
 | `ssh_extra_allowed_interfaces` | [lab-wide](#ssh_extra_allowed_interfaces) | Interfaces besides tailscale0 on which SSH is reachable. |
 
 ### `firewall_tailnet_interface`
@@ -482,6 +577,13 @@ Name pattern of the per-run networks; nothing is forwarded out of them.
 - Type: `str`
 - Default: `r-*`
 
+### `firewall_vm_otlp_ports`
+
+OTLP ports VM targets may reach on the listener address (derived; empty without vm_targets).
+
+- Type: `list` of `int`
+- Default: `{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] if pokus_features.vm_targets | default(false) else [] }}`
+
 ### `firewall_incus_bridge_patterns`
 
 Every Incus bridge that may use DHCP and DNS on the host (derived).
@@ -509,6 +611,7 @@ Variables the role reads from elsewhere:
 | `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware) passed by bootstrap. |
 | `pokus_bootstrap` | bootstrap.sh | Bootstrap options (adopt_incus, interactive). |
 | `pokus_infra_dir` | host_vars | Infra directory of the checkout (incus/ templates). |
+| `pokus_vm_otlp` | [lab-wide](#pokus_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
 | `researchers` | [lab-wide](#researchers) | Researchers; each gets a personal project and joins the Incus user group. |
 
 ### `incus_pool_name`
@@ -574,6 +677,17 @@ Network ACL the platform attaches to every run network.
 
 - Type: `str`
 - Default: `pokus-run-default`
+
+### `incus_run_acl_egress`
+
+Egress rules of the run ACL (derived; OTLP to the VM listener with vm_targets).
+
+- Type: `list` of `dict`
+- Default: `{{ [{'action': 'allow', 'state': 'enabled', 'protocol': 'tcp',
+     'destination': pokus_vm_otlp.address ~ '/32',
+     'destination_port': pokus_ports.otlp_grpc ~ ',' ~ pokus_ports.otlp_http,
+     'description': 'OTLP to the collector listener for VM targets'}]
+   if pokus_features.vm_targets | default(false) else [] }}`
 
 ### `incus_max_virtual_machines`
 
@@ -739,6 +853,47 @@ Run restorecon on every play, not only when a rule changed.
 - Type: `bool`
 - Default: `false`
 
+## models
+
+Download the pinned models and adapters of models.lock.yml and verify every file.
+
+Entry points: `main` (Download the pinned models and adapters of models.lock.yml and verify every file). Role README: `ansible/roles/models/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (models.lock.yml). |
+| `pokus_python` | [lab-wide](#pokus_python) | The pinned CPython the environment is created with. |
+
+### `models_root`
+
+Root of the weights and adapters (pokus_root/models).
+
+- Type: `path`
+- Default: `{{ pokus_root }}/models`
+
+### `models_venv`
+
+Isolated environment of the pinned huggingface_hub CLI.
+
+- Type: `path`
+- Default: `/opt/pokus/models-venv`
+
+### `models_uv`
+
+Pinned uv installed by bootstrap.
+
+- Type: `path`
+- Default: `/opt/pokus/bin/uv`
+
+### `models_hf_token`
+
+Hugging Face token for gated entries (default vault_hf_token).
+
+- Type: `str`
+- Default: `{{ vault_hf_token | default('') }}`
+
 ## nvidia_container_toolkit
 
 NVIDIA Container Toolkit with CDI GPU access and a containerized GPU check.
@@ -772,6 +927,125 @@ The pinned CUDA base image of the GPU check, by digest (from versions.lock.yml).
 
 - Type: `str`
 - Default: `{{ pokus_versions.containers.images.cuda_base_test.image }}@{{ pokus_versions.containers.images.cuda_base_test.digest }}`
+
+## observability
+
+Telemetry gateway, metrics, logs, traces and dashboards, all on 127.0.0.1.
+
+Entry points: `main` (Telemetry gateway, metrics, logs, traces and dashboards, all on 127.0.0.1). Role README: `ansible/roles/observability/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (config/otel, prometheus, loki, tempo, grafana). |
+| `vault_grafana_admin_password` | host_vars | Grafana's admin password (vault, 8 or more characters). |
+| `vault_postgres_passwords` | host_vars | Database passwords (vault); Grafana uses pokus_grafana, which must not contain "$". |
+
+### `observability_collector_memory_mib`
+
+memory_limiter limit of the gateway collector in MiB (the journald collector gets half).
+
+- Type: `int`
+- Default: `512`
+
+### `observability_prometheus_retention`
+
+Prometheus retention.
+
+- Type: `str`
+- Default: `90d`
+
+### `observability_loki_retention`
+
+Loki retention of logs.
+
+- Type: `str`
+- Default: `2160h`
+
+### `observability_tempo_retention`
+
+Tempo retention of traces.
+
+- Type: `str`
+- Default: `720h`
+
+### `observability_gpu_exporter`
+
+GPU exporter with gpu_inference; dcgm is refused while its image is unverified.
+
+- Type: `str`
+- Choices: `nvidia_smi`, `dcgm`
+- Default: `nvidia_smi`
+
+### `observability_grafana_db_password`
+
+Password of pokus_grafana (default vault_postgres_passwords.pokus_grafana).
+
+- Type: `str`
+- Default: `{{ vault_postgres_passwords.pokus_grafana }}`
+
+### `observability_grafana_admin_password`
+
+Grafana's admin password (default vault_grafana_admin_password).
+
+- Type: `str`
+- Default: `{{ vault_grafana_admin_password }}`
+
+### `observability_grafana_user_passwords`
+
+Researchers' Grafana passwords by name (default vault_grafana_user_passwords).
+
+- Type: `dict`
+- Default: `{{ vault_grafana_user_passwords | default({}) }}`
+
+### `observability_grafana_user_role`
+
+Organization role of new researcher accounts.
+
+- Type: `str`
+- Choices: `Viewer`, `Editor`, `Admin`
+- Default: `Viewer`
+
+### `observability_config_dir`
+
+Rendered configuration (pokus_root/services/observability/config).
+
+- Type: `path`
+- Default: `{{ pokus_root }}/services/observability/config`
+
+## opa
+
+OPA on 127.0.0.1:8181 serving the platform policy or a deny-all placeholder.
+
+Entry points: `main` (OPA on 127.0.0.1:8181 serving the platform policy or a deny-all placeholder). Role README: `ansible/roles/opa/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (config/opa/). |
+
+### `opa_platform_policy_dir`
+
+Policy directory of the deployed platform (pokus_root/deploy/platform/current/policy); the placeholder is used while it does not exist.
+
+- Type: `path`
+- Default: `{{ pokus_root }}/deploy/platform/current/policy`
+
+### `opa_config_dir`
+
+Rendered configuration (pokus_root/services/core/config/opa), mounted at /config.
+
+- Type: `path`
+- Default: `{{ pokus_root }}/services/core/config/opa`
+
+### `opa_policy_link`
+
+Symbolic link to the active policy directory (pokus_root/services/core/policy), mounted at /policy.
+
+- Type: `path`
+- Default: `{{ pokus_root }}/services/core/policy`
 
 ## pkg
 
@@ -849,6 +1123,121 @@ Variables the role reads from elsewhere:
 | `firewall_backend` | [lab-wide](#firewall_backend) | Firewall backend; auto selects firewalld if active, else ufw if active, else nftables. |
 | `host_profile` | bootstrap.sh | Host profile written by preflight, passed by bootstrap.sh. |
 | `lab_provider` | [lab-wide](#lab_provider) | Provider; auto takes it from the host profile, an explicit value must match it. |
+
+## postgres
+
+PostgreSQL on Unix sockets with the contract's roles, schemas and revokes.
+
+Entry points: `main` (PostgreSQL on Unix sockets with the contract's roles, schemas and revokes). Role README: `ansible/roles/postgres/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `host_profile` | bootstrap.sh | Host profile (hardware.memory_gib sizes the memory settings). |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (config/postgres/*.j2). |
+| `vault_postgres_passwords` | host_vars | Passwords of the platform, reader and Grafana roles (vault; printable ASCII). |
+
+### `postgres_shared_buffers`
+
+shared_buffers (default 1/16 of the memory, 128 MB to 4 GB).
+
+- Type: `str`
+- Default: `{{ [[(host_profile.hardware.memory_gib * 64) | int, 128] | max, 4096] | min }}MB`
+
+### `postgres_effective_cache_size`
+
+effective_cache_size (default 1/4 of the memory, 512 MB to 16 GB).
+
+- Type: `str`
+- Default: `{{ [[(host_profile.hardware.memory_gib * 256) | int, 512] | max, 16384] | min }}MB`
+
+### `postgres_max_connections`
+
+max_connections.
+
+- Type: `int`
+- Default: `100`
+
+### `postgres_container_uid`
+
+UID of the postgres user in the pinned image.
+
+- Type: `int`
+- Default: `999`
+
+### `postgres_container_gid`
+
+GID of the postgres user in the pinned image.
+
+- Type: `int`
+- Default: `999`
+
+### `postgres_exporter_uid`
+
+UID of the exporter container (nobody).
+
+- Type: `int`
+- Default: `65534`
+
+### `postgres_container`
+
+Name of the PostgreSQL container.
+
+- Type: `str`
+- Default: `pokus-postgres`
+
+### `postgres_state_dir`
+
+Data directory on the host (pokus_root/state/postgres).
+
+- Type: `path`
+- Default: `{{ pokus_root }}/state/postgres`
+
+### `postgres_config_dir`
+
+Rendered configuration (pokus_root/services/core/config/postgres).
+
+- Type: `path`
+- Default: `{{ pokus_root }}/services/core/config/postgres`
+
+### `postgres_service_roles`
+
+Platform roles with a password file and the file's owner, group and mode.
+
+- Type: `list` of `dict`
+- Default:
+
+    ```yaml
+    - {role: pokus_migrator, owner: root, group: root, mode: '0600'}
+    - {role: pokus_orch, owner: root, group: pokus-orch, mode: '0640'}
+    - {role: pokus_gw, owner: root, group: pokus-gw, mode: '0640'}
+    - {role: pokus_exec, owner: root, group: pokus-exec, mode: '0640'}
+    - {role: pokus_inject, owner: root, group: pokus-inject, mode: '0640'}
+    - {role: pokus_verify, owner: root, group: pokus-verify, mode: '0640'}
+    - {role: pokus_eval, owner: root, group: pokus-eval, mode: '0640'}
+    ```
+
+### `postgres_reader_role`
+
+Researchers' read-only role.
+
+- Type: `str`
+- Default: `pokus_reader`
+
+### `postgres_grafana_role`
+
+Grafana's read-only role.
+
+- Type: `str`
+- Default: `pokus_grafana`
+
+### `postgres_monitor_role`
+
+Role of the metrics exporter (pg_monitor).
+
+- Type: `str`
+- Default: `pokus_monitor`
 
 ## preflight_gate
 
@@ -1128,3 +1517,43 @@ Shell of service accounts and locked researchers.
 
 - Type: `path`
 - Default: `/usr/sbin/nologin`
+
+## vllm
+
+vLLM on 127.0.0.1 with serving profiles, deployments, the deploy helper and verification.
+
+Entry points: `main` (vLLM on 127.0.0.1 with serving profiles, deployments, the deploy helper and verification). Role README: `ansible/roles/vllm/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `pokus_infra_dir` | host_vars | Infra directory of the checkout (vllm/profiles, models.lock.yml, models.catalog.yml). |
+
+### `vllm_profile`
+
+Serving profile of this host (vllm/profiles/&lt;name&gt;.yml).
+
+- Type: `str`
+- Default: `ada-12g`
+
+### `vllm_default_deployment`
+
+Deployment to serve after installation (model_id, start_after_install, optional id, version, overrides, sampling_defaults); null installs vLLM without serving.
+
+- Type: `dict`
+- Default: `null`
+
+### `vllm_wait_timeout`
+
+Seconds to wait for vLLM to load the model and answer /health.
+
+- Type: `int`
+- Default: `1200`
+
+### `vllm_verify`
+
+Run the serving verification after start.
+
+- Type: `bool`
+- Default: `true`

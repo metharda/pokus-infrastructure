@@ -19,7 +19,9 @@ GEN := PYTHONPATH=tools/gen:preflight $(BIN)/python -m pokus_infra_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pokus_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
-  preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json
+  preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
+  models.lock.yml=tools/lockcheck/schema/models-lock.schema.json \
+  models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json
 # Oldest Python preflight must run on (BUILD_PROMPT §2.1).
 PREFLIGHT_MIN_PYTHON := 3.9
 BUILD := build
@@ -29,7 +31,7 @@ DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
 DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
-  ansible/roles/incus/library ansible/tests
+  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/tests
 PLAYBOOKS := ansible/site.yml ansible/restore.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -42,6 +44,11 @@ BOOTSTRAP_PYTHON = $(shell sed -n "s/^readonly POKUS_PYTHON_VERSION=//p" bootstr
 PUPPETEER_EXECUTABLE_PATH ?= $(firstword $(wildcard /opt/pw-browsers/chromium-*/chrome-linux/chrome) /usr/bin/google-chrome)
 export PUPPETEER_EXECUTABLE_PATH
 
+# OPA CLI pinned in versions.lock.yml (binaries.opa) for the policy tests;
+# installed only after its sha256 matched.
+OPA := $(BUILD)/tools/opa
+export POKUS_OPA := $(CURDIR)/$(OPA)
+
 # Every file git would track (tracked plus untracked-but-not-ignored).
 GIT_FILES = git ls-files -z --cached --others --exclude-standard
 
@@ -50,7 +57,7 @@ help: ## List targets
 	@grep -E '^[a-z][a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: $(VENV)/.synced node_modules/.installed $(DEV_COLLECTIONS)/.installed ## Install pinned development tools (user space only)
+setup: $(VENV)/.synced node_modules/.installed $(DEV_COLLECTIONS)/.installed $(OPA) ## Install pinned development tools (user space only)
 
 $(VENV)/.synced: pyproject.toml uv.lock
 	$(UV) sync --frozen
@@ -58,6 +65,10 @@ $(VENV)/.synced: pyproject.toml uv.lock
 
 $(DEV_COLLECTIONS)/.installed: ansible/requirements.yml $(VENV)/.synced
 	$(ANSIBLE_ENV) $(BIN)/ansible-galaxy collection install -r ansible/requirements.yml -p $(DEV_COLLECTIONS)
+	@touch $@
+
+$(OPA): versions.lock.yml $(VENV)/.synced
+	$(LOCKCHECK) fetch opa --dest $@
 	@touch $@
 
 node_modules/.installed: package.json package-lock.json
@@ -72,7 +83,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff check $(PY_SOURCES)
 	$(BIN)/ruff format --check $(PY_SOURCES)
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
-	  ansible/roles/incus/library ansible/tests
+	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 
@@ -166,12 +177,22 @@ lock-update: ## Print the manual procedure for changing versions.lock.yml (nothi
 	@echo "  2. Edit versions.lock.yml: the value, verified_on and source."
 	@echo "  3. make generate          (pins, Ansible files, reference page)"
 	@echo "  4. make bootstrap-lock    (only when python.packages changed)"
+	@echo "     make models-lock       (only when python.model_tools changed)"
 	@echo "  5. make lock-check lint test docs, then commit."
 
 .PHONY: bootstrap-lock
 bootstrap-lock: setup ## Compile bootstrap/requirements.lock from requirements.in (needs PyPI)
 	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
 	  --python-version $(BOOTSTRAP_PYTHON) bootstrap/requirements.in -o bootstrap/requirements.lock
+
+.PHONY: models-lock
+models-lock: setup ## Compile the models role's hash-locked requirements.lock (needs PyPI)
+	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
+	  --python-version $(BOOTSTRAP_PYTHON) ansible/roles/models/files/requirements.in \
+	  -o $(BUILD)/models-requirements.lock
+	{ echo "# Managed by pokus-infra (ansible/roles/models/files/requirements.lock). Local changes will be overwritten."; \
+	  echo "# Compiled from requirements.in by 'make models-lock' (uv pip compile --generate-hashes)."; \
+	  cat $(BUILD)/models-requirements.lock; } > ansible/roles/models/files/requirements.lock
 
 .PHONY: drift-check
 drift-check: setup ## Fail if a generated file differs from a fresh generation

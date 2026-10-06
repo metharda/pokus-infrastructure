@@ -34,6 +34,10 @@ table inet pokus_filter {
 		# DHCP and DNS from Incus instances to Incus's dnsmasq on the host.
 		iifname @incus_bridges udp dport { 53, 67, 547 } accept
 		iifname @incus_bridges tcp dport 53 accept
+{% if firewall_vm_otlp_ports | length > 0 %}
+		# OTLP from VM targets to the collector's dedicated listener (C4).
+		iifname "{{ firewall_run_bridge_pattern }}" ip daddr {{ pokus_vm_otlp.address }} tcp dport { {{ firewall_vm_otlp_ports | join(', ') }} } accept
+{% endif %}
 	}
 
 	chain forward {

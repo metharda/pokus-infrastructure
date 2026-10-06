@@ -40,6 +40,16 @@ TESTED_TEMPLATES = {
     ("docker", "daemon.json.j2"),
     ("nvidia_container_toolkit", "nvidia-cdi-refresh-pokus.conf.j2"),
     ("incus", "pokus-incus-events.service.j2"),
+    # Tested in test_core.py:
+    ("compose", "env.j2"),
+    ("compose", "pokus-compose.service.j2"),
+    ("postgres", "pgpass.j2"),
+    ("postgres", "pokus-postgres.tmpfiles.conf.j2"),
+    # Tested in test_observability.py:
+    ("observability", "pokus-vm-otlp-address.service.j2"),
+    # Tested in test_vllm.py:
+    ("vllm", "pokus-vllm-deploy.socket.j2"),
+    ("vllm", "pokus-vllm-deploy@.service.j2"),
 }
 
 
@@ -94,8 +104,9 @@ def nft_check(path: Path) -> subprocess.CompletedProcess[str]:
     [
         {},
         {"ssh_extra_allowed_interfaces": ["eth1", "enp3s0"], "grafana_tailscale_serve": True},
+        {"pokus_features": {"vm_targets": True}},
     ],
-    ids=["default", "extra-interfaces-grafana"],
+    ids=["default", "extra-interfaces-grafana", "vm-targets"],
 )
 def test_nft_ruleset_is_valid(tmp_path: Path, extra: dict[str, Any]) -> None:
     text = render_template("firewall", "pokus.nft.j2", firewall_vars(**extra))
@@ -121,6 +132,17 @@ def test_nft_ruleset_policy() -> None:
     assert 'oifname "r-*" iifname != "r-*" ct state new drop' in lines
     # SSH is never opened on all interfaces.
     assert not [line for line in lines if "dport 22" in line and "iifname" not in line]
+
+
+def test_nft_vm_listener_rule() -> None:
+    def rules(**extra: Any) -> list[str]:
+        text = render_template("firewall", "pokus.nft.j2", firewall_vars(**extra))
+        return [line.strip() for line in text.splitlines() if "198.18.0.1" in line]
+
+    assert rules() == []
+    assert rules(pokus_features={"vm_targets": True}) == [
+        'iifname "r-*" ip daddr 198.18.0.1 tcp dport { 4317, 4318 } accept'
+    ]
 
 
 def test_nft_ruleset_options() -> None:

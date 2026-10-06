@@ -1,0 +1,80 @@
+# Managed by pokus-infra (config/otel/gateway.yaml.j2). Local changes will be overwritten.
+#
+# OpenTelemetry Collector gateway (BUILD_PROMPT §7.9, contracts.md#telemetry).
+# Host network, every listener on 127.0.0.1; with the vm_targets feature also
+# OTLP on the dedicated VM address (C4). Pipelines:
+#   logs:    otlp (services, targets, the journald collector) -> Loki (native OTLP)
+#   metrics: otlp -> Prometheus exporter, scraped by Prometheus (owner answer E14)
+#   traces:  otlp -> Tempo
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:{{ pokus_internal_ports.collector_health }}
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:{{ pokus_ports.otlp_grpc }}
+      http:
+        endpoint: 127.0.0.1:{{ pokus_ports.otlp_http }}
+{% if observability_vm_listener %}
+  otlp/vm:
+    protocols:
+      grpc:
+        endpoint: {{ pokus_vm_otlp.address }}:{{ pokus_ports.otlp_grpc }}
+      http:
+        endpoint: {{ pokus_vm_otlp.address }}:{{ pokus_ports.otlp_http }}
+{% endif %}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: {{ observability_collector_memory_mib }}
+    spike_limit_mib: {{ (observability_collector_memory_mib // 4) | int }}
+  resource:
+    attributes:
+      - key: pokus.machine
+        value: {{ machine_name | to_json }}
+        action: upsert
+      - key: pokus.lab_mode
+        value: {{ lab_mode | to_json }}
+        action: upsert
+  batch: {}
+
+exporters:
+  otlphttp/loki:
+    endpoint: http://127.0.0.1:{{ pokus_ports.loki }}/otlp
+  otlp/tempo:
+    endpoint: 127.0.0.1:{{ pokus_internal_ports.tempo_otlp_grpc }}
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 127.0.0.1:{{ pokus_internal_ports.collector_metrics }}
+    # Resource attributes such as pokus.run_id and pokus.node become labels,
+    # so dashboards can filter target metrics by run.
+    resource_to_telemetry_conversion:
+      enabled: true
+
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: {{ pokus_internal_ports.collector_telemetry }}
+  pipelines:
+    logs:
+      receivers: [{{ observability_otlp_receivers | join(', ') }}]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]
+    metrics:
+      receivers: [{{ observability_otlp_receivers | join(', ') }}]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [{{ observability_otlp_receivers | join(', ') }}]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]

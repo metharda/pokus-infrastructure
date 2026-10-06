@@ -146,8 +146,8 @@ peercred alone separates the principals. Doctor verifies effective permissions.
 | `/run/pokus/inject/api.sock` | pokus-inject:pokus-inject 0600 | `u:pokus-orch:rw` | pokus-inject:pokus-gt 0660 | `pokus-orch` |
 | `/run/pokus/verify/api.sock` | pokus-verify:pokus-verify 0600 | `u:pokus-orch:rw` | pokus-verify:pokus-gt 0660 | `pokus-orch` |
 | `/run/pokus/vllm-deploy.sock` | pokus-orch:pokus-orch 0600, systemd socket unit | — | — | `pokus-orch` (C3) |
-| `/run/pokus/postgres/` | Postgres socket directory for service roles | — | — | members of `pokus-svc` with a password file |
-| `/run/pokus/postgres-reader/` | Postgres socket directory, group `pokus` | — | — | role `pokus_reader` only (`pg_hba`) |
+| `/run/pokus/postgres/` | Postgres socket directory for service roles, 0750 999:pokus-svc | — | — | members of `pokus-svc` with a password file; infra's metrics exporter (`pokus_monitor`) |
+| `/run/pokus/postgres-reader/` | Postgres socket directory, 0750 999:pokus | — | — | researchers as `pokus_reader`; Grafana as `pokus_grafana`. `pg_hba` cannot tell the two directories apart: the directory group decides who reaches a socket, the password files decide the role |
 
 Runtime directories `/run/pokus/<svc>/` are created by `RuntimeDirectory=` with
 mode 0755; the socket modes above do the gating.
@@ -209,9 +209,10 @@ the paired node's tailnet name; `<port>` is chosen by the deployer.
 
 | Item | Value |
 | --- | --- |
-| Listeners | Unix sockets only (`/run/pokus/postgres/`, `/run/pokus/postgres-reader/`); no TCP listener on the host |
+| Listeners | Unix sockets only (`/run/pokus/postgres/`, `/run/pokus/postgres-reader/`); no TCP listener at all (the container has no network) |
 | Database | `pokus` |
 | Roles | `pokus_migrator`, `pokus_orch`, `pokus_gw`, `pokus_exec`, `pokus_inject`, `pokus_verify`, `pokus_eval`, `pokus_reader`, `pokus_grafana` |
+| Infra-internal role | `pokus_monitor` (member of `pg_monitor`) for infra's metrics exporter; its password is generated on the host; the platform never uses it |
 | Schemas | `public` and `gt`, both owned by `pokus_migrator`; infra revokes all privileges on `gt` from `PUBLIC`, `pokus_reader` and `pokus_grafana` |
 | Grants | schema `USAGE` and table privileges come from platform migrations (C9f) |
 | Migrations | infra runs `pokus-migrate upgrade` as root from the deployed environment at deploy time; it connects as `pokus_migrator` with the password file above |
@@ -236,7 +237,7 @@ the paired node's tailnet name; `<port>` is chosen by the deployer.
 | --- | --- |
 | OTLP for services | `127.0.0.1:4317` (gRPC), `127.0.0.1:4318` (HTTP) |
 | Containers | the platform adds a proxy device to each target instance: `listen=tcp:127.0.0.1:4317` (inside) → `connect=tcp:127.0.0.1:4317` (host), `bind=instance` |
-| VMs | Incus 6.0 supports proxy devices on VMs only in NAT mode, which requires `bind=host`, so a VM cannot reach the collector through a proxy device. VMs use an ACL-restricted route from the run network to a dedicated collector listener (C4); infra documents the listener here together with the collector (infra step 7) |
+| VMs | Incus 6.0 supports proxy devices on VMs only in NAT mode, which requires `bind=host`, so a VM cannot reach the collector through a proxy device. With `vm_targets`, VMs send OTLP to the dedicated collector listener `198.18.0.1:4317` (gRPC) / `:4318` (HTTP), an address on the dummy interface `pokus-otlp0` (`pokus_vm_otlp`); the run ACL `pokus-run-default` has one egress rule for exactly that address and those ports, and the host firewall accepts nothing else from run networks (C4). The platform sets the VM's OTLP endpoint accordingly |
 | Identity | the platform sets `OTEL_RESOURCE_ATTRIBUTES=pokus.run_id=<run_id>,pokus.node=<node_alias>` in the instance environment at launch; the in-image agent attaches them. `run_id` is an opaque ULID. No scenario identifier ever enters an instance. |
 
 ## Policy engine (OPA)
@@ -265,7 +266,8 @@ The helper checks the peer is `pokus-orch`, reads one JSON request line
 `{"deployment": "<id>@<version>"}`, validates that the ID matches
 `^[a-z0-9][a-z0-9-]{0,62}@[0-9]{1,6}$` and names a regular, root-owned file in
 `/etc/pokus/vllm/deployments/`, points `current.yml` at it, renders
-`/etc/pokus/vllm/current.env`, restarts `pokus-inference.service`, and answers
+`/etc/pokus/vllm/current.env` (with `current.yaml`, the `vllm serve --config`
+file it renders next to it), restarts `pokus-inference.service`, and answers
 one JSON line `{"ok": true}` or `{"ok": false, "error": "<text>"}`. The
 orchestrator then waits for vLLM health itself. No sudo is used anywhere.
 
@@ -351,6 +353,7 @@ ports (resolution C10). **Status: proposed, awaiting owner approval.**
 | 18705 | LLM gateway ad-hoc endpoint (researchers, via SSH port forwarding) | C10 |
 | 18706 | `pokus-lab docs serve` | C10, owner answer H9 |
 | 18710 | inference control endpoint, bound to `tailscale0`, mutual TLS (`node_role: inference`) | C10 |
+| 4317, 4318 on `198.18.0.1` | collector listener for VM targets (`vm_targets` only), reachable from run networks only | C4 |
 
 Exporters (node, cAdvisor, Postgres, GPU) and the collector's own metrics are
 reachable only on the internal Docker network or `127.0.0.1` without a fixed

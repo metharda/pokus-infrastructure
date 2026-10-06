@@ -30,7 +30,7 @@ Every researcher in `researchers` is a member of `pokus` (and, once Incus is ins
 
 ## Service accounts
 
-System users with the shell `/usr/sbin/nologin`, home `/var/lib/pokus/<account>`, no password and no SSH keys.
+System users with the shell `/usr/sbin/nologin`, home `/var/lib/pokus/<account>`, no password and no SSH keys. Each account's primary group is a system group of the same name, which the contract uses for socket and password-file ownership.
 
 | Account | Runs | Groups |
 | --- | --- | --- |

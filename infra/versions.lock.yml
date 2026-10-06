@@ -81,6 +81,24 @@ binaries:
         url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-arm64.tar.gz
         sha256: f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c
 
+  opa:
+    # Development and CI only: `make test` runs the policies of config/opa/
+    # with the OPA release of the pinned container image (resolution C6).
+    version: "1.21.1"
+    verified_on: 2026-10-05
+    source: >-
+      GitHub release open-policy-agent/opa v1.21.1 (tag commit
+      2a109e54103370d2ef288782ef3cb4c8a37902b2); both static binaries
+      downloaded and hashed, matching the published .sha256 files
+    format: binary
+    assets:
+      x86_64:
+        url: https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_amd64_static
+        sha256: 668506eb17a2eaa1fce6cc0d1f42ef85125d4ac5bda5fc74d1152d0c77145031
+      aarch64:
+        url: https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_arm64_static
+        sha256: 9a1f3625529c6f01240fe68286dde06aa0b23c5253da700ac48f4d943ff8a4de
+
 python:
   # CPython installed by the pinned uv into /opt/pokus/python; uv checks the
   # download against the sha256 in its own release metadata.
@@ -93,10 +111,16 @@ python:
     ansible-core: "2.21.5"
     jmespath: "1.1.0"      # json_query filter
     cryptography: "50.0.2"  # community.crypto modules (owner answer E12)
-  verified_on: 2026-10-05
+  # Packages of /opt/pokus/models-venv, the models role's download tool
+  # (hash-locked in ansible/roles/models/files/requirements.lock).
+  model_tools:
+    huggingface-hub: "2.1.1"  # the `hf download` CLI (BUILD_PROMPT §7.12)
+  verified_on: 2026-10-06
   source: >-
-    PyPI JSON API (pypi.org/pypi/<name>/<version>/json) for the packages;
-    `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the CPython build
+    PyPI JSON API (pypi.org/pypi/<name>/<version>/json) for the packages (the
+    huggingface-hub 2.1.1 wheel downloaded and matched against its published
+    sha256); `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the
+    CPython build
 
 containers:
   # Every lab service image, pinned by the digest of its multi-platform index

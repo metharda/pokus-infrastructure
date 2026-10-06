@@ -1,0 +1,15 @@
+# Managed by pokus-infra (config/grafana/provisioning/dashboards/pokus.yaml.j2). Local changes will be overwritten.
+#
+# The dashboards of config/grafana/dashboards/, read-only in the folder Pokus.
+apiVersion: 1
+
+providers:
+  - name: pokus
+    orgId: 1
+    folder: Pokus
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards

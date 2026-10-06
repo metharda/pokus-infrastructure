@@ -1,0 +1,27 @@
+# Managed by pokus-infra (ansible/roles/models/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Download the pinned models and adapters of models.lock.yml and verify every file.
+    options:
+      pokus_infra_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (models.lock.yml).
+      pokus_python:
+        type: path
+        required: true
+        description: The pinned CPython the environment is created with.
+      models_root:
+        type: path
+        description: Root of the weights and adapters (pokus_root/models).
+      models_venv:
+        type: path
+        default: /opt/pokus/models-venv
+        description: Isolated environment of the pinned huggingface_hub CLI.
+      models_uv:
+        type: path
+        default: /opt/pokus/bin/uv
+        description: Pinned uv installed by bootstrap.
+      models_hf_token:
+        type: str
+        description: Hugging Face token for gated entries (default vault_hf_token).

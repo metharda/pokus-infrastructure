@@ -70,6 +70,8 @@ nav:
   - How-to guides:
       - Check whether a machine can host the lab: how-to/check-a-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
+      - Add a model and activate a deployment: how-to/add-a-model.md
+      - Reach Grafana and the lab database: how-to/reach-grafana.md
       - Configure the firewall backend and SELinux: how-to/firewall-and-selinux.md
       - Add a preflight fixture: how-to/add-preflight-fixture.md
       - Add a distribution family: distros/adding-a-family.md
@@ -92,6 +94,7 @@ nav:
       - How bootstrap works: explanation/bootstrap.md
       - Portability: explanation/portability.md
       - How benchmark targets are isolated: explanation/target-isolation.md
+      - How telemetry, metrics and logs flow: explanation/telemetry.md
       - Providers:
           - WSL2 hosts: providers/wsl2.md
           - Bare-metal hosts: providers/baremetal.md
@@ -110,3 +113,5 @@ nav:
       - "ADR-0007: Incus for benchmark targets": adr/0007-incus-for-targets.md
       - "ADR-0008: Native Docker Engine": adr/0008-native-docker-engine.md
       - "ADR-0009: btrfs or LVM thin pool": adr/0009-btrfs-or-lvm-thin-pool.md
+      - "ADR-0010: PostgreSQL on Unix sockets only": adr/0010-postgres-socket-only.md
+      - "ADR-0011: OpenTelemetry as the single telemetry entry point": adr/0011-otel-telemetry.md

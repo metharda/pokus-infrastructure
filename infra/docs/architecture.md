@@ -78,14 +78,25 @@ same roles work on every distribution is in
 ## Data flows
 
 - **Telemetry.** Services send OpenTelemetry data to the collector on
-  `127.0.0.1:4317`/`4318`. A target instance reaches the same collector
+  `127.0.0.1:4317`/`4318`. A target container reaches the same collector
   through an Incus proxy device that listens inside the instance and connects
-  to the host's loopback address, so instances never get a route to the host.
+  to the host's loopback address, so containers never get a route to the
+  host; a target VM reaches a dedicated collector listener that only run
+  networks can reach, and only on the OTLP ports. The host journal reaches
+  the collector through a separate journald collector. Logs go to Loki,
+  traces to Tempo, metrics to Prometheus
+  ([How telemetry, metrics and logs flow](explanation/telemetry.md)).
 - **Tool calls.** The agent sends a tool call to the executor's socket; the
   executor checks it against the policy engine and runs it in the target
   through the Incus API with its own client certificate.
 - **Inference.** The agent talks to the LLM gateway, which forwards to vLLM
-  on `127.0.0.1` (or to a paired inference node over the tailnet).
+  on `127.0.0.1` (or to a paired inference node over the tailnet). The
+  orchestrator switches vLLM's deployment through a socket-activated root
+  helper ([How to add a model](how-to/add-a-model.md)).
+- **Database.** PostgreSQL has no network listener: the platform's services
+  and the metrics exporter use the socket directory `/run/pokus/postgres/`,
+  researchers and Grafana the reader directory `/run/pokus/postgres-reader/`
+  ([ADR-0010](adr/0010-postgres-socket-only.md)).
 - **Researchers.** Researchers log in over SSH on `tailscale0` and use local
   port forwards for Grafana and the gateway's ad-hoc endpoint; nothing is
   exposed on any other interface.

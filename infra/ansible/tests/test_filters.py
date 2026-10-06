@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 from typing import Any
 
 import pytest
@@ -186,7 +189,100 @@ def test_filters_are_registered_with_ansible() -> None:
         "pokus_repo_url",
         "pokus_apt_pin_block",
         "pokus_fingerprints",
+        "pokus_scram_verifier",
+        "pokus_scram_matches",
+        "pokus_config_hashes",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pokus_release_identity(c)", {"p": profile, "c": debian_codenames()})
     assert result["release_key"] == "debian-13"
+
+
+# RFC 7677 section 3 exchange (user "user", password "pencil"); StoredKey and
+# ServerKey as derived by the scramp project's test suite.
+RFC7677_SALT = "W22ZaJ0SNY7soEsUEjb6gQ=="
+RFC7677_SECRET = (
+    "SCRAM-SHA-256$4096:W22ZaJ0SNY7soEsUEjb6gQ=="  # noqa: S105 - published test vector
+    "$WG5d8oPm3OtcPnkdi4Uo7BkeZkBFzpcXkuLmtbsT4qY=:wfPLwcE6nTWhTAmQ7tl2KeoiWGPlZqQxSrmfPwDl2dU="
+)
+RFC7677_AUTH_MESSAGE = (
+    b"n=user,r=rOprNGfwEbeRWgbNEkqO,"
+    b"r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,"
+    b"c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0"
+)
+RFC7677_PROOF = "dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ="
+RFC7677_SERVER_SIGNATURE = "6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4="
+
+
+def test_scram_verifier_matches_rfc7677() -> None:
+    secret = pokus.scram_verifier("pencil", RFC7677_SALT)
+    assert secret == RFC7677_SECRET
+    stored, server = (base64.b64decode(k) for k in secret.rsplit("$", 1)[1].split(":"))
+    # The client proof of the RFC's exchange verifies against StoredKey, and
+    # ServerKey produces the RFC's server signature.
+    signature = hmac.new(stored, RFC7677_AUTH_MESSAGE, "sha256").digest()
+    client_key = bytes(
+        a ^ b for a, b in zip(base64.b64decode(RFC7677_PROOF), signature, strict=True)
+    )
+    assert hashlib.sha256(client_key).digest() == stored
+    server_signature = hmac.new(server, RFC7677_AUTH_MESSAGE, "sha256").digest()
+    assert base64.b64encode(server_signature).decode() == RFC7677_SERVER_SIGNATURE
+
+
+def test_scram_verifier_draws_a_salt() -> None:
+    first, second = pokus.scram_verifier("pencil"), pokus.scram_verifier("pencil")
+    assert first != second
+    assert pokus.scram_matches("pencil", first)
+    assert len(base64.b64decode(first.split(":")[1].split("$")[0])) == 16
+
+
+@pytest.mark.parametrize(
+    ("password", "secret", "expected"),
+    [
+        ("pencil", RFC7677_SECRET, True),
+        ("pencil2", RFC7677_SECRET, False),
+        ("pencil", None, False),
+        ("pencil", "", False),
+        ("pencil", "md5" + "0" * 32, False),
+        ("pencil", RFC7677_SECRET.replace("4096", "4097"), False),
+        ("pencil", "SCRAM-SHA-256$4096:%%%$a:b", False),
+    ],
+)
+def test_scram_matches(password: str, secret: str | None, expected: bool) -> None:
+    assert pokus.scram_matches(password, secret) is expected
+
+
+@pytest.mark.parametrize("password", ["", "pässword", "tab\there"])
+def test_scram_rejects_passwords_postgres_would_normalize(password: str) -> None:
+    with pytest.raises(pokus.PokusFilterError, match="printable ASCII"):
+        pokus.scram_verifier(password, RFC7677_SALT)
+    with pytest.raises(pokus.PokusFilterError, match="printable ASCII"):
+        pokus.scram_matches(password, None)
+
+
+def test_scram_rejects_a_bad_salt() -> None:
+    with pytest.raises(pokus.PokusFilterError, match="not base64"):
+        pokus.scram_verifier("pencil", "not base64!")
+
+
+def test_config_hashes_per_directory() -> None:
+    root = "/srv/pokus/services/core/config"
+    files = [
+        {"path": f"{root}/postgres/postgresql.conf", "checksum": "a"},
+        {"path": f"{root}/postgres/pg_hba.conf", "checksum": "b"},
+        {"path": f"{root}/opa/authz.rego", "checksum": "c"},
+        {"path": f"{root}/otel-agent/x/y.yaml", "checksum": "d"},
+    ]
+    hashes = pokus.config_hashes(files, root + "/")
+    assert sorted(hashes) == ["OPA_CONFIG_HASH", "OTEL_AGENT_CONFIG_HASH", "POSTGRES_CONFIG_HASH"]
+    assert hashes == pokus.config_hashes(list(reversed(files)), root)  # order does not matter
+    changed = pokus.config_hashes([{**files[0], "checksum": "z"}, *files[1:]], root)
+    assert changed["POSTGRES_CONFIG_HASH"] != hashes["POSTGRES_CONFIG_HASH"]
+    assert changed["OPA_CONFIG_HASH"] == hashes["OPA_CONFIG_HASH"]
+    assert pokus.config_hashes([], root) == {}
+
+
+@pytest.mark.parametrize("path", ["/srv/pokus/services/core/config/top.conf", "/elsewhere/a/b"])
+def test_config_hashes_rejects_files_outside_directories(path: str) -> None:
+    with pytest.raises(pokus.PokusFilterError, match="not in a directory"):
+        pokus.config_hashes([{"path": path, "checksum": "a"}], "/srv/pokus/services/core/config")

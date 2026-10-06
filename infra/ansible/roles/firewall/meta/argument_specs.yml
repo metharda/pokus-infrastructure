@@ -43,6 +43,14 @@ argument_specs:
         type: str
         default: r-*
         description: Name pattern of the per-run networks; nothing is forwarded out of them.
+      pokus_vm_otlp:
+        type: dict
+        required: true
+        description: Interface and address of the collector listener for VM targets (C4).
+      firewall_vm_otlp_ports:
+        type: list
+        elements: int
+        description: OTLP ports VM targets may reach on the listener address (derived; empty without vm_targets).
       firewall_incus_bridge_patterns:
         type: list
         elements: str

@@ -1,0 +1,105 @@
+# Managed by pokus-infra (ansible/roles/vllm/tasks/main.yml). Local changes will be overwritten.
+#
+# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the pokus-inference
+# Compose project, the serving profiles, the deploy helper behind
+# pokus-vllm-deploy.socket (C3), the default deployment and the serving
+# verification. Applied with gpu_inference on full and inference nodes.
+- name: Create the vLLM directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/pokus/vllm, mode: "0755"}
+    - {path: /etc/pokus/vllm/deployments, mode: "0755"}
+    - {path: /etc/pokus/vllm/profiles, mode: "0755"}
+    - {path: /usr/local/libexec/pokus, mode: "0755"}
+    - {path: /var/lib/pokus/verify, mode: "0755"}
+    - {path: "{{ pokus_root }}/state/vllm-cache", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the serving profiles
+  ansible.builtin.copy:
+    src: "{{ pokus_infra_dir }}/vllm/profiles/"
+    dest: /etc/pokus/vllm/profiles/
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the deploy helper and the serving verification
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "/usr/local/libexec/pokus/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - {src: pokus_vllm_deploy.py, dest: vllm-deploy}
+    - {src: pokus_vllm_verify.py, dest: vllm-verify}
+
+- name: Install the deploy helper's socket and service units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [pokus-vllm-deploy.socket, pokus-vllm-deploy@.service]
+
+- name: Enable the deploy helper's socket
+  ansible.builtin.systemd_service:
+    name: pokus-vllm-deploy.socket
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Write the default deployment
+  ansible.builtin.include_tasks: default_deployment.yml
+  when: vllm_default_deployment is mapping
+
+- name: Find the current deployment
+  ansible.builtin.stat:
+    path: /etc/pokus/vllm/current.yml
+  register: vllm_current
+
+# The orchestrator's choice wins: once current.yml exists, it is re-rendered
+# (a new profile or helper may change it) and never replaced by the default.
+- name: Choose the deployment to serve
+  ansible.builtin.set_fact:
+    vllm_target: >-
+      {{ (vllm_current.stat.lnk_target | default('') | basename | regex_replace('\.yml$', ''))
+         if vllm_current.stat.islnk | default(false)
+         else (vllm_default_id | default('')) }}
+
+- name: Render the deployment
+  ansible.builtin.command:
+    argv: [/usr/local/libexec/pokus/vllm-deploy, activate, "{{ vllm_target }}", --no-restart]
+  register: vllm_activate
+  changed_when: (vllm_activate.stdout | from_json).changed
+  when:
+    - vllm_target | length > 0
+    - not ansible_check_mode
+
+- name: Start vLLM
+  ansible.builtin.include_role:
+    name: compose
+  vars:
+    compose_project: inference
+    compose_description: vLLM
+    compose_gpu: true
+    compose_wait_timeout: "{{ vllm_wait_timeout }}"
+    compose_start: >-
+      {{ vllm_target | length > 0
+         and (vllm_current.stat.islnk | default(false)
+              or vllm_default_deployment.start_after_install | default(true)) }}
+
+- name: Verify the served deployment
+  ansible.builtin.include_tasks: verify.yml
+  when:
+    - vllm_verify
+    - vllm_target | length > 0
+    - vllm_current.stat.islnk | default(false) or vllm_default_deployment.start_after_install | default(true)
+    - not ansible_check_mode

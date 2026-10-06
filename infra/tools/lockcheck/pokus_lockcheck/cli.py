@@ -7,6 +7,9 @@
   repository key fingerprint over the network.
 * ``todos``: list every ``TODO(verify)`` marker in the repository
   (``make verify-todos``).
+* ``fetch NAME --dest PATH``: download a pinned single-file binary of the
+  lock for this machine and install it only if its sha256 matches
+  (development tools such as OPA for ``make test``).
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from pokus_lockcheck import checks
+from pokus_lockcheck import checks, net
 
 CATEGORIES = ("containers", "binaries", "keys")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
@@ -109,6 +112,16 @@ def _todos(excludes: Sequence[str]) -> int:
     return 1 if count else 0
 
 
+def _fetch(lock: Path, name: str, dest: Path) -> int:
+    try:
+        digest = checks.fetch_binary(checks.load(lock), name, dest)
+    except (checks.FetchRefusedError, net.FetchError) as exc:
+        sys.stderr.write(f"fetch: {exc}\n")
+        return 1
+    print(f"fetch: {dest} sha256 {digest}", file=sys.stderr)
+    return 0
+
+
 def main(argv: Sequence[str]) -> int:
     """Run a lock checker command.
 
@@ -132,7 +145,13 @@ def main(argv: Sequence[str]) -> int:
     )
     todos = sub.add_parser("todos", help="list TODO(verify) markers in the repository")
     todos.add_argument("--exclude", action="append", default=list(TODO_EXCLUDES))
+    fetch = sub.add_parser("fetch", help="install a pinned single-file binary after checking it")
+    fetch.add_argument("name", help="entry under binaries")
+    fetch.add_argument("--dest", type=Path, required=True, help="path of the executable")
+    fetch.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
     args = parser.parse_args(list(argv))
+    if args.command == "fetch":
+        return _fetch(args.lock, args.name, args.dest)
     if args.command == "validate":
         return _validate(args.pairs)
     if args.command == "check":

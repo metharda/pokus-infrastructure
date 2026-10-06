@@ -131,6 +131,30 @@ pokus_ports:
   docs_serve: 18706
   inference_control: 18710
 
+# Loopback ports of lab-internal listeners: exporters, the collectors' own
+# metrics and health checks, Loki's and Tempo's internal servers. Not part of
+# the contract; every observability container uses the host network and binds
+# 127.0.0.1 (BUILD_PROMPT §7.9).
+pokus_internal_ports:
+  collector_metrics: 18720
+  collector_telemetry: 18721
+  journald_telemetry: 18722
+  node_exporter: 18723
+  cadvisor: 18724
+  postgres_exporter: 18725
+  gpu_exporter: 18726
+  tempo_otlp_grpc: 18727
+  loki_grpc: 18728
+  tempo_grpc: 18729
+  collector_health: 18730
+  journald_health: 18731
+
+# Dedicated collector listener for VM targets (contracts.md#telemetry, C4):
+# an address on a dummy interface, reachable only from run networks through
+# the run ACL and the firewall, OTLP gRPC and HTTP on the ports of
+# pokus_ports. Set up only with the vm_targets feature.
+pokus_vm_otlp: {interface: pokus-otlp0, address: 198.18.0.1}
+
 # Incus bridges the firewall treats as Incus networks (contracts.md: run
 # networks are named r-<short>; image builds use pokus-build0).
 pokus_incus_bridge_patterns: ["r-*", "pokus-build0"]

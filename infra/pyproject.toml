@@ -77,10 +77,11 @@ convention = "google"
 "bootstrap/tests/**" = ["S603", "S607"]  # the tests drive bash, git and setpriv
 "ansible/tests/**" = ["S603", "S607"]  # the tests run nft, ShellCheck, sh and visudo
 "ansible/roles/*/library/*.py" = ["E501"]  # managed header and module documentation lines
+"ansible/roles/*/files/*.py" = ["E501", "EXE001"]  # managed header; installed executable, shebang for the host
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/tests"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/tests"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -107,5 +108,7 @@ pythonpath = [
   "bootstrap/tests",
   "ansible/filter_plugins",
   "ansible/roles/incus/library",
+  "ansible/roles/models/files",
+  "ansible/roles/vllm/files",
   "ansible/tests",
 ]

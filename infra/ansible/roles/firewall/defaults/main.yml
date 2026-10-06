@@ -15,3 +15,6 @@ firewall_incus_bridge_patterns: "{{ pokus_incus_bridge_patterns + pokus_incus_pe
 # Bridges with NAT and an uplink (image builds, personal projects), trusted like
 # Incus documents for firewalld and ufw hosts.
 firewall_uplink_bridge_patterns: "{{ ['pokus-build0'] + pokus_incus_personal_bridge_patterns }}"
+# OTLP ports of the dedicated collector listener that VM targets reach from the
+# run networks (contracts.md#telemetry, C4); empty without vm_targets.
+firewall_vm_otlp_ports: "{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] if pokus_features.vm_targets | default(false) else [] }}"

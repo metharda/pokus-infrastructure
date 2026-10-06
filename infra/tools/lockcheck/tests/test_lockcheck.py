@@ -174,6 +174,74 @@ def test_binary_checksums(lock: dict[str, Any]) -> None:
     assert [f.where for f in findings] == ["binaries.quarto.assets.aarch64"]
 
 
+def binary_doc(fmt: str = "binary", sha256: str | None = None) -> dict[str, Any]:
+    content = b"#!/bin/sh\nexit 0\n"
+    digest = sha256 or hashlib.sha256(content).hexdigest()
+    asset = {"url": "https://example.com/tool", "sha256": digest}
+    return {
+        "binaries": {"tool": {"format": fmt, "assets": {"x86_64": asset, "aarch64": asset}}},
+        "_content": content,
+    }
+
+
+def fake_downloader(content: bytes) -> checks.Downloader:
+    def download(url: str, out: Any) -> str:
+        out.write(content)
+        return hashlib.sha256(content).hexdigest()
+
+    return download
+
+
+def test_fetch_binary_installs_verified_executables(tmp_path: Path) -> None:
+    doc = binary_doc()
+    dest = tmp_path / "bin" / "tool"
+    digest = checks.fetch_binary(
+        doc, "tool", dest, machine="arm64", downloader=fake_downloader(doc["_content"])
+    )
+    assert dest.read_bytes() == doc["_content"]
+    assert dest.stat().st_mode & 0o777 == 0o755
+    assert digest == doc["binaries"]["tool"]["assets"]["aarch64"]["sha256"]
+    assert sorted(p.name for p in dest.parent.iterdir()) == ["tool"]
+
+
+@pytest.mark.parametrize(
+    ("doc", "name", "machine", "message"),
+    [
+        (binary_doc(), "other", "x86_64", "no binary"),
+        (binary_doc("tar.gz"), "tool", "x86_64", "not a single binary"),
+        (binary_doc(), "tool", "riscv64", "no asset for riscv64"),
+        (binary_doc(sha256="TODO(verify)"), "tool", "x86_64", "not verified"),
+        (binary_doc(sha256="0" * 64), "tool", "x86_64", "sha256 is"),
+    ],
+)
+def test_fetch_binary_refuses(
+    tmp_path: Path, doc: dict[str, Any], name: str, machine: str, message: str
+) -> None:
+    dest = tmp_path / "tool"
+    dest.write_bytes(b"old")
+    with pytest.raises(checks.FetchRefusedError, match=message):
+        checks.fetch_binary(
+            doc, name, dest, machine=machine, downloader=fake_downloader(doc["_content"])
+        )
+    assert dest.read_bytes() == b"old"  # never replaced by unverified content
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["tool"]
+
+
+def test_fetch_command_reports_refusals(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code = cli.main(
+        [
+            "fetch",
+            "quarto",
+            "--dest",
+            str(tmp_path / "q"),
+            "--lock",
+            str(INFRA / "versions.lock.yml"),
+        ]
+    )
+    assert code == 1
+    assert "not a single binary" in capsys.readouterr().err
+
+
 def test_key_fingerprints() -> None:
     doc = {
         "repository_keys": {
