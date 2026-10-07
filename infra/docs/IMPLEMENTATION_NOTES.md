@@ -1889,6 +1889,11 @@ outside the fast lane. Now:
 - Nothing was run on a real host here (no Docker daemon and no systemd host
   in this environment); the CI fast lane is the proof, and its findings are
   fixed in follow-up commits as before.
+- **First run of the whole play** (about 150 tasks per family): every family
+  stopped at the observability role's secrets check, whose `$` test was a
+  quoted string and therefore always true, so a `$` in the Grafana database
+  password was never refused; ansible-core 2.21 rejects the non-boolean
+  result. Fixed, and a role test now flags quoted expressions in conditionals.
 
 ### Interpretations awaiting owner confirmation (check mode of the whole play)
 

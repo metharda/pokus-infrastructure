@@ -13,7 +13,7 @@
       - not observability_stores or vault_grafana_admin_password is defined
       - not observability_stores or vault_grafana_admin_password | length >= 8
       - not observability_stores or vault_postgres_passwords.pokus_grafana is defined
-      - not observability_stores or "'$' not in vault_postgres_passwords.pokus_grafana"
+      - not observability_stores or '$' not in vault_postgres_passwords.pokus_grafana
       - >-
         not observability_stores or observability_grafana_researchers
         | difference(observability_grafana_user_passwords.keys() | list) | length == 0

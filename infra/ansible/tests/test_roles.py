@@ -214,6 +214,26 @@ def test_notified_handlers_exist() -> None:
             assert name in handler_names(role), (path.name, name)
 
 
+# An operand of and/or that is a quoted literal holding an expression (an
+# operator, a filter or a nested quote): quoted by mistake, always true.
+QUOTED_EXPRESSION_RE = re.compile(
+    r"""\b(?:or|and)\s+(?:"[^"]*(?:\sin\s|\sis\s|==|!=|\||')[^"]*"|'[^']*(?:\sin\s|\sis\s|==|!=|\||")[^']*')"""
+)
+CONDITIONALS = ("when", "failed_when", "changed_when", "until")
+
+
+def test_conditionals_are_not_quoted_strings() -> None:
+    found = []
+    for role, path, task in all_tasks():
+        expressions = [task.get(key) for key in CONDITIONALS]
+        expressions.append(task.get("ansible.builtin.assert", {}).get("that"))
+        for value in expressions:
+            for expression in value if isinstance(value, list) else [value]:
+                if isinstance(expression, str) and QUOTED_EXPRESSION_RE.search(expression):
+                    found.append((role, path.name, task.get("name"), expression))
+    assert found == []
+
+
 def test_ignore_errors_is_justified() -> None:
     for role in ROLE_NAMES:
         for path in task_files(role):
