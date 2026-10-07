@@ -23,8 +23,10 @@ vault_postgres_passwords:          # one per database role (contracts.md)
   pokus_grafana: "<generated>"
 
 vault_grafana_admin_password: "<generated or entered>"
-vault_grafana_user_passwords:      # one per researcher
+vault_grafana_user_passwords:      # one per researcher with a Grafana account
   researcher1: "<generated>"
+  researcher2: "<generated>"
+  researcher3: "<generated>"
 
 vault_restic_repository: "sftp:backup@backup.example.com:/srv/restic/pokus-lab"
 vault_restic_password: "<generated>"

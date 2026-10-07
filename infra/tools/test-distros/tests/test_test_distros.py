@@ -419,7 +419,9 @@ def test_check_mode_run(tmp_path: Path) -> None:
     assert profile["provider"] == "baremetal"  # treated like bare metal
     assert profile["overrides"]["force_unsupported"] is True  # a container is unsupported
     assert variables["ansible_python_interpreter"] == "/usr/bin/python3"
-    assert variables["pokus_python"] == "/usr/bin/python3"
+    assert "pokus_python" not in variables  # bootstrap's CPython path, linked to the container's
+    link = next(c for c in fake.calls if c[1:2] == ("exec",) and c[3] == "ln")
+    assert link[-2:] == ("/usr/bin/python3", "/opt/pokus/python/bin/python3")
     assert variables["machine"] == "example-machine"
     bootstrap = variables["pokus_bootstrap"]
     assert bootstrap["profile_path"] == "/opt/pokus-ci/host-profile.json"

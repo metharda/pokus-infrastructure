@@ -37,6 +37,8 @@ GUEST_TREES = ("preflight", "tools/pokus-lab")
 # Not below /tmp: that is a tmpfs in the container, and docker cp cannot write into tmpfs mounts.
 GUEST_DIR = "/opt/pokus-ci"
 GUEST_PROFILE = f"{GUEST_DIR}/host-profile.json"
+# Where bootstrap installs the pinned CPython before Ansible runs (pokus_python).
+GUEST_POKUS_PYTHON = "/opt/pokus/python/bin/python3"
 SYSTEMD_STATES = ("running", "degraded")
 # Roles that install a component of ansible/component-sources.yml.
 SOURCED_ROLES = {
@@ -135,7 +137,6 @@ def extra_vars(profile: dict[str, Any], interpreter: str) -> dict[str, Any]:
         },
         "machine": MACHINE,
         "ansible_python_interpreter": interpreter,
-        "pokus_python": interpreter,
     }
 
 
@@ -318,6 +319,13 @@ class CheckMode:
         interpreter = self._check(
             self._exec("sh", "-c", "command -v python3.11 || command -v python3"), "finding Python"
         ).stdout.strip()
+        # The container's Python stands in for the CPython that bootstrap installs.
+        self._check(
+            self._exec("mkdir", "-p", str(Path(GUEST_POKUS_PYTHON).parent)), "creating /opt/pokus"
+        )
+        self._check(
+            self._exec("ln", "-sf", interpreter, GUEST_POKUS_PYTHON), "linking pokus_python"
+        )
         host_vars = _load(ANSIBLE / "inventory" / "host_vars" / f"{MACHINE}.yml")
         # The same options as preflight_gate's run, which compares its profile with this one.
         report = self._exec(
