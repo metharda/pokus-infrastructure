@@ -1,15 +1,15 @@
 # Managed by pokus-infra (ansible/roles/backup/templates/backup-job.service.j2). Local changes will be overwritten.
 #
-# {{ item.description }} (BUILD_PROMPT §7.15), started by {{ item.name }}.timer.
+# {{ backup_job.description }} (BUILD_PROMPT §7.15), started by {{ backup_job.name }}.timer.
 [Unit]
-Description=Pokus {{ item.description }}
-After={{ item.after }}
+Description=Pokus {{ backup_job.description }}
+After={{ backup_job.after }}
 Wants=network-online.target
 
 [Service]
 Slice={{ pokus_services_slice }}
 Type=oneshot
-ExecStart={{ backup_helper }} --config {{ backup_config_dir }}/backup.json {{ item.command }}
+ExecStart={{ backup_helper }} --config {{ backup_config_dir }}/backup.json {{ backup_job.command }}
 Nice=10
 IOSchedulingClass=idle
 NoNewPrivileges=yes

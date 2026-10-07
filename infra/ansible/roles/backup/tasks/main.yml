@@ -198,6 +198,8 @@
   loop: "{{ backup_jobs | product(['service', 'timer']) | list }}"
   loop_control:
     label: "{{ item.0.name }}.{{ item.1 }}"
+  vars:
+    backup_job: "{{ item.0 }}"
   register: backup_units
 
 - name: Enable the timers of the configured jobs and disable the others

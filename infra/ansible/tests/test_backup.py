@@ -322,10 +322,13 @@ def test_units_render() -> None:
         item = {
             k: evaluate(v.strip()[2:-2], variables) if "{{" in str(v) else v for k, v in job.items()
         }
-        service = render_template("backup", "backup-job.service.j2", {**variables, "item": item})
+        # The task loops over (job, kind) pairs and binds the job to backup_job.
+        service = render_template(
+            "backup", "backup-job.service.j2", {**variables, "backup_job": item}
+        )
         assert f"--config /etc/pokus/backup/backup.json {item['command']}" in service
         assert "Type=oneshot" in service
-        timer = render_template("backup", "backup-job.timer.j2", {**variables, "item": item})
+        timer = render_template("backup", "backup-job.timer.j2", {**variables, "backup_job": item})
         assert f"OnCalendar={item['schedule']}" in timer
         assert "Persistent=true" in timer
 

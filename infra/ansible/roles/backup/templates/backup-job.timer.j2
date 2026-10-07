@@ -2,10 +2,10 @@
 #
 # The host is not always on: Persistent=true runs a missed job after boot.
 [Unit]
-Description=Pokus {{ item.description }} (timer)
+Description=Pokus {{ backup_job.description }} (timer)
 
 [Timer]
-OnCalendar={{ item.schedule }}
+OnCalendar={{ backup_job.schedule }}
 Persistent=true
 RandomizedDelaySec=5min
 
