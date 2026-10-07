@@ -3,7 +3,9 @@
 Base system for every host (BUILD_PROMPT §7.2):
 
 - packages requested by logical name (`base_packages`) and mapped to real
-  names per family in `vars/<family>.yml`;
+  names per family in `vars/<family>.yml` (an empty name skips a package on
+  that family), including python3-debian on the Debian family, which the
+  `pkg` role's `deb822_repository` needs;
 - system time zone UTC;
 - persistent journald with size limits;
 - time sync: keeps the service the distribution uses (systemd-timesyncd or

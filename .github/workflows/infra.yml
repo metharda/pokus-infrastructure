@@ -97,8 +97,8 @@ jobs:
       - run: make lock-check
 
   check-mode:
-    # CI fast lane (BUILD_PROMPT §19.9): the provider-agnostic roles with
-    # --check in a disposable systemd container per family; never a host.
+    # CI fast lane (BUILD_PROMPT §19.9): site.yml with --check in a
+    # disposable systemd container per family; never a host.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     strategy:

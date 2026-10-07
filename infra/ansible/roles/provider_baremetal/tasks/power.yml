@@ -55,7 +55,9 @@
     name: pokus-sleep-inhibit.service
     enabled: true
     daemon_reload: "{{ provider_baremetal_inhibitor is changed }}"
-  when: power_policy == 'lab_session_inhibit'
+  when:
+    - power_policy == 'lab_session_inhibit'
+    - not ansible_check_mode or 'pokus-sleep-inhibit.service' in pokus_present.units
 
 - name: Remove the lab session sleep inhibitor (policy changed)
   ansible.builtin.file:

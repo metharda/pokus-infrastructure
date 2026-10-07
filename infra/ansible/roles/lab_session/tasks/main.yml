@@ -74,11 +74,13 @@
     enabled: true
     daemon_reload: "{{ lab_session_unit_files is changed }}"
   loop: [pokus-health-gate.service, pokus-session-start.service]
+  when: not ansible_check_mode or item in pokus_present.units
 
 - name: Start the lab at boot or not
   ansible.builtin.systemd_service:
     name: pokus-lab.target
     enabled: "{{ lab_session_autostart | bool }}"
+  when: not ansible_check_mode or 'pokus-lab.target' in pokus_present.units
 
 - name: Bring the lab up (waits for the health gate and the session record)
   ansible.builtin.systemd_service:

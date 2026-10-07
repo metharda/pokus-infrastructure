@@ -23,6 +23,7 @@ base_package_names:
   zstd: zstd
   bzip2: bzip2
   tar: tar
+  python_debian: ""  # Debian family only
 base_package_overrides: {}
 base_timesync_default_package: systemd
 base_timesync_default_service: systemd-timesyncd

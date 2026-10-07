@@ -418,7 +418,7 @@ Proposed after infra step 13 (same status; details in
 | 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
 | 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
 | 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
-| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`) |
+| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`; whole play in check mode: "fix(infra): make the whole play check-mode safe on fresh hosts") |
 | 13 | Installer TUI | done | commit "feat(infra): add the installer TUI" (SHA recorded with step 14) |
 | 14 | Documentation completion | pending | — |
 
@@ -579,6 +579,15 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   Tailscale key, the phase tree's provider and helper roles. Not covered: no
   real bootstrap driven by the TUI yet; estimates are counts only (no measured
   build data); MOK enrollment and the Hub API field names unverified.
+- From the follow-ups after step 13 (IMPLEMENTATION_NOTES, "CPU sets" and
+  "check mode of the whole play"): empty CPU sets by default; which units and
+  containers the services slice holds; the proposed `[incus] cpuset_targets`
+  contract addition; the CI fast lane running all of `site.yml` (beyond the
+  provider-agnostic roles of BUILD_PROMPT §19.9) with the container as bare
+  metal, and skipping roles whose sources are unverified. Findings: Tailscale
+  and Incus are skipped on every CI image until verified, Docker on Leap and
+  Arch; check mode on a fresh Debian-family host needs python3-apt and
+  python3-debian; python3-debian was missing for real runs too (fixed).
 
 ## Owner deliverables pending
 
@@ -709,8 +718,9 @@ step 4" through "after step 13"):
 Infra step 14: documentation completion (BUILD_PROMPT and DOCS_SPEC): the
 remaining required infra pages (the WSL2 and bare-metal install tutorials,
 the operator how-tos still missing, the glossary and tour pieces that belong
-to infra) and `pokus-lab docs serve`. Before it, one follow-up from earlier
-steps: check-mode safety of the roles outside the CI fast lane (the CPU sets
-of services and targets are applied since the commit "feat(infra): pin the lab
-services and the targets to their CPU sets"). After step 14 the assistant
-stops and waits for the platform phase.
+to infra) and `pokus-lab docs serve`. The follow-ups before it are done: the
+CPU sets of services and targets ("feat(infra): pin the lab services and the
+targets to their CPU sets") and check mode of the whole play, which the CI
+fast lane now runs ("fix(infra): make the whole play check-mode safe on fresh
+hosts"; findings in IMPLEMENTATION_NOTES). After step 14 the assistant stops
+and waits for the platform phase.

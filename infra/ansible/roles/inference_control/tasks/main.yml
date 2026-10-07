@@ -22,6 +22,7 @@
     owner: root
     group: pokus-orch
     mode: "0750"
+  register: inference_control_dir_state
 
 - name: Create the node's private key
   community.crypto.openssl_privatekey:
@@ -31,6 +32,7 @@
     owner: root
     group: pokus-orch
     mode: "0640"
+  when: not (ansible_check_mode and inference_control_dir_state is changed)  # the directory may not exist yet
 
 # The tailnet name is the subject alternative name: the gateway, the
 # orchestrator and the collectors verify the peer by it.

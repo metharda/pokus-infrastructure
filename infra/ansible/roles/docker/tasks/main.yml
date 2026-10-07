@@ -28,6 +28,14 @@
     pkg_repo_name: "{{ docker_source.repo }}"
   when: docker_source.source == 'vendor_repo'
 
+# The repository is not really added in check mode, so its packages cannot be
+# resolved; everything below needs Docker installed.
+- name: Skip the rest in check mode before Docker is installed
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - "'dockerd' not in pokus_present.commands"
+
 - name: Install Docker Engine, Compose and buildx
   ansible.builtin.include_role:
     name: pkg
@@ -50,13 +58,11 @@
   register: docker_dockerd_version
   changed_when: false
   check_mode: false
-  # In check mode on a new host Docker is not installed yet.
-  failed_when: docker_dockerd_version.rc != 0 and not ansible_check_mode
 
 - name: Record the Docker Engine major version
   ansible.builtin.set_fact:
     docker_engine_major: >-
-      {{ (docker_dockerd_version.stdout | default('') | regex_search('version ([0-9]+)', '\\1') or [docker_cdi_min_major]) | first | int }}
+      {{ (docker_dockerd_version.stdout | regex_search('version ([0-9]+)', '\\1') or [docker_cdi_min_major]) | first | int }}
 
 - name: Decide how containers reach the GPU
   ansible.builtin.set_fact:

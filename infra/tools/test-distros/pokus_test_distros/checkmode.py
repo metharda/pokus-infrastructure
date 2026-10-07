@@ -1,19 +1,25 @@
-"""The CI fast lane: provider-agnostic roles in check mode in a systemd container.
+"""The CI fast lane: the provisioning play in check mode in a systemd container.
 
 ``make check-mode CI_IMAGE=<key>`` builds a container from the base image
 ``containers.ci_images.<key>`` of ``versions.lock.yml`` (pinned by digest)
 with ``tests/distros/containers/``, starts it with systemd as PID 1, runs
-preflight inside it for the host profile, and runs ``ansible/check-mode.yml``
-with ``--check`` through Ansible's docker connection. Nothing runs on the
-host itself; the container is removed afterwards.
+preflight inside it for the host profile, and runs ``ansible/site.yml`` with
+``--check`` through Ansible's docker connection, with the variables bootstrap
+would pass and the example vault. Roles whose component source or pins are
+not verified for the container's release are skipped by tag: the play refuses
+them, as it would on a real host. Nothing runs on the host itself; the
+container is removed afterwards.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import yaml
@@ -21,12 +27,28 @@ import yaml
 from pokus_test_distros.incus import Result, Runner
 
 INFRA = Path(__file__).resolve().parents[3]
+ANSIBLE = INFRA / "ansible"
 CONTAINERS = INFRA / "tests" / "distros" / "containers"
-PLAYBOOK = INFRA / "ansible" / "check-mode.yml"
+PLAYBOOK = ANSIBLE / "site.yml"
+MACHINE = "example-machine"
+# Read on the target by preflight_gate and doctor: copied into the container at
+# the same absolute paths, because the play resolves them on the controller.
+GUEST_TREES = ("preflight", "tools/pokus-lab")
 # Not below /tmp: that is a tmpfs in the container, and docker cp cannot write into tmpfs mounts.
 GUEST_DIR = "/opt/pokus-ci"
-GUEST_PREFLIGHT = f"{GUEST_DIR}/preflight"
+GUEST_PROFILE = f"{GUEST_DIR}/host-profile.json"
 SYSTEMD_STATES = ("running", "degraded")
+# Roles that install a component of ansible/component-sources.yml.
+SOURCED_ROLES = {
+    "docker": "docker",
+    "tailscale": "tailscale",
+    "incus": "incus",
+    "nvidia_container_toolkit": "nvidia_container_toolkit",
+}
+FINGERPRINT_RE = re.compile(r"^([0-9A-F]{40}|[0-9A-F]{64})$")
+# The example vault, with a local backup repository (an SFTP one needs the server's host keys).
+VAULT_EXAMPLE = ANSIBLE / "group_vars" / "all" / "vault.yml.example"
+CI_RESTIC_REPOSITORY = "/var/backups/pokus-restic"
 
 
 class CheckModeError(RuntimeError):
@@ -54,18 +76,14 @@ def image_ref(lock: dict[str, Any], key: str) -> str:
     return f"{images[key]['image']}@{images[key]['digest']}"
 
 
-def extra_vars(profile_json: str, interpreter: str) -> dict[str, Any]:
-    """The variables bootstrap would pass, with the container's host profile.
-
-    Preflight classifies the container as a container, without a provider;
-    the fast lane treats it like a bare-metal host.
+def parse_profile(profile_json: str) -> dict[str, Any]:
+    """Preflight's host profile from inside the container.
 
     Args:
-        profile_json: Preflight's JSON report from inside the container.
-        interpreter: Python of the container.
+        profile_json: Preflight's JSON report.
 
     Returns:
-        Extra variables for ansible-playbook.
+        The profile.
 
     Raises:
         CheckModeError: If preflight wrote no profile.
@@ -76,13 +94,125 @@ def extra_vars(profile_json: str, interpreter: str) -> dict[str, Any]:
         raise CheckModeError("preflight wrote no JSON profile in the container") from exc
     if not isinstance(profile, dict) or profile.get("schema_version") != 1:
         raise CheckModeError("preflight wrote no host profile in the container")
-    profile["provider"] = profile.get("provider") or "baremetal"
+    return profile
+
+
+def extra_vars(profile: dict[str, Any], interpreter: str) -> dict[str, Any]:
+    """The variables bootstrap would pass, with the container's host profile.
+
+    Preflight classifies the container as a container, without a provider and
+    unsupported; the fast lane treats it like a bare-metal host whose operator
+    forced the installation (``--force-unsupported``), as bootstrap records it.
+
+    Args:
+        profile: Preflight's host profile from inside the container.
+        interpreter: Python of the container.
+
+    Returns:
+        Extra variables for ansible-playbook.
+    """
+    host_profile = json.loads(json.dumps(profile))
+    host_profile["provider"] = host_profile.get("provider") or "baremetal"
+    host_profile.setdefault("overrides", {})["force_unsupported"] = True
     return {
-        "host_profile": profile,
-        "pokus_bootstrap": {"interactive": False, "check_mode_fast_lane": True},
-        "machine": "example-machine",
+        "host_profile": host_profile,
+        "pokus_bootstrap": {
+            "machine": MACHINE,
+            "repo_commit": "",
+            "infra_tree": "",
+            "infra_dirty": False,
+            "ref": "HEAD",
+            "check": True,
+            "refresh_profile": False,
+            "allow_reboot": False,
+            "adopt_incus": False,
+            "allow_community_repos": False,
+            "offline": True,
+            "interactive": False,
+            "profile_path": GUEST_PROFILE,
+            "signal_file": f"{GUEST_DIR}/bootstrap-signal.json",
+            "check_mode_fast_lane": True,
+        },
+        "machine": MACHINE,
         "ansible_python_interpreter": interpreter,
+        "pokus_python": interpreter,
     }
+
+
+def vault_vars() -> dict[str, Any]:
+    """The secrets of the run: the example vault with a local backup repository.
+
+    Returns:
+        Vault variables.
+    """
+    vault: dict[str, Any] = yaml.safe_load(VAULT_EXAMPLE.read_text(encoding="utf-8"))
+    vault["vault_restic_repository"] = CI_RESTIC_REPOSITORY
+    return vault
+
+
+def _filters() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "pokus_filters", ANSIBLE / "filter_plugins" / "pokus.py"
+    )
+    if spec is None or spec.loader is None:
+        raise CheckModeError("cannot load ansible/filter_plugins/pokus.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load(path: Path) -> dict[str, Any]:
+    data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return data
+
+
+def unverified_roles(profile: dict[str, Any]) -> dict[str, str]:
+    """Roles the play refuses on this release because their source is not verified.
+
+    Mirrors the refusals of the play: the component's source entry, its vendor
+    repository and repository key, and its package pins (``TODO(verify)``).
+
+    Args:
+        profile: Preflight's host profile from inside the container.
+
+    Returns:
+        ``{role: reason}``.
+
+    Raises:
+        CheckModeError: If the profile names no known release.
+    """
+    filters = _filters()
+    sources = _load(ANSIBLE / "component-sources.yml")
+    versions = _load(ANSIBLE / "group_vars" / "all" / "versions.yml")["pokus_versions"]
+    family = str(profile.get("family"))
+    facts = ANSIBLE / "roles" / "platform_facts" / "vars" / f"{family}.yml"
+    if not facts.is_file():
+        raise CheckModeError(f"the host profile names no supported family ({family})")
+    codenames = _load(facts)["platform_facts_family"]["codenames"]
+    try:
+        identity = filters.release_identity(profile, codenames)
+    except filters.PokusFilterError as exc:
+        raise CheckModeError(f"no release identity for the container: {exc}") from exc
+    refused: dict[str, str] = {}
+    for role, component in SOURCED_ROLES.items():
+        source = filters.component_source(
+            sources["components"], component, identity["source_group"]
+        )
+        reasons = [str(source["verify"])] if "verify" in source else []
+        if source.get("source") == "vendor_repo":
+            repo = sources["repositories"][source["repo"]]
+            key = versions["repository_keys"]["keys"][repo["key"]]
+            if "verify" in repo:
+                reasons.append(f"repository {source['repo']}: {repo['verify']}")
+            if not FINGERPRINT_RE.match(str(key["fingerprint"])):
+                reasons.append(f"repository key {repo['key']} is not verified")
+        try:
+            filters.lock_packages(versions["packages"], component, identity["release_key"])
+        except filters.PokusFilterError as exc:
+            reasons.append(str(exc))
+        if reasons:
+            refused[role] = "; ".join(reasons)
+    return refused
 
 
 class CheckMode:
@@ -170,45 +300,58 @@ class CheckMode:
             f"systemd did not finish booting in the container ({state or 'no answer'})"
         )
 
-    def profile(self) -> dict[str, Any]:
-        """Run preflight in the container.
+    def prepare(self) -> tuple[dict[str, Any], str]:
+        """Copy what the play reads on the target into the container and run preflight there.
 
         Returns:
-            The extra variables with its host profile.
+            Preflight's host profile and the container's Python.
 
         Raises:
             CheckModeError: If preflight printed no report.
         """
-        self._check(self._exec("mkdir", "-p", GUEST_DIR), "creating the preflight directory")
-        self._check(
-            self._docker("cp", str(INFRA / "preflight"), f"{self.name}:{GUEST_PREFLIGHT}"),
-            "docker cp",
-        )
+        parents = sorted({str((INFRA / tree).parent) for tree in GUEST_TREES})
+        self._check(self._exec("mkdir", "-p", GUEST_DIR, *parents), "creating the directories")
+        for tree in GUEST_TREES:
+            self._check(
+                self._docker("cp", str(INFRA / tree), f"{self.name}:{INFRA / tree}"), "docker cp"
+            )
         interpreter = self._check(
             self._exec("sh", "-c", "command -v python3.11 || command -v python3"), "finding Python"
         ).stdout.strip()
+        host_vars = _load(ANSIBLE / "inventory" / "host_vars" / f"{MACHINE}.yml")
+        # The same options as preflight_gate's run, which compares its profile with this one.
         report = self._exec(
             "env",
-            f"PYTHONPATH={GUEST_PREFLIGHT}",
+            f"PYTHONPATH={INFRA / 'preflight'}",
             interpreter,
             "-m",
             "pokus_preflight",
             "--no-write",
-            "--offline",
             "--quiet",
+            "--srv-path",
+            str(host_vars["pokus_root"]),
+            "--offline",
         )
         if not report.stdout.strip():
             raise CheckModeError(
                 f"preflight printed no report (exit status {report.returncode}): "
                 f"{report.stderr.strip()[-600:]}"
             )
-        return extra_vars(report.stdout, interpreter)
+        profile = parse_profile(report.stdout)
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        local = self.out_dir / f"{self.key}-host-profile.json"
+        local.write_text(json.dumps(profile, indent=2), encoding="utf-8")
+        self._check(self._docker("cp", str(local), f"{self.name}:{GUEST_PROFILE}"), "docker cp")
+        return profile, interpreter
 
-    def play(self, variables: dict[str, Any]) -> Result:
-        """Run the check-mode play through the docker connection.
+    def play(self, variables: dict[str, Any], skip: list[str]) -> Result:
+        """Run the provisioning play in check mode through the docker connection.
+
+        The container stands in for ``localhost``, the host the play provisions.
 
         Args:
             variables: Extra variables.
+            skip: Roles to skip (their tags).
 
         Returns:
             The ansible-playbook result.
@@ -216,20 +359,26 @@ class CheckMode:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         extra = self.out_dir / f"{self.key}-vars.json"
         extra.write_text(json.dumps(variables, indent=2), encoding="utf-8")
-        return self.run(
-            [
-                "ansible-playbook",
-                "--check",
-                "--inventory",
-                f"{self.name},",
-                "--connection",
-                "community.docker.docker",
-                "--extra-vars",
-                f"@{extra}",
-                str(PLAYBOOK),
-            ],
-            timeout=3600,
+        vault = self.out_dir / f"{self.key}-vault.json"
+        vault.write_text(json.dumps(vault_vars(), indent=2), encoding="utf-8")
+        inventory = self.out_dir / f"{self.key}-inventory.ini"
+        inventory.write_text(
+            f"localhost ansible_connection=community.docker.docker ansible_host={self.name}\n",
+            encoding="utf-8",
         )
+        argv = [
+            "ansible-playbook",
+            "--check",
+            "--inventory",
+            str(inventory),
+            "--extra-vars",
+            f"@{extra}",
+            "--extra-vars",
+            f"@{vault}",
+        ]
+        if skip:
+            argv += ["--skip-tags", ",".join(skip)]
+        return self.run([*argv, str(PLAYBOOK)], timeout=3600)
 
     def stop(self) -> None:
         """Remove the container."""
@@ -250,7 +399,7 @@ def main(
     Args:
         key: Key under ``containers.ci_images``.
         run: Command runner.
-        out_dir: Directory for the extra variables.
+        out_dir: Directory for the variables, the inventory and the host profile.
         keep: Keep the container afterwards.
         write: Output function.
         sleep: Sleep function (tests replace it).
@@ -264,7 +413,11 @@ def main(
         image = image_ref(lock, key)
         write(f"== {key}: {image}")
         check.start(image)
-        result = check.play(check.profile())
+        profile, interpreter = check.prepare()
+        skipped = unverified_roles(profile)
+        for role, reason in sorted(skipped.items()):
+            write(f"-- skipping {role}, refused on this release: {reason}")
+        result = check.play(extra_vars(profile, interpreter), sorted(skipped))
         write(result.stdout)
         if result.stderr:
             write(result.stderr)

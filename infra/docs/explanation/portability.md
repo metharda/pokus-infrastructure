@@ -137,18 +137,27 @@ for the firewall and SELinux variants; a second bootstrap must change
 nothing, and `pokus-lab doctor --smoke` must pass. The results, with their
 dates, are in the [support matrix](../support-matrix.md#last-test-results)
 and count for 90 days. On every push, the CI fast lane runs the
-provider-agnostic roles in check mode in a systemd container per family,
-which catches package names and module arguments that do not fit a family
-without provisioning anything. [How to test the
-distributions](../how-to/test-distributions.md) has the commands.
+provisioning play in check mode in a systemd container per family, which
+catches package names, repository keys and module arguments that do not fit
+a family without provisioning anything. Roles whose source is still
+unverified for a release are skipped there, as the play refuses them.
+[How to test the distributions](../how-to/test-distributions.md) has the
+commands.
 
-Check mode changes nothing, so on a fresh host a unit, file or account that
-an earlier task would create is still missing when a later task manages it.
-`platform_facts` therefore records in check mode what exists when the play
-starts (`pokus_present`: systemd units and accounts), and such later tasks
-carry `when: not ansible_check_mode or <it exists>`. Outside check mode the
-condition is always true. A test fails when a fast-lane role manages a unit,
-`lineinfile` target, authorized key or ACL without such a condition.
+Check mode changes nothing, so on a fresh host a unit, file, account or
+directory that an earlier task would create is still missing when a later
+task needs it. `platform_facts` therefore records in check mode what exists
+when the play starts (`pokus_present`: systemd units, accounts and the
+commands of the components from vendor repositories), and such later tasks
+carry `when: not ansible_check_mode or <it exists>`; a task that needs a
+directory created earlier in the run skips in check mode while that task
+reports a change. Outside check mode these conditions are always true. Check
+mode cannot resolve packages from a vendor repository that it did not really
+add, so the roles of those components end after their repository step
+(`meta: end_role`) while the component is not installed, and so does the
+images role while Incus is not installed. A test walks every task that
+`site.yml` reaches and fails when one of them manages a unit, `lineinfile`
+target, authorized key, ACL, key file or download without such a condition.
 
 ## When a host cannot be supported
 

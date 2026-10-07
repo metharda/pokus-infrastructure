@@ -13,6 +13,7 @@
   loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
   loop_control:
     label: "{{ item.short }}"
+  register: incus_cert_dirs
 
 - name: Generate the private keys
   community.crypto.openssl_privatekey:
@@ -25,6 +26,7 @@
   loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
   loop_control:
     label: "{{ item.short }}"
+  when: not (ansible_check_mode and incus_cert_dirs is changed)  # the directories may not exist yet
 
 - name: Create the certificate requests
   community.crypto.openssl_csr_pipe:

@@ -18,7 +18,9 @@
     enabled: true
     state: started
     daemon_reload: true
-  when: observability_vm_listener
+  when:
+    - observability_vm_listener
+    - not ansible_check_mode or 'pokus-vm-otlp-address.service' in pokus_present.units
 
 - name: Look for a VM listener address unit from an earlier configuration
   ansible.builtin.stat:

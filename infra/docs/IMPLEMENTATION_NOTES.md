@@ -1829,3 +1829,72 @@ the installer's Resources screen, but no role applied them. Now:
    `limits.cpu` to CPUs inside it (written into `docs/contracts.md`).
 4. The fingerprint needs no new field: `host_vars_sha256` already changes
    with the split.
+
+## Follow-up after step 13: check mode of the whole play
+
+BUILD_PROMPT §17 asks for `bootstrap.sh --check` end to end on a fresh test
+host, and the step 12 notes promised the check-mode treatment for the roles
+outside the fast lane. Now:
+
+- `platform_facts` also records in check mode which component commands exist
+  when the play starts (`pokus_present.commands`: `dockerd`, `incus`,
+  `tailscale`, `nvidia-ctk`).
+- Check mode cannot resolve packages from a vendor repository it did not
+  really add. The docker, tailscale, incus and nvidia_container_toolkit roles
+  therefore end after their repository step (`meta: end_role`) in check mode
+  while their command is missing; the source lookup, the refusal of
+  unverified sources and the download and fingerprint check of the
+  repository key still run. The images role ends before the blueprints while
+  Incus is missing (it lists the image store). The incus role's own
+  stat-and-block skip is replaced by the same rule.
+- Units created earlier in the run (compose projects, lab session units, the
+  sleep inhibitor, the VM listener address, the vLLM deploy socket, the
+  inference control endpoint, the guest agent, the Incus event forwarder) are
+  managed in check mode only when they exist, handlers included. Key files and
+  downloads whose directory an earlier task creates (`openssh_keypair`,
+  `openssl_privatekey`/`publickey`, `get_url`) wait in check mode while that
+  task reports a change; the models role reads its accounts with
+  `fail_key` off in check mode; rpm imports a repository key from the
+  verified download instead of the copy check mode does not write.
+- `ansible/tests/test_roles.py` walks every task file `site.yml` reaches
+  (includes, included roles, handlers, `end_role`) and fails on an unguarded
+  task of those kinds; the old test covered only the fast-lane roles.
+- **Real-run fix found on the way**: `deb822_repository` (the pkg role's apt
+  repositories) needs python3-debian, which nothing installed; minimal Debian
+  hosts lack it. The base role installs it on the Debian family (the package
+  name ansible-core's module itself installs, from its source).
+- The CI fast lane now runs `ansible/site.yml` instead of the reduced
+  `ansible/check-mode.yml` (removed). The container stands in for
+  `localhost`; the trees the play reads on the target (preflight,
+  pokus-lab) are copied to the same absolute paths; preflight's profile is
+  written where `pokus_bootstrap.profile_path` points, so `preflight_gate`
+  really re-runs preflight and compares; the host profile carries
+  `force_unsupported` (preflight classifies containers as unsupported); the
+  example vault supplies the secrets, with a local backup repository. Roles
+  whose component source, repository, key or package pins are `TODO(verify)`
+  on the release are skipped by tag and listed in the output (computed with
+  the filter plugin's own functions). The containers also carry
+  python3-debian, gpg and the CA certificates, which the base role installs
+  and check mode cannot.
+
+### Findings to report (check mode of the whole play)
+
+- **The fast lane checks less than a real run on every release**: Tailscale
+  and Incus are skipped on every CI image (their repositories or pins are
+  `TODO(verify)`), and Docker on openSUSE Leap and Arch Linux. They run as
+  soon as their entries are verified.
+- **Check mode on a fresh Debian-family host needs python3-apt and
+  python3-debian**, which a real run installs (Ansible's package modules
+  cannot install them in check mode); Ubuntu installs carry both.
+- Nothing was run on a real host here (no Docker daemon and no systemd host
+  in this environment); the CI fast lane is the proof, and its findings are
+  fixed in follow-up commits as before.
+
+### Interpretations awaiting owner confirmation (check mode of the whole play)
+
+1. The fast lane runs the whole provisioning play rather than only the
+   provider-agnostic roles that BUILD_PROMPT §19.9 names, so that it also
+   proves `bootstrap.sh --check` (§17); the container counts as bare metal.
+2. Roles refused for unverified sources are skipped in the fast lane rather
+   than failing it, since lock-check already fails while any `TODO(verify)`
+   remains.

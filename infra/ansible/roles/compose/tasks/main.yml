@@ -105,6 +105,7 @@
     name: "pokus-{{ compose_project }}.service"
     enabled: "{{ compose_start }}"
     daemon_reload: true
+  when: not ansible_check_mode or ('pokus-' ~ compose_project ~ '.service') in pokus_present.units
 
 # `up` creates missing containers and recreates those whose definition changed,
 # including the config-hash label of a changed configuration directory.

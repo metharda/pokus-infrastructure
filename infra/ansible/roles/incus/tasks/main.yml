@@ -15,41 +15,28 @@
 - name: Install Incus
   ansible.builtin.include_tasks: install.yml
 
-- name: Check whether Incus is installed
-  ansible.builtin.stat:
-    path: "{{ incus_cli }}"
-  register: incus_cli_stat
+- name: Work out the desired configuration
+  ansible.builtin.include_tasks: desired.yml
 
-- name: Skip the configuration in check mode before Incus is installed
-  ansible.builtin.debug:
-    msg: "Incus is not installed yet; check mode skips its configuration."
-  when: not incus_cli_stat.stat.exists
+- name: Initialize a new installation
+  ansible.builtin.include_tasks: initialize.yml
 
-- name: Configure Incus
-  when: incus_cli_stat.stat.exists
-  block:
-    - name: Work out the desired configuration
-      ansible.builtin.include_tasks: desired.yml
+- name: Converge the Incus objects
+  ansible.builtin.include_tasks: objects.yml
 
-    - name: Initialize a new installation
-      ansible.builtin.include_tasks: initialize.yml
+- name: Issue the client certificates
+  ansible.builtin.include_tasks: certificates.yml
 
-    - name: Converge the Incus objects
-      ansible.builtin.include_tasks: objects.yml
+- name: Give researchers their personal projects
+  ansible.builtin.include_tasks: access.yml
 
-    - name: Issue the client certificates
-      ansible.builtin.include_tasks: certificates.yml
+- name: Feed Incus events to the journal
+  ansible.builtin.include_tasks: events.yml
 
-    - name: Give researchers their personal projects
-      ansible.builtin.include_tasks: access.yml
-
-    - name: Feed Incus events to the journal
-      ansible.builtin.include_tasks: events.yml
-
-    - name: Mark Incus as managed by Pokus
-      ansible.builtin.copy:
-        dest: /etc/pokus/managed-incus
-        content: "Managed by pokus-infra (incus role). Remove only together with the Incus configuration.\n"
-        owner: root
-        group: root
-        mode: "0644"
+- name: Mark Incus as managed by Pokus
+  ansible.builtin.copy:
+    dest: /etc/pokus/managed-incus
+    content: "Managed by pokus-infra (incus role). Remove only together with the Incus configuration.\n"
+    owner: root
+    group: root
+    mode: "0644"

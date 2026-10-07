@@ -62,3 +62,10 @@ See `meta/argument_specs.yml`; group names and paths per family are in
 The module compares only the fields Pokus manages; the pool and the networks
 are created once and never rewritten (their addresses are chosen by Incus);
 certificates are issued once and trusted by fingerprint.
+
+## Check mode
+
+Check mode verifies the source and the repository key, but cannot resolve
+packages from a repository it did not really add. While Incus is not
+installed (`incus` is missing when the play starts), the role ends after
+its repository step in check mode.

@@ -4,3 +4,4 @@
     name: nvidia-cdi-refresh.service
     state: restarted
     daemon_reload: true
+  when: not ansible_check_mode or 'nvidia-cdi-refresh.service' in pokus_present.units

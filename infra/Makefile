@@ -37,7 +37,7 @@ PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/te
   ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pokus-lab \
   tools/test-distros installer ansible/callback_plugins
-PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml ansible/check-mode.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
+PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/.
@@ -166,7 +166,7 @@ test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution
 	PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
-check-mode: setup ## CI fast lane (§19.9): provider-agnostic roles in check mode in a systemd container; CI_IMAGE=<containers.ci_images key>
+check-mode: setup ## CI fast lane (§19.9): site.yml in check mode in a systemd container; CI_IMAGE=<containers.ci_images key>
 	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: test-py39

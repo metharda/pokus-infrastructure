@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pokus_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pokus_versions_lock_sha256: "8a752c63640962c58662c643ac82164a9e883f01352ac005ae0a222a6fdcafa1"
+pokus_versions_lock_sha256: "2dee4715f14b31ff0117c2932452f5e1ce1bd39e458e7830251568325352257a"
 pokus_versions:
   schema_version: 1
   verified_on: '2026-10-05'

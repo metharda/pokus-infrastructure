@@ -64,6 +64,13 @@
     group: root
     mode: "0755"
 
+# The incus role installs Incus only outside check mode.
+- name: Skip the blueprints in check mode before Incus is installed
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - "'incus' not in pokus_present.commands"
+
 - name: Process the blueprints
   ansible.builtin.include_tasks: blueprint.yml
   loop: "{{ images_order }}"

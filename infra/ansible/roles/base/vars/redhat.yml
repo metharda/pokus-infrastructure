@@ -26,6 +26,7 @@ base_package_names:
   zstd: zstd
   bzip2: bzip2
   tar: tar
+  python_debian: ""  # Debian family only
 base_package_overrides:
   rhel_like: {btrfs_tools: null, htop: null}
 base_timesync_default_package: chrony

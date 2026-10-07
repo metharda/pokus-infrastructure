@@ -31,6 +31,14 @@
     pkg_repo_name: "{{ nvidia_container_toolkit_source.repo }}"
   when: nvidia_container_toolkit_source.source == 'vendor_repo'
 
+# The repository is not really added in check mode, so its packages cannot be
+# resolved; everything below needs the toolkit installed.
+- name: Skip the rest in check mode before the toolkit is installed
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - "'nvidia-ctk' not in pokus_present.commands"
+
 - name: Install the NVIDIA Container Toolkit
   ansible.builtin.include_role:
     name: pkg

@@ -8,9 +8,10 @@
     group: root
     mode: "0644"
 
+# From the verified download, which exists in check mode too (the copy above does not).
 - name: Import into rpm the key of {{ pkg_repo_name }}
   ansible.builtin.rpm_key:
-    key: "/etc/pki/rpm-gpg/pokus-{{ pkg_repo_name }}.asc"
+    key: "{{ pkg_key_tmp.path }}/key"
     fingerprint: "{{ pkg_repo_lock_key.fingerprint }}"
     state: present
 

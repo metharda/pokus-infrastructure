@@ -27,6 +27,7 @@
     owner: root
     group: root
     mode: "0700"
+  register: deploy_source_dir_state
 
 - name: Install the deployment helper
   ansible.builtin.copy:
@@ -45,7 +46,9 @@
     group: root
     mode: "0600"
   register: deploy_source_keypair
-  when: deploy_source_transport == 'ssh'
+  when:
+    - deploy_source_transport == 'ssh'
+    - not (ansible_check_mode and deploy_source_dir_state is changed)  # the directory may not exist yet
 
 - name: Show the deploy key (add it to the Git host as a read-only deploy key)
   ansible.builtin.debug:

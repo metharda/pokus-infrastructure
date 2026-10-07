@@ -77,11 +77,27 @@
     database: passwd
   when: ansible_check_mode
 
+# A package from a vendor repository cannot be resolved in check mode before
+# the repository is really added, so the roles of these components end after
+# their repository step in check mode while the command is missing.
+- name: Look for the component commands that exist before the run (check mode)
+  ansible.builtin.shell:
+    cmd: |
+      for command in {{ platform_facts_component_commands | join(' ') }}; do
+        if command -v "$command" >/dev/null 2>&1; then echo "$command"; fi
+      done
+    executable: /bin/sh
+  register: platform_facts_commands
+  changed_when: false
+  check_mode: false
+  when: ansible_check_mode
+
 - name: Record what exists before the run (check mode)
   ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - shared fact like the pokus_* facts above
     pokus_present:
       units: "{{ (platform_facts_unit_files.stdout_lines | default([])) | select | map('split') | map('first') | list }}"
       users: "{{ (ansible_facts.getent_passwd | default({}) if ansible_check_mode else {}) | list }}"
+      commands: "{{ platform_facts_commands.stdout_lines | default([]) }}"
 
 - name: Show the platform facts
   ansible.builtin.debug:

@@ -465,7 +465,7 @@ Logical package names, mapped per family in vars/&lt;family&gt;.yml.
 
     ```yaml
     [ca_certificates, curl, gpg, jq, git, acl, btrfs_tools, lvm2, thin_provisioning_tools, nftables,
-      rsync, tmux, htop, iotop, sysstat, sudo, xz, zstd, bzip2, tar]
+      rsync, tmux, htop, iotop, sysstat, sudo, xz, zstd, bzip2, tar, python_debian]
     ```
 
 ### `base_journald_system_max_use`

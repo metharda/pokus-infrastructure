@@ -238,45 +238,160 @@ def test_site_applies_every_role_tagged_with_its_name() -> None:
         assert name in tags, name
 
 
-# Modules that fail in check mode when the unit, file, account or directory
-# they manage does not exist yet, as on a fresh host where only an earlier
-# task of the same run would create it.
+# Modules that fail in check mode when the unit, file, account, directory or
+# parent directory they need does not exist yet, as on a fresh host where only
+# an earlier task of the same run would create it.
 NEEDS_EXISTING = (
     "ansible.builtin.systemd_service",
     "ansible.builtin.lineinfile",
     "ansible.posix.authorized_key",
     "ansible.posix.acl",
+    "ansible.builtin.get_url",
+    "ansible.builtin.unarchive",
+    "community.crypto.openssh_keypair",
+    "community.crypto.openssl_privatekey",
+    "community.crypto.openssl_publickey",
 )
 # Units that exist before any role runs.
 PREEXISTING_UNITS = {
     "systemd-journald": "part of systemd",
     "firewalld": "the firewalld backend is only chosen when firewalld is installed",
 }
+# Tasks that need something that exists whenever they run, with the reason.
+EXISTS_WHEN_RUN = {
+    ("provider_baremetal", "Mask the sleep targets (never_sleep)"): "systemd's own sleep targets",
+    ("provider_baremetal", "Unmask the sleep targets Pokus masked (policy changed)"): (
+        "systemd's own sleep targets"
+    ),
+    ("observability", "Stop and disable the VM listener address"): "only when its unit file exists",
+    ("platform", "Stop and disable the installed platform units"): "only units whose file exists",
+    ("pkg", "Install the verified key of {{ pkg_repo_name }}"): "downloaded in check mode too",
+}
 
 
-def check_mode_roles() -> list[str]:
-    play = load_yaml(ANSIBLE / "check-mode.yml")[0]
-    return [t[m]["name"] for t in play["tasks"] for m in INCLUDE_ROLE if m in t]
+def _when(task: dict[str, Any]) -> str:
+    when = task.get("when", [])
+    return " ".join(map(str, when if isinstance(when, list) else [when]))
 
 
-def test_check_mode_roles_skip_what_the_run_would_create() -> None:
-    """The CI fast lane runs these roles in check mode on fresh containers (§19.9)."""
-    roles = check_mode_roles()
-    assert {"platform_facts", "base", "ssh", "firewall"} <= set(roles)
+def _ends_role_in_check_mode(task: dict[str, Any]) -> bool:
+    return task.get("ansible.builtin.meta") == "end_role" and "ansible_check_mode" in _when(task)
+
+
+def _needs_guard(role: str, task: dict[str, Any]) -> str | None:
+    """The module of a task that fails in check mode before its object exists, else None."""
+    module = next((m for m in NEEDS_EXISTING if m in task), None)
+    if module is None and task.get("ansible.builtin.copy", {}).get("remote_src"):
+        module = "ansible.builtin.copy"  # the source on the host must exist
+    getent = task.get("ansible.builtin.getent", {})
+    if module is None and "key" in getent and "fail_key" not in getent:
+        module = "ansible.builtin.getent"
+    if module is None or (role, task.get("name")) in EXISTS_WHEN_RUN:
+        return None
+    params = task[module]
+    if module == "ansible.builtin.systemd_service" and (
+        "name" not in params or params["name"] in PREEXISTING_UNITS
+    ):
+        return None
+    if module == "ansible.builtin.lineinfile" and params.get("create"):
+        return None
+    return module
+
+
+class CheckModeWalk:
+    """Every task file site.yml reaches, read in order like Ansible runs it.
+
+    A task is guarded when it, an enclosing block or the include that brings
+    it in names ``ansible_check_mode`` in ``when`` (or runs with
+    ``check_mode: false``), or when it comes after a ``meta: end_role`` that
+    ends its role in check mode.
+    """
+
+    def __init__(self) -> None:
+        self.findings: list[tuple[str, str, str]] = []
+        self.roles: set[str] = set()
+        self.visited: dict[tuple[Path, bool], bool] = {}
+
+    def role(self, name: str, tasks_from: str, guarded: bool) -> None:
+        self.roles.add(name)
+        self.file(name, ROLES / name / "tasks" / f"{tasks_from}.yml", guarded)
+
+    def file(self, role: str, path: Path, guarded: bool) -> bool:
+        """Visit a task file; True if it can end its role in check mode."""
+        key = (path, guarded)
+        if key not in self.visited:
+            self.visited[key] = False
+            self.visited[key] = self.tasks(role, path, load_yaml(path), guarded)
+        return self.visited[key]
+
+    def tasks(
+        self, role: str, path: Path, tasks: list[dict[str, Any]] | None, guarded: bool
+    ) -> bool:
+        ends = False
+        for task in tasks or []:
+            own = guarded or "ansible_check_mode" in _when(task) or task.get("check_mode") is False
+            if _ends_role_in_check_mode(task):
+                guarded = ends = True
+                continue
+            for section in ("block", "rescue", "always"):
+                if self.tasks(role, path, task.get(section), own):
+                    guarded = ends = True
+            for module in INCLUDE_TASKS:
+                if module in task:
+                    value = task[module]
+                    name = value if isinstance(value, str) else value["file"]
+                    for candidate in expand(name):
+                        if self.file(role, path.parent / candidate, own):
+                            guarded = ends = True
+            for module in INCLUDE_ROLE:
+                if module in task:
+                    for name in expand(task[module]["name"]):
+                        self.role(name, task[module].get("tasks_from", "main"), own)
+            unguarded = None if own else _needs_guard(role, task)
+            if unguarded is not None:
+                self.findings.append((path.relative_to(ROLES).as_posix(), task["name"], unguarded))
+        return ends
+
+
+def test_site_roles_skip_in_check_mode_what_the_run_would_create() -> None:
+    """bootstrap.sh --check and the CI fast lane run site.yml on fresh hosts (§17, §19.9)."""
+    walk = CheckModeWalk()
+    for play in load_yaml(ANSIBLE / "site.yml"):
+        walk.tasks("", ANSIBLE / "site.yml", play["tasks"], False)
+    assert {
+        "platform_facts",
+        "base",
+        "docker",
+        "incus",
+        "compose",
+        "pkg",
+        "lab_session",
+    } <= walk.roles
+    for role in sorted(walk.roles):
+        handlers = ROLES / role / "handlers" / "main.yml"
+        if handlers.is_file():
+            walk.tasks(role, handlers, load_yaml(handlers), False)
     facts = load_yaml(ROLES / "platform_facts" / "tasks" / "main.yml")
-    assert any("pokus_present" in t.get("ansible.builtin.set_fact", {}) for t in facts)
-    for role in roles:
-        paths = task_files(role) + sorted((ROLES / role / "handlers").glob("main.yml"))
-        for path in paths:
+    present = next(t for t in facts if "pokus_present" in t.get("ansible.builtin.set_fact", {}))
+    assert set(present["ansible.builtin.set_fact"]["pokus_present"]) == {
+        "units",
+        "users",
+        "commands",
+    }
+    assert walk.findings == []
+
+
+def test_check_mode_end_role_commands_are_probed() -> None:
+    """Each command a role ends on in check mode is one platform_facts looks for."""
+    commands = load_yaml(ROLES / "platform_facts" / "vars" / "main.yml")[
+        "platform_facts_component_commands"
+    ]
+    used = set()
+    for role in ROLE_NAMES:
+        for path in task_files(role):
             for task in walk_tasks(load_yaml(path)):
-                module = next((m for m in NEEDS_EXISTING if m in task), None)
-                if module is None:
-                    continue
-                params = task[module]
-                if module == "ansible.builtin.systemd_service" and (
-                    "name" not in params or params["name"] in PREEXISTING_UNITS
-                ):
-                    continue
-                if module == "ansible.builtin.lineinfile" and params.get("create"):
-                    continue
-                assert "ansible_check_mode" in str(task.get("when", "")), (path, task["name"])
+                if _ends_role_in_check_mode(task):
+                    used.update(
+                        re.findall(r"'([\w-]+)' not in pokus_present\.commands", _when(task))
+                    )
+    assert used and used <= set(commands)

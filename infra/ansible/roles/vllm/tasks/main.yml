@@ -55,6 +55,7 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or 'pokus-vllm-deploy.socket' in pokus_present.units
 
 - name: Write the default deployment
   ansible.builtin.include_tasks: default_deployment.yml

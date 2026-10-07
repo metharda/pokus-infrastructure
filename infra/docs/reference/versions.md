@@ -75,7 +75,7 @@ Pulled inside golden images by blueprints with a container engine (`docker_image
 | --- | --- | --- | --- | --- |
 | docker_host_web | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 |
 
-Base images of the CI fast lane's systemd containers (check mode of the provider-agnostic roles per family), never on a lab host:
+Base images of the CI fast lane's systemd containers (the provisioning play in check mode, one per family), never on a lab host:
 
 | Name | Image | Tag | Digest | Platforms |
 | --- | --- | --- | --- | --- |

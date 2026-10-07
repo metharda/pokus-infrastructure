@@ -56,11 +56,13 @@
       ansible.builtin.getent:
         database: passwd
         key: pokus-orch
+        fail_key: "{{ not ansible_check_mode }}"  # in check mode the account may not exist yet
 
     - name: Read the group of the weights
       ansible.builtin.getent:
         database: group
         key: pokus
+        fail_key: "{{ not ansible_check_mode }}"
 
     # The token of gated entries goes in on stdin, never on a command line.
     - name: Download and verify the entries

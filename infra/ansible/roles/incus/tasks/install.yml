@@ -39,6 +39,14 @@
     pkg_repo_name: "{{ incus_source.repo }}"
   when: incus_source.source == 'vendor_repo'
 
+# The repository is not really added in check mode, so its packages cannot be
+# resolved; everything below, and the rest of the role, needs Incus installed.
+- name: Skip the rest in check mode before Incus is installed
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - "'incus' not in pokus_present.commands"
+
 - name: Install Incus
   ansible.builtin.include_role:
     name: pkg

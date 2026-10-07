@@ -342,7 +342,15 @@ def test_lab_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 NO_SLEEP = lambda _seconds: None  # noqa: E731
-PROFILE = {"schema_version": 1, "provider": None, "family": "debian", "outcome": "unsupported"}
+PROFILE = {
+    "schema_version": 1,
+    "provider": None,
+    "family": "debian",
+    "release_model": "fixed",
+    "os": {"id": "debian", "version_id": "13", "codename": "trixie", "parent_release": ""},
+    "outcome": "unsupported",
+    "overrides": {"force_unsupported": False},
+}
 
 
 class FakeDocker:
@@ -390,16 +398,69 @@ def test_check_mode_run(tmp_path: Path) -> None:
     pinned = lock["containers"]["ci_images"]["debian_13"]
     assert f"BASE={pinned['image']}@{pinned['digest']}" in build
     play = next(c for c in fake.calls if c[0] == "ansible-playbook")
-    assert "--check" in play and play[-1].endswith("ansible/check-mode.yml")
-    # Preflight is copied outside /tmp, a tmpfs that docker cp cannot write into.
+    assert "--check" in play and play[-1].endswith("ansible/site.yml")
+    # The trees the play reads on the target go to the same paths as on the controller,
+    # outside /tmp, a tmpfs that docker cp cannot write into.
     mkdir = next(i for i, c in enumerate(fake.calls) if c[1:2] == ("exec",) and c[3] == "mkdir")
-    copy = next(c for c in fake.calls if c[:2] == ("docker", "cp"))
-    assert fake.calls[mkdir][-1] == "/opt/pokus-ci" and verbs.index("cp") > mkdir
-    assert copy[-1] == "pokus-ci-debian-13:/opt/pokus-ci/preflight"
+    assert {"/opt/pokus-ci", str(INFRA / "tools")} <= set(fake.calls[mkdir][4:])
+    copies = [c[-1] for c in fake.calls if c[:2] == ("docker", "cp")]
+    assert copies == [
+        f"pokus-ci-debian-13:{INFRA / 'preflight'}",
+        f"pokus-ci-debian-13:{INFRA / 'tools' / 'pokus-lab'}",
+        "pokus-ci-debian-13:/opt/pokus-ci/host-profile.json",
+    ]
+    assert verbs.index("cp") > mkdir
+    preflight = next(c for c in fake.calls if "pokus_preflight" in c)
+    assert preflight[preflight.index("--srv-path") + 1] == "/srv/pokus" and "--offline" in preflight
+    stored = json.loads((tmp_path / "debian_13-host-profile.json").read_text())
+    assert stored == PROFILE  # preflight_gate compares its own run with this file
     variables = json.loads((tmp_path / "debian_13-vars.json").read_text())
-    assert variables["host_profile"]["provider"] == "baremetal"  # treated like bare metal
+    profile = variables["host_profile"]
+    assert profile["provider"] == "baremetal"  # treated like bare metal
+    assert profile["overrides"]["force_unsupported"] is True  # a container is unsupported
     assert variables["ansible_python_interpreter"] == "/usr/bin/python3"
+    assert variables["pokus_python"] == "/usr/bin/python3"
+    assert variables["machine"] == "example-machine"
+    bootstrap = variables["pokus_bootstrap"]
+    assert bootstrap["profile_path"] == "/opt/pokus-ci/host-profile.json"
+    assert bootstrap["offline"] is True and bootstrap["refresh_profile"] is False
+    vault = json.loads((tmp_path / "debian_13-vault.json").read_text())
+    assert vault["vault_restic_repository"] == "/var/backups/pokus-restic"
+    assert set(vault) == set(yaml.safe_load(checkmode.VAULT_EXAMPLE.read_text()))
+    inventory = (tmp_path / "debian_13-inventory.ini").read_text()
+    assert inventory.split() == [
+        "localhost",
+        "ansible_connection=community.docker.docker",
+        "ansible_host=pokus-ci-debian-13",
+    ]
+    assert play[play.index("--inventory") + 1] == str(tmp_path / "debian_13-inventory.ini")
+    skipped = play[play.index("--skip-tags") + 1].split(",")
+    assert skipped == sorted(checkmode.unverified_roles(PROFILE))
     assert printed[0].startswith("== debian_13: docker.io/library/debian@sha256:")
+    assert [line.split()[2] for line in printed if line.startswith("-- skipping")] == [
+        f"{role}," for role in skipped
+    ]
+
+
+def test_unverified_roles() -> None:
+    """The fast lane skips exactly the roles the play would refuse on the release."""
+    refused = checkmode.unverified_roles(PROFILE)
+    assert set(refused) <= set(checkmode.SOURCED_ROLES)
+    sources = yaml.safe_load((INFRA / "ansible" / "component-sources.yml").read_text())
+    for role, component in checkmode.SOURCED_ROLES.items():
+        entry = (
+            sources["components"][component].get("debian")
+            or sources["components"][component]["default"]
+        )
+        repo = sources["repositories"].get(entry.get("repo", ""), {})
+        if "verify" in entry or "verify" in repo:
+            assert role in refused, role
+    rolling = {**PROFILE, "family": "archlinux", "release_model": "rolling", "os": {"id": "arch"}}
+    assert all("pins" not in reason for reason in checkmode.unverified_roles(rolling).values())
+    with pytest.raises(checkmode.CheckModeError, match="no release identity"):
+        checkmode.unverified_roles({**PROFILE, "os": {"id": "debian", "codename": "nope"}})
+    with pytest.raises(checkmode.CheckModeError, match="no supported family"):
+        checkmode.unverified_roles({**PROFILE, "family": "gentoo"})
 
 
 def test_check_mode_failures(tmp_path: Path) -> None:

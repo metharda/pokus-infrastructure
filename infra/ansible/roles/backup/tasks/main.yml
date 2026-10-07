@@ -44,7 +44,9 @@
     - {path: "{{ backup_textfile_dir }}", mode: "0755"}
   loop_control:
     label: "{{ item.path }}"
+  register: backup_dirs
 
+# In check mode, the tasks that need these directories wait until they exist.
 - name: Download the pinned restic
   ansible.builtin.get_url:
     url: "{{ backup_restic_asset.url }}"
@@ -53,6 +55,7 @@
     owner: root
     group: root
     mode: "0644"
+  when: not (ansible_check_mode and backup_dirs is changed)
 
 - name: Decompress restic
   ansible.builtin.command:
@@ -139,7 +142,9 @@
     group: root
     mode: "0600"
   register: backup_ssh_key
-  when: backup_configured and backup_sftp
+  when:
+    - backup_configured and backup_sftp
+    - not (ansible_check_mode and backup_dirs is changed)
 
 - name: Show the public key to authorize on the backup server
   ansible.builtin.debug:

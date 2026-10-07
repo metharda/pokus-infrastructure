@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-record", action="store_true", help="do not write tests/distros/results.yml"
     )
     check = sub.add_parser(
-        "check-mode", help="CI fast lane: check mode of the provider-agnostic roles in a container"
+        "check-mode", help="CI fast lane: the provisioning play in check mode in a container"
     )
     check.add_argument("--image", required=True, help="key under containers.ci_images")
     check.add_argument("--keep", action="store_true", help="keep the container afterwards")

@@ -52,6 +52,7 @@
     name: "{{ inference_control_unit }}"
     enabled: true
     daemon_reload: true
+  when: not ansible_check_mode or inference_control_unit in pokus_present.units
 
 - name: Start the control endpoint (skipped by systemd until paired)
   ansible.builtin.systemd_service:

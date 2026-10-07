@@ -23,6 +23,8 @@ base_package_names:
   zstd: zstd
   bzip2: bzip2
   tar: tar
+  # deb822_repository (pkg role) needs it; the name ansible-core's module installs.
+  python_debian: python3-debian
 base_package_overrides: {}
 base_timesync_default_package: systemd-timesyncd
 base_timesync_default_service: systemd-timesyncd

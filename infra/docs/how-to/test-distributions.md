@@ -14,8 +14,8 @@ description: Run the full distribution tests in disposable Incus VMs, record the
 launches a disposable Incus VM, bootstraps the lab from the CI answers file,
 runs bootstrap a second time (it must change nothing), backs up once and runs
 `pokus-lab doctor --smoke`. The CI fast lane, `make check-mode`, runs on
-every push instead and only checks the provider-agnostic roles in check mode
-in a container.
+every push instead: the provisioning play in check mode in a container per
+family.
 
 !!! note "Prerequisites"
     - A developer machine with Incus (VM support, about 8 GiB of memory and
@@ -73,10 +73,23 @@ in a container.
 
 ## Run the CI fast lane locally
 
-The fast lane needs Docker and runs nothing on the host itself: it builds a
-systemd container from a pinned base image of `containers.ci_images` in
-`versions.lock.yml`, runs preflight inside it, and runs
-`ansible/check-mode.yml` with `--check` through Ansible's docker connection.
+The fast lane needs Docker and network access, and runs nothing on the host
+itself: it builds a systemd container from a pinned base image of
+`containers.ci_images` in `versions.lock.yml`, runs preflight inside it, and
+runs `ansible/site.yml` with `--check` through Ansible's docker connection,
+the container standing in for the host. It passes the variables bootstrap
+would pass (the container counts as bare metal whose operator forced the
+installation, since preflight classifies containers as unsupported), the
+example host variables and the example vault with a local backup
+repository.
+
+Roles whose component source or package pins are still `TODO(verify)` for
+the container's release are skipped by their tag, because the play refuses
+them; the run prints each skipped role and the reason. Components installed
+from vendor repositories (Docker, Incus, Tailscale, the NVIDIA Container
+Toolkit) are checked up to their repository: check mode downloads and
+verifies the repository key but cannot resolve packages from a repository it
+did not really add, so these roles end there in check mode.
 
 <!-- qa:skip reason="needs Docker" -->
 ```bash
@@ -84,7 +97,8 @@ make check-mode CI_IMAGE=<image-key>
 ```
 
 `<image-key>` is a key under `containers.ci_images`, for example `debian_13`
-or `fedora_44`. The container is removed afterwards.
+or `fedora_44`. The container is removed afterwards; the variables, the
+inventory and the container's host profile stay in `build/check-mode/`.
 
 ## Verify the tests
 

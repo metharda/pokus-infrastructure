@@ -32,3 +32,10 @@ Packages are pinned and held; the CDI specification is generated only when it
 is missing; the check records stable `nvidia-smi` fields, so the record only
 changes when the GPU or the driver changes. The check is skipped in check
 mode.
+
+## Check mode
+
+Check mode verifies the source and the repository key, but cannot resolve
+packages from a repository it did not really add. While the toolkit is not
+installed (`nvidia-ctk` is missing when the play starts), the role ends after
+its repository step in check mode.

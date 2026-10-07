@@ -247,7 +247,7 @@ containers:
       digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
       platforms: [linux/amd64, linux/arm64]
   # Base images of the CI fast lane (BUILD_PROMPT §19.9): one systemd container
-  # per family runs the provider-agnostic roles in check mode. Verified on
+  # per family runs the provisioning play in check mode. Verified on
   # 2026-10-06 with the registry API (index digest of the tag). openSUSE Leap
   # rather than Tumbleweed, whose only Docker Hub tag is "latest".
   ci_images:

@@ -6,3 +6,4 @@
     name: "{{ inference_control_unit }}"
     state: restarted
     daemon_reload: true
+  when: not ansible_check_mode or inference_control_unit in pokus_present.units

@@ -12,7 +12,9 @@
     owner: root
     group: pokus-orch
     mode: "0750"
+  register: platform_signing_dir_state
 
+# In check mode the key waits until its directory exists.
 - name: Generate the signing key
   community.crypto.openssl_privatekey:
     path: "{{ platform_signing_key }}"
@@ -22,6 +24,7 @@
     group: pokus-orch
     mode: "0400"
     regenerate: never
+  when: not (ansible_check_mode and platform_signing_dir_state is changed)
 
 - name: Write the signing key's public key
   community.crypto.openssl_publickey:
@@ -31,6 +34,7 @@
     owner: root
     group: root
     mode: "0644"
+  when: not (ansible_check_mode and platform_signing_dir_state is changed)
 
 - name: Create the directory of published signing keys
   ansible.builtin.file:

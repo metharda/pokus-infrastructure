@@ -22,6 +22,7 @@ base_packages:
   - zstd
   - bzip2
   - tar
+  - python_debian
 
 # journald limits.
 base_journald_system_max_use: 2G

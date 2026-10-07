@@ -122,8 +122,8 @@ def _containers(lock: dict[str, Any]) -> list[str]:
     ]
     if ci:
         parts += [
-            "\nBase images of the CI fast lane's systemd containers (check mode of the "
-            "provider-agnostic roles per family), never on a lab host:\n\n",
+            "\nBase images of the CI fast lane's systemd containers (the provisioning play "
+            "in check mode, one per family), never on a lab host:\n\n",
             pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], ci),
         ]
     return parts

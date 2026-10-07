@@ -1,0 +1,8 @@
+# Managed by pokus-infra (ansible/roles/platform_facts/vars/main.yml). Local changes will be overwritten.
+
+# Commands of the components installed from vendor repositories. In check mode
+# their presence before the run is recorded in pokus_present.commands: until
+# the repository is really added, its packages cannot be resolved, so these
+# roles end after their repository step in check mode while the command is
+# missing (docker, incus, tailscale, nvidia_container_toolkit).
+platform_facts_component_commands: [dockerd, incus, tailscale, nvidia-ctk]

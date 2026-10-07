@@ -31,3 +31,10 @@ None.
 
 The join is skipped when the host is already logged in with the same name
 and tag; the serve command runs only if the serve port is not configured yet.
+
+## Check mode
+
+Check mode verifies the source and the repository key, but cannot resolve
+packages from a repository it did not really add. While Tailscale is not
+installed (`tailscale` is missing when the play starts), the role ends after
+its repository step in check mode.

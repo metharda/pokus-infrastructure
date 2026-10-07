@@ -38,3 +38,10 @@ See `meta/argument_specs.yml`.
 
 Packages are pinned and held; the configuration is rendered from a template
 and Docker restarts only when it changed.
+
+## Check mode
+
+Check mode verifies the source and the repository key, but cannot resolve
+packages from a repository it did not really add. While Docker is not
+installed (`dockerd` is missing when the play starts), the role ends after
+its repository step in check mode.

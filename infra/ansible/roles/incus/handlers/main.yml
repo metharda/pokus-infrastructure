@@ -4,3 +4,4 @@
     name: pokus-incus-events.service
     state: restarted
     daemon_reload: true
+  when: not ansible_check_mode or 'pokus-incus-events.service' in pokus_present.units

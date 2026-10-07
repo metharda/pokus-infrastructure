@@ -26,6 +26,9 @@
         name: "{{ provider_vm_guest_agents[host_profile.environment.hypervisor].service }}"
         enabled: true
         state: started
+      when: >-
+        not ansible_check_mode
+        or provider_vm_guest_agents[host_profile.environment.hypervisor].service in pokus_present.units
 
 - name: Install or check the NVIDIA driver (GPU passthrough)
   ansible.builtin.include_role:

@@ -74,3 +74,9 @@ touched. A missing alias is restored by importing the export (or by pointing
 the alias at the image when the store still has it), a missing or different
 export by exporting the image again; only a blueprint with neither is built.
 `images_rebuild: true` builds the listed blueprints again on every run.
+
+## Check mode
+
+Check mode reports the planned action of each blueprint and changes nothing.
+While Incus is not installed (`incus` is missing when the play starts), the
+role ends before the blueprints in check mode.
