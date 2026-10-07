@@ -182,6 +182,7 @@ decision_path = "/v1/data/pokus/action/decision"
 
 [incus]
 url = "https://127.0.0.1:8443"
+cpuset_targets = "6-19"          # only when host_vars sets cpuset_targets
 
 [inference]
 mode = "local"                   # local | remote | scripted (C5, D3)
@@ -228,6 +229,7 @@ the paired node's tailnet name; `<port>` is chosen by the deployer.
 | Network ACL | `pokus-run-default`: deny all egress except within the run network |
 | Firewall compatibility | infra treats bridges matching `r-*` and `pokus-build0` as Incus bridges |
 | Profiles | `target-container`, `target-vm` (only if `vm_targets`), `probe-client`, `build` |
+| CPU sets | with `cpuset_targets` in `endpoints.toml` (a Linux cpuset list), the platform sets every bench instance's `limits.cpu` to a range of CPUs inside it, never a plain count; the `bench` project's `limits.cpu` is the number of those CPUs. Lab services run on the other CPUs (`cpuset_services`) |
 | Guest API | target profiles disable it (`security.guestapi=false`, the Incus 6.0 key for `/dev/incus`) |
 | Golden images | aliases `<blueprint>/<version>` with properties `pokus.recipe_commit`, `pokus.built_at`, `pokus.base_fingerprint`; the Incus property `requirements.nesting` is `true` for blueprints that need nesting (a container engine inside the target), which the platform then launches with `security.nesting=true` |
 

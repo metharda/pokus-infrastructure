@@ -530,6 +530,36 @@ def unit_hardening(
     return expected
 
 
+CPUSET_RE = re.compile(r"^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")
+
+
+def cpuset_cpus(spec: str | None) -> list[int]:
+    """The CPUs of a Linux cpuset list (``cpuset_services``, ``cpuset_targets``).
+
+    Args:
+        spec: Such as ``0-5`` or ``0-3,8``; empty or None for none.
+
+    Returns:
+        The CPU numbers, sorted, without duplicates.
+
+    Raises:
+        PokusFilterError: If the list is malformed or a range is reversed.
+    """
+    text = (spec or "").replace(" ", "")
+    if not text:
+        return []
+    if not CPUSET_RE.match(text):
+        raise PokusFilterError(f"not a cpuset list: {spec!r}")
+    cpus: set[int] = set()
+    for part in text.split(","):
+        first, _, last = part.partition("-")
+        low, high = int(first), int(last or first)
+        if low > high:
+            raise PokusFilterError(f"reversed range {part!r} in {spec!r}")
+        cpus.update(range(low, high + 1))
+    return sorted(cpus)
+
+
 class FilterModule:
     """Ansible filter plugin entry point."""
 
@@ -554,4 +584,5 @@ class FilterModule:
             "pokus_to_toml": to_toml,
             "pokus_socket_specs": socket_specs,
             "pokus_unit_hardening": unit_hardening,
+            "pokus_cpuset_cpus": cpuset_cpus,
         }

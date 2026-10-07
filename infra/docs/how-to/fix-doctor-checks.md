@@ -288,6 +288,24 @@ before and after the change are not comparable for latency and resources.
 Update only with [`pokus-lab update-host`](update-host.md), which records the
 change, and start a new session by restarting the lab.
 
+## `resources.cpusets`: lab services are not on their CPUs {#check-resources-cpusets}
+
+`cpuset_services` or `cpuset_targets` (host_vars) names CPUs that this host
+does not have, or `pokus-services.slice` runs on other CPUs than
+`cpuset_services`. On WSL the number of CPUs comes from `processors=` in
+`.wslconfig`. Set both lists to CPUs the host has (they must not overlap),
+run bootstrap, then restart the lab so that the services and containers start
+in the slice again:
+
+<!-- qa:skip reason="restarts the lab" -->
+```bash
+sudo pokus-lab stop
+sudo pokus-lab start
+```
+
+"No lab service is running" means the lab is stopped; start it first. See
+[How benchmark targets are isolated](../explanation/target-isolation.md#cpu-sets).
+
 ## `wsl.config`: WSL settings differ from the expectation {#check-wsl-config}
 
 `/etc/wsl.conf` has interop or automount enabled or systemd disabled, or the

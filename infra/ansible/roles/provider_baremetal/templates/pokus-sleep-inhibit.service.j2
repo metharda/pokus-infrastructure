@@ -7,6 +7,7 @@ Description=Pokus lab: keep the host awake while the lab is up
 PartOf=pokus-lab.target
 
 [Service]
+Slice={{ pokus_services_slice }}
 Type=simple
 ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --mode=block --who=pokus-lab --why="Pokus lab session" /usr/bin/sleep infinity
 

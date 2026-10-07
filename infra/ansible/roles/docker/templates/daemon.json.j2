@@ -8,6 +8,7 @@
   "log-opts": {"max-size": docker_log_max_size | string, "max-file": docker_log_max_file | string},
   "live-restore": true,
   "default-address-pools": docker_address_pools,
+  "cgroup-parent": docker_cgroup_parent,
 } -%}
 {%- set gpu = {
   "cdi": {"features": {"cdi": true}},

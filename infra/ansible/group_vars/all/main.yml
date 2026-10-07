@@ -37,6 +37,14 @@ grafana_tailscale_serve: false
 ssh_extra_allowed_interfaces: []
 # Root of the research space (BUILD_PROMPT §6.2).
 pokus_root: /srv/pokus
+# CPUs of the lab services (Linux cpuset list such as "0-5"); empty: no pinning.
+# Set per machine in host_vars; must not overlap cpuset_targets.
+cpuset_services: ""
+# CPUs of the Incus benchmark targets; empty: no pinning. The platform pins
+# targets inside it (endpoints.toml), and it sizes the bench project's CPUs.
+cpuset_targets: ""
+# Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
+pokus_services_slice: pokus-services.slice
 # Let automatic security updates update the kernel on bare metal (held by default).
 allow_kernel_updates: false
 # Tailscale tag of the host per lab_mode (owner answer E2).

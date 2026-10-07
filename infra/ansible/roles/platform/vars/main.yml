@@ -172,8 +172,10 @@ platform_endpoints:
   opa:
     url: "http://127.0.0.1:{{ pokus_ports.opa }}"
     decision_path: /v1/data/pokus/action/decision
-  incus:
-    url: "https://{{ incus_https_address }}"
+  # cpuset_targets: the CPUs the platform pins targets to (limits.cpu ranges inside it).
+  incus: >-
+    {{ {'url': 'https://' ~ incus_https_address}
+       | combine({'cpuset_targets': cpuset_targets} if cpuset_targets else {}) }}
   inference: "{{ {'mode': platform_inference, platform_inference: platform_inference_tables[platform_inference]} }}"
   gateway:
     adhoc_listen: "127.0.0.1:{{ pokus_ports.gateway_adhoc }}"

@@ -28,9 +28,11 @@ expected:
   memory_gib: 22
   cpu_threads: 20
 
-# CPU sets: lab services and Incus targets never share cores.
-cpuset_services: "0-5"
-cpuset_targets: "6-19"
+# CPU sets: lab services and Incus targets never share cores. Empty: no
+# pinning. For example "0-5" and "6-19" on a host with 20 CPUs; the installer
+# suggests a split.
+cpuset_services: ""
+cpuset_targets: ""
 
 # Incus storage pool. loop: a file of incus_pool_size. device: a dedicated
 # disk or partition, formatted ONLY if incus_pool_device_confirm equals

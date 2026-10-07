@@ -929,6 +929,80 @@ def check_rolling_drift(ctx: Context) -> Outcome:
     return passed("unchanged since the session started")
 
 
+# --- resources -------------------------------------------------------------------------------
+
+
+def parse_cpuset(spec: str) -> set[int]:
+    """The CPUs of a Linux cpuset list such as ``0-5,8`` (empty: none).
+
+    Args:
+        spec: The list, as in host_vars or a cgroup's ``cpuset.cpus.effective``.
+
+    Returns:
+        The CPU numbers.
+
+    Raises:
+        ValueError: If the list is malformed.
+    """
+    cpus: set[int] = set()
+    for part in spec.replace(" ", "").strip().split(","):
+        if not part:
+            continue
+        first, _, last = part.partition("-")
+        low, high = int(first), int(last or first)
+        if low > high:
+            raise ValueError(f"reversed range {part!r}")
+        cpus.update(range(low, high + 1))
+    return cpus
+
+
+def format_cpuset(cpus: set[int]) -> str:
+    """A compact cpuset list (``0-3,8``).
+
+    Args:
+        cpus: CPU numbers.
+
+    Returns:
+        The list.
+    """
+    ranges: list[str] = []
+    for cpu in sorted(cpus):
+        if ranges and ranges[-1].split("-")[-1] == str(cpu - 1):
+            ranges[-1] = ranges[-1].split("-")[0] + f"-{cpu}"
+        else:
+            ranges.append(str(cpu))
+    return ",".join(ranges)
+
+
+def check_cpusets(ctx: Context) -> Outcome:
+    """The lab services run on cpuset_services, and both CPU sets exist on this host."""
+    services = str(ctx.config.get("cpusets", "services", default="") or "")
+    targets = str(ctx.config.get("cpusets", "targets", default="") or "")
+    if not services and not targets:
+        return skipped("no CPU sets configured (cpuset_services, cpuset_targets)")
+    online = parse_cpuset((ctx.system.read_text("/sys/devices/system/cpu/online") or "").strip())
+    problems = []
+    for name, spec in (("cpuset_services", services), ("cpuset_targets", targets)):
+        missing = parse_cpuset(spec) - online
+        if missing:
+            problems.append(f"{name} names CPUs this host does not have: {format_cpuset(missing)}")
+    if services:
+        slice_name = str(ctx.config.get("cpusets", "slice", default="pokus-services.slice"))
+        path = f"/sys/fs/cgroup/{slice_name}/cpuset.cpus.effective"
+        effective = ctx.system.read_text(path)
+        wanted = parse_cpuset(services) & online
+        if effective is None:
+            problems.append(f"{slice_name} has no cgroup (no lab service is running)")
+        elif parse_cpuset(effective.strip()) != wanted:
+            problems.append(
+                f"{slice_name} runs on CPUs {effective.strip() or 'none'}, "
+                f"expected {format_cpuset(wanted)}"
+            )
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"services on CPUs {services or 'any'}, targets on CPUs {targets or 'any'}")
+
+
 # --- WSL ---------------------------------------------------------------------------------------
 
 
@@ -1160,6 +1234,15 @@ CHECKS: tuple[Check, ...] = (
         "warning",
         "Use `pokus-lab update-host` for updates; reports show the fingerprint diff.",
         check_rolling_drift,
+    ),
+    Check(
+        "resources.cpusets",
+        "Lab services run on cpuset_services, and both CPU sets exist on this host.",
+        "warning",
+        "Set cpuset_services and cpuset_targets in host_vars to CPUs the host has (on WSL: "
+        "processors= in .wslconfig) and run bootstrap; then restart the lab "
+        "(`sudo pokus-lab stop`, `sudo pokus-lab start`) so services move to their CPUs.",
+        check_cpusets,
     ),
     Check(
         "wsl.config",

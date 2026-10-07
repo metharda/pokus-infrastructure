@@ -15,6 +15,7 @@ PartOf=pokus-lab.target{% for unit in platform_unit.part_of | default([]) %} {{ 
 
 
 [Service]
+Slice={{ pokus_services_slice }}
 {% if platform_unit.type | default('simple') == 'oneshot' %}
 Type=oneshot
 {% else %}

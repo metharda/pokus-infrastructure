@@ -266,8 +266,10 @@ def test_docker_daemon_json(method: str, mac: str, extra: set[str]) -> None:
         "log-opts",
         "live-restore",
         "default-address-pools",
+        "cgroup-parent",
     }
     assert set(data) == base | extra
+    assert data["cgroup-parent"] == "pokus-services.slice"  # pinned to cpuset_services
     assert any(MANAGED_MARKER in label for label in data["labels"])  # preflight recognizes the file
     assert all("=" in label for label in data["labels"])
     assert data["log-driver"] == "local"

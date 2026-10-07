@@ -196,6 +196,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pokus_to_toml",
         "pokus_socket_specs",
         "pokus_unit_hardening",
+        "pokus_cpuset_cpus",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pokus_release_identity(c)", {"p": profile, "c": debian_codenames()})
@@ -301,3 +302,14 @@ def test_config_hashes_per_directory() -> None:
 def test_config_hashes_rejects_files_outside_directories(path: str) -> None:
     with pytest.raises(pokus.PokusFilterError, match="not in a directory"):
         pokus.config_hashes([{"path": path, "checksum": "a"}], "/srv/pokus/services/core/config")
+
+
+def test_cpuset_cpus() -> None:
+    assert pokus.cpuset_cpus("") == []
+    assert pokus.cpuset_cpus(None) == []
+    assert pokus.cpuset_cpus("0-5") == [0, 1, 2, 3, 4, 5]
+    assert pokus.cpuset_cpus("6-7,3,6") == [3, 6, 7]
+    assert pokus.cpuset_cpus(" 1 , 2 ") == [1, 2]
+    for bad in ("a-b", "5-3", "1,,2", "-1", "1-"):
+        with pytest.raises(pokus.PokusFilterError):
+            pokus.cpuset_cpus(bad)

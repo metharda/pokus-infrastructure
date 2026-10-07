@@ -257,6 +257,10 @@
         max_age_hours: "{{ doctor_backup_max_age_hours | int }}"
       time:
         max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
+      cpusets:
+        services: "{{ cpuset_services }}"
+        targets: "{{ cpuset_targets }}"
+        slice: "{{ pokus_services_slice }}"
       wsl:
         memory_gib: "{{ (expected | default({})).memory_gib | default(none) }}"
         cpus: "{{ (expected | default({})).cpu_threads | default(none) }}"

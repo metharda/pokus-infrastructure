@@ -763,3 +763,35 @@ class PairingTest(Base):
         unknown = self.system()
         unknown.commands = {}
         self.assertOutcome(self.check(unknown, "pokus-lab"), "pass")
+
+
+class CpusetTest(Base):
+    SLICE = "/sys/fs/cgroup/pokus-services.slice/cpuset.cpus.effective"
+
+    def test_parse_and_format(self) -> None:
+        self.assertEqual(checks.parse_cpuset("0-2,5,7-8"), {0, 1, 2, 5, 7, 8})
+        self.assertEqual(checks.parse_cpuset(""), set())
+        self.assertEqual(checks.format_cpuset({0, 1, 2, 5, 7, 8}), "0-2,5,7-8")
+        with self.assertRaises(ValueError):
+            checks.parse_cpuset("5-3")
+
+    def test_not_configured(self) -> None:
+        self.assertOutcome(run(checks.check_cpusets, FakeSystem()), "skip")
+
+    def test_services_pinned(self) -> None:
+        sets = {"cpusets__services": "0-5", "cpusets__targets": "6-23"}
+        files = {"/sys/devices/system/cpu/online": "0-23\n", self.SLICE: "0-5\n"}
+        outcome = run(checks.check_cpusets, FakeSystem(files=files), **sets)
+        self.assertOutcome(outcome, "pass", "services on CPUs 0-5")
+
+    def test_problems(self) -> None:
+        sets = {"cpusets__services": "0-5", "cpusets__targets": "6-23"}
+        files = {"/sys/devices/system/cpu/online": "0-15\n", self.SLICE: "0-15\n"}
+        outcome = run(checks.check_cpusets, FakeSystem(files=files), **sets)
+        self.assertOutcome(
+            outcome, "fail", "cpuset_targets names CPUs this host does not have: 16-23"
+        )
+        self.assertIn("runs on CPUs 0-15, expected 0-5", outcome.detail)
+        stopped = {"/sys/devices/system/cpu/online": "0-23\n"}
+        outcome = run(checks.check_cpusets, FakeSystem(files=stopped), **sets)
+        self.assertOutcome(outcome, "fail", "has no cgroup")

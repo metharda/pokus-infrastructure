@@ -72,6 +72,29 @@ instances live in one storage pool, `pokus-targets`, which must be btrfs or
 LVM thin so that disk quotas work; Pokus never uses the `dir` backend
 ([ADR-0009](../adr/0009-btrfs-or-lvm-thin-pool.md)).
 
+## CPU sets
+
+A measurement on a target must not be disturbed by the lab itself. Two
+host_vars split the CPUs: `cpuset_services` for the lab and `cpuset_targets`
+for the benchmark targets; they must not overlap, and the installer suggests
+a split (about 30 % of the CPUs for the services).
+
+- Every lab service runs in the systemd slice `pokus-services.slice`, whose
+  `AllowedCPUs=` is `cpuset_services`: the lab's own units (`Slice=`) and
+  every Docker container, which Docker places in that slice
+  (`cgroup-parent` in `daemon.json`).
+- The platform pins targets: it sets each instance's `limits.cpu` to CPUs
+  inside `cpuset_targets`, which `endpoints.toml` passes to it. A plain CPU
+  count would let Incus place the instance on any CPU. The `bench` project's
+  `limits.cpu` is the number of CPUs in `cpuset_targets`.
+- Instances of the build project and of the researchers' personal projects
+  are not pinned; they do not run during measurements.
+
+With both sets empty nothing is pinned. Doctor's check `resources.cpusets`
+warns when a set names CPUs the host does not have (on WSL, `.wslconfig`
+decides how many there are) or when the services run elsewhere; a changed
+set takes effect at the next start of the lab.
+
 ## What targets cannot see
 
 Target profiles set `security.guestapi=false`, so `/dev/incus` is absent

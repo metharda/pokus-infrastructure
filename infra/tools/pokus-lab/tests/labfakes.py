@@ -138,6 +138,7 @@ LAB: dict[str, Any] = {
         "max_age_hours": 26,
     },
     "time": {"max_offset_seconds": 1.0},
+    "cpusets": {"services": "", "targets": "", "slice": "pokus-services.slice"},
     "wsl": {"memory_gib": None, "cpus": None, "kvm_expected": False},
 }
 

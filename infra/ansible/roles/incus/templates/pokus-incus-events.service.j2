@@ -8,6 +8,7 @@ After={{ incus_units.daemon }}
 PartOf={{ incus_units.daemon }}
 
 [Service]
+Slice={{ pokus_services_slice }}
 ExecStart={{ incus_cli }} monitor --all-projects --type=lifecycle --type=logging --format=json
 SyslogIdentifier={{ incus_events_identifier }}
 Restart=always

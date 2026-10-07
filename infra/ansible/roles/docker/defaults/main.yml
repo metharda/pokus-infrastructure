@@ -6,6 +6,9 @@ docker_data_root: /var/lib/docker
 # Tailscale's 100.64.0.0/10 or common home LANs (192.168.0.0/16).
 docker_address_pools:
   - {base: 172.30.0.0/16, size: 24}
+# Systemd slice of every container (the lab services' slice, pinned to
+# cpuset_services); with the systemd cgroup driver it must be a .slice.
+docker_cgroup_parent: "{{ pokus_services_slice }}"
 # Size limits of the `local` log driver per container (Docker's own defaults).
 docker_log_max_size: 20m
 docker_log_max_file: 5

@@ -83,3 +83,4 @@ wslconfig
 Zabbly
 Zorin
 cpusets
+incusd

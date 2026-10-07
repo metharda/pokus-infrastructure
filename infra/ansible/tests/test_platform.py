@@ -301,6 +301,14 @@ def test_endpoints_toml(extra: dict[str, Any], mode: str, table: dict[str, str] 
     assert document["telemetry"] == {"otlp_grpc": "127.0.0.1:4317", "otlp_http": "127.0.0.1:4318"}
 
 
+def test_endpoints_carry_the_targets_cpuset() -> None:
+    expression = "platform_endpoints | pokus_to_toml(platform_toml_header ~ 'endpoints.toml')"
+    pinned = tomllib.loads(evaluate(expression, variables(cpuset_targets="6-19")))
+    assert pinned["incus"] == {"url": "https://127.0.0.1:8443", "cpuset_targets": "6-19"}
+    unpinned = tomllib.loads(evaluate(expression, variables()))
+    assert "cpuset_targets" not in unpinned["incus"]
+
+
 def test_to_toml_round_trip() -> None:
     doc = {"a": 1, "b": {"c": 'x"y', "d": [1.5, True], "e": {"f": "ü"}}, "g h": {"i": 0}}
     text = pokus.to_toml(doc, "header")

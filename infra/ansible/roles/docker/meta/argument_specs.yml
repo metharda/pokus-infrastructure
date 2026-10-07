@@ -24,6 +24,12 @@ argument_specs:
         description: >-
           Address pools for Docker networks; must not overlap Incus bridges,
           Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
+      docker_cgroup_parent:
+        type: str
+        default: "{{ pokus_services_slice }}"
+        description: >-
+          Systemd slice of every container (daemon.json cgroup-parent), the lab
+          services' slice that AllowedCPUs pins to cpuset_services.
       docker_log_max_size:
         type: str
         default: 20m

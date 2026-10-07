@@ -43,6 +43,7 @@ description: Every check of pokus-lab doctor with its severity and remediation.
 | `lab.health_gate` | error | The startup health gate passed. | `journalctl -u pokus-health-gate.service`; fix the failing check and `pokus-lab start`. [How to fix lab.health_gate](../how-to/fix-doctor-checks.md#check-lab-health_gate) |
 | `lab.session` | warning | This boot's session record exists and is complete. | `systemctl restart pokus-session-start.service` after fixing the recorded errors. [How to fix lab.session](../how-to/fix-doctor-checks.md#check-lab-session) |
 | `lab.rolling_drift` | warning | On a rolling release, the system matches the session's fingerprint. | Use `pokus-lab update-host` for updates; reports show the fingerprint diff. [How to fix lab.rolling_drift](../how-to/fix-doctor-checks.md#check-lab-rolling_drift) |
+| `resources.cpusets` | warning | Lab services run on cpuset_services, and both CPU sets exist on this host. | Set cpuset_services and cpuset_targets in host_vars to CPUs the host has (on WSL: processors= in .wslconfig) and run bootstrap; then restart the lab (`sudo pokus-lab stop`, `sudo pokus-lab start`) so services move to their CPUs. [How to fix resources.cpusets](../how-to/fix-doctor-checks.md#check-resources-cpusets) |
 | `wsl.config` | warning | WSL: wsl.conf, memory, CPUs and /dev/kvm as expected. | Copy the recommended .wslconfig on Windows and run `wsl --shutdown`. [How to fix wsl.config](../how-to/fix-doctor-checks.md#check-wsl-config) |
 
 ## Smoke checks

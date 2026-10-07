@@ -32,10 +32,13 @@ incus_run_acl_egress: >-
 # Most VMs at once in a project, when the vm_targets feature is on.
 incus_max_virtual_machines: 4
 
-# Limits of the bench project (the sum over all its instances).
+# Limits of the bench project (the sum over all its instances). Its CPUs are
+# those of cpuset_targets when set (the platform pins targets inside it).
 incus_bench_limits:
   limits.memory: "{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB"
-  limits.cpu: "{{ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}"
+  limits.cpu: >-
+    {{ (cpuset_targets | pokus_cpuset_cpus | length) if cpuset_targets
+       else [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}
   limits.instances: "40"
 # Defaults of the instance profiles; the platform sets per-blueprint values.
 incus_target_container: {cpu: "1", memory: 1GiB, root_size: 8GiB}

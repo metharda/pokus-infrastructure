@@ -1774,3 +1774,58 @@ Not covered here:
 110 markers: two more, the Hugging Face Hub API field names in
 `installer/pokus_installer/models.py` and the MOK enrollment in
 `installer/pokus_installer/tui/screens_install.py`.
+
+## Follow-up after step 13: CPU sets of services and targets
+
+`cpuset_services` and `cpuset_targets` (BUILD_PROMPT §8.1: "lab services
+pinned here", "Incus targets pinned here") were collected since step 5 and by
+the installer's Resources screen, but no role applied them. Now:
+
+- `group_vars/all/main.yml` defaults both to empty (no pinning) and names the
+  slice `pokus_services_slice` (`pokus-services.slice`); the host_vars example
+  shows the empty defaults with the BUILD_PROMPT's split as an example.
+- The base role checks that the two sets do not overlap and name only CPUs
+  the host has (`hardware.cpu_threads` of the host profile; new filter
+  `pokus_cpuset_cpus`), and writes `pokus-services.slice` with
+  `AllowedCPUs=` (systemd.resource-control) when `cpuset_services` is set; it
+  reloads systemd at once, before Docker and the lab units use the slice.
+- Every unit of the lab (those `PartOf=pokus-lab.target`, the backup job,
+  the Incus event forwarder and the vLLM deploy helper) has
+  `Slice=pokus-services.slice`; a template test enforces it. Docker places
+  every container in the slice (`cgroup-parent` in `daemon.json`, from
+  Docker's dockerd reference; with the systemd cgroup driver the parent must
+  be a `.slice`).
+- The `bench` project's `limits.cpu` is the number of CPUs in
+  `cpuset_targets` when it is set (else, as before, the host's CPUs minus 2).
+- `endpoints.toml` carries `[incus] cpuset_targets` for the platform, which
+  pins targets by setting `limits.cpu` to CPUs inside it: Incus documents
+  `limits.cpu` as "a number or a specific range of CPUs", and a number is
+  balanced over all of the host's CPUs (Incus 6.0 option reference, read
+  2026-10-07).
+- Doctor check `resources.cpusets` (warning): both sets exist on the host
+  (`/sys/devices/system/cpu/online`) and the slice's
+  `cpuset.cpus.effective` equals `cpuset_services`.
+
+### Findings to report (CPU sets)
+
+- **Targets can only be pinned by the platform**: a profile cannot pin them
+  without breaking the project limit (a range of 14 CPUs counts as 14 of the
+  project's `limits.cpu`) or the per-blueprint sizes the platform sets.
+  Instances of the build project and of personal projects stay unpinned.
+- **A changed set reaches running services at the next lab start**; doctor
+  reports the difference until then. Existing containers move into the slice
+  when they are recreated (the next `pokus-lab stop`/`start`).
+- Nothing was run on a real host (no systemd host and no Docker daemon here);
+  the slice, unit and `daemon.json` renderings are tested.
+
+### Interpretations awaiting owner confirmation (CPU sets)
+
+1. Empty defaults (no pinning) rather than a computed split: the installer
+   suggests a split, and hand-written host_vars keep working.
+2. The services slice holds the lab's units and all Docker containers; system
+   daemons (sshd, dockerd, incusd, tailscaled) stay unpinned.
+3. **Proposed contract addition**: `[incus] cpuset_targets` in
+   `endpoints.toml`, and the rule that the platform sets bench instances'
+   `limits.cpu` to CPUs inside it (written into `docs/contracts.md`).
+4. The fingerprint needs no new field: `host_vars_sha256` already changes
+   with the split.

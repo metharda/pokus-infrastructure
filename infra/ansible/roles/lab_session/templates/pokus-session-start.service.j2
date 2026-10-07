@@ -8,6 +8,7 @@ After=pokus-health-gate.service
 PartOf=pokus-lab.target
 
 [Service]
+Slice={{ pokus_services_slice }}
 Type=oneshot
 RemainAfterExit=yes
 ExecStart={{ lab_session_libexec }}/session-start --sessions {{ lab_session_sessions_dir }}

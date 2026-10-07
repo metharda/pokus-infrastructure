@@ -12,6 +12,7 @@ ConditionPathExists={{ inference_control_peer_cert }}
 PartOf=pokus-lab.target
 
 [Service]
+Slice={{ pokus_services_slice }}
 Type=simple
 ExecStart={{ inference_control_program }} --config {{ inference_control_config }}
 # The tailnet address may come up after the unit starts at boot.

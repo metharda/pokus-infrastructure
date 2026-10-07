@@ -81,6 +81,24 @@ Root of the research space (BUILD_PROMPT §6.2).
 
 - Default: `/srv/pokus`
 
+### `cpuset_services`
+
+CPUs of the lab services (Linux cpuset list such as "0-5"); empty: no pinning. Set per machine in host_vars; must not overlap cpuset_targets.
+
+- Default: `''`
+
+### `cpuset_targets`
+
+CPUs of the Incus benchmark targets; empty: no pinning. The platform pins targets inside it (endpoints.toml), and it sizes the bench project's CPUs.
+
+- Default: `''`
+
+### `pokus_services_slice`
+
+Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
+
+- Default: `pokus-services.slice`
+
 ### `allow_kernel_updates`
 
 Let automatic security updates update the kernel on bare metal (held by default).
@@ -769,6 +787,13 @@ Address pools for Docker networks; must not overlap Incus bridges, Tailscale's 1
 - Type: `list` of `dict`
 - Default: `- {base: 172.30.0.0/16, size: 24}`
 
+### `docker_cgroup_parent`
+
+Systemd slice of every container (daemon.json cgroup-parent), the lab services' slice that AllowedCPUs pins to cpuset_services.
+
+- Type: `str`
+- Default: `{{ pokus_services_slice }}`
+
 ### `docker_log_max_size`
 
 Maximum size of one log file of the local log driver.
@@ -1143,15 +1168,15 @@ Most VMs at once in the bench and build projects (with the vm_targets feature).
 
 ### `incus_bench_limits`
 
-Project limits of bench (derived from the host's memory and CPUs).
+Project limits of bench (derived from the host's memory and CPUs, or from cpuset_targets).
 
 - Type: `dict`
 - Default:
 
     ```yaml
     {limits.memory: '{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB',
-      limits.cpu: '{{ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}',
-      limits.instances: '40'}
+      limits.cpu: "{{ (cpuset_targets | pokus_cpuset_cpus | length) if cpuset_targets\n   else\
+        \ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}", limits.instances: '40'}
     ```
 
 ### `incus_target_container`

@@ -393,6 +393,14 @@ unchanged):
   because `/etc/pokus/secrets` is in its `InaccessiblePaths` (C2); proposed
   `LoadCredential=` if the agent needs a secret.
 
+Proposed after infra step 13 (same status; details in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Follow-up after step 13: CPU sets"):
+
+- Incus: `[incus] cpuset_targets` in `endpoints.toml` when host_vars sets it;
+  the platform sets every bench instance's `limits.cpu` to CPUs inside it
+  (never a plain count), and the `bench` project's `limits.cpu` is the number
+  of those CPUs.
+
 ## Step status
 
 ### Phase 1 — infra/
@@ -701,8 +709,8 @@ step 4" through "after step 13"):
 Infra step 14: documentation completion (BUILD_PROMPT and DOCS_SPEC): the
 remaining required infra pages (the WSL2 and bare-metal install tutorials,
 the operator how-tos still missing, the glossary and tour pieces that belong
-to infra) and `pokus-lab docs serve`. Before it, two follow-ups from earlier
-steps: cpuset pinning of the lab services and targets from
-`cpuset_services`/`cpuset_targets` (set in host_vars, applied by no role
-yet), and check-mode safety of the roles outside the CI fast lane. After step
-14 the assistant stops and waits for the platform phase.
+to infra) and `pokus-lab docs serve`. Before it, one follow-up from earlier
+steps: check-mode safety of the roles outside the CI fast lane (the CPU sets
+of services and targets are applied since the commit "feat(infra): pin the lab
+services and the targets to their CPU sets"). After step 14 the assistant
+stops and waits for the platform phase.

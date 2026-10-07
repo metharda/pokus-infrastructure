@@ -8,6 +8,7 @@ Description=Pokus vLLM deploy helper
 CollectMode=inactive-or-failed
 
 [Service]
+Slice={{ pokus_services_slice }}
 Type=oneshot
 ExecStart=/usr/local/libexec/pokus/vllm-deploy serve
 StandardInput=socket

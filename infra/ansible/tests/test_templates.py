@@ -28,6 +28,7 @@ TESTED_TEMPLATES = {
     ("base", "journald.conf.j2"),
     ("base", "pokus-security-patch.service.j2"),
     ("base", "pokus-security-patch.timer.j2"),
+    ("base", "pokus-services.slice.j2"),
     ("firewall", "docker-incus-compat.sh.j2"),
     ("firewall", "pokus-docker-incus-compat.service.j2"),
     ("firewall", "pokus-nftables.service.j2"),
@@ -409,3 +410,24 @@ def test_tailnet_ports() -> None:
     ]
     no_targets = firewall_vars(pokus_features=features, node_role="inference")
     assert evaluate("firewall_vm_otlp_ports", no_targets) == []
+
+
+@pytest.mark.parametrize(("cpuset", "allowed"), [("0-3,8", "0,1,2,3,8"), ("", None)])
+def test_services_slice(cpuset: str, allowed: str | None) -> None:
+    text = render_template(
+        "base", "pokus-services.slice.j2", role_vars("base", cpuset_services=cpuset)
+    )
+    unit = ini(text)
+    assert unit["Unit"]["Before"] == "slices.target"
+    assert unit["Slice"].get("AllowedCPUs") == allowed
+
+
+def test_lab_units_run_in_the_services_slice() -> None:
+    for path in sorted(ROLES.glob("*/templates/*.service.j2")):
+        text = path.read_text(encoding="utf-8")
+        lab_unit = "PartOf=pokus-lab.target" in text or path.name in {
+            "backup-job.service.j2",
+            "pokus-incus-events.service.j2",
+            "pokus-vllm-deploy@.service.j2",
+        }
+        assert ("Slice={{ pokus_services_slice }}" in text) == lab_unit, path

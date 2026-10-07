@@ -10,6 +10,7 @@ Wants=network-online.target
 PartOf=pokus-lab.target
 
 [Service]
+Slice={{ pokus_services_slice }}
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory={{ compose_root }}/{{ compose_project }}
