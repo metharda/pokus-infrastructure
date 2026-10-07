@@ -71,6 +71,7 @@
         "python_build",
         "packages",
         "model_tools",
+        "installer",
         "verified_on",
         "source"
       ],
@@ -98,6 +99,20 @@
           "type": "object",
           "required": [
             "huggingface-hub"
+          ],
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/version"
+          }
+        },
+        "installer": {
+          "type": "object",
+          "required": [
+            "textual",
+            "ruamel.yaml",
+            "jsonschema"
           ],
           "propertyNames": {
             "pattern": "^[a-z0-9][a-z0-9._-]*$"

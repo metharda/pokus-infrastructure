@@ -18,7 +18,16 @@ services come from pokus-platform and run on top of it.
 | `docs/` | Documentation (MkDocs). `docs/BUILD_PROMPT.md` is the binding build specification, `docs/DOCS_SPEC.md` the documentation specification, `docs/contracts.md` the interface to pokus-platform. |
 | `bootstrap/` | `bootstrap.sh`, the single entry point that provisions a lab host, its shell libraries, the hash-locked Ansible requirements and tests. |
 | `preflight/` | Host detection and the support decision (`pokus-preflight`), the support matrix, the host profile schema, fixtures and tests. |
-| `ansible/` | Inventory, playbooks and (from a later step) the roles that bootstrap applies. |
+| `installer/` | The installer TUI and the answers replay that `bootstrap.sh` runs (`pokus_installer`), the answers schema, its hash-locked requirements and tests. |
+| `ansible/` | Inventory, playbooks, roles and the progress callback that bootstrap applies. |
+| `images/` | Golden image blueprints (recipes of the benchmark targets' base images). |
+| `compose/`, `config/` | Compose files and configuration of the lab services (Postgres, OPA, the telemetry stack, vLLM), rendered by their roles. |
+| `incus/` | Incus preseed, profiles and projects. |
+| `vllm/` | vLLM serving profiles per GPU class. |
+| `tests/` | The CI answers file and the distribution test targets and results. |
+| `contrib/windows/` | An optional Windows-side helper for WSL hosts. |
+| `tools/pokus-lab/` | `pokus-lab`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
+| `tools/test-distros/` | `make test-distros`: the distribution tests in Incus VMs and the CI fast lane. |
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
 | `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. |
 | `tools/repo-checks/` | Repository checks: privacy scan, docs lint, link check, Mermaid extraction. |

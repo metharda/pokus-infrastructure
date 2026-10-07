@@ -13,7 +13,7 @@ machine:
   name: ci-placeholder
   lab_mode: staging
   node_role: full
-  power_policy: none
+  power_policy: os_default
   srv_path: /srv/pokus
 storage:
   source: loop
@@ -26,7 +26,7 @@ remote_access:
   grafana_tailscale_serve: false
   ssh_extra_allowed_interfaces: []
 gpu:
-  install_driver: false
+  install_driver: skip
   default_model: none
 backups:
   repository: {type: local, path: /var/backups/pokus-ci}

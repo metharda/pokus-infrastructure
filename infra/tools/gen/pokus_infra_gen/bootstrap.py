@@ -4,7 +4,8 @@
 ``bootstrap/lib/pins.sh`` (the uv and CPython pins bootstrap reads before any
 Python exists), ``bootstrap/requirements.in`` (compiled to the hash-locked
 ``requirements.lock`` by ``make bootstrap-lock``), the models role's
-``requirements.in`` (``make models-lock``) and
+``requirements.in`` (``make models-lock``), the installer's
+``requirements.in`` (``make installer-lock``) and
 ``ansible/group_vars/all/versions.yml``. The CLI reference is rendered from the
 usage text in ``bootstrap/lib/args.sh``, the exit codes from
 ``bootstrap/lib/exitcodes.sh``.
@@ -37,14 +38,14 @@ class RequirementSet:
     """A hash-locked Python environment pinned in ``versions.lock.yml``.
 
     Attributes:
-        key: Key under ``python`` in the lock.
+        keys: Keys under ``python`` in the lock whose packages the environment holds.
         source: ``requirements.in`` path, relative to the component root.
         lock: Hash-locked ``requirements.lock`` path.
         purpose: What the environment is for (comment line).
         target: Make target that compiles the lock.
     """
 
-    key: str
+    keys: tuple[str, ...]
     source: str
     lock: str
     purpose: str
@@ -52,19 +53,26 @@ class RequirementSet:
 
 
 BOOTSTRAP_REQUIREMENTS = RequirementSet(
-    "packages",
+    ("packages",),
     "bootstrap/requirements.in",
     "bootstrap/requirements.lock",
     "Python packages of /opt/pokus/ansible-venv (BUILD_PROMPT §5.2 step 5);",
     "bootstrap-lock",
 )
 MODEL_REQUIREMENTS = RequirementSet(
-    "model_tools",
+    ("model_tools",),
     "ansible/roles/models/files/requirements.in",
     "ansible/roles/models/files/requirements.lock",
     "Python packages of /opt/pokus/models-venv, the models role's download tool "
     "(BUILD_PROMPT §7.12);",
     "models-lock",
+)
+INSTALLER_REQUIREMENTS = RequirementSet(
+    ("installer", "packages"),
+    "installer/requirements.in",
+    "installer/requirements.lock",
+    "Python packages of /opt/pokus/installer-venv, the installer TUI (BUILD_PROMPT §18.2),",
+    "installer-lock",
 )
 
 
@@ -160,10 +168,12 @@ def requirements_in(root: Path, spec: RequirementSet = BOOTSTRAP_REQUIREMENTS) -
     Returns:
         Requirements text.
     """
-    packages = _lock(root)["python"][spec.key]
+    python = _lock(root)["python"]
+    packages = {name: v for key in spec.keys for name, v in python[key].items()}
+    groups = ", ".join(f"python.{key}" for key in spec.keys)
     lines = [
         f"# Managed by pokus-infra ({spec.source}). Local changes will be overwritten.",
-        f"# Generated from versions.lock.yml (python.{spec.key}) by tools/gen (make generate).",
+        f"# Generated from versions.lock.yml ({groups}) by tools/gen (make generate).",
         f"# {spec.purpose}",
         f"# `make {spec.target}` compiles the hash-locked requirements.lock from it.",
     ]
@@ -220,17 +230,22 @@ def requirements_lock_problems(
     """
     lock_text = (root / spec.lock).read_text(encoding="utf-8")
     requirements = (line.split(" ;")[0].rstrip(" \\") for line in lock_text.splitlines())
-    pinned = {m.group(1).lower(): m.group(2) for m in map(REQUIREMENT.match, requirements) if m}
+    pinned = {_normalize(m.group(1)): m.group(2) for m in map(REQUIREMENT.match, requirements) if m}
     problems = []
     for line in requirements_in(root, spec).splitlines():
         m = REQUIREMENT.match(line)
-        if m and pinned.get(m.group(1).lower()) != m.group(2):
+        if m and pinned.get(_normalize(m.group(1))) != m.group(2):
             problems.append(
                 f"{spec.lock}: {m.group(1)} is "
-                f"{pinned.get(m.group(1).lower(), 'missing')}, requirements.in pins {m.group(2)}; "
-                f"run 'make {spec.target}'"
+                f"{pinned.get(_normalize(m.group(1)), 'missing')}, requirements.in pins "
+                f"{m.group(2)}; run 'make {spec.target}'"
             )
     return problems
+
+
+def _normalize(name: str) -> str:
+    """A package name normalized like pip does (PEP 503): ``ruamel.yaml`` is ``ruamel-yaml``."""
+    return re.sub(r"[-_.]+", "-", name).lower()
 
 
 def exit_codes(root: Path) -> list[ExitCode]:

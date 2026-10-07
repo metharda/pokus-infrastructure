@@ -2,8 +2,8 @@
 #
 # This project is never installed on lab hosts. Hosts get their Python
 # environments from bootstrap/requirements.lock (Ansible) and
-# installer/uv.lock (installer TUI). Versions are exact pins; uv.lock adds
-# hashes. Bump only through the lock update procedure in docs/reproducibility.md.
+# installer/requirements.lock (installer TUI). Versions are exact pins; uv.lock
+# adds hashes. Bump only through the lock update procedure in docs/reproducibility.md.
 
 [project]
 name = "pokus-infra-dev"
@@ -28,8 +28,13 @@ dev = [
   "ansible-lint==26.9.0",
   # git hooks (local hooks only, see .pre-commit-config.yaml)
   "pre-commit==4.6.2",
-  # tests
-  "pytest==9.1.1",
+  # tests (pytest 8: pytest-textual-snapshot 1.1.0 pins syrupy 4.8.0, which needs pytest<9)
+  "pytest==8.4.2",
+  "pytest-textual-snapshot==1.1.0",
+  # installer TUI (the pins of python.installer in versions.lock.yml)
+  "textual==8.2.8",
+  "ruamel.yaml==0.19.1",
+  "segno==1.6.6",
   # documentation
   "mkdocs==1.6.1",
   "mkdocs-material==9.7.7",
@@ -67,6 +72,7 @@ known-first-party = [
   "pokus",
   "pokus_incus_object",
   "ansible_testlib",
+  "pokus_installer",
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -76,12 +82,14 @@ convention = "google"
 "**/tests/**" = ["S101", "D", "ANN", "PLR2004"]
 "bootstrap/tests/**" = ["S603", "S607"]  # the tests drive bash, git and setpriv
 "ansible/tests/**" = ["S603", "S607"]  # the tests run nft, ShellCheck, sh and visudo
+"installer/tests/**" = ["S603", "S607", "PLR0915"]  # preflight, bash, ansible-playbook; flows walk every screen
 "ansible/roles/*/library/*.py" = ["E501"]  # managed header and module documentation lines
 "ansible/roles/*/files/*.py" = ["E501", "EXE001"]  # managed header; installed executable, shebang for the host
+"ansible/callback_plugins/*.py" = ["E501", "ANN401"]  # managed header; Ansible objects have no types
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/deploy_source/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pokus-lab:tools/pokus-lab/tests:tools/test-distros:tools/test-distros/tests"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/deploy_source/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pokus-lab:tools/pokus-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -100,6 +108,7 @@ testpaths = [
   "ansible/tests",
   "tools/pokus-lab/tests",
   "tools/test-distros/tests",
+  "installer/tests",
 ]
 pythonpath = [
   "tools/repo-checks",
@@ -122,4 +131,7 @@ pythonpath = [
   "tools/pokus-lab",
   "tools/pokus-lab/tests",
   "tools/test-distros",
+  "installer",
+  "installer/tests",
+  "ansible/callback_plugins",
 ]

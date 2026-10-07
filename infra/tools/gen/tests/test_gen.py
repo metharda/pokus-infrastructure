@@ -40,11 +40,16 @@ def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
         "versions.lock.yml",
         "tools/pokus-lab/schema",
         "tests/distros",
+        "installer/requirements.in",
+        "installer/requirements.lock",
+        "installer/schema",
+        "installer/tests/__snapshots__",
     ):
         src = ROOT / rel
         if src.is_dir():
             shutil.copytree(src, tmp_path / rel)
         else:
+            (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, tmp_path / rel)
     stale = tmp_path / "docs/support-matrix.md"
     stale.write_text("edited by hand\n", encoding="utf-8")
@@ -64,6 +69,7 @@ def test_coverage_is_complete_and_detects_gaps(
         "ansible",
         "tools/pokus-lab/schema",
         "tests/distros",
+        "installer/schema",
     ):
         shutil.copytree(ROOT / rel, tmp_path / rel)
     ref = tmp_path / "docs/reference/cli/pokus-preflight.md"

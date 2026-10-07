@@ -85,17 +85,21 @@ the prompt text where they differ.
   `docs/reference/{cli/pokus-preflight,cli/bootstrap,cli/pokus-lab,exit-codes,host-profile}.md`,
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
+  `docs/reference/{answers,cli/pokus-installer}.md`, the screenshots
+  `docs/assets/installer/*.svg` (copies of TUI snapshots),
   the layout table between the `generated:layout` markers of
   `docs/architecture.md`, `bootstrap/lib/pins.sh`,
-  `bootstrap/requirements.in`, `ansible/requirements.yml` and
+  `bootstrap/requirements.in`, `installer/requirements.in`,
+  `ansible/requirements.yml` and
   `ansible/group_vars/all/versions.yml` come from `tools/gen`
   (`make generate`); `make docs` fails on drift or missing reference entries.
   Every top-level key of `group_vars/all/main.yml` needs a comment (above it or
   at the end of its line): it becomes the key's reference text.
   `bootstrap/requirements.lock` is compiled with `make bootstrap-lock` and
   `ansible/roles/models/files/requirements.lock` (from the generated
-  `requirements.in` next to it) with `make models-lock`; the drift check fails
-  if either does not pin the versions of its `requirements.in`.
+  `requirements.in` next to it) with `make models-lock`, and
+  `installer/requirements.lock` with `make installer-lock`; the drift check
+  fails if one does not pin the versions of its `requirements.in`.
 - Bootstrap exit codes are defined once, in `bootstrap/lib/exitcodes.sh`
   (`readonly EXIT_NAME=<code> # <title>: <meaning>`); every code needs a
   section in `docs/how-to/troubleshoot.md`.
@@ -150,6 +154,29 @@ the prompt text where they differ.
   and a section in `docs/how-to/fix-doctor-checks.md` (`{#check-<id>}`);
   the docs coverage check enforces it. The fingerprint's fields are defined
   by `tools/pokus-lab/schema/fingerprint.schema.json`.
+
+## Installer (BUILD_PROMPT §18)
+
+- `installer/pokus_installer/` is Python 3.12 with Textual and ruamel.yaml from
+  the hash-locked `installer/requirements.lock` (`/opt/pokus/installer-venv`).
+  It is a front-end only: it writes files and runs `bootstrap.sh
+  --non-interactive --no-tui`; it never provisions anything itself.
+- Every rule of a field lives in `validators.py`; the answers file is checked
+  by `installer/schema/answers.schema.json` and `answers.problems()`. A new
+  answers field needs a schema `description` (it becomes the reference text).
+- Secrets live in memory only (`Wizard.provided`, `vault_password`); the resume
+  state (`state.json`) and the answers file never hold one. The vault is
+  written only through Ansible's vault API; an existing vault's secrets are
+  kept unless the operator provides a new value.
+- The TUI reaches the host only through `tui/host.py` (`Host`) and bootstrap
+  only through `tui/runner.py` (`Runner`); the tests replace both
+  (`installer/tests/tui_fakes.py`) and use preflight's own fixtures for host
+  profiles and recorded event streams (`installer/tests/data/`, re-recorded
+  with `record_events.py`).
+- Snapshot tests cover every screen at 80x24 and 120x40, dark and light.
+  Change them only with `pytest installer/tests/test_tui_snapshots.py
+  --snapshot-update`, review every changed SVG, then `make generate` (the
+  docs screenshots are copies).
 
 ## Golden images (BUILD_PROMPT §7.13)
 

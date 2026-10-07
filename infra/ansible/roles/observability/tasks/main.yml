@@ -15,7 +15,7 @@
       - not observability_stores or vault_postgres_passwords.pokus_grafana is defined
       - not observability_stores or "'$' not in vault_postgres_passwords.pokus_grafana"
       - >-
-        not observability_stores or researchers | map(attribute='name')
+        not observability_stores or observability_grafana_researchers
         | difference(observability_grafana_user_passwords.keys() | list) | length == 0
       - observability_gpu_exporter in ['nvidia_smi', 'dcgm']
       - observability_gpu_exporter != 'dcgm' or pokus_versions.containers.images.dcgm_exporter.digest is match('sha256:')
@@ -23,7 +23,7 @@
       group_vars/all/vault.yml needs vault_grafana_admin_password (8 or more
       characters), vault_postgres_passwords.pokus_grafana (without "$", which
       Grafana's provisioning expands) and vault_grafana_user_passwords for
-      every researcher (full and lab nodes); observability_gpu_exporter is
+      every researcher with a Grafana account (full and lab nodes); observability_gpu_exporter is
       nvidia_smi or dcgm, and dcgm only once its image is verified in versions.lock.yml.
     quiet: true
 

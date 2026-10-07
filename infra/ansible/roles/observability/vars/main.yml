@@ -12,6 +12,13 @@ observability_inference_node: "{{ inference_remote_node if node_role == 'lab' el
 # readable by its container user only.
 observability_pairing_dir: "{{ observability_secrets_dir }}/otel-pairing"
 observability_pairing_files: [self.crt, self.key, peer.crt]
+# Researchers with grafana: false get no Grafana account; the accounts to keep
+# (everyone else) and to disable (those and the removed researchers).
+observability_grafana_opted_out: >-
+  {{ researchers | selectattr('grafana', 'defined') | rejectattr('grafana') | map(attribute='name') | list }}
+observability_grafana_researchers: >-
+  {{ researchers | map(attribute='name') | reject('in', observability_grafana_opted_out) | list }}
+observability_grafana_disabled: "{{ observability_grafana_opted_out + researchers_removed }}"
 # Container user of the collector gateway (compose/observability/compose.yml).
 observability_gateway_uid: 10001
 # The dedicated OTLP listener for VM targets exists only with vm_targets (C4),

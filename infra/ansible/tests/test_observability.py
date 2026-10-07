@@ -263,6 +263,31 @@ def test_derived_flags() -> None:
     assert evaluate("observability_vllm", obs_vars(gpu=True, node_role="inference")) is True
 
 
+def test_grafana_accounts_follow_the_researchers() -> None:
+    variables = obs_vars()
+    variables.update(
+        researchers=[
+            {"name": "researcher1", "admin": True},
+            {"name": "researcher2", "admin": False, "grafana": False},
+            {"name": "researcher3", "admin": False, "grafana": True, "display_name": "R Three"},
+        ],
+        researchers_removed=["researcher4"],
+    )
+    assert evaluate("observability_grafana_researchers", variables) == [
+        "researcher1",
+        "researcher3",
+    ]
+    assert evaluate("observability_grafana_disabled", variables) == ["researcher2", "researcher4"]
+    name = (
+        "(researchers | selectattr('name', 'equalto', item.item) | first).display_name"
+        " | default(item.item, true)"
+    )
+    assert evaluate(name, {**variables, "item": {"item": "researcher3"}}) == "R Three"
+    assert evaluate(name, {**variables, "item": {"item": "researcher1"}}) == "researcher1"
+    tasks = (ROLES / "observability" / "tasks" / "grafana_users.yml").read_text(encoding="utf-8")
+    assert name in tasks  # the expression the task uses
+
+
 def split_vars(node_role: str, peer: str = "") -> dict[str, Any]:
     """Variables of a split-inference node, paired with ``peer`` if given."""
     variables = obs_vars(gpu=node_role == "inference", node_role=node_role, vm=True)

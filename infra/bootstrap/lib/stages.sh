@@ -403,19 +403,119 @@ stage_tooling() {
   leave_stage
 }
 
-# stage_frontend: hand over to the installer TUI (§5.3). Temporary until infra
-# step 13 adds the installer: forcing the TUI or replaying an answers file
-# stops with 77; the default falls back to the plain front-end.
+# installer ARGS...: the installer package with its hash-locked environment.
+installer() {
+  PYTHONPATH="$INFRA_DIR/installer" "$INSTALLER_VENV/bin/python" -m pokus_installer \
+    --infra "$INFRA_DIR" "$@"
+}
+
+# answers_field NAME TEXT: the value of NAME in installer describe's key=value lines.
+answers_field() {
+  sed -n "s/^$1=//p" <<<"$2"
+}
+
+# apply_answers: replay an answers file (§18.6): take the machine name, the
+# mode and the snapshot from it, and write host_vars, the researchers, the
+# vault and the answers file before preflight runs.
+apply_answers() {
+  local described machine mode password=$OPT_VAULT_PASSWORD_FILE
+  described=$(installer describe --answers "$OPT_ANSWERS") \
+    || fail "$EXIT_OPERATOR" "the answers file $OPT_ANSWERS cannot be used (problems above)"
+  machine=$(answers_field machine "$described")
+  mode=$(answers_field mode "$described")
+  if [[ -n $OPT_MACHINE && $OPT_MACHINE != "$machine" ]]; then
+    fail "$EXIT_USAGE" "--machine $OPT_MACHINE does not match the answers file (machine $machine)"
+  fi
+  OPT_MACHINE=$machine
+  [[ $mode == restore ]] && OPT_RESTORE=true
+  if [[ -z $password && -f $STORED_VAULT_PASS ]]; then
+    password=$STORED_VAULT_PASS
+  fi
+  [[ -n $password ]] || fail "$EXIT_OPERATOR" \
+    "--answers needs --vault-password-file: the vault is written with that password"
+  installer apply --answers "$OPT_ANSWERS" --machine "$machine" --vault-password-file "$password" \
+    || fail "$EXIT_OPERATOR" "the answers could not be applied (reason above)"
+  log_info "applied the answers for $machine (mode $mode)"
+}
+
+# tui_bootstrap_args: print the options the TUI passes on to the bootstrap it
+# runs, one per line (the operator's overrides; the rest it decides itself).
+tui_bootstrap_args() {
+  local flag
+  for flag in ACCEPT_DEGRADED:--accept-degraded ACCEPT_EXPERIMENTAL:--accept-experimental \
+    FORCE_UNSUPPORTED:--force-unsupported REFRESH_PROFILE:--refresh-profile \
+    ALLOW_REBOOT:--allow-reboot ALLOW_DIRTY:--allow-dirty ADOPT_INCUS:--adopt-incus \
+    ALLOW_COMMUNITY_REPOS:--allow-community-repos OFFLINE:--offline CHECK:--check; do
+    local name=OPT_${flag%%:*}
+    if "${!name}"; then
+      printf '%s\n' "${flag#*:}"
+    fi
+  done
+  [[ -n $OPT_TAGS ]] && printf '%s\n' "--tags=$OPT_TAGS"
+  [[ -n $OPT_SKIP_TAGS ]] && printf '%s\n' "--skip-tags=$OPT_SKIP_TAGS"
+  return 0
+}
+
+# run_tui: hand the terminal to the installer TUI (§5.3, §18). The lock is
+# released and the output no longer goes through the log writer: the TUI runs
+# bootstrap again, non-interactively, for the installation itself, and that
+# run writes its own log, state file and events.
+run_tui() {
+  local arg
+  local -a args=()
+  [[ -n $OPT_MACHINE ]] && args+=(--machine "$OPT_MACHINE")
+  [[ -n $OPT_ANSWERS ]] && args+=(--answers "$OPT_ANSWERS")
+  while IFS= read -r arg; do
+    [[ -n $arg ]] && args+=("--bootstrap-arg=$arg")
+  done < <(tui_bootstrap_args)
+  log_info "starting the installer TUI (this run's log: $LOG_FILE)"
+  leave_stage
+  STATE_ENABLED=false
+  trap - ERR EXIT
+  flock -u 9
+  exec 9>&- </dev/tty >/dev/tty 2>&1
+  exec env PYTHONPATH="$INFRA_DIR/installer" POKUS_BOOTSTRAP_LOG="$LOG_FILE" \
+    "$INSTALLER_VENV/bin/python" -m pokus_installer \
+    --infra "$INFRA_DIR" tui "${args[@]}"
+}
+
+# terminal_problem: print why this terminal cannot show the TUI, or nothing.
+terminal_problem() {
+  local size rows cols
+  if [[ ${TERM:-dumb} == dumb ]]; then
+    printf 'TERM is %s' "${TERM:-unset}"
+    return
+  fi
+  size=$(stty size 2>/dev/null </dev/tty) || {
+    printf 'no terminal size'
+    return
+  }
+  read -r rows cols <<<"$size"
+  if ((rows < 24 || cols < 80)); then
+    printf 'the terminal is %sx%s, the installer needs 80x24' "$cols" "$rows"
+  fi
+}
+
+# stage_frontend: the installer (§5.3, §18): replay an answers file, or hand
+# over to the TUI on a suitable terminal; otherwise continue without it.
 stage_frontend() {
+  local problem
   enter_stage frontend
-  if [[ -n $OPT_ANSWERS ]]; then
-    fail "$EXIT_OPERATOR" "answers files are applied by the installer, which this version does not include yet; run without --answers"
+  if [[ -n $OPT_ANSWERS ]] || "$USE_TUI"; then
+    setup_venv "$INSTALLER_VENV" "$INFRA_DIR/installer/requirements.lock"
   fi
   if "$USE_TUI"; then
-    [[ $OPT_TUI == on ]] \
-      && fail "$EXIT_OPERATOR" "this version does not include the installer TUI yet; re-run with --no-tui"
-    log_info "the installer TUI is not included in this version; continuing without it"
+    problem=$(terminal_problem)
+    if [[ -n $problem ]]; then
+      log_error "the installer TUI cannot start: $problem"
+      fail "$EXIT_OPERATOR" "use a larger terminal, or answers: --answers installer-answers/<machine>.yml (docs/how-to/install-without-the-tui.md)"
+    fi
+    run_tui
   fi
+  if [[ -n $OPT_ANSWERS ]]; then
+    apply_answers
+  fi
+  [[ -n $OPT_MACHINE ]] || fail "$EXIT_USAGE" "--machine is required"
   leave_stage
 }
 

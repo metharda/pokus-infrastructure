@@ -48,6 +48,7 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.highlight
   - pymdownx.inlinehilite
+  - pymdownx.keys
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -69,6 +70,8 @@ nav:
   - Home: index.md
   - How-to guides:
       - Check whether a machine can host the lab: how-to/check-a-host.md
+      - Install a lab with the installer TUI: how-to/install-with-the-tui.md
+      - Install a lab from an answers file: how-to/install-without-the-tui.md
       - Start, stop and drain the lab: how-to/start-stop-drain.md
       - Update the host operating system: how-to/update-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
@@ -92,6 +95,8 @@ nav:
       - "CLI: bootstrap.sh": reference/cli/bootstrap.md
       - "CLI: pokus-preflight": reference/cli/pokus-preflight.md
       - "CLI: pokus-lab": reference/cli/pokus-lab.md
+      - "CLI: pokus-installer": reference/cli/pokus-installer.md
+      - Installer answers file: reference/answers.md
       - Doctor checks: reference/doctor-checks.md
       - Exit codes: reference/exit-codes.md
       - Ansible variables: reference/ansible-variables.md

@@ -16,6 +16,13 @@ from pokus_infra_gen.sources import jsonable, load_yaml
 LOCK = "versions.lock.yml"
 MARKER = "TODO(verify)"
 
+# Keys under ``python`` in the lock and the environment that holds their packages.
+PYTHON_ENVIRONMENTS = (
+    ("packages", "/opt/pokus/ansible-venv"),
+    ("model_tools", "/opt/pokus/models-venv"),
+    ("installer", "/opt/pokus/installer-venv"),
+)
+
 
 def _lock(root: Path) -> dict[str, Any]:
     data = jsonable(load_yaml(root / LOCK))
@@ -71,14 +78,19 @@ def _binaries(lock: dict[str, Any]) -> list[str]:
 
 def _python(lock: dict[str, Any]) -> list[str]:
     py = lock["python"]
-    rows = [["CPython", _code(py["python_version"])]]
-    rows += [[name, _code(version)] for name, version in sorted(py["packages"].items())]
+    rows = [["`/opt/pokus/python`", "CPython", _code(py["python_version"])]]
+    for key, environment in PYTHON_ENVIRONMENTS:
+        rows += [
+            [f"`{environment}`", name, _code(version)] for name, version in sorted(py[key].items())
+        ]
     return [
         "\n## Python\n\n",
-        "CPython installed by uv into `/opt/pokus/python` and the packages of the Ansible "
-        "environment (hash-locked in `bootstrap/requirements.lock`). ",
+        "CPython installed by uv into `/opt/pokus/python` and the packages of its "
+        "environments: Ansible (hash-locked in `bootstrap/requirements.lock`), the model "
+        "download tool (`ansible/roles/models/files/requirements.lock`) and the installer, "
+        "which also holds the Ansible packages (`installer/requirements.lock`). ",
         _section_note(py),
-        pages.table(["Name", "Version"], rows),
+        pages.table(["Environment", "Name", "Version"], rows),
     ]
 
 

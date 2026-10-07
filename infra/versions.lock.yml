@@ -133,12 +133,21 @@ python:
   # (hash-locked in ansible/roles/models/files/requirements.lock).
   model_tools:
     huggingface-hub: "2.1.1"  # the `hf download` CLI (BUILD_PROMPT §7.12)
+  # Packages of /opt/pokus/installer-venv, the installer TUI (BUILD_PROMPT
+  # §18.2), on top of the `packages` above (ansible-core for the vault API);
+  # hash-locked in installer/requirements.lock (owner answer E11).
+  installer:
+    textual: "8.2.8"
+    ruamel.yaml: "0.19.1"  # round-trip edits of host_vars and group_vars
+    jsonschema: "4.26.0"   # installer/schema/answers.schema.json
+    segno: "1.6.6"         # QR code of the Tailscale login URL (pure Python)
   verified_on: 2026-10-06
   source: >-
     PyPI JSON API (pypi.org/pypi/<name>/<version>/json) for the packages (the
     huggingface-hub 2.1.1 wheel downloaded and matched against its published
-    sha256); `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the
-    CPython build
+    sha256; textual 8.2.8, ruamel.yaml 0.19.1, jsonschema 4.26.0 and segno
+    1.6.6 are the latest releases, not yanked); `uv python list 3.12.15 --only-downloads` of
+    uv 0.12.23 for the CPython build
 
 containers:
   # Every lab service image, pinned by the digest of its multi-platform index

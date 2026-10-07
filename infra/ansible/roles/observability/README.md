@@ -28,7 +28,8 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   directory) and the dashboards of `config/grafana/dashboards/`: host
   overview, GPU and vLLM, Incus targets, lab services health and the run
   explorer (`run_id` variable). Anonymous access is off; the admin password
-  and one account per researcher come from the vault; removed researchers are
+  and one account per researcher (named after `display_name`) come from the
+  vault; researchers with `grafana: false` and removed researchers are
   disabled.
 - **node_exporter** (host PID namespace, textfile collector directory
   `/var/lib/pokus/node-exporter`), **cAdvisor** and, with `gpu_inference`, the

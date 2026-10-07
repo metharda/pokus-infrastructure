@@ -64,13 +64,13 @@ def _value(action: argparse.Action) -> str:
 
 
 def _argument_rows(
-    parser: argparse.ArgumentParser, *, with_help: bool = False
+    parser: argparse.ArgumentParser, *, with_help: bool = False, program: str = "pokus-lab"
 ) -> Iterator[list[str]]:
     for action in parser._actions:
         if isinstance(action, argparse._HelpAction):
             if with_help:
                 names = ", ".join(f"`{s}`" for s in action.option_strings)
-                yield [names, "", "", "show the help of pokus-lab or of a command and exit"]
+                yield [names, "", "", f"show the help of {program} or of a command and exit"]
             continue
         if isinstance(action, argparse._SubParsersAction):
             continue
@@ -88,6 +88,7 @@ def _argument_rows(
             False,
             argparse.SUPPRESS,
             [],
+            "",
         ):
             shown = ""
         else:

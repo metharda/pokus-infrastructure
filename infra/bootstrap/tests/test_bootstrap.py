@@ -68,7 +68,9 @@ def profile(tmp_path: Path, fixture: str, name: str = "profile.json") -> Path:
 def test_help_lists_every_option() -> None:
     res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), "--help"])
     assert res.returncode == 0
-    assert res.stdout.startswith("Usage: sudo ./bootstrap/bootstrap.sh --machine <name> [options]")
+    assert res.stdout.startswith(
+        "Usage: sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]"
+    )
     for option in (
         "--machine",
         "--ref",
@@ -434,6 +436,96 @@ def test_vault_args(tmp_path: Path) -> None:
     assert lines[0] == f"--vault-password-file {pass_file}"
     # /etc/pokus/secrets/vault-pass does not exist on a development machine
     assert lines[1:] == ["--ask-vault-pass", "no-password"]
+
+
+# --- installer front-end (BUILD_PROMPT §5.3, §18) -----------------------------------
+
+
+FAKE_INSTALLER = """
+installer() {
+  echo "installer $*" >>"$CALLS"
+  if [[ " $* " == *" describe "* ]]; then
+    [[ -n ${DESCRIBE_FAIL:-} ]] && return 1
+    printf 'machine=%s\nmode=%s\nsnapshot=%s\n' \\
+      "${ANSWERS_MACHINE:-lab1}" "${ANSWERS_MODE:-fresh}" "${ANSWERS_SNAPSHOT:-}"
+  fi
+  if [[ " $* " == *" apply "* && -n ${APPLY_FAIL:-} ]]; then return 1; fi
+  return 0
+}
+"""
+
+
+def frontend(tmp_path: Path, setup: str, env: dict[str, str] | None = None) -> tuple[int, str, str]:
+    calls = tmp_path / "calls"
+    answers = tmp_path / "answers.yml"
+    answers.write_text("schema_version: 1\n")
+    password = tmp_path / "vault-pass"
+    password.write_text("x\n")
+    res = bash(
+        FAKE_INSTALLER
+        + f"""
+        setup_venv() {{ echo "venv $*" >>"$CALLS"; }}
+        enter_stage() {{ :; }}
+        leave_stage() {{ :; }}
+        OPT_ANSWERS={q(answers)}
+        OPT_VAULT_PASSWORD_FILE={q(password)}
+        {setup}
+        stage_frontend
+        echo "machine=$OPT_MACHINE restore=$OPT_RESTORE"
+        """,
+        env={"CALLS": str(calls), **(env or {})},
+    )
+    return res.returncode, res.stdout + res.stderr, calls.read_text() if calls.exists() else ""
+
+
+def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
+    code, out, calls = frontend(tmp_path, "")
+    assert code == 0, out
+    assert "machine=lab1 restore=false" in out
+    assert "venv /opt/pokus/installer-venv" in calls
+    assert "installer apply --answers" in calls and "--machine lab1" in calls
+
+
+def test_restore_answers_turn_on_the_restore_stage(tmp_path: Path) -> None:
+    code, out, _ = frontend(tmp_path, "", {"ANSWERS_MODE": "restore", "ANSWERS_SNAPSHOT": "latest"})
+    assert code == 0, out
+    assert "restore=true" in out
+
+
+@pytest.mark.parametrize(
+    ("setup", "env", "code", "message"),
+    [
+        ("OPT_MACHINE=lab2", {}, 64, "does not match the answers file"),
+        ("OPT_VAULT_PASSWORD_FILE=''", {}, 77, "--answers needs --vault-password-file"),
+        ("", {"DESCRIBE_FAIL": "1"}, 77, "cannot be used"),
+        ("", {"APPLY_FAIL": "1"}, 77, "could not be applied"),
+        ("OPT_ANSWERS=''", {}, 64, "--machine is required"),
+    ],
+)
+def test_frontend_refusals(
+    tmp_path: Path, setup: str, env: dict[str, str], code: int, message: str
+) -> None:
+    rc, out, _ = frontend(tmp_path, setup, env)
+    assert rc == code, out
+    assert message in out
+
+
+def test_tui_gets_the_operator_overrides() -> None:
+    res = bash(
+        """
+        OPT_ACCEPT_DEGRADED=true; OPT_ALLOW_DIRTY=true; OPT_SKIP_TAGS=images,models
+        tui_bootstrap_args
+        """
+    )
+    assert res.stdout.split() == ["--accept-degraded", "--allow-dirty", "--skip-tags=images,models"]
+
+
+def test_unsuitable_terminals_are_refused() -> None:
+    res = bash("terminal_problem", env={"TERM": "dumb"})
+    assert res.stdout == "TERM is dumb"
+    res = bash("terminal_problem", env={"TERM": "xterm-256color"})
+    # no terminal in the tests: stty cannot read a size
+    assert res.stdout == "no terminal size"
 
 
 # --- tooling helpers -------------------------------------------------------------------

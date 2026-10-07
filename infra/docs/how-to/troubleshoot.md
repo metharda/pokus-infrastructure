@@ -210,7 +210,11 @@ Bootstrap stopped and printed what to do. Common messages:
 | the vault needs a password | Add `--vault-password-file <file>`. |
 | versions.yml does not match versions.lock.yml | Run `make generate` in `infra/` and commit the result. |
 | another bootstrap is running | Wait for the other run to finish. |
-| this version does not include the installer TUI yet | Use `--no-tui`, and leave out `--answers`. |
+| the installer TUI cannot start | The terminal is smaller than 80x24, `TERM` is unset or `dumb`, or there is no terminal: use a larger terminal, or [an answers file](install-without-the-tui.md). |
+| the answers file ... cannot be used | Fix every field listed above it (see the [answers file reference](../reference/answers.md)). |
+| --answers needs --vault-password-file | Add `--vault-password-file <file>`; for a new lab, that password encrypts the new vault. |
+| the answers could not be applied | Read the reason above it: a wrong vault password, or a secret the answers call *provided* is missing from `POKUS_SECRET_<NAME>`. |
+| Stopped before the installation finished | You quit the installer TUI; run `sudo ./bootstrap/bootstrap.sh` again and choose *Resume*. |
 | The host changed since bootstrap validated it | The play's preflight gate found a different outcome, provider or feature set; check the listed changes, then add `--refresh-profile`. |
 | No usable NVIDIA driver is loaded | Install the driver as your distribution documents it, or set `install_nvidia_driver: skip` in host_vars. See [Bare-metal hosts](../providers/baremetal.md). |
 | The NVIDIA driver for this distribution comes from a community repository | Add `--allow-community-repos` (recorded in the fingerprint), or install the driver yourself with `install_nvidia_driver: manual`. |

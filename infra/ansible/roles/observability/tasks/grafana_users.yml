@@ -2,8 +2,9 @@
 #
 # Grafana accounts (BUILD_PROMPT §7.9): the admin password from the vault and
 # one account per researcher with the role of observability_grafana_user_role
-# (GF_USERS_AUTO_ASSIGN_ORG_ROLE); removed researchers are disabled. A
-# password is only reset when logging in with it fails.
+# (GF_USERS_AUTO_ASSIGN_ORG_ROLE), named after display_name; researchers with
+# grafana: false and removed researchers are disabled. A password is only
+# reset when logging in with it fails.
 - name: Check the Grafana admin password
   ansible.builtin.uri:
     url: "{{ observability_grafana_url }}/api/user"
@@ -30,7 +31,7 @@
     force_basic_auth: true
     status_code: [200, 404]
   register: observability_grafana_lookup
-  loop: "{{ researchers | map(attribute='name') | list + researchers_removed }}"
+  loop: "{{ observability_grafana_researchers + observability_grafana_disabled }}"
 
 - name: Create the missing accounts
   ansible.builtin.uri:
@@ -41,7 +42,7 @@
     force_basic_auth: true
     body_format: json
     body:
-      name: "{{ item.item }}"
+      name: "{{ (researchers | selectattr('name', 'equalto', item.item) | first).display_name | default(item.item, true) }}"
       login: "{{ item.item }}"
       password: "{{ observability_grafana_user_passwords[item.item] }}"
     status_code: 200
@@ -50,7 +51,7 @@
   loop: "{{ observability_grafana_lookup.results }}"
   when:
     - item.status == 404
-    - item.item not in researchers_removed
+    - item.item not in observability_grafana_disabled
 
 - name: Check the researchers' passwords
   ansible.builtin.uri:
@@ -64,7 +65,7 @@
   loop: "{{ observability_grafana_lookup.results }}"
   when:
     - item.status == 200
-    - item.item not in researchers_removed
+    - item.item not in observability_grafana_disabled
     - not item.json.isDisabled | default(false)
 
 - name: Reset the passwords that do not work
@@ -83,7 +84,7 @@
   loop: "{{ observability_grafana_logins.results }}"
   when: item.status | default(0) == 401
 
-- name: Disable the accounts of removed researchers
+- name: Disable the accounts of removed researchers and those without Grafana
   ansible.builtin.uri:
     url: "{{ observability_grafana_url }}/api/admin/users/{{ item.json.id }}/disable"
     method: POST
@@ -97,5 +98,5 @@
     label: "{{ item.item }}"
   when:
     - item.status == 200
-    - item.item in researchers_removed
+    - item.item in observability_grafana_disabled
     - not item.json.isDisabled | default(false)

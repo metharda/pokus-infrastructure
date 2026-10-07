@@ -14,14 +14,14 @@ description: Every option of bootstrap.sh.
 `bootstrap/bootstrap.sh` is the single entry point that provisions a Pokus lab host (see [How bootstrap works](../../explanation/bootstrap.md)).
 
 ```text
-sudo ./bootstrap/bootstrap.sh --machine <name> [options]
+sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]
 ```
 
 ## Options
 
 | Option | Value | Description |
 | --- | --- | --- |
-| `--machine` | `NAME` | Required. Selects ansible/inventory/host_vars/NAME.yml |
+| `--machine` | `NAME` | Selects ansible/inventory/host_vars/NAME.yml; required unless --answers or the TUI names it |
 | `--ref` | `REF` | Git ref of pokus-infra being applied (recorded; default: current HEAD) |
 | `--restore` | — | After provisioning, run restore.yml (prompts for snapshot) |
 | `--tags` | `T1,T2` | Pass through to ansible-playbook |

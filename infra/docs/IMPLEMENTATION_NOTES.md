@@ -1638,3 +1638,139 @@ not (see PROGRESS, known issues).
 ### Open `TODO(verify)` items after step 12
 
 108 markers: one more, the image aliases of `tests/distros/targets.yml`.
+
+## Step 13: the installer TUI and the answers replay
+
+Built: `installer/` (BUILD_PROMPT §18): the answers schema
+`installer/schema/answers.schema.json`; `pokus_installer` with the field
+rules (`validators.py`), the answers model and its cross-field checks
+(`answers.py`), the writers of host_vars (round trip from the example file,
+comments kept), of the researchers of `group_vars/all/main.yml` (refilled in
+place), of `users/<name>.pub` and of the vault (Ansible's vault API), the
+resume state, the plan that the Review screen shows and Install writes
+(`apply.py`), model pinning from the Hugging Face Hub (`models.py`) and the
+command line `python -m pokus_installer {validate,describe,apply,tui}`; the
+Textual application `pokus_installer/tui/` with screens 1-18, the host
+interface, the bootstrap runner and the event folding; the hash-locked
+installer environment (`installer/requirements.in` generated from
+`versions.lock.yml`, `installer/requirements.lock` from `make
+installer-lock`); the Ansible callback `ansible/callback_plugins/pokus_events.py`
+(enabled in `ansible/ansible.cfg`); bootstrap's front-end stage (installer
+environment, TUI hand-over, answers replay, terminal check, `--machine`
+optional with `--answers` or the TUI); the observability role's per-researcher
+Grafana switch; generated references `docs/reference/answers.md` and
+`docs/reference/cli/pokus-installer.md`, and the screenshots
+`docs/assets/installer/*.svg` copied from the snapshot tests; how-to guides
+`install-with-the-tui.md` and `install-without-the-tui.md`, updates to
+`explanation/bootstrap.md` and `how-to/troubleshoot.md`.
+
+Tests: 201 installer tests (validators, answers, files and vault, pins, 20
+pilot flows, 76 screen snapshots, event replay, runner, suggestions), 4
+callback tests, the bootstrap front-end tests.
+
+### Verified in step 13
+
+- Textual 8.2.8, ruamel.yaml 0.19.1, jsonschema 4.26.0 and segno 1.6.6 from
+  PyPI (2026-10-06); the installer lock pins them with hashes, together with
+  the ansible-core of the Ansible environment for the vault API.
+- The vault round trip with ansible-core's `VaultLib` (encrypt, decrypt,
+  wrong password), and that an existing vault's secrets survive a modify run.
+- The event streams the tests replay are real recordings
+  (`installer/tests/data/record_events.py`): bootstrap's own `emit_event` and
+  `ansible-playbook --check` with the callback on a stand-in play whose tasks
+  only print or fail.
+- The host profiles the pilot tests use come from preflight itself, run
+  read-only on its synthetic fixtures (WSL2 with GPU, bare metal with and
+  without GPU, Secure Boot, unsupported storage).
+- Doctor reports in the tests come from pokus-lab's own JSON renderer.
+- An install through the TUI and a replay of its answers file with `apply`
+  write byte-identical host_vars, group_vars, answers and key files; only the
+  vault differs (salted encryption, generated secrets).
+- The runner's password hand-over file is 0600 in a 0700 directory and gone
+  after the run; cancelling stops bootstrap and its children (process group).
+
+### Findings to report (step 13)
+
+Found by the pilot tests and fixed in this step:
+
+1. **The callback named tasks `role : task`** (Ansible's `get_name()`), so the
+   TUI could never recognize the Tailscale login task and kept the login URL
+   on screen. It now emits the task's own name; the role is a field of its
+   own (callback test added).
+2. **Ansible's color module probes standard output with curses on import**,
+   which crashed the TUI the first time it opened the vault (Textual replaces
+   standard output). The installer imports the vault code before the
+   application starts.
+3. **Modify mode would have replaced the restic password**: the Backups
+   screen generated a new one even when the vault already had one, which
+   locks out every existing backup. A vault's restic password is now kept; a
+   password the vault build generates is shown once on the Review screen
+   before anything is written.
+4. **Resume lost the answers** whenever it happened before the Review screen,
+   because saved answers had to pass the full schema. The resume state now
+   keeps incomplete answers; Quit also keeps the fields of the current screen.
+5. **Modify mode asked for the Tailscale auth key again** although the vault
+   holds it; an empty field now keeps the vault's key.
+6. **The phase tree** listed the WSL provider role twice and showed helper
+   roles (`pkg`, `compose`, `deploy_source`, `bootstrap_signal`) as phases of
+   their own; the provider is resolved from the host profile and helper roles
+   count for the role that includes them.
+
+Not covered here:
+
+- **The TUI has not driven a real bootstrap** (the build environment must not
+  be provisioned); the pilot tests replay recorded runs. Phase 5 runs it on
+  the reference hosts.
+- **Estimates on the Review and Golden images screens** are counts only (how
+  many pinned images, which model, how many golden images): build times, disk
+  use and download sizes need measured data, which no build has produced yet.
+- **MOK enrollment** (`mokutil --import` with the password on standard input,
+  the DKMS key path on Ubuntu) is unverified (one `TODO(verify)`).
+- **Model pinning** needs the Hugging Face Hub, unreachable from here; the
+  Hub API field names it reads are unverified (one `TODO(verify)`, as in
+  step 7's how-to).
+- `make test-distros` can now replay its answers; it still needs a machine
+  with Incus VMs (step 12).
+
+### Interpretations awaiting owner confirmation (step 13)
+
+1. **`--machine` is optional** with `--answers` (the machine comes from the
+   file and must match if both are given) or when the TUI starts; without
+   either it is still required (64).
+2. **The TUI runs bootstrap again** non-interactively (`--non-interactive
+   --no-tui --vault-password-file <0600 file in /run/pokus/installer>`) for
+   the installation, after releasing the first run's lock, so the TUI and an
+   answers replay take exactly the same path (BUILD_PROMPT §18.1 "exactly as
+   a non-interactive run would").
+3. **One installer lockfile** (E11) that also pins ansible-core and its
+   dependencies, because the vault is written through Ansible's vault API.
+4. **segno** (QR codes of the Tailscale login URL) is an added pinned
+   dependency; it has no dependencies of its own.
+5. **pytest 8.4.2** in the development environment: pytest-textual-snapshot
+   1.1.0 requires pytest below 9.
+6. **The Grafana account toggle** per researcher (`grafana: false`) needed a
+   change of the observability role: such researchers get no Grafana user and
+   no generated password.
+7. **`split_inference.peer` is optional**: the other node can be named later
+   by pairing (`pokus-lab pair`), which the Finish screen offers and which then
+   re-runs the affected roles (`--tags=inference_control,observability,firewall`).
+8. **The CI answers** (`tests/answers/ci.yml`) use `power_policy: os_default`
+   and build no golden image (their base fingerprints are unverified).
+9. **E3 means no HTTPS tokens**: the Platform screen offers a generated
+   deploy key for SSH URLs and anonymous `https://` URLs, no token.
+10. **Exit codes of the TUI**: doctor's 0, 1 or 2 after Finish; 75 or 76
+    after the restart instructions; 77 when the operator quits before the end
+    or the terminal is unsuitable (80x24, `TERM`, a terminal on both ends).
+11. **Mouse support is optional** in the sense of "not required": every
+    action has a key; the mouse works where the terminal sends its events.
+    `NO_COLOR` is handled by Textual (monochrome); F2 switches between the
+    dark, light and high-contrast themes. Textual's command palette is off,
+    because its Quit would skip the confirmation.
+12. **The commit offered on the Finish screen** runs `git` as the invoking
+    user (`sudo -u`), on branch `machine/<name>`, and never pushes.
+
+### Open `TODO(verify)` items after step 13
+
+110 markers: two more, the Hugging Face Hub API field names in
+`installer/pokus_installer/models.py` and the MOK enrollment in
+`installer/pokus_installer/tui/screens_install.py`.

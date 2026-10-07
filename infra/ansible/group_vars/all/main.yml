@@ -57,6 +57,8 @@ pokus_groups:
 
 # Placeholders (owner answer E1). keys_file is relative to the infra directory;
 # key files are never committed (users/*.pub is excluded by .gitignore).
+# Optional per researcher: display_name (Grafana) and grafana: false (no
+# Grafana account). The installer TUI edits this list.
 researchers:
   - {name: researcher1, admin: true, shell: /bin/bash, keys_file: users/researcher1.pub}
   - {name: researcher2, admin: false, shell: /bin/bash, keys_file: users/researcher2.pub}

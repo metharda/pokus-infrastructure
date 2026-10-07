@@ -27,7 +27,8 @@ flowchart TD
     log --> git[Git checkout: commit, infra/ tree, dirty flag] -->|77| stop
     git --> pre[prepreflight.sh: systemd, glibc, arch, curl/wget, /opt] -->|20, 30, 75, 77| stop
     pre --> tools[Pinned uv and CPython in /opt/pokus] -->|50| stop
-    tools --> front[Front-end: TUI hand-over] --> preflight[Preflight and gate] -->|10, 11, 20, 30, 40, 77| stop
+    tools --> front[Front-end: installer TUI or answers file] -->|64, 77| stop
+    front --> preflight[Preflight and gate] -->|10, 11, 20, 30, 40, 77| stop
     preflight --> env[Ansible environment, collections, versions.yml check] -->|50, 77| stop
     env --> play[site.yml] -->|signal 75, 76, 77 or failure 60| stop
     play --> restore[restore.yml, only with --restore] -->|75, 76, 77, 60| stop
@@ -62,10 +63,17 @@ flowchart TD
    `/opt/pokus/bin/uv`. uv then installs the pinned CPython into
    `/opt/pokus/python`. Everything after this point uses that interpreter,
    never the distribution's Python.
-6. **Front-end.** On a terminal, bootstrap hands over to the installer TUI,
-   which drives the same stages with the same commands. The TUI and answers
-   files arrive in a later version; until then the plain front-end is used,
-   and `--tui` or `--answers` stop with 77.
+6. **Front-end.** The installer environment `/opt/pokus/installer-venv` is
+   synchronized from the hash-locked `installer/requirements.lock`. On a
+   terminal of at least 80x24, bootstrap releases its lock and hands the
+   terminal to the installer TUI, which collects the settings, writes the
+   files after its Review screen and runs bootstrap again with
+   `--non-interactive --no-tui` for the installation itself, following its
+   event stream. With `--answers`, bootstrap instead replays the answers file:
+   it checks it, writes the same files with the vault password of
+   `--vault-password-file`, and continues with the machine of the file (see
+   [How to install a lab from an answers file](../how-to/install-without-the-tui.md)).
+   With neither, `--machine` names an existing `host_vars` file.
 7. **Preflight and gate.** Preflight writes the new host profile to
    `/run/pokus/bootstrap/host-profile.json`. The gate applies the outcome, as
    described below. The profile is then compared with the stored

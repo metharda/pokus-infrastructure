@@ -82,3 +82,4 @@ vllm
 wslconfig
 Zabbly
 Zorin
+cpusets

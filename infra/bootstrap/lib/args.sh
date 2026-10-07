@@ -7,13 +7,14 @@
 
 usage() {
   cat <<'EOF'
-Usage: sudo ./bootstrap/bootstrap.sh --machine <name> [options]
+Usage: sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]
 
 Provision this host as a Pokus lab host: pre-preflight, preflight gate, pinned
-uv, CPython and Ansible, the Ansible play, optional restore, and doctor.
+uv, CPython and Ansible, the Ansible play, optional restore, and doctor. On a
+terminal the installer TUI asks for everything; --answers replays its answers.
 
 Options:
-  --machine NAME           Required. Selects ansible/inventory/host_vars/NAME.yml
+  --machine NAME           Selects ansible/inventory/host_vars/NAME.yml; required unless --answers or the TUI names it
   --ref REF                Git ref of pokus-infra being applied (recorded; default: current HEAD)
   --restore                After provisioning, run restore.yml (prompts for snapshot)
   --tags T1,T2             Pass through to ansible-playbook
@@ -141,11 +142,11 @@ parse_args() {
 # validate_args: check values and combinations after parsing.
 validate_args() {
   "$OPT_HELP" && return 0
-  if [[ -z $OPT_MACHINE ]]; then
-    usage_error "--machine is required"
+  if [[ -z $OPT_MACHINE && -z $OPT_ANSWERS ]] && ! use_tui; then
+    usage_error "--machine is required (or --answers, or the installer TUI on a terminal)"
     return
   fi
-  if ! [[ $OPT_MACHINE =~ $MACHINE_RE ]]; then
+  if [[ -n $OPT_MACHINE && ! $OPT_MACHINE =~ $MACHINE_RE ]]; then
     usage_error "invalid machine name '$OPT_MACHINE' (lower-case letters, digits and '-', at most 63 characters)"
     return
   fi

@@ -1,0 +1,80 @@
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"git","status":"started"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"git","status":"ok"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"prepreflight","status":"started"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"prepreflight","status":"ok"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"tooling","status":"started"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"tooling","status":"ok"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"frontend","status":"started"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"frontend","status":"ok"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"preflight","status":"started"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"preflight","status":"ok"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"ansible-env","status":"started"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"ansible-env","status":"ok"}
+{"ts":"2026-10-07T03:18:40Z","type":"bootstrap.stage","stage":"ansible","status":"started"}
+{"play": "Provision the Pokus lab host", "ts": "2026-10-07T03:18:41Z", "type": "ansible.play_start"}
+{"role": "platform_facts", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "platform_facts", "task": "Configure platform_facts", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.023, "host": "localhost", "status": "changed", "task": "Configure platform_facts", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "platform_facts configured", "task": "Configure platform_facts", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "preflight_gate", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "preflight_gate", "task": "Configure preflight_gate", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.023, "host": "localhost", "status": "changed", "task": "Configure preflight_gate", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "preflight_gate configured", "task": "Configure preflight_gate", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "provider_wsl2", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "provider_wsl2", "task": "Configure provider_wsl2", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.021, "host": "localhost", "status": "changed", "task": "Configure provider_wsl2", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "provider_wsl2 configured", "task": "Configure provider_wsl2", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "base", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "base", "task": "Configure base", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.026, "host": "localhost", "status": "changed", "task": "Configure base", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "base configured", "task": "Configure base", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "users_groups", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "users_groups", "task": "Configure users_groups", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.024, "host": "localhost", "status": "changed", "task": "Configure users_groups", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "users_groups configured", "task": "Configure users_groups", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "ssh", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "ssh", "task": "Configure ssh", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.025, "host": "localhost", "status": "changed", "task": "Configure ssh", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "ssh configured", "task": "Configure ssh", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "layout", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "layout", "task": "Configure layout", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.022, "host": "localhost", "status": "changed", "task": "Configure layout", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "layout configured", "task": "Configure layout", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "mac", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "mac", "task": "Configure mac", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.021, "host": "localhost", "status": "changed", "task": "Configure mac", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "mac configured", "task": "Configure mac", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "firewall", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "firewall", "task": "Configure firewall", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Configure firewall", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "firewall configured", "task": "Configure firewall", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "tailscale", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "tailscale", "task": "Configure tailscale", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Configure tailscale", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "tailscale configured", "task": "Configure tailscale", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"handler": false, "role": "tailscale", "task": "Show the login URL", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": false, "duration": 0.021, "host": "localhost", "status": "ok", "task": "Show the login URL", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "Open this URL to add pokus-lab to the tailnet: https://login.tailscale.com/a/0123456789abcdef", "task": "Show the login URL", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"handler": false, "role": "tailscale", "task": "Wait for the login to complete", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": false, "duration": 0.021, "host": "localhost", "status": "ok", "task": "Wait for the login to complete", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "logged in", "task": "Wait for the login to complete", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "inference_control", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "inference_control", "task": "Configure inference_control", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Configure inference_control", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "inference_control configured", "task": "Configure inference_control", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "docker", "task": "Configure docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Configure docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "docker configured", "task": "Configure docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"handler": false, "role": "docker", "task": "Use pkg", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": false, "duration": 0.017, "host": "localhost", "status": "ok", "task": "Use pkg", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"role": "pkg", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "pkg", "task": "Install the packages", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Install the packages", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"message": "installed", "task": "Install the packages", "ts": "2026-10-07T03:18:41Z", "type": "ansible.message"}
+{"role": "docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.role_start"}
+{"handler": false, "role": "docker", "task": "Start Docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_start"}
+{"changed": false, "duration": 0.022, "host": "localhost", "message": "Unable to start service docker: Job for docker.service failed", "status": "failed", "stderr": "", "task": "Start Docker", "ts": "2026-10-07T03:18:41Z", "type": "ansible.task_end"}
+{"changed": 13, "failures": 1, "host": "localhost", "ok": 16, "skipped": 0, "ts": "2026-10-07T03:18:41Z", "type": "ansible.stats", "unreachable": 0}
+{"ts":"2026-10-07T03:18:42Z","type":"bootstrap.stage","stage":"ansible","status":"failed","exit_code":60}
+{"ts":"2026-10-07T03:18:42Z","type":"bootstrap.result","stage":"bootstrap","status":"failed","exit_code":60}

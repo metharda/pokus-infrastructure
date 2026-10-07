@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pokus_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pokus_versions_lock_sha256: "76517921a7d243c32803a52f2b03c09641372a60809f6e18192c6ac8e19264e4"
+pokus_versions_lock_sha256: "8a752c63640962c58662c643ac82164a9e883f01352ac005ae0a222a6fdcafa1"
 pokus_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -90,10 +90,16 @@ pokus_versions:
       cryptography: 50.0.2
     model_tools:
       huggingface-hub: 2.1.1
+    installer:
+      textual: 8.2.8
+      ruamel.yaml: 0.19.1
+      jsonschema: 4.26.0
+      segno: 1.6.6
     verified_on: '2026-10-06'
     source: PyPI JSON API (pypi.org/pypi/<name>/<version>/json) for the packages (the huggingface-hub
-      2.1.1 wheel downloaded and matched against its published sha256); `uv python list 3.12.15 --only-downloads`
-      of uv 0.12.23 for the CPython build
+      2.1.1 wheel downloaded and matched against its published sha256; textual 8.2.8, ruamel.yaml 0.19.1,
+      jsonschema 4.26.0 and segno 1.6.6 are the latest releases, not yanked); `uv python list 3.12.15
+      --only-downloads` of uv 0.12.23 for the CPython build
   containers:
     verified_on: '2026-10-05'
     source: Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub tag

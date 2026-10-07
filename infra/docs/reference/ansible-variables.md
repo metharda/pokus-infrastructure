@@ -112,7 +112,7 @@ Groups created by users_groups.
 
 ### `researchers`
 
-Placeholders (owner answer E1). keys_file is relative to the infra directory; key files are never committed (users/*.pub is excluded by .gitignore).
+Placeholders (owner answer E1). keys_file is relative to the infra directory; key files are never committed (users/*.pub is excluded by .gitignore). Optional per researcher: display_name (Grafana) and grafana: false (no Grafana account). The installer TUI edits this list.
 
 - Default:
 

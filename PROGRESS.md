@@ -410,8 +410,8 @@ unchanged):
 | 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
 | 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
 | 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
-| 12 | test-distros harness and CI fast lane | done | commit "feat(infra): add the distribution tests and the CI fast lane" (SHA recorded with step 13) |
-| 13 | Installer TUI | pending | — |
+| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`) |
+| 13 | Installer TUI | done | commit "feat(infra): add the installer TUI" (SHA recorded with step 14) |
 | 14 | Documentation completion | pending | — |
 
 ### Phase 2 — platform/ (steps 1-13), Phase 3 — catalog/, Phase 4 — docs-site/, Phase 5 — self-test
@@ -555,6 +555,23 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   needs existing paths (unit ordering); existing hosts may recreate the
   collector and store containers once.
 
+- From step 13 ("Findings to report (step 13)" and "Interpretations awaiting
+  owner confirmation (step 13)"): `--machine` optional with `--answers` or
+  the TUI (this replaces the step 3 interpretation that `--tui` and
+  `--answers` stop with 77); the TUI re-running bootstrap non-interactively
+  for the installation; one installer lockfile that includes ansible-core for
+  the vault API; segno for the QR code; pytest 8.4.2 for the snapshot plugin;
+  the per-researcher Grafana switch in the observability role; an optional
+  inference peer named later by pairing; the CI answers' power policy; E3 as
+  no HTTPS tokens; the TUI's exit codes; mouse, `NO_COLOR` and themes; the
+  Finish screen's commit as the invoking user, never pushed. Findings, fixed
+  in the step: task names with role prefixes in the callback, Ansible's
+  curses probe crashing the TUI, modify mode replacing the restic password,
+  resume losing incomplete answers, modify mode asking again for the
+  Tailscale key, the phase tree's provider and helper roles. Not covered: no
+  real bootstrap driven by the TUI yet; estimates are counts only (no measured
+  build data); MOK enrollment and the Hub API field names unverified.
+
 ## Owner deliverables pending
 
 - Approval of the model candidates in `infra/models.catalog.yml` (owner answer
@@ -575,9 +592,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (108 after step 12; details
+`make verify-todos` lists every marker in the tree (110 after step 13; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 12"):
+step 4" through "after step 13"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`infra/preflight/support-matrix.yml`).
@@ -620,6 +637,9 @@ step 4" through "after step 12"):
   host keys (above) now also gate SSH deployments from github.com.
 - Step 12: the VM image aliases of `infra/tests/distros/targets.yml`
   (images.linuxcontainers.org is not reachable from the build environment).
+- Step 13: the Hugging Face Hub API field names the installer reads when it
+  pins a model (`infra/installer/pokus_installer/models.py`), and the MOK
+  enrollment with `mokutil` (`infra/installer/pokus_installer/tui/screens_install.py`).
 
 ## Known issues
 
@@ -668,6 +688,9 @@ step 4" through "after step 12"):
   checkout's absolute paths. Fixed after step 11; the suite now also passes
   as an unprivileged user from another checkout path. `lock-check` stays red
   while `TODO(verify)` markers remain (by design).
+- The installer TUI has not driven a real bootstrap: its pilot tests replay
+  recorded event streams (see the step 13 notes); Phase 5 runs it on the
+  reference hosts.
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
   SSH-signed tag deployments is skipped here (it runs where OpenSSH is
   installed, as in CI), and the socket ACL handling is tested with a fake
@@ -675,11 +698,11 @@ step 4" through "after step 12"):
 
 ## Next step
 
-Infra step 13: the installer TUI (BUILD_PROMPT §18): Textual screens with the
-answers file (`installer/schema/answers.schema.json`, which
-`infra/tests/answers/ci.yml` must satisfy), its replay through
-`bootstrap.sh --answers` (which also enables `make test-distros` end to end),
-secrets into the vault, the Ansible progress callback, resume state, and the
-pairing screens for split inference. Then step 14 (documentation completion,
-`pokus-lab docs serve`); after step 14 the assistant stops and waits for the
-platform phase.
+Infra step 14: documentation completion (BUILD_PROMPT and DOCS_SPEC): the
+remaining required infra pages (the WSL2 and bare-metal install tutorials,
+the operator how-tos still missing, the glossary and tour pieces that belong
+to infra) and `pokus-lab docs serve`. Before it, two follow-ups from earlier
+steps: cpuset pinning of the lab services and targets from
+`cpuset_services`/`cpuset_targets` (set in host_vars, applied by no role
+yet), and check-mode safety of the roles outside the CI fast lane. After step
+14 the assistant stops and waits for the platform phase.

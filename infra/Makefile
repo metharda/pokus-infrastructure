@@ -15,13 +15,14 @@ VENV := .venv
 BIN := $(VENV)/bin
 NODE_BIN := node_modules/.bin
 REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pokus_repo_checks
-GEN := PYTHONPATH=tools/gen:preflight:tools/pokus-lab:tools/test-distros $(BIN)/python -m pokus_infra_gen
+GEN := PYTHONPATH=tools/gen:preflight:tools/pokus-lab:tools/test-distros:installer $(BIN)/python -m pokus_infra_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pokus_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
   preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
   models.lock.yml=tools/lockcheck/schema/models-lock.schema.json \
   models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json \
+  tests/answers/ci.yml=installer/schema/answers.schema.json \
   $(foreach f,$(sort $(wildcard images/*/image.yaml)),$(f)=tools/lockcheck/schema/image-blueprint.schema.json)
 # Oldest Python preflight must run on (BUILD_PROMPT §2.1).
 PREFLIGHT_MIN_PYTHON := 3.9
@@ -35,7 +36,7 @@ PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/te
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pokus-lab \
-  tools/test-distros
+  tools/test-distros installer ansible/callback_plugins
 PLAYBOOKS := ansible/site.yml ansible/restore.yml ansible/rotate.yml ansible/check-mode.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -90,7 +91,8 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
 	  ansible/roles/deploy_source/files ansible/roles/platform/files ansible/roles/inference_control/files \
-	  ansible/tests tools/test-distros/pokus_test_distros tools/test-distros/tests
+	  ansible/tests tools/test-distros/pokus_test_distros tools/test-distros/tests \
+	  installer/pokus_installer installer/tests ansible/callback_plugins
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
 	$(BIN)/mypy --python-version 3.10 tools/pokus-lab/pokus_lab tools/pokus-lab/tests
@@ -196,6 +198,7 @@ lock-update: ## Print the manual procedure for changing versions.lock.yml (nothi
 	@echo "  3. make generate          (pins, Ansible files, reference page)"
 	@echo "  4. make bootstrap-lock    (only when python.packages changed)"
 	@echo "     make models-lock       (only when python.model_tools changed)"
+	@echo "     make installer-lock    (only when python.installer or python.packages changed)"
 	@echo "  5. make lock-check lint test docs, then commit."
 
 .PHONY: bootstrap-lock
@@ -211,6 +214,14 @@ models-lock: setup ## Compile the models role's hash-locked requirements.lock (n
 	{ echo "# Managed by pokus-infra (ansible/roles/models/files/requirements.lock). Local changes will be overwritten."; \
 	  echo "# Compiled from requirements.in by 'make models-lock' (uv pip compile --generate-hashes)."; \
 	  cat $(BUILD)/models-requirements.lock; } > ansible/roles/models/files/requirements.lock
+
+.PHONY: installer-lock
+installer-lock: setup ## Compile installer/requirements.lock from requirements.in (needs PyPI)
+	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
+	  --python-version $(BOOTSTRAP_PYTHON) installer/requirements.in -o $(BUILD)/installer-requirements.lock
+	{ echo "# Managed by pokus-infra (installer/requirements.lock). Local changes will be overwritten."; \
+	  echo "# Compiled from requirements.in by 'make installer-lock' (uv pip compile --generate-hashes)."; \
+	  cat $(BUILD)/installer-requirements.lock; } > installer/requirements.lock
 
 .PHONY: drift-check
 drift-check: setup ## Fail if a generated file differs from a fresh generation

@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from pokus_infra_gen import ansible_docs, bootstrap, lab, pages, sources, versions
+from pokus_infra_gen import ansible_docs, bootstrap, installer, lab, pages, sources, versions
 from pokus_preflight.cli import build_parser as preflight_parser
 from pokus_preflight.matrix import EXIT_CODES, OUTCOME_MEANINGS
 
@@ -27,7 +27,7 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
     Returns:
         Relative path to producer.
     """
-    return {
+    found: dict[str, Callable[[], str]] = {
         "preflight/support-matrix.json": lambda: sources.support_matrix_json(root),
         "preflight/endpoints.json": lambda: sources.endpoints_json(root),
         "docs/support-matrix.md": lambda: pages.support_matrix_page(root),
@@ -54,6 +54,9 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         bootstrap.MODEL_REQUIREMENTS.source: lambda: bootstrap.requirements_in(
             root, bootstrap.MODEL_REQUIREMENTS
         ),
+        bootstrap.INSTALLER_REQUIREMENTS.source: lambda: bootstrap.requirements_in(
+            root, bootstrap.INSTALLER_REQUIREMENTS
+        ),
         "ansible/group_vars/all/versions.yml": lambda: bootstrap.versions_yml(root),
         "ansible/requirements.yml": lambda: versions.requirements_yml(root),
         "docs/reference/versions.md": lambda: versions.versions_page(root),
@@ -61,7 +64,14 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         "docs/reference/component-sources.md": lambda: ansible_docs.component_sources_page(root),
         "docs/reference/accounts.md": lambda: ansible_docs.accounts_page(root),
         "docs/architecture.md": lambda: ansible_docs.architecture_page(root),
+        installer.CLI_PAGE: installer.cli_page,
+        installer.ANSWERS_PAGE: lambda: installer.answers_page(root),
     }
+    for name in installer.SCREENSHOTS:
+        found[installer.screenshot(name)] = (
+            lambda name=name: installer.screenshot_source(root, name)  # type: ignore[misc]
+        )
+    return found
 
 
 def generate(root: Path) -> int:
@@ -101,6 +111,7 @@ def check(root: Path) -> int:
         print(f"{rel}: out of date; run 'make generate' and commit the result")
     lock_problems = bootstrap.requirements_lock_problems(root)
     lock_problems += bootstrap.requirements_lock_problems(root, bootstrap.MODEL_REQUIREMENTS)
+    lock_problems += bootstrap.requirements_lock_problems(root, bootstrap.INSTALLER_REQUIREMENTS)
     for problem in lock_problems:
         print(problem)
     print(f"drift check: {len(targets(root))} generated files, {len(stale)} stale", file=sys.stderr)
@@ -146,6 +157,7 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
     ]
     entries += ansible_docs.ansible_variable_entries(root)
     entries += lab.reference_entries()
+    entries += installer.reference_entries(root)
     fingerprint_schema = json.loads((root / lab.FINGERPRINT_SCHEMA).read_text(encoding="utf-8"))
     entries += [
         (f"fingerprint field {row[0]}", lab.FINGERPRINT_PAGE, str(row[0]))
