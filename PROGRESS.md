@@ -418,9 +418,9 @@ Proposed after infra step 13 (same status; details in
 | 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
 | 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
 | 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
-| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`; whole play in check mode: "fix(infra): make the whole play check-mode safe on fresh hosts") |
-| 13 | Installer TUI | done | commit "feat(infra): add the installer TUI" (SHA recorded with step 14) |
-| 14 | Documentation completion | pending | — |
+| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`; whole play in check mode `40e214c`, its findings `0f8f2aa`, `cce39fe`, `8b5a0e8`) |
+| 13 | Installer TUI | done | `01fc3e3` (CPU sets in `00da783`) |
+| 14 | Documentation completion | done | commit "docs(infra): complete the infra documentation" |
 
 ### Phase 2 — platform/ (steps 1-13), Phase 3 — catalog/, Phase 4 — docs-site/, Phase 5 — self-test
 
@@ -587,7 +587,18 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   metal, and skipping roles whose sources are unverified. Findings: Tailscale
   and Incus are skipped on every CI image until verified, Docker on Leap and
   Arch; check mode on a fresh Debian-family host needs python3-apt and
-  python3-debian; python3-debian was missing for real runs too (fixed).
+  python3-debian; python3-debian was missing for real runs too (fixed); the
+  whole-play fast lane also found the never-enforced Grafana password check
+  and the backup unit templates that failed every real run (both fixed).
+- From step 14 ("Findings to report (step 14)" and "Interpretations awaiting
+  owner confirmation (step 14)"): **preflight's `secure_boot_mok` rule
+  (BUILD_PROMPT §2 matrix and fixture) stops bootstrap with 30 before the
+  play can install the NVIDIA driver on a Secure Boot host**, so the
+  automatic driver installation cannot run there; proposal: a warning
+  instead, or consent to the MOK flow. `pokus-lab docs serve` as a
+  foreground command for any account on `127.0.0.1`; documentation installed
+  by extracting a release tarball; the README excerpt (supported and tested
+  only); the QA maintenance window read as a separate staging lab.
 
 ## Owner deliverables pending
 
@@ -715,12 +726,9 @@ step 4" through "after step 13"):
 
 ## Next step
 
-Infra step 14: documentation completion (BUILD_PROMPT and DOCS_SPEC): the
-remaining required infra pages (the WSL2 and bare-metal install tutorials,
-the operator how-tos still missing, the glossary and tour pieces that belong
-to infra) and `pokus-lab docs serve`. The follow-ups before it are done: the
-CPU sets of services and targets ("feat(infra): pin the lab services and the
-targets to their CPU sets") and check mode of the whole play, which the CI
-fast lane now runs ("fix(infra): make the whole play check-mode safe on fresh
-hosts"; findings in IMPLEMENTATION_NOTES). After step 14 the assistant stops
-and waits for the platform phase.
+Phase 1 (infra) is complete as far as it can be built here; the assistant
+waits for the owner's go for Phase 2 (platform). Before or with it, the owner
+decides the open questions above, among them the step 14 finding that
+preflight's `secure_boot_mok` rule blocks the automatic NVIDIA driver
+installation on Secure Boot hosts, the contract proposals, and the remaining
+`TODO(verify)` items (110), which need network access or reference hardware.

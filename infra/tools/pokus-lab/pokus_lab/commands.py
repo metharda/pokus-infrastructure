@@ -34,6 +34,12 @@ UPDATE_COMMANDS = {
 }
 
 
+# Documentation (owner answer H9): loopback only, the port of contracts.md.
+DOCS_ADDRESS = "127.0.0.1"
+DOCS_DIR = "/usr/local/share/pokus/docs"
+DOCS_PORT = 18706
+
+
 class CommandError(RuntimeError):
     """A command cannot do what was asked; the message says why."""
 
@@ -783,3 +789,39 @@ def update_host(system: System, config: LabConfig, yes: bool, extra: Sequence[st
     if system.info("/var/run/reboot-required") is not None:
         out("A reboot is required; reboot when convenient (bootstrap never reboots on its own).")
     return code
+
+
+def docs_serve(
+    system: System, config: LabConfig | None, directory: str | None, port: int | None
+) -> int:
+    """Serve the lab's documentation on the loopback address (owner answer H9).
+
+    Args:
+        system: Host access.
+        config: The lab description, if this host has one.
+        directory: Built documentation site, else ``docs.dir`` of the lab description.
+        port: Port, else ``docs.port`` of the lab description.
+
+    Returns:
+        0 after the server was stopped.
+
+    Raises:
+        CommandError: Without a built site, or when the port is taken.
+    """
+    site = directory or (config.get("docs", "dir") if config else None) or DOCS_DIR
+    number = port or (config.get("docs", "port") if config else None) or DOCS_PORT
+    if system.info(f"{site}/index.html") is None:
+        raise CommandError(
+            f"no built documentation in {site} (index.html is missing): extract the documentation "
+            "tarball of a release there, or pass --dir with a site built by make docs"
+        )
+    out(
+        f"Serving {site} at http://{DOCS_ADDRESS}:{number}/ on this host only; Ctrl-C stops.\n"
+        f"From another computer: ssh -L {number}:{DOCS_ADDRESS}:{number} <user>@<lab host>, "
+        f"then open http://{DOCS_ADDRESS}:{number}/ there."
+    )
+    try:
+        system.serve_static(site, DOCS_ADDRESS, int(number))
+    except OSError as exc:
+        raise CommandError(f"cannot listen on {DOCS_ADDRESS}:{number}: {exc}") from exc
+    return 0

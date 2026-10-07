@@ -63,6 +63,16 @@ class MainTest(unittest.TestCase):
         self.assertIn(f"{CONFIG} does not exist", err)
         self.assertEqual(call(["doctor"], FakeSystem())[0], 2)
 
+    def test_docs_serve(self) -> None:
+        bare = FakeSystem(files={"/tmp/site/index.html": ""})  # no lab description
+        code, out, _ = call(["docs", "serve", "--dir", "/tmp/site", "--port", "18800"], bare)
+        self.assertEqual(code, 0)
+        self.assertEqual(bare.served, [("/tmp/site", "127.0.0.1", 18800)])
+        self.assertIn("Ctrl-C", out)
+        code, _, err = call(["docs", "serve"], configured())
+        self.assertEqual(code, 1)
+        self.assertIn("no built documentation in /usr/local/share/pokus/docs", err)
+
     def test_doctor_needs_root(self) -> None:
         code, _, err = call(["doctor"], configured(euid=1000))
         self.assertEqual(code, 2)

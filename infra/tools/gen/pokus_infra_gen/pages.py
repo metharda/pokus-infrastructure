@@ -79,7 +79,15 @@ def table(headers: list[str], rows: list[list[Any]]) -> str:
     return "\n".join(out) + "\n"
 
 
-def _match_text(match: dict[str, Any]) -> str:
+def match_text(match: dict[str, Any]) -> str:
+    """Describe a support matrix match rule in words.
+
+    Args:
+        match: The rule's ``match`` mapping.
+
+    Returns:
+        Text such as ``id = ubuntu; version_id = 24.04`` with the keys as code.
+    """
     if match.get("any"):
         return "anything else"
     parts = []
@@ -123,7 +131,7 @@ def support_matrix_page(root: Path) -> str:
         support = life.get("end_of_support")
         rows.append(
             [
-                _match_text(rule["match"]),
+                match_text(rule["match"]),
                 rule.get("family"),
                 rule["tier"],
                 rule.get("release_model"),
@@ -158,7 +166,7 @@ def support_matrix_page(root: Path) -> str:
         table(
             ["Match", "Tier", "Note"],
             [
-                [_match_text(r["match"]), r["tier"], r.get("note") or r.get("reason")]
+                [match_text(r["match"]), r["tier"], r.get("note") or r.get("reason")]
                 for r in m["arch"]
             ],
         )

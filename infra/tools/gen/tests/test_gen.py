@@ -38,6 +38,7 @@ def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
         "bootstrap",
         "ansible",
         "versions.lock.yml",
+        "README.md",
         "tools/pokus-lab/schema",
         "tests/distros",
         "installer/requirements.in",

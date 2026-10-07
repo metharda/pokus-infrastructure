@@ -139,6 +139,7 @@ LAB: dict[str, Any] = {
     },
     "time": {"max_offset_seconds": 1.0},
     "cpusets": {"services": "", "targets": "", "slice": "pokus-services.slice"},
+    "docs": {"dir": "/usr/local/share/pokus/docs", "port": 18706},
     "wsl": {"memory_gib": None, "cpus": None, "kvm_expected": False},
 }
 
@@ -235,6 +236,7 @@ class FakeSystem(System):
         groups: dict[str, list[str]] | None = None,
         dirs: dict[str, list[str]] | None = None,
         interactive_rc: int = 0,
+        serve_error: OSError | None = None,
     ) -> None:
         self.commands = dict(commands or {})
         self.files = dict(files or {})
@@ -245,6 +247,8 @@ class FakeSystem(System):
         self.groups = dict(groups or {})
         self.dirs = dict(dirs or {})
         self.interactive_rc = interactive_rc
+        self.serve_error = serve_error
+        self.served: list[tuple[str, str, int]] = []
         self.calls: list[list[str]] = []
         self.interactive_calls: list[tuple[list[str], dict[str, str]]] = []
         self.http_calls: list[tuple[str, str, bytes | None]] = []
@@ -323,6 +327,11 @@ class FakeSystem(System):
         self.unix_calls.append((method, path, body))
         answer = self._lookup(self.unix_answers, f"{method} {path}")
         return HttpResponse(0, "no socket") if answer is None else _to_response(answer)
+
+    def serve_static(self, directory: str, address: str, port: int) -> None:
+        if self.serve_error is not None:
+            raise self.serve_error
+        self.served.append((directory, address, port))
 
     def tcp_connect(self, host: str, port: int, timeout: float = 3.0) -> bool:
         return False

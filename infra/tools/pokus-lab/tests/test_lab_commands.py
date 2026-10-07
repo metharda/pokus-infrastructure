@@ -358,5 +358,33 @@ class WslUpdateTest(unittest.TestCase):
         self.assertEqual(len(system.interactive_calls), 1)
 
 
+class DocsTest(unittest.TestCase):
+    SITE = "/usr/local/share/pokus/docs"
+
+    def test_serve_from_the_lab_description(self) -> None:
+        system = FakeSystem(files={f"{self.SITE}/index.html": "<html></html>"})
+        code, out, _ = captured(lambda: commands.docs_serve(system, lab(), None, None))
+        self.assertEqual(code, 0)
+        self.assertEqual(system.served, [(self.SITE, "127.0.0.1", 18706)])
+        self.assertIn("http://127.0.0.1:18706/", out)
+        self.assertIn("ssh -L 18706:127.0.0.1:18706", out)
+
+    def test_serve_a_built_site_without_a_lab(self) -> None:
+        system = FakeSystem(files={"/tmp/site/index.html": "<html></html>"})
+        captured(lambda: commands.docs_serve(system, None, "/tmp/site", 18800))
+        self.assertEqual(system.served, [("/tmp/site", "127.0.0.1", 18800)])
+        captured(lambda: commands.docs_serve(system, lab(docs__port=18801), "/tmp/site", None))
+        self.assertEqual(system.served[-1], ("/tmp/site", "127.0.0.1", 18801))
+
+    def test_serve_failures(self) -> None:
+        with self.assertRaisesRegex(CommandError, "no built documentation in /nowhere"):
+            commands.docs_serve(FakeSystem(), None, "/nowhere", None)
+        busy = FakeSystem(
+            files={f"{self.SITE}/index.html": ""}, serve_error=OSError("Address already in use")
+        )
+        with self.assertRaisesRegex(CommandError, "cannot listen on 127.0.0.1:18706"):
+            captured(lambda: commands.docs_serve(busy, lab(), None, None))
+
+
 if __name__ == "__main__":
     unittest.main()

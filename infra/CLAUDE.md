@@ -88,7 +88,8 @@ the prompt text where they differ.
   `docs/reference/{answers,cli/pokus-installer}.md`, the screenshots
   `docs/assets/installer/*.svg` (copies of TUI snapshots),
   the layout table between the `generated:layout` markers of
-  `docs/architecture.md`, `bootstrap/lib/pins.sh`,
+  `docs/architecture.md`, the sections between the `generated:environments`
+  and `generated:exit-codes` markers of `README.md`, `bootstrap/lib/pins.sh`,
   `bootstrap/requirements.in`, `installer/requirements.in`,
   `ansible/requirements.yml` and
   `ansible/group_vars/all/versions.yml` come from `tools/gen`

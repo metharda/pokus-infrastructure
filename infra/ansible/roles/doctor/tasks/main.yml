@@ -19,6 +19,7 @@
     - "{{ doctor_lib }}/preflight"
     - "{{ doctor_lib }}/preflight/schema"
     - "{{ doctor_fingerprint_dir }}"
+    - "{{ doctor_docs_dir }}"
 
 - name: Find the modules of pokus-lab and preflight
   ansible.builtin.find:
@@ -257,6 +258,9 @@
         max_age_hours: "{{ doctor_backup_max_age_hours | int }}"
       time:
         max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
+      docs:
+        dir: "{{ doctor_docs_dir }}"
+        port: "{{ pokus_ports.docs_serve | int }}"
       cpusets:
         services: "{{ cpuset_services }}"
         targets: "{{ cpuset_targets }}"

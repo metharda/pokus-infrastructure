@@ -4,6 +4,7 @@ akmods
 almalinux
 archlinux
 ausearch
+autogroup
 automount
 baremetal
 binfmt
@@ -14,6 +15,7 @@ chrony
 chronyd
 COPR
 cpuset
+cpusets
 cuda
 dbname
 DCGM
@@ -31,6 +33,7 @@ getenforce
 gpasswd
 huggingface
 incusbr
+incusd
 IOMMU
 iotop
 journalctl
@@ -43,6 +46,7 @@ lockfiles
 micromamba
 mkinitcpio
 moby
+MOUNTPOINTS
 netfilter
 nftables
 nistp
@@ -82,5 +86,3 @@ vllm
 wslconfig
 Zabbly
 Zorin
-cpusets
-incusd

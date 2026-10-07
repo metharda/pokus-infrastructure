@@ -68,7 +68,11 @@ validation:
 
 nav:
   - Home: index.md
+  - Tutorials:
+      - Install a lab on WSL2: tutorials/install-wsl2.md
+      - Install a lab on bare-metal Linux: tutorials/install-baremetal.md
   - How-to guides:
+      - Operating the lab: operations.md
       - Check whether a machine can host the lab: how-to/check-a-host.md
       - Install a lab with the installer TUI: how-to/install-with-the-tui.md
       - Install a lab from an answers file: how-to/install-without-the-tui.md
@@ -78,10 +82,14 @@ nav:
       - Add a model and activate a deployment: how-to/add-a-model.md
       - Deploy the platform and the scenario catalog: how-to/deploy-platform.md
       - Run inference on a separate GPU node: how-to/pair-inference-node.md
+      - Connect to the lab: how-to/connect.md
       - Reach Grafana and the lab database: how-to/reach-grafana.md
       - Build, test and export golden images: how-to/build-golden-images.md
       - Back up, restore and run a restore drill: how-to/backup-and-restore.md
+      - Migrate the lab to a new machine: how-to/migrate-lab.md
       - Rotate secrets and certificates: how-to/rotate-secrets.md
+      - Run a QA maintenance window on staging: how-to/staging-window.md
+      - Install QA trusted keys and attestations: how-to/install-attestation.md
       - Configure the firewall backend and SELinux: how-to/firewall-and-selinux.md
       - Add a preflight fixture: how-to/add-preflight-fixture.md
       - Add a distribution family: distros/adding-a-family.md
@@ -116,6 +124,7 @@ nav:
       - How the lab comes up: explanation/lab-session.md
       - Node roles and split inference: node-roles.md
       - Reproducibility, fingerprints and sessions: reproducibility.md
+      - Security of the lab host: security.md
       - Providers:
           - WSL2 hosts: providers/wsl2.md
           - Bare-metal hosts: providers/baremetal.md
@@ -137,3 +146,4 @@ nav:
       - "ADR-0010: PostgreSQL on Unix sockets only": adr/0010-postgres-socket-only.md
       - "ADR-0011: OpenTelemetry as the single telemetry entry point": adr/0011-otel-telemetry.md
       - "ADR-0012: Leakage lint against the base image, with benign words": adr/0012-leakage-lint.md
+      - "ADR-0013: No orchestration frameworks": adr/0013-no-orchestration-frameworks.md

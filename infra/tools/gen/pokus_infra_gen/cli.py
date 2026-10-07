@@ -8,7 +8,16 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from pokus_infra_gen import ansible_docs, bootstrap, installer, lab, pages, sources, versions
+from pokus_infra_gen import (
+    ansible_docs,
+    bootstrap,
+    installer,
+    lab,
+    pages,
+    readme,
+    sources,
+    versions,
+)
 from pokus_preflight.cli import build_parser as preflight_parser
 from pokus_preflight.matrix import EXIT_CODES, OUTCOME_MEANINGS
 
@@ -64,6 +73,7 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         "docs/reference/component-sources.md": lambda: ansible_docs.component_sources_page(root),
         "docs/reference/accounts.md": lambda: ansible_docs.accounts_page(root),
         "docs/architecture.md": lambda: ansible_docs.architecture_page(root),
+        readme.README: lambda: readme.readme(root),
         installer.CLI_PAGE: installer.cli_page,
         installer.ANSWERS_PAGE: lambda: installer.answers_page(root),
     }

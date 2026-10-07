@@ -171,7 +171,7 @@ def unverified_roles(profile: dict[str, Any]) -> dict[str, str]:
     """Roles the play refuses on this release because their source is not verified.
 
     Mirrors the refusals of the play: the component's source entry, its vendor
-    repository and repository key, and its package pins (``TODO(verify)``).
+    repository and repository key, and its package pins (unverified markers).
 
     Args:
         profile: Preflight's host profile from inside the container.

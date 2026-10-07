@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import functools
 import grp
 import http.client
+import http.server
 import json
 import os
 import pwd
@@ -175,6 +177,10 @@ class System:
         """Members of a group (secondary members), or None if it does not exist."""
         raise NotImplementedError
 
+    def serve_static(self, directory: str, address: str, port: int) -> None:
+        """Serve a directory of static files read-only over HTTP until interrupted."""
+        raise NotImplementedError
+
     def user_groups(self, user: str) -> list[str] | None:
         """Groups of a user including the primary group, or None if it does not exist."""
         raise NotImplementedError
@@ -326,6 +332,13 @@ class RealSystem(System):
         except KeyError:
             return None
 
+    def serve_static(self, directory: str, address: str, port: int) -> None:  # noqa: D102
+        with (
+            static_server(directory, address, port) as server,
+            contextlib.suppress(KeyboardInterrupt),
+        ):
+            server.serve_forever()
+
     def user_groups(self, user: str) -> list[str] | None:  # noqa: D102
         try:
             entry = pwd.getpwnam(user)
@@ -335,6 +348,21 @@ class RealSystem(System):
         with contextlib.suppress(KeyError):
             groups.add(grp.getgrgid(entry.pw_gid).gr_name)
         return sorted(groups)
+
+
+def static_server(directory: str, address: str, port: int) -> http.server.ThreadingHTTPServer:
+    """An HTTP server that answers GET and HEAD with the files of a directory.
+
+    Args:
+        directory: Directory to serve.
+        address: Address to listen on.
+        port: Port to listen on (0 picks a free one).
+
+    Returns:
+        The server, already listening.
+    """
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)
+    return http.server.ThreadingHTTPServer((address, port), handler)
 
 
 class _UnixHTTPConnection(http.client.HTTPConnection):

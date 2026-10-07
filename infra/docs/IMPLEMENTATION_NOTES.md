@@ -1894,6 +1894,19 @@ outside the fast lane. Now:
   quoted string and therefore always true, so a `$` in the Grafana database
   password was never refused; ansible-core 2.21 rejects the non-boolean
   result. Fixed, and a role test now flags quoted expressions in conditionals.
+- **Second run**: openSUSE Leap's `python3` (3.6) could not run preflight's
+  re-run; the container now gets `/opt/pokus/python/bin/python3`, where
+  bootstrap puts its pinned CPython. The example vault had a Grafana password
+  for one of the three example researchers, which the observability role
+  refuses; it now has one per researcher.
+- **Third run** (about 200 tasks per family) found a bug of every real run:
+  the backup role installs its units in a loop over (job, unit kind) pairs,
+  but the unit templates read the job's fields from `item`, and their test
+  rendered them with the job alone. The task now binds the job to
+  `backup_job`, which the templates and the test use.
+- **Fourth run** (`8b5a0e8`): `site.yml` passes in check mode on all six
+  CI images (Ubuntu 24.04, Debian 13, Fedora 44, AlmaLinux 9, openSUSE Leap
+  15.6, Arch Linux), with the roles of unverified sources skipped.
 
 ### Interpretations awaiting owner confirmation (check mode of the whole play)
 
@@ -1903,3 +1916,70 @@ outside the fast lane. Now:
 2. Roles refused for unverified sources are skipped in the fast lane rather
    than failing it, since lock-check already fails while any `TODO(verify)`
    remains.
+
+## Step 14: documentation completion
+
+Built:
+
+- Tutorials `tutorials/install-wsl2.md` (the reference setup) and
+  `tutorials/install-baremetal.md`.
+- `operations.md` (the operator's map of BUILD_PROMPT §15, every task linked
+  to its guide), `security.md` (threats, mechanisms, network exposure, the
+  tailnet policy, integrity, out of scope), and the how-tos
+  `how-to/connect.md` (Tailscale and SSH, port forwarding of Grafana, the
+  ad-hoc LLM endpoint and the documentation), `how-to/migrate-lab.md` (last
+  backup, tailnet name, fresh build with `--restore`, signing key handover,
+  re-pairing), `how-to/staging-window.md` and `how-to/install-attestation.md`.
+- ADR-0013 *No orchestration frameworks*, the last ADR BUILD_PROMPT §15 lists.
+- `pokus-lab docs serve` (owner answer H9): serves a built documentation site
+  read-only on `127.0.0.1` (port `pokus_ports.docs_serve`, 18706) until
+  interrupted; the directory and port come from the new `docs` keys of
+  `lab.json`, or `--dir` and `--port`, and it works without a lab
+  description. The doctor role creates `/usr/local/share/pokus/docs/` empty;
+  the operator extracts a release's documentation tarball there.
+- `README.md` per BUILD_PROMPT §15, with two generated sections (the
+  supported and tested environments, and the bootstrap exit codes) kept in
+  sync by `make generate` and the drift check; the home page `index.md` now
+  points to the tutorials and the operator and researcher entry points.
+
+### Verified in step 14
+
+- `docs serve`: unit tests against the fake host, the CLI without a lab
+  description, and the real static server on an ephemeral loopback port
+  (GET of a file, 404, POST refused with 501).
+- Strict docs build, docs lint (markers, placeholders, front matter),
+  spelling, Markdown lint and the drift check over the new pages.
+
+### Findings to report (step 14)
+
+- **Secure Boot without an NVIDIA driver blocks the installation.** The
+  support matrix of BUILD_PROMPT §2 (rule `secure_boot_mok`, and the fixture
+  `ubuntu2404-baremetal-nvidia-no-driver-secureboot` expected as
+  `needs_action`) makes preflight report `needs_action` on such a host, and
+  bootstrap stops with 30 before the play that would install the driver and
+  ask for the MOK enrollment (BUILD_PROMPT §3.2, §18 screen 7). As written,
+  the automatic driver installation can never run on a Secure Boot host. The
+  bare-metal tutorial tells the operator to install the driver by hand until
+  this is decided. Proposal: make `secure_boot_mok` a warning (the play
+  already stops with 76 for the enrollment), or let consent to the MOK flow
+  resolve it. This changes the spec's matrix and a fixture expectation, so it
+  needs the owner's decision.
+- The staging and attestation pages cover the lab host's part only; the QA
+  procedure and the attestation format belong to the QA instructions and the
+  platform.
+
+### Interpretations awaiting owner confirmation (step 14)
+
+1. `pokus-lab docs serve` is a foreground command any account may run (the
+   site is not secret), bound to `127.0.0.1` only, reached over SSH port
+   forwarding; there is no unit that serves the documentation permanently.
+2. The documentation of a release is installed by extracting its tarball into
+   `/usr/local/share/pokus/docs/`; nothing downloads it automatically.
+3. The README excerpt lists the `supported` and `tested` rules only; the
+   full matrix stays in `docs/support-matrix.md`.
+4. "Open a QA maintenance window" is read as providing a separate
+   `lab_mode: staging` lab for the QA team and stopping it afterwards.
+
+### Open `TODO(verify)` items after step 14
+
+110 markers, as after step 13 (none added).

@@ -11,7 +11,7 @@ import unittest
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from pokus_lab.system import EXIT_NOT_FOUND, EXIT_TIMEOUT, RealSystem
+from pokus_lab.system import EXIT_NOT_FOUND, EXIT_TIMEOUT, RealSystem, static_server
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -130,6 +130,22 @@ class NetworkTest(unittest.TestCase):
                 self.assertEqual((answer.status, answer.json()), (202, {"timeout_seconds": 1}))
                 self.assertEqual(system.unix_http(path, "GET", "/ok").status, 200)
             self.assertEqual(RealSystem().unix_http(path, "GET", "/ok").status, 0)
+
+
+class StaticServerTest(unittest.TestCase):
+    def test_serves_files_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "index.html"), "w", encoding="utf-8") as handle:
+                handle.write("<h1>Pokus</h1>")
+            server = static_server(tmp, "127.0.0.1", 0)
+            self.assertEqual(server.server_address[0], "127.0.0.1")
+            port = server.server_address[1]
+            with serving(server):
+                system = RealSystem()
+                page = system.http("GET", f"http://127.0.0.1:{port}/index.html")
+                self.assertEqual((page.status, page.body), (200, "<h1>Pokus</h1>"))
+                self.assertEqual(system.http("GET", f"http://127.0.0.1:{port}/none").status, 404)
+                self.assertEqual(system.http("POST", f"http://127.0.0.1:{port}/", b"x").status, 501)
 
 
 class IdentityTest(unittest.TestCase):

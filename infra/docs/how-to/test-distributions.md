@@ -83,9 +83,8 @@ installation, since preflight classifies containers as unsupported), the
 example host variables and the example vault with a local backup
 repository.
 
-Roles whose component source or package pins are still `TODO(verify)` for
-the container's release are skipped by their tag, because the play refuses
-them; the run prints each skipped role and the reason. Components installed
+Roles whose component source or package pins are not verified yet for the
+container's release are skipped by their tag, because the play refuses them; the run prints each skipped role and the reason. Components installed
 from vendor repositories (Docker, Incus, Tailscale, the NVIDIA Container
 Toolkit) are checked up to their repository: check mode downloads and
 verifies the repository key but cannot resolve packages from a repository it

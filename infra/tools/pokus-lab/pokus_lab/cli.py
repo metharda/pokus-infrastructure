@@ -29,7 +29,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pokus-lab",
         description="Operate a Pokus lab host: health checks, fingerprint, start and stop, "
-        "backups, golden images, researchers, inference node pairing and host updates.",
+        "backups, golden images, researchers, inference node pairing, host updates and the "
+        "documentation.",
         epilog=EPILOG,
     )
     parser.add_argument(
@@ -130,7 +131,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="drain, update the OS keeping the holds, bootstrap, doctor, fingerprint diff (root)",
     )
     update.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    add_docs_parser(sub)
     return parser
+
+
+def add_docs_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add ``pokus-lab docs serve``.
+
+    Args:
+        sub: The subcommands of the parser.
+    """
+    docs = sub.add_parser("docs", help="the documentation of the lab")
+    docs_sub = docs.add_subparsers(dest="docs_action", required=True, metavar="ACTION")
+    serve = docs_sub.add_parser(
+        "serve", help=f"serve the built documentation read-only on {commands.DOCS_ADDRESS}"
+    )
+    serve.add_argument(
+        "--dir",
+        metavar="DIR",
+        help="built documentation site "
+        f"(default: docs.dir of the lab description, {commands.DOCS_DIR})",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        help=f"port (default: docs.port of the lab description, {commands.DOCS_PORT})",
+    )
 
 
 def run_doctor(system: System, config: LabConfig, as_json: bool, smoke: bool) -> int:
@@ -246,6 +272,10 @@ def main(argv: Sequence[str], system: System | None = None) -> int:
     args = build_parser().parse_args(list(argv))
     host = system or RealSystem()
     try:
+        if args.command == "docs":
+            # The documentation can be served without a lab, from a checkout.
+            optional = load(host, args.config) if host.info(args.config) else None
+            return commands.docs_serve(host, optional, args.dir, args.port)
         config = load(host, args.config)
         return dispatch(args, host, config)
     except (ConfigError, commands.CommandError) as exc:

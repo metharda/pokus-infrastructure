@@ -5,6 +5,8 @@ doctor_lib: /usr/local/lib/pokus
 doctor_bin: /usr/local/bin/pokus-lab
 doctor_config: /etc/pokus/lab.json
 doctor_fingerprint_dir: /var/lib/pokus/fingerprint
+# Built documentation that `pokus-lab docs serve` serves (a release's documentation tarball).
+doctor_docs_dir: /usr/local/share/pokus/docs
 # Python packages copied below doctor_lib (src relative to the infra directory).
 doctor_packages:
   - {src: tools/pokus-lab/pokus_lab, dest: pokus-lab/pokus_lab}

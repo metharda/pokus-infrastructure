@@ -16,20 +16,22 @@ local model serving, observability, backups and health checks. The research
 services themselves come from pokus-platform and run on top of what this
 component provisions.
 
-!!! warning "Work in progress"
-    This component is being built step by step. Pages are added together with
-    the code they describe; until then this site contains only the reference
-    pages listed in the navigation.
-
 ## Where to start
 
-- [Check whether a machine can host the lab](how-to/check-a-host.md) before
-  installing anything.
-- [How the preflight gate decides](explanation/preflight-gate.md) explains the
-  checks and the [support matrix](support-matrix.md) lists the supported
-  distributions, architectures and environments.
-- The [integration contract](contracts.md) lists every path, account, socket,
-  port and file that pokus-infra provides to pokus-platform.
+- New lab: [Install a lab on WSL2](tutorials/install-wsl2.md) (the reference
+  setup) or [Install a lab on bare-metal Linux](tutorials/install-baremetal.md).
+  Before installing anything,
+  [check whether a machine can host the lab](how-to/check-a-host.md); the
+  [support matrix](support-matrix.md) lists the supported distributions,
+  architectures and environments.
+- Running lab: [Operating the lab](operations.md) maps every operator task to
+  its guide; researchers start with [How to connect to the lab](how-to/connect.md).
+- Understanding the design: [Lab host architecture](architecture.md),
+  [Security of the lab host](security.md) and
+  [Reproducibility, fingerprints and sessions](reproducibility.md).
+- Integrating with the platform: the [integration contract](contracts.md)
+  lists every path, account, socket, port and file that pokus-infra provides
+  to pokus-platform.
 
 ## Licenses
 

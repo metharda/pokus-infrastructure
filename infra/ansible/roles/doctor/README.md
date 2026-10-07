@@ -23,6 +23,9 @@ session record of every boot calls `pokus-lab fingerprint` and
   fingerprint. pokus-lab never reads the repository or the vault.
 - `/var/lib/pokus/fingerprint/` (0755): the fingerprint cache written by root
   (`current.json`, 0644), which other users read (contracts.md C9c).
+- `/usr/local/share/pokus/docs/` (0755, empty): where an operator extracts the
+  documentation tarball of a release for `pokus-lab docs serve`, which serves
+  it on `127.0.0.1` (port `pokus_ports.docs_serve`; both in `lab.json`).
 
 Modules removed from the sources are removed from the installed copy.
 `hardening` and `sockets` stay empty until the platform roles describe their

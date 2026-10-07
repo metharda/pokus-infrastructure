@@ -17,7 +17,7 @@ description: Every command and option of pokus-lab.
 pokus-lab [-h] [--config FILE] [--version] COMMAND ...
 ```
 
-Operate a Pokus lab host: health checks, fingerprint, start and stop, backups, golden images, researchers, inference node pairing and host updates.
+Operate a Pokus lab host: health checks, fingerprint, start and stop, backups, golden images, researchers, inference node pairing, host updates and the documentation.
 
 ## Global options
 
@@ -54,6 +54,8 @@ Every command also accepts `-h`, `--help`.
 | `pokus-lab pair connect` | on the lab node: pair with the inference node |
 | `pokus-lab wsl-helpers` | where the optional Windows helpers are (wsl2 only) |
 | `pokus-lab update-host` | drain, update the OS keeping the holds, bootstrap, doctor, fingerprint diff (root) |
+| `pokus-lab docs` | the documentation of the lab |
+| `pokus-lab docs serve` | serve the built documentation read-only on 127.0.0.1 |
 
 ### pokus-lab preflight
 
@@ -280,5 +282,26 @@ pokus-lab update-host [-h] [--yes]
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--yes` | — | — | do not ask for confirmation |
+
+### pokus-lab docs
+
+The documentation of the lab.
+
+```text
+pokus-lab docs [-h] ACTION ...
+```
+
+### pokus-lab docs serve
+
+Serve the built documentation read-only on 127.0.0.1.
+
+```text
+pokus-lab docs serve [-h] [--dir DIR] [--port PORT]
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--dir` | `DIR` | — | built documentation site (default: docs.dir of the lab description, /usr/local/share/pokus/docs) |
+| `--port` | `PORT` | — | port (default: docs.port of the lab description, 18706) |
 
 Exit codes: 0 success; 1 failure (doctor: warnings only); 2 usage error (doctor: a check of severity error failed). See [Exit codes](../exit-codes.md).

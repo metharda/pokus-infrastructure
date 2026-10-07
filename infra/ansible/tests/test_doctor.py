@@ -151,6 +151,7 @@ def test_full_node_description() -> None:
     assert data["images"]["files_helper"] == "/usr/local/libexec/pokus/image-files"
     assert data["images"]["export_root"] == "/srv/pokus/images"
     assert data["hardening"] == [] and data["sockets"] == []
+    assert data["docs"] == {"dir": "/usr/local/share/pokus/docs", "port": 18706}
 
 
 def test_every_key_the_cli_reads_is_rendered() -> None:
