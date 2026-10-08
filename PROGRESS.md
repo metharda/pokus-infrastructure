@@ -300,15 +300,42 @@ v2 code before step 0:** the owner updates the three specs first and creates
   dedicated to `untrusted-agent`, never shared with other profiles or humans;
   the platform spec obliges that its endpoints never return restricted data,
   proven by a platform test; installer and doctor highlight these sockets.
-- **7, GPU:** GPU training jobs are a first-class v2 capability: an eighth
-  profile `gpu-trainer` (the only one with GPU access) for `jobs[]`; a
-  root-owned GPU arbiter replacing the deploy helper (serving, training,
-  idle; transitions recorded); OCI training containers with security options
-  fixed by infra; a datasets area with a provenance record and a split guard
-  (no test-split instance is mounted); adapters registered read-only with a
-  lineage record and served through `adapter_ids`; checkpoints and resume;
-  a tiny training job in the reference platform (CPU-only variant without a
-  GPU); platform-side additions for the training flow.
+- **7, GPU:** GPU training jobs are a first-class v2 capability:
+  - 7.1 an eighth profile `gpu-trainer`, the only one that ever gets GPU
+    devices, for the new manifest field `jobs[]` (image pinned by digest,
+    pulled at deployment, never at job start);
+  - 7.2 a root-owned, socket-activated GPU arbiter (`pokus-gpu-arbiter`,
+    `/run/pokus/gpu.sock`) replacing the deploy helper: modes `idle`,
+    `serving <deployment>`, `training <run>`, one at a time; `train` only
+    with no running or waiting vLLM requests and the controller's sessions
+    drained; every transition in `/var/lib/pokus/gpu/transitions.jsonl`;
+    admins use `pokus-lab gpu status|serve|train|idle`;
+  - 7.3 OCI training containers with options fixed by infra, never from the
+    manifest (`--network none`, read-only root, `--cap-drop ALL`,
+    no-new-privileges, default seccomp, non-root job account, GPU via CDI,
+    limits within infra's caps);
+  - 7.4 a datasets area `/srv/pokus/training/datasets/<sha256>/`
+    (root:`pokus-datasets`, read-only) published by the arbiter with
+    `PROVENANCE.json` (every instance with its split, source runs, builder
+    commit); the split guard refuses to publish or mount any dataset that
+    lists a `test`-split instance; completeness of the provenance is the
+    platform's obligation;
+  - 7.5 adapters hashed and registered read-only under
+    `/srv/pokus/models/adapters/<name>/<sha256>/` with `LINEAGE.json` (base
+    model, dataset and image hashes, job-spec hash, hyperparameters, seed,
+    platform and infra commits, times), served as `<name>@<sha256>` in
+    `adapter_ids`; adapters and datasets are backed up;
+  - 7.6 checkpoints and resume: jobs checkpoint into their run directory; at
+    boot a job left in `training` is `interrupted` and resumed from its
+    checkpoint only with `resumable: true`, else the arbiter restores the
+    previous deployment or stays `idle`;
+  - 7.7 a tiny training job in the reference platform, with a CPU-only
+    variant (`resources.gpus: 0`) for hosts and CI without a GPU;
+  - 7.8 platform-side spec additions: dataset builder with the split guard,
+    job submission through the controller, lineage import, base-versus-adapter
+    comparison campaigns, and the contamination flag (test results are
+    flagged when their scenario template is in the adapter's training data,
+    read from the lineage).
 - **10, restricted schema:** the revoke and check after every migration is
   the guarantee; the event trigger only after its `GRANT`/`REVOKE` coverage
   is verified on the pinned PostgreSQL release.
@@ -319,7 +346,17 @@ v2 code before step 0:** the owner updates the three specs first and creates
   dependency; each repository has its own docs site; Pokus CI validates its
   manifest against the schema of the infra release it targets. Of the
   one-repository rules, B3, B9, C1 and E3 go and B2, B4, B5 change at the
-  split; B1, B6, B7, B8 stay.
+  split; B1, B6, B7, B8 stay. At the split: `pokus-infra` gets its own
+  `PROGRESS.md` (infra steps, infra deviations, v2 steps) and `CLAUDE.md`,
+  the infra build prompt's master copy, `ci.yml` at its root without a
+  wrapper, tags `vX.Y.Z` and its own docs site; this repository drops the
+  `infra.yml` wrapper, keeps the platform and catalog wrappers and the tags
+  `platform-v`, `catalog-v`, `docs-v`, adds a CI job validating the Pokus
+  manifest against the schema of the targeted infra release, and builds the
+  Pokus docs site linking to that release. A release candidate becomes an
+  infra release plus the platform and catalog commits of this repository.
+  Infra publishes contract v2, the manifest schema and the profile table
+  with each release, replacing the byte-identical `contracts.md` copies.
 - **Additions:** the v1 agent-runner finding (TCP access, `pokus-svc`
   membership) is not patched separately in v1; v2 step 3 includes tests
   proving both are closed. The neutrality lint matches an explicit name list
@@ -329,6 +366,12 @@ v2 code before step 0:** the owner updates the three specs first and creates
   name `pokus` (reserved names checked per namespace), N2 dedicated sockets
   for every agent client, N3 training datasets readable by no human group,
   N4 training only on `node_role: full`.
+- **Proposal status:** the updated proposal (decision table, profile table
+  with `gpu-trainer` and the arbiter, security model and threat table,
+  training flow, repository split, test plan, effort) and the per-section
+  spec change list for infra, platform and docs were delivered to the owner
+  after infra step 14; nothing of v2 is implemented. Next is the owner's
+  step 0.
 
 ### Privacy clean-up (owner instruction)
 
