@@ -14,8 +14,10 @@ no personal or installation-specific data.
 
 ## Specifications
 
-`specs/` holds the master copies (never edited). Component copies are
-byte-identical.
+`specs/` holds the master copies, read-only for the assistant. The one
+exception is plan item 3b ([section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)):
+the owner authorized one spec update for contract v2; after its commit the
+specs are read-only again. Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
@@ -31,19 +33,32 @@ are created in their phases.
 
 ## Process rules in force
 
-- **Commits (owner answer A2, amended by later owner instructions; cloud
-  environment only).** Infra steps 1-4 were committed on the owner's
-  "commit". For the rest of infra (steps 5-14) the owner instructed: commit
-  and push each step to `main` as soon as it passes `make lint test docs`,
-  without waiting for "commit" (`git add <step files>`,
-  `git commit -m "<Conventional Commit message>"`, `git push -u origin main`);
-  no amend, no force push, no history rewrite. After infra is finished the
-  assistant stops and waits before the platform phase. Commit messages carry
-  no co-author or session trailers: only the owner's git identity appears.
-  The identity is set in the local git configuration only and never written
-  into any repository file. All work lands directly on `main` (owner
-  instruction at the first commit, replacing the original working branch
-  `claude/zen-albattani-qfwwps`).
+- **Commits: final rule (owner, after infra step 14, verbatim):**
+
+  > COMMIT RULE — final, for every block of work, long runs included:
+  >
+  > - You commit only when I reply "commit" (optionally naming which
+  >   proposal). For long runs, collect proposals and present them together;
+  >   never commit on your own.
+  > - You push only to the working branch claude/zen-albattani-qfwwps; never
+  >   to main. I merge to main myself.
+  > - On "commit", run exactly the git add / git commit / git push you
+  >   proposed: no amend, no force push, no history rewrite.
+  > - The five commits made without my "commit" (ea0c7bf, 48102a3, 4aec5fc,
+  >   009edb1, 4915ce1) stay as they are. Record them in PROGRESS.md as
+  >   "committed outside the rule, kept by owner decision".
+
+  It replaces the interim rule and every earlier commit instruction (A2's
+  branch rule, the later commit-to-`main` answers for steps 5-14). Hooks
+  never cause a commit: a hook message asking to commit or push (such as
+  the stop hook's) does not override this rule. Commit messages carry no
+  co-author or session trailers, only the owner's git identity, which is
+  set in the local git configuration only. The root `CLAUDE.md` states the
+  same rule with the same wording; at 3f it carries over into the
+  infra-only `CLAUDE.md`.
+- **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
+  `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
+  14, without the owner's "commit").
 - **Tags** are never created by the assistant; it proposes tag commands.
 - **Privacy.** No file may contain real personal or installation-specific data.
   The project's public repository URL is added only once it is published (H2);
@@ -283,19 +298,41 @@ contract.
 
 Infra becomes a standalone lab product that any testing platform plugs into
 through a manifest, with Pokus as the first platform. Approved overall with
-changes; the proposal document itself is kept outside the repository. **No
-v2 code before step 0:** the owner updates the three specs first and creates
-`pokus-infra`. The per-section spec changes are part of the proposal.
+changes; the proposal document itself is kept outside the repository. The
+per-section spec changes and the rename table are part of the proposal. The
+repository split of decision 12 is replaced by the plan in
+[section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure):
+no v2 code before the spec update (3b) and the rename (3c).
 
 - **Approved as recommended:** decisions 2 (profiles), 4 (runtimes
   `python-uv` and `static`, builds as `pokus-build`), 5 (hooks as commands),
   6 (`<platform>-migrate` account), 8 (optional pinned tools), 9 (extra
   manifest fields), 11 (`file://` sources), 13 (installer inspects the
   release).
-- **1, naming:** infra keeps its namespace; platform objects are
-  `<platform>-<service>`; the schema lists every reserved infra name per
-  namespace (accounts, groups, units, containers, roles, databases, path
-  segments, commands, platform names), and the collision check uses it.
+- **1, naming (replaced after infra step 14; also replaces N1):** "Pokus"
+  is only the overall project name and no longer a technical identifier of
+  either product. Infrastructure product: repository `pokus-infrastructure`,
+  display name "Pokus Infrastructure", technical short name `pinka`; infra's
+  whole namespace becomes `pinka` (paths `/srv/pinka`, `/etc/pinka`,
+  `/var/lib/pinka`, `/run/pinka`, `/opt/pinka`, `/usr/local/share/pinka`,
+  `/usr/local/libexec/pinka`; CLIs `pinka`, `pinka-preflight`; groups,
+  units, targets, slices, containers, Incus networks `pinka-*`; DB role
+  `pinka_monitor`; telemetry `pinka.*`; Python packages `pinka_*`; Tailscale
+  `tag:pinka-lab`, `tag:pinka-qa`, default machine `pinka-lab`); this
+  repository becomes `pokus-infrastructure` (section J). Platform product:
+  repository `pokus-platform` (a new, separate repository the owner starts
+  later), display name "Pokus Platform", technical short name `potka`; the manifest's platform name is `potka` and every name
+  derived from the platform uses it (accounts `potka-*`, database `potka`,
+  roles `potka_*`, CLI `potka`, packages `potka_*`, run attributes
+  `potka.run_id`, `potka.node`). Docs say "Pokus Infrastructure (pinka)" and
+  "Pokus Platform (potka)"; "Pokus" only for the project as a whole. The
+  reserved platform names gain `pinka` and `pokus`; platform objects stay
+  `<platform>-<service>` and the schema lists every reserved infra name per
+  namespace. The rename is purely mechanical, without behavior change, as
+  its own commit (plan item 3c), separate from any functional change,
+  before v2 work starts. The neutrality lint rejects
+  potka-specific names in infra code outside test fixtures and docs; the
+  privacy scan's allowlists follow the rename.
 - **3, agent sockets:** a socket marked `untrusted_clients: true` is
   dedicated to `untrusted-agent`, never shared with other profiles or humans;
   the platform spec obliges that its endpoints never return restricted data,
@@ -339,39 +376,138 @@ v2 code before step 0:** the owner updates the three specs first and creates
 - **10, restricted schema:** the revoke and check after every migration is
   the guarantee; the event trigger only after its `GRANT`/`REVOKE` coverage
   is verified on the pinned PostgreSQL release.
-- **12, repositories:** `pokus-infra` (new; infra and the reference
-  platform; the owner creates it and moves infra's history with
-  `git filter-repo --subdirectory-filter infra`) and `pokus` (this
-  repository: platform, catalog, Pokus docs); catalog lint keeps its path
-  dependency; each repository has its own docs site; Pokus CI validates its
-  manifest against the schema of the infra release it targets. Of the
-  one-repository rules, B3, B9, C1 and E3 go and B2, B4, B5 change at the
-  split; B1, B6, B7, B8 stay. At the split: `pokus-infra` gets its own
-  `PROGRESS.md` (infra steps, infra deviations, v2 steps) and `CLAUDE.md`,
-  the infra build prompt's master copy, `ci.yml` at its root without a
-  wrapper, tags `vX.Y.Z` and its own docs site; this repository drops the
-  `infra.yml` wrapper, keeps the platform and catalog wrappers and the tags
-  `platform-v`, `catalog-v`, `docs-v`, adds a CI job validating the Pokus
-  manifest against the schema of the targeted infra release, and builds the
-  Pokus docs site linking to that release. A release candidate becomes an
-  infra release plus the platform and catalog commits of this repository.
-  Infra publishes contract v2, the manifest schema and the profile table
-  with each release, replacing the byte-identical `contracts.md` copies.
+- **12, repositories (replaced after infra step 14 by section J):** two
+  repositories, as decided: infra with the reference platform, and the
+  platform with catalog and the Pokus docs. The way there changed: no new
+  infra repository and no `git filter-repo`. This repository becomes
+  `pokus-infrastructure`; infra moves to its root at the end (3f) and gets
+  `ci.yml` at the root without a wrapper, tags `vX.Y.Z` and its own docs
+  site. The platform, catalog and Pokus docs site live later in the new
+  repository `pokus-platform`, which the owner starts; its CI validates the
+  Pokus manifest against the schema of the infra release it targets, and a
+  release candidate becomes an infra release plus the platform and catalog
+  commits there. Infra publishes contract v2, the manifest schema and the
+  profile table with each release, replacing the byte-identical
+  `contracts.md` copies (C1).
 - **Additions:** the v1 agent-runner finding (TCP access, `pokus-svc`
   membership) is not patched separately in v1; v2 step 3 includes tests
   proving both are closed. The neutrality lint matches an explicit name list
   as whole words. Out of scope for v2, recorded: an OCI runtime for platform
   services, Incus fine-grained authorization, several platforms at once.
-- **Open, for the owner (new points from the changes):** N1 the platform
-  name `pokus` (reserved names checked per namespace), N2 dedicated sockets
-  for every agent client, N3 training datasets readable by no human group,
-  N4 training only on `node_role: full`.
-- **Proposal status:** the updated proposal (decision table, profile table
-  with `gpu-trainer` and the arbiter, security model and threat table,
-  training flow, repository split, test plan, effort) and the per-section
-  spec change list for infra, platform and docs were delivered to the owner
-  after infra step 14; nothing of v2 is implemented. Next is the owner's
-  step 0.
+- **New points, decided after infra step 14:** N1 is replaced by the naming
+  decision above. N2 approved: every socket the agent may use is dedicated to
+  it, including the broker and sandbox-operator sockets; the executor gets
+  separate agent and orchestrator sockets. N3 approved for infra: the
+  training datasets area belongs to `pinka-datasets` with no human members;
+  platform addition (platform §4.1 and §4.9): `potka datasets inspect <hash>`
+  shows provenance and sample records through the controller, is allowed
+  only for `pinka-admin` members, and is logged as an event. N4 approved: in
+  v2, training runs only on `node_role: full`; on lab + inference topologies
+  the installer and doctor state clearly that training is unavailable there,
+  and the docs record split-node training as future work.
+- **Rename decisions (owner, on the rename table's open questions):**
+  - Approved as recommended:
+    - Q1: header `Managed by pinka (<path>)`, also the `org.pinka.managed`
+      label value.
+    - Q2: `pokus-lab` becomes the CLI `pinka`, the machine name and
+      Tailscale tag `pinka-lab`, `pinka-lab.target`, the package `pinka_lab`
+      in `tools/pinka-lab/`, `PINKA_LAB*`, `Start-PinkaLab` and
+      `Stop-PinkaLab`, and the reference page `reference/cli/pinka.md`.
+    - Q3: `pokus-infra` in derived names becomes `pinka`: `pinka-gen`,
+      `pinka_gen`, `pinka-dev`, `pinka-doc-tools`, `pinka_dir`.
+    - Q4: the v1 platform groups become `potka-svc`, `potka-exec-clients`,
+      `potka-gw-clients` (`POTKA_SVC_GID`, `potka_svc_gid`,
+      `compose_potka_svc_gid`); N2 replaces them in v2.
+    - Q5: `pokus-gt` becomes `pinka-gt`, then `pinka-restricted` in v2.
+    - Q6: `pokus_grafana` becomes `potka_grafana`, its secret
+      `/run/secrets/potka-grafana`.
+    - Q8: `pokus-run-explorer` becomes `potka-run-explorer` and moves to the
+      platform's dashboards in v2.
+    - Q9: the bare mirror becomes `/var/lib/pinka/git/potka.git`; v2 keeps
+      one mirror per source.
+    - Q10: platform-derived names in infra's v1 code become `potka` at the
+      rename; the neutrality lint arrives with v2 step 3 and then forbids
+      `potka` and `pokus` in infra code outside test fixtures and docs.
+    - Q12: the lock-check test key "Pokus Test Key" stays.
+    - Q13: the infra spec master is renamed
+      `pokus-infrastructure-claude-code-prompt.md` (at 3f).
+    - Q14: prose is reviewed sentence by sentence: infra "Pokus
+      Infrastructure (pinka)", platform "Pokus Platform (potka)", the
+      project "Pokus"; "the lab" stays a common noun.
+  - Q7, approved as the permanent design: OPA's authz allows exactly two
+    decision paths, the platform's (`potka.action` now, the manifest's path
+    in v2) and infra's `pinka.placeholder`, nothing else. A test proves it.
+  - Q11: no copy of the privacy scan now; it stays in this repository with
+    infra and is handled when `pokus-platform` is created.
+  - Q15: the working branch stays `claude/zen-albattani-qfwwps`.
+  - The rename follows the rename table's rules: no behavior change;
+    generated files regenerated, never hand-edited; verbatim quotes, commit
+    history, upstream names and the spec copies unchanged; the image
+    leakage lint forbids `pokus`, `pinka` and `potka`; the installer's
+    username check refuses `pinka-`, `potka-` and `pokus-`; a residue check
+    lists the remaining `pokus` uses and allows only the project name in
+    prose, the repository names, the reserved-name list, verbatim quotes and
+    the Q12 test key.
+- **Proposal status:** the proposal (decision table, profile table with
+  `gpu-trainer` and the arbiter, security model and threat table, training
+  flow, repository split, test plan, effort), the per-section spec change
+  list for infra, platform and docs, and the rename table with its open
+  questions were delivered after infra step 14 and decided as recorded
+  here. Nothing of v2 and nothing of the rename is implemented; the order
+  of work is section J.
+
+### J. Plan after infra step 14: this repository becomes pokus-infrastructure
+
+Owner decision, replacing the split steps that assumed `git filter-repo` and
+a new infra repository: this repository becomes `pokus-infrastructure`.
+Infra is finished here and then moved to the repository root. The platform
+lives later in the new, separate repository `pokus-platform`, which the
+owner starts; the assistant does not start the platform, the catalog or the
+Pokus docs site. Each item ends with its checks green and a commit
+proposal, and waits for the owner's "commit".
+
+- **3a** `PROGRESS.md`: the final commit rule, the rename decisions and this
+  plan; the root `CLAUDE.md` states the same commit rule (owner, after 3a
+  was proposed: not deferred to 3f), in the same commit.
+- **3b** Spec update: the owner authorized the assistant to edit the spec
+  masters in `specs/` for this one change: apply the proposal's Spec changes
+  list exactly (contract v2 including decision 7's training, N2-N4, the
+  pinka/potka naming and the rename decisions) to the infra prompt, the
+  platform prompt and the docs spec. Spec changes only, no code. The copies
+  in `infra/docs/` stay byte-identical; the new sha256 values are recorded.
+  The commit proposal comes with a section-by-section summary of the diff.
+  After that commit the specs are read-only again.
+- **3c** Rename: the mechanical `pokus` → `pinka`/`potka` rename in `infra/`,
+  per the rename table, with the residue check; no behavior change.
+- **3d** Contract v2: steps 1-8 of the proposal's "Effort and order", one
+  commit proposal per step, following the updated specs.
+- **3e** Infra self-test: everything that runs without provisioning, as in
+  the master prompt's self-test rules (never weaken tests; "not tested"
+  stated honestly). Anything that needs a VM or a real host is described
+  exactly (what and where) and runs only after the owner's confirmation.
+- **3f** Move to root, one structural commit with no other changes:
+  `git mv` everything under `infra/` to the root so history follows;
+  `infra/.github/workflows/ci.yml` becomes `.github/workflows/ci.yml`, the
+  wrapper `infra.yml` goes, `repo-root.yml` is merged into `ci.yml` or kept,
+  whichever needs no behavior change; the one-repository rules go:
+  bootstrap's tree hash and dirty check cover the whole repository (B3),
+  tags have no prefix (`vX.Y.Z`, B4), C1 goes, and every path or link that
+  pointed into or out of `infra/` is fixed; `PROGRESS.md` and `CLAUDE.md`
+  become infra-only, and the infra-only `CLAUDE.md` keeps the commit rule's
+  wording of the root `CLAUDE.md`; the platform spec master
+  (`specs/pokus-platform-claude-code-prompt.md`) and anything else that
+  belongs only to the platform or catalog is removed (the owner keeps a
+  copy for `pokus-platform`); the infra spec master is renamed per Q13.
+  Gate: `make lint test docs` green, CI green on the branch, residue check
+  clean.
+- **3g** Repository name: the assistant stops and asks the owner to rename
+  the repository to `pokus-infrastructure` on the Git host; after the
+  owner's confirmation, one small commit proposal updates every reference
+  to the repository's name and URL (README, docs, the `CITATION.cff`
+  placeholder, examples).
+- **3h** Final report: `TEST_REPORT.md` and `HANDOFF.md` for infra as the
+  master prompt describes, their commit proposal, then stop. After 3h the
+  assistant waits for the owner's explicit instruction.
 
 ### Privacy clean-up (owner instruction)
 
@@ -516,11 +652,26 @@ Proposed after infra step 13 (same status; details in
 | 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
 | 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`; whole play in check mode `40e214c`, its findings `0f8f2aa`, `cce39fe`, `8b5a0e8`) |
 | 13 | Installer TUI | done | `01fc3e3` (CPU sets in `00da783`) |
-| 14 | Documentation completion | done | commit "docs(infra): complete the infra documentation" |
+| 14 | Documentation completion | done | `a967052` |
+| I1, I2 | Secure Boot MOK consent; required and extended fast-lane jobs | done | `ea0c7bf`, `48102a3`, `009edb1` (with the records `4aec5fc`, `4915ce1`; all five committed outside the rule, kept by owner decision) |
 
-### Phase 2 — platform/ (steps 1-13), Phase 3 — catalog/, Phase 4 — docs-site/, Phase 5 — self-test
+### Phase 1, continued — plan of section J
 
-Not started.
+| Item | Content | Status | Commit |
+| --- | --- | --- | --- |
+| 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | proposed | — |
+| 3b | Spec update (contract v2, naming, rename decisions) | not started | — |
+| 3c | Rename `pokus` → `pinka`/`potka` | not started | — |
+| 3d | Contract v2, steps 1-8 | not started | — |
+| 3e | Infra self-test without provisioning | not started | — |
+| 3f | Move infra to the repository root | not started | — |
+| 3g | Repository name `pokus-infrastructure` | not started | — |
+| 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
+
+### Platform, catalog, docs site
+
+Not in this repository: they live later in the separate repository
+`pokus-platform`, which the owner starts (section J).
 
 ## Open questions
 
@@ -825,16 +976,12 @@ step 4" through "after step 13"):
 
 ## Next step
 
-Phase 1 (infra) is complete as far as it can be built here. The owner
-approved the deviations I1 (Secure Boot MOK consent flow) and I2 (required
-fast-lane job as specified, whole play only as a non-blocking extended job)
-and gave the go for both: both are implemented (I2 green in CI; I1's
-interpretations to confirm are in `infra/docs/IMPLEMENTATION_NOTES.md`,
-section "Approved deviation I1"). The owner approved
-contract v2 (plug-in platforms, owner answers section I); its order is: step
-0 by the owner (spec update, `pokus-infra` created with infra's history),
-then the v2 steps in `pokus-infra`, then Phase 2 (platform) against contract
-v2. Still open: the new points N1-N4 of contract v2, the contract proposals
+Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
+`infra/docs/IMPLEMENTATION_NOTES.md`, section "Approved deviation I1"). The
+work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
+under the final commit rule in [Process rules](#process-rules-in-force):
+3a (this `PROGRESS.md` change) is proposed and waits for the owner's
+"commit"; next is 3b, the spec update. Still open: the contract proposals
 (CPU sets, the ports table C10), the step 14 interpretations (`docs serve`,
 the QA maintenance window), and the remaining `TODO(verify)` items (111),
 which need network access or reference hardware.
