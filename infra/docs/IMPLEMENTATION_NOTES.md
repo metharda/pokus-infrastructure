@@ -1983,3 +1983,40 @@ Built:
 ### Open `TODO(verify)` items after step 14
 
 110 markers, as after step 13 (none added).
+
+## Approved deviation I2: required and extended fast lane
+
+The owner decided the two interpretations of "check mode of the whole play"
+(PROGRESS.md, approved deviation I2): the required CI job stays exactly as
+BUILD_PROMPT §11 and §19.9 specify, and the whole-play run continues only as a
+separate, non-blocking job. Now:
+
+- `ansible/check-mode.yml` is back as the required job's play: the
+  provider-agnostic roles that §11 names (`base`, `users_groups`, `ssh`,
+  `layout`), with `platform_facts` first because it only derives the facts
+  they read. It refuses to run outside check mode. `mac` and `firewall`, which
+  the step 12 version also ran, are left to the extended job, so the required
+  job is exactly the roles §11 lists. Nothing is skipped: none of the four
+  installs a component of `component-sources.yml` (a test asserts it).
+- `make check-mode CI_IMAGE=<key>` runs that play; `make check-mode-extended
+  CI_IMAGE=<key>` runs `ansible/site.yml` with the roles of unverified
+  sources skipped by tag (`--extended` of `pokus_test_distros check-mode`).
+  The extended run ends with a Markdown summary: whether the roles that ran
+  passed, and one row per skipped component marked "SKIPPED, not tested" with
+  the reason. A skipped component is never reported as passed. The summary is
+  written to `build/check-mode/<key>-extended-summary.md` and appended to
+  `$GITHUB_STEP_SUMMARY` in CI (or to `--summary <file>`). The skip list is
+  computed from the verification state on every run, so a skip ends by itself
+  once a component's sources are verified.
+- CI (`infra/.github/workflows/ci.yml` and the root wrapper): the
+  `check-mode` job runs the required play on all six CI images and blocks; the
+  new `check-mode-extended` job, named
+  `check-mode-extended (non-blocking, <image>)`, runs the whole play with `continue-on-error: true`.
+- Tests: the required run passes no `--skip-tags` and uses
+  `ansible/check-mode.yml`; the required play imports exactly
+  `platform_facts` plus the four roles; the extended run's skips equal the
+  refused roles, and its summary lists each of them as not tested in both
+  outcomes of the play.
+
+Nothing was run in a container here (no Docker daemon in this environment);
+the CI jobs on the push are the proof.

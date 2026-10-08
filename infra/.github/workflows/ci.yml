@@ -93,8 +93,9 @@ jobs:
       - run: make lock-check
 
   check-mode:
-    # CI fast lane (BUILD_PROMPT §19.9): site.yml with --check in a
-    # disposable systemd container per family; never a host.
+    # Required CI fast lane (BUILD_PROMPT §11, §19.9): the provider-agnostic
+    # roles (base, users_groups, ssh, layout) with --check in a disposable
+    # systemd container per family, nothing skipped; never a host. Blocking.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     strategy:
@@ -119,6 +120,38 @@ jobs:
           node-version-file: .node-version
       - run: make setup
       - run: make check-mode CI_IMAGE=${{ matrix.image }}
+
+  check-mode-extended:
+    # Extended, NON-BLOCKING (approved deviation I2): the whole site.yml with
+    # --check. Components whose sources are not verified are skipped; the job
+    # summary lists each of them as not tested, never as passing. A skip ends
+    # by itself once the component's sources are verified.
+    name: check-mode-extended (non-blocking, ${{ matrix.image }})
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu_2404
+          - image: debian_13
+          - image: fedora_44
+          - image: almalinux_9
+          - image: opensuse_leap_156
+          - image: archlinux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.23"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: make setup
+      - run: make check-mode-extended CI_IMAGE=${{ matrix.image }}
 
   links:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

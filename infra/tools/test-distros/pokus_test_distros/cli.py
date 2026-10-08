@@ -59,9 +59,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-record", action="store_true", help="do not write tests/distros/results.yml"
     )
     check = sub.add_parser(
-        "check-mode", help="CI fast lane: the provisioning play in check mode in a container"
+        "check-mode",
+        help="CI fast lane: the provider-agnostic roles (or, extended, the whole play) "
+        "in check mode in a container",
     )
     check.add_argument("--image", required=True, help="key under containers.ci_images")
+    check.add_argument(
+        "--extended",
+        action="store_true",
+        help="run the whole play and skip components whose sources are not verified "
+        "(listed as not tested)",
+    )
+    check.add_argument(
+        "--summary",
+        type=Path,
+        help="file the extended run appends its Markdown summary to "
+        "(default: $GITHUB_STEP_SUMMARY when set)",
+    )
     check.add_argument("--keep", action="store_true", help="keep the container afterwards")
     return parser
 
@@ -207,7 +221,16 @@ def main(argv: list[str], run: Runner = run_command) -> int:
     """
     args = build_parser().parse_args(argv)
     if args.command == "check-mode":
-        return checkmode.main(args.image, run, INFRA / "build" / "check-mode", keep=args.keep)
+        step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        summary = args.summary or (Path(step_summary) if step_summary else None)
+        return checkmode.main(
+            args.image,
+            run,
+            INFRA / "build" / "check-mode",
+            extended=args.extended,
+            summary=summary,
+            keep=args.keep,
+        )
     try:
         file = targets.load(TARGETS)
         if args.command == "list":

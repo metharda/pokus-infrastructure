@@ -323,7 +323,7 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | H9 | docs spec §B.4 | Pages (private) as a target | no GitHub Pages |
 | H11 | docs spec §B.5 | current and previous release browsable | demonstrated with two test versions until real releases exist |
 | I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; not implemented yet |
-| I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; not implemented yet |
+| I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; implemented in commit "ci(infra): split the fast lane into a required and an extended job" (`make check-mode`, `make check-mode-extended`) |
 
 ## Contract changes
 
@@ -592,6 +592,9 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
   python3-debian; python3-debian was missing for real runs too (fixed); the
   whole-play fast lane also found the never-enforced Grafana password check
   and the backup unit templates that failed every real run (both fixed).
+  The fast-lane interpretation is decided by I2: the required job runs the
+  provider-agnostic roles only, the whole play runs in a separate,
+  non-blocking extended job.
 - From step 14 ("Findings to report (step 14)" and "Interpretations awaiting
   owner confirmation (step 14)"): **preflight's `secure_boot_mok` rule
   (BUILD_PROMPT §2 matrix and fixture) stops bootstrap with 30 before the
@@ -731,8 +734,8 @@ step 4" through "after step 13"):
 Phase 1 (infra) is complete as far as it can be built here; the assistant
 waits for the owner's go for Phase 2 (platform). The owner approved the
 deviations I1 (Secure Boot MOK consent flow) and I2 (required fast-lane job
-as specified, whole play only as a non-blocking extended job); both are
-recorded above and wait for the owner's explicit go before implementation.
+as specified, whole play only as a non-blocking extended job) and gave the go
+for both. I2 is implemented; I1 is next.
 Still open: the contract proposals (CPU sets, the ports table C10), the
 step 14 interpretations (`docs serve`, the QA maintenance window), and the
 remaining `TODO(verify)` items (110), which need network access or reference

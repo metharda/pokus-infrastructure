@@ -1,14 +1,24 @@
-"""The CI fast lane: the provisioning play in check mode in a systemd container.
+"""The CI fast lane: provisioning plays in check mode in a systemd container.
 
 ``make check-mode CI_IMAGE=<key>`` builds a container from the base image
 ``containers.ci_images.<key>`` of ``versions.lock.yml`` (pinned by digest)
 with ``tests/distros/containers/``, starts it with systemd as PID 1, runs
-preflight inside it for the host profile, and runs ``ansible/site.yml`` with
-``--check`` through Ansible's docker connection, with the variables bootstrap
-would pass and the example vault. Roles whose component source or pins are
-not verified for the container's release are skipped by tag: the play refuses
-them, as it would on a real host. Nothing runs on the host itself; the
-container is removed afterwards.
+preflight inside it for the host profile, and runs a play with ``--check``
+through Ansible's docker connection, with the variables bootstrap would pass
+and the example vault. Nothing runs on the host itself; the container is
+removed afterwards.
+
+Two modes (approved deviation I2):
+
+- required: ``ansible/check-mode.yml``, the provider-agnostic roles of
+  BUILD_PROMPT §11 (base, users_groups, ssh, layout), with nothing skipped;
+  the blocking CI job.
+- extended (``make check-mode-extended``): the whole ``ansible/site.yml``.
+  Roles whose component source or pins are not verified for the container's
+  release are skipped by tag, as the play would refuse them on a real host;
+  the summary lists every skipped component as not tested, never as passed.
+  A skip disappears by itself once the component's sources are verified.
+  The non-blocking CI job.
 """
 
 from __future__ import annotations
@@ -29,7 +39,11 @@ from pokus_test_distros.incus import Result, Runner
 INFRA = Path(__file__).resolve().parents[3]
 ANSIBLE = INFRA / "ansible"
 CONTAINERS = INFRA / "tests" / "distros" / "containers"
-PLAYBOOK = ANSIBLE / "site.yml"
+# The required job's play (provider-agnostic roles only) and the extended job's play.
+REQUIRED_PLAYBOOK = ANSIBLE / "check-mode.yml"
+EXTENDED_PLAYBOOK = ANSIBLE / "site.yml"
+# The roles of the required job, in play order (BUILD_PROMPT §11).
+REQUIRED_ROLES = ("base", "users_groups", "ssh", "layout")
 MACHINE = "example-machine"
 # Read on the target by preflight_gate and doctor: copied into the container at
 # the same absolute paths, because the play resolves them on the controller.
@@ -352,14 +366,15 @@ class CheckMode:
         self._check(self._docker("cp", str(local), f"{self.name}:{GUEST_PROFILE}"), "docker cp")
         return profile, interpreter
 
-    def play(self, variables: dict[str, Any], skip: list[str]) -> Result:
-        """Run the provisioning play in check mode through the docker connection.
+    def play(self, variables: dict[str, Any], skip: list[str], playbook: Path) -> Result:
+        """Run a play in check mode through the docker connection.
 
         The container stands in for ``localhost``, the host the play provisions.
 
         Args:
             variables: Extra variables.
             skip: Roles to skip (their tags).
+            playbook: The play.
 
         Returns:
             The ansible-playbook result.
@@ -386,11 +401,46 @@ class CheckMode:
         ]
         if skip:
             argv += ["--skip-tags", ",".join(skip)]
-        return self.run([*argv, str(PLAYBOOK)], timeout=3600)
+        return self.run([*argv, str(playbook)], timeout=3600)
 
     def stop(self) -> None:
         """Remove the container."""
         self._docker("rm", "--force", self.name)
+
+
+def extended_summary(key: str, skipped: dict[str, str], returncode: int) -> str:
+    """The summary of an extended run, in Markdown.
+
+    Skipped components are listed as not tested; a skipped component is never
+    reported as passed, whatever the play's result.
+
+    Args:
+        key: Key under ``containers.ci_images``.
+        skipped: ``{role: reason}`` of the roles skipped on this release.
+        returncode: ansible-playbook's exit status.
+
+    Returns:
+        The summary.
+    """
+    played = "passed" if returncode == 0 else f"failed (ansible-playbook exit status {returncode})"
+    lines = [
+        f"## Extended check mode (non-blocking): {key}",
+        "",
+        "The whole provisioning play (`ansible/site.yml`) in check mode. Components whose "
+        "sources are not verified on this release are skipped and **not tested**; they are "
+        "never counted as passing.",
+        "",
+        f"- Roles that ran: **{played}**",
+        f"- Components skipped, not tested: **{len(skipped)}**",
+        "",
+    ]
+    if skipped:
+        lines += ["| Component | Result | Why |", "| --- | --- | --- |"]
+        for role, reason in sorted(skipped.items()):
+            why = reason.replace("|", "\\|")
+            lines.append(f"| `{role}` | SKIPPED, not tested | {why} |")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def main(
@@ -398,6 +448,8 @@ def main(
     run: Runner,
     out_dir: Path,
     *,
+    extended: bool = False,
+    summary: Path | None = None,
     keep: bool = False,
     write: Callable[[str], Any] = print,
     sleep: Callable[[float], None] = time.sleep,
@@ -408,6 +460,11 @@ def main(
         key: Key under ``containers.ci_images``.
         run: Command runner.
         out_dir: Directory for the variables, the inventory and the host profile.
+        extended: Run the whole play with unverified components skipped, instead
+            of the provider-agnostic roles with nothing skipped.
+        summary: File the extended run appends its Markdown summary to (in CI,
+            ``$GITHUB_STEP_SUMMARY``); the summary is always also written to
+            ``out_dir``.
         keep: Keep the container afterwards.
         write: Output function.
         sleep: Sleep function (tests replace it).
@@ -419,16 +476,26 @@ def main(
     check = CheckMode(key, run, out_dir, sleep)
     try:
         image = image_ref(lock, key)
-        write(f"== {key}: {image}")
+        mode = "extended" if extended else "required"
+        write(f"== {key} ({mode}): {image}")
         check.start(image)
         profile, interpreter = check.prepare()
-        skipped = unverified_roles(profile)
+        skipped = unverified_roles(profile) if extended else {}
         for role, reason in sorted(skipped.items()):
-            write(f"-- skipping {role}, refused on this release: {reason}")
-        result = check.play(extra_vars(profile, interpreter), sorted(skipped))
+            write(f"-- skipping {role}, not tested, refused on this release: {reason}")
+        playbook = EXTENDED_PLAYBOOK if extended else REQUIRED_PLAYBOOK
+        result = check.play(extra_vars(profile, interpreter), sorted(skipped), playbook)
         write(result.stdout)
         if result.stderr:
             write(result.stderr)
+        if extended:
+            text = extended_summary(key, skipped, result.returncode)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"{key}-extended-summary.md").write_text(text, encoding="utf-8")
+            if summary is not None:
+                with summary.open("a", encoding="utf-8") as handle:
+                    handle.write(text + "\n")
+            write(text)
         return result.returncode
     except CheckModeError as exc:
         write(f"check-mode: {exc}")

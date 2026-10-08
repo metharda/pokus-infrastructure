@@ -13,9 +13,10 @@ description: Run the full distribution tests in disposable Incus VMs, record the
 `tested` distribution: for each target in `tests/distros/targets.yml` it
 launches a disposable Incus VM, bootstraps the lab from the CI answers file,
 runs bootstrap a second time (it must change nothing), backs up once and runs
-`pokus-lab doctor --smoke`. The CI fast lane, `make check-mode`, runs on
-every push instead: the provisioning play in check mode in a container per
-family.
+`pokus-lab doctor --smoke`. The CI fast lane runs on every push instead, in
+a container per family: `make check-mode`, the required job, checks the
+provider-agnostic roles in check mode, and `make check-mode-extended`, a
+separate non-blocking job, checks the whole provisioning play.
 
 !!! note "Prerequisites"
     - A developer machine with Incus (VM support, about 8 GiB of memory and
@@ -76,28 +77,53 @@ family.
 The fast lane needs Docker and network access, and runs nothing on the host
 itself: it builds a systemd container from a pinned base image of
 `containers.ci_images` in `versions.lock.yml`, runs preflight inside it, and
-runs `ansible/site.yml` with `--check` through Ansible's docker connection,
-the container standing in for the host. It passes the variables bootstrap
-would pass (the container counts as bare metal whose operator forced the
-installation, since preflight classifies containers as unsupported), the
-example host variables and the example vault with a local backup
-repository.
+runs a play with `--check` through Ansible's docker connection, the container
+standing in for the host. It passes the variables bootstrap would pass (the
+container counts as bare metal whose operator forced the installation, since
+preflight classifies containers as unsupported), the example host variables
+and the example vault with a local backup repository.
 
-Roles whose component source or package pins are not verified yet for the
-container's release are skipped by their tag, because the play refuses them; the run prints each skipped role and the reason. Components installed
-from vendor repositories (Docker, Incus, Tailscale, the NVIDIA Container
-Toolkit) are checked up to their repository: check mode downloads and
-verifies the repository key but cannot resolve packages from a repository it
-did not really add, so these roles end there in check mode.
+There are two runs, and CI has a job for each:
 
-<!-- qa:skip reason="needs Docker" -->
-```bash
-make check-mode CI_IMAGE=<image-key>
-```
+| Run | Play | Skips | In CI |
+| --- | --- | --- | --- |
+| `make check-mode` | `ansible/check-mode.yml`: the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` | none | required, blocking |
+| `make check-mode-extended` | `ansible/site.yml`, the whole provisioning play | components whose sources are not verified yet | separate, non-blocking |
 
-`<image-key>` is a key under `containers.ci_images`, for example `debian_13`
-or `fedora_44`. The container is removed afterwards; the variables, the
-inventory and the container's host profile stay in `build/check-mode/`.
+1. Run the required check:
+
+    <!-- qa:skip reason="needs Docker" -->
+    ```bash
+    make check-mode CI_IMAGE=<image-key>
+    ```
+
+    `<image-key>` is a key under `containers.ci_images`, for example
+    `debian_13` or `fedora_44`.
+
+2. Run the extended check of the whole play:
+
+    <!-- qa:skip reason="needs Docker" -->
+    ```bash
+    make check-mode-extended CI_IMAGE=<image-key>
+    ```
+
+    `<image-key>` is the same key as in item 1. Roles whose component source or package pins are not verified yet for the
+    container's release are skipped by their tag, because the play refuses
+    them. The run ends with a summary that lists every skipped component as
+    *SKIPPED, not tested*, with the reason; a skipped component is never
+    counted as passing. In CI the summary appears on the job's page. A skip
+    disappears by itself once the component's sources are verified (see
+    [How to update pinned versions](update-versions.md)).
+
+    Components installed from vendor repositories (Docker, Incus, Tailscale,
+    the NVIDIA Container Toolkit) are checked up to their repository: check
+    mode downloads and verifies the repository key but cannot resolve
+    packages from a repository it did not really add, so these roles end
+    there in check mode.
+
+The container is removed afterwards; the variables, the inventory, the
+container's host profile and the extended run's summary stay in
+`build/check-mode/`.
 
 ## Verify the tests
 

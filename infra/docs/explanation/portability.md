@@ -136,11 +136,14 @@ lab in a disposable Incus VM for every `supported` and `tested` release and
 for the firewall and SELinux variants; a second bootstrap must change
 nothing, and `pokus-lab doctor --smoke` must pass. The results, with their
 dates, are in the [support matrix](../support-matrix.md#last-test-results)
-and count for 90 days. On every push, the CI fast lane runs the
-provisioning play in check mode in a systemd container per family, which
-catches package names, repository keys and module arguments that do not fit
-a family without provisioning anything. Roles whose source is still
-unverified for a release are skipped there, as the play refuses them.
+and count for 90 days. On every push, the CI fast lane checks each family in
+a systemd container, which catches package names, repository keys and
+module arguments that do not fit a family without provisioning anything. Its
+required job runs the provider-agnostic roles (`base`, `users_groups`, `ssh`,
+`layout`) in check mode and skips nothing; a separate, non-blocking job runs
+the whole provisioning play and skips the roles whose source is still
+unverified for a release, as the play refuses them, listing each of them as
+not tested.
 [How to test the distributions](../how-to/test-distributions.md) has the
 commands.
 

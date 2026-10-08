@@ -386,6 +386,7 @@ class FakeDocker:
 
 
 def test_check_mode_run(tmp_path: Path) -> None:
+    """The required run: the provider-agnostic roles, nothing skipped."""
     fake = FakeDocker()
     printed: list[str] = []
     rc = checkmode.main("debian_13", fake, tmp_path, write=printed.append, sleep=NO_SLEEP)
@@ -398,7 +399,7 @@ def test_check_mode_run(tmp_path: Path) -> None:
     pinned = lock["containers"]["ci_images"]["debian_13"]
     assert f"BASE={pinned['image']}@{pinned['digest']}" in build
     play = next(c for c in fake.calls if c[0] == "ansible-playbook")
-    assert "--check" in play and play[-1].endswith("ansible/site.yml")
+    assert "--check" in play and play[-1].endswith("ansible/check-mode.yml")
     # The trees the play reads on the target go to the same paths as on the controller,
     # outside /tmp, a tmpfs that docker cp cannot write into.
     mkdir = next(i for i, c in enumerate(fake.calls) if c[1:2] == ("exec",) and c[3] == "mkdir")
@@ -436,12 +437,69 @@ def test_check_mode_run(tmp_path: Path) -> None:
         "ansible_host=pokus-ci-debian-13",
     ]
     assert play[play.index("--inventory") + 1] == str(tmp_path / "debian_13-inventory.ini")
+    assert "--skip-tags" not in play  # the required run skips nothing
+    assert printed[0].startswith("== debian_13 (required): docker.io/library/debian@sha256:")
+    assert not [line for line in printed if line.startswith("-- skipping")]
+    assert not list(tmp_path.glob("*-extended-summary.md"))
+
+
+def test_required_play_is_the_provider_agnostic_roles() -> None:
+    """BUILD_PROMPT §11: base, users_groups, ssh and layout, in check mode only."""
+    plays = yaml.safe_load(checkmode.REQUIRED_PLAYBOOK.read_text())
+    assert len(plays) == 1
+    roles = [task["ansible.builtin.import_role"]["name"] for task in plays[0]["tasks"]]
+    assert roles == ["platform_facts", *checkmode.REQUIRED_ROLES]
+    assert "ansible_check_mode" in plays[0]["pre_tasks"][0]["ansible.builtin.assert"]["that"]
+    assert not set(checkmode.REQUIRED_ROLES) & set(checkmode.SOURCED_ROLES)
+
+
+@pytest.mark.parametrize("ansible_rc", [0, 2])
+def test_check_mode_extended(tmp_path: Path, ansible_rc: int) -> None:
+    """The extended run: the whole play; skipped components are listed as not tested."""
+    fake = FakeDocker(ansible_rc=ansible_rc)
+    printed: list[str] = []
+    step_summary = tmp_path / "step-summary.md"
+    step_summary.write_text("earlier step\n")
+    out = tmp_path / "out"
+    rc = checkmode.main(
+        "debian_13",
+        fake,
+        out,
+        extended=True,
+        summary=step_summary,
+        write=printed.append,
+        sleep=NO_SLEEP,
+    )
+    assert rc == ansible_rc
+    play = next(c for c in fake.calls if c[0] == "ansible-playbook")
+    assert "--check" in play and play[-1].endswith("ansible/site.yml")
+    refused = checkmode.unverified_roles(PROFILE)
+    assert refused  # Tailscale and Incus are not verified on any release yet
     skipped = play[play.index("--skip-tags") + 1].split(",")
-    assert skipped == sorted(checkmode.unverified_roles(PROFILE))
-    assert printed[0].startswith("== debian_13: docker.io/library/debian@sha256:")
+    assert skipped == sorted(refused)
+    assert printed[0].startswith("== debian_13 (extended): ")
     assert [line.split()[2] for line in printed if line.startswith("-- skipping")] == [
         f"{role}," for role in skipped
     ]
+    text = (out / "debian_13-extended-summary.md").read_text()
+    assert step_summary.read_text() == "earlier step\n" + text + "\n"  # appended
+    assert printed[-1] == text
+    assert "non-blocking" in text
+    for role in skipped:
+        rows = [line for line in text.splitlines() if line.startswith(f"| `{role}` |")]
+        assert len(rows) == 1 and "| SKIPPED, not tested |" in rows[0]
+        assert "pass" not in rows[0].lower()  # never reported as passing
+    assert f"Components skipped, not tested: **{len(skipped)}**" in text
+    expected = (
+        "passed" if ansible_rc == 0 else f"failed (ansible-playbook exit status {ansible_rc})"
+    )
+    assert f"Roles that ran: **{expected}**" in text
+
+
+def test_extended_summary_escapes_table_cells() -> None:
+    text = checkmode.extended_summary("x", {"incus": "a | b"}, 0)
+    assert "| `incus` | SKIPPED, not tested | a \\| b |" in text
+    assert "Components skipped, not tested: **0**" in checkmode.extended_summary("x", {}, 0)
 
 
 def test_unverified_roles() -> None:
