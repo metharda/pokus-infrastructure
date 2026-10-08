@@ -131,6 +131,15 @@ and when the play fails it reads the file: codes 75, 76 and 77 become the exit
 code and the message is printed and recorded. A play that fails without a
 valid signal ends with 60.
 
+A 76 can also name a Machine Owner Key (`"mok_key"`): the driver's signing
+key on a Secure Boot host, neither enrolled nor waiting for enrollment.
+Bootstrap then imports it with `mokutil --import`, giving it the operator's
+one-time password on standard input, before it exits; without the password,
+or if `mokutil` fails, it ends with 77 and says how to import the key by hand.
+Bootstrap has the password only when the operator consented to the MOK
+enrollment; [Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots)
+describes the whole flow.
+
 The play runs on the host it provisions, so it never reboots the host itself.
 After signal 76, bootstrap schedules a reboot one minute later only if it was
 started with `--allow-reboot` and not in check mode; the state file is written

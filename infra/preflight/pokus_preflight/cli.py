@@ -34,6 +34,7 @@ from pokus_preflight.fs import FileSystem
 from pokus_preflight.matrix import (
     EXIT_CODES,
     MATRIX_JSON,
+    NVIDIA_DRIVER_MODES,
     Decision,
     evaluate,
     load_matrix,
@@ -110,6 +111,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "treat an existing, unmanaged Incus installation as a warning instead of a "
             "blocking conflict"
+        ),
+    )
+    parser.add_argument(
+        "--nvidia-driver",
+        choices=NVIDIA_DRIVER_MODES,
+        default="auto",
+        help="the host's install_nvidia_driver setting, which decides how a missing driver "
+        "is judged (default: auto)",
+    )
+    parser.add_argument(
+        "--accept-mok-enrollment",
+        action="store_true",
+        help=(
+            "record consent that bootstrap installs the NVIDIA driver and imports a Machine "
+            "Owner Key on a Secure Boot host (install_nvidia_driver: auto)"
         ),
     )
     parser.add_argument(
@@ -213,6 +229,10 @@ def run_preflight(
         gpu=gpu,
         conflicts=conflicts,
         endpoints=endpoints,
+        choices={
+            "nvidia_driver_mode": args.nvidia_driver,
+            "mok_enrollment_accepted": args.accept_mok_enrollment,
+        },
     )
     overrides = Overrides(
         accept_degraded=args.accept_degraded,
@@ -220,6 +240,7 @@ def run_preflight(
         force_unsupported=args.force_unsupported,
         adopt_incus=args.adopt_incus,
         allow_dirty=args.allow_dirty,
+        accept_mok_enrollment=args.accept_mok_enrollment,
     )
     report = build_report(
         det,
@@ -227,6 +248,7 @@ def run_preflight(
         overrides,
         generated_at=runner.now(),
         repo_commit=_repo_commit(args, fs, runner),
+        nvidia_driver_mode=args.nvidia_driver,
     )
     errors = schema_check.validate(report, load_schema())
     if errors:

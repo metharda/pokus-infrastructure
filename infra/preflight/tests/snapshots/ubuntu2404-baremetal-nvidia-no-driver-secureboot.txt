@@ -22,7 +22,7 @@ Features
 Network: skipped (--offline)
 
 Action needed
-  - secure_boot_mok: Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot. See docs/providers/baremetal.md
+  - secure_boot_mok: Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot. With install_nvidia_driver: auto, consent with --accept-mok-enrollment (or in the installer) and bootstrap installs the driver and imports the MOK; otherwise install the driver yourself. See docs/providers/baremetal.md
 
 Disabled features
   - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.

@@ -50,6 +50,8 @@ class Overrides:
         adopt_incus: ``--adopt-incus``.
         allow_dirty: ``--allow-dirty`` (bootstrap ran from an ``infra/`` tree with
             uncommitted changes).
+        accept_mok_enrollment: ``--accept-mok-enrollment`` (bootstrap may install
+            the NVIDIA driver and import a Machine Owner Key on a Secure Boot host).
     """
 
     accept_degraded: bool = False
@@ -57,6 +59,7 @@ class Overrides:
     force_unsupported: bool = False
     adopt_incus: bool = False
     allow_dirty: bool = False
+    accept_mok_enrollment: bool = False
 
 
 @dataclass
@@ -107,6 +110,7 @@ def build_report(
     *,
     generated_at: dt.datetime,
     repo_commit: str | None,
+    nvidia_driver_mode: str = "auto",
 ) -> dict[str, Any]:
     """Assemble the host profile.
 
@@ -116,6 +120,8 @@ def build_report(
         overrides: Operator overrides.
         generated_at: Report time.
         repo_commit: Commit of the pokus checkout running preflight, if known.
+        nvidia_driver_mode: The host's ``install_nvidia_driver`` setting given to
+            preflight (``--nvidia-driver``).
 
     Returns:
         The report as a JSON-compatible dictionary.
@@ -194,6 +200,7 @@ def build_report(
             "driver_state": gpu.driver_state,
             "unsupported_devices": list(gpu.unsupported_devices),
             "notes": list(gpu.notes),
+            "install_driver": nvidia_driver_mode,
         },
         "capabilities": {
             "cgroup2": k.cgroup2,
@@ -230,6 +237,7 @@ def build_report(
         "conflicts": [dataclasses.asdict(c) for c in det.conflicts.conflicts],
         "unsupported_reasons": list(decision.unsupported_reasons),
         "needs_action": list(decision.needs_action),
+        "planned_actions": list(decision.planned_actions),
         "warnings": list(decision.warnings),
         "notes": [*decision.notes, *det.conflicts.infos],
         "overrides": dataclasses.asdict(overrides),

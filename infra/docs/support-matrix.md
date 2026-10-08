@@ -120,7 +120,8 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 | wsl2 | needs_action | wsl_conf_systemd: no | systemd_pid1 | Enable systemd in /etc/wsl.conf (the bootstrap can write it), then run 'wsl --terminate &lt;distro&gt;' from Windows and re-run bootstrap |
 | wsl2 | warnings | wsl_interop_enabled: yes | — | Windows interop is enabled; the wsl2 provider will disable it |
 | wsl2 | warnings | wsl_automount_enabled: yes | — | Windows drive automount is enabled; the wsl2 provider will disable it |
-| baremetal | needs_action | secure_boot: enabled, nvidia_driver_installed: no, nvidia_gpu_present: yes | — | Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot. See docs/providers/baremetal.md |
+| baremetal | needs_action | secure_boot: enabled, nvidia_driver_installed: no, nvidia_gpu_present: yes, nvidia_driver_mode_in: auto, manual | — | Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot. With install_nvidia_driver: auto, consent with --accept-mok-enrollment (or in the installer) and bootstrap installs the driver and imports the MOK; otherwise install the driver yourself. See docs/providers/baremetal.md |
+| baremetal | planned action | the row above, and nvidia_driver_mode: auto, mok_enrollment_accepted: yes | — | Secure Boot is on: bootstrap installs the NVIDIA driver, imports a Machine Owner Key with your one-time password and stops with 76; reboot, enroll the key at the blue MOK Manager screen, then re-run bootstrap |
 | vm | warnings | hypervisor_in: microsoft, vmware, oracle, kvm_usable: no | — | Nested virtualization unavailable in this hypervisor; VM-class targets disabled |
 
 ## Last test results

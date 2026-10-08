@@ -96,6 +96,8 @@ def test_cross_field_problems(repo: Paths) -> None:
     answers.split_inference_peer = "Not_A_Host"
     answers.machine.node_role = "lab"
     answers.source.repo = "not a url"
+    answers.gpu.install_driver = "manual"
+    answers.gpu.accept_mok_enrollment = True
     found = "\n".join(answers_mod.problems(answers, context))
     for expected in (
         "storage/device_confirm",
@@ -107,6 +109,7 @@ def test_cross_field_problems(repo: Paths) -> None:
         "no blueprint 'no-such-blueprint'",
         "source/repo",
         "split_inference/peer",
+        "gpu/accept_mok_enrollment",
     ):
         assert expected in found, expected
 

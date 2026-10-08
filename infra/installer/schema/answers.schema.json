@@ -294,6 +294,10 @@
             "skip"
           ]
         },
+        "accept_mok_enrollment": {
+          "type": "boolean",
+          "description": "Consent that bootstrap installs the NVIDIA driver and imports a Machine Owner Key on a Secure Boot host (install_driver auto only; approved deviation I1). Bootstrap reads the one-time MOK password from standard input (--mok-password-stdin); this file never holds it."
+        },
         "vllm_profile": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$",

@@ -56,6 +56,12 @@ whether the lab is supported there and what would be missing.
     | 30 | `needs_action` | Do what *Action needed* says, then run the check again. |
     | 40 | `preflight_error` | Detection failed; the traceback shows where. |
 
+    The action `secure_boot_mok` (Secure Boot on, no NVIDIA driver) is the
+    one exception: bootstrap can do it itself with your consent. Add
+    `--accept-mok-enrollment` to see the verdict with that consent; the
+    action then appears as a planned action among the *Warnings*
+    ([Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots)).
+
 4. To see every detail, open the JSON report; the fields are described in the
    [host profile schema](../reference/host-profile.md).
 

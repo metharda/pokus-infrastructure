@@ -31,7 +31,7 @@ The Pokus installer: TUI and answers replay (run by bootstrap.sh).
 | Command | Description |
 | --- | --- |
 | `pokus-installer validate` | check an answers file |
-| `pokus-installer describe` | print machine, mode and snapshot of answers |
+| `pokus-installer describe` | print machine, mode, snapshot and MOK consent of answers |
 | `pokus-installer apply` | write the files of an answers file (non-interactive) |
 | `pokus-installer tui` | start the installer TUI |
 
@@ -49,7 +49,7 @@ pokus-installer validate [-h] --answers ANSWERS
 
 ### pokus-installer describe
 
-Print machine, mode and snapshot of answers.
+Print machine, mode, snapshot and MOK consent of answers.
 
 ```text
 pokus-installer describe [-h] --answers ANSWERS

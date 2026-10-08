@@ -1,0 +1,19 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "install_driver": "auto",
+  "needs_action": [],
+  "outcome": "degraded",
+  "overrides_on": [
+    "accept_mok_enrollment"
+  ],
+  "planned_actions": [
+    "secure_boot_mok"
+  ],
+  "provider": "baremetal",
+  "secure_boot": "enabled",
+  "warnings_contain": [
+    "planned action secure_boot_mok"
+  ]
+}

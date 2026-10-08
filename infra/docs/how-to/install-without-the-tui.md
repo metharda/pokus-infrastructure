@@ -70,6 +70,20 @@ second identical host, or to automate a reinstall.
     On an installed lab, a secret that the vault already holds is kept; a
     variable replaces it.
 
+5. On a host with Secure Boot and no NVIDIA driver, consent to the Machine
+   Owner Key (MOK) enrollment in the answers file, next to
+   `install_driver: auto`:
+
+    ```yaml
+    gpu:
+      install_driver: auto
+      accept_mok_enrollment: true
+    ```
+
+    Bootstrap then also needs a one-time MOK password, which you choose now
+    and type again at the blue MOK Manager screen after the reboot. It is
+    never stored: bootstrap reads it from its standard input (next section).
+
 ## Run the installation
 
 1. Run bootstrap with the answers, passing the secret variables through
@@ -83,13 +97,31 @@ second identical host, or to automate a reinstall.
       --vault-password-file /root/pokus-vault-pass
     ```
 
-    `<pokus-checkout>` is the directory of your clone. List every variable
-    you set in `--preserve-env`, separated by commas. Bootstrap checks the
-    answers before it changes anything: a problem ends with exit code 77 and
-    lists every wrong field. It then writes `host_vars/<machine>.yml`, the
+    `<pokus-checkout>` is the directory of your clone and `<machine>` the
+    machine name in the answers file. List every variable you set in
+    `--preserve-env`, separated by commas. Bootstrap checks the answers
+    before it changes anything: a problem ends with exit code 77 and lists
+    every wrong field. It then writes `host_vars/<machine>.yml`, the
     researchers in `group_vars/all/main.yml`, `users/*.pub`, the encrypted
     vault and the answers file, and runs the installation. In restore mode
     it restores the snapshot of `restore.snapshot` afterwards.
+
+    With `accept_mok_enrollment: true`, pipe the one-time MOK password in and
+    add `--mok-password-stdin`:
+
+    <!-- qa:skip reason="provisions the host" -->
+    ```bash
+    read -rsp 'one-time MOK password: ' mok && echo
+    printf '%s\n' "$mok" | sudo --preserve-env=POKUS_SECRET_TAILSCALE_AUTHKEY \
+      ./bootstrap/bootstrap.sh --answers installer-answers/<machine>.yml \
+      --non-interactive --vault-password-file /root/pokus-vault-pass --mok-password-stdin
+    unset mok
+    ```
+
+    `<machine>` is the same machine name. The installation stops with exit
+    code 76 after importing the key; reboot, enroll it and run the same
+    command again (see
+    [Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots)).
 
 2. If the answers generated a restic password, bootstrap prints a note. Copy
    `vault_restic_password` out of the vault and store it outside the host:

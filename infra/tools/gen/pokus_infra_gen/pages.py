@@ -253,6 +253,16 @@ def support_matrix_page(root: Path) -> str:
                         r.get("action") or r.get("message"),
                     ]
                 )
+                if "planned_when" in r:
+                    rows.append(
+                        [
+                            provider,
+                            "planned action",
+                            "the row above, and " + _cell(r["planned_when"]),
+                            None,
+                            r["planned"],
+                        ]
+                    )
     out.append(table(["Provider", "Kind", "When", "Resolves", "Text"], rows))
     out.append(test_results_section(root))
     return "".join(out)

@@ -1,0 +1,10 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "install_driver": "skip",
+  "needs_action": [],
+  "outcome": "degraded",
+  "planned_actions": [],
+  "provider": "baremetal"
+}

@@ -37,6 +37,7 @@
     "conflicts",
     "unsupported_reasons",
     "needs_action",
+    "planned_actions",
     "warnings",
     "notes",
     "overrides"
@@ -459,7 +460,8 @@
         "path",
         "driver_state",
         "unsupported_devices",
-        "notes"
+        "notes",
+        "install_driver"
       ],
       "properties": {
         "probed": {
@@ -541,6 +543,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "install_driver": {
+          "description": "The host's install_nvidia_driver setting given to preflight (--nvidia-driver): auto, manual or skip.",
+          "enum": [
+            "auto",
+            "manual",
+            "skip"
+          ]
         }
       }
     },
@@ -857,6 +867,28 @@
         }
       }
     },
+    "planned_actions": {
+      "description": "Actions bootstrap carries out with the operator's consent instead of stopping (for example the MOK enrollment of an NVIDIA driver on a Secure Boot host); each is also listed among the warnings.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "action"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "warnings": {
       "type": "array",
       "items": {
@@ -878,7 +910,8 @@
         "accept_experimental",
         "force_unsupported",
         "adopt_incus",
-        "allow_dirty"
+        "allow_dirty",
+        "accept_mok_enrollment"
       ],
       "properties": {
         "accept_degraded": {
@@ -894,6 +927,9 @@
           "type": "boolean"
         },
         "allow_dirty": {
+          "type": "boolean"
+        },
+        "accept_mok_enrollment": {
           "type": "boolean"
         }
       }

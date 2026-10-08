@@ -11,6 +11,12 @@ Outcome precedence: ``unsupported`` > ``needs_action`` > ``degraded`` >
 becomes ``needs_action`` when a matching provider rule lists it under
 ``resolves`` (for example, systemd is not PID 1 on WSL2 because ``wsl.conf``
 does not enable it).
+
+The operator's choices given on the command line (``choices``: the
+``install_nvidia_driver`` mode, consent to MOK enrollment) are facts too. A
+``needs_action`` rule with ``planned_when`` becomes a *planned action* (a
+warning, recorded in the profile) when those conditions also hold: bootstrap
+then does the action itself (approved deviation I1).
 """
 
 from __future__ import annotations
@@ -68,6 +74,11 @@ OUTCOME_MEANINGS = {
 
 Facts = dict[str, Any]
 
+# Values of --nvidia-driver (the host's install_nvidia_driver setting).
+NVIDIA_DRIVER_MODES = ("auto", "manual", "skip")
+# The operator's choices when none are given: bootstrap's defaults.
+DEFAULT_CHOICES: dict[str, Any] = {"nvidia_driver_mode": "auto", "mok_enrollment_accepted": False}
+
 
 @dataclass
 class Check:
@@ -107,6 +118,8 @@ class Decision:
         minimums: Hardware minimum results.
         unsupported_reasons: Why the host is unsupported.
         needs_action: Operator actions, as ``{"id", "action"}``.
+        planned_actions: Actions bootstrap carries out with the operator's
+            consent instead of stopping, as ``{"id", "action"}``.
         warnings: Warnings.
         notes: Informational notes.
     """
@@ -129,6 +142,7 @@ class Decision:
     minimums: list[Check] = field(default_factory=list)
     unsupported_reasons: list[str] = field(default_factory=list)
     needs_action: list[dict[str, str]] = field(default_factory=list)
+    planned_actions: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -454,6 +468,7 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     gpu: GpuInfo,
     conflicts: ConflictReport,
     endpoints: Sequence[EndpointResult],
+    choices: Mapping[str, Any] | None = None,
 ) -> Decision:
     """Apply the support matrix to the detection results.
 
@@ -467,11 +482,16 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
         gpu: GPU facts.
         conflicts: Conflict report.
         endpoints: Network probe results.
+        choices: The operator's choices as facts: ``nvidia_driver_mode``
+            (``auto``, ``manual`` or ``skip``, default ``auto``) and
+            ``mok_enrollment_accepted`` (default false).
 
     Returns:
         The decision.
     """
     facts = build_facts(env, kernel, hw, gpu, conflicts)
+    facts.update(DEFAULT_CHOICES)
+    facts.update(choices or {})
     os_rule = match_os(matrix, osr)
     arch_rule = match_arch(matrix, machine)
     env_rule = matrix["environment"].get(env.env_class, matrix["environment"]["unknown"])
@@ -543,9 +563,15 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     resolved: set[str] = set()
     rules = matrix.get("provider_rules", {}).get(d.provider or "", {})
     for rule in rules.get("needs_action", []):
-        if condition_holds(rule["when"], facts):
-            d.needs_action.append({"id": str(rule["id"]), "action": str(rule["action"])})
-            resolved.update(rule.get("resolves", []))
+        if not condition_holds(rule["when"], facts):
+            continue
+        planned_when = rule.get("planned_when")
+        if planned_when is not None and condition_holds(planned_when, facts):
+            d.planned_actions.append({"id": str(rule["id"]), "action": str(rule["planned"])})
+            d.warnings.append(f"planned action {rule['id']}: {rule['planned']}")
+            continue
+        d.needs_action.append({"id": str(rule["id"]), "action": str(rule["action"])})
+        resolved.update(rule.get("resolves", []))
     for rule in rules.get("warnings", []):
         if condition_holds(rule["when"], facts):
             d.warnings.append(str(rule["message"]))

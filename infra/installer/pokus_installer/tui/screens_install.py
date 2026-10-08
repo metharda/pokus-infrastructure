@@ -38,7 +38,6 @@ from pokus_installer.tui.runner import RunRequest
 from pokus_installer.tui.widgets import Card, Field, NavBar, ShownOnce, TextView
 
 MIN_GRAFANA_ADMIN = 8
-MOK_KEY = Path("/var/lib/shim-signed/mok/MOK.der")
 PAIR_TAGS = "inference_control,observability,firewall"
 # Two QR modules per character: (top, bottom) dark or light.
 HALF_BLOCKS = {(1, 1): "█", (1, 0): "▀", (0, 1): "▄", (0, 0): " "}
@@ -505,7 +504,12 @@ class ProgressScreen(StepScreen):
     def run_bootstrap(self) -> None:
         """Run bootstrap in the background and feed its events to the screen."""
         options = self.wizard.bootstrap_options(self.ctx.passthrough) + self.extra_options
-        request = RunRequest(self.answers.machine.name, options, self.wizard.vault_password)
+        request = RunRequest(
+            self.answers.machine.name,
+            options,
+            self.wizard.vault_password,
+            self.wizard.mok_password,
+        )
         code = self.ctx.runner.run(
             request,
             lambda events: self.app.call_from_thread(self._events, events),
@@ -590,23 +594,11 @@ class ProgressScreen(StepScreen):
         saved.answers = self.wizard.resume_data()
         state.save(saved, self.ctx.paths.state_file)
         if code == EXIT_REBOOT:
-            self._enrol_mok()
+            # bootstrap imported the MOK (if one was waiting) with this password
+            self.wizard.mok_password = ""
         self.installer.show(
             SignalScreen(code, self.progress.signal[1] if self.progress.signal else "")
         )
-
-    def _enrol_mok(self) -> None:
-        # TODO(verify) on reference hardware: the DKMS signing key's path on Ubuntu
-        # (shim-signed) and mokutil reading the password twice from standard input.
-        if not self.wizard.mok_password or not MOK_KEY.exists():
-            return
-        password = self.wizard.mok_password
-        done = self.ctx.host.run(
-            ["mokutil", "--import", str(MOK_KEY)], stdin=f"{password}\n{password}\n"
-        )
-        self.wizard.mok_password = ""
-        if done.returncode != 0:
-            self.notify(f"mokutil --import failed: {done.stderr.strip()}", severity="error")
 
     def on_extra_button(self, event: Button.Pressed) -> None:  # noqa: D102
         if event.button.id == "retry":

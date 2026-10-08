@@ -357,6 +357,97 @@ def test_degraded_host_without_gpu(repo: Paths) -> None:
     assert "accept_degraded" in installer.ctx.wizard.consents
 
 
+SECURE_BOOT = "ubuntu2404-baremetal-nvidia-no-driver-secureboot"
+
+
+def test_secure_boot_mok_consent(repo: Paths) -> None:
+    host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
+    runner = FakeRunner([("events-signal76.jsonl", 76)])
+    installer = app(context(repo, host, runner, machine="pokus-lab"))
+    found = notes(installer)
+    mok = "one-time mok"
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        screen = pilot.app.screen
+        assert "Outcome: needs_action" in str(screen.query_one("#outcome", Static).content)
+        assert "Machine Owner Key" in "".join(
+            str(s.content) for s in screen.query(".banner").results(Static)
+        )
+        await forward(pilot, "preflight")  # needs_action blocks without the consent
+        assert found[-1] == "follow the remediation, then Re-check"
+        tick(pilot, "consent-mok")
+        await settle(pilot)
+        screen = pilot.app.screen
+        assert "Outcome: degraded" in str(screen.query_one("#outcome", Static).content)
+        assert host.preflight_args[-1] == ["--nvidia-driver", "auto", "--accept-mok-enrollment"]
+        assert screen.query_one("#consent-mok", Checkbox).value
+        for box in screen.query(".consent-feature").results(Checkbox):
+            box.value = True
+        await forward(pilot, "mode")
+        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+            await forward(pilot, step)
+        assert pilot.app.screen.query_one("#driver-auto", RadioButton).value
+        pick(pilot, "driver-manual")
+        await pilot.pause()
+        await forward(pilot, "gpu")
+        assert "install the driver yourself first" in found[-1]
+        pick(pilot, "driver-auto")
+        await pilot.pause()  # the radio set clears driver-manual
+        fill(pilot, mok=mok, mok2="typo")
+        await forward(pilot, "gpu")
+        assert "✖ enter the same one-time password twice" in shown_errors(pilot)
+        fill(pilot, mok=mok, mok2=mok)
+        for step in ("backups", "restore", "platform", "images", "secrets"):
+            await forward(pilot, step)
+        fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
+        await forward(pilot, "review")
+        await forward(pilot, "progress")
+        signal = pilot.app.screen
+        assert isinstance(signal, SignalScreen)
+        assert "MOK Manager" in str(signal.query_one(".banner", Static).content)
+        assert "is not enrolled" in str(signal.query_one(".hint", Static).content)
+        await click(pilot, "#quit")
+
+    assert drive(installer, flow) == 76
+    request = runner.requests[0]
+    assert "--accept-mok-enrollment" in request.options
+    assert "--mok-password-stdin" in request.options
+    assert request.mok_password == mok
+    assert installer.ctx.wizard.mok_password == ""  # gone once bootstrap had it
+    assert installer.ctx.wizard.answers.gpu.accept_mok_enrollment
+    assert mok not in repo.state_file.read_text(encoding="utf-8")
+    assert not [c for c in host.calls if c[0][0] == "mokutil"]  # bootstrap imports the key
+    exported = repo.answers("pokus-lab").read_text(encoding="utf-8")
+    assert "accept_mok_enrollment: true" in exported
+    assert mok not in exported
+
+
+def test_secure_boot_without_the_driver(repo: Paths) -> None:
+    host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
+    installer = app(context(repo, host, machine="pokus-lab"))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        await click(pilot, "#skip-driver")
+        await settle(pilot)
+        screen = pilot.app.screen
+        assert "Outcome: degraded" in str(screen.query_one("#outcome", Static).content)
+        assert not screen.query("#consent-mok")
+        assert host.preflight_args[-1] == ["--nvidia-driver", "skip"]
+        for box in screen.query(".consent-feature").results(Checkbox):
+            box.value = True
+        await forward(pilot, "mode")
+        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+            await forward(pilot, step)
+        assert pilot.app.screen.query_one("#driver-skip", RadioButton).value
+        await forward(pilot, "backups")
+
+    drive(installer, flow)
+    assert installer.ctx.wizard.answers.gpu.install_driver == "skip"
+    assert "accept_mok_enrollment" not in installer.ctx.wizard.consents
+
+
 def test_unsupported_host_can_only_be_forced_by_typing(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))
     installer = app(context(repo, host), first="preflight")

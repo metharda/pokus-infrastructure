@@ -93,6 +93,7 @@ main() {
     usage
     exit "$EXIT_OK"
   fi
+  read_mok_password_stdin || exit "$?"
   stage_root
   # Decide about prompts before the output goes through the log writer.
   if is_interactive; then INTERACTIVE=true; fi

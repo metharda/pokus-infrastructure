@@ -2,3 +2,5 @@
 
 # File that bootstrap.sh reads after a failed play.
 bootstrap_signal_file: "{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}"
+# With code 76: a Machine Owner Key that bootstrap.sh imports before it exits.
+bootstrap_signal_mok_key: ""

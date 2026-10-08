@@ -112,6 +112,7 @@ class Gpu:
     """Screen 9: GPU and inference."""
 
     install_driver: str = "skip"
+    accept_mok_enrollment: bool = False
     default_model: str = "none"
     vllm_profile: str = ""
     start_serving: bool = True
@@ -252,6 +253,8 @@ class Answers:
         for component in (clean.platform, clean.catalog):
             if not component.enabled:
                 component.ref = ""
+        if clean.gpu.install_driver != "auto":
+            clean.gpu.accept_mok_enrollment = False
         return clean
 
     def to_dict(self) -> dict[str, Any]:
@@ -286,6 +289,8 @@ class Answers:
         gpu = asdict(clean.gpu)
         if not gpu["vllm_profile"]:
             del gpu["vllm_profile"]
+        if not gpu["accept_mok_enrollment"]:
+            del gpu["accept_mok_enrollment"]
         data["gpu"] = gpu
         backups = asdict(clean.backups)
         backups["repository"] = _repository_dict(clean.backups.repository)
@@ -512,6 +517,11 @@ def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
         )
     if gpu.vllm_profile and context.vllm_profiles and gpu.vllm_profile not in context.vllm_profiles:
         found.append(f"gpu/vllm_profile: no profile {gpu.vllm_profile!r} in vllm/profiles/")
+    if gpu.accept_mok_enrollment and gpu.install_driver != "auto":
+        found.append(
+            "gpu/accept_mok_enrollment: bootstrap installs the driver only with "
+            "install_driver: auto"
+        )
     if answers.machine.node_role == "lab" and gpu.default_model != "none":
         found.append("gpu/default_model: a lab node serves no model (the inference node does)")
 

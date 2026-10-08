@@ -71,14 +71,16 @@ def debian_codenames() -> dict[str, Any]:
 def _fixture_profile(name: str) -> str:
     from pokus_preflight import cli  # noqa: PLC0415 - preflight is only needed here
 
+    args_file = FIXTURES / name / "args.json"
+    args = json.loads(args_file.read_text(encoding="utf-8")) if args_file.exists() else []
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-        cli.main(["--root", str(FIXTURES / name), "--offline", "--quiet"])
+        cli.main(["--root", str(FIXTURES / name), "--offline", "--quiet", *args])
     return out.getvalue()
 
 
 def fixture_profile(name: str) -> dict[str, Any]:
-    """Run preflight on a fixture root and return the host profile.
+    """Run preflight on a fixture root (with its ``args.json``) and return the host profile.
 
     Args:
         name: Fixture directory name under preflight/tests/fixtures.

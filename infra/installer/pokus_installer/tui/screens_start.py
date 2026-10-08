@@ -164,7 +164,18 @@ class PreflightScreen(StepScreen):
         "storage, network and conflicts, and decides whether the lab is supported here. "
         "Degraded hosts need your consent per disabled feature; experimental tiers need "
         "consent; needs_action lists what to do first; unsupported hosts can only be "
-        "forced by typing FORCE UNSUPPORTED, which is recorded in every fingerprint."
+        "forced by typing FORCE UNSUPPORTED, which is recorded in every fingerprint. "
+        "With Secure Boot on and no NVIDIA driver, the installation can install the "
+        "driver and import a Machine Owner Key, with your consent: you choose a one-time "
+        "password on the GPU screen and enroll the key at the blue MOK Manager screen "
+        "during the next boot."
+    )
+    MOK_TEXT = (
+        "Secure Boot is on and no NVIDIA driver is installed. The installation can install "
+        "the pinned driver and import a Machine Owner Key (MOK) that signs it: you choose a "
+        "one-time password on the GPU screen, the installation stops for a reboot, and "
+        "during the boot you enroll the key at the blue MOK Manager screen (you need the "
+        "console then). Or continue without the driver: no local inference on this host."
     )
     CONSENT_IDS: ClassVar[tuple[str, ...]] = ("consent-feature", "consent-experimental")
 
@@ -186,9 +197,9 @@ class PreflightScreen(StepScreen):
         yield LoadingIndicator(id="spinner")
         yield Vertical(id="report")
 
-    def on_mount(self) -> None:  # noqa: D102
+    async def on_mount(self) -> None:  # noqa: D102
         if self.wizard.profile and self.wizard.preflight_exit is not None:
-            self.show(Preflight(self.wizard.preflight_exit, self.wizard.profile))
+            await self.show(Preflight(self.wizard.preflight_exit, self.wizard.profile))
         else:
             self.check()
 
@@ -196,14 +207,14 @@ class PreflightScreen(StepScreen):
     def check(self) -> None:
         """Run preflight in the background."""
         self.app.call_from_thread(self._loading, True)
-        result = self.ctx.host.preflight([])
-        self.app.call_from_thread(self.show, result)
+        result = self.ctx.host.preflight(self.wizard.preflight_args())
+        self.app.call_from_thread(self.call_later, self.show, result)
 
     def _loading(self, on: bool) -> None:
         self.query_one("#spinner").display = on
 
-    def show(self, result: Preflight) -> None:
-        """Render a preflight result.
+    async def show(self, result: Preflight) -> None:
+        """Render a preflight result (replacing the previous one).
 
         Args:
             result: The run.
@@ -213,7 +224,7 @@ class PreflightScreen(StepScreen):
         self.wizard.preflight_exit = result.exit_code
         self._loading(False)
         report = self.query_one("#report", Vertical)
-        report.remove_children()
+        await report.remove_children()
         profile = result.profile
         if not profile:
             report.mount(
@@ -241,6 +252,16 @@ class PreflightScreen(StepScreen):
 
     def _outcome_panel(self, report: Vertical, profile: dict[str, Any]) -> None:
         outcome = profile.get("outcome")
+        if self.wizard.mok_enrollment_needed and self.wizard.nvidia_driver != "skip":
+            report.mount(Static(self.MOK_TEXT, classes="banner warn", markup=False))
+            report.mount(
+                Checkbox(
+                    "Install the driver and enroll a MOK at the next boot (recorded)",
+                    value="accept_mok_enrollment" in self.wizard.consents,
+                    id="consent-mok",
+                )
+            )
+            report.mount(Button("Continue without the driver", id="skip-driver"))
         if outcome == "degraded":
             report.mount(
                 Static("Continue without these features? Tick each one.", classes="banner warn")
@@ -302,11 +323,41 @@ class PreflightScreen(StepScreen):
             problems.append(("report", "this host is unsupported: Abort, or Force"))
         return problems
 
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Consent to the MOK enrollment (or take it back) and judge the host again.
+
+        Args:
+            event: The change.
+        """
+        consented = "accept_mok_enrollment" in self.wizard.consents
+        if event.checkbox.id != "consent-mok" or event.value == consented:
+            return  # also the change of a box mounted with the recorded value
+        gpu = self.answers.gpu
+        if event.value:
+            self.wizard.consents.add("accept_mok_enrollment")
+            self.wizard.nvidia_driver = gpu.install_driver = "auto"
+        else:
+            self.wizard.consents.discard("accept_mok_enrollment")
+        gpu.accept_mok_enrollment = event.value
+        self._recheck()
+
+    def _recheck(self) -> None:
+        self.wizard.profile = {}
+        self.wizard.preflight_exit = None
+        self.check()
+
+    def _skip_driver(self) -> None:
+        # continue without the NVIDIA driver (install_nvidia_driver: skip)
+        self.wizard.consents.discard("accept_mok_enrollment")
+        self.wizard.nvidia_driver = self.answers.gpu.install_driver = "skip"
+        self.answers.gpu.accept_mok_enrollment = False
+        self._recheck()
+
     def on_extra_button(self, event: Button.Pressed) -> None:  # noqa: D102
         if event.button.id == "recheck":
-            self.wizard.profile = {}
-            self.wizard.preflight_exit = None
-            self.check()
+            self._recheck()
+        elif event.button.id == "skip-driver":
+            self._skip_driver()
         elif event.button.id == "raw":
             text = json.dumps(self.wizard.profile, indent=2)
             self.app.push_screen(TextView("Host profile (JSON)", text))

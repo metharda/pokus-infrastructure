@@ -172,11 +172,14 @@
               "type": "object",
               "additionalProperties": false,
               "required": ["id", "when", "action"],
+              "dependentRequired": {"planned_when": ["planned"], "planned": ["planned_when"]},
               "properties": {
                 "id": {"$ref": "#/$defs/identifier"},
                 "when": {"$ref": "#/$defs/when"},
                 "resolves": {"type": "array", "items": {"$ref": "#/$defs/identifier"}},
-                "action": {"$ref": "#/$defs/text"}
+                "action": {"$ref": "#/$defs/text"},
+                "planned_when": {"$ref": "#/$defs/when"},
+                "planned": {"$ref": "#/$defs/text"}
               }
             }
           },

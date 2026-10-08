@@ -127,6 +127,7 @@ password_file=""
 while (($#)); do
   case $1 in
     --vault-password-file) password_file=$2; shift 2 ;;
+    --mok-password-stdin) IFS= read -r mok; printf 'mok %s\\n' "$mok"; shift ;;
     *) printf 'arg %s\\n' "$1"; shift ;;
   esac
 done
@@ -171,6 +172,21 @@ def test_runner_hands_over_the_password_and_replays_events(
     assert events == recorded
     assert not (paths.run_dir / "vault-pass").exists()  # removed after the run
     assert stat.S_IMODE(paths.run_dir.stat().st_mode) == 0o700
+
+
+def test_runner_writes_the_mok_password_to_stdin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = fake_checkout(tmp_path)
+    monkeypatch.setenv("EVENTS", str(DATA / "events-signal76.jsonl"))
+    monkeypatch.setenv("CODE", "76")
+    runner = BootstrapRunner(paths)
+    lines: list[str] = []
+    request = RunRequest("pokus-lab", ["--mok-password-stdin"], "vault secret", "one time")
+    assert "one time" not in repr(request)
+    assert runner.run(request, lambda e: None, lines.append) == 76
+    assert "mok one time" in lines
+    assert not any("one time" in line for line in request.argv(paths.bootstrap, tmp_path / "p"))
 
 
 def test_runner_cancel_stops_bootstrap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -270,6 +286,37 @@ def test_bootstrap_options_and_resume_data() -> None:
     assert again.build_images_now is False
     again.restore({"answers": {"mode": "nonsense"}, "consents": ["not_a_consent"]})
     assert again.consents == set()
+
+
+def test_mok_consent_reaches_preflight_and_bootstrap() -> None:
+    wizard = model.Wizard()
+    assert wizard.preflight_args() == []  # preflight judges with auto, like bootstrap
+    wizard.nvidia_driver = "skip"
+    assert wizard.preflight_args() == ["--nvidia-driver", "skip"]
+    wizard.nvidia_driver = "auto"
+    wizard.consents = {"accept_mok_enrollment"}
+    wizard.mok_password = "one time"  # noqa: S105 - test fixture
+    assert wizard.preflight_args() == ["--nvidia-driver", "auto", "--accept-mok-enrollment"]
+    assert wizard.bootstrap_options() == ["--accept-mok-enrollment", "--mok-password-stdin"]
+    data = wizard.resume_data()
+    assert "one time" not in json.dumps(data)
+    again = model.Wizard()
+    again.restore(data)
+    assert again.consents == {"accept_mok_enrollment"}
+    assert again.mok_password == ""
+
+
+def test_mok_enrollment_is_needed_only_with_secure_boot_and_no_driver() -> None:
+    wizard = model.Wizard()
+    wizard.profile = preflight("ubuntu2404-baremetal-nvidia-no-driver-secureboot").profile
+    assert wizard.mok_enrollment_needed
+    for fixture in (
+        "ubuntu2404-baremetal-nvidia-driver-loaded",
+        "ubuntu2404-baremetal-no-gpu",
+        "ubuntu2404-wsl2-gpu-kvm",
+    ):
+        wizard.profile = preflight(fixture).profile
+        assert not wizard.mok_enrollment_needed, fixture
 
 
 def test_existing_answers_prefer_the_files(repo: Paths) -> None:

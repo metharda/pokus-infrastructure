@@ -3,8 +3,9 @@
 Bootstrap runs these commands with the installer environment
 (``/opt/pokus/installer-venv``) as root:
 
-- ``describe --answers FILE`` prints the machine name, the mode and the
-  snapshot to restore of an answers file as ``key=value`` lines;
+- ``describe --answers FILE`` prints the machine name, the mode, the
+  snapshot to restore and the consent to MOK enrollment of an answers file as
+  ``key=value`` lines;
 - ``apply --answers FILE --vault-password-file FILE`` writes host_vars, the
   researchers, the vault and the answers file (BUILD_PROMPT §18.6);
 - ``tui`` starts the installer TUI on the terminal (BUILD_PROMPT §18).
@@ -41,7 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     check = sub.add_parser("validate", help="check an answers file")
     check.add_argument("--answers", type=Path, required=True, help="the answers file")
-    describe = sub.add_parser("describe", help="print machine, mode and snapshot of answers")
+    describe = sub.add_parser(
+        "describe", help="print machine, mode, snapshot and MOK consent of answers"
+    )
     describe.add_argument("--answers", type=Path, required=True, help="the answers file")
     replay = sub.add_parser("apply", help="write the files of an answers file (non-interactive)")
     replay.add_argument("--answers", type=Path, required=True, help="the answers file")
@@ -110,6 +113,8 @@ def cmd_describe(args: argparse.Namespace, paths: Paths) -> int:
     print(f"machine={loaded.machine.name}")
     print(f"mode={loaded.mode}")
     print(f"snapshot={loaded.restore_snapshot if loaded.mode == 'restore' else ''}")
+    consent = loaded.gpu.install_driver == "auto" and loaded.gpu.accept_mok_enrollment
+    print(f"accept_mok_enrollment={'true' if consent else 'false'}")
     return EXIT_OK
 
 

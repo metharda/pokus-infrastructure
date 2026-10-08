@@ -19,3 +19,7 @@ argument_specs:
         type: path
         default: /run/pokus/bootstrap-signal.json
         description: Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
+      bootstrap_signal_mok_key:
+        type: path
+        default: ""
+        description: With code 76, a Machine Owner Key that bootstrap.sh imports (mokutil --import) with the operator's one-time password before it exits.

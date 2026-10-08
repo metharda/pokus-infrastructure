@@ -113,7 +113,12 @@ printed the exact remediation, for example:
 - install `curl` (or `wget`), `tar` or `git` with the command it printed;
 - enable systemd for a WSL distribution in `/etc/wsl.conf`, then restart the
   distribution as described for [exit code 75](#exit-code-75);
-- remove a conflicting installation named in the preflight summary.
+- remove a conflicting installation named in the preflight summary;
+- `secure_boot_mok`: Secure Boot is on and no NVIDIA driver is installed.
+  Consent to the MOK enrollment (`--accept-mok-enrollment`, the installer's
+  Preflight screen, or `gpu.accept_mok_enrollment: true` in an answers file),
+  install the driver yourself, or set `install_nvidia_driver: skip`; see
+  [Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots).
 
 Do what it says, then run bootstrap again. `--force-unsupported` does not skip
 a required action.
@@ -185,9 +190,10 @@ distribution again and run bootstrap again.
 ## Exit code 76: reboot required {#exit-code-76}
 
 A driver or kernel change needs a reboot, or a Machine Owner Key (MOK)
-enrollment is pending. Reboot the host. If the blue MOK Manager screen
-appears, choose to enroll the key and confirm it with the MOK password set
-during provisioning. Then run bootstrap again.
+enrollment is pending; when bootstrap imported the key itself, it says so.
+Reboot the host. If the blue MOK Manager screen appears, choose *Enroll MOK*,
+*Continue* and *Yes*, and enter the one-time MOK password you chose. Then run
+bootstrap again.
 
 Bootstrap never reboots on its own. If you started it with `--allow-reboot`,
 it schedules the reboot itself (`shutdown -r +1`) after writing its state
@@ -216,12 +222,17 @@ Bootstrap stopped and printed what to do. Common messages:
 | the answers could not be applied | Read the reason above it: a wrong vault password, or a secret the answers call *provided* is missing from `POKUS_SECRET_<NAME>`. |
 | Stopped before the installation finished | You quit the installer TUI; run `sudo ./bootstrap/bootstrap.sh` again and choose *Resume*. |
 | The host changed since bootstrap validated it | The play's preflight gate found a different outcome, provider or feature set; check the listed changes, then add `--refresh-profile`. |
+| the planned MOK enrollment needs a one-time password | Run bootstrap on a terminal, where it asks for the password, or pass it on standard input with `--mok-password-stdin`. |
+| ... must be imported for enrollment and bootstrap has no one-time MOK password | Run `sudo mokutil --import <key>` with the key it names and choose a one-time password, reboot, enroll the key, then run bootstrap again. |
+| mokutil --import ... failed | The same as the previous line; the error of `mokutil` is above the message. |
+| install_nvidia_driver is ..., but bootstrap ran preflight with ... | Write `install_nvidia_driver` in host_vars as a plain value (`auto`, `manual` or `skip`) that bootstrap can read, then run bootstrap again. |
+| install_nvidia_driver is ...; it must be auto, manual or skip | Correct the value in `ansible/inventory/host_vars/<machine>.yml`. |
 | No usable NVIDIA driver is loaded | Install the driver as your distribution documents it, or set `install_nvidia_driver: skip` in host_vars. See [Bare-metal hosts](../providers/baremetal.md). |
 | The NVIDIA driver for this distribution comes from a community repository | Add `--allow-community-repos` (recorded in the fingerprint), or install the driver yourself with `install_nvidia_driver: manual`. |
 | Tailscale needs a login | Put an auth key into `vault_tailscale_authkey` in the vault, or run bootstrap interactively and open the login URL it prints. |
 
 `<machine>` is the name you pass with `--machine`; `<file>` is a file that
-contains the vault password.
+contains the vault password; `<key>` is the key file the message names.
 
 ## Verify the fix
 

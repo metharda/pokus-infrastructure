@@ -49,7 +49,11 @@ before you press **Install** on the Review screen.
 2. Press ++ctrl+n++ (or **Next**) to run preflight. The cards show what it
    found; a degraded host lists each missing feature with its consequence,
    and you tick each one to accept it. An unsupported host can only be forced
-   by typing `FORCE UNSUPPORTED`, which every fingerprint then records.
+   by typing `FORCE UNSUPPORTED`, which every fingerprint then records. With
+   Secure Boot on and no NVIDIA driver, the screen explains the Machine Owner
+   Key (MOK) enrollment: tick *Install the driver and enroll a MOK at the
+   next boot* to consent (recorded), or press *Continue without the driver*.
+   Preflight runs again with your choice.
 
     ![The Preflight screen](../assets/installer/preflight.svg)
 
@@ -97,9 +101,11 @@ shown greyed out with the reason.
    lines your tailnet policy needs.
 7. **GPU & inference**: the driver (never on WSL), the serving profile and the
    default model. A model must be pinned in `models.lock.yml`: select it and
-   press **Pin model** (this needs the Hugging Face Hub). With Secure Boot,
-   enter a one-time MOK password twice; you type it again in MOK Manager after
-   the reboot.
+   press **Pin model** (this needs the Hugging Face Hub). With Secure Boot
+   and no driver, `auto` needs the consent from the Preflight screen and a
+   one-time MOK password, entered twice: the installation imports the key
+   with it, and you type it again in MOK Manager after the reboot. It is
+   never stored. `manual` is refused there until the driver is installed.
 8. **Data & backups**: the restic repository and schedule. A generated restic
    password is shown once: store it outside the host and tick
    *I stored this safely*.

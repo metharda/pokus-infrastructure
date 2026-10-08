@@ -3,13 +3,15 @@
 The TUI is a front-end only: it runs ``bootstrap.sh`` again, non-interactively
 and without the TUI, exactly as an ``--answers`` run would after the files are
 written. The vault password reaches it through a 0600 file in the run-time
-directory (tmpfs) that is removed when the run ends. Progress comes from the
+directory (tmpfs) that is removed when the run ends; the one-time MOK password
+(``--mok-password-stdin``) through its standard input only. Progress comes from the
 event stream (``POKUS_EVENTS_FILE``); the human-readable output feeds the log
 pane, and the full log stays in ``/var/log/pokus-bootstrap/``.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import signal
@@ -36,11 +38,14 @@ class RunRequest:
         machine: Machine name.
         options: Further bootstrap options (overrides, ``--restore``, tags).
         vault_password: The vault password (never written anywhere but the 0600 handover file).
+        mok_password: The one-time MOK password, written to bootstrap's standard
+            input (with ``--mok-password-stdin`` among the options).
     """
 
     machine: str
     options: list[str] = field(default_factory=list)
     vault_password: str = field(default="", repr=False)
+    mok_password: str = field(default="", repr=False)
 
     def argv(self, bootstrap: Path, password_file: Path) -> list[str]:
         """The bootstrap command line.
@@ -116,7 +121,11 @@ class BootstrapRunner:
             handle.write(request.vault_password + "\n")
         try:
             return self._run(
-                request.argv(self.paths.bootstrap, password), events, on_events, on_output
+                request.argv(self.paths.bootstrap, password),
+                events,
+                on_events,
+                on_output,
+                stdin=request.mok_password + "\n" if request.mok_password else None,
             )
         finally:
             password.unlink(missing_ok=True)
@@ -127,11 +136,12 @@ class BootstrapRunner:
         events: Path,
         on_events: Callable[[list[dict[str, Any]]], None],
         on_output: Callable[[str], None],
+        stdin: str | None = None,
     ) -> int:
         env = {**os.environ, "POKUS_EVENTS_FILE": str(events)}
         process = subprocess.Popen(  # noqa: S603 - bootstrap with options the TUI built
             list(argv),
-            stdin=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL if stdin is None else subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -140,6 +150,12 @@ class BootstrapRunner:
             start_new_session=True,  # cancel() stops bootstrap and Ansible together
         )
         self._process = process
+        if stdin is not None and process.stdin is not None:
+            # bootstrap reads its first line before anything else (a pipe buffer holds it)
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.write(stdin)
+            with contextlib.suppress(BrokenPipeError):
+                process.stdin.close()
         reader = threading.Thread(target=self._read, args=(process, on_output), daemon=True)
         reader.start()
         offset = 0

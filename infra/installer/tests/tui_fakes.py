@@ -47,7 +47,7 @@ DISKS = (
 
 
 @functools.cache
-def _profile_text(fixture: str) -> tuple[int, str]:
+def _profile_text(fixture: str, args: tuple[str, ...] = ()) -> tuple[int, str]:
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "profile.json"
         done = subprocess.run(
@@ -59,6 +59,7 @@ def _profile_text(fixture: str) -> tuple[int, str]:
                 "--offline",
                 "--output",
                 str(out),
+                *args,
             ],
             capture_output=True,
             text=True,
@@ -67,16 +68,17 @@ def _profile_text(fixture: str) -> tuple[int, str]:
         return done.returncode, out.read_text(encoding="utf-8")
 
 
-def preflight(fixture: str) -> Preflight:
+def preflight(fixture: str, args: Sequence[str] = ()) -> Preflight:
     """Preflight's result on one of its fixtures.
 
     Args:
         fixture: A directory of ``preflight/tests/fixtures``.
+        args: Preflight options (the operator's choices).
 
     Returns:
         The exit code and the host profile.
     """
-    code, text = _profile_text(fixture)
+    code, text = _profile_text(fixture, tuple(args))
     return Preflight(code, json.loads(text))
 
 
@@ -127,9 +129,14 @@ class FakeHost:
     replies: dict[str, CommandResult] = field(default_factory=dict)
     calls: list[tuple[list[str], dict[str, str], str | None]] = field(default_factory=list)
     preflight_calls: int = 0
+    fixture: str = ""  # set: preflight runs on this fixture with the TUI's options
+    preflight_args: list[list[str]] = field(default_factory=list)
 
     def preflight(self, args: Sequence[str]) -> Preflight:
         self.preflight_calls += 1
+        self.preflight_args.append(list(args))
+        if self.fixture:
+            return preflight(self.fixture, args)
         return copy.deepcopy(self.result)
 
     def git_info(self) -> GitInfo:

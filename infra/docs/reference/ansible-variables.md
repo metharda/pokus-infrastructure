@@ -568,6 +568,13 @@ Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
 - Type: `path`
 - Default: `{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}`
 
+### `bootstrap_signal_mok_key`
+
+With code 76, a Machine Owner Key that bootstrap.sh imports (mokutil --import) with the operator's one-time password before it exits.
+
+- Type: `path`
+- Default: `''`
+
 ## catalog
 
 Deploy the scenario catalog at catalog_ref into /srv/pokus/catalog (only if enabled).
@@ -1866,6 +1873,7 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `host_profile` | bootstrap.sh | Host profile validated by bootstrap.sh for this run. |
+| `install_nvidia_driver` | [lab-wide](#install_nvidia_driver) | The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did. |
 | `pokus_root` | [lab-wide](#pokus_root) | Research space; preflight measures its free disk space. |
 
 ### `preflight_gate_command`
@@ -1915,6 +1923,13 @@ Command that rebuilds the initramfs, per pokus_initramfs_tool.
     dracut: [dracut, --force, --regenerate-all]
     mkinitcpio: [mkinitcpio, -P]
     ```
+
+### `provider_baremetal_mok_keys`
+
+Certificates DKMS signs modules with; the first that exists is imported as a Machine Owner Key when Secure Boot is on and it is not enrolled.
+
+- Type: `list` of `path`
+- Default: `[/var/lib/shim-signed/mok/MOK.der, /var/lib/dkms/mok.pub]`
 
 ## provider_vm
 

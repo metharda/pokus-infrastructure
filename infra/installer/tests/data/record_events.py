@@ -32,6 +32,12 @@ STAGES_BEFORE = ("git", "prepreflight", "tooling", "frontend", "preflight", "ans
 LOGIN_URL = "https://login.tailscale.com/a/0123456789abcdef"
 DEPLOY_KEY = "ssh-ed25519 KEYPLACEHOLDER pokus-deploy@pokus-lab"
 SIGNAL_MESSAGE = "WSL must restart to apply /etc/wsl.conf: run 'wsl --terminate <distro>'"
+MOK_MESSAGE = (
+    "Secure Boot is on and the NVIDIA module is signed with /var/lib/shim-signed/mok/MOK.der, "
+    "which is not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, "
+    'choose "Enroll MOK" at the blue MOK Manager screen, enter that password, then re-run '
+    "bootstrap."
+)
 
 
 def debug(name: str, message: str, changed: bool = False) -> str:
@@ -120,11 +126,11 @@ def play(workdir: Path, events: Path, roles: dict[str, str]) -> int:
     return done.returncode
 
 
-def planned_roles() -> list[str]:
-    """site.yml's roles with the WSL provider."""
+def planned_roles(provider: str = "wsl2") -> list[str]:
+    """site.yml's roles with the given provider."""
     roles = []
     for role in site_roles(INFRA / "ansible" / "site.yml"):
-        name = "provider_wsl2" if role.startswith("provider_{{") else role
+        name = f"provider_{provider}" if role.startswith("provider_{{") else role
         if name not in roles:
             roles.append(name)
     return roles
@@ -175,23 +181,30 @@ def record(name: str, scenario: str) -> None:
                 ],
             )
         else:
-            upto = roles[: roles.index("provider_wsl2") + 1]
+            # signal75: WSL restart; signal76: Secure Boot MOK import and reboot (I1)
+            code, provider, message = (
+                ("75", "wsl2", SIGNAL_MESSAGE)
+                if scenario == "signal75"
+                else ("76", "baremetal", MOK_MESSAGE)
+            )
+            roles = planned_roles(provider)
+            upto = roles[: roles.index(f"provider_{provider}") + 1]
             stand_in = {r: role_tasks(r) for r in upto}
-            stand_in["provider_wsl2"] += include("bootstrap_signal")
+            stand_in[f"provider_{provider}"] += include("bootstrap_signal")
             stand_in["bootstrap_signal"] = debug(
                 "Write the bootstrap signal file", "written", changed=True
             ) + failing(
                 "Stop the play with the bootstrap signal",
-                f"POKUS-BOOTSTRAP-SIGNAL 75: {SIGNAL_MESSAGE}",
+                f"POKUS-BOOTSTRAP-SIGNAL {code}: {message}",
             )
             rc = play(workdir, out, stand_in)
             assert rc != 0, rc
             bootstrap_events(
                 out,
                 [
-                    ("bootstrap.signal", "ansible", "signaled", "75", SIGNAL_MESSAGE),
-                    ("bootstrap.stage", "ansible", "failed", "75"),
-                    ("bootstrap.result", "bootstrap", "signal", "75"),
+                    ("bootstrap.signal", "ansible", "signaled", code, message),
+                    ("bootstrap.stage", "ansible", "failed", code),
+                    ("bootstrap.result", "bootstrap", "signal", code),
                 ],
             )
     print(f"recorded {out.relative_to(INFRA)}")
@@ -200,4 +213,5 @@ def record(name: str, scenario: str) -> None:
 if __name__ == "__main__":
     record("events-success.jsonl", "success")
     record("events-failure.jsonl", "failure")
-    record("events-signal75.jsonl", "signal")
+    record("events-signal75.jsonl", "signal75")
+    record("events-signal76.jsonl", "signal76")

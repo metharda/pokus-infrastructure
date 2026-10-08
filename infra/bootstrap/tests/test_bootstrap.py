@@ -40,8 +40,9 @@ def run_unprivileged(
 
 
 def profile(tmp_path: Path, fixture: str, name: str = "profile.json") -> Path:
-    """Write the host profile preflight produces for a fixture."""
+    """Write the host profile preflight produces for a fixture (with its ``args.json``)."""
     path = tmp_path / name
+    args = FIXTURES / fixture / "args.json"
     subprocess.run(
         [
             sys.executable,
@@ -53,6 +54,7 @@ def profile(tmp_path: Path, fixture: str, name: str = "profile.json") -> Path:
             "--quiet",
             "--output",
             str(path),
+            *(json.loads(args.read_text()) if args.exists() else []),
         ],
         cwd=INFRA / "preflight",
         check=False,
@@ -85,6 +87,8 @@ def test_help_lists_every_option() -> None:
         "--allow-reboot",
         "--allow-dirty",
         "--adopt-incus",
+        "--accept-mok-enrollment",
+        "--mok-password-stdin",
         "--allow-community-repos",
         "--offline",
         "--non-interactive",
@@ -108,6 +112,7 @@ def test_help_lists_every_option() -> None:
         (["--machine", "lab1", "--tags", "base images"], "invalid tag list"),
         (["--machine", "lab1", "--skip-tags", "images,"], "invalid tag list"),
         (["--machine", "lab1", "--tui", "--non-interactive"], "exclude each other"),
+        (["--machine", "lab1", "--tui", "--mok-password-stdin"], "exclude each other"),
         (["--machine", "lab1", "--answers", "/nonexistent/answers.yml"], "is not readable"),
         (["--machine", "lab1", "--vault-password-file", "/nonexistent/pass"], "is not readable"),
     ],
@@ -316,6 +321,174 @@ def test_reboot_only_with_allow_reboot(
         assert "reboots in one minute" in res.stderr
 
 
+# --- Secure Boot: MOK password and import (approved deviation I1) ---------------------
+
+
+def mok_run(
+    tmp_path: Path, setup: str, *, mokutil_rc: int = 0, stdin: str = ""
+) -> tuple[int, str, str, str]:
+    """playbook_result on a reboot signal that names a MOK key.
+
+    Returns (exit code, mokutil calls, mokutil's standard input, output).
+    """
+    stubs = tmp_path / "bin"
+    stubs.mkdir(parents=True)
+    calls, given = tmp_path / "mokutil.calls", tmp_path / "mokutil.stdin"
+    mokutil = stubs / "mokutil"
+    mokutil.write_text(
+        f'#!/bin/sh\nprintf "%s\\n" "$*" >>{q(calls)}\ncat >>{q(given)}\nexit {mokutil_rc}\n'
+    )
+    mokutil.chmod(0o755)
+    signal = tmp_path / "bootstrap-signal.json"
+    key = "/var/lib/shim-signed/mok/MOK.der"
+    signal.write_text(json.dumps({"code": 76, "message": "Reboot.", "mok_key": key}))
+    res = bash(
+        f"""
+        PATH={q(stubs)}:$PATH
+        {setup}
+        code=0
+        playbook_result 2 {q(signal)} || code=$?
+        printf '\n%s|%s|%s' "$code" "$SIGNAL_CODE" "${{#MOK_PASSWORD}}"
+        """,
+        stdin=stdin,
+    )
+    last = res.stdout.splitlines()[-1]
+    code, signal_code, left = last.split("|")
+    assert code == signal_code  # the state file records what bootstrap returns
+    assert left == "0"  # the password is gone once mokutil had it (or failed)
+    return int(code), read_if_any(calls), read_if_any(given), res.stdout + res.stderr
+
+
+def read_if_any(path: Path) -> str:
+    """A file's text, or an empty string if it was never written."""
+    return path.read_text() if path.exists() else ""
+
+
+def test_mok_import_with_the_password_on_stdin(tmp_path: Path) -> None:
+    code, calls, given, err = mok_run(tmp_path, "MOK_PASSWORD='one time'")
+    assert code == 76
+    assert calls == "--import /var/lib/shim-signed/mok/MOK.der\n"
+    assert given == "one time\none time\n"
+    assert "Enroll MOK" in err
+    assert "one time" not in err
+
+
+def test_mok_import_asks_on_a_terminal(tmp_path: Path) -> None:
+    code, _, given, err = mok_run(tmp_path, "INTERACTIVE=true", stdin="pw1\npw1\n")
+    assert (code, given) == (76, "pw1\npw1\n")
+    assert "One-time MOK password" in err
+    code, calls, _, err = mok_run(tmp_path / "x", "INTERACTIVE=true", stdin="pw1\npw2\n")
+    assert (code, calls) == (77, "")
+    assert "differ" in err
+
+
+def test_mok_import_without_a_password(tmp_path: Path) -> None:
+    code, calls, _, err = mok_run(tmp_path, "")
+    assert (code, calls) == (77, "")
+    assert "sudo mokutil --import /var/lib/shim-signed/mok/MOK.der" in err
+
+
+def test_mok_import_failure_is_an_operator_action(tmp_path: Path) -> None:
+    code, calls, _, err = mok_run(tmp_path, "MOK_PASSWORD=pw", mokutil_rc=1)
+    assert code == 77
+    assert calls
+    assert "mokutil --import /var/lib/shim-signed/mok/MOK.der failed" in err
+
+
+def test_no_mok_import_in_check_mode(tmp_path: Path) -> None:
+    code, calls, _, _ = mok_run(tmp_path, "OPT_CHECK=true MOK_PASSWORD=pw")
+    assert (code, calls) == (76, "")
+
+
+def test_reboot_signal_without_a_key_imports_nothing(tmp_path: Path) -> None:
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    (stubs / "mokutil").write_text("#!/bin/sh\nexit 99\n")
+    (stubs / "mokutil").chmod(0o755)
+    signal = tmp_path / "signal.json"
+    signal.write_text(json.dumps({"code": 76, "message": "A MOK is waiting for enrollment."}))
+    res = bash(
+        f"""
+        PATH={q(stubs)}:$PATH MOK_PASSWORD=pw
+        code=0
+        playbook_result 2 {q(signal)} || code=$?
+        printf '\n%s|%s' "$code" "$MOK_PASSWORD"
+        """
+    )
+    assert res.stdout.splitlines()[-1] == "76|pw"
+
+
+def test_planned_mok_enrollment_needs_the_password_first(tmp_path: Path) -> None:
+    consent = profile(tmp_path, "ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent")
+    other = profile(tmp_path, "ubuntu2404-baremetal-no-gpu", "other.json")
+    script = """
+    profile_tool() {
+      PYTHONPATH="$INFRA_DIR/preflight" pokus_python -m pokus_preflight.profile_tool "$@"
+    }
+    rc=0; require_mok_password "$1" || rc=$?; printf '\n%s|%s' "$rc" "${#MOK_PASSWORD}"
+    """
+    cases = [
+        (other, "", "", "0|0"),
+        (consent, "", "", "77|0"),
+        (consent, "OPT_CHECK=true", "", "0|0"),
+        (consent, "MOK_PASSWORD=pw", "", "0|2"),
+        (consent, "INTERACTIVE=true", "abc\nabc\n", "0|3"),
+    ]
+    for path, setup, stdin, expected in cases:
+        res = bash(f"set -- {q(path)}\n{setup}\n{script}", stdin=stdin)
+        assert res.stdout.splitlines()[-1] == expected, (path.name, setup, res.stderr)
+    res = bash(f"set -- {q(consent)}\n{script}")
+    assert "--mok-password-stdin" in res.stderr
+
+
+@pytest.mark.parametrize(
+    ("stdin", "code", "length"),
+    [("one time\nrest\n", 0, "8"), ("\n", 64, ""), ("", 64, "")],
+)
+def test_mok_password_from_stdin(stdin: str, code: int, length: str) -> None:
+    res = bash(
+        """
+        OPT_MOK_PASSWORD_STDIN=true
+        read_mok_password_stdin || exit "$?"
+        printf '%s' "${#MOK_PASSWORD}"
+        """,
+        stdin=stdin,
+    )
+    assert (res.returncode, res.stdout) == (code, length)
+    if code:
+        assert "no password" in res.stderr
+
+
+def test_nvidia_driver_mode_comes_from_the_machine(tmp_path: Path) -> None:
+    host_vars = tmp_path / "ansible" / "inventory" / "host_vars"
+    group_vars = tmp_path / "ansible" / "group_vars" / "all"
+    host_vars.mkdir(parents=True)
+    group_vars.mkdir(parents=True)
+    (group_vars / "main.yml").write_text("# defaults\ninstall_nvidia_driver: skip  # comment\n")
+    cases = {
+        "manual": "install_nvidia_driver: manual # we install it\n",
+        "auto": "x: 1\ninstall_nvidia_driver: 'auto'\n",
+        "skip": "machine_note: none\n",  # not set: the group default
+    }
+    for expected, text in cases.items():
+        (host_vars / "lab1.yml").write_text(text)
+        res = bash(f"INFRA_DIR={q(tmp_path)} OPT_MACHINE=lab1; nvidia_driver_mode")
+        assert res.stdout == expected, res.stderr
+    (host_vars / "lab1.yml").write_text("install_nvidia_driver: sometimes\n")
+    res = bash(f"INFRA_DIR={q(tmp_path)} OPT_MACHINE=lab1; nvidia_driver_mode")
+    assert res.returncode == 77
+    assert "must be auto, manual or skip" in res.stderr
+    (group_vars / "main.yml").unlink()
+    (host_vars / "lab1.yml").unlink()
+    res = bash(f"INFRA_DIR={q(tmp_path)} OPT_MACHINE=lab1; nvidia_driver_mode")
+    assert res.stdout == "auto"
+
+
+def test_the_repository_default_driver_mode_is_auto() -> None:
+    res = bash("OPT_MACHINE=example-machine; nvidia_driver_mode")
+    assert res.stdout == "auto", res.stderr
+
+
 @pytest.mark.parametrize(
     ("rc", "content", "expected"),
     [
@@ -325,6 +498,7 @@ def test_reboot_only_with_allow_reboot(
         (4, "not json", 60),
         (2, '{"code": 99, "message": "unknown"}', 60),
         (2, '{"message": "no code"}', 60),
+        (2, '{"code": 76, "message": "x", "mok_key": "a\\nb"}', 60),
     ],
 )
 def test_playbook_results_without_signal(
@@ -378,6 +552,7 @@ def test_state_json(tmp_path: Path) -> None:
     assert state["overrides"]["accept_degraded"] is True  # granted interactively
     assert state["overrides"]["force_unsupported"] is True
     assert state["overrides"]["accept_experimental"] is False
+    assert state["overrides"]["accept_mok_enrollment"] is False
     assert state["result"] == "doctor_warnings"
     assert state["exit_code"] == 1
     assert state["signal"] is None
@@ -446,8 +621,9 @@ installer() {
   echo "installer $*" >>"$CALLS"
   if [[ " $* " == *" describe "* ]]; then
     [[ -n ${DESCRIBE_FAIL:-} ]] && return 1
-    printf 'machine=%s\nmode=%s\nsnapshot=%s\n' \\
-      "${ANSWERS_MACHINE:-lab1}" "${ANSWERS_MODE:-fresh}" "${ANSWERS_SNAPSHOT:-}"
+    printf 'machine=%s\nmode=%s\nsnapshot=%s\naccept_mok_enrollment=%s\n' \\
+      "${ANSWERS_MACHINE:-lab1}" "${ANSWERS_MODE:-fresh}" "${ANSWERS_SNAPSHOT:-}" \\
+      "${ANSWERS_MOK:-false}"
   fi
   if [[ " $* " == *" apply "* && -n ${APPLY_FAIL:-} ]]; then return 1; fi
   return 0
@@ -471,7 +647,7 @@ def frontend(tmp_path: Path, setup: str, env: dict[str, str] | None = None) -> t
         OPT_VAULT_PASSWORD_FILE={q(password)}
         {setup}
         stage_frontend
-        echo "machine=$OPT_MACHINE restore=$OPT_RESTORE"
+        echo "machine=$OPT_MACHINE restore=$OPT_RESTORE mok=$OPT_ACCEPT_MOK_ENROLLMENT"
         """,
         env={"CALLS": str(calls), **(env or {})},
     )
@@ -484,6 +660,15 @@ def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
     assert "machine=lab1 restore=false" in out
     assert "venv /opt/pokus/installer-venv" in calls
     assert "installer apply --answers" in calls and "--machine lab1" in calls
+
+
+def test_answers_carry_the_mok_consent(tmp_path: Path) -> None:
+    code, out, _ = frontend(tmp_path, "", {"ANSWERS_MOK": "true"})
+    assert code == 0, out
+    assert "mok=true" in out
+    (tmp_path / "x").mkdir()
+    code, out, _ = frontend(tmp_path / "x", "")
+    assert "mok=false" in out
 
 
 def test_restore_answers_turn_on_the_restore_stage(tmp_path: Path) -> None:
@@ -514,10 +699,16 @@ def test_tui_gets_the_operator_overrides() -> None:
     res = bash(
         """
         OPT_ACCEPT_DEGRADED=true; OPT_ALLOW_DIRTY=true; OPT_SKIP_TAGS=images,models
+        OPT_ACCEPT_MOK_ENROLLMENT=true
         tui_bootstrap_args
         """
     )
-    assert res.stdout.split() == ["--accept-degraded", "--allow-dirty", "--skip-tags=images,models"]
+    assert res.stdout.split() == [
+        "--accept-degraded",
+        "--allow-dirty",
+        "--accept-mok-enrollment",
+        "--skip-tags=images,models",
+    ]
 
 
 def test_unsuitable_terminals_are_refused() -> None:

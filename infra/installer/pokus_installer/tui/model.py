@@ -41,7 +41,7 @@ STEPS = (
 )
 STEP_NAMES = tuple(name for name, _ in STEPS)
 AFTER_STEPS = {"progress": "Install progress", "doctor": "Doctor", "finish": "Finish"}
-CONSENTS = ("accept_degraded", "accept_experimental", "force_unsupported")
+CONSENTS = ("accept_degraded", "accept_experimental", "force_unsupported", "accept_mok_enrollment")
 LOOP_RESERVE_GIB = 50
 MIN_VAULT_PASSWORD = 12
 # Strength meter: lengths and character classes (lower, upper, digit, other) that count.
@@ -63,7 +63,10 @@ class Wizard:
         provided: Secrets the operator entered (memory only).
         vault_password: The vault password (memory only).
         restic_acknowledged: The operator stored the generated restic password.
-        mok_password: One-time MOK password (memory only; only for mokutil).
+        mok_password: One-time MOK password (memory only; bootstrap reads it from its
+            standard input and gives it to mokutil).
+        nvidia_driver: The driver setting preflight judges with: empty until the
+            Preflight or GPU screen decides (preflight then uses auto, like bootstrap).
         build_images_now: Build the chosen golden images during the install.
         installed: A lab is installed on this host (modify mode is offered).
         extra_files: Files the screens prepared besides the plan (models.lock.yml).
@@ -78,6 +81,7 @@ class Wizard:
     vault_password: str = field(default="", repr=False)
     restic_acknowledged: bool = False
     mok_password: str = field(default="", repr=False)
+    nvidia_driver: str = ""
     build_images_now: bool = True
     installed: bool = False
     extra_files: dict[str, str] = field(default_factory=dict)
@@ -123,11 +127,39 @@ class Wizard:
         return (self.profile.get("capabilities") or {}).get("secure_boot") == "enabled"
 
     @property
+    def mok_enrollment_needed(self) -> bool:
+        """Whether Secure Boot is on and the NVIDIA driver is missing (approved deviation I1).
+
+        The driver can then only be installed with a Machine Owner Key enrolled
+        at the next boot, which needs the operator's consent.
+        """
+        gpu = self.gpu
+        return (
+            self.secure_boot
+            and not self.is_wsl
+            and gpu.get("vendor") == "nvidia"
+            and bool(gpu.get("present"))
+            and gpu.get("driver_state") == "not_installed"
+        )
+
+    @property
     def storage_backend(self) -> str:
         """btrfs, lvm or empty, from preflight."""
         return str(self.profile.get("storage_backend") or "")
 
     # --- what bootstrap needs -------------------------------------------------------
+
+    def preflight_args(self) -> list[str]:
+        """Preflight options for the operator's driver choices so far.
+
+        Returns:
+            ``--nvidia-driver`` once a screen decided it, and
+            ``--accept-mok-enrollment`` with that consent.
+        """
+        args = ["--nvidia-driver", self.nvidia_driver] if self.nvidia_driver else []
+        if "accept_mok_enrollment" in self.consents:
+            args.append("--accept-mok-enrollment")
+        return args
 
     def bootstrap_options(self, passthrough: Iterable[str] = ()) -> list[str]:
         """Options of the non-interactive bootstrap the TUI runs.
@@ -145,6 +177,8 @@ class Wizard:
                 options.append(flag)
         if self.answers.mode == "restore" and "--restore" not in options:
             options.append("--restore")
+        if self.mok_password and "--mok-password-stdin" not in options:
+            options.append("--mok-password-stdin")
         if not self.build_images_now and self.answers.images_build:
             skip = [o for o in options if o.startswith("--skip-tags=")]
             if skip:

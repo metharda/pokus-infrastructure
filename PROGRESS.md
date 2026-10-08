@@ -373,7 +373,7 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | H7 | docs spec §A.3 | tour with Grafana screenshot | Grafana screenshot pending a real-host run |
 | H9 | docs spec §B.4 | Pages (private) as a target | no GitHub Pages |
 | H11 | docs spec §B.5 | current and previous release browsable | demonstrated with two test versions until real releases exist |
-| I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; not implemented yet |
+| I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; implemented in commit "feat(infra): install the NVIDIA driver on Secure Boot hosts with MOK consent" (`--accept-mok-enrollment`, `--mok-password-stdin`, `gpu.accept_mok_enrollment`; bootstrap imports the key named by the play's 76) |
 | I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; implemented in commit "ci(infra): split the fast lane into a required and an extended job" (`make check-mode`, `make check-mode-extended`) |
 
 ## Contract changes
@@ -785,11 +785,13 @@ step 4" through "after step 13"):
 Phase 1 (infra) is complete as far as it can be built here. The owner
 approved the deviations I1 (Secure Boot MOK consent flow) and I2 (required
 fast-lane job as specified, whole play only as a non-blocking extended job)
-and gave the go for both: I2 is implemented, I1 is next. The owner approved
+and gave the go for both: both are implemented (I2 green in CI; I1's
+interpretations to confirm are in `infra/docs/IMPLEMENTATION_NOTES.md`,
+section "Approved deviation I1"). The owner approved
 contract v2 (plug-in platforms, owner answers section I); its order is: step
 0 by the owner (spec update, `pokus-infra` created with infra's history),
 then the v2 steps in `pokus-infra`, then Phase 2 (platform) against contract
 v2. Still open: the new points N1-N4 of contract v2, the contract proposals
 (CPU sets, the ports table C10), the step 14 interpretations (`docs serve`,
-the QA maintenance window), and the remaining `TODO(verify)` items (110),
+the QA maintenance window), and the remaining `TODO(verify)` items (111),
 which need network access or reference hardware.

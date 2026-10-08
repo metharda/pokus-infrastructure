@@ -32,6 +32,9 @@ SIGNAL_CODE=''
 SIGNAL_MESSAGE=''
 FINAL_RC=0
 GRANTED_OVERRIDES=()
+# The one-time MOK password (approved deviation I1): memory only, never
+# exported, logged or written; cleared once mokutil has it.
+MOK_PASSWORD=''
 
 # fail CODE MESSAGE: log the message and end bootstrap with CODE.
 fail() {
@@ -141,8 +144,9 @@ profile_change_accepted() {
   [[ -f $1 && $(state_result "$1") == signal ]]
 }
 
-# read_signal FILE: print the signal code on the first line and the message
-# after it; false if FILE is missing or not a valid signal.
+# read_signal FILE: print the signal code on the first line, the MOK key to
+# import (or an empty line) on the second and the message after them; false if
+# FILE is missing or not a valid signal.
 read_signal() {
   [[ -f $1 ]] || return 1
   pokus_python -c '
@@ -151,12 +155,94 @@ try:
     with open(sys.argv[1], encoding="utf-8") as handle:
         data = json.load(handle)
     code = int(data["code"])
+    key = str(data.get("mok_key") or "")
     message = str(data.get("message", ""))
-except (OSError, ValueError, KeyError, TypeError):
+except (OSError, ValueError, KeyError, TypeError, AttributeError):
+    sys.exit(1)
+if "\n" in key:
     sys.exit(1)
 print(code)
+print(key)
 print(message)
 ' "$1"
+}
+
+# ask_mok_password: ask twice for a one-time MOK password (masked) and keep it
+# in MOK_PASSWORD; false when prompting is not allowed or the answers differ.
+ask_mok_password() {
+  local first='' second=''
+  "$INTERACTIVE" || return 1
+  printf '%s' "One-time MOK password (you type it again at the blue MOK Manager screen): " >&2
+  IFS= read -r -s first || return 1
+  printf '\n%s' "The same password again: " >&2
+  IFS= read -r -s second || return 1
+  printf '\n' >&2
+  if [[ -z $first || $first != "$second" ]]; then
+    log_error "the MOK passwords are empty or differ"
+    return 1
+  fi
+  MOK_PASSWORD=$first
+}
+
+# mok_password_ready: true if a one-time MOK password is at hand (from
+# --mok-password-stdin, or asked for now on a terminal).
+mok_password_ready() {
+  [[ -n $MOK_PASSWORD ]] || ask_mok_password
+}
+
+# read_mok_password_stdin: with --mok-password-stdin, read the one-time MOK
+# password from the first line of standard input (before anything else reads it).
+read_mok_password_stdin() {
+  "$OPT_MOK_PASSWORD_STDIN" || return 0
+  if [[ -t 0 ]]; then
+    usage_error "--mok-password-stdin reads a pipe; on a terminal bootstrap asks for the password itself"
+    return
+  fi
+  IFS= read -r MOK_PASSWORD || true
+  if [[ -z $MOK_PASSWORD ]]; then
+    usage_error "--mok-password-stdin: no password on the first line of standard input"
+    return
+  fi
+}
+
+# require_mok_password PROFILE: when the profile plans the MOK enrollment
+# (approved deviation I1), make sure the one-time password is at hand before
+# the play installs the driver; EXIT_OPERATOR if it cannot be had.
+require_mok_password() {
+  local planned
+  planned=$(profile_tool get "$1" planned_actions)
+  [[ $planned == *'"secure_boot_mok"'* ]] || return 0
+  "$OPT_CHECK" && return 0
+  mok_password_ready && return 0
+  log_error "the planned MOK enrollment needs a one-time password: pass it on standard input with --mok-password-stdin, or run bootstrap on a terminal"
+  return "$EXIT_OPERATOR"
+}
+
+# import_mok KEY: import the module signing key for enrollment at the next
+# boot (approved deviation I1). The one-time password reaches mokutil on its
+# standard input only, never on a command line or on disk. Returns 0 when the
+# key is imported (or in check mode), otherwise EXIT_OPERATOR with what to do.
+import_mok() {
+  local key=$1
+  if "$OPT_CHECK"; then
+    MOK_PASSWORD=''
+    log_info "check mode: not importing $key"
+    return 0
+  fi
+  if ! mok_password_ready; then
+    log_error "Secure Boot: $key must be imported for enrollment and bootstrap has no one-time MOK password"
+    log_error "import it yourself with 'sudo mokutil --import $key' (choose a one-time password), reboot, enroll it at the blue MOK Manager screen, then re-run bootstrap"
+    return "$EXIT_OPERATOR"
+  fi
+  # TODO(verify) on reference hardware: mokutil --import reads the new password
+  # twice from standard input when that is not a terminal.
+  if ! printf '%s\n%s\n' "$MOK_PASSWORD" "$MOK_PASSWORD" | mokutil --import "$key"; then
+    MOK_PASSWORD=''
+    log_error "mokutil --import $key failed; run 'sudo mokutil --import $key' yourself, reboot, enroll the key, then re-run bootstrap"
+    return "$EXIT_OPERATOR"
+  fi
+  MOK_PASSWORD=''
+  log_info "imported $key: at the next boot choose Enroll MOK at the blue MOK Manager screen and enter the one-time password"
 }
 
 # schedule_reboot: after a reboot signal (76) with --allow-reboot, reboot in one
@@ -178,7 +264,7 @@ schedule_reboot() {
 # bootstrap signal file to a bootstrap exit code (BUILD_PROMPT §5.2 step 9).
 # Sets SIGNAL_CODE and SIGNAL_MESSAGE for a valid signal.
 playbook_result() {
-  local rc=$1 file=$2 text code
+  local rc=$1 file=$2 text code key
   if ((rc == 0)); then
     if [[ -f $file ]]; then
       log_warn "ignoring $file: the play succeeded"
@@ -187,10 +273,15 @@ playbook_result() {
   fi
   if text=$(read_signal "$file"); then
     code=${text%%$'\n'*}
+    text=${text#*$'\n'}
+    key=${text%%$'\n'*}
     if [[ $SIGNAL_CODES == *" $code "* ]]; then
-      SIGNAL_CODE=$code
       SIGNAL_MESSAGE=${text#*$'\n'}
       log_error "$SIGNAL_MESSAGE"
+      if ((code == EXIT_REBOOT)) && [[ -n $key ]]; then
+        import_mok "$key" || code=$?
+      fi
+      SIGNAL_CODE=$code
       emit_event bootstrap.signal "$CURRENT_STAGE" signaled "$code" "$SIGNAL_MESSAGE"
       if ((code == EXIT_REBOOT)) && "$OPT_ALLOW_REBOOT"; then
         schedule_reboot
@@ -272,6 +363,7 @@ state_json() {
     "accept_experimental": $(effective_override accept_experimental "$OPT_ACCEPT_EXPERIMENTAL"),
     "force_unsupported": $(json_bool "$OPT_FORCE_UNSUPPORTED"),
     "adopt_incus": $(json_bool "$OPT_ADOPT_INCUS"),
+    "accept_mok_enrollment": $(json_bool "$OPT_ACCEPT_MOK_ENROLLMENT"),
     "allow_dirty": $(json_bool "$OPT_ALLOW_DIRTY"),
     "allow_community_repos": $(json_bool "$OPT_ALLOW_COMMUNITY_REPOS"),
     "refresh_profile": $(json_bool "$OPT_REFRESH_PROFILE")
@@ -428,6 +520,7 @@ apply_answers() {
   fi
   OPT_MACHINE=$machine
   [[ $mode == restore ]] && OPT_RESTORE=true
+  [[ $(answers_field accept_mok_enrollment "$described") == true ]] && OPT_ACCEPT_MOK_ENROLLMENT=true
   if [[ -z $password && -f $STORED_VAULT_PASS ]]; then
     password=$STORED_VAULT_PASS
   fi
@@ -445,6 +538,7 @@ tui_bootstrap_args() {
   for flag in ACCEPT_DEGRADED:--accept-degraded ACCEPT_EXPERIMENTAL:--accept-experimental \
     FORCE_UNSUPPORTED:--force-unsupported REFRESH_PROFILE:--refresh-profile \
     ALLOW_REBOOT:--allow-reboot ALLOW_DIRTY:--allow-dirty ADOPT_INCUS:--adopt-incus \
+    ACCEPT_MOK_ENROLLMENT:--accept-mok-enrollment \
     ALLOW_COMMUNITY_REPOS:--allow-community-repos OFFLINE:--offline CHECK:--check; do
     local name=OPT_${flag%%:*}
     if "${!name}"; then
@@ -519,13 +613,39 @@ stage_frontend() {
   leave_stage
 }
 
+# yaml_scalar FILE KEY: print the plain value of the top-level KEY of a YAML
+# file (quotes and a trailing comment removed); nothing if FILE or KEY is missing.
+yaml_scalar() {
+  [[ -f $1 ]] || return 0
+  sed -n -E "s/^$2:[[:space:]]*[\"']?([^\"'#[:space:]]*)[\"']?[[:space:]]*(#.*)?\$/\\1/p" -- "$1" | tail -n 1
+}
+
+# nvidia_driver_mode: the machine's install_nvidia_driver (host_vars, else
+# group_vars/all/main.yml, else auto); fails unless auto, manual or skip.
+nvidia_driver_mode() {
+  local mode
+  mode=$(yaml_scalar "$INFRA_DIR/ansible/inventory/host_vars/$OPT_MACHINE.yml" install_nvidia_driver)
+  [[ -n $mode ]] || mode=$(yaml_scalar "$INFRA_DIR/ansible/group_vars/all/main.yml" install_nvidia_driver)
+  mode=${mode:-auto}
+  case $mode in
+    auto | manual | skip) printf '%s' "$mode" ;;
+    *)
+      log_error "install_nvidia_driver is '$mode'; it must be auto, manual or skip"
+      return "$EXIT_OPERATOR"
+      ;;
+  esac
+}
+
 # stage_preflight: run preflight, apply the gate, check for a changed host
 # profile and store the profile (§2.4, §2.6, §5.2 step 3).
 stage_preflight() {
-  local rc=0 outcome tier needs_action changes
+  local rc=0 outcome tier needs_action changes mode
   local -a args=(--no-write --output "$RUN_DIR/host-profile.json" --repo-commit "$GIT_COMMIT")
   enter_stage preflight
   install -d -m 0700 "$RUN_DIR"
+  mode=$(nvidia_driver_mode) || exit "$EXIT_OPERATOR"
+  args+=(--nvidia-driver "$mode")
+  "$OPT_ACCEPT_MOK_ENROLLMENT" && args+=(--accept-mok-enrollment)
   "$OPT_ACCEPT_DEGRADED" && args+=(--accept-degraded)
   "$OPT_ACCEPT_EXPERIMENTAL" && args+=(--accept-experimental)
   "$OPT_FORCE_UNSUPPORTED" && args+=(--force-unsupported)
@@ -546,6 +666,7 @@ stage_preflight() {
   if ((${#GRANTED_OVERRIDES[@]} > 0)); then
     profile_tool override "$RUN_DIR/host-profile.json" "${GRANTED_OVERRIDES[@]}"
   fi
+  require_mok_password "$RUN_DIR/host-profile.json" || exit "$?"
   if [[ -f $PROFILE_FILE ]] && ! "$OPT_REFRESH_PROFILE"; then
     rc=0
     changes=$(profile_tool diff "$PROFILE_FILE" "$RUN_DIR/host-profile.json") || rc=$?

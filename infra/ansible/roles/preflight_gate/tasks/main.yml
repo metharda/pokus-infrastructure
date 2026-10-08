@@ -4,6 +4,17 @@
 # outcome, provider or feature flags differ from the host profile bootstrap
 # validated for this run, unless --refresh-profile was given. A changed host
 # is an operator decision, so the play stops with bootstrap signal 77.
+- name: Stop when preflight judged the GPU with another driver setting
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      install_nvidia_driver is {{ install_nvidia_driver }}, but bootstrap ran preflight with
+      {{ host_profile.gpu.install_driver }}. Set it as a plain value (auto, manual or skip) in
+      ansible/inventory/host_vars/{{ machine | default('<machine>') }}.yml, then re-run bootstrap.
+  when: install_nvidia_driver != host_profile.gpu.install_driver | default(install_nvidia_driver)
+
 - name: Create a temporary file for the fresh host profile
   ansible.builtin.tempfile:
     suffix: .host-profile.json
@@ -18,6 +29,8 @@
         argv: >-
           {{ [preflight_gate_command, '--no-write', '--quiet', '--output', preflight_gate_tmp.path,
               '--srv-path', pokus_root]
+             + ['--nvidia-driver', install_nvidia_driver]
+             + (['--accept-mok-enrollment'] if host_profile.overrides.accept_mok_enrollment | default(false) else [])
              + (['--adopt-incus'] if pokus_bootstrap.adopt_incus | default(false) else [])
              + (['--offline'] if pokus_bootstrap.offline | default(false) else []) }}
       register: preflight_gate_run

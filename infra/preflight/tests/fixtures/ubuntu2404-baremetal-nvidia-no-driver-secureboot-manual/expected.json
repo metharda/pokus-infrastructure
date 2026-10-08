@@ -1,0 +1,12 @@
+{
+  "features": {
+    "gpu_inference": false
+  },
+  "install_driver": "manual",
+  "needs_action": [
+    "secure_boot_mok"
+  ],
+  "outcome": "needs_action",
+  "planned_actions": [],
+  "provider": "baremetal"
+}

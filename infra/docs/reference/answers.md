@@ -55,6 +55,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `split_inference.peer` | see `hostname` | yes | Machine name of the paired node. |
 | `gpu` | object | yes | NVIDIA driver, vLLM serving profile and default model. |
 | `gpu.install_driver` | one of `auto`, `manual`, `skip` | yes | install_nvidia_driver: auto (the pinned branch of versions.lock.yml), manual or skip. |
+| `gpu.accept_mok_enrollment` | boolean | no | Consent that bootstrap installs the NVIDIA driver and imports a Machine Owner Key on a Secure Boot host (install_driver auto only; approved deviation I1). Bootstrap reads the one-time MOK password from standard input (--mok-password-stdin); this file never holds it. |
 | `gpu.vllm_profile` | string | no | A profile of vllm/profiles/; empty: chosen from the GPU. |
 | `gpu.default_model` | string | yes | An id of models.lock.yml, or none (vLLM installed, nothing served). |
 | `gpu.start_serving` | boolean | no | Start serving the default model after the install. |

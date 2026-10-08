@@ -37,7 +37,11 @@ fixture covers yet.
     )
     ```
 
-    Expectation keys are listed in `preflight/tests/test_fixtures.py`.
+    Expectation keys are listed in `preflight/tests/test_fixtures.py`. A
+    fixture that needs preflight options (an operator's choice such as
+    `--nvidia-driver skip`) passes them with `args=[...]`; they are written
+    to the fixture's `args.json`, and every test that runs preflight on the
+    fixture uses them.
 
 2. Write the fixture tree and the summary snapshot:
 

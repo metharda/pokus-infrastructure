@@ -1952,7 +1952,8 @@ Built:
 
 ### Findings to report (step 14)
 
-- **Secure Boot without an NVIDIA driver blocks the installation.** The
+- **Secure Boot without an NVIDIA driver blocks the installation**
+  (resolved by the approved deviation I1, see its section below). The
   support matrix of BUILD_PROMPT §2 (rule `secure_boot_mok`, and the fixture
   `ubuntu2404-baremetal-nvidia-no-driver-secureboot` expected as
   `needs_action`) makes preflight report `needs_action` on such a host, and
@@ -2019,4 +2020,83 @@ separate, non-blocking job. Now:
   outcomes of the play.
 
 Nothing was run in a container here (no Docker daemon in this environment);
-the CI jobs on the push are the proof.
+the CI jobs on the push are the proof. CI on that push: the required
+`check-mode` job passed on all six images, the six
+`check-mode-extended (non-blocking, <image>)` jobs completed, and
+`lock-check` failed as before (the open `TODO(verify)` markers).
+
+## Approved deviation I1: Secure Boot MOK consent
+
+PROGRESS.md row I1. On a host with an NVIDIA GPU, Secure Boot on and no
+driver installed, preflight reported `needs_action` (`secure_boot_mok`) and
+bootstrap stopped with 30 before the play that installs the driver, so
+`install_nvidia_driver: auto` could never work there. Now the operator's
+consent turns the action into a planned one that bootstrap carries out.
+
+- **Preflight** (`--nvidia-driver auto|manual|skip`, default `auto`, and
+  `--accept-mok-enrollment`): the choices are facts of the support matrix
+  (`nvidia_driver_mode`, `mok_enrollment_accepted`). A `needs_action` rule
+  may carry `planned_when` and `planned`; when both conditions hold, the
+  action goes to the new host profile list `planned_actions` and to the
+  warnings instead of `needs_action`. `secure_boot_mok` now applies only to
+  `auto` and `manual` and is planned with `auto` plus consent. The profile
+  records the setting (`gpu.install_driver`) and the consent
+  (`overrides.accept_mok_enrollment`, so every fingerprint carries it). The
+  generated support-matrix page shows the planned row.
+- **Outcomes** (fixtures for all four cases): no consent → 30 with the
+  remediation (`...-secureboot`); `auto` with consent → `degraded`, the
+  action planned (`...-secureboot-consent`); `manual` → 30, consent or not
+  (`...-secureboot-manual`); `skip` → `degraded` without `gpu_inference`
+  (`...-secureboot-skip`). A fixture's extra preflight options live in its
+  `args.json`; every test that runs preflight on fixtures reads it.
+- **Bootstrap** reads `install_nvidia_driver` from the machine's host_vars
+  (else `group_vars/all/main.yml`, else `auto`) as a plain scalar, without
+  YAML (the Ansible environment does not exist yet when preflight runs), and
+  passes it to preflight with `--accept-mok-enrollment` (option, answers
+  file key, or the installer). When the profile plans `secure_boot_mok`,
+  bootstrap needs the one-time MOK password before the play: asked twice,
+  masked, on a terminal, or the first line of standard input with
+  `--mok-password-stdin`; otherwise 77 before anything changes. The play's
+  signal 76 may name a key (`mok_key`); bootstrap then runs
+  `mokutil --import <key>` with the password on its standard input (a
+  `printf` builtin in a pipe: never on a command line, in the log or on
+  disk), clears it, and exits 76 (`--allow-reboot` reboots only after the
+  import). Without a password or when `mokutil` fails: 77 with the manual
+  `mokutil --import` command. The state file records the consent.
+- **Ansible**: `provider_baremetal` looks for the module signing key
+  (`provider_baremetal_mok_keys`, first that exists) when Secure Boot is on
+  and the driver is not usable; a pending enrollment still only signals 76;
+  a key that `mokutil --test-key` does not report as enrolled is named in a
+  76 signal (`bootstrap_signal_mok_key`). `preflight_gate` runs preflight
+  with the same choices (`--nvidia-driver install_nvidia_driver`, consent
+  from the host profile) and stops with 77 if `install_nvidia_driver`
+  differs from what bootstrap gave preflight (a value bootstrap cannot read).
+  The check-mode harness passes the CI machine's setting to preflight in
+  the containers the same way.
+- **Installer**: the Preflight screen explains the MOK flow when it applies
+  and offers the consent (preflight runs again with it) or *Continue without
+  the driver* (`skip`). The GPU screen asks for the password only when the
+  enrollment is needed, refuses `manual` there and asks for the consent if
+  `auto` lacks it. The TUI no longer calls `mokutil` itself: it passes
+  `--accept-mok-enrollment --mok-password-stdin` and writes the password to
+  bootstrap's standard input (`RunRequest.mok_password`), so the TUI, an
+  answers replay and a plain terminal run take the same path. The answers
+  file has `gpu.accept_mok_enrollment` (only with `install_driver: auto`;
+  `installer describe` reports it to bootstrap); it never holds the password.
+  A recorded event stream of a 76 run (`events-signal76.jsonl`) was added.
+- **Interpretations** (to confirm): the outcome with consent is `degraded`,
+  as for any host whose driver is still to be installed (the GPU is not
+  usable before the reboot), so the operator also accepts the missing
+  `gpu_inference` once; a missing password is refused before the play
+  rather than after the driver install; consent given together with
+  `manual` is recorded but has no effect.
+- **Docs**: the bare-metal tutorial now takes the automatic path with
+  consent and shows installing the driver yourself as the alternative;
+  Bare-metal hosts, troubleshooting (30, 76, 77), both install how-tos, the
+  host check how-to, the bootstrap explanation and the generated references.
+
+`TODO(verify)`: 111 markers (one more): the DKMS key locations
+(`provider_baremetal_mok_keys`); the existing one in `nvidia.yml` now also
+covers the wording of `mokutil --test-key`; the one about `mokutil` reading
+the password from standard input moved from the installer to
+`bootstrap/lib/stages.sh`. All of them need the reference hardware.

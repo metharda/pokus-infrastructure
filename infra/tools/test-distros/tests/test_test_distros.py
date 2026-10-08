@@ -413,6 +413,7 @@ def test_check_mode_run(tmp_path: Path) -> None:
     assert verbs.index("cp") > mkdir
     preflight = next(c for c in fake.calls if "pokus_preflight" in c)
     assert preflight[preflight.index("--srv-path") + 1] == "/srv/pokus" and "--offline" in preflight
+    assert preflight[preflight.index("--nvidia-driver") + 1] == "auto"  # example-machine's
     stored = json.loads((tmp_path / "debian_13-host-profile.json").read_text())
     assert stored == PROFILE  # preflight_gate compares its own run with this file
     variables = json.loads((tmp_path / "debian_13-vars.json").read_text())

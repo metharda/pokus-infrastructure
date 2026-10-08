@@ -70,26 +70,69 @@
     - name: Rebuild the initramfs now
       ansible.builtin.meta: flush_handlers
 
-# TODO(verify) on reference hardware: how the MOK password is set when the
-# driver is installed non-interactively (debconf of shim-signed on Ubuntu), and
-# whether Ubuntu's signed prebuilt modules make the MOK step unnecessary.
-- name: Check for a pending Machine Owner Key enrollment
-  ansible.builtin.command:
-    argv: [mokutil, --list-new]
-  register: provider_baremetal_mok
-  failed_when: false
-  changed_when: false
-  check_mode: false
+# Secure Boot (approved deviation I1): the driver's DKMS module is signed with
+# a key that must be enrolled as a Machine Owner Key. A pending enrollment only
+# needs the reboot. A signing key that is neither enrolled nor pending is named
+# in the signal, and bootstrap imports it (mokutil --import, with the
+# operator's one-time password) before it exits with 76.
+# TODO(verify) on reference hardware: where each family's DKMS keeps the
+# signing certificate (provider_baremetal_mok_keys), the wording of
+# `mokutil --test-key`, and whether Ubuntu's signed prebuilt modules make the
+# MOK step unnecessary.
+- name: Check the Machine Owner Key enrollment
   when: host_profile.capabilities.secure_boot == 'enabled'
+  block:
+    - name: Check for a pending Machine Owner Key enrollment
+      ansible.builtin.command:
+        argv: [mokutil, --list-new]
+      register: provider_baremetal_mok
+      failed_when: false
+      changed_when: false
+      check_mode: false
 
-- name: Ask for a reboot to enroll the MOK
-  ansible.builtin.include_role:
-    name: bootstrap_signal
-  vars:
-    bootstrap_signal_code: 76
-    bootstrap_signal_message: >-
-      Secure Boot is on and a Machine Owner Key is waiting for enrollment. Reboot, choose
-      "Enroll MOK" at the blue MOK Manager screen, confirm with the MOK password, then re-run bootstrap.
-  when:
-    - host_profile.capabilities.secure_boot == 'enabled'
-    - provider_baremetal_mok.stdout | default('') | length > 0
+    - name: Ask for a reboot to enroll the pending MOK
+      ansible.builtin.include_role:
+        name: bootstrap_signal
+      vars:
+        bootstrap_signal_code: 76
+        bootstrap_signal_message: >-
+          Secure Boot is on and a Machine Owner Key is waiting for enrollment. Reboot, choose
+          "Enroll MOK" at the blue MOK Manager screen, confirm with the MOK password, then re-run bootstrap.
+      when: provider_baremetal_mok.stdout | default('') | length > 0
+
+    - name: Look for the module signing key
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ provider_baremetal_mok_keys }}"
+      register: provider_baremetal_mok_key_stat
+      when: not host_profile.gpu.usable
+
+    - name: Pick the module signing key
+      ansible.builtin.set_fact:
+        provider_baremetal_mok_key: >-
+          {{ (provider_baremetal_mok_key_stat.results | default([])
+              | selectattr('stat', 'defined') | selectattr('stat.exists')
+              | map(attribute='item') | list + [''])[0] }}
+
+    - name: Check whether the module signing key is enrolled
+      ansible.builtin.command:
+        argv: [mokutil, --test-key, "{{ provider_baremetal_mok_key }}"]
+      register: provider_baremetal_mok_test
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      when: provider_baremetal_mok_key | length > 0
+
+    - name: Ask bootstrap to import the module signing key and reboot
+      ansible.builtin.include_role:
+        name: bootstrap_signal
+      vars:
+        bootstrap_signal_code: 76
+        bootstrap_signal_mok_key: "{{ provider_baremetal_mok_key }}"
+        bootstrap_signal_message: >-
+          Secure Boot is on and the NVIDIA module is signed with {{ provider_baremetal_mok_key }}, which is
+          not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, choose "Enroll MOK"
+          at the blue MOK Manager screen, enter that password, then re-run bootstrap.
+      when:
+        - provider_baremetal_mok_key | length > 0
+        - "'already enrolled' not in provider_baremetal_mok_test.stdout | default('')"

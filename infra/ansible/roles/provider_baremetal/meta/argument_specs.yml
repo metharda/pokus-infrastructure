@@ -26,3 +26,10 @@ argument_specs:
         type: dict
         default: {}
         description: Command that rebuilds the initramfs, per pokus_initramfs_tool.
+      provider_baremetal_mok_keys:
+        type: list
+        elements: path
+        default: [/var/lib/shim-signed/mok/MOK.der, /var/lib/dkms/mok.pub]
+        description: >-
+          Certificates DKMS signs modules with; the first that exists is imported as a Machine Owner Key
+          when Secure Boot is on and it is not enrolled.

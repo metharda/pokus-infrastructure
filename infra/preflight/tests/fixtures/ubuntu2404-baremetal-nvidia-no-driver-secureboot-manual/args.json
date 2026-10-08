@@ -1,0 +1,5 @@
+[
+  "--nvidia-driver",
+  "manual",
+  "--accept-mok-enrollment"
+]

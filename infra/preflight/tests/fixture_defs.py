@@ -2,7 +2,9 @@
 
 Each fixture is a fake root (``etc/``, ``proc/``, ``sys/``, ``dev/`` ...) plus
 ``fixture.json`` (device and link metadata), ``commands.json`` (command,
-DNS and HTTPS answers) and ``expected.json`` (what preflight must decide).
+DNS and HTTPS answers), ``expected.json`` (what preflight must decide) and,
+for fixtures that need them, ``args.json`` (extra preflight arguments, such as
+the operator's ``--nvidia-driver`` choice).
 Fixtures are composed from small layers here and written to
 ``preflight/tests/fixtures/<name>/`` with::
 
@@ -47,6 +49,7 @@ class Fixture:
         commands: ``shlex.join(argv)`` to ``{"rc", "stdout", "stderr"}``.
         data: Other ``commands.json`` sections (which, cpu_count, machine, ...).
         expected: ``expected.json`` content.
+        args: Extra preflight arguments (``args.json``, written when not empty).
     """
 
     files: dict[str, Content] = field(default_factory=dict)
@@ -57,6 +60,7 @@ class Fixture:
     commands: dict[str, dict[str, Any]] = field(default_factory=dict)
     data: dict[str, Any] = field(default_factory=dict)
     expected: dict[str, Any] = field(default_factory=dict)
+    args: list[str] = field(default_factory=list)
 
     def cmd(self, line: str, stdout: str = "", rc: int = 0, stderr: str = "") -> None:
         """Register a command answer."""
@@ -475,12 +479,13 @@ FULL_FEATURES = {
 }
 
 
-def build(*layers: Layer, expected: dict[str, Any]) -> Fixture:
-    """Compose layers into a fixture."""
+def build(*layers: Layer, expected: dict[str, Any], args: list[str] | None = None) -> Fixture:
+    """Compose layers into a fixture run with the extra preflight ``args``."""
     f = Fixture()
     for layer in layers:
         layer(f)
     f.expected = expected
+    f.args = list(args or [])
     return f
 
 
@@ -512,8 +517,51 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "needs_action",
             "provider": "baremetal",
             "needs_action": ["secure_boot_mok"],
+            "planned_actions": [],
             "features": {"gpu_inference": False},
             "secure_boot": "enabled",
+            "install_driver": "auto",
+        },
+    )
+    # Approved deviation I1: the same host with the operator's choices.
+    secureboot = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("none"), secure_boot_enabled]
+    fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent"] = build(
+        *secureboot,
+        args=["--accept-mok-enrollment"],
+        expected={
+            "outcome": "degraded",
+            "provider": "baremetal",
+            "needs_action": [],
+            "planned_actions": ["secure_boot_mok"],
+            "warnings_contain": ["planned action secure_boot_mok"],
+            "disabled": ["gpu_inference"],
+            "secure_boot": "enabled",
+            "install_driver": "auto",
+            "overrides_on": ["accept_mok_enrollment"],
+        },
+    )
+    fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot-manual"] = build(
+        *secureboot,
+        args=["--nvidia-driver", "manual", "--accept-mok-enrollment"],
+        expected={
+            "outcome": "needs_action",
+            "provider": "baremetal",
+            "needs_action": ["secure_boot_mok"],
+            "planned_actions": [],
+            "features": {"gpu_inference": False},
+            "install_driver": "manual",
+        },
+    )
+    fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot-skip"] = build(
+        *secureboot,
+        args=["--nvidia-driver", "skip"],
+        expected={
+            "outcome": "degraded",
+            "provider": "baremetal",
+            "needs_action": [],
+            "planned_actions": [],
+            "disabled": ["gpu_inference"],
+            "install_driver": "skip",
         },
     )
     fx["ubuntu2404-baremetal-no-gpu"] = build(
@@ -925,11 +973,14 @@ def write_fixture(name: str, f: Fixture, base: str = FIXTURES_DIR) -> None:
     meta["char_devices"] = sorted(meta["char_devices"])
     meta["rw_openable"] = sorted(meta["rw_openable"])
     commands = {"commands": dict(sorted(f.commands.items())), **dict(sorted(f.data.items()))}
-    for fname, data in (
+    files: list[tuple[str, Any]] = [
         ("fixture.json", meta),
         ("commands.json", commands),
         ("expected.json", f.expected),
-    ):
+    ]
+    if f.args:
+        files.append(("args.json", f.args))
+    for fname, data in files:
         with open(os.path.join(root, fname), "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, sort_keys=True)
             handle.write("\n")

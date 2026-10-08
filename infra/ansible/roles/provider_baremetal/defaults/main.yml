@@ -11,3 +11,9 @@ provider_baremetal_initramfs_commands:
   update-initramfs: [update-initramfs, -u, -k, all]
   dracut: [dracut, --force, --regenerate-all]
   mkinitcpio: [mkinitcpio, -P]
+# Where DKMS keeps the certificate it signs modules with, first match wins
+# (Secure Boot, approved deviation I1).
+# TODO(verify) on reference hardware: the path on every family.
+provider_baremetal_mok_keys:
+  - /var/lib/shim-signed/mok/MOK.der
+  - /var/lib/dkms/mok.pub

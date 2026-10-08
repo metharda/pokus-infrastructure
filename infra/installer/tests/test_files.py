@@ -10,6 +10,7 @@ from installer_testlib import public_key
 from ruamel.yaml import YAML
 from test_answers import full_answers
 
+from pokus_installer import answers as answers_mod
 from pokus_installer import apply, cli, groupvars, hostvars, keys, state, vault
 from pokus_installer.answers import Answers, Researcher
 from pokus_installer.paths import Paths
@@ -221,6 +222,24 @@ def test_read_password_file(tmp_path: Path) -> None:
         apply.read_password_file(path)
 
 
+def test_cli_describe_reports_the_mok_consent(
+    repo: Paths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    loaded = answers_mod.load(repo.infra / "tests" / "answers" / "ci.yml")
+    loaded.gpu.install_driver = "auto"
+    loaded.gpu.accept_mok_enrollment = True
+    path = tmp_path / "answers.yml"
+    path.write_text(answers_mod.dumps(loaded), encoding="utf-8")
+    assert "accept_mok_enrollment: true" in path.read_text(encoding="utf-8")
+    base = ["--infra", str(repo.infra)]
+    assert cli.main([*base, "describe", "--answers", str(path)]) == 0
+    assert "accept_mok_enrollment=true" in capsys.readouterr().out.splitlines()
+    text = path.read_text(encoding="utf-8")  # consent without auto is a contradiction
+    path.write_text(text.replace("install_driver: auto", "install_driver: manual"), "utf-8")
+    assert cli.main([*base, "describe", "--answers", str(path)]) == 1
+    assert "gpu/accept_mok_enrollment" in capsys.readouterr().err
+
+
 def test_cli_apply_replays_the_ci_answers(
     repo: Paths, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -234,6 +253,7 @@ def test_cli_apply_replays_the_ci_answers(
         "machine=ci-placeholder",
         "mode=fresh",
         "snapshot=",
+        "accept_mok_enrollment=false",
     ]
     replay = [*base, "apply", "--answers", str(answers), "--vault-password-file", str(password)]
     monkeypatch.delenv("POKUS_SECRET_TAILSCALE_AUTHKEY", raising=False)

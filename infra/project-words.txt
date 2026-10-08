@@ -46,6 +46,7 @@ lockfiles
 micromamba
 mkinitcpio
 moby
+mokutil
 MOUNTPOINTS
 netfilter
 nftables

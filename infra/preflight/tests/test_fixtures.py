@@ -30,10 +30,21 @@ except ImportError:  # plain `python3 -m unittest` run without the dev environme
     jsonschema = None
 
 
+def fixture_args(name: str) -> list[str]:
+    """The extra preflight arguments of a fixture (``args.json``, if any)."""
+    path = os.path.join(FIXTURES_DIR, name, "args.json")
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        args: list[str] = json.load(handle)
+    return args
+
+
 def run_fixture(name: str) -> dict[str, Any]:
+    root = os.path.join(FIXTURES_DIR, name)
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-        cli.main(["--root", os.path.join(FIXTURES_DIR, name), "--offline", "--quiet"])
+        cli.main(["--root", root, "--offline", "--quiet", *fixture_args(name)])
     doc: dict[str, Any] = json.loads(out.getvalue())
     return doc
 
@@ -67,6 +78,9 @@ class FixtureTreeTest(unittest.TestCase):
         required = {
             "ubuntu2404-baremetal-nvidia-driver-loaded",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot",
+            "ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent",
+            "ubuntu2404-baremetal-nvidia-no-driver-secureboot-manual",
+            "ubuntu2404-baremetal-nvidia-no-driver-secureboot-skip",
             "ubuntu2404-baremetal-no-gpu",
             "ubuntu2404-wsl2-gpu-nokvm",
             "ubuntu2404-wsl2-gpu-kvm",
@@ -122,6 +136,7 @@ class FixtureDecisionTest(unittest.TestCase):
             "firewall_backend": doc["firewall"]["backend"],
             "storage_backend": doc["storage_backend"],
             "secure_boot": doc["capabilities"]["secure_boot"],
+            "install_driver": doc["gpu"]["install_driver"],
         }
         for key, value in exp.items():
             if key in simple:
@@ -131,10 +146,11 @@ class FixtureDecisionTest(unittest.TestCase):
                     self.assertEqual(doc["features"][feature], on, f"{name}: feature {feature}")
             elif key == "disabled":
                 self.assertEqual([d["feature"] for d in doc["disabled_features"]], value, name)
-            elif key == "needs_action":
-                ids = [a["id"] for a in doc["needs_action"]]
-                for item in value:
-                    self.assertIn(item, ids, name)
+            elif key in ("needs_action", "planned_actions"):
+                self.assertEqual([a["id"] for a in doc[key]], value, f"{name}: {key}")
+            elif key == "overrides_on":
+                on = [k for k, v in doc["overrides"].items() if v]
+                self.assertEqual(on, value, f"{name}: overrides")
             elif key == "conflicts":
                 self.assertEqual([c["id"] for c in doc["conflicts"]], value, name)
             elif key == "warnings_contain":

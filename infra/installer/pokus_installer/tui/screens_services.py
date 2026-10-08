@@ -66,9 +66,12 @@ class GpuScreen(StepScreen):
     STEP = "gpu"
     HELP = (
         "auto installs the pinned NVIDIA driver branch on bare metal and VMs (never on WSL, "
-        "where the Windows driver provides the GPU). With Secure Boot, the driver's module "
-        "is signed by a Machine Owner Key: enter a one-time password now, then enrol the key "
-        "in MOK Manager at the next boot. The serving profile is chosen from the GPU; the "
+        "where the Windows driver provides the GPU). With Secure Boot and no driver, auto "
+        "needs your consent on the Preflight screen: the driver's module is signed by a "
+        "Machine Owner Key, which the installation imports with a one-time password you enter "
+        "now; you enroll the key in MOK Manager at the next boot. manual stops the "
+        "installation until you installed the driver yourself. The serving profile is "
+        "chosen from the GPU; the "
         "default model must be pinned in models.lock.yml (Pin resolves the commit and the "
         "sha256 of every file from the Hugging Face Hub). Gated models need a token."
     )
@@ -114,7 +117,7 @@ class GpuScreen(StepScreen):
                         label, value=gpu.install_driver == value, id=f"driver-{value}"
                     )
             yield Static(driver_pin(self.ctx.paths.versions_lock, str(release)), classes="hint")
-            if self.wizard.secure_boot:
+            if self.wizard.mok_enrollment_needed:
                 yield Field("MOK password (one time)", Input(password=True, id="mok"))
                 yield Field("MOK password again", Input(password=True, id="mok2"))
         self.profiles = load_profiles(self.ctx.paths.vllm_profiles)
@@ -252,11 +255,7 @@ class GpuScreen(StepScreen):
             for value in ("auto", "manual", "skip"):
                 if self.query_one(f"#driver-{value}", RadioButton).value:
                     gpu.install_driver = value
-            if self.query("#mok") and gpu.install_driver == "auto":
-                first, second = _input(self, "#mok"), _input(self, "#mok2")
-                if not first or first != second:
-                    problems.append(("mok", "enter the same one-time password twice"))
-                self.wizard.mok_password = first
+            problems += self._secure_boot_problems()
         profile = self.query_one("#profile", Select).value
         gpu.vllm_profile = "" if profile is Select.BLANK else str(profile)
         if gpu.default_model != "none" and gpu.default_model not in self._lock_ids():
@@ -268,6 +267,40 @@ class GpuScreen(StepScreen):
         if chosen is not None and chosen.gated and not token:
             problems.append(("hf", "this model is gated: enter a Hugging Face token"))
         gpu.start_serving = self.query_one("#serve", Checkbox).value
+        return problems
+
+    def _secure_boot_problems(self) -> Problems:
+        # Secure Boot without a driver (approved deviation I1): auto needs the consent
+        # given on the Preflight screen and the one-time MOK password; manual would stop
+        # the installation at bootstrap's preflight (exit 30).
+        gpu = self.answers.gpu
+        wizard = self.wizard
+        if not wizard.mok_enrollment_needed:
+            return []
+        if gpu.install_driver == "manual":
+            return [
+                (
+                    "driver",
+                    "Secure Boot without a driver: install the driver yourself first and "
+                    "Re-check on the Preflight screen, or choose auto or skip",
+                )
+            ]
+        wizard.nvidia_driver = gpu.install_driver
+        if gpu.install_driver == "skip":
+            wizard.consents.discard("accept_mok_enrollment")
+            gpu.accept_mok_enrollment = False
+            wizard.mok_password = ""
+            return []
+        problems: Problems = []
+        if "accept_mok_enrollment" not in wizard.consents:
+            problems.append(
+                ("driver", "Secure Boot: consent to the MOK enrollment on the Preflight screen")
+            )
+        first, second = _input(self, "#mok"), _input(self, "#mok2")
+        if not first or first != second:
+            problems.append(("mok", "enter the same one-time password twice"))
+        wizard.mok_password = first if first == second else ""
+        gpu.accept_mok_enrollment = "accept_mok_enrollment" in wizard.consents
         return problems
 
 

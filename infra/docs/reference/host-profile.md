@@ -88,6 +88,7 @@ Report written by pokus-preflight to /etc/pokus/host-profile.json (pokus-infra B
 | `gpu.driver_state` | one of `windows_driver`, `not_installed`, `installed_not_loaded`, `loaded`, `null` | yes | — |
 | `gpu.unsupported_devices` | array | yes | — |
 | `gpu.notes` | array | yes | — |
+| `gpu.install_driver` | one of `auto`, `manual`, `skip` | yes | The host's install_nvidia_driver setting given to preflight (--nvidia-driver): auto, manual or skip. |
 | `capabilities` | object | yes | — |
 | `capabilities.cgroup2` | boolean | yes | — |
 | `capabilities.cgroup_fs_type` | string or null | yes | — |
@@ -137,6 +138,9 @@ Report written by pokus-preflight to /etc/pokus/host-profile.json (pokus-infra B
 | `needs_action` | array | yes | — |
 | `needs_action[].id` | string | yes | — |
 | `needs_action[].action` | string | yes | — |
+| `planned_actions` | array | yes | Actions bootstrap carries out with the operator's consent instead of stopping (for example the MOK enrollment of an NVIDIA driver on a Secure Boot host); each is also listed among the warnings. |
+| `planned_actions[].id` | string | yes | — |
+| `planned_actions[].action` | string | yes | — |
 | `warnings` | array | yes | — |
 | `notes` | array | yes | — |
 | `overrides` | object | yes | Operator overrides; carried into every environment fingerprint. |
@@ -145,6 +149,7 @@ Report written by pokus-preflight to /etc/pokus/host-profile.json (pokus-infra B
 | `overrides.force_unsupported` | boolean | yes | — |
 | `overrides.adopt_incus` | boolean | yes | — |
 | `overrides.allow_dirty` | boolean | yes | — |
+| `overrides.accept_mok_enrollment` | boolean | yes | — |
 
 ## Definitions
 

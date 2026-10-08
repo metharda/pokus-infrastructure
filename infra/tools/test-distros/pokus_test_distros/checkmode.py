@@ -352,6 +352,8 @@ class CheckMode:
             "--quiet",
             "--srv-path",
             str(host_vars["pokus_root"]),
+            "--nvidia-driver",
+            str(host_vars.get("install_nvidia_driver", "auto")),
             "--offline",
         )
         if not report.stdout.strip():

@@ -27,6 +27,8 @@ Options:
   --allow-reboot           Allow automatic reboot on bare metal / VM
   --allow-dirty            Continue with uncommitted changes in infra/ (recorded)
   --adopt-incus            Adopt an existing Incus installation
+  --accept-mok-enrollment  With Secure Boot and install_nvidia_driver: auto, install the NVIDIA driver and import a Machine Owner Key (recorded)
+  --mok-password-stdin     Read the one-time MOK password from the first line of standard input
   --allow-community-repos  Permit non-vendor, non-distro repositories (COPR, OBS, RPM Fusion)
   --offline                Skip network reachability checks (for testing only)
   --non-interactive        Never prompt; fail where a prompt would be needed
@@ -55,6 +57,8 @@ OPT_REFRESH_PROFILE=false
 OPT_ALLOW_REBOOT=false
 OPT_ALLOW_DIRTY=false
 OPT_ADOPT_INCUS=false
+OPT_ACCEPT_MOK_ENROLLMENT=false
+OPT_MOK_PASSWORD_STDIN=false
 OPT_ALLOW_COMMUNITY_REPOS=false
 OPT_OFFLINE=false
 OPT_NON_INTERACTIVE=false
@@ -124,6 +128,8 @@ parse_args() {
       --allow-reboot) OPT_ALLOW_REBOOT=true && shift ;;
       --allow-dirty) OPT_ALLOW_DIRTY=true && shift ;;
       --adopt-incus) OPT_ADOPT_INCUS=true && shift ;;
+      --accept-mok-enrollment) OPT_ACCEPT_MOK_ENROLLMENT=true && shift ;;
+      --mok-password-stdin) OPT_MOK_PASSWORD_STDIN=true && shift ;;
       --allow-community-repos) OPT_ALLOW_COMMUNITY_REPOS=true && shift ;;
       --offline) OPT_OFFLINE=true && shift ;;
       --non-interactive) OPT_NON_INTERACTIVE=true && shift ;;
@@ -159,6 +165,10 @@ validate_args() {
   done
   if [[ $OPT_TUI == on ]] && "$OPT_NON_INTERACTIVE"; then
     usage_error "--tui and --non-interactive exclude each other"
+    return
+  fi
+  if [[ $OPT_TUI == on ]] && "$OPT_MOK_PASSWORD_STDIN"; then
+    usage_error "--tui and --mok-password-stdin exclude each other (the TUI asks for the password)"
     return
   fi
   if [[ -n $OPT_ANSWERS && ! -r $OPT_ANSWERS ]]; then

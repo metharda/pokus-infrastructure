@@ -11,6 +11,12 @@ It also refuses an outcome that the recorded consent does not cover (for
 example `degraded` without `accept_degraded`), so the play cannot be run
 around bootstrap's gate.
 
+Preflight runs with the same choices as bootstrap's: `--nvidia-driver` with
+the machine's `install_nvidia_driver`, and `--accept-mok-enrollment` when the
+host profile records that consent (approved deviation I1). If
+`install_nvidia_driver` differs from what bootstrap gave preflight (for
+example a templated value bootstrap cannot read), the play stops with signal 77.
+
 ## Facts it sets
 
 | Fact | Content |

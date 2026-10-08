@@ -17,7 +17,8 @@ description: Every option of pokus-preflight.
 pokus-preflight [-h] [--root PATH] [--output FILE] [--offline]
                        [--srv-path PATH] [--accept-degraded]
                        [--accept-experimental] [--force-unsupported]
-                       [--adopt-incus] [--allow-dirty] [--no-write]
+                       [--adopt-incus] [--nvidia-driver {auto,manual,skip}]
+                       [--accept-mok-enrollment] [--allow-dirty] [--no-write]
                        [--color {auto,always,never}] [--quiet]
                        [--repo-commit SHA] [--matrix FILE] [--endpoints FILE]
                        [--version]
@@ -38,6 +39,8 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--accept-experimental` | — | — | record consent to continue on an experimental tier |
 | `--force-unsupported` | — | — | record that the operator forces an unsupported host (carried into every fingerprint) |
 | `--adopt-incus` | — | — | treat an existing, unmanaged Incus installation as a warning instead of a blocking conflict |
+| `--nvidia-driver` | `auto`, `manual`, `skip` | `auto` | the host's install_nvidia_driver setting, which decides how a missing driver is judged (default: auto) |
+| `--accept-mok-enrollment` | — | — | record consent that bootstrap installs the NVIDIA driver and imports a Machine Owner Key on a Secure Boot host (install_nvidia_driver: auto) |
 | `--allow-dirty` | — | — | record that bootstrap runs from an infra/ tree with uncommitted changes |
 | `--no-write` | — | — | never store the profile in /etc/pokus or /var/lib/pokus |
 | `--color` | `auto`, `always`, `never` | `auto` | color the summary (auto: only on a terminal and without NO_COLOR) |

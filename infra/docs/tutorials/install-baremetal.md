@@ -51,16 +51,12 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
     ```
 
     Exit code 0 means supported and 10 degraded (the summary lists the
-    features that are off and why). Any other code stops here (see
+    features that are off and why). Exit code 30 with the single action
+    `secure_boot_mok` means that Secure Boot is on and no NVIDIA driver is
+    installed: the driver can only be installed together with a Machine
+    Owner Key (MOK), and that needs your consent, which you give in step 2.
+    Any other code stops here (see
     [How to check whether a machine can host the lab](../how-to/check-a-host.md)).
-
-    !!! warning "Secure Boot without an NVIDIA driver"
-        With Secure Boot on and no NVIDIA driver loaded, preflight reports exit
-        code 30 with the action `secure_boot_mok`, and bootstrap stops before it
-        can install the driver. This is an open question of the project. Until
-        it is settled, install your distribution's NVIDIA driver yourself as its
-        documentation describes, enroll its key at the next boot, and run
-        preflight again; the installation then keeps that driver.
 
 3. Find the stable name of the pool disk:
 
@@ -83,7 +79,11 @@ installer TUI:
 sudo ./bootstrap/bootstrap.sh
 ```
 
-The Welcome and Preflight screens show what preflight found. Accept each
+The Welcome and Preflight screens show what preflight found. With Secure
+Boot on and no driver, the Preflight screen explains the MOK enrollment: tick
+*Install the driver and enroll a MOK at the next boot*. Preflight runs again
+and now plans the enrollment instead of stopping; the GPU stays off until
+the driver is loaded, so `gpu_inference` is listed as missing. Accept each
 missing feature that you can live with; [How to install a lab with the
 installer TUI](../how-to/install-with-the-tui.md) explains every screen.
 
@@ -99,10 +99,11 @@ installer TUI](../how-to/install-with-the-tui.md) explains every screen.
         signatures also needs you to type `WIPE`.
 
 3. **GPU & inference**: keep the driver on `auto`; the installation installs
-   the pinned driver only when none is loaded. If the screen asks for a MOK
-   password, enter a one-time password twice and keep it until the next
-   reboot: you type it in the key enrollment screen. Choose the serving
-   profile of your GPU class and a pinned default model.
+   the pinned driver only when none is loaded. With Secure Boot the screen
+   asks for a MOK password: enter a one-time password twice and keep it until
+   the next reboot, when you type it in the key enrollment screen. It is
+   never stored. Choose the serving profile of your GPU class and a pinned
+   default model.
 4. **Researchers**, **Remote access**, **Data & backups**, **Golden images**
    and **Secrets & vault** as in the how-to.
 
@@ -112,9 +113,10 @@ cannot be undone, then press **Install**.
 ## Step 4: Reboot when the installation asks for it
 
 The installation stops with exit code 76 when the host must reboot: the
-distribution asks for one after the driver or a kernel update, or a Machine
-Owner Key (MOK) waits for enrollment. The installer shows what to do and
-quits. Without exit code 76, go on with step 5.
+distribution asks for one after the driver or a kernel update, or the
+installation has imported the driver's Machine Owner Key, which waits for
+enrollment. The installer shows what to do and quits. Without exit code 76,
+go on with step 5.
 
 1. Reboot:
 
@@ -124,8 +126,8 @@ quits. Without exit code 76, go on with step 5.
     ```
 
 2. If the blue MOK Manager screen appears during the boot, choose
-   *Enroll MOK*, *Continue*, confirm, enter the MOK password from step 3 and
-   reboot.
+   *Enroll MOK*, *Continue*, *Yes*, enter the MOK password from step 3 and
+   choose *Reboot*.
 
 3. Log in again and continue the installation:
 
@@ -141,6 +143,13 @@ quits. Without exit code 76, go on with step 5.
 
 Bootstrap reboots by itself only when you start it with `--allow-reboot`
 ([Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots)).
+
+!!! tip "Alternative: install the driver yourself"
+    If you prefer your distribution's documented procedure for the NVIDIA
+    driver and its Secure Boot key, install the driver before step 2, enroll
+    its key at the next boot and run preflight again (step 1); it then finds
+    the driver loaded. Choose *I install it myself* on the GPU screen. The
+    installation keeps your driver and does not ask for a MOK password.
 
 ## Step 5: Check the lab
 

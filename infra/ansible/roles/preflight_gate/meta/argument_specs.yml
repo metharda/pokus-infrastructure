@@ -9,6 +9,11 @@ argument_specs:
         type: dict
         required: true
         description: Host profile validated by bootstrap.sh for this run.
+      install_nvidia_driver:
+        type: str
+        required: true
+        choices: [auto, manual, skip]
+        description: The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did.
       pokus_root:
         type: path
         required: true

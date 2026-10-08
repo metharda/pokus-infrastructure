@@ -440,9 +440,18 @@
           "when": {
             "secure_boot": "enabled",
             "nvidia_driver_installed": false,
-            "nvidia_gpu_present": true
+            "nvidia_gpu_present": true,
+            "nvidia_driver_mode_in": [
+              "auto",
+              "manual"
+            ]
           },
-          "action": "Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot. See docs/providers/baremetal.md"
+          "action": "Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot. With install_nvidia_driver: auto, consent with --accept-mok-enrollment (or in the installer) and bootstrap installs the driver and imports the MOK; otherwise install the driver yourself. See docs/providers/baremetal.md",
+          "planned_when": {
+            "nvidia_driver_mode": "auto",
+            "mok_enrollment_accepted": true
+          },
+          "planned": "Secure Boot is on: bootstrap installs the NVIDIA driver, imports a Machine Owner Key with your one-time password and stops with 76; reboot, enroll the key at the blue MOK Manager screen, then re-run bootstrap"
         }
       ]
     },

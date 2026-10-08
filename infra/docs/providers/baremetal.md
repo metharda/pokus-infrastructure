@@ -38,11 +38,47 @@ never replace them.
 
 ## Secure Boot and reboots
 
-Pokus never disables Secure Boot. When the driver's kernel module was built
-with DKMS on a host with Secure Boot, its signing key must be enrolled as a
-Machine Owner Key (MOK). Bootstrap then stops with exit code 76. Reboot; at
-the blue MOK Manager screen choose to enroll the key and enter the password
-set during installation; then run bootstrap again.
+Pokus never disables Secure Boot. A driver module built with DKMS on a host
+with Secure Boot is signed with a key that must be enrolled as a Machine
+Owner Key (MOK) before the module loads, and the enrollment needs someone at
+the console during the next boot. So on a host with Secure Boot on and no
+NVIDIA driver installed, preflight reports the action `secure_boot_mok`, and
+what happens depends on `install_nvidia_driver` and on your consent:
+
+| `install_nvidia_driver` | Consent to the MOK enrollment | Preflight | Bootstrap |
+| --- | --- | --- | --- |
+| `auto` | given | planned action: a warning, recorded in the host profile | installs the driver, imports the key with your one-time password and stops with exit code 76 |
+| `auto` | not given | needs action | stops with exit code 30 |
+| `manual` | not needed | needs action | stops with exit code 30 until you have installed the driver |
+| `skip` | not needed | degraded: no `gpu_inference` | goes on without the driver |
+
+You consent on the installer's Preflight screen, with
+`--accept-mok-enrollment`, or with `gpu.accept_mok_enrollment: true` in an
+answers file; the host profile and every environment fingerprint record it.
+Bootstrap wants the one-time MOK password before the play starts: the
+installer asks for it on its GPU screen, bootstrap on a terminal asks itself,
+and a non-interactive run reads it from the first line of its standard input
+(`--mok-password-stdin`). The password reaches `mokutil --import` only
+through its standard input and is never written anywhere.
+
+After installing the driver, the play looks for the module signing key
+(`provider_baremetal_mok_keys`). If that key is neither enrolled nor waiting
+for enrollment, the play stops with exit code 76 and names it; bootstrap
+imports it and exits with 76. Reboot; at the blue MOK Manager screen choose
+*Enroll MOK*, *Continue* and *Yes*, enter the one-time password and reboot
+again; then run bootstrap again. It continues where it stopped and accepts
+the changed host profile (the GPU is now usable), because the last run ended
+with this signal. A key that already waits for enrollment only needs the
+reboot.
+
+!!! note "Not verified on hardware yet"
+    Where each distribution's DKMS keeps its signing key, and how `mokutil`
+    reads the password when it is not a terminal, are checked on the
+    reference hosts before the first release.
+
+If you prefer your distribution's documented procedure, install the driver
+yourself, enroll its key, run preflight again and use
+`install_nvidia_driver: manual`.
 
 The same exit code is used whenever the distribution reports that a reboot is
 required after an update (`/run/reboot-required`, `dnf needs-restarting -r`,
