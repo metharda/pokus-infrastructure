@@ -279,6 +279,57 @@ contract.
 - **H10** PDF export: pinned Quarto/Typst.
 - **H11** Versioned docs: mike, demonstrated with two test versions.
 
+### I. Contract v2: plug-in platforms (owner decision after infra step 14)
+
+Infra becomes a standalone lab product that any testing platform plugs into
+through a manifest, with Pokus as the first platform. Approved overall with
+changes; the proposal document itself is kept outside the repository. **No
+v2 code before step 0:** the owner updates the three specs first and creates
+`pokus-infra`. The per-section spec changes are part of the proposal.
+
+- **Approved as recommended:** decisions 2 (profiles), 4 (runtimes
+  `python-uv` and `static`, builds as `pokus-build`), 5 (hooks as commands),
+  6 (`<platform>-migrate` account), 8 (optional pinned tools), 9 (extra
+  manifest fields), 11 (`file://` sources), 13 (installer inspects the
+  release).
+- **1, naming:** infra keeps its namespace; platform objects are
+  `<platform>-<service>`; the schema lists every reserved infra name per
+  namespace (accounts, groups, units, containers, roles, databases, path
+  segments, commands, platform names), and the collision check uses it.
+- **3, agent sockets:** a socket marked `untrusted_clients: true` is
+  dedicated to `untrusted-agent`, never shared with other profiles or humans;
+  the platform spec obliges that its endpoints never return restricted data,
+  proven by a platform test; installer and doctor highlight these sockets.
+- **7, GPU:** GPU training jobs are a first-class v2 capability: an eighth
+  profile `gpu-trainer` (the only one with GPU access) for `jobs[]`; a
+  root-owned GPU arbiter replacing the deploy helper (serving, training,
+  idle; transitions recorded); OCI training containers with security options
+  fixed by infra; a datasets area with a provenance record and a split guard
+  (no test-split instance is mounted); adapters registered read-only with a
+  lineage record and served through `adapter_ids`; checkpoints and resume;
+  a tiny training job in the reference platform (CPU-only variant without a
+  GPU); platform-side additions for the training flow.
+- **10, restricted schema:** the revoke and check after every migration is
+  the guarantee; the event trigger only after its `GRANT`/`REVOKE` coverage
+  is verified on the pinned PostgreSQL release.
+- **12, repositories:** `pokus-infra` (new; infra and the reference
+  platform; the owner creates it and moves infra's history with
+  `git filter-repo --subdirectory-filter infra`) and `pokus` (this
+  repository: platform, catalog, Pokus docs); catalog lint keeps its path
+  dependency; each repository has its own docs site; Pokus CI validates its
+  manifest against the schema of the infra release it targets. Of the
+  one-repository rules, B3, B9, C1 and E3 go and B2, B4, B5 change at the
+  split; B1, B6, B7, B8 stay.
+- **Additions:** the v1 agent-runner finding (TCP access, `pokus-svc`
+  membership) is not patched separately in v1; v2 step 3 includes tests
+  proving both are closed. The neutrality lint matches an explicit name list
+  as whole words. Out of scope for v2, recorded: an OCI runtime for platform
+  services, Incus fine-grained authorization, several platforms at once.
+- **Open, for the owner (new points from the changes):** N1 the platform
+  name `pokus` (reserved names checked per namespace), N2 dedicated sockets
+  for every agent client, N3 training datasets readable by no human group,
+  N4 training only on `node_role: full`.
+
 ### Privacy clean-up (owner instruction)
 
 Scan everything already written for personal or installation-specific data,
@@ -731,12 +782,14 @@ step 4" through "after step 13"):
 
 ## Next step
 
-Phase 1 (infra) is complete as far as it can be built here; the assistant
-waits for the owner's go for Phase 2 (platform). The owner approved the
-deviations I1 (Secure Boot MOK consent flow) and I2 (required fast-lane job
-as specified, whole play only as a non-blocking extended job) and gave the go
-for both. I2 is implemented; I1 is next.
-Still open: the contract proposals (CPU sets, the ports table C10), the
-step 14 interpretations (`docs serve`, the QA maintenance window), and the
-remaining `TODO(verify)` items (110), which need network access or reference
-hardware.
+Phase 1 (infra) is complete as far as it can be built here. The owner
+approved the deviations I1 (Secure Boot MOK consent flow) and I2 (required
+fast-lane job as specified, whole play only as a non-blocking extended job)
+and gave the go for both: I2 is implemented, I1 is next. The owner approved
+contract v2 (plug-in platforms, owner answers section I); its order is: step
+0 by the owner (spec update, `pokus-infra` created with infra's history),
+then the v2 steps in `pokus-infra`, then Phase 2 (platform) against contract
+v2. Still open: the new points N1-N4 of contract v2, the contract proposals
+(CPU sets, the ports table C10), the step 14 interpretations (`docs serve`,
+the QA maintenance window), and the remaining `TODO(verify)` items (110),
+which need network access or reference hardware.
