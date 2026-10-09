@@ -780,6 +780,15 @@ asks firewalld for the two zones the firewall role creates,
 `pinka-tailnet` and `pinka-run`, instead of a zone `pinka` that never
 existed; a test keeps doctor's zone list equal to the role's.
 
+**3d, step 1 (proposed): the contract core.** `infra/contract/` (the
+manifest's JSON Schema, `profiles.yml`, the generated `reserved-names.yml`)
+and `infra/tools/platform/` (`pinka-platform validate`: strict YAML, schema,
+invariant checks, derived names against the reserved lists, each other and
+the host, release directory checks; renderers of `principals.json` and
+`endpoints.toml`), with 227 tests, generated reference pages and a how-to
+for platform developers. Choices, interpretations and two proposals for
+step 2 are in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 1".
+
 ### Privacy clean-up (owner instruction)
 
 Scan everything already written for personal or installation-specific data,
@@ -944,8 +953,8 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
-| 3c3 | Doctor's firewalld zone check | done | (scoped exception) |
-| 3d | Contract v2, steps 1-8 | not started | — |
+| 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
+| 3d | Contract v2, steps 1-8 | step 1 proposed | — |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Repository name `pokus-infrastructure` | not started | — |
@@ -1098,8 +1107,8 @@ Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
 work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
 under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
-committed, and 3c2 (`502f15c`) and 3c3 (the firewalld zone fix) under the
-scoped commit exception; next are 3d steps 1-8, each waiting for "commit".
-Still open: the remaining
+committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
+exception; 3d step 1 is proposed and waits for "commit", then steps 2-8 one
+at a time. Still open: the remaining
 `TODO(verify)` items (111), which need network access or reference
 hardware.

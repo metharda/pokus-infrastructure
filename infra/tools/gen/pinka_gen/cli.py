@@ -11,6 +11,7 @@ from pathlib import Path
 from pinka_gen import (
     ansible_docs,
     bootstrap,
+    contract,
     installer,
     lab,
     pages,
@@ -76,6 +77,11 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         readme.README: lambda: readme.readme(root),
         installer.CLI_PAGE: installer.cli_page,
         installer.ANSWERS_PAGE: lambda: installer.answers_page(root),
+        contract.RESERVED: lambda: contract.reserved_yml(root),
+        contract.SCHEMA: lambda: contract.schema_json(root),
+        contract.MANIFEST_PAGE: lambda: contract.manifest_page(root),
+        contract.PROFILES_PAGE: lambda: contract.profiles_page(root),
+        contract.CLI_PAGE: contract.cli_page,
     }
     for name in installer.SCREENSHOTS:
         found[installer.screenshot(name)] = (
@@ -175,6 +181,7 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
     ]
     layout = load_layout(root)
     entries += [(f"layout path {path}", "docs/architecture.md", f"`{path}`") for path in layout]
+    entries += contract.reference_entries(root)
     return entries
 
 

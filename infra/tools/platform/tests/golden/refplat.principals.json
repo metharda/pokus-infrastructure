@@ -1,0 +1,74 @@
+{
+  "_comment": "Managed by pinka (principals.json, contract v2 §12.3). Local changes will be overwritten.",
+  "schema_version": 1,
+  "contract_version": 2,
+  "platform": "refplat",
+  "groups": {
+    "admins": "pinka-admin",
+    "researchers": "pinka"
+  },
+  "services": [
+    {
+      "name": "ctl",
+      "profile": "controller",
+      "account": "refplat-ctl",
+      "uid": 2001
+    },
+    {
+      "name": "agent",
+      "profile": "untrusted-agent",
+      "account": "refplat-agent",
+      "uid": 2002
+    }
+  ],
+  "jobs": [
+    {
+      "name": "tune",
+      "profile": "gpu-trainer",
+      "account": "refplat-tune",
+      "uid": 2003
+    }
+  ],
+  "sockets": [
+    {
+      "service": "ctl",
+      "name": "api",
+      "path": "/run/pinka/platform/ctl/api.sock",
+      "owner": "refplat-ctl",
+      "group": "refplat-ctl-api",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [],
+        "accounts": [],
+        "humans": [
+          "researchers"
+        ],
+        "human_groups": [
+          "pinka"
+        ],
+        "root": true
+      }
+    },
+    {
+      "service": "ctl",
+      "name": "session",
+      "path": "/run/pinka/platform/ctl/session.sock",
+      "owner": "refplat-ctl",
+      "group": "refplat-ctl-session",
+      "mode": "0660",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "refplat-agent"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    }
+  ]
+}

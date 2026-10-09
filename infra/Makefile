@@ -15,7 +15,7 @@ VENV := .venv
 BIN := $(VENV)/bin
 NODE_BIN := node_modules/.bin
 REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks
-GEN := PYTHONPATH=tools/gen:preflight:tools/pinka-lab:tools/test-distros:installer $(BIN)/python -m pinka_gen
+GEN := PYTHONPATH=tools/gen:preflight:tools/pinka-lab:tools/test-distros:installer:tools/platform $(BIN)/python -m pinka_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pinka_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
@@ -36,7 +36,7 @@ PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/te
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pinka-lab \
-  tools/test-distros installer ansible/callback_plugins
+  tools/test-distros installer ansible/callback_plugins tools/platform
 PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -92,7 +92,8 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
 	  ansible/roles/deploy_source/files ansible/roles/platform/files ansible/roles/inference_control/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
-	  installer/pinka_installer installer/tests ansible/callback_plugins
+	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform \
+	  tools/platform/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pinka_preflight preflight/tests
 	$(BIN)/mypy --python-version 3.10 tools/pinka-lab/pinka_lab tools/pinka-lab/tests

@@ -127,6 +127,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `compose/`, `config/` | Compose files and configuration of the lab services (Postgres, OPA, the telemetry stack, vLLM), rendered by their roles. |
 | `incus/` | Incus preseed, profiles and projects. |
 | `vllm/` | vLLM serving profiles per GPU class. |
+| `contract/` | Contract v2, published with every release: the platform manifest's JSON Schema, the eight privilege profiles and the reserved names (generated). |
 | `tests/` | The CI answers file and the distribution test targets and results. |
 | `contrib/windows/` | An optional Windows-side helper for WSL hosts. |
 | `tools/pinka-lab/` | `pinka`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
@@ -134,6 +135,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
 | `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. |
 | `tools/repo-checks/` | Repository checks: privacy scan, docs lint, link check, Mermaid extraction. |
+| `tools/platform/` | `pinka-platform`: the contract v2 manifest validator and the renderer of the principals and endpoints files. |
 | `versions.lock.yml` | Every pinned external artifact with its verification source (`docs/reference/versions.md`). |
 | `.github/workflows/ci.yml` | CI: lint, unit tests, strict docs build, weekly link check. CI never provisions anything. |
 

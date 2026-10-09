@@ -66,6 +66,7 @@ prepreflight
 preseed
 procps
 qwen
+refplat
 rego
 repodata
 Resolv

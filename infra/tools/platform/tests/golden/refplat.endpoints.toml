@@ -1,0 +1,58 @@
+# Managed by pinka (endpoints.toml, contract v2 §12.3). Local changes will be overwritten.
+# The addresses and paths infra provides to the platform, with the effective ports.
+schema_version = 1
+platform = "refplat"
+
+[lab]
+machine = "pinka-lab"
+lab_mode = "production"
+node_role = "full"
+
+[postgres]
+socket_dir = "/run/pinka/postgres"
+reader_socket_dir = "/run/pinka/postgres-reader"
+database = "refplat"
+migrator_role = "refplat_migrator"
+reader_role = "refplat_reader"
+grafana_role = "refplat_grafana"
+
+[postgres.roles]
+ctl = "refplat_ctl"
+
+[telemetry]
+otlp_grpc = "127.0.0.1:4317"
+otlp_http = "127.0.0.1:4318"
+vm_collector_grpc = "198.18.0.1:4317"
+vm_collector_http = "198.18.0.1:4318"
+agent_otlp_socket = "/run/pinka/otlp/agent.sock"
+query_socket = "/run/pinka/query.sock"
+
+[gpu]
+arbiter_socket = "/run/pinka/gpu.sock"
+
+[signing]
+key_file = "/etc/pinka/signing/refplat/signing.key"
+public_key_file = "/etc/pinka/signing/refplat/signing.pub"
+published_keys_dir = "/srv/pinka/shared/signing-keys"
+
+[attestations]
+trusted_keys_dir = "/etc/pinka/qa/trusted-keys"
+attestations_dir = "/etc/pinka/qa/attestations"
+
+[sessions]
+records_dir = "/var/lib/pinka/sessions"
+fingerprint_command = ["pinka", "fingerprint", "--json"]
+
+[ports]
+docs_serve = 18706
+gateway_adhoc = 18705
+grafana = 18700
+incus_https = 8443
+inference_control = 18710
+loki = 18702
+opa = 8181
+otlp_grpc = 4317
+otlp_http = 4318
+prometheus = 18701
+tempo = 18703
+vllm = 18704

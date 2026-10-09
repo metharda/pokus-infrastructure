@@ -1,0 +1,324 @@
+# Managed by pinka (contract/profiles.yml). Local changes will be overwritten.
+#
+# The eight privilege profiles of contract v2 (BUILD_PROMPT §12.2): the single
+# source of the profile table, of the socket connection rules (§12.3) and of
+# infra's caps on manifest values. The manifest validator reads it, the
+# renderer will (contract v2 step 3), and tools/gen turns it into
+# docs/reference/platform-profiles.md. Published with every release in
+# contract/; it changes only with a contract version bump.
+contract_version: 2
+
+# Upper bounds for the values a manifest may set (§12.1, §12.9, §7.18).
+# Sizes are systemd-style: a positive integer with the suffix K, M or G.
+caps:
+  service_memory_max: 16G
+  service_tasks_max: 4096
+  hook_timeout_seconds: 3600
+  job_timeout_seconds: 86400
+  job_memory_max: 64G
+  job_cpus: 32
+  job_gpus: 1
+  telemetry_labels: 4
+  manifest_bytes: 262144
+# Defaults when a service's `limits` leave a value out.
+defaults:
+  service_memory_max: 2G
+  service_tasks_max: 512
+
+# The fixed list of relaxations a service may request.
+relaxations:
+  wx-memory:
+    description: turns off MemoryDenyWriteExecute, which Quarto needs
+    unit_change: MemoryDenyWriteExecute=no
+
+# Who may connect to a socket: profiles, the human classes and root.
+human_classes:
+  researchers: {group: pinka, description: every researcher}
+  admins: {group: pinka-admin, description: researchers with sudo}
+
+# The columns of the profile table, in order, with their headings.
+columns:
+  database: Database
+  incus: Incus
+  telemetry: Telemetry
+  inference: Inference and GPU
+  restricted_data: Restricted data
+  filesystem: Filesystem
+  network: Network
+
+# Per profile:
+#   kind               service or job
+#   table              the cells of the profile table, verbatim from §12.2
+#   database_role      a login role of its own (true) or none
+#   restricted_schema  allowed, never or none (no role at all)
+#   restricted_data    read or never: membership in pinka-restricted
+#   incus_projects     projects of its restricted Incus certificate
+#   telemetry_send     otlp, agent-socket or none
+#   telemetry_query    through the query proxy (member of pinka-query)
+#   inference_api      reaches the inference API
+#   gpu_arbiter        may send requests to the GPU arbiter
+#   gpu_devices        gets GPU devices (through CDI, only while training)
+#   network            loopback or none
+#   listen_port        the one TCP port it may listen on (null: none)
+#   secrets            may have secrets
+#   relaxations        may request a relaxation
+#   serves_sockets     may serve sockets
+#   socket_clients     who may use a socket it serves: client profiles,
+#                      human classes, root, and the agent (dedicated: only on
+#                      a socket marked untrusted_clients; never)
+#   uses_sockets       may be a socket client
+profiles:
+  controller:
+    kind: service
+    summary: runs the platform; the only service that drives the GPU arbiter and the run networks
+    table:
+      database: own login role; table grants from migrations, `restricted` schema allowed
+      incus: restricted certificate for projects `bench` and `build`; run networks only through the run-network helper (§7.7)
+      telemetry: send; query Prometheus, Loki, Tempo through the query proxy only
+      inference: inference API; the only service that may request GPU arbiter transitions (serve, train, idle, publish a dataset); never GPU devices
+      restricted_data: read
+      filesystem: >-
+        release (read); own config, secrets and state; signing key (0400); attestations and trusted keys, session records, fingerprint, models,
+        adapter lineage (read)
+      network: loopback only, also with remote inference (§12.8); no listening TCP port
+    database_role: true
+    restricted_schema: allowed
+    restricted_data: read
+    incus_projects: [bench, build]
+    run_network_helper: true
+    telemetry_send: otlp
+    telemetry_query: true
+    inference_api: true
+    gpu_arbiter: true
+    gpu_devices: false
+    network: loopback
+    listen_port: null
+    secrets: true
+    relaxations: true
+    serves_sockets: true
+    socket_clients:
+      profiles: [controller, inference-broker, sandbox-operator, restricted-operator, restricted-reader, observer]
+      humans: [researchers, admins]
+      root: true
+      agent: dedicated
+    uses_sockets: true
+  inference-broker:
+    kind: service
+    summary: brokers inference for the agent and the researchers
+    table:
+      database: own login role; never `restricted`
+      incus: none
+      telemetry: send
+      inference: inference API
+      restricted_data: never
+      filesystem: release; own config, secrets, state
+      network: loopback only, also with remote inference (§12.8); may listen on exactly one port, the researcher endpoint `127.0.0.1:18705`
+    database_role: true
+    restricted_schema: never
+    restricted_data: never
+    incus_projects: []
+    run_network_helper: false
+    telemetry_send: otlp
+    telemetry_query: false
+    inference_api: true
+    gpu_arbiter: false
+    gpu_devices: false
+    network: loopback
+    listen_port: 18705
+    secrets: true
+    relaxations: true
+    serves_sockets: true
+    socket_clients:
+      profiles: [controller]
+      humans: [researchers]
+      root: true
+      agent: dedicated
+    uses_sockets: true
+  sandbox-operator:
+    kind: service
+    summary: operates the target sandbox in project bench
+    table:
+      database: own login role; never `restricted`
+      incus: restricted certificate for project `bench`
+      telemetry: send; query (via proxy)
+      inference: none
+      restricted_data: never
+      filesystem: release; own config, secrets, state
+      network: loopback only, no listening port
+    database_role: true
+    restricted_schema: never
+    restricted_data: never
+    incus_projects: [bench]
+    run_network_helper: false
+    telemetry_send: otlp
+    telemetry_query: true
+    inference_api: false
+    gpu_arbiter: false
+    gpu_devices: false
+    network: loopback
+    listen_port: null
+    secrets: true
+    relaxations: true
+    serves_sockets: true
+    socket_clients:
+      profiles: [controller]
+      humans: []
+      root: true
+      agent: dedicated
+    uses_sockets: true
+  restricted-operator:
+    kind: service
+    summary: works on targets with restricted data (for example a fault injector or a verifier)
+    table:
+      database: own login role; `restricted` allowed
+      incus: restricted certificate for project `bench`
+      telemetry: send
+      inference: none
+      restricted_data: read
+      filesystem: release; own config, secrets, state
+      network: loopback only, no listening port
+    database_role: true
+    restricted_schema: allowed
+    restricted_data: read
+    incus_projects: [bench]
+    run_network_helper: false
+    telemetry_send: otlp
+    telemetry_query: false
+    inference_api: false
+    gpu_arbiter: false
+    gpu_devices: false
+    network: loopback
+    listen_port: null
+    secrets: true
+    relaxations: true
+    serves_sockets: true
+    socket_clients:
+      profiles: [controller]
+      humans: []
+      root: true
+      agent: never
+    uses_sockets: true
+  restricted-reader:
+    kind: service
+    summary: reads restricted data without touching targets (for example an evaluator)
+    table:
+      database: own login role; `restricted` allowed
+      incus: none
+      telemetry: send; query through the query proxy only
+      inference: none
+      restricted_data: read
+      filesystem: release; own config, secrets, state; optional tools
+      network: loopback only, no listening port
+    database_role: true
+    restricted_schema: allowed
+    restricted_data: read
+    incus_projects: []
+    run_network_helper: false
+    telemetry_send: otlp
+    telemetry_query: true
+    inference_api: false
+    gpu_arbiter: false
+    gpu_devices: false
+    network: loopback
+    listen_port: null
+    secrets: true
+    relaxations: true
+    serves_sockets: true
+    socket_clients:
+      profiles: [controller]
+      humans: []
+      root: true
+      agent: never
+    uses_sockets: true
+  observer:
+    kind: service
+    summary: reads telemetry and non-restricted data (for example a dashboard or report exporter)
+    table:
+      database: own login role; never `restricted`
+      incus: none
+      telemetry: send; query through the query proxy only
+      inference: none
+      restricted_data: never
+      filesystem: release; own config, secrets, state
+      network: loopback only, no listening port
+    database_role: true
+    restricted_schema: never
+    restricted_data: never
+    incus_projects: []
+    run_network_helper: false
+    telemetry_send: otlp
+    telemetry_query: true
+    inference_api: false
+    gpu_arbiter: false
+    gpu_devices: false
+    network: loopback
+    listen_port: null
+    secrets: true
+    relaxations: true
+    serves_sockets: true
+    socket_clients:
+      profiles: [controller, inference-broker, sandbox-operator, restricted-operator, restricted-reader, observer]
+      humans: [researchers, admins]
+      root: true
+      agent: never
+    uses_sockets: true
+  untrusted-agent:
+    kind: service
+    summary: the AI agent under test; trusted with nothing
+    table:
+      database: "none: no role, database socket directories hidden"
+      incus: none
+      telemetry: send only, through infra's separate agent OTLP socket; no query
+      inference: none directly; only through a dedicated broker socket the manifest declares
+      restricted_data: never
+      filesystem: >-
+        allowlist: release (read), own state, own non-secret config, its dedicated sockets; the rest of `/srv/pinka`, `/etc/pinka`, `/var/lib/pinka`,
+        `/run/pinka` hidden
+      network: none (`PrivateNetwork=yes`, Unix sockets only)
+    database_role: false
+    restricted_schema: none
+    restricted_data: never
+    incus_projects: []
+    run_network_helper: false
+    telemetry_send: agent-socket
+    telemetry_query: false
+    inference_api: false
+    gpu_arbiter: false
+    gpu_devices: false
+    network: none
+    listen_port: null
+    secrets: false
+    relaxations: false
+    serves_sockets: false
+    socket_clients: null
+    uses_sockets: true
+  gpu-trainer:
+    kind: job
+    summary: a training container of the platform (jobs only)
+    table:
+      database: none
+      incus: none
+      telemetry: none; progress goes to the job log and a metrics file in its output directory
+      inference: the GPU through CDI, only while the arbiter is in training mode for this job
+      restricted_data: never
+      filesystem: >-
+        mounts only: base model (read-only), declared datasets (read-only), its output and checkpoint directory (read-write); read-only root file
+        system
+      network: none (`--network none`)
+    database_role: false
+    restricted_schema: none
+    restricted_data: never
+    incus_projects: []
+    run_network_helper: false
+    telemetry_send: none
+    telemetry_query: false
+    inference_api: false
+    gpu_arbiter: false
+    gpu_devices: true
+    network: none
+    listen_port: null
+    secrets: false
+    relaxations: false
+    serves_sockets: false
+    socket_clients: null
+    uses_sockets: false

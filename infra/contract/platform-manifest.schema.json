@@ -1,0 +1,710 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/platform-manifest.schema.json",
+  "title": "Platform manifest (contract v2)",
+  "description": "The manifest every platform release carries at its root as platform-manifest.yaml (BUILD_PROMPT §12.1). Unknown fields are errors. Infra validates it, derives every name it would create and checks the invariants of contract v2 before anything on the host changes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "name",
+    "version",
+    "runtime",
+    "services",
+    "hooks"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": 2,
+      "description": "The contract version; equals the contract version of the installed infra."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,11}$",
+      "not": {
+        "$ref": "#/$defs/reserved_platform_names"
+      },
+      "description": "Platform name: 2-12 lowercase letters and digits, starting with a letter; not a reserved platform name. Accounts, units, roles and paths are derived from it."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$",
+      "description": "SemVer of the release."
+    },
+    "runtime": {
+      "enum": [
+        "python-uv",
+        "static"
+      ],
+      "description": "python-uv: infra runs uv sync --frozen (uv.lock at the release root); static: nothing to build."
+    },
+    "requires": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "postgres",
+          "incus",
+          "telemetry",
+          "inference",
+          "opa",
+          "gpu"
+        ]
+      },
+      "description": "Infra facilities the platform needs; the health gate checks exactly these."
+    },
+    "services": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "description": "The platform's services: exactly one controller, at most one inference-broker.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profile",
+          "start"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{0,9}$",
+            "description": "Service name: 1-10 lowercase letters and digits, starting with a letter."
+          },
+          "profile": {
+            "enum": [
+              "controller",
+              "inference-broker",
+              "sandbox-operator",
+              "restricted-operator",
+              "restricted-reader",
+              "observer",
+              "untrusted-agent"
+            ],
+            "description": "Privilege profile (contract/profiles.yml); gpu-trainer is for jobs only."
+          },
+          "start": {
+            "$ref": "#/$defs/command",
+            "description": "Start command inside the release."
+          },
+          "after": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]{0,9}$"
+            },
+            "description": "Services of this manifest that start first."
+          },
+          "state": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 16,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+            },
+            "description": "State directories of the service."
+          },
+          "config": {
+            "$ref": "#/$defs/relative_path",
+            "description": "JSON Schema (inside the release) the service's configuration is checked against."
+          },
+          "secrets": {
+            "type": "array",
+            "uniqueItems": true,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "description": "Names of the service's secrets; never for untrusted-agent."
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "memory_max": {
+                "$ref": "#/$defs/size",
+                "description": "MemoryMax of the unit; within infra's cap."
+              },
+              "tasks_max": {
+                "type": "integer",
+                "minimum": 16,
+                "description": "TasksMax of the unit; within infra's cap."
+              }
+            },
+            "description": "Resource limits within infra's caps."
+          },
+          "relaxations": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "wx-memory"
+              ]
+            },
+            "description": "From the fixed list; never for untrusted-agent."
+          }
+        }
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "maxItems": 16,
+      "description": "GPU training jobs, run by infra as containers.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profile",
+          "image",
+          "command",
+          "inputs",
+          "outputs",
+          "resources",
+          "timeout_seconds",
+          "resumable"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{0,9}$",
+            "description": "Job name: 1-10 lowercase letters and digits, starting with a letter."
+          },
+          "profile": {
+            "const": "gpu-trainer",
+            "description": "Always gpu-trainer."
+          },
+          "image": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?/[a-z0-9]+([._/-][a-z0-9]+)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@sha256:[0-9a-f]{64}$",
+            "description": "OCI reference with registry, pinned by @sha256: digest."
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "description": "Command inside the container."
+          },
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "base_model": {
+                "type": "boolean",
+                "description": "Mount the base model read-only."
+              },
+              "datasets": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+                },
+                "description": "Dataset kinds mounted read-only."
+              }
+            },
+            "description": "What the job reads."
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "adapter"
+            ],
+            "properties": {
+              "adapter": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "Name of the adapter the job produces; the only output kind."
+              }
+            },
+            "description": "What the job produces."
+          },
+          "resources": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gpus",
+              "memory_max",
+              "cpus"
+            ],
+            "properties": {
+              "gpus": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "1, or 0 for the CPU-only variant."
+              },
+              "memory_max": {
+                "$ref": "#/$defs/size",
+                "description": "Memory limit of the container; within infra's cap."
+              },
+              "cpus": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "CPUs of the container; within infra's cap."
+              }
+            },
+            "description": "Container resources."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Run time limit; within infra's cap."
+          },
+          "resumable": {
+            "type": "boolean",
+            "description": "Whether the job resumes from its checkpoints."
+          }
+        }
+      }
+    },
+    "sockets": {
+      "type": "array",
+      "maxItems": 64,
+      "description": "Unix sockets infra creates for the services (connection rules of §12.3).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "service",
+          "clients"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z]([a-z0-9-]{0,14}[a-z0-9])?$",
+            "description": "Socket name: 1-16 lowercase letters, digits and hyphens."
+          },
+          "service": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{0,9}$",
+            "description": "The serving service."
+          },
+          "clients": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "controller",
+                "inference-broker",
+                "sandbox-operator",
+                "restricted-operator",
+                "restricted-reader",
+                "observer",
+                "untrusted-agent",
+                "gpu-trainer",
+                "researchers",
+                "admins",
+                "root"
+              ]
+            },
+            "description": "Client profiles, the human classes researchers and admins, and root."
+          },
+          "untrusted_clients": {
+            "type": "boolean",
+            "description": "A socket dedicated to the agent: untrusted-agent is its only client."
+          }
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "health"
+      ],
+      "properties": {
+        "migrate": {
+          "$ref": "#/$defs/hook",
+          "description": "At deployment, before the new release starts."
+        },
+        "drain": {
+          "$ref": "#/$defs/hook",
+          "description": "Before stopping; argument --timeout <seconds>."
+        },
+        "health": {
+          "$ref": "#/$defs/hook",
+          "description": "After start until healthy; pinka status; doctor."
+        },
+        "reconcile": {
+          "$ref": "#/$defs/hook",
+          "description": "At every start, before the services."
+        }
+      },
+      "description": "The four hooks infra drives the platform through (§12.9); health is required."
+    },
+    "backup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relative_path"
+          },
+          "description": "State paths to back up: <service>/<state directory>[/...]."
+        },
+        "database": {
+          "type": "boolean",
+          "description": "Whether the platform database is backed up."
+        }
+      },
+      "description": "What infra backs up."
+    },
+    "content": {
+      "type": "array",
+      "maxItems": 16,
+      "description": "Content packages deployed from their own sources.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "restricted",
+          "required"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,30}[a-z0-9]$",
+            "description": "Package name."
+          },
+          "restricted": {
+            "type": "boolean",
+            "description": "Restricted packages go to the restricted area only."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the platform refuses to start without it."
+          }
+        }
+      }
+    },
+    "docs": {
+      "$ref": "#/$defs/relative_path",
+      "description": "Documentation directory in the release."
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundle",
+        "decision_path"
+      ],
+      "properties": {
+        "bundle": {
+          "$ref": "#/$defs/relative_path",
+          "description": "OPA bundle directory in the release, loaded read-only."
+        },
+        "decision_path": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(/[a-z][a-z0-9_]*)+$",
+          "description": "Decision path below /v1/data, for example <platform>/action/decision."
+        }
+      },
+      "description": "The platform's OPA policy."
+    },
+    "dashboards": {
+      "$ref": "#/$defs/relative_path",
+      "description": "Grafana dashboards directory in the release (JSON files only)."
+    },
+    "tools": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "quarto"
+        ]
+      },
+      "description": "Optional pinned tools from infra's list."
+    },
+    "cli": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "run"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "description": "Command name linked into /usr/local/bin; not reserved, not an existing command."
+        },
+        "run": {
+          "$ref": "#/$defs/command",
+          "description": "Command inside the release."
+        }
+      },
+      "description": "The researchers' CLI."
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "labels": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 4,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+          },
+          "description": "Up to 4 resource attributes the collector turns into Loki labels."
+        }
+      },
+      "description": "Telemetry settings."
+    }
+  },
+  "$defs": {
+    "relative_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^(?!/)(?!.*//)(?!(.*/)?\\.\\.?(/|$))[A-Za-z0-9._+@-][A-Za-z0-9._+@/-]*$",
+      "description": "A relative, normalized path inside the release: no leading /, no empty, . or .. segment; a trailing / is allowed for directories."
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "description": "A command: the first element is a relative path to a regular file inside the release, the others are its arguments."
+    },
+    "size": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,5}[KMG]$",
+      "description": "A size with the suffix K, M or G (systemd style)."
+    },
+    "hook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run",
+        "timeout_seconds"
+      ],
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/command",
+          "description": "Command inside the release; it prints one JSON line on stdout."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Seconds until SIGTERM, then SIGKILL; within infra's cap."
+        }
+      }
+    },
+    "reserved_accounts_groups": {
+      "description": "Accounts and groups; also every account or group already on the host.",
+      "enum": [
+        "pinka",
+        "pinka-admin",
+        "pinka-build",
+        "pinka-datasets",
+        "pinka-gt",
+        "pinka-lab",
+        "pinka-monitor",
+        "pinka-query",
+        "pinka-restricted",
+        "root"
+      ]
+    },
+    "reserved_units": {
+      "description": "systemd units, targets and slices (names without .service).",
+      "enum": [
+        "pinka-backup",
+        "pinka-backup-prune",
+        "pinka-compose",
+        "pinka-core",
+        "pinka-docker-incus-compat",
+        "pinka-docs",
+        "pinka-gpu-arbiter",
+        "pinka-gpu-job@",
+        "pinka-health-gate",
+        "pinka-hook@",
+        "pinka-incus-events",
+        "pinka-inference",
+        "pinka-inference-control",
+        "pinka-inference-forwarder",
+        "pinka-lab.target",
+        "pinka-nftables",
+        "pinka-observability",
+        "pinka-otlp-agent",
+        "pinka-pgdump",
+        "pinka-platform.target",
+        "pinka-run-network",
+        "pinka-security-patch",
+        "pinka-services.slice",
+        "pinka-session-start",
+        "pinka-sleep-inhibit",
+        "pinka-vllm-deploy",
+        "pinka-vllm-deploy@",
+        "pinka-vm-otlp-address",
+        "pinka-window-expiry"
+      ]
+    },
+    "reserved_containers": {
+      "description": "Container names. Patterns: pinka-job-*",
+      "anyOf": [
+        {
+          "enum": [
+            "pinka-cadvisor",
+            "pinka-gpu-exporter",
+            "pinka-grafana",
+            "pinka-loki",
+            "pinka-node-exporter",
+            "pinka-opa",
+            "pinka-otel-gateway",
+            "pinka-otel-journald",
+            "pinka-postgres",
+            "pinka-postgres-exporter",
+            "pinka-prometheus",
+            "pinka-query-proxy",
+            "pinka-tempo",
+            "pinka-vllm"
+          ]
+        },
+        {
+          "pattern": "^pinka\\-job\\-.*$"
+        }
+      ]
+    },
+    "reserved_incus": {
+      "description": "Incus networks, network ACLs, interfaces, projects and storage pools. Patterns: r-*",
+      "anyOf": [
+        {
+          "enum": [
+            "bench",
+            "build",
+            "pinka-build0",
+            "pinka-otlp0",
+            "pinka-run-default",
+            "pinka-targets"
+          ]
+        },
+        {
+          "pattern": "^r\\-.*$"
+        }
+      ]
+    },
+    "reserved_postgresql_roles": {
+      "description": "PostgreSQL roles. Patterns: pg_*",
+      "anyOf": [
+        {
+          "enum": [
+            "pinka_monitor",
+            "postgres"
+          ]
+        },
+        {
+          "pattern": "^pg_.*$"
+        }
+      ]
+    },
+    "reserved_postgresql_databases": {
+      "description": "PostgreSQL databases.",
+      "enum": [
+        "postgres",
+        "template0",
+        "template1"
+      ]
+    },
+    "reserved_commands": {
+      "description": "Commands; also every command already on the PATH.",
+      "enum": [
+        "pinka",
+        "pinka-preflight"
+      ]
+    },
+    "reserved_platform_names": {
+      "description": "Platform names.",
+      "enum": [
+        "infra",
+        "lab",
+        "pinka",
+        "platform",
+        "pokus",
+        "restricted",
+        "root",
+        "system",
+        "training"
+      ]
+    },
+    "reserved_paths_srv_pinka": {
+      "description": "Path segments directly below /srv/pinka.",
+      "enum": [
+        "artifacts",
+        "backups",
+        "catalog",
+        "datasets",
+        "deploy",
+        "images",
+        "models",
+        "platforms",
+        "reports",
+        "restricted",
+        "services",
+        "shared",
+        "state",
+        "training",
+        "users"
+      ]
+    },
+    "reserved_paths_etc_pinka": {
+      "description": "Path segments directly below /etc/pinka.",
+      "enum": [
+        "gpu",
+        "incus",
+        "inference",
+        "platform",
+        "postgres-reader",
+        "qa",
+        "secrets",
+        "signing",
+        "vllm"
+      ]
+    },
+    "reserved_paths_var_lib_pinka": {
+      "description": "Path segments directly below /var/lib/pinka.",
+      "enum": [
+        "fingerprint",
+        "git",
+        "gpu",
+        "platforms",
+        "run-networks",
+        "sessions",
+        "staging"
+      ]
+    },
+    "reserved_paths_run_pinka": {
+      "description": "Path segments directly below /run/pinka.",
+      "enum": [
+        "gpu.sock",
+        "otlp",
+        "platform",
+        "postgres",
+        "postgres-reader",
+        "query.sock",
+        "run-network.sock"
+      ]
+    }
+  }
+}

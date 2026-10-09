@@ -97,6 +97,7 @@ nav:
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
+      - Validate a platform release: how-to/validate-a-platform-release.md
   - Reference:
       - Support matrix: support-matrix.md
       - Component sources: reference/component-sources.md
@@ -104,6 +105,9 @@ nav:
       - "CLI: pinka-preflight": reference/cli/pinka-preflight.md
       - "CLI: pinka": reference/cli/pinka.md
       - "CLI: pinka-installer": reference/cli/pinka-installer.md
+      - "CLI: pinka-platform": reference/cli/pinka-platform.md
+      - Platform manifest: reference/platform-manifest.md
+      - Platform privilege profiles: reference/platform-profiles.md
       - Installer answers file: reference/answers.md
       - Doctor checks: reference/doctor-checks.md
       - Exit codes: reference/exit-codes.md

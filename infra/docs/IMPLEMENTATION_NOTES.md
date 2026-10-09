@@ -2178,3 +2178,104 @@ been built yet. The patterns are applied after the base image's baseline,
 like the others, so only what a build adds counts; whether the packages of
 the blueprints add one of the three strings below `/etc`, `/opt`, `/srv` or
 `/usr/local` shows at the first real build (Phase 5 self-test).
+
+## Contract v2, step 1: the contract core (plan step 3d.1)
+
+BUILD_PROMPT §16 step 15 ("Contract v2 core"): the manifest schema with the
+reserved lists, the eight profiles, the validator and invariant checks, and
+the principals and endpoints files. Nothing on a host uses it yet: the
+deployment (step 2) calls the validator, the rendering (step 3) writes the
+principals and endpoints files.
+
+- **`contract/`**: `platform-manifest.schema.json` (written by hand; `make
+  generate` fills only its `$defs.reserved_*`), `profiles.yml` (the profile
+  table of §12.2 verbatim, the machine-readable grants, the socket rules of
+  §12.3, the caps and the one relaxation) and `reserved-names.yml`
+  (generated from the lists of §12.1 and from infra's own data: the `pinka*`
+  groups, the unit templates, the compose projects and containers, the backup
+  jobs, the Incus pool, network, ACL and dummy interface, the PostgreSQL
+  monitor role and the `/srv/pinka` layout). `contract/records/` follows in
+  the steps that define its records (§16 steps 16, 18 and 19).
+- **`tools/platform/pinka_platform/`** (`pinka-platform validate <release>`,
+  exit 0 valid, 65 refused): the strict YAML loader, a schema validator for
+  exactly the keywords the schema uses, the invariant checks, the derived
+  names with the reserved-name, clash and host checks, the release
+  directory checks, a summary for `--inspect-platform` and the installer,
+  and the renderers of `principals.json` and `endpoints.toml`.
+- **Tests** (`tools/platform/tests/`, 227): the reference platform, the Pokus
+  Platform's manifest (a fixture, as §12.1 asks) and a manifest using all
+  eight profiles validate; one invalid case per rule (71 cases: the list of
+  §11 and every further rule), each also run through `jsonschema`, which
+  must agree on whether the schema refuses it; a reserved name in each
+  namespace and the host checks; five unsafe YAML forms; the source overlap
+  rule; release directory checks; the CLI; golden files of the principals
+  and endpoints files.
+- **Generated references**: `docs/reference/platform-manifest.md`,
+  `platform-profiles.md` and `cli/pinka-platform.md`, covered by the docs
+  coverage check; a how-to for platform developers
+  (`docs/how-to/validate-a-platform-release.md`).
+
+### Interpretations awaiting owner confirmation (3d.1)
+
+1. **Validator runtime.** Python 3.12 with PyYAML only (both are in
+   bootstrap's Ansible environment) and an own schema validator that
+   implements exactly the schema's keywords and refuses any other; the tests
+   compare it with `jsonschema` on every case. Alternative: add `jsonschema`
+   and its dependencies (among them the compiled `rpds-py`) to bootstrap's
+   hash-locked requirements.
+2. **YAML.** Anchors, aliases, duplicate keys and non-string keys are
+   refused; the manifest may have at most 256 KiB.
+3. **Names.** A platform name starts with a letter (account names must);
+   service and job names are 1-10 lowercase letters and digits without
+   hyphens (so `<platform>-<service>` stays unambiguous); socket names have
+   1-16 characters with hyphens; a client group longer than 32 characters
+   is refused. Derived names are also compared with each other: a service
+   named `migrate`, `db`, `migrator`, `reader`, `grafana` or like a profile
+   clashes with a fixed name and is refused.
+4. **Caps** (the spec names none): service memory 16G and 4096 tasks
+   (defaults 2G and 512), hook timeout 3600 s, job timeout 86400 s, job
+   memory 64G, 32 CPUs, 1 GPU, 4 telemetry labels.
+5. **Commands** are a relative path to a regular file inside the release
+   plus arguments. For `python-uv`, commands below `.venv/` exist only after
+   the build, so they are checked again after it (`--built`); everything
+   else is checked before.
+6. **Policy.** `policy: {bundle, decision_path}`; the decision path is
+   relative to `/v1/data` (`<platform>/action/decision`) and may not start
+   with `pinka` or `system`.
+7. **CLI.** `cli` needs `run` as well as `name` (§12.1: "name and command");
+   the Pokus Platform fixture uses `run: [.venv/bin/potka]`.
+8. **Sockets.** The connection table is applied literally: `admins` may
+   use only sockets of `controller` and `observer` (the inference broker's
+   row names researchers only; admins are researchers anyway).
+9. **Host check.** Accounts, groups (client groups included) and commands
+   on the `PATH` that already exist refuse the manifest, except names the
+   same platform's active deployment recorded in
+   `/etc/pinka/platform/active.json` (`names`), which step 2 writes.
+10. **Reserved path segments** are compared per parent directory; with
+    today's layout no derived name lands at a reserved level, so the check
+    only guards future layout changes.
+11. **Endpoints file**: one table per facility the manifest `requires`
+    (`postgres`, `telemetry`, `inference`, `opa`, `incus`, `gpu`) plus `lab`,
+    `signing` (`key_file` `/etc/pinka/signing/<platform>/signing.key`,
+    `public_key_file`, `published_keys_dir`), `attestations`, `sessions` and
+    `ports` with the effective values. `inference.mode = remote` points at
+    the forwarder on the loopback; `scripted` is refused outside staging.
+12. **Principals file**: `services` and `jobs` with account and UID;
+    `sockets` with path, owner, client group, mode, whether it is dedicated
+    to the agent, and the clients as profiles, their accounts, human classes
+    with their groups, and root; `groups` names the researcher and admin
+    groups.
+13. **Invalid fixtures** are mutations of the valid fixtures, one table row
+    per rule, instead of a file per case.
+
+### Findings to report (3d.1)
+
+- §12.1 checks content packages only against the release path. Two content
+  packages from the same repository can still overlap each other, so a
+  restricted package could be extracted as part of a non-restricted one.
+  Proposed for step 2: refuse an overlap between a restricted package and
+  any other source path in the same repository too.
+- §12.1 does not tie `requires` to what the manifest uses. Proposed: refuse
+  a manifest whose services or fields need an undeclared facility (an
+  Incus profile without `incus`, `policy` without `opa`, a GPU job without
+  `gpu`), so the health gate checks everything the platform uses.

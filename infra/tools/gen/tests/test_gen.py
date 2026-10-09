@@ -45,6 +45,8 @@ def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
         "installer/requirements.lock",
         "installer/schema",
         "installer/tests/__snapshots__",
+        "contract",
+        "compose",
     ):
         src = ROOT / rel
         if src.is_dir():
@@ -71,6 +73,8 @@ def test_coverage_is_complete_and_detects_gaps(
         "tools/pinka-lab/schema",
         "tests/distros",
         "installer/schema",
+        "contract",
+        "compose",
     ):
         shutil.copytree(ROOT / rel, tmp_path / rel)
     ref = tmp_path / "docs/reference/cli/pinka-preflight.md"
@@ -81,8 +85,13 @@ def test_coverage_is_complete_and_detects_gaps(
     fix.write_text(
         fix.read_text(encoding="utf-8").replace("{#check-time-sync}", ""), encoding="utf-8"
     )
+    manifest_page = tmp_path / "docs/reference/platform-manifest.md"
+    manifest_page.write_text(
+        manifest_page.read_text(encoding="utf-8").replace("`cli.run`", "cli run"), encoding="utf-8"
+    )
     assert cli.coverage(tmp_path) == 1
     out = capsys.readouterr().out
+    assert "manifest field `cli.run`" in out
     assert "pinka-preflight option --offline" in out
     assert "troubleshooting section for doctor check time.sync" in out
 

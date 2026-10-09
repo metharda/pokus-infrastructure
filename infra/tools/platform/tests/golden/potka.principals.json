@@ -1,0 +1,253 @@
+{
+  "_comment": "Managed by pinka (principals.json, contract v2 §12.3). Local changes will be overwritten.",
+  "schema_version": 1,
+  "contract_version": 2,
+  "platform": "potka",
+  "groups": {
+    "admins": "pinka-admin",
+    "researchers": "pinka"
+  },
+  "services": [
+    {
+      "name": "orch",
+      "profile": "controller",
+      "account": "potka-orch",
+      "uid": 2001
+    },
+    {
+      "name": "agent",
+      "profile": "untrusted-agent",
+      "account": "potka-agent",
+      "uid": 2002
+    },
+    {
+      "name": "gw",
+      "profile": "inference-broker",
+      "account": "potka-gw",
+      "uid": 2003
+    },
+    {
+      "name": "exec",
+      "profile": "sandbox-operator",
+      "account": "potka-exec",
+      "uid": 2004
+    },
+    {
+      "name": "inject",
+      "profile": "restricted-operator",
+      "account": "potka-inject",
+      "uid": 2005
+    },
+    {
+      "name": "verify",
+      "profile": "restricted-operator",
+      "account": "potka-verify",
+      "uid": 2006
+    },
+    {
+      "name": "eval",
+      "profile": "restricted-reader",
+      "account": "potka-eval",
+      "uid": 2007
+    }
+  ],
+  "jobs": [
+    {
+      "name": "lora",
+      "profile": "gpu-trainer",
+      "account": "potka-lora",
+      "uid": 2008
+    }
+  ],
+  "sockets": [
+    {
+      "service": "orch",
+      "name": "api",
+      "path": "/run/pinka/platform/orch/api.sock",
+      "owner": "potka-orch",
+      "group": "potka-orch-api",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [],
+        "accounts": [],
+        "humans": [
+          "researchers",
+          "admins"
+        ],
+        "human_groups": [
+          "pinka",
+          "pinka-admin"
+        ],
+        "root": true
+      }
+    },
+    {
+      "service": "orch",
+      "name": "svc",
+      "path": "/run/pinka/platform/orch/svc.sock",
+      "owner": "potka-orch",
+      "group": "potka-orch-svc",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "inference-broker",
+          "sandbox-operator",
+          "restricted-operator",
+          "restricted-reader"
+        ],
+        "accounts": [
+          "potka-eval",
+          "potka-exec",
+          "potka-gw",
+          "potka-inject",
+          "potka-verify"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "orch",
+      "name": "agent-session",
+      "path": "/run/pinka/platform/orch/agent-session.sock",
+      "owner": "potka-orch",
+      "group": "potka-orch-agent-session",
+      "mode": "0660",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "potka-agent"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "gw",
+      "name": "agent",
+      "path": "/run/pinka/platform/gw/agent.sock",
+      "owner": "potka-gw",
+      "group": "potka-gw-agent",
+      "mode": "0660",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "potka-agent"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "gw",
+      "name": "svc",
+      "path": "/run/pinka/platform/gw/svc.sock",
+      "owner": "potka-gw",
+      "group": "potka-gw-svc",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "potka-orch"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "exec",
+      "name": "agent",
+      "path": "/run/pinka/platform/exec/agent.sock",
+      "owner": "potka-exec",
+      "group": "potka-exec-agent",
+      "mode": "0660",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "potka-agent"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "exec",
+      "name": "api",
+      "path": "/run/pinka/platform/exec/api.sock",
+      "owner": "potka-exec",
+      "group": "potka-exec-api",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "potka-orch"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "inject",
+      "name": "api",
+      "path": "/run/pinka/platform/inject/api.sock",
+      "owner": "potka-inject",
+      "group": "potka-inject-api",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "potka-orch"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "verify",
+      "name": "api",
+      "path": "/run/pinka/platform/verify/api.sock",
+      "owner": "potka-verify",
+      "group": "potka-verify-api",
+      "mode": "0660",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "potka-orch"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    }
+  ]
+}
