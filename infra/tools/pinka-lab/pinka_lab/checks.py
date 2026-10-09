@@ -27,6 +27,8 @@ PSQL_SCRIPT = (
     '"$@"'
 )
 KEY_MODE = 0o600
+# The zones the firewall role creates on firewalld hosts (tasks/firewalld.yml).
+FIREWALLD_ZONES = ("pinka-tailnet", "pinka-run")
 SQL_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 PROCESS_RE = re.compile(r'\(\("([^"]+)"')
 LOOPBACK_V4 = "127."
@@ -287,9 +289,9 @@ def check_firewall(ctx: Context) -> Outcome:
         if not table.ok:
             problems.append("nftables table inet pinka_filter is missing")
     elif backend == "firewalld":
-        zone = ctx.system.run(["firewall-cmd", "--info-zone", "pinka"])
-        if not zone.ok:
-            problems.append("firewalld zone pinka is missing")
+        for name in FIREWALLD_ZONES:
+            if not ctx.system.run(["firewall-cmd", "--info-zone", name]).ok:
+                problems.append(f"firewalld zone {name} is missing")
     elif backend == "ufw":
         status = ctx.system.run(["ufw", "status"])
         if "Status: active" not in status.stdout:

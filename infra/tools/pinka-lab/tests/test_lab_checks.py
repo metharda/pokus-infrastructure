@@ -225,9 +225,24 @@ class NetworkTest(Base):
         self.assertOutcome(run(checks.check_firewall, system), "fail", "ip6tables DOCKER-USER")
 
     def test_other_firewall_backends(self) -> None:
+        zones = {
+            "firewall-cmd --info-zone pinka-tailnet": (0, "pinka-tailnet"),
+            "firewall-cmd --info-zone pinka-run": (0, "pinka-run"),
+        }
+        self.assertOutcome(
+            run(checks.check_firewall, FakeSystem(zones), firewall__backend="firewalld"), "pass"
+        )
+        for missing in zones:
+            system = FakeSystem({k: v for k, v in zones.items() if k != missing})
+            self.assertOutcome(
+                run(checks.check_firewall, system, firewall__backend="firewalld"),
+                "fail",
+                f"zone {missing.split()[-1]} is missing",
+            )
+        # A zone named only "pinka" is not what the firewall role creates.
         system = FakeSystem({"firewall-cmd --info-zone pinka": (0, "pinka")})
         self.assertOutcome(
-            run(checks.check_firewall, system, firewall__backend="firewalld"), "pass"
+            run(checks.check_firewall, system, firewall__backend="firewalld"), "fail"
         )
         system = FakeSystem({"ufw status": (0, "Status: inactive\n")})
         self.assertOutcome(

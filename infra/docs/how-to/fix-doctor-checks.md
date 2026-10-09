@@ -96,8 +96,8 @@ tailnet address (`tailscale ip`): ports 18704 and 18710 on an inference node,
 
 ## `network.firewall`: firewall rules are missing {#check-network-firewall}
 
-The nftables table `inet pinka_filter`, the firewalld zone `pinka` or ufw is
-missing or inactive, or the `DOCKER-USER` rules that let Incus bridges pass
+The nftables table `inet pinka_filter`, the firewalld zones `pinka-tailnet`
+and `pinka-run` or ufw are missing or inactive, or the `DOCKER-USER` rules that let Incus bridges pass
 Docker's forwarding policy are missing. Run bootstrap with `--tags firewall`
 and see [How to configure the firewall backend](firewall-and-selinux.md).
 

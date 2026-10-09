@@ -2158,8 +2158,8 @@ installer's refused username prefixes.
 - Doctor's firewall check asks firewalld for the zone `pinka` (before:
   `pokus`), but the firewall role creates `pinka-tailnet` and `pinka-run`,
   so on a firewalld host the check always fails. The rename keeps the
-  behavior; the fix (check the two zones the role creates) is its own
-  commit after 3c2 (3c3, owner decision).
+  behavior; fixed in 3c3, its own commit after 3c2 (owner decision): doctor
+  checks the two zones the role creates, and a test keeps both lists equal.
 - The workflows read the CI secret `PINKA_PRIVACY_DENYLIST` (3c2; the
   secret `POKUS_PRIVACY_DENYLIST` named before never existed). Until the
   owner creates it, the scan runs without a denylist, as it always has.

@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from pinka_lab.config import LabConfig
 
-from ansible_testlib import GROUP_VARS, INFRA, ROLES, _templar, ansible_vars, evaluate
+from ansible_testlib import GROUP_VARS, INFRA, ROLES, _templar, ansible_vars, evaluate, load_yaml
 
 ROLE = ROLES / "doctor"
 IMPORTED_ROLES = (
@@ -331,3 +331,11 @@ def test_module_lists() -> None:
     }
     removed = _templar(dict(scope, doctor_installed=installed)).template(stale)
     assert removed == ["/usr/local/lib/pinka/pinka-lab/pinka_lab/old.py"]
+
+
+def test_firewall_check_knows_the_zones_of_the_firewall_role() -> None:
+    from pinka_lab import checks  # noqa: PLC0415 - next to the role data it is compared with
+
+    tasks = load_yaml(ROLES / "firewall" / "tasks" / "firewalld.yml")
+    created = next(t for t in tasks if t["name"] == "Create the pinka zones")["loop"]
+    assert tuple(created) == checks.FIREWALLD_ZONES

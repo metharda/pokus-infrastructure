@@ -734,7 +734,7 @@ interpretations and findings are in `infra/docs/IMPLEMENTATION_NOTES.md`,
 markers left on hosts say `pinka` (Q1); Incus client certificates carry
 their name (`potka-*`, `pinka-metrics`); found, not fixed: doctor's
 firewalld check looks for a zone `pinka` that the firewall role never
-creates (fixed separately as 3c3, owner decision). Records in this file written before 3c keep
+creates (fixed in 3c3, owner decision). Records in this file written before 3c keep
 the names of their time.
 
 **Owner decisions with the "commit" for 3c.**
@@ -774,6 +774,11 @@ the names of their time.
 installed into images (`infra/images/*/files/`) lose the managed header;
 the workflows read the secret `PINKA_PRIVACY_DENYLIST`. Details in
 `infra/docs/IMPLEMENTATION_NOTES.md`, "Images free of project names".
+
+**3c3, doctor's firewalld check.** Doctor's `network.firewall` check now
+asks firewalld for the two zones the firewall role creates,
+`pinka-tailnet` and `pinka-run`, instead of a zone `pinka` that never
+existed; a test keeps doctor's zone list equal to the role's.
 
 ### Privacy clean-up (owner instruction)
 
@@ -938,8 +943,8 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
 | 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
-| 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | (scoped exception) |
-| 3c3 | Doctor's firewalld zone check | not started | — |
+| 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
+| 3c3 | Doctor's firewalld zone check | done | (scoped exception) |
 | 3d | Contract v2, steps 1-8 | not started | — |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
@@ -1081,10 +1086,6 @@ step 4" through "after step 13"):
 - The installer TUI has not driven a real bootstrap: its pilot tests replay
   recorded event streams (see the step 13 notes); Phase 5 runs it on the
   reference hosts.
-- Doctor's firewall check on firewalld hosts looks for the zone `pinka`,
-  but the firewall role creates `pinka-tailnet` and `pinka-run`, so the
-  check fails there (found in 3c, present since step 10 under the old
-  names; fixed separately as 3c3, owner decision).
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
   SSH-signed tag deployments is skipped here (it runs where OpenSSH is
   installed, as in CI), and the socket ACL handling is tested with a fake
@@ -1097,7 +1098,8 @@ Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
 work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
 under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
-committed; 3c2 and 3c3 (the firewalld zone fix) follow under the scoped
-commit exception, then 3d steps 1-8, each waiting for "commit". Still open: the remaining
+committed, and 3c2 (`502f15c`) and 3c3 (the firewalld zone fix) under the
+scoped commit exception; next are 3d steps 1-8, each waiting for "commit".
+Still open: the remaining
 `TODO(verify)` items (111), which need network access or reference
 hardware.
