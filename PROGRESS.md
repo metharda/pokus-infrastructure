@@ -21,15 +21,20 @@ specs are read-only again. Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infra-claude-code-prompt.md` | Build Prompt: pokus-infra | `4c7de8136328f39e71f3d4dd891be2f4b9e67bda4f4e36646d38ed62ed00728a` |
-| `specs/pokus-platform-claude-code-prompt.md` | Build Prompt: pokus-platform | `ba3626f3b768f2f0e3ad329b214d69b83e2931d90a1b69cc1240ef34eb2e8aee` |
-| `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `717f3583ee56783a93bf16334f1c88e031d1a4bf21ac7b97ecfdda5c594725f5` |
+| `specs/pokus-infra-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `0b9d74def8f732998995603a24dece599707c172b992aa9a4ca48e9f7063942f` |
+| `specs/pokus-platform-claude-code-prompt.md` | Build Prompt: pokus-platform (Pokus Platform, potka) | `bde980f5afb22dbf6f94969e6a863583fcb44ce9bde9dda38e5ffaf9d6d8c2f2` |
+| `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
 
-These are the updated specs that contain the privacy invariant (infra §13.12,
-platform §16.9, docs spec §A.4 and §A.6) and the docs-alongside rule (infra
-§0.8, platform §0.7). Copies: `infra/docs/BUILD_PROMPT.md` (infra prompt),
-`infra/docs/DOCS_SPEC.md` (docs spec); platform, catalog and docs-site copies
-are created in their phases.
+These are the specs updated in plan item 3b: contract v2 with decision 7's
+GPU training, N2-N4, the pinka/potka naming and the rename decisions (section
+I), applied from the proposal's Spec changes list, with the owner's review
+of the first draft applied (see the 3b notes in section J). They keep the privacy
+invariant (infra §13.12, platform §16.9, docs spec §A.4 and §A.6) and the
+docs-alongside rule (infra §0.8, platform §0.7). The previous checksums were
+`4c7de813…` (infra), `ba3626f3…` (platform) and `717f3583…` (docs). Copies:
+`infra/docs/BUILD_PROMPT.md` (infra prompt) and `infra/docs/DOCS_SPEC.md`
+(docs spec), byte-identical. The platform prompt's master leaves this
+repository at 3f (section J).
 
 ## Process rules in force
 
@@ -509,6 +514,99 @@ proposal, and waits for the owner's "commit".
   master prompt describes, their commit proposal, then stop. After 3h the
   assistant waits for the owner's explicit instruction.
 
+**3b notes (spec update).** Question **S1** (the Pokus Platform's executor,
+a `sandbox-operator` service, runs the agent's `query_logs` and
+`query_metrics` tools) is resolved by the owner's review, item K2: every
+telemetry query goes through infra's read-only query proxy, and
+`sandbox-operator` gets "send; query (via proxy)". Choices made while writing
+the spec text, beyond the change list:
+
+- The Pokus manifest's service names are `orch`, `agent`, `gw`, `exec`,
+  `inject`, `verify`, `eval`, so accounts and roles keep the v1 suffixes
+  (`potka-orch`, `potka_orch`); units become `<platform>-<service>.service`.
+  The change list's "eight services" counted reconcile, which is now a hook:
+  Pokus has seven services. Its training job is named `lora`.
+- The agent runner holds no gateway credential: the `untrusted-agent`
+  profile allows no secrets, so the gateway identifies it by peer
+  credentials on its dedicated socket and by the session token. The gateway
+  header becomes `X-Potka-Session`.
+- From the proposal, not listed in the change list: restore redeploys the
+  platform and re-registers adapters (§7.15); one signing key per platform
+  (§8.2, §12.10); `pinka update-host` runs the `drain` hook and arbiter
+  `idle` (§19.5); `pinka platform purge` (§9); the run explorer and
+  dashboards move to the platform repository (platform §18).
+- The installer's GPU & inference screen is screen 9 in the infra prompt
+  (the change list said 7); the new Platform review screen makes the flow 19
+  screens. The external verification repository keeps the name `pokus-qa`
+  (review item O1); only the Tailscale tag becomes `tag:pinka-qa`.
+- Example values in `host_vars` (tag prefixes `platform-v`, `catalog-v`,
+  path `platform/`, training caps) are placeholders.
+
+**Owner's review of the first 3b draft** (applied in the working tree, not
+committed): K1 the platform repository layout (`platform/` and `catalog/` as
+separate subtrees) and the refusal of overlapping release and content paths
+from one repository; K2 the read-only telemetry query proxy everywhere,
+Grafana's datasources included, with the owner's order of preference for
+keeping the backends out of reach (decided at implementation in an ADR) and
+a required test in the reference platform's isolation probe; K3
+every approved deviation folded into the spec text; O1 the external
+verification repository is `pokus-qa`; O2 the attestation format defined in
+the platform spec (§12.2); O3 `potka catalog show` through the orchestrator
+API, `pinka-admin` only, logged; O4 Grafana mounts the reader socket
+directory, no PostgreSQL TCP listener; O5 the NVIDIA Container Toolkit also
+for `gpu_training`; O6 the neutrality lint with the `pokus` allowlist,
+for repository code only (target images, the platform's trace-cleanup scan
+and its ticket lint allow no `pokus`, `pinka` or `potka` string at all); O7
+deployment specs named `<id>@<version>.yml`; and the minor items (docs spec
+A.1, the infra §9 table rows, the duplicate uv install in infra §5.2,
+`require_signed_tags: false` in the example, `QA=` optional).
+
+The owner also confirmed the threat coverage (infra §15, §11, invariant
+21) and two interpretations: the SMT warning (siblings of one core in
+different CPU sets) and the platform's `docs/` inside `platform/`. The review
+also approved the four pending proposals of the report after infra step
+14. They had not been recorded as approved before; they are listed as
+P3a-P3d under [Approved deviations](#approved-deviations) (P for
+"proposal", to keep them apart from plan items 3a-3h).
+
+Approved deviations deliberately not folded into the spec text, with the
+reason:
+
+- A2 (the assistant runs the approved commit commands): a process rule,
+  replaced by the final commit rule in this file and the root `CLAUDE.md`.
+- B2 (bare mirror and `git archive` of one subtree): already in the spec
+  through contract v2 (infra §7.14).
+- B3, B5, C1 (dirty check and tree hash limited to `infra/`, root CI
+  wrappers, `platform/docs/contracts.md` copy): monorepo arrangements that
+  end with 3f; the spec text describes the infra-only repository, and under
+  contract v2 the platform keeps no copy of the contract.
+- B4 (one repository's commits as the release candidate): replaced by
+  contract v2's release candidate (infra release, platform release, catalog
+  content package; infra §12.10, platform §12.2).
+- B6 (catalog lint with a `../platform` path dependency): a monorepo
+  arrangement; in `pokus-platform` the catalog has no code of its own.
+- C2, C3, C8 (agent on `svc.sock`, the deploy helper, socket groups and
+  ACLs): superseded by contract v2's dedicated agent sockets (N2), the GPU
+  arbiter and the socket rendering of infra §12.3.
+- C5, C9b, C9f-C9h, D1, I2: already in the spec text.
+- D4 (`qa:run` markers linted only here): describes this repository's role;
+  the docs spec's rule that QA bots execute them stays true for `pokus-qa`.
+- F9 (`catalog show` for restricted members): superseded by review item O3.
+- H7 and H11 (Grafana screenshot pending, versioned docs shown with two test
+  versions): interim states, not spec changes.
+- The contract proposals of infra steps 7-11 that were never approved (the
+  image property `requirements.nesting`, the session record's fields, the
+  fingerprint document, the inference control API, `current.yaml`, the
+  gateway's ACL on the mTLS material, the `LoadCredential=` question): they
+  stay proposals; the lab drain on `api.sock` is replaced by the `drain`
+  hook.
+
+Not implemented yet, to be built with contract v2 (infra §16, step 18,
+which is step 4 of plan item 3d): the query proxy, the port overrides and
+the preflight port and VM-address checks, the docs service (it replaces the
+foreground `docs serve` command of step 14), maintenance windows, the SMT
+warning, and the reader-socket mount for Grafana.
+
 ### Privacy clean-up (owner instruction)
 
 Scan everything already written for personal or installation-specific data,
@@ -541,7 +639,7 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | C6 | platform §3; infra §7.10 | OPA on 8181 or a Unix socket | 8181 with `system.authz` restricting the API |
 | C8 | platform §4.1 | api.sock "group pokus + pokus-svc" | group + POSIX ACL, fallback group + peercred |
 | C9 | infra §7.11, §7.12, §8.2, §9; platform §3, §6 | (gaps) | resolutions C9a-h in `contracts.md` |
-| C10 | infra §12 | `127.0.0.1:<port>` unspecified | port table in `contracts.md` |
+| C10 | infra §12 | `127.0.0.1:<port>` unspecified | port table in `contracts.md`; approved with the changes of P3b |
 | D1-D3 | platform §3, §4.1.2; infra §8.1 | formats defined by the external QA instructions | hooks defined here (D1-D3) |
 | D4 | docs spec §A.8 | QA bots execute `qa:run` blocks | markers linted only; nothing executes them here |
 | D5 | docs spec §A.4, §B.5 | `last_verified` from a QA run | null until a verification run exists |
@@ -554,12 +652,17 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | H11 | docs spec §B.5 | current and previous release browsable | demonstrated with two test versions until real releases exist |
 | I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; implemented in commit "feat(infra): install the NVIDIA driver on Secure Boot hosts with MOK consent" (`--accept-mok-enrollment`, `--mok-password-stdin`, `gpu.accept_mok_enrollment`; bootstrap imports the key named by the play's 76) |
 | I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; implemented in commit "ci(infra): split the fast lane into a required and an extended job" (`make check-mode`, `make check-mode-extended`) |
+| P3a | infra §7.6, §7.7, §8.1, §12.6, §18.4 screen 5; platform §3, §4.1, §5, §12.1 | `cpuset_targets` with no contract field | `[incus] cpuset_targets` in `endpoints.toml`; the platform sets every target's `limits.cpu` to a CPU range inside it, never a count, records the range in the run manifest and refuses measurement campaigns on a host without it; the `bench` project's `limits.cpu` is the number of those CPUs; services run on `cpuset_services`; installer and doctor warn when SMT siblings of one core fall into different sets. Approved in the owner's review of the 3b spec update; implemented in `00da783` except the SMT warning |
+| P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; the overrides and checks are not implemented yet |
+| P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; not implemented yet (step 14 built a foreground `docs serve` command) |
+| P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; not implemented yet |
 
 ## Contract changes
 
 `contract_version 1` is defined by `infra/docs/contracts.md` (resolutions B2,
-B3, B4, C2-C10, D1-D3, E3, E13). The ports table (C10) is proposed and awaits
-owner approval.
+B3, B4, C2-C10, D1-D3, E3, E13). The ports table (C10) and the CPU sets are
+approved with the 3b review (P3b, P3a); contract v2 (infra §12) replaces
+this contract in plan item 3d.
 
 Proposed in infra step 7 (awaiting owner approval; written into
 `infra/docs/contracts.md`, details in `infra/docs/IMPLEMENTATION_NOTES.md`,
@@ -603,9 +706,9 @@ Proposed in infra step 10 (same status; details in
   `api.sock`, called as root by `pokus-lab stop` and `update-host`; runs still
   active when the lab stops are recorded as interrupted.
 
-Proposed in infra step 11 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 11"; `contracts.md` itself is
-unchanged):
+Proposed in infra step 11 (same status, except the two port items, which
+P3b approved; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Step 11";
+`contracts.md` itself is unchanged):
 
 - Inference mTLS material: on lab nodes also `u:pokus-gw:r-x` on
   `/etc/pokus/inference/` and `u:pokus-gw:r--` on `self.key`, because the LLM
@@ -625,7 +728,7 @@ unchanged):
   because `/etc/pokus/secrets` is in its `InaccessiblePaths` (C2); proposed
   `LoadCredential=` if the agent needs a secret.
 
-Proposed after infra step 13 (same status; details in
+Proposed after infra step 13 (approved as P3a; details in
 `infra/docs/IMPLEMENTATION_NOTES.md`, "Follow-up after step 13: CPU sets"):
 
 - Incus: `[incus] cpuset_targets` in `endpoints.toml` when host_vars sets it;
@@ -659,8 +762,8 @@ Proposed after infra step 13 (same status; details in
 
 | Item | Content | Status | Commit |
 | --- | --- | --- | --- |
-| 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | proposed | — |
-| 3b | Spec update (contract v2, naming, rename decisions) | not started | — |
+| 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
+| 3b | Spec update (contract v2, naming, rename decisions) | proposed | — |
 | 3c | Rename `pokus` → `pinka`/`potka` | not started | — |
 | 3d | Contract v2, steps 1-8 | not started | — |
 | 3e | Infra self-test without provisioning | not started | — |
@@ -980,8 +1083,7 @@ Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
 `infra/docs/IMPLEMENTATION_NOTES.md`, section "Approved deviation I1"). The
 work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
 under the final commit rule in [Process rules](#process-rules-in-force):
-3a (this `PROGRESS.md` change) is proposed and waits for the owner's
-"commit"; next is 3b, the spec update. Still open: the contract proposals
-(CPU sets, the ports table C10), the step 14 interpretations (`docs serve`,
-the QA maintenance window), and the remaining `TODO(verify)` items (111),
-which need network access or reference hardware.
+3a is committed (`836cfce`); 3b (the spec update, with the owner's review
+applied) is proposed again and waits for the owner's "commit"; next is 3c,
+the rename. Still open: the remaining `TODO(verify)` items (111), which need
+network access or reference hardware.
