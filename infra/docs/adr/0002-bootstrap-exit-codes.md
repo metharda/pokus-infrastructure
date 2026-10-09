@@ -8,7 +8,7 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0002: Bootstrap exit codes and error handling
 
-- **Status:** proposed (awaiting the owner's approval of the additional codes)
+- **Status:** accepted (the owner approved the additional codes after the contract v2 spec update)
 - **Date:** 2026-10-05
 - **Deciders:** pokus-infra maintainers
 

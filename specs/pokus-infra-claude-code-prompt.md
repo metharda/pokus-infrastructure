@@ -120,6 +120,7 @@ For `vm`, also determine `hypervisor`: one of `kvm`, `qemu`, `microsoft` (Hyper-
 - `baremetal`: find NVIDIA devices via `/sys/bus/pci/devices/*/vendor == 0x10de` with class `0x0300`/`0x0302`. Then determine driver state: not installed / installed but not loaded / loaded (`/proc/driver/nvidia/version`). If loaded, run `nvidia-smi` for name, VRAM, driver, compute capability.
 - `vm`: same as baremetal, but an NVIDIA PCI device is present only with PCI passthrough. Absence is normal and must be reported as "no GPU passthrough", not as an error.
 - `container`/`wsl1`/`unknown`: do not probe GPU beyond reporting.
+- Driver and CUDA: for every usable NVIDIA GPU, preflight records the highest CUDA version the loaded driver supports (from `nvidia-smi`; on WSL2 that is the Windows driver; verify the query at implementation) and compares it with the CUDA version the pinned vLLM image is built on (`versions.lock.yml`, §10.1). A driver that is too old makes `gpu_inference` unavailable with a clear remediation: "the NVIDIA driver supports CUDA <x>, the pinned vLLM image needs <y>: install a driver branch that supports CUDA <y>" (on WSL2: "update the NVIDIA driver on Windows"; never a Linux driver inside WSL). Doctor repeats the check on every run (§9).
 
 **Conflicting software** (each reported as `conflict` with severity `blocking` or `warning` and a remediation string):
 
@@ -217,8 +218,8 @@ core_requirements:            # failing any of these → unsupported (or needs_a
 
 features:                     # optional; each becomes a boolean feature flag
   gpu_inference:
-    requires: [nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: "7.0"]
-    on_missing: degrade       # lab installs without vLLM
+    requires: [nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: "7.0", driver_cuda_min: "@versions.lock:containers.vllm.cuda"]
+    on_missing: degrade       # lab installs without vLLM; a too-old driver prints the remediation of §2.2
   gpu_training:
     requires: [nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: "7.0"]
     on_missing: degrade       # no GPU training jobs; their CPU-only variant still runs (§7.18)
@@ -622,7 +623,7 @@ Base path configurable (`pinka_root: /srv/pinka`). Implement with explicit owner
 | `state/<service>/` | per container UID | 0700 | postgres, prometheus, loki, tempo, grafana data |
 | `backups/` | root:root | 0700 | local staging only |
 
-Also `/etc/pinka/` (0755 root) for host profile, bootstrap state, rendered non-secret config and the maintenance window record (§7.20); `/etc/pinka/secrets/` (0711 root:root) for rendered secrets: infra's own secrets root-only, one directory per platform account `/etc/pinka/secrets/<account>/` (0750 root:<account>, files 0640) for the secrets the manifest names, and the database password files `/etc/pinka/secrets/postgres/<role>` (0640 root:<the role's account>; the migrator's readable only by `<platform>-migrate`); `/etc/pinka/platform/` for the active platform's `active.json`, `principals.json`, `endpoints.toml` and per-service configuration (§12.3); `/run/pinka/` (runtime sockets via systemd `RuntimeDirectory=`), including `/run/pinka/platform/<service>/` (platform sockets), `/run/pinka/postgres/` and `/run/pinka/postgres-reader/` (the database sockets, §7.8), `/run/pinka/otlp/` (the agent OTLP socket, §7.9), `/run/pinka/query.sock` (the telemetry query proxy, §7.9) and `/run/pinka/gpu.sock` (the GPU arbiter, §7.18); `/var/lib/pinka/gpu/` (the arbiter's state and transition log), `/var/lib/pinka/platforms/` (deployment records), `/var/lib/pinka/staging/` (root-only staging, 0700), `/var/lib/pinka/git/` (root-only Git mirrors, 0700) and `/usr/local/share/pinka/docs/` (installed documentation releases, §7.19).
+Also `/etc/pinka/` (0755 root) for host profile, bootstrap state, rendered non-secret config and the maintenance window record (§7.20); `/etc/pinka/secrets/` (0711 root:root) for rendered secrets: infra's own secrets root-only, one directory per platform account `/etc/pinka/secrets/<account>/` (0750 root:<account>, files 0640) for the secrets the manifest names, and the database password files `/etc/pinka/secrets/postgres/<role>` (0640 root:<the role's account>; the migrator's readable only by `<platform>-migrate`); `/etc/pinka/platform/` for the active platform's `active.json`, `principals.json`, `endpoints.toml` and per-service configuration (§12.3); `/run/pinka/` (runtime sockets via systemd `RuntimeDirectory=`), including `/run/pinka/platform/<service>/` (platform sockets), `/run/pinka/postgres/` and `/run/pinka/postgres-reader/` (the database sockets, §7.8), `/run/pinka/otlp/` (the agent OTLP socket, §7.9), `/run/pinka/query.sock` (the telemetry query proxy, §7.9), `/run/pinka/gpu.sock` (the GPU arbiter, §7.18) and `/run/pinka/run-network.sock` (the run-network helper, §7.7); `/var/lib/pinka/gpu/` (the arbiter's state and transition log), `/var/lib/pinka/run-networks/` (the run-network helper's operation log), `/var/lib/pinka/platforms/` (deployment records), `/var/lib/pinka/staging/` (root-only staging, 0700), `/var/lib/pinka/git/` (root-only Git mirrors, 0700) and `/usr/local/share/pinka/docs/` (installed documentation releases, §7.19).
 
 ---
 
@@ -675,7 +676,7 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
   - storage pool `pinka-targets`: `btrfs` (loop with `incus_pool_size`, or `device`) or `lvm` thin (fallback);
   - **no** default `incusbr0` with NAT for targets; create:
     - `pinka-build0`: NAT enabled, used only by the `build` project for image builds;
-    - per-run networks are created by the platform at runtime; infra creates the network **template conventions** (prefix `r-`, no NAT, no upstream) and Incus network ACL `pinka-run-default` (deny all egress except intra-network);
+    - per-run networks are created and deleted at runtime only through infra's **run-network helper** (below); infra creates the network **template conventions** (prefix `r-`, no NAT, no upstream) and Incus network ACL `pinka-run-default` (deny all egress except intra-network);
   - projects:
     - `build` — image builds, internet allowed;
     - `bench` — official benchmark runs; `restricted=true` with explicit allowances (nesting allowed, VMs allowed only if `features.vm_targets`, limits enforced; `limits.cpu` is the number of CPUs in `cpuset_targets` when it is set, §12.6);
@@ -683,6 +684,7 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
   - profiles: `target-container` (limits template, `security.nesting` per blueprint, root disk size, guest API disabled), `target-vm` (only if `vm_targets`), `build`, `probe-client`.
 - Trust and certificates: generate one client certificate per platform service whose profile has Incus access (§12.2), stored in `/etc/pinka/incus/<platform>-<service>/` (0600, owned by the service's account) and added to Incus trust as **restricted**: `controller` to projects `bench` and `build`, `sandbox-operator` and `restricted-operator` to `bench`. Replacing a platform (§7.14) and `rotate.yml` remove the old certificates from the trust store. Prometheus gets a metrics-only certificate (`type: metrics`).
 - Enable the Incus HTTPS listener on `127.0.0.1:8443` only (§12.11; for restricted TLS clients and metrics).
+- **Run-network helper** `pinka-run-network`: root-run and socket-activated on `/run/pinka/run-network.sock` (0600, owned by the active platform's controller account; root can always connect), reachable only by the controller (peer credentials checked). Bridges live in Incus's `default` project (`bench` has `features.networks=false`), so a certificate restricted to `bench` can create a run network but can neither change nor delete it; run networks are therefore created and deleted only through this helper. Doctor and the platform's integrity check flag any Incus network that neither infra created nor the helper's log records, whatever its name, so a network created outside the helper is caught. It accepts exactly two requests, `create r-<short>` and `delete r-<short>` (`<short>`: 12 lowercase letters and digits), creates the bridge with fixed settings (no NAT, no uplink, ACL `pinka-run-default`) and nothing else, and refuses any other name, request or setting. Every operation (time, request, network, peer, outcome) goes to `/var/lib/pinka/run-networks/operations.jsonl` and to the journal. The platform's `reconcile` hook uses it to remove orphaned run networks.
 - Incus lifecycle/exec events: ship a small unit (`pinka-incus-events.service`) that runs `incus monitor --type=lifecycle --type=logging --format=json` (verify flags) and writes JSON lines to journald with a stable identifier, picked up by the collector's journald receiver. This feeds the platform's integrity check ("only the executor touched targets during the agent phase").
 - Marker file `/etc/pinka/managed-incus`.
 
@@ -723,6 +725,7 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
 - **Serving verification.** After start, wait for `/health`, list `/v1/models`, send one deterministic chat completion and one tool-call request (a dummy `get_time` tool) and assert that a well-formed tool call comes back. Save results to `/var/lib/pinka/verify/vllm-<deployment>.json`. If the tool-call check fails, point to the tool-call parser / chat template configuration as the likely cause.
 - Deployments switch only through the GPU arbiter (§7.18): a `serve` request from the platform's controller, or `pinka gpu serve` from an admin, activates a deployment spec. vLLM is stopped while the arbiter trains. The arbiter replaces contract v1's deploy helper.
 - Models mounted read-only from `/srv/pinka/models`; `HF_HUB_OFFLINE=1`; bound to an internal Docker network plus `127.0.0.1:18704` (§12.11) for the inference broker; never public (on an inference node the control endpoint forwards it to the tailnet with mutual TLS, §19.10).
+- **Who reaches the inference API.** Only the accounts of `inference-broker` and `controller` and infra's own checks (doctor, the serving verification, the health gate, Prometheus' scrape) reach vLLM's API, so no other platform service can bypass the inference broker. The mechanism follows §7.9's order of preference and is recorded in the same ADR: (a) vLLM on a Unix socket (if the pinned release supports it; verify) or behind client authentication, an API key that only those accounts and infra's checks hold; (b) otherwise the UID-range nftables output rule of §7.9, which lets only those accounts through. The same holds for the inference forwarder on a lab node (§12.8). The isolation probe proves it (§7.18).
 - Health check and `/metrics` scraped by Prometheus.
 
 ### 7.12 `models`
@@ -735,7 +738,7 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
 
 ### 7.13 `images` (golden image pipeline)
 - Each blueprint directory: `image.yaml` (base image: remote, alias, **pinned fingerprint**; instance type container/vm; packages with pinned versions where it matters; preloaded Docker images **by digest** for Docker-in-target blueprints; services to enable; telemetry agent config), `cloud-init.yaml`, `provision.yml` (Ansible run inside the build instance), `files/`, `tests/` (post-build assertions).
-- Build flow (in project `build`, network `pinka-build0`): launch from pinned base → provision → run tests → **leakage lint** → clean (apt caches, shell histories, logs, cloud-init artifacts, machine-id, SSH host keys regenerated on first boot) → stop → `incus publish` with alias `<blueprint>/<version>` and properties (`pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint`) → `incus image export` to `/srv/pinka/images/<blueprint>/<version>/` with `sha256sum` file.
+- Build flow (in project `build`, network `pinka-build0`): launch from pinned base → provision → run tests → **leakage lint** → clean (apt caches, shell histories, logs, cloud-init artifacts, machine-id, SSH host keys regenerated on first boot) → stop → `incus publish` with alias `<blueprint>/<version>` and properties (`pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint`, and Incus's own `requirements.nesting`, `true` for blueprints that need nesting, so Incus refuses to start such an image without `security.nesting=true`) → `incus image export` to `/srv/pinka/images/<blueprint>/<version>/` with `sha256sum` file.
 - Base images from public image servers rotate and old builds disappear: export and keep the **base** image tarball too, so rebuilds stay possible.
 - Leakage lint (must fail the build): no files or strings matching scenario ID patterns (`[A-Z]+-[0-9]{3}`), no `fault`, `inject`, `ground_truth`, `scenario`, `pokus`, `pinka` or `potka` strings, with no exceptions (the allowlist of the neutrality lint, §11, does not apply to images), and none of the Pokus Platform's service and unit names, in `/etc`, `/opt`, `/srv`, `/usr/local`, unit names, hostnames, or environment files; no checkouts of the project's repositories inside the image. Make the pattern list configurable.
 - Provide at least these blueprint recipes (minimal but real): `_base` (Ubuntu 24.04 + OTel agent + common tooling), `web-nginx-flask` (nginx + gunicorn + Flask app), `pg-primary` (PostgreSQL), `redis-cache` (Redis), `docker-host` (Docker Engine inside target, nesting), `probe-client` (curl, dig, load generator). Each with tests.
@@ -781,7 +784,7 @@ ReadWritePaths=<declared state>  ReadOnlyPaths=<release, own config>
 InaccessiblePaths=<infra internals>
 ```
 
-- Infra internals are hidden from every profile: the Git mirrors, `/var/lib/incus`, the Docker socket, infra's own secrets and backup credentials, and the GPU arbiter's socket (except for the controller).
+- Infra internals are hidden from every profile: the Git mirrors, `/var/lib/incus`, the Docker socket, infra's own secrets and backup credentials, and the sockets of the GPU arbiter and the run-network helper (except for the controller).
 - **`untrusted-agent`** additionally gets `PrivateNetwork=yes` and `RestrictAddressFamilies=AF_UNIX`; the lab directories (`/srv/pinka`, `/etc/pinka`, `/var/lib/pinka`, `/run/pinka`) are replaced by empty temporary file systems with only its allowlist bound in (the release read-only, its own state, its own non-secret configuration, its dedicated sockets and the agent OTLP socket); it has no supplementary groups except the client groups of those sockets, and no relaxation. This allowlist replaces contract v1's `InaccessiblePaths` list for the agent.
 - The hardening additions (system call filter, `ProtectProc`, `IPAddressDeny`, `SocketBindDeny`) are checked against the real services when implemented; one that breaks a service is reported together with the failing service, never silently dropped.
 - Doctor verifies the effective properties of every platform unit via `systemctl show` (§7.17).
@@ -797,7 +800,7 @@ InaccessiblePaths=<infra internals>
 
 ### 7.16 `lab_session`
 - `pinka-lab.target` groups all lab units. Starting the target is the "lab is up" state.
-- `pinka-session-start.service` (part of the target, runs once per boot): records a **session record** to `/var/lib/pinka/sessions/<boot_id>.json`: boot ID (`/proc/sys/kernel/random/boot_id`), start time, environment fingerprint (§10.2), preflight outcome. The platform imports these into its DB (contract).
+- `pinka-session-start.service` (part of the target, runs once per boot): records a **session record** to `/var/lib/pinka/sessions/<boot_id>.json`: `schema_version`, `boot_id` (`/proc/sys/kernel/random/boot_id`), `started_at`, `fingerprint_hash`, `fingerprint` (the document of §10.2), `preflight_outcome` and `errors`; a field that could not be computed is `null`, with the reason under `errors`. Its JSON Schema is published in `contract/records/`. The platform imports these into its DB (contract).
 - Startup gating: platform services must not start until `pinka-health-gate.service` passes: time synchronized, always (NTP synced and, on WSL, wall clock within a threshold of an NTP reference if reachable), plus exactly the facilities the manifest's `requires` lists (`postgres`, `incus`, `telemetry`, `inference`, `opa`, `gpu`), each healthy.
 - `pinka-platform.target`, inside `pinka-lab.target`, groups the platform's units; the platform's `reconcile` hook runs as a oneshot unit ordered before them (§12.9).
 - Sleep inhibition per provider/power policy (§3.2).
@@ -847,9 +850,10 @@ GPU training is a first-class capability of the research loop: platforms declare
 
 **Reference platform.** `tests/reference-platform/` holds `refplat`, a platform written with the Python standard library only (runtime `python-uv` with an empty dependency set; its manifest is the example in §12.1):
 
-- `ctl` (`controller`): the sockets `api` and the dedicated `session`; the four hooks; one table in `public` and one in `restricted`; reads its restricted content package `cases`; builds a dataset from `train`-split cases, publishes it, submits `tune` and imports the lineage; runs the telemetry part of the isolation probe: direct connections to the query and push endpoints of Prometheus, Loki and Tempo must fail, and the same query through the query proxy must succeed.
+- `ctl` (`controller`): the sockets `api` and the dedicated `session`; the four hooks; one table in `public` and one in `restricted`; reads its restricted content package `cases`; builds a dataset from `train`-split cases, publishes it, submits `tune` and imports the lineage.
 - `agent` (`untrusted-agent`): uses `session`, then runs an isolation probe that tries every forbidden action and reports what it could do: read the restricted area and content, open the database sockets, connect to a socket not dedicated to it, open any TCP connection, read infra secrets, the Git mirror, the datasets area or the arbiter socket, write outside its state.
 - `tune` (`gpu-trainer`): a toy training job that reads its dataset and writes a small adapter-shaped output determined by the seed, with the CPU-only variant for hosts without a GPU.
+- **Isolation probe per profile:** for every profile with loopback access (`controller`, `inference-broker`, `sandbox-operator`, `restricted-operator`, `restricted-reader`, `observer`), infra's tests run the probe as a transient unit with that profile's rendered hardening and groups and an account from the platform range. Direct connections to the query and push endpoints of Prometheus, Loki and Tempo must fail for every profile; the query proxy must answer exactly the profiles that query (§12.2); the inference API (vLLM, or the forwarder on a lab node) must answer only `controller` and `inference-broker` (§7.11); the GPU arbiter's and the run-network helper's sockets only the controller. The `agent` probe above covers `untrusted-agent`, and `tune`'s container options cover `gpu-trainer`.
 
 Infra's tests deploy `refplat` and the Pokus Platform's manifest fixture through the same code (§11, §19.9).
 
@@ -968,7 +972,7 @@ Python (stdlib-only preferred so it works even when uv/venv is broken), installe
 - No unexpected listening sockets (non-loopback: only sshd, reachable via the allowed interfaces only, and the non-loopback block of §12.11); every configured port is held by its lab listener.
 - nftables `inet pinka_filter` present; DOCKER-USER compat rules present.
 - Tailscale: logged in, hostname and tags as expected, **Funnel off**.
-- Docker GPU test (if `gpu_inference` or `gpu_training`), vLLM health (if a deployment is active).
+- Docker GPU test (if `gpu_inference` or `gpu_training`); the driver supports the CUDA version of the pinned vLLM image (§2.2), with the remediation; vLLM health (if a deployment is active).
 - Incus: pool backend and free space, projects, profiles, restricted certs present with correct ownership, metrics endpoint scrapeable, events unit active.
 - `/srv/pinka` tree ownership/modes/ACLs match the layout spec exactly.
 - Researchers not in `docker`/`incus-admin` (except break-glass list); service accounts not in `docker`.
@@ -1020,7 +1024,7 @@ containers:
   gpu_exporter:    {...}     # nvidia-smi based
   dcgm_exporter:   {...}
   opa:             {...}
-  vllm:            {...}
+  vllm:            {image: "docker.io/vllm/vllm-openai", tag: "<verify>", digest: "sha256:<verify>", cuda: "<verify>"}   # cuda: the CUDA version the image is built on (§2.2)
   cuda_base_test:  {...}
   refplat_job:     {...}     # the reference platform's training job image (tests); platform job images are pinned in their manifests, not here
 binaries:
@@ -1040,16 +1044,15 @@ incus_base_images:
 
 ### 10.2 Environment fingerprint
 
-Generated by `pinka fingerprint` and at every session start. Canonical JSON (sorted keys, no volatile fields) hashed with sha256. Include:
+Generated by `pinka fingerprint` and at every session start. `pinka fingerprint --json` prints one document: `fingerprint_schema_version`; `hash`, written `sha256:<hex>`, over the canonical JSON of `fingerprint` (sorted keys, no whitespace, UTF-8); `fingerprint`, the hashed fields below; and `computed_at` and `boot_id`, which are recorded but not hashed. Its JSON Schema is published in `contract/records/`. The hashed fields:
 
 - host profile essentials: provider, environment class, hypervisor, OS id/version, kernel release, arch, support tier, overrides;
 - hardware: CPU model, threads, memory, GPU name, VRAM, driver version, CUDA/compute capability, GPU path (`wsl-dxg`/`native`/`passthrough`);
 - software: actual installed versions of Docker, containerd, NVIDIA toolkit, Incus, Tailscale, Python, ansible-core; running container image digests; golden image fingerprints by alias;
 - config: `pokus-infrastructure` commit + dirty flag, `versions.lock.yml` sha256, host_vars sha256; the active platform's name, version, manifest sha256 and content refs; the adapter ids of the served deployment;
-- WSL extras: `wsl.conf` effective values, kernel string (Windows build is unknowable from Linux with interop off — record `null` and document);
-- `fingerprint_schema_version`.
+- WSL extras: `wsl.conf` effective values, kernel string (Windows build is unknowable from Linux with interop off — record `null` and document).
 
-Volatile fields (timestamps, boot_id) are recorded alongside but excluded from the hash.
+Volatile fields (`computed_at`, `boot_id`) are recorded alongside but excluded from the hash.
 
 Document in `docs/reproducibility.md` that latency/resource comparisons are valid only within the same fingerprint hash (or a documented compatible subset), while accuracy comparisons require identical model + serving profile + agent config.
 
@@ -1064,6 +1067,7 @@ Document in `docs/reproducibility.md` that latency/resource comparisons are vali
   - `ubuntu2404-baremetal-nvidia-no-driver-secureboot-manual` → needs_action (MOK; `manual`, consent has no effect)
   - `ubuntu2404-baremetal-nvidia-no-driver-secureboot-skip` → degraded (no gpu_inference)
   - `ubuntu2404-baremetal-no-gpu` → degraded (no gpu_inference)
+  - `ubuntu2404-baremetal-nvidia-old-driver` and `ubuntu2404-wsl2-gpu-old-driver` → degraded (no gpu_inference: the driver's CUDA version is below the pinned vLLM image's; the remediation names the driver update, on WSL2 on Windows)
   - `ubuntu2404-wsl2-gpu-nokvm` → degraded or supported per matrix (vm_targets off), provider wsl2
   - `ubuntu2404-wsl2-gpu-kvm` → supported, wsl2, vm_targets on
   - `ubuntu2404-wsl2-systemd-off` → needs_action
@@ -1075,7 +1079,7 @@ Document in `docs/reproducibility.md` that latency/resource comparisons are vali
   - `ubuntu2404-vmware-vm-no-gpu` → degraded, vm, hypervisor vmware
   - `docker-container` → unsupported (container)
   - `systemd-detect-virt-reports-wsl` → must classify as wsl2, not container
-  - `debian13-baremetal` → experimental tier
+  - `debian13-baremetal` → supported tier
   - `fedora-baremetal-nvidia` → tested tier, family redhat, provider baremetal
   - `almalinux9-kvm-vm` → tested tier, family redhat, provider vm
   - `opensuse-tumbleweed-baremetal` → tested tier, family suse, release_model rolling (warning)
@@ -1102,7 +1106,9 @@ Document in `docs/reproducibility.md` that latency/resource comparisons are vali
 - **Docs drift**: CI regenerates `docs/support-matrix.md` and the layout table and fails if they differ from committed versions.
 - **Contract v2 tests**: manifest schema and invariant tests with one invalid fixture per rule (unknown field, reserved name per namespace, second controller, agent on a non-dedicated or shared socket, agent relaxation, job without digest or with another profile, path escape, limits over cap, release and content package paths overlapping in one repository); rendering golden files (units, sockets, ACLs, accounts, groups, SQL, Incus certificate requests, training-container arguments) for the reference platform, the Pokus Platform's manifest fixture and a fixture using all eight profiles, with `systemd-analyze verify` on every unit; the restricted-schema revoke and check against a real PostgreSQL; GPU arbiter state machine (fake Docker, fake vLLM), training-container option, split-guard and lineage tests; hooks and `pinka` commands against a fake host; and the reference platform (§7.18).
 - **Neutrality lint** (`make lint-neutral`, part of `make lint`): infra's roles, tools and templates contain no `potka` and none of an explicit list of the Pokus Platform's service and unit names (its accounts and services, `orchestrator`, `agent-runner`, `gt`, `catalog`, its unit names), matched as whole tokens, so a listed name inside a longer name never matches. `pokus` appears only in an explicit allowlist: the repository names `pokus-infrastructure` and `pokus-platform` and the display names "Pokus", "Pokus Infrastructure" and "Pokus Platform". Test fixtures, docs and the reserved-name list are excluded. The allowlist applies to this lint over repository code only: target images (§7.13), the platform's trace-cleanup scan and its ticket lint allow no `pokus`, `pinka` or `potka` string at all.
-- **Query proxy tests**: every allowlisted query path passes; push, remote write, delete, admin, configuration and flush requests are refused. Required: the reference platform's isolation probe (§7.18) proves that a platform service reaches neither the query nor the push endpoints of Prometheus, Loki and Tempo directly, only the proxy; doctor checks the same on a real host.
+- **Query proxy tests**: every allowlisted query path passes; push, remote write, delete, admin, configuration and flush requests are refused. Required: the isolation probe, run for every loopback-capable profile (§7.18), proves that a platform service reaches neither the query nor the push endpoints of Prometheus, Loki and Tempo directly, only the proxy, and that only `controller` and `inference-broker` reach the inference API; doctor checks the same on a real host.
+- **Run-network helper tests**: create and delete with the fixed settings; refusal of another name, request, setting or peer; the operation log; reconcile removing an orphaned network; doctor flagging a network that neither infra created nor the helper's log records, whatever its name (fake Incus).
+- **Records**: the session record and the fingerprint document validate against their schemas in `contract/records/`, including records with `null` fields and their reasons.
 - **Ports, docs service and maintenance windows**: port overrides reach `endpoints.toml`; preflight fixtures for a lab port in use and a conflicting VM collector address; `pinka docs install` and `rollback` (checksum, unsafe archive members, three versions kept) and `pinka window` (open, close, expiry on both sides, the shared-hardware checks) against a fake host.
 - **Check mode in CI**: the required job runs the provider-agnostic roles (§19.9); a separate, non-blocking extended job runs the whole play in check mode with the reference platform enabled and lists every skipped component.
 - **CI** (GitHub Actions): all of the above except role tests that need privileged virtualization.
@@ -1111,7 +1117,7 @@ Document in `docs/reproducibility.md` that latency/resource comparisons are vali
 
 ## 12. Integration contract v2: platforms plug in through a manifest
 
-Write this into `docs/contracts.md` and treat it as a versioned interface (`contract_version: 2`). Infra publishes it with every release together with `contract/`: the manifest's JSON Schema, the profile definitions, the reserved-name lists and the schemas of the provenance and lineage records. They change only with a contract version bump (§0). A platform pins an infra release and plugs in through one manifest; infra turns the manifest into accounts, units, sockets, containers and grants, and no infra code names a particular platform (neutrality lint, §11). The Pokus Platform (`potka`) is the first platform; the reference platform `refplat` (§7.18) proves that a second one fits without infra changes. What is specific to one platform (its services, their sockets and endpoints, its agent rules, its attestation format and official check) belongs to that platform's own specification.
+Write this into `docs/contracts.md` and treat it as a versioned interface (`contract_version: 2`). Infra publishes it with every release together with `contract/`: the manifest's JSON Schema, the profile definitions, the reserved-name lists and, in `contract/records/`, the schemas of the provenance and lineage records, the session record (§7.16) and the fingerprint document (§10.2). They change only with a contract version bump (§0). A platform pins an infra release and plugs in through one manifest; infra turns the manifest into accounts, units, sockets, containers and grants, and no infra code names a particular platform (neutrality lint, §11). The Pokus Platform (`potka`) is the first platform; the reference platform `refplat` (§7.18) proves that a second one fits without infra changes. What is specific to one platform (its services, their sockets and endpoints, its agent rules, its attestation format and official check) belongs to that platform's own specification.
 
 ### 12.1 The manifest
 
@@ -1146,11 +1152,11 @@ The only relaxation in the fixed list is `wx-memory` (turns off `MemoryDenyWrite
 | Namespace | Reserved |
 |---|---|
 | Accounts and groups | `root`, `pinka`, `pinka-admin`, `pinka-restricted`, `pinka-build`, `pinka-datasets`, `pinka-query`, `pinka-lab`, `pinka-monitor`, and every account or group already on the host |
-| systemd units, targets, slices | `pinka-lab.target`, `pinka-platform.target`, `pinka-services.slice`, `pinka-core`, `pinka-observability`, `pinka-inference`, `pinka-health-gate`, `pinka-session-start`, `pinka-sleep-inhibit`, `pinka-incus-events`, `pinka-inference-control`, `pinka-gpu-arbiter`, `pinka-gpu-job@`, `pinka-hook@`, `pinka-otlp-agent`, `pinka-backup`, `pinka-backup-prune`, `pinka-pgdump`, `pinka-security-patch`, `pinka-nftables`, `pinka-docker-incus-compat`, `pinka-vm-otlp-address`, `pinka-docs`, `pinka-window-expiry` |
+| systemd units, targets, slices | `pinka-lab.target`, `pinka-platform.target`, `pinka-services.slice`, `pinka-core`, `pinka-observability`, `pinka-inference`, `pinka-health-gate`, `pinka-session-start`, `pinka-sleep-inhibit`, `pinka-incus-events`, `pinka-inference-control`, `pinka-gpu-arbiter`, `pinka-gpu-job@`, `pinka-hook@`, `pinka-otlp-agent`, `pinka-backup`, `pinka-backup-prune`, `pinka-pgdump`, `pinka-security-patch`, `pinka-nftables`, `pinka-docker-incus-compat`, `pinka-vm-otlp-address`, `pinka-docs`, `pinka-window-expiry`, `pinka-run-network`, `pinka-inference-forwarder` |
 | Containers | `pinka-postgres`, `pinka-postgres-exporter`, `pinka-prometheus`, `pinka-loki`, `pinka-tempo`, `pinka-grafana`, `pinka-opa`, `pinka-otel-gateway`, `pinka-otel-journald`, `pinka-node-exporter`, `pinka-cadvisor`, `pinka-gpu-exporter`, `pinka-vllm`, `pinka-query-proxy`, and the prefix `pinka-job-` |
 | Networks and Incus | `pinka-build0`, `pinka-otlp0`, `pinka-run-default`, projects `bench` and `build`, run networks `r-*` |
 | PostgreSQL | roles `postgres`, `pinka_monitor`, `pg_*`; databases `postgres`, `template0`, `template1` |
-| Path segments | under `/srv/pinka`: `models`, `datasets`, `images`, `shared`, `users`, `services`, `state`, `backups`, `platforms`, `restricted`, `training`; under `/etc/pinka`: `secrets`, `incus`, `inference`, `platform`, `qa`, `signing`, `vllm`, `gpu`, `postgres-reader`; under `/var/lib/pinka`: `git`, `staging`, `sessions`, `fingerprint`, `gpu`, `platforms`; under `/run/pinka`: `postgres`, `postgres-reader`, `platform`, `otlp`, `gpu.sock`, `query.sock` |
+| Path segments | under `/srv/pinka`: `models`, `datasets`, `images`, `shared`, `users`, `services`, `state`, `backups`, `platforms`, `restricted`, `training`; under `/etc/pinka`: `secrets`, `incus`, `inference`, `platform`, `qa`, `signing`, `vllm`, `gpu`, `postgres-reader`; under `/var/lib/pinka`: `git`, `staging`, `sessions`, `fingerprint`, `gpu`, `platforms`, `run-networks`; under `/run/pinka`: `postgres`, `postgres-reader`, `platform`, `otlp`, `gpu.sock`, `query.sock`, `run-network.sock` |
 | Commands | `pinka`, `pinka-preflight`, and every command already on the `PATH` |
 | Platform names | `infra`, `lab`, `root`, `system`, `platform`, `restricted`, `training`, `pinka`, `pokus` |
 
@@ -1206,8 +1212,8 @@ Each service or job names exactly one of eight profiles, and its privileges are 
 
 | Profile | Database | Incus | Telemetry | Inference and GPU | Restricted data | Filesystem | Network |
 |---|---|---|---|---|---|---|---|
-| `controller` | own login role; table grants from migrations, `restricted` schema allowed | restricted certificate for projects `bench` and `build` | send; query Prometheus, Loki, Tempo through the query proxy only | inference API; the only service that may request GPU arbiter transitions (serve, train, idle, publish a dataset); never GPU devices | read | release (read); own config, secrets and state; signing key (0400); attestations and trusted keys, session records, fingerprint, models, adapter lineage (read) | loopback only, plus the tailnet range when inference is remote; no listening TCP port |
-| `inference-broker` | own login role; never `restricted` | none | send | inference API | never | release; own config, secrets, state | loopback (plus tailnet for remote inference); may listen on exactly one port, the researcher endpoint `127.0.0.1:18705` |
+| `controller` | own login role; table grants from migrations, `restricted` schema allowed | restricted certificate for projects `bench` and `build`; run networks only through the run-network helper (§7.7) | send; query Prometheus, Loki, Tempo through the query proxy only | inference API; the only service that may request GPU arbiter transitions (serve, train, idle, publish a dataset); never GPU devices | read | release (read); own config, secrets and state; signing key (0400); attestations and trusted keys, session records, fingerprint, models, adapter lineage (read) | loopback only, also with remote inference (§12.8); no listening TCP port |
+| `inference-broker` | own login role; never `restricted` | none | send | inference API | never | release; own config, secrets, state | loopback only, also with remote inference (§12.8); may listen on exactly one port, the researcher endpoint `127.0.0.1:18705` |
 | `sandbox-operator` | own login role; never `restricted` | restricted certificate for project `bench` | send; query (via proxy) | none | never | release; own config, secrets, state | loopback only, no listening port |
 | `restricted-operator` | own login role; `restricted` allowed | restricted certificate for project `bench` | send | none | read | release; own config, secrets, state | loopback only, no listening port |
 | `restricted-reader` | own login role; `restricted` allowed | none | send; query through the query proxy only | none | read | release; own config, secrets, state; optional tools | loopback only, no listening port |
@@ -1217,7 +1223,7 @@ Each service or job names exactly one of eight profiles, and its privileges are 
 
 "Never" means infra refuses the manifest and also revokes the grant at run time; "none" means the profile has no such access to begin with. Only `gpu-trainer` ever gets GPU devices; vLLM, which infra runs, is the only other GPU user, and the arbiter keeps the two apart. Every service gets the hardening baseline of §7.14, which a manifest cannot override; `untrusted-agent` gets the additions listed there, and `gpu-trainer` containers get the fixed options of §7.18. `observer` suits a dashboard or report exporter; the test fixtures cover it.
 
-"Query" means through infra's read-only query proxy (§7.9) only: the accounts of the profiles that query are the members of `pinka-query`. No profile reaches Prometheus, Loki or Tempo directly, and none can push to, delete from or administer them.
+"Inference API" means vLLM's API, or on a lab node infra's inference forwarder (§12.8); no other profile reaches it (§7.11). "Query" means through infra's read-only query proxy (§7.9) only: the accounts of the profiles that query are the members of `pinka-query`. No profile reaches Prometheus, Loki or Tempo directly, and none can push to, delete from or administer them.
 
 ### 12.3 Sockets, principals and endpoints
 
@@ -1227,7 +1233,7 @@ A platform's services talk over Unix sockets that infra creates and permissions 
 
 **Principals file.** Infra writes `/etc/pinka/platform/principals.json` (0644): every service and job with its account name and UID, every socket with its path and allowed clients, and the names of the researcher and admin groups. The platform builds its per-endpoint peer allowlists from this file instead of hard-coding names.
 
-**Endpoints file.** Infra writes `/etc/pinka/platform/endpoints.toml` (0644): the addresses and paths infra provides to the platform, with the effective port values (§12.11). These are the lab facts (machine name, `lab_mode`, `node_role`); the PostgreSQL socket directories with the database and role names; the OTLP endpoint `127.0.0.1:4317/4318`, the VM collector address and the agent OTLP socket; the telemetry query proxy's socket (§7.9); the inference API (`inference.mode`: `local`, `remote` or `scripted`); the OPA decision endpoint; the Incus HTTPS address, certificate directories, projects and the target CPU set (`cpuset_targets`, when it is set); the GPU arbiter socket; the signing-key path; the attestation directories; the session records and the fingerprint command. The platform reads names and addresses from this file instead of hard-coding them.
+**Endpoints file.** Infra writes `/etc/pinka/platform/endpoints.toml` (0644): the addresses and paths infra provides to the platform, with the effective port values (§12.11). These are the lab facts (machine name, `lab_mode`, `node_role`); the PostgreSQL socket directories with the database and role names; the OTLP endpoint `127.0.0.1:4317/4318`, the VM collector address and the agent OTLP socket; the telemetry query proxy's socket (§7.9); the inference API (`inference.mode`: `local`, `remote` or `scripted`; with `remote`, the forwarder's loopback addresses); the OPA decision endpoint; the Incus HTTPS address, certificate directories, projects and the target CPU set (`cpuset_targets`, when it is set); the GPU arbiter socket; the run-network helper socket; the signing-key path; the attestation directories; the session records and the fingerprint command. The platform reads names and addresses from this file instead of hard-coding them.
 
 **Who may connect to a socket served by which profile:**
 
@@ -1291,13 +1297,13 @@ Ground truth is one case of a generic class, restricted data, that infra provide
 |---|---|
 | Credentials | one restricted client certificate per service whose profile has Incus access, `/etc/pinka/incus/<platform>-<service>/{client.crt,client.key,server.crt}` (0600, owned by its account): `controller` for `bench` and `build`, `sandbox-operator` and `restricted-operator` for `bench`; the Incus HTTPS listener on `127.0.0.1` |
 | Projects | `bench` (official runs), `build` (image builds), personal per-user projects |
-| Network conventions | per-run networks named `r-<id>`, created by the platform; bridge prefix for firewall compatibility; ACL `pinka-run-default` |
+| Network conventions | per-run networks named `r-<short>` (12 lowercase letters and digits), created and deleted by the controller only through the run-network helper `/run/pinka/run-network.sock` (§7.7), with fixed settings (no NAT, no uplink, ACL `pinka-run-default`); bridge prefix for firewall compatibility |
 | Profiles | `target-container`, `target-vm` (with `vm_targets`), `probe-client` |
 | CPU sets | with `cpuset_targets` in host_vars, `endpoints.toml` carries `[incus] cpuset_targets` (a Linux cpuset list). The platform sets every target instance's `limits.cpu` to a CPU range inside it, never a plain count (a count lets Incus place the instance on any host CPU); infra sets the `bench` project's `limits.cpu` to the number of those CPUs and runs its own services on `cpuset_services`. A platform refuses measurement campaigns on a host without `cpuset_targets`. The installer and doctor warn when SMT siblings of one core fall into different sets |
 | Telemetry entry for targets | the platform attaches an Incus proxy device to each target instance: `listen=tcp:127.0.0.1:4317` (inside instance) → `connect=tcp:127.0.0.1:4317` (host collector), `bind=instance`. VMs cannot use such a proxy device (Incus supports proxy devices on VMs only in NAT mode, which needs `bind=host`), so they send OTLP to the collector listener on `vm_collector_address` (default `198.18.0.1`, on the dummy interface `pinka-otlp0`, §12.11); the run ACL `pinka-run-default` allows egress to exactly that address and the OTLP ports, and the host firewall accepts nothing else from run networks |
 | Telemetry identity | the platform sets `OTEL_RESOURCE_ATTRIBUTES` with its own run attributes in each target instance's environment at launch (the Pokus Platform: `potka.run_id=<ULID>,potka.node=<alias>`); the in-image OTel agent must honor this variable. Run identifiers are opaque and carry no scenario information. Target profiles set the Incus guest API off (`security.guestapi=false`, verify the key name) so instance config cannot be read from inside. No scenario identifiers ever enter the instance. |
 | Events | `pinka-incus-events.service` ships Incus lifecycle and logging events to Loki for the platform's integrity checks |
-| Golden images | aliases `<blueprint>/<version>` in Incus with properties `pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint` |
+| Golden images | aliases `<blueprint>/<version>` in Incus with properties `pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint` and Incus's `requirements.nesting`; the platform launches an image with `security.nesting=true` exactly when it carries `requirements.nesting=true` |
 
 A restricted Incus certificate has full access inside its projects, so a sandbox operator can do in `bench` whatever the controller can; narrowing that needs Incus's fine-grained authorization, which is out of scope.
 
@@ -1315,8 +1321,9 @@ A restricted Incus certificate has full access inside its projects, so a sandbox
 
 | Item | Value |
 |---|---|
-| Inference API | vLLM's OpenAI-compatible API on `127.0.0.1` (`inference.mode = local`), or the paired inference node over the tailnet with mutual TLS, certificates in `/etc/pinka/inference/` (`remote`, `node_role: lab`, §19.10); `scripted`: any OpenAI-compatible endpoint configured in `endpoints.toml` (no scripted model server is built here), only on `lab_mode: staging`, and every run using it is `official=false` |
+| Inference API | vLLM's OpenAI-compatible API on `127.0.0.1` (`inference.mode = local`), or, with `remote` (`node_role: lab`, §19.10), infra's inference forwarder `pinka-inference-forwarder` on the lab node's loopback: a root-run forwarder that alone holds the mutual-TLS client certificate (`/etc/pinka/inference/`, root only) and dials the paired inference node over the tailnet; it offers the API on the same loopback port as vLLM on a full node and the control API of §19.10 on `127.0.0.1:18710`, so platform services handle no TLS and no keys and stay loopback-only; `scripted`: any OpenAI-compatible endpoint configured in `endpoints.toml` (no scripted model server is built here), only on `lab_mode: staging`, and every run using it is `official=false` |
 | Deployments | deployment specs `/etc/pinka/vllm/deployments/<id>@<version>.yml` with the fields `id` and `version` matching the file name (§7.11); switched only through the GPU arbiter's `serve <id>@<version>` request, never by restarting units |
+| Remote control API | the inference node's control endpoint, reached through the forwarder: exactly `GET /health`, `GET /model`, `GET /metrics`, `POST /activate` and `POST /verify` (§19.10); `POST /activate` reaches the inference node's GPU arbiter as `serve <id>@<version>` |
 | Adapters | `adapter_ids` name registered adapters as `<name>@<sha256>` |
 | GPU arbiter | `/run/pinka/gpu.sock`, for the controller only: requests `serve`, `train`, `idle`, `status`, `publish-dataset` (§7.18) |
 | Training records | `PROVENANCE.json` per published dataset; `MANIFEST.json` and `LINEAGE.json` per registered adapter; schemas in `contract/records/` |
@@ -1339,8 +1346,8 @@ Infra drives the platform only through four hooks and the paths in its manifest;
 | Infra provenance | `/etc/pinka/bootstrap-state.json`: repository commit, tree, ref (the release tag) and dirty flag |
 | Platform provenance | `DEPLOYED_FROM.json` in the release and in each content package: source, commit, tree, tag, platform name, version, runtime and the manifest's SHA-256 |
 | Active platform | `/etc/pinka/platform/active.json` |
-| Session records | `/var/lib/pinka/sessions/<boot_id>.json`, read by the controller |
-| Fingerprint | `pinka fingerprint --json`, callable by the controller; run by any account but root it prints the cached root-computed fingerprint with its `computed_at` time and never escalates |
+| Session records | `/var/lib/pinka/sessions/<boot_id>.json`, read by the controller; format of §7.16, JSON Schema in `contract/records/` |
+| Fingerprint | `pinka fingerprint --json`, callable by the controller, prints the document of §10.2 (JSON Schema in `contract/records/`); run by any account but root it prints the cached root-computed fingerprint with its `computed_at` time and never escalates |
 | Signing key | one per platform, `/etc/pinka/signing/<platform>/` (ed25519, PEM PKCS#8), 0400 for its controller, generated on the host; its public key (PEM SubjectPublicKeyInfo) is published as `/srv/pinka/shared/signing-keys/<platform>-<machine>-<YYYYMMDD>.pub` and kept forever; key ID: the lowercase hex SHA-256 of the DER-encoded public key |
 | Attestations | `/etc/pinka/qa/trusted-keys/` and `/etc/pinka/qa/attestations/`, readable by the active platform's controller; the attestation format and the official check are the platform's |
 | `lab_mode` | `production` or `staging` (§13, invariant 10); `scripted` inference only on `staging`; staging on production's hardware only inside a maintenance window (§7.20) |
@@ -1361,6 +1368,7 @@ Every TCP listener of the lab binds to `127.0.0.1` unless the table says otherwi
 | 18704 | vLLM OpenAI-compatible API | `127.0.0.1` |
 | 18705 | the inference broker's researcher endpoint | `127.0.0.1` |
 | 18706 | docs service (§7.19) | `127.0.0.1`; optionally `tailscale serve` |
+| 18704, 18710 (lab node) | inference forwarder: the remote inference API and control API (§12.8) | `127.0.0.1` |
 
 **Non-loopback block.** Spec features need these listeners. Each is bound to one specific address and firewalled; none is public.
 
@@ -1395,6 +1403,8 @@ Every TCP listener of the lab binds to `127.0.0.1` unless the table says otherwi
 19. No dataset whose provenance lists a `test`-split instance is published or mounted (the split guard).
 20. Adapters are registered read-only under their hash with a lineage record; vLLM loads only registered adapters.
 21. Platform services query telemetry only through the read-only query proxy (§7.9); none reaches Prometheus, Loki or Tempo directly, to query, push, delete or administer. The reference platform's isolation probe proves it, and doctor checks it on every host.
+22. Only the inference broker, the controller and infra's own checks reach the inference API (vLLM, or the inference forwarder on a lab node); platform services never hold the inference node's keys (§7.11, §12.8).
+23. Run networks are created and deleted only through the run-network helper, with its fixed settings; every operation is recorded (§7.7).
 
 ## 14. Code style and conventions
 
@@ -1441,10 +1451,10 @@ Contract v2 steps, after step 14:
 
 15. Contract v2 core: manifest schema with the reserved lists, the eight profiles, validator and invariant checks, principals and endpoints files.
 16. Deployment: sources and content packages, staging, sandboxed build, job image pulls by digest, provenance, the one-platform rule, replace and purge.
-17. Rendering from profiles: accounts, groups, units, sockets (dedicated agent sockets included), ACLs, database and `restricted` schema, Incus certificates, OPA, dashboards, tools, CLI link; platform special cases removed; the neutrality lint; tests proving that the agent has no IP access and no database socket group.
-18. Operations: hooks in `pinka` start, stop, status and update-host; the health gate's `requires`; backup and restore; doctor checks; the agent OTLP socket and the telemetry query proxy; port overrides and the preflight port and VM-address checks (§12.11); the docs service (§7.19) and maintenance windows (§7.20).
-19. GPU arbiter and training jobs: the arbiter replacing the deploy helper (modes, transitions, boot handling, `pinka gpu`); training containers; datasets area and split guard; adapter registration, lineage, `adapter_ids`.
-20. Reference platform: `refplat` with its training job and CPU-only variant, the isolation probe, the extended check-mode job, the `make test-distros` additions.
+17. Rendering from profiles: accounts, groups, units, sockets (dedicated agent sockets included), ACLs, database and `restricted` schema, Incus certificates, the run-network helper, OPA, dashboards, tools, CLI link; platform special cases removed; the neutrality lint; tests proving that the agent has no IP access and no database socket group.
+18. Operations: hooks in `pinka` start, stop, status and update-host; the health gate's `requires`; backup and restore; doctor checks; the agent OTLP socket and the telemetry query proxy; port overrides and the preflight port and VM-address checks (§12.11); the driver CUDA check (§2.2); the session record and fingerprint schemas in `contract/records/`; the docs service (§7.19) and maintenance windows (§7.20).
+19. GPU arbiter and training jobs: the arbiter replacing the deploy helper (modes, transitions, boot handling, `pinka gpu`); the inference forwarder and the control API with `POST /activate` through the arbiter; the inference API's reachability (§7.11); training containers; datasets area and split guard; adapter registration, lineage, `adapter_ids`.
+20. Reference platform: `refplat` with its training job and CPU-only variant, the isolation probe (per loopback-capable profile), the extended check-mode job, the `make test-distros` additions.
 21. Installer: release inspection, the Platform review screen, the GPU screen, sources, secrets, answers schema, snapshots.
 22. Documentation: contract v2, generated references, new pages, ADR-0014 and ADR-0015, security.
 
@@ -1707,8 +1717,8 @@ Backend specifics:
 To make the lab usable on machines without a suitable GPU, a host can take one of three roles (`node_role` in host_vars):
 
 - `full` (default): everything on one host.
-- `lab`: everything except vLLM. The platform's controller and inference broker reach a remote inference node over the tailnet.
-- `inference`: only the inference stack — vLLM, GPU exporters, OTel forwarding to the lab node's tailnet OTLP listener (mutual TLS), and a small **inference control endpoint** (`pinka-inference-control`, on the node's tailnet address, mutual TLS with certificates generated on both nodes during pairing, plus a tailnet ACL rule; vLLM itself stays on `127.0.0.1:18704` and the endpoint forwards its API, §12.11) that exposes exactly: activate deployment (by spec ID from the shared `models.lock.yml`/deployment specs), health, served model, GPU/vLLM metrics passthrough, verification call. Nothing else.
+- `lab`: everything except vLLM. The platform's controller and inference broker reach a remote inference node through infra's inference forwarder on the loopback (§12.8), which alone holds the mutual-TLS client certificate and dials the node over the tailnet.
+- `inference`: only the inference stack — vLLM, GPU exporters, OTel forwarding to the lab node's tailnet OTLP listener (mutual TLS), and a small **inference control endpoint** (`pinka-inference-control`, on the node's tailnet address, mutual TLS with certificates generated on both nodes during pairing, plus a tailnet ACL rule; vLLM itself stays on `127.0.0.1:18704` and the endpoint forwards its API, §12.11) that exposes exactly five requests: `GET /health` (`ok`, `vllm_status`, `deployment`, and `fingerprint` with `hash` and `computed_at`); `GET /model` (`deployment`, `models` and the served model's verified `MANIFEST.json` as `manifest`); `GET /metrics` (the GPU and vLLM metrics, passed through); `POST /activate` with `{"deployment": "<id>@<version>"}`, sent to the inference node's GPU arbiter as `serve <id>@<version>` and answered with the arbiter's result; and `POST /verify` (the serving verification's report, §7.11). Nothing else: no `train`, `idle` or `publish-dataset`.
 
 Rules:
 

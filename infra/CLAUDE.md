@@ -37,8 +37,8 @@ the prompt text where they differ.
 - WSL detection runs before container classification; `wsl` is never a container.
 - Exit codes: 0 supported, 10 degraded, 20 unsupported, 30 needs_action,
   40 preflight_error. Bootstrap adds 75 (WSL restart), 76 (reboot/MOK),
-  77 (operator action), passes doctor's 0/1/2 through, and (proposed,
-  ADR-0002) 11, 50, 60, 64, 70.
+  77 (operator action), passes doctor's 0/1/2 through, and (ADR-0002,
+  accepted) 11, 50, 60, 64, 70.
 - Storage must be `btrfs` or LVM thin; no `dir` backend.
 - The `preflight_gate` role fails if outcome, provider or features differ from
   `/etc/pokus/host-profile.json` without `--refresh-profile`.

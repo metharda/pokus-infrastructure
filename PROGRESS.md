@@ -14,21 +14,23 @@ no personal or installation-specific data.
 
 ## Specifications
 
-`specs/` holds the master copies, read-only for the assistant. The one
-exception is plan item 3b ([section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)):
-the owner authorized one spec update for contract v2; after its commit the
-specs are read-only again. Component copies are byte-identical.
+`specs/` holds the master copies, read-only for the assistant. The
+exceptions are plan item 3b ([section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
+the spec update for contract v2 (`d99d2ed`), and one further edit before 3c
+(3b2 in section J); after its commit the specs are read-only again.
+Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infra-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `0b9d74def8f732998995603a24dece599707c172b992aa9a4ca48e9f7063942f` |
-| `specs/pokus-platform-claude-code-prompt.md` | Build Prompt: pokus-platform (Pokus Platform, potka) | `bde980f5afb22dbf6f94969e6a863583fcb44ce9bde9dda38e5ffaf9d6d8c2f2` |
+| `specs/pokus-infra-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a07bbc3b530756ff43254d18cd6f413bafd4af5b374e7cadd81daafe97182bfb` |
+| `specs/pokus-platform-claude-code-prompt.md` | Build Prompt: pokus-platform (Pokus Platform, potka) | `cda5274f3ba61f3b3b74a3a2086dc7131b8a43c728b945157897995dbf7bfb83` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
 
 These are the specs updated in plan item 3b: contract v2 with decision 7's
 GPU training, N2-N4, the pinka/potka naming and the rename decisions (section
 I), applied from the proposal's Spec changes list, with the owner's review
-of the first draft applied (see the 3b notes in section J). They keep the privacy
+of the first draft applied (see the 3b notes in section J), and the edit
+3b2 before 3c (section J). They keep the privacy
 invariant (infra §13.12, platform §16.9, docs spec §A.4 and §A.6) and the
 docs-alongside rule (infra §0.8, platform §0.7). The previous checksums were
 `4c7de813…` (infra), `ba3626f3…` (platform) and `717f3583…` (docs). Copies:
@@ -482,10 +484,21 @@ proposal, and waits for the owner's "commit".
   in `infra/docs/` stay byte-identical; the new sha256 values are recorded.
   The commit proposal comes with a section-by-section summary of the diff.
   After that commit the specs are read-only again.
+- **3b2** Spec edit before 3c (owner decision after the 3b commit; the
+  specs are read-only again after its commit), limited to: the proposals of
+  steps 7-11 decided as below (2, 3, 4, 6, 7), items A-D, and the isolation
+  probe per profile. 3c starts only after this commit and after the open
+  interpretations (`infra/docs/IMPLEMENTATION_NOTES.md`) are decided.
 - **3c** Rename: the mechanical `pokus` → `pinka`/`potka` rename in `infra/`,
   per the rename table, with the residue check; no behavior change.
+- **3c2** Images free of project names (owner decision): a separate small
+  commit right after 3c drops the managed header from files installed into
+  images and adds `pokus`, `pinka` and `potka` to `images_leakage_patterns`
+  (infra §7.13: target images carry none of the three strings).
 - **3d** Contract v2: steps 1-8 of the proposal's "Effort and order", one
-  commit proposal per step, following the updated specs.
+  commit proposal per step, following the updated specs. Verification items:
+  can a certificate restricted to `bench` create networks in Incus's
+  `default` project at all (run-network helper, infra §7.7)?
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
   stated honestly). Anything that needs a VM or a real host is described
@@ -605,7 +618,94 @@ Not implemented yet, to be built with contract v2 (infra §16, step 18,
 which is step 4 of plan item 3d): the query proxy, the port overrides and
 the preflight port and VM-address checks, the docs service (it replaces the
 foreground `docs serve` command of step 14), maintenance windows, the SMT
-warning, and the reader-socket mount for Grafana.
+warning, and the reader-socket mount for Grafana. Added by 3b2: the
+run-network helper (§16 step 17), the driver CUDA check and the record
+schemas in `contract/records/` (step 18), the inference forwarder, the
+control API's `POST /activate` through the arbiter and the inference API's
+reachability (step 19), and the isolation probe per loopback-capable
+profile (step 20); the drain hook replaces the `/lab/drain` calls (step 18).
+
+**Decisions after the 3b commit (owner).** On the contract proposals of
+infra steps 7-11 (details in `infra/docs/IMPLEMENTATION_NOTES.md`, steps
+7-11):
+
+1. `current.yaml` next to `current.env`: approved as an infra-internal detail
+   (approved deviation St7-1).
+2. Image property `requirements.nesting`: approved as the fourth image
+   property of the contract (3b2: infra §7.13, §12.6; platform §3).
+3. Session record: approved; its JSON Schema is published in
+   `contract/records/` (3b2: infra §7.16, §12.10; platform §3, §6).
+4. Fingerprint document: approved as the contract v2 format, its schema in
+   `contract/records/` (3b2: infra §10.2, §12.10; platform §3).
+5. `POST /lab/drain` and `GET /lab/status` calls: reverted in 3d step 4; the
+   `drain` hook replaces them.
+6. Inference client key: option (a), a root-run local mutual-TLS forwarder
+   on lab nodes; `controller` and `inference-broker` stay loopback-only (3b2:
+   infra §12.2, §12.8, §12.11, §19.10, invariant 22; platform §3). The
+   gateway's ACLs on `/etc/pokus/inference/` from step 11 go in 3d.
+7. Inference control API: approved, with `POST /activate` sent to the
+   inference node's GPU arbiter as `serve <id>@<version>` (3b2: infra §12.8,
+   §19.10; platform §3, §4.1).
+8. The agent's secrets: closed; the validator refuses `secrets` on an
+   `untrusted-agent` service and infra creates no secrets directory for it
+   (3d).
+
+Further items (owner, folded in by 3b2): **A** a root-run, socket-activated
+run-network helper for the controller only (infra §7.7, §12.2, §12.6,
+invariant 23; platform §3, §4.1, §4.2, §5); **B** vLLM reachable only by
+`inference-broker`, `controller` and infra's own checks, by the mechanism of
+K2 (infra §7.11, §12.2, invariant 22); **C** preflight and doctor check that
+the NVIDIA driver supports the pinned vLLM image's CUDA version, with a
+remediation (infra §2.2, §2.3, §9, §10.1, §11); **D** the
+`debian13-baremetal` fixture is `supported` (infra §11); and the isolation
+probe runs for every loopback-capable profile as a transient unit with that
+profile's rendered hardening (infra §7.18, §11). Also decided: the image
+header fix as 3c2; from step 2, Debian 12 removed from `tested` and an
+explicit unsupported row per implemented distribution for unlisted releases
+(approved deviations St2-1, St2-3). With the owner's approval of 3b2, item A
+was broadened: doctor and the platform's integrity check flag any Incus
+network that neither infra created nor the helper's log records, whatever
+its name (infra §7.7, §11).
+
+**Interpretations (owner, after the 3b commit).** Every interpretation that
+`infra/docs/IMPLEMENTATION_NOTES.md` lists as "awaiting owner confirmation"
+in steps 2-14 and the follow-ups after step 13, and that contract v2 does
+not supersede, is approved as recommended: 2.4-2.6, 3.1-3.6, 3.8-3.10,
+4.1-4.4, 5.1-5.7, 6.1-6.6, 6.8, 7.1, 7.3, 7.7, 7.8, 7.10-7.12, 8.1, 8.2,
+8.4-8.11, 9.1-9.11, 10.1-10.12, 11.1, 11.3, 11.5, 11.6, 11.8, 11.10-11.14,
+12.1-12.6, 13.1-13.8, 13.10-13.12, CPU sets 1, 2 and 4, and 14.3. With
+these notes and one change:
+
+- 3.1: ADR-0002 is accepted (its status is updated with 3b2).
+- 3.4: the state file at every exit is approved; "the official check
+  requires `result` success" is a request for the next platform spec edit
+  (below).
+- 4.2: the CUDA 13.0 vLLM image stays; item C makes a too-old driver visible.
+- 6.3: the managed `daemon.json` label becomes `org.pinka.managed` in 3c.
+- 7.1: Prometheus, Loki and Tempo follow the K2 mechanism and its ADR; the
+  collector, Grafana and the exporters stay on the host network.
+- 9.7: the health gate's thresholds stay; its facilities follow `requires`
+  in 3d. 10.5: the listener allowlist gains the non-loopback block of infra
+  §12.11. 10.6: the telemetry round trip goes through the query proxy.
+  11.3: the console-script check becomes the manifest command check. 11.5:
+  socket expectations come from `principals.json`.
+- 11.13, changed: once paired, the split-inference ports accept only the
+  paired peer's tailnet address; the pairing port is open only while pairing
+  (built in 3d with the inference forwarder).
+
+Superseded by contract v2, reworked in 3d: 7.9 (adapters come only from the
+GPU arbiter; adapter entries leave `models.lock.yml`), 11.7 (the evaluator
+uses the `wx-memory` relaxation), 14.1 and 14.2 (the docs service, P3c) and
+14.4 (maintenance windows, P3d). Decided earlier, not repeated: 2.1-2.3,
+4.5 (A3), 5.8 and both check-mode items (I2), 7.2, 7.4-7.6, 8.3, 11.2,
+11.4, 11.9, 13.9, CPU sets 3; obsolete: 3.7, 3.11, 6.7.
+
+**Requests for the next platform spec edit** (the platform spec is
+read-only; the owner keeps its master for `pokus-platform`):
+
+- The official check requires `result` success in
+  `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
+  `doctor_warnings` also counts is decided in that edit.
 
 ### Privacy clean-up (owner instruction)
 
@@ -652,6 +752,9 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | H11 | docs spec §B.5 | current and previous release browsable | demonstrated with two test versions until real releases exist |
 | I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; implemented in commit "feat(infra): install the NVIDIA driver on Secure Boot hosts with MOK consent" (`--accept-mok-enrollment`, `--mok-password-stdin`, `gpu.accept_mok_enrollment`; bootstrap imports the key named by the play's 76) |
 | I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; implemented in commit "ci(infra): split the fast lane into a required and an extended job" (`make check-mode`, `make check-mode-extended`) |
+| St2-1 | infra §2.3, §19.2 | Debian 12 in the `tested` tier | Debian 12 removed from `tested`, with an explicit `unsupported` row naming the end of regular security support (E8 policy). Implemented in step 2; approved after the 3b commit |
+| St2-3 | infra §2.3 | releases not listed fall through to the `ID_LIKE` rows or `unsupported` | an explicit `unsupported` row per implemented distribution for its unlisted releases ("release not in the support matrix"), placed before the `ID_LIKE` rows. Approved after the 3b commit; not implemented yet, planned with the other preflight additions of 3d step 4 |
+| St7-1 | infra §7.11 | `current.yml` rendered to `current.env` | `current.yaml` (the `vllm serve --config` file) rendered next to `current.env`, which carries its hash; an infra-internal detail, not a contract item. Implemented in step 7 (deploy helper; the GPU arbiter keeps it in 3d); approved after the 3b commit |
 | P3a | infra §7.6, §7.7, §8.1, §12.6, §18.4 screen 5; platform §3, §4.1, §5, §12.1 | `cpuset_targets` with no contract field | `[incus] cpuset_targets` in `endpoints.toml`; the platform sets every target's `limits.cpu` to a CPU range inside it, never a count, records the range in the run manifest and refuses measurement campaigns on a host without it; the `bench` project's `limits.cpu` is the number of those CPUs; services run on `cpuset_services`; installer and doctor warn when SMT siblings of one core fall into different sets. Approved in the owner's review of the 3b spec update; implemented in `00da783` except the SMT warning |
 | P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; the overrides and checks are not implemented yet |
 | P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; not implemented yet (step 14 built a foreground `docs serve` command) |
@@ -662,7 +765,8 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 `contract_version 1` is defined by `infra/docs/contracts.md` (resolutions B2,
 B3, B4, C2-C10, D1-D3, E3, E13). The ports table (C10) and the CPU sets are
 approved with the 3b review (P3b, P3a); contract v2 (infra §12) replaces
-this contract in plan item 3d.
+this contract in plan item 3d. The owner decided every proposal below after
+the 3b commit (section J, "Decisions after the 3b commit").
 
 Proposed in infra step 7 (awaiting owner approval; written into
 `infra/docs/contracts.md`, details in `infra/docs/IMPLEMENTATION_NOTES.md`,
@@ -763,8 +867,10 @@ Proposed after infra step 13 (approved as P3a; details in
 | Item | Content | Status | Commit |
 | --- | --- | --- | --- |
 | 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
-| 3b | Spec update (contract v2, naming, rename decisions) | proposed | — |
+| 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
+| 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | proposed | — |
 | 3c | Rename `pokus` → `pinka`/`potka` | not started | — |
+| 3c2 | Images free of project names | not started | — |
 | 3d | Contract v2, steps 1-8 | not started | — |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
@@ -778,180 +884,14 @@ Not in this repository: they live later in the separate repository
 
 ## Open questions
 
-All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
-
-- From step 1 ("Questions raised by step 1"): reference agents for scenario
-  validation, the QA results schema, project files at the monorepo root,
-  approval of the port table (`infra/docs/contracts.md#ports`) and of the
-  page-ownership table.
-- From step 2 ("Interpretations awaiting owner confirmation"): Debian 12 under
-  the E8 policy, the `debian13-baremetal` fixture tier (BUILD_PROMPT §11 vs
-  §2.3/E8), rows for unlisted releases of implemented distributions,
-  unreachable required endpoints → `needs_action`, storing the profile only as
-  root and not with `--no-write`, and the meaning of the `qa:run` labels E0-E3.
-- From step 3 ("Interpretations awaiting owner confirmation (step 3)"): the
-  additional bootstrap exit codes 11, 50, 60, 64 and 70 (ADR-0002, proposed);
-  stopping with 77 on a changed host profile, except after a run that ended
-  with a play signal; `--force-unsupported` not skipping required actions; the
-  state file written at every exit with `result` (and a proposed contract
-  addition so that the official check requires a successful result); check
-  mode writing neither profile nor state; `tar` and `git` checks and the
-  interactive `wsl.conf` edit in pre-preflight; `--tui`/`--answers` stopping
-  with 77 until the installer exists; the vault password order; the
-  concurrency lock; `LC_ALL=C.UTF-8` for Ansible; and non-check runs ending
-  with 60 until `pokus-lab` exists (step 10).
-- From step 4 ("Interpretations awaiting owner confirmation (step 4)" and
-  "Findings to report"): the lock structure; newest stable releases rather
-  than LTS lines; vLLM 0.31.0 on CUDA 13.0 (a `-cu129` variant exists for
-  older drivers); HEAD-only registry checks; the `verify-todos` exclusions; the
-  failing `lock-check` CI job; staying on Incus 6.0 LTS although `v7.0.x` tags
-  exist; NVIDIA's rpm repository file using `gpgcheck=0` (to be resolved in
-  step 6).
-- From step 5 ("Interpretations awaiting owner confirmation (step 5)" and
-  "Findings to report (step 5)"): unverified component sources as `verify`
-  data that the play refuses; `pokus_incus_bridge_patterns` from the contract
-  instead of `incus_bridge_prefix`; the distribution-fact check as a
-  repository check; `--allow-reboot` scheduling `shutdown -r +1` after signal
-  76; removed researchers also leaving `pokus-admin`; Incus's per-user group
-  added in step 6; how lab-wide variables are documented; role check-mode
-  tests deferred to step 12; run networks on firewalld and ufw hosts relying
-  on Incus until step 6; the Secure Boot MOK password on non-interactive
-  driver installs.
-- From step 6 ("Findings to report (step 6)" and "Interpretations awaiting
-  owner confirmation (step 6)"): **a contract question**: a certificate
-  restricted to `bench` can create run networks but cannot delete them
-  (bridges live in the default project); proposed: a socket-activated root
-  helper for `r-*` networks, like C3, reachable only by `pokus-orch`. Also:
-  staying on Incus 6.0 although a 7.0 branch exists; `bench` cannot limit
-  network access to `r-*` by name; personal projects created in advance with
-  limits and without GPU; personal bridges trusted like the build bridge; the
-  `daemon.json` label as managed header; the GPU check's device flags; preseed
-  once, then convergence; bench limit defaults; Compose units in step 7.
-- From step 7 ("Findings to report (step 7)" and "Interpretations awaiting
-  owner confirmation (step 7)"): the observability stack on the host network
-  bound to `127.0.0.1` (Prometheus must reach the loopback-only Incus API);
-  Grafana and the exporter on the PostgreSQL sockets and no TCP listener at
-  all (ADR-0010); a second collector instance for the host journal; the VM
-  listener address `198.18.0.1` on `pokus-otlp0`; vLLM on the host network on
-  `127.0.0.1` only; `current.yaml` rendered next to `current.env` and the
-  limits on deployment overrides; immutable deployment files; generated
-  superuser and exporter passwords; adapters in `models.lock.yml`; the pinned
-  OPA CLI for tests; one GPU service per GPU method; models and vLLM only on
-  serving nodes. Findings: libpq ignores the group-readable reader credential
-  (researchers copy it to `~/.pgpass`); `pg_hba` cannot tell socket
-  directories apart; service accounts now get their own primary groups; the
-  run explorer's database panel assumes a table `public.runs` until the
-  platform's migrations exist.
-- From step 8 ("Findings to report (step 8)" and "Interpretations awaiting
-  owner confirmation (step 8)"): the leakage lint's design (baseline of the
-  base image, whole-token findings, benign words; ADR-0012) and its default
-  allow rules; unpinned distribution packages recorded in `packages.txt`; the
-  extra image properties `requirements.nesting` and `description`; `-dirty`
-  in `pokus.recipe_commit`; the export layout (`SHA256SUMS`, `build.json`,
-  `_upstream/`); importing an export instead of rebuilding; failed builds
-  kept for inspection; nesting per build instance; the agent reading the
-  whole journal plus per-blueprint log files; each blueprint running only its
-  own tests; the role on `full` and `lab` nodes. Findings: no build could be
-  run here (no Incus); every build waits for the Incus base image
-  fingerprints; in-image files carry the managed-file header that names the
-  project, which the default leakage patterns allow.
-- From step 9 ("Findings to report (step 9)" and "Interpretations awaiting
-  owner confirmation (step 9)"): what a restore brings back (the research
-  space directories, and from `/etc/pokus` only vLLM deployments and QA
-  files; newer files kept; secrets never restored); the wider set of secret
-  paths excluded from backups; the snapshot prompt and `restore_snapshot`;
-  the repository password changed only by `rotate.yml` (`restic key
-  passwd`); initializing the repository on first use; the SFTP key and pinned
-  host keys; the health gate's checks and thresholds (WSL clock within 1 s of
-  `pool.ntp.org`); autostart of `pokus-lab.target`; the scope of `rotate.yml`
-  (including removing replaced Incus trust entries); schedules and
-  retention; backup timers outside the lab target. Findings: nothing could be
-  run against real services here; session records and the restore's doctor
-  run depend on `pokus-lab` (step 10); a restore drill must disable the spare
-  machine's backup timers.
-- From step 10 ("Findings to report (step 10)" and "Interpretations awaiting
-  owner confirmation (step 10)"): the lab description `/etc/pokus/lab.json`
-  as the CLI's only input; package copies (with a copy of preflight) under
-  `/usr/local/lib/pokus/`; doctor needing root and exiting 2 when it cannot
-  run; which checks are warnings (a fresh lab without a backup repository
-  ends bootstrap with 1); the listener allowlist; the telemetry round trip
-  and the smoke checks' assertions (VM blueprints skipped); the inference
-  project left out of the unit list; `pokus-lab restore -- <options>`;
-  `status` needing root for containers and Incus; the reboot notice from
-  `/var/run/reboot-required`; `pokus-lab user` refusing host_vars files it
-  cannot edit line by line. Findings: nothing ran against a real lab; the
-  proposed fingerprint and drain contract additions (the platform must
-  implement the drain endpoints); `site.yml` still applies `postgres` and
-  `opa` on inference nodes (aligned in step 11); the step 5 sleep inhibitor
-  was never enabled (fixed); `pokus-lab docs serve` follows in step 14.
-- From step 12 ("Findings to report (step 12)" and "Interpretations awaiting
-  owner confirmation (step 12)"): test images resolved at run time with the
-  fingerprint recorded; results valid for 90 days shown as a *Valid until*
-  date; the stages of a test (first backup before `doctor --smoke`); test VMs
-  as staging labs on a test tailnet with an ephemeral key; the harness's
-  safety rules; the fast lane's roles, base images (Leap instead of
-  Tumbleweed) and profile. Findings: no distribution test has run (no Incus;
-  image aliases unverified); `make test-distros` needs the answers replay of
-  step 13; the fast lane runs for the first time in CI with this step; no
-  derivative target yet.
-- From step 11 ("Findings to report (step 11)" and "Interpretations awaiting
-  owner confirmation (step 11)"): deployment directory names, refusing moved
-  tags, keeping old deployments; SSH deploy keys or anonymous HTTPS only;
-  SSH-signed tags; the uv environment and console-script check; schema
-  checks with the release's interpreter; socket permissions from a root
-  `ExecStartPost=+` helper with the ACL fallback; migrations before `current`
-  switches, once per commit; the evaluator without `MemoryDenyWriteExecute`;
-  disabling the platform stops but removes nothing; vLLM on loopback behind
-  the control endpoint on an inference node; the pairing protocol (P-256
-  identities for 3650 days, 60-bit code, HMAC over both fingerprints, five
-  attempts, equal `lab_mode`); what an inference node runs and how its
-  telemetry reaches the lab node; tailnet addresses read at bootstrap; the
-  split-inference firewall ports; doctor on split nodes. Findings: nothing
-  ran against a real host; the SSH-signed tag test needs `ssh-keygen`;
-  GitHub's SSH host keys are still unverified (SSH sources on github.com are
-  refused until then); the contract proposals above; `InaccessiblePaths`
-  needs existing paths (unit ordering); existing hosts may recreate the
-  collector and store containers once.
-
-- From step 13 ("Findings to report (step 13)" and "Interpretations awaiting
-  owner confirmation (step 13)"): `--machine` optional with `--answers` or
-  the TUI (this replaces the step 3 interpretation that `--tui` and
-  `--answers` stop with 77); the TUI re-running bootstrap non-interactively
-  for the installation; one installer lockfile that includes ansible-core for
-  the vault API; segno for the QR code; pytest 8.4.2 for the snapshot plugin;
-  the per-researcher Grafana switch in the observability role; an optional
-  inference peer named later by pairing; the CI answers' power policy; E3 as
-  no HTTPS tokens; the TUI's exit codes; mouse, `NO_COLOR` and themes; the
-  Finish screen's commit as the invoking user, never pushed. Findings, fixed
-  in the step: task names with role prefixes in the callback, Ansible's
-  curses probe crashing the TUI, modify mode replacing the restic password,
-  resume losing incomplete answers, modify mode asking again for the
-  Tailscale key, the phase tree's provider and helper roles. Not covered: no
-  real bootstrap driven by the TUI yet; estimates are counts only (no measured
-  build data); MOK enrollment and the Hub API field names unverified.
-- From the follow-ups after step 13 (IMPLEMENTATION_NOTES, "CPU sets" and
-  "check mode of the whole play"): empty CPU sets by default; which units and
-  containers the services slice holds; the proposed `[incus] cpuset_targets`
-  contract addition; the CI fast lane running all of `site.yml` (beyond the
-  provider-agnostic roles of BUILD_PROMPT §19.9) with the container as bare
-  metal, and skipping roles whose sources are unverified. Findings: Tailscale
-  and Incus are skipped on every CI image until verified, Docker on Leap and
-  Arch; check mode on a fresh Debian-family host needs python3-apt and
-  python3-debian; python3-debian was missing for real runs too (fixed); the
-  whole-play fast lane also found the never-enforced Grafana password check
-  and the backup unit templates that failed every real run (both fixed).
-  The fast-lane interpretation is decided by I2: the required job runs the
-  provider-agnostic roles only, the whole play runs in a separate,
-  non-blocking extended job.
-- From step 14 ("Findings to report (step 14)" and "Interpretations awaiting
-  owner confirmation (step 14)"): **preflight's `secure_boot_mok` rule
-  (BUILD_PROMPT §2 matrix and fixture) stops bootstrap with 30 before the
-  play can install the NVIDIA driver on a Secure Boot host**, so the
-  automatic driver installation cannot run there; proposal: a warning
-  instead, or consent to the MOK flow. `pokus-lab docs serve` as a
-  foreground command for any account on `127.0.0.1`; documentation installed
-  by extracting a release tarball; the README excerpt (supported and tested
-  only); the QA maintenance window read as a separate staging lab.
+Decided after the 3b commit: every interpretation of steps 2-14 and of the
+follow-ups after step 13 that `infra/docs/IMPLEMENTATION_NOTES.md` lists as
+"awaiting owner confirmation" (section J, "Interpretations"); the notes keep
+the original wording and the findings of each step. Still open, from step 1
+("Questions raised by step 1"): reference agents for scenario validation and
+the QA results schema (both for `pokus-platform` and `pokus-qa`), and the
+page-ownership table (H5). Settled since: the port table (P3b) and the
+project files at the monorepo root (3f).
 
 ## Owner deliverables pending
 
@@ -1083,7 +1023,9 @@ Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
 `infra/docs/IMPLEMENTATION_NOTES.md`, section "Approved deviation I1"). The
 work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
 under the final commit rule in [Process rules](#process-rules-in-force):
-3a is committed (`836cfce`); 3b (the spec update, with the owner's review
-applied) is proposed again and waits for the owner's "commit"; next is 3c,
-the rename. Still open: the remaining `TODO(verify)` items (111), which need
-network access or reference hardware.
+3a (`836cfce`) and 3b (`d99d2ed`) are committed; 3b2 (the second spec
+edit) is proposed and waits for the owner's "commit". 3c, the rename,
+starts only after that commit and after the owner decides the open
+interpretations of `infra/docs/IMPLEMENTATION_NOTES.md`. Still open: the
+remaining `TODO(verify)` items (111), which need network access or reference
+hardware.
