@@ -55,7 +55,7 @@ argument_specs:
       images_leakage_patterns:
         type: list
         elements: str
-        default: ["[A-Z]+-[0-9]{3}", "(?i)fault", "(?i)inject", "(?i)ground[_-]?truth", "(?i)scenario"]
+        default: ["[A-Z]+-[0-9]{3}", "(?i)fault", "(?i)inject", "(?i)ground[_-]?truth", "(?i)scenario", "(?i)pokus", "(?i)pinka", "(?i)potka"]
         description: Python regular expressions that fail the build when the build adds a match.
       images_leakage_allow:
         type: list

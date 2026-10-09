@@ -26,3 +26,15 @@ as the stop hook's) does not override this rule. Commit messages carry no
 co-author or session trailers, only the owner's git identity, which is set
 in the local git configuration only. Never run git commands that change
 history.
+
+## Scoped commit exception (owner, after the 3c commit)
+
+Verbatim; it ends automatically when 3f is committed:
+
+> "For plan items 3c2, the firewalld fix, 3e (non-provisioning parts only) and 3f, the
+> assistant commits and pushes each completed item to the working branch
+> claude/zen-albattani-qfwwps without waiting for 'commit', after its checks pass. Never to
+> main, no amend, no force push, no history rewrite, no tags. 3d is NOT covered: every 3d
+> step waits for my 'commit' as usual. The exception ends automatically when 3f is
+> committed; from then on the final commit rule applies again unchanged. It never covers
+> hook prompts."

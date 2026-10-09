@@ -1056,7 +1056,8 @@ Python regular expressions that fail the build when the build adds a match.
 - Default:
 
     ```yaml
-    ['[A-Z]+-[0-9]{3}', '(?i)fault', '(?i)inject', '(?i)ground[_-]?truth', '(?i)scenario']
+    ['[A-Z]+-[0-9]{3}', '(?i)fault', '(?i)inject', '(?i)ground[_-]?truth', '(?i)scenario', '(?i)pokus',
+      '(?i)pinka', '(?i)potka']
     ```
 
 ### `images_leakage_allow`

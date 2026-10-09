@@ -130,11 +130,30 @@ def recipe_files() -> list[Path]:
     return sorted(p for p in IMAGES.rglob("*") if p.is_file())
 
 
-@pytest.mark.parametrize("path", recipe_files(), ids=lambda p: p.relative_to(IMAGES).as_posix())
+def installed(path: Path) -> bool:
+    """Whether a recipe file is installed into the image (``files/``)."""
+    return path.parent.name == "files"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in recipe_files() if not installed(p)],
+    ids=lambda p: p.relative_to(IMAGES).as_posix(),
+)
 def test_recipe_files_carry_the_managed_header(path: Path) -> None:
     relative = path.relative_to(INFRA).as_posix()
     head = path.read_text(encoding="utf-8").splitlines()[:3]
     assert any(HEADER.format(path=relative) in line for line in head), relative
+
+
+@pytest.mark.parametrize(
+    "path",
+    [p for p in recipe_files() if installed(p)],
+    ids=lambda p: p.relative_to(IMAGES).as_posix(),
+)
+def test_installed_files_carry_no_managed_header(path: Path) -> None:
+    # Images name none of the project's names (owner decision 3c2, BUILD_PROMPT §7.13).
+    assert "Managed by" not in path.read_text(encoding="utf-8"), path
 
 
 # --- in-image files ---------------------------------------------------------------------
@@ -225,6 +244,12 @@ def test_docker_host_unit_runs_the_pinned_image() -> None:
         "ground_truth",
         "GroundTruth",
         "scenario",
+        "pokus",
+        "Pinka",
+        "POTKA",
+        "pinka-lab",
+        "potka_orch",
+        "org.pinka.managed",
     ],
 )
 def test_default_patterns_cover_the_specification(token: str) -> None:

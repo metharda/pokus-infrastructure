@@ -2158,8 +2158,23 @@ installer's refused username prefixes.
 - Doctor's firewall check asks firewalld for the zone `pinka` (before:
   `pokus`), but the firewall role creates `pinka-tailnet` and `pinka-run`,
   so on a firewalld host the check always fails. The rename keeps the
-  behavior; the fix (check the two zones the role creates) is proposed for
-  3d.
-- The CI secret stays `POKUS_PRIVACY_DENYLIST`; the workflows pass it to the
-  scan as `PINKA_PRIVACY_DENYLIST`. Once the owner adds the secret
-  `PINKA_PRIVACY_DENYLIST`, the three workflow lines switch to it.
+  behavior; the fix (check the two zones the role creates) is its own
+  commit after 3c2 (3c3, owner decision).
+- The workflows read the CI secret `PINKA_PRIVACY_DENYLIST` (3c2; the
+  secret `POKUS_PRIVACY_DENYLIST` named before never existed). Until the
+  owner creates it, the scan runs without a denylist, as it always has.
+
+## Images free of project names (plan step 3c2)
+
+Owner decision, infra §7.13: target images carry none of the strings
+`pokus`, `pinka` or `potka`, with no exception. `images_leakage_patterns`
+gains `(?i)pokus`, `(?i)pinka` and `(?i)potka` (no allow rule), and the files
+installed into images (`images/*/files/`) no longer carry the managed-file
+header; the other recipe files (`image.yaml`, `cloud-init.yaml`,
+`provision.yml`, `tests/`) keep it, because they stay on the host or are
+removed by the clean step. A test checks both sides, and the pattern test
+covers the three names. The blueprint versions stay `1.0.0`: no image has
+been built yet. The patterns are applied after the base image's baseline,
+like the others, so only what a build adds counts; whether the packages of
+the blueprints add one of the three strings below `/etc`, `/opt`, `/srv` or
+`/usr/local` shows at the first real build (Phase 5 self-test).

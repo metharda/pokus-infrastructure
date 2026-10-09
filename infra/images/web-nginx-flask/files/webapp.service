@@ -1,4 +1,3 @@
-# Managed by pinka (images/web-nginx-flask/files/webapp.service). Local changes will be overwritten.
 [Unit]
 Description=Web application (gunicorn)
 After=network.target

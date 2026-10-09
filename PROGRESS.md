@@ -63,6 +63,19 @@ repository at 3f (section J).
   set in the local git configuration only. The root `CLAUDE.md` states the
   same rule with the same wording; at 3f it carries over into the
   infra-only `CLAUDE.md`.
+- **Scoped commit exception (owner, with the "commit" for 3c, verbatim):**
+
+  > "For plan items 3c2, the firewalld fix, 3e (non-provisioning parts only) and 3f, the
+  > assistant commits and pushes each completed item to the working branch
+  > claude/zen-albattani-qfwwps without waiting for 'commit', after its checks pass. Never to
+  > main, no amend, no force push, no history rewrite, no tags. 3d is NOT covered: every 3d
+  > step waits for my 'commit' as usual. The exception ends automatically when 3f is
+  > committed; from then on the final commit rule applies again unchanged. It never covers
+  > hook prompts."
+
+  It covers only 3c2, the firewalld fix, the non-provisioning parts of 3e
+  and 3f, each committed after its checks pass; every 3d step waits for
+  "commit". The root `CLAUDE.md` carries the same wording.
 - **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
   `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
   14, without the owner's "commit").
@@ -707,14 +720,13 @@ read-only; the owner keeps its master for `pokus-platform`):
   `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
   `doctor_warnings` also counts is decided in that edit.
 
-**3c, the rename (proposed).** `infra/` follows the rename table: 149 paths
+**3c, the rename (committed `63b7e56`).** `infra/` follows the rename table: 149 paths
 moved with `git mv`, every generated file regenerated, the spec copies
 untouched; the residue check (`git grep -n -i pokus` in `infra/` and
 `.github/`) lists only allowed uses: the project name in prose ("Pokus",
 "Pokus lab"), the repository names, the refused username prefix `pokus-`
 and the Rego test that the old decision path is rejected, the spelling
-dictionary, the step 8 note on the word itself, the test key (Q12) and the
-CI secret below. Behavior changes are only the two the owner decided: OPA's
+dictionary, the step 8 note on the word itself and the test key (Q12). Behavior changes are only the two the owner decided: OPA's
 authorization allows exactly the two decision paths (Q7, with a test), and
 the installer refuses the prefixes `pinka-`, `potka-` and `pokus-`. The
 interpretations and findings are in `infra/docs/IMPLEMENTATION_NOTES.md`,
@@ -722,13 +734,46 @@ interpretations and findings are in `infra/docs/IMPLEMENTATION_NOTES.md`,
 markers left on hosts say `pinka` (Q1); Incus client certificates carry
 their name (`potka-*`, `pinka-metrics`); found, not fixed: doctor's
 firewalld check looks for a zone `pinka` that the firewall role never
-creates (fix proposed for 3d). Records in this file written before 3c keep
+creates (fixed separately as 3c3, owner decision). Records in this file written before 3c keep
 the names of their time.
 
-- **Owner action**: add the Actions secret `PINKA_PRIVACY_DENYLIST` with the
-  value of `POKUS_PRIVACY_DENYLIST`; until then the workflows pass the old
-  secret to the scan as `PINKA_PRIVACY_DENYLIST`, and the switch is a
-  three-line change.
+**Owner decisions with the "commit" for 3c.**
+
+- The five rename interpretations of `infra/docs/IMPLEMENTATION_NOTES.md`
+  ("Rename (plan step 3c)", items 1-5) are approved.
+- The firewalld zone bug is fixed as its own small commit right after 3c2
+  (3c3), not in 3d.
+- The secret `POKUS_PRIVACY_DENYLIST` never existed (the 3c record wrongly
+  assumed it). The owner creates `PINKA_PRIVACY_DENYLIST` as a repository
+  secret; 3c2 switches the workflows to it, and until it exists the scan
+  runs without a denylist, as it has so far. The owner received the value's
+  format and the local commands for the working tree and the whole history
+  (also in `infra/README.md`, "Privacy", for the working tree).
+- Scoped commit exception: see [Process rules](#process-rules-in-force).
+- Order: 3c2 → firewalld fix (3c3) → 3d steps 1-8, one at a time → 3e →
+  3f. Each 3d step: built, `make lint test docs` green, documentation
+  alongside, this file updated, then a stop with a summary (what was built,
+  every implementation choice the specs left open with the choice and its
+  alternatives, anything touching security, ground-truth blindness,
+  isolation or the contract, test results, remaining `TODO(verify)`) and a
+  commit proposal that waits for "commit".
+- Outside 3d, the assistant stops and asks (questions collected and sent
+  together) only when something would deviate from the specs, or the specs
+  do not decide it and the choice affects security, ground-truth blindness,
+  isolation, the contract or data safety; when a test or check needs a VM,
+  a real host, Incus, Docker or a GPU (what and where, never provisioning
+  this machine); or when a failing check could only be fixed by weakening a
+  test or relaxing a spec limit.
+- After 3f: stop and ask the owner to rename the repository to
+  `pokus-infrastructure` on the Git host (3g); after the confirmation, 3g
+  and 3h under the normal commit rule, then stop. The platform is not
+  started.
+
+**3c2, images free of project names.** `images_leakage_patterns` gains
+`(?i)pokus`, `(?i)pinka` and `(?i)potka` (no allow rule); the files
+installed into images (`infra/images/*/files/`) lose the managed header;
+the workflows read the secret `PINKA_PRIVACY_DENYLIST`. Details in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Images free of project names".
 
 ### Privacy clean-up (owner instruction)
 
@@ -892,8 +937,9 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
 | 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
 | 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
-| 3c | Rename `pokus` → `pinka`/`potka` | proposed | — |
-| 3c2 | Images free of project names | not started | — |
+| 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
+| 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | (scoped exception) |
+| 3c3 | Doctor's firewalld zone check | not started | — |
 | 3d | Contract v2, steps 1-8 | not started | — |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
@@ -1038,7 +1084,7 @@ step 4" through "after step 13"):
 - Doctor's firewall check on firewalld hosts looks for the zone `pinka`,
   but the firewall role creates `pinka-tailnet` and `pinka-run`, so the
   check fails there (found in 3c, present since step 10 under the old
-  names; fix proposed for 3d).
+  names; fixed separately as 3c3, owner decision).
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
   SSH-signed tag deployments is skipped here (it runs where OpenSSH is
   installed, as in CI), and the socket ACL handling is tested with a fake
@@ -1050,8 +1096,8 @@ Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
 `infra/docs/IMPLEMENTATION_NOTES.md`, section "Approved deviation I1"). The
 work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
 under the final commit rule in [Process rules](#process-rules-in-force):
-3a (`836cfce`), 3b (`d99d2ed`) and 3b2 (`169266e`) are committed; 3c, the
-rename, is proposed and waits for the owner's "commit"; 3c2 (images free of
-project names) follows it as its own commit. Still open: the remaining
+3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
+committed; 3c2 and 3c3 (the firewalld zone fix) follow under the scoped
+commit exception, then 3d steps 1-8, each waiting for "commit". Still open: the remaining
 `TODO(verify)` items (111), which need network access or reference
 hardware.

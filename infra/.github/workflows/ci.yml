@@ -23,7 +23,7 @@ concurrency:
 
 env:
   PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
-  PINKA_PRIVACY_DENYLIST: ${{ secrets.POKUS_PRIVACY_DENYLIST }}
+  PINKA_PRIVACY_DENYLIST: ${{ secrets.PINKA_PRIVACY_DENYLIST }}
 
 jobs:
   lint:

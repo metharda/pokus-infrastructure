@@ -23,6 +23,10 @@ images_leakage_patterns:
   - "(?i)inject"
   - "(?i)ground[_-]?truth"
   - "(?i)scenario"
+  # The project's names (owner decision 3c2): images carry none of them, no allow rule.
+  - "(?i)pokus"
+  - "(?i)pinka"
+  - "(?i)potka"
 images_leakage_allow:
   # "default", "DefaultLimitCORE", "default_server": every distribution file has them.
   - {match: "(?i)default"}

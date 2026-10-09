@@ -202,5 +202,7 @@ the prompt text where they differ.
   a justification comment, role-prefixed variables, `meta/argument_specs.yml`
   and `README.md` for every role.
 - Templates start with
-  `# Managed by pinka (<template path>). Local changes will be overwritten.`
+  `# Managed by pinka (<template path>). Local changes will be overwritten.`,
+  except the files installed into images (`images/*/files/`): images carry
+  no `pokus`, `pinka` or `potka` string at all (owner decision 3c2).
 - All timestamps UTC ISO 8601 with `Z`. Documentation in English.

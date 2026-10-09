@@ -165,7 +165,10 @@ contains no personal or installation-specific data. Real deployment data
 (host variables of real machines, researchers' SSH keys, installer answers,
 vaults) belongs in your lab's own private fork or configuration repository and
 is excluded by `.gitignore`. `make privacy` enforces this; CI can add a private
-denylist through the `PINKA_PRIVACY_DENYLIST` secret.
+denylist through the `PINKA_PRIVACY_DENYLIST` secret. Its value is a list of
+terms separated by newlines or commas, matched case-insensitively as whole
+words; findings never print a term. The same variable works locally:
+`PINKA_PRIVACY_DENYLIST="<terms>" make privacy`.
 
 ## License
 
