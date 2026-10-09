@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/restore.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/restore.yml). Local changes will be overwritten.
 #
 # Restore play run by `bootstrap.sh --restore` after site.yml (BUILD_PROMPT
 # §5.2 step 10, §7.15): stop the lab, restore a chosen restic snapshot of this
@@ -7,7 +7,7 @@
 # hashes (re-downloading what is missing), start the lab and run doctor.
 #
 # The snapshot comes from restore_snapshot (host_vars: an ID or "latest") or,
-# in an interactive run, from a prompt. Files of /etc/pokus that bootstrap
+# in an interactive run, from a prompt. Files of /etc/pinka that bootstrap
 # renders are not restored; restore_etc_paths lists the ones it cannot render.
 - name: Restore the Pokus lab host from a backup
   hosts: localhost
@@ -15,20 +15,20 @@
   vars_files:
     - "inventory/host_vars/{{ machine }}.yml"
   vars:
-    pokus_infra_dir: "{{ playbook_dir | dirname }}"
-    restore_backup: /usr/local/libexec/pokus/backup
+    pinka_dir: "{{ playbook_dir | dirname }}"
+    restore_backup: /usr/local/libexec/pinka/backup
     restore_etc_paths:
-      - /etc/pokus/vllm/deployments
-      - /etc/pokus/vllm/current.yml
-      - /etc/pokus/qa
+      - /etc/pinka/vllm/deployments
+      - /etc/pinka/vllm/current.yml
+      - /etc/pinka/qa
   pre_tasks:
     - name: Check the variables passed by bootstrap
       ansible.builtin.assert:
         that:
           - machine is defined
           - host_profile is mapping
-          - pokus_bootstrap is mapping
-        fail_msg: "Run this play through bootstrap/bootstrap.sh --restore, which passes machine, host_profile and pokus_bootstrap."
+          - pinka_bootstrap is mapping
+        fail_msg: "Run this play through bootstrap/bootstrap.sh --restore, which passes machine, host_profile and pinka_bootstrap."
         quiet: true
       tags: [always]
 
@@ -40,7 +40,7 @@
 
     - name: Check that a backup repository is configured
       ansible.builtin.stat:
-        path: /etc/pokus/secrets/backup/repository
+        path: /etc/pinka/secrets/backup/repository
       register: restore_repository
 
     - name: Stop without a repository
@@ -81,7 +81,7 @@
       register: restore_answer
       when:
         - restore_snapshot is not defined
-        - pokus_bootstrap.interactive | default(false)
+        - pinka_bootstrap.interactive | default(false)
 
     - name: Choose the snapshot
       ansible.builtin.set_fact:
@@ -91,7 +91,7 @@
 
     - name: Stop when a non-interactive run names no snapshot
       ansible.builtin.assert:
-        that: restore_snapshot is defined or pokus_bootstrap.interactive | default(false)
+        that: restore_snapshot is defined or pinka_bootstrap.interactive | default(false)
         fail_msg: >-
           A non-interactive restore needs restore_snapshot in the host_vars file (a snapshot ID
           from the list above, or "latest").
@@ -120,14 +120,14 @@
       block:
         - name: Stop the lab
           ansible.builtin.systemd_service:
-            name: pokus-lab.target
+            name: pinka-lab.target
             state: stopped
 
         - name: Restore the files
           ansible.builtin.command:
             argv: >-
               {{ [restore_backup, 'restore', '--snapshot', restore_entry.id]
-                 + (restore_entry.paths | select('match', '^' ~ pokus_root ~ '/') | list
+                 + (restore_entry.paths | select('match', '^' ~ pinka_root ~ '/') | list
                     + restore_etc_paths) | map('regex_replace', '^', '--include=') | list }}
           changed_when: true
 
@@ -136,13 +136,13 @@
           block:
             - name: Find the PostgreSQL dumps
               ansible.builtin.find:
-                paths: "{{ pokus_root }}/backups/pg"
-                patterns: "pokus-*.dump"
+                paths: "{{ pinka_root }}/backups/pg"
+                patterns: "potka-*.dump"
               register: restore_dumps
 
             - name: Start PostgreSQL
               ansible.builtin.systemd_service:
-                name: pokus-core.service
+                name: pinka-core.service
                 state: started
               when: restore_dumps.files | length > 0
 
@@ -174,45 +174,45 @@
           vars:
             models_reverify: true
           when:
-            - pokus_features.gpu_inference | default(false)
+            - pinka_features.gpu_inference | default(false)
             - node_role in ['full', 'inference']
 
         - name: Find the restored vLLM deployment
           ansible.builtin.stat:
-            path: /etc/pokus/vllm/current.yml
+            path: /etc/pinka/vllm/current.yml
           register: restore_vllm_current
 
         - name: Render the restored vLLM deployment
           ansible.builtin.command:
             argv:
-              - /usr/local/libexec/pokus/vllm-deploy
+              - /usr/local/libexec/pinka/vllm-deploy
               - activate
               - "{{ restore_vllm_current.stat.lnk_target | basename | regex_replace('\\.yml$', '') }}"
               - --no-restart
           changed_when: true
           when:
             - restore_vllm_current.stat.islnk | default(false)
-            - pokus_features.gpu_inference | default(false)
+            - pinka_features.gpu_inference | default(false)
             - node_role in ['full', 'inference']
 
         - name: Start the lab
           ansible.builtin.systemd_service:
-            name: pokus-lab.target
+            name: pinka-lab.target
             state: started
 
-    - name: Look for the pokus-lab CLI
+    - name: Look for the pinka CLI
       ansible.builtin.stat:
-        path: /usr/local/bin/pokus-lab
-      register: restore_pokus_lab
+        path: /usr/local/bin/pinka
+      register: restore_pinka_lab
 
     - name: Run doctor
       ansible.builtin.command:
-        argv: [/usr/local/bin/pokus-lab, doctor]
+        argv: [/usr/local/bin/pinka, doctor]
       register: restore_doctor
       changed_when: false
       failed_when: restore_doctor.rc not in [0, 1]
       when:
-        - restore_pokus_lab.stat.exists
+        - restore_pinka_lab.stat.exists
         - not ansible_check_mode
 
     - name: Report the restore
@@ -221,4 +221,4 @@
           Restored snapshot {{ restore_entry.short_id | default(restore_entry.id) }} of
           {{ restore_entry.time }}.
           {{ 'Doctor: ' ~ ('passed' if restore_doctor.rc == 0 else 'warnings, see above')
-             if restore_doctor.rc is defined else 'Doctor is not installed; run pokus-lab doctor once it is.' }}
+             if restore_doctor.rc is defined else 'Doctor is not installed; run pinka doctor once it is.' }}

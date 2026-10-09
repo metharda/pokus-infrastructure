@@ -217,7 +217,7 @@
     {
       "id": "astral-python-downloads",
       "url": "https://releases.astral.sh/",
-      "purpose": "CPython builds installed by uv into /opt/pokus/python",
+      "purpose": "CPython builds installed by uv into /opt/pinka/python",
       "required": true
     },
     {

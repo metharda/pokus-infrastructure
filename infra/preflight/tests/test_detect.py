@@ -6,7 +6,7 @@ import unittest
 
 from helpers import TempRootCase, runner
 
-from pokus_preflight.detect import (
+from pinka_preflight.detect import (
     conflicts,
     environment,
     gpu,
@@ -186,11 +186,11 @@ class EnvironmentTest(TempRootCase):
         self.assertFalse(defaults.systemd)
         self.assertTrue(defaults.automount)
         conf = environment.parse_wsl_conf(
-            "[boot]\nsystemd=true\n[interop]\nenabled=false\n[network]\nhostname=pokus-lab\n"
+            "[boot]\nsystemd=true\n[interop]\nenabled=false\n[network]\nhostname=pinka-lab\n"
         )
         self.assertTrue(conf.systemd)
         self.assertFalse(conf.interop_enabled)
-        self.assertEqual(conf.hostname, "pokus-lab")
+        self.assertEqual(conf.hostname, "pinka-lab")
         conf.interop_registered = "enabled"
         self.assertTrue(conf.interop_enabled)
         self.assertFalse(environment.parse_wsl_conf("not an ini [").systemd)
@@ -282,14 +282,14 @@ class HardwareTest(TempRootCase):
     def test_nearest_existing_and_disk_info(self) -> None:
         self.mkdir("/srv")
         fs = self.fs()
-        self.assertEqual(hardware.nearest_existing(fs, "/srv/pokus/data"), "/srv")
+        self.assertEqual(hardware.nearest_existing(fs, "/srv/pinka/data"), "/srv")
         self.assertEqual(hardware.nearest_existing(fs, "/missing"), "/")
         r = runner(
             {
                 "df --output=fstype,size,avail -B1 /srv": "Type 1B-blocks Avail\nbtrfs 2147483648 1073741824\n"
             }
         )
-        d = hardware.disk_info(fs, r, "/srv/pokus")
+        d = hardware.disk_info(fs, r, "/srv/pinka")
         self.assertEqual(
             (d.checked_path, d.fstype, d.size_gib, d.free_gib), ("/srv", "btrfs", 2.0, 1.0)
         )
@@ -301,7 +301,7 @@ class HardwareTest(TempRootCase):
         self.put("/sys/block/nvme0n1/queue/rotational", "0\n")
         self.put("/sys/block/nvme0n1/device/model", "Example NVMe\n")
         self.put("/sys/block/loop0/size", "8\n")
-        hw = hardware.detect_hardware(self.fs(), runner(cpu_count=24), "/srv/pokus")
+        hw = hardware.detect_hardware(self.fs(), runner(cpu_count=24), "/srv/pinka")
         self.assertEqual(hw.cpu_threads_effective, 4)
         self.assertEqual([b.name for b in hw.block_devices], ["nvme0n1"])
         self.assertEqual(hw.block_devices[0].model, "Example NVMe")
@@ -436,7 +436,7 @@ class ConflictsTest(TempRootCase):
     def test_unmanaged_docker_config(self) -> None:
         self.put("/etc/docker/daemon.json", "{}\n")
         self.assertEqual(self.detect(), [("unmanaged_docker_config", "warning")])
-        self.put("/etc/docker/daemon.json", "# Managed by pokus-infra (x)\n{}\n")
+        self.put("/etc/docker/daemon.json", "# Managed by pinka (x)\n{}\n")
         self.assertEqual(self.detect(), [])
 
     def test_unmanaged_incus_and_adoption(self) -> None:
@@ -444,7 +444,7 @@ class ConflictsTest(TempRootCase):
         r = runner(which={"incus": "/usr/bin/incus"})
         self.assertEqual(self.detect(r), [("unmanaged_incus", "blocking")])
         self.assertEqual(self.detect(r, adopt_incus=True), [("unmanaged_incus", "warning")])
-        self.put("/etc/pokus/managed-incus")
+        self.put("/etc/pinka/managed-incus")
         self.assertEqual(self.detect(r), [])
 
     def test_linux_driver_in_wsl(self) -> None:

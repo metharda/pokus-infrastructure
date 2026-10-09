@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # constants read by the scripts that source this file
-# Managed by pokus-infra (bootstrap/lib/exitcodes.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/exitcodes.sh). Local changes will be overwritten.
 #
 # Exit codes of bootstrap.sh (BUILD_PROMPT §2.4, §5.2). One constant per line in
 # the form `readonly EXIT_NAME=<code> # <title>: <meaning>`; tools/gen renders

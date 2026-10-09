@@ -2,15 +2,15 @@
 
 Groups and accounts (BUILD_PROMPT §6.1, `docs/contracts.md`).
 
-- Groups from `pokus_groups`.
+- Groups from `pinka_groups`.
 - Service accounts from `service_accounts`: system users, shell `nologin`,
-  home `/var/lib/pokus/<name>`, locked password, a primary group of the same
+  home `/var/lib/pinka/<name>`, locked password, a primary group of the same
   name (the contract's sockets and password files use it) and exactly the
   listed supplementary groups.
-- Researchers from `researchers`: members of `pokus` (admins also
-  `pokus-admin`, with sudo through `/etc/sudoers.d/90-pokus-admin`, checked
+- Researchers from `researchers`: members of `pinka` (admins also
+  `pinka-admin`, with sudo through `/etc/sudoers.d/90-pinka-admin`, checked
   with `visudo -cf`). Incus's per-user group is added by the incus role.
-  Non-admins and removed researchers are taken out of `pokus-admin`.
+  Non-admins and removed researchers are taken out of `pinka-admin`.
 - `authorized_keys` comes exclusively from `users/<name>.pub`: a key removed
   from the file is removed from the host. Key files are never committed to
   the public project; a missing file leaves the account without SSH access

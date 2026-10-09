@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/backup/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/backup/tasks/main.yml). Local changes will be overwritten.
 #
 # Backups (BUILD_PROMPT §7.15): the pinned restic, local PostgreSQL dumps and
-# restic backups of pokus_root and /etc/pokus on timers, retention, and
+# restic backups of pinka_root and /etc/pinka on timers, retention, and
 # metrics for the node exporter's textfile collector.
 
 - name: Refuse to back up secrets without the acknowledgement
@@ -80,7 +80,7 @@
 
 - name: Install the backup helper
   ansible.builtin.copy:
-    src: pokus_backup.py
+    src: pinka_backup.py
     dest: "{{ backup_helper }}"
     owner: root
     group: root
@@ -137,7 +137,7 @@
   community.crypto.openssh_keypair:
     path: "{{ backup_secrets_dir }}/ssh_key"
     type: ed25519
-    comment: "pokus-backup@{{ machine_name }}"
+    comment: "pinka-backup@{{ machine_name }}"
     owner: root
     group: root
     mode: "0600"
@@ -166,12 +166,12 @@
   ansible.builtin.copy:
     dest: "{{ backup_config_dir }}/backup.json"
     content: >-
-      {{ {'schema_version': 1, 'restic': backup_restic, 'host': machine_name, 'tag': 'pokus',
+      {{ {'schema_version': 1, 'restic': backup_restic, 'host': machine_name, 'tag': 'pinka',
           'secrets_dir': backup_secrets_dir, 'known_hosts': backup_known_hosts,
           'cache_dir': backup_cache_dir, 'state': backup_state_dir ~ '/state.json',
           'textfile_dir': backup_textfile_dir,
           'paths': backup_paths, 'excludes': backup_excludes, 'retention': backup_retention,
-          'pgdump': {'container': 'pokus-postgres', 'database': 'pokus', 'dir': backup_pgdump_dir,
+          'pgdump': {'container': 'pinka-postgres', 'database': 'potka', 'dir': backup_pgdump_dir,
                      'keep': backup_pgdump_keep | int}} | to_nice_json }}
     owner: root
     group: root
@@ -179,11 +179,11 @@
 
 - name: Report whether backups are configured
   ansible.builtin.copy:
-    dest: "{{ backup_textfile_dir }}/pokus_backup_configured.prom"
+    dest: "{{ backup_textfile_dir }}/pinka_backup_configured.prom"
     content: |
-      # HELP pokus_backup_configured 1 if a backup repository is configured.
-      # TYPE pokus_backup_configured gauge
-      pokus_backup_configured {{ 1 if backup_configured else 0 }}
+      # HELP pinka_backup_configured 1 if a backup repository is configured.
+      # TYPE pinka_backup_configured gauge
+      pinka_backup_configured {{ 1 if backup_configured else 0 }}
     owner: root
     group: root
     mode: "0644"

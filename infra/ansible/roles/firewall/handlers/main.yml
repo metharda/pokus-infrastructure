@@ -1,11 +1,11 @@
-# Managed by pokus-infra (ansible/roles/firewall/handlers/main.yml). Local changes will be overwritten.
-- name: Reload the Pokus nftables table
+# Managed by pinka (ansible/roles/firewall/handlers/main.yml). Local changes will be overwritten.
+- name: Reload the pinka nftables table
   ansible.builtin.systemd_service:
-    name: pokus-nftables.service
+    name: pinka-nftables.service
     state: reloaded
     daemon_reload: true
-  # In check mode the unit is not written (pokus_present: platform_facts).
-  when: not ansible_check_mode or 'pokus-nftables.service' in pokus_present.units
+  # In check mode the unit is not written (pinka_present: platform_facts).
+  when: not ansible_check_mode or 'pinka-nftables.service' in pinka_present.units
 
 - name: Reload firewalld
   ansible.builtin.systemd_service:
@@ -14,7 +14,7 @@
 
 - name: Restart the Docker-Incus compatibility unit
   ansible.builtin.systemd_service:
-    name: pokus-docker-incus-compat.service
+    name: pinka-docker-incus-compat.service
     state: restarted
     daemon_reload: true
-  when: not ansible_check_mode or 'pokus-docker-incus-compat.service' in pokus_present.units
+  when: not ansible_check_mode or 'pinka-docker-incus-compat.service' in pinka_present.units

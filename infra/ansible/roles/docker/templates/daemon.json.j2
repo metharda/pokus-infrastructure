@@ -1,8 +1,8 @@
-{#- Managed by pokus-infra (ansible/roles/docker/templates/daemon.json.j2). Local changes will be overwritten.
+{#- Managed by pinka (ansible/roles/docker/templates/daemon.json.j2). Local changes will be overwritten.
     JSON has no comments and dockerd rejects unknown keys, so the managed
     header is written as an engine label (preflight looks for it). -#}
 {%- set base = {
-  "labels": ["org.pokus.managed=Managed by pokus-infra (ansible/roles/docker/templates/daemon.json.j2). Local changes will be overwritten."],
+  "labels": ["org.pinka.managed=Managed by pinka (ansible/roles/docker/templates/daemon.json.j2). Local changes will be overwritten."],
   "data-root": docker_data_root,
   "log-driver": "local",
   "log-opts": {"max-size": docker_log_max_size | string, "max-file": docker_log_max_file | string},
@@ -14,5 +14,5 @@
   "cdi": {"features": {"cdi": true}},
   "runtime": {"runtimes": {"nvidia": {"path": "/usr/bin/nvidia-container-runtime", "args": []}}},
 }[docker_gpu_method] | default({}) -%}
-{%- set selinux = {"selinux-enabled": true} if pokus_mac == 'selinux' else {} -%}
+{%- set selinux = {"selinux-enabled": true} if pinka_mac == 'selinux' else {} -%}
 {{ base | combine(gpu, selinux) | to_nice_json(indent=2) }}

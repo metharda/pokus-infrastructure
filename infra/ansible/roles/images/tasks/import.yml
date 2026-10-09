@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/import.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/import.yml). Local changes will be overwritten.
 #
 # The blueprint's alias is missing but its export exists (after a restore or a
 # deleted alias): import the exported image instead of building a different one.

@@ -1,10 +1,10 @@
-# Managed by pokus-infra (ansible/roles/doctor/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/doctor/tasks/main.yml). Local changes will be overwritten.
 #
-# The operator CLI pokus-lab (BUILD_PROMPT §9): the pokus_lab package and a
-# copy of preflight under /usr/local/lib/pokus, the wrapper
-# /usr/local/bin/pokus-lab, and the lab description /etc/pokus/lab.json that
+# The operator CLI pinka (BUILD_PROMPT §9): the pinka_lab package and a
+# copy of preflight under /usr/local/lib/pinka, the wrapper
+# /usr/local/bin/pinka, and the lab description /etc/pinka/lab.json that
 # doctor, status and the fingerprint compare the host with. It runs before
-# lab_session: the session record calls `pokus-lab fingerprint` at boot.
+# lab_session: the session record calls `pinka fingerprint` at boot.
 
 - name: Create the directories of the CLI and the fingerprint cache
   ansible.builtin.file:
@@ -15,15 +15,15 @@
     mode: "0755"
   loop:
     - "{{ doctor_lib }}"
-    - "{{ doctor_lib }}/pokus-lab"
+    - "{{ doctor_lib }}/pinka-lab"
     - "{{ doctor_lib }}/preflight"
     - "{{ doctor_lib }}/preflight/schema"
     - "{{ doctor_fingerprint_dir }}"
     - "{{ doctor_docs_dir }}"
 
-- name: Find the modules of pokus-lab and preflight
+- name: Find the modules of pinka and preflight
   ansible.builtin.find:
-    paths: "{{ pokus_infra_dir }}/{{ item.src }}"
+    paths: "{{ pinka_dir }}/{{ item.src }}"
     patterns: ["*.py"]
     recurse: true
   loop: "{{ doctor_packages }}"
@@ -46,12 +46,12 @@
     doctor_modules: >-
       {{ doctor_modules | default([])
          + item.files | map(attribute='path')
-           | map('relpath', pokus_infra_dir ~ '/' ~ item.item.src)
+           | map('relpath', pinka_dir ~ '/' ~ item.item.src)
            | map('regex_replace', '^', item.item.dest ~ '/') | list }}
     doctor_module_sources: >-
       {{ doctor_module_sources | default({})
          | combine(dict(item.files | map(attribute='path')
-                        | map('relpath', pokus_infra_dir ~ '/' ~ item.item.src)
+                        | map('relpath', pinka_dir ~ '/' ~ item.item.src)
                         | map('regex_replace', '^', item.item.dest ~ '/') | list
                         | zip(item.files | map(attribute='path') | list))) }}
   loop: "{{ doctor_sources.results }}"
@@ -87,13 +87,13 @@
 
 - name: Install the data files of preflight
   ansible.builtin.copy:
-    src: "{{ pokus_infra_dir }}/preflight/{{ item.name }}"
+    src: "{{ pinka_dir }}/preflight/{{ item.name }}"
     dest: "{{ doctor_lib }}/preflight/{{ item.name }}"
     owner: root
     group: root
     mode: "{{ item.mode }}"
   loop:
-    - {name: pokus-preflight, mode: "0755"}
+    - {name: pinka-preflight, mode: "0755"}
     - {name: support-matrix.json, mode: "0644"}
     - {name: endpoints.json, mode: "0644"}
     - {name: schema/host-profile.schema.json, mode: "0644"}
@@ -101,9 +101,9 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Install the pokus-lab command
+- name: Install the pinka command
   ansible.builtin.copy:
-    src: "{{ pokus_infra_dir }}/tools/pokus-lab/pokus-lab"
+    src: "{{ pinka_dir }}/tools/pinka-lab/pinka"
     dest: "{{ doctor_bin }}"
     owner: root
     group: root
@@ -114,8 +114,8 @@
     path: "{{ item }}"
     checksum_algorithm: sha256
   loop:
-    - "{{ pokus_infra_dir }}/versions.lock.yml"
-    - "{{ pokus_infra_dir }}/ansible/inventory/host_vars/{{ machine }}.yml"
+    - "{{ pinka_dir }}/versions.lock.yml"
+    - "{{ pinka_dir }}/ansible/inventory/host_vars/{{ machine }}.yml"
   register: doctor_config_files
 
 - name: Read the defaults of the images role (included only on lab nodes)
@@ -136,7 +136,7 @@
              'services': doctor_spec.services | default([]),
              'base_blueprint': doctor_spec.base.blueprint | default(none)}] }}
   vars:
-    doctor_spec: "{{ lookup('ansible.builtin.file', pokus_infra_dir ~ '/images/' ~ item ~ '/image.yaml') | from_yaml }}"
+    doctor_spec: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/images/' ~ item ~ '/image.yaml') | from_yaml }}"
   loop: "{{ doctor_images_blueprints if doctor_runs_lab else [] }}"
 
 - name: Describe the layout (absolute paths)
@@ -144,8 +144,8 @@
     doctor_layout: >-
       {{ doctor_layout | default([])
          + [item | combine({'path': item.path if item.path is abs
-                                   else (pokus_root ~ '/' ~ item.path) | regex_replace('/$', '')})] }}
-  loop: "{{ pokus_system_layout + pokus_layout }}"
+                                   else (pinka_root ~ '/' ~ item.path) | regex_replace('/$', '')})] }}
+  loop: "{{ pinka_system_layout + pinka_layout }}"
   loop_control:
     label: "{{ item.path }}"
 
@@ -160,7 +160,7 @@
 # without ACL support on /run).
 - name: Read the platform's socket expectations
   ansible.builtin.slurp:
-    src: /etc/pokus/platform/sockets.json
+    src: /etc/pinka/platform/sockets.json
   register: doctor_platform_sockets
   failed_when: false
   when: doctor_platform
@@ -178,20 +178,20 @@
       schema_version: 1
       machine: "{{ machine_name }}"
       host_vars: "{{ machine }}"
-      infra_dir: "{{ pokus_infra_dir }}"
-      pokus_root: "{{ pokus_root }}"
+      infra_dir: "{{ pinka_dir }}"
+      pinka_root: "{{ pinka_root }}"
       node_role: "{{ node_role }}"
-      provider: "{{ pokus_provider }}"
-      features: "{{ pokus_features }}"
+      provider: "{{ pinka_provider }}"
+      features: "{{ pinka_features }}"
       lab_mode: "{{ lab_mode }}"
       paths:
-        preflight: "{{ doctor_lib }}/preflight/pokus-preflight"
-        host_profile: "{{ pokus_bootstrap.profile_path | default('/etc/pokus/host-profile.json') }}"
-        bootstrap_state: /etc/pokus/bootstrap-state.json
+        preflight: "{{ doctor_lib }}/preflight/pinka-preflight"
+        host_profile: "{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}"
+        bootstrap_state: /etc/pinka/bootstrap-state.json
         health_gate_status: "{{ lab_session_gate_status }}"
         sessions: "{{ lab_session_sessions_dir }}"
-        python: "{{ pokus_python }}"
-        ansible: /opt/pokus/ansible-venv/bin/ansible
+        python: "{{ pinka_python }}"
+        ansible: /opt/pinka/ansible-venv/bin/ansible
       fingerprint:
         cache: "{{ doctor_fingerprint_dir }}/current.json"
         versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
@@ -202,10 +202,10 @@
       containers: "{{ doctor_containers }}"
       listeners:
         processes: "{{ doctor_listener_processes }}"
-        addresses: "{{ [pokus_vm_otlp.address] if observability_vm_listener else [] }}"
+        addresses: "{{ [pinka_vm_otlp.address] if observability_vm_listener else [] }}"
         tailnet_ports: "{{ doctor_tailnet_ports }}"
       firewall:
-        backend: "{{ pokus_firewall_backend }}"
+        backend: "{{ pinka_firewall_backend }}"
         incus_bridge_patterns: "{{ firewall_incus_bridge_patterns if doctor_runs_lab else [] }}"
       tailscale:
         enabled: true
@@ -216,24 +216,24 @@
         device_args: >-
           {{ ['--device', 'nvidia.com/gpu=all'] if (doctor_docker.features | default({})).cdi | default(false)
              else ['--runtime', 'nvidia', '--gpus', 'all'] }}
-        nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pokus_provider == 'wsl2' else 'nvidia-smi' }}"
+        nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pinka_provider == 'wsl2' else 'nvidia-smi' }}"
       inference:
         dir: "{{ inference_control_dir }}"
-        control_port: "{{ pokus_ports.inference_control | int }}"
+        control_port: "{{ pinka_ports.inference_control | int }}"
         peer: >-
           {{ inference_lab_node if node_role == 'inference'
              else (inference_remote_node if node_role == 'lab' else '') }}
         renew_days: "{{ doctor_certificate_renew_days | int }}"
       vllm:
-        current: /etc/pokus/vllm/current.yml
-        health_url: "http://127.0.0.1:{{ pokus_ports.vllm }}/health"
+        current: /etc/pinka/vllm/current.yml
+        health_url: "http://127.0.0.1:{{ pinka_ports.vllm }}/health"
       incus: "{{ doctor_incus if doctor_runs_lab else {} }}"
       postgres:
         container: "{{ postgres_container }}"
         roles: "{{ postgres_all_roles if doctor_runs_lab else [] }}"
         restricted_roles: "{{ [postgres_reader_role, postgres_grafana_role] if doctor_runs_lab else [] }}"
       opa:
-        url: "http://127.0.0.1:{{ pokus_ports.opa }}"
+        url: "http://127.0.0.1:{{ pinka_ports.opa }}"
       # An inference node has no stores: its telemetry is checked on the lab node.
       observability: "{{ doctor_observability if doctor_runs_lab else {} }}"
       layout: "{{ doctor_layout | default([]) }}"
@@ -260,12 +260,12 @@
         max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
       docs:
         dir: "{{ doctor_docs_dir }}"
-        port: "{{ pokus_ports.docs_serve | int }}"
+        port: "{{ pinka_ports.docs_serve | int }}"
       cpusets:
         services: "{{ cpuset_services }}"
         targets: "{{ cpuset_targets }}"
-        slice: "{{ pokus_services_slice }}"
+        slice: "{{ pinka_services_slice }}"
       wsl:
         memory_gib: "{{ (expected | default({})).memory_gib | default(none) }}"
         cpus: "{{ (expected | default({})).cpu_threads | default(none) }}"
-        kvm_expected: "{{ pokus_features.vm_targets | default(false) | bool }}"
+        kvm_expected: "{{ pinka_features.vm_targets | default(false) | bool }}"

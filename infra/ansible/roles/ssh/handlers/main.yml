@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/ssh/handlers/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/ssh/handlers/main.yml). Local changes will be overwritten.
 #
 # Both handlers listen to the same topic and run in this order: an invalid
 # configuration fails the check, so sshd is never reloaded with it.
@@ -10,8 +10,8 @@
 
 - name: Reload sshd
   ansible.builtin.systemd_service:
-    name: "{{ pokus_service_names.ssh }}"
+    name: "{{ pinka_service_names.ssh }}"
     state: reloaded
   listen: sshd configuration changed
-  # In check mode the OpenSSH server may not be installed (pokus_present: platform_facts).
-  when: not ansible_check_mode or (pokus_service_names.ssh ~ '.service') in pokus_present.units
+  # In check mode the OpenSSH server may not be installed (pinka_present: platform_facts).
+  when: not ansible_check_mode or (pinka_service_names.ssh ~ '.service') in pinka_present.units

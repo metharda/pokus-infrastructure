@@ -4,12 +4,12 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: What each failed pokus-lab doctor check means and how to fix it, one section per check ID.
+description: What each failed pinka doctor check means and how to fix it, one section per check ID.
 ---
 
 # How to fix a failed doctor check
 
-`pokus-lab doctor` prints one line per check with its ID, what it found and,
+`pinka doctor` prints one line per check with its ID, what it found and,
 for failures, a remediation. This page has one section per check ID with
 more detail. The checks themselves are listed in
 [Doctor checks](../reference/doctor-checks.md). Most fixes end with running
@@ -18,7 +18,7 @@ doctor.
 
 !!! note "Prerequisites"
     - A lab host provisioned by bootstrap.
-    - An admin account on the host (member of `pokus-admin`).
+    - An admin account on the host (member of `pinka-admin`).
     - The checkout bootstrap runs from and the host_vars file name
       (`<machine>` below).
 
@@ -28,7 +28,7 @@ doctor.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     ```
 
     Lines starting with `FAIL` are failed checks of severity error, `warn`
@@ -49,27 +49,27 @@ doctor.
 ## `preflight.outcome`: preflight no longer allows the lab {#check-preflight-outcome}
 
 A fresh, read-only preflight decided `unsupported`, `needs_action` or failed.
-Run `pokus-lab preflight` to see why; its summary names every failed
+Run `pinka preflight` to see why; its summary names every failed
 requirement. Typical causes are a changed kernel or a new conflicting
 package. See [How to check whether a machine can host the lab](check-a-host.md).
 
 ## `preflight.drift`: the host changed since bootstrap {#check-preflight-drift}
 
-Outcome, provider or a feature flag differs from `/etc/pokus/host-profile.json`
+Outcome, provider or a feature flag differs from `/etc/pinka/host-profile.json`
 (for example the GPU is no longer usable, so `gpu_inference` is off). If the
 change is wanted, store the new profile with bootstrap's `--refresh-profile`;
 otherwise restore the previous state (driver, hardware).
 
 ## `services.units`: a unit of the lab is not active {#check-services-units}
 
-One of the units of `pokus-lab.target` failed or is stopped. Read its status
+One of the units of `pinka-lab.target` failed or is stopped. Read its status
 and log, fix the cause, then start the lab:
 
 <!-- qa:skip reason="the unit name comes from the doctor output" -->
 ```bash
 systemctl status <unit>
 journalctl -u <unit> -b
-sudo pokus-lab start
+sudo pinka start
 ```
 
 `<unit>` is a unit named in the doctor output.
@@ -96,7 +96,7 @@ tailnet address (`tailscale ip`): ports 18704 and 18710 on an inference node,
 
 ## `network.firewall`: firewall rules are missing {#check-network-firewall}
 
-The nftables table `inet pokus_filter`, the firewalld zone `pokus` or ufw is
+The nftables table `inet pinka_filter`, the firewalld zone `pinka` or ufw is
 missing or inactive, or the `DOCKER-USER` rules that let Incus bridges pass
 Docker's forwarding policy are missing. Run bootstrap with `--tags firewall`
 and see [How to configure the firewall backend](firewall-and-selinux.md).
@@ -122,8 +122,8 @@ reboot is often needed.
 ## `gpu.vllm`: vLLM does not answer {#check-gpu-vllm}
 
 A deployment is active but vLLM's `/health` does not answer 200. Read the
-log with `journalctl -u pokus-inference.service -b` and
-`sudo docker logs pokus-vllm`. Loading a model can take minutes; check again
+log with `journalctl -u pinka-inference.service -b` and
+`sudo docker logs pinka-vllm`. Loading a model can take minutes; check again
 before acting. See [How to add a model](add-a-model.md) for activating a
 deployment again.
 
@@ -132,11 +132,11 @@ deployment again.
 Lab and inference nodes only (`node_role: lab` or `inference`). One of these
 is wrong:
 
-- `/etc/pokus/inference/self.crt` or `self.key` is missing: run bootstrap
+- `/etc/pinka/inference/self.crt` or `self.key` is missing: run bootstrap
   with `--tags inference_control`.
 - The node is paired, but its host_vars file does not name the peer: set
   `inference_lab_node` (inference node) or `inference_remote_node` (lab node)
-  to the node in `/etc/pokus/inference/peer.json` and apply it as
+  to the node in `/etc/pinka/inference/peer.json` and apply it as
   [How to pair an inference node](pair-inference-node.md) describes.
 - The host_vars name another node than the pairing, or `peer.crt` is missing:
   pair the nodes again.
@@ -161,7 +161,7 @@ any.
 
 ## `incus.certificates`: a client certificate is missing or untrusted {#check-incus-certificates}
 
-A service's client certificate or key under `/etc/pokus/incus/` is missing,
+A service's client certificate or key under `/etc/pinka/incus/` is missing,
 has the wrong owner or mode, or Incus does not trust it. Run bootstrap with
 `--tags incus`; to replace the certificates, see
 [How to rotate secrets and certificates](rotate-secrets.md).
@@ -169,26 +169,26 @@ has the wrong owner or mode, or Incus does not trust it. Run bootstrap with
 ## `incus.metrics`: Prometheus does not scrape Incus {#check-incus-metrics}
 
 Prometheus has no `incus` target or it is down. Check the metrics
-certificate (`/etc/pokus/incus/metrics/`) and the target page through
+certificate (`/etc/pinka/incus/metrics/`) and the target page through
 [Grafana and Prometheus](reach-grafana.md); run bootstrap with
 `--tags incus,observability`.
 
 ## `incus.events`: the Incus event feed is not running {#check-incus-events}
 
-`pokus-incus-events.service` copies Incus lifecycle events into the journal.
-Restart it with `sudo systemctl restart pokus-incus-events.service` and read
+`pinka-incus-events.service` copies Incus lifecycle events into the journal.
+Restart it with `sudo systemctl restart pinka-incus-events.service` and read
 its log if it fails again.
 
 ## `layout.tree`: a directory has the wrong owner, mode or ACL {#check-layout-tree}
 
-A directory of the research space or of `/etc/pokus` differs from the layout
+A directory of the research space or of `/etc/pinka` differs from the layout
 in [Lab host architecture](../architecture.md). Run bootstrap with
 `--tags layout`; it restores owners, modes and default ACLs.
 
 ## `accounts.groups`: an account is in a privileged group {#check-accounts-groups}
 
 A researcher is in `docker` or `incus-admin`, or a service account is in
-`docker`. Pokus never adds anyone there; remove the membership:
+`docker`. Pokus Infrastructure (pinka) never adds anyone there; remove the membership:
 
 <!-- qa:skip reason="changes group memberships" -->
 ```bash
@@ -201,7 +201,7 @@ instead (logged loudly).
 
 ## `deploy.provenance`: a deployed path has `.git` or catalog content {#check-deploy-provenance}
 
-A deployment under `/srv/pokus/deploy` or `/srv/pokus/catalog` contains a
+A deployment under `/srv/pinka/deploy` or `/srv/pinka/catalog` contains a
 `.git` directory, or catalog content was deployed outside the catalog
 directory (resolution B2). Remove that deployment and deploy again from the
 mirror with bootstrap.
@@ -213,16 +213,16 @@ A platform unit's systemd properties (account, `NoNewPrivileges`,
 what the platform role installs, for example the agent runner can reach the
 catalog. Compare with `systemctl show UNIT` and run bootstrap with
 `--tags platform`. On an inference node the check covers
-`pokus-inference-control.service`; run bootstrap with
+`pinka-inference-control.service`; run bootstrap with
 `--tags inference_control` there. Skipped on a full or lab node until the
 platform is deployed.
 
 ## `sockets.permissions`: a platform socket has the wrong owner, mode or ACL {#check-sockets-permissions}
 
-A socket under `/run/pokus/` differs from the contract (resolution C8).
+A socket under `/run/pinka/` differs from the contract (resolution C8).
 With ACL entries, `ls -l` shows the ACL mask in the group bits (a 0600 socket
-with `user:pokus-orch:rw-` shows as 0660); the expected values are in
-`/etc/pokus/platform/sockets.json`, and `getfacl SOCKET` shows the entries.
+with `user:potka-orch:rw-` shows as 0660); the expected values are in
+`/etc/pinka/platform/sockets.json`, and `getfacl SOCKET` shows the entries.
 Restart the owning service, which sets them again when it starts; if that
 does not help, run bootstrap with `--tags platform`. Skipped until the
 platform is deployed.
@@ -243,8 +243,8 @@ restarts OPA.
 ## `telemetry.roundtrip`: the telemetry probe did not arrive {#check-telemetry-roundtrip}
 
 Doctor sent a log record, a span and a metric to the collector and at least
-one store did not show it in time. Read `journalctl -u pokus-observability.service -b`
-and `sudo docker logs pokus-otel-gateway`; check that Loki, Tempo and
+one store did not show it in time. Read `journalctl -u pinka-observability.service -b`
+and `sudo docker logs pinka-otel-gateway`; check that Loki, Tempo and
 Prometheus run (`services.containers`). A just-started stack can need a
 minute; check again before acting.
 
@@ -260,13 +260,13 @@ WSL the clock often jumps after Windows resumes from sleep; run
 No backup repository is configured, the last successful backup is older than
 `doctor_backup_max_age_hours`, or the repository does not answer. See
 [How to back up the lab](backup-and-restore.md); the backup log is in
-`journalctl -u pokus-backup.service`.
+`journalctl -u pinka-backup.service`.
 
 ## `lab.health_gate`: the startup health gate did not pass {#check-lab-health_gate}
 
 The health gate has not run since boot or one of its checks failed; the
-failing checks are named. Read `journalctl -u pokus-health-gate.service -b`,
-fix the cause, then `sudo pokus-lab start`. See
+failing checks are named. Read `journalctl -u pinka-health-gate.service -b`,
+fix the cause, then `sudo pinka start`. See
 [How the lab comes up](../explanation/lab-session.md).
 
 ## `lab.session`: this boot has no complete session record {#check-lab-session}
@@ -277,7 +277,7 @@ computed). Fix the cause, then write the record again:
 
 <!-- qa:skip reason="rewrites this boot's session record" -->
 ```bash
-sudo systemctl restart pokus-session-start.service
+sudo systemctl restart pinka-session-start.service
 ```
 
 ## `lab.rolling_drift`: the system changed during the session {#check-lab-rolling_drift}
@@ -285,13 +285,13 @@ sudo systemctl restart pokus-session-start.service
 On a rolling release the environment fingerprint differs from the one
 recorded at session start, usually because packages were updated. Results
 before and after the change are not comparable for latency and resources.
-Update only with [`pokus-lab update-host`](update-host.md), which records the
+Update only with [`pinka update-host`](update-host.md), which records the
 change, and start a new session by restarting the lab.
 
 ## `resources.cpusets`: lab services are not on their CPUs {#check-resources-cpusets}
 
 `cpuset_services` or `cpuset_targets` (host_vars) names CPUs that this host
-does not have, or `pokus-services.slice` runs on other CPUs than
+does not have, or `pinka-services.slice` runs on other CPUs than
 `cpuset_services`. On WSL the number of CPUs comes from `processors=` in
 `.wslconfig`. Set both lists to CPUs the host has (they must not overlap),
 run bootstrap, then restart the lab so that the services and containers start
@@ -299,8 +299,8 @@ in the slice again:
 
 <!-- qa:skip reason="restarts the lab" -->
 ```bash
-sudo pokus-lab stop
-sudo pokus-lab start
+sudo pinka stop
+sudo pinka start
 ```
 
 "No lab service is running" means the lab is stopped; start it first. See
@@ -311,7 +311,7 @@ sudo pokus-lab start
 `/etc/wsl.conf` has interop or automount enabled or systemd disabled, or the
 memory, CPUs or `/dev/kvm` differ from host_vars `expected`. Bootstrap writes
 `wsl.conf`; memory, CPUs and nested virtualization come from `.wslconfig` on
-Windows. Copy the recommended file (`pokus-lab wsl-helpers` shows where it
+Windows. Copy the recommended file (`pinka wsl-helpers` shows where it
 is), then run `wsl --shutdown` on Windows. See [WSL2 hosts](../providers/wsl2.md).
 
 ## `smoke.<blueprint>`: a throwaway target failed {#check-smoke}
@@ -321,7 +321,7 @@ failure names the image and the problem: systemd degraded or a service
 inactive (inspect the image with
 [How to build golden images](build-golden-images.md)), no log line in Loki
 (the image's telemetry agent or the proxy device), the internet or the lab
-host reachable from the target (the run ACL `pokus-run-default` and the
+host reachable from the target (the run ACL `pinka-run-default` and the
 firewall; run bootstrap with `--tags incus,firewall`). `<blueprint>` is the
 blueprint's name.
 
@@ -331,7 +331,7 @@ blueprint's name.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     ```
 
     The check now shows `ok` (or `skip` where it does not apply). Doctor exits

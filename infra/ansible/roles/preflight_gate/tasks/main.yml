@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/preflight_gate/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/preflight_gate/tasks/main.yml). Local changes will be overwritten.
 #
 # BUILD_PROMPT §2.6, §7.1: re-run preflight (read-only) and stop if the
 # outcome, provider or feature flags differ from the host profile bootstrap
@@ -28,11 +28,11 @@
       ansible.builtin.command:
         argv: >-
           {{ [preflight_gate_command, '--no-write', '--quiet', '--output', preflight_gate_tmp.path,
-              '--srv-path', pokus_root]
+              '--srv-path', pinka_root]
              + ['--nvidia-driver', install_nvidia_driver]
              + (['--accept-mok-enrollment'] if host_profile.overrides.accept_mok_enrollment | default(false) else [])
-             + (['--adopt-incus'] if pokus_bootstrap.adopt_incus | default(false) else [])
-             + (['--offline'] if pokus_bootstrap.offline | default(false) else []) }}
+             + (['--adopt-incus'] if pinka_bootstrap.adopt_incus | default(false) else [])
+             + (['--offline'] if pinka_bootstrap.offline | default(false) else []) }}
       register: preflight_gate_run
       failed_when: preflight_gate_run.rc not in [0, 10, 20, 30]
       check_mode: false
@@ -41,14 +41,14 @@
     - name: Compare outcome, provider and features with the validated profile
       ansible.builtin.command:
         argv:
-          - "{{ pokus_python }}"
+          - "{{ pinka_python }}"
           - -m
-          - pokus_preflight.profile_tool
+          - pinka_preflight.profile_tool
           - diff
           - "{{ preflight_gate_profile_path }}"
           - "{{ preflight_gate_tmp.path }}"
       environment:
-        PYTHONPATH: "{{ pokus_infra_dir }}/preflight"
+        PYTHONPATH: "{{ pinka_dir }}/preflight"
       register: preflight_gate_diff
       failed_when: preflight_gate_diff.rc not in [0, 1]
       check_mode: false
@@ -76,21 +76,21 @@
       Check the changes, then re-run bootstrap with --refresh-profile to accept them.
   when:
     - preflight_gate_diff.rc == 1
-    - not (pokus_bootstrap.refresh_profile | default(false))
+    - not (pinka_bootstrap.refresh_profile | default(false))
 
 - name: Expose the host profile and the feature flags
   ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - lab-wide facts read by every role
-    pokus_host_profile: "{{ preflight_gate_fresh.content | b64decode | from_json }}"
-    pokus_features: "{{ (preflight_gate_fresh.content | b64decode | from_json).features }}"
+    pinka_host_profile: "{{ preflight_gate_fresh.content | b64decode | from_json }}"
+    pinka_features: "{{ (preflight_gate_fresh.content | b64decode | from_json).features }}"
 
 - name: Check the preflight outcome against the recorded consent
   ansible.builtin.assert:
     that:
-      - pokus_host_profile.outcome != 'needs_action'
-      - pokus_host_profile.outcome != 'unsupported' or host_profile.overrides.force_unsupported
-      - pokus_host_profile.outcome != 'degraded' or host_profile.overrides.accept_degraded
-      - pokus_host_profile.tier != 'experimental' or host_profile.overrides.accept_experimental
+      - pinka_host_profile.outcome != 'needs_action'
+      - pinka_host_profile.outcome != 'unsupported' or host_profile.overrides.force_unsupported
+      - pinka_host_profile.outcome != 'degraded' or host_profile.overrides.accept_degraded
+      - pinka_host_profile.tier != 'experimental' or host_profile.overrides.accept_experimental
     fail_msg: >-
-      Preflight outcome {{ pokus_host_profile.outcome }} (tier {{ pokus_host_profile.tier }}) is not
+      Preflight outcome {{ pinka_host_profile.outcome }} (tier {{ pinka_host_profile.tier }}) is not
       covered by the recorded consent. Run bootstrap/bootstrap.sh, which asks for it.
     quiet: true

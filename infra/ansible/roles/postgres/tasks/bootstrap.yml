@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/postgres/tasks/bootstrap.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/postgres/tasks/bootstrap.yml). Local changes will be overwritten.
 #
 # Idempotent bootstrap through psql inside the container (the superuser
 # password never leaves it), then the role passwords: a role whose stored
@@ -17,11 +17,11 @@
   ansible.builtin.command:
     argv: "{{ postgres_psql + ['--quiet', '--file', '/etc/postgresql/bootstrap.sql'] }}"
   register: postgres_bootstrap
-  changed_when: "'pokus-changed:' in postgres_bootstrap.stderr"
+  changed_when: "'pinka-changed:' in postgres_bootstrap.stderr"
 
 - name: Read the generated exporter password
   ansible.builtin.slurp:
-    src: "{{ postgres_container_secrets_dir }}/pokus-monitor"
+    src: "{{ postgres_container_secrets_dir }}/pinka-monitor"
   register: postgres_monitor_secret
   no_log: true
 
@@ -36,13 +36,13 @@
   ansible.builtin.command:
     argv: "{{ postgres_psql + ['--quiet'] }}"
     stdin: >-
-      ALTER ROLE "{{ item.key }}" PASSWORD '{{ item.value | pokus_scram_verifier }}';
+      ALTER ROLE "{{ item.key }}" PASSWORD '{{ item.value | pinka_scram_verifier }}';
   loop: >-
     {{ vault_postgres_passwords | dict2items | selectattr('key', 'in', postgres_vault_roles)
        + [{'key': postgres_monitor_role, 'value': postgres_monitor_secret.content | b64decode}] }}
   loop_control:
     label: "{{ item.key }}"
-  when: not (item.value | pokus_scram_matches((postgres_stored.stdout | from_json).get(item.key)))
+  when: not (item.value | pinka_scram_matches((postgres_stored.stdout | from_json).get(item.key)))
   changed_when: true
   no_log: true
 

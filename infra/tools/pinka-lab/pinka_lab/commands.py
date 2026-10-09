@@ -1,0 +1,826 @@
+"""The pinka commands other than doctor and fingerprint (BUILD_PROMPT §9, §19.5).
+
+Commands that change the host (start, stop, backup now, restore, images
+build, update-host) need root. The ``user`` commands never change the host:
+they edit the lab's configuration (``users/<name>.pub`` and the host_vars
+file) and remind the operator to commit it and run bootstrap.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+from collections.abc import Callable, Sequence
+from typing import Any
+
+from pinka_lab.config import LabConfig
+from pinka_lab.system import System
+
+ORCH_API = "/run/pinka/orch/api.sock"
+CONTROL_UNIT = "pinka-inference-control.service"
+NAME_RE = re.compile(r"^[a-z][a-z0-9]{1,31}$")
+KEY_RE = re.compile(
+    r"^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com) \S+"
+)
+ENTRY_RE = re.compile(r"^\s+- \{name: (?P<name>[^,}]+)")
+UPDATE_COMMANDS = {
+    "debian": [["apt-get", "update"], ["apt-get", "--yes", "upgrade"]],
+    "redhat": [["dnf", "--assumeyes", "upgrade"]],
+    "suse": [["zypper", "--non-interactive", "update"]],
+    "archlinux": [["pacman", "--sync", "--refresh", "--sysupgrade", "--noconfirm"]],
+}
+
+
+# Documentation (owner answer H9): loopback only, the port of contracts.md.
+DOCS_ADDRESS = "127.0.0.1"
+DOCS_DIR = "/usr/local/share/pinka/docs"
+DOCS_PORT = 18706
+
+
+class CommandError(RuntimeError):
+    """A command cannot do what was asked; the message says why."""
+
+
+def require_root(system: System, what: str) -> None:
+    """Refuse to continue without root.
+
+    Args:
+        system: Host access.
+        what: The command, for the message.
+
+    Raises:
+        CommandError: If the caller is not root.
+    """
+    if system.euid() != 0:
+        raise CommandError(f"{what} needs root (sudo pinka ...)")
+
+
+def out(text: str) -> None:
+    """Print a line to standard output.
+
+    Args:
+        text: The line.
+    """
+    sys.stdout.write(text + "\n")
+
+
+def bootstrap_argv(config: LabConfig, *extra: str) -> list[str]:
+    """The bootstrap command for this lab.
+
+    Args:
+        config: The lab description.
+        *extra: Further options.
+
+    Returns:
+        The command.
+    """
+    return [f"{config.infra_dir}/bootstrap/bootstrap.sh", "--machine", config.host_vars, *extra]
+
+
+# --- preflight, start, stop, status --------------------------------------------------------
+
+
+def preflight(system: System, config: LabConfig, as_json: bool) -> int:
+    """Run preflight read-only.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        as_json: Print the JSON report instead of the summary.
+
+    Returns:
+        Preflight's exit code.
+    """
+    command = str(config.get("paths", "preflight"))
+    argv = [command, "--no-write", "--srv-path", config.pinka_root]
+    if as_json:
+        done = system.run([*argv, "--quiet"], timeout=300)
+        sys.stdout.write(done.stdout)
+        sys.stderr.write(done.stderr)
+        return done.returncode
+    return system.interactive([*argv, "--output", os.devnull])
+
+
+def start(system: System) -> int:
+    """Start pinka-lab.target (it waits for the health gate).
+
+    Args:
+        system: Host access.
+
+    Returns:
+        0 on success.
+    """
+    require_root(system, "start")
+    done = system.run(["systemctl", "start", "pinka-lab.target"], timeout=1200)
+    if not done.ok:
+        sys.stderr.write(done.stderr)
+        return 1
+    out("pinka-lab.target started")
+    return 0
+
+
+def drain(system: System, timeout: float) -> str:
+    """Ask the orchestrator to drain and wait until no run is active.
+
+    Args:
+        system: Host access.
+        timeout: Seconds to wait.
+
+    Returns:
+        What happened, for the operator.
+    """
+    if system.info(ORCH_API) is None:
+        return "no orchestrator socket; nothing to drain"
+    body = json.dumps({"timeout_seconds": int(timeout)}).encode()
+    started = system.unix_http(ORCH_API, "POST", "/lab/drain", body)
+    if started.status not in (200, 202):
+        return f"the orchestrator did not accept the drain ({started.status or started.body})"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = system.unix_http(ORCH_API, "GET", "/lab/status").json() or {}
+        if status.get("active_runs", 1) == 0:
+            return "drained: no active runs"
+        time.sleep(5)
+    return f"timeout after {timeout:g} s; runs still active become interrupted"
+
+
+def stop(system: System, timeout: float) -> int:
+    """Drain the orchestrator, then stop pinka-lab.target.
+
+    Args:
+        system: Host access.
+        timeout: Seconds the drain may take.
+
+    Returns:
+        0 on success.
+    """
+    require_root(system, "stop")
+    out(drain(system, timeout))
+    done = system.run(["systemctl", "stop", "pinka-lab.target"], timeout=600)
+    if not done.ok:
+        sys.stderr.write(done.stderr)
+        return 1
+    out("pinka-lab.target stopped")
+    return 0
+
+
+def _active(system: System, unit: str) -> str:
+    return system.run(["systemctl", "is-active", unit]).stdout.strip() or "unknown"
+
+
+def status(system: System, config: LabConfig) -> int:
+    """Print units, containers, Incus instances, GPU, disk and the last backup.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        0.
+    """
+    if system.euid() != 0:
+        sys.stderr.write(
+            "pinka: containers and Incus instances are only visible to root (sudo pinka status)\n"
+        )
+    out("units:")
+    for unit in ["pinka-lab.target", *config.get("units", default=[])]:
+        out(f"  {unit:<40} {_active(system, unit)}")
+    out("containers:")
+    for name in sorted(config.get("containers", default={})):
+        done = system.run(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",
+                name,
+            ]
+        )
+        out(f"  {name:<40} {done.stdout.strip() if done.ok else 'missing'}")
+    if config.runs_lab:
+        instances = (
+            system.run(["incus", "list", "--all-projects", "--format", "json"], timeout=60).json()
+            or []
+        )
+        counts: dict[str, dict[str, int]] = {}
+        for instance in instances:
+            project = counts.setdefault(str(instance.get("project", "default")), {})
+            state = str(instance.get("status", "Unknown"))
+            project[state] = project.get(state, 0) + 1
+        out("incus instances:")
+        for name, states in sorted(counts.items()):
+            out(f"  {name:<40} " + ", ".join(f"{n} {s.lower()}" for s, n in sorted(states.items())))
+    if config.serves_inference:
+        smi = str(config.get("gpu", "nvidia_smi", default="nvidia-smi"))
+        done = system.run(
+            [
+                smi,
+                "--query-gpu=name,memory.used,memory.total,utilization.gpu",
+                "--format=csv,noheader",
+            ]
+        )
+        out(f"gpu: {done.stdout.strip() if done.ok else 'not available'}")
+    df = system.run(
+        ["df", "--human-readable", "--output=avail,size", config.pinka_root]
+    ).stdout.splitlines()
+    out(f"disk {config.pinka_root}: {df[-1].strip() if df else 'unknown'} (available, size)")
+    state_text = system.read_text(
+        str(config.get("backup", "state", default="/var/lib/pinka/backup/state.json"))
+    )
+    last = ((json.loads(state_text) if state_text else {}).get("backup") or {}).get("last_success")
+    when = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(last))) if last else "never"
+    out(
+        f"last backup: {when}" + ("" if config.get("backup", "configured") else " (not configured)")
+    )
+    return 0
+
+
+# --- backup and restore ---------------------------------------------------------------------
+
+
+def backup_now(system: System, config: LabConfig) -> int:
+    """Run the database dump and a backup now.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        0 on success.
+    """
+    require_root(system, "backup now")
+    units = (["pinka-pgdump.service"] if config.runs_lab else []) + ["pinka-backup.service"]
+    done = system.run(["systemctl", "start", *units], timeout=7200)
+    if not done.ok:
+        sys.stderr.write(done.stderr or "backup failed; see journalctl -u pinka-backup.service\n")
+        return 1
+    out("backup finished")
+    return 0
+
+
+def backup_list(system: System, config: LabConfig) -> int:
+    """List this host's snapshots.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        The helper's exit code.
+    """
+    require_root(system, "backup list")
+    helper = str(config.get("backup", "helper", default="/usr/local/libexec/pinka/backup"))
+    done = system.run([helper, "snapshots"], timeout=300)
+    if not done.ok:
+        sys.stderr.write(done.stderr)
+        return done.returncode or 1
+    for snap in done.json() or []:
+        out(
+            f"{snap.get('short_id', '?'):<10} {snap.get('time', '?')[:19]}  "
+            + " ".join(snap.get("tags") or [])
+        )
+    return 0
+
+
+def restore(system: System, config: LabConfig, extra: Sequence[str]) -> int:
+    """Run bootstrap with ``--restore`` (restore.yml after provisioning).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        extra: Further bootstrap options (such as ``--non-interactive``).
+
+    Returns:
+        Bootstrap's exit code.
+    """
+    require_root(system, "restore")
+    return system.interactive(bootstrap_argv(config, "--restore", *extra))
+
+
+# --- golden images --------------------------------------------------------------------------
+
+
+def _blueprints(config: LabConfig) -> list[dict[str, Any]]:
+    return list(config.get("images", "blueprints", default=[]))
+
+
+def image_chain(config: LabConfig, name: str) -> list[str]:
+    """A blueprint and the blueprints it starts from, base first.
+
+    Args:
+        config: The lab description.
+        name: Blueprint name.
+
+    Returns:
+        Blueprint names in build order.
+
+    Raises:
+        CommandError: If the blueprint is unknown.
+    """
+    known = {b["name"]: b for b in _blueprints(config)}
+    chain: list[str] = []
+    current: str | None = name
+    while current is not None:
+        if current not in known:
+            raise CommandError(f"unknown blueprint {current!r}; known: {', '.join(sorted(known))}")
+        chain.insert(0, current)
+        current = known[current].get("base_blueprint")
+    return chain
+
+
+def images_list(system: System, config: LabConfig) -> int:
+    """List golden images with their export state.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        0.
+    """
+    images = system.run(["incus", "image", "list", "--format", "json"], timeout=60).json() or []
+    names = {b["name"] for b in _blueprints(config)}
+    export_root = str(config.get("images", "export_root", default=f"{config.pinka_root}/images"))
+    for image in images:
+        for alias in image.get("aliases") or []:
+            blueprint, _, version = str(alias.get("name", "")).partition("/")
+            if blueprint not in names:
+                continue
+            record_text = system.read_text(f"{export_root}/{blueprint}/{version}/build.json")
+            record = json.loads(record_text) if record_text else {}
+            exported = (
+                "exported"
+                if record.get("fingerprint") == image.get("fingerprint")
+                else "NOT EXPORTED"
+            )
+            built = (image.get("properties") or {}).get("pinka.built_at", "?")
+            out(
+                f"{alias['name']:<32} {str(image.get('fingerprint'))[:12]}  "
+                f"built {built}  {exported}"
+            )
+    return 0
+
+
+def images_build(
+    system: System, config: LabConfig, blueprint: str | None, rebuild: bool, extra: Sequence[str]
+) -> int:
+    """Build missing golden images (or one blueprint, optionally again) through bootstrap.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        blueprint: Only this blueprint (and its bases), or None for all.
+        rebuild: Build the blueprint again although its image exists.
+        extra: Further bootstrap options.
+
+    Returns:
+        Bootstrap's exit code.
+
+    Raises:
+        CommandError: If ``--rebuild`` is given without a blueprint.
+    """
+    require_root(system, "images build")
+    env = {}
+    if blueprint is not None:
+        env["PINKA_IMAGES_BLUEPRINTS"] = ",".join(image_chain(config, blueprint))
+        if rebuild:
+            env["PINKA_IMAGES_REBUILD"] = blueprint
+    elif rebuild:
+        raise CommandError("--rebuild needs a blueprint")
+    return system.interactive(bootstrap_argv(config, "--tags", "images", *extra), env=env)
+
+
+def images_export(system: System, config: LabConfig, extra: Sequence[str]) -> int:
+    """Export every image that lacks an export, then check every export.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        extra: Further bootstrap options.
+
+    Returns:
+        0 when every export matches its fingerprint.
+    """
+    require_root(system, "images export")
+    code = system.interactive(bootstrap_argv(config, "--tags", "images", *extra))
+    if code not in (0, 1):
+        return code
+    helper = str(
+        config.get("images", "files_helper", default="/usr/local/libexec/pinka/image-files")
+    )
+    export_root = str(config.get("images", "export_root", default=f"{config.pinka_root}/images"))
+    bad = 0
+    for blueprint in sorted(b["name"] for b in _blueprints(config)):
+        for version in system.listdir(f"{export_root}/{blueprint}"):
+            directory = f"{export_root}/{blueprint}/{version}"
+            record = json.loads(system.read_text(f"{directory}/build.json") or "{}")
+            done = system.run(
+                [
+                    helper,
+                    "verify",
+                    "--dir",
+                    directory,
+                    "--fingerprint",
+                    str(record.get("fingerprint", "")),
+                ],
+                timeout=3600,
+            )
+            result = (done.json() or {}).get("ok")
+            bad += 0 if result else 1
+            out(f"{blueprint}/{version}: {'ok' if result else 'DOES NOT MATCH ITS FINGERPRINT'}")
+    return 1 if bad else 0
+
+
+# --- researchers (configuration only) ---------------------------------------------------------
+
+
+def _host_vars_path(config: LabConfig) -> str:
+    return f"{config.infra_dir}/ansible/inventory/host_vars/{config.host_vars}.yml"
+
+
+def _read_key_file(system: System, path: str) -> str:
+    text = system.read_text(path)
+    if text is None:
+        raise CommandError(f"cannot read {path}")
+    keys = [line.strip() for line in text.splitlines() if line.strip() and not line.startswith("#")]
+    if not keys or not all(KEY_RE.match(k) for k in keys):
+        raise CommandError(f"{path} does not contain only OpenSSH public keys")
+    return "\n".join(keys) + "\n"
+
+
+def researcher_entries(lines: list[str]) -> tuple[int, int, list[str]]:
+    """Find the ``researchers:`` list of a host_vars file.
+
+    Args:
+        lines: The file's lines.
+
+    Returns:
+        ``(start, end, names)``: index of the key line (-1 if absent), index
+        after the last entry, and the researchers' names.
+
+    Raises:
+        CommandError: If the list is not written one flow mapping per line.
+    """
+    for index, line in enumerate(lines):
+        if re.match(r"^researchers:\s*(#.*)?$", line):
+            end, names = index + 1, []
+            while end < len(lines) and (lines[end].startswith(" ") or not lines[end].strip()):
+                match = ENTRY_RE.match(lines[end])
+                if lines[end].strip() and not lines[end].strip().startswith("#") and not match:
+                    raise CommandError(
+                        "the researchers list must have one {name: ...} entry per line"
+                    )
+                if match:
+                    names.append(match.group("name").strip())
+                end += 1
+            while end > index + 1 and not lines[end - 1].strip():
+                end -= 1
+            return index, end, names
+    return -1, len(lines), []
+
+
+def user_add(system: System, config: LabConfig, name: str, key_file: str, admin: bool) -> int:
+    """Add a researcher to the configuration.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        name: Account name.
+        key_file: File with the researcher's public key(s).
+        admin: Whether the researcher gets pinka-admin.
+
+    Returns:
+        0.
+
+    Raises:
+        CommandError: On an invalid name, key file or host_vars layout.
+    """
+    if not NAME_RE.match(name):
+        raise CommandError(
+            "account names are 2-32 lowercase letters and digits, starting with a letter"
+        )
+    keys = _read_key_file(system, key_file)
+    path = _host_vars_path(config)
+    lines = (system.read_text(path) or "").splitlines()
+    start_line, end, names = researcher_entries(lines)
+    if name in names:
+        raise CommandError(f"{name} is already a researcher")
+    role = "true" if admin else "false"
+    entry = f"  - {{name: {name}, admin: {role}, shell: /bin/bash, keys_file: users/{name}.pub}}"
+    if start_line < 0:
+        lines += ["", "researchers:", entry]
+        out("note: the host_vars file had no researchers list; it now replaces the default list")
+    else:
+        lines.insert(end, entry)
+    system.write_text(f"{config.infra_dir}/users/{name}.pub", keys, 0o644)
+    system.write_text(path, "\n".join(lines) + "\n", 0o640)
+    _remind(config, "users_groups,layout")
+    return 0
+
+
+def user_remove(system: System, config: LabConfig, name: str) -> int:
+    """Move a researcher to researchers_removed (locked, never deleted).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        name: Account name.
+
+    Returns:
+        0.
+
+    Raises:
+        CommandError: If the researcher is not in the list.
+    """
+    path = _host_vars_path(config)
+    lines = (system.read_text(path) or "").splitlines()
+    start_line, end, names = researcher_entries(lines)
+    if name not in names:
+        raise CommandError(f"{name} is not in the researchers list of {path}")
+    lines = [
+        line
+        for i, line in enumerate(lines)
+        if not (
+            start_line < i < end and (m := ENTRY_RE.match(line)) and m.group("name").strip() == name
+        )
+    ]
+    for index, line in enumerate(lines):
+        match = re.match(r"^researchers_removed:\s*\[(.*)\]\s*$", line)
+        if match:
+            removed = [n.strip() for n in match.group(1).split(",") if n.strip()]
+            lines[index] = f"researchers_removed: [{', '.join([*removed, name])}]"
+            break
+    else:
+        lines += ["", f"researchers_removed: [{name}]"]
+    system.write_text(path, "\n".join(lines) + "\n", 0o640)
+    _remind(config, "users_groups")
+    return 0
+
+
+def user_keys(system: System, config: LabConfig, name: str, key_file: str) -> int:
+    """Replace a researcher's public keys.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        name: Account name.
+        key_file: File with the new key(s).
+
+    Returns:
+        0.
+    """
+    keys = _read_key_file(system, key_file)
+    target = f"{config.infra_dir}/users/{name}.pub"
+    if system.info(target) is None:
+        raise CommandError(f"{target} does not exist; add the researcher first")
+    system.write_text(target, keys, 0o644)
+    _remind(config, "users_groups")
+    return 0
+
+
+def _remind(config: LabConfig, tags: str) -> None:
+    out("Changed the lab's configuration only. Commit it in the lab's private configuration")
+    out(f"and apply it: sudo {' '.join(bootstrap_argv(config, '--tags', tags))}")
+
+
+# --- pairing (BUILD_PROMPT §19.10) ------------------------------------------------------------
+
+
+def _identity(system: System, config: LabConfig) -> tuple[str, Any]:
+    from pinka_lab import pairing  # noqa: PLC0415 - only for pairing
+
+    directory = str(config.get("inference", "dir", default="/etc/pinka/inference"))
+    cert = system.read_text(f"{directory}/self.crt")
+    if not cert:
+        raise CommandError(f"{directory}/self.crt is missing; run bootstrap first")
+    return directory, pairing.Identity(config.machine, str(config.get("lab_mode")), cert)
+
+
+def _store_peer(system: System, directory: str, peer: Any) -> None:  # noqa: ANN401 - pairing.Peer
+    system.write_text(f"{directory}/peer.crt", peer.cert_pem.strip() + "\n", 0o644)
+    record = peer.record(system.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
+    system.write_text(f"{directory}/peer.json", json.dumps(record, indent=2) + "\n", 0o644)
+
+
+def pair_show(
+    system: System,
+    config: LabConfig,
+    timeout: float,
+    serve: Callable[..., Any] | None = None,
+) -> int:
+    """On an inference node: show a one-time code and wait for the lab node.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        timeout: Seconds to wait.
+        serve: Pairing server (``pairing.serve_once``; tests replace it).
+
+    Returns:
+        0 once paired.
+
+    Raises:
+        CommandError: On another node role, missing files or a failed pairing.
+    """
+    from pinka_lab import pairing  # noqa: PLC0415 - only for pairing
+
+    require_root(system, "pair show")
+    if config.node_role != "inference":
+        raise CommandError("pair show runs on the inference node; use pair connect on the lab node")
+    directory, me = _identity(system, config)
+    settings = json.loads(system.read_text(f"{directory}/control.json") or "{}")
+    if not settings.get("listen"):
+        raise CommandError(f"{directory}/control.json has no tailnet address; run bootstrap first")
+    system.run(["systemctl", "stop", CONTROL_UNIT])
+    code = pairing.new_code()
+    out(f"Pairing code: {code}")
+    out(f"On the lab node run: sudo pinka pair connect {config.machine} {code}")
+    port = int(settings.get("control_port", 18710))
+    out(f"Waiting up to {timeout:g} s on {settings['listen']}:{port} ...")
+    try:
+        peer = (serve or pairing.serve_once)(
+            pairing.normalize(code),
+            me,
+            f"{directory}/self.crt",
+            f"{directory}/self.key",
+            str(settings["listen"]),
+            port,
+            timeout,
+            log=out,
+        )
+    except pairing.PairingError as exc:
+        raise CommandError(str(exc)) from exc
+    _store_peer(system, directory, peer)
+    system.run(["systemctl", "restart", CONTROL_UNIT])
+    out(f"Paired with lab node {peer.node} ({pairing.cert_sha256(peer.cert_pem)[:16]}...).")
+    out(f"Set inference_lab_node: {peer.node} in the host_vars file and apply it:")
+    tags = "inference_control,observability,firewall"
+    out(f"sudo {' '.join(bootstrap_argv(config, '--tags', tags))}")
+    return 0
+
+
+def pair_connect(
+    system: System,
+    config: LabConfig,
+    node: str,
+    code: str,
+    connect: Callable[..., Any] | None = None,
+) -> int:
+    """On a lab node: pair with the inference node that shows the code.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        node: Tailnet name of the inference node.
+        code: The code it shows.
+        connect: Pairing client (``pairing.connect``; tests replace it).
+
+    Returns:
+        0 once paired.
+
+    Raises:
+        CommandError: On another node role, missing files or a failed pairing.
+    """
+    from pinka_lab import pairing  # noqa: PLC0415 - only for pairing
+
+    require_root(system, "pair connect")
+    if config.node_role != "lab":
+        raise CommandError("pair connect runs on a lab node (node_role: lab)")
+    if not re.match(r"^[a-z0-9][a-z0-9.-]{0,62}$", node):
+        raise CommandError(f"not a tailnet node name: {node!r}")
+    directory, me = _identity(system, config)
+    try:
+        peer = (connect or pairing.connect)(
+            pairing.normalize(code),
+            me,
+            node,
+            int(config.get("inference", "control_port", default=18710)),
+        )
+    except pairing.PairingError as exc:
+        raise CommandError(str(exc)) from exc
+    _store_peer(system, directory, peer)
+    out(f"Paired with inference node {peer.node} ({pairing.cert_sha256(peer.cert_pem)[:16]}...).")
+    out(f"Set inference_remote_node: {peer.node} in the host_vars file and apply it:")
+    out(
+        "sudo "
+        + " ".join(
+            bootstrap_argv(config, "--tags", "inference_control,platform,observability,firewall")
+        )
+    )
+    return 0
+
+
+# --- WSL and updates ----------------------------------------------------------------------------
+
+
+def wsl_helpers(config: LabConfig) -> int:
+    """Print where the optional Windows helpers are and how to use them.
+
+    Args:
+        config: The lab description.
+
+    Returns:
+        0, or 1 on another provider.
+    """
+    if config.provider != "wsl2":
+        sys.stderr.write("wsl-helpers: this host is not a WSL host\n")
+        return 1
+    directory = f"{config.infra_dir}/contrib/windows"
+    out(f"Optional Windows helpers (never run by bootstrap): {directory}")
+    out("  pinka-wsl.ps1          keep the WSL VM alive and the PC awake while the lab runs")
+    out(f"  wslconfig.recommended  {config.pinka_root}/services/contrib/wslconfig.recommended")
+    out("Copy them to Windows and follow docs/providers/wsl2.md; the lab never depends on them.")
+    return 0
+
+
+def update_host(system: System, config: LabConfig, yes: bool, extra: Sequence[str]) -> int:
+    """Drain, update the OS keeping the holds, run bootstrap and doctor, show the fingerprint diff.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        yes: Do not ask for confirmation.
+        extra: Further bootstrap options.
+
+    Returns:
+        0 on success, else the failing step's exit code.
+
+    Raises:
+        CommandError: On an unknown family or a refused confirmation.
+    """
+    from pinka_lab import fingerprint  # noqa: PLC0415 - avoids a cycle at import time
+
+    require_root(system, "update-host")
+    profile = json.loads(
+        system.read_text(
+            str(config.get("paths", "host_profile", default="/etc/pinka/host-profile.json"))
+        )
+        or "{}"
+    )
+    family = str(profile.get("family"))
+    if family not in UPDATE_COMMANDS:
+        raise CommandError(f"unknown family {family!r}")
+    if (
+        not yes
+        and input(f"Update {config.machine} ({family}) now? The lab stops meanwhile [y/N] ")
+        .strip()
+        .lower()
+        != "y"
+    ):
+        raise CommandError("not confirmed")
+    before = fingerprint.current(system, config)
+    if stop(system, timeout=float(config.get("lab", "drain_timeout", default=1800))) != 0:
+        return 1
+    for argv in UPDATE_COMMANDS[family]:
+        code = system.interactive(argv)
+        if code != 0:
+            return code
+    code = system.interactive(bootstrap_argv(config, *extra))
+    if code not in (0, 1):
+        return code
+    after = fingerprint.current(system, config)
+    out("fingerprint changes:")
+    for line in fingerprint.diff(before["fingerprint"], after["fingerprint"]) or ["(none)"]:
+        out(f"  {line}")
+    if system.info("/var/run/reboot-required") is not None:
+        out("A reboot is required; reboot when convenient (bootstrap never reboots on its own).")
+    return code
+
+
+def docs_serve(
+    system: System, config: LabConfig | None, directory: str | None, port: int | None
+) -> int:
+    """Serve the lab's documentation on the loopback address (owner answer H9).
+
+    Args:
+        system: Host access.
+        config: The lab description, if this host has one.
+        directory: Built documentation site, else ``docs.dir`` of the lab description.
+        port: Port, else ``docs.port`` of the lab description.
+
+    Returns:
+        0 after the server was stopped.
+
+    Raises:
+        CommandError: Without a built site, or when the port is taken.
+    """
+    site = directory or (config.get("docs", "dir") if config else None) or DOCS_DIR
+    number = port or (config.get("docs", "port") if config else None) or DOCS_PORT
+    if system.info(f"{site}/index.html") is None:
+        raise CommandError(
+            f"no built documentation in {site} (index.html is missing): extract the documentation "
+            "tarball of a release there, or pass --dir with a site built by make docs"
+        )
+    out(
+        f"Serving {site} at http://{DOCS_ADDRESS}:{number}/ on this host only; Ctrl-C stops.\n"
+        f"From another computer: ssh -L {number}:{DOCS_ADDRESS}:{number} <user>@<lab host>, "
+        f"then open http://{DOCS_ADDRESS}:{number}/ there."
+    )
+    try:
+        system.serve_static(site, DOCS_ADDRESS, int(number))
+    except OSError as exc:
+        raise CommandError(f"cannot listen on {DOCS_ADDRESS}:{number}: {exc}") from exc
+    return 0

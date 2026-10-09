@@ -79,7 +79,7 @@ Below *required* the host is unsupported; below *recommended* preflight warns.
 | Memory (GiB) | 16 | 24 |
 | CPU threads | 8 | 16 |
 | Free disk for /var/lib (GiB) | 150 | 400 |
-| Free disk for /srv/pokus (GiB) | 100 | 500 |
+| Free disk for /srv/pinka (GiB) | 100 | 500 |
 
 ## Core requirements
 
@@ -126,7 +126,7 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 
 ## Last test results
 
-`make test-distros` ([How to test the distributions](how-to/test-distributions.md)) bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which must change nothing, and then `pokus-lab doctor --smoke`. A result counts for 90 days after its test date (*Valid until*); a target whose last result failed or has expired counts as untested.
+`make test-distros` ([How to test the distributions](how-to/test-distributions.md)) bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which must change nothing, and then `pinka doctor --smoke`. A result counts for 90 days after its test date (*Valid until*); a target whose last result failed or has expired counts as untested.
 
 | Target | Release | Variant | Tested on | Commit | Launch | Prepare | Bootstrap | Second run | Doctor --smoke | Valid until | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

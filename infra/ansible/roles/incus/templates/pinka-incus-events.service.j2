@@ -1,0 +1,18 @@
+# Managed by pinka (ansible/roles/incus/templates/pinka-incus-events.service.j2). Local changes will be overwritten.
+#
+# Incus lifecycle and logging events of all projects as JSON lines in the
+# journal (`incus monitor` prints a blank line after each event).
+[Unit]
+Description=pinka: Incus events to the journal
+After={{ incus_units.daemon }}
+PartOf={{ incus_units.daemon }}
+
+[Service]
+Slice={{ pinka_services_slice }}
+ExecStart={{ incus_cli }} monitor --all-projects --type=lifecycle --type=logging --format=json
+SyslogIdentifier={{ incus_events_identifier }}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

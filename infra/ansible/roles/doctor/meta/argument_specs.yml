@@ -1,21 +1,21 @@
-# Managed by pokus-infra (ansible/roles/doctor/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/doctor/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: The pokus-lab operator CLI, a copy of preflight it runs, and the lab description /etc/pokus/lab.json.
+    short_description: The pinka operator CLI, a copy of preflight it runs, and the lab description /etc/pinka/lab.json.
     options:
       machine:
         type: str
         required: true
-        description: Name of the host_vars file (bootstrap --machine); pokus-lab passes it back to bootstrap.
+        description: Name of the host_vars file (bootstrap --machine); pinka passes it back to bootstrap.
       machine_name:
         type: str
         required: true
         description: Machine name; the Tailscale host name doctor expects.
-      pokus_infra_dir:
+      pinka_dir:
         type: str
         required: true
         description: Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints.
-      pokus_provider:
+      pinka_provider:
         type: str
         required: true
         description: Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path).
@@ -23,11 +23,11 @@ argument_specs:
         type: str
         required: true
         description: full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks.
-      pokus_features:
+      pinka_features:
         type: dict
         required: true
         description: Feature flags of the host profile (gpu_inference, vm_targets).
-      pokus_versions:
+      pinka_versions:
         type: dict
         required: true
         description: The pinned versions (the image and digest every lab container must run).
@@ -62,7 +62,7 @@ argument_specs:
       doctor_drain_timeout:
         type: int
         default: 1800
-        description: Seconds `pokus-lab update-host` gives the orchestrator to drain.
+        description: Seconds `pinka update-host` gives the orchestrator to drain.
       doctor_listener_processes:
         type: list
         elements: str

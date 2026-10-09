@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from packaging.version import Version
 
-from pokus_repo_checks import docs_lint
+from pinka_repo_checks import docs_lint
 
 UNVERIFIED = "last_verified: {date: null, rc: null, by: null}"
 VERIFIED = 'last_verified: {date: 2026-10-01, rc: "infra@abc platform@def catalog@012", by: run-1}'
@@ -52,7 +52,7 @@ HOWTO_OK = front("how-to") + textwrap.dedent(
 
     <!-- qa:run env=E2 -->
     ```bash
-    pokus-lab status --machine <machine>
+    pinka status --machine <machine>
     ```
 
     `<machine>` is the machine name.
@@ -184,7 +184,7 @@ def test_unlisted_placeholder() -> None:
 
 
 def test_heredoc_is_not_a_placeholder() -> None:
-    text = HOWTO_OK.replace("pokus-lab status --machine <machine>", "cat <<'EOF'\nx\nEOF")
+    text = HOWTO_OK.replace("pinka status --machine <machine>", "cat <<'EOF'\nx\nEOF")
     assert codes(text) == []
 
 

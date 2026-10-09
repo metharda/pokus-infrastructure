@@ -1,11 +1,11 @@
-# Managed by pokus-infra (ansible/roles/platform/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform/defaults/main.yml). Local changes will be overwritten.
 
 # Deploy the platform services (BUILD_PROMPT §7.14). Off by default.
 platform_enabled: false
 # Platform ref to deploy: a platform-v tag (recommended), another tag, a branch or a full commit.
 platform_ref: ""
 # Non-secret settings per service short name (orch, agent, gw, exec, inject,
-# verify, eval), rendered into /etc/pokus/platform/<svc>.toml and checked
+# verify, eval), rendered into /etc/pinka/platform/<svc>.toml and checked
 # against the deployed platform's schemas/config/<svc>.schema.json (C9b).
 platform_settings: {}
 # Inference backend of endpoints.toml (C5): auto (local where this node serves

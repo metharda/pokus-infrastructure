@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/rotate_certificates.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/rotate_certificates.yml). Local changes will be overwritten.
 #
 # Entry point of rotate.yml: new client certificates for the platform services
 # and Prometheus. The new ones are issued and trusted exactly as on a first
@@ -8,7 +8,7 @@
 
 - name: Load the Incus names of this family
   ansible.builtin.include_vars:
-    file: "{{ pokus_family }}.yml"
+    file: "{{ pinka_family }}.yml"
 
 - name: Read the current client certificates
   community.crypto.x509_certificate_info:

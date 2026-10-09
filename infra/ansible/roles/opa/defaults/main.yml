@@ -1,9 +1,9 @@
-# Managed by pokus-infra (ansible/roles/opa/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/opa/defaults/main.yml). Local changes will be overwritten.
 
 # Policy directory of the deployed platform (contracts.md#policy-engine-opa);
 # used once it exists, otherwise the deny-all placeholder is served.
-opa_platform_policy_dir: "{{ pokus_root }}/deploy/platform/current/policy"
+opa_platform_policy_dir: "{{ pinka_root }}/deploy/platform/current/policy"
 # Rendered configuration (mounted read-only at /config).
-opa_config_dir: "{{ pokus_root }}/services/core/config/opa"
+opa_config_dir: "{{ pinka_root }}/services/core/config/opa"
 # Symbolic link to the active policy directory (mounted read-only at /policy).
-opa_policy_link: "{{ pokus_root }}/services/core/policy"
+opa_policy_link: "{{ pinka_root }}/services/core/policy"

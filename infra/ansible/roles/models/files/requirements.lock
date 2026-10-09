@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/models/files/requirements.lock). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/models/files/requirements.lock). Local changes will be overwritten.
 # Compiled from requirements.in by 'make models-lock' (uv pip compile --generate-hashes).
 anyio==4.15.1 ; sys_platform != 'emscripten' \
     --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101 \

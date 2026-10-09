@@ -1,4 +1,4 @@
-# Managed by pokus-infra (config/otel/gateway.yaml.j2). Local changes will be overwritten.
+# Managed by pinka (config/otel/gateway.yaml.j2). Local changes will be overwritten.
 #
 # OpenTelemetry Collector gateway (BUILD_PROMPT §7.9, contracts.md#telemetry).
 # Host network, every listener on 127.0.0.1; with the vm_targets feature also
@@ -9,36 +9,36 @@
 # Split inference (BUILD_PROMPT §19.10): an inference node also scrapes its
 # exporters and vLLM and forwards every signal to the paired lab node over
 # mutual TLS (nothing leaves it before pairing); the lab node receives them
-# on its tailnet address and stores them with pokus.machine set to the
+# on its tailnet address and stores them with pinka.machine set to the
 # inference node.
 extensions:
   health_check:
-    endpoint: 127.0.0.1:{{ pokus_internal_ports.collector_health }}
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.collector_health }}
 
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 127.0.0.1:{{ pokus_ports.otlp_grpc }}
+        endpoint: 127.0.0.1:{{ pinka_ports.otlp_grpc }}
       http:
-        endpoint: 127.0.0.1:{{ pokus_ports.otlp_http }}
+        endpoint: 127.0.0.1:{{ pinka_ports.otlp_http }}
 {% if observability_vm_listener %}
   otlp/vm:
     protocols:
       grpc:
-        endpoint: {{ pokus_vm_otlp.address }}:{{ pokus_ports.otlp_grpc }}
+        endpoint: {{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_grpc }}
       http:
-        endpoint: {{ pokus_vm_otlp.address }}:{{ pokus_ports.otlp_http }}
+        endpoint: {{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_http }}
 {% endif %}
 {% if observability_inference_node %}
   otlp/inference:
     protocols:
       grpc:
-        endpoint: {{ observability_tailnet_address }}:{{ pokus_ports.otlp_grpc }}
+        endpoint: {{ observability_tailnet_address }}:{{ pinka_ports.otlp_grpc }}
         tls:
-          cert_file: /etc/pokus-pairing/self.crt
-          key_file: /etc/pokus-pairing/self.key
-          client_ca_file: /etc/pokus-pairing/peer.crt
+          cert_file: /etc/pinka-pairing/self.crt
+          key_file: /etc/pinka-pairing/self.key
+          client_ca_file: /etc/pinka-pairing/peer.crt
           min_version: "1.3"
 {% endif %}
 {% if not observability_stores %}
@@ -47,25 +47,25 @@ receivers:
       scrape_configs:
         - job_name: otel-collector
           static_configs:
-            - targets: ["127.0.0.1:{{ pokus_internal_ports.collector_telemetry }}"]
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.collector_telemetry }}"]
               labels: {collector: gateway}
-            - targets: ["127.0.0.1:{{ pokus_internal_ports.journald_telemetry }}"]
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.journald_telemetry }}"]
               labels: {collector: journald}
         - job_name: node
           static_configs:
-            - targets: ["127.0.0.1:{{ pokus_internal_ports.node_exporter }}"]
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.node_exporter }}"]
         - job_name: cadvisor
           static_configs:
-            - targets: ["127.0.0.1:{{ pokus_internal_ports.cadvisor }}"]
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.cadvisor }}"]
 {% if observability_gpu %}
         - job_name: gpu
           static_configs:
-            - targets: ["127.0.0.1:{{ pokus_internal_ports.gpu_exporter }}"]
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.gpu_exporter }}"]
 {% endif %}
 {% if observability_vllm %}
         - job_name: vllm
           static_configs:
-            - targets: ["127.0.0.1:{{ pokus_ports.vllm }}"]
+            - targets: ["127.0.0.1:{{ pinka_ports.vllm }}"]
 {% endif %}
 {% endif %}
 
@@ -76,10 +76,10 @@ processors:
     spike_limit_mib: {{ (observability_collector_memory_mib // 4) | int }}
   resource:
     attributes:
-      - key: pokus.machine
+      - key: pinka.machine
         value: {{ machine_name | to_json }}
         action: upsert
-      - key: pokus.lab_mode
+      - key: pinka.lab_mode
         value: {{ lab_mode | to_json }}
         action: upsert
   batch: {}
@@ -87,10 +87,10 @@ processors:
   # Mutual TLS proved the sender is the paired node.
   resource/inference:
     attributes:
-      - key: pokus.machine
+      - key: pinka.machine
         value: {{ observability_inference_node | to_json }}
         action: upsert
-      - key: pokus.lab_mode
+      - key: pinka.lab_mode
         value: {{ lab_mode | to_json }}
         action: upsert
 {% endif %}
@@ -98,25 +98,25 @@ processors:
 exporters:
 {% if observability_stores %}
   otlp_http/loki:
-    endpoint: http://127.0.0.1:{{ pokus_ports.loki }}/otlp
+    endpoint: http://127.0.0.1:{{ pinka_ports.loki }}/otlp
   otlp_grpc/tempo:
-    endpoint: 127.0.0.1:{{ pokus_internal_ports.tempo_otlp_grpc }}
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.tempo_otlp_grpc }}
     tls:
       insecure: true
   prometheus:
-    endpoint: 127.0.0.1:{{ pokus_internal_ports.collector_metrics }}
-    # Resource attributes such as pokus.run_id and pokus.node become labels,
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.collector_metrics }}
+    # Resource attributes such as potka.run_id and potka.node become labels,
     # so dashboards can filter target metrics by run.
     resource_to_telemetry_conversion:
       enabled: true
 {% elif observability_forward_node %}
   # The lab node's tailnet address; its certificate names it by tailnet name.
   otlp_grpc/lab:
-    endpoint: {{ observability_forward_address }}:{{ pokus_ports.otlp_grpc }}
+    endpoint: {{ observability_forward_address }}:{{ pinka_ports.otlp_grpc }}
     tls:
-      ca_file: /etc/pokus-pairing/peer.crt
-      cert_file: /etc/pokus-pairing/self.crt
-      key_file: /etc/pokus-pairing/self.key
+      ca_file: /etc/pinka-pairing/peer.crt
+      cert_file: /etc/pinka-pairing/self.crt
+      key_file: /etc/pinka-pairing/self.key
       server_name_override: {{ observability_forward_node | to_json }}
       min_version: "1.3"
 {% else %}
@@ -132,7 +132,7 @@ service:
             exporter:
               prometheus:
                 host: 127.0.0.1
-                port: {{ pokus_internal_ports.collector_telemetry }}
+                port: {{ pinka_internal_ports.collector_telemetry }}
   pipelines:
     logs:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/mac/vars/debian.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/mac/vars/debian.yml). Local changes will be overwritten.
 #
-# Debian and Ubuntu use AppArmor; SELinux is not set up by Pokus there.
+# Debian and Ubuntu use AppArmor; SELinux is not set up by pinka there.
 mac_selinux_packages: [policycoreutils-python-utils, selinux-policy-default]

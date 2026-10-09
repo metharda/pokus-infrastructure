@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/docker-host/provision.yml). Local changes will be overwritten.
+# Managed by pinka (images/docker-host/provision.yml). Local changes will be overwritten.
 #
 # Docker Engine and the containerized web service (BUILD_PROMPT §7.13), on
 # top of `_base`. Variables: target_images (versions.lock.yml

@@ -1,4 +1,4 @@
-"""The pokus_events callback (BUILD_PROMPT §18.5).
+"""The pinka_events callback (BUILD_PROMPT §18.5).
 
 A real ansible-playbook run in check mode against localhost with tasks that
 touch nothing (debug, set_fact, fail); the events must describe it and must
@@ -77,7 +77,7 @@ def run_play(
     config.write_text(
         "[defaults]\n"
         f"callback_plugins = {ANSIBLE / 'callback_plugins'}\n"
-        "callbacks_enabled = pokus_events\n"
+        "callbacks_enabled = pinka_events\n"
         "retry_files_enabled = False\n",
         encoding="utf-8",
     )
@@ -104,7 +104,7 @@ def events(path: Path) -> list[dict[str, Any]]:
 
 def test_events_describe_the_play(tmp_path: Path) -> None:
     out = tmp_path / "events.jsonl"
-    done = run_play(tmp_path, {"POKUS_EVENTS_FILE": str(out)})
+    done = run_play(tmp_path, {"PINKA_EVENTS_FILE": str(out)})
     assert done.returncode == 0, done.stdout + done.stderr
     found = events(out)
     assert SECRET not in out.read_text(encoding="utf-8")
@@ -150,7 +150,7 @@ def test_task_names_carry_no_role_prefix(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     out = tmp_path / "events.jsonl"
-    done = run_play(tmp_path, {"POKUS_EVENTS_FILE": str(out)}, ROLE_PLAY)
+    done = run_play(tmp_path, {"PINKA_EVENTS_FILE": str(out)}, ROLE_PLAY)
     assert done.returncode == 0, done.stdout + done.stderr
     found = events(out)
     assert [e["role"] for e in found if e["type"] == "ansible.role_start"] == ["demo"]
@@ -161,7 +161,7 @@ def test_task_names_carry_no_role_prefix(tmp_path: Path) -> None:
 
 
 def test_no_stream_no_events(tmp_path: Path) -> None:
-    env = {k: "" for k in ("POKUS_EVENTS_FILE", "POKUS_EVENTS_FD")}
+    env = {k: "" for k in ("PINKA_EVENTS_FILE", "PINKA_EVENTS_FD")}
     done = run_play(tmp_path, env)
     assert done.returncode == 0, done.stdout + done.stderr
     assert not list(tmp_path.glob("*.jsonl"))
@@ -185,10 +185,10 @@ def test_events_to_a_file_descriptor(tmp_path: Path) -> None:
                 **os.environ,
                 "ANSIBLE_HOME": str(tmp_path / "home"),
                 "ANSIBLE_CALLBACK_PLUGINS": str(ANSIBLE / "callback_plugins"),
-                "ANSIBLE_CALLBACKS_ENABLED": "pokus_events",
+                "ANSIBLE_CALLBACKS_ENABLED": "pinka_events",
                 "ANSIBLE_CONFIG": str(tmp_path / "none.cfg"),
                 "ANSIBLE_LOCALHOST_WARNING": "False",
-                "POKUS_EVENTS_FD": str(write_end),
+                "PINKA_EVENTS_FD": str(write_end),
             },
             pass_fds=(write_end,),
             stdout=subprocess.DEVNULL,

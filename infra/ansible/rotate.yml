@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/rotate.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/rotate.yml). Local changes will be overwritten.
 #
 # Rotation of the secrets and certificates the host holds (BUILD_PROMPT §4,
 # docs/how-to/rotate-secrets.md). Run it as root with the pinned Ansible and
@@ -20,7 +20,7 @@
   vars_files:
     - "inventory/host_vars/{{ machine }}.yml"
   vars:
-    pokus_infra_dir: "{{ playbook_dir | dirname }}"
+    pinka_dir: "{{ playbook_dir | dirname }}"
   pre_tasks:
     - name: Require the machine name
       ansible.builtin.assert:
@@ -31,7 +31,7 @@
 
     - name: Read the host profile
       ansible.builtin.slurp:
-        src: /etc/pokus/host-profile.json
+        src: /etc/pinka/host-profile.json
       register: rotate_profile
       when: host_profile is not defined
       tags: [always]
@@ -39,7 +39,7 @@
     - name: Use the host profile and no bootstrap options
       ansible.builtin.set_fact:
         host_profile: "{{ host_profile | default(rotate_profile.content | b64decode | from_json) }}"
-        pokus_bootstrap: "{{ pokus_bootstrap | default({}) }}"
+        pinka_bootstrap: "{{ pinka_bootstrap | default({}) }}"
       tags: [always]
 
   tasks:
@@ -50,7 +50,7 @@
 
     - name: Stop the lab
       ansible.builtin.systemd_service:
-        name: pokus-lab.target
+        name: pinka-lab.target
         state: stopped
       when: not ansible_check_mode
       tags: [postgres, incus]
@@ -99,7 +99,7 @@
 
     - name: Start the lab
       ansible.builtin.systemd_service:
-        name: pokus-lab.target
+        name: pinka-lab.target
         state: started
       when: not ansible_check_mode
       tags: [postgres, incus]

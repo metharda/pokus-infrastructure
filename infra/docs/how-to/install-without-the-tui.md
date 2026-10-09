@@ -17,7 +17,7 @@ second identical host, or to automate a reinstall.
 !!! note "Prerequisites"
     - A host that preflight accepts (see
       [How to check whether a machine can host the lab](check-a-host.md)).
-    - A clone of the Pokus repository owned by your own user, with a clean
+    - A clone of the pokus-infrastructure repository owned by your own user, with a clean
       `infra/` directory.
     - `sudo` rights on the host.
     - An answers file: exported with **Export answers only** on the TUI's
@@ -45,8 +45,8 @@ second identical host, or to automate a reinstall.
 
     <!-- qa:skip reason="reads a password from the terminal" -->
     ```bash
-    sudo install -m 600 /dev/null /root/pokus-vault-pass
-    read -rsp 'vault password: ' pass && echo "$pass" | sudo tee /root/pokus-vault-pass >/dev/null
+    sudo install -m 600 /dev/null /root/pinka-vault-pass
+    read -rsp 'vault password: ' pass && echo "$pass" | sudo tee /root/pinka-vault-pass >/dev/null
     unset pass
     ```
 
@@ -55,16 +55,16 @@ second identical host, or to automate a reinstall.
 
     | Answers field | Variable |
     | --- | --- |
-    | `remote_access.tailscale_login: auth_key` | `POKUS_SECRET_TAILSCALE_AUTHKEY` |
-    | `backups.password: provided` | `POKUS_SECRET_RESTIC_PASSWORD` |
-    | `secrets.grafana_admin: provided` | `POKUS_SECRET_GRAFANA_ADMIN_PASSWORD` |
-    | `secrets.hf_token: provided` | `POKUS_SECRET_HF_TOKEN` |
+    | `remote_access.tailscale_login: auth_key` | `PINKA_SECRET_TAILSCALE_AUTHKEY` |
+    | `backups.password: provided` | `PINKA_SECRET_RESTIC_PASSWORD` |
+    | `secrets.grafana_admin: provided` | `PINKA_SECRET_GRAFANA_ADMIN_PASSWORD` |
+    | `secrets.hf_token: provided` | `PINKA_SECRET_HF_TOKEN` |
 
     Read them without echoing them, so they stay out of the shell history:
 
     <!-- qa:skip reason="reads a secret from the terminal" -->
     ```bash
-    read -rsp 'Tailscale auth key: ' POKUS_SECRET_TAILSCALE_AUTHKEY && export POKUS_SECRET_TAILSCALE_AUTHKEY
+    read -rsp 'Tailscale auth key: ' PINKA_SECRET_TAILSCALE_AUTHKEY && export PINKA_SECRET_TAILSCALE_AUTHKEY
     ```
 
     On an installed lab, a secret that the vault already holds is kept; a
@@ -91,13 +91,13 @@ second identical host, or to automate a reinstall.
 
     <!-- qa:skip reason="provisions the host" -->
     ```bash
-    cd <pokus-checkout>/infra
-    sudo --preserve-env=POKUS_SECRET_TAILSCALE_AUTHKEY ./bootstrap/bootstrap.sh \
+    cd <checkout>/infra
+    sudo --preserve-env=PINKA_SECRET_TAILSCALE_AUTHKEY ./bootstrap/bootstrap.sh \
       --answers installer-answers/<machine>.yml --non-interactive \
-      --vault-password-file /root/pokus-vault-pass
+      --vault-password-file /root/pinka-vault-pass
     ```
 
-    `<pokus-checkout>` is the directory of your clone and `<machine>` the
+    `<checkout>` is the directory of your clone and `<machine>` the
     machine name in the answers file. List every variable you set in
     `--preserve-env`, separated by commas. Bootstrap checks the answers
     before it changes anything: a problem ends with exit code 77 and lists
@@ -112,9 +112,9 @@ second identical host, or to automate a reinstall.
     <!-- qa:skip reason="provisions the host" -->
     ```bash
     read -rsp 'one-time MOK password: ' mok && echo
-    printf '%s\n' "$mok" | sudo --preserve-env=POKUS_SECRET_TAILSCALE_AUTHKEY \
+    printf '%s\n' "$mok" | sudo --preserve-env=PINKA_SECRET_TAILSCALE_AUTHKEY \
       ./bootstrap/bootstrap.sh --answers installer-answers/<machine>.yml \
-      --non-interactive --vault-password-file /root/pokus-vault-pass --mok-password-stdin
+      --non-interactive --vault-password-file /root/pinka-vault-pass --mok-password-stdin
     unset mok
     ```
 
@@ -129,8 +129,8 @@ second identical host, or to automate a reinstall.
 
     <!-- qa:skip reason="needs the vault password" -->
     ```bash
-    sudo /opt/pokus/ansible-venv/bin/ansible-vault view \
-      --vault-password-file /root/pokus-vault-pass ansible/group_vars/all/vault.yml
+    sudo /opt/pinka/ansible-venv/bin/ansible-vault view \
+      --vault-password-file /root/pinka-vault-pass ansible/group_vars/all/vault.yml
     ```
 
 3. Commit the written files on a branch of your lab's private configuration
@@ -143,7 +143,7 @@ nothing:
 
 <!-- qa:skip reason="needs a provisioned lab host" -->
 ```bash
-sudo pokus-lab doctor
+sudo pinka doctor
 echo "exit code: $?"
 git status --short
 ```

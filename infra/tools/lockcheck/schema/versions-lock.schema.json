@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Pokus versions lock",
-  "description": "versions.lock.yml (pokus-infra BUILD_PROMPT \u00a710.1, \u00a719.4). Every pinned value is either verified (and matches its pattern) or the marker TODO(verify), which `make lock-check` reports as a failure.",
+  "title": "pinka versions lock",
+  "description": "versions.lock.yml (pokus-infrastructure BUILD_PROMPT \u00a710.1, \u00a719.4). Every pinned value is either verified (and matches its pattern) or the marker TODO(verify), which `make lock-check` reports as a failure.",
   "type": "object",
   "additionalProperties": false,
   "required": [

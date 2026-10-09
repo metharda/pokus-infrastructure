@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/mac/vars/redhat.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/mac/vars/redhat.yml). Local changes will be overwritten.
 #
 # TODO(verify): package names on Fedora and EL (mirrors not reachable from the
 # build environment).

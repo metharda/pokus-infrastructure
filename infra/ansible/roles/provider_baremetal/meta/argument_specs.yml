@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_baremetal/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_baremetal/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Bare-metal provider.
@@ -25,7 +25,7 @@ argument_specs:
       provider_baremetal_initramfs_commands:
         type: dict
         default: {}
-        description: Command that rebuilds the initramfs, per pokus_initramfs_tool.
+        description: Command that rebuilds the initramfs, per pinka_initramfs_tool.
       provider_baremetal_mok_keys:
         type: list
         elements: path

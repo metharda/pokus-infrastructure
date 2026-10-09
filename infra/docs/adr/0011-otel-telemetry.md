@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted (host networking of the observability stack: awaiting owner confirmation)
 - **Date:** 2026-10-06
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §7.9, §12, owner answer E14)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.9, §12, owner answer E14)
 
 ## Context
 
@@ -26,10 +26,10 @@ are Loki, Prometheus and Tempo, shown in Grafana.
    `127.0.0.1:4317`/`4318`: services directly, containers through an Incus
    proxy device, VMs through a dedicated listener on a dummy-interface
    address that only run networks reach, and only on the OTLP ports (C4).
-2. The gateway adds `pokus.machine` and `pokus.lab_mode`, then sends logs to
+2. The gateway adds `pinka.machine` and `pinka.lab_mode`, then sends logs to
    Loki's native OTLP endpoint, traces to Tempo, and metrics to a Prometheus
    exporter that Prometheus scrapes (E14); resource attributes such as
-   `pokus.run_id` become labels or structured metadata.
+   `potka.run_id` become labels or structured metadata.
 3. The host journal is read by a **second collector instance** with the
    host's `journalctl` in a chroot. Only that instance can read host files;
    the gateway, which accepts data from targets, cannot.

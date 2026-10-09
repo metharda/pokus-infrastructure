@@ -1,0 +1,15 @@
+# Managed by pinka (config/grafana/provisioning/dashboards/pinka.yaml.j2). Local changes will be overwritten.
+#
+# The dashboards of config/grafana/dashboards/, read-only in the folder pinka.
+apiVersion: 1
+
+providers:
+  - name: pinka
+    orgId: 1
+    folder: pinka
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards

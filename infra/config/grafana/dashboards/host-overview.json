@@ -1,9 +1,9 @@
 {
-  "uid": "pokus-host-overview",
-  "title": "Pokus: host overview",
-  "description": "Managed by pokus-infra (config/grafana/dashboards/host-overview.json). Local changes will be overwritten. CPU, memory, disks, network and file systems of the lab host (node_exporter).",
+  "uid": "pinka-host-overview",
+  "title": "pinka: host overview",
+  "description": "Managed by pinka (config/grafana/dashboards/host-overview.json). Local changes will be overwritten. CPU, memory, disks, network and file systems of the lab host (node_exporter).",
   "tags": [
-    "pokus"
+    "pinka"
   ],
   "timezone": "utc",
   "editable": false,

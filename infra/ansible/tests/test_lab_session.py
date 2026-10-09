@@ -13,8 +13,8 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
-import pokus_health_gate as gate
-import pokus_session_start as session
+import pinka_health_gate as gate
+import pinka_session_start as session
 import pytest
 
 from ansible_testlib import ROLES, evaluate, load_yaml, render_template, role_vars
@@ -49,7 +49,7 @@ HEALTHY = {
 }
 CHECKS: dict[str, Any] = {
     "time": {"wsl": False, "ntp_reference": "", "max_offset": 1.0},
-    "postgres": {"container": "pokus-postgres"},
+    "postgres": {"container": "pinka-postgres"},
     "collector": {"url": "http://127.0.0.1:18730/"},
     "incus": {},
     "gpu": {
@@ -119,8 +119,8 @@ def test_unreachable_reference_skips_the_comparison() -> None:
 )
 def test_postgres_check(answer: tuple[int, str], ok: bool) -> None:
     runner = FakeRunner({"docker inspect": answer})
-    assert gate.check_postgres({"container": "pokus-postgres"}, runner).ok is ok
-    assert runner.calls[0][-1] == "pokus-postgres"
+    assert gate.check_postgres({"container": "pinka-postgres"}, runner).ok is ok
+    assert runner.calls[0][-1] == "pinka-postgres"
 
 
 @pytest.mark.parametrize(("status", "ok"), [(200, True), (503, False), (0, False)])
@@ -247,17 +247,15 @@ FINGERPRINT = {"hash": "sha256:" + "a" * 64, "fingerprint": {"fingerprint_schema
 def session_runner(fingerprint: tuple[int, str], preflight: tuple[int, str]) -> FakeRunner:
     return FakeRunner(
         {
-            "/usr/local/bin/pokus-lab fingerprint": fingerprint,
-            "/usr/local/bin/pokus-lab preflight": preflight,
+            "/usr/local/bin/pinka fingerprint": fingerprint,
+            "/usr/local/bin/pinka preflight": preflight,
         }
     )
 
 
 def test_record_with_fingerprint_and_degraded_preflight() -> None:
     runner = session_runner((0, json.dumps(FINGERPRINT)), (10, '{"outcome": "degraded"}'))
-    record = session.build_record(
-        "b00t", "2026-10-06T12:00:00Z", "/usr/local/bin/pokus-lab", runner
-    )
+    record = session.build_record("b00t", "2026-10-06T12:00:00Z", "/usr/local/bin/pinka", runner)
     assert record == {
         "schema_version": 1,
         "boot_id": "b00t",
@@ -269,11 +267,9 @@ def test_record_with_fingerprint_and_degraded_preflight() -> None:
     }
 
 
-def test_record_without_pokus_lab() -> None:
+def test_record_without_pinka_lab() -> None:
     runner = session_runner((127, ""), (127, ""))
-    record = session.build_record(
-        "b00t", "2026-10-06T12:00:00Z", "/usr/local/bin/pokus-lab", runner
-    )
+    record = session.build_record("b00t", "2026-10-06T12:00:00Z", "/usr/local/bin/pinka", runner)
     assert record["fingerprint"] is None
     assert record["fingerprint_hash"] is None
     assert record["preflight_outcome"] is None
@@ -282,9 +278,7 @@ def test_record_without_pokus_lab() -> None:
 
 def test_record_with_broken_output() -> None:
     runner = session_runner((0, "not json"), (40, ""))
-    record = session.build_record(
-        "b00t", "2026-10-06T12:00:00Z", "/usr/local/bin/pokus-lab", runner
-    )
+    record = session.build_record("b00t", "2026-10-06T12:00:00Z", "/usr/local/bin/pinka", runner)
     assert "no JSON" in record["errors"]["fingerprint"]
     assert record["preflight_outcome"] is None
 
@@ -371,7 +365,7 @@ def test_checks_per_node_role(
 
     checks = checks_for(
         node_role=node_role,
-        pokus_provider="wsl2",
+        pinka_provider="wsl2",
         lab_session_gpu=gpu,
         lab_session_daemon_json={"content": base64.b64encode(json.dumps(daemon).encode()).decode()},
         **GPU_FACTS,
@@ -385,16 +379,16 @@ def test_checks_per_node_role(
 def test_units_render() -> None:
     variables = role_vars("lab_session")
     variables.update(load_yaml(ROLES / "lab_session" / "vars" / "main.yml"))
-    target = render_template("lab_session", "pokus-lab.target.j2", variables)
-    assert "Wants=pokus-health-gate.service pokus-session-start.service" in target
+    target = render_template("lab_session", "pinka-lab.target.j2", variables)
+    assert "Wants=pinka-health-gate.service pinka-session-start.service" in target
     assert "WantedBy=multi-user.target" in target
-    unit = render_template("lab_session", "pokus-health-gate.service.j2", variables)
+    unit = render_template("lab_session", "pinka-health-gate.service.j2", variables)
     assert (
-        "ExecStart=/usr/local/libexec/pokus/health-gate --config /etc/pokus/health-gate.json"
+        "ExecStart=/usr/local/libexec/pinka/health-gate --config /etc/pinka/health-gate.json"
         in unit
     )
     assert "TimeoutStartSec=780" in unit
-    assert "PartOf=pokus-lab.target" in unit
-    record = render_template("lab_session", "pokus-session-start.service.j2", variables)
-    assert "After=pokus-health-gate.service" in record
-    assert "--sessions /var/lib/pokus/sessions" in record
+    assert "PartOf=pinka-lab.target" in unit
+    record = render_template("lab_session", "pinka-session-start.service.j2", variables)
+    assert "After=pinka-health-gate.service" in record
+    assert "--sessions /var/lib/pinka/sessions" in record

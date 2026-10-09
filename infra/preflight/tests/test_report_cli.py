@@ -13,7 +13,7 @@ import unittest
 
 from helpers import FIXTURES_DIR
 
-from pokus_preflight import cli, render, report, schema_check
+from pinka_preflight import cli, render, report, schema_check
 
 FIXTURE = os.path.join(FIXTURES_DIR, "ubuntu2404-wsl2-gpu-nokvm")
 
@@ -103,7 +103,7 @@ class ReportTest(unittest.TestCase):
 
     def test_write_profile_is_atomic_and_world_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            profile = os.path.join(tmp, "etc", "pokus", "host-profile.json")
+            profile = os.path.join(tmp, "etc", "pinka", "host-profile.json")
             archive_dir = os.path.join(tmp, "var", "preflight")
             when = dt.datetime(2026, 10, 5, 9, 12, 44, tzinfo=dt.timezone.utc)
             written = report.write_profile({"x": 1}, when, (profile, archive_dir))
@@ -123,7 +123,7 @@ class CliTest(unittest.TestCase):
         self.assertEqual(doc["outcome"], "degraded")
         self.assertTrue(doc["network"]["offline"])
         self.assertIsNone(doc["repo_commit"])
-        self.assertIn("Pokus preflight: DEGRADED (exit 10)", err)
+        self.assertIn("pinka preflight: DEGRADED (exit 10)", err)
         self.assertNotIn("Profile", err)
 
     def test_output_file_quiet_and_overrides(self) -> None:

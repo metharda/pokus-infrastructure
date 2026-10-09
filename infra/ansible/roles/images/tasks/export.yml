@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/export.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/export.yml). Local changes will be overwritten.
 #
 # Export of a blueprint's image (images_image) to
 # <images_export_root>/<blueprint>/<version>/ with SHA256SUMS, the installed
@@ -9,7 +9,7 @@
     path: "{{ item }}"
     state: directory
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0750"
   loop:
     - "{{ images_export_dir | dirname }}"
@@ -39,7 +39,7 @@
     dest: "{{ images_export_dir }}/packages.txt"
     content: "{{ images_packages_text }}"
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0640"
   when: images_packages_text | length > 0
 
@@ -49,7 +49,7 @@
     state: directory
     recurse: true
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: u=rwX,g=rX,o=
 
 - name: Write the export record
@@ -61,9 +61,9 @@
           'type': images_spec.type, 'nesting': images_spec.nesting,
           'architecture': images_image.architecture, 'base': images_spec.base,
           'properties': images_image.properties | default({}) | dict2items
-                        | selectattr('key', 'match', '^pokus[.]') | items2dict,
+                        | selectattr('key', 'match', '^pinka[.]') | items2dict,
           'files': (images_written.stdout | from_json).files,
           'exported_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ')} | to_nice_json }}
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0640"

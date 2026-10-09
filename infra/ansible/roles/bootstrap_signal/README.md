@@ -1,7 +1,7 @@
 # bootstrap_signal
 
 Stops the play with a condition that `bootstrap.sh` turns into its exit code
-(BUILD_PROMPT §5.2 step 9): the role writes `/run/pokus/bootstrap-signal.json`
+(BUILD_PROMPT §5.2 step 9): the role writes `/run/pinka/bootstrap-signal.json`
 with `{code, message}` (and, for a 76, optionally `mok_key`) and fails. Roles call it instead of failing directly
 whenever the operator has to act:
 

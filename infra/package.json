@@ -1,8 +1,8 @@
 {
-  "name": "pokus-infra-doc-tools",
+  "name": "pinka-doc-tools",
   "version": "0.1.0",
   "private": true,
-  "description": "Pinned Node.js documentation linters for pokus-infra (Markdown lint, spell check, Mermaid validation). Never installed on lab hosts.",
+  "description": "Pinned Node.js documentation linters for pokus-infrastructure (Markdown lint, spell check, Mermaid validation). Never installed on lab hosts.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22.18.0"

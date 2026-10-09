@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/reboot_suse.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_baremetal/tasks/reboot_suse.yml). Local changes will be overwritten.
 #
 # TODO(verify): exit code of `zypper needs-rebooting` when a reboot is needed (102).
 - name: Ask zypper whether a reboot is needed

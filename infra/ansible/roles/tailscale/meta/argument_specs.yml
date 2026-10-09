@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/tailscale/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/tailscale/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off.
@@ -11,14 +11,14 @@ argument_specs:
         type: str
         required: true
         choices: [production, staging]
-        description: Selects the tag (tag:pokus-lab or tag:pokus-qa).
+        description: Selects the tag (tag:pinka-lab or tag:pinka-qa).
       grafana_tailscale_serve:
         type: bool
         required: true
         description: Publish Grafana on the tailnet with `tailscale serve` (never Funnel).
       tailscale_tag:
         type: str
-        default: tag:pokus-lab
+        default: tag:pinka-lab
         description: Advertised tag; derived from lab_mode.
       tailscale_accept_dns:
         type: bool

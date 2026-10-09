@@ -1,4 +1,4 @@
-"""Tests for the pokus-infra generators."""
+"""Tests for the pokus-infrastructure generators."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 import yaml
-from pokus_lab.cli import build_parser
+from pinka_lab.cli import build_parser
 
-from pokus_infra_gen import bootstrap, cli, lab, pages, sources
+from pinka_gen import bootstrap, cli, lab, pages, sources
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -39,7 +39,7 @@ def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
         "ansible",
         "versions.lock.yml",
         "README.md",
-        "tools/pokus-lab/schema",
+        "tools/pinka-lab/schema",
         "tests/distros",
         "installer/requirements.in",
         "installer/requirements.lock",
@@ -68,12 +68,12 @@ def test_coverage_is_complete_and_detects_gaps(
         "docs",
         "bootstrap",
         "ansible",
-        "tools/pokus-lab/schema",
+        "tools/pinka-lab/schema",
         "tests/distros",
         "installer/schema",
     ):
         shutil.copytree(ROOT / rel, tmp_path / rel)
-    ref = tmp_path / "docs/reference/cli/pokus-preflight.md"
+    ref = tmp_path / "docs/reference/cli/pinka-preflight.md"
     ref.write_text(
         ref.read_text(encoding="utf-8").replace("`--offline`", "offline"), encoding="utf-8"
     )
@@ -83,19 +83,17 @@ def test_coverage_is_complete_and_detects_gaps(
     )
     assert cli.coverage(tmp_path) == 1
     out = capsys.readouterr().out
-    assert "pokus-preflight option --offline" in out
+    assert "pinka-preflight option --offline" in out
     assert "troubleshooting section for doctor check time.sync" in out
 
 
 def test_lab_pages_cover_every_command() -> None:
     page = lab.cli_page()
     for name, _, _ in lab.commands(build_parser()):
-        assert f"### pokus-lab {name}\n" in page
-    assert "`pokus-lab images build`" in page
+        assert f"### pinka {name}\n" in page
+    assert "`pinka images build`" in page
     assert lab.anchor("lab.health_gate") == "check-lab-health_gate"
-    assert "| 2 | `pokus-lab doctor` |" in "".join(
-        f"| {' | '.join(r)} |" for r in lab.exit_code_rows()
-    )
+    assert "| 2 | `pinka doctor` |" in "".join(f"| {' | '.join(r)} |" for r in lab.exit_code_rows())
 
 
 def test_table_escapes_pipes() -> None:
@@ -112,18 +110,18 @@ def test_bootstrap_pins_come_from_the_lock() -> None:
     lock = sources.jsonable(sources.load_yaml(ROOT / "versions.lock.yml"))
     digest = hashlib.sha256((ROOT / "versions.lock.yml").read_bytes()).hexdigest()
     pins = bootstrap.pins_sh(ROOT)
-    assert f"readonly POKUS_LOCK_SHA256={digest}\n" in pins
-    assert f"readonly POKUS_UV_VERSION={lock['binaries']['uv']['version']}\n" in pins
+    assert f"readonly PINKA_LOCK_SHA256={digest}\n" in pins
+    assert f"readonly PINKA_UV_VERSION={lock['binaries']['uv']['version']}\n" in pins
     sha = lock["binaries"]["uv"]["assets"]["aarch64"]["sha256"]
-    assert f"readonly POKUS_UV_SHA256_AARCH64={sha}\n" in pins
-    assert f"readonly POKUS_PYTHON_VERSION={lock['python']['python_version']}\n" in pins
+    assert f"readonly PINKA_UV_SHA256_AARCH64={sha}\n" in pins
+    assert f"readonly PINKA_PYTHON_VERSION={lock['python']['python_version']}\n" in pins
     requirements = [
         line for line in bootstrap.requirements_in(ROOT).splitlines() if not line.startswith("#")
     ]
     packages = lock["python"]["packages"]
     assert requirements == [f"{name}=={packages[name]}" for name in sorted(packages)]
     versions = yaml.safe_load(bootstrap.versions_yml(ROOT))
-    assert versions == {"pokus_versions_lock_sha256": digest, "pokus_versions": lock}
+    assert versions == {"pinka_versions_lock_sha256": digest, "pinka_versions": lock}
 
 
 def test_versions_yml_indents_sequences() -> None:

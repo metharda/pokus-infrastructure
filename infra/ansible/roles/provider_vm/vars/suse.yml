@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_vm/vars/suse.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_vm/vars/suse.yml). Local changes will be overwritten.
 #
 # TODO(verify): package and service names (openSUSE mirrors are not reachable
 # from the build environment).

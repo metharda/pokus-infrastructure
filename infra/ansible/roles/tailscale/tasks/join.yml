@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/tailscale/tasks/join.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/tailscale/tasks/join.yml). Local changes will be overwritten.
 #
 # Skip when already logged in with the same host name and tags. Otherwise use
 # the auth key from the vault, or show the login URL and wait for an
@@ -38,7 +38,7 @@
   when:
     - not tailscale_joined
     - vault_tailscale_authkey | default('') | length == 0
-    - not (pokus_bootstrap.interactive | default(false))
+    - not (pinka_bootstrap.interactive | default(false))
 
 - name: Log in interactively
   when:

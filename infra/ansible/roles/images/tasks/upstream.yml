@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/upstream.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/upstream.yml). Local changes will be overwritten.
 #
 # The pinned upstream base image of a blueprint (versions.lock.yml
 # incus_base_images): public image servers rotate their images, so the base is
@@ -6,9 +6,9 @@
 
 - name: Describe the upstream base image
   ansible.builtin.set_fact:
-    images_upstream: "{{ pokus_versions.incus_base_images.images[images_spec.base.image] }}"
+    images_upstream: "{{ pinka_versions.incus_base_images.images[images_spec.base.image] }}"
     images_base_fingerprint: >-
-      {{ pokus_versions.incus_base_images.images[images_spec.base.image].fingerprints[ansible_facts['architecture']] | default('') }}
+      {{ pinka_versions.incus_base_images.images[images_spec.base.image].fingerprints[ansible_facts['architecture']] | default('') }}
 
 - name: Refuse an unverified upstream base image
   ansible.builtin.assert:
@@ -68,7 +68,7 @@
         path: "{{ images_upstream_export }}"
         state: directory
         owner: root
-        group: pokus-admin
+        group: pinka-admin
         mode: "0750"
 
     - name: Export the upstream base image
@@ -93,7 +93,7 @@
               'files': (images_upstream_written.stdout | from_json).files,
               'exported_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ')} | to_nice_json }}
         owner: root
-        group: pokus-admin
+        group: pinka-admin
         mode: "0640"
 
     - name: Restrict the upstream export to the lab's admins
@@ -102,5 +102,5 @@
         state: directory
         recurse: true
         owner: root
-        group: pokus-admin
+        group: pinka-admin
         mode: u=rwX,g=rX,o=

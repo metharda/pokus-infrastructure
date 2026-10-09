@@ -17,7 +17,7 @@ dealt with the cause you run the same command again and it resumes.
 !!! note "Prerequisites"
     - A host on which `sudo ./bootstrap/bootstrap.sh` has run and stopped.
     - Root access on that host (`sudo`).
-    - Your Pokus checkout on that host.
+    - Your pokus-infrastructure checkout on that host.
 
 ## Find the exit code and the log
 
@@ -26,7 +26,7 @@ dealt with the cause you run the same command again and it resumes.
 
     ```text title="Output"
     2026-10-05T09:12:44Z [ERROR] bootstrap ended with exit code 77: operator action required: ...
-    2026-10-05T09:12:44Z [ERROR] see docs/how-to/troubleshoot.md and the log /var/log/pokus-bootstrap/20261005T091201Z.log
+    2026-10-05T09:12:44Z [ERROR] see docs/how-to/troubleshoot.md and the log /var/log/pinka-bootstrap/20261005T091201Z.log
     ```
 
 2. If the terminal output is gone, open the newest log. Logs are readable by
@@ -34,8 +34,8 @@ dealt with the cause you run the same command again and it resumes.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo ls -t /var/log/pokus-bootstrap/
-    sudo less "/var/log/pokus-bootstrap/<log-file>"
+    sudo ls -t /var/log/pinka-bootstrap/
+    sudo less "/var/log/pinka-bootstrap/<log-file>"
     ```
 
     `<log-file>` is the first name the `ls` command lists.
@@ -46,30 +46,30 @@ dealt with the cause you run the same command again and it resumes.
 
     <!-- qa:run env=E2 -->
     ```bash
-    cat /etc/pokus/bootstrap-state.json
+    cat /etc/pinka/bootstrap-state.json
     ```
 
 Then go to the section of that exit code.
 
 ## Exit code 0: success {#exit-code-0}
 
-Bootstrap finished and `pokus-lab doctor` reported no warnings. Nothing to do.
+Bootstrap finished and `pinka doctor` reported no warnings. Nothing to do.
 
 ## Exit code 1: doctor warnings {#exit-code-1}
 
-Provisioning finished; `pokus-lab doctor` found warnings. Each warning in the
+Provisioning finished; `pinka doctor` found warnings. Each warning in the
 doctor summary comes with a remediation, and
 [How to fix a failed doctor check](fix-doctor-checks.md) has a section per
 check ID. Act on the ones that matter for your lab, then check again:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo pokus-lab doctor
+sudo pinka doctor
 ```
 
 ## Exit code 2: doctor failures {#exit-code-2}
 
-Provisioning finished, but `pokus-lab doctor` reports failed checks; bootstrap
+Provisioning finished, but `pinka doctor` reports failed checks; bootstrap
 also reports 2 if doctor itself ended unexpectedly. Fix each failed check as
 its remediation and its section in
 [How to fix a failed doctor check](fix-doctor-checks.md) say, then run
@@ -130,11 +130,11 @@ preflight alone to reproduce it without changing anything:
 
 <!-- qa:run env=E2 -->
 ```bash
-cd <pokus-checkout>/infra
-sudo ./preflight/pokus-preflight --no-write --output /tmp/host-profile.json
+cd <checkout>/infra
+sudo ./preflight/pinka-preflight --no-write --output /tmp/host-profile.json
 ```
 
-`<pokus-checkout>` is the directory where you cloned the repository. Report
+`<checkout>` is the directory where you cloned the repository. Report
 the traceback together with the output of `cat /etc/os-release`.
 
 ## Exit code 50: tooling failed {#exit-code-50}
@@ -151,7 +151,7 @@ collections failed. The lines above the exit line name the step.
 
 ## Exit code 60: play failed {#exit-code-60}
 
-The Ansible play failed without a bootstrap signal, or `pokus-lab` is not
+The Ansible play failed without a bootstrap signal, or `pinka` is not
 installed after the play. The failing task and its error are in the log, just
 above the play recap. Fix the cause and run bootstrap again; tasks that already
 succeeded report no changes.
@@ -219,7 +219,7 @@ Bootstrap stopped and printed what to do. Common messages:
 | the installer TUI cannot start | The terminal is smaller than 80x24, `TERM` is unset or `dumb`, or there is no terminal: use a larger terminal, or [an answers file](install-without-the-tui.md). |
 | the answers file ... cannot be used | Fix every field listed above it (see the [answers file reference](../reference/answers.md)). |
 | --answers needs --vault-password-file | Add `--vault-password-file <file>`; for a new lab, that password encrypts the new vault. |
-| the answers could not be applied | Read the reason above it: a wrong vault password, or a secret the answers call *provided* is missing from `POKUS_SECRET_<NAME>`. |
+| the answers could not be applied | Read the reason above it: a wrong vault password, or a secret the answers call *provided* is missing from `PINKA_SECRET_<NAME>`. |
 | Stopped before the installation finished | You quit the installer TUI; run `sudo ./bootstrap/bootstrap.sh` again and choose *Resume*. |
 | The host changed since bootstrap validated it | The play's preflight gate found a different outcome, provider or feature set; check the listed changes, then add `--refresh-profile`. |
 | the planned MOK enrollment needs a one-time password | Run bootstrap on a terminal, where it asks for the password, or pass it on standard input with `--mok-password-stdin`. |
@@ -251,7 +251,7 @@ contains the vault password; `<key>` is the key file the message names.
 
     <!-- qa:run env=E2 -->
     ```bash
-    grep '"result"' /etc/pokus/bootstrap-state.json
+    grep '"result"' /etc/pinka/bootstrap-state.json
     ```
 
     ```text title="Output"

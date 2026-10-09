@@ -12,11 +12,11 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
   container engine pull by digest).
 - Every listed blueprint that has neither the alias `<blueprint>/<version>`
   nor an export is built in the Incus project `build` (profile `build`,
-  network `pokus-build0`), as instance `build-<blueprint>`:
+  network `pinka-build0`), as instance `build-<blueprint>`:
   1. launch from the base (the pinned upstream fingerprint, or the image of
      the base blueprint), with the blueprint's `nesting` and cloud-init user
      data, and wait for cloud-init;
-  2. record the leakage baseline of the base (`files/pokus_leakage_lint.py
+  2. record the leakage baseline of the base (`files/pinka_leakage_lint.py
      scan`, run inside the instance with its own `python3`);
   3. run `provision.yml` and then `images/_base/agent.yml` (the agent
      configuration of the blueprint's `telemetry`) with a nested
@@ -27,19 +27,19 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
   6. clean (`files/image-clean.sh`: package caches, shell histories, logs,
      cloud-init state, machine-id, SSH host keys, host name and the build's
      own files), stop, and `incus publish` with the alias and the properties
-     `pokus.recipe_commit` (the repository commit, `-dirty` appended when the
-     infra tree had changes), `pokus.built_at` and `pokus.base_fingerprint`,
+     `pinka.recipe_commit` (the repository commit, `-dirty` appended when the
+     infra tree had changes), `pinka.built_at` and `pinka.base_fingerprint`,
      plus Incus's `requirements.nesting` (the blueprint's `nesting`) and
      `description` (a published image starts from its base's metadata, so
      these are always set rather than inherited);
   7. delete the instance. A failed build keeps it for inspection; the next
      run replaces it.
-- The image is exported to `/srv/pokus/images/<blueprint>/<version>/`: the
+- The image is exported to `/srv/pinka/images/<blueprint>/<version>/`: the
   image files, `SHA256SUMS`, `packages.txt` and `build.json` (written last).
   The upstream base is exported once to
-  `/srv/pokus/images/_upstream/<base>/<fingerprint>/` with `SHA256SUMS` and
+  `/srv/pinka/images/_upstream/<base>/<fingerprint>/` with `SHA256SUMS` and
   `source.json`, because public image servers rotate their images.
-- `/usr/local/libexec/pokus/image-files verify` recomputes an export's
+- `/usr/local/libexec/pinka/image-files verify` recomputes an export's
   fingerprint (the sha256 of the tarball, or of the metadata followed by the
   root file system) and writes `SHA256SUMS`.
 - Build instances and images are created and deleted with the `incus` CLI;

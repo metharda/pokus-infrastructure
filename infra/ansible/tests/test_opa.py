@@ -25,7 +25,7 @@ import yaml
 
 from ansible_testlib import INFRA
 
-OPA = Path(os.environ.get("POKUS_OPA", str(INFRA / "build" / "tools" / "opa")))
+OPA = Path(os.environ.get("PINKA_OPA", str(INFRA / "build" / "tools" / "opa")))
 CONFIG = INFRA / "config" / "opa"
 TESTS = Path(__file__).parent / "opa"
 HTTP_UNAUTHORIZED = 401
@@ -56,7 +56,7 @@ def test_policies_are_formatted_and_strict() -> None:
 def test_rego_unit_tests() -> None:
     result = opa("test", str(CONFIG / "authz.rego"), str(CONFIG / "placeholder"), str(TESTS))
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "PASS: 6/6" in result.stdout
+    assert "PASS: 7/7" in result.stdout
 
 
 def free_port() -> int:
@@ -118,10 +118,10 @@ def request(base: str, method: str, path: str, body: Any = None) -> tuple[int, A
 
 def test_decision_queries_and_health_are_served(server: str) -> None:
     assert request(server, "GET", "/health")[0] == 200
-    status, body = request(server, "POST", "/v1/data/pokus/action/decision", {"input": {}})
+    status, body = request(server, "POST", "/v1/data/potka/action/decision", {"input": {}})
     assert status == 200
     assert body["result"]["allow"] is False
-    status, body = request(server, "GET", "/v1/data/pokus/placeholder/active")
+    status, body = request(server, "GET", "/v1/data/pinka/placeholder/active")
     assert (status, body["result"]) == (200, True)
 
 
@@ -130,11 +130,14 @@ def test_decision_queries_and_health_are_served(server: str) -> None:
     [
         ("PUT", "/v1/policies/takeover", b"package system.authz\n\nallow := true\n"),
         ("DELETE", "/v1/policies/config/opa/authz.rego", None),
-        ("PUT", "/v1/data/pokus/action/decision", {"allow": True}),
-        ("PATCH", "/v1/data/pokus", [{"op": "add", "path": "/x", "value": 1}]),
-        ("DELETE", "/v1/data/pokus/placeholder", None),
+        ("PUT", "/v1/data/potka/action/decision", {"allow": True}),
+        ("PATCH", "/v1/data/pinka", [{"op": "add", "path": "/x", "value": 1}]),
+        ("DELETE", "/v1/data/pinka/placeholder", None),
         ("GET", "/v1/policies", None),
         ("GET", "/v1/data/system/authz", None),
+        ("GET", "/v1/data/pinka", None),
+        ("POST", "/v1/data/potka/action", {"input": {}}),
+        ("GET", "/v1/data/pinka/placeholder", None),
         ("POST", "/v1/query", {"query": "data"}),
         ("GET", "/v1/config", None),
         ("GET", "/metrics", None),
@@ -143,5 +146,5 @@ def test_decision_queries_and_health_are_served(server: str) -> None:
 def test_writes_and_other_apis_are_rejected(server: str, method: str, path: str, body: Any) -> None:
     assert request(server, method, path, body)[0] == HTTP_UNAUTHORIZED
     # Still denying afterwards: nothing was replaced.
-    status, result = request(server, "POST", "/v1/data/pokus/action/decision", {"input": {}})
+    status, result = request(server, "POST", "/v1/data/potka/action/decision", {"input": {}})
     assert (status, result["result"]["allow"]) == (200, False)

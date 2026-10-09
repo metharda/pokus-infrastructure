@@ -9,15 +9,15 @@ description: Start the lab, stop it without losing runs by draining the orchestr
 
 # How to start, stop and drain the lab
 
-The lab is up while `pokus-lab.target` is active: the Compose projects, the
+The lab is up while `pinka-lab.target` is active: the Compose projects, the
 sleep inhibitor (bare metal and VMs with `power_policy:
 lab_session_inhibit`) and later the platform's services belong to it. Starting
 it waits for the [health gate](../explanation/lab-session.md); stopping it with
-`pokus-lab stop` first lets running benchmark runs finish.
+`pinka stop` first lets running benchmark runs finish.
 
 !!! note "Prerequisites"
-    - A lab host provisioned by bootstrap (`pokus-lab` is installed with it).
-    - An admin account on the host (member of `pokus-admin`, so `sudo` works).
+    - A lab host provisioned by bootstrap (`pinka` is installed with it).
+    - An admin account on the host (member of `pinka-admin`, so `sudo` works).
 
 ## Start the lab
 
@@ -25,7 +25,7 @@ it waits for the [health gate](../explanation/lab-session.md); stopping it with
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab start
+    sudo pinka start
     ```
 
     The command returns when the health gate has passed and this boot's session
@@ -41,13 +41,13 @@ it waits for the [health gate](../explanation/lab-session.md); stopping it with
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab stop --timeout 1800
+    sudo pinka stop --timeout 1800
     ```
 
-    `pokus-lab stop` asks the orchestrator to drain through its socket
-    `/run/pokus/orch/api.sock`: it starts no new runs and waits until the
+    `pinka stop` asks the orchestrator to drain through its socket
+    `/run/pinka/orch/api.sock`: it starts no new runs and waits until the
     running ones end. When none are left, or after `--timeout` seconds,
-    `pokus-lab.target` and everything that belongs to it stop. Runs still active
+    `pinka-lab.target` and everything that belongs to it stop. Runs still active
     at the timeout are stopped with the lab and recorded as interrupted. Before
     the platform is deployed there is no orchestrator socket and nothing to
     drain.
@@ -78,17 +78,17 @@ On WSL the Linux side stops when Windows sleeps or shuts down; see
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab status
+    sudo pinka status
     ```
 
-    After `start`, `pokus-lab.target` and its units are `active`; after `stop`,
+    After `start`, `pinka-lab.target` and its units are `active`; after `stop`,
     they are `inactive`.
 
 2. After a start, run all checks:
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     ```
 
     Doctor exits with 0 when everything passed (see

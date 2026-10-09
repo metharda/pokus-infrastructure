@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/bootstrap_signal/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/bootstrap_signal/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Stop the play with a bootstrap signal.
@@ -17,8 +17,8 @@ argument_specs:
         description: What the operator has to do; printed by bootstrap.sh.
       bootstrap_signal_file:
         type: path
-        default: /run/pokus/bootstrap-signal.json
-        description: Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
+        default: /run/pinka/bootstrap-signal.json
+        description: Signal file; bootstrap.sh passes its path in pinka_bootstrap.signal_file.
       bootstrap_signal_mok_key:
         type: path
         default: ""

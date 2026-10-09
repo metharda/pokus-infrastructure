@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/check-mode.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/check-mode.yml). Local changes will be overwritten.
 #
 # Required CI fast lane (BUILD_PROMPT §11, §19.9; approved deviation I2): the
 # provider-agnostic roles base, users_groups, ssh and layout in check mode,
@@ -13,7 +13,7 @@
   vars_files:
     - "inventory/host_vars/{{ machine }}.yml"
   vars:
-    pokus_infra_dir: "{{ playbook_dir | dirname }}"
+    pinka_dir: "{{ playbook_dir | dirname }}"
   pre_tasks:
     - name: Refuse to run except in check mode
       ansible.builtin.assert:
@@ -22,7 +22,7 @@
           - machine is defined
           - host_profile is mapping
           - host_profile.schema_version == 1
-          - pokus_bootstrap is mapping
+          - pinka_bootstrap is mapping
         fail_msg: This play only runs with --check, from make check-mode.
         quiet: true
       tags: [always]

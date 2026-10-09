@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/pokus/schema/image-blueprint.schema.json",
+  "$id": "https://example.com/pinka/schema/image-blueprint.schema.json",
   "title": "images/<blueprint>/image.yaml",
   "description": "A golden image blueprint (BUILD_PROMPT §7.13). The images role builds it as alias <name>/<version>.",
   "type": "object",

@@ -12,7 +12,7 @@ import unittest
 
 from helpers import FIXTURES_DIR
 
-from pokus_preflight import cli, profile_tool
+from pinka_preflight import cli, profile_tool
 
 
 def run_tool(*args: str) -> tuple[int, str, str]:

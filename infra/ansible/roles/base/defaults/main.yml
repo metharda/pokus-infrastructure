@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/defaults/main.yml). Local changes will be overwritten.
 
 # Logical package names (mapped per family in vars/<family>.yml).
 base_packages:
@@ -30,9 +30,9 @@ base_journald_system_keep_free: 4G
 
 # Automatic security updates (fixed releases only; never on rolling releases).
 base_auto_updates: true
-base_auto_updates_effective: "{{ base_auto_updates | bool and pokus_release_model != 'rolling' }}"
+base_auto_updates_effective: "{{ base_auto_updates | bool and pinka_release_model != 'rolling' }}"
 
-# Packages that automatic updates never touch (pinned by Pokus).
+# Packages that automatic updates never touch (pinned by pinka).
 base_held_package_patterns:
   - "docker-ce"
   - "docker-ce-cli"
@@ -44,11 +44,11 @@ base_held_package_patterns:
   - "incus"
   - "tailscale"
 # Kernel packages held on bare metal unless allow_kernel_updates is true.
-base_hold_kernel: "{{ pokus_provider == 'baremetal' and not (allow_kernel_updates | bool) }}"
+base_hold_kernel: "{{ pinka_provider == 'baremetal' and not (allow_kernel_updates | bool) }}"
 base_kernel_package_patterns: ["linux-image-", "linux-headers-", "linux-modules-"]
 base_kernel_package_patterns_rpm: ["kernel*"]
 
-# Kernel settings in /etc/sysctl.d/60-pokus.conf.
+# Kernel settings in /etc/sysctl.d/60-pinka.conf.
 base_sysctl:
   fs.inotify.max_user_watches: 1048576
   fs.inotify.max_user_instances: 8192

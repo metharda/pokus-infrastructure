@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/handlers/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/handlers/main.yml). Local changes will be overwritten.
 - name: Restart journald
   ansible.builtin.systemd_service:
     name: systemd-journald

@@ -25,7 +25,7 @@ class SanitizerTest(TempRootCase):
         self.put("/etc/machine-id", "f" * 32 + "\n")
         self.put("/sys/class/dmi/id/product_serial", "SERIAL123\n")
         changed = sanitize_fixture.sanitize_root(self.root)
-        self.assertEqual(self.read("/etc/hostname"), "pokus-lab\n")
+        self.assertEqual(self.read("/etc/hostname"), "pinka-lab\n")
         self.assertEqual(self.read("/etc/machine-id"), "0" * 32 + "\n")
         self.assertEqual(self.read("/sys/class/dmi/id/product_serial"), "0\n")
         self.assertIn("etc/hostname", changed)

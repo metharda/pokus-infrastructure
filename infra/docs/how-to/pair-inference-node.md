@@ -21,7 +21,7 @@ measurements.
     - Two hosts on the same tailnet with the same `lab_mode`; staging and
       production nodes never pair.
     - On the inference node, preflight reports the `gpu_inference` feature.
-    - An admin account on both hosts (member of `pokus-admin`).
+    - An admin account on both hosts (member of `pinka-admin`).
     - The lab's private configuration (host_vars files) for both hosts.
 
 ## Provision both nodes
@@ -43,8 +43,8 @@ measurements.
 2. In the lab node's host_vars file, set `node_role: lab`.
 
 3. Run bootstrap on each node as usual. Each node gets its identity
-   certificate in `/etc/pokus/inference/`; the inference node installs
-   `pokus-inference-control.service`, which stays stopped until the node is
+   certificate in `/etc/pinka/inference/`; the inference node installs
+   `pinka-inference-control.service`, which stays stopped until the node is
    paired.
 
 4. If the tailnet policy restricts traffic between tagged nodes, allow the
@@ -54,12 +54,12 @@ measurements.
     ```json
     {
       "action": "accept",
-      "src": ["tag:pokus-lab"],
-      "dst": ["tag:pokus-lab:18704,18710,4317"]
+      "src": ["tag:pinka-lab"],
+      "dst": ["tag:pinka-lab:18704,18710,4317"]
     }
     ```
 
-    Use `tag:pokus-qa` for staging nodes. Ports 18704 (vLLM API) and 18710
+    Use `tag:pinka-qa` for staging nodes. Ports 18704 (vLLM API) and 18710
     (control) are on the inference node, 4317 (telemetry) on the lab node.
     The firewall of each node opens them on `tailscale0` only, and mutual
     TLS admits only the paired node.
@@ -70,7 +70,7 @@ measurements.
 
     <!-- qa:skip reason="waits for a second node" -->
     ```bash
-    sudo pokus-lab pair show
+    sudo pinka pair show
     ```
 
     It stops the control endpoint, prints a code such as `ABCD-EFGH-JKMN`
@@ -80,7 +80,7 @@ measurements.
 
     <!-- qa:skip reason="needs the code shown on the inference node" -->
     ```bash
-    sudo pokus-lab pair connect <inference-node> <code>
+    sudo pinka pair connect <inference-node> <code>
     ```
 
     `<inference-node>` is the inference node's tailnet name and `<code>` the
@@ -88,7 +88,7 @@ measurements.
     Both nodes exchange their certificates over TLS and prove the code with
     an HMAC over both certificates' fingerprints, so a certificate swapped in
     between is detected. Each node writes the other's certificate to
-    `/etc/pokus/inference/peer.crt` and a record to `peer.json`. Five wrong
+    `/etc/pinka/inference/peer.crt` and a record to `peer.json`. Five wrong
     attempts end the pairing on the inference node; start again with a new
     code.
 
@@ -122,7 +122,7 @@ measurements.
 - To pair with another node, or after a certificate was renewed, run both
   pairing commands again; they replace `peer.crt` and `peer.json`. Update
   the host_vars and apply them as above.
-- To remove the pairing, delete `/etc/pokus/inference/peer.crt` and `peer.json` on both
+- To remove the pairing, delete `/etc/pinka/inference/peer.crt` and `peer.json` on both
   nodes, remove `inference_lab_node` or `inference_remote_node` from the
   host_vars and apply them. The control endpoint does not start without
   `peer.crt`, and an unpaired inference node sends its telemetry nowhere.
@@ -133,7 +133,7 @@ measurements.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     ```
 
 2. On the lab node, ask the inference node's control endpoint for its health
@@ -141,8 +141,8 @@ measurements.
 
     <!-- qa:skip reason="needs a paired inference node" -->
     ```bash
-    sudo curl --silent --cert /etc/pokus/inference/self.crt --key /etc/pokus/inference/self.key \
-      --cacert /etc/pokus/inference/peer.crt https://<inference-node>:18710/health
+    sudo curl --silent --cert /etc/pinka/inference/self.crt --key /etc/pinka/inference/self.key \
+      --cacert /etc/pinka/inference/peer.crt https://<inference-node>:18710/health
     ```
 
     `<inference-node>` is the inference node's tailnet name. The answer names
@@ -160,7 +160,7 @@ measurements.
     verified `MANIFEST.json`), `GET /metrics`, `POST /activate` with
     `{"deployment": "<id>@<version>"}` and `POST /verify`; nothing else.
     Deployment files live on the inference node, in
-    `/etc/pokus/vllm/deployments/`.
+    `/etc/pinka/vllm/deployments/`.
 
 3. In Grafana on the lab node, the inference node's metrics and logs carry
-   the label `pokus_machine="<inference-node>"`.
+   the label `pinka_machine="<inference-node>"`.

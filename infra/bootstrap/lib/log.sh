@@ -1,8 +1,8 @@
 # shellcheck shell=bash
-# Managed by pokus-infra (bootstrap/lib/log.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/log.sh). Local changes will be overwritten.
 #
 # Logging with UTC timestamps (BUILD_PROMPT §14) and the JSON event stream for
-# the installer TUI (BUILD_PROMPT §18.5): when POKUS_EVENTS_FILE is set, every
+# the installer TUI (BUILD_PROMPT §18.5): when PINKA_EVENTS_FILE is set, every
 # stage start, stage end and bootstrap signal is appended as one JSON line.
 
 utc_now() {
@@ -47,7 +47,7 @@ json_escape() {
 # emit_event TYPE STAGE STATUS [EXIT_CODE] [MESSAGE]: append one event line.
 emit_event() {
   local type=$1 stage=$2 status=$3 code=${4:-} message=${5:-}
-  [[ -n ${POKUS_EVENTS_FILE:-} ]] || return 0
+  [[ -n ${PINKA_EVENTS_FILE:-} ]] || return 0
   local line
   line=$(printf '{"ts":"%s","type":"%s","stage":"%s","status":"%s"' \
     "$(utc_now)" "$(json_escape "$type")" "$(json_escape "$stage")" "$(json_escape "$status")")
@@ -57,7 +57,7 @@ emit_event() {
   if [[ -n $message ]]; then
     line+=$(printf ',"message":"%s"' "$(json_escape "$message")")
   fi
-  printf '%s}\n' "$line" >>"$POKUS_EVENTS_FILE"
+  printf '%s}\n' "$line" >>"$PINKA_EVENTS_FILE"
 }
 
 # stage_begin NAME / stage_end NAME STATUS [CODE] [MESSAGE]: log and emit.

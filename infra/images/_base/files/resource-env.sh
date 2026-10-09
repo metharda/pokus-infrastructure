@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/_base/files/resource-env.sh). Local changes will be overwritten.
+# Managed by pinka (images/_base/files/resource-env.sh). Local changes will be overwritten.
 #
 # Hands OTEL_RESOURCE_ATTRIBUTES to the OpenTelemetry agent. systemd does not
 # pass its own environment to services, so the value that Incus gives to the

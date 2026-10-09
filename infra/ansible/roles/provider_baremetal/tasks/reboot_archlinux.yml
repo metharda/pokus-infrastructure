@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/reboot_archlinux.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_baremetal/tasks/reboot_archlinux.yml). Local changes will be overwritten.
 #
 # Arch replaces the running kernel's modules on upgrade: when the module
 # directory of the running kernel is gone, a reboot is needed.

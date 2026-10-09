@@ -29,7 +29,7 @@ BOOTSTRAP_DIR={shlex.quote(str(BOOTSTRAP))}
 INTERACTIVE=false
 USE_TUI=false
 {sources}
-pokus_python() {{ {shlex.quote(sys.executable)} "$@"; }}
+pinka_python() {{ {shlex.quote(sys.executable)} "$@"; }}
 """
 
 

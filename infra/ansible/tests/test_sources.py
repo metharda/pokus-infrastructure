@@ -13,13 +13,13 @@ from typing import Any
 
 import pytest
 
-import pokus
+import pinka
 from ansible_testlib import ANSIBLE, INFRA, debian_codenames, load_yaml
 
 SOURCES = load_yaml(ANSIBLE / "component-sources.yml")
 LOCK = load_yaml(INFRA / "versions.lock.yml")
 MATRIX = json.loads((INFRA / "preflight" / "support-matrix.json").read_text(encoding="utf-8"))
-GROUPS = {"default", *pokus.SOURCE_GROUPS.values()}
+GROUPS = {"default", *pinka.SOURCE_GROUPS.values()}
 PLACEHOLDERS = {"distro", "codename", "major", "deb_arch"}
 LOCKED_COMPONENTS = ("docker", "nvidia_container_toolkit", "incus", "tailscale")
 
@@ -111,7 +111,7 @@ def fixed_release_keys() -> list[str]:
                     "release_model": row["release_model"],
                     "os": os_info,
                 }
-                keys.add(pokus.release_identity(profile, codenames)["release_key"])
+                keys.add(pinka.release_identity(profile, codenames)["release_key"])
     return sorted(keys)
 
 

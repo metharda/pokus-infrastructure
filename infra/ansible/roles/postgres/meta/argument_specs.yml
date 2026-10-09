@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/postgres/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/postgres/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: PostgreSQL on Unix sockets with the contract's roles, schemas and revokes.
@@ -11,7 +11,7 @@ argument_specs:
         type: dict
         required: true
         description: Host profile (hardware.memory_gib sizes the memory settings).
-      pokus_infra_dir:
+      pinka_dir:
         type: path
         required: true
         description: Infra directory of the checkout (config/postgres/*.j2).
@@ -39,27 +39,27 @@ argument_specs:
         description: UID of the exporter container (nobody).
       postgres_container:
         type: str
-        default: pokus-postgres
+        default: pinka-postgres
         description: Name of the PostgreSQL container.
       postgres_state_dir:
         type: path
-        description: Data directory on the host (pokus_root/state/postgres).
+        description: Data directory on the host (pinka_root/state/postgres).
       postgres_config_dir:
         type: path
-        description: Rendered configuration (pokus_root/services/core/config/postgres).
+        description: Rendered configuration (pinka_root/services/core/config/postgres).
       postgres_service_roles:
         type: list
         elements: dict
         description: Platform roles with a password file and the file's owner, group and mode.
       postgres_reader_role:
         type: str
-        default: pokus_reader
+        default: potka_reader
         description: Researchers' read-only role.
       postgres_grafana_role:
         type: str
-        default: pokus_grafana
+        default: potka_grafana
         description: Grafana's read-only role.
       postgres_monitor_role:
         type: str
-        default: pokus_monitor
+        default: pinka_monitor
         description: Role of the metrics exporter (pg_monitor).

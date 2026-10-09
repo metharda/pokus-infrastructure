@@ -1,26 +1,26 @@
-# Managed by pokus-infra (ansible/roles/images/vars/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/vars/main.yml). Local changes will be overwritten.
 
 # Recipes (images/<blueprint>/) and the pinned versions.
-images_recipe_root: "{{ pokus_infra_dir }}/images"
+images_recipe_root: "{{ pinka_dir }}/images"
 # Host-side state of builds (rendered variables, lint configuration, baselines).
-images_work_dir: /var/lib/pokus/image-builds
+images_work_dir: /var/lib/pinka/image-builds
 # Directory of the build's own files inside a build instance; the clean step removes it.
 images_guest_dir: /var/tmp/image-build
 # Exports of the upstream base images.
 images_upstream_dir: "{{ images_export_root }}/_upstream"
 # Export helper (fingerprint check and SHA256SUMS).
-images_files_helper: /usr/local/libexec/pokus/image-files
+images_files_helper: /usr/local/libexec/pinka/image-files
 # OTLP endpoint of the in-image agent: the proxy device inside a container,
 # the collector's VM listener for a VM (contracts.md#telemetry).
 images_otlp_endpoint:
   container: 127.0.0.1:4317
-  vm: "{{ pokus_vm_otlp.address }}:{{ pokus_ports.otlp_grpc }}"
+  vm: "{{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_grpc }}"
 # Python of the build instances (Ubuntu's).
 images_guest_python: /usr/bin/python3
 # Incus instance types of the blueprint types (image.yaml `type`).
 images_instance_types: {container: container, vm: virtual-machine}
-# Selection by `pokus-lab images build <blueprint> [--rebuild]`, passed
+# Selection by `pinka images build <blueprint> [--rebuild]`, passed
 # through bootstrap's environment: the blueprints to process (a blueprint and
 # the ones it starts from) and the ones to build again.
-images_selected: "{{ lookup('ansible.builtin.env', 'POKUS_IMAGES_BLUEPRINTS') | default('', true) }}"
-images_rebuild_selected: "{{ lookup('ansible.builtin.env', 'POKUS_IMAGES_REBUILD') | default('', true) }}"
+images_selected: "{{ lookup('ansible.builtin.env', 'PINKA_IMAGES_BLUEPRINTS') | default('', true) }}"
+images_rebuild_selected: "{{ lookup('ansible.builtin.env', 'PINKA_IMAGES_REBUILD') | default('', true) }}"

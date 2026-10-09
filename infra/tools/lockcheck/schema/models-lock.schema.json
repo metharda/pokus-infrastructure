@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/pokus/schema/models-lock.schema.json",
+  "$id": "https://example.com/pinka/schema/models-lock.schema.json",
   "title": "models.lock.yml",
   "description": "Models and LoRA adapters selected for a lab, pinned to a commit with a sha256 per file (BUILD_PROMPT §7.12, contracts.md#inference). Never contains unverified values.",
   "type": "object",

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/initialize.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/initialize.yml). Local changes will be overwritten.
 #
 # A new installation is initialized once from the preseed. An Incus that
 # someone else configured is only touched with --adopt-incus (preflight
@@ -10,9 +10,9 @@
   changed_when: false
   check_mode: false
 
-- name: Read whether Pokus manages this Incus
+- name: Read whether pinka manages this Incus
   ansible.builtin.stat:
-    path: /etc/pokus/managed-incus
+    path: /etc/pinka/managed-incus
   register: incus_marker
 
 - name: Note the existing storage pools
@@ -25,13 +25,13 @@
   vars:
     bootstrap_signal_code: 77
     bootstrap_signal_message: >-
-      Incus already has a configuration that Pokus did not create (storage pools:
+      Incus already has a configuration that pinka did not create (storage pools:
       {{ incus_existing_pools | join(', ') }}). Re-run bootstrap with --adopt-incus to add the
-      Pokus objects next to it, or remove that configuration first.
+      pinka objects next to it, or remove that configuration first.
   when:
     - not incus_marker.stat.exists
     - incus_existing_pools | length > 0
-    - not (pokus_bootstrap.adopt_incus | default(false))
+    - not (pinka_bootstrap.adopt_incus | default(false))
 
 - name: Check the pool device before it is formatted
   ansible.builtin.include_tasks: pool_device.yml
@@ -49,7 +49,7 @@
 
 - name: Render the preseed
   ansible.builtin.template:
-    src: "{{ pokus_infra_dir }}/incus/preseed.yaml.j2"
+    src: "{{ pinka_dir }}/incus/preseed.yaml.j2"
     dest: "{{ incus_cert_dir }}/preseed.yaml"
     owner: root
     group: root

@@ -17,14 +17,14 @@ before you press **Install** on the Review screen.
 !!! note "Prerequisites"
     - A host that preflight accepts (see
       [How to check whether a machine can host the lab](check-a-host.md)).
-    - A clone of the Pokus repository owned by your own user, with a clean
+    - A clone of the pokus-infrastructure repository owned by your own user, with a clean
       `infra/` directory.
     - `sudo` rights on the host.
     - A terminal of at least 80 columns and 24 lines, with `TERM` set (any
       SSH session or WSL terminal works). Without one, use
       [an answers file](install-without-the-tui.md).
     - A Tailscale account: either a pre-approved auth key tagged
-      `tag:pokus-lab`, or a browser to log in during the install.
+      `tag:pinka-lab`, or a browser to log in during the install.
     - The researchers' SSH public keys.
     - A vault password of at least 12 characters, which you keep safe: every
       later bootstrap needs it.
@@ -35,11 +35,11 @@ before you press **Install** on the Review screen.
 
     <!-- qa:skip reason="interactive; provisions the host" -->
     ```bash
-    cd <pokus-checkout>/infra
+    cd <checkout>/infra
     sudo ./bootstrap/bootstrap.sh
     ```
 
-    `<pokus-checkout>` is the directory of your clone. Bootstrap checks the
+    `<checkout>` is the directory of your clone. Bootstrap checks the
     checkout, installs its pinned tools and then hands the terminal to the
     installer. Options you add here (for example `--allow-reboot` or
     `--skip-tags=images`) are passed on to the installation.
@@ -141,7 +141,7 @@ shown greyed out with the reason.
       shows what to do and quits. Run `sudo ./bootstrap/bootstrap.sh` again
       afterwards and choose *Resume*: the installer asks for the vault
       password again (it never stores it, unless you chose to keep it in
-      `/etc/pokus/secrets/vault-pass`) and continues the installation.
+      `/etc/pinka/secrets/vault-pass`) and continues the installation.
 
 3. **Continue** runs doctor. Warnings are normal on a new lab (no backup
    yet); failures come with what to do. **Run smoke test** starts a
@@ -160,7 +160,7 @@ You should now have a lab that doctor accepts:
 
 <!-- qa:skip reason="needs a provisioned lab host" -->
 ```bash
-sudo pokus-lab doctor
+sudo pinka doctor
 echo "exit code: $?"
 ```
 

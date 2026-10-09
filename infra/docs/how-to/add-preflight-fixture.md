@@ -48,7 +48,7 @@ fixture covers yet.
     <!-- qa:run env=E0 -->
     ```bash
     python3 preflight/tests/fixture_defs.py --write
-    POKUS_UPDATE_SNAPSHOTS=1 .venv/bin/pytest -q preflight/tests/test_fixtures.py
+    PINKA_UPDATE_SNAPSHOTS=1 .venv/bin/pytest -q preflight/tests/test_fixtures.py
     ```
 
 3. Only if you copied files from a real host into a captured root, sanitize

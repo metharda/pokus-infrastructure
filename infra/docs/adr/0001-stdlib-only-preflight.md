@@ -10,13 +10,13 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (owner answer E10 for the matrix format)
+- **Deciders:** pokus-infrastructure maintainers (owner answer E10 for the matrix format)
 
 ## Context
 
 Preflight decides whether installation may start at all, so it runs before
 any dependency is installed: on a fresh host, possibly with an old system
-interpreter, and later again from `pokus-lab` when the managed environments
+interpreter, and later again from `pinka` when the managed environments
 may be broken. Its decision must also be reproducible and testable without
 real hardware.
 

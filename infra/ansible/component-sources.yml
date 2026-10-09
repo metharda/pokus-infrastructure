@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/component-sources.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/component-sources.yml). Local changes will be overwritten.
 #
 # Component source matrix (BUILD_PROMPT §19.4): where each host component
 # comes from on each distribution, and which packages make it up. Versions are
@@ -18,7 +18,7 @@
 # --allow-community-repos, recorded in the fingerprint).
 #
 # `verify` marks an entry or repository whose details could not be verified
-# yet. The pokus_component_source filter and the pkg role refuse to use it, so
+# yet. The pinka_component_source filter and the pkg role refuse to use it, so
 # nothing unverified is installed; tools/gen shows it in
 # docs/reference/component-sources.md.
 
@@ -49,7 +49,7 @@ repositories:
     suite: "/"
     components: []
   nvidia-container-toolkit-rpm:
-    # NVIDIA's own .repo file sets gpgcheck=0 with repo_gpgcheck=1; Pokus
+    # NVIDIA's own .repo file sets gpgcheck=0 with repo_gpgcheck=1; pinka
     # requires gpgcheck=1 (BUILD_PROMPT §7.2). The packages are signed: the
     # 1.20.1 RPMs carry an RSA header signature by the key pinned in
     # versions.lock.yml (repository_keys.keys.nvidia-container-toolkit).

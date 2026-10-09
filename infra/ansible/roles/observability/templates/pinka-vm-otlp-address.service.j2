@@ -1,0 +1,22 @@
+# Managed by pinka (ansible/roles/observability/templates/pinka-vm-otlp-address.service.j2). Local changes will be overwritten.
+#
+# Address of the collector listener for VM targets (contracts.md#telemetry,
+# C4): {{ pinka_vm_otlp.address }}/32 on the dummy interface
+# {{ pinka_vm_otlp.interface }}. Only run networks reach it (run ACL and
+# firewall), and only on the OTLP ports.
+[Unit]
+Description=pinka VM telemetry listener address
+Before=docker.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'ip link show {{ pinka_vm_otlp.interface }} >/dev/null 2>&1 || ip link add {{ pinka_vm_otlp.interface }} type dummy'
+ExecStart=ip link set {{ pinka_vm_otlp.interface }} up
+ExecStart=ip address replace {{ pinka_vm_otlp.address }}/32 dev {{ pinka_vm_otlp.interface }}
+ExecStop=ip link delete {{ pinka_vm_otlp.interface }}
+
+[Install]
+WantedBy=multi-user.target

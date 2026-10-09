@@ -9,7 +9,7 @@ description: How one set of roles provisions Debian, Red Hat, SUSE and Arch fami
 
 # Portability across distributions and environments
 
-Pokus installs on mainstream systemd and glibc Linux distributions, on bare
+Pokus Infrastructure (pinka) installs on mainstream systemd and glibc Linux distributions, on bare
 metal, in virtual machines and under WSL2, with or without a GPU. It does
 this with one set of Ansible roles, not one per distribution. This page
 explains how the differences between hosts are contained so that the lab
@@ -51,18 +51,18 @@ facts every other role uses:
 
 | Fact | Meaning |
 | --- | --- |
-| `pokus_family` | `debian`, `redhat`, `suse` or `archlinux` |
-| `pokus_distro`, `pokus_release`, `pokus_parent_release` | the distribution identity; for derivatives, the parent's |
-| `pokus_release_key` | the key of the release in `versions.lock.yml`, for example `ubuntu-24.04` or `el-9`; empty on rolling releases |
-| `pokus_release_model` | `fixed`, `fast` or `rolling` |
-| `pokus_source_group` | the row of the component source matrix: `ubuntu`, `debian`, `fedora`, `rhel_like`, `opensuse` or `arch` |
-| `pokus_pkg_manager` | `apt`, `dnf`, `zypper` or `pacman` |
-| `pokus_version_hold_method` | how package versions are held (see below) |
-| `pokus_service_names` | the family's names for the SSH and time synchronization services |
-| `pokus_initramfs_tool` | `update-initramfs`, `dracut` or `mkinitcpio` |
-| `pokus_provider` | `baremetal`, `wsl2` or `vm` |
-| `pokus_firewall_backend` | `nftables`, `firewalld` or `ufw` |
-| `pokus_mac` | `selinux`, `apparmor` or `none` |
+| `pinka_family` | `debian`, `redhat`, `suse` or `archlinux` |
+| `pinka_distro`, `pinka_release`, `pinka_parent_release` | the distribution identity; for derivatives, the parent's |
+| `pinka_release_key` | the key of the release in `versions.lock.yml`, for example `ubuntu-24.04` or `el-9`; empty on rolling releases |
+| `pinka_release_model` | `fixed`, `fast` or `rolling` |
+| `pinka_source_group` | the row of the component source matrix: `ubuntu`, `debian`, `fedora`, `rhel_like`, `opensuse` or `arch` |
+| `pinka_pkg_manager` | `apt`, `dnf`, `zypper` or `pacman` |
+| `pinka_version_hold_method` | how package versions are held (see below) |
+| `pinka_service_names` | the family's names for the SSH and time synchronization services |
+| `pinka_initramfs_tool` | `update-initramfs`, `dracut` or `mkinitcpio` |
+| `pinka_provider` | `baremetal`, `wsl2` or `vm` |
+| `pinka_firewall_backend` | `nftables`, `firewalld` or `ufw` |
+| `pinka_mac` | `selinux`, `apparmor` or `none` |
 
 No other role may read Ansible's distribution facts (`ansible_distribution`,
 `ansible_os_family`, `ansible_pkg_mgr`, ...). `make lint` enforces this with a
@@ -76,7 +76,7 @@ for the host's release key, and to hold them afterwards:
 
 | Family | Install | Hold |
 | --- | --- | --- |
-| debian | `apt`, `name=version` | apt preferences pins in `/etc/apt/preferences.d/pokus-pins` |
+| debian | `apt`, `name=version` | apt preferences pins in `/etc/apt/preferences.d/pinka-pins` |
 | redhat | `dnf`, `name-version` | `dnf versionlock` |
 | suse | `zypper`, `name=version` | `zypper addlock` |
 | archlinux | `pacman`, unpinned | `IgnorePkg` in `/etc/pacman.conf` |
@@ -100,8 +100,8 @@ Most of the lab does not depend on the host distribution at all:
 
 - Lab services run as **containers pinned by digest**.
 - The platform runs in a **uv-managed Python environment** with a pinned
-  CPython; the distribution's Python is never needed for Pokus code.
-- **Targets are Incus instances built from Pokus's own golden images**, so the
+  CPython; the distribution's Python is never needed for Pokus Infrastructure code.
+- **Targets are Incus instances built from pinka's own golden images**, so the
   userland of a target is the same on every host. Only the host kernel
   differs, and it is recorded in the fingerprint.
 
@@ -124,7 +124,7 @@ profile and never detect anything themselves.
 
 The firewall role produces one effective policy with whichever backend the
 host already uses, instead of replacing it: firewalld if it is active, else
-ufw if it is active, else Pokus's own nftables table. SELinux stays
+ufw if it is active, else pinka's own nftables table. SELinux stays
 enforcing on hosts that use it; the `mac` role labels the research space so
 containers can use it. Both are described in
 [How to configure the firewall backend and SELinux](../how-to/firewall-and-selinux.md).
@@ -134,7 +134,7 @@ containers can use it. Both are described in
 Two test layers cover the families. `make test-distros` bootstraps the whole
 lab in a disposable Incus VM for every `supported` and `tested` release and
 for the firewall and SELinux variants; a second bootstrap must change
-nothing, and `pokus-lab doctor --smoke` must pass. The results, with their
+nothing, and `pinka doctor --smoke` must pass. The results, with their
 dates, are in the [support matrix](../support-matrix.md#last-test-results)
 and count for 90 days. On every push, the CI fast lane checks each family in
 a systemd container, which catches package names, repository keys and
@@ -150,7 +150,7 @@ commands.
 Check mode changes nothing, so on a fresh host a unit, file, account or
 directory that an earlier task would create is still missing when a later
 task needs it. `platform_facts` therefore records in check mode what exists
-when the play starts (`pokus_present`: systemd units, accounts and the
+when the play starts (`pinka_present`: systemd units, accounts and the
 commands of the components from vendor repositories), and such later tasks
 carry `when: not ansible_check_mode or <it exists>`; a task that needs a
 directory created earlier in the run skips in check mode while that task

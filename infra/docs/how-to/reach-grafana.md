@@ -34,39 +34,39 @@ nothing is exposed anywhere else.
    name and Grafana password. If the lab publishes Grafana on the tailnet with
    `tailscale serve`, the operator gives you that address instead.
 
-3. The dashboards are in the folder **Pokus**: host overview, GPU and vLLM,
+3. The dashboards are in the folder **pinka**: host overview, GPU and vLLM,
    Incus targets, lab services health, and the run explorer.
 
 ## Look at one run
 
-Open **Pokus: run explorer** and paste the run's ID into `run_id`. The
+Open **potka: run explorer** and paste the run's ID into `run_id`. The
 dashboard shows the run's database row, its logs, the CPU and memory of its
 targets and its traces; paste a trace ID from the trace table into
 `trace_id` to open that trace. In Explore, the same filters are
-`{service_name=~".+"} | pokus_run_id="<run_id>"` (Loki) and
-`{ resource.pokus.run_id = "<run_id>" }` (Tempo).
+`{service_name=~".+"} | potka_run_id="<run_id>"` (Loki) and
+`{ resource.potka.run_id = "<run_id>" }` (Tempo).
 
 ## Use the read-only database credential
 
-The researchers' database role `pokus_reader` can read the platform's tables
+The researchers' database role `potka_reader` can read the platform's tables
 but never the ground truth (schema `gt`). Its credential is
-`/etc/pokus/postgres-reader/pgpass`, readable by the group `pokus`. PostgreSQL
+`/etc/pinka/postgres-reader/pgpass`, readable by the group `pinka`. PostgreSQL
 clients ignore a password file that others may read, so copy it first (this
 replaces an existing `~/.pgpass`; append the line instead if you have one):
 
 <!-- qa:run env=E2 -->
 ```bash
-install -m 0600 /etc/pokus/postgres-reader/pgpass ~/.pgpass
+install -m 0600 /etc/pinka/postgres-reader/pgpass ~/.pgpass
 ```
 
 A PostgreSQL client on the lab host then connects through the reader socket:
 
 <!-- qa:skip reason="needs a PostgreSQL client on the lab host" -->
 ```bash
-psql "host=/run/pokus/postgres-reader dbname=pokus user=pokus_reader"
+psql "host=/run/pinka/postgres-reader dbname=potka user=potka_reader"
 ```
 
-`/run/pokus/postgres-reader` is the reader socket directory; the database
+`/run/pinka/postgres-reader` is the reader socket directory; the database
 has no network listener at all ([ADR-0010](../adr/0010-postgres-socket-only.md)).
 
 ## Verify access
@@ -80,11 +80,11 @@ curl -fsS http://127.0.0.1:18700/api/health
 ```
 
 The answer contains `"database": "ok"`. On the lab host, the reader
-credential works when this prints `pokus_reader`:
+credential works when this prints `potka_reader`:
 
 <!-- qa:skip reason="needs a PostgreSQL client on the lab host" -->
 ```bash
-psql "host=/run/pokus/postgres-reader dbname=pokus user=pokus_reader" -tAc "SELECT current_user"
+psql "host=/run/pinka/postgres-reader dbname=potka user=potka_reader" -tAc "SELECT current_user"
 ```
 
 Related: [How telemetry, metrics and logs flow through the lab](../explanation/telemetry.md).

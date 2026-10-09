@@ -2,7 +2,7 @@
 
 Also checks that the committed fixture tree equals ``fixture_defs.py``, that
 every report validates against the host profile schema, and that the human
-summary matches its snapshot. Set ``POKUS_UPDATE_SNAPSHOTS=1`` to rewrite the
+summary matches its snapshot. Set ``PINKA_UPDATE_SNAPSHOTS=1`` to rewrite the
 snapshots after an intended change, then review the diff.
 """
 
@@ -21,7 +21,7 @@ from typing import Any
 import fixture_defs
 from helpers import FIXTURES_DIR, SNAPSHOTS_DIR
 
-from pokus_preflight import cli, render, report, schema_check
+from pinka_preflight import cli, render, report, schema_check
 
 jsonschema: Any
 try:
@@ -177,7 +177,7 @@ class FixtureDecisionTest(unittest.TestCase):
 
     def check_snapshot(self, name: str, text: str) -> None:
         path = os.path.join(SNAPSHOTS_DIR, f"{name}.txt")
-        if os.environ.get("POKUS_UPDATE_SNAPSHOTS") == "1":
+        if os.environ.get("PINKA_UPDATE_SNAPSHOTS") == "1":
             os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(text)

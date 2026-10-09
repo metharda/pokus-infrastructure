@@ -1,4 +1,4 @@
-# Managed by pokus-infra (models.catalog.yml). Local changes will be overwritten.
+# Managed by pinka (models.catalog.yml). Local changes will be overwritten.
 #
 # Curated candidate models for the serving profiles (BUILD_PROMPT §7.12):
 # open-weight instruct models with tool calling in vLLM 0.31.0 that fit the

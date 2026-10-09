@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/site.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/site.yml). Local changes will be overwritten.
 #
 # Provisioning play run by bootstrap.sh (BUILD_PROMPT §5.2 step 8) with
-# `-e machine=<name>` and the variables host_profile and pokus_bootstrap.
+# `-e machine=<name>` and the variables host_profile and pinka_bootstrap.
 # Every role is tagged with its name; platform_facts and preflight_gate always
 # run, so `--tags <role>` still works on the validated facts.
 - name: Provision the Pokus lab host
@@ -10,7 +10,7 @@
   vars_files:
     - "inventory/host_vars/{{ machine }}.yml"
   vars:
-    pokus_infra_dir: "{{ playbook_dir | dirname }}"
+    pinka_dir: "{{ playbook_dir | dirname }}"
   pre_tasks:
     - name: Check the variables passed by bootstrap
       ansible.builtin.assert:
@@ -18,8 +18,8 @@
           - machine is defined
           - host_profile is mapping
           - host_profile.schema_version == 1
-          - pokus_bootstrap is mapping
-        fail_msg: "Run this play through bootstrap/bootstrap.sh, which passes machine, host_profile and pokus_bootstrap."
+          - pinka_bootstrap is mapping
+        fail_msg: "Run this play through bootstrap/bootstrap.sh, which passes machine, host_profile and pinka_bootstrap."
         quiet: true
       tags: [always]
 
@@ -36,9 +36,9 @@
 
     - name: Apply the provider
       ansible.builtin.include_role:
-        name: "provider_{{ pokus_provider }}"
+        name: "provider_{{ pinka_provider }}"
         apply:
-          tags: ["provider_{{ pokus_provider }}", providers]
+          tags: ["provider_{{ pinka_provider }}", providers]
       tags: [provider_wsl2, provider_baremetal, provider_vm, providers]
 
     - name: Base system
@@ -67,7 +67,7 @@
         tasks_from: post_layout
         apply:
           tags: [provider_wsl2, providers]
-      when: pokus_provider == 'wsl2'
+      when: pinka_provider == 'wsl2'
       tags: [provider_wsl2, providers]
 
     - name: Mandatory access control
@@ -102,39 +102,39 @@
         name: nvidia_container_toolkit
         apply:
           tags: [nvidia_container_toolkit]
-      when: pokus_features.gpu_inference | default(false)
+      when: pinka_features.gpu_inference | default(false)
       tags: [nvidia_container_toolkit]
 
     # An inference node runs only the inference stack (BUILD_PROMPT §19.10).
     - name: Incus
       ansible.builtin.import_role:
         name: incus
-      when: &pokus_runs_lab node_role in ['full', 'lab']
+      when: &pinka_runs_lab node_role in ['full', 'lab']
       tags: [incus]
 
     - name: PostgreSQL
       ansible.builtin.import_role:
         name: postgres
-      when: *pokus_runs_lab
+      when: *pinka_runs_lab
       tags: [postgres]
 
     # Before OPA, which then serves the deployed platform's policy bundle.
     - name: Scenario catalog
       ansible.builtin.import_role:
         name: catalog
-      when: *pokus_runs_lab
+      when: *pinka_runs_lab
       tags: [catalog]
 
     - name: Platform services
       ansible.builtin.import_role:
         name: platform
-      when: *pokus_runs_lab
+      when: *pinka_runs_lab
       tags: [platform]
 
     - name: Open Policy Agent
       ansible.builtin.import_role:
         name: opa
-      when: *pokus_runs_lab
+      when: *pinka_runs_lab
       tags: [opa]
 
     - name: Observability
@@ -147,8 +147,8 @@
         name: models
         apply:
           tags: [models]
-      when: &pokus_serves_inference
-        - pokus_features.gpu_inference | default(false)
+      when: &pinka_serves_inference
+        - pinka_features.gpu_inference | default(false)
         - node_role in ['full', 'inference']
       tags: [models]
 
@@ -157,7 +157,7 @@
         name: vllm
         apply:
           tags: [vllm]
-      when: *pokus_serves_inference
+      when: *pinka_serves_inference
       tags: [vllm]
 
     - name: Golden images
@@ -165,7 +165,7 @@
         name: images
         apply:
           tags: [images]
-      when: *pokus_runs_lab
+      when: *pinka_runs_lab
       tags: [images]
 
     - name: Backups
@@ -173,7 +173,7 @@
         name: backup
       tags: [backup]
 
-    - name: Operator CLI pokus-lab and the lab description
+    - name: Operator CLI pinka and the lab description
       ansible.builtin.import_role:
         name: doctor
       tags: [doctor]

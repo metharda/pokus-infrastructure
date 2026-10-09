@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/probe-client/provision.yml). Local changes will be overwritten.
+# Managed by pinka (images/probe-client/provision.yml). Local changes will be overwritten.
 #
 # Probe and load tools (BUILD_PROMPT §7.13), on top of `_base`.
 - name: Provision the probe client blueprint

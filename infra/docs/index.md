@@ -1,19 +1,19 @@
 ---
-title: What pokus-infra provides
+title: What Pokus Infrastructure provides
 type: explanation
 audience: [operator, developer, reader]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
 ---
 
-# pokus-infra
+# Pokus Infrastructure
 
-pokus-infra turns a Linux machine into a Pokus lab host. Pokus is an
+Pokus Infrastructure (pinka) turns a Linux machine into a Pokus lab host. Pokus is an
 open-source lab for benchmarking AI diagnostic agents on reproducible,
-injected Linux faults. pokus-infra provides everything below the research
+injected Linux faults. Pokus Infrastructure provides everything below the research
 services: host checks, accounts, remote access, the isolated target sandbox,
 local model serving, observability, backups and health checks. The research
-services themselves come from pokus-platform and run on top of what this
+services themselves come from Pokus Platform (potka) and run on top of what this
 component provisions.
 
 ## Where to start
@@ -30,8 +30,8 @@ component provisions.
   [Security of the lab host](security.md) and
   [Reproducibility, fingerprints and sessions](reproducibility.md).
 - Integrating with the platform: the [integration contract](contracts.md)
-  lists every path, account, socket, port and file that pokus-infra provides
-  to pokus-platform.
+  lists every path, account, socket, port and file that Pokus Infrastructure provides
+  to Pokus Platform.
 
 ## Licenses
 

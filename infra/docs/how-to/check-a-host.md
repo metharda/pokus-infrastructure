@@ -9,37 +9,37 @@ description: Run the read-only preflight check on a candidate machine and read i
 
 # How to check whether a machine can host the lab
 
-Run `pokus-preflight` on a machine before you install anything, to find out
+Run `pinka-preflight` on a machine before you install anything, to find out
 whether the lab is supported there and what would be missing.
 
 !!! note "Prerequisites"
     - A Linux machine (bare metal, a VM or WSL2) with Python 3.9 or newer.
-    - A copy of the Pokus repository on that machine.
+    - A copy of the pokus-infrastructure repository on that machine.
     - Network access, unless you only want the local checks.
 
 ## Run the check
 
-1. Go to the infra component of your Pokus checkout:
+1. Go to the infra component of your pokus-infrastructure checkout:
 
     <!-- qa:run env=E1 -->
     ```bash
-    cd <pokus-checkout>/infra
+    cd <checkout>/infra
     ```
 
-    `<pokus-checkout>` is the directory where you cloned the repository.
+    `<checkout>` is the directory where you cloned the repository.
 
 2. Run preflight without storing anything and save the JSON report:
 
     <!-- qa:run env=E1 -->
     ```bash
-    ./preflight/pokus-preflight --no-write --output /tmp/host-profile.json
+    ./preflight/pinka-preflight --no-write --output /tmp/host-profile.json
     echo "exit code: $?"
     ```
 
     The summary appears on the terminal and starts with the outcome, for example:
 
     ```text title="Output"
-    Pokus preflight: DEGRADED (exit 10)
+    pinka preflight: DEGRADED (exit 10)
     ```
 
     Running it with `sudo` lets preflight read root-only details such as

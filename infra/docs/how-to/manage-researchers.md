@@ -16,7 +16,7 @@ either and re-running bootstrap for that role applies the change. Accounts are
 never deleted: a researcher who leaves is locked and their files are kept.
 
 !!! note "Prerequisites"
-    - A provisioned lab host and an admin account on it (member of `pokus-admin`).
+    - A provisioned lab host and an admin account on it (member of `pinka-admin`).
     - The researcher's SSH public key (for a new researcher or a key rotation).
     - The infra directory of the checkout that bootstrap runs from.
 
@@ -29,7 +29,7 @@ never deleted: a researcher who leaves is locked and their files are kept.
 ## Add a researcher
 
 !!! tip "Shortcut"
-    `sudo pokus-lab user add <name> --key-file <key-file>` (with `--admin` for
+    `sudo pinka user add <name> --key-file <key-file>` (with `--admin` for
     sudo) does steps 1 and 2 and prints the command of step 3. It needs the
     `researchers` list written with one `{name: ...}` entry per line, as below,
     and never changes the host itself.
@@ -74,7 +74,7 @@ never deleted: a researcher who leaves is locked and their files are kept.
 
 ## Rotate a researcher's SSH key
 
-`sudo pokus-lab user keys <name> --key-file <key-file>` replaces the key file
+`sudo pinka user keys <name> --key-file <key-file>` replaces the key file
 for you. Either way, replace the key file and apply the role again. The file is the only source of
 the account's `authorized_keys`: a key that is no longer in the file is
 removed from the host.
@@ -90,7 +90,7 @@ sudo ./bootstrap/bootstrap.sh --machine <machine> --tags users_groups
 ## Lock a researcher who left
 
 !!! tip "Shortcut"
-    `sudo pokus-lab user remove <name>` does step 1 and prints the command of
+    `sudo pinka user remove <name>` does step 1 and prints the command of
     step 2.
 
 1. In `ansible/inventory/host_vars/<machine>.yml`, remove the researcher from
@@ -111,14 +111,14 @@ sudo ./bootstrap/bootstrap.sh --machine <machine> --tags users_groups
     ```
 
     `<machine>` is this host. The account's password is locked, its shell set
-    to `nologin`, the account expired, and it is taken out of `pokus-admin`.
-    Its home directory and `/srv/pokus/users/<name>/` are kept; move or
+    to `nologin`, the account expired, and it is taken out of `pinka-admin`.
+    Its home directory and `/srv/pinka/users/<name>/` are kept; move or
     archive them yourself if your data policy requires it.
 
 ## Verify the change
 
-Check the account; for a new researcher the groups include `pokus`, for an
-admin also `pokus-admin`, and never `docker` or `incus-admin`:
+Check the account; for a new researcher the groups include `pinka`, for an
+admin also `pinka-admin`, and never `docker` or `incus-admin`:
 
 <!-- qa:run env=E2 -->
 ```bash

@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # GIT_* values are read by the scripts that source this file
-# Managed by pokus-infra (bootstrap/lib/gitstate.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/gitstate.sh). Local changes will be overwritten.
 #
 # Git provenance of the infra checkout (BUILD_PROMPT §5.2 step 1; owner answer
 # B3): the repository commit, the tree hash of infra/, and whether infra/ has

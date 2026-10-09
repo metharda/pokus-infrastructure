@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/hold_pacman_ignorepkg.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/tasks/hold_pacman_ignorepkg.yml). Local changes will be overwritten.
 - name: Exclude from pacman upgrades the packages of {{ pkg_hold_name }}
   ansible.builtin.blockinfile:
     path: /etc/pacman.conf
     insertafter: '^\[options\]'
-    marker: "# {mark} pokus-infra {{ pkg_hold_name }}"
+    marker: "# {mark} pinka {{ pkg_hold_name }}"
     block: "IgnorePkg = {{ pkg_hold_packages | join(' ') }}"

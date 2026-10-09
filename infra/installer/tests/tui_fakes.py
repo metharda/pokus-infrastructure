@@ -3,7 +3,7 @@
 Host profiles are real: preflight runs read-only on its own synthetic fixtures
 (``preflight/tests/fixtures``). Bootstrap runs are recorded event streams
 (``data/events-*.jsonl``, see ``data/record_events.py``) replayed by
-:class:`FakeRunner`. Doctor reports come from pokus-lab's own JSON renderer.
+:class:`FakeRunner`. Doctor reports come from pinka's own JSON renderer.
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pokus_installer.paths import INFRA, Paths
-from pokus_installer.tui.app import InstallerApp, build_context
-from pokus_installer.tui.base import Context
-from pokus_installer.tui.events import read_new
-from pokus_installer.tui.host import CommandResult, Disk, GitInfo, Preflight
-from pokus_installer.tui.runner import RunRequest
+from pinka_installer.paths import INFRA, Paths
+from pinka_installer.tui.app import InstallerApp, build_context
+from pinka_installer.tui.base import Context
+from pinka_installer.tui.events import read_new
+from pinka_installer.tui.host import CommandResult, Disk, GitInfo, Preflight
+from pinka_installer.tui.runner import RunRequest
 
 DATA = Path(__file__).resolve().parent / "data"
 FIXTURES = INFRA / "preflight" / "tests" / "fixtures"
@@ -52,7 +52,7 @@ def _profile_text(fixture: str, args: tuple[str, ...] = ()) -> tuple[int, str]:
         out = Path(tmp) / "profile.json"
         done = subprocess.run(
             [
-                str(INFRA / "preflight" / "pokus-preflight"),
+                str(INFRA / "preflight" / "pinka-preflight"),
                 "--root",
                 str(FIXTURES / fixture),
                 "--no-write",
@@ -83,9 +83,9 @@ def preflight(fixture: str, args: Sequence[str] = ()) -> Preflight:
 
 
 def doctor_report(warnings: int = 1, failures: int = 0) -> str:
-    """A ``pokus-lab doctor --json`` report rendered by pokus-lab itself."""
-    sys.path.insert(0, str(INFRA / "tools" / "pokus-lab"))
-    from pokus_lab.doctor import Finding, render_json  # noqa: PLC0415
+    """A ``pinka doctor --json`` report rendered by pinka itself."""
+    sys.path.insert(0, str(INFRA / "tools" / "pinka-lab"))
+    from pinka_lab.doctor import Finding, render_json  # noqa: PLC0415
 
     findings = [
         Finding("services.units", "The lab's units are active", "error", "pass", "12 active", ""),
@@ -98,7 +98,7 @@ def doctor_report(warnings: int = 1, failures: int = 0) -> str:
             "warning",
             "fail",
             "no backup yet",
-            "Run sudo systemctl start pokus-backup.service",
+            "Run sudo systemctl start pinka-backup.service",
         )
         for i in range(warnings)
     ]
@@ -113,7 +113,7 @@ def doctor_report(warnings: int = 1, failures: int = 0) -> str:
         )
         for i in range(failures)
     ]
-    return render_json(findings, "pokus-lab", "2026-01-01T00:00:00Z")
+    return render_json(findings, "pinka-lab", "2026-01-01T00:00:00Z")
 
 
 @dataclass
@@ -164,7 +164,7 @@ class FakeHost:
         for prefix in sorted(self.replies, key=len, reverse=True):
             if " ".join(command).startswith(prefix):
                 return self.replies[prefix]
-        if command[:2] == ["pokus-lab", "doctor"]:
+        if command[:2] == ["pinka", "doctor"]:
             return CommandResult(1, doctor_report())
         return CommandResult(0)
 

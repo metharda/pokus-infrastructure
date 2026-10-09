@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/observability/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/observability/defaults/main.yml). Local changes will be overwritten.
 
 # Memory limit of the gateway collector (memory_limiter); the journald
 # collector gets half.
@@ -13,8 +13,8 @@ observability_tempo_retention: 720h
 # WSL2) or dcgm (refused while the DCGM exporter image is unverified in
 # versions.lock.yml).
 observability_gpu_exporter: nvidia_smi
-# Grafana's password for the Postgres reader datasource (pokus_grafana).
-observability_grafana_db_password: "{{ vault_postgres_passwords.pokus_grafana }}"
+# Grafana's password for the Postgres reader datasource (potka_grafana).
+observability_grafana_db_password: "{{ vault_postgres_passwords.potka_grafana }}"
 # Grafana's admin password (vault).
 observability_grafana_admin_password: "{{ vault_grafana_admin_password }}"
 # Researchers' Grafana passwords by name (vault).
@@ -22,4 +22,4 @@ observability_grafana_user_passwords: "{{ vault_grafana_user_passwords | default
 # Grafana organization role of the researchers' accounts.
 observability_grafana_user_role: Viewer
 # Rendered configuration of the observability project.
-observability_config_dir: "{{ pokus_root }}/services/observability/config"
+observability_config_dir: "{{ pinka_root }}/services/observability/config"

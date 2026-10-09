@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/users_groups/tasks/privileged_groups.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/users_groups/tasks/privileged_groups.yml). Local changes will be overwritten.
 #
 # docker and incus-admin are root-equivalent. Researchers are removed from
 # them unless they are on the explicit break_glass_docker list (docker only).

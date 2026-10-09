@@ -1,22 +1,22 @@
-# Managed by pokus-infra (ansible/roles/postgres/vars/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/postgres/vars/main.yml). Local changes will be overwritten.
 
 # Contract paths (contracts.md#paths, #sockets); compose/core/compose.yml
 # mounts the same paths.
-# Socket directory of the service roles (group pokus-svc may connect).
-postgres_service_socket_dir: /run/pokus/postgres
-# Socket directory of the researchers' reader role (group pokus may connect).
-postgres_reader_socket_dir: /run/pokus/postgres-reader
+# Socket directory of the service roles (group potka-svc may connect).
+postgres_service_socket_dir: /run/pinka/postgres
+# Socket directory of the researchers' reader role (group pinka may connect).
+postgres_reader_socket_dir: /run/pinka/postgres-reader
 # Password files of the platform roles.
-postgres_password_dir: /etc/pokus/secrets/postgres
+postgres_password_dir: /etc/pinka/secrets/postgres
 # Researchers' reader credential in pgpass format (owner answer E13).
-postgres_reader_credential: /etc/pokus/postgres-reader/pgpass
+postgres_reader_credential: /etc/pinka/postgres-reader/pgpass
 # Secrets mounted into containers: directory 0700 root, each file 0400 owned
 # by the UID of the container that reads it.
-postgres_container_secrets_dir: /etc/pokus/secrets/containers
+postgres_container_secrets_dir: /etc/pinka/secrets/containers
 # Socket directories with the group that may connect.
 postgres_socket_dirs:
-  - {path: "{{ postgres_service_socket_dir }}", group: pokus-svc}
-  - {path: "{{ postgres_reader_socket_dir }}", group: pokus}
+  - {path: "{{ postgres_service_socket_dir }}", group: potka-svc}
+  - {path: "{{ postgres_reader_socket_dir }}", group: pinka}
 
 # Roles allowed on the Unix sockets (pg_hba.conf local lines).
 postgres_socket_roles: "{{ postgres_service_roles | map(attribute='role') | list + [postgres_reader_role] }}"
@@ -46,5 +46,5 @@ postgres_psql:
   - >-
     PGPASSWORD="$(cat /run/secrets/postgres-superuser)"
     exec psql --no-psqlrc --set=ON_ERROR_STOP=1 --host=/var/run/postgresql
-    --username=postgres --dbname=pokus "$@"
+    --username=postgres --dbname=potka "$@"
   - psql

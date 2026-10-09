@@ -9,12 +9,12 @@ description: What preflight detects, how the support matrix turns detection into
 
 # How the preflight gate decides
 
-Before anything is installed, `pokus-preflight` inspects the machine and
+Before anything is installed, `pinka-preflight` inspects the machine and
 decides whether the lab can run on it. The decision is one of five
 outcomes, each with its own exit code (see [Exit codes](../reference/exit-codes.md)):
 `supported`, `degraded`, `unsupported`, `needs_action` and `preflight_error`.
 Bootstrap acts on that outcome, and the full result is stored as the
-[host profile](../reference/host-profile.md) in `/etc/pokus/host-profile.json`.
+[host profile](../reference/host-profile.md) in `/etc/pinka/host-profile.json`.
 
 ## Why a gate exists
 

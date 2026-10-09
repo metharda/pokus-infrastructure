@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/backup/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/backup/defaults/main.yml). Local changes will be overwritten.
 
 # restic repository and password (owner answer E4: SFTP to a host the deployer
 # chooses, a rest-server second, a local path for tests only). An empty
@@ -8,7 +8,7 @@ backup_repository: "{{ vault_restic_repository | default('') }}"
 backup_password: "{{ vault_restic_password | default('') }}"
 # SFTP repositories: known_hosts lines of the backup server, checked out of band.
 backup_sftp_known_hosts: []
-# Directories below pokus_root that are backed up (BUILD_PROMPT §7.15).
+# Directories below pinka_root that are backed up (BUILD_PROMPT §7.15).
 backup_include: [catalog, artifacts, reports, images, datasets, shared, users, backups/pg]
 # Model weights are re-downloaded and verified on restore, so they are left out.
 backup_include_models: false
@@ -18,7 +18,7 @@ backup_include_state: []
 # backup_secrets_acknowledged: the repository's encryption is all that protects them.
 backup_include_secrets: false
 backup_secrets_acknowledged: false
-# Local PostgreSQL dumps kept in pokus_root/backups/pg.
+# Local PostgreSQL dumps kept in pinka_root/backups/pg.
 backup_pgdump_keep: 7
 # When the timers run (systemd OnCalendar); missed runs are caught up after boot.
 backup_pgdump_schedule: "*-*-* 02:30:00"

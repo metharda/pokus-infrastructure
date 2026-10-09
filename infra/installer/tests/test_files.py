@@ -10,10 +10,10 @@ from installer_testlib import public_key
 from ruamel.yaml import YAML
 from test_answers import full_answers
 
-from pokus_installer import answers as answers_mod
-from pokus_installer import apply, cli, groupvars, hostvars, keys, state, vault
-from pokus_installer.answers import Answers, Researcher
-from pokus_installer.paths import Paths
+from pinka_installer import answers as answers_mod
+from pinka_installer import apply, cli, groupvars, hostvars, keys, state, vault
+from pinka_installer.answers import Answers, Researcher
+from pinka_installer.paths import Paths
 
 PASSWORD = "vault-password-for-tests"  # noqa: S105 - test fixture
 SECRETS = vault.Provided(tailscale_authkey="authkey-placeholder")
@@ -29,17 +29,17 @@ def test_host_vars_from_the_example(repo: Paths) -> None:
     answers = full_answers()
     example = repo.example_host_vars.read_text(encoding="utf-8")
     text = hostvars.render(answers, None, example)
-    assert text.startswith("# Machine configuration of pokus-lab")
-    assert "Managed by pokus-infra (ansible/inventory/host_vars/example-machine.yml)" not in text
+    assert text.startswith("# Machine configuration of pinka-lab")
+    assert "Managed by pinka (ansible/inventory/host_vars/example-machine.yml)" not in text
     assert "# production | staging." in text  # the example's explanations stay
     values = hostvars.load(text)
-    assert values["machine_name"] == "pokus-lab"
+    assert values["machine_name"] == "pinka-lab"
     assert values["incus_pool_device"] == values["incus_pool_device_confirm"]
     assert values["incus_pool_source"] == "device"
     assert "inference_remote_node" not in values  # a full node has no peer
     assert values["vllm_default_deployment"] is None
     assert values["backup_schedule"] == "*-*-* 03:00:00"
-    assert values["pokus_source_repo"] == "git@github.com:example-org/pokus.git"
+    assert values["pinka_source_repo"] == "git@github.com:example-org/pokus-platform.git"
     assert values["platform_ref"] == "platform-v0.1.0"
     assert values["images_blueprints"] == ["_base", "web-nginx-flask"]
     assert values["expected"] == {"memory_gib": 22, "cpu_threads": 20}
@@ -103,7 +103,7 @@ def test_vault_build_generates_once_and_keeps_existing(repo: Paths) -> None:
     assert list(data) == list(vault.ORDER)
     assert set(data["vault_postgres_passwords"]) == set(roles)
     assert set(data["vault_grafana_user_passwords"]) == {"researcher1"}  # researcher2: no Grafana
-    assert data["vault_restic_repository"] == "sftp:backup@backup.example.com:/srv/restic/pokus-lab"
+    assert data["vault_restic_repository"] == "sftp:backup@backup.example.com:/srv/restic/pinka-lab"
     assert data["vault_tailscale_authkey"] == ""  # interactive login
     assert first.shown_once == [("restic password", data["vault_restic_password"])]
     answers.researchers.append(Researcher("alice2", grafana=True))
@@ -122,7 +122,7 @@ def test_vault_provided_secrets(repo: Paths) -> None:
     roles = vault.postgres_roles(repo.postgres_defaults)
     answers = full_answers()
     answers.remote_access.tailscale_login = "auth_key"
-    with pytest.raises(vault.VaultError, match="POKUS_SECRET_TAILSCALE_AUTHKEY"):
+    with pytest.raises(vault.VaultError, match="PINKA_SECRET_TAILSCALE_AUTHKEY"):
         vault.build(answers, None, vault.Provided(), roles)
     answers.secrets.grafana_admin = "provided"
     provided = vault.Provided(tailscale_authkey="authkey-placeholder")
@@ -134,7 +134,7 @@ def test_vault_provided_secrets(repo: Paths) -> None:
     assert built.data["vault_grafana_admin_password"] == provided.grafana_admin_password
     assert built.data["vault_tailscale_authkey"] == "authkey-placeholder"
     assert "authkey-placeholder" not in repr(provided)  # never in logs or tracebacks
-    env = vault.Provided.from_environment({"POKUS_SECRET_HF_TOKEN": "hf-placeholder"})
+    env = vault.Provided.from_environment({"PINKA_SECRET_HF_TOKEN": "hf-placeholder"})
     assert env.values() == ["hf-placeholder"]
 
 
@@ -154,11 +154,11 @@ def test_plan_writes_everything_and_is_idempotent(repo: Paths) -> None:
     plan = apply.plan(answers, repo, SECRETS, PASSWORD, {"researcher1": key})
     names = [c.path.relative_to(repo.infra).as_posix() for c in plan.changes]
     assert names == [
-        "ansible/inventory/host_vars/pokus-lab.yml",
+        "ansible/inventory/host_vars/pinka-lab.yml",
         "ansible/group_vars/all/main.yml",
         "users/researcher1.pub",
         "ansible/group_vars/all/vault.yml",
-        "installer-answers/pokus-lab.yml",
+        "installer-answers/pinka-lab.yml",
     ]
     assert plan.warnings == [
         "no SSH key file users/researcher2.pub: researcher2 gets no SSH access"
@@ -205,7 +205,7 @@ def test_files_go_to_the_invoking_user(repo: Paths, monkeypatch: pytest.MonkeyPa
     owned = {
         Path(p).name.lstrip(".").removesuffix(".tmp") for p, u, g in calls if (u, g) == (1000, 1000)
     }
-    assert {"installer-answers", "pokus-lab.yml", "vault.yml", "main.yml"} <= owned
+    assert {"installer-answers", "pinka-lab.yml", "vault.yml", "main.yml"} <= owned
 
 
 def test_read_password_file(tmp_path: Path) -> None:
@@ -256,10 +256,10 @@ def test_cli_apply_replays_the_ci_answers(
         "accept_mok_enrollment=false",
     ]
     replay = [*base, "apply", "--answers", str(answers), "--vault-password-file", str(password)]
-    monkeypatch.delenv("POKUS_SECRET_TAILSCALE_AUTHKEY", raising=False)
+    monkeypatch.delenv("PINKA_SECRET_TAILSCALE_AUTHKEY", raising=False)
     assert cli.main(replay) == 1
-    assert "POKUS_SECRET_TAILSCALE_AUTHKEY" in capsys.readouterr().err
-    monkeypatch.setenv("POKUS_SECRET_TAILSCALE_AUTHKEY", "authkey-placeholder")
+    assert "PINKA_SECRET_TAILSCALE_AUTHKEY" in capsys.readouterr().err
+    monkeypatch.setenv("PINKA_SECRET_TAILSCALE_AUTHKEY", "authkey-placeholder")
     assert cli.main(replay) == 0
     out = capsys.readouterr().out
     assert "wrote ansible/inventory/host_vars/ci-placeholder.yml" in out

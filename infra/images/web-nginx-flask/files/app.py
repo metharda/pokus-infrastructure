@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/web-nginx-flask/files/app.py). Local changes will be overwritten.
+# Managed by pinka (images/web-nginx-flask/files/app.py). Local changes will be overwritten.
 """A small web application: a page, a health check and an in-memory item list."""
 
 from __future__ import annotations

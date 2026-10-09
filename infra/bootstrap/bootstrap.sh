@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Managed by pokus-infra (bootstrap/bootstrap.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/bootstrap.sh). Local changes will be overwritten.
 #
 # Single entry point that provisions a Pokus lab host (BUILD_PROMPT §5):
 #   sudo ./bootstrap/bootstrap.sh --machine <name> [options]

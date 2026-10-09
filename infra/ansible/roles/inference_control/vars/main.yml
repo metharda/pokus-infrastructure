@@ -1,42 +1,42 @@
-# Managed by pokus-infra (ansible/roles/inference_control/vars/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/inference_control/vars/main.yml). Local changes will be overwritten.
 
-# The mTLS material (contracts.md#paths): directory 0750 root:pokus-orch.
-inference_control_dir: /etc/pokus/inference
+# The mTLS material (contracts.md#paths): directory 0750 root:potka-orch.
+inference_control_dir: /etc/pinka/inference
 # This node's identity, created on lab and inference nodes.
 inference_control_cert: "{{ inference_control_dir }}/self.crt"
 inference_control_key: "{{ inference_control_dir }}/self.key"
-# The paired node's certificate and record, written by pokus-lab pair.
+# The paired node's certificate and record, written by pinka pair.
 inference_control_peer_cert: "{{ inference_control_dir }}/peer.crt"
 inference_control_peer_record: "{{ inference_control_dir }}/peer.json"
 # The endpoint of an inference node: program, settings, unit and state.
-inference_control_program: /usr/local/libexec/pokus/inference-control
+inference_control_program: /usr/local/libexec/pinka/inference-control
 inference_control_config: "{{ inference_control_dir }}/control.json"
-inference_control_unit: pokus-inference-control.service
-inference_control_state_dir: /var/lib/pokus/inference-control
+inference_control_unit: pinka-inference-control.service
+inference_control_state_dir: /var/lib/pinka/inference-control
 # The paired node this host is configured for (empty until paired).
 inference_control_expected_peer: "{{ inference_lab_node if node_role == 'inference' else inference_remote_node }}"
 # Paths the endpoint never needs (InaccessiblePaths; "-" ignores missing ones).
 inference_control_denied_paths:
-  - /etc/pokus/secrets
-  - /etc/pokus/signing
-  - /srv/pokus/catalog
-  - /srv/pokus/artifacts
-  - /var/lib/pokus/git
+  - /etc/pinka/secrets
+  - /etc/pinka/signing
+  - /srv/pinka/catalog
+  - /srv/pinka/artifacts
+  - /var/lib/pinka/git
 # control.json: the fields of the endpoint's Config. The address comes from
 # `tailscale ip -4` (tasks/endpoint.yml); 127.0.0.1 only in check mode on a
 # host that is not on the tailnet yet.
 inference_control_settings:
   listen: "{{ inference_control_tailnet.stdout_lines[0] | default('127.0.0.1') }}"
-  api_port: "{{ pokus_ports.vllm | int }}"
-  control_port: "{{ pokus_ports.inference_control | int }}"
+  api_port: "{{ pinka_ports.vllm | int }}"
+  control_port: "{{ pinka_ports.inference_control | int }}"
   cert: "{{ inference_control_cert }}"
   key: "{{ inference_control_key }}"
   peer: "{{ inference_control_peer_cert }}"
-  deploy_socket: /run/pokus/vllm-deploy.sock
-  gpu_metrics: "http://127.0.0.1:{{ pokus_internal_ports.gpu_exporter }}/metrics"
-  current: /etc/pokus/vllm/current.yml
-  verify: [/usr/local/libexec/pokus/vllm-verify]
+  deploy_socket: /run/pinka/vllm-deploy.sock
+  gpu_metrics: "http://127.0.0.1:{{ pinka_internal_ports.gpu_exporter }}/metrics"
+  current: /etc/pinka/vllm/current.yml
+  verify: [/usr/local/libexec/pinka/vllm-verify]
   verify_wait: "{{ inference_control_verify_wait | int }}"
   state_dir: "{{ inference_control_state_dir }}"
-  models: "{{ pokus_root }}/models"
-  fingerprint: /var/lib/pokus/fingerprint/current.json
+  models: "{{ pinka_root }}/models"
+  fingerprint: /var/lib/pinka/fingerprint/current.json

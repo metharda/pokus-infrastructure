@@ -24,10 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
-import pokus_inference_control as control
+import pinka_inference_control as control
 import pytest
 
-import pokus
+import pinka
 from ansible_testlib import GROUP_VARS, ROLES, ansible_vars, evaluate, load_yaml, render_template
 
 ROLE = ROLES / "inference_control"
@@ -36,17 +36,17 @@ needs_openssl = pytest.mark.skipif(shutil.which("openssl") is None, reason="need
 
 
 def scope(**extra: Any) -> dict[str, Any]:
-    variables: dict[str, Any] = {"machine_name": "pokus-gpu", "node_role": "inference", **extra}
+    variables: dict[str, Any] = {"machine_name": "pinka-gpu", "node_role": "inference", **extra}
     return ansible_vars(
         GROUP_VARS, ROLE / "defaults" / "main.yml", ROLE / "vars" / "main.yml", **variables
     )
 
 
 def test_expected_peer_by_node_role() -> None:
-    inference = scope(inference_lab_node="pokus-lab", inference_remote_node="other")
-    assert evaluate("inference_control_expected_peer", inference) == "pokus-lab"
-    lab = scope(node_role="lab", inference_lab_node="other", inference_remote_node="pokus-gpu")
-    assert evaluate("inference_control_expected_peer", lab) == "pokus-gpu"
+    inference = scope(inference_lab_node="pinka-lab", inference_remote_node="other")
+    assert evaluate("inference_control_expected_peer", inference) == "pinka-lab"
+    lab = scope(node_role="lab", inference_lab_node="other", inference_remote_node="pinka-gpu")
+    assert evaluate("inference_control_expected_peer", lab) == "pinka-gpu"
     assert evaluate("inference_control_expected_peer", scope()) == ""
 
 
@@ -61,11 +61,11 @@ def test_settings_fit_the_endpoint(tmp_path: Path) -> None:
         config.cert.parent
         == config.key.parent
         == config.peer.parent
-        == Path("/etc/pokus/inference")
+        == Path("/etc/pinka/inference")
     )
     assert config.gpu_metrics == "http://127.0.0.1:18726/metrics"
-    assert config.models == Path("/srv/pokus/models")
-    socket_unit = render_template("vllm", "pokus-vllm-deploy.socket.j2", {})
+    assert config.models == Path("/srv/pinka/models")
+    socket_unit = render_template("vllm", "pinka-vllm-deploy.socket.j2", {})
     assert f"ListenStream={config.deploy_socket}\n" in socket_unit
     verify_task = load_yaml(ROLES / "vllm" / "tasks" / "verify.yml")[1]
     assert verify_task["ansible.builtin.command"]["argv"][0] == config.verify[0]
@@ -75,25 +75,25 @@ def test_settings_fit_the_endpoint(tmp_path: Path) -> None:
 
 
 def test_unit() -> None:
-    unit = render_template("inference_control", "pokus-inference-control.service.j2", scope())
-    assert unit.startswith("# Managed by pokus-infra (ansible/roles/inference_control/templates/")
+    unit = render_template("inference_control", "pinka-inference-control.service.j2", scope())
+    assert unit.startswith("# Managed by pinka (ansible/roles/inference_control/templates/")
     lines = set(unit.splitlines())
     for expected in (
-        "ExecStart=/usr/local/libexec/pokus/inference-control"
-        " --config /etc/pokus/inference/control.json",
-        "ConditionPathExists=/etc/pokus/inference/peer.crt",
-        "User=pokus-orch",
+        "ExecStart=/usr/local/libexec/pinka/inference-control"
+        " --config /etc/pinka/inference/control.json",
+        "ConditionPathExists=/etc/pinka/inference/peer.crt",
+        "User=potka-orch",
         "CapabilityBoundingSet=",
         "NoNewPrivileges=yes",
         "ProtectSystem=strict",
         "MemoryDenyWriteExecute=yes",
-        "StateDirectory=pokus/inference-control",
-        "WantedBy=pokus-lab.target",
-        "PartOf=pokus-lab.target",
+        "StateDirectory=pinka/inference-control",
+        "WantedBy=pinka-lab.target",
+        "PartOf=pinka-lab.target",
     ):
         assert expected in lines, expected
     denied = next(line for line in lines if line.startswith("InaccessiblePaths="))
-    assert "-/etc/pokus/secrets" in denied.split("=", 1)[1].split()
+    assert "-/etc/pinka/secrets" in denied.split("=", 1)[1].split()
 
 
 @pytest.mark.skipif(shutil.which("systemd-analyze") is None, reason="needs systemd-analyze")
@@ -103,14 +103,14 @@ def test_unit_passes_systemd_analyze(tmp_path: Path) -> None:
     shutil.copytree(
         "/usr/lib/systemd/system", tmp_path / "usr" / "lib" / "systemd" / "system", symlinks=True
     )
-    (system / "pokus-lab.target").write_text("[Unit]\nDescription=stub\n")
-    program = tmp_path / "usr/local/libexec/pokus/inference-control"
+    (system / "pinka-lab.target").write_text("[Unit]\nDescription=stub\n")
+    program = tmp_path / "usr/local/libexec/pinka/inference-control"
     program.parent.mkdir(parents=True)
     program.write_text("#!/bin/sh\n")
     program.chmod(0o755)
-    name = "pokus-inference-control.service"
+    name = "pinka-inference-control.service"
     (system / name).write_text(
-        render_template("inference_control", "pokus-inference-control.service.j2", scope())
+        render_template("inference_control", "pinka-inference-control.service.j2", scope())
     )
     done = subprocess.run(
         [
@@ -228,7 +228,7 @@ class Endpoint:
         request = (
             raw
             or (
-                f"{method} {path} HTTP/1.1\r\nHost: pokus-gpu\r\nContent-Length: {len(body)}\r\n"
+                f"{method} {path} HTTP/1.1\r\nHost: pinka-gpu\r\nContent-Length: {len(body)}\r\n"
                 "Connection: close\r\n\r\n"
             ).encode()
             + body
@@ -237,7 +237,7 @@ class Endpoint:
         try:
             with (
                 socket.create_connection((HOST, port or self.config.control_port), 10) as plain,
-                context.wrap_socket(plain, server_hostname="pokus-gpu") as conn,
+                context.wrap_socket(plain, server_hostname="pinka-gpu") as conn,
             ):
                 conn.sendall(request)
                 while chunk := conn.recv(65536):
@@ -275,11 +275,11 @@ def serve_unix(path: Path, requests: list[dict[str, Any]]) -> socket.socket:
 
 @pytest.fixture
 def endpoint(tmp_path: Path) -> Iterator[Endpoint]:
-    inference = make_identity(tmp_path, "pokus-gpu")
-    lab = make_identity(tmp_path, "pokus-lab")
+    inference = make_identity(tmp_path, "pinka-gpu")
+    lab = make_identity(tmp_path, "pinka-lab")
     mallory_dir = tmp_path / "mallory"
     mallory_dir.mkdir()
-    mallory = make_identity(mallory_dir, "pokus-lab")  # same name, other key
+    mallory = make_identity(mallory_dir, "pinka-lab")  # same name, other key
     peer = tmp_path / "peer.crt"
     shutil.copy(lab[0], peer)
     api_port = free_port()
@@ -423,17 +423,17 @@ def test_not_paired(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_units_carry_what_doctor_checks() -> None:
-    """The hardening doctor compares (pokus_unit_hardening) is in every unit template."""
+    """The hardening doctor compares (pinka_unit_hardening) is in every unit template."""
     platform = ansible_vars(
         GROUP_VARS,
         ROLES / "platform" / "defaults" / "main.yml",
         ROLES / "platform" / "vars" / "main.yml",
     )
-    rendered = [render_template("inference_control", "pokus-inference-control.service.j2", scope())]
+    rendered = [render_template("inference_control", "pinka-inference-control.service.j2", scope())]
     for unit in evaluate("platform_units", platform):
         variables = dict(platform, platform_unit=unit, platform_socket_acls=True)
-        rendered.append(render_template("platform", "pokus-platform.service.j2", variables))
+        rendered.append(render_template("platform", "potka-platform.service.j2", variables))
     for text in rendered:
         lines = set(text.splitlines())
-        for key, value in pokus.UNIT_HARDENING.items():
+        for key, value in pinka.UNIT_HARDENING.items():
             assert f"{key}={value}" in lines, (key, text.splitlines()[2])

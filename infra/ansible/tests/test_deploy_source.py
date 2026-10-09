@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import pokus_deploy_source as ds
+import pinka_deploy_source as ds
 import pytest
 
 from ansible_testlib import GROUP_VARS, ROLES, ansible_vars, evaluate, load_yaml
@@ -89,10 +89,10 @@ def test_fetch_is_idempotent_and_follows_new_refs(mirror: Path, source: Path) ->
 
 def test_ssh_environment() -> None:
     assert ds.ssh_env(None, None) == {}
-    env = ds.ssh_env("/var/lib/pokus/git/deploy_key", "/var/lib/pokus/git/known_hosts")
+    env = ds.ssh_env("/var/lib/pinka/git/deploy_key", "/var/lib/pinka/git/known_hosts")
     command = env["GIT_SSH_COMMAND"]
     assert "-o StrictHostKeyChecking=yes" in command
-    assert "-o UserKnownHostsFile=/var/lib/pokus/git/known_hosts" in command
+    assert "-o UserKnownHostsFile=/var/lib/pinka/git/known_hosts" in command
     assert "-o BatchMode=yes" in command
     with pytest.raises(ds.DeployError, match="pinned host keys"):
         ds.ssh_env("/key", None)
@@ -312,7 +312,7 @@ ROLE_VARS = ROLES / "deploy_source" / "vars" / "main.yml"
 
 def role_values(repo: str, **extra: Any) -> dict[str, Any]:
     variables = ansible_vars(
-        GROUP_VARS, GROUP_VARS.parent / "versions.yml", ROLE_VARS, pokus_source_repo=repo, **extra
+        GROUP_VARS, GROUP_VARS.parent / "versions.yml", ROLE_VARS, pinka_source_repo=repo, **extra
     )
     names = ("deploy_source_transport", "deploy_source_ssh_host", "deploy_source_known_host_lines")
     return {name: evaluate(name, variables) for name in names}
@@ -321,13 +321,17 @@ def role_values(repo: str, **extra: Any) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("repo", "transport", "host"),
     [
-        ("git@github.com:example-org/pokus.git", "ssh", "github.com"),
-        ("ssh://git@git.example.com/example-org/pokus.git", "ssh", "git.example.com"),
-        ("ssh://git@git.example.com:2222/example-org/pokus.git", "ssh", "[git.example.com]:2222"),
-        ("https://git.example.com/example-org/pokus.git", "https", None),
-        ("https://user:token@git.example.com/pokus.git", "invalid", None),
-        ("file:///srv/pokus.git", "invalid", None),
-        ("http://git.example.com/pokus.git", "invalid", None),
+        ("git@github.com:example-org/pokus-platform.git", "ssh", "github.com"),
+        ("ssh://git@git.example.com/example-org/pokus-platform.git", "ssh", "git.example.com"),
+        (
+            "ssh://git@git.example.com:2222/example-org/pokus-platform.git",
+            "ssh",
+            "[git.example.com]:2222",
+        ),
+        ("https://git.example.com/example-org/pokus-platform.git", "https", None),
+        ("https://user:token@git.example.com/pokus-platform.git", "invalid", None),
+        ("file:///srv/pokus-platform.git", "invalid", None),
+        ("http://git.example.com/pokus-platform.git", "invalid", None),
     ],
 )
 def test_transport_and_host(repo: str, transport: str, host: str | None) -> None:
@@ -338,12 +342,13 @@ def test_transport_and_host(repo: str, transport: str, host: str | None) -> None
 
 
 def test_known_hosts_pin_only_verified_github_keys() -> None:
-    unverified = role_values("git@github.com:example-org/pokus.git")
-    lock = load_yaml(GROUP_VARS.parent / "versions.yml")["pokus_versions"]["github_ssh_host_keys"]
+    unverified = role_values("git@github.com:example-org/pokus-platform.git")
+    lock = load_yaml(GROUP_VARS.parent / "versions.yml")["pinka_versions"]["github_ssh_host_keys"]
     verified = [k for k, v in lock["keys"].items() if "TODO" not in v["public_key"]]
     assert len(unverified["deploy_source_known_host_lines"]) == len(verified)
     extra = ["[git.example.com]:2222 ssh-ed25519 AAAAC3Nza"]
     other = role_values(
-        "ssh://git@git.example.com:2222/example-org/pokus.git", pokus_source_known_hosts=extra
+        "ssh://git@git.example.com:2222/example-org/pokus-platform.git",
+        pinka_source_known_hosts=extra,
     )
     assert other["deploy_source_known_host_lines"] == extra

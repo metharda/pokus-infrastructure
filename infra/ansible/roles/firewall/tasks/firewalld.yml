@@ -1,33 +1,33 @@
-# Managed by pokus-infra (ansible/roles/firewall/tasks/firewalld.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/firewall/tasks/firewalld.yml). Local changes will be overwritten.
 #
-# A dedicated zone pokus-tailnet for tailscale0 with the ssh service; Docker's
+# A dedicated zone pinka-tailnet for tailscale0 with the ssh service; Docker's
 # own zone stays intact. Incus bridges (Incus 6.0.6
 # doc/howto/network_bridge_firewalld.md): bridges with an uplink go into the
-# trusted zone as Incus documents; run networks get their own zone pokus-run
+# trusted zone as Incus documents; run networks get their own zone pinka-run
 # that only accepts DHCP and DNS. Run networks are created at run time, so they
 # are matched with the interface wildcard "r-+" (firewalld 0.7.0 and later).
-- name: Create the Pokus zones
+- name: Create the pinka zones
   ansible.posix.firewalld:
     zone: "{{ item }}"
     state: present
     permanent: true
-  loop: [pokus-tailnet, pokus-run]
+  loop: [pinka-tailnet, pinka-run]
   notify: Reload firewalld
 
 - name: Reload firewalld so the new zone exists
   ansible.builtin.meta: flush_handlers
 
-- name: Put tailscale0 in the pokus-tailnet zone
+- name: Put tailscale0 in the pinka-tailnet zone
   ansible.posix.firewalld:
-    zone: pokus-tailnet
+    zone: pinka-tailnet
     interface: "{{ firewall_tailnet_interface }}"
     state: enabled
     permanent: true
     immediate: true
 
-- name: Allow SSH and the serve port in the pokus-tailnet zone
+- name: Allow SSH and the serve port in the pinka-tailnet zone
   ansible.posix.firewalld:
-    zone: pokus-tailnet
+    zone: pinka-tailnet
     port: "{{ item }}/tcp"
     state: enabled
     permanent: true
@@ -53,9 +53,9 @@
   loop_control:
     label: "{{ item.item }}"
 
-- name: Put the run networks in the pokus-run zone
+- name: Put the run networks in the pinka-run zone
   ansible.posix.firewalld:
-    zone: pokus-run
+    zone: pinka-run
     interface: "{{ firewall_run_bridge_pattern | replace('*', '+') }}"
     state: enabled
     permanent: true
@@ -63,7 +63,7 @@
 
 - name: Allow DHCP and DNS from the run networks to Incus's dnsmasq
   ansible.posix.firewalld:
-    zone: pokus-run
+    zone: pinka-run
     service: "{{ item }}"
     state: enabled
     permanent: true
@@ -72,14 +72,14 @@
 
 - name: Allow OTLP from the run networks to the VM listener
   ansible.posix.firewalld:
-    zone: pokus-run
+    zone: pinka-run
     rich_rule: >-
-      rule family="ipv4" destination address="{{ pokus_vm_otlp.address }}"
+      rule family="ipv4" destination address="{{ pinka_vm_otlp.address }}"
       port port="{{ item }}" protocol="tcp" accept
     state: "{{ 'enabled' if firewall_vm_otlp_ports | length > 0 else 'disabled' }}"
     permanent: true
     immediate: true
-  loop: "{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] }}"
+  loop: "{{ [pinka_ports.otlp_grpc, pinka_ports.otlp_http] }}"
 
 - name: Trust the bridges with an uplink (image builds, personal projects)
   ansible.posix.firewalld:

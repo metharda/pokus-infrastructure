@@ -26,7 +26,7 @@ from ansible_testlib import (
     render_template,
     role_vars,
 )
-from pokus_preflight.detect.conflicts import MANAGED_MARKER
+from pinka_preflight.detect.conflicts import MANAGED_MARKER
 
 INCUS_DIR = INFRA / "incus"
 FIXTURE = "ubuntu2404-baremetal-nvidia-driver-loaded"
@@ -60,8 +60,8 @@ def incus_vars(vm_targets: bool = True, **extra: Any) -> dict[str, Any]:
         "incus",
         "debian",
         host_profile=profile,
-        pokus_features=features,
-        pokus_infra_dir=str(INFRA),
+        pinka_features=features,
+        pinka_dir=str(INFRA),
         ansible_facts={"getent_passwd": PASSWD},
         **extra,
     )
@@ -129,8 +129,8 @@ def test_researchers_and_networks(desired: dict[str, Any]) -> None:
         },
     ]
     names = [n["name"] for n in desired["incus_networks"]]
-    assert names == ["pokus-build0", "incusbr-1001", "incusbr-1002"]
-    build = by_name(desired["incus_networks"], "pokus-build0")
+    assert names == ["pinka-build0", "incusbr-1001", "incusbr-1002"]
+    build = by_name(desired["incus_networks"], "pinka-build0")
     assert build["config"] == {"ipv4.address": "auto", "ipv4.nat": "true", "ipv6.address": "none"}
     assert "incusbr0" not in names
 
@@ -138,8 +138,8 @@ def test_researchers_and_networks(desired: dict[str, Any]) -> None:
 def test_server_and_pool(desired: dict[str, Any]) -> None:
     assert desired["incus_server_config"] == {"core.https_address": "127.0.0.1:8443"}
     assert desired["incus_pool"] == {
-        "name": "pokus-targets",
-        "description": "Pokus instances",
+        "name": "pinka-targets",
+        "description": "pinka instances",
         "driver": "btrfs",
         "config": {"size": "300GiB"},
     }
@@ -175,7 +175,7 @@ def test_projects(desired: dict[str, Any]) -> None:
     assert bench["limits.virtual-machines"] == "4"
     memory = fixture_profile(FIXTURE)["hardware"]["memory_gib"]
     assert bench["limits.memory"] == f"{max(int(memory * 0.6), 1)}GiB"
-    assert by_name(projects, "build")["config"]["restricted.networks.access"] == "pokus-build0"
+    assert by_name(projects, "build")["config"]["restricted.networks.access"] == "pinka-build0"
     user = by_name(projects, "user-1001")["config"]
     assert set(user) >= INCUS_USER_KEYS
     assert user["restricted.devices.gpu"] == "block"
@@ -198,11 +198,11 @@ def test_profiles(desired: dict[str, Any]) -> None:
     ]
     for profile in profiles:
         assert all_strings(profile["config"])
-        assert profile["devices"]["root"]["pool"] == "pokus-targets"
+        assert profile["devices"]["root"]["pool"] == "pinka-targets"
         if profile["project"] == "bench":
             assert profile["config"]["security.guestapi"] == "false"  # contracts.md#incus
             assert "eth0" not in profile["devices"]  # the platform adds the run network NIC
-    assert by_name(profiles, "build")["devices"]["eth0"]["network"] == "pokus-build0"
+    assert by_name(profiles, "build")["devices"]["eth0"]["network"] == "pinka-build0"
     assert by_name(profiles, "default", "user-1002")["devices"]["eth0"]["network"] == "incusbr-1002"
 
 
@@ -216,7 +216,7 @@ def test_no_vms_without_vm_targets() -> None:
 
 def test_preseed_lists_everything(desired: dict[str, Any]) -> None:
     text = render_file(INCUS_DIR / "preseed.yaml.j2", desired)
-    assert text.startswith("# Managed by pokus-infra (incus/preseed.yaml.j2).")
+    assert text.startswith("# Managed by pinka (incus/preseed.yaml.j2).")
     preseed = yaml.safe_load(text)
     assert set(preseed) == {"config", "storage_pools", "networks", "projects", "profiles"}
     assert preseed["storage_pools"] == [desired["incus_pool"]]
@@ -228,20 +228,20 @@ def test_incus_templates_have_headers() -> None:
     for path in sorted(INCUS_DIR.rglob("*.j2")):
         relative = path.relative_to(INFRA).as_posix()
         assert (
-            f"# Managed by pokus-infra ({relative}). Local changes will be overwritten."
+            f"# Managed by pinka ({relative}). Local changes will be overwritten."
             in path.read_text(encoding="utf-8").splitlines()[0]
         )
 
 
 def test_events_unit() -> None:
-    text = render_template("incus", "pokus-incus-events.service.j2", incus_vars())
+    text = render_template("incus", "pinka-incus-events.service.j2", incus_vars())
     unit = configparser.ConfigParser(interpolation=None, strict=True)
     unit.optionxform = str  # type: ignore[assignment,method-assign]
     unit.read_string(text)
     assert unit["Service"]["ExecStart"] == (
         "/usr/bin/incus monitor --all-projects --type=lifecycle --type=logging --format=json"
     )
-    assert unit["Service"]["SyslogIdentifier"] == "pokus-incus-events"
+    assert unit["Service"]["SyslogIdentifier"] == "pinka-incus-events"
     assert unit["Unit"]["PartOf"] == "incus.service"
 
 
@@ -257,7 +257,7 @@ def test_events_unit() -> None:
     ],
 )
 def test_docker_daemon_json(method: str, mac: str, extra: set[str]) -> None:
-    variables = role_vars("docker", docker_gpu_method=method, pokus_mac=mac)
+    variables = role_vars("docker", docker_gpu_method=method, pinka_mac=mac)
     data = json.loads(render_template("docker", "daemon.json.j2", variables))
     base = {
         "labels",
@@ -269,7 +269,7 @@ def test_docker_daemon_json(method: str, mac: str, extra: set[str]) -> None:
         "cgroup-parent",
     }
     assert set(data) == base | extra
-    assert data["cgroup-parent"] == "pokus-services.slice"  # pinned to cpuset_services
+    assert data["cgroup-parent"] == "pinka-services.slice"  # pinned to cpuset_services
     assert any(MANAGED_MARKER in label for label in data["labels"])  # preflight recognizes the file
     assert all("=" in label for label in data["labels"])
     assert data["log-driver"] == "local"
@@ -293,7 +293,7 @@ def test_docker_pools_avoid_incus_tailscale_and_home_lans() -> None:
 
 
 def test_cdi_refresh_drop_in() -> None:
-    text = render_template("nvidia_container_toolkit", "nvidia-cdi-refresh-pokus.conf.j2", {})
+    text = render_template("nvidia_container_toolkit", "nvidia-cdi-refresh-pinka.conf.j2", {})
     unit = configparser.ConfigParser(interpolation=None, strict=True)
     unit.optionxform = str  # type: ignore[assignment,method-assign]
     unit.read_string(text)

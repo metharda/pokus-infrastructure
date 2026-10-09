@@ -10,7 +10,7 @@ description: Running a lab host in a VM - guest agents, GPU passthrough, nested 
 # Virtual machine hosts
 
 A lab host may itself be a virtual machine. This is also the way out for
-hosts Pokus cannot support directly (immutable or non-systemd
+hosts Pokus Infrastructure (pinka) cannot support directly (immutable or non-systemd
 distributions, unsupported architectures): run a supported distribution in a
 VM on that host. The `provider_vm` role applies when preflight detects a
 hypervisor.

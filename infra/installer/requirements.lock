@@ -1,4 +1,4 @@
-# Managed by pokus-infra (installer/requirements.lock). Local changes will be overwritten.
+# Managed by pinka (installer/requirements.lock). Local changes will be overwritten.
 # Compiled from requirements.in by 'make installer-lock' (uv pip compile --generate-hashes).
 ansible-core==2.21.5 \
     --hash=sha256:08886f9f3e23d129aa98a01271c4a47833516e1cb7c737a246788cb474f41222 \

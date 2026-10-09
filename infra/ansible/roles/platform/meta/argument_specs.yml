@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Deploy the platform services at platform_ref with hardened units (only if enabled).
@@ -14,7 +14,7 @@ argument_specs:
       platform_settings:
         type: dict
         default: {}
-        description: Non-secret settings per service short name, rendered into /etc/pokus/platform/<svc>.toml and checked against the platform's schemas (C9b).
+        description: Non-secret settings per service short name, rendered into /etc/pinka/platform/<svc>.toml and checked against the platform's schemas (C9b).
       platform_inference_mode:
         type: str
         default: auto
@@ -45,11 +45,11 @@ argument_specs:
         type: str
         required: true
         description: Machine name (endpoints.toml, published signing keys).
-      pokus_features:
+      pinka_features:
         type: dict
         required: true
         description: Feature flags (gpu_inference decides local inference).
-      pokus_versions:
+      pinka_versions:
         type: dict
         required: true
         description: The pinned versions (Quarto).

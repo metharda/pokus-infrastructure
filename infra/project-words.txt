@@ -59,7 +59,9 @@ peercred
 pgdump
 pgpass
 pids
+pinka
 pokus
+potka
 prepreflight
 preseed
 procps

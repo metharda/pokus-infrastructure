@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/vars/debian.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/vars/debian.yml). Local changes will be overwritten.
 #
 # Logical package names -> Debian-family packages (verified in the Ubuntu
 # 22.04 and 24.04 archives on 2026-10-05).

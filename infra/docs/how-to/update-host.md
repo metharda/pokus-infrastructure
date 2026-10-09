@@ -4,7 +4,7 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Update the lab host's packages with pokus-lab update-host on every distribution family, keeping the pinned packages, and see what changed in the environment fingerprint.
+description: Update the lab host's packages with pinka update-host on every distribution family, keeping the pinned packages, and see what changed in the environment fingerprint.
 ---
 
 # How to update the host operating system safely
@@ -13,7 +13,7 @@ Measurements depend on the software they ran on, so the lab never updates
 itself behind your back: the pinned packages (Docker, the NVIDIA Container
 Toolkit, Incus, Tailscale and, unless allowed, the kernel) are held, and
 rolling releases get no automatic updates at all.
-`pokus-lab update-host` is the supported way to update everything else. It
+`pinka update-host` is the supported way to update everything else. It
 drains and stops the lab, updates the operating system with the holds in
 place, runs bootstrap (which re-applies the pins and ends with doctor) and
 prints how the [environment fingerprint](../reproducibility.md) changed.
@@ -21,7 +21,7 @@ prints how the [environment fingerprint](../reproducibility.md) changed.
 !!! note "Prerequisites"
     - A lab host provisioned by bootstrap, with the checkout bootstrap runs
       from.
-    - An admin account on the host (member of `pokus-admin`).
+    - An admin account on the host (member of `pinka-admin`).
     - A time when the lab may stop: running benchmark runs are drained first.
     - On a WSL host, Windows itself is updated separately; this page covers the
       Linux side only.
@@ -32,13 +32,13 @@ prints how the [environment fingerprint](../reproducibility.md) changed.
 
     <!-- qa:skip reason="updates the operating system of the lab host" -->
     ```bash
-    sudo pokus-lab update-host
+    sudo pinka update-host
     ```
 
     It asks for confirmation (`--yes` skips the question), then:
 
     1. records the current fingerprint;
-    2. drains the orchestrator and stops `pokus-lab.target`, as in
+    2. drains the orchestrator and stops `pinka-lab.target`, as in
        [How to start, stop and drain the lab](start-stop-drain.md);
     3. updates the packages with the family's package manager; held packages
        stay at their pinned versions:
@@ -51,7 +51,7 @@ prints how the [environment fingerprint](../reproducibility.md) changed.
         | Arch Linux | `pacman --sync --refresh --sysupgrade --noconfirm` | `IgnorePkg` |
 
     4. runs bootstrap, which converges the configuration, starts the lab again
-       and ends with `pokus-lab doctor`;
+       and ends with `pinka doctor`;
     5. prints every fingerprint field that changed, for example a new kernel
        release or Python version.
 
@@ -85,7 +85,7 @@ sets `allow_kernel_updates: true`.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     ```
 
     Doctor exits with 0 or 1 (warnings only). Fix failed checks with
@@ -95,7 +95,7 @@ sets `allow_kernel_updates: true`.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab fingerprint
+    sudo pinka fingerprint
     ```
 
     The next session record carries this hash.

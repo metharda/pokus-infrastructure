@@ -12,13 +12,13 @@ Pinned model weights and LoRA adapters (BUILD_PROMPT §7.12,
   Revisions are full commit hashes; there is never an unverified value.
 - The `hf` CLI of the pinned `huggingface_hub` (`versions.lock.yml`
   `python.model_tools`, hash-locked in `files/requirements.lock`, `make
-  models-lock`) in `/opt/pokus/models-venv`, created with the pinned uv and
+  models-lock`) in `/opt/pinka/models-venv`, created with the pinned uv and
   CPython.
-- `/usr/local/libexec/pokus/models-fetch` downloads what is missing into
-  `/srv/pokus/models/<hf_repo>/<revision>/` (adapters into
-  `/srv/pokus/models/adapters/<name>/<sha256 of the weights file>/`),
+- `/usr/local/libexec/pinka/models-fetch` downloads what is missing into
+  `/srv/pinka/models/<hf_repo>/<revision>/` (adapters into
+  `/srv/pinka/models/adapters/<name>/<sha256 of the weights file>/`),
   verifies every sha256 (a mismatching file is deleted and the run fails),
-  sets `pokus-orch:pokus`, files 0444, and writes `MANIFEST.json` (entry,
+  sets `potka-orch:pinka`, files 0444, and writes `MANIFEST.json` (entry,
   files with hashes and sizes, download time in UTC, tool version).
 - Gated entries use `vault_hf_token`, passed on stdin, never on a command line.
 

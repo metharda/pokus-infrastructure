@@ -1,13 +1,13 @@
-# Managed by pokus-infra (ansible/roles/backup/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/backup/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: restic backups of pokus_root and /etc/pokus, PostgreSQL dumps, retention and backup metrics.
+    short_description: restic backups of pinka_root and /etc/pinka, PostgreSQL dumps, retention and backup metrics.
     options:
-      pokus_root:
+      pinka_root:
         type: path
         required: true
         description: Research space root; its directories of backup_include are backed up.
-      pokus_versions:
+      pinka_versions:
         type: dict
         required: true
         description: The pinned versions (the restic binary).
@@ -35,7 +35,7 @@ argument_specs:
         type: list
         elements: str
         default: [catalog, artifacts, reports, images, datasets, shared, users, backups/pg]
-        description: Directories below pokus_root that are backed up.
+        description: Directories below pinka_root that are backed up.
       backup_include_models:
         type: bool
         default: false
@@ -44,11 +44,11 @@ argument_specs:
         type: list
         elements: str
         default: []
-        description: Directories of pokus_root/state to back up as well (prometheus, loki, tempo).
+        description: Directories of pinka_root/state to back up as well (prometheus, loki, tempo).
       backup_include_secrets:
         type: bool
         default: false
-        description: Also back up the secret material under /etc/pokus (needs backup_secrets_acknowledged).
+        description: Also back up the secret material under /etc/pinka (needs backup_secrets_acknowledged).
       backup_secrets_acknowledged:
         type: bool
         default: false

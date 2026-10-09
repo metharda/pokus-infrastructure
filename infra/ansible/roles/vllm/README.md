@@ -5,26 +5,26 @@ applied with `gpu_inference` on `full` and `inference` nodes:
 
 - Compose project `inference` with the pinned `vllm/vllm-openai` image, host
   network, the API on `127.0.0.1:18704` only, models read-only from
-  `/srv/pokus/models`, no Hub access (`HF_HUB_OFFLINE=1`), read-only root
-  file system with the caches in `/srv/pokus/state/vllm-cache`, the GPU
+  `/srv/pinka/models`, no Hub access (`HF_HUB_OFFLINE=1`), read-only root
+  file system with the caches in `/srv/pinka/state/vllm-cache`, the GPU
   through CDI or the NVIDIA runtime (Compose profile from `daemon.json`);
-- serving profiles from `vllm/profiles/` in `/etc/pokus/vllm/profiles/`
+- serving profiles from `vllm/profiles/` in `/etc/pinka/vllm/profiles/`
   (vLLM `serve` options, allowed weight formats, the keys a deployment may
   override);
-- deployments `/etc/pokus/vllm/deployments/<id>@<version>.yml` (immutable);
-  `current.yml` links the active one; `/usr/local/libexec/pokus/vllm-deploy`
+- deployments `/etc/pinka/vllm/deployments/<id>@<version>.yml` (immutable);
+  `current.yml` links the active one; `/usr/local/libexec/pinka/vllm-deploy`
   renders `current.yaml` (the `vllm serve --config` file) and `current.env`;
-- the deploy helper (C3): `pokus-vllm-deploy.socket`
-  (`/run/pokus/vllm-deploy.sock`, 0600 `pokus-orch`) starts one root helper
-  per connection; it checks the peer is `pokus-orch`, validates the request
-  and the deployment, switches and restarts `pokus-inference.service`. No sudo;
+- the deploy helper (C3): `pinka-vllm-deploy.socket`
+  (`/run/pinka/vllm-deploy.sock`, 0600 `potka-orch`) starts one root helper
+  per connection; it checks the peer is `potka-orch`, validates the request
+  and the deployment, switches and restarts `pinka-inference.service`. No sudo;
 - the default deployment from `vllm_default_deployment` (tool-call parser
   from the model's catalog entry unless overridden), served after
   installation unless `start_after_install: false`; without a deployment the
   unit is installed but disabled;
-- the serving verification `/usr/local/libexec/pokus/vllm-verify`: health,
+- the serving verification `/usr/local/libexec/pinka/vllm-verify`: health,
   model list, one deterministic chat completion and one `get_time` tool call;
-  report in `/var/lib/pokus/verify/vllm-<id>@<version>.json`.
+  report in `/var/lib/pinka/verify/vllm-<id>@<version>.json`.
 
 ## Variables
 

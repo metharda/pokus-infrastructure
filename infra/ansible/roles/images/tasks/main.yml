@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/main.yml). Local changes will be overwritten.
 #
 # Golden image pipeline (BUILD_PROMPT §7.13): build every listed blueprint
 # that has no image yet, publish it as <blueprint>/<version> and export it
@@ -23,12 +23,12 @@
       - images_spec.base.blueprint is not defined
         or images_spec.base.blueprint in images_order[:images_index]
       - images_spec.base.image is not defined
-        or images_spec.base.image in pokus_versions.incus_base_images.images
+        or images_spec.base.image in pinka_versions.incus_base_images.images
       - images_spec.base.image is not defined
-        or images_instance_types[images_spec.type] == pokus_versions.incus_base_images.images[images_spec.base.image].type
+        or images_instance_types[images_spec.type] == pinka_versions.incus_base_images.images[images_spec.base.image].type
       - images_spec.base.blueprint is not defined
         or images_spec.type == images_specs[images_spec.base.blueprint].type | default('')
-      - images_spec.docker_images | difference(pokus_versions.containers.target_images | default({}) | list) == []
+      - images_spec.docker_images | difference(pinka_versions.containers.target_images | default({}) | list) == []
     fail_msg: >-
       Blueprint {{ item }}: the name must match its directory, a base blueprint must come
       earlier in the list of blueprints and have the same type, a base image must be a key of
@@ -49,8 +49,8 @@
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
   loop:
-    - {path: "{{ images_export_root }}", group: pokus-admin, mode: "0750"}
-    - {path: "{{ images_upstream_dir }}", group: pokus-admin, mode: "0750"}
+    - {path: "{{ images_export_root }}", group: pinka-admin, mode: "0750"}
+    - {path: "{{ images_upstream_dir }}", group: pinka-admin, mode: "0750"}
     - {path: "{{ images_work_dir }}", group: root, mode: "0700"}
     - {path: "{{ images_files_helper | dirname }}", group: root, mode: "0755"}
   loop_control:
@@ -58,7 +58,7 @@
 
 - name: Install the export helper
   ansible.builtin.copy:
-    src: pokus_image_files.py
+    src: pinka_image_files.py
     dest: "{{ images_files_helper }}"
     owner: root
     group: root
@@ -69,7 +69,7 @@
   ansible.builtin.meta: end_role
   when:
     - ansible_check_mode
-    - "'incus' not in pokus_present.commands"
+    - "'incus' not in pinka_present.commands"
 
 - name: Process the blueprints
   ansible.builtin.include_tasks: blueprint.yml

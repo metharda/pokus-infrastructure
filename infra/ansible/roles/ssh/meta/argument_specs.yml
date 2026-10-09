@@ -1,12 +1,12 @@
-# Managed by pokus-infra (ansible/roles/ssh/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/ssh/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: sshd drop-in with key-only login for the pokus group.
+    short_description: sshd drop-in with key-only login for the pinka group.
     options:
       ssh_allow_groups:
         type: list
         elements: str
-        default: [pokus]
+        default: [pinka]
         description: Groups allowed to log in (AllowGroups).
       ssh_client_alive_interval:
         type: int

@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/lab_session/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/lab_session/defaults/main.yml). Local changes will be overwritten.
 
-# Start the lab at boot: multi-user.target wants pokus-lab.target.
+# Start the lab at boot: multi-user.target wants pinka-lab.target.
 lab_session_autostart: true
 # Seconds the health gate keeps checking before it fails, and between rounds.
 lab_session_gate_timeout: 600

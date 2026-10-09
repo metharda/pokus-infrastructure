@@ -1,9 +1,9 @@
 {
-  "uid": "pokus-gpu-vllm",
-  "title": "Pokus: GPU and vLLM",
-  "description": "Managed by pokus-infra (config/grafana/dashboards/gpu-vllm.json). Local changes will be overwritten. GPU utilization, memory, temperature and power (nvidia_gpu_exporter) and vLLM serving metrics.",
+  "uid": "pinka-gpu-vllm",
+  "title": "pinka: GPU and vLLM",
+  "description": "Managed by pinka (config/grafana/dashboards/gpu-vllm.json). Local changes will be overwritten. GPU utilization, memory, temperature and power (nvidia_gpu_exporter) and vLLM serving metrics.",
   "tags": [
-    "pokus"
+    "pinka"
   ],
   "timezone": "utc",
   "editable": false,

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/postgres/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/postgres/tasks/main.yml). Local changes will be overwritten.
 #
 # PostgreSQL in the core Compose project (BUILD_PROMPT §7.8,
 # contracts.md#postgresql): Unix socket directories for the service roles and
@@ -29,15 +29,15 @@
 
 - name: Recreate the socket directories at boot
   ansible.builtin.template:
-    src: pokus-postgres.tmpfiles.conf.j2
-    dest: /etc/tmpfiles.d/pokus-postgres.conf
+    src: pinka-postgres.tmpfiles.conf.j2
+    dest: /etc/tmpfiles.d/pinka-postgres.conf
     owner: root
     group: root
     mode: "0644"
 
 - name: Create the runtime directory
   ansible.builtin.file:
-    path: /run/pokus
+    path: /run/pinka
     state: directory
     owner: root
     group: root
@@ -65,7 +65,7 @@
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
   loop:
-    - {path: "{{ postgres_config_dir | dirname | dirname }}", group: pokus-admin, mode: "0750"}
+    - {path: "{{ postgres_config_dir | dirname | dirname }}", group: pinka-admin, mode: "0750"}
     - {path: "{{ postgres_config_dir | dirname }}", group: root, mode: "0755"}
     - {path: "{{ postgres_config_dir }}", group: root, mode: "0755"}
   loop_control:
@@ -73,7 +73,7 @@
 
 - name: Render the PostgreSQL configuration
   ansible.builtin.template:
-    src: "{{ pokus_infra_dir }}/config/postgres/{{ item }}.j2"
+    src: "{{ pinka_dir }}/config/postgres/{{ item }}.j2"
     dest: "{{ postgres_config_dir }}/{{ item }}"
     owner: root
     group: root

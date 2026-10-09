@@ -14,8 +14,8 @@ Base system for every host (BUILD_PROMPT §7.2):
 - automatic security updates per family (BUILD_PROMPT §19.5): unattended-upgrades
   (Debian family), dnf-automatic (Red Hat family), a `zypper patch --category
   security` timer (SUSE family); never an automatic reboot; packages pinned by
-  Pokus and, on bare metal, the kernel are excluded; none on rolling releases;
-- kernel settings in `/etc/sysctl.d/60-pokus.conf` (inotify limits, IPv4
+  Pokus Infrastructure (pinka) and, on bare metal, the kernel are excluded; none on rolling releases;
+- kernel settings in `/etc/sysctl.d/60-pinka.conf` (inotify limits, IPv4
   forwarding for Docker and Incus).
 
 ## Variables

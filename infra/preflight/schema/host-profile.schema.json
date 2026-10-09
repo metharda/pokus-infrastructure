@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pokus host profile",
-  "description": "Report written by pokus-preflight to /etc/pokus/host-profile.json (pokus-infra BUILD_PROMPT §2). generated_at is the only volatile field.",
+  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT §2). generated_at is the only volatile field.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -53,12 +53,12 @@
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
     },
     "preflight_version": {
-      "description": "Version of pokus-preflight.",
+      "description": "Version of pinka-preflight.",
       "type": "string",
       "minLength": 1
     },
     "repo_commit": {
-      "description": "Commit of the pokus checkout that ran preflight, if known.",
+      "description": "Commit of the pokus-infrastructure checkout that ran preflight, if known.",
       "type": [
         "string",
         "null"
@@ -423,11 +423,11 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "srv_pokus",
+            "srv_pinka",
             "var_lib"
           ],
           "properties": {
-            "srv_pokus": {
+            "srv_pinka": {
               "$ref": "#/$defs/disk"
             },
             "var_lib": {

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/doctor/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/doctor/defaults/main.yml). Local changes will be overwritten.
 
 # Largest clock offset doctor accepts, in seconds.
 doctor_max_clock_offset: 1.0
@@ -9,7 +9,7 @@ doctor_backup_max_age_hours: 26
 # Seconds doctor waits for its telemetry probe, and for a smoke target's logs.
 doctor_telemetry_wait: 60
 doctor_smoke_wait: 120
-# Seconds `pokus-lab stop` and `update-host` give the orchestrator to drain.
+# Seconds `pinka stop` and `update-host` give the orchestrator to drain.
 doctor_drain_timeout: 1800
 # Processes that may listen outside loopback: sshd (firewalled), Tailscale,
 # Incus's DNS and DHCP server on its bridges, DHCP clients and time daemons.

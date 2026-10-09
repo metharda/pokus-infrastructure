@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/pkg/meta/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/meta/main.yml). Local changes will be overwritten.
 galaxy_info:
   role_name: pkg
-  namespace: pokus
+  namespace: pinka
   author: Pokus project
   description: Package manager abstraction - pinned installs, verified vendor repositories and version holds per family
   license: Apache-2.0
@@ -19,5 +19,5 @@ galaxy_info:
       versions: [all]
     - name: ArchLinux
       versions: [all]
-  galaxy_tags: [pokus]
+  galaxy_tags: [pinka]
 dependencies: []

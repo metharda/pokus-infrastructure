@@ -11,7 +11,7 @@ description: Every field of installer-answers/<machine>.yml, written by the TUI 
 
 # Installer answers file
 
-Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin) are checked by pokus_installer.answers. Schema file: `installer/schema/answers.schema.json` (JSON Schema draft 2020-12).
+Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin) are checked by pinka_installer.answers. Schema file: `installer/schema/answers.schema.json` (JSON Schema draft 2020-12).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -19,11 +19,11 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `mode` | one of `fresh`, `restore`, `modify` | yes | fresh: a new lab; restore: provision, then restore a snapshot; modify: change an installed lab. |
 | `machine` | object | yes | The host: name, role, provider and paths. |
 | `machine.name` | see `hostname` | yes | Machine name: host_vars file, tailnet host name, fingerprints. |
-| `machine.lab_mode` | one of `production`, `staging` | yes | production, or staging: a QA lab with its own vault, research space and Tailscale identity (tag:pokus-qa) that never pairs with production. |
+| `machine.lab_mode` | one of `production`, `staging` | yes | production, or staging: a QA lab with its own vault, research space and Tailscale identity (tag:pinka-qa) that never pairs with production. |
 | `machine.node_role` | one of `full`, `lab`, `inference` | yes | full: everything on this host; lab: lab services, inference on a paired node; inference: vLLM only (docs/node-roles.md). |
 | `machine.provider` | one of `auto`, `baremetal`, `wsl2`, `vm` | no | auto takes the provider from the host profile. |
 | `machine.power_policy` | one of `never_sleep`, `lab_session_inhibit`, `os_default` | no | lab_session_inhibit keeps the host awake while a lab session runs; never_sleep; os_default (always on WSL, where Windows decides). |
-| `machine.srv_path` | see `absolute_path` | no | The research space, /srv/pokus by default. |
+| `machine.srv_path` | see `absolute_path` | no | The research space, /srv/pinka by default. |
 | `machine.docker_data_root` | see `absolute_path` | no | Docker's data-root. |
 | `machine.firewall_backend` | one of `auto`, `nftables`, `firewalld`, `ufw` | no | auto takes the host's active firewall (nftables, firewalld or ufw). |
 | `machine.allow_community_repos` | boolean | no | Allow community package repositories where a component has no official one (the component source matrix). |
@@ -42,16 +42,16 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `researchers` | array | yes | The lab's researchers: Linux accounts, research space directories, Grafana accounts. |
 | `researchers[].name` | see `username` | yes | Linux user name. |
 | `researchers[].display_name` | string | no | Name shown in Grafana. |
-| `researchers[].admin` | boolean | yes | Member of pokus-admin (sudo on the host); at least one researcher is an admin. |
+| `researchers[].admin` | boolean | yes | Member of pinka-admin (sudo on the host); at least one researcher is an admin. |
 | `researchers[].grafana` | boolean | no | Create a Grafana account (password generated into the vault). |
 | `researchers_removed` | array | no | Researchers who left: their accounts are locked, their data stays. |
 | `remote_access` | object | yes | Tailscale and SSH access. |
-| `remote_access.tailscale_tag` | string | no | The node's tailnet tag; empty: tag:pokus-lab, or tag:pokus-qa on staging. |
-| `remote_access.tailscale_login` | one of `auth_key`, `interactive` | yes | auth_key: from POKUS_SECRET_TAILSCALE_AUTHKEY or the TUI; interactive: the login URL is shown during the install. |
+| `remote_access.tailscale_tag` | string | no | The node's tailnet tag; empty: tag:pinka-lab, or tag:pinka-qa on staging. |
+| `remote_access.tailscale_login` | one of `auth_key`, `interactive` | yes | auth_key: from PINKA_SECRET_TAILSCALE_AUTHKEY or the TUI; interactive: the login URL is shown during the install. |
 | `remote_access.accept_dns` | boolean | no | Accept the tailnet's DNS settings. |
 | `remote_access.grafana_tailscale_serve` | boolean | no | Publish Grafana on the tailnet with tailscale serve (never Funnel). |
 | `remote_access.ssh_extra_allowed_interfaces` | array | no | Network interfaces besides tailscale0 that accept SSH (not on WSL). |
-| `split_inference` | object | no | For node_role lab or inference: the machine name of the other node once paired (docs/node-roles.md); pairing can also come later (pokus-lab pair). |
+| `split_inference` | object | no | For node_role lab or inference: the machine name of the other node once paired (docs/node-roles.md); pairing can also come later (pinka pair). |
 | `split_inference.peer` | see `hostname` | yes | Machine name of the paired node. |
 | `gpu` | object | yes | NVIDIA driver, vLLM serving profile and default model. |
 | `gpu.install_driver` | one of `auto`, `manual`, `skip` | yes | install_nvidia_driver: auto (the pinned branch of versions.lock.yml), manual or skip. |
@@ -61,17 +61,17 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `gpu.start_serving` | boolean | no | Start serving the default model after the install. |
 | `backups` | object | yes | restic backups. |
 | `backups.repository` | any | yes | The restic repository by type: sftp (host, user, path), rest (url), local (path; not a real backup) or later (doctor warns until it is set). |
-| `backups.password` | one of `generate`, `provided` | yes | The restic password: generated (shown once) or provided (POKUS_SECRET_RESTIC_PASSWORD). |
+| `backups.password` | one of `generate`, `provided` | yes | The restic password: generated (shown once) or provided (PINKA_SECRET_RESTIC_PASSWORD). |
 | `backups.schedule` | string | no | Daily backup time (UTC). |
 | `backups.retention` | object | no | Snapshots kept by restic forget. |
 | `backups.retention.daily` | integer | yes | Daily snapshots kept. |
 | `backups.retention.weekly` | integer | yes | Weekly snapshots kept. |
 | `backups.retention.monthly` | integer | yes | Monthly snapshots kept. |
 | `backups.include_models` | boolean | no | Back up model weights too (large; they can be downloaded again). |
-| `backups.include_secrets` | boolean | no | Back up /etc/pokus/secrets inside restic's encryption. |
+| `backups.include_secrets` | boolean | no | Back up /etc/pinka/secrets inside restic's encryption. |
 | `restore` | object | no | Restore mode only. |
 | `restore.snapshot` | string | yes | latest, or a snapshot id. |
-| `source` | object | no | The Pokus repository that platform and catalog are deployed from (owner answer E3). |
+| `source` | object | no | The pokus-platform repository that platform and catalog are deployed from (owner answer E3). |
 | `source.repo` | string | yes | An SSH URL (read with a deploy key generated on the host) or an anonymous https URL. |
 | `source.known_hosts` | array | no | Host key lines of an SSH source other than GitHub. |
 | `source.require_signed_tags` | boolean | no | Deploy only tags signed by an allowed signer. |
@@ -82,9 +82,9 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `images.build` | array | yes | Golden image blueprints to build (images/&lt;name&gt;/). |
 | `secrets` | object | yes | Which secrets are generated and which are provided (never their values). |
 | `secrets.generate` | constant `all` | yes | Service passwords (database roles, Grafana users) are always generated. |
-| `secrets.grafana_admin` | one of `generate`, `provided` | yes | generate, or provided (POKUS_SECRET_GRAFANA_ADMIN_PASSWORD). |
-| `secrets.hf_token` | one of `none`, `provided` | no | provided (POKUS_SECRET_HF_TOKEN) for gated models, else none. |
-| `secrets.store_vault_password` | boolean | no | Keep the vault password root-only in /etc/pokus/secrets/vault-pass. |
+| `secrets.grafana_admin` | one of `generate`, `provided` | yes | generate, or provided (PINKA_SECRET_GRAFANA_ADMIN_PASSWORD). |
+| `secrets.hf_token` | one of `none`, `provided` | no | provided (PINKA_SECRET_HF_TOKEN) for gated models, else none. |
+| `secrets.store_vault_password` | boolean | no | Keep the vault password root-only in /etc/pinka/secrets/vault-pass. |
 
 ## Definitions
 

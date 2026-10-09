@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/group_vars/all/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/group_vars/all/main.yml). Local changes will be overwritten.
 #
 # Lab-wide settings shared by every host (BUILD_PROMPT §6, §8). Per-machine
 # values and overrides belong in inventory/host_vars/<machine>.yml; secrets in
@@ -9,7 +9,7 @@
 # --- Machine defaults (host_vars override them; see example-machine.yml) ----
 
 # Host name of the machine in the tailnet, in /etc/wsl.conf and in the fingerprint.
-machine_name: pokus-lab
+machine_name: pinka-lab
 # production, or staging for QA environments (own vault, Tailscale tag and
 # signing key; never pairs with a production host).
 lab_mode: production
@@ -17,7 +17,7 @@ lab_mode: production
 # Any other value than auto must match the detected provider.
 lab_provider: auto
 # Power policy on bare metal and VMs: never_sleep (sleep targets masked),
-# lab_session_inhibit (a sleep inhibitor while pokus-lab.target is up) or os_default.
+# lab_session_inhibit (a sleep inhibitor while pinka-lab.target is up) or os_default.
 power_policy: lab_session_inhibit
 # What this host runs: full (everything), lab (everything except vLLM) or
 # inference (only the inference stack).
@@ -36,7 +36,7 @@ grafana_tailscale_serve: false
 # Interfaces besides tailscale0 on which sshd accepts connections.
 ssh_extra_allowed_interfaces: []
 # Root of the research space (BUILD_PROMPT §6.2).
-pokus_root: /srv/pokus
+pinka_root: /srv/pinka
 # CPUs of the lab services (Linux cpuset list such as "0-5"); empty: no pinning.
 # Set per machine in host_vars; must not overlap cpuset_targets.
 cpuset_services: ""
@@ -44,24 +44,24 @@ cpuset_services: ""
 # targets inside it (endpoints.toml), and it sizes the bench project's CPUs.
 cpuset_targets: ""
 # Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
-pokus_services_slice: pokus-services.slice
+pinka_services_slice: pinka-services.slice
 # Let automatic security updates update the kernel on bare metal (held by default).
 allow_kernel_updates: false
 # Tailscale tag of the host per lab_mode (owner answer E2).
-pokus_tailscale_tags:
-  production: tag:pokus-lab
-  staging: tag:pokus-qa
+pinka_tailscale_tags:
+  production: tag:pinka-lab
+  staging: tag:pinka-qa
 
 # --- Groups and accounts (BUILD_PROMPT §6.1, contracts.md) ---------------------
 
 # Groups created by users_groups.
-pokus_groups:
-  - {name: pokus, system: false, description: all researchers}
-  - {name: pokus-admin, system: false, description: researchers with sudo}
-  - {name: pokus-gt, system: true, description: may read the ground truth and the catalog}
-  - {name: pokus-svc, system: true, description: all service accounts}
-  - {name: pokus-exec-clients, system: true, description: may call the executor socket (agent and orchestrator)}
-  - {name: pokus-gw-clients, system: true, description: "may call the gateway's agent socket (agent only)"}
+pinka_groups:
+  - {name: pinka, system: false, description: all researchers}
+  - {name: pinka-admin, system: false, description: researchers with sudo}
+  - {name: pinka-gt, system: true, description: may read the ground truth and the catalog}
+  - {name: potka-svc, system: true, description: all service accounts}
+  - {name: potka-exec-clients, system: true, description: may call the executor socket (agent and orchestrator)}
+  - {name: potka-gw-clients, system: true, description: "may call the gateway's agent socket (agent only)"}
 
 # Placeholders (owner answer E1). keys_file is relative to the infra directory;
 # key files are never committed (users/*.pub is excluded by .gitignore).
@@ -79,55 +79,55 @@ researchers_removed: []
 break_glass_docker: []
 
 # System accounts of the platform services: no login, no password, no SSH keys.
-# pokus-agent never gets pokus-gt, incus, docker or database access.
+# potka-agent never gets pinka-gt, incus, docker or database access.
 service_accounts:
-  - {name: pokus-orch, groups: [pokus-svc, pokus-gt, pokus-exec-clients], description: orchestrator}
-  - {name: pokus-agent, groups: [pokus-svc, pokus-exec-clients, pokus-gw-clients], description: agent runtime}
-  - {name: pokus-gw, groups: [pokus-svc], description: LLM gateway}
-  - {name: pokus-exec, groups: [pokus-svc], description: tool executor}
-  - {name: pokus-inject, groups: [pokus-svc, pokus-gt], description: fault injector}
-  - {name: pokus-verify, groups: [pokus-svc, pokus-gt], description: verifier}
-  - {name: pokus-eval, groups: [pokus-svc, pokus-gt], description: evaluator}
+  - {name: potka-orch, groups: [potka-svc, pinka-gt, potka-exec-clients], description: orchestrator}
+  - {name: potka-agent, groups: [potka-svc, potka-exec-clients, potka-gw-clients], description: agent runtime}
+  - {name: potka-gw, groups: [potka-svc], description: LLM gateway}
+  - {name: potka-exec, groups: [potka-svc], description: tool executor}
+  - {name: potka-inject, groups: [potka-svc, pinka-gt], description: fault injector}
+  - {name: potka-verify, groups: [potka-svc, pinka-gt], description: verifier}
+  - {name: potka-eval, groups: [potka-svc, pinka-gt], description: evaluator}
 
-# Parent of the service account homes (/var/lib/pokus/<account>).
-pokus_service_home: /var/lib/pokus
+# Parent of the service account homes (/var/lib/pinka/<account>).
+pinka_service_home: /var/lib/pinka
 
 # Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
-pokus_python: /opt/pokus/python/bin/python3
+pinka_python: /opt/pinka/python/bin/python3
 
 # --- Layout (BUILD_PROMPT §6.2) -------------------------------------------------
 
 # The research space layout, the single source of truth: the layout role
 # creates exactly these entries, and tools/gen renders them into
-# docs/architecture.md. `path` is relative to pokus_root ("" is pokus_root itself).
-pokus_layout:
-  - {path: "", owner: root, group: pokus, mode: "2775", notes: "research space root"}
+# docs/architecture.md. `path` is relative to pinka_root ("" is pinka_root itself).
+pinka_layout:
+  - {path: "", owner: root, group: pinka, mode: "2775", notes: "research space root"}
   - {path: deploy, owner: root, group: root, mode: "0755", notes: "read-only deployments of platform and catalog tags"}
-  - {path: catalog, owner: root, group: pokus-gt, mode: "0750", notes: "scenario catalog including ground truth"}
-  - {path: models, owner: pokus-orch, group: pokus, mode: "0755", notes: "model weights, 0444 after verification"}
-  - {path: datasets, owner: root, group: pokus, mode: "2775", default_acl: ["group:pokus:rwX"], notes: "shared datasets"}
-  - {path: artifacts, owner: pokus-orch, group: pokus, mode: "0750", notes: "content-addressed, write-once 0440"}
-  - {path: reports, owner: pokus-eval, group: pokus, mode: "2775", notes: "evaluation reports"}
-  - {path: images, owner: root, group: pokus-admin, mode: "0750", notes: "exported golden image tarballs with sha256"}
-  - {path: shared, owner: root, group: pokus, mode: "2770", default_acl: ["group:pokus:rwX"], notes: "shared files"}
+  - {path: catalog, owner: root, group: pinka-gt, mode: "0750", notes: "scenario catalog including ground truth"}
+  - {path: models, owner: potka-orch, group: pinka, mode: "0755", notes: "model weights, 0444 after verification"}
+  - {path: datasets, owner: root, group: pinka, mode: "2775", default_acl: ["group:pinka:rwX"], notes: "shared datasets"}
+  - {path: artifacts, owner: potka-orch, group: pinka, mode: "0750", notes: "content-addressed, write-once 0440"}
+  - {path: reports, owner: potka-eval, group: pinka, mode: "2775", notes: "evaluation reports"}
+  - {path: images, owner: root, group: pinka-admin, mode: "0750", notes: "exported golden image tarballs with sha256"}
+  - {path: shared, owner: root, group: pinka, mode: "2770", default_acl: ["group:pinka:rwX"], notes: "shared files"}
   - {path: users, owner: root, group: root, mode: "0755", notes: "parent of the per-researcher directories"}
-  - {path: services, owner: root, group: pokus-admin, mode: "0750", notes: "rendered compose and config, never plaintext secrets readable by all"}
+  - {path: services, owner: root, group: pinka-admin, mode: "0750", notes: "rendered compose and config, never plaintext secrets readable by all"}
   - {path: state, owner: root, group: root, mode: "0755", notes: "parent of state/<service>/ (container UID, 0700), created by the service roles"}
   - {path: backups, owner: root, group: root, mode: "0700", notes: "local backup staging only"}
 
 # Per-researcher directory: users/<name>/ owned by <name>:<name>, mode 0700.
-pokus_layout_user_mode: "0700"
+pinka_layout_user_mode: "0700"
 
-# Host paths outside pokus_root (absolute).
-pokus_system_layout:
-  - {path: /etc/pokus, owner: root, group: root, mode: "0755", notes: "host profile, bootstrap state, rendered non-secret config"}
-  - {path: /etc/pokus/secrets, owner: root, group: pokus-svc, mode: "0750", notes: "rendered secrets (files 0640 or per-service 0600)"}
-  - {path: /var/lib/pokus, owner: root, group: root, mode: "0755", notes: "service homes and lab state"}
+# Host paths outside pinka_root (absolute).
+pinka_system_layout:
+  - {path: /etc/pinka, owner: root, group: root, mode: "0755", notes: "host profile, bootstrap state, rendered non-secret config"}
+  - {path: /etc/pinka/secrets, owner: root, group: potka-svc, mode: "0750", notes: "rendered secrets (files 0640 or per-service 0600)"}
+  - {path: /var/lib/pinka, owner: root, group: root, mode: "0755", notes: "service homes and lab state"}
 
 # --- Ports (contracts.md, resolution C10; every listener on 127.0.0.1) --------
 
 # Listener ports of the lab services (contracts.md#ports).
-pokus_ports:
+pinka_ports:
   otlp_grpc: 4317
   otlp_http: 4318
   opa: 8181
@@ -145,7 +145,7 @@ pokus_ports:
 # metrics and health checks, Loki's and Tempo's internal servers. Not part of
 # the contract; every observability container uses the host network and binds
 # 127.0.0.1 (BUILD_PROMPT §7.9).
-pokus_internal_ports:
+pinka_internal_ports:
   collector_metrics: 18720
   collector_telemetry: 18721
   journald_telemetry: 18722
@@ -162,28 +162,28 @@ pokus_internal_ports:
 # Dedicated collector listener for VM targets (contracts.md#telemetry, C4):
 # an address on a dummy interface, reachable only from run networks through
 # the run ACL and the firewall, OTLP gRPC and HTTP on the ports of
-# pokus_ports. Set up only with the vm_targets feature.
-pokus_vm_otlp: {interface: pokus-otlp0, address: 198.18.0.1}
+# pinka_ports. Set up only with the vm_targets feature.
+pinka_vm_otlp: {interface: pinka-otlp0, address: 198.18.0.1}
 
 # Incus bridges the firewall treats as Incus networks (contracts.md: run
-# networks are named r-<short>; image builds use pokus-build0).
-pokus_incus_bridge_patterns: ["r-*", "pokus-build0"]
+# networks are named r-<short>; image builds use pinka-build0).
+pinka_incus_bridge_patterns: ["r-*", "pinka-build0"]
 # Bridges of the researchers' personal Incus projects (incusbr-<uid>); unlike
 # run networks they have NAT and an uplink.
-pokus_incus_personal_bridge_patterns: ["incusbr-*"]
+pinka_incus_personal_bridge_patterns: ["incusbr-*"]
 
 # --- Platform and catalog deployments (BUILD_PROMPT §7.14, contracts.md) -------
 
-# The deployer's copy of the Pokus repository, required when the platform or
+# The deployer's copy of the pokus-platform repository, required when the platform or
 # the catalog is enabled (owner answer E3): an SSH URL (read-only deploy key
 # generated on the host) or an anonymous HTTPS URL. Never a URL with credentials.
-pokus_source_repo: ""
+pinka_source_repo: ""
 # Extra known_hosts lines for an SSH source (GitHub's keys come from versions.lock.yml).
-pokus_source_known_hosts: []
+pinka_source_known_hosts: []
 # Deploy only tags carrying a valid SSH signature of an allowed signer (owner answer E16).
 require_signed_tags: false
 # Allowed signers for signed tags, ssh-keygen allowed_signers lines ("<principal> <key type> <key>").
-pokus_allowed_signers: []
+pinka_allowed_signers: []
 # Tailnet name of the paired inference node of a lab node (node_role: lab,
 # BUILD_PROMPT §19.10); set when the nodes are paired.
 inference_remote_node: ""

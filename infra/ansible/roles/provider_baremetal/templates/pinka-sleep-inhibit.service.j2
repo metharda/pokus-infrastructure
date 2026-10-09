@@ -1,0 +1,15 @@
+# Managed by pinka (ansible/roles/provider_baremetal/templates/pinka-sleep-inhibit.service.j2). Local changes will be overwritten.
+#
+# Holds a sleep inhibitor for as long as the lab is up (power_policy:
+# lab_session_inhibit); pinka-lab.target pulls it in.
+[Unit]
+Description=Pokus lab: keep the host awake while the lab is up
+PartOf=pinka-lab.target
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=simple
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle --mode=block --who=pinka --why="Pokus lab session" /usr/bin/sleep infinity
+
+[Install]
+WantedBy=pinka-lab.target

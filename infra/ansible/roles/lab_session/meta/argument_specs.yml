@@ -1,9 +1,9 @@
-# Managed by pokus-infra (ansible/roles/lab_session/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/lab_session/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: pokus-lab.target, the startup health gate and the per-boot session record.
+    short_description: pinka-lab.target, the startup health gate and the per-boot session record.
     options:
-      pokus_provider:
+      pinka_provider:
         type: str
         required: true
         description: Provider of this host; on wsl2 the gate also compares the clock with an NTP reference.
@@ -11,18 +11,18 @@ argument_specs:
         type: str
         required: true
         description: full, lab or inference; selects the checks of the health gate.
-      pokus_features:
+      pinka_features:
         type: dict
         required: true
         description: Feature flags of the host profile (gpu_inference adds the GPU check).
-      pokus_versions:
+      pinka_versions:
         type: dict
         required: true
         description: The pinned versions (the CUDA image of the GPU check).
       lab_session_autostart:
         type: bool
         default: true
-        description: Start the lab at boot (multi-user.target wants pokus-lab.target).
+        description: Start the lab at boot (multi-user.target wants pinka-lab.target).
       lab_session_gate_timeout:
         type: int
         default: 600

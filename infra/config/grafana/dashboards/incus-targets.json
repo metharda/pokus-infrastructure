@@ -1,9 +1,9 @@
 {
-  "uid": "pokus-incus-targets",
-  "title": "Pokus: Incus targets",
-  "description": "Managed by pokus-infra (config/grafana/dashboards/incus-targets.json). Local changes will be overwritten. Instances in the bench, build and personal projects (Incus metrics with the metrics certificate).",
+  "uid": "pinka-incus-targets",
+  "title": "pinka: Incus targets",
+  "description": "Managed by pinka (config/grafana/dashboards/incus-targets.json). Local changes will be overwritten. Instances in the bench, build and personal projects (Incus metrics with the metrics certificate).",
   "tags": [
-    "pokus"
+    "pinka"
   ],
   "timezone": "utc",
   "editable": false,
@@ -415,7 +415,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=\"journald\"} | syslog_identifier=\"pokus-incus-events\""
+          "expr": "{service_name=\"journald\"} | syslog_identifier=\"pinka-incus-events\""
         }
       ],
       "id": 9

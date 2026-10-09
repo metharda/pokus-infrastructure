@@ -1,4 +1,4 @@
-# Managed by pokus-infra (preflight/support-matrix.yml).
+# Managed by pinka (preflight/support-matrix.yml).
 #
 # Source of truth for the preflight decision (BUILD_PROMPT §2.3). `make generate`
 # compiles it to support-matrix.json (the evaluator reads only the JSON, so
@@ -29,7 +29,7 @@ release_model_notes:
   fast: "Fast-moving release: only the current and the previous release are in the matrix."
   rolling: >-
     Rolling release: installed versions drift over time. Results are comparable only within the
-    same environment fingerprint; update the host only with 'pokus-lab update-host'.
+    same environment fingerprint; update the host only with 'pinka update-host'.
 
 lifecycle_sources:
   distro-info-data: >-
@@ -158,7 +158,7 @@ minimums:
   cpu_threads: {required: 8, recommended: 16}
   free_disk_gib:
     var_lib: {required: 150, recommended: 400}
-    srv_pokus: {required: 100, recommended: 500}
+    srv_pinka: {required: 100, recommended: 500}
 
 core_requirements:  # failing any of these → unsupported (or needs_action when a provider rule resolves it)
   - id: systemd_pid1

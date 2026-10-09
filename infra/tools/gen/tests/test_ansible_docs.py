@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pokus_infra_gen import ansible_docs, cli
+from pinka_gen import ansible_docs, cli
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -88,9 +88,9 @@ def test_architecture_region_is_replaced_and_stable() -> None:
     page = ansible_docs.architecture_page(ROOT)
     assert page == (ROOT / ansible_docs.ARCHITECTURE).read_text(encoding="utf-8")
     region = page.split(ansible_docs.LAYOUT_START, 1)[1].split(ansible_docs.LAYOUT_END, 1)[0]
-    assert "| `/srv/pokus/catalog/` | root:pokus-gt | 0750 |" in region
-    assert "| /srv/pokus/users/&lt;name&gt;/ | &lt;name&gt;:&lt;name&gt; | 0700 |" in region
-    assert "| `/etc/pokus/secrets/` | root:pokus-svc | 0750 |" in region
+    assert "| `/srv/pinka/catalog/` | root:pinka-gt | 0750 |" in region
+    assert "| /srv/pinka/users/&lt;name&gt;/ | &lt;name&gt;:&lt;name&gt; | 0700 |" in region
+    assert "| `/etc/pinka/secrets/` | root:potka-svc | 0750 |" in region
 
 
 def test_variables_page_lists_every_variable() -> None:
@@ -103,9 +103,9 @@ def test_variables_page_lists_every_variable() -> None:
 
 def test_coverage_includes_ansible_and_layout_entries() -> None:
     labels = [label for label, _, _ in cli.reference_entries(ROOT)]
-    assert "group_vars key pokus_root" in labels
+    assert "group_vars key pinka_root" in labels
     assert "role firewall (main) variable firewall_tailnet_interface" in labels
-    assert "layout path /srv/pokus/backups/" in labels
+    assert "layout path /srv/pinka/backups/" in labels
 
 
 def test_component_sources_page_marks_unverified() -> None:

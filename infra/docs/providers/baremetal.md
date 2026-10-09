@@ -38,7 +38,7 @@ never replace them.
 
 ## Secure Boot and reboots
 
-Pokus never disables Secure Boot. A driver module built with DKMS on a host
+Pokus Infrastructure (pinka) never disables Secure Boot. A driver module built with DKMS on a host
 with Secure Boot is signed with a key that must be enrolled as a Machine
 Owner Key (MOK) before the module loads, and the enrollment needs someone at
 the console during the next boot. So on a host with Secure Boot on and no
@@ -90,7 +90,7 @@ updates leave the kernel alone unless `allow_kernel_updates` is `true`.
 ## The Incus storage pool
 
 The Incus pool should live on a dedicated disk or partition
-(`incus_pool_source: device`). Pokus formats a device only when
+(`incus_pool_source: device`). Pokus Infrastructure formats a device only when
 `incus_pool_device_confirm` repeats `incus_pool_device` exactly, the device is
 not mounted and carries no filesystem signature (unless
 `incus_pool_device_force_wipe` is set). A loop-backed pool inside the root
@@ -107,8 +107,8 @@ filesystem is the fallback.
 
 | Value | Behavior |
 | --- | --- |
-| `never_sleep` | Masks `sleep.target`, `suspend.target`, `hibernate.target` and `hybrid-sleep.target`. Switching to another policy unmasks exactly the targets Pokus masked. |
-| `lab_session_inhibit` (default) | `pokus-sleep-inhibit.service` holds a `systemd-inhibit --what=sleep:idle --mode=block` lock while `pokus-lab.target` is up, so the machine can sleep when the lab is stopped. |
+| `never_sleep` | Masks `sleep.target`, `suspend.target`, `hibernate.target` and `hybrid-sleep.target`. Switching to another policy unmasks exactly the targets Pokus Infrastructure masked. |
+| `lab_session_inhibit` (default) | `pinka-sleep-inhibit.service` holds a `systemd-inhibit --what=sleep:idle --mode=block` lock while `pinka-lab.target` is up, so the machine can sleep when the lab is stopped. |
 | `os_default` | Changes nothing. |
 
 Related: [Virtual machines](vm.md), [WSL2 hosts](wsl2.md),

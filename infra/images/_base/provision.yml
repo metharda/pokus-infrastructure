@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/_base/provision.yml). Local changes will be overwritten.
+# Managed by pinka (images/_base/provision.yml). Local changes will be overwritten.
 #
 # Provisioning of `_base` inside the build instance (BUILD_PROMPT §7.13),
 # run by the images role through the community.general.incus connection.

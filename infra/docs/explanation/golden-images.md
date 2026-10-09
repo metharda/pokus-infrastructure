@@ -54,7 +54,7 @@ the pinned base fingerprint fixes everything the build did not change.
 
 The role builds a blueprint only when neither its alias `<blueprint>/<version>`
 nor its export exist. The build runs in the Incus project `build`, the only
-project whose network (`pokus-build0`) has NAT to the internet:
+project whose network (`pinka-build0`) has NAT to the internet:
 
 ```mermaid
 sequenceDiagram
@@ -71,9 +71,9 @@ sequenceDiagram
 ```
 
 The published image carries the properties of the
-[integration contract](../contracts.md#incus): `pokus.recipe_commit` (the
+[integration contract](../contracts.md#incus): `pinka.recipe_commit` (the
 repository commit, with `-dirty` when the infra tree had changes),
-`pokus.built_at` and `pokus.base_fingerprint`; `requirements.nesting` makes
+`pinka.built_at` and `pinka.base_fingerprint`; `requirements.nesting` makes
 Incus refuse to start a blueprint that needs nesting without it. A failed
 build keeps its instance `build-<blueprint>` for inspection; the next run
 replaces it.
@@ -86,8 +86,8 @@ log), and collects host metrics. It sends OTLP to `127.0.0.1:4317` inside a
 container, which the platform connects to the lab's collector with a proxy
 device, and to the collector's VM listener inside a VM
 ([telemetry](telemetry.md)). The image contains no identity of a run: at
-launch the platform sets `OTEL_RESOURCE_ATTRIBUTES` (`pokus.run_id`,
-`pokus.node`), and a small helper hands the value of the instance's init
+launch the platform sets `OTEL_RESOURCE_ATTRIBUTES` (`potka.run_id`,
+`potka.node`), and a small helper hands the value of the instance's init
 process to the agent before it starts.
 
 ## The leakage lint
@@ -114,11 +114,11 @@ the lint.
 
 ## Exports
 
-Each image is exported to `/srv/pokus/images/<blueprint>/<version>/` with
+Each image is exported to `/srv/pinka/images/<blueprint>/<version>/` with
 `SHA256SUMS`, `packages.txt` and `build.json` (fingerprint, base, properties,
 files). Public image servers rotate their images and delete old ones, so the
 pinned upstream base is exported too, to
-`/srv/pokus/images/_upstream/<base>/<fingerprint>/`: a lab can rebuild a
+`/srv/pinka/images/_upstream/<base>/<fingerprint>/`: a lab can rebuild a
 blueprint years later from the same base. When an alias is missing but its
 export exists (for example on a restored host), the role checks the export's
 fingerprint and imports it instead of building a different image.

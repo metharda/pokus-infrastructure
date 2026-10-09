@@ -1,5 +1,5 @@
 #cloud-config
-# Managed by pokus-infra (images/redis-cache/cloud-init.yaml). Local changes will be overwritten.
+# Managed by pinka (images/redis-cache/cloud-init.yaml). Local changes will be overwritten.
 #
 # User data of the build instance; provisioning happens in provision.yml.
 package_update: false

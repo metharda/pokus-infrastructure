@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_wsl2/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_wsl2/tasks/main.yml). Local changes will be overwritten.
 #
 # WSL2 provider (BUILD_PROMPT §3.1). Never installs a Linux NVIDIA kernel
 # driver and never touches the Windows side: the GPU comes from the Windows
@@ -30,9 +30,9 @@
   # NVIDIA Container Toolkit needs (docs.nvidia.com is not reachable from the
   # build environment).
   ansible.builtin.copy:
-    dest: /etc/ld.so.conf.d/pokus-wsl.conf
+    dest: /etc/ld.so.conf.d/pinka-wsl.conf
     content: |
-      # Managed by pokus-infra (ansible/roles/provider_wsl2). Local changes will be overwritten.
+      # Managed by pinka (ansible/roles/provider_wsl2). Local changes will be overwritten.
       /usr/lib/wsl/lib
     owner: root
     group: root

@@ -1,45 +1,45 @@
-# Managed by pokus-infra (ansible/roles/doctor/vars/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/doctor/vars/main.yml). Local changes will be overwritten.
 
 # Installed CLI (BUILD_PROMPT §7.17, §9): the packages, the wrapper and the lab description.
-doctor_lib: /usr/local/lib/pokus
-doctor_bin: /usr/local/bin/pokus-lab
-doctor_config: /etc/pokus/lab.json
-doctor_fingerprint_dir: /var/lib/pokus/fingerprint
-# Built documentation that `pokus-lab docs serve` serves (a release's documentation tarball).
-doctor_docs_dir: /usr/local/share/pokus/docs
+doctor_lib: /usr/local/lib/pinka
+doctor_bin: /usr/local/bin/pinka
+doctor_config: /etc/pinka/lab.json
+doctor_fingerprint_dir: /var/lib/pinka/fingerprint
+# Built documentation that `pinka docs serve` serves (a release's documentation tarball).
+doctor_docs_dir: /usr/local/share/pinka/docs
 # Python packages copied below doctor_lib (src relative to the infra directory).
 doctor_packages:
-  - {src: tools/pokus-lab/pokus_lab, dest: pokus-lab/pokus_lab}
-  - {src: preflight/pokus_preflight, dest: preflight/pokus_preflight}
+  - {src: tools/pinka-lab/pinka_lab, dest: pinka-lab/pinka_lab}
+  - {src: preflight/pinka_preflight, dest: preflight/pinka_preflight}
 
 # What this node runs (BUILD_PROMPT §19.10).
 doctor_runs_lab: "{{ node_role in ['full', 'lab'] }}"
-doctor_serves_inference: "{{ (pokus_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
+doctor_serves_inference: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
 
 # The platform's units when it is deployed here (platform role).
 doctor_platform: "{{ doctor_runs_lab and (platform_enabled | default(false) | bool) }}"
 # An inference node configured with its paired lab node runs the control endpoint.
 doctor_inference_control: "{{ node_role == 'inference' and inference_lab_node | length > 0 }}"
 
-# Units of pokus-lab.target that must be active. The inference project is not
+# Units of pinka-lab.target that must be active. The inference project is not
 # listed: it runs only while a deployment is active (doctor's gpu.vllm check);
 # neither is the platform's oneshot reconcile unit.
 doctor_units: >-
-  {{ ['pokus-health-gate.service', 'pokus-session-start.service']
-     + (['pokus-core.service'] if doctor_runs_lab else [])
-     + ['pokus-observability.service']
-     + (['pokus-sleep-inhibit.service']
-        if pokus_provider in ['baremetal', 'vm'] and power_policy == 'lab_session_inhibit' else [])
+  {{ ['pinka-health-gate.service', 'pinka-session-start.service']
+     + (['pinka-core.service'] if doctor_runs_lab else [])
+     + ['pinka-observability.service']
+     + (['pinka-sleep-inhibit.service']
+        if pinka_provider in ['baremetal', 'vm'] and power_policy == 'lab_session_inhibit' else [])
      + ((platform_units | rejectattr('type', 'defined') | map(attribute='unit') | list)
         if doctor_platform else [])
      + ([inference_control_unit] if doctor_inference_control else []) }}
 
 # Hardening doctor compares with `systemctl show` (systemd.hardening).
 doctor_hardening: >-
-  {{ (platform_units | pokus_unit_hardening(platform_denied_paths, platform_agent_denied_paths)
+  {{ (platform_units | pinka_unit_hardening(platform_denied_paths, platform_agent_denied_paths)
       if doctor_platform else [])
-     + ([{'unit': inference_control_unit, 'account': 'pokus-orch'}]
-        | pokus_unit_hardening(inference_control_denied_paths)
+     + ([{'unit': inference_control_unit, 'account': 'potka-orch'}]
+        | pinka_unit_hardening(inference_control_denied_paths)
         if node_role == 'inference' else []) }}
 
 # Ports that listen on the tailnet address for split inference (the firewall
@@ -49,39 +49,39 @@ doctor_tailnet_ports: "{{ firewall_tailnet_tcp_ports | difference([22, firewall_
 
 # Lab containers and the pinned image (versions.lock.yml containers.images) each runs.
 doctor_core_containers:
-  pokus-postgres: postgres
-  pokus-postgres-exporter: postgres_exporter
-  pokus-opa: opa
+  pinka-postgres: postgres
+  pinka-postgres-exporter: postgres_exporter
+  pinka-opa: opa
 doctor_observability_containers:
-  pokus-otel-gateway: otel_collector
-  pokus-otel-journald: otel_collector
-  pokus-node-exporter: node_exporter
-  pokus-cadvisor: cadvisor
+  pinka-otel-gateway: otel_collector
+  pinka-otel-journald: otel_collector
+  pinka-node-exporter: node_exporter
+  pinka-cadvisor: cadvisor
 # Not on inference nodes, which forward to their lab node (BUILD_PROMPT §19.10).
 doctor_store_containers:
-  pokus-prometheus: prometheus
-  pokus-loki: loki
-  pokus-tempo: tempo
-  pokus-grafana: grafana
+  pinka-prometheus: prometheus
+  pinka-loki: loki
+  pinka-tempo: tempo
+  pinka-grafana: grafana
 doctor_gpu_containers:
-  pokus-gpu-exporter: gpu_exporter
+  pinka-gpu-exporter: gpu_exporter
 doctor_container_keys: >-
   {{ (doctor_core_containers if doctor_runs_lab else {})
      | combine(doctor_observability_containers,
                doctor_store_containers if doctor_runs_lab else {},
-               doctor_gpu_containers if pokus_features.gpu_inference | default(false) else {}) }}
+               doctor_gpu_containers if pinka_features.gpu_inference | default(false) else {}) }}
 # Container name -> pinned reference <image>@<digest>.
 doctor_containers: >-
   {{ dict(doctor_container_keys.keys() | list
-          | zip(doctor_container_keys.values() | map('extract', pokus_versions.containers.images)
+          | zip(doctor_container_keys.values() | map('extract', pinka_versions.containers.images)
                 | map(attribute='image')
-                | zip(doctor_container_keys.values() | map('extract', pokus_versions.containers.images)
+                | zip(doctor_container_keys.values() | map('extract', pinka_versions.containers.images)
                       | map(attribute='digest'))
                 | map('join', '@'))) }}
 
 # The CUDA image of the GPU check (pulled by nvidia_container_toolkit).
 doctor_gpu_image: >-
-  {{ pokus_versions.containers.images.cuda_base_test.image }}@{{ pokus_versions.containers.images.cuda_base_test.digest }}
+  {{ pinka_versions.containers.images.cuda_base_test.image }}@{{ pinka_versions.containers.images.cuda_base_test.digest }}
 
 # Incus objects doctor expects (the incus role creates them; personal projects
 # depend on UIDs and are not checked).
@@ -90,12 +90,12 @@ doctor_incus:
   backend: "{{ host_profile.storage_backend }}"
   min_free_gib: "{{ doctor_min_pool_free_gib }}"
   run_acl: "{{ incus_run_acl }}"
-  events_unit: pokus-incus-events.service
+  events_unit: pinka-incus-events.service
   projects: [bench, build]
   profiles: >-
     {{ [{'name': 'target-container', 'project': 'bench'}, {'name': 'probe-client', 'project': 'bench'},
         {'name': 'build', 'project': 'build'}]
-       + ([{'name': 'target-vm', 'project': 'bench'}] if pokus_features.vm_targets | default(false) else []) }}
+       + ([{'name': 'target-vm', 'project': 'bench'}] if pinka_features.vm_targets | default(false) else []) }}
   cert_dir: "{{ incus_cert_dir }}"
   certificates: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
 
@@ -106,10 +106,10 @@ doctor_images_blueprints: "{{ images_blueprints | default(doctor_images_defaults
 
 # The telemetry round trip of doctor (full and lab nodes).
 doctor_observability:
-  otlp_http: "http://127.0.0.1:{{ pokus_ports.otlp_http }}"
-  loki: "http://127.0.0.1:{{ pokus_ports.loki }}"
-  tempo: "http://127.0.0.1:{{ pokus_ports.tempo }}"
-  prometheus: "http://127.0.0.1:{{ pokus_ports.prometheus }}"
+  otlp_http: "http://127.0.0.1:{{ pinka_ports.otlp_http }}"
+  loki: "http://127.0.0.1:{{ pinka_ports.loki }}"
+  tempo: "http://127.0.0.1:{{ pinka_ports.tempo }}"
+  prometheus: "http://127.0.0.1:{{ pinka_ports.prometheus }}"
   wait_seconds: "{{ doctor_telemetry_wait | int }}"
   smoke_wait_seconds: "{{ doctor_smoke_wait | int }}"
   poll_seconds: 5

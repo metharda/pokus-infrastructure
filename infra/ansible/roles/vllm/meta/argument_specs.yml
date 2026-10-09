@@ -1,9 +1,9 @@
-# Managed by pokus-infra (ansible/roles/vllm/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/vllm/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: vLLM on 127.0.0.1 with serving profiles, deployments, the deploy helper and verification.
     options:
-      pokus_infra_dir:
+      pinka_dir:
         type: path
         required: true
         description: Infra directory of the checkout (vllm/profiles, models.lock.yml, models.catalog.yml).

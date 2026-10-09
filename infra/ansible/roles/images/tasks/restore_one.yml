@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/restore_one.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/restore_one.yml). Local changes will be overwritten.
 #
 # One export (images_record_path, its build.json) during a restore.
 
@@ -25,7 +25,7 @@
 
 - name: Find the image the alias points to
   ansible.builtin.set_fact:
-    images_image: "{{ images_list.stdout | from_json | pokus_image_by_alias(images_alias) }}"
+    images_image: "{{ images_list.stdout | from_json | pinka_image_by_alias(images_alias) }}"
 
 - name: Refuse an alias that points to a different image
   ansible.builtin.assert:

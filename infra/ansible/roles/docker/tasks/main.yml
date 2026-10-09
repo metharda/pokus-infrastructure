@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/docker/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/docker/tasks/main.yml). Local changes will be overwritten.
 #
 # Docker Engine with the Compose v2 plugin and buildx (BUILD_PROMPT §7.6) from
 # the source the component source matrix selects, pinned and held. Only the
@@ -7,15 +7,15 @@
 # other tool rewrites the file.
 - name: Look up the Docker source
   ansible.builtin.set_fact:
-    docker_source: "{{ pokus_component_sources | pokus_component_source('docker', pokus_source_group) }}"
-    docker_versions: "{{ pokus_versions.packages | pokus_lock_packages('docker', pokus_release_key) }}"
+    docker_source: "{{ pinka_component_sources | pinka_component_source('docker', pinka_source_group) }}"
+    docker_versions: "{{ pinka_versions.packages | pinka_lock_packages('docker', pinka_release_key) }}"
 
 - name: Refuse an unverified Docker source
   ansible.builtin.assert:
     that:
       - docker_source.verify is not defined
     fail_msg: >-
-      ansible/component-sources.yml marks the Docker source for {{ pokus_source_group }}
+      ansible/component-sources.yml marks the Docker source for {{ pinka_source_group }}
       as unverified ({{ docker_source.verify | default('') }}); verify it first
       (docs/how-to/update-versions.md).
     quiet: true
@@ -34,7 +34,7 @@
   ansible.builtin.meta: end_role
   when:
     - ansible_check_mode
-    - "'dockerd' not in pokus_present.commands"
+    - "'dockerd' not in pinka_present.commands"
 
 - name: Install Docker Engine, Compose and buildx
   ansible.builtin.include_role:
@@ -67,7 +67,7 @@
 - name: Decide how containers reach the GPU
   ansible.builtin.set_fact:
     docker_gpu_method: >-
-      {{ 'none' if not (pokus_features.gpu_inference | default(false))
+      {{ 'none' if not (pinka_features.gpu_inference | default(false))
          else ('cdi' if docker_engine_major | int >= docker_cdi_min_major else 'runtime') }}
 
 - name: Create /etc/docker
@@ -86,7 +86,7 @@
     group: root
     mode: "0644"
     validate: dockerd --validate --config-file=%s
-    backup: true  # an existing file that Pokus did not write is kept as a backup
+    backup: true  # an existing file that pinka did not write is kept as a backup
   notify: Restart Docker
 
 - name: Enable Docker

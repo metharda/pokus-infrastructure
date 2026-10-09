@@ -1,4 +1,4 @@
-Pokus preflight: DEGRADED (exit 10)
+pinka preflight: DEGRADED (exit 10)
   tier experimental (os experimental, arch supported) · release model rolling · provider baremetal
 
 Environment
@@ -10,7 +10,7 @@ OS and kernel
 Hardware
   CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
   memory 32.0 GiB, swap 8.0 GiB
-  disk srv_pokus: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
   disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
 GPU
   none
@@ -26,7 +26,7 @@ Disabled features
   - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
 
 Warnings
-  - Rolling release: installed versions drift over time. Results are comparable only within the same environment fingerprint; update the host only with 'pokus-lab update-host'.
+  - Rolling release: installed versions drift over time. Results are comparable only within the same environment fingerprint; update the host only with 'pinka update-host'.
 
 Notes
   - Experimental tier: continue only with --accept-experimental or interactive confirmation.

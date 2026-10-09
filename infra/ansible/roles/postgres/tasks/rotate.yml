@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/postgres/tasks/rotate.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/postgres/tasks/rotate.yml). Local changes will be overwritten.
 #
 # Entry point of rotate.yml: new superuser and exporter passwords (the two the
 # host generates; vault passwords change in the vault and converge on the next
@@ -8,7 +8,7 @@
 
 - name: Start PostgreSQL
   ansible.builtin.systemd_service:
-    name: pokus-core.service
+    name: pinka-core.service
     state: started
 
 - name: Wait until PostgreSQL accepts the superuser
@@ -24,7 +24,7 @@
   ansible.builtin.set_fact:
     postgres_new_passwords:
       postgres-superuser: "{{ lookup('ansible.builtin.password', '/dev/null', length=40, chars=['ascii_letters', 'digits']) }}"
-      pokus-monitor: "{{ lookup('ansible.builtin.password', '/dev/null', length=40, chars=['ascii_letters', 'digits']) }}"
+      pinka-monitor: "{{ lookup('ansible.builtin.password', '/dev/null', length=40, chars=['ascii_letters', 'digits']) }}"
   no_log: true
 
 - name: Change the superuser password
@@ -42,7 +42,7 @@
       ansible.builtin.command:
         argv: "{{ postgres_psql + ['--quiet'] }}"
         stdin: >-
-          ALTER ROLE postgres PASSWORD '{{ postgres_new_passwords['postgres-superuser'] | pokus_scram_verifier }}';
+          ALTER ROLE postgres PASSWORD '{{ postgres_new_passwords['postgres-superuser'] | pinka_scram_verifier }}';
       changed_when: true
       no_log: true
 
@@ -61,13 +61,13 @@
         msg: >-
           Changing the superuser password failed in "{{ ansible_failed_task.name }}". If the
           ALTER ROLE ran, the new password is in {{ postgres_container_secrets_dir }}/postgres-superuser.new:
-          move it over postgres-superuser and restart pokus-core.service; otherwise delete the
+          move it over postgres-superuser and restart pinka-core.service; otherwise delete the
           .new file. Nothing else was changed.
 
 - name: Write the new exporter password
   ansible.builtin.copy:
-    content: "{{ postgres_new_passwords['pokus-monitor'] }}"
-    dest: "{{ postgres_container_secrets_dir }}/pokus-monitor"
+    content: "{{ postgres_new_passwords['pinka-monitor'] }}"
+    dest: "{{ postgres_container_secrets_dir }}/pinka-monitor"
     owner: "{{ postgres_exporter_uid }}"
     group: root
     mode: "0400"
@@ -77,7 +77,7 @@
 # when they are created again (the unit runs compose down and up).
 - name: Recreate the containers with the new secret files
   ansible.builtin.systemd_service:
-    name: pokus-core.service
+    name: pinka-core.service
     state: restarted
 
 - name: Set the exporter's new password

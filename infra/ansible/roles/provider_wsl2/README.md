@@ -9,9 +9,9 @@ WSL2 provider (BUILD_PROMPT §3.1).
 - Never installs a Linux NVIDIA driver: the GPU comes from the Windows driver
   through `/dev/dxg`; the WSL GPU libraries in `/usr/lib/wsl/lib` are added to
   the dynamic linker path for the NVIDIA Container Toolkit.
-- `.wslconfig` lives on Windows and is never changed by Pokus: `post_layout`
+- `.wslconfig` lives on Windows and is never changed by Pokus Infrastructure (pinka): `post_layout`
   renders a recommendation into
-  `/srv/pokus/services/contrib/wslconfig.recommended` for the operator to copy.
+  `/srv/pinka/services/contrib/wslconfig.recommended` for the operator to copy.
   Doctor compares the effective memory, CPU count, swap and `/dev/kvm` with
   host_vars `expected`.
 - Optional Windows helpers live in `contrib/windows/` and are never run by

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform/handlers/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform/handlers/main.yml). Local changes will be overwritten.
 - name: Restart the platform
   ansible.builtin.command:
     argv: >-

@@ -9,7 +9,7 @@ description: Change a pin in versions.lock.yml, verify it, and regenerate everyt
 
 # How to update pinned versions
 
-Every external artifact Pokus installs (container images, binaries, packages,
+Every external artifact Pokus Infrastructure (pinka) installs (container images, binaries, packages,
 repository keys, Python packages, Ansible collections) is pinned in
 `infra/versions.lock.yml`. Nothing is updated automatically: you change a pin
 by hand, verify it, and regenerate the files derived from the lock. The
@@ -26,12 +26,12 @@ current pins are listed in [Pinned versions](../reference/versions.md).
 
     <!-- qa:run env=E0 -->
     ```bash
-    cd <pokus-checkout>/infra
+    cd <checkout>/infra
     make lock-update
     make verify-todos
     ```
 
-    `<pokus-checkout>` is the directory where you cloned the repository.
+    `<checkout>` is the directory where you cloned the repository.
     `make verify-todos` lists every value that is still marked `TODO(verify)`.
 
 2. Find the new release at its upstream source and verify it there; never take

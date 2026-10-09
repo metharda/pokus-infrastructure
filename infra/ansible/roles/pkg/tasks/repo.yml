@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/repo.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/tasks/repo.yml). Local changes will be overwritten.
 #
 # Add a vendor repository from ansible/component-sources.yml. Its key is
 # downloaded, its primary key fingerprint is compared with versions.lock.yml,
@@ -7,8 +7,8 @@
 # Never apt-key, never --gpg-auto-import-keys, never gpgcheck=0.
 - name: Look up repository {{ pkg_repo_name }}
   ansible.builtin.set_fact:
-    pkg_repo: "{{ pokus_repositories[pkg_repo_name] }}"
-    pkg_repo_lock_key: "{{ pokus_versions.repository_keys['keys'][pokus_repositories[pkg_repo_name].key] }}"
+    pkg_repo: "{{ pinka_repositories[pkg_repo_name] }}"
+    pkg_repo_lock_key: "{{ pinka_versions.repository_keys['keys'][pinka_repositories[pkg_repo_name].key] }}"
     pkg_repo_values:
       deb_arch: "{{ pkg_deb_arches[ansible_facts['architecture']] | default(ansible_facts['architecture']) }}"
 
@@ -27,7 +27,7 @@
 - name: Create a temporary directory for the key of {{ pkg_repo_name }}
   ansible.builtin.tempfile:
     state: directory
-    suffix: .pokus-key
+    suffix: .pinka-key
   register: pkg_key_tmp
   check_mode: false
   changed_when: false
@@ -54,10 +54,10 @@
     - name: Compare the fingerprint with versions.lock.yml
       ansible.builtin.assert:
         that:
-          - (pkg_key_colons.stdout | pokus_fingerprints) == [pkg_repo_lock_key.fingerprint]
+          - (pkg_key_colons.stdout | pinka_fingerprints) == [pkg_repo_lock_key.fingerprint]
         fail_msg: >-
           The key at {{ pkg_repo_lock_key.urls[0] }} has the fingerprint(s)
-          {{ pkg_key_colons.stdout | pokus_fingerprints | join(', ') }}, but versions.lock.yml pins
+          {{ pkg_key_colons.stdout | pinka_fingerprints | join(', ') }}, but versions.lock.yml pins
           {{ pkg_repo_lock_key.fingerprint }}. Nothing was installed.
         quiet: true
 

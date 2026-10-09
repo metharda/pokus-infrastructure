@@ -11,12 +11,12 @@ from typing import Any
 
 from helpers import FIXTURES_DIR, PREFLIGHT_DIR, runner
 
-from pokus_preflight import cli, matrix
-from pokus_preflight.cli import ENDPOINTS_JSON, _load_json_list
-from pokus_preflight.detect import network
-from pokus_preflight.detect.os_release import OsRelease
-from pokus_preflight.fs import FileSystem
-from pokus_preflight.runner import FixtureRunner
+from pinka_preflight import cli, matrix
+from pinka_preflight.cli import ENDPOINTS_JSON, _load_json_list
+from pinka_preflight.detect import network
+from pinka_preflight.detect.os_release import OsRelease
+from pinka_preflight.fs import FileSystem
+from pinka_preflight.runner import FixtureRunner
 
 
 def osr(**kw: object) -> OsRelease:

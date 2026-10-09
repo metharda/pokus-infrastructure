@@ -1,8 +1,8 @@
-# Managed by pokus-infra (ansible/roles/compose/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/compose/defaults/main.yml). Local changes will be overwritten.
 
 # Compose project: core, observability or inference (compose/<project>/compose.yml).
 compose_project: ""
-# Description of the systemd unit pokus-<project>.service.
+# Description of the systemd unit pinka-<project>.service.
 compose_description: ""
 # Services to start now (empty: all services of the project).
 compose_services: []
@@ -17,9 +17,9 @@ compose_start: true
 # Seconds `docker compose up --wait` waits for healthy containers.
 compose_wait_timeout: 300
 # Directory of the rendered projects (BUILD_PROMPT §6.2 services/).
-compose_root: "{{ pokus_root }}/services"
+compose_root: "{{ pinka_root }}/services"
 # Images by service variable name, from versions.lock.yml (pinned by digest).
-compose_images: "{{ pokus_versions.containers.images }}"
+compose_images: "{{ pinka_versions.containers.images }}"
 # Further variables for the .env file; every role that includes the same
 # project must pass the same values (the file is shared).
 compose_extra_env: {}

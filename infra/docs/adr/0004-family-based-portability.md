@@ -10,11 +10,11 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §19)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §19)
 
 ## Context
 
-Pokus must install on Debian, Ubuntu, Fedora, RHEL-compatible distributions,
+Pokus Infrastructure (pinka) must install on Debian, Ubuntu, Fedora, RHEL-compatible distributions,
 openSUSE, Arch and their derivatives. Writing and testing roles per
 distribution does not scale, and scattering `when: ansible_distribution ==
 ...` conditions through the roles makes it impossible to see what differs

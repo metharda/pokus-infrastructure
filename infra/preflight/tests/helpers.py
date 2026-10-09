@@ -9,8 +9,8 @@ import unittest
 from collections.abc import Mapping
 from typing import Any
 
-from pokus_preflight.fs import FileSystem
-from pokus_preflight.runner import FixtureRunner
+from pinka_preflight.fs import FileSystem
+from pinka_preflight.runner import FixtureRunner
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PREFLIGHT_DIR = os.path.dirname(HERE)

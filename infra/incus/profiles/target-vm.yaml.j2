@@ -1,10 +1,10 @@
-# Managed by pokus-infra (incus/profiles/target-vm.yaml.j2). Local changes will be overwritten.
+# Managed by pinka (incus/profiles/target-vm.yaml.j2). Local changes will be overwritten.
 #
 # Base profile of benchmark target VMs, only with the vm_targets feature
 # (BUILD_PROMPT §7.7).
 name: target-vm
 project: bench
-description: Pokus benchmark target virtual machine
+description: pinka benchmark target virtual machine
 config:
   limits.cpu: "{{ incus_target_vm.cpu }}"
   limits.memory: "{{ incus_target_vm.memory }}"

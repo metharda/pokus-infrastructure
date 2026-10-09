@@ -1,19 +1,19 @@
-# Managed by pokus-infra (ansible/roles/tailscale/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/tailscale/tasks/main.yml). Local changes will be overwritten.
 #
 # Tailscale (BUILD_PROMPT §7.4): pinned and held packages from the component
 # source matrix, a tailnet join with the lab's tag, and a hard check that
 # Funnel is off. Lab services are never published to the internet.
 - name: Look up the Tailscale source
   ansible.builtin.set_fact:
-    tailscale_source: "{{ pokus_component_sources | pokus_component_source('tailscale', pokus_source_group) }}"
-    tailscale_versions: "{{ pokus_versions.packages | pokus_lock_packages('tailscale', pokus_release_key) }}"
+    tailscale_source: "{{ pinka_component_sources | pinka_component_source('tailscale', pinka_source_group) }}"
+    tailscale_versions: "{{ pinka_versions.packages | pinka_lock_packages('tailscale', pinka_release_key) }}"
 
 - name: Refuse an unverified Tailscale source
   ansible.builtin.assert:
     that:
       - tailscale_source.verify is not defined
     fail_msg: >-
-      ansible/component-sources.yml marks the Tailscale source for {{ pokus_source_group }}
+      ansible/component-sources.yml marks the Tailscale source for {{ pinka_source_group }}
       as unverified ({{ tailscale_source.verify | default('') }}); verify it first
       (docs/how-to/update-versions.md).
     quiet: true
@@ -32,7 +32,7 @@
   ansible.builtin.meta: end_role
   when:
     - ansible_check_mode
-    - "'tailscale' not in pokus_present.commands"
+    - "'tailscale' not in pinka_present.commands"
 
 - name: Install Tailscale
   ansible.builtin.include_role:

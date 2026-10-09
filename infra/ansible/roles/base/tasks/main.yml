@@ -1,10 +1,10 @@
-# Managed by pokus-infra (ansible/roles/base/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/tasks/main.yml). Local changes will be overwritten.
 #
 # Base system (BUILD_PROMPT §7.2): packages by logical name, UTC, persistent
 # journald with limits, time sync, automatic security updates, sysctl.
 - name: Load the package names of this family
   ansible.builtin.include_vars:
-    file: "{{ pokus_family }}.yml"
+    file: "{{ pinka_family }}.yml"
 
 - name: Install the base packages
   ansible.builtin.include_role:
@@ -12,7 +12,7 @@
   vars:
     pkg_packages: >-
       {{ base_packages
-         | map('extract', base_package_names | combine(base_package_overrides[pokus_source_group] | default({})))
+         | map('extract', base_package_names | combine(base_package_overrides[pinka_source_group] | default({})))
          | select | list }}
 
 - name: Set the system time zone to UTC
@@ -22,7 +22,7 @@
 - name: Configure journald (persistent, size-limited)
   ansible.builtin.template:
     src: journald.conf.j2
-    dest: /etc/systemd/journald.conf.d/60-pokus.conf
+    dest: /etc/systemd/journald.conf.d/60-pinka.conf
     owner: root
     group: root
     mode: "0644"
@@ -32,13 +32,13 @@
   ansible.builtin.include_tasks: timesync.yml
 
 - name: Configure automatic security updates
-  ansible.builtin.include_tasks: "updates_{{ pokus_family }}.yml"
+  ansible.builtin.include_tasks: "updates_{{ pinka_family }}.yml"
 
 - name: Apply the kernel settings
   ansible.posix.sysctl:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
-    sysctl_file: /etc/sysctl.d/60-pokus.conf
+    sysctl_file: /etc/sysctl.d/60-pinka.conf
     sysctl_set: true
     state: present
   loop: "{{ base_sysctl | dict2items }}"
@@ -53,14 +53,14 @@
       must not overlap and must name CPUs below {{ base_cpu_count }} (this host's CPUs)
     quiet: true
   vars:
-    base_cpus_services: "{{ cpuset_services | pokus_cpuset_cpus }}"
-    base_cpus_targets: "{{ cpuset_targets | pokus_cpuset_cpus }}"
+    base_cpus_services: "{{ cpuset_services | pinka_cpuset_cpus }}"
+    base_cpus_targets: "{{ cpuset_targets | pinka_cpuset_cpus }}"
     base_cpu_count: "{{ host_profile.hardware.cpu_threads | int }}"
 
 - name: Write the slice of the lab services
   ansible.builtin.template:
-    src: pokus-services.slice.j2
-    dest: "/etc/systemd/system/{{ pokus_services_slice }}"
+    src: pinka-services.slice.j2
+    dest: "/etc/systemd/system/{{ pinka_services_slice }}"
     owner: root
     group: root
     mode: "0644"

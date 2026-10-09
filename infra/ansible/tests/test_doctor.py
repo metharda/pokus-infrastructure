@@ -1,4 +1,4 @@
-"""Tests for the doctor role: the lab description /etc/pokus/lab.json it renders."""
+"""Tests for the doctor role: the lab description /etc/pinka/lab.json it renders."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import pytest
-from pokus_lab.config import LabConfig
+from pinka_lab.config import LabConfig
 
 from ansible_testlib import GROUP_VARS, INFRA, ROLES, _templar, ansible_vars, evaluate
 
@@ -25,7 +25,7 @@ IMPORTED_ROLES = (
     "platform",
     "inference_control",
 )
-SOURCES = INFRA / "tools" / "pokus-lab" / "pokus_lab"
+SOURCES = INFRA / "tools" / "pinka-lab" / "pinka_lab"
 CONFIG_READ = re.compile(r"config\.get\(((?:\s*\"[a-z_]+\",?)+)")
 
 
@@ -50,12 +50,12 @@ def variables(**facts: Any) -> dict[str, Any]:
             if (ROLES / role / kind / "main.yml").is_file():
                 paths.append(ROLES / role / kind / "main.yml")
     base = {
-        "machine": "pokus-lab",
-        "pokus_infra_dir": str(INFRA),
-        "pokus_provider": "baremetal",
-        "pokus_features": {"gpu_inference": True, "vm_targets": False},
-        "pokus_firewall_backend": "nftables",
-        "pokus_bootstrap": {},
+        "machine": "pinka-lab",
+        "pinka_dir": str(INFRA),
+        "pinka_provider": "baremetal",
+        "pinka_features": {"gpu_inference": True, "vm_targets": False},
+        "pinka_firewall_backend": "nftables",
+        "pinka_bootstrap": {},
         "host_profile": {"schema_version": 1, "storage_backend": "btrfs"},
         "node_role": "full",
         "doctor_images_defaults": ansible_vars(ROLES / "images" / "defaults" / "main.yml"),
@@ -87,7 +87,7 @@ def render(**facts: Any) -> dict[str, Any]:
     set_fact_loop(
         "Describe the layout (absolute paths)",
         "doctor_layout",
-        evaluate("pokus_system_layout + pokus_layout", scope),
+        evaluate("pinka_system_layout + pinka_layout", scope),
         scope,
     )
     write = task("Write the lab description")
@@ -119,39 +119,39 @@ def test_full_node_description() -> None:
     config = LabConfig(data)
     assert data["schema_version"] == 1
     assert (config.machine, config.host_vars, config.node_role) == (
-        "pokus-lab",
-        "pokus-lab",
+        "pinka-lab",
+        "pinka-lab",
         "full",
     )
     assert config.runs_lab and config.serves_inference
-    assert data["paths"]["preflight"] == "/usr/local/lib/pokus/preflight/pokus-preflight"
-    assert data["paths"]["sessions"] == "/var/lib/pokus/sessions"
-    assert data["paths"]["health_gate_status"] == "/run/pokus/health-gate.json"
+    assert data["paths"]["preflight"] == "/usr/local/lib/pinka/preflight/pinka-preflight"
+    assert data["paths"]["sessions"] == "/var/lib/pinka/sessions"
+    assert data["paths"]["health_gate_status"] == "/run/pinka/health-gate.json"
     assert data["fingerprint"] == {
-        "cache": "/var/lib/pokus/fingerprint/current.json",
+        "cache": "/var/lib/pinka/fingerprint/current.json",
         "versions_lock_sha256": "0" * 64,
         "host_vars_sha256": "1" * 64,
     }
     assert data["units"] == [
-        "pokus-health-gate.service",
-        "pokus-session-start.service",
-        "pokus-core.service",
-        "pokus-observability.service",
-        "pokus-sleep-inhibit.service",
+        "pinka-health-gate.service",
+        "pinka-session-start.service",
+        "pinka-core.service",
+        "pinka-observability.service",
+        "pinka-sleep-inhibit.service",
     ]
     assert data["gpu"]["device_args"] == ["--device", "nvidia.com/gpu=all"]
     assert re.fullmatch(r"[a-z0-9./-]+@sha256:[0-9a-f]{64}", data["gpu"]["image"])
-    assert data["tailscale"] == {"enabled": True, "hostname": "pokus-lab", "tag": "tag:pokus-lab"}
-    assert data["firewall"]["incus_bridge_patterns"][:2] == ["r-*", "pokus-build0"]
+    assert data["tailscale"] == {"enabled": True, "hostname": "pinka-lab", "tag": "tag:pinka-lab"}
+    assert data["firewall"]["incus_bridge_patterns"][:2] == ["r-*", "pinka-build0"]
     assert data["opa"]["url"] == "http://127.0.0.1:8181"
     assert data["observability"]["loki"] == "http://127.0.0.1:18702"
     assert data["vllm"]["health_url"] == "http://127.0.0.1:18704/health"
-    assert data["backup"]["helper"] == "/usr/local/libexec/pokus/backup"
+    assert data["backup"]["helper"] == "/usr/local/libexec/pinka/backup"
     assert data["backup"]["configured"] is False
-    assert data["images"]["files_helper"] == "/usr/local/libexec/pokus/image-files"
-    assert data["images"]["export_root"] == "/srv/pokus/images"
+    assert data["images"]["files_helper"] == "/usr/local/libexec/pinka/image-files"
+    assert data["images"]["export_root"] == "/srv/pinka/images"
     assert data["hardening"] == [] and data["sockets"] == []
-    assert data["docs"] == {"dir": "/usr/local/share/pokus/docs", "port": 18706}
+    assert data["docs"] == {"dir": "/usr/local/share/pinka/docs", "port": 18706}
 
 
 def test_every_key_the_cli_reads_is_rendered() -> None:
@@ -162,33 +162,33 @@ def test_every_key_the_cli_reads_is_rendered() -> None:
 
 def test_containers_carry_their_pinned_digests() -> None:
     data = render()
-    versions = ansible_vars(GROUP_VARS.parent / "versions.yml")["pokus_versions"]
+    versions = ansible_vars(GROUP_VARS.parent / "versions.yml")["pinka_versions"]
     images = versions["containers"]["images"]
-    assert data["containers"]["pokus-postgres"] == (
+    assert data["containers"]["pinka-postgres"] == (
         f"{images['postgres']['image']}@{images['postgres']['digest']}"
     )
-    assert data["containers"]["pokus-otel-journald"].endswith(images["otel_collector"]["digest"])
-    assert "pokus-gpu-exporter" in data["containers"]
+    assert data["containers"]["pinka-otel-journald"].endswith(images["otel_collector"]["digest"])
+    assert "pinka-gpu-exporter" in data["containers"]
     assert all(re.search(r"@sha256:[0-9a-f]{64}$", ref) for ref in data["containers"].values())
 
 
 @pytest.mark.parametrize(
     ("node_role", "gpu", "expected"),
     [
-        ("lab", False, {"pokus-postgres", "pokus-opa", "pokus-loki"}),
-        ("inference", True, {"pokus-gpu-exporter", "pokus-otel-gateway", "pokus-node-exporter"}),
+        ("lab", False, {"pinka-postgres", "pinka-opa", "pinka-loki"}),
+        ("inference", True, {"pinka-gpu-exporter", "pinka-otel-gateway", "pinka-node-exporter"}),
     ],
 )
 def test_node_roles(node_role: str, gpu: bool, expected: set[str]) -> None:
-    data = render(node_role=node_role, pokus_features={"gpu_inference": gpu, "vm_targets": True})
+    data = render(node_role=node_role, pinka_features={"gpu_inference": gpu, "vm_targets": True})
     assert expected <= set(data["containers"])
     if node_role == "inference":
-        assert "pokus-postgres" not in data["containers"]
+        assert "pinka-postgres" not in data["containers"]
         # Only the inference stack; telemetry goes to the paired lab node (§19.10).
-        stores = {"pokus-prometheus", "pokus-loki", "pokus-tempo", "pokus-grafana"}
+        stores = {"pinka-prometheus", "pinka-loki", "pinka-tempo", "pinka-grafana"}
         assert not stores & set(data["containers"])
         assert data["observability"] == {}
-        assert "pokus-core.service" not in data["units"]
+        assert "pinka-core.service" not in data["units"]
         assert data["incus"] == {}
         assert data["images"]["blueprints"] == []
         assert data["postgres"]["roles"] == []
@@ -197,9 +197,9 @@ def test_node_roles(node_role: str, gpu: bool, expected: set[str]) -> None:
             "addresses": [],  # no VM listener without Incus
             "tailnet_ports": [18704, 18710],
         }
-        assert [h["unit"] for h in data["hardening"]] == ["pokus-inference-control.service"]
+        assert [h["unit"] for h in data["hardening"]] == ["pinka-inference-control.service"]
     else:
-        assert "pokus-gpu-exporter" not in data["containers"]
+        assert "pinka-gpu-exporter" not in data["containers"]
         assert data["listeners"]["tailnet_ports"] == []
         assert data["observability"]["loki"] == "http://127.0.0.1:18702"
         assert data["hardening"] == []  # the platform is not enabled
@@ -208,54 +208,61 @@ def test_node_roles(node_role: str, gpu: bool, expected: set[str]) -> None:
 def test_split_inference_pairing() -> None:
     unpaired = render(node_role="inference")
     assert unpaired["inference"] == {
-        "dir": "/etc/pokus/inference",
+        "dir": "/etc/pinka/inference",
         "control_port": 18710,
         "peer": "",
         "renew_days": 30,
     }
-    assert "pokus-inference-control.service" not in unpaired["units"]
-    paired = render(node_role="inference", inference_lab_node="pokus-lab")
-    assert paired["inference"]["peer"] == "pokus-lab"
-    assert paired["units"][-1] == "pokus-inference-control.service"
-    lab = render(node_role="lab", inference_remote_node="pokus-gpu")
-    assert lab["inference"]["peer"] == "pokus-gpu"
+    assert "pinka-inference-control.service" not in unpaired["units"]
+    paired = render(node_role="inference", inference_lab_node="pinka-lab")
+    assert paired["inference"]["peer"] == "pinka-lab"
+    assert paired["units"][-1] == "pinka-inference-control.service"
+    lab = render(node_role="lab", inference_remote_node="pinka-gpu")
+    assert lab["inference"]["peer"] == "pinka-gpu"
     assert lab["listeners"]["tailnet_ports"] == [4317]
     assert render()["inference"]["peer"] == ""
 
 
 def test_platform_units_and_sockets() -> None:
-    sockets = [{"path": "/run/pokus/gw/svc.sock", "expect_mode": "0660", "expect_acl": []}]
+    sockets = [{"path": "/run/pinka/gw/svc.sock", "expect_mode": "0660", "expect_acl": []}]
     content = base64.b64encode(json.dumps(sockets).encode()).decode()
     data = render(platform_enabled=True, doctor_platform_sockets={"content": content})
     assert data["sockets"] == sockets
     hardening = {h["unit"]: h for h in data["hardening"]}
     assert len(hardening) == 8
-    agent = hardening["pokus-agent-runner.service"]
-    assert agent["properties"]["User"] == "pokus-agent"
-    assert "/etc/pokus/inference" in agent["inaccessible_paths"]
-    gateway = hardening["pokus-llm-gateway.service"]
-    assert "/etc/pokus/inference" not in gateway["inaccessible_paths"]  # its remote backend
-    evaluator = hardening["pokus-evaluator.service"]["properties"]
+    agent = hardening["potka-agent-runner.service"]
+    assert agent["properties"]["User"] == "potka-agent"
+    assert "/etc/pinka/inference" in agent["inaccessible_paths"]
+    gateway = hardening["potka-llm-gateway.service"]
+    assert "/etc/pinka/inference" not in gateway["inaccessible_paths"]  # its remote backend
+    evaluator = hardening["potka-evaluator.service"]["properties"]
     assert evaluator["MemoryDenyWriteExecute"] == "no"
-    assert "pokus-orchestrator.service" in data["units"]
-    assert "pokus-reconcile.service" not in data["units"]  # oneshot
+    assert "potka-orchestrator.service" in data["units"]
+    assert "potka-reconcile.service" not in data["units"]  # oneshot
     assert render(doctor_platform_sockets={"content": content})["sockets"] == []
 
 
 def test_incus_and_images() -> None:
-    data = render(pokus_features={"gpu_inference": False, "vm_targets": True})
+    data = render(pinka_features={"gpu_inference": False, "vm_targets": True})
     incus = data["incus"]
-    assert incus["pool"] == "pokus-targets"
+    assert incus["pool"] == "pinka-targets"
     assert incus["backend"] == "btrfs"
     assert incus["projects"] == ["bench", "build"]
     assert {"name": "target-vm", "project": "bench"} in incus["profiles"]
-    assert incus["cert_dir"] == "/etc/pokus/incus"
+    assert incus["cert_dir"] == "/etc/pinka/incus"
     assert [c["short"] for c in incus["certificates"]] == [
         "orch",
         "exec",
         "inject",
         "verify",
         "metrics",
+    ]
+    assert [c["name"] for c in incus["certificates"]] == [
+        "potka-orch",
+        "potka-exec",
+        "potka-inject",
+        "potka-verify",
+        "pinka-metrics",
     ]
     assert data["listeners"]["addresses"] == ["198.18.0.1"]
     blueprints = {b["name"]: b for b in data["images"]["blueprints"]}
@@ -273,22 +280,22 @@ def test_incus_and_images() -> None:
 
 def test_layout_is_absolute() -> None:
     layout = {e["path"]: e for e in render()["layout"]}
-    assert layout["/srv/pokus"]["mode"] == "2775"
-    assert layout["/srv/pokus/shared"]["default_acl"] == ["group:pokus:rwX"]
-    assert layout["/etc/pokus/secrets"]["group"] == "pokus-svc"
+    assert layout["/srv/pinka"]["mode"] == "2775"
+    assert layout["/srv/pinka/shared"]["default_acl"] == ["group:pinka:rwX"]
+    assert layout["/etc/pinka/secrets"]["group"] == "potka-svc"
     assert all(path.startswith("/") and not path.endswith("/") for path in layout)
 
 
 def test_wsl_and_runtime_gpu() -> None:
     data = render(
-        pokus_provider="wsl2",
+        pinka_provider="wsl2",
         expected={"memory_gib": 22, "cpu_threads": 20},
         doctor_daemon_json={"content": base64.b64encode(b"{}").decode()},
     )
     assert data["wsl"] == {"memory_gib": 22, "cpus": 20, "kvm_expected": False}
     assert data["gpu"]["nvidia_smi"] == "/usr/lib/wsl/lib/nvidia-smi"
     assert data["gpu"]["device_args"] == ["--runtime", "nvidia", "--gpus", "all"]
-    assert "pokus-sleep-inhibit.service" not in data["units"]
+    assert "pinka-sleep-inhibit.service" not in data["units"]
 
 
 def test_module_lists() -> None:
@@ -296,10 +303,10 @@ def test_module_lists() -> None:
     copy = task("List the modules to install")
     results = [
         {
-            "item": {"src": "tools/pokus-lab/pokus_lab", "dest": "pokus-lab/pokus_lab"},
+            "item": {"src": "tools/pinka-lab/pinka_lab", "dest": "pinka-lab/pinka_lab"},
             "files": [
-                {"path": f"{INFRA}/tools/pokus-lab/pokus_lab/cli.py"},
-                {"path": f"{INFRA}/tools/pokus-lab/pokus_lab/sub/x.py"},
+                {"path": f"{INFRA}/tools/pinka-lab/pinka_lab/cli.py"},
+                {"path": f"{INFRA}/tools/pinka-lab/pinka_lab/sub/x.py"},
             ],
         }
     ]
@@ -307,20 +314,20 @@ def test_module_lists() -> None:
         local = dict(scope, item=item)
         for fact in ("doctor_modules", "doctor_module_sources"):
             scope[fact] = _templar(local).template(copy["ansible.builtin.set_fact"][fact])
-    assert scope["doctor_modules"] == ["pokus-lab/pokus_lab/cli.py", "pokus-lab/pokus_lab/sub/x.py"]
-    assert scope["doctor_module_sources"]["pokus-lab/pokus_lab/sub/x.py"].endswith(
-        "pokus_lab/sub/x.py"
+    assert scope["doctor_modules"] == ["pinka-lab/pinka_lab/cli.py", "pinka-lab/pinka_lab/sub/x.py"]
+    assert scope["doctor_module_sources"]["pinka-lab/pinka_lab/sub/x.py"].endswith(
+        "pinka_lab/sub/x.py"
     )
     stale = task("Remove modules that are no longer shipped")["loop"]
     installed = {
         "results": [
             {
                 "files": [
-                    {"path": "/usr/local/lib/pokus/pokus-lab/pokus_lab/cli.py"},
-                    {"path": "/usr/local/lib/pokus/pokus-lab/pokus_lab/old.py"},
+                    {"path": "/usr/local/lib/pinka/pinka-lab/pinka_lab/cli.py"},
+                    {"path": "/usr/local/lib/pinka/pinka-lab/pinka_lab/old.py"},
                 ]
             }
         ]
     }
     removed = _templar(dict(scope, doctor_installed=installed)).template(stale)
-    assert removed == ["/usr/local/lib/pokus/pokus-lab/pokus_lab/old.py"]
+    assert removed == ["/usr/local/lib/pinka/pinka-lab/pinka_lab/old.py"]

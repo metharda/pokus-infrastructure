@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (ansible/roles/images/files/image-clean.sh). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/files/image-clean.sh). Local changes will be overwritten.
 #
 # Last step inside a build instance before it is stopped and published
 # (BUILD_PROMPT §7.13): drop the package caches, shell histories, logs and

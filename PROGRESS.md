@@ -707,6 +707,29 @@ read-only; the owner keeps its master for `pokus-platform`):
   `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
   `doctor_warnings` also counts is decided in that edit.
 
+**3c, the rename (proposed).** `infra/` follows the rename table: 149 paths
+moved with `git mv`, every generated file regenerated, the spec copies
+untouched; the residue check (`git grep -n -i pokus` in `infra/` and
+`.github/`) lists only allowed uses: the project name in prose ("Pokus",
+"Pokus lab"), the repository names, the refused username prefix `pokus-`
+and the Rego test that the old decision path is rejected, the spelling
+dictionary, the step 8 note on the word itself, the test key (Q12) and the
+CI secret below. Behavior changes are only the two the owner decided: OPA's
+authorization allows exactly the two decision paths (Q7, with a test), and
+the installer refuses the prefixes `pinka-`, `potka-` and `pokus-`. The
+interpretations and findings are in `infra/docs/IMPLEMENTATION_NOTES.md`,
+"Rename (plan step 3c)"; in short: "Pokus lab" stays the project's lab;
+markers left on hosts say `pinka` (Q1); Incus client certificates carry
+their name (`potka-*`, `pinka-metrics`); found, not fixed: doctor's
+firewalld check looks for a zone `pinka` that the firewall role never
+creates (fix proposed for 3d). Records in this file written before 3c keep
+the names of their time.
+
+- **Owner action**: add the Actions secret `PINKA_PRIVACY_DENYLIST` with the
+  value of `POKUS_PRIVACY_DENYLIST`; until then the workflows pass the old
+  secret to the scan as `PINKA_PRIVACY_DENYLIST`, and the switch is a
+  three-line change.
+
 ### Privacy clean-up (owner instruction)
 
 Scan everything already written for personal or installation-specific data,
@@ -868,8 +891,8 @@ Proposed after infra step 13 (approved as P3a; details in
 | --- | --- | --- | --- |
 | 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
 | 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
-| 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | proposed | — |
-| 3c | Rename `pokus` → `pinka`/`potka` | not started | — |
+| 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
+| 3c | Rename `pokus` → `pinka`/`potka` | proposed | — |
 | 3c2 | Images free of project names | not started | — |
 | 3d | Contract v2, steps 1-8 | not started | — |
 | 3e | Infra self-test without provisioning | not started | — |
@@ -975,7 +998,7 @@ step 4" through "after step 13"):
   supported family is to be confirmed on real hosts (Phase 5).
 - Bootstrap has not been run end to end on a real host (the build
   environment must not be provisioned); since step 10 its last stage runs
-  `pokus-lab doctor`. Its stages, the roles and the doctor checks are
+  `pinka doctor` (`pokus-lab doctor` before 3c). Its stages, the roles and the doctor checks are
   covered by tests that never provision; Phase 5 runs them on real hosts.
 - Run networks can be created but not deleted by the platform's restricted
   certificates (see the step 6 contract question); until the owner decides,
@@ -994,7 +1017,7 @@ step 4" through "after step 13"):
   `PATH` for all make runs. CPython 3.9.25 and 3.12.11 are installed in user
   space by uv.
 - mypy 2.x cannot type-check for Python 3.9; the 3.9 compatibility of
-  preflight and `pokus-lab` is enforced by ruff (`py39` target) and by running
+  preflight and `pinka` is enforced by ruff (`py39` target) and by running
   their test suites on CPython 3.9 (ADR-0001).
 - Preflight fixture paths contain colons (sysfs PCI addresses such as
   `0000:01:00.0`), so the repository cannot be checked out on a Windows
@@ -1012,6 +1035,10 @@ step 4" through "after step 13"):
 - The installer TUI has not driven a real bootstrap: its pilot tests replay
   recorded event streams (see the step 13 notes); Phase 5 runs it on the
   reference hosts.
+- Doctor's firewall check on firewalld hosts looks for the zone `pinka`,
+  but the firewall role creates `pinka-tailnet` and `pinka-run`, so the
+  check fails there (found in 3c, present since step 10 under the old
+  names; fix proposed for 3d).
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
   SSH-signed tag deployments is skipped here (it runs where OpenSSH is
   installed, as in CI), and the socket ACL handling is tested with a fake
@@ -1023,9 +1050,8 @@ Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
 `infra/docs/IMPLEMENTATION_NOTES.md`, section "Approved deviation I1"). The
 work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
 under the final commit rule in [Process rules](#process-rules-in-force):
-3a (`836cfce`) and 3b (`d99d2ed`) are committed; 3b2 (the second spec
-edit) is proposed and waits for the owner's "commit". 3c, the rename,
-starts only after that commit and after the owner decides the open
-interpretations of `infra/docs/IMPLEMENTATION_NOTES.md`. Still open: the
-remaining `TODO(verify)` items (111), which need network access or reference
+3a (`836cfce`), 3b (`d99d2ed`) and 3b2 (`169266e`) are committed; 3c, the
+rename, is proposed and waits for the owner's "commit"; 3c2 (images free of
+project names) follows it as its own commit. Still open: the remaining
+`TODO(verify)` items (111), which need network access or reference
 hardware.

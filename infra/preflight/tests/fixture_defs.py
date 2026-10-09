@@ -329,9 +329,9 @@ VMWARE_VM = vm("vmware", "VMware, Inc.", "VMware Virtual Platform")
 
 WSL_KERNEL = "6.6.87.2-microsoft-standard-WSL2"
 WSL_CONF_MANAGED = (
-    "# Managed by pokus-infra (ansible/roles/provider_wsl2/templates/wsl.conf.j2).\n"
+    "# Managed by pinka (ansible/roles/provider_wsl2/templates/wsl.conf.j2).\n"
     "[boot]\nsystemd=true\n\n[automount]\nenabled=false\nmountFsTab=false\n\n"
-    "[interop]\nenabled=false\nappendWindowsPath=false\n\n[network]\nhostname=pokus-lab\n"
+    "[interop]\nenabled=false\nappendWindowsPath=false\n\n[network]\nhostname=pinka-lab\n"
     "generateHosts=true\ngenerateResolvConf=true\n"
 )
 

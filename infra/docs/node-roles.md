@@ -13,7 +13,7 @@ Most labs run on one host (`node_role: full`). A host without a suitable GPU
 can still be a lab host if another Pokus host serves the model: the lab node
 (`node_role: lab`) runs everything except vLLM, and the inference node
 (`node_role: inference`) runs only the inference stack. There are no external
-model APIs in either case: an inference node is a Pokus-provisioned machine
+model APIs in either case: an inference node is a pinka-provisioned machine
 you control (BUILD_PROMPT §19.10).
 [How to run inference on a separate GPU node](how-to/pair-inference-node.md)
 has the steps.
@@ -37,12 +37,12 @@ The platform's inference mode follows the role (contracts.md, "Inference"):
 ## Pairing
 
 Every lab and inference node has its own identity: an ECDSA P-256 key and a
-self-signed certificate in `/etc/pokus/inference/` whose subject alternative
+self-signed certificate in `/etc/pinka/inference/` whose subject alternative
 name is the node's tailnet name. Pairing exchanges the two certificates once:
 
-1. `pokus-lab pair show` on the inference node prints a one-time code of 12
+1. `pinka pair show` on the inference node prints a one-time code of 12
    characters (60 bits) and listens on its tailnet address.
-2. `pokus-lab pair connect` on the lab node connects with TLS and sends its
+2. `pinka pair connect` on the lab node connects with TLS and sends its
    certificate, node name, `lab_mode` and an HMAC keyed with the code over
    both certificates' SHA-256 fingerprints.
 3. The inference node checks the HMAC, answers with its own certificate and
@@ -74,11 +74,11 @@ on `tailscale0` only:
 - **4317** on the lab node: the inference node's collector sends logs,
   metrics and traces with OTLP over gRPC; the lab node's collector accepts
   only the paired certificate and labels everything with the inference node's
-  name (`pokus.machine`).
+  name (`pinka.machine`).
 
 On the lab node the orchestrator reads the client key as a member of
-`pokus-orch`, and the LLM gateway through a POSIX ACL entry; the agent
-runner cannot reach `/etc/pokus/inference` at all.
+`potka-orch`, and the LLM gateway through a POSIX ACL entry; the agent
+runner cannot reach `/etc/pinka/inference` at all.
 
 ## Measurement caveats
 

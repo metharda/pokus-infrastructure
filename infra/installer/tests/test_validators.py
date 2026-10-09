@@ -7,10 +7,10 @@ import shutil
 import pytest
 from installer_testlib import private_key, public_key
 
-from pokus_installer import keys, validators
+from pinka_installer import keys, validators
 
 
-@pytest.mark.parametrize("value", ["pokus-lab", "a", "lab2", "x" * 63])
+@pytest.mark.parametrize("value", ["pinka-lab", "a", "lab2", "x" * 63])
 def test_hostname_ok(value: str) -> None:
     assert validators.hostname(value) is None
 
@@ -22,7 +22,7 @@ def test_hostname_bad(value: str) -> None:
 
 @pytest.mark.parametrize("value", ["researcher1", "_svc", "a-b_c", "r" * 32])
 def test_username_ok(value: str) -> None:
-    assert validators.username(value, ["pokus-orch"]) is None
+    assert validators.username(value, ["potka-orch"]) is None
 
 
 @pytest.mark.parametrize(
@@ -33,16 +33,18 @@ def test_username_ok(value: str) -> None:
         ("r" * 33, "lower-case"),
         ("root", "reserved"),
         ("docker", "reserved"),
-        ("pokus-orch", "service accounts"),
+        ("potka-orch", "service accounts"),
+        ("pinka-new", "service accounts"),
+        ("potka-new", "service accounts"),
         ("pokus-new", "service accounts"),
     ],
 )
 def test_username_bad(value: str, reason: str) -> None:
-    message = validators.username(value, ["pokus-orch"])
+    message = validators.username(value, ["potka-orch"])
     assert message and reason in message
 
 
-@pytest.mark.parametrize("value", ["/srv/pokus", "/", "/var/lib/docker"])
+@pytest.mark.parametrize("value", ["/srv/pinka", "/", "/var/lib/docker"])
 def test_absolute_path_ok(value: str) -> None:
     assert validators.absolute_path(value) is None
 
@@ -78,12 +80,16 @@ def test_urls_and_sources() -> None:
     assert validators.https_url("http://example.com")
     assert "credentials" in (validators.https_url("https://user:pw@example.com") or "")
     for ok in (
-        "git@github.com:example-org/pokus.git",
-        "ssh://git@git.example.com:2222/example-org/pokus.git",
-        "https://git.example.com/example-org/pokus.git",
+        "git@github.com:example-org/pokus-platform.git",
+        "ssh://git@git.example.com:2222/example-org/pokus-platform.git",
+        "https://git.example.com/example-org/pokus-platform.git",
     ):
         assert validators.source_repo(ok) is None, ok
-    for bad in ("github.com/example-org/pokus", "ftp://example.com/x", "https://u:p@example.com/x"):
+    for bad in (
+        "github.com/example-org/pokus-platform",
+        "ftp://example.com/x",
+        "https://u:p@example.com/x",
+    ):
         assert validators.source_repo(bad), bad
 
 
@@ -100,8 +106,8 @@ def test_git_ref_bad(value: str) -> None:
 
 
 def test_tags_models_times_snapshots() -> None:
-    assert validators.tailscale_tag("tag:pokus-lab") is None
-    for bad in ("pokus-lab", "tag:Pokus", "tag:1x", "tag:"):
+    assert validators.tailscale_tag("tag:pinka-lab") is None
+    for bad in ("pinka-lab", "tag:Pinka", "tag:1x", "tag:"):
         assert validators.tailscale_tag(bad)
     assert validators.hf_repo("example-org/model-7b.v1") is None
     for bad in ("model", "a/b/c", "-a/b", "a/b..c"):
@@ -120,7 +126,7 @@ def test_restic_repositories() -> None:
     assert validators.restic_repository("sftp:backup@backup.example.com:/srv/restic/lab") is None
     assert validators.restic_repository("sftp:backup@192.0.2.10:/srv/restic") is None
     assert validators.restic_repository("rest:https://backup.example.com/lab") is None
-    assert validators.restic_repository("/var/backups/pokus") is None
+    assert validators.restic_repository("/var/backups/pinka") is None
     for bad in (
         "sftp:backup.example.com:/x",
         "sftp:u@h:relative",

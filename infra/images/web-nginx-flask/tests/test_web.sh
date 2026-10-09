@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/web-nginx-flask/tests/test_web.sh). Local changes will be overwritten.
+# Managed by pinka (images/web-nginx-flask/tests/test_web.sh). Local changes will be overwritten.
 #
 # Post-build assertions of `web-nginx-flask`, run inside the build instance.
 set -eu

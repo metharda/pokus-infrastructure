@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/web-nginx-flask/provision.yml). Local changes will be overwritten.
+# Managed by pinka (images/web-nginx-flask/provision.yml). Local changes will be overwritten.
 #
 # nginx, gunicorn and the application (BUILD_PROMPT §7.13), on top of `_base`.
 - name: Provision the web blueprint

@@ -1,19 +1,19 @@
-# Managed by pokus-infra (ansible/roles/provider_wsl2/tasks/post_layout.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_wsl2/tasks/post_layout.yml). Local changes will be overwritten.
 #
 # Runs after the layout role: .wslconfig lives on Windows and cannot be
 # managed from Linux, so a recommendation is rendered for the operator to copy.
 - name: Create the contrib directory for operator files
   ansible.builtin.file:
-    path: "{{ pokus_root }}/services/contrib"
+    path: "{{ pinka_root }}/services/contrib"
     state: directory
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0750"
 
 - name: Render the recommended .wslconfig
   ansible.builtin.template:
     src: wslconfig.recommended.j2
-    dest: "{{ pokus_root }}/services/contrib/wslconfig.recommended"
+    dest: "{{ pinka_root }}/services/contrib/wslconfig.recommended"
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0644"

@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/provider_wsl2/meta/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_wsl2/meta/main.yml). Local changes will be overwritten.
 galaxy_info:
   role_name: provider_wsl2
-  namespace: pokus
+  namespace: pinka
   author: Pokus project
   description: WSL2 provider - wsl.conf, NVIDIA user-space libraries, recommended .wslconfig
   license: Apache-2.0
@@ -19,5 +19,5 @@ galaxy_info:
       versions: [all]
     - name: ArchLinux
       versions: [all]
-  galaxy_tags: [pokus]
+  galaxy_tags: [pinka]
 dependencies: []

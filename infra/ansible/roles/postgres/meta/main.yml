@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/postgres/meta/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/postgres/meta/main.yml). Local changes will be overwritten.
 galaxy_info:
   role_name: postgres
-  namespace: pokus
+  namespace: pinka
   author: Pokus project
   description: "PostgreSQL on Unix sockets with the roles and schemas of the integration contract"
   license: Apache-2.0
@@ -19,5 +19,5 @@ galaxy_info:
       versions: [all]
     - name: ArchLinux
       versions: [all]
-  galaxy_tags: [pokus]
+  galaxy_tags: [pinka]
 dependencies: []

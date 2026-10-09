@@ -1,4 +1,4 @@
-# Managed by pokus-infra (.pre-commit-config.yaml).
+# Managed by pinka (.pre-commit-config.yaml).
 # Local hooks only: they call the same make targets as CI, so no hook code is
 # fetched from the network. Install with: .venv/bin/pre-commit install
 repos:

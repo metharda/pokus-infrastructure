@@ -1,4 +1,4 @@
-# Managed by pokus-infra (vllm/profiles/ada-12g.yml). Local changes will be overwritten.
+# Managed by pinka (vllm/profiles/ada-12g.yml). Local changes will be overwritten.
 #
 # Serving profile for one NVIDIA Ada GPU with 12 GB (BUILD_PROMPT §7.11): the
 # vLLM 0.31.0 `serve` options every deployment on this GPU class starts from.

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_wsl2/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_wsl2/defaults/main.yml). Local changes will be overwritten.
 
 # /etc/wsl.conf (BUILD_PROMPT §3.1). systemd is always enabled.
 provider_wsl2_automount: false

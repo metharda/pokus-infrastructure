@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-07
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §1)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §1)
 
 ## Context
 
@@ -24,12 +24,12 @@ scheduling and upgrade cycle.
 ## Decision
 
 1. The lab uses no orchestration framework or job scheduler. Services are
-   systemd units and Compose projects started by `pokus-lab.target`; targets
+   systemd units and Compose projects started by `pinka-lab.target`; targets
    are Incus instances that the platform creates through the Incus API; the
    GPU is used by one vLLM deployment at a time, switched by the root-owned
    deploy helper.
 2. Ordering and health are expressed with systemd dependencies and the health
-   gate of `pokus-lab.target`; concurrency of runs is the platform's job.
+   gate of `pinka-lab.target`; concurrency of runs is the platform's job.
 3. A second machine joins only as an inference node, paired over the tailnet
    with mutual TLS, not as a cluster member.
 

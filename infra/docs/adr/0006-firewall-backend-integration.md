@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §7.5, §19.6)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.5, §19.6)
 
 ## Context
 
@@ -25,20 +25,20 @@ distribution's tooling and break whatever else the operator configured.
 ## Decision
 
 1. The backend is chosen per host: firewalld if it is active, else ufw if it
-   is active, else Pokus's own nftables table. `firewall_backend` in host_vars
+   is active, else pinka's own nftables table. `firewall_backend` in host_vars
    overrides the choice.
-2. Pokus only ever changes **its own** objects: the `inet pokus_filter` table
-   (loaded by `pokus-nftables.service` from `/etc/pokus/nftables/pokus.nft`),
-   the `pokus-tailnet` firewalld zone, or ufw rules commented `pokus-infra`.
+2. Pokus Infrastructure (pinka) only ever changes **its own** objects: the `inet pinka_filter` table
+   (loaded by `pinka-nftables.service` from `/etc/pinka/nftables/pinka.nft`),
+   the `pinka-tailnet` firewalld zone, or ufw rules commented `pinka`.
    It never flushes or rewrites tables, zones or rules owned by Docker, Incus,
    firewalld or ufw, and never edits a distribution's nftables configuration
    file.
 3. All backends must produce the same **effective** policy, which doctor
    verifies with connection tests rather than by reading rules.
-4. Docker and Incus coexist through `pokus-docker-incus-compat.service`, which
+4. Docker and Incus coexist through `pinka-docker-incus-compat.service`, which
    inserts `ACCEPT` rules for Incus bridges into Docker's `DOCKER-USER` chain
    after Docker starts.
-5. Run networks are isolated by the Incus network ACL `pokus-run-default` on
+5. Run networks are isolated by the Incus network ACL `pinka-run-default` on
    every backend (nothing leaves a run bridge except DHCP and DNS to the
    host). Each backend adds its own layer for the run bridges, matched by
    interface wildcard (`r-*` in nftables, `r-+` in firewalld and ufw): only
@@ -47,7 +47,7 @@ distribution's tooling and break whatever else the operator configured.
 
 ## Consequences
 
-- Operators keep using their distribution's firewall tools; Pokus's rules are
+- Operators keep using their distribution's firewall tools; pinka's rules are
   visible there and labelled.
 - Three backends must be tested (`make test-distros` has one variant each).
 - Run bridges are created at run time; all three backends match them with

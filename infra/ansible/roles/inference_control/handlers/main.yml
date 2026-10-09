@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/inference_control/handlers/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/inference_control/handlers/main.yml). Local changes will be overwritten.
 
 # Restarting an unpaired endpoint is harmless: ConditionPathExists skips it.
 - name: Restart the inference control endpoint
@@ -6,4 +6,4 @@
     name: "{{ inference_control_unit }}"
     state: restarted
     daemon_reload: true
-  when: not ansible_check_mode or inference_control_unit in pokus_present.units
+  when: not ansible_check_mode or inference_control_unit in pinka_present.units

@@ -13,7 +13,7 @@ description: Run the full distribution tests in disposable Incus VMs, record the
 `tested` distribution: for each target in `tests/distros/targets.yml` it
 launches a disposable Incus VM, bootstraps the lab from the CI answers file,
 runs bootstrap a second time (it must change nothing), backs up once and runs
-`pokus-lab doctor --smoke`. The CI fast lane runs on every push instead, in
+`pinka doctor --smoke`. The CI fast lane runs on every push instead, in
 a container per family: `make check-mode`, the required job, checks the
 provider-agnostic roles in check mode, and `make check-mode-extended`, a
 separate non-blocking job, checks the whole provisioning play.
@@ -21,11 +21,11 @@ separate non-blocking job, checks the whole provisioning play.
 !!! note "Prerequisites"
     - A developer machine with Incus (VM support, about 8 GiB of memory and
       60 GiB of disk per test), or a lab host whose lab is stopped
-      (`sudo pokus-lab stop`); the harness refuses to run while
-      `pokus-lab.target` is active.
+      (`sudo pinka stop`); the harness refuses to run while
+      `pinka-lab.target` is active.
     - A checkout of the repository with the development tools (`make setup`).
     - An ephemeral, pre-approved auth key of the tailnet for tests, tagged
-      `tag:pokus-qa`: the test VMs are staging labs and join it.
+      `tag:pinka-qa`: the test VMs are staging labs and join it.
 
 ## Run the distribution tests
 
@@ -37,7 +37,7 @@ separate non-blocking job, checks the whole provisioning play.
 
     <!-- qa:skip reason="launches VMs and joins a tailnet" -->
     ```bash
-    export POKUS_TEST_TAILSCALE_AUTHKEY=<auth-key>
+    export PINKA_TEST_TAILSCALE_AUTHKEY=<auth-key>
     make test-distros TEST_DISTROS_ARGS="--target debian-13 --accept-unverified-images"
     ```
 
@@ -53,7 +53,7 @@ separate non-blocking job, checks the whole provisioning play.
 
     <!-- qa:run env=E0 -->
     ```bash
-    PYTHONPATH=tools/test-distros:preflight .venv/bin/python -m pokus_test_distros list
+    PYTHONPATH=tools/test-distros:preflight .venv/bin/python -m pinka_test_distros list
     ```
 
 ## Record the results

@@ -14,7 +14,7 @@ the lab services that run as Compose projects:
   `gpu_inference` feature: CDI (`features.cdi`) on Docker 25 and later,
   otherwise the NVIDIA runtime entry. JSON has no comments and dockerd rejects
   unknown keys, so the managed header is an engine label
-  (`org.pokus.managed=...`, also how preflight recognizes the file). The file
+  (`org.pinka.managed=...`, also how preflight recognizes the file). The file
   is validated with `dockerd --validate` before it is written, a replaced
   file is kept as a backup next to it, and only this role writes it. Docker
   restarts only when the file changed (`live-restore` keeps containers
@@ -23,7 +23,7 @@ the lab services that run as Compose projects:
   `break_glass_docker` are, with a loud log line from `users_groups`.
 
 Coexistence with Incus is handled by the `firewall` role
-(`pokus-docker-incus-compat.service`). Changing `docker_data_root` on an
+(`pinka-docker-incus-compat.service`). Changing `docker_data_root` on an
 existing host does not move the data; move it yourself with Docker stopped.
 
 ## Variables

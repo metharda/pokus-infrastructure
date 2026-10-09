@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/hold_dnf_versionlock.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/tasks/hold_dnf_versionlock.yml). Local changes will be overwritten.
 #
 # TODO(verify): the versionlock plugin package on Fedora's dnf5 (dnf 4 on EL 9
 # ships it as python3-dnf-plugin-versionlock).

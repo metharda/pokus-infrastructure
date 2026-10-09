@@ -1,4 +1,4 @@
-# Managed by pokus-infra (compose/observability/compose.yml). Local changes will be overwritten.
+# Managed by pinka (compose/observability/compose.yml). Local changes will be overwritten.
 #
 # Observability services (BUILD_PROMPT §7.9, contracts.md#telemetry). Every
 # service uses the host network and binds 127.0.0.1 only (Prometheus scrapes
@@ -9,7 +9,7 @@
 # paths, configuration hashes and the profiles: "stores" (Prometheus, Loki,
 # Tempo and Grafana; full and lab nodes, not inference nodes, BUILD_PROMPT
 # §19.10) and the GPU profile.
-name: pokus-observability
+name: pinka-observability
 
 x-hardened: &hardened
   restart: unless-stopped
@@ -21,24 +21,24 @@ x-hardened: &hardened
 x-gpu-exporter: &gpu_exporter
   <<: *hardened
   image: ${GPU_EXPORTER_IMAGE:?pinned image missing}
-  container_name: pokus-gpu-exporter
+  container_name: pinka-gpu-exporter
   command: ["--web.listen-address=127.0.0.1:${GPU_EXPORTER_PORT:?}"]
 
 services:
   otel_gateway:
     <<: *hardened
     image: ${OTEL_COLLECTOR_IMAGE:?pinned image missing}
-    container_name: pokus-otel-gateway
+    container_name: pinka-otel-gateway
     labels:
-      org.pokus.config-hash: ${OTEL_CONFIG_HASH:-}
-      org.pokus.pairing-hash: ${OTEL_PAIRING_HASH:-}
+      org.pinka.config-hash: ${OTEL_CONFIG_HASH:-}
+      org.pinka.pairing-hash: ${OTEL_PAIRING_HASH:-}
     # Fixed so the copy of the pairing material can be given to it (observability role).
     user: "10001:10001"
     command: ["--config=/etc/otelcol/gateway.yaml"]
     volumes:
       - ./config/otel:/etc/otelcol:ro
       # Split inference: mutual TLS to or from the paired node (empty otherwise).
-      - /etc/pokus/secrets/containers/otel-pairing:/etc/pokus-pairing:ro
+      - /etc/pinka/secrets/containers/otel-pairing:/etc/pinka-pairing:ro
 
   # Reads the host journal through the host's journalctl (chroot into the
   # read-only host root, which needs root and CAP_SYS_CHROOT) and forwards it
@@ -46,24 +46,24 @@ services:
   otel_journald:
     <<: *hardened
     image: ${OTEL_COLLECTOR_IMAGE:?pinned image missing}
-    container_name: pokus-otel-journald
+    container_name: pinka-otel-journald
     labels:
-      org.pokus.config-hash: ${OTEL_CONFIG_HASH:-}
+      org.pinka.config-hash: ${OTEL_CONFIG_HASH:-}
     user: "0:0"
     cap_add: [SYS_CHROOT]
     command: ["--config=/etc/otelcol/journald.yaml"]
     volumes:
       - ./config/otel:/etc/otelcol:ro
       - /:/hostfs:ro,rslave
-      - ${POKUS_ROOT:?}/state/otelcol-journald:/var/lib/otelcol/journald
+      - ${PINKA_ROOT:?}/state/otelcol-journald:/var/lib/otelcol/journald
 
   prometheus:
     <<: *hardened
     profiles: [stores]
     image: ${PROMETHEUS_IMAGE:?pinned image missing}
-    container_name: pokus-prometheus
+    container_name: pinka-prometheus
     labels:
-      org.pokus.config-hash: ${PROMETHEUS_CONFIG_HASH:-}
+      org.pinka.config-hash: ${PROMETHEUS_CONFIG_HASH:-}
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -71,42 +71,42 @@ services:
       - --web.listen-address=127.0.0.1:${PROMETHEUS_PORT:?}
     volumes:
       - ./config/prometheus:/etc/prometheus:ro
-      - /etc/pokus/secrets/containers/prometheus-incus:/etc/prometheus/incus:ro
-      - ${POKUS_ROOT:?}/state/prometheus:/prometheus
+      - /etc/pinka/secrets/containers/prometheus-incus:/etc/prometheus/incus:ro
+      - ${PINKA_ROOT:?}/state/prometheus:/prometheus
 
   loki:
     <<: *hardened
     profiles: [stores]
     image: ${LOKI_IMAGE:?pinned image missing}
-    container_name: pokus-loki
+    container_name: pinka-loki
     labels:
-      org.pokus.config-hash: ${LOKI_CONFIG_HASH:-}
+      org.pinka.config-hash: ${LOKI_CONFIG_HASH:-}
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
       - ./config/loki:/etc/loki:ro
-      - ${POKUS_ROOT:?}/state/loki:/loki
+      - ${PINKA_ROOT:?}/state/loki:/loki
 
   tempo:
     <<: *hardened
     profiles: [stores]
     image: ${TEMPO_IMAGE:?pinned image missing}
-    container_name: pokus-tempo
+    container_name: pinka-tempo
     labels:
-      org.pokus.config-hash: ${TEMPO_CONFIG_HASH:-}
+      org.pinka.config-hash: ${TEMPO_CONFIG_HASH:-}
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./config/tempo:/etc/tempo:ro
-      - ${POKUS_ROOT:?}/state/tempo:/var/tempo
+      - ${PINKA_ROOT:?}/state/tempo:/var/tempo
 
   grafana:
     <<: *hardened
     profiles: [stores]
     image: ${GRAFANA_IMAGE:?pinned image missing}
-    container_name: pokus-grafana
+    container_name: pinka-grafana
     labels:
-      org.pokus.config-hash: ${GRAFANA_CONFIG_HASH:-}
-    # Membership of the host group pokus opens the reader socket directory.
-    group_add: ["${POKUS_GID:?}"]
+      org.pinka.config-hash: ${GRAFANA_CONFIG_HASH:-}
+    # Membership of the host group pinka opens the reader socket directory.
+    group_add: ["${PINKA_GID:?}"]
     environment:
       GF_SERVER_HTTP_ADDR: 127.0.0.1
       GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:?}
@@ -129,27 +129,27 @@ services:
     volumes:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
-      - ${POKUS_ROOT:?}/state/grafana:/var/lib/grafana
-      - /run/pokus/postgres-reader:/run/pokus/postgres-reader
-      - /etc/pokus/secrets/containers/grafana-admin:/run/secrets/grafana-admin:ro
-      - /etc/pokus/secrets/containers/pokus-grafana:/run/secrets/pokus-grafana:ro
+      - ${PINKA_ROOT:?}/state/grafana:/var/lib/grafana
+      - /run/pinka/postgres-reader:/run/pinka/postgres-reader
+      - /etc/pinka/secrets/containers/grafana-admin:/run/secrets/grafana-admin:ro
+      - /etc/pinka/secrets/containers/pinka-grafana:/run/secrets/potka-grafana:ro
 
   node_exporter:
     <<: *hardened
     image: ${NODE_EXPORTER_IMAGE:?pinned image missing}
-    container_name: pokus-node-exporter
+    container_name: pinka-node-exporter
     pid: host
     command:
       - --web.listen-address=127.0.0.1:${NODE_EXPORTER_PORT:?}
       - --path.rootfs=/host
-      - --collector.textfile.directory=/host/var/lib/pokus/node-exporter
+      - --collector.textfile.directory=/host/var/lib/pinka/node-exporter
     volumes:
       - /:/host:ro,rslave
 
   cadvisor:
     <<: *hardened
     image: ${CADVISOR_IMAGE:?pinned image missing}
-    container_name: pokus-cadvisor
+    container_name: pinka-cadvisor
     command:
       - -listen_ip=127.0.0.1
       - -port=${CADVISOR_PORT:?}

@@ -1,0 +1,17 @@
+# Managed by pinka (ansible/roles/firewall/templates/pinka-nftables.service.j2). Local changes will be overwritten.
+[Unit]
+Description=pinka firewall policy (nftables table inet pinka_filter)
+Wants=network-pre.target
+Before=network-pre.target
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/pinka/nftables/pinka.nft
+ExecReload=/usr/sbin/nft -f /etc/pinka/nftables/pinka.nft
+ExecStop=/usr/sbin/nft delete table inet pinka_filter
+
+[Install]
+WantedBy=multi-user.target

@@ -17,27 +17,27 @@ Generated from `ansible/group_vars/all/main.yml` (BUILD_PROMPT §6.1); the direc
 
 | Group | System group | Purpose |
 | --- | --- | --- |
-| `pokus` | no | all researchers |
-| `pokus-admin` | no | researchers with sudo |
-| `pokus-gt` | yes | may read the ground truth and the catalog |
-| `pokus-svc` | yes | all service accounts |
-| `pokus-exec-clients` | yes | may call the executor socket (agent and orchestrator) |
-| `pokus-gw-clients` | yes | may call the gateway's agent socket (agent only) |
+| `pinka` | no | all researchers |
+| `pinka-admin` | no | researchers with sudo |
+| `pinka-gt` | yes | may read the ground truth and the catalog |
+| `potka-svc` | yes | all service accounts |
+| `potka-exec-clients` | yes | may call the executor socket (agent and orchestrator) |
+| `potka-gw-clients` | yes | may call the gateway's agent socket (agent only) |
 
 ## Researchers
 
-Every researcher in `researchers` is a member of `pokus` (and, once Incus is installed, of Incus's restricted per-user group); admins are also in `pokus-admin`, which may use sudo (`/etc/sudoers.d/90-pokus-admin`). No researcher is added to `docker` or `incus-admin`; an admin listed in `break_glass_docker` is the only exception. Researchers in `researchers_removed` are locked, never deleted.
+Every researcher in `researchers` is a member of `pinka` (and, once Incus is installed, of Incus's restricted per-user group); admins are also in `pinka-admin`, which may use sudo (`/etc/sudoers.d/90-pinka-admin`). No researcher is added to `docker` or `incus-admin`; an admin listed in `break_glass_docker` is the only exception. Researchers in `researchers_removed` are locked, never deleted.
 
 ## Service accounts
 
-System users with the shell `/usr/sbin/nologin`, home `/var/lib/pokus/<account>`, no password and no SSH keys. Each account's primary group is a system group of the same name, which the contract uses for socket and password-file ownership.
+System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`, no password and no SSH keys. Each account's primary group is a system group of the same name, which the contract uses for socket and password-file ownership.
 
 | Account | Runs | Groups |
 | --- | --- | --- |
-| `pokus-orch` | orchestrator | `pokus-svc`, `pokus-gt`, `pokus-exec-clients` |
-| `pokus-agent` | agent runtime | `pokus-svc`, `pokus-exec-clients`, `pokus-gw-clients` |
-| `pokus-gw` | LLM gateway | `pokus-svc` |
-| `pokus-exec` | tool executor | `pokus-svc` |
-| `pokus-inject` | fault injector | `pokus-svc`, `pokus-gt` |
-| `pokus-verify` | verifier | `pokus-svc`, `pokus-gt` |
-| `pokus-eval` | evaluator | `pokus-svc`, `pokus-gt` |
+| `potka-orch` | orchestrator | `potka-svc`, `pinka-gt`, `potka-exec-clients` |
+| `potka-agent` | agent runtime | `potka-svc`, `potka-exec-clients`, `potka-gw-clients` |
+| `potka-gw` | LLM gateway | `potka-svc` |
+| `potka-exec` | tool executor | `potka-svc` |
+| `potka-inject` | fault injector | `potka-svc`, `pinka-gt` |
+| `potka-verify` | verifier | `potka-svc`, `pinka-gt` |
+| `potka-eval` | evaluator | `potka-svc`, `pinka-gt` |

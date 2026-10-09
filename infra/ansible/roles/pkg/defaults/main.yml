@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/pkg/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/defaults/main.yml). Local changes will be overwritten.
 
 # Packages to install (tasks_from: main).
 pkg_packages: []

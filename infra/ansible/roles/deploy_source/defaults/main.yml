@@ -1,11 +1,11 @@
-# Managed by pokus-infra (ansible/roles/deploy_source/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/deploy_source/defaults/main.yml). Local changes will be overwritten.
 
 # Set by the including role for tasks_from: deploy.
 # Component to deploy: platform or catalog (its subdirectory of the repository).
 deploy_source_component: ""
 # Ref to deploy: a component tag (platform-v0.1.0), another tag, a branch or a full commit.
 deploy_source_ref: ""
-# Deployment root: /srv/pokus/deploy/platform or /srv/pokus/catalog.
+# Deployment root: /srv/pinka/deploy/platform or /srv/pinka/catalog.
 deploy_source_root: ""
 # Owner, group and modes of the deployed tree (executables keep their x bits).
 deploy_source_owner: root

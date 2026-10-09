@@ -22,12 +22,12 @@ golden image bases) is pinned in `versions.lock.yml` with a digest or checksum
 and verified before use; see [Pinned versions](reference/versions.md). The
 pinned packages are held, so automatic updates leave them alone, and kernels
 are held on bare metal unless allowed. Rolling releases get no automatic
-updates at all; [`pokus-lab update-host`](how-to/update-host.md) is the only
+updates at all; [`pinka update-host`](how-to/update-host.md) is the only
 supported way to update the host.
 
 ## The environment fingerprint
 
-`pokus-lab fingerprint` describes everything on the host that can change a
+`pinka fingerprint` describes everything on the host that can change a
 measurement:
 
 - **host**: provider, environment class, hypervisor, operating system and
@@ -53,15 +53,15 @@ part of the hash, so the same environment always has the same hash. Every
 field is described in [Fingerprint schema](reference/fingerprint.md).
 
 Only root computes the fingerprint, because reading some of these facts needs
-privileges; the result is cached in `/var/lib/pokus/fingerprint/current.json`.
+privileges; the result is cached in `/var/lib/pinka/fingerprint/current.json`.
 Any other user, including the orchestrator, gets that cached, root-computed
 fingerprint and never escalates (contracts.md, resolution C9c).
 
 ## Sessions
 
-Each boot of the lab is a session. When `pokus-lab.target` starts, after the
-health gate, `pokus-session-start.service` computes the fingerprint and writes
-`/var/lib/pokus/sessions/<boot_id>.json` with the fingerprint, its hash and a
+Each boot of the lab is a session. When `pinka-lab.target` starts, after the
+health gate, `pinka-session-start.service` computes the fingerprint and writes
+`/var/lib/pinka/sessions/<boot_id>.json` with the fingerprint, its hash and a
 fresh preflight outcome (see [How the lab comes up](explanation/lab-session.md)).
 The platform imports these records and attaches every run to the session it
 ran in, so every run carries the fingerprint hash of its environment. On a
@@ -77,7 +77,7 @@ with the session's fingerprint (`lab.rolling_drift`).
   memory of targets) depend on the whole environment. Compare them only
   between runs with the same fingerprint hash. No subset of fields is
   documented as harmless yet; until one is, a different hash means not
-  comparable. `pokus-lab update-host` prints which fields changed.
+  comparable. `pinka update-host` prints which fields changed.
 - **Accuracy and the other outcome metrics** depend on what the agent did,
   not on how fast. Comparing them requires the identical model (weights hash),
   serving profile and agent configuration; the fingerprint may differ.

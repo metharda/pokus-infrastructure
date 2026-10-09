@@ -36,13 +36,13 @@ Details: [Component sources](../reference/component-sources.md).
 - **Automatic updates:** `dnf-automatic` with `upgrade_type = security`,
   `reboot = never`, and `exclude = kernel*` on bare metal unless
   `allow_kernel_updates` is `true`. Fedora is a fast-moving release model:
-  move to a new Fedora release with `pokus-lab update-host` and expect the
+  move to a new Fedora release with `pinka update-host` and expect the
   fingerprint to change.
 
 ## Firewall and SELinux
 
-- **Firewall:** firewalld, which is active by default on this family. Pokus
-  adds the zone `pokus-tailnet` for `tailscale0` and puts the image build
+- **Firewall:** firewalld, which is active by default on this family. Pokus Infrastructure (pinka)
+  adds the zone `pinka-tailnet` for `tailscale0` and puts the image build
   bridge into the `trusted` zone; Docker's own `docker` zone is left alone.
 - **SELinux stays enforcing.** The `mac` role installs
   `policycoreutils-python-utils` and `container-selinux`, adds persistent file
@@ -63,7 +63,7 @@ yourself (`install_nvidia_driver: manual`). The initramfs is rebuilt with
 ## Known issues
 
 - NVIDIA's own repository file for the container toolkit sets `gpgcheck=0`.
-  Pokus configures the repository with `gpgcheck=1`, so unsigned packages
+  Pokus Infrastructure configures the repository with `gpgcheck=1`, so unsigned packages
   are refused.
 - Minimal images may lack the `dnf` Python bindings for the interpreter
   Ansible uses; ansible-core switches to the system interpreter for package

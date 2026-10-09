@@ -1,9 +1,9 @@
-# Managed by pokus-infra (ansible/group_vars/all/versions.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/group_vars/all/versions.yml). Local changes will be overwritten.
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
-# bootstrap.sh stops when pokus_versions_lock_sha256 is not the sha256 of
+# bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pokus_versions_lock_sha256: "2dee4715f14b31ff0117c2932452f5e1ce1bd39e458e7830251568325352257a"
-pokus_versions:
+pinka_versions_lock_sha256: "2974158391ee0582461d5a2689667e0934f7f6fd9e7b89fd18b88acb191ccbc7"
+pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
   fedora_supported_releases:

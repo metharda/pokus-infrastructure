@@ -1,15 +1,15 @@
-# pokus-infra
+# pokus-infrastructure
 
 Infrastructure-as-code for the Pokus research lab: it turns a Linux machine
 into a lab host for benchmarking AI diagnostic agents on reproducible, injected
 Linux faults. It provides host checks (preflight), accounts, remote access over
 Tailscale, the Incus target sandbox, local model serving with vLLM,
-observability, backups, and the `pokus-lab` operator tool. The research
+observability, backups, and the `pinka` operator tool. The research
 services come from pokus-platform and run on top of it.
 
 The documentation is in `docs/` (MkDocs): start with
 [docs/index.md](docs/index.md), or build it into `site/` with `make docs`. On
-a lab host, `pokus-lab docs serve` serves it on `127.0.0.1` for offline use.
+a lab host, `pinka docs serve` serves it on `127.0.0.1` for offline use.
 
 ## Supported environments
 
@@ -45,7 +45,7 @@ At least 16 GiB of memory and 8 CPU threads. Derivatives are experimental; every
 
 - A machine with one of the environments above, systemd as PID 1, cgroup v2,
   and btrfs or LVM thin provisioning for the target storage pool (preflight
-  checks all of it: `./preflight/pokus-preflight --no-write`).
+  checks all of it: `./preflight/pinka-preflight --no-write`).
 - `git` and `sudo`; bootstrap installs its own pinned Python and Ansible.
 - A Tailscale account for the lab's remote access and the researchers' SSH
   public keys.
@@ -59,9 +59,9 @@ every setting, writes `ansible/inventory/host_vars/<machine>.yml`, the
 researchers' keys and the encrypted vault, and provisions the host:
 
 ```bash
-git clone <repository-url> pokus
-cd pokus/infra
-./preflight/pokus-preflight --no-write
+git clone <repository-url> pokus-infrastructure
+cd pokus-infrastructure/infra
+./preflight/pinka-preflight --no-write
 sudo ./bootstrap/bootstrap.sh
 ```
 
@@ -99,19 +99,19 @@ walk through a complete installation.
 | 76 | reboot required | reboot (and enroll the MOK if asked), then re-run bootstrap |
 | 77 | operator action required | the printed message says what to do (for example run as root, commit the infra tree, accept a changed host profile) |
 
-Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoot.md); the codes of `pokus-preflight` and `pokus-lab` are in [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
+Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoot.md); the codes of `pinka-preflight` and `pinka` are in [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
 <!-- generated:exit-codes:end -->
 
 ## When something fails
 
 - Bootstrap prints the exit code and the log file
-  (`/var/log/pokus-bootstrap/<UTC>.log`); `docs/how-to/troubleshoot.md` has a
+  (`/var/log/pinka-bootstrap/<UTC>.log`); `docs/how-to/troubleshoot.md` has a
   section per code.
-- On a provisioned host, `sudo pokus-lab doctor` checks everything and names
+- On a provisioned host, `sudo pinka doctor` checks everything and names
   each failed check; `docs/how-to/fix-doctor-checks.md` has a section per
   check.
-- `sudo pokus-lab status` shows the units, containers, Incus instances, GPU
-  and last backup; the units log to the journal (`journalctl -u 'pokus-*'`).
+- `sudo pinka status` shows the units, containers, Incus instances, GPU
+  and last backup; the units log to the journal (`journalctl -u 'pinka-*' -u 'potka-*'`).
 - `docs/operations.md` maps every day-to-day task to its guide.
 
 ## Repository layout
@@ -120,8 +120,8 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | --- | --- |
 | `docs/` | Documentation (MkDocs). `docs/BUILD_PROMPT.md` is the binding build specification, `docs/DOCS_SPEC.md` the documentation specification, `docs/contracts.md` the interface to pokus-platform. |
 | `bootstrap/` | `bootstrap.sh`, the single entry point that provisions a lab host, its shell libraries, the hash-locked Ansible requirements and tests. |
-| `preflight/` | Host detection and the support decision (`pokus-preflight`), the support matrix, the host profile schema, fixtures and tests. |
-| `installer/` | The installer TUI and the answers replay that `bootstrap.sh` runs (`pokus_installer`), the answers schema, its hash-locked requirements and tests. |
+| `preflight/` | Host detection and the support decision (`pinka-preflight`), the support matrix, the host profile schema, fixtures and tests. |
+| `installer/` | The installer TUI and the answers replay that `bootstrap.sh` runs (`pinka_installer`), the answers schema, its hash-locked requirements and tests. |
 | `ansible/` | Inventory, playbooks, roles and the progress callback that bootstrap applies. |
 | `images/` | Golden image blueprints (recipes of the benchmark targets' base images). |
 | `compose/`, `config/` | Compose files and configuration of the lab services (Postgres, OPA, the telemetry stack, vLLM), rendered by their roles. |
@@ -129,7 +129,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `vllm/` | vLLM serving profiles per GPU class. |
 | `tests/` | The CI answers file and the distribution test targets and results. |
 | `contrib/windows/` | An optional Windows-side helper for WSL hosts. |
-| `tools/pokus-lab/` | `pokus-lab`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
+| `tools/pinka-lab/` | `pinka`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
 | `tools/test-distros/` | `make test-distros`: the distribution tests in Incus VMs and the CI fast lane. |
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
 | `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. |
@@ -152,7 +152,7 @@ make generate   # rewrite generated files after changing their sources
 ```
 
 To check whether a machine can host the lab without changing anything on it,
-run `./preflight/pokus-preflight --no-write` (see
+run `./preflight/pinka-preflight --no-write` (see
 `docs/how-to/check-a-host.md`).
 
 None of these targets changes the host. Provisioning and role tests run only
@@ -165,7 +165,7 @@ contains no personal or installation-specific data. Real deployment data
 (host variables of real machines, researchers' SSH keys, installer answers,
 vaults) belongs in your lab's own private fork or configuration repository and
 is excluded by `.gitignore`. `make privacy` enforces this; CI can add a private
-denylist through the `POKUS_PRIVACY_DENYLIST` secret.
+denylist through the `PINKA_PRIVACY_DENYLIST` secret.
 
 ## License
 

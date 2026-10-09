@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/restore.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/restore.yml). Local changes will be overwritten.
 #
 # Entry point of restore.yml (BUILD_PROMPT §7.15): re-import every exported
 # golden image whose alias is missing, keeping the alias and checking that the
@@ -6,7 +6,7 @@
 
 - name: Install the export helper
   ansible.builtin.copy:
-    src: pokus_image_files.py
+    src: pinka_image_files.py
     dest: "{{ images_files_helper }}"
     owner: root
     group: root

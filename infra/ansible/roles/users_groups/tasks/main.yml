@@ -1,15 +1,15 @@
-# Managed by pokus-infra (ansible/roles/users_groups/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/users_groups/tasks/main.yml). Local changes will be overwritten.
 #
 # Groups and accounts (BUILD_PROMPT §6.1, contracts.md). Researchers are
-# members of pokus (and of Incus's per-user group, added by the incus role);
-# admins also of pokus-admin with sudo. Nobody is added to docker or
+# members of pinka (and of Incus's per-user group, added by the incus role);
+# admins also of pinka-admin with sudo. Nobody is added to docker or
 # incus-admin implicitly. Service accounts are system users without login.
-- name: Create the Pokus groups
+- name: Create the pinka groups
   ansible.builtin.group:
     name: "{{ item.name }}"
     system: "{{ item.system }}"
     state: present
-  loop: "{{ pokus_groups }}"
+  loop: "{{ pinka_groups }}"
 
 # Each service account has a primary group of its own name: the contract's
 # sockets and password files are owned by it (contracts.md#sockets, #paths),
@@ -27,7 +27,7 @@
     group: "{{ item.name }}"
     system: true
     shell: "{{ users_groups_nologin_shell }}"
-    home: "{{ pokus_service_home }}/{{ item.name }}"
+    home: "{{ pinka_service_home }}/{{ item.name }}"
     create_home: true
     password: "!"
     groups: "{{ item.groups }}"
@@ -39,31 +39,31 @@
   ansible.builtin.user:
     name: "{{ item.name }}"
     shell: "{{ item.shell | default('/bin/bash') }}"
-    groups: "{{ ['pokus'] + (['pokus-admin'] if item.admin | default(false) else []) }}"
+    groups: "{{ ['pinka'] + (['pinka-admin'] if item.admin | default(false) else []) }}"
     append: true
     create_home: true
     state: present
   loop: "{{ researchers }}"
 
-- name: Read the members of pokus-admin
+- name: Read the members of pinka-admin
   ansible.builtin.getent:
     database: group
-    key: pokus-admin
+    key: pinka-admin
     fail_key: false  # in check mode the group above is not created
 
-- name: Remove non-admins and removed researchers from pokus-admin
+- name: Remove non-admins and removed researchers from pinka-admin
   ansible.builtin.command:
-    argv: [gpasswd, -d, "{{ item }}", pokus-admin]
+    argv: [gpasswd, -d, "{{ item }}", pinka-admin]
   loop: "{{ (researchers | rejectattr('admin', 'true') | map(attribute='name') | list) + researchers_removed }}"
-  when: item in (ansible_facts.getent_group['pokus-admin'][2] | default('')).split(',')
+  when: item in (ansible_facts.getent_group['pinka-admin'][2] | default('')).split(',')
   changed_when: true
 
 - name: Install the sudo rule for admins
   ansible.builtin.copy:
-    dest: /etc/sudoers.d/90-pokus-admin
+    dest: /etc/sudoers.d/90-pinka-admin
     content: |
-      # Managed by pokus-infra (ansible/roles/users_groups). Local changes will be overwritten.
-      %pokus-admin ALL=(ALL:ALL) ALL
+      # Managed by pinka (ansible/roles/users_groups). Local changes will be overwritten.
+      %pinka-admin ALL=(ALL:ALL) ALL
     owner: root
     group: root
     mode: "0440"

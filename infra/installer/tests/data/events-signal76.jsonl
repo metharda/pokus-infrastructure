@@ -1,38 +1,38 @@
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"git","status":"started"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"git","status":"ok"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"prepreflight","status":"started"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"prepreflight","status":"ok"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"tooling","status":"started"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"tooling","status":"ok"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"frontend","status":"started"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"frontend","status":"ok"}
-{"ts":"2026-10-08T10:27:15Z","type":"bootstrap.stage","stage":"preflight","status":"started"}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.stage","stage":"preflight","status":"ok"}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.stage","stage":"ansible-env","status":"started"}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.stage","stage":"ansible-env","status":"ok"}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.stage","stage":"ansible","status":"started"}
-{"play": "Provision the Pokus lab host", "ts": "2026-10-08T10:27:16Z", "type": "ansible.play_start"}
-{"role": "platform_facts", "ts": "2026-10-08T10:27:16Z", "type": "ansible.role_start"}
-{"handler": false, "role": "platform_facts", "task": "Configure platform_facts", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_start"}
-{"changed": true, "duration": 0.018, "host": "localhost", "status": "changed", "task": "Configure platform_facts", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_end"}
-{"message": "platform_facts configured", "task": "Configure platform_facts", "ts": "2026-10-08T10:27:16Z", "type": "ansible.message"}
-{"role": "preflight_gate", "ts": "2026-10-08T10:27:16Z", "type": "ansible.role_start"}
-{"handler": false, "role": "preflight_gate", "task": "Configure preflight_gate", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_start"}
-{"changed": true, "duration": 0.016, "host": "localhost", "status": "changed", "task": "Configure preflight_gate", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_end"}
-{"message": "preflight_gate configured", "task": "Configure preflight_gate", "ts": "2026-10-08T10:27:16Z", "type": "ansible.message"}
-{"role": "provider_baremetal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.role_start"}
-{"handler": false, "role": "provider_baremetal", "task": "Configure provider_baremetal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_start"}
-{"changed": true, "duration": 0.016, "host": "localhost", "status": "changed", "task": "Configure provider_baremetal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_end"}
-{"message": "provider_baremetal configured", "task": "Configure provider_baremetal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.message"}
-{"handler": false, "role": "provider_baremetal", "task": "Use bootstrap_signal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_start"}
-{"changed": false, "duration": 0.012, "host": "localhost", "status": "ok", "task": "Use bootstrap_signal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_end"}
-{"role": "bootstrap_signal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.role_start"}
-{"handler": false, "role": "bootstrap_signal", "task": "Write the bootstrap signal file", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_start"}
-{"changed": true, "duration": 0.017, "host": "localhost", "status": "changed", "task": "Write the bootstrap signal file", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_end"}
-{"message": "written", "task": "Write the bootstrap signal file", "ts": "2026-10-08T10:27:16Z", "type": "ansible.message"}
-{"handler": false, "role": "bootstrap_signal", "task": "Stop the play with the bootstrap signal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_start"}
-{"changed": false, "duration": 0.018, "host": "localhost", "message": "POKUS-BOOTSTRAP-SIGNAL 76: Secure Boot is on and the NVIDIA module is signed with /var/lib/shim-signed/mok/MOK.der, which is not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, choose \"Enroll MOK\" at the blue MOK Manager screen, enter that password, then re-run bootstrap.", "status": "failed", "stderr": "", "task": "Stop the play with the bootstrap signal", "ts": "2026-10-08T10:27:16Z", "type": "ansible.task_end"}
-{"changed": 4, "failures": 1, "host": "localhost", "ok": 5, "skipped": 0, "ts": "2026-10-08T10:27:16Z", "type": "ansible.stats", "unreachable": 0}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.signal","stage":"ansible","status":"signaled","exit_code":76,"message":"Secure Boot is on and the NVIDIA module is signed with /var/lib/shim-signed/mok/MOK.der, which is not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, choose \"Enroll MOK\" at the blue MOK Manager screen, enter that password, then re-run bootstrap."}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.stage","stage":"ansible","status":"failed","exit_code":76}
-{"ts":"2026-10-08T10:27:16Z","type":"bootstrap.result","stage":"bootstrap","status":"signal","exit_code":76}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"git","status":"started"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"git","status":"ok"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"prepreflight","status":"started"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"prepreflight","status":"ok"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"tooling","status":"started"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"tooling","status":"ok"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"frontend","status":"started"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"frontend","status":"ok"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"preflight","status":"started"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"preflight","status":"ok"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"ansible-env","status":"started"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"ansible-env","status":"ok"}
+{"ts":"2026-10-09T03:22:23Z","type":"bootstrap.stage","stage":"ansible","status":"started"}
+{"play": "Provision the Pokus lab host", "ts": "2026-10-09T03:22:24Z", "type": "ansible.play_start"}
+{"role": "platform_facts", "ts": "2026-10-09T03:22:24Z", "type": "ansible.role_start"}
+{"handler": false, "role": "platform_facts", "task": "Configure platform_facts", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.022, "host": "localhost", "status": "changed", "task": "Configure platform_facts", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_end"}
+{"message": "platform_facts configured", "task": "Configure platform_facts", "ts": "2026-10-09T03:22:24Z", "type": "ansible.message"}
+{"role": "preflight_gate", "ts": "2026-10-09T03:22:24Z", "type": "ansible.role_start"}
+{"handler": false, "role": "preflight_gate", "task": "Configure preflight_gate", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Configure preflight_gate", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_end"}
+{"message": "preflight_gate configured", "task": "Configure preflight_gate", "ts": "2026-10-09T03:22:24Z", "type": "ansible.message"}
+{"role": "provider_baremetal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.role_start"}
+{"handler": false, "role": "provider_baremetal", "task": "Configure provider_baremetal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.021, "host": "localhost", "status": "changed", "task": "Configure provider_baremetal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_end"}
+{"message": "provider_baremetal configured", "task": "Configure provider_baremetal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.message"}
+{"handler": false, "role": "provider_baremetal", "task": "Use bootstrap_signal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_start"}
+{"changed": false, "duration": 0.021, "host": "localhost", "status": "ok", "task": "Use bootstrap_signal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_end"}
+{"role": "bootstrap_signal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.role_start"}
+{"handler": false, "role": "bootstrap_signal", "task": "Write the bootstrap signal file", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_start"}
+{"changed": true, "duration": 0.02, "host": "localhost", "status": "changed", "task": "Write the bootstrap signal file", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_end"}
+{"message": "written", "task": "Write the bootstrap signal file", "ts": "2026-10-09T03:22:24Z", "type": "ansible.message"}
+{"handler": false, "role": "bootstrap_signal", "task": "Stop the play with the bootstrap signal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_start"}
+{"changed": false, "duration": 0.019, "host": "localhost", "message": "PINKA-BOOTSTRAP-SIGNAL 76: Secure Boot is on and the NVIDIA module is signed with /var/lib/shim-signed/mok/MOK.der, which is not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, choose \"Enroll MOK\" at the blue MOK Manager screen, enter that password, then re-run bootstrap.", "status": "failed", "stderr": "", "task": "Stop the play with the bootstrap signal", "ts": "2026-10-09T03:22:24Z", "type": "ansible.task_end"}
+{"changed": 4, "failures": 1, "host": "localhost", "ok": 5, "skipped": 0, "ts": "2026-10-09T03:22:24Z", "type": "ansible.stats", "unreachable": 0}
+{"ts":"2026-10-09T03:22:24Z","type":"bootstrap.signal","stage":"ansible","status":"signaled","exit_code":76,"message":"Secure Boot is on and the NVIDIA module is signed with /var/lib/shim-signed/mok/MOK.der, which is not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, choose \"Enroll MOK\" at the blue MOK Manager screen, enter that password, then re-run bootstrap."}
+{"ts":"2026-10-09T03:22:24Z","type":"bootstrap.stage","stage":"ansible","status":"failed","exit_code":76}
+{"ts":"2026-10-09T03:22:24Z","type":"bootstrap.result","stage":"bootstrap","status":"signal","exit_code":76}

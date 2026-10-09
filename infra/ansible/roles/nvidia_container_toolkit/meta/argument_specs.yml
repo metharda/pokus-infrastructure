@@ -1,11 +1,11 @@
-# Managed by pokus-infra (ansible/roles/nvidia_container_toolkit/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/nvidia_container_toolkit/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: NVIDIA Container Toolkit with CDI GPU access and a containerized GPU check.
     options:
       nvidia_container_toolkit_verify_dir:
         type: path
-        default: /var/lib/pokus/verify
+        default: /var/lib/pinka/verify
         description: Directory of the GPU check record gpu-docker.txt.
       nvidia_container_toolkit_cdi_device:
         type: str

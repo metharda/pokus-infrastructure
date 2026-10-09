@@ -1,12 +1,12 @@
-# Managed by pokus-infra (ansible/roles/vllm/tasks/default_deployment.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/vllm/tasks/default_deployment.yml). Local changes will be overwritten.
 #
 # The default deployment from host_vars (BUILD_PROMPT §7.11, contracts.md#inference):
-# /etc/pokus/vllm/deployments/<id>@<version>.yml. Deployment files are
+# /etc/pinka/vllm/deployments/<id>@<version>.yml. Deployment files are
 # immutable: a different spec under an existing id and version is refused.
 - name: Read the model lock and the catalog
   ansible.builtin.set_fact:
-    vllm_lock: "{{ lookup('ansible.builtin.file', pokus_infra_dir ~ '/models.lock.yml') | from_yaml }}"
-    vllm_catalog: "{{ lookup('ansible.builtin.file', pokus_infra_dir ~ '/models.catalog.yml') | from_yaml }}"
+    vllm_lock: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.lock.yml') | from_yaml }}"
+    vllm_catalog: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.catalog.yml') | from_yaml }}"
 
 - name: Derive the default deployment
   ansible.builtin.set_fact:
@@ -39,7 +39,7 @@
 
 - name: Look for an existing file of this deployment
   ansible.builtin.slurp:
-    src: "/etc/pokus/vllm/deployments/{{ vllm_default_id }}.yml"
+    src: "/etc/pinka/vllm/deployments/{{ vllm_default_id }}.yml"
   register: vllm_default_existing
   failed_when: false
 
@@ -49,14 +49,14 @@
       - vllm_default_existing.content is not defined
         or (vllm_default_existing.content | b64decode | from_yaml) == vllm_default_spec
     fail_msg: >-
-      /etc/pokus/vllm/deployments/{{ vllm_default_id }}.yml exists with a different
+      /etc/pinka/vllm/deployments/{{ vllm_default_id }}.yml exists with a different
       spec; deployment files are immutable: raise vllm_default_deployment.version.
     quiet: true
 
 - name: Write the default deployment
   ansible.builtin.copy:
     content: "{{ vllm_default_spec | to_nice_yaml(indent=2, sort_keys=False) }}"
-    dest: "/etc/pokus/vllm/deployments/{{ vllm_default_id }}.yml"
+    dest: "/etc/pinka/vllm/deployments/{{ vllm_default_id }}.yml"
     owner: root
     group: root
     mode: "0644"

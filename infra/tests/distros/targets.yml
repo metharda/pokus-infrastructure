@@ -1,4 +1,4 @@
-# Managed by pokus-infra (tests/distros/targets.yml). Local changes will be overwritten.
+# Managed by pinka (tests/distros/targets.yml). Local changes will be overwritten.
 #
 # Distribution tests of `make test-distros` (BUILD_PROMPT §19.9): one
 # disposable Incus VM per entry. Every `supported` and `tested` release of

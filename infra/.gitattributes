@@ -1,4 +1,4 @@
-# Managed by pokus-infra (.gitattributes).
+# Managed by pinka (.gitattributes).
 # Every text file uses LF line endings, also when checked out on Windows
 # (contrib/windows helpers are copied to Windows by hand and work with LF).
 * text=auto eol=lf

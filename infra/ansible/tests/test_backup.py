@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import IO, Any
 
-import pokus_backup as backup
+import pinka_backup as backup
 import pytest
 
 from ansible_testlib import (
@@ -60,19 +60,19 @@ def config(tmp_path: Path) -> dict[str, Any]:
     data.mkdir(parents=True)
     return {
         "restic": "/usr/local/bin/restic",
-        "host": "pokus-lab",
-        "tag": "pokus",
+        "host": "pinka-lab",
+        "tag": "pinka",
         "secrets_dir": str(secrets),
-        "known_hosts": "/etc/pokus/backup/known_hosts",
+        "known_hosts": "/etc/pinka/backup/known_hosts",
         "cache_dir": str(tmp_path / "cache"),
         "state": str(tmp_path / "state" / "state.json"),
         "textfile_dir": str(tmp_path / "textfile"),
         "paths": [str(data), str(tmp_path / "srv" / "missing")],
-        "excludes": ["/etc/pokus/secrets"],
+        "excludes": ["/etc/pinka/secrets"],
         "retention": {"daily": 7, "weekly": 4, "monthly": 12},
         "pgdump": {
-            "container": "pokus-postgres",
-            "database": "pokus",
+            "container": "pinka-postgres",
+            "database": "potka",
             "dir": str(tmp_path / "pg"),
             "keep": 2,
         },
@@ -80,7 +80,7 @@ def config(tmp_path: Path) -> dict[str, Any]:
 
 
 def metrics(config: Mapping[str, Any], job: str) -> dict[str, float]:
-    text = (Path(config["textfile_dir"]) / f"pokus_backup_{job}.prom").read_text()
+    text = (Path(config["textfile_dir"]) / f"pinka_backup_{job}.prom").read_text()
     return {
         line.split("{")[0]: float(line.rsplit(" ", 1)[1])
         for line in text.splitlines()
@@ -112,7 +112,7 @@ def test_restic_reads_location_and_password_from_files(config: dict[str, Any]) -
     for option in (
         "StrictHostKeyChecking=yes",
         "BatchMode=yes",
-        "UserKnownHostsFile=/etc/pokus/backup/known_hosts",
+        "UserKnownHostsFile=/etc/pinka/backup/known_hosts",
     ):
         assert option in argv[2]
     assert backup.restic_argv(config, "rest:https://backup.example.com/lab") == [
@@ -126,12 +126,12 @@ def test_backup_initializes_a_new_repository(config: dict[str, Any]) -> None:
     words = [" ".join(c["argv"][3:5]) for c in runner.calls]
     assert [w.strip() for w in words] == ["cat config", "init", "backup --json"]
     run = runner.calls[2]["argv"]
-    assert run[run.index("--host") + 1] == "pokus-lab"
-    assert run[run.index("--tag") + 1] == "pokus"
+    assert run[run.index("--host") + 1] == "pinka-lab"
+    assert run[run.index("--tag") + 1] == "pinka"
     assert "pw" not in " ".join(run)  # the password never appears on a command line
     gauges = metrics(config, "backup")
-    assert gauges["pokus_backup_job_success"] == 1
-    assert gauges["pokus_backup_data_added_bytes"] == 1234
+    assert gauges["pinka_backup_job_success"] == 1
+    assert gauges["pinka_backup_data_added_bytes"] == 1234
 
 
 def test_backup_lists_only_existing_paths(
@@ -148,21 +148,21 @@ def test_backup_lists_only_existing_paths(
 
     assert backup.cmd_run(config, Recording({" backup ": (0, SUMMARY)})) == 0
     assert seen["paths"] == config["paths"][0] + "\n"
-    assert seen["excludes"] == "/etc/pokus/secrets\n"
+    assert seen["excludes"] == "/etc/pinka/secrets\n"
 
 
 def test_failed_backup_keeps_the_last_success(config: dict[str, Any]) -> None:
     assert backup.cmd_run(config, FakeRunner({" backup ": (0, SUMMARY)})) == 0
-    first = metrics(config, "backup")["pokus_backup_job_last_success_timestamp_seconds"]
+    first = metrics(config, "backup")["pinka_backup_job_last_success_timestamp_seconds"]
     assert backup.cmd_run(config, FakeRunner({" backup ": (backup.INCOMPLETE, SUMMARY)})) == 1
     gauges = metrics(config, "backup")
-    assert gauges["pokus_backup_job_success"] == 0
-    assert gauges["pokus_backup_job_last_success_timestamp_seconds"] == first
+    assert gauges["pinka_backup_job_success"] == 0
+    assert gauges["pinka_backup_job_last_success_timestamp_seconds"] == first
 
 
 def test_unconfigured_and_unreachable_repositories(config: dict[str, Any]) -> None:
     assert backup.cmd_run(config, FakeRunner({"cat config": (12, "")})) == 1
-    assert metrics(config, "backup")["pokus_backup_job_success"] == 0
+    assert metrics(config, "backup")["pinka_backup_job_success"] == 0
     (Path(config["secrets_dir"]) / "repository").unlink()
     for command in (backup.cmd_run, backup.cmd_prune, backup.cmd_snapshots):
         assert command(config, FakeRunner({})) == 2
@@ -177,7 +177,7 @@ def test_prune_keeps_this_hosts_snapshots_by_policy(config: dict[str, Any]) -> N
         ("--keep-daily", "7"),
         ("--keep-weekly", "4"),
         ("--keep-monthly", "12"),
-        ("--host", "pokus-lab"),
+        ("--host", "pinka-lab"),
     ):
         assert argv[argv.index(flag) + 1] == value
     assert argv[-1] == "--prune"
@@ -191,12 +191,12 @@ def test_snapshots_restore_and_passwd(
     assert json.loads(capsys.readouterr().out) == [{"id": "abc"}]
     runner = FakeRunner({})
     assert (
-        backup.cmd_restore(config, "latest", ["/srv/pokus/catalog", "/etc/pokus/qa"], runner) == 0
+        backup.cmd_restore(config, "latest", ["/srv/pinka/catalog", "/etc/pinka/qa"], runner) == 0
     )
     argv = runner.calls[0]["argv"]
     assert argv[3:7] == ["restore", "latest", "--target", "/"]
     assert argv.count("--include") == 2
-    assert argv[argv.index("--host") + 1] == "pokus-lab"  # "latest" of this host only
+    assert argv[argv.index("--host") + 1] == "pinka-lab"  # "latest" of this host only
     assert backup.cmd_passwd(config, Path("/tmp/new"), runner) == 0  # noqa: S108 - a path argument only
     assert runner.calls[1]["argv"][3:] == ["key", "passwd", "--new-password-file", "/tmp/new"]  # noqa: S108
 
@@ -208,34 +208,34 @@ def test_pgdump_checks_and_keeps_the_newest(config: dict[str, Any]) -> None:
     directory = Path(config["pgdump"]["dir"])
     directory.mkdir()
     for stamp in ("20260101T000000Z", "20260102T000000Z"):
-        (directory / f"pokus-{stamp}.dump").write_bytes(b"old")
+        (directory / f"potka-{stamp}.dump").write_bytes(b"old")
     runner = FakeRunner({})
     assert backup.cmd_pgdump(config, runner) == 0
-    dumps = sorted(p.name for p in directory.glob("pokus-*.dump"))
+    dumps = sorted(p.name for p in directory.glob("potka-*.dump"))
     assert len(dumps) == 2
-    assert dumps[0] == "pokus-20260102T000000Z.dump"
+    assert dumps[0] == "potka-20260102T000000Z.dump"
     newest = directory / dumps[1]
     assert newest.read_bytes() == b"PGDMP-test"
     assert newest.stat().st_mode & 0o777 == 0o600
     dump_call, list_call = runner.calls
-    assert dump_call["argv"][:6] == ["docker", "exec", "--user", "postgres", "pokus-postgres", "sh"]
+    assert dump_call["argv"][:6] == ["docker", "exec", "--user", "postgres", "pinka-postgres", "sh"]
     assert "/run/secrets/postgres-superuser" in dump_call["argv"][7]  # read inside the container
-    assert dump_call["argv"][8:] == ["pg_dump", "--format=custom", "--dbname=pokus"]
+    assert dump_call["argv"][8:] == ["pg_dump", "--format=custom", "--dbname=potka"]
     assert list_call["argv"][2] == "--interactive"
     assert list_call["argv"][-2:] == ["pg_restore", "--list"]
     assert list_call["stdin"] == b"PGDMP-test"
-    assert metrics(config, "pgdump")["pokus_backup_dump_bytes"] == len(b"PGDMP-test")
+    assert metrics(config, "pgdump")["pinka_backup_dump_bytes"] == len(b"PGDMP-test")
 
 
 @pytest.mark.parametrize("failing", ["pg_dump", "pg_restore"])
 def test_failed_dump_leaves_nothing(config: dict[str, Any], failing: str) -> None:
     assert backup.cmd_pgdump(config, FakeRunner({failing: (1, "")})) == 1
     assert list(Path(config["pgdump"]["dir"]).iterdir()) == []
-    assert metrics(config, "pgdump")["pokus_backup_job_success"] == 0
+    assert metrics(config, "pgdump")["pinka_backup_job_success"] == 0
 
 
 def test_pgrestore_replaces_the_dumped_objects(config: dict[str, Any], tmp_path: Path) -> None:
-    dump = tmp_path / "pokus-x.dump"
+    dump = tmp_path / "potka-x.dump"
     dump.write_bytes(b"PGDMP-x")
     runner = FakeRunner({})
     assert backup.cmd_pgrestore(config, dump, runner) == 0
@@ -247,7 +247,7 @@ def test_pgrestore_replaces_the_dumped_objects(config: dict[str, Any], tmp_path:
         "--if-exists",
         "--single-transaction",
         "--exit-on-error",
-        "--dbname=pokus",
+        "--dbname=potka",
     ]
     assert runner.calls[0]["stdin"] == b"PGDMP-x"
 
@@ -281,17 +281,17 @@ def test_backed_up_paths_follow_the_specification() -> None:
     )
     paths = evaluate("backup_paths", variables)
     assert paths == [
-        "/srv/pokus/catalog",
-        "/srv/pokus/artifacts",
-        "/srv/pokus/reports",
-        "/srv/pokus/images",
-        "/srv/pokus/datasets",
-        "/srv/pokus/shared",
-        "/srv/pokus/users",
-        "/srv/pokus/backups/pg",
-        "/etc/pokus",
+        "/srv/pinka/catalog",
+        "/srv/pinka/artifacts",
+        "/srv/pinka/reports",
+        "/srv/pinka/images",
+        "/srv/pinka/datasets",
+        "/srv/pinka/shared",
+        "/srv/pinka/users",
+        "/srv/pinka/backups/pg",
+        "/etc/pinka",
     ]
-    assert "/etc/pokus/secrets" in evaluate("backup_excludes", variables)
+    assert "/etc/pinka/secrets" in evaluate("backup_excludes", variables)
     assert evaluate("backup_configured", variables) is True
     assert evaluate("backup_sftp", variables) is True
 
@@ -301,8 +301,8 @@ def test_optional_paths_and_secrets() -> None:
         backup_include_models=True, backup_include_state=["prometheus"], backup_include_secrets=True
     )
     paths = evaluate("backup_paths", variables)
-    assert "/srv/pokus/models" in paths
-    assert "/srv/pokus/state/prometheus" in paths
+    assert "/srv/pinka/models" in paths
+    assert "/srv/pinka/state/prometheus" in paths
     assert evaluate("backup_excludes", variables) == []
 
 
@@ -313,7 +313,7 @@ def test_unconfigured_repository_disables_backup_and_prune() -> None:
         j["name"]: evaluate(j["enabled"].strip()[2:-2], variables)
         for j in load_yaml(ROLE / "vars" / "main.yml")["backup_jobs"]
     }
-    assert jobs == {"pokus-pgdump": True, "pokus-backup": False, "pokus-backup-prune": False}
+    assert jobs == {"pinka-pgdump": True, "pinka-backup": False, "pinka-backup-prune": False}
 
 
 def test_units_render() -> None:
@@ -326,7 +326,7 @@ def test_units_render() -> None:
         service = render_template(
             "backup", "backup-job.service.j2", {**variables, "backup_job": item}
         )
-        assert f"--config /etc/pokus/backup/backup.json {item['command']}" in service
+        assert f"--config /etc/pinka/backup/backup.json {item['command']}" in service
         assert "Type=oneshot" in service
         timer = render_template("backup", "backup-job.timer.j2", {**variables, "backup_job": item})
         assert f"OnCalendar={item['schedule']}" in timer
@@ -366,13 +366,13 @@ SNAPSHOTS = [
         "id": "1" * 64,
         "short_id": "11111111",
         "time": "2026-10-01T03:00:00Z",
-        "paths": ["/etc/pokus", "/srv/pokus/catalog"],
+        "paths": ["/etc/pinka", "/srv/pinka/catalog"],
     },
     {
         "id": "2" * 64,
         "short_id": "22222222",
         "time": "2026-10-02T03:00:00Z",
-        "paths": ["/etc/pokus", "/srv/pokus/catalog"],
+        "paths": ["/etc/pinka", "/srv/pinka/catalog"],
     },
 ]
 
@@ -396,17 +396,17 @@ def test_restore_brings_back_data_but_not_rendered_configuration() -> None:
     argv = evaluate(
         task["ansible.builtin.command"]["argv"].strip()[2:-2],
         {
-            "restore_backup": "/usr/local/libexec/pokus/backup",
+            "restore_backup": "/usr/local/libexec/pinka/backup",
             "restore_entry": SNAPSHOTS[0],
-            "pokus_root": "/srv/pokus",
+            "pinka_root": "/srv/pinka",
             "restore_etc_paths": play["vars"]["restore_etc_paths"],
         },
     )
-    assert argv[:4] == ["/usr/local/libexec/pokus/backup", "restore", "--snapshot", "1" * 64]
+    assert argv[:4] == ["/usr/local/libexec/pinka/backup", "restore", "--snapshot", "1" * 64]
     includes = [a.removeprefix("--include=") for a in argv[4:]]
-    assert includes[0] == "/srv/pokus/catalog"
-    assert "/etc/pokus" not in includes  # bootstrap renders the rest of /etc/pokus
-    assert "/etc/pokus/vllm/current.yml" in includes
+    assert includes[0] == "/srv/pinka/catalog"
+    assert "/etc/pinka" not in includes  # bootstrap renders the rest of /etc/pinka
+    assert "/etc/pinka/vllm/current.yml" in includes
 
 
 def test_rotation_revokes_the_replaced_certificates() -> None:

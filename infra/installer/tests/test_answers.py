@@ -10,10 +10,10 @@ from typing import Any
 import pytest
 from ruamel.yaml import YAML
 
-from pokus_installer import answers as answers_mod
-from pokus_installer import apply
-from pokus_installer.answers import Answers, Context, Researcher
-from pokus_installer.paths import INFRA, Paths
+from pinka_installer import answers as answers_mod
+from pinka_installer import apply
+from pinka_installer.answers import Answers, Context, Researcher
+from pinka_installer.paths import INFRA, Paths
 
 CI = INFRA / "tests" / "answers" / "ci.yml"
 
@@ -22,7 +22,7 @@ def full_answers() -> Answers:
     """Answers that use every section."""
     data: dict[str, Any] = YAML(typ="safe").load(CI.read_text(encoding="utf-8"))
     answers = Answers.from_dict(data)
-    answers.machine.name = "pokus-lab"
+    answers.machine.name = "pinka-lab"
     answers.machine.lab_mode = "production"
     answers.resources.expected_memory_gib = 22
     answers.resources.expected_cpu_threads = 20
@@ -36,9 +36,9 @@ def full_answers() -> Answers:
     answers.remote_access.tailscale_login = "interactive"
     answers.remote_access.ssh_extra_allowed_interfaces = ["enp5s0"]
     answers.backups.repository = answers_mod.Repository(
-        "sftp", "backup.example.com", "backup", "/srv/restic/pokus-lab"
+        "sftp", "backup.example.com", "backup", "/srv/restic/pinka-lab"
     )
-    answers.source.repo = "git@github.com:example-org/pokus.git"
+    answers.source.repo = "git@github.com:example-org/pokus-platform.git"
     answers.platform = answers_mod.Component(True, "platform-v0.1.0")
     answers.catalog = answers_mod.Component(True, "catalog-v0.1.0")
     answers.images_build = ["_base", "web-nginx-flask"]
@@ -59,7 +59,7 @@ def test_round_trip_through_the_file(repo: Paths, tmp_path: Path) -> None:
     path.write_text(answers_mod.dumps(answers), encoding="utf-8")
     assert answers_mod.load(path, apply.context(repo)) == answers.normalized()
     assert answers.normalized().storage.loop_size_gib == 300  # not used with a device
-    assert path.read_text().startswith("# Installer answers for pokus-lab")
+    assert path.read_text().startswith("# Installer answers for pinka-lab")
 
 
 def test_schema_rejects_bad_structure() -> None:
@@ -118,12 +118,12 @@ def test_split_inference_rules(repo: Paths) -> None:
     context = apply.context(repo)
     answers = full_answers()
     answers.machine.node_role = "inference"
-    answers.split_inference_peer = "pokus-lab"
+    answers.split_inference_peer = "pinka-lab"
     found = "\n".join(answers_mod.problems(answers, context))
     assert "the other node, not this machine" in found
     assert "an inference node runs neither platform nor catalog" in found
     answers.platform.enabled = answers.catalog.enabled = False
-    answers.split_inference_peer = "pokus-lab-main"
+    answers.split_inference_peer = "pinka-lab-main"
     assert answers_mod.problems(answers, context) == []
 
 

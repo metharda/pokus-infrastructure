@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/docker/handlers/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/docker/handlers/main.yml). Local changes will be overwritten.
 - name: Restart Docker
   ansible.builtin.systemd_service:
     name: docker.service
     state: restarted
-  when: not ansible_check_mode or 'docker.service' in pokus_present.units
+  when: not ansible_check_mode or 'docker.service' in pinka_present.units

@@ -22,7 +22,7 @@ sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]
 | Option | Value | Description |
 | --- | --- | --- |
 | `--machine` | `NAME` | Selects ansible/inventory/host_vars/NAME.yml; required unless --answers or the TUI names it |
-| `--ref` | `REF` | Git ref of pokus-infra being applied (recorded; default: current HEAD) |
+| `--ref` | `REF` | Git ref of pokus-infrastructure being applied (recorded; default: current HEAD) |
 | `--restore` | — | After provisioning, run restore.yml (prompts for snapshot) |
 | `--tags` | `T1,T2` | Pass through to ansible-playbook |
 | `--skip-tags` | `T1,T2` | e.g. images,models for a fast first run |

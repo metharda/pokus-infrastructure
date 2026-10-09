@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/tasks/updates_debian.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/tasks/updates_debian.yml). Local changes will be overwritten.
 - name: Install unattended-upgrades
   ansible.builtin.include_role:
     name: pkg
@@ -7,8 +7,8 @@
 
 - name: Configure unattended-upgrades (security only, no reboot, held packages excluded)
   ansible.builtin.template:
-    src: 52pokus-unattended-upgrades.j2
-    dest: /etc/apt/apt.conf.d/52pokus-unattended-upgrades
+    src: 52pinka-unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/52pinka-unattended-upgrades
     owner: root
     group: root
     mode: "0644"
@@ -17,7 +17,7 @@
   ansible.builtin.copy:
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     content: |
-      // Managed by pokus-infra (ansible/roles/base). Local changes will be overwritten.
+      // Managed by pinka (ansible/roles/base). Local changes will be overwritten.
       APT::Periodic::Update-Package-Lists "{{ 1 if base_auto_updates_effective else 0 }}";
       APT::Periodic::Unattended-Upgrade "{{ 1 if base_auto_updates_effective else 0 }}";
     owner: root

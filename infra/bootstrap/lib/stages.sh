@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # run-time state is read by the traps in bootstrap.sh
-# Managed by pokus-infra (bootstrap/lib/stages.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/stages.sh). Local changes will be overwritten.
 #
 # The stages of bootstrap.sh (BUILD_PROMPT §5.2) and the decisions between
 # them. A stage either returns normally or ends bootstrap with an exit code
@@ -11,14 +11,14 @@
 #
 # Expects INFRA_DIR, BOOTSTRAP_DIR and INTERACTIVE to be set by bootstrap.sh.
 
-readonly RUN_DIR=/run/pokus/bootstrap
-readonly SIGNAL_FILE=/run/pokus/bootstrap-signal.json
-readonly PROFILE_FILE=/etc/pokus/host-profile.json
-readonly STATE_FILE=/etc/pokus/bootstrap-state.json
-readonly STORED_VAULT_PASS=/etc/pokus/secrets/vault-pass
-readonly LOG_DIR=/var/log/pokus-bootstrap
-readonly LOCK_FILE=/run/lock/pokus-bootstrap.lock
-readonly POKUS_LAB=/usr/local/bin/pokus-lab
+readonly RUN_DIR=/run/pinka/bootstrap
+readonly SIGNAL_FILE=/run/pinka/bootstrap-signal.json
+readonly PROFILE_FILE=/etc/pinka/host-profile.json
+readonly STATE_FILE=/etc/pinka/bootstrap-state.json
+readonly STORED_VAULT_PASS=/etc/pinka/secrets/vault-pass
+readonly LOG_DIR=/var/log/pinka-bootstrap
+readonly LOCK_FILE=/run/lock/pinka-bootstrap.lock
+readonly PINKA_LAB=/usr/local/bin/pinka
 readonly SIGNAL_CODES=' 75 76 77 '
 
 # Run-time state (read by the EXIT trap and the state file).
@@ -54,14 +54,14 @@ leave_stage() {
   CURRENT_STAGE=''
 }
 
-# pokus_python ARGS...: the pinned CPython (replaced in unit tests).
-pokus_python() {
-  "$POKUS_PYTHON" "$@"
+# pinka_python ARGS...: the pinned CPython (replaced in unit tests).
+pinka_python() {
+  "$PINKA_PYTHON" "$@"
 }
 
-# profile_tool ARGS...: python -m pokus_preflight.profile_tool with the pinned CPython.
+# profile_tool ARGS...: python -m pinka_preflight.profile_tool with the pinned CPython.
 profile_tool() {
-  PYTHONPATH="$INFRA_DIR/preflight" pokus_python -m pokus_preflight.profile_tool "$@"
+  PYTHONPATH="$INFRA_DIR/preflight" pinka_python -m pinka_preflight.profile_tool "$@"
 }
 
 # confirm QUESTION: ask a yes/no question; false when prompting is not allowed.
@@ -125,7 +125,7 @@ gate_check() {
 
 # state_result STATE_FILE: print the result recorded by the previous run.
 state_result() {
-  pokus_python -c '
+  pinka_python -c '
 import json, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
@@ -149,7 +149,7 @@ profile_change_accepted() {
 # FILE is missing or not a valid signal.
 read_signal() {
   [[ -f $1 ]] || return 1
-  pokus_python -c '
+  pinka_python -c '
 import json, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as handle:
@@ -253,7 +253,7 @@ schedule_reboot() {
     log_info "check mode: not rebooting"
     return 0
   fi
-  if shutdown -r +1 "Pokus bootstrap: reboot required (--allow-reboot)"; then
+  if shutdown -r +1 "pinka bootstrap: reboot required (--allow-reboot)"; then
     log_warn "the host reboots in one minute (--allow-reboot); run bootstrap again afterwards"
   else
     log_error "could not schedule the reboot; reboot the host yourself, then run bootstrap again"
@@ -339,7 +339,7 @@ result_name() {
   esac
 }
 
-# state_json RC FINISHED_AT: print /etc/pokus/bootstrap-state.json (BUILD_PROMPT §5.2 step 12).
+# state_json RC FINISHED_AT: print /etc/pinka/bootstrap-state.json (BUILD_PROMPT §5.2 step 12).
 state_json() {
   local rc=$1 finished=$2 signal=null
   if [[ -n $SIGNAL_CODE ]]; then
@@ -394,7 +394,7 @@ extra_vars_json() {
   local profile=$1
   printf '{"host_profile": %s,\n' "$(cat -- "$profile")"
   cat <<EOF
- "pokus_bootstrap": {
+ "pinka_bootstrap": {
   "machine": "$(json_escape "$OPT_MACHINE")",
   "repo_commit": "$(json_escape "$GIT_COMMIT")",
   "infra_tree": "$(json_escape "$GIT_INFRA_TREE")",
@@ -427,7 +427,7 @@ stage_root() {
   fi
 }
 
-# stage_logging: tee all output to /var/log/pokus-bootstrap/<UTC>.log (0600)
+# stage_logging: tee all output to /var/log/pinka-bootstrap/<UTC>.log (0600)
 # and take the bootstrap lock.
 stage_logging() {
   STARTED_AT=$(utc_now)
@@ -454,7 +454,7 @@ stage_git() {
   case $rc in
     0) ;;
     2) fail "$EXIT_OPERATOR" "$GIT_REPO_ROOT must be owned by root or by the user running sudo" ;;
-    *) fail "$EXIT_OPERATOR" "bootstrap must run from a git checkout of the Pokus repository" ;;
+    *) fail "$EXIT_OPERATOR" "bootstrap must run from a git checkout of the pokus-infrastructure repository" ;;
   esac
   [[ -n $GIT_COMMIT && -n $GIT_INFRA_TREE ]] \
     || fail "$EXIT_OPERATOR" "cannot read the checked-out commit of $GIT_REPO_ROOT"
@@ -486,10 +486,10 @@ stage_prepreflight() {
   leave_stage
 }
 
-# stage_tooling: pinned uv and CPython under /opt/pokus (§5.2 steps 2 and 4, §19.3).
+# stage_tooling: pinned uv and CPython under /opt/pinka (§5.2 steps 2 and 4, §19.3).
 stage_tooling() {
   enter_stage tooling
-  install -d -m 0755 "$POKUS_OPT"
+  install -d -m 0755 "$PINKA_OPT"
   install_uv
   install_python
   leave_stage
@@ -497,7 +497,7 @@ stage_tooling() {
 
 # installer ARGS...: the installer package with its hash-locked environment.
 installer() {
-  PYTHONPATH="$INFRA_DIR/installer" "$INSTALLER_VENV/bin/python" -m pokus_installer \
+  PYTHONPATH="$INFRA_DIR/installer" "$INSTALLER_VENV/bin/python" -m pinka_installer \
     --infra "$INFRA_DIR" "$@"
 }
 
@@ -568,8 +568,8 @@ run_tui() {
   trap - ERR EXIT
   flock -u 9
   exec 9>&- </dev/tty >/dev/tty 2>&1
-  exec env PYTHONPATH="$INFRA_DIR/installer" POKUS_BOOTSTRAP_LOG="$LOG_FILE" \
-    "$INSTALLER_VENV/bin/python" -m pokus_installer \
+  exec env PYTHONPATH="$INFRA_DIR/installer" PINKA_BOOTSTRAP_LOG="$LOG_FILE" \
+    "$INSTALLER_VENV/bin/python" -m pinka_installer \
     --infra "$INFRA_DIR" tui "${args[@]}"
 }
 
@@ -652,7 +652,7 @@ stage_preflight() {
   "$OPT_ADOPT_INCUS" && args+=(--adopt-incus)
   "$OPT_ALLOW_DIRTY" && args+=(--allow-dirty)
   "$OPT_OFFLINE" && args+=(--offline)
-  "$INFRA_DIR/preflight/pokus-preflight" "${args[@]}" || rc=$?
+  "$INFRA_DIR/preflight/pinka-preflight" "${args[@]}" || rc=$?
   case $rc in
     0 | 10 | 20 | 30) ;;
     *) fail "$EXIT_PREFLIGHT_ERROR" "preflight failed (exit status $rc); the traceback is above and in the log" ;;
@@ -763,8 +763,8 @@ stage_doctor() {
     leave_stage
     return 0
   fi
-  [[ -x $POKUS_LAB ]] || fail "$EXIT_ANSIBLE" "$POKUS_LAB is not installed; the play has not provisioned the doctor yet"
-  "$POKUS_LAB" doctor || rc=$?
+  [[ -x $PINKA_LAB ]] || fail "$EXIT_ANSIBLE" "$PINKA_LAB is not installed; the play has not provisioned the doctor yet"
+  "$PINKA_LAB" doctor || rc=$?
   case $rc in
     0 | 1 | 2) FINAL_RC=$rc ;;
     *)

@@ -1,8 +1,8 @@
-# Managed by pokus-infra (ansible/roles/platform/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform/tasks/main.yml). Local changes will be overwritten.
 #
 # The platform services (BUILD_PROMPT §7.14, contracts.md): platform/ at
-# platform_ref from the root-only mirror into /srv/pokus/deploy/platform/<ref>/,
-# its uv environment, the configuration in /etc/pokus/platform (checked
+# platform_ref from the root-only mirror into /srv/pinka/deploy/platform/<ref>/,
+# its uv environment, the configuration in /etc/pinka/platform (checked
 # against the platform's own schemas), the signing key, the QA paths, the
 # pinned Quarto CLI, hardened units with their socket permissions, database
 # migrations, and finally the atomic `current` switch. Changed units restart
@@ -18,7 +18,7 @@
           - platform_ref | length > 0
           - node_role in ['full', 'lab']
           - platform_inference in ['local', 'remote', 'scripted']
-          - platform_inference != 'local' or ((pokus_features.gpu_inference | default(false)) and node_role == 'full')
+          - platform_inference != 'local' or ((pinka_features.gpu_inference | default(false)) and node_role == 'full')
           - platform_inference != 'remote' or inference_remote_node | length > 0
           - platform_inference != 'scripted' or (lab_mode == 'staging' and platform_scripted_api_url | length > 0)
           - platform_settings.keys() | difference(platform_units | map(attribute='svc') | unique) | length == 0
@@ -62,7 +62,7 @@
         - {path: "{{ platform_libexec }}", mode: "0755"}
         - {path: "{{ platform_qa_dir }}", mode: "0755"}
         - {path: "{{ platform_qa_dir }}/trusted-keys", mode: "0755"}
-        - {path: "{{ platform_qa_dir }}/attestations", mode: "0750", group: pokus-orch}
+        - {path: "{{ platform_qa_dir }}/attestations", mode: "0750", group: potka-orch}
       loop_control:
         label: "{{ item.path }}"
 
@@ -77,7 +77,7 @@
           - --no-editable
           - --compile-bytecode
           - --python
-          - "{{ pokus_python }}"
+          - "{{ pinka_python }}"
         chdir: "{{ platform_release }}"
         creates: "{{ platform_release }}/.venv/bin/python"
       environment:
@@ -88,7 +88,7 @@
     - name: Check the console scripts of the contract
       ansible.builtin.stat:
         path: "{{ platform_release }}/.venv/bin/{{ item }}"
-      loop: "{{ platform_units | map(attribute='script') | list + ['pokus-migrate', 'pokus'] }}"
+      loop: "{{ platform_units | map(attribute='script') | list + ['potka-migrate', 'potka'] }}"
       register: platform_scripts
       when: not ansible_check_mode
 
@@ -109,14 +109,14 @@
         group: root
         mode: "{{ item.mode }}"
       loop:
-        - {src: pokus_socket_perms.py, dest: socket-perms, mode: "0755"}
-        - {src: pokus_platform_config_check.py, dest: platform-config-check.py, mode: "0644"}
+        - {src: pinka_socket_perms.py, dest: socket-perms, mode: "0755"}
+        - {src: pinka_platform_config_check.py, dest: platform-config-check.py, mode: "0644"}
 
     - name: Find out whether /run supports POSIX ACLs (C8)
       ansible.builtin.shell:
         cmd: |
           set -eu
-          probe=$(mktemp /run/pokus/.acl-probe.XXXXXX)
+          probe=$(mktemp /run/pinka/.acl-probe.XXXXXX)
           trap 'rm -f "$probe"' EXIT
           setfacl --modify user:root:rw- "$probe"
         executable: /bin/sh
@@ -132,7 +132,7 @@
     - name: Write endpoints.toml
       ansible.builtin.copy:
         dest: "{{ platform_config_dir }}/endpoints.toml"
-        content: "{{ platform_endpoints | pokus_to_toml(platform_toml_header ~ 'endpoints.toml') }}"
+        content: "{{ platform_endpoints | pinka_to_toml(platform_toml_header ~ 'endpoints.toml') }}"
         owner: root
         group: root
         mode: "0644"
@@ -141,7 +141,7 @@
     - name: Write the service configuration (checked against the platform's schemas)
       ansible.builtin.copy:
         dest: "{{ platform_config_dir }}/{{ item }}.toml"
-        content: "{{ platform_settings[item] | default({}) | pokus_to_toml(platform_toml_header ~ item ~ '.toml') }}"
+        content: "{{ platform_settings[item] | default({}) | pinka_to_toml(platform_toml_header ~ item ~ '.toml') }}"
         owner: root
         group: root
         mode: "0644"
@@ -190,7 +190,7 @@
 
     - name: Install the platform units
       ansible.builtin.template:
-        src: pokus-platform.service.j2
+        src: potka-platform.service.j2
         dest: "/etc/systemd/system/{{ platform_unit.unit }}"
         owner: root
         group: root
@@ -202,7 +202,7 @@
       register: platform_unit_files
       notify: Restart the platform
 
-    - name: Enable the platform units (pokus-lab.target wants them)
+    - name: Enable the platform units (pinka-lab.target wants them)
       ansible.builtin.systemd_service:
         name: "{{ item }}"
         enabled: true
@@ -216,9 +216,9 @@
       register: platform_migrated
       failed_when: false
 
-    - name: Migrate the database (pokus-migrate upgrade, C9f)
+    - name: Migrate the database (potka-migrate upgrade, C9f)
       ansible.builtin.command:
-        argv: ["{{ platform_release }}/.venv/bin/pokus-migrate", upgrade]
+        argv: ["{{ platform_release }}/.venv/bin/potka-migrate", upgrade]
       register: platform_migrate
       changed_when: true
       when:
@@ -253,9 +253,9 @@
         - not ansible_check_mode
         - deploy_source_activate is changed
 
-    - name: Put the pokus CLI on the PATH (C9g)
+    - name: Put the potka CLI on the PATH (C9g)
       ansible.builtin.file:
-        src: "{{ platform_current }}/.venv/bin/pokus"
+        src: "{{ platform_current }}/.venv/bin/potka"
         dest: "{{ platform_cli_link }}"
         state: link
         force: true

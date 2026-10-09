@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/hold_zypper_lock.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/tasks/hold_zypper_lock.yml). Local changes will be overwritten.
 - name: Read the current zypper locks
   ansible.builtin.command:
     argv: [zypper, --non-interactive, locks]

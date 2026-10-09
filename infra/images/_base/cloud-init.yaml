@@ -1,5 +1,5 @@
 #cloud-config
-# Managed by pokus-infra (images/_base/cloud-init.yaml). Local changes will be overwritten.
+# Managed by pinka (images/_base/cloud-init.yaml). Local changes will be overwritten.
 #
 # User data of the build instance. Kept minimal: provisioning happens in
 # provision.yml; nothing here may identify a run.

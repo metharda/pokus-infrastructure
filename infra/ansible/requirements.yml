@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/requirements.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/requirements.yml). Local changes will be overwritten.
 # Generated from versions.lock.yml (ansible_collections) by tools/gen (make generate).
-# Bootstrap installs these collections into /opt/pokus/ansible-collections
+# Bootstrap installs these collections into /opt/pinka/ansible-collections
 # (BUILD_PROMPT §5.2 step 6).
 collections:
   - name: ansible.posix

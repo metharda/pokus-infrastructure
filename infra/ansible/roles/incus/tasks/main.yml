@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/main.yml). Local changes will be overwritten.
 #
 # Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
 # the LTS line from the component source matrix, one storage pool, the build
@@ -6,11 +6,11 @@
 # researcher, the target profiles, restricted client certificates for the
 # platform services, the HTTPS API on 127.0.0.1, and a journal feed of Incus
 # events. A new installation is initialized once from incus/preseed.yaml.j2;
-# every run then converges the same objects with pokus_incus_object, which
+# every run then converges the same objects with pinka_incus_object, which
 # never deletes anything.
 - name: Load the Incus names of this family
   ansible.builtin.include_vars:
-    file: "{{ pokus_family }}.yml"
+    file: "{{ pinka_family }}.yml"
 
 - name: Install Incus
   ansible.builtin.include_tasks: install.yml
@@ -33,10 +33,10 @@
 - name: Feed Incus events to the journal
   ansible.builtin.include_tasks: events.yml
 
-- name: Mark Incus as managed by Pokus
+- name: Mark Incus as managed by pinka
   ansible.builtin.copy:
-    dest: /etc/pokus/managed-incus
-    content: "Managed by pokus-infra (incus role). Remove only together with the Incus configuration.\n"
+    dest: /etc/pinka/managed-incus
+    content: "Managed by pinka (incus role). Remove only together with the Incus configuration.\n"
     owner: root
     group: root
     mode: "0644"

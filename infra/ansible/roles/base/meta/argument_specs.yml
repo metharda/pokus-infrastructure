@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Base system.
@@ -32,7 +32,7 @@ argument_specs:
         type: list
         elements: str
         default: []
-        description: Packages automatic updates never touch (pinned by Pokus).
+        description: Packages automatic updates never touch (pinned by pinka).
       base_hold_kernel:
         type: bool
         default: false
@@ -50,4 +50,4 @@ argument_specs:
       base_sysctl:
         type: dict
         default: {}
-        description: Kernel settings in /etc/sysctl.d/60-pokus.conf.
+        description: Kernel settings in /etc/sysctl.d/60-pinka.conf.

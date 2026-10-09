@@ -1,6 +1,6 @@
 # Test keys
 
-Throwaway OpenPGP public keys for the fingerprint tests of `pokus_lockcheck`.
+Throwaway OpenPGP public keys for the fingerprint tests of `pinka_lockcheck`.
 They were generated for this purpose only (user IDs at `example.com`); the
 private keys were deleted right after the export, so they cannot sign
 anything.

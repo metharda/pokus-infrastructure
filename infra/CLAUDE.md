@@ -1,4 +1,4 @@
-# CLAUDE.md — pokus-infra
+# CLAUDE.md — pokus-infrastructure
 
 Read `../PROGRESS.md` (monorepo root) first, then `docs/BUILD_PROMPT.md` (the
 binding build prompt), `docs/DOCS_SPEC.md` and `docs/contracts.md`. Approved
@@ -29,7 +29,7 @@ the prompt text where they differ.
 
 ## Preflight gate (BUILD_PROMPT §2)
 
-- Preflight (`preflight/pokus_preflight/`) is Python standard library only and
+- Preflight (`preflight/pinka_preflight/`) is Python standard library only and
   source-compatible with Python 3.9. Every filesystem and command access goes
   through the `fs`/`runner` abstractions so `--root <fixture>` works.
 - Decisions are data-driven from `preflight/support-matrix.yml` (compiled to
@@ -41,7 +41,7 @@ the prompt text where they differ.
   accepted) 11, 50, 60, 64, 70.
 - Storage must be `btrfs` or LVM thin; no `dir` backend.
 - The `preflight_gate` role fails if outcome, provider or features differ from
-  `/etc/pokus/host-profile.json` without `--refresh-profile`.
+  `/etc/pinka/host-profile.json` without `--refresh-profile`.
 
 ## Safety invariants (BUILD_PROMPT §13)
 
@@ -63,10 +63,10 @@ the prompt text where they differ.
    driver upgrades.
 8. Idempotent: the second run reports `changed=0`.
 9. Never flush or rewrite firewall tables owned by Docker, Incus, firewalld or ufw.
-10. `lab_mode: staging` hosts have their own vault, `/srv/pokus`, Tailscale
-    identity (`tag:pokus-qa`) and signing key, and never pair with or write to
-    a production host. QA trusted keys go to `/etc/pokus/qa/trusted-keys/`;
-    attestations to `/etc/pokus/qa/attestations/`.
+10. `lab_mode: staging` hosts have their own vault, `/srv/pinka`, Tailscale
+    identity (`tag:pinka-qa`) and signing key, and never pair with or write to
+    a production host. QA trusted keys go to `/etc/pinka/qa/trusted-keys/`;
+    attestations to `/etc/pinka/qa/attestations/`.
 11. Every override (`--force-unsupported`, `--accept-degraded`,
     `--accept-experimental`, `--allow-dirty`, break-glass groups) is recorded
     in the host profile and the environment fingerprint.
@@ -82,10 +82,10 @@ the prompt text where they differ.
 
 - Never edit generated files by hand: `preflight/support-matrix.json`,
   `preflight/endpoints.json`, `docs/support-matrix.md`,
-  `docs/reference/{cli/pokus-preflight,cli/bootstrap,cli/pokus-lab,exit-codes,host-profile}.md`,
+  `docs/reference/{cli/pinka-preflight,cli/bootstrap,cli/pinka,exit-codes,host-profile}.md`,
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
-  `docs/reference/{answers,cli/pokus-installer}.md`, the screenshots
+  `docs/reference/{answers,cli/pinka-installer}.md`, the screenshots
   `docs/assets/installer/*.svg` (copies of TUI snapshots),
   the layout table between the `generated:layout` markers of
   `docs/architecture.md`, the sections between the `generated:environments`
@@ -109,13 +109,13 @@ the prompt text where they differ.
 - Preflight fixtures are built from `preflight/tests/fixture_defs.py`
   (synthetic layers only). Data copied from a real host must pass
   `preflight/tests/sanitize_fixture.py` and a manual review first.
-- Summary snapshots change only with `POKUS_UPDATE_SNAPSHOTS=1`; review the diff.
+- Summary snapshots change only with `PINKA_UPDATE_SNAPSHOTS=1`; review the diff.
 
 ## Monorepo specifics (see ../PROGRESS.md)
 
 - Platform and catalog are deployed from a root-only bare mirror with
   `git archive` of one subtree; no `.git` and no catalog content ever appears
-  in a deployed path outside `/srv/pokus/catalog` (B2).
+  in a deployed path outside `/srv/pinka/catalog` (B2).
 - Bootstrap records the repository commit and the `infra/` tree hash; the
   dirty-tree check covers `infra/` only (B3).
 - Release tags are `infra-vX.Y.Z` (B4).
@@ -124,7 +124,7 @@ the prompt text where they differ.
 ## Ansible portability (BUILD_PROMPT §19)
 
 - Only `platform_facts` interprets the distribution; every other role uses the
-  `pokus_*` facts. `make lint-portability` fails on `ansible_distribution*`,
+  `pinka_*` facts. `make lint-portability` fails on `ansible_distribution*`,
   `ansible_os_family`, `ansible_pkg_mgr` or `ansible_lsb` anywhere else.
 - Distribution differences live only in the support matrix,
   `ansible/component-sources.yml`, `roles/<role>/vars/<family>.yml` and
@@ -136,30 +136,30 @@ the prompt text where they differ.
   template module; nft rulesets with `nft -c` in a private network
   namespace) and data consistency; add a render test for every new template.
 - Incus objects are only changed through the incus role's module
-  `pokus_incus_object` (create or update, never delete); the pool and the
+  `pinka_incus_object` (create or update, never delete); the pool and the
   networks are created once and never rewritten. The one deletion is
   `rotate.yml` removing the trust entries of replaced client certificates;
   build instances and images of the images role are not such objects. Only
   the docker role writes `/etc/docker/daemon.json`.
 
-## pokus-lab (BUILD_PROMPT §9, §10.2)
+## pinka (BUILD_PROMPT §9, §10.2)
 
-- `tools/pokus-lab/` is Python standard library only and source-compatible
+- `tools/pinka-lab/` is Python standard library only and source-compatible
   with Python 3.9, like preflight; every host access goes through
-  `pokus_lab.system.System` so the tests use a fake host. Its tests are
+  `pinka_lab.system.System` so the tests use a fake host. Its tests are
   unittest-style and also run on CPython 3.9 (`make test-py39`).
-- The CLI reads only `/etc/pokus/lab.json`, rendered by the `doctor` role;
+- The CLI reads only `/etc/pinka/lab.json`, rendered by the `doctor` role;
   a new key the CLI reads must be rendered there
   (`ansible/tests/test_doctor.py` fails otherwise).
 - Every doctor check needs an ID, a description, a severity, a remediation
   and a section in `docs/how-to/fix-doctor-checks.md` (`{#check-<id>}`);
   the docs coverage check enforces it. The fingerprint's fields are defined
-  by `tools/pokus-lab/schema/fingerprint.schema.json`.
+  by `tools/pinka-lab/schema/fingerprint.schema.json`.
 
 ## Installer (BUILD_PROMPT §18)
 
-- `installer/pokus_installer/` is Python 3.12 with Textual and ruamel.yaml from
-  the hash-locked `installer/requirements.lock` (`/opt/pokus/installer-venv`).
+- `installer/pinka_installer/` is Python 3.12 with Textual and ruamel.yaml from
+  the hash-locked `installer/requirements.lock` (`/opt/pinka/installer-venv`).
   It is a front-end only: it writes files and runs `bootstrap.sh
   --non-interactive --no-tui`; it never provisions anything itself.
 - Every rule of a field lives in `validators.py`; the answers file is checked
@@ -202,5 +202,5 @@ the prompt text where they differ.
   a justification comment, role-prefixed variables, `meta/argument_specs.yml`
   and `README.md` for every role.
 - Templates start with
-  `# Managed by pokus-infra (<template path>). Local changes will be overwritten.`
+  `# Managed by pinka (<template path>). Local changes will be overwritten.`
 - All timestamps UTC ISO 8601 with `Z`. Documentation in English.

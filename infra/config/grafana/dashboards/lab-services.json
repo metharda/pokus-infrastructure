@@ -1,9 +1,9 @@
 {
-  "uid": "pokus-lab-services",
-  "title": "Pokus: lab services health",
-  "description": "Managed by pokus-infra (config/grafana/dashboards/lab-services.json). Local changes will be overwritten. Scrape health of every lab service, the telemetry pipeline, PostgreSQL and the containers.",
+  "uid": "pinka-lab-services",
+  "title": "pinka: lab services health",
+  "description": "Managed by pinka (config/grafana/dashboards/lab-services.json). Local changes will be overwritten. Scrape health of every lab service, the telemetry pipeline, PostgreSQL and the containers.",
   "tags": [
-    "pokus"
+    "pinka"
   ],
   "timezone": "utc",
   "editable": false,
@@ -336,7 +336,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"pokus-.+\"}[2m]))",
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"pinka-.+\"}[2m]))",
           "legendFormat": "{{name}}"
         }
       ],
@@ -379,7 +379,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"pokus-.+\"})",
+          "expr": "sum by (name) (container_memory_working_set_bytes{name=~\"pinka-.+\"})",
           "legendFormat": "{{name}}"
         }
       ],

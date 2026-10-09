@@ -1,4 +1,4 @@
-# Development tooling for pokus-infra.
+# Development tooling for pokus-infrastructure.
 #
 # This project is never installed on lab hosts. Hosts get their Python
 # environments from bootstrap/requirements.lock (Ansible) and
@@ -6,9 +6,9 @@
 # adds hashes. Bump only through the lock update procedure in docs/reproducibility.md.
 
 [project]
-name = "pokus-infra-dev"
+name = "pinka-dev"
 version = "0.1.0"
-description = "Development, lint, test and documentation tooling for pokus-infra."
+description = "Development, lint, test and documentation tooling for pokus-infrastructure."
 requires-python = "==3.12.*"
 license = "Apache-2.0"
 dependencies = []
@@ -65,14 +65,14 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = [
-  "pokus_repo_checks",
-  "pokus_infra_gen",
-  "pokus_preflight",
-  "pokus_lockcheck",
-  "pokus",
-  "pokus_incus_object",
+  "pinka_repo_checks",
+  "pinka_gen",
+  "pinka_preflight",
+  "pinka_lockcheck",
+  "pinka",
+  "pinka_incus_object",
   "ansible_testlib",
-  "pokus_installer",
+  "pinka_installer",
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -89,7 +89,7 @@ convention = "google"
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/deploy_source/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pokus-lab:tools/pokus-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/deploy_source/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pinka-lab:tools/pinka-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -106,7 +106,7 @@ testpaths = [
   "tools/lockcheck/tests",
   "bootstrap/tests",
   "ansible/tests",
-  "tools/pokus-lab/tests",
+  "tools/pinka-lab/tests",
   "tools/test-distros/tests",
   "installer/tests",
 ]
@@ -128,8 +128,8 @@ pythonpath = [
   "ansible/roles/platform/files",
   "ansible/roles/inference_control/files",
   "ansible/tests",
-  "tools/pokus-lab",
-  "tools/pokus-lab/tests",
+  "tools/pinka-lab",
+  "tools/pinka-lab/tests",
   "tools/test-distros",
   "installer",
   "installer/tests",

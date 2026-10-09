@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/tasks/updates_redhat.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/tasks/updates_redhat.yml). Local changes will be overwritten.
 #
 # TODO(verify): dnf-automatic on Fedora's dnf5 (package and configuration path).
 - name: Install dnf-automatic
@@ -20,5 +20,5 @@
     name: dnf-automatic.timer
     enabled: "{{ base_auto_updates_effective }}"
     state: "{{ 'started' if base_auto_updates_effective else 'stopped' }}"
-  # In check mode the package above is not installed (pokus_present: platform_facts).
-  when: not ansible_check_mode or 'dnf-automatic.timer' in pokus_present.units
+  # In check mode the package above is not installed (pinka_present: platform_facts).
+  when: not ansible_check_mode or 'dnf-automatic.timer' in pinka_present.units

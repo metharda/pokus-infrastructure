@@ -1,0 +1,52 @@
+#!/usr/sbin/nft -f
+# Managed by pinka (ansible/roles/firewall/templates/pinka.nft.j2). Local changes will be overwritten.
+#
+# pinka input and forward policy (BUILD_PROMPT §7.5, §19.6). Only the table
+# inet pinka_filter is replaced; tables of Docker, Incus and others are not touched.
+table inet pinka_filter
+delete table inet pinka_filter
+
+table inet pinka_filter {
+	set incus_bridges {
+		type ifname
+		flags interval
+		elements = { {{ firewall_incus_bridge_patterns | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} }
+	}
+
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iifname "lo" accept
+		# ICMP essentials; IPv6 needs neighbor discovery to work at all.
+		ip protocol icmp icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept
+		ip6 nexthdr ipv6-icmp icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-solicit, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } accept
+		# Address configuration of the host itself.
+		udp sport 67 udp dport 68 accept
+		udp sport 547 udp dport 546 accept
+		# Tailscale's WireGuard transport (direct connections).
+		udp dport {{ firewall_tailscale_udp_port }} accept
+		# SSH (and the Grafana serve port) only on the tailnet and the extra interfaces.
+		iifname "{{ firewall_tailnet_interface }}" tcp dport { {{ firewall_tailnet_tcp_ports | join(', ') }} } accept
+{% if ssh_extra_allowed_interfaces | length > 0 %}
+		iifname { {{ ssh_extra_allowed_interfaces | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} } tcp dport 22 accept
+{% endif %}
+		# DHCP and DNS from Incus instances to Incus's dnsmasq on the host.
+		iifname @incus_bridges udp dport { 53, 67, 547 } accept
+		iifname @incus_bridges tcp dport 53 accept
+{% if firewall_vm_otlp_ports | length > 0 %}
+		# OTLP from VM targets to the collector's dedicated listener (C4).
+		iifname "{{ firewall_run_bridge_pattern }}" ip daddr {{ pinka_vm_otlp.address }} tcp dport { {{ firewall_vm_otlp_ports | join(', ') }} } accept
+{% endif %}
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy accept;
+		# Run networks reach nothing outside run networks, and nothing outside
+		# starts connections into them.
+		# Between two run networks, the Incus ACL pinka-run-default drops the
+		# traffic at the bridge boundary.
+		iifname "{{ firewall_run_bridge_pattern }}" oifname != "{{ firewall_run_bridge_pattern }}" drop
+		oifname "{{ firewall_run_bridge_pattern }}" iifname != "{{ firewall_run_bridge_pattern }}" ct state new drop
+	}
+}

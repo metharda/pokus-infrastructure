@@ -8,7 +8,7 @@ a fixture, run::
 
 The tool rewrites every text file in place:
 
-* identity files are reset: ``/etc/hostname`` → ``pokus-lab``,
+* identity files are reset: ``/etc/hostname`` → ``pinka-lab``,
   ``/etc/machine-id`` and DMI serial/UUID files → zeros;
 * global IPv4 → ``192.0.2.x``, global IPv6 → ``2001:db8::x``;
 * MAC addresses → ``00:00:5e:00:53:xx``; UUIDs → the nil UUID;
@@ -35,7 +35,7 @@ ZERO_FILES = {
     "/sys/class/dmi/id/product_serial": "0\n",
     "/sys/class/dmi/id/board_serial": "0\n",
     "/sys/class/dmi/id/chassis_serial": "0\n",
-    "/etc/hostname": "pokus-lab\n",
+    "/etc/hostname": "pinka-lab\n",
 }
 IPV4 = re.compile(r"(?<![\w.])(\d{1,3}(?:\.\d{1,3}){3})(?![\w.])")
 IPV6 = re.compile(r"(?<![\w:.])((?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4})(?![\w:.])")

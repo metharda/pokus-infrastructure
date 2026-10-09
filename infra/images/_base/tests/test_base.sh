@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/_base/tests/test_base.sh). Local changes will be overwritten.
+# Managed by pinka (images/_base/tests/test_base.sh). Local changes will be overwritten.
 #
 # Post-build assertions of `_base`, run inside the build instance.
 set -eu

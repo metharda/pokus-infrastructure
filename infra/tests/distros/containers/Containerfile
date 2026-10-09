@@ -1,4 +1,4 @@
-# Managed by pokus-infra (tests/distros/containers/Containerfile). Local changes will be overwritten.
+# Managed by pinka (tests/distros/containers/Containerfile). Local changes will be overwritten.
 #
 # A systemd container of one distribution family for the CI fast lane
 # (BUILD_PROMPT §19.9): the base image comes pinned by digest from
@@ -6,7 +6,7 @@
 # sudo with the distribution's package manager. Never run on a lab host.
 ARG BASE
 FROM ${BASE}
-COPY prepare.sh /usr/local/sbin/pokus-ci-prepare
-RUN sh /usr/local/sbin/pokus-ci-prepare && rm /usr/local/sbin/pokus-ci-prepare
+COPY prepare.sh /usr/local/sbin/pinka-ci-prepare
+RUN sh /usr/local/sbin/pinka-ci-prepare && rm /usr/local/sbin/pinka-ci-prepare
 STOPSIGNAL SIGRTMIN+3
 CMD ["/usr/lib/systemd/systemd"]

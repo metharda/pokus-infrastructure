@@ -47,16 +47,16 @@ flowchart LR
 
 The OpenTelemetry Collector gateway accepts OTLP over gRPC (`4317`) and HTTP
 (`4318`) on `127.0.0.1`. Every pipeline runs `memory_limiter`, then
-`resource` (which adds `pokus.machine` and `pokus.lab_mode` to every record),
+`resource` (which adds `pinka.machine` and `pinka.lab_mode` to every record),
 then `batch`:
 
 - **Logs** go to Loki's native OTLP endpoint (`/otlp`). Resource attributes
   that are not index labels become structured metadata, so a query filters
-  them with `| pokus_run_id="<run_id>"`.
+  them with `| potka_run_id="<run_id>"`.
 - **Traces** go to Tempo over OTLP gRPC.
 - **Metrics** go to a Prometheus exporter on the gateway, which Prometheus
   scrapes (owner answer E14). Resource attributes become labels, so target
-  metrics carry `pokus_run_id` and `pokus_node`.
+  metrics carry `potka_run_id` and `potka_node`.
 
 ## Where the data comes from
 
@@ -66,10 +66,10 @@ then `batch`:
   gateway on the host's loopback address; the container has no route to the
   host.
 - **Target VMs** cannot use a proxy device (Incus supports them on VMs only in
-  NAT mode). With the `vm_targets` feature, `pokus-vm-otlp-address.service`
-  puts `198.18.0.1/32` (a benchmarking-range address, `pokus_vm_otlp`) on the
-  dummy interface `pokus-otlp0` before Docker starts, and the gateway listens
-  there too. The run ACL `pokus-run-default` lets run networks reach exactly
+  NAT mode). With the `vm_targets` feature, `pinka-vm-otlp-address.service`
+  puts `198.18.0.1/32` (a benchmarking-range address, `pinka_vm_otlp`) on the
+  dummy interface `pinka-otlp0` before Docker starts, and the gateway listens
+  there too. The run ACL `pinka-run-default` lets run networks reach exactly
   that address on TCP `4317` and `4318`, and the firewall accepts nothing else
   from run networks (resolution C4).
 - **The host journal** is read by a second collector instance, the journald
@@ -78,7 +78,7 @@ then `batch`:
   gateway. It is a separate instance on purpose: the gateway, which accepts
   data from targets an agent may have compromised, has no access to the
   host's files. The journal carries the Incus lifecycle events
-  (`pokus-incus-events`), OPA's decision logs (container tag `pokus-opa`) and
+  (`pinka-incus-events`), OPA's decision logs (container tag `pinka-opa`) and
   every unit's output; with semantic conventions on, `SYSLOG_IDENTIFIER`
   becomes `syslog_identifier`.
 - **Prometheus** also scrapes node_exporter, cAdvisor, the PostgreSQL
@@ -90,21 +90,21 @@ then `batch`:
 ## Finding a run's data
 
 The platform starts every target with
-`OTEL_RESOURCE_ATTRIBUTES=pokus.run_id=<run_id>,pokus.node=<node_alias>`
+`OTEL_RESOURCE_ATTRIBUTES=potka.run_id=<run_id>,potka.node=<node_alias>`
 ([integration contract](../contracts.md#telemetry)). The run ID is an opaque
 ULID: it identifies the run, never the scenario. The dashboard
-**Pokus: run explorer** takes a `run_id` and shows the run's database row,
+**potka: run explorer** takes a `run_id` and shows the run's database row,
 its logs (Loki), its targets' CPU and memory (Prometheus) and its traces
-(Tempo, TraceQL `{ resource.pokus.run_id = "<run_id>" }`); a `trace_id`
+(Tempo, TraceQL `{ resource.potka.run_id = "<run_id>" }`); a `trace_id`
 variable opens one trace.
 
 | Attribute | Set by | Where it shows up |
 | --- | --- | --- |
-| `pokus.run_id` | platform, per target | Loki structured metadata `pokus_run_id`; Prometheus label `pokus_run_id`; Tempo resource attribute |
-| `pokus.node` | platform, per target | `pokus_node` |
-| `pokus.machine` | collector gateway | `pokus_machine` |
-| `pokus.lab_mode` | collector gateway | `pokus_lab_mode` |
-| `pokus.deployment`, `pokus.model_id` | vLLM's environment | traces of vLLM |
+| `potka.run_id` | platform, per target | Loki structured metadata `potka_run_id`; Prometheus label `potka_run_id`; Tempo resource attribute |
+| `potka.node` | platform, per target | `potka_node` |
+| `pinka.machine` | collector gateway | `pinka_machine` |
+| `pinka.lab_mode` | collector gateway | `pinka_lab_mode` |
+| `pinka.deployment`, `pinka.model_id` | vLLM's environment | traces of vLLM |
 
 ## Split inference: an inference node forwards everything
 
@@ -115,10 +115,10 @@ Its collector gateway scrapes the local exporters and vLLM itself and sends
 every log record, metric and span to the paired lab node with OTLP over gRPC
 and mutual TLS (port 4317 of the lab node's tailnet address). Until the node
 is paired, nothing leaves it. On the lab node a separate receiver accepts
-only the paired node's certificate and sets `pokus.machine` to that node's
-name, so its data shows up with `pokus_machine="<inference-node>"` next to
+only the paired node's certificate and sets `pinka.machine` to that node's
+name, so its data shows up with `pinka_machine="<inference-node>"` next to
 the lab node's own. The collector's container user (10001) reads a private
-copy of the pairing material in `/etc/pokus/secrets/containers/otel-pairing`.
+copy of the pairing material in `/etc/pinka/secrets/containers/otel-pairing`.
 
 ## Why every service uses the host network on 127.0.0.1
 
@@ -135,8 +135,8 @@ they were written, and every process listened only on `127.0.0.1`.
 
 PostgreSQL is the exception the other way round: its container has no
 network at all. Grafana reads it through the reader socket directory as
-`pokus_grafana`, the exporter through the service socket directory as
-`pokus_monitor` ([ADR-0010](../adr/0010-postgres-socket-only.md)).
+`potka_grafana`, the exporter through the service socket directory as
+`pinka_monitor` ([ADR-0010](../adr/0010-postgres-socket-only.md)).
 
 Related: [How benchmark targets are isolated](target-isolation.md),
 [Lab host architecture](../architecture.md),

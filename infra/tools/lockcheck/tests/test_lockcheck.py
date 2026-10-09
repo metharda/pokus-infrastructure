@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from pokus_lockcheck import checks, cli, net, openpgp
+from pinka_lockcheck import checks, cli, net, openpgp
 
 INFRA = Path(__file__).resolve().parents[3]
 KEYS = Path(__file__).resolve().parent / "test-keys"
@@ -372,7 +372,7 @@ def test_manifest_digest_backs_off_on_rate_limits(monkeypatch: pytest.MonkeyPatc
         return FakeResponse(headers={"Docker-Content-Digest": DIGEST})
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr("pokus_lockcheck.net.time.sleep", waits.append)
+    monkeypatch.setattr("pinka_lockcheck.net.time.sleep", waits.append)
     assert net.manifest_digest("registry.example.com/org/img", "1.0") == DIGEST
     assert waits == [2.0, 2.0]
 

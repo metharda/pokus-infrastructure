@@ -11,18 +11,18 @@ description: The operator's map of the lab's day-to-day work, with a link to the
 
 This page is the operator's map: what you do with a running lab, in roughly
 the order you need it, and where each task is described step by step. Every
-command runs on the lab host; `pokus-lab` is installed there by bootstrap,
+command runs on the lab host; `pinka` is installed there by bootstrap,
 and most of its commands need `sudo`.
 
 ## Every day
 
 | Task | Command | Guide |
 | --- | --- | --- |
-| See what runs | `sudo pokus-lab status` | [`pokus-lab` reference](reference/cli/pokus-lab.md#pokus-lab-status) |
-| Check the lab's health | `sudo pokus-lab doctor` | [Fix a failed doctor check](how-to/fix-doctor-checks.md) |
-| Start the lab | `sudo pokus-lab start` | [Start, stop and drain the lab](how-to/start-stop-drain.md) |
-| Stop it without losing runs | `sudo pokus-lab stop --timeout <seconds>` | [Start, stop and drain the lab](how-to/start-stop-drain.md) |
-| Serve the documentation | `pokus-lab docs serve` | [How to connect to the lab](how-to/connect.md#read-the-documentation-on-the-lab) |
+| See what runs | `sudo pinka status` | [`pinka` reference](reference/cli/pinka.md#pinka-status) |
+| Check the lab's health | `sudo pinka doctor` | [Fix a failed doctor check](how-to/fix-doctor-checks.md) |
+| Start the lab | `sudo pinka start` | [Start, stop and drain the lab](how-to/start-stop-drain.md) |
+| Stop it without losing runs | `sudo pinka stop --timeout <seconds>` | [Start, stop and drain the lab](how-to/start-stop-drain.md) |
+| Serve the documentation | `pinka docs serve` | [How to connect to the lab](how-to/connect.md#read-the-documentation-on-the-lab) |
 
 ## People
 
@@ -36,7 +36,7 @@ and most of its commands need `sudo`.
 - Pin a model, create a deployment and make it the served one:
   [How to add a model and activate a deployment](how-to/add-a-model.md).
   For debugging, the deploy helper switches the served deployment by hand
-  (`/usr/local/libexec/pokus/vllm-deploy activate <id>@<version>`, as root);
+  (`/usr/local/libexec/pinka/vllm-deploy activate <id>@<version>`, as root);
   the orchestrator's next deployment replaces that choice.
 - Build, test and export the golden images of the benchmark targets:
   [How to build, test and export golden images](how-to/build-golden-images.md).
@@ -77,8 +77,8 @@ and most of its commands need `sudo`.
   [How to troubleshoot a bootstrap run](how-to/troubleshoot.md).
 - Doctor reports a check: every check ID has a section in
   [How to fix a failed doctor check](how-to/fix-doctor-checks.md).
-- Logs: the journal of the lab's units (`journalctl -u pokus-lab.target`,
-  `journalctl -u 'pokus-*'`), bootstrap's logs under `/var/log/pokus-bootstrap/`, and the
+- Logs: the journal of the lab's units (`journalctl -u pinka-lab.target`,
+  `journalctl -u 'pinka-*' -u 'potka-*'`), bootstrap's logs under `/var/log/pinka-bootstrap/`, and the
   run's own telemetry in Grafana.
 
 The security model behind all of this is in [Security of the lab host](security.md).

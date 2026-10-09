@@ -15,10 +15,10 @@ import pytest
 from textual.pilot import Pilot
 from tui_fakes import FakeHost, FakeRunner, app, context, preflight
 
-from pokus_installer import answers as answers_mod
-from pokus_installer.paths import Paths
-from pokus_installer.tui.app import SCREENS, InstallerApp
-from pokus_installer.tui.screens_install import SignalScreen
+from pinka_installer import answers as answers_mod
+from pinka_installer.paths import Paths
+from pinka_installer.tui.app import SCREENS, InstallerApp
+from pinka_installer.tui.screens_install import SignalScreen
 
 PASSWORD = "correct horse battery staple 42"  # noqa: S105 - test fixture
 SIZES = {"80x24": (80, 24), "120x40": (120, 40)}
@@ -29,13 +29,13 @@ SCREEN_NAMES = [*SCREENS, "signal"]
 def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     """The application on one screen, with the wizard filled in."""
     host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
-    ctx = context(repo, host, FakeRunner([("events-success.jsonl", 1)]), machine="pokus-lab")
+    ctx = context(repo, host, FakeRunner([("events-success.jsonl", 1)]), machine="pinka-lab")
     wizard = ctx.wizard
     result = host.preflight([])
     wizard.profile, wizard.preflight_exit = result.profile, result.exit_code
     wizard.vault_password = PASSWORD
     answers = wizard.answers
-    answers.machine.name = "pokus-lab"
+    answers.machine.name = "pinka-lab"
     answers.resources.expected_memory_gib = 32
     answers.resources.expected_cpu_threads = 24
     answers.resources.cpuset_services = "0-7"
@@ -45,7 +45,7 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
         answers_mod.Researcher("researcher2", False, "Researcher Two", False),
     ]
     answers.backups.repository = answers_mod.Repository(
-        "sftp", "backup.example.com", "backup", "/srv/restic/pokus-lab"
+        "sftp", "backup.example.com", "backup", "/srv/restic/pinka-lab"
     )
     if screen == "restore":
         answers.mode = "restore"

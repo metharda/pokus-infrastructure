@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (bootstrap/lib/prepreflight.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/prepreflight.sh). Local changes will be overwritten.
 #
 # Minimal sanity checks before anything is installed (BUILD_PROMPT §5.2 step 2):
 # root, systemd as PID 1, glibc, a supported architecture, curl or wget (and
@@ -98,8 +98,8 @@ check_systemd() {
   osrelease=$(cat "$ROOT/proc/sys/kernel/osrelease" 2>/dev/null || true)
   case $osrelease in
     *[Mm]icrosoft*) ;;
-    *) stop 20 "PID 1 is '${pid1:-unknown}', not systemd; Pokus needs systemd as PID 1" \
-      "Use a supported distribution with systemd, or run Pokus in a VM with one." ;;
+    *) stop 20 "PID 1 is '${pid1:-unknown}', not systemd; pinka needs systemd as PID 1" \
+      "Use a supported distribution with systemd, or run pinka in a VM with one." ;;
   esac
   if printf '%s\n' "$osrelease" | grep -Eqi '^4\.4\.0-[0-9]+-microsoft'; then
     stop 20 "WSL1 has no real Linux kernel and is unsupported." \
@@ -145,8 +145,8 @@ check_systemd() {
 check_libc() {
   for f in "$ROOT"/lib/ld-musl-* "$ROOT"/usr/lib/ld-musl-*; do
     if [ -e "$f" ]; then
-      stop 20 "this host uses musl libc; Pokus needs glibc" \
-        "Use a supported glibc distribution, or run Pokus in a VM with one."
+      stop 20 "this host uses musl libc; pinka needs glibc" \
+        "Use a supported glibc distribution, or run pinka in a VM with one."
     fi
   done
   if command -v getconf >/dev/null 2>&1 && getconf GNU_LIBC_VERSION >/dev/null 2>&1; then
@@ -155,7 +155,7 @@ check_libc() {
   if ldd --version 2>&1 | grep -Eqi 'glibc|gnu libc'; then
     return 0
   fi
-  stop 20 "glibc was not found; Pokus needs a glibc-based distribution"
+  stop 20 "glibc was not found; pinka needs a glibc-based distribution"
 }
 
 check_arch() {
@@ -177,10 +177,10 @@ check_tools() {
 }
 
 check_opt() {
-  target=$ROOT/opt/pokus
+  target=$ROOT/opt/pinka
   [ -d "$target" ] || target=$ROOT/opt
   [ -d "$target" ] || target=$ROOT/
-  [ -w "$target" ] || stop 30 "$target is not writable; Pokus installs its tooling under /opt/pokus" \
+  [ -w "$target" ] || stop 30 "$target is not writable; pinka installs its tooling under /opt/pinka" \
     "Make /opt writable (for example remount it read-write), then re-run bootstrap."
 }
 

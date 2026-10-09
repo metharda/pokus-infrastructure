@@ -4,12 +4,12 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Choose the firewall backend, open SSH on an extra interface, inspect Pokus's rules, and work with SELinux enforcing.
+description: Choose the firewall backend, open SSH on an extra interface, inspect pinka's rules, and work with SELinux enforcing.
 ---
 
 # How to configure the firewall backend and SELinux
 
-Pokus applies one firewall policy with the backend the host already uses:
+Pokus Infrastructure (pinka) applies one firewall policy with the backend the host already uses:
 SSH (and the Grafana serve port, if enabled) only on `tailscale0`, DHCP and DNS
 from Incus instances to the host, and nothing else inbound. It only ever
 changes its own table, zone or rules. This guide shows how to choose the
@@ -32,13 +32,13 @@ enforcing.
 
     <!-- qa:run env=E2 -->
     ```bash
-    jq .firewall /etc/pokus/host-profile.json
+    jq .firewall /etc/pinka/host-profile.json
     ```
 
     `active_manager` is the firewall manager that was running (`firewalld`,
-    `ufw` or `null`); `backend` is what Pokus uses with
+    `ufw` or `null`); `backend` is what Pokus Infrastructure uses with
     `firewall_backend: auto`: firewalld if active, else ufw if active, else
-    Pokus's own nftables table.
+    pinka's own nftables table.
 
 2. To use another backend, set it in
    `ansible/inventory/host_vars/<machine>.yml`, and to accept SSH on an
@@ -64,17 +64,17 @@ enforcing.
 
 ## Inspect the rules
 
-Each backend shows Pokus's part with its own tool:
+Each backend shows pinka's part with its own tool:
 
 | Backend | Command | What you should see |
 | --- | --- | --- |
-| nftables | `sudo nft list table inet pokus_filter` | input policy `drop`, `tcp dport { 22 }` on `tailscale0` |
-| firewalld | `sudo firewall-cmd --zone=pokus-tailnet --list-all` and `--zone=pokus-run` | interface `tailscale0`, port `22/tcp`; interface `r-+` with the services `dhcp`, `dhcpv6`, `dns` |
-| ufw | `sudo ufw status verbose` | `22/tcp on tailscale0 ALLOW IN` and DHCP/DNS rules on `r-+`, all with comment `pokus-infra` |
+| nftables | `sudo nft list table inet pinka_filter` | input policy `drop`, `tcp dport { 22 }` on `tailscale0` |
+| firewalld | `sudo firewall-cmd --zone=pinka-tailnet --list-all` and `--zone=pinka-run` | interface `tailscale0`, port `22/tcp`; interface `r-+` with the services `dhcp`, `dhcpv6`, `dns` |
+| ufw | `sudo ufw status verbose` | `22/tcp on tailscale0 ALLOW IN` and DHCP/DNS rules on `r-+`, all with comment `pinka` |
 
 Run networks (`r-*`) only get DHCP and DNS from the host; the build bridge
 and the researchers' bridges (`incusbr-*`) are trusted as Incus documents.
-On every backend `pokus-docker-incus-compat.service` keeps Incus bridges
+On every backend `pinka-docker-incus-compat.service` keeps Incus bridges
 working next to Docker by adding `ACCEPT` rules to Docker's `DOCKER-USER`
 chain. How runs are kept apart is explained in
 [How benchmark targets are isolated](../explanation/target-isolation.md).
@@ -82,17 +82,17 @@ chain. How runs are kept apart is explained in
 ## Work with SELinux enforcing
 
 On Fedora, RHEL-compatible and some openSUSE hosts SELinux stays enforcing;
-Pokus never switches it to permissive. The `mac` role adds persistent file
+Pokus Infrastructure never switches it to permissive. The `mac` role adds persistent file
 contexts for the research space (`state/` writable by containers, `models/`
 and `services/` read-only for containers) and relabels it.
 
-1. Check the mode and the Pokus labels:
+1. Check the mode and the pinka labels:
 
     <!-- qa:run env=E2 -->
     ```bash
     getenforce
-    sudo semanage fcontext -l | grep /srv/pokus
-    ls -Zd /srv/pokus/state /srv/pokus/models
+    sudo semanage fcontext -l | grep /srv/pinka
+    ls -Zd /srv/pinka/state /srv/pinka/models
     ```
 
 2. If a lab service fails with a permission error, look for denials from the
@@ -103,8 +103,8 @@ and `services/` read-only for containers) and relabels it.
     sudo ausearch -m avc -ts recent
     ```
 
-    Report denials that name a Pokus path or container; files you copied into
-    the research space by hand may need `sudo restorecon -R /srv/pokus`.
+    Report denials that name a pinka path or container; files you copied into
+    the research space by hand may need `sudo restorecon -R /srv/pinka`.
 
 ## Verify the policy
 

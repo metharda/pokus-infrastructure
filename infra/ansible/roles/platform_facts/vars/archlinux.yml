@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform_facts/vars/archlinux.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform_facts/vars/archlinux.yml). Local changes will be overwritten.
 #
 # Arch Linux family (Arch Linux and its derivatives).
 platform_facts_family:

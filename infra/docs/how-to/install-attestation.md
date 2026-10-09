@@ -39,7 +39,7 @@ official check are described in the
           -----END PUBLIC KEY-----
     ```
 
-    `<key-name>` names the file `/etc/pokus/qa/trusted-keys/<key-name>.pem`.
+    `<key-name>` names the file `/etc/pinka/qa/trusted-keys/<key-name>.pem`.
 
 2. Apply it:
 
@@ -53,12 +53,12 @@ official check are described in the
 
 ## Place an attestation
 
-Copy both files into `/etc/pokus/qa/attestations/`, owned by root and
+Copy both files into `/etc/pinka/qa/attestations/`, owned by root and
 readable by the orchestrator:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo install -o root -g pokus-orch -m 0640 <file>.json <file>.json.sig /etc/pokus/qa/attestations/
+sudo install -o root -g potka-orch -m 0640 <file>.json <file>.json.sig /etc/pinka/qa/attestations/
 ```
 
 `<file>` is the attestation's file name. Attestations are never edited on the
@@ -72,7 +72,7 @@ You should now see the key and the attestation on the host:
 
 <!-- qa:run env=E2 -->
 ```bash
-ls -l /etc/pokus/qa/trusted-keys/ /etc/pokus/qa/attestations/
+ls -l /etc/pinka/qa/trusted-keys/ /etc/pinka/qa/attestations/
 ```
 
 The key file and both attestation files are listed. Whether the attestation

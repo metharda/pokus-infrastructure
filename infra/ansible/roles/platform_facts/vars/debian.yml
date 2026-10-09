@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform_facts/vars/debian.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform_facts/vars/debian.yml). Local changes will be overwritten.
 #
 # Debian family (Debian, Ubuntu and their derivatives).
 platform_facts_family:

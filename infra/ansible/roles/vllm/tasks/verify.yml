@@ -1,25 +1,25 @@
-# Managed by pokus-infra (ansible/roles/vllm/tasks/verify.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/vllm/tasks/verify.yml). Local changes will be overwritten.
 #
 # Serving verification (BUILD_PROMPT §7.11): /health, /v1/models, one
 # deterministic chat completion and one get_time tool call; the report is
-# /var/lib/pokus/verify/vllm-<deployment>.json.
+# /var/lib/pinka/verify/vllm-<deployment>.json.
 - name: Read the current deployment
   ansible.builtin.slurp:
-    src: /etc/pokus/vllm/current.yml
+    src: /etc/pinka/vllm/current.yml
   register: vllm_current_spec
 
 - name: Run the serving verification
   ansible.builtin.command:
     argv:
-      - /usr/local/libexec/pokus/vllm-verify
+      - /usr/local/libexec/pinka/vllm-verify
       - --port
-      - "{{ pokus_ports.vllm | string }}"
+      - "{{ pinka_ports.vllm | string }}"
       - --model
       - "{{ vllm_spec.model_id }}"
       - --deployment
       - "{{ vllm_spec.id }}@{{ vllm_spec.version }}"
       - --out
-      - "/var/lib/pokus/verify/vllm-{{ vllm_spec.id }}@{{ vllm_spec.version }}.json"
+      - "/var/lib/pinka/verify/vllm-{{ vllm_spec.id }}@{{ vllm_spec.version }}.json"
       - --wait
       - "{{ vllm_wait_timeout | string }}"
   vars:

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/backup/tasks/rotate.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/backup/tasks/rotate.yml). Local changes will be overwritten.
 #
 # Entry point of rotate.yml: give the repository the password that is now in
 # the vault. restic adds a key for the new password and removes the old key

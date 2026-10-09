@@ -6,7 +6,7 @@ Run from ``infra/`` with the development environment::
 
 Every file is a real recording: bootstrap's own ``emit_event``
 (``bootstrap/lib/log.sh``) writes the stage, signal and result events, and
-``ansible-playbook --check`` with the ``pokus_events`` callback runs a
+``ansible-playbook --check`` with the ``pinka_events`` callback runs a
 stand-in play on localhost. Its roles carry the names of site.yml's roles
 (and of the helper roles they include); its tasks only print (``debug``) or
 fail (``fail``), so nothing is provisioned. Timestamps are those of the
@@ -26,11 +26,11 @@ HERE = Path(__file__).resolve().parent
 INFRA = HERE.parents[2]
 sys.path.insert(0, str(INFRA / "installer"))
 
-from pokus_installer.tui.events import site_roles  # noqa: E402
+from pinka_installer.tui.events import site_roles  # noqa: E402
 
 STAGES_BEFORE = ("git", "prepreflight", "tooling", "frontend", "preflight", "ansible-env")
 LOGIN_URL = "https://login.tailscale.com/a/0123456789abcdef"
-DEPLOY_KEY = "ssh-ed25519 KEYPLACEHOLDER pokus-deploy@pokus-lab"
+DEPLOY_KEY = "ssh-ed25519 KEYPLACEHOLDER pinka-deploy@pinka-lab"
 SIGNAL_MESSAGE = "WSL must restart to apply /etc/wsl.conf: run 'wsl --terminate <distro>'"
 MOK_MESSAGE = (
     "Secure Boot is on and the NVIDIA module is signed with /var/lib/shim-signed/mok/MOK.der, "
@@ -65,7 +65,7 @@ def role_tasks(role: str) -> str:
         tasks += include("pkg")
     if role == "tailscale":
         tasks += debug(
-            "Show the login URL", f"Open this URL to add pokus-lab to the tailnet: {LOGIN_URL}"
+            "Show the login URL", f"Open this URL to add pinka-lab to the tailnet: {LOGIN_URL}"
         )
         tasks += debug("Wait for the login to complete", "logged in")
     if role == "platform":
@@ -80,7 +80,7 @@ def bootstrap_events(events: Path, lines: list[tuple[str, ...]]) -> None:
     )
     subprocess.run(
         ["bash", "-c", script, "record", str(INFRA / "bootstrap" / "lib" / "log.sh")],
-        env={**os.environ, "POKUS_EVENTS_FILE": str(events)},
+        env={**os.environ, "PINKA_EVENTS_FILE": str(events)},
         check=True,
     )
 
@@ -104,7 +104,7 @@ def play(workdir: Path, events: Path, roles: dict[str, str]) -> int:
     (workdir / "ansible.cfg").write_text(
         "[defaults]\n"
         f"callback_plugins = {INFRA / 'ansible' / 'callback_plugins'}\n"
-        "callbacks_enabled = pokus_events\nretry_files_enabled = False\n"
+        "callbacks_enabled = pinka_events\nretry_files_enabled = False\n"
         f"roles_path = {workdir / 'roles'}\n",
         encoding="utf-8",
     )
@@ -113,7 +113,7 @@ def play(workdir: Path, events: Path, roles: dict[str, str]) -> int:
         "ANSIBLE_CONFIG": str(workdir / "ansible.cfg"),
         "ANSIBLE_HOME": str(workdir / "home"),
         "ANSIBLE_LOCALHOST_WARNING": "False",
-        "POKUS_EVENTS_FILE": str(events),
+        "PINKA_EVENTS_FILE": str(events),
     }
     binary = Path(sys.executable).with_name("ansible-playbook")
     done = subprocess.run(
@@ -150,7 +150,7 @@ def record(name: str, scenario: str) -> None:
             stand_in["pkg"] = debug("Install the packages", "installed", changed=True)
             stand_in["deploy_source"] = debug(
                 "Show the deploy key (add it to the Git host as a read-only deploy key)",
-                f"Deploy key of this host for git@github.com:example-org/pokus.git "
+                f"Deploy key of this host for git@github.com:example-org/pokus-platform.git "
                 f"(read-only): {DEPLOY_KEY}",
             )
             rc = play(workdir, out, stand_in)
@@ -195,7 +195,7 @@ def record(name: str, scenario: str) -> None:
                 "Write the bootstrap signal file", "written", changed=True
             ) + failing(
                 "Stop the play with the bootstrap signal",
-                f"POKUS-BOOTSTRAP-SIGNAL {code}: {message}",
+                f"PINKA-BOOTSTRAP-SIGNAL {code}: {message}",
             )
             rc = play(workdir, out, stand_in)
             assert rc != 0, rc

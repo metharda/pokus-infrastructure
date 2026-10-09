@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/access.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/access.yml). Local changes will be overwritten.
 #
 # Researchers reach their personal project through incus-user, whose socket
 # only the incus group may use; nobody is added to incus-admin

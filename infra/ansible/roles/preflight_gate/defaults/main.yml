@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/preflight_gate/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/preflight_gate/defaults/main.yml). Local changes will be overwritten.
 
 # Preflight wrapper of this checkout.
-preflight_gate_command: "{{ pokus_infra_dir }}/preflight/pokus-preflight"
+preflight_gate_command: "{{ pinka_dir }}/preflight/pinka-preflight"
 # Profile to compare with: the one bootstrap validated for this run, else the stored one.
-preflight_gate_profile_path: "{{ pokus_bootstrap.profile_path | default('/etc/pokus/host-profile.json') }}"
+preflight_gate_profile_path: "{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}"

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/redis-cache/tests/test_redis.sh). Local changes will be overwritten.
+# Managed by pinka (images/redis-cache/tests/test_redis.sh). Local changes will be overwritten.
 #
 # Post-build assertions of `redis-cache`, run inside the build instance.
 set -eu

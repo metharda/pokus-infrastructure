@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/observability/tasks/pairing.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/observability/tasks/pairing.yml). Local changes will be overwritten.
 #
 # Split inference (BUILD_PROMPT §19.10): the collector gateway gets a copy of
-# the pairing material (/etc/pokus/inference, inference_control role) that its
+# the pairing material (/etc/pinka/inference, inference_control role) that its
 # container user can read. An inference node exports to the paired lab node's
 # tailnet address; a lab node receives the paired inference node's telemetry
 # on its own tailnet address. The gateway's container carries a hash of the
@@ -19,7 +19,7 @@
   block:
     - name: Look for the pairing
       ansible.builtin.stat:
-        path: /etc/pokus/inference/peer.crt
+        path: /etc/pinka/inference/peer.crt
       register: observability_peer_cert
 
     - name: Refuse to forward without a pairing
@@ -34,7 +34,7 @@
 
     - name: Copy the pairing material for the collector
       ansible.builtin.copy:
-        src: "/etc/pokus/inference/{{ item }}"
+        src: "/etc/pinka/inference/{{ item }}"
         remote_src: true
         dest: "{{ observability_pairing_dir }}/{{ item }}"
         owner: "{{ observability_gateway_uid }}"

@@ -10,13 +10,13 @@ description: Configure the restic repository, check that backups run, restore a 
 # How to back up the lab, restore it, and run a restore drill
 
 The `backup` role dumps the lab database every night and backs up the
-research space and `/etc/pokus` with restic to a repository on another
+research space and `/etc/pinka` with restic to a repository on another
 machine. Until a repository is configured the lab runs without backups and
-the metric `pokus_backup_configured` is 0. Restoring is part of bootstrap:
+the metric `pinka_backup_configured` is 0. Restoring is part of bootstrap:
 `bootstrap.sh --restore` provisions the host and then restores a snapshot.
 
 !!! note "Prerequisites"
-    - An admin account on the lab host (member of `pokus-admin`) and the infra
+    - An admin account on the lab host (member of `pinka-admin`) and the infra
       directory bootstrap runs from.
     - A backup server you control with an SFTP account for the lab (owner
       answer E4; a restic rest-server works too), reachable from the lab host,
@@ -69,7 +69,7 @@ the metric `pokus_backup_configured` is 0. Restoring is part of bootstrap:
 
     `<machine>` is the host_vars file from step 3. The role prints the
     public key it generated for the repository (its comment is
-    `pokus-backup@` and the lab's `machine_name`). Add it to the SFTP account's
+    `pinka-backup@` and the lab's `machine_name`). Add it to the SFTP account's
     `authorized_keys` on the backup server. The first backup initializes the
     repository.
 
@@ -79,20 +79,20 @@ Start a dump and a backup now instead of waiting for the night:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo systemctl start pokus-pgdump.service pokus-backup.service
-sudo /usr/local/libexec/pokus/backup snapshots | jq -r '.[] | [.short_id, .time] | @tsv'
+sudo systemctl start pinka-pgdump.service pinka-backup.service
+sudo /usr/local/libexec/pinka/backup snapshots | jq -r '.[] | [.short_id, .time] | @tsv'
 ```
 
 The list ends with the snapshot you just made. The timers run the dump at
 02:30, the backup at 03:00 and the retention job on Sundays
 (`backup_*_schedule`); a run missed while the host was off happens after the
-next boot. `pokus_backup_job_success{job="backup"}` and
-`pokus_backup_job_last_success_timestamp_seconds` show the result in Grafana.
+next boot. `pinka_backup_job_success{job="backup"}` and
+`pinka_backup_job_last_success_timestamp_seconds` show the result in Grafana.
 
 ## Restore a snapshot
 
 A restore stops the lab, restores the research space directories of the
-snapshot and the parts of `/etc/pokus` that bootstrap cannot recreate (vLLM
+snapshot and the parts of `/etc/pinka` that bootstrap cannot recreate (vLLM
 deployments, QA keys and attestations), loads the newest database dump,
 re-imports the golden images from their exports, checks the model files by
 hash (downloading what is missing) and starts the lab again. Files newer than
@@ -114,7 +114,7 @@ the snapshot are kept.
     `restore_snapshot: <id>` (or `latest`) in the host_vars file, where
     `<id>` is a snapshot ID or its first eight characters.
 
-The play ends with the restored snapshot and the result of `pokus-lab
+The play ends with the restored snapshot and the result of `pinka
 doctor`.
 
 ## Run a restore drill
@@ -129,7 +129,7 @@ the production host.
 
     <!-- qa:skip reason="needs a restored spare machine" -->
     ```bash
-    sudo systemctl disable --now pokus-backup.timer pokus-backup-prune.timer
+    sudo systemctl disable --now pinka-backup.timer pinka-backup-prune.timer
     ```
 
 3. Compare a few facts with production:
@@ -137,7 +137,7 @@ the production host.
     <!-- qa:skip reason="needs a restored spare machine" -->
     ```bash
     sudo incus image list --format csv --columns l | sort
-    sudo ls /srv/pokus/backups/pg | tail -n 1
+    sudo ls /srv/pinka/backups/pg | tail -n 1
     ```
 
 The golden image aliases and the newest dump must match those of the
@@ -150,11 +150,11 @@ The newest snapshot is at most one day old and the last backup succeeded:
 
 <!-- qa:run env=E2 -->
 ```bash
-cat /var/lib/pokus/node-exporter/pokus_backup_backup.prom
+cat /var/lib/pinka/node-exporter/pinka_backup_backup.prom
 ```
 
-`pokus_backup_job_success` is 1 and
-`pokus_backup_job_last_success_timestamp_seconds` lies within the last 24
+`pinka_backup_job_success` is 1 and
+`pinka_backup_job_last_success_timestamp_seconds` lies within the last 24
 hours.
 
 Related: [How to rotate secrets and certificates](rotate-secrets.md),

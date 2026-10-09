@@ -10,14 +10,14 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted (the owner approved the additional codes after the contract v2 spec update)
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
 BUILD_PROMPT §2.4 and §5.2 define the codes bootstrap must use for the
 preflight outcomes (0, 10, 20, 30, 40), for conditions signalled by the play
 (75, 76, 77), and that bootstrap exits with the exit code of
-`pokus-lab doctor` (0, 1, 2). They leave open how bootstrap ends when the
+`pinka doctor` (0, 1, 2). They leave open how bootstrap ends when the
 operator declines the experimental tier, when installing the pinned tooling
 fails, when the play fails without a signal, when the command line is
 invalid, and when bootstrap itself fails unexpectedly. Reusing an existing
@@ -43,7 +43,7 @@ printed.
 3. Stages end deliberately with `fail CODE MESSAGE` or by returning a
    documented code; an error trap passes documented codes through and turns
    every other failure into 70, naming the command and its `file:line`.
-4. Signals from the play use the file `/run/pokus/bootstrap-signal.json`
+4. Signals from the play use the file `/run/pinka/bootstrap-signal.json`
    (`{code, message}`), as BUILD_PROMPT §5.2 step 9 prescribes; only 75, 76
    and 77 are accepted from it.
 

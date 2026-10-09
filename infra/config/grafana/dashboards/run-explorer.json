@@ -1,9 +1,9 @@
 {
-  "uid": "pokus-run-explorer",
-  "title": "Pokus: run explorer",
-  "description": "Managed by pokus-infra (config/grafana/dashboards/run-explorer.json). Local changes will be overwritten. Everything recorded for one run: its database rows (once the platform's tables exist), logs, target metrics and traces, filtered by pokus.run_id.",
+  "uid": "potka-run-explorer",
+  "title": "potka: run explorer",
+  "description": "Managed by pinka (config/grafana/dashboards/run-explorer.json). Local changes will be overwritten. Everything recorded for one run: its database rows (once the platform's tables exist), logs, target metrics and traces, filtered by potka.run_id.",
   "tags": [
-    "pokus"
+    "potka"
   ],
   "timezone": "utc",
   "editable": false,
@@ -100,7 +100,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service_name=~\".+\"} | pokus_run_id=\"${run_id}\""
+          "expr": "{service_name=~\".+\"} | potka_run_id=\"${run_id}\""
         }
       ],
       "id": 2
@@ -142,8 +142,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (pokus_node) (rate(system_cpu_time_seconds_total{pokus_run_id=\"${run_id}\",state!=\"idle\"}[2m]))",
-          "legendFormat": "{{pokus_node}}"
+          "expr": "sum by (potka_node) (rate(system_cpu_time_seconds_total{potka_run_id=\"${run_id}\",state!=\"idle\"}[2m]))",
+          "legendFormat": "{{potka_node}}"
         }
       ],
       "id": 3
@@ -185,8 +185,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (pokus_node) (system_memory_usage_bytes{pokus_run_id=\"${run_id}\",state=\"used\"})",
-          "legendFormat": "{{pokus_node}}"
+          "expr": "sum by (potka_node) (system_memory_usage_bytes{potka_run_id=\"${run_id}\",state=\"used\"})",
+          "legendFormat": "{{potka_node}}"
         }
       ],
       "id": 4
@@ -213,7 +213,7 @@
           },
           "queryType": "traceql",
           "limit": 50,
-          "query": "{ resource.pokus.run_id = \"${run_id}\" }"
+          "query": "{ resource.potka.run_id = \"${run_id}\" }"
         }
       ],
       "id": 5

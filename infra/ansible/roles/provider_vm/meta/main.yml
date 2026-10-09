@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/provider_vm/meta/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_vm/meta/main.yml). Local changes will be overwritten.
 galaxy_info:
   role_name: provider_vm
-  namespace: pokus
+  namespace: pinka
   author: Pokus project
   description: VM provider - guest agent, NVIDIA driver with GPU passthrough, power policy
   license: Apache-2.0
@@ -19,5 +19,5 @@ galaxy_info:
       versions: [all]
     - name: ArchLinux
       versions: [all]
-  galaxy_tags: [pokus]
+  galaxy_tags: [pinka]
 dependencies: []

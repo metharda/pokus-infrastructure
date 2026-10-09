@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/probe-client/tests/test_probe.sh). Local changes will be overwritten.
+# Managed by pinka (images/probe-client/tests/test_probe.sh). Local changes will be overwritten.
 #
 # Post-build assertions of `probe-client`, run inside the build instance.
 set -eu

@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/inference_control/tasks/endpoint.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/inference_control/tasks/endpoint.yml). Local changes will be overwritten.
 #
-# pokus-inference-control on an inference node: the program, its settings
+# pinka-inference-control on an inference node: the program, its settings
 # with the tailnet address, and the unit. It starts only once peer.crt exists.
 - name: Read the tailnet address
   ansible.builtin.command:
@@ -22,7 +22,7 @@
 
 - name: Install the control endpoint
   ansible.builtin.copy:
-    src: pokus_inference_control.py
+    src: pinka_inference_control.py
     dest: "{{ inference_control_program }}"
     owner: root
     group: root
@@ -40,7 +40,7 @@
 
 - name: Install the endpoint's unit
   ansible.builtin.template:
-    src: pokus-inference-control.service.j2
+    src: pinka-inference-control.service.j2
     dest: "/etc/systemd/system/{{ inference_control_unit }}"
     owner: root
     group: root
@@ -52,7 +52,7 @@
     name: "{{ inference_control_unit }}"
     enabled: true
     daemon_reload: true
-  when: not ansible_check_mode or inference_control_unit in pokus_present.units
+  when: not ansible_check_mode or inference_control_unit in pinka_present.units
 
 - name: Start the control endpoint (skipped by systemd until paired)
   ansible.builtin.systemd_service:

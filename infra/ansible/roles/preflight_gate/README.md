@@ -21,8 +21,8 @@ example a templated value bootstrap cannot read), the play stops with signal 77.
 
 | Fact | Content |
 | --- | --- |
-| `pokus_host_profile` | the fresh host profile |
-| `pokus_features` | its feature flags (`gpu_inference`, `vm_targets`, `btrfs_pool`, `lvm_thin_pool`, `dcgm_metrics`) |
+| `pinka_host_profile` | the fresh host profile |
+| `pinka_features` | its feature flags (`gpu_inference`, `vm_targets`, `btrfs_pool`, `lvm_thin_pool`, `dcgm_metrics`) |
 
 ## Variables
 

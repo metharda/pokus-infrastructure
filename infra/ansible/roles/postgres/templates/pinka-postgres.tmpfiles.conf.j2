@@ -1,0 +1,9 @@
+# Managed by pinka (ansible/roles/postgres/templates/pinka-postgres.tmpfiles.conf.j2). Local changes will be overwritten.
+#
+# Socket directories of PostgreSQL, recreated at every boot before Docker
+# starts the container (contracts.md#sockets). The directory's group decides
+# who may connect; the sockets themselves are 0777.
+d /run/pinka 0755 root root -
+{% for dir in postgres_socket_dirs %}
+d {{ dir.path }} 0750 {{ postgres_container_uid }} {{ dir.group }} -
+{% endfor %}

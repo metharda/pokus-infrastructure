@@ -1,0 +1,58 @@
+# Managed by pinka (config/grafana/provisioning/datasources/pinka.yaml.j2). Local changes will be overwritten.
+#
+# Data sources of the lab (BUILD_PROMPT §7.9). Everything is on 127.0.0.1
+# (Grafana uses the host network); PostgreSQL through the reader socket
+# directory with the read-only role potka_grafana. "$$" is a literal "$".
+apiVersion: 1
+
+prune: true
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:{{ pinka_ports.prometheus }}
+    isDefault: true
+    editable: false
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://127.0.0.1:{{ pinka_ports.loki }}
+    editable: false
+    jsonData:
+      derivedFields:
+        - name: trace_id
+          matcherType: label
+          matcherRegex: trace_id
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: Trace
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://127.0.0.1:{{ pinka_ports.tempo }}
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+      serviceMap:
+        datasourceUid: prometheus
+
+  - name: PostgreSQL
+    uid: postgres
+    type: grafana-postgresql-datasource
+    url: /run/pinka/postgres-reader
+    user: potka_grafana
+    editable: false
+    jsonData:
+      database: potka
+      sslmode: disable
+      postgresVersion: 1500
+    secureJsonData:
+      password: "$__file{/run/secrets/potka-grafana}"

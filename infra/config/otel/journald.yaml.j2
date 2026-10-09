@@ -1,4 +1,4 @@
-# Managed by pokus-infra (config/otel/journald.yaml.j2). Local changes will be overwritten.
+# Managed by pinka (config/otel/journald.yaml.j2). Local changes will be overwritten.
 #
 # Journald collector: reads the host journal with the host's journalctl
 # (chroot into the read-only host root) and forwards it to the gateway's OTLP
@@ -7,7 +7,7 @@
 # but its health check and its own metrics on 127.0.0.1.
 extensions:
   health_check:
-    endpoint: 127.0.0.1:{{ pokus_internal_ports.journald_health }}
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.journald_health }}
   file_storage/journald:
     directory: /var/lib/otelcol/journald
 
@@ -35,7 +35,7 @@ processors:
 
 exporters:
   otlp_grpc/gateway:
-    endpoint: 127.0.0.1:{{ pokus_ports.otlp_grpc }}
+    endpoint: 127.0.0.1:{{ pinka_ports.otlp_grpc }}
     tls:
       insecure: true
 
@@ -48,7 +48,7 @@ service:
             exporter:
               prometheus:
                 host: 127.0.0.1
-                port: {{ pokus_internal_ports.journald_telemetry }}
+                port: {{ pinka_internal_ports.journald_telemetry }}
   pipelines:
     logs:
       receivers: [journald]

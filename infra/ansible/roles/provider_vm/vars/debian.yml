@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_vm/vars/debian.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_vm/vars/debian.yml). Local changes will be overwritten.
 #
 # Guest agents by hypervisor. Package names verified in the Ubuntu 22.04 and
 # 24.04 archives; Debian's Hyper-V package differs (hyperv-daemons).
@@ -7,5 +7,5 @@ provider_vm_guest_agents:
   qemu: {packages: [qemu-guest-agent], service: qemu-guest-agent}
   vmware: {packages: [open-vm-tools], service: open-vm-tools}
   microsoft:
-    packages: "{{ ['linux-cloud-tools-virtual'] if pokus_source_group == 'ubuntu' else ['hyperv-daemons'] }}"
+    packages: "{{ ['linux-cloud-tools-virtual'] if pinka_source_group == 'ubuntu' else ['hyperv-daemons'] }}"
     service: hv-kvp-daemon  # TODO(verify): service name on Debian (hyperv-daemons)

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_vm/vars/archlinux.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_vm/vars/archlinux.yml). Local changes will be overwritten.
 #
 # TODO(verify): package and service names (Arch mirrors are not reachable from
 # the build environment).

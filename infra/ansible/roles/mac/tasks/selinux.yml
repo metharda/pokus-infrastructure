@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/mac/tasks/selinux.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/mac/tasks/selinux.yml). Local changes will be overwritten.
 - name: Load the SELinux tools of this family
   ansible.builtin.include_vars:
-    file: "{{ pokus_family }}.yml"
+    file: "{{ pinka_family }}.yml"
 
 - name: Install the SELinux management tools and container policy
   ansible.builtin.include_role:
@@ -19,7 +19,7 @@
 
 - name: Apply the file contexts to the research space
   ansible.builtin.command:
-    argv: [restorecon, -R, -v, "{{ pokus_root }}"]
+    argv: [restorecon, -R, -v, "{{ pinka_root }}"]
   register: mac_restorecon
   changed_when: mac_restorecon.stdout | length > 0
   when: mac_fcontext is changed or mac_restorecon_always | bool

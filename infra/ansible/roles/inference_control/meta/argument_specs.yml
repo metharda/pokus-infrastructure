@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/inference_control/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/inference_control/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Pairing identity on lab and inference nodes; the control endpoint on an inference node.
@@ -28,7 +28,7 @@ argument_specs:
         type: int
         default: 60
         description: Seconds the verification call waits for vLLM's health.
-      pokus_root:
+      pinka_root:
         type: path
         required: true
         description: Research space root (model weights under models/).

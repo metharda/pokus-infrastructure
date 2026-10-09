@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/inference_control/tasks/pairing.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/inference_control/tasks/pairing.yml). Local changes will be overwritten.
 #
-# `pokus-lab pair` writes peer.crt and peer.json; the host_vars name the
+# `pinka pair` writes peer.crt and peer.json; the host_vars name the
 # paired node (inference_lab_node or inference_remote_node). Both must agree.
 - name: Read the pairing record
   ansible.builtin.slurp:
@@ -22,8 +22,8 @@
       {{ 'inference_lab_node' if node_role == 'inference' else 'inference_remote_node' }} is
       {{ inference_control_expected_peer }}, but this node is
       {{ ('paired with ' ~ inference_control_paired_node) if inference_control_paired_node else 'not paired' }}.
-      Pair the nodes first (sudo pokus-lab pair show on the inference node, then
-      sudo pokus-lab pair connect on the lab node; docs/how-to/pair-inference-node.md).
+      Pair the nodes first (sudo pinka pair show on the inference node, then
+      sudo pinka pair connect on the lab node; docs/how-to/pair-inference-node.md).
     quiet: true
 
 - name: Remind the operator to name the paired node

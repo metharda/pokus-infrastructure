@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/vars/redhat.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/vars/redhat.yml). Local changes will be overwritten.
 #
 # TODO(verify): package names (Fedora and EL mirrors are not reachable from
 # the build environment). RHEL-compatible releases ship neither btrfs-progs nor

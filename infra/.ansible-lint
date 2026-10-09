@@ -1,4 +1,4 @@
-# Managed by pokus-infra (.ansible-lint). Local changes will be overwritten.
+# Managed by pinka (.ansible-lint). Local changes will be overwritten.
 #
 # ansible-lint with the production profile (BUILD_PROMPT §11). Offline: the
 # pinned collections come from ansible/requirements.yml through bootstrap,

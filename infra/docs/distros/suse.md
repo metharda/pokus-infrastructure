@@ -24,26 +24,26 @@ The `suse` family covers openSUSE Leap 15.6 and 16.0 and openSUSE Tumbleweed
 | NVIDIA driver | NVIDIA's repository with the open kernel module packages (being verified) |
 
 Repository keys are imported explicitly with `rpm --import` after their
-fingerprint has been checked, before the repository is added; Pokus never
+fingerprint has been checked, before the repository is added; Pokus Infrastructure (pinka) never
 uses `zypper --gpg-auto-import-keys`. Leap releases are pinned under
 `opensuse-leap-<version>` in `versions.lock.yml`; Tumbleweed is not pinned
 (see below). Details: [Component sources](../reference/component-sources.md).
 
 ## Holds and updates
 
-- **Holds:** `zypper addlock` for every Pokus-managed package.
-- **Automatic updates (Leap):** `pokus-security-patch.timer` runs
+- **Holds:** `zypper addlock` for every pinka-managed package.
+- **Automatic updates (Leap):** `pinka-security-patch.timer` runs
   `zypper --non-interactive patch --category security` daily without a
   reboot.
 - **Tumbleweed:** packages are installed at their current version, held, and
   their versions recorded in the fingerprint. There are no automatic updates;
-  update with `pokus-lab update-host`, which keeps the holds and shows the
+  update with `pinka update-host`, which keeps the holds and shows the
   fingerprint difference. Results are comparable only within one fingerprint.
 
 ## Firewall and MAC
 
-- **Firewall:** firewalld is active by default on openSUSE; Pokus adds the
-  `pokus-tailnet` zone as on the [Red Hat family](redhat.md#firewall-and-selinux).
+- **Firewall:** firewalld is active by default on openSUSE; Pokus Infrastructure adds the
+  `pinka-tailnet` zone as on the [Red Hat family](redhat.md#firewall-and-selinux).
 - **MAC:** AppArmor on Leap 15.6; newer installations may use SELinux.
   Preflight records which one is active; with SELinux the `mac` role labels
   the research space as on the Red Hat family (its package names on openSUSE

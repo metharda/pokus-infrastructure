@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/catalog/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/catalog/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Deploy the scenario catalog at catalog_ref into /srv/pokus/catalog (only if enabled).
+    short_description: Deploy the scenario catalog at catalog_ref into /srv/pinka/catalog (only if enabled).
     options:
       catalog_enabled:
         type: bool
@@ -15,7 +15,7 @@ argument_specs:
         type: str
         required: true
         description: The catalog is deployed on full and lab nodes only.
-      pokus_root:
+      pinka_root:
         type: path
         required: true
         description: Research space root.

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/inventory/host_vars/example-machine.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/inventory/host_vars/example-machine.yml). Local changes will be overwritten.
 #
 # Example machine configuration (BUILD_PROMPT §8.1). Copy it to
 # host_vars/<machine>.yml, adapt it, and run
@@ -8,10 +8,10 @@
 # configuration. Every key also has a lab-wide default in group_vars/all/main.yml.
 
 # Host name on the tailnet and in fingerprints.
-machine_name: pokus-lab
+machine_name: pinka-lab
 
-# production | staging. Staging hosts (QA) have their own vault, /srv/pokus,
-# Tailscale identity (tag:pokus-qa) and signing key, and never write to a
+# production | staging. Staging hosts (QA) have their own vault, /srv/pinka,
+# Tailscale identity (tag:pinka-qa) and signing key, and never write to a
 # production host.
 lab_mode: production
 
@@ -42,7 +42,7 @@ incus_pool_size: 300GiB
 incus_pool_device: ""              # /dev/disk/by-id/... for device
 incus_pool_device_confirm: ""
 
-pokus_root: /srv/pokus
+pinka_root: /srv/pinka
 docker_data_root: /var/lib/docker
 
 # full | lab | inference (docs/node-roles.md).

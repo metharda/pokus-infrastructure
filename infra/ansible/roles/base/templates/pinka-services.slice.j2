@@ -1,0 +1,13 @@
+# Managed by pinka (ansible/roles/base/templates/pinka-services.slice.j2). Local changes will be overwritten.
+#
+# Every lab service runs in this slice: the lab's own units (Slice=) and every
+# Docker container (daemon.json cgroup-parent). AllowedCPUs keeps them on
+# cpuset_services, away from the CPUs of the Incus targets (cpuset_targets).
+[Unit]
+Description=Pokus lab services
+Before=slices.target
+
+[Slice]
+{% if cpuset_services %}
+AllowedCPUs={{ cpuset_services | pinka_cpuset_cpus | join(',') }}
+{% endif %}

@@ -1,8 +1,8 @@
-# Managed by pokus-infra (ansible/roles/vllm/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/vllm/tasks/main.yml). Local changes will be overwritten.
 #
-# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the pokus-inference
+# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the pinka-inference
 # Compose project, the serving profiles, the deploy helper behind
-# pokus-vllm-deploy.socket (C3), the default deployment and the serving
+# pinka-vllm-deploy.socket (C3), the default deployment and the serving
 # verification. Applied with gpu_inference on full and inference nodes.
 - name: Create the vLLM directories
   ansible.builtin.file:
@@ -12,19 +12,19 @@
     group: root
     mode: "{{ item.mode }}"
   loop:
-    - {path: /etc/pokus/vllm, mode: "0755"}
-    - {path: /etc/pokus/vllm/deployments, mode: "0755"}
-    - {path: /etc/pokus/vllm/profiles, mode: "0755"}
-    - {path: /usr/local/libexec/pokus, mode: "0755"}
-    - {path: /var/lib/pokus/verify, mode: "0755"}
-    - {path: "{{ pokus_root }}/state/vllm-cache", mode: "0700"}
+    - {path: /etc/pinka/vllm, mode: "0755"}
+    - {path: /etc/pinka/vllm/deployments, mode: "0755"}
+    - {path: /etc/pinka/vllm/profiles, mode: "0755"}
+    - {path: /usr/local/libexec/pinka, mode: "0755"}
+    - {path: /var/lib/pinka/verify, mode: "0755"}
+    - {path: "{{ pinka_root }}/state/vllm-cache", mode: "0700"}
   loop_control:
     label: "{{ item.path }}"
 
 - name: Install the serving profiles
   ansible.builtin.copy:
-    src: "{{ pokus_infra_dir }}/vllm/profiles/"
-    dest: /etc/pokus/vllm/profiles/
+    src: "{{ pinka_dir }}/vllm/profiles/"
+    dest: /etc/pinka/vllm/profiles/
     owner: root
     group: root
     mode: "0644"
@@ -32,13 +32,13 @@
 - name: Install the deploy helper and the serving verification
   ansible.builtin.copy:
     src: "{{ item.src }}"
-    dest: "/usr/local/libexec/pokus/{{ item.dest }}"
+    dest: "/usr/local/libexec/pinka/{{ item.dest }}"
     owner: root
     group: root
     mode: "0755"
   loop:
-    - {src: pokus_vllm_deploy.py, dest: vllm-deploy}
-    - {src: pokus_vllm_verify.py, dest: vllm-verify}
+    - {src: pinka_vllm_deploy.py, dest: vllm-deploy}
+    - {src: pinka_vllm_verify.py, dest: vllm-verify}
 
 - name: Install the deploy helper's socket and service units
   ansible.builtin.template:
@@ -47,15 +47,15 @@
     owner: root
     group: root
     mode: "0644"
-  loop: [pokus-vllm-deploy.socket, pokus-vllm-deploy@.service]
+  loop: [pinka-vllm-deploy.socket, pinka-vllm-deploy@.service]
 
 - name: Enable the deploy helper's socket
   ansible.builtin.systemd_service:
-    name: pokus-vllm-deploy.socket
+    name: pinka-vllm-deploy.socket
     enabled: true
     state: started
     daemon_reload: true
-  when: not ansible_check_mode or 'pokus-vllm-deploy.socket' in pokus_present.units
+  when: not ansible_check_mode or 'pinka-vllm-deploy.socket' in pinka_present.units
 
 - name: Write the default deployment
   ansible.builtin.include_tasks: default_deployment.yml
@@ -63,7 +63,7 @@
 
 - name: Find the current deployment
   ansible.builtin.stat:
-    path: /etc/pokus/vllm/current.yml
+    path: /etc/pinka/vllm/current.yml
   register: vllm_current
 
 # The orchestrator's choice wins: once current.yml exists, it is re-rendered
@@ -77,7 +77,7 @@
 
 - name: Render the deployment
   ansible.builtin.command:
-    argv: [/usr/local/libexec/pokus/vllm-deploy, activate, "{{ vllm_target }}", --no-restart]
+    argv: [/usr/local/libexec/pinka/vllm-deploy, activate, "{{ vllm_target }}", --no-restart]
   register: vllm_activate
   changed_when: (vllm_activate.stdout | from_json).changed
   when:

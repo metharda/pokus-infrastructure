@@ -16,7 +16,7 @@ production in every way that matters, deploying the candidate on it, and
 closing the window.
 
 A staging lab is a normal Pokus host with `lab_mode: staging`. It has its own
-vault, its own research space, its own tailnet identity (`tag:pokus-qa`) and
+vault, its own research space, its own tailnet identity (`tag:pinka-qa`) and
 its own run-manifest signing key; it never pairs with a production host and
 never writes to one. Runs on staging are never official.
 
@@ -24,7 +24,7 @@ never writes to one. Runs on staging are never official.
     - A machine for staging that preflight accepts (it may be a VM:
       [Virtual machine hosts](../providers/vm.md)); never the production host.
     - The release candidate's commits of infra, platform and catalog.
-    - A tailnet policy that allows `tag:pokus-qa` (see
+    - A tailnet policy that allows `tag:pinka-qa` (see
       [Security](../security.md#tailnet-policy)).
 
 ## Prepare the staging configuration
@@ -58,7 +58,7 @@ sudo ./bootstrap/bootstrap.sh --machine <staging-name>
 ```
 
 `<staging-name>` is the staging machine's name from its host_vars file. The
-tailscale role joins the tailnet with `tag:pokus-qa`. The QA team can now
+tailscale role joins the tailnet with `tag:pinka-qa`. The QA team can now
 run its verification. QA keys and attestations are installed only on the
 production lab ([How to install QA trusted keys and attestations](install-attestation.md)).
 
@@ -69,7 +69,7 @@ unattended:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo pokus-lab stop --timeout 0
+sudo pinka stop --timeout 0
 ```
 
 A timeout of 0 stops without waiting for runs, which is fine on staging. Keep
@@ -82,8 +82,8 @@ On the staging host:
 <!-- qa:run env=E2 -->
 ```bash
 tailscale status --json | jq '.Self.Tags'
-jq '.lab_mode' /etc/pokus/lab.json
+jq '.lab_mode' /etc/pinka/lab.json
 ```
 
-The tags list `tag:pokus-qa` and `lab.json` says `"staging"`. Doctor
+The tags list `tag:pinka-qa` and `lab.json` says `"staging"`. Doctor
 on the production lab still reports its own machine name and `production`.

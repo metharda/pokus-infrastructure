@@ -4,21 +4,21 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Point the lab at your copy of the Pokus repository, deploy a platform and a catalog release from it, update to a new release and roll back.
+description: Point the lab at your copy of the pokus-platform repository, deploy a platform and a catalog release from it, update to a new release and roll back.
 ---
 
 # How to deploy the platform and the scenario catalog
 
 The platform and the catalog are deployed from a root-only mirror of the
-Pokus repository on the lab host (`/var/lib/pokus/git/pokus.git`): bootstrap
+pokus-platform repository on the lab host (`/var/lib/pinka/git/potka.git`): bootstrap
 fetches your copy of the repository and extracts one subdirectory at the ref
-you choose, without `.git`, into `/srv/pokus/deploy/platform/<ref>/` or
-`/srv/pokus/catalog/<ref>/`, and points `current` at it. Both are off until
+you choose, without `.git`, into `/srv/pinka/deploy/platform/<ref>/` or
+`/srv/pinka/catalog/<ref>/`, and points `current` at it. Both are off until
 you enable them, and both run on `full` and `lab` nodes only.
 
 !!! note "Prerequisites"
     - A lab host provisioned by bootstrap (`node_role: full` or `lab`).
-    - Your copy of the Pokus repository, reachable from the host by SSH or
+    - Your copy of the pokus-platform repository, reachable from the host by SSH or
       anonymous HTTPS.
     - On a lab node, a paired inference node
       ([How to run inference on a separate GPU node](pair-inference-node.md)).
@@ -31,15 +31,15 @@ you enable them, and both run on `full` and `lab` nodes only.
 
     <!-- qa:skip reason="example of a group_vars file" -->
     ```yaml
-    pokus_source_repo: git@github.com:example-org/pokus.git
+    pinka_source_repo: git@github.com:example-org/pokus-platform.git
     require_signed_tags: true
-    pokus_allowed_signers:
+    pinka_allowed_signers:
       - "researcher1@example.com ssh-ed25519 <public key>"
     ```
 
     An `https://` URL needs no key but must allow anonymous reads; URLs with
     credentials are refused. For an SSH host other than GitHub, add its host
-    keys as `known_hosts` lines in `pokus_source_known_hosts`. With
+    keys as `known_hosts` lines in `pinka_source_known_hosts`. With
     `require_signed_tags: true` only tags with a valid SSH signature of an
     allowed signer are deployed.
 
@@ -92,7 +92,7 @@ you enable them, and both run on `full` and `lab` nodes only.
    are not undone: check the platform's release notes before rolling back
    past a migration.
 
-3. Old releases stay in `/srv/pokus/deploy/platform/` for provenance. Remove
+3. Old releases stay in `/srv/pinka/deploy/platform/` for provenance. Remove
    one by hand once no run refers to it.
 
 ## Verify the deployment
@@ -101,8 +101,8 @@ you enable them, and both run on `full` and `lab` nodes only.
 
     <!-- qa:run env=E2 -->
     ```bash
-    cat /srv/pokus/deploy/platform/current/DEPLOYED_FROM.json
-    sudo pokus-lab doctor
+    cat /srv/pinka/deploy/platform/current/DEPLOYED_FROM.json
+    sudo pinka doctor
     ```
 
     `DEPLOYED_FROM.json` names the source, the requested ref, the commit,

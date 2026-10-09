@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/docker-host/tests/test_docker.sh). Local changes will be overwritten.
+# Managed by pinka (images/docker-host/tests/test_docker.sh). Local changes will be overwritten.
 #
 # Post-build assertions of `docker-host`, run inside the build instance.
 set -eu

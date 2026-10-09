@@ -34,19 +34,19 @@ Downloaded by bootstrap or the roles and checked against the sha256.
 
 ## Python
 
-CPython installed by uv into `/opt/pokus/python` and the packages of its environments: Ansible (hash-locked in `bootstrap/requirements.lock`), the model download tool (`ansible/roles/models/files/requirements.lock`) and the installer, which also holds the Ansible packages (`installer/requirements.lock`). Verified on 2026-10-06. Source: PyPI JSON API (pypi.org/pypi/&lt;name&gt;/&lt;version&gt;/json) for the packages (the huggingface-hub 2.1.1 wheel downloaded and matched against its published sha256; textual 8.2.8, ruamel.yaml 0.19.1, jsonschema 4.26.0 and segno 1.6.6 are the latest releases, not yanked); `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the CPython build
+CPython installed by uv into `/opt/pinka/python` and the packages of its environments: Ansible (hash-locked in `bootstrap/requirements.lock`), the model download tool (`ansible/roles/models/files/requirements.lock`) and the installer, which also holds the Ansible packages (`installer/requirements.lock`). Verified on 2026-10-06. Source: PyPI JSON API (pypi.org/pypi/&lt;name&gt;/&lt;version&gt;/json) for the packages (the huggingface-hub 2.1.1 wheel downloaded and matched against its published sha256; textual 8.2.8, ruamel.yaml 0.19.1, jsonschema 4.26.0 and segno 1.6.6 are the latest releases, not yanked); `uv python list 3.12.15 --only-downloads` of uv 0.12.23 for the CPython build
 
 | Environment | Name | Version |
 | --- | --- | --- |
-| `/opt/pokus/python` | CPython | `3.12.15` |
-| `/opt/pokus/ansible-venv` | ansible-core | `2.21.5` |
-| `/opt/pokus/ansible-venv` | cryptography | `50.0.2` |
-| `/opt/pokus/ansible-venv` | jmespath | `1.1.0` |
-| `/opt/pokus/models-venv` | huggingface-hub | `2.1.1` |
-| `/opt/pokus/installer-venv` | jsonschema | `4.26.0` |
-| `/opt/pokus/installer-venv` | ruamel.yaml | `0.19.1` |
-| `/opt/pokus/installer-venv` | segno | `1.6.6` |
-| `/opt/pokus/installer-venv` | textual | `8.2.8` |
+| `/opt/pinka/python` | CPython | `3.12.15` |
+| `/opt/pinka/ansible-venv` | ansible-core | `2.21.5` |
+| `/opt/pinka/ansible-venv` | cryptography | `50.0.2` |
+| `/opt/pinka/ansible-venv` | jmespath | `1.1.0` |
+| `/opt/pinka/models-venv` | huggingface-hub | `2.1.1` |
+| `/opt/pinka/installer-venv` | jsonschema | `4.26.0` |
+| `/opt/pinka/installer-venv` | ruamel.yaml | `0.19.1` |
+| `/opt/pinka/installer-venv` | segno | `1.6.6` |
+| `/opt/pinka/installer-venv` | textual | `8.2.8` |
 
 ## Container images
 

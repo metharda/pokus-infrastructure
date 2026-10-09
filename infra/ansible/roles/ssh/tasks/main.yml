@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/ssh/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/ssh/tasks/main.yml). Local changes will be overwritten.
 #
 # sshd hardening (BUILD_PROMPT §7.3) through a drop-in that sorts before the
 # distributions' own drop-ins (first value wins in sshd). Exposure is limited
@@ -7,7 +7,7 @@
   ansible.builtin.include_role:
     name: pkg
   vars:
-    pkg_packages: ["{{ ssh_server_package[pokus_family] }}"]
+    pkg_packages: ["{{ ssh_server_package[pinka_family] }}"]
 
 - name: Make the drop-in directory the first directive of sshd_config
   ansible.builtin.lineinfile:
@@ -20,13 +20,13 @@
     group: root
     mode: "0644"
   notify: sshd configuration changed
-  # In check mode the package above is not installed (pokus_present: platform_facts).
-  when: not ansible_check_mode or (pokus_service_names.ssh ~ '.service') in pokus_present.units
+  # In check mode the package above is not installed (pinka_present: platform_facts).
+  when: not ansible_check_mode or (pinka_service_names.ssh ~ '.service') in pinka_present.units
 
-- name: Install the Pokus sshd drop-in
+- name: Install the pinka sshd drop-in
   ansible.builtin.template:
-    src: 10-pokus.conf.j2
-    dest: /etc/ssh/sshd_config.d/10-pokus.conf
+    src: 10-pinka.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-pinka.conf
     owner: root
     group: root
     mode: "0644"
@@ -34,7 +34,7 @@
 
 - name: Enable sshd
   ansible.builtin.systemd_service:
-    name: "{{ pokus_service_names.ssh }}"
+    name: "{{ pinka_service_names.ssh }}"
     enabled: true
     state: started
-  when: not ansible_check_mode or (pokus_service_names.ssh ~ '.service') in pokus_present.units
+  when: not ansible_check_mode or (pinka_service_names.ssh ~ '.service') in pinka_present.units

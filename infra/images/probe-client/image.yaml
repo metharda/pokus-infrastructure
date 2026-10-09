@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/probe-client/image.yaml). Local changes will be overwritten.
+# Managed by pinka (images/probe-client/image.yaml). Local changes will be overwritten.
 #
 # Golden image blueprint `probe-client` (BUILD_PROMPT §7.13): the client side
 # of probes and load: curl, dig and the ab load generator.

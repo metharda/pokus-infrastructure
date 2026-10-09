@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform_facts/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform_facts/tasks/main.yml). Local changes will be overwritten.
 #
 # The only place that interprets the distribution (BUILD_PROMPT §19.1). Every
 # fact comes from the host profile that preflight wrote, so Ansible and
@@ -22,7 +22,7 @@
 
 - name: Derive the release identity
   ansible.builtin.set_fact:
-    platform_facts_identity: "{{ host_profile | pokus_release_identity(platform_facts_family.codenames) }}"
+    platform_facts_identity: "{{ host_profile | pinka_release_identity(platform_facts_family.codenames) }}"
 
 - name: Resolve the provider
   ansible.builtin.assert:
@@ -35,29 +35,29 @@
 
 - name: Set the platform facts
   ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - fact names defined by BUILD_PROMPT §19.1
-    pokus_family: "{{ host_profile.family }}"
-    pokus_distro: "{{ platform_facts_identity.distro }}"
-    pokus_release: "{{ platform_facts_identity.release }}"
-    pokus_parent_release: "{{ host_profile.os.parent_release }}"
-    pokus_release_key: "{{ platform_facts_identity.release_key }}"
-    pokus_release_identity: "{{ platform_facts_identity }}"
-    pokus_source_group: "{{ platform_facts_identity.source_group }}"
-    pokus_release_model: "{{ host_profile.release_model }}"
-    pokus_pkg_manager: "{{ host_profile.pkg_manager }}"
-    pokus_service_names: "{{ platform_facts_family.service_names }}"
-    pokus_initramfs_tool: "{{ platform_facts_family.initramfs_tool }}"
-    pokus_version_hold_method: "{{ platform_facts_family.version_hold_method }}"
-    pokus_provider: "{{ host_profile.provider }}"
-    pokus_mac: "{{ host_profile.mac.system }}"
-    pokus_firewall_backend: "{{ firewall_backend if firewall_backend != 'auto' else host_profile.firewall.backend }}"
-    pokus_repositories: "{{ platform_facts_sources.repositories }}"
-    pokus_component_sources: "{{ platform_facts_sources.components }}"
-    pokus_community_repos_allowed: "{{ allow_community_repos | bool or (pokus_bootstrap.allow_community_repos | default(false)) | bool }}"
+    pinka_family: "{{ host_profile.family }}"
+    pinka_distro: "{{ platform_facts_identity.distro }}"
+    pinka_release: "{{ platform_facts_identity.release }}"
+    pinka_parent_release: "{{ host_profile.os.parent_release }}"
+    pinka_release_key: "{{ platform_facts_identity.release_key }}"
+    pinka_release_identity: "{{ platform_facts_identity }}"
+    pinka_source_group: "{{ platform_facts_identity.source_group }}"
+    pinka_release_model: "{{ host_profile.release_model }}"
+    pinka_pkg_manager: "{{ host_profile.pkg_manager }}"
+    pinka_service_names: "{{ platform_facts_family.service_names }}"
+    pinka_initramfs_tool: "{{ platform_facts_family.initramfs_tool }}"
+    pinka_version_hold_method: "{{ platform_facts_family.version_hold_method }}"
+    pinka_provider: "{{ host_profile.provider }}"
+    pinka_mac: "{{ host_profile.mac.system }}"
+    pinka_firewall_backend: "{{ firewall_backend if firewall_backend != 'auto' else host_profile.firewall.backend }}"
+    pinka_repositories: "{{ platform_facts_sources.repositories }}"
+    pinka_component_sources: "{{ platform_facts_sources.components }}"
+    pinka_community_repos_allowed: "{{ allow_community_repos | bool or (pinka_bootstrap.allow_community_repos | default(false)) | bool }}"
 
 - name: Check the firewall backend
   ansible.builtin.assert:
     that:
-      - pokus_firewall_backend in ['nftables', 'firewalld', 'ufw']
+      - pinka_firewall_backend in ['nftables', 'firewalld', 'ufw']
     fail_msg: "firewall_backend must be auto, nftables, firewalld or ufw."
     quiet: true
 
@@ -93,8 +93,8 @@
   when: ansible_check_mode
 
 - name: Record what exists before the run (check mode)
-  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - shared fact like the pokus_* facts above
-    pokus_present:
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - shared fact like the pinka_* facts above
+    pinka_present:
       units: "{{ (platform_facts_unit_files.stdout_lines | default([])) | select | map('split') | map('first') | list }}"
       users: "{{ (ansible_facts.getent_passwd | default({}) if ansible_check_mode else {}) | list }}"
       commands: "{{ platform_facts_commands.stdout_lines | default([]) }}"
@@ -102,6 +102,6 @@
 - name: Show the platform facts
   ansible.builtin.debug:
     msg: >-
-      family={{ pokus_family }} distro={{ pokus_distro }} release={{ pokus_release }}
-      release_key={{ pokus_release_key or '(rolling, not pinned)' }} provider={{ pokus_provider }}
-      firewall={{ pokus_firewall_backend }} mac={{ pokus_mac }}
+      family={{ pinka_family }} distro={{ pinka_distro }} release={{ pinka_release }}
+      release_key={{ pinka_release_key or '(rolling, not pinned)' }} provider={{ pinka_provider }}
+      firewall={{ pinka_firewall_backend }} mac={{ pinka_mac }}

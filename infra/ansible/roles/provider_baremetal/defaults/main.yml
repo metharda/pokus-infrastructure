@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_baremetal/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_baremetal/defaults/main.yml). Local changes will be overwritten.
 
 # Targets masked by power_policy: never_sleep.
 provider_baremetal_sleep_targets:

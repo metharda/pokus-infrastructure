@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/certificates.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/certificates.yml). Local changes will be overwritten.
 #
 # One client certificate per platform service, generated on this host and
 # trusted as restricted to its projects (BUILD_PROMPT §7.7, contracts.md#paths),
@@ -31,7 +31,7 @@
 - name: Create the certificate requests
   community.crypto.openssl_csr_pipe:
     privatekey_path: "{{ incus_cert_dir }}/{{ item.short }}/client.key"
-    common_name: "pokus-{{ item.short }}"
+    common_name: "{{ item.name }}"
   register: incus_csrs
   loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
   loop_control:
@@ -76,14 +76,14 @@
   when: not ansible_check_mode
 
 - name: Trust the client certificates
-  pokus_incus_object:
+  pinka_incus_object:
     kind: certificate
-    name: "pokus-{{ item.item.short }}"
+    name: "{{ item.item.name }}"
     type: "{{ item.item.type | default('client') }}"
     certificate: "{{ item.content | b64decode }}"
     restricted: "{{ item.item.projects | default([]) | length > 0 }}"
     projects: "{{ item.item.projects | default([]) }}"
   loop: "{{ incus_client_certs.results | default([]) }}"
   loop_control:
-    label: "pokus-{{ item.item.short }}"
+    label: "{{ item.item.name }}"
   when: not ansible_check_mode

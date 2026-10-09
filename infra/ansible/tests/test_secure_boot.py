@@ -85,10 +85,10 @@ def test_the_import_is_asked_for_only_while_the_key_is_not_enrolled() -> None:
 def gate_argv(profile: dict[str, Any], mode: str) -> list[str]:
     run = task("preflight_gate", "Run preflight without storing anything")
     variables = {
-        "preflight_gate_command": "/srv/infra/preflight/pokus-preflight",
-        "preflight_gate_tmp": {"path": "/run/pokus/fresh-profile.json"},
-        "pokus_root": "/srv/pokus",
-        "pokus_bootstrap": {},
+        "preflight_gate_command": "/srv/infra/preflight/pinka-preflight",
+        "preflight_gate_tmp": {"path": "/run/pinka/fresh-profile.json"},
+        "pinka_root": "/srv/pinka",
+        "pinka_bootstrap": {},
         "install_nvidia_driver": mode,
         "host_profile": profile,
     }

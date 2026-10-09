@@ -1,6 +1,6 @@
-# Managed by pokus-infra (bootstrap/requirements.in). Local changes will be overwritten.
+# Managed by pinka (bootstrap/requirements.in). Local changes will be overwritten.
 # Generated from versions.lock.yml (python.packages) by tools/gen (make generate).
-# Python packages of /opt/pokus/ansible-venv (BUILD_PROMPT §5.2 step 5);
+# Python packages of /opt/pinka/ansible-venv (BUILD_PROMPT §5.2 step 5);
 # `make bootstrap-lock` compiles the hash-locked requirements.lock from it.
 ansible-core==2.21.5
 cryptography==50.0.2

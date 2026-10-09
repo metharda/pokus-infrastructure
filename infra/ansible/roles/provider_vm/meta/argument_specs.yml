@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_vm/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_vm/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: VM provider.

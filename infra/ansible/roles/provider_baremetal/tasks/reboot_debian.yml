@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_baremetal/tasks/reboot_debian.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_baremetal/tasks/reboot_debian.yml). Local changes will be overwritten.
 - name: Look for /run/reboot-required
   ansible.builtin.stat:
     path: /run/reboot-required

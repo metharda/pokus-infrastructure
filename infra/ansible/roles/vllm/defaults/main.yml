@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/vllm/defaults/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/vllm/defaults/main.yml). Local changes will be overwritten.
 
 # Serving profile of this host (vllm/profiles/<name>.yml, BUILD_PROMPT §8.1).
 vllm_profile: ada-12g

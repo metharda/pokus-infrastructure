@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/observability/vars/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/observability/vars/main.yml). Local changes will be overwritten.
 
 # Prometheus, Loki, Tempo and Grafana run on full and lab nodes; an inference
 # node runs the collectors and exporters only and forwards everything to its
@@ -8,7 +8,7 @@ observability_stores: "{{ node_role in ['full', 'lab'] }}"
 observability_forward_node: "{{ inference_lab_node if node_role == 'inference' else '' }}"
 # Lab node: the paired inference node whose telemetry arrives over mutual TLS.
 observability_inference_node: "{{ inference_remote_node if node_role == 'lab' else '' }}"
-# The collector gateway's copy of the pairing material (/etc/pokus/inference),
+# The collector gateway's copy of the pairing material (/etc/pinka/inference),
 # readable by its container user only.
 observability_pairing_dir: "{{ observability_secrets_dir }}/otel-pairing"
 observability_pairing_files: [self.crt, self.key, peer.crt]
@@ -23,7 +23,7 @@ observability_grafana_disabled: "{{ observability_grafana_opted_out + researcher
 observability_gateway_uid: 10001
 # The dedicated OTLP listener for VM targets exists only with vm_targets (C4),
 # on nodes that run Incus.
-observability_vm_listener: "{{ (pokus_features.vm_targets | default(false) | bool) and observability_stores }}"
+observability_vm_listener: "{{ (pinka_features.vm_targets | default(false) | bool) and observability_stores }}"
 # OTLP receivers of the gateway's pipelines.
 observability_otlp_receivers: "{{ ['otlp'] + (['otlp/vm'] if observability_vm_listener else []) }}"
 # An inference node's gateway scrapes the local exporters itself (receiver prometheus).
@@ -36,10 +36,10 @@ observability_exporters: >-
            if observability_forward_node | length > 0
            else {'logs': 'nop', 'metrics': 'nop', 'traces': 'nop'}) }}
 # GPU metrics only with gpu_inference.
-observability_gpu: "{{ pokus_features.gpu_inference | default(false) | bool }}"
+observability_gpu: "{{ pinka_features.gpu_inference | default(false) | bool }}"
 # vLLM serves on this host (node_role full or inference) with gpu_inference.
 observability_vllm: "{{ observability_gpu and node_role in ['full', 'inference'] }}"
-# Data directories under pokus_root/state with the UID and GID of the image's user.
+# Data directories under pinka_root/state with the UID and GID of the image's user.
 observability_state_dirs:
   - {name: prometheus, uid: 65534, gid: 65534}
   - {name: loki, uid: 10001, gid: 10001}
@@ -47,11 +47,11 @@ observability_state_dirs:
   - {name: grafana, uid: 472, gid: 0}
   - {name: otelcol-journald, uid: 0, gid: 0}
 # Secrets mounted into containers (directory 0700 root; files 0400 owned by the reader's UID).
-observability_secrets_dir: /etc/pokus/secrets/containers
+observability_secrets_dir: /etc/pinka/secrets/containers
 # The Incus metrics certificate (incus role) and its copy for Prometheus.
-observability_incus_cert_dir: /etc/pokus/incus/metrics
+observability_incus_cert_dir: /etc/pinka/incus/metrics
 observability_incus_server_cert: /var/lib/incus/server.crt
 # Grafana's HTTP API on the host.
-observability_grafana_url: "http://127.0.0.1:{{ pokus_ports.grafana }}"
+observability_grafana_url: "http://127.0.0.1:{{ pinka_ports.grafana }}"
 # Directory of the node exporter's textfile collector (backup and other host metrics).
-observability_textfile_dir: /var/lib/pokus/node-exporter
+observability_textfile_dir: /var/lib/pinka/node-exporter

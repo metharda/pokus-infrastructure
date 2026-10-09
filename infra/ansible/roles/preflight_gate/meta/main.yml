@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/preflight_gate/meta/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/preflight_gate/meta/main.yml). Local changes will be overwritten.
 galaxy_info:
   role_name: preflight_gate
-  namespace: pokus
+  namespace: pinka
   author: Pokus project
   description: Re-run preflight and stop if the host changed since the stored host profile
   license: Apache-2.0
@@ -19,5 +19,5 @@ galaxy_info:
       versions: [all]
     - name: ArchLinux
       versions: [all]
-  galaxy_tags: [pokus]
+  galaxy_tags: [pinka]
 dependencies: []

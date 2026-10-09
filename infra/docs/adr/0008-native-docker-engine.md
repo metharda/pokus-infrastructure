@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §7.6)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.6)
 
 ## Context
 
@@ -42,6 +42,6 @@ the lab's Linux host.
 ## Alternatives considered
 
 - **Docker Desktop**: not part of the Linux host,
-  configured from Windows, and Pokus cannot pin its version.
+  configured from Windows, and Pokus Infrastructure (pinka) cannot pin its version.
 - **Podman**: workable, but the services' Compose files, GPU documentation and
   the platform's tooling assume Docker's API and Compose v2.

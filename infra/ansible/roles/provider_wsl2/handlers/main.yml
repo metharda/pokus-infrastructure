@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_wsl2/handlers/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_wsl2/handlers/main.yml). Local changes will be overwritten.
 - name: Run ldconfig
   ansible.builtin.command:
     argv: [ldconfig]

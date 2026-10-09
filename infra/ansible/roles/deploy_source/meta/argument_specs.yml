@@ -1,13 +1,13 @@
-# Managed by pokus-infra (ansible/roles/deploy_source/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/deploy_source/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Install the deployment helper and fetch the Pokus repository into the root-only bare mirror.
+    short_description: Install the deployment helper and fetch the pokus-platform repository into the root-only bare mirror.
     options:
-      pokus_source_repo:
+      pinka_source_repo:
         type: str
         required: true
-        description: SSH or anonymous HTTPS URL of the deployer's copy of the Pokus repository (owner answer E3).
-      pokus_source_known_hosts:
+        description: SSH or anonymous HTTPS URL of the deployer's copy of the pokus-platform repository (owner answer E3).
+      pinka_source_known_hosts:
         type: list
         elements: str
         default: []
@@ -16,7 +16,7 @@ argument_specs:
         type: bool
         default: false
         description: Deploy only validly SSH-signed component tags (owner answer E16).
-      pokus_allowed_signers:
+      pinka_allowed_signers:
         type: list
         elements: str
         default: []
@@ -25,7 +25,7 @@ argument_specs:
         type: str
         required: true
         description: Machine name, the comment of the deploy key.
-      pokus_versions:
+      pinka_versions:
         type: dict
         required: true
         description: The pinned versions (GitHub's SSH host keys).
@@ -44,7 +44,7 @@ argument_specs:
       deploy_source_root:
         type: path
         required: true
-        description: Deployment root (/srv/pokus/deploy/platform or /srv/pokus/catalog).
+        description: Deployment root (/srv/pinka/deploy/platform or /srv/pinka/catalog).
       deploy_source_owner:
         type: str
         default: root
@@ -61,7 +61,7 @@ argument_specs:
         type: str
         default: "0644"
         description: Mode of other files.
-      pokus_source_repo:
+      pinka_source_repo:
         type: str
         required: true
         description: Source URL, recorded in DEPLOYED_FROM.json.

@@ -1,0 +1,33 @@
+#!/bin/sh
+# Managed by pinka (tools/pinka-lab/pinka).
+#
+# Thin wrapper installed as /usr/local/bin/pinka: runs the stdlib-only
+# pinka_lab package (and the preflight package next to it) with the pinned
+# CPython installed by bootstrap when present, otherwise with the first
+# python3 >= 3.9 on PATH. POSIX sh, no bashisms.
+set -eu
+
+lib=${PINKA_LAB_LIB:-/usr/local/lib/pinka}
+
+pick_python() {
+  for candidate in /opt/pinka/python/bin/python3 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 \
+      && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! python=$(pick_python); then
+  echo "pinka: Python 3.9 or newer is required" >&2
+  exit 1
+fi
+
+# Isolated mode (-I) ignores PYTHON* variables and the current directory; the
+# two package directories are put on sys.path explicitly.
+exec "$python" -I -c 'import runpy, sys
+sys.path[:0] = [sys.argv.pop(1), sys.argv.pop(1)]
+runpy.run_module("pinka_lab", run_name="__main__", alter_sys=True)' \
+  "${lib}/pinka-lab" "${lib}/preflight" "$@"

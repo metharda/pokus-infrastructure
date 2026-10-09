@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/layout/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/layout/tasks/main.yml). Local changes will be overwritten.
 #
 # The research space and the lab's host paths (BUILD_PROMPT §6.2), created
-# exactly from pokus_layout and pokus_system_layout in group_vars; the same
+# exactly from pinka_layout and pinka_system_layout in group_vars; the same
 # data renders the layout table of docs/architecture.md.
 - name: Create the host paths of the lab
   ansible.builtin.file:
@@ -10,26 +10,26 @@
     owner: "{{ item.owner }}"
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
-  loop: "{{ pokus_system_layout }}"
+  loop: "{{ pinka_system_layout }}"
   loop_control:
     label: "{{ item.path }}"
 
 - name: Create the research space
   ansible.builtin.file:
-    path: "{{ (pokus_root ~ '/' ~ item.path) | regex_replace('/$', '') }}"
+    path: "{{ (pinka_root ~ '/' ~ item.path) | regex_replace('/$', '') }}"
     state: directory
     owner: "{{ item.owner }}"
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
-  loop: "{{ pokus_layout }}"
+  loop: "{{ pinka_layout }}"
   loop_control:
     label: "{{ item.path or '.' }}"
 
 - name: Find the directories with default ACLs that exist already (check mode)
   ansible.builtin.stat:
-    path: "{{ pokus_root }}/{{ item.path }}"
+    path: "{{ pinka_root }}/{{ item.path }}"
     get_checksum: false
-  loop: "{{ pokus_layout | selectattr('default_acl', 'defined') | list }}"
+  loop: "{{ pinka_layout | selectattr('default_acl', 'defined') | list }}"
   loop_control:
     label: "{{ item.path }}"
   register: layout_acl_dirs
@@ -37,13 +37,13 @@
 
 - name: Set the default ACLs
   ansible.posix.acl:
-    path: "{{ pokus_root }}/{{ item.0.path }}"
+    path: "{{ pinka_root }}/{{ item.0.path }}"
     entity: "{{ item.1.split(':')[1] }}"
     etype: "{{ item.1.split(':')[0] }}"
     permissions: "{{ item.1.split(':')[2] }}"
     default: true
     state: present
-  loop: "{{ pokus_layout | subelements('default_acl', skip_missing=True) }}"
+  loop: "{{ pinka_layout | subelements('default_acl', skip_missing=True) }}"
   loop_control:
     label: "{{ item.0.path }} {{ item.1 }}"
   # In check mode the directories above are not created.
@@ -53,11 +53,11 @@
 
 - name: Create the per-researcher directories
   ansible.builtin.file:
-    path: "{{ pokus_root }}/users/{{ item.name }}"
+    path: "{{ pinka_root }}/users/{{ item.name }}"
     state: directory
     owner: "{{ item.name }}"
     group: "{{ item.name }}"
-    mode: "{{ pokus_layout_user_mode }}"
+    mode: "{{ pinka_layout_user_mode }}"
   loop: "{{ researchers }}"
   loop_control:
     label: "{{ item.name }}"

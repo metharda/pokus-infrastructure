@@ -26,20 +26,20 @@ flowchart TD
     root --> log[Log file and lock]
     log --> git[Git checkout: commit, infra/ tree, dirty flag] -->|77| stop
     git --> pre[prepreflight.sh: systemd, glibc, arch, curl/wget, /opt] -->|20, 30, 75, 77| stop
-    pre --> tools[Pinned uv and CPython in /opt/pokus] -->|50| stop
+    pre --> tools[Pinned uv and CPython in /opt/pinka] -->|50| stop
     tools --> front[Front-end: installer TUI or answers file] -->|64, 77| stop
     front --> preflight[Preflight and gate] -->|10, 11, 20, 30, 40, 77| stop
     preflight --> env[Ansible environment, collections, versions.yml check] -->|50, 77| stop
     env --> play[site.yml] -->|signal 75, 76, 77 or failure 60| stop
     play --> restore[restore.yml, only with --restore] -->|75, 76, 77, 60| stop
-    restore --> doctor[pokus-lab doctor] -->|0, 1, 2| stop
+    restore --> doctor[pinka doctor] -->|0, 1, 2| stop
 ```
 
 1. **Options and root.** Invalid options end with 64 before anything else
    happens. Bootstrap changes the host, so it must run as root (77 with a
    `sudo` hint otherwise).
 2. **Log and lock.** All output is copied to
-   `/var/log/pokus-bootstrap/<UTC timestamp>.log` (mode 0600, root only). A
+   `/var/log/pinka-bootstrap/<UTC timestamp>.log` (mode 0600, root only). A
    lock in `/run/lock` makes a second, concurrent run stop with 77.
 3. **Git checkout.** Bootstrap runs from a clone of the repository. It records
    the commit, the tree hash of `infra/` and whether `infra/` has uncommitted
@@ -60,10 +60,10 @@ flowchart TD
    75 because the distribution must restart.
 5. **Pinned tooling.** Bootstrap downloads the uv release pinned in
    `versions.lock.yml`, checks its sha256, and installs it to
-   `/opt/pokus/bin/uv`. uv then installs the pinned CPython into
-   `/opt/pokus/python`. Everything after this point uses that interpreter,
+   `/opt/pinka/bin/uv`. uv then installs the pinned CPython into
+   `/opt/pinka/python`. Everything after this point uses that interpreter,
    never the distribution's Python.
-6. **Front-end.** The installer environment `/opt/pokus/installer-venv` is
+6. **Front-end.** The installer environment `/opt/pinka/installer-venv` is
    synchronized from the hash-locked `installer/requirements.lock`. On a
    terminal of at least 80x24, bootstrap releases its lock and hands the
    terminal to the installer TUI, which collects the settings, writes the
@@ -75,18 +75,18 @@ flowchart TD
    [How to install a lab from an answers file](../how-to/install-without-the-tui.md)).
    With neither, `--machine` names an existing `host_vars` file.
 7. **Preflight and gate.** Preflight writes the new host profile to
-   `/run/pokus/bootstrap/host-profile.json`. The gate applies the outcome, as
+   `/run/pinka/bootstrap/host-profile.json`. The gate applies the outcome, as
    described below. The profile is then compared with the stored
-   `/etc/pokus/host-profile.json`, and if consistent it replaces it.
+   `/etc/pinka/host-profile.json`, and if consistent it replaces it.
 8. **Ansible environment.** The hash-locked `bootstrap/requirements.lock` is
-   synchronized into `/opt/pokus/ansible-venv`, the pinned collections are
-   installed into `/opt/pokus/ansible-collections`, and
+   synchronized into `/opt/pinka/ansible-venv`, the pinned collections are
+   installed into `/opt/pinka/ansible-collections`, and
    `ansible/group_vars/all/versions.yml` must carry the sha256 of
    `versions.lock.yml` (77 if it is out of date).
 9. **The play.** `ansible-playbook` runs `site.yml` with `-e machine=<name>`
    and the host profile and bootstrap options as variables, followed by
    `restore.yml` with `--restore`.
-10. **Doctor.** `pokus-lab doctor` checks the result; its exit code (0, 1 or
+10. **Doctor.** `pinka doctor` checks the result; its exit code (0, 1 or
     2) becomes the exit code of bootstrap. In check mode (`--check`) the
     doctor is skipped.
 
@@ -120,7 +120,7 @@ because the change is the expected result of that action.
 
 Some conditions can only be detected inside Ansible: a changed `wsl.conf`
 needs a WSL restart, a new driver needs a reboot, a Secure Boot key must be
-enrolled. A role then writes `/run/pokus/bootstrap-signal.json`:
+enrolled. A role then writes `/run/pinka/bootstrap-signal.json`:
 
 ```json
 {"code": 76, "message": "Reboot required: enroll the MOK at the blue MOK Manager screen, then re-run bootstrap."}
@@ -149,10 +149,10 @@ before the reboot happens, and the next run continues where this one stopped.
 
 | Record | Where | Content |
 | --- | --- | --- |
-| Log | `/var/log/pokus-bootstrap/<UTC>.log` (0600) | everything bootstrap and Ansible printed |
-| Host profile | `/etc/pokus/host-profile.json` (0644), archived in `/var/lib/pokus/preflight/` | the last accepted preflight result, with overrides |
-| State | `/etc/pokus/bootstrap-state.json` (0644) | repository commit, `infra/` tree hash and dirty flag, ref, start and end time, tags, overrides, last stage, result, exit code, signal, log file |
-| Events | the file named by `POKUS_EVENTS_FILE`, if set | one JSON line per stage start and end, signal and final result, for the installer TUI |
+| Log | `/var/log/pinka-bootstrap/<UTC>.log` (0600) | everything bootstrap and Ansible printed |
+| Host profile | `/etc/pinka/host-profile.json` (0644), archived in `/var/lib/pinka/preflight/` | the last accepted preflight result, with overrides |
+| State | `/etc/pinka/bootstrap-state.json` (0644) | repository commit, `infra/` tree hash and dirty flag, ref, start and end time, tags, overrides, last stage, result, exit code, signal, log file |
+| Events | the file named by `PINKA_EVENTS_FILE`, if set | one JSON line per stage start and end, signal and final result, for the installer TUI |
 
 The state is written at every exit once the checkout is known, also after a
 failure, so `result` (`success`, `doctor_warnings`, `doctor_failures`,

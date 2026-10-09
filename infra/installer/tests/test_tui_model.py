@@ -14,21 +14,21 @@ import segno
 from ruamel.yaml import YAML
 from tui_fakes import DATA, DISKS, FakeHost, context, preflight
 
-from pokus_installer import answers as answers_mod
-from pokus_installer import apply, vault
-from pokus_installer.paths import INFRA, Paths
-from pokus_installer.tui import model
-from pokus_installer.tui.events import Progress, read_new, site_roles
-from pokus_installer.tui.runner import BootstrapRunner, RunRequest
-from pokus_installer.tui.screens_host import cpu_bar, disk_row
-from pokus_installer.tui.screens_install import (
+from pinka_installer import answers as answers_mod
+from pinka_installer import apply, vault
+from pinka_installer.paths import INFRA, Paths
+from pinka_installer.tui import model
+from pinka_installer.tui.events import Progress, read_new, site_roles
+from pinka_installer.tui.runner import BootstrapRunner, RunRequest
+from pinka_installer.tui.screens_host import cpu_bar, disk_row
+from pinka_installer.tui.screens_install import (
     checks_by_category,
     destructive,
     exit_meanings,
     qr_text,
     summary,
 )
-from pokus_installer.tui.screens_start import cards
+from pinka_installer.tui.screens_start import cards
 
 SITE = INFRA / "ansible" / "site.yml"
 
@@ -46,7 +46,7 @@ def replay(name: str, provider: str = "wsl2") -> Progress:
 
 def test_site_roles_follow_site_yml() -> None:
     roles = site_roles(SITE)
-    assert roles[:3] == ["platform_facts", "preflight_gate", "provider_{{ pokus_provider }}"]
+    assert roles[:3] == ["platform_facts", "preflight_gate", "provider_{{ pinka_provider }}"]
     assert roles[-1] == "lab_session"
 
 
@@ -69,7 +69,7 @@ def test_replay_of_a_successful_run() -> None:
     assert progress.phases["platform"].ok == 3  # with deploy_source's
     assert "pkg" not in progress.phases and "deploy_source" not in progress.phases
     assert progress.login_url == ""  # the login completed
-    assert progress.deploy_key == "ssh-ed25519 KEYPLACEHOLDER pokus-deploy@pokus-lab"
+    assert progress.deploy_key == "ssh-ed25519 KEYPLACEHOLDER pinka-deploy@pinka-lab"
 
 
 def test_the_login_url_shows_until_the_login_completes() -> None:
@@ -133,9 +133,9 @@ while (($#)); do
 done
 printf 'mode %s\\n' "$(stat -c %a "$password_file")"
 printf 'password %s\\n' "$(cat "$password_file")"
-printf 'log: /var/log/pokus-bootstrap/2026-01-01T00-00-00Z.log\\n'
+printf 'log: /var/log/pinka-bootstrap/2026-01-01T00-00-00Z.log\\n'
 while IFS= read -r line; do
-  printf '%s\\n' "$line" >>"$POKUS_EVENTS_FILE"
+  printf '%s\\n' "$line" >>"$PINKA_EVENTS_FILE"
 done <"$EVENTS"
 [[ -z ${SLEEP:-} ]] || sleep "$SLEEP"
 exit "${CODE:-0}"
@@ -160,14 +160,14 @@ def test_runner_hands_over_the_password_and_replays_events(
     runner = BootstrapRunner(paths)
     events: list[dict[str, Any]] = []
     lines: list[str] = []
-    request = RunRequest("pokus-lab", ["--accept-degraded"], "secret password")
+    request = RunRequest("pinka-lab", ["--accept-degraded"], "secret password")
     code = runner.run(request, events.extend, lines.append)
     assert code == 60
     assert "mode 600" in lines and "password secret password" in lines
-    assert "arg --machine" in lines and "arg pokus-lab" in lines
+    assert "arg --machine" in lines and "arg pinka-lab" in lines
     assert "arg --non-interactive" in lines and "arg --no-tui" in lines
     assert lines.index("arg --accept-degraded") > lines.index("arg --no-tui")
-    assert runner.log_file == "/var/log/pokus-bootstrap/2026-01-01T00-00-00Z.log"
+    assert runner.log_file == "/var/log/pinka-bootstrap/2026-01-01T00-00-00Z.log"
     recorded, _ = read_new(DATA / "events-failure.jsonl", 0)
     assert events == recorded
     assert not (paths.run_dir / "vault-pass").exists()  # removed after the run
@@ -182,7 +182,7 @@ def test_runner_writes_the_mok_password_to_stdin(
     monkeypatch.setenv("CODE", "76")
     runner = BootstrapRunner(paths)
     lines: list[str] = []
-    request = RunRequest("pokus-lab", ["--mok-password-stdin"], "vault secret", "one time")
+    request = RunRequest("pinka-lab", ["--mok-password-stdin"], "vault secret", "one time")
     assert "one time" not in repr(request)
     assert runner.run(request, lambda e: None, lines.append) == 76
     assert "mok one time" in lines
@@ -256,8 +256,8 @@ def test_vault_password_rules() -> None:
 
 
 def test_acl_and_interfaces() -> None:
-    snippet = model.acl_snippet("tag:pokus-lab")
-    assert '"dst": ["tag:pokus-lab:22", "tag:pokus-lab:443"]' in snippet
+    snippet = model.acl_snippet("tag:pinka-lab")
+    assert '"dst": ["tag:pinka-lab:22", "tag:pinka-lab:443"]' in snippet
     assert "funnel" not in snippet.lower()
     assert model.interface_problems(["enp5s0"]) == []
     assert model.interface_problems(["bad name"])
@@ -321,17 +321,17 @@ def test_mok_enrollment_is_needed_only_with_secure_boot_and_no_driver() -> None:
 
 def test_existing_answers_prefer_the_files(repo: Paths) -> None:
     loaded = answers_mod.load(repo.infra / "tests" / "answers" / "ci.yml", apply.context(repo))
-    loaded.machine.name = "pokus-lab"
+    loaded.machine.name = "pinka-lab"
     apply.plan(
         loaded, repo, vault.Provided(tailscale_authkey="authkey-placeholder"), "password-1234"
     ).write()
-    text = repo.host_vars("pokus-lab").read_text(encoding="utf-8")
-    repo.host_vars("pokus-lab").write_text(
-        text.replace("pokus_root: /srv/pokus", "pokus_root: /data/pokus"), encoding="utf-8"
+    text = repo.host_vars("pinka-lab").read_text(encoding="utf-8")
+    repo.host_vars("pinka-lab").write_text(
+        text.replace("pinka_root: /srv/pinka", "pinka_root: /data/pinka"), encoding="utf-8"
     )
-    found = model.existing_answers(repo, "pokus-lab")
+    found = model.existing_answers(repo, "pinka-lab")
     assert found.mode == "modify"
-    assert found.machine.srv_path == "/data/pokus"  # host_vars edited by hand win
+    assert found.machine.srv_path == "/data/pinka"  # host_vars edited by hand win
     assert found.backups.repository == loaded.backups.repository
     unknown = model.existing_answers(repo, "other-machine")
     assert (unknown.machine.name, unknown.mode) == ("other-machine", "modify")
@@ -351,7 +351,7 @@ def test_qr_code_has_two_modules_per_character() -> None:
 
 def test_review_summary_and_destructive_actions() -> None:
     answers = answers_mod.Answers()
-    answers.machine.name = "pokus-lab"
+    answers.machine.name = "pinka-lab"
     answers.researchers = [answers_mod.Researcher("researcher1", True)]
     sections = {step: text for step, _, text in summary(answers)}
     assert sections["storage"] == "loop file of 300 GiB"
@@ -404,6 +404,6 @@ def test_build_context(repo: Paths) -> None:
     assert not ctx.wizard.installed
     assert ctx.passthrough == ["--allow-dirty"]
     assert ctx.git.commit.startswith("0123")
-    installed = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pokus-lab")
+    installed = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
     other = context(repo, installed, machine="lab-two")
     assert other.wizard.installed and other.wizard.answers.mode == "fresh"

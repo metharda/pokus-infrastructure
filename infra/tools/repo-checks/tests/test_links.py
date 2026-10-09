@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from pokus_repo_checks import links
+from pinka_repo_checks import links
 
 
 class Handler(http.server.BaseHTTPRequestHandler):

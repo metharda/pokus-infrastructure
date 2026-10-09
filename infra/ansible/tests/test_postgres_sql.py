@@ -3,7 +3,7 @@
 A throwaway cluster in a temporary directory (Unix socket only, no TCP) runs
 the rendered postgresql.conf and pg_hba.conf, the bootstrap SQL twice, the
 password handling of the postgres role, and the contract's reader rule:
-``pokus_reader`` can never see the ``gt`` schema (contracts.md#postgresql).
+``potka_reader`` can never see the ``gt`` schema (contracts.md#postgresql).
 It uses the PostgreSQL server installed on the machine (the CI runners ship
 one); the pinned image runs a newer major, and the SQL uses nothing that
 differs between them.
@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-import pokus
+import pinka
 from ansible_testlib import (
     GROUP_VARS,
     INFRA,
@@ -40,15 +40,15 @@ SUPERUSER_PASSWORD = "superuser-test-password"  # noqa: S105 - throwaway test cl
 VAULT = {
     role: f"{role}-test-password"
     for role in (
-        "pokus_migrator",
-        "pokus_orch",
-        "pokus_gw",
-        "pokus_exec",
-        "pokus_inject",
-        "pokus_verify",
-        "pokus_eval",
-        "pokus_reader",
-        "pokus_grafana",
+        "potka_migrator",
+        "potka_orch",
+        "potka_gw",
+        "potka_exec",
+        "potka_inject",
+        "potka_verify",
+        "potka_eval",
+        "potka_reader",
+        "potka_grafana",
     )
 }
 MONITOR_PASSWORD = "monitor-test-password"  # noqa: S105 - throwaway test cluster
@@ -87,7 +87,7 @@ class Cluster:
         sql: str,
         user: str = "postgres",
         password: str = SUPERUSER_PASSWORD,
-        db: str = "pokus",
+        db: str = "potka",
     ) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, "PGPASSWORD": password, "PGCONNECT_TIMEOUT": "10"}
         env.pop("PGPASSFILE", None)
@@ -131,7 +131,7 @@ def postgres_vars(socket_dir: Path) -> dict[str, Any]:
 @pytest.fixture(scope="module")
 def cluster() -> Iterator[Cluster]:
     assert BINDIR is not None
-    root = Path(tempfile.mkdtemp(prefix="pokus-pg-"))
+    root = Path(tempfile.mkdtemp(prefix="pinka-pg-"))
     prefix: list[str] = []
     if os.geteuid() == 0:  # initdb refuses to run as root
         nobody = pwd.getpwnam("nobody")
@@ -175,7 +175,7 @@ def cluster() -> Iterator[Cluster]:
     subprocess.run([*prefix, *start, log, "start"], check=True, capture_output=True)
     try:
         state = Cluster(BINDIR, root, sockets, prefix)
-        state.ok("CREATE DATABASE pokus;", db="postgres")  # POSTGRES_DB=pokus in the image
+        state.ok("CREATE DATABASE potka;", db="postgres")  # POSTGRES_DB=potka in the image
         yield state
     finally:
         subprocess.run(
@@ -190,9 +190,9 @@ def bootstrap(cluster: Cluster) -> list[str]:
     result = cluster.psql((cluster.root / "conf" / "bootstrap.sql").read_text())
     assert result.returncode == 0, result.stderr
     return [
-        line.split("pokus-changed: ", 1)[1]
+        line.split("pinka-changed: ", 1)[1]
         for line in result.stderr.splitlines()
-        if "pokus-changed: " in line
+        if "pinka-changed: " in line
     ]
 
 
@@ -201,27 +201,27 @@ def set_passwords(cluster: Cluster, passwords: dict[str, str]) -> list[str]:
     query = evaluate("postgres_secrets_query", postgres_vars(cluster.socket_dir))
     stored = json.loads(cluster.ok(query))
     changed = [
-        role for role, pw in passwords.items() if not pokus.scram_matches(pw, stored.get(role))
+        role for role, pw in passwords.items() if not pinka.scram_matches(pw, stored.get(role))
     ]
     for role in changed:
-        cluster.ok(f"ALTER ROLE \"{role}\" PASSWORD '{pokus.scram_verifier(passwords[role])}';")
+        cluster.ok(f"ALTER ROLE \"{role}\" PASSWORD '{pinka.scram_verifier(passwords[role])}';")
     return changed
 
 
 @pytest.fixture(scope="module")
 def bootstrapped(cluster: Cluster) -> Cluster:
     first = bootstrap(cluster)
-    assert "created role pokus_reader" in first
+    assert "created role potka_reader" in first
     assert "created schema gt" in first
     assert "owner of schema public" in first
-    passwords = {**VAULT, "pokus_monitor": MONITOR_PASSWORD}
+    passwords = {**VAULT, "pinka_monitor": MONITOR_PASSWORD}
     assert sorted(set_passwords(cluster, passwords)) == sorted(passwords)
     return cluster
 
 
 def test_bootstrap_is_idempotent(bootstrapped: Cluster) -> None:
     assert bootstrap(bootstrapped) == []
-    assert set_passwords(bootstrapped, {**VAULT, "pokus_monitor": MONITOR_PASSWORD}) == []
+    assert set_passwords(bootstrapped, {**VAULT, "pinka_monitor": MONITOR_PASSWORD}) == []
 
 
 def test_durability_settings(bootstrapped: Cluster) -> None:
@@ -239,23 +239,23 @@ def test_owners_and_monitor(bootstrapped: Cluster) -> None:
     owners = bootstrapped.ok(
         "SELECT string_agg(nspname || '=' || pg_get_userbyid(nspowner), ',' ORDER BY nspname)"
         " FROM pg_namespace WHERE nspname IN ('public', 'gt');"
-        " SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'pokus';"
-        " SELECT pg_has_role('pokus_monitor', 'pg_monitor', 'MEMBER');"
+        " SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = 'potka';"
+        " SELECT pg_has_role('pinka_monitor', 'pg_monitor', 'MEMBER');"
     )
-    assert owners.splitlines() == ["gt=pokus_migrator,public=pokus_migrator", "pokus_migrator", "t"]
+    assert owners.splitlines() == ["gt=potka_migrator,public=potka_migrator", "potka_migrator", "t"]
 
 
 def test_service_roles_log_in_over_the_sockets(bootstrapped: Cluster) -> None:
-    for role in ("pokus_migrator", "pokus_orch", "pokus_reader"):
+    for role in ("potka_migrator", "potka_orch", "potka_reader"):
         assert bootstrapped.ok("SELECT current_user;", user=role, password=VAULT[role]) == role
-    wrong = bootstrapped.psql("SELECT 1;", user="pokus_orch", password=WRONG_PASSWORD)
+    wrong = bootstrapped.psql("SELECT 1;", user="potka_orch", password=WRONG_PASSWORD)
     assert "password authentication failed" in wrong.stderr
 
 
 def test_grafana_and_monitor_use_the_sockets(bootstrapped: Cluster) -> None:
-    grafana = {"user": "pokus_grafana", "password": VAULT["pokus_grafana"]}
-    assert bootstrapped.ok("SELECT current_user;", **grafana) == "pokus_grafana"
-    monitor = {"user": "pokus_monitor", "password": MONITOR_PASSWORD}
+    grafana = {"user": "potka_grafana", "password": VAULT["potka_grafana"]}
+    assert bootstrapped.ok("SELECT current_user;", **grafana) == "potka_grafana"
+    monitor = {"user": "pinka_monitor", "password": MONITOR_PASSWORD}
     assert bootstrapped.ok("SELECT count(*) > 0 FROM pg_stat_activity;", **monitor) == "t"
 
 
@@ -265,33 +265,33 @@ def test_other_roles_are_rejected(bootstrapped: Cluster) -> None:
     assert result.returncode != 0
     assert "no pg_hba.conf entry" in result.stderr
     other_db = bootstrapped.psql(
-        "SELECT 1;", user="pokus_orch", password=VAULT["pokus_orch"], db="postgres"
+        "SELECT 1;", user="potka_orch", password=VAULT["potka_orch"], db="postgres"
     )
     assert "no pg_hba.conf entry" in other_db.stderr
 
 
 def test_reader_never_sees_gt(bootstrapped: Cluster) -> None:
     # What platform migrations do: tables in both schemas, a grant in public.
-    migrator = {"user": "pokus_migrator", "password": VAULT["pokus_migrator"]}
+    migrator = {"user": "potka_migrator", "password": VAULT["potka_migrator"]}
     bootstrapped.ok(
         "CREATE TABLE IF NOT EXISTS public.runs (id int);"
-        " GRANT USAGE ON SCHEMA public TO pokus_reader;"
-        " GRANT SELECT ON public.runs TO pokus_reader;"
+        " GRANT USAGE ON SCHEMA public TO potka_reader;"
+        " GRANT SELECT ON public.runs TO potka_reader;"
         " CREATE TABLE IF NOT EXISTS gt.answers (id int);",
         **migrator,
     )
-    reader = {"user": "pokus_reader", "password": VAULT["pokus_reader"]}
+    reader = {"user": "potka_reader", "password": VAULT["potka_reader"]}
     assert bootstrapped.ok("SELECT count(*) FROM public.runs;", **reader) == "0"
     denied = bootstrapped.psql("SELECT count(*) FROM gt.answers;", **reader)
     assert "permission denied for schema gt" in denied.stderr
-    assert bootstrapped.ok("SELECT has_schema_privilege('pokus_reader', 'gt', 'USAGE');") == "f"
+    assert bootstrapped.ok("SELECT has_schema_privilege('potka_reader', 'gt', 'USAGE');") == "f"
     # A migration that grants gt by mistake is undone by the next bootstrap.
-    bootstrapped.ok("GRANT USAGE ON SCHEMA gt TO pokus_reader, PUBLIC;", **migrator)
-    assert bootstrapped.ok("SELECT has_schema_privilege('pokus_reader', 'gt', 'USAGE');") == "t"
+    bootstrapped.ok("GRANT USAGE ON SCHEMA gt TO potka_reader, PUBLIC;", **migrator)
+    assert bootstrapped.ok("SELECT has_schema_privilege('potka_reader', 'gt', 'USAGE');") == "t"
     assert bootstrap(bootstrapped) == ["revoked gt"]
-    for role in ("pokus_reader", "pokus_grafana", "public"):
+    for role in ("potka_reader", "potka_grafana", "public"):
         assert bootstrapped.ok(f"SELECT has_schema_privilege('{role}', 'gt', 'USAGE');") == "f"
-    grafana = {"user": "pokus_grafana", "password": VAULT["pokus_grafana"]}
+    grafana = {"user": "potka_grafana", "password": VAULT["potka_grafana"]}
     assert (
         "permission denied for schema gt"
         in bootstrapped.psql("SELECT count(*) FROM gt.answers;", **grafana).stderr
@@ -299,11 +299,11 @@ def test_reader_never_sees_gt(bootstrapped: Cluster) -> None:
 
 
 def test_changed_password_is_detected(bootstrapped: Cluster) -> None:
-    rotated = {"pokus_eval": ROTATED_PASSWORD}
-    assert set_passwords(bootstrapped, rotated) == ["pokus_eval"]
-    assert bootstrapped.ok("SELECT 1;", user="pokus_eval", password=ROTATED_PASSWORD) == "1"
+    rotated = {"potka_eval": ROTATED_PASSWORD}
+    assert set_passwords(bootstrapped, rotated) == ["potka_eval"]
+    assert bootstrapped.ok("SELECT 1;", user="potka_eval", password=ROTATED_PASSWORD) == "1"
     assert set_passwords(bootstrapped, rotated) == []
-    assert set_passwords(bootstrapped, {"pokus_eval": VAULT["pokus_eval"]}) == ["pokus_eval"]
+    assert set_passwords(bootstrapped, {"potka_eval": VAULT["potka_eval"]}) == ["potka_eval"]
 
 
 def test_scram_filters_agree_with_postgres(bootstrapped: Cluster) -> None:
@@ -314,5 +314,5 @@ def test_scram_filters_agree_with_postgres(bootstrapped: Cluster) -> None:
     )
     stored = bootstrapped.ok("SELECT rolpassword FROM pg_authid WHERE rolname = 'intruder';")
     assert stored.startswith("SCRAM-SHA-256$4096:")
-    assert pokus.scram_matches("plain-test", stored)
-    assert not pokus.scram_matches("other-test", stored)
+    assert pinka.scram_matches("plain-test", stored)
+    assert not pinka.scram_matches("other-test", stored)

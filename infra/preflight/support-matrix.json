@@ -27,7 +27,7 @@
   },
   "release_model_notes": {
     "fast": "Fast-moving release: only the current and the previous release are in the matrix.",
-    "rolling": "Rolling release: installed versions drift over time. Results are comparable only within the same environment fingerprint; update the host only with 'pokus-lab update-host'."
+    "rolling": "Rolling release: installed versions drift over time. Results are comparable only within the same environment fingerprint; update the host only with 'pinka update-host'."
   },
   "lifecycle_sources": {
     "distro-info-data": "Debian/Ubuntu distro-info-data 2026.08.20-1 (archive.ubuntu.com, package sha256 77686dfe60970428c59ee0de9543c5d496e2e75216bc1f1516492d054ad799fd), verified 2026-10-05",
@@ -295,7 +295,7 @@
         "required": 150,
         "recommended": 400
       },
-      "srv_pokus": {
+      "srv_pinka": {
         "required": 100,
         "recommended": 500
       }

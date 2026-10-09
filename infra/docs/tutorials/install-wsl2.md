@@ -9,7 +9,7 @@ description: Turn a Windows workstation with an NVIDIA GPU into a complete Pokus
 
 # Install a lab on WSL2
 
-In this tutorial you build the reference setup of Pokus: a lab inside an
+In this tutorial you build the reference setup of Pokus Infrastructure (pinka): a lab inside an
 Ubuntu 24.04 distribution of WSL2 on a Windows workstation with an NVIDIA GPU.
 You prepare WSL on the Windows side, check the distribution with preflight,
 install the lab with the installer TUI, and finish with a doctor run that
@@ -22,13 +22,13 @@ this tutorial is one you run yourself.
     - A Windows workstation with WSL2, at least 16 GiB of memory and 8 CPU
       threads to give to WSL (24 GiB and 16 threads recommended), and room
       for the WSL virtual disk: preflight wants 150 GiB free for `/var/lib`
-      and 100 GiB for `/srv/pokus` (400 GiB and 500 GiB recommended).
+      and 100 GiB for `/srv/pinka` (400 GiB and 500 GiB recommended).
     - For local inference: an NVIDIA GPU with at least 8 GiB of memory and the
       current NVIDIA driver for Windows. Inside WSL nothing else is installed
       for the GPU.
     - A Tailscale account for the lab, and the SSH public keys of the
       researchers.
-    - The address of the Pokus repository (or of your lab's private fork).
+    - The address of the pokus-infrastructure repository (or of your lab's private fork).
 
 ## Step 1: Create the WSL distribution
 
@@ -54,7 +54,7 @@ this tutorial is one you run yourself.
     ```
 
     The template's comments explain each setting; [WSL2 hosts](../providers/wsl2.md#recommended-wslconfig)
-    explains the values Pokus recommends.
+    explains the values Pokus Infrastructure recommends.
 
 You now have an Ubuntu 24.04 distribution with the resources of the lab.
 
@@ -64,17 +64,17 @@ You now have an Ubuntu 24.04 distribution with the resources of the lab.
 
     <!-- qa:skip reason="needs the repository address" -->
     ```bash
-    git clone <repository-url> ~/pokus
-    cd ~/pokus/infra
+    git clone <repository-url> ~/pinka
+    cd ~/pinka/infra
     ```
 
-    `<repository-url>` is the address of the Pokus repository or your fork.
+    `<repository-url>` is the address of the pokus-infrastructure repository or your fork.
 
 2. Ask preflight whether the distribution can host the lab. It only reads:
 
     <!-- qa:run env=E1 -->
     ```bash
-    ./preflight/pokus-preflight --no-write
+    ./preflight/pinka-preflight --no-write
     echo "exit code: $?"
     ```
 
@@ -104,7 +104,7 @@ You now have an Ubuntu 24.04 distribution with the resources of the lab.
 2. Go through the screens as described in
    [How to install a lab with the installer TUI](../how-to/install-with-the-tui.md).
    For this setup choose:
-    - **Machine**: a name such as `pokus-lab`, node role `full`.
+    - **Machine**: a name such as `pinka`, node role `full`.
     - **Resources**: the memory and processors you set in `.wslconfig`.
     - **Storage**: a loop file (WSL has no dedicated disk).
     - **GPU & inference**: no driver (WSL uses the Windows driver), the serving
@@ -125,7 +125,7 @@ You now have an Ubuntu 24.04 distribution with the resources of the lab.
 
     <!-- qa:skip reason="interactive; provisions the host" -->
     ```bash
-    cd ~/pokus/infra
+    cd ~/pinka/infra
     sudo ./bootstrap/bootstrap.sh
     ```
 
@@ -143,7 +143,7 @@ The installation ends on the Doctor screen.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     echo "exit code: $?"
     ```
 
@@ -156,14 +156,14 @@ The installation ends on the Doctor screen.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab status
+    sudo pinka status
     ```
 
-    The output lists the units of `pokus-lab.target`, the containers, the
+    The output lists the units of `pinka-lab.target`, the containers, the
     Incus instances, the GPU and the last backup.
 
-3. Copy the `.wslconfig` that Pokus recommends for this machine to Windows:
-   `/srv/pokus/services/contrib/wslconfig.recommended` holds it (from
+3. Copy the `.wslconfig` that Pokus Infrastructure recommends for this machine to Windows:
+   `/srv/pinka/services/contrib/wslconfig.recommended` holds it (from
    Windows it is reachable below `\\wsl$\<distro>\`). Restart WSL with
    `wsl --shutdown` after you replaced `%UserProfile%\.wslconfig`.
 
@@ -172,7 +172,7 @@ The installation ends on the Doctor screen.
 A lab host inside WSL2: the research accounts and the shared research space,
 Tailscale remote access, Docker with the lab services and the telemetry stack,
 Incus for the benchmark targets with the golden images, vLLM serving the
-default model on the GPU, backups on a timer, and `pokus-lab` to operate it.
+default model on the GPU, backups on a timer, and `pinka` to operate it.
 
 Next:
 

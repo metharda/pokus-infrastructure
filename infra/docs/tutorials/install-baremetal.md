@@ -19,7 +19,7 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
       `tested` release of the [support matrix](../support-matrix.md) works the
       same way), at least 16 GiB of memory and 8 CPU threads (24 GiB and 16
       threads recommended), 150 GiB free for `/var/lib` and 100 GiB for
-      `/srv/pokus`.
+      `/srv/pinka`.
     - An NVIDIA GPU with at least 8 GiB of memory for local inference. No
       driver needs to be installed: the lab installs a pinned one.
     - A second, empty disk for the storage pool (without one, choose a loop
@@ -28,7 +28,7 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
       key enrollment screen can appear before the system starts.
     - Your account with `sudo` rights, a Tailscale account for the lab, and the
       SSH public keys of the researchers.
-    - The address of the Pokus repository (or of your lab's private fork).
+    - The address of the pokus-infrastructure repository (or of your lab's private fork).
 
 ## Step 1: Get the repository and check the machine
 
@@ -36,17 +36,17 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
 
     <!-- qa:skip reason="needs the repository address" -->
     ```bash
-    git clone <repository-url> ~/pokus
-    cd ~/pokus/infra
+    git clone <repository-url> ~/pinka
+    cd ~/pinka/infra
     ```
 
-    `<repository-url>` is the address of the Pokus repository or your fork.
+    `<repository-url>` is the address of the pokus-infrastructure repository or your fork.
 
 2. Ask preflight whether the machine can host the lab. It only reads:
 
     <!-- qa:run env=E1 -->
     ```bash
-    ./preflight/pokus-preflight --no-write
+    ./preflight/pinka-preflight --no-write
     echo "exit code: $?"
     ```
 
@@ -89,7 +89,7 @@ installer TUI](../how-to/install-with-the-tui.md) explains every screen.
 
 ## Step 3: Answer the screens for bare metal
 
-1. **Machine**: a name such as `pokus-lab` and node role `full`.
+1. **Machine**: a name such as `pinka` and node role `full`.
 2. **Storage**: choose the dedicated disk and type its full
    `/dev/disk/by-id/` path in the red dialog.
 
@@ -133,7 +133,7 @@ go on with step 5.
 
     <!-- qa:skip reason="interactive; provisions the host" -->
     ```bash
-    cd ~/pokus/infra
+    cd ~/pinka/infra
     sudo ./bootstrap/bootstrap.sh
     ```
 
@@ -157,7 +157,7 @@ Bootstrap reboots by itself only when you start it with `--allow-reboot`
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor
+    sudo pinka doctor
     echo "exit code: $?"
     ```
 
@@ -170,7 +170,7 @@ Bootstrap reboots by itself only when you start it with `--allow-reboot`
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab status
+    sudo pinka status
     sudo incus storage list
     ```
 
@@ -182,7 +182,7 @@ Bootstrap reboots by itself only when you start it with `--allow-reboot`
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab doctor --smoke
+    sudo pinka doctor --smoke
     ```
 
 ## What you built

@@ -4,7 +4,7 @@ type: how-to
 audience: [developer]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: The checklist for supporting a new Linux distribution family in pokus-infra.
+description: The checklist for supporting a new Linux distribution family in pokus-infrastructure.
 ---
 
 # How to add a distribution family
@@ -25,15 +25,15 @@ step and, for a fixed release, version pins.
    `preflight/support-matrix.yml` with its package manager, and the
    distribution rows under `os` with tier `experimental` and the vendor's end
    of support. Teach preflight's package manager list about a new package
-   manager if needed (`preflight/pokus_preflight/`), then regenerate:
+   manager if needed (`preflight/pinka_preflight/`), then regenerate:
 
     <!-- qa:run env=E0 -->
     ```bash
-    cd <pokus-checkout>/infra
+    cd <checkout>/infra
     make generate
     ```
 
-    `<pokus-checkout>` is the directory of your clone.
+    `<checkout>` is the directory of your clone.
 
 2. **Fixtures.** Add a preflight fixture for the new family in
    `preflight/tests/fixture_defs.py`; see
@@ -43,11 +43,11 @@ step and, for a fixed release, version pins.
    with `service_names`, `initramfs_tool`, `version_hold_method` and
    `codenames`, and add the family to `FAMILY_DEFAULT_GROUPS` and, if its
    distributions need their own repositories, to `SOURCE_GROUPS` in
-   `ansible/filter_plugins/pokus.py`.
+   `ansible/filter_plugins/pinka.py`.
 
 4. **Package abstraction.** Add `install_<manager>.yml` and, for a new hold
    method, `hold_<method>.yml` to `ansible/roles/pkg/tasks/`, and the package
-   manager to `pokus_package_specs`.
+   manager to `pinka_package_specs`.
 
 5. **Family vars and tasks of every role.** Every role that has
    `vars/<family>.yml` or `tasks/<name>_<family>.yml` files needs one for the

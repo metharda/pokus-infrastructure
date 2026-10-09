@@ -1,8 +1,8 @@
-# Managed by pokus-infra (incus/projects/user.yaml.j2). Local changes will be overwritten.
+# Managed by pinka (incus/projects/user.yaml.j2). Local changes will be overwritten.
 #
 # Personal project of one researcher, as incus-user would create it (same name
 # and restrictions, Incus 6.0.6 cmd/incus-user/server.go), plus resource limits
-# and without GPU access. Pokus creates it in advance because incus-user
+# and without GPU access. pinka creates it in advance because incus-user
 # applies no limits and points its profile at a pool named "default".
 name: "user-{{ incus_user.uid }}"
 description: "Personal project of {{ incus_user.name }}"
@@ -21,7 +21,7 @@ config:
   restricted.idmap.uid: "{{ incus_user.uid }}"
   restricted.idmap.gid: "{{ incus_user.gid }}"
   restricted.networks.access: "{{ incus_user.network }}"
-  limits.virtual-machines: "{{ incus_user_limits['limits.instances'] if pokus_features.vm_targets else 0 }}"
+  limits.virtual-machines: "{{ incus_user_limits['limits.instances'] if pinka_features.vm_targets else 0 }}"
 {% for key, value in incus_user_limits.items() %}
   {{ key }}: "{{ value }}"
 {% endfor %}

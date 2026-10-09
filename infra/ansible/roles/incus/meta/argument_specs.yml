@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Incus LTS with the pool, networks, run ACL, projects, profiles and service certificates.
@@ -12,17 +12,17 @@ argument_specs:
         type: dict
         required: true
         description: Host profile (storage_backend, hardware) passed by bootstrap.
-      pokus_bootstrap:
+      pinka_bootstrap:
         type: dict
         required: true
         description: Bootstrap options (adopt_incus, interactive).
-      pokus_infra_dir:
+      pinka_dir:
         type: path
         required: true
         description: Infra directory of the checkout (incus/ templates).
       incus_pool_name:
         type: str
-        default: pokus-targets
+        default: pinka-targets
         description: Storage pool of all instances.
       incus_pool_source:
         type: str
@@ -51,15 +51,15 @@ argument_specs:
         description: Address of the Incus HTTPS API (restricted TLS clients and metrics).
       incus_build_network:
         type: str
-        default: pokus-build0
+        default: pinka-build0
         description: NAT bridge of the build project.
-      pokus_vm_otlp:
+      pinka_vm_otlp:
         type: dict
         required: true
         description: Interface and address of the collector listener for VM targets (C4).
       incus_run_acl:
         type: str
-        default: pokus-run-default
+        default: pinka-run-default
         description: Network ACL the platform attaches to every run network.
       incus_run_acl_egress:
         type: list
@@ -98,15 +98,15 @@ argument_specs:
         description: Default limits and root disk of instances in personal projects.
       incus_cert_dir:
         type: path
-        default: /etc/pokus/incus
+        default: /etc/pinka/incus
         description: Directory of the client certificates (one subdirectory per service).
       incus_service_certificates:
         type: list
         elements: dict
-        description: Platform services that get a restricted client certificate ({account, short, projects}).
+        description: Platform services that get a restricted client certificate ({account, short, name, projects}); name is its common and trust name.
       incus_metrics_certificate:
         type: dict
-        default: {account: root, short: metrics, type: metrics}
+        default: {account: root, short: metrics, name: pinka-metrics, type: metrics}
         description: The metrics-only certificate for Prometheus.
       incus_certificate_days:
         type: int
@@ -114,5 +114,5 @@ argument_specs:
         description: Validity of generated client certificates in days.
       incus_events_identifier:
         type: str
-        default: pokus-incus-events
+        default: pinka-incus-events
         description: Journal identifier of the Incus event feed.

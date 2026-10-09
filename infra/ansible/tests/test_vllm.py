@@ -1,6 +1,6 @@
 """The vllm role: serving profile, deploy helper (C3), serving verification and units.
 
-The deploy helper runs against a temporary /etc/pokus/vllm and models tree;
+The deploy helper runs against a temporary /etc/pinka/vllm and models tree;
 the verification against a fake OpenAI-compatible server on 127.0.0.1.
 """
 
@@ -19,8 +19,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 
-import pokus_vllm_deploy as deploy
-import pokus_vllm_verify as verify
+import pinka_vllm_deploy as deploy
+import pinka_vllm_verify as verify
 import pytest
 import yaml
 
@@ -123,11 +123,11 @@ def test_render(tree: deploy.Settings) -> None:
 
 
 def test_helper_constants_match_the_contract() -> None:
-    ports = ansible_vars(GROUP_VARS)["pokus_ports"]
+    ports = ansible_vars(GROUP_VARS)["pinka_ports"]
     settings = deploy.Settings()
     assert settings.port == ports["vllm"]
     assert settings.otlp == f"http://127.0.0.1:{ports['otlp_grpc']}"
-    assert settings.etc == Path("/etc/pokus/vllm")
+    assert settings.etc == Path("/etc/pinka/vllm")
 
 
 def test_overrides_adapters_and_sampling(tree: deploy.Settings) -> None:
@@ -223,7 +223,7 @@ def test_deployment_files_must_be_root_owned_regular_files(tree: deploy.Settings
 def test_activate_writes_links_and_restarts_once(tree: deploy.Settings) -> None:
     run = Recorder()
     assert deploy.activate(tree, "dep-test@1", run) is True
-    assert run.calls == [["systemctl", "restart", "pokus-inference.service"]]
+    assert run.calls == [["systemctl", "restart", "pinka-inference.service"]]
     assert (tree.etc / "current.yml").readlink() == Path("deployments") / ("dep-test@1" + YML)
     assert (tree.etc / "current.yaml").stat().st_mode & 0o777 == 0o644
     assert deploy.activate(tree, "dep-test@1", run) is False
@@ -255,7 +255,7 @@ def test_failed_validation_changes_nothing(tree: deploy.Settings) -> None:
     ("uid", "line", "ok", "error"),
     [
         (1000, '{"deployment": "dep-test@1"}\n', True, None),
-        (1001, '{"deployment": "dep-test@1"}\n', False, "only pokus-orch"),
+        (1001, '{"deployment": "dep-test@1"}\n', False, "only potka-orch"),
         (1000, "not json\n", False, "one JSON line"),
         (1000, '{"deployment": "dep-test@1", "x": 1}\n', False, "request must be"),
         (1000, '["dep-test@1"]\n', False, "request must be"),
@@ -274,7 +274,7 @@ def test_serve(tree: deploy.Settings, uid: int, line: str, ok: bool, error: str 
         assert error in answer["error"]
         assert run.calls == []
     else:
-        assert run.calls == [["systemctl", "restart", "pokus-inference.service"]]
+        assert run.calls == [["systemctl", "restart", "pinka-inference.service"]]
 
 
 def test_peer_uid_of_a_unix_socket() -> None:
@@ -396,19 +396,19 @@ def test_deploy_socket_and_service() -> None:
     variables = ansible_vars(GROUP_VARS, ROLES / "vllm" / "defaults" / "main.yml")
     sock = configparser.ConfigParser(interpolation=None)
     sock.optionxform = str  # type: ignore[assignment,method-assign]
-    sock.read_string(render_template("vllm", "pokus-vllm-deploy.socket.j2", variables))
-    assert sock["Socket"]["ListenStream"] == "/run/pokus/vllm-deploy.sock"
-    assert (sock["Socket"]["SocketUser"], sock["Socket"]["SocketMode"]) == ("pokus-orch", "0600")
+    sock.read_string(render_template("vllm", "pinka-vllm-deploy.socket.j2", variables))
+    assert sock["Socket"]["ListenStream"] == "/run/pinka/vllm-deploy.sock"
+    assert (sock["Socket"]["SocketUser"], sock["Socket"]["SocketMode"]) == ("potka-orch", "0600")
     assert sock["Socket"]["Accept"] == "yes"
     service = configparser.ConfigParser(interpolation=None)
     service.optionxform = str  # type: ignore[assignment,method-assign]
-    service.read_string(render_template("vllm", "pokus-vllm-deploy@.service.j2", variables))
+    service.read_string(render_template("vllm", "pinka-vllm-deploy@.service.j2", variables))
     unit = service["Service"]
-    assert unit["ExecStart"] == "/usr/local/libexec/pokus/vllm-deploy serve"
+    assert unit["ExecStart"] == "/usr/local/libexec/pinka/vllm-deploy serve"
     assert (unit["StandardInput"], unit["StandardOutput"]) == ("socket", "socket")
-    assert unit["ReadWritePaths"] == "/etc/pokus/vllm"
+    assert unit["ReadWritePaths"] == "/etc/pinka/vllm"
     assert unit["PrivateNetwork"] == "yes"
-    assert "User" not in unit  # root: it rewrites /etc/pokus/vllm and restarts the unit
+    assert "User" not in unit  # root: it rewrites /etc/pinka/vllm and restarts the unit
 
 
 def test_inference_compose() -> None:
@@ -416,8 +416,8 @@ def test_inference_compose() -> None:
     for name in ("vllm", "vllm_runtime"):
         service = compose["services"][name]
         assert service["network_mode"] == "host"
-        assert service["command"] == ["--config", "/etc/pokus/vllm/current.yaml"]
-        assert "/etc/pokus/vllm:/etc/pokus/vllm:ro" in service["volumes"]
-        assert "${POKUS_ROOT:?}/models:/models:ro" in service["volumes"]
+        assert service["command"] == ["--config", "/etc/pinka/vllm/current.yaml"]
+        assert "/etc/pinka/vllm:/etc/pinka/vllm:ro" in service["volumes"]
+        assert "${PINKA_ROOT:?}/models:/models:ro" in service["volumes"]
     assert compose["services"]["vllm"]["profiles"] == ["gpu-cdi"]
     assert compose["services"]["vllm_runtime"]["profiles"] == ["gpu-runtime"]

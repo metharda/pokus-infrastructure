@@ -14,8 +14,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-import pokus_image_files as image_files
-import pokus_leakage_lint as lint
+import pinka_image_files as image_files
+import pinka_leakage_lint as lint
 import pytest
 import yaml
 
@@ -29,7 +29,7 @@ from ansible_testlib import (
     load_yaml,
     render_file,
 )
-from pokus_lockcheck import checks
+from pinka_lockcheck import checks
 
 IMAGES = INFRA / "images"
 SCHEMA = INFRA / "tools" / "lockcheck" / "schema" / "image-blueprint.schema.json"
@@ -169,7 +169,7 @@ def test_agent_configuration_for_vm_targets() -> None:
         GROUP_VARS,
         ROLES / "images" / "defaults" / "main.yml",
         ROLES / "images" / "vars" / "main.yml",
-        pokus_infra_dir=str(INFRA),
+        pinka_dir=str(INFRA),
     )
     endpoint = evaluate("images_otlp_endpoint.vm", variables)
     assert endpoint == "198.18.0.1:4317"
@@ -338,7 +338,7 @@ def test_cli_usage_errors(tmp_path: Path) -> None:
 
 
 def test_lint_runs_on_the_python_of_ubuntu_24_04() -> None:
-    source = (ROLES / "images" / "files" / "pokus_leakage_lint.py").read_text(encoding="utf-8")
+    source = (ROLES / "images" / "files" / "pinka_leakage_lint.py").read_text(encoding="utf-8")
     imports = set(re.findall(r"^(?:from|import) ([\w.]+)", source, flags=re.MULTILINE))
     assert imports <= {
         "__future__",
@@ -490,7 +490,7 @@ def test_action_of_a_blueprint(
 def test_blueprints_of_a_run(
     selected: str, rebuild: str, order: list[str] | None, names: list[str]
 ) -> None:
-    """``pokus-lab images build`` selects blueprints through the environment."""
+    """``pinka images build`` selects blueprints through the environment."""
     facts = task("main.yml", "Choose the blueprints of this run")["ansible.builtin.set_fact"]
     variables = {
         "images_selected": selected,
@@ -505,8 +505,8 @@ def test_blueprints_of_a_run(
 
 def test_image_by_alias_filter() -> None:
     images = [{"fingerprint": "a", "aliases": None}, IMAGE]
-    assert evaluate("images | pokus_image_by_alias('_base/1.0.0')", {"images": images}) == IMAGE
-    assert evaluate("images | pokus_image_by_alias('x/1')", {"images": images}) == {}
+    assert evaluate("images | pinka_image_by_alias('_base/1.0.0')", {"images": images}) == IMAGE
+    assert evaluate("images | pinka_image_by_alias('x/1')", {"images": images}) == {}
 
 
 def test_provisioning_variables() -> None:
@@ -514,7 +514,7 @@ def test_provisioning_variables() -> None:
         "build.yml", "Write the provisioning variables and the leakage lint configuration"
     )
     variables = {
-        "pokus_versions": {
+        "pinka_versions": {
             "binaries": LOCK["binaries"],
             "containers": LOCK["containers"],
         },
@@ -546,7 +546,7 @@ def test_publish_sets_the_contract_properties() -> None:
             "images_instance": "build-base",
             "images_alias": "_base/1.0.0",
             "images_image": {},
-            "pokus_bootstrap": {"repo_commit": "c" * 40, "infra_dirty": True},
+            "pinka_bootstrap": {"repo_commit": "c" * 40, "infra_dirty": True},
             "images_base_fingerprint": "b" * 64,
             "images_spec": spec("docker-host"),
         },
@@ -561,9 +561,9 @@ def test_publish_sets_the_contract_properties() -> None:
         "_base/1.0.0",
     ]
     properties = dict(a.split("=", 1) for a in argv[7:])
-    assert properties["pokus.recipe_commit"] == "c" * 40 + "-dirty"
-    assert properties["pokus.base_fingerprint"] == "b" * 64
-    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", properties["pokus.built_at"])
+    assert properties["pinka.recipe_commit"] == "c" * 40 + "-dirty"
+    assert properties["pinka.base_fingerprint"] == "b" * 64
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", properties["pinka.built_at"])
     assert properties["requirements.nesting"] == "true"  # Incus refuses to start it without nesting
     assert properties["description"] == spec("docker-host")["description"]
 

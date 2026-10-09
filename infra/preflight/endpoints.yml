@@ -1,4 +1,4 @@
-# Managed by pokus-infra (preflight/endpoints.yml).
+# Managed by pinka (preflight/endpoints.yml).
 #
 # Endpoints probed by preflight (BUILD_PROMPT §2.2 "Network reachability"):
 # the distribution's package mirrors, the third-party repositories the
@@ -124,7 +124,7 @@ endpoints:
     # uv 0.12.23 downloads CPython builds from this host (`uv python list
     # --only-downloads`); the root URL's answer is not verified.
     url: https://releases.astral.sh/  # TODO(verify)
-    purpose: CPython builds installed by uv into /opt/pokus/python
+    purpose: CPython builds installed by uv into /opt/pinka/python
     required: true
   - id: huggingface
     url: https://huggingface.co/  # TODO(verify)

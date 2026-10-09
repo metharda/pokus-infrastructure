@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/provider_wsl2/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/provider_wsl2/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: WSL2 provider.
@@ -46,7 +46,7 @@ argument_specs:
         type: str
         required: true
         description: Host name, mentioned in the file.
-      pokus_root:
+      pinka_root:
         type: path
         required: true
         description: Research space; the file goes to services/contrib/wslconfig.recommended.

@@ -1,16 +1,16 @@
-# Managed by pokus-infra (config/loki/loki.yaml.j2). Local changes will be overwritten.
+# Managed by pinka (config/loki/loki.yaml.j2). Local changes will be overwritten.
 #
 # Loki single binary (BUILD_PROMPT §7.9): host network, HTTP and gRPC on
-# 127.0.0.1, filesystem storage under /srv/pokus/state/loki, native OTLP
+# 127.0.0.1, filesystem storage under /srv/pinka/state/loki, native OTLP
 # ingestion at /otlp (resource attributes that are not labels become
-# structured metadata, e.g. pokus_run_id), retention by the compactor.
+# structured metadata, e.g. potka_run_id), retention by the compactor.
 auth_enabled: false
 
 server:
   http_listen_address: 127.0.0.1
-  http_listen_port: {{ pokus_ports.loki }}
+  http_listen_port: {{ pinka_ports.loki }}
   grpc_listen_address: 127.0.0.1
-  grpc_listen_port: {{ pokus_internal_ports.loki_grpc }}
+  grpc_listen_port: {{ pinka_internal_ports.loki_grpc }}
   log_level: warn
 
 common:

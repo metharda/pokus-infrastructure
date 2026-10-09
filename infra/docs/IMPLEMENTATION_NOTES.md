@@ -1,4 +1,4 @@
-# Implementation notes — pokus-infra
+# Implementation notes — pokus-infrastructure
 
 Working notes required by BUILD_PROMPT §0.1: my understanding of the scope, the
 files I intend to create, every open question with its answer, and what is
@@ -8,7 +8,7 @@ the monorepo; IDs such as B2 or E9 refer to it.
 
 ## Scope as understood
 
-pokus-infra provisions a single Linux host (bare metal, VM or WSL2; with or
+Pokus Infrastructure (pinka) provisions a single Linux host (bare metal, VM or WSL2; with or
 without an NVIDIA GPU) into a Pokus lab host with one command, and keeps it
 reproducible and auditable:
 
@@ -17,7 +17,7 @@ reproducible and auditable:
   decision from `support-matrix.yml`; exit codes 0/10/20/30/40; host profile
   JSON validated against a JSON Schema; full fixture-based test suite (§11).
 - **Bootstrap** (§5): `bootstrap.sh` with pre-preflight, pinned uv and CPython
-  in `/opt/pokus`, hash-locked Ansible environment, signal files mapped to exit
+  in `/opt/pinka`, hash-locked Ansible environment, signal files mapped to exit
   codes 75/76/77, resumable, a TUI front-end with exactly one provisioning path.
 - **Ansible roles** (§7, §19): platform facts and the component source matrix
   for four families (debian, redhat, suse, archlinux), providers (wsl2,
@@ -25,7 +25,7 @@ reproducible and auditable:
   backends), Docker, NVIDIA Container Toolkit, Incus, layout, Postgres,
   observability, OPA, vLLM, models, golden images, catalog, platform, backup,
   lab session, doctor, inference control.
-- **Operator CLI** `pokus-lab` (§9) with doctor (incl. `--smoke`), fingerprint,
+- **Operator CLI** `pinka` (§9) with doctor (incl. `--smoke`), fingerprint,
   backup/restore wrappers, image helpers, `update-host` (§19.5) and
   `docs serve` (owner answer H9).
 - **Reproducibility** (§10): `versions.lock.yml` with verified values,
@@ -39,12 +39,12 @@ reproducible and auditable:
 
 | ID | Adaptation |
 | --- | --- |
-| B2 | Platform and catalog are deployed from a root-only bare mirror (`/var/lib/pokus/git/`) with `git archive` of one subtree; `DEPLOYED_FROM.json`; doctor check and test that no deployed path contains `.git` or catalog content outside `/srv/pokus/catalog`. |
+| B2 | Platform and catalog are deployed from a root-only bare mirror (`/var/lib/pinka/git/`) with `git archive` of one subtree; `DEPLOYED_FROM.json`; doctor check and test that no deployed path contains `.git` or catalog content outside `/srv/pinka/catalog`. |
 | B3 | Bootstrap records the repository commit and the `infra/` tree hash; the dirty-tree check covers `infra/` only. |
 | B4 | Release tags `infra-vX.Y.Z`; first version 0.1.0. |
 | B5 | Canonical CI in `.github/workflows/ci.yml`; the monorepo root has a thin wrapper. CI runs lint, unit tests, type checks, docs build/coverage/drift, lock-check and syntax/check-mode jobs only. |
 | C1 | `docs/contracts.md` is the resolved contract, byte-identical in platform. |
-| E3 | `pokus_source_repo` is a required deployer-supplied variable; examples use `git@github.com:example-org/pokus.git`. |
+| E3 | `pinka_source_repo` is a required deployer-supplied variable; examples use `git@github.com:example-org/pokus-platform.git`. |
 
 ## Open questions and answers
 
@@ -60,8 +60,8 @@ Every question raised before implementation, with the answer. Full wording in
 | C2–C10 | Contract conflicts and gaps | Resolved in `docs/contracts.md` |
 | D1–D6 | External verification hooks | Implemented as defined in `docs/contracts.md`; `qa:` markers linted, never executed here |
 | E1 (§6.1) | Researcher names | Placeholders `researcher1` (admin), `researcher2`, `researcher3`; no key files are ever committed |
-| E2 (§7.4) | Tailscale tags | `tag:pokus-lab` (production), `tag:pokus-qa` (staging) |
-| E3 (§7.14) | Git remote | Required variable `pokus_source_repo`; SSH deploy key generated on the host; Git host keys pinned by fingerprint; anonymous HTTPS supported; no personal tokens |
+| E2 (§7.4) | Tailscale tags | `tag:pinka-lab` (production), `tag:pinka-qa` (staging) |
+| E3 (§7.14) | Git remote | Required variable `pinka_source_repo`; SSH deploy key generated on the host; Git host keys pinned by fingerprint; anonymous HTTPS supported; no personal tokens |
 | E4 (§7.15) | Backup destination | "Configure later" by default; restic over SFTP primary, rest-server secondary, local path test-only; placeholder hosts only |
 | E5 (§13.1) | Disk safety | As specified; example host vars use a loop pool |
 | E6 (§8.1) | Host vars | Only `example-machine.yml` and `tests/answers/ci.yml` |
@@ -71,14 +71,14 @@ Every question raised before implementation, with the answer. Full wording in
 | E10 (§4) | YAML in preflight | Generated, committed, drift-checked JSON |
 | E11 (§4, §18.2) | Lockfiles | `pyproject.toml` + `uv.lock` for dev tools; installer and bootstrap keep their own lockfiles |
 | E12 | Certificates and keys | `community.crypto`, pinned |
-| E13 (§7.8) | Researcher database access | Separate reader socket directory (group `pokus`), reader credential 0640 group `pokus`; reader never sees `gt` (tested) |
+| E13 (§7.8) | Researcher database access | Separate reader socket directory (group `pinka`), reader credential 0640 group `pinka`; reader never sees `gt` (tested) |
 | E14 (§7.9) | Metrics path | Collector Prometheus exporter, scraped |
 | E15 (§7.6) | Compose units | `oneshot` + `RemainAfterExit` + `up -d --wait` / `down` |
 | E16 (§7.14) | Signed tags | `require_signed_tags: false` by default; SSH-signed tags checked against a committed allowed-signers file when true; both paths tested |
 | H1 | Licenses | Apache-2.0 code, CC-BY-4.0 documentation |
 | H4 | Docs tooling | MkDocs Material pinned; Node tools pinned with `package-lock.json`; Mermaid validation with mermaid-cli; weekly link check |
 | H5 | Page ownership | Table below, for approval |
-| H9 | Publishing | Release tarball and `pokus-lab docs serve` on `127.0.0.1` |
+| H9 | Publishing | Release tarball and `pinka docs serve` on `127.0.0.1` |
 
 ### Questions raised by step 1 (awaiting answers)
 
@@ -87,7 +87,7 @@ Every question raised before implementation, with the answer. Full wording in
    validity controls: reference agents" explanation, but neither build prompt
    defines an oracle or null agent. Options: (a) document them as part of the
    external verification tooling (out of scope here) and end tutorial 4 at
-   `pokus catalog lint` plus a fake-pipeline run; (b) add two minimal scripted
+   `potka catalog lint` plus a fake-pipeline run; (b) add two minimal scripted
    reference agents to the platform (null: `finish` without acting; oracle:
    applies the ground truth's acceptable actions) used only by a validation
    command. Recommendation: (a), because (b) adds behavior no build prompt
@@ -135,12 +135,12 @@ owning component. "site" means `docs-site/`.
 | Publish (install) an attestation | infra | `docs/how-to/install-attestation.md` |
 | Rotate secrets and certificates | infra | `docs/how-to/rotate-secrets.md` |
 | Troubleshoot by exit code and doctor check | infra | `docs/how-to/troubleshoot.md` |
-| Connect over Tailscale and SSH; Grafana; ad-hoc LLM endpoint | infra | `docs/how-to/connect.md` (links to the platform's `pokus llm key`) |
+| Connect over Tailscale and SSH; Grafana; ad-hoc LLM endpoint | infra | `docs/how-to/connect.md` (links to the platform's `potka llm key`) |
 | Write a campaign spec | platform | `docs/how-to/write-campaign-spec.md` |
 | Monitor a campaign; invalid runs | platform | `docs/how-to/monitor-campaign.md` |
 | Approve or deny actions | platform | `docs/how-to/approve-actions.md` |
 | Inspect a run | platform | `docs/how-to/inspect-run.md` |
-| Exploratory experiments (`pokus dev`) | platform | `docs/how-to/exploratory-runs.md` |
+| Exploratory experiments (`potka dev`) | platform | `docs/how-to/exploratory-runs.md` |
 | Evaluations, snapshots, reports, comparisons | platform | `docs/how-to/evaluate-and-report.md` |
 | Export data | platform | `docs/how-to/export-data.md` |
 | Cite a result | platform | `docs/how-to/cite-result.md` |
@@ -151,8 +151,8 @@ owning component. "site" means `docs-site/`.
 | Propose a contract change | platform | `docs/how-to/propose-contract-change.md` |
 | Add a distro family | infra | `docs/distros/adding-a-family.md` (infra §19.11) |
 | Release process | site | `docs/about/release-process.md` |
-| CLI reference: `pokus-lab`, `pokus-preflight`, `bootstrap.sh` | infra | `docs/reference/cli/*.md` (generated) |
-| CLI reference: `pokus` | platform | generated |
+| CLI reference: `pinka`, `pinka-preflight`, `bootstrap.sh` | infra | `docs/reference/cli/*.md` (generated) |
+| CLI reference: `potka` | platform | generated |
 | HTTP APIs, platform TOML settings, platform schemas, tools, primitives and probes, policy rules, database, events, telemetry, metrics and statistics, CLI exit codes | platform | `docs/reference/*.md` (generated where marked ⚙) |
 | Ansible variables, host_vars/group_vars keys, answers file, host profile and fingerprint schemas, support and component source matrix, pinned versions, bootstrap/preflight/doctor exit codes, doctor checks, filesystem/accounts/sockets | infra | `docs/reference/*.md` and `docs/support-matrix.md` (generated) |
 | Architecture | site (overview), infra (`docs/architecture.md`, host trust zones), platform (`docs/architecture.md`, services) | |
@@ -173,7 +173,7 @@ owning component. "site" means `docs-site/`.
    `.markdownlint-cli2.yaml`, `cspell.json`, `project-words.txt`,
    `mkdocs.yml`, `docs/{index,contracts,BUILD_PROMPT,DOCS_SPEC,IMPLEMENTATION_NOTES}.md`,
    `tools/repo-checks/` (package and tests).
-2. **Preflight:** `preflight/pokus-preflight`, `preflight/pokus_preflight/`
+2. **Preflight:** `preflight/pinka-preflight`, `preflight/pinka_preflight/`
    (`__init__`, `__main__`, `cli`, `fs`, `runner`, `detect/*`, `matrix`,
    `report`, `render`), `preflight/support-matrix.yml` + generated JSON,
    `preflight/endpoints.yml` + generated JSON,
@@ -203,14 +203,14 @@ owning component. "site" means `docs-site/`.
 8. **Golden images:** `images/_base`, `images/{web-nginx-flask,pg-primary,redis-cache,docker-host,probe-client}`
    with recipes, tests and the leakage lint.
 9. **Session and backups:** roles `lab_session`, `backup`; `restore.yml`, `rotate.yml`.
-10. **Operator CLI:** `tools/pokus-lab/` (doctor incl. `--smoke`,
+10. **Operator CLI:** `tools/pinka-lab/` (doctor incl. `--smoke`,
     fingerprint, `update-host`, `docs serve`), role `doctor`.
 11. **Platform and catalog roles** with `*_enabled: false` defaults; the
     vLLM deploy helper and socket unit; role `inference_control`.
 12. **Distro tests:** `make test-distros` harness and `tests/answers/ci.yml`.
 13. **Installer TUI:** `installer/` (pyproject, lock, schema, app, screens,
     widgets, runner, theme, tests incl. snapshots), callback plugin
-    `ansible/callback_plugins/pokus_events.py`.
+    `ansible/callback_plugins/pinka_events.py`.
 14. **Documentation completion:** remaining pages, ADR set, regenerated
     references; final `make lint test docs lock-check`.
 
@@ -272,9 +272,9 @@ are listed in `../PROGRESS.md`.
 
 ## Step 2: preflight
 
-Built: the stdlib-only `pokus_preflight` package (fs/runner abstractions, eight
+Built: the stdlib-only `pinka_preflight` package (fs/runner abstractions, eight
 detectors, matrix evaluator, report, runtime schema validator, summary, CLI),
-the POSIX wrapper `preflight/pokus-preflight`, `support-matrix.yml` and
+the POSIX wrapper `preflight/pinka-preflight`, `support-matrix.yml` and
 `endpoints.yml` with generated JSON, the host profile JSON Schema, 35 fixture
 roots built from `preflight/tests/fixture_defs.py`, the fixture sanitizer,
 summary snapshots, the generators in `tools/gen/` (matrix JSON, support matrix
@@ -320,7 +320,7 @@ Docker repository listings at download.docker.com.
    `needs_action` (exit 30), with a remediation text; optional ones warn.
 5. **Storing the profile.** §2.1 says a real run writes the profile. It is
    written only when running as root, and `--no-write` keeps read-only callers
-   (`pokus-lab preflight`, the `preflight_gate` role) from overwriting the
+   (`pinka preflight`, the `preflight_gate` role) from overwriting the
    profile they compare against.
 6. **`qa:run` environment labels** (D4: opaque strings). Proposal for page
    authors: E0 = development checkout without a lab, E1 = candidate host before
@@ -351,7 +351,7 @@ Built: `bootstrap/bootstrap.sh` and its libraries (`exitcodes.sh`, `log.sh`,
 `prepreflight.sh`), the generated `bootstrap/lib/pins.sh`,
 `bootstrap/requirements.in` and `ansible/group_vars/all/versions.yml` (all
 from `versions.lock.yml`), the hash-locked `bootstrap/requirements.lock`
-(`make bootstrap-lock`), the preflight helper `pokus_preflight.profile_tool`
+(`make bootstrap-lock`), the preflight helper `pinka_preflight.profile_tool`
 (get, consent, diff, override, store), the record-only preflight option
 `--allow-dirty` (`overrides.allow_dirty` in the host profile, §13.11), and
 temporary Ansible stubs (`ansible.cfg`, `inventory/hosts.yml`,
@@ -397,13 +397,13 @@ above; they were needed now because bootstrap verifies `versions.yml`
    error). BUILD_PROMPT defines no code for these cases; ADR-0002 (status
    proposed) gives the reasons.
 2. **Changed host profile.** If outcome, provider or a feature flag differs
-   from `/etc/pokus/host-profile.json`, bootstrap stops with 77 until
+   from `/etc/pinka/host-profile.json`, bootstrap stops with 77 until
    `--refresh-profile` is given. Exception, so that re-runs after 75/76/77
    "resume cleanly" (§5.2): when the previous run ended with a signal from the
    play, the change is accepted with a printed notice.
 3. **`--force-unsupported` does not skip required actions:** a forced
    unsupported host that also has `needs_action` items stops with 30.
-4. **State file at every exit.** `/etc/pokus/bootstrap-state.json` is written
+4. **State file at every exit.** `/etc/pinka/bootstrap-state.json` is written
    whenever bootstrap ends after the checkout is known, also after failures,
    with `result` (`success`, `doctor_warnings`, `doctor_failures`, `signal`,
    `failed`), `exit_code`, the last stage and the signal. Consumers of the
@@ -424,15 +424,15 @@ above; they were needed now because bootstrap verifies `versions.yml`
    without them bootstrap uses its plain front-end.
 8. **Vault password:** only needed when `ansible/group_vars/all/vault.yml`
    exists. Order: `--vault-password-file`, then
-   `/etc/pokus/secrets/vault-pass` if present (the TUI's optional root-only
+   `/etc/pinka/secrets/vault-pass` if present (the TUI's optional root-only
    storage, §18.4 screen 14), then `--ask-vault-pass` on a terminal; otherwise
    77.
-9. **Concurrency:** a lock in `/run/lock/pokus-bootstrap.lock` stops a second
+9. **Concurrency:** a lock in `/run/lock/pinka-bootstrap.lock` stops a second
    run with 77.
 10. **Locale:** `ansible-playbook` runs with `LC_ALL=C.UTF-8` because
     ansible-core refuses non-UTF-8 locales; that the locale exists on every
     supported family is to be confirmed on real hosts (Phase 5).
-11. **Until step 10**, `pokus-lab` does not exist, so a real (non-check) run
+11. **Until step 10**, `pinka` does not exist, so a real (non-check) run
     ends with 60 after the play.
 
 ### Tests
@@ -562,7 +562,7 @@ items, and the two command formats from step 2.
 Built: the shared data (`group_vars/all/main.yml` with groups, accounts,
 layout and ports; `vault.yml.example`; the commented
 `inventory/host_vars/example-machine.yml`; `ansible/component-sources.yml`);
-the filter plugin `ansible/filter_plugins/pokus.py` (release identity,
+the filter plugin `ansible/filter_plugins/pinka.py` (release identity,
 component source lookup, lock pins, package specs, repository URLs, apt pins,
 key fingerprints); `site.yml` with the role order of BUILD_PROMPT §5.2; roles
 `platform_facts`, `pkg`, `bootstrap_signal`, `preflight_gate`,
@@ -597,7 +597,7 @@ firewall and SELinux) and ADRs 0003-0006.
   ShellCheck and `sh -n`, and the sudoers drop-in by `visudo -c`.
 - Ubuntu NVIDIA driver pins (`nvidia-driver-580-open` 580.178.04 for 24.04 and
   22.04) from the archive indexes; Ubuntu guest agent package names.
-- `contrib/windows/pokus-wsl.ps1` parses with PowerShell 7.5.9 (release
+- `contrib/windows/pinka-wsl.ps1` parses with PowerShell 7.5.9 (release
   archive checked against its published sha256, used only in a scratch
   directory) and its `wsl` wrapper starts the keep-alive only for the lab
   distribution (tested with the Windows calls stubbed). It has not run on
@@ -608,7 +608,7 @@ firewall and SELinux) and ADRs 0003-0006.
 - **Run networks on firewalld and ufw hosts.** Per-run bridges `r-<short>` are
   created at run time, so they cannot be listed in a firewalld zone or as ufw
   rules in advance; DHCP/DNS to the host and forward isolation for them rely
-  on Incus (its own firewall rules and the `pokus-run-default` ACL) on those
+  on Incus (its own firewall rules and the `pinka-run-default` ACL) on those
   backends, while the nftables backend also matches `r-*` itself. Step 6
   verifies Incus's documented firewalld and ufw setup (including interface
   wildcards) and closes the gap if a backend allows it.
@@ -632,7 +632,7 @@ firewall and SELinux) and ADRs 0003-0006.
    generated component sources page shows them as unverified.
 2. **Bridge pattern.** BUILD_PROMPT §7.5 names a variable
    `incus_bridge_prefix`; the contract fixes the bridge names (`r-*` and
-   `pokus-build0`), so the roles use `pokus_incus_bridge_patterns` from
+   `pinka-build0`), so the roles use `pinka_incus_bridge_patterns` from
    group_vars, checked against `contracts.md` by a test.
 3. **Distribution-fact check** as a repository check (`make lint-portability`,
    BUILD_PROMPT §19.1 allows a grep check) rather than a custom ansible-lint
@@ -640,7 +640,7 @@ firewall and SELinux) and ADRs 0003-0006.
 4. **Rebooting.** The play cannot reboot its own host mid-run; with
    `--allow-reboot` bootstrap schedules `shutdown -r +1` after a reboot
    signal (76), writes its state file and exits with 76. Never in check mode.
-5. **Removed researchers** are also taken out of `pokus-admin` (BUILD_PROMPT
+5. **Removed researchers** are also taken out of `pinka-admin` (BUILD_PROMPT
    §6.1 only requires locking); their data stays.
 6. **Incus's per-user group** for researchers is added by the `incus` role
    (step 6): the group exists only once Incus is installed.
@@ -673,13 +673,13 @@ data-root, SELinux and GPU access; break-glass group membership),
 `nvidia-cdi-refresh` units, WSL mode on WSL2; NVIDIA runtime only for Docker
 before 25.0; a GPU check with the pinned CUDA image by digest) and `incus`
 (install, ownership check with `--adopt-incus`, the pool with the device
-safety checks, `pokus-build0`, the ACL `pokus-run-default`, projects
+safety checks, `pinka-build0`, the ACL `pinka-run-default`, projects
 `bench`, `build` and one per researcher, the target, probe and build
 profiles, restricted client certificates per service and a metrics
 certificate, the HTTPS API on `127.0.0.1:8443`,
-`pokus-incus-events.service`, the marker file); `incus/preseed.yaml.j2`,
+`pinka-incus-events.service`, the marker file); `incus/preseed.yaml.j2`,
 `incus/projects/*.yaml.j2`, `incus/profiles/*.yaml.j2`; the role module
-`pokus_incus_object` (create or update one Incus object through
+`pinka_incus_object` (create or update one Incus object through
 `incus query`, never delete); firewall rules for run, build and personal
 bridges on all three backends; `docs/explanation/target-isolation.md`;
 ADRs 0007-0009.
@@ -740,8 +740,8 @@ From upstream sources reachable through git and the Ubuntu archive:
   contract stands, could not delete run networks. Proposed resolution (needs
   owner approval and a contract change; nothing is implemented yet): a
   socket-activated root helper like C3 that creates and deletes `r-<short>`
-  bridges with the fixed settings (no NAT, no uplink, ACL `pokus-run-default`),
-  reachable only by `pokus-orch` (peer credentials). Alternatives: a second
+  bridges with the fixed settings (no NAT, no uplink, ACL `pinka-run-default`),
+  reachable only by `potka-orch` (peer credentials). Alternatives: a second
   restricted project for networks is not possible for bridges; giving the
   orchestrator's certificate the default project would let it change golden
   images and personal networks.
@@ -758,7 +758,7 @@ From upstream sources reachable through git and the Ubuntu archive:
 
 ### Interpretations awaiting owner confirmation (step 6)
 
-1. **Personal projects in advance.** Pokus creates `user-<uid>`,
+1. **Personal projects in advance.** Pokus Infrastructure (pinka) creates `user-<uid>`,
    `incusbr-<uid>` and the project's default profile before `incus-user` does,
    with incus-user's restrictions plus limits (`incus_user_limits`) and
    without GPU access (incus-user allows GPUs; the GPU is reserved for vLLM).
@@ -767,24 +767,24 @@ From upstream sources reachable through git and the Ubuntu archive:
    (trusted zone on firewalld, allow and route rules on ufw), as Incus
    documents; they are infra-internal and not part of the contract.
 3. **daemon.json header.** JSON has no comments and dockerd rejects unknown
-   keys, so the managed header is the engine label `org.pokus.managed=...`;
+   keys, so the managed header is the engine label `org.pinka.managed=...`;
    preflight's marker check finds it there.
 4. **GPU check.** BUILD_PROMPT §7.6 says `--gpus all`; with CDI the check
    requests `--device nvidia.com/gpu=all` (what the services use), with the
    NVIDIA runtime `--runtime nvidia --gpus all`. It records stable
    `nvidia-smi --query-gpu` fields so a second run changes nothing.
 5. **Preseed plus convergence.** The preseed initializes a new installation
-   once; every run converges the same objects with `pokus_incus_object`
+   once; every run converges the same objects with `pinka_incus_object`
    (re-applying a preseed would rewrite `auto` network addresses). The pool
    and networks are created once and never updated.
 6. **Bench limits** default to 60 % of the host's memory and all effective
    CPUs but two; `limits.virtual-machines` is 0 without `vm_targets`, else
    `incus_max_virtual_machines` (4).
-7. **Compose units** (`pokus-core.service` and the others, BUILD_PROMPT §7.6)
+7. **Compose units** (`pinka-core.service` and the others, BUILD_PROMPT §7.6)
    are written in step 7 with the services they run.
 8. **Fingerprint inputs.** The installed Docker and Incus versions are read by
    the fingerprint in step 10; Incus's source and channel are recorded in
-   `/etc/pokus/incus-source.json`.
+   `/etc/pinka/incus-source.json`.
 
 ### Open `TODO(verify)` items after step 6
 
@@ -795,11 +795,11 @@ names of Zabbly's packages and of the Red Hat, SUSE and Arch families.
 ## Step 7: postgres, observability, opa, vllm, models
 
 Built: the helper role `compose` (Compose project under
-`/srv/pokus/services/<project>/`, `.env` with images by digest, ports, the
+`/srv/pinka/services/<project>/`, `.env` with images by digest, ports, the
 groups' GIDs, the Docker data root, the GPU profile and one configuration hash
 per `config/<name>/` directory used as a service label, so a changed file
-recreates exactly its service; `pokus-<project>.service`, oneshot with
-`RemainAfterExit`, `up --wait`/`down`, part of `pokus-lab.target`); roles
+recreates exactly its service; `pinka-<project>.service`, oneshot with
+`RemainAfterExit`, `up --wait`/`down`, part of `pinka-lab.target`); roles
 `postgres` (socket directories, generated superuser and exporter passwords,
 password files, the reader's pgpass, the bootstrap SQL, SCRAM password
 convergence, durability assertions), `opa` (authorization policy, deny-all
@@ -807,13 +807,13 @@ placeholder, policy link), `observability` (collector gateway and journald
 collector, Prometheus, Loki, Tempo, Grafana with data sources, five
 dashboards and researcher accounts, node_exporter, cAdvisor, the nvidia-smi
 GPU exporter, the VM listener of C4), `vllm` (serving profile `ada-12g`,
-deploy helper behind `pokus-vllm-deploy.socket`, default deployment, serving
+deploy helper behind `pinka-vllm-deploy.socket`, default deployment, serving
 verification) and `models` (pinned `hf` CLI in a hash-locked uv environment,
 `models-fetch`); `compose/{core,observability,inference}/compose.yml`;
 `config/{postgres,opa,otel,prometheus,loki,tempo,grafana}/`;
 `models.lock.yml`, `models.catalog.yml` (proposed) and their schemas; filters
-`pokus_scram_verifier`, `pokus_scram_matches`, `pokus_config_hashes`;
-`pokus-lockcheck fetch` and the pinned OPA CLI for tests; the firewall rule
+`pinka_scram_verifier`, `pinka_scram_matches`, `pinka_config_hashes`;
+`pinka-lockcheck fetch` and the pinned OPA CLI for tests; the firewall rule
 and the run ACL rule of the VM listener; per-account primary groups in
 `users_groups`; `docs/explanation/telemetry.md`,
 `docs/how-to/add-a-model.md`, `docs/how-to/reach-grafana.md`, ADRs 0010-0011.
@@ -829,7 +829,7 @@ and the run ACL rule of the VM listener; per-account primary groups in
   Prometheus and the gateway were then run with these configurations: every
   listening socket was on `127.0.0.1` (no ring or cluster port), and an
   OTLP log, span and metric sent to the gateway arrived in Loki (filterable by
-  `pokus_run_id`), Tempo and the Prometheus exporter (label `pokus_run_id`).
+  `potka_run_id`), Tempo and the Prometheus exporter (label `potka_run_id`).
 - **OPA 1.21.1**: the static binaries of the release match their `.sha256`
   files (pinned as `binaries.opa` for tests); the authorizer's input is
   `{path: [segments], method}`; `decision_logs.console` exists. The Rego unit
@@ -839,7 +839,7 @@ and the run ACL rule of the VM listener; per-account primary groups in
   bootstrap SQL ran against a real server (PostgreSQL 16 of the build
   environment and of CI; the pinned image runs 18, the SQL is the same):
   the bootstrap is idempotent, `pg_hba` admits only the contract's roles,
-  `pokus_reader` and `pokus_grafana` are denied `gt` and a mistaken grant is
+  `potka_reader` and `potka_grafana` are denied `gt` and a mistaken grant is
   revoked on the next run, the SCRAM filters match secrets PostgreSQL stored
   and PostgreSQL accepts the secrets they compute. The SCRAM implementation
   also reproduces the RFC 7677 test vector. libpq (REL_18) ignores a password
@@ -854,7 +854,7 @@ and the run ACL rule of the VM listener; per-account primary groups in
 - **postgres_exporter 0.20.1** builds `postgresql://user:pass@` +
   `DATA_SOURCE_URI` and opens it with lib/pq 1.10.9, whose `ParseURL` sorts
   its parameters, so the socket is given with an empty URL host
-  (`/pokus?host=/run/pokus/postgres`).
+  (`/pinka?host=/run/pinka/postgres`).
 - **Image users** from the images' Dockerfile at each pinned tag: Prometheus and
   node_exporter `nobody`, Loki, Tempo and the collector 10001, Grafana 472:0,
   the GPU exporter 65534, cAdvisor root; vLLM runs as root (`vllm serve`
@@ -878,17 +878,17 @@ and the run ACL rule of the VM listener; per-account primary groups in
 ### Findings to report (step 7)
 
 - **Reader credential and libpq.** Owner answer E13 makes the reader
-  credential 0640 root:pokus, but libpq ignores a password file that its group
+  credential 0640 root:pinka, but libpq ignores a password file that its group
   may read. The file keeps its contract path and pgpass format; researchers
   copy it to `~/.pgpass` with mode 0600 (documented), the platform reads the
   password itself.
 - **pg_hba and two socket directories.** `pg_hba` cannot distinguish socket
-  directories, so the contract's "role `pokus_reader` only (`pg_hba`)" for
+  directories, so the contract's "role `potka_reader` only (`pg_hba`)" for
   the reader directory cannot be enforced by `pg_hba`. The directory groups
   decide who reaches a socket, the password files decide the role; the
   contract's socket table now says so (proposed contract change).
 - **Service account groups.** The contract owns sockets and password files by
-  groups named after service accounts (`pokus-orch`, `pokus-gw`, ...), which
+  groups named after service accounts (`potka-orch`, `potka-gw`, ...), which
   `useradd` creates only where `USERGROUPS_ENAB` is set (not on openSUSE).
   `users_groups` now creates them explicitly.
 - **Model candidates.** Hugging Face is blocked from the build environment, so
@@ -911,8 +911,8 @@ and the run ACL rule of the VM listener; per-account primary groups in
    address (ADR-0011).
 2. **Grafana and the exporter on sockets.** BUILD_PROMPT §7.8 lets Grafana
    connect over an internal Docker network; with the host network it connects
-   through the reader socket directory instead (as `pokus_grafana`), the
-   exporter through the service directory (as `pokus_monitor`), and
+   through the reader socket directory instead (as `potka_grafana`), the
+   exporter through the service directory (as `pinka_monitor`), and
    PostgreSQL has no network at all (ADR-0010; proposed contract change for
    the socket peers).
 3. **A second collector for the journal.** The journald receiver needs the
@@ -920,7 +920,7 @@ and the run ACL rule of the VM listener; per-account primary groups in
    forwards to the gateway, so the instance that accepts OTLP from targets has
    no access to host files.
 4. **VM listener.** `198.18.0.1/32` (RFC 2544 benchmarking range, configurable
-   as `pokus_vm_otlp`) on the dummy interface `pokus-otlp0`, created before
+   as `pinka_vm_otlp`) on the dummy interface `pinka-otlp0`, created before
    Docker starts; the gateway listens there with `vm_targets` only. It is the
    one non-loopback lab listener, admitted by C4 and restricted by the run
    ACL and the firewall to run networks and the OTLP ports.
@@ -939,7 +939,7 @@ and the run ACL rule of the VM listener; per-account primary groups in
 8. **Generated database passwords.** The superuser and exporter passwords are
    not in the vault (BUILD_PROMPT §8.2 lists only the contract roles); they
    are generated on the host once. Container secrets live in
-   `/etc/pokus/secrets/containers/` (0700 root), each file 0400 owned by the
+   `/etc/pinka/secrets/containers/` (0700 root), each file 0400 owned by the
    UID of the container that reads it.
 9. **Adapters in `models.lock.yml`.** C9e defines adapter directories by the
    sha256 of the weights; the lock lists adapters like models, with a
@@ -968,13 +968,13 @@ warning).
 Built: the `images` role (per blueprint: build when neither alias nor export
 exists, import the export when only the alias is missing, export when only
 the export is missing; the pinned upstream base copied by fingerprint and
-exported once to `/srv/pokus/images/_upstream/<base>/<fingerprint>/`; the
+exported once to `/srv/pinka/images/_upstream/<base>/<fingerprint>/`; the
 build in project `build` with launch, cloud-init wait, leakage baseline,
 nested `ansible-playbook` over `community.general.incus`, tests, package
 record, leakage check, clean, stop, `incus publish` with the contract's
 properties, export with `SHA256SUMS`, `packages.txt` and `build.json`); the
-leakage lint `files/pokus_leakage_lint.py` (runs inside the build instance);
-the export helper `/usr/local/libexec/pokus/image-files`; the clean script;
+leakage lint `files/pinka_leakage_lint.py` (runs inside the build instance);
+the export helper `/usr/local/libexec/pinka/image-files`; the clean script;
 six blueprints in `images/` (`_base`, `web-nginx-flask`, `pg-primary`,
 `redis-cache`, `docker-host`, `probe-client`) with tests, and
 `images/_base/agent.yml`, which configures the in-image OpenTelemetry agent
@@ -983,7 +983,7 @@ after every blueprint; the blueprint schema
 lint-schemas`, the playbooks by `make lint-ansible`'s syntax check); the lock
 entries `binaries.otelcol_contrib` (format `deb`) and
 `containers.target_images.docker_host_web`, which `make lock-check` verifies
-like the other images; the filter `pokus_image_by_alias`;
+like the other images; the filter `pinka_image_by_alias`;
 `docs/how-to/build-golden-images.md`, `docs/explanation/golden-images.md` and
 ADR-0012.
 
@@ -1046,7 +1046,7 @@ warnings.
   still `TODO(verify)` (images.linuxcontainers.org is blocked here); the role
   refuses to build until it is pinned. The how-to shows how to read it.
 - **In-image files name the project.** Files installed into images carry the
-  repository's managed-file header ("Managed by pokus-infra (...)"), as
+  repository's managed-file header ("Managed by pinka (...)"), as
   BUILD_PROMPT §14 requires of templates. The word `pokus` is not one of the
   specified leakage patterns, so the lint does not object; adding `(?i)pokus`
   to `images_leakage_patterns` and dropping the header from in-image files is
@@ -1069,12 +1069,12 @@ warnings.
    knows to launch them with `security.nesting=true`; proposed contract
    addition) and `description`; both are always set because a published image
    inherits its base's metadata.
-4. **`pokus.recipe_commit`** is the repository commit bootstrap records, with
+4. **`pinka.recipe_commit`** is the repository commit bootstrap records, with
    `-dirty` appended when the infra tree had changes (`--allow-dirty`).
 5. **Exports**: the sum file is `SHA256SUMS` in `sha256sum` format; every
    export has `build.json` (written last; its presence marks a complete
    export); the upstream base goes to `_upstream/<base>/<fingerprint>/` with
-   `source.json`; files 0640 and directories 0750, root:pokus-admin.
+   `source.json`; files 0640 and directories 0750, root:pinka-admin.
 6. **Missing alias with an export** is restored by importing the export (or
    by re-creating the alias when the image is still in the store), never by
    building a different image; `images_rebuild` forces a build.
@@ -1099,11 +1099,11 @@ base image fingerprints (two lock lines) now block every image build.
 
 ## Step 9: lab_session, backup, restore.yml, rotate.yml
 
-Built: the `lab_session` role (`pokus-lab.target`, `pokus-health-gate.service`
-with `/usr/local/libexec/pokus/health-gate` and `/etc/pokus/health-gate.json`,
-`pokus-session-start.service` with `/usr/local/libexec/pokus/session-start`);
+Built: the `lab_session` role (`pinka-lab.target`, `pinka-health-gate.service`
+with `/usr/local/libexec/pinka/health-gate` and `/etc/pinka/health-gate.json`,
+`pinka-session-start.service` with `/usr/local/libexec/pinka/session-start`);
 the `backup` role (pinned restic, repository and password files, SFTP key and
-pinned host keys, `/usr/local/libexec/pokus/backup` with `pgdump`, `run`,
+pinned host keys, `/usr/local/libexec/pinka/backup` with `pgdump`, `run`,
 `prune`, `snapshots`, `restore`, `pgrestore` and `passwd`, three services with
 persistent timers, textfile metrics); `restore.yml` (replacing the step 3
 stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
@@ -1140,13 +1140,13 @@ stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
   PostgreSQL container, Incus or restic repository are available, and the
   host must not be provisioned. The helpers are tested with fake runners,
   the plays with syntax checks, ansible-lint and expression tests.
-- **The session record needs `pokus-lab`** (infra step 10) for the
+- **The session record needs `pinka`** (infra step 10) for the
   fingerprint and the fresh preflight. Until it exists, records are written
   with `fingerprint`, `fingerprint_hash` and `preflight_outcome` set to
   `null` and the reason under `errors`. Step 10 must print
-  `{"hash": ..., ...}` from `pokus-lab fingerprint --json` and a preflight
-  report with `outcome` from `pokus-lab preflight --json`.
-- **Doctor at the end of a restore** runs only when `/usr/local/bin/pokus-lab`
+  `{"hash": ..., ...}` from `pinka fingerprint --json` and a preflight
+  report with `outcome` from `pinka preflight --json`.
+- **Doctor at the end of a restore** runs only when `/usr/local/bin/pinka`
   exists (step 10); before that the play says so.
 - **Restore drill and the repository.** A spare machine restored for a drill
   uses the production repository under the same machine name; its backup and
@@ -1157,16 +1157,16 @@ stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
 ### Interpretations awaiting owner confirmation (step 9)
 
 1. **What a restore brings back.** All directories of the snapshot below
-   `/srv/pokus`, and from `/etc/pokus` only what bootstrap cannot render:
+   `/srv/pinka`, and from `/etc/pinka` only what bootstrap cannot render:
    `vllm/deployments`, `vllm/current.yml` and `qa/`. Host profile, bootstrap
    state, nftables rules, Incus certificates and other rendered files come
    from the bootstrap run that precedes the restore. Files newer than the
    snapshot are kept (no `--delete`). Secrets are never restored, even when
    they were backed up.
 2. **Which files count as secrets** for `backup_include_secrets`:
-   `/etc/pokus/secrets`, `/etc/pokus/postgres-reader`, `/etc/pokus/incus`,
-   `/etc/pokus/signing` and `/etc/pokus/inference` (private keys and
-   passwords), not only `/etc/pokus/secrets`.
+   `/etc/pinka/secrets`, `/etc/pinka/postgres-reader`, `/etc/pinka/incus`,
+   `/etc/pinka/signing` and `/etc/pinka/inference` (private keys and
+   passwords), not only `/etc/pinka/secrets`.
 3. **Snapshot choice.** An interactive restore prompts (empty answer: the
    newest); a non-interactive one needs `restore_snapshot` (ID, prefix of at
    least eight characters, or `latest`) in host_vars and otherwise stops.
@@ -1185,7 +1185,7 @@ stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
    not answer); PostgreSQL and Incus checked on `full` and `lab` nodes; the GPU
    checked with `docker run --pull never` of the pinned CUDA image with the GPU
    method of `daemon.json`.
-8. **Autostart**: `multi-user.target` wants `pokus-lab.target` by default
+8. **Autostart**: `multi-user.target` wants `pinka-lab.target` by default
    (`lab_session_autostart`); bootstrap starts the target, which waits for the
    gate and the session record.
 9. **`rotate.yml` scope**: host-generated secrets (database superuser with a
@@ -1205,28 +1205,28 @@ stub); `rotate.yml`; the entry points `images/tasks/restore.yml`,
 
 107 markers, unchanged.
 
-## Step 10: pokus-lab CLI with doctor and fingerprint
+## Step 10: pinka CLI with doctor and fingerprint
 
-Built: `tools/pokus-lab/` (the `pokus_lab` package, standard library only and
+Built: `tools/pinka-lab/` (the `pinka_lab` package, standard library only and
 source-compatible with Python 3.9: `cli`, `config`, `system`, `doctor`,
 `checks` with 28 checks, `smoke`, `fingerprint`, `commands`; the POSIX shell
-wrapper `pokus-lab`; the JSON Schema `schema/fingerprint.schema.json`; 113
+wrapper `pinka`; the JSON Schema `schema/fingerprint.schema.json`; 113
 unittest-style tests that also run on CPython 3.9 in `make test-py39`); the
 `doctor` role (installs the package and a copy of preflight under
-`/usr/local/lib/pokus/`, the wrapper as `/usr/local/bin/pokus-lab`, and
-renders the lab description `/etc/pokus/lab.json`), placed in `site.yml`
+`/usr/local/lib/pinka/`, the wrapper as `/usr/local/bin/pinka`, and
+renders the lab description `/etc/pinka/lab.json`), placed in `site.yml`
 before `lab_session`; environment selection of blueprints in the images role
-(`POKUS_IMAGES_BLUEPRINTS`, `POKUS_IMAGES_REBUILD`) for `pokus-lab images
-build`; generated reference pages `reference/cli/pokus-lab.md`,
-`reference/doctor-checks.md`, `reference/fingerprint.md` and a pokus-lab
+(`PINKA_IMAGES_BLUEPRINTS`, `PINKA_IMAGES_REBUILD`) for `pinka images
+build`; generated reference pages `reference/cli/pinka.md`,
+`reference/doctor-checks.md`, `reference/fingerprint.md` and a pinka
 section in `reference/exit-codes.md`, all covered by the docs coverage check
 (every command, option, check, troubleshooting section and schema field);
 `docs/reproducibility.md`, `how-to/start-stop-drain.md`,
 `how-to/update-host.md`, `how-to/fix-doctor-checks.md` (one section per check
-ID); `pokus-lab user` shortcuts in `how-to/manage-researchers.md`.
+ID); `pinka user` shortcuts in `how-to/manage-researchers.md`.
 
 Fixed on the way: the sleep inhibitor of `power_policy: lab_session_inhibit`
-(step 5) was installed but never enabled, so `pokus-lab.target` never pulled
+(step 5) was installed but never enabled, so `pinka-lab.target` never pulled
 it in; it is now enabled, and removed together with its wants link when the
 policy changes. CLI reference usage lines no longer depend on the terminal
 width of the machine that generates them (`COLUMNS`).
@@ -1240,7 +1240,7 @@ width of the machine that generates them (`COLUMNS`).
   HTTP server on a Unix socket (tests); a failed Unix socket connection no
   longer leaks the socket.
 - argparse on 3.9, 3.11 and 3.12 puts every option after `--` into
-  `pokus-lab restore`'s bootstrap options; `argparse.REMAINDER` did not take
+  `pinka restore`'s bootstrap options; `argparse.REMAINDER` did not take
   a leading option and was replaced.
 - The rendered lab description: every key path the CLI reads exists for a
   `full` node, and node roles, WSL, GPU methods and VM targets change it as
@@ -1252,7 +1252,7 @@ width of the machine that generates them (`COLUMNS`).
   the role reads the images role's defaults and vars files explicitly
   (`ansible-playbook --check` of a scratch play).
 - The gateway collector's `resource_to_telemetry_conversion` and Loki's
-  structured metadata make `pokus_run_id` queryable in Prometheus and Loki,
+  structured metadata make `potka_run_id` queryable in Prometheus and Loki,
   which the telemetry round trip and the smoke checks use.
 
 ### Findings to report (step 10)
@@ -1263,31 +1263,31 @@ width of the machine that generates them (`COLUMNS`).
   (`ss -H -lntup`, `getfacl`, `tailscale status --json`, `incus query`,
   `systemctl show`, Loki, Tempo and Prometheus query APIs) follow their
   documentation and the upstream sources read in earlier steps, but a first
-  `pokus-lab doctor` on a provisioned host is the real test.
+  `pinka doctor` on a provisioned host is the real test.
 - **Contract additions (proposed)**: the fingerprint document format and its
   schema, and the drain endpoints `POST /lab/drain` and `GET /lab/status` on
   the orchestrator's `api.sock` (`contracts.md`, "Session records and
   fingerprint"). The platform must implement the drain endpoints for
-  `pokus-lab stop` to drain; until then there is no socket and nothing to
+  `pinka stop` to drain; until then there is no socket and nothing to
   drain.
 - **PostgreSQL and OPA on inference nodes**: `site.yml` still applies the
   `postgres` and `opa` roles on every node; BUILD_PROMPT §19.10 gives an
   inference node only the inference stack. The lab description and doctor
   already treat inference nodes that way; the plays are aligned in step 11
   together with `inference_control`.
-- **`pokus-lab docs serve`** (owner answer H9, port 18706) belongs to the
+- **`pinka docs serve`** (owner answer H9, port 18706) belongs to the
   documentation work and is added in step 14.
 
 ### Interpretations awaiting owner confirmation (step 10)
 
-1. **The lab description `/etc/pokus/lab.json`** is the CLI's only input
+1. **The lab description `/etc/pinka/lab.json`** is the CLI's only input
    besides the host: rendered by the doctor role from the host's variables
    (units, containers with pinned digests, layout, accounts, Incus objects,
-   PostgreSQL roles, endpoints, blueprints, thresholds). `pokus-lab` never
+   PostgreSQL roles, endpoints, blueprints, thresholds). `pinka` never
    reads the repository or the vault.
-2. **Installation**: package copies under `/usr/local/lib/pokus/` (root, 0644)
+2. **Installation**: package copies under `/usr/local/lib/pinka/` (root, 0644)
    instead of running from the checkout, with a copy of preflight so that
-   `pokus-lab preflight` and doctor do not depend on the checkout; modules
+   `pinka preflight` and doctor do not depend on the checkout; modules
    removed from the sources are deleted. The wrapper prefers the pinned
    CPython and falls back to `python3` 3.9 or newer.
 3. **Doctor needs root** (several checks read root-only state) and exits 2
@@ -1304,7 +1304,7 @@ width of the machine that generates them (`COLUMNS`).
    (`doctor_listener_processes`), and with `vm_targets` the collector's VM
    listener address.
 6. **Telemetry round trip**: one log record, span and gauge sent as OTLP/HTTP
-   JSON to the gateway with `pokus.run_id=doctor-<12 hex>`, then queried in
+   JSON to the gateway with `potka.run_id=doctor-<12 hex>`, then queried in
    Loki, Tempo and Prometheus for up to `doctor_telemetry_wait` (60 s).
 7. **Smoke checks**: VM blueprints are skipped; the telemetry assertion is a
    log line in Loki tagged with the throwaway run ID (end to end through the
@@ -1314,18 +1314,18 @@ width of the machine that generates them (`COLUMNS`).
    counts as a failure, not a pass.
 8. **Unit and container lists**: the inference Compose project is not in the
    unit list (it runs only while a deployment is active; `gpu.vllm` covers
-   it); `pokus-incus-events.service` is checked separately because it is not
-   part of `pokus-lab.target`.
-9. **`pokus-lab restore`** takes bootstrap options after `--`
-   (`pokus-lab restore -- --non-interactive`).
-10. **`pokus-lab status`** shows units to everyone; containers and Incus
+   it); `pinka-incus-events.service` is checked separately because it is not
+   part of `pinka-lab.target`.
+9. **`pinka restore`** takes bootstrap options after `--`
+   (`pinka restore -- --non-interactive`).
+10. **`pinka status`** shows units to everyone; containers and Incus
     instances need root (researchers are never in `docker` or `incus-admin`),
     and it says so.
 11. **`update-host`**: the update commands per family as in
     `how-to/update-host.md`; the reboot notice uses
     `/var/run/reboot-required` (Debian family only; the page lists the other
     families' commands).
-12. **`pokus-lab user`** edits `users/<name>.pub` and the host_vars file only
+12. **`pinka user`** edits `users/<name>.pub` and the host_vars file only
     when the `researchers` list is written with one flow mapping per line; it
     refuses otherwise instead of rewriting the file.
 
@@ -1336,31 +1336,31 @@ width of the machine that generates them (`COLUMNS`).
 ## Step 11: catalog, platform and split inference
 
 Built: the helper role `deploy_source` (included only; the root-only bare
-mirror `/var/lib/pokus/git/pokus.git`, an SSH deploy key generated on the
+mirror `/var/lib/pinka/git/potka.git`, an SSH deploy key generated on the
 host or an anonymous HTTPS source, pinned host keys, SSH-signed tags with
 `require_signed_tags`, `git archive <commit>:<component>` extracted with
 Python's `data` filter through a temporary directory, `DEPLOYED_FROM.json`,
-an atomic `current` switch; helper `/usr/local/libexec/pokus/deploy-source`);
-the roles `catalog` (root:pokus-gt, 0750/0640) and `platform` (uv
+an atomic `current` switch; helper `/usr/local/libexec/pinka/deploy-source`);
+the roles `catalog` (root:pinka-gt, 0750/0640) and `platform` (uv
 environment of the release, `endpoints.toml` and one `<svc>.toml` per
 service checked against the release's own schemas, secrets directories, the
 run-manifest signing key with its published public key and `rotate.yml
 --tags signing`, QA trusted keys, the pinned Quarto CLI, eight hardened
 units with the socket helper `socket-perms`, migrations once per commit,
-`/usr/local/bin/pokus`); the role `inference_control` (identity certificates
+`/usr/local/bin/potka`); the role `inference_control` (identity certificates
 on lab and inference nodes, the gateway's ACL on lab nodes, the inference
-control endpoint `pokus-inference-control.service` on inference nodes);
-`pokus-lab pair show` and `pair connect` with the pairing protocol
-(`pokus_lab/pairing.py`); split-inference telemetry in the observability role
+control endpoint `pinka-inference-control.service` on inference nodes);
+`pinka pair show` and `pair connect` with the pairing protocol
+(`pinka_lab/pairing.py`); split-inference telemetry in the observability role
 (Compose profile `stores`, forwarding and receiving over mutual TLS, a
 private copy of the pairing material for the collector); the
 split-inference ports in the firewall; node-role gating in `site.yml`
 (`incus`, `postgres`, `catalog`, `platform`, `opa` and `images` on `full`
 and `lab` nodes only, `inference_control` on `lab` and `inference` nodes);
-the filters `pokus_to_toml`, `pokus_socket_specs` and
-`pokus_unit_hardening`; in the lab description the platform's and the
+the filters `pinka_to_toml`, `pinka_socket_specs` and
+`pinka_unit_hardening`; in the lab description the platform's and the
 control endpoint's hardening, the platform's socket expectations (from
-`/etc/pokus/platform/sockets.json`), the `inference` section and the
+`/etc/pinka/platform/sockets.json`), the `inference` section and the
 tailnet ports; the doctor check `inference.pairing` (29 checks); docs
 `how-to/deploy-platform.md`, `how-to/pair-inference-node.md`,
 `node-roles.md`, a split-inference section in `explanation/telemetry.md`
@@ -1395,7 +1395,7 @@ multi-line defaults as code blocks instead of broken list items.
   and rejects an unknown TLS key. Two collectors run from those
   configurations with certificates made by community.crypto 3.4.0 exactly as
   the role requests them: the inference node's metrics arrive on the lab
-  node labelled `pokus_machine`; a certificate with the same name and
+  node labelled `pinka_machine`; a certificate with the same name and
   another key is refused ("unknown certificate authority").
 - Those certificates carry the subject alternative name, server and client
   authentication, a critical `CA:FALSE` and a subject key identifier, and no
@@ -1421,16 +1421,16 @@ multi-line defaults as code blocks instead of broken list items.
 - **GitHub's SSH host keys stay `TODO(verify)`** (`api.github.com/meta` and
   `docs.github.com` are not reachable from here). The role refuses an SSH
   source on github.com until they are verified, unless the deployer supplies
-  `pokus_source_known_hosts`; HTTPS sources work.
+  `pinka_source_known_hosts`; HTTPS sources work.
 - **Contract gap, gateway access to the mTLS material**: the contract gives
-  `/etc/pokus/inference/` to root:pokus-orch 0750, but the LLM gateway
-  (`pokus-gw`) talks to the remote inference node too. Infra adds
-  `u:pokus-gw:r-x` on the directory and `u:pokus-gw:r--` on `self.key` on
+  `/etc/pinka/inference/` to root:potka-orch 0750, but the LLM gateway
+  (`potka-gw`) talks to the remote inference node too. Infra adds
+  `u:potka-gw:r-x` on the directory and `u:potka-gw:r--` on `self.key` on
   lab nodes (proposed contract addition).
 - **Contract question, the agent's secrets**: the contract creates
-  `/etc/pokus/secrets/<svc>/` for every service and also puts
-  `/etc/pokus/secrets` into the agent runner's `InaccessiblePaths` (C2), so
-  the agent cannot read `/etc/pokus/secrets/agent/`. Infra implements both
+  `/etc/pinka/secrets/<svc>/` for every service and also puts
+  `/etc/pinka/secrets` into the agent runner's `InaccessiblePaths` (C2), so
+  the agent cannot read `/etc/pinka/secrets/agent/`. Infra implements both
   as written; if the agent needs a secret, systemd's `LoadCredential=` would
   hand it over without opening the directory (proposal).
 - **Further contract additions (proposed)**: the control API (requests and
@@ -1467,7 +1467,7 @@ multi-line defaults as code blocks instead of broken list items.
    and ACL; without ACL support on `/run` (probed once) the contract's
    fallback groups apply, and `sockets.json` records what doctor expects.
 6. **Migrations** run with the new release before `current` switches, once
-   per commit (`/var/lib/pokus/platform/migrated-commit`).
+   per commit (`/var/lib/pinka/platform/migrated-commit`).
 7. **The evaluator** runs without `MemoryDenyWriteExecute`, because Quarto's
    Deno and Typst generate code at run time; every other unit keeps it.
 8. **Disabling the platform** stops and disables its installed units but
@@ -1481,14 +1481,14 @@ multi-line defaults as code blocks instead of broken list items.
 10. **Pairing protocol**: self-signed ECDSA P-256 identities valid for
     3650 days (subject alternative name = tailnet name), a 12-character code
     from a 32-symbol alphabet (60 bits), HMAC-SHA256 keyed with the code over
-    `pokus-pair-v1|side|own fingerprint|peer fingerprint|node|lab_mode`, at
+    `pinka-pair-v1|side|own fingerprint|peer fingerprint|node|lab_mode`, at
     most five attempts, equal `lab_mode` required; each node trusts exactly
     the other's certificate. A new certificate means pairing again.
 11. **Inference node contents**: no Incus, PostgreSQL, OPA, catalog,
     platform, golden images or stores; `gpu_inference` is required. Its
     collector scrapes the local exporters and vLLM and forwards every signal
     to the lab node; before pairing it exports to `nop`. The lab node sets
-    `pokus.machine` of received data to the configured peer.
+    `pinka.machine` of received data to the configured peer.
 12. **Tailnet addresses** are read at bootstrap (`tailscale ip -4`, and
     `tailscale ip -4 <peer>` for the collector's export target with the peer
     name as TLS server name) instead of resolving MagicDNS names inside
@@ -1510,7 +1510,7 @@ instead (see above).
 
 ## Step 12: distribution tests (`make test-distros`) and the CI fast lane
 
-Built: `tools/test-distros/` (`pokus_test_distros`: targets, an `incus`
+Built: `tools/test-distros/` (`pinka_test_distros`: targets, an `incus`
 command-line wrapper, the test pipeline, the results file and the
 command line), `tests/distros/targets.yml` (16 targets: every `supported`
 and `tested` release, ufw, firewalld and nftables variants, SELinux
@@ -1566,7 +1566,7 @@ not (see PROGRESS, known issues).
 
 1. **First run**: every family stopped before Ansible because preflight was
    copied into the container's `/tmp`, a tmpfs, which `docker cp` cannot
-   write into. Preflight now goes to `/opt/pokus-ci/preflight`, and an empty
+   write into. Preflight now goes to `/opt/pinka-ci/preflight`, and an empty
    report names preflight's exit status and error output.
 2. **Check mode on a fresh host** (found by reading the modules while the
    first run was red; BUILD_PROMPT §17 also asks for `bootstrap.sh --check`
@@ -1581,7 +1581,7 @@ not (see PROGRESS, known issues).
    - `getent` fails on a group the run would create.
 
    `platform_facts` now records in check mode what exists when the play
-   starts (`pokus_present`). The fast-lane roles skip such tasks in check
+   starts (`pinka_present`). The fast-lane roles skip such tasks in check
    mode while the object is missing; `getent` no longer fails on a missing
    key. `ansible/tests/test_roles.py` fails when a fast-lane role manages a
    unit, `lineinfile` target, authorized key or ACL without such a guard.
@@ -1613,17 +1613,17 @@ not (see PROGRESS, known issues).
    vault password, the test researcher's key), bootstrap with
    `--answers installer-answers/<vm>.yml --accept-degraded` (exit 0 or 1, and
    the host profile must show the expected firewall backend), a second
-   bootstrap whose PLAY RECAP must show `changed=0`, then `pokus-lab backup
-   now` and `pokus-lab doctor --smoke` with exit 0. The first backup runs
+   bootstrap whose PLAY RECAP must show `changed=0`, then `pinka backup
+   now` and `pinka doctor --smoke` with exit 0. The first backup runs
    before doctor because `backup.recent` warns on a lab that never backed up.
-4. **Test VMs are staging labs** (`lab_mode: staging`, `tag:pokus-qa`) that
+4. **Test VMs are staging labs** (`lab_mode: staging`, `tag:pinka-qa`) that
    join a test tailnet with an ephemeral auth key from
-   `POKUS_TEST_TAILSCALE_AUTHKEY`; the key reaches the VM in a 0600 file,
+   `PINKA_TEST_TAILSCALE_AUTHKEY`; the key reaches the VM in a 0600 file,
    never on a command line, and the VM logs out of the tailnet before it is
    deleted.
 5. **Safety**: the harness refuses to run on a lab host while
-   `pokus-lab.target` is active, uses its own Incus project
-   (`pokus-test-distros`, sharing the default project's images and
+   `pinka-lab.target` is active, uses its own Incus project
+   (`pinka-test-distros`, sharing the default project's images and
    profiles) and tests only committed `HEAD`.
 6. **Fast lane**: the roles `platform_facts`, `base`, `users_groups`, `ssh`,
    `layout`, `mac` and `firewall` with `--check` against a container per
@@ -1642,24 +1642,24 @@ not (see PROGRESS, known issues).
 ## Step 13: the installer TUI and the answers replay
 
 Built: `installer/` (BUILD_PROMPT §18): the answers schema
-`installer/schema/answers.schema.json`; `pokus_installer` with the field
+`installer/schema/answers.schema.json`; `pinka_installer` with the field
 rules (`validators.py`), the answers model and its cross-field checks
 (`answers.py`), the writers of host_vars (round trip from the example file,
 comments kept), of the researchers of `group_vars/all/main.yml` (refilled in
 place), of `users/<name>.pub` and of the vault (Ansible's vault API), the
 resume state, the plan that the Review screen shows and Install writes
 (`apply.py`), model pinning from the Hugging Face Hub (`models.py`) and the
-command line `python -m pokus_installer {validate,describe,apply,tui}`; the
-Textual application `pokus_installer/tui/` with screens 1-18, the host
+command line `python -m pinka_installer {validate,describe,apply,tui}`; the
+Textual application `pinka_installer/tui/` with screens 1-18, the host
 interface, the bootstrap runner and the event folding; the hash-locked
 installer environment (`installer/requirements.in` generated from
 `versions.lock.yml`, `installer/requirements.lock` from `make
-installer-lock`); the Ansible callback `ansible/callback_plugins/pokus_events.py`
+installer-lock`); the Ansible callback `ansible/callback_plugins/pinka_events.py`
 (enabled in `ansible/ansible.cfg`); bootstrap's front-end stage (installer
 environment, TUI hand-over, answers replay, terminal check, `--machine`
 optional with `--answers` or the TUI); the observability role's per-researcher
 Grafana switch; generated references `docs/reference/answers.md` and
-`docs/reference/cli/pokus-installer.md`, and the screenshots
+`docs/reference/cli/pinka-installer.md`, and the screenshots
 `docs/assets/installer/*.svg` copied from the snapshot tests; how-to guides
 `install-with-the-tui.md` and `install-without-the-tui.md`, updates to
 `explanation/bootstrap.md` and `how-to/troubleshoot.md`.
@@ -1682,7 +1682,7 @@ callback tests, the bootstrap front-end tests.
 - The host profiles the pilot tests use come from preflight itself, run
   read-only on its synthetic fixtures (WSL2 with GPU, bare metal with and
   without GPU, Secure Boot, unsupported storage).
-- Doctor reports in the tests come from pokus-lab's own JSON renderer.
+- Doctor reports in the tests come from pinka's own JSON renderer.
 - An install through the TUI and a replay of its answers file with `apply`
   write byte-identical host_vars, group_vars, answers and key files; only the
   vault differs (salted encryption, generated secrets).
@@ -1738,7 +1738,7 @@ Not covered here:
    file and must match if both are given) or when the TUI starts; without
    either it is still required (64).
 2. **The TUI runs bootstrap again** non-interactively (`--non-interactive
-   --no-tui --vault-password-file <0600 file in /run/pokus/installer>`) for
+   --no-tui --vault-password-file <0600 file in /run/pinka/installer>`) for
    the installation, after releasing the first run's lock, so the TUI and an
    answers replay take exactly the same path (BUILD_PROMPT §18.1 "exactly as
    a non-interactive run would").
@@ -1752,7 +1752,7 @@ Not covered here:
    change of the observability role: such researchers get no Grafana user and
    no generated password.
 7. **`split_inference.peer` is optional**: the other node can be named later
-   by pairing (`pokus-lab pair`), which the Finish screen offers and which then
+   by pairing (`pinka pair`), which the Finish screen offers and which then
    re-runs the affected roles (`--tags=inference_control,observability,firewall`).
 8. **The CI answers** (`tests/answers/ci.yml`) use `power_policy: os_default`
    and build no golden image (their base fingerprints are unverified).
@@ -1772,8 +1772,8 @@ Not covered here:
 ### Open `TODO(verify)` items after step 13
 
 110 markers: two more, the Hugging Face Hub API field names in
-`installer/pokus_installer/models.py` and the MOK enrollment in
-`installer/pokus_installer/tui/screens_install.py`.
+`installer/pinka_installer/models.py` and the MOK enrollment in
+`installer/pinka_installer/tui/screens_install.py`.
 
 ## Follow-up after step 13: CPU sets of services and targets
 
@@ -1782,16 +1782,16 @@ pinned here", "Incus targets pinned here") were collected since step 5 and by
 the installer's Resources screen, but no role applied them. Now:
 
 - `group_vars/all/main.yml` defaults both to empty (no pinning) and names the
-  slice `pokus_services_slice` (`pokus-services.slice`); the host_vars example
+  slice `pinka_services_slice` (`pinka-services.slice`); the host_vars example
   shows the empty defaults with the BUILD_PROMPT's split as an example.
 - The base role checks that the two sets do not overlap and name only CPUs
   the host has (`hardware.cpu_threads` of the host profile; new filter
-  `pokus_cpuset_cpus`), and writes `pokus-services.slice` with
+  `pinka_cpuset_cpus`), and writes `pinka-services.slice` with
   `AllowedCPUs=` (systemd.resource-control) when `cpuset_services` is set; it
   reloads systemd at once, before Docker and the lab units use the slice.
-- Every unit of the lab (those `PartOf=pokus-lab.target`, the backup job,
+- Every unit of the lab (those `PartOf=pinka-lab.target`, the backup job,
   the Incus event forwarder and the vLLM deploy helper) has
-  `Slice=pokus-services.slice`; a template test enforces it. Docker places
+  `Slice=pinka-services.slice`; a template test enforces it. Docker places
   every container in the slice (`cgroup-parent` in `daemon.json`, from
   Docker's dockerd reference; with the systemd cgroup driver the parent must
   be a `.slice`).
@@ -1814,7 +1814,7 @@ the installer's Resources screen, but no role applied them. Now:
   Instances of the build project and of personal projects stay unpinned.
 - **A changed set reaches running services at the next lab start**; doctor
   reports the difference until then. Existing containers move into the slice
-  when they are recreated (the next `pokus-lab stop`/`start`).
+  when they are recreated (the next `pinka stop`/`start`).
 - Nothing was run on a real host (no systemd host and no Docker daemon here);
   the slice, unit and `daemon.json` renderings are tested.
 
@@ -1837,7 +1837,7 @@ host, and the step 12 notes promised the check-mode treatment for the roles
 outside the fast lane. Now:
 
 - `platform_facts` also records in check mode which component commands exist
-  when the play starts (`pokus_present.commands`: `dockerd`, `incus`,
+  when the play starts (`pinka_present.commands`: `dockerd`, `incus`,
   `tailscale`, `nvidia-ctk`).
 - Check mode cannot resolve packages from a vendor repository it did not
   really add. The docker, tailscale, incus and nvidia_container_toolkit roles
@@ -1866,8 +1866,8 @@ outside the fast lane. Now:
 - The CI fast lane now runs `ansible/site.yml` instead of the reduced
   `ansible/check-mode.yml` (removed). The container stands in for
   `localhost`; the trees the play reads on the target (preflight,
-  pokus-lab) are copied to the same absolute paths; preflight's profile is
-  written where `pokus_bootstrap.profile_path` points, so `preflight_gate`
+  pinka) are copied to the same absolute paths; preflight's profile is
+  written where `pinka_bootstrap.profile_path` points, so `preflight_gate`
   really re-runs preflight and compares; the host profile carries
   `force_unsupported` (preflight classifies containers as unsupported); the
   example vault supplies the secrets, with a local backup repository. Roles
@@ -1895,7 +1895,7 @@ outside the fast lane. Now:
   password was never refused; ansible-core 2.21 rejects the non-boolean
   result. Fixed, and a role test now flags quoted expressions in conditionals.
 - **Second run**: openSUSE Leap's `python3` (3.6) could not run preflight's
-  re-run; the container now gets `/opt/pokus/python/bin/python3`, where
+  re-run; the container now gets `/opt/pinka/python/bin/python3`, where
   bootstrap puts its pinned CPython. The example vault had a Grafana password
   for one of the three example researchers, which the observability role
   refuses; it now has one per researcher.
@@ -1931,11 +1931,11 @@ Built:
   backup, tailnet name, fresh build with `--restore`, signing key handover,
   re-pairing), `how-to/staging-window.md` and `how-to/install-attestation.md`.
 - ADR-0013 *No orchestration frameworks*, the last ADR BUILD_PROMPT §15 lists.
-- `pokus-lab docs serve` (owner answer H9): serves a built documentation site
-  read-only on `127.0.0.1` (port `pokus_ports.docs_serve`, 18706) until
+- `pinka docs serve` (owner answer H9): serves a built documentation site
+  read-only on `127.0.0.1` (port `pinka_ports.docs_serve`, 18706) until
   interrupted; the directory and port come from the new `docs` keys of
   `lab.json`, or `--dir` and `--port`, and it works without a lab
-  description. The doctor role creates `/usr/local/share/pokus/docs/` empty;
+  description. The doctor role creates `/usr/local/share/pinka/docs/` empty;
   the operator extracts a release's documentation tarball there.
 - `README.md` per BUILD_PROMPT §15, with two generated sections (the
   supported and tested environments, and the bootstrap exit codes) kept in
@@ -1971,11 +1971,11 @@ Built:
 
 ### Interpretations awaiting owner confirmation (step 14)
 
-1. `pokus-lab docs serve` is a foreground command any account may run (the
+1. `pinka docs serve` is a foreground command any account may run (the
    site is not secret), bound to `127.0.0.1` only, reached over SSH port
    forwarding; there is no unit that serves the documentation permanently.
 2. The documentation of a release is installed by extracting its tarball into
-   `/usr/local/share/pokus/docs/`; nothing downloads it automatically.
+   `/usr/local/share/pinka/docs/`; nothing downloads it automatically.
 3. The README excerpt lists the `supported` and `tested` rules only; the
    full matrix stays in `docs/support-matrix.md`.
 4. "Open a QA maintenance window" is read as providing a separate
@@ -2001,7 +2001,7 @@ separate, non-blocking job. Now:
   installs a component of `component-sources.yml` (a test asserts it).
 - `make check-mode CI_IMAGE=<key>` runs that play; `make check-mode-extended
   CI_IMAGE=<key>` runs `ansible/site.yml` with the roles of unverified
-  sources skipped by tag (`--extended` of `pokus_test_distros check-mode`).
+  sources skipped by tag (`--extended` of `pinka_test_distros check-mode`).
   The extended run ends with a Markdown summary: whether the roles that ran
   passed, and one row per skipped component marked "SKIPPED, not tested" with
   the reason. A skipped component is never reported as passed. The summary is
@@ -2100,3 +2100,66 @@ consent turns the action into a planned one that bootstrap carries out.
 covers the wording of `mokutil --test-key`; the one about `mokutil` reading
 the password from standard input moved from the installer to
 `bootstrap/lib/stages.sh`. All of them need the reference hardware.
+
+## Rename (plan step 3c): `pokus` → `pinka` and `potka`
+
+The mechanical rename of the approved rename table (owner decisions Q1-Q15
+in `../PROGRESS.md`, section J): infra's own names become `pinka`, names
+derived from the platform become `potka`, "Pokus" stays the project's name.
+Files and directories moved with `git mv`; generated files came from their
+generators (`make generate`, `uv lock` with no version change, the TUI
+snapshots and docs screenshots, the recorded installer event streams and the
+preflight summary snapshots). The spec copies `docs/BUILD_PROMPT.md` and
+`docs/DOCS_SPEC.md` are unchanged. No behavior, limit or test changed, with
+the two exceptions the owner decided: OPA's authorization (Q7) and the
+installer's refused username prefixes.
+
+- **OPA (Q7)**: `config/opa/authz.rego` allows decision queries (`GET`,
+  `POST`) at exactly `/v1/data/potka/action/decision` and
+  `/v1/data/pinka/placeholder/active`, plus the health checks; before, it
+  allowed everything below `/v1/data/pokus`. A Rego test proves that paths
+  above, below and beside the two are rejected (seven Rego tests now), and
+  the HTTP test rejects three more requests. The placeholder files moved to
+  `placeholder/potka/action.rego` and `placeholder/pinka/placeholder.rego`.
+- **Usernames**: the installer refuses the prefixes `pinka-`, `potka-` and
+  `pokus-` (before: `pokus-`); the tests gained the two new cases.
+- **Incus client certificates**: their names were built as
+  `pokus-<short>`. The certificate entries now carry their `name`
+  (`potka-orch`, `potka-exec`, `potka-inject`, `potka-verify`,
+  `pinka-metrics`), used for the common name, the trust entry and doctor's
+  trust check.
+- **Re-recorded test data**: the installer's event streams differ from the
+  old ones only in the renamed strings, timestamps and task durations.
+
+### Interpretations awaiting owner confirmation (3c)
+
+1. "Pokus lab" and "Pokus host" stay as written in prose and in user-facing
+   strings (unit descriptions, CLI help, play names): the lab runs the whole
+   project, infra's and the platform's parts. Infra's own components are
+   "pinka" (its units, nftables table, firewalld zones and installer).
+2. Markers that infra leaves on a host name the product's technical name,
+   like the managed header (Q1): ufw rule comments `pinka`, `blockinfile`
+   markers `# BEGIN pinka <name>`, the zypper repository description
+   "(managed by pinka)", preflight's managed marker `Managed by pinka`.
+3. Docs pages name the product "Pokus Infrastructure (pinka)" at the first
+   mention and "Pokus Infrastructure" after it; repository references stay
+   `pokus-infrastructure` and `pokus-platform`; generated references take
+   the wording of the code ("pinka").
+4. The checkout directory in examples is `pokus-infrastructure` (the
+   repository's name); the test-distros harness's internal checkout name is
+   `pinka`.
+5. `journalctl -u 'pokus-*'` covered infra's and the platform's units; it
+   became `journalctl -u 'pinka-*' -u 'potka-*'`.
+6. The installed CLI package directory is `/usr/local/lib/pinka/pinka-lab`
+   (like `tools/pinka-lab/`, Q2); the wrapper is `/usr/local/bin/pinka`.
+
+### Findings to report (3c)
+
+- Doctor's firewall check asks firewalld for the zone `pinka` (before:
+  `pokus`), but the firewall role creates `pinka-tailnet` and `pinka-run`,
+  so on a firewalld host the check always fails. The rename keeps the
+  behavior; the fix (check the two zones the role creates) is proposed for
+  3d.
+- The CI secret stays `POKUS_PRIVACY_DENYLIST`; the workflows pass it to the
+  scan as `PINKA_PRIVACY_DENYLIST`. Once the owner adds the secret
+  `PINKA_PRIVACY_DENYLIST`, the three workflow lines switch to it.

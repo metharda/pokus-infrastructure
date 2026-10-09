@@ -1,4 +1,4 @@
-# Managed by pokus-infra (.markdownlint-cli2.yaml).
+# Managed by pinka (.markdownlint-cli2.yaml).
 config:
   default: true
   MD013: false            # prose is not hard-wrapped

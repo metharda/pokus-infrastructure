@@ -10,11 +10,11 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §19.3)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §19.3)
 
 ## Context
 
-Ansible, the installer, `pokus-lab` and the platform are Python programs.
+Ansible, the installer, `pinka` and the platform are Python programs.
 Distributions ship Python versions years apart (some minimal RHEL images ship
 only `platform-python`), with their own patches and package splits. Relying on
 them would make the lab's behavior depend on the host distribution and would
@@ -24,12 +24,12 @@ make two labs on different hosts run different interpreters.
 
 1. Bootstrap installs **uv** as a static binary verified against the sha256
    pinned in `versions.lock.yml`, then a **pinned CPython** with
-   `uv python install` into `/opt/pokus/python`.
+   `uv python install` into `/opt/pinka/python`.
 2. Ansible runs from a virtual environment of that interpreter
-   (`/opt/pokus/ansible-venv`), installed from the hash-locked
-   `bootstrap/requirements.lock`. The installer, `pokus-lab` and the platform
+   (`/opt/pinka/ansible-venv`), installed from the hash-locked
+   `bootstrap/requirements.lock`. The installer, `pinka` and the platform
    use the same interpreter with their own lockfiles.
-3. The distribution's Python is never required for Pokus code. Package
+3. The distribution's Python is never required for Pokus Infrastructure (pinka) code. Package
    modules that need the distribution's bindings (`apt`, `dnf`) use
    ansible-core's respawn to the system interpreter for that one module; the
    `pkg` role keeps that dependency in one place.
@@ -43,7 +43,7 @@ make two labs on different hosts run different interpreters.
   in the fingerprint.
 - The lab needs network access to the CPython build on first install (or an
   offline mirror); the downloads are verified against pinned checksums.
-- Distribution updates of the system Python cannot break Pokus.
+- Distribution updates of the system Python cannot break Pokus Infrastructure.
 
 ## Alternatives considered
 

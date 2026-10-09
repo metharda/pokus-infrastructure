@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # OPT_* values are read by the scripts that source this file
-# Managed by pokus-infra (bootstrap/lib/args.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/args.sh). Local changes will be overwritten.
 #
 # Command-line interface of bootstrap.sh (BUILD_PROMPT §5.1). The usage text is
 # the source of docs/reference/cli/bootstrap.md (tools/gen runs --help).
@@ -15,7 +15,7 @@ terminal the installer TUI asks for everything; --answers replays its answers.
 
 Options:
   --machine NAME           Selects ansible/inventory/host_vars/NAME.yml; required unless --answers or the TUI names it
-  --ref REF                Git ref of pokus-infra being applied (recorded; default: current HEAD)
+  --ref REF                Git ref of pokus-infrastructure being applied (recorded; default: current HEAD)
   --restore                After provisioning, run restore.yml (prompts for snapshot)
   --tags T1,T2             Pass through to ansible-playbook
   --skip-tags T1,T2        e.g. images,models for a fast first run

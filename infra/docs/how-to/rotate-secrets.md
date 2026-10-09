@@ -18,7 +18,7 @@ with `ansible/rotate.yml`. Rotating the database passwords or the
 certificates restarts the lab, so do it in a maintenance window.
 
 !!! note "Prerequisites"
-    - An admin account on the lab host (member of `pokus-admin`) and the infra
+    - An admin account on the lab host (member of `pinka-admin`) and the infra
       directory bootstrap runs from.
     - The vault's password.
     - No campaign running: stop or drain the lab first.
@@ -26,7 +26,7 @@ certificates restarts the lab, so do it in a maintenance window.
 ## Change a password that lives in the vault
 
 1. Edit the value in the vault (for example
-   `vault_postgres_passwords.pokus_orch` or
+   `vault_postgres_passwords.potka_orch` or
    `vault_grafana_user_passwords.researcher1`):
 
     <!-- qa:skip reason="edits the encrypted vault" -->
@@ -54,16 +54,16 @@ rotates everything; `postgres`, `incus`, `restic` and `signing` select parts:
 <!-- qa:skip reason="rotates secrets on the lab host" -->
 ```bash
 cd ansible
-sudo ANSIBLE_CONFIG=$PWD/ansible.cfg /opt/pokus/ansible-venv/bin/ansible-playbook \
+sudo ANSIBLE_CONFIG=$PWD/ansible.cfg /opt/pinka/ansible-venv/bin/ansible-playbook \
   -i inventory/hosts.yml rotate.yml -e machine=<machine> --ask-vault-pass --tags postgres,incus
 ```
 
 `<machine>` is this lab host's host_vars file. The play stops
-`pokus-lab.target`, then:
+`pinka-lab.target`, then:
 
 - `postgres`: sets a new superuser password while the old one still works
   (the new one is staged in
-  `/etc/pokus/secrets/containers/postgres-superuser.new` until then), writes a
+  `/etc/pinka/secrets/containers/postgres-superuser.new` until then), writes a
   new exporter password, and recreates the database containers so that they
   see the new secret files;
 - `incus`: issues new client certificates for the platform services and
@@ -71,7 +71,7 @@ sudo ANSIBLE_CONFIG=$PWD/ansible.cfg /opt/pokus/ansible-venv/bin/ansible-playboo
   trust store, so the old keys stop working;
 - `signing` (with the platform enabled): generates a new run-manifest signing
   key for the orchestrator and publishes its public key in
-  `/srv/pokus/shared/signing-keys/<machine>-<date>.pub`; the old public keys
+  `/srv/pinka/shared/signing-keys/<machine>-<date>.pub`; the old public keys
   stay published, so manifests signed before the rotation remain verifiable;
 
 and starts the lab again.
@@ -94,14 +94,14 @@ The lab is up again:
 
 <!-- qa:run env=E2 -->
 ```bash
-systemctl is-active pokus-lab.target pokus-health-gate.service
-sudo /usr/local/libexec/pokus/backup snapshots | jq length
+systemctl is-active pinka-lab.target pinka-health-gate.service
+sudo /usr/local/libexec/pinka/backup snapshots | jq length
 ```
 
 Both units are `active`, and the backup helper still lists the snapshots
 (with the new password, after a `restic` rotation). After an `incus`
 rotation, `sudo incus config trust list --columns nfi` (name, fingerprint,
-issue date) shows exactly one `pokus-<service>` entry per service, issued
+issue date) shows exactly one `pinka-<service>` entry per service, issued
 today.
 
 Related: [How to back up the lab, restore it, and run a restore drill](backup-and-restore.md),

@@ -8,8 +8,8 @@ import unittest
 
 from helpers import TempRootCase, runner
 
-from pokus_preflight.fs import FileSystem
-from pokus_preflight.runner import EXIT_NOT_FOUND, EXIT_TIMEOUT, FixtureRunner, RealRunner
+from pinka_preflight.fs import FileSystem
+from pinka_preflight.runner import EXIT_NOT_FOUND, EXIT_TIMEOUT, FixtureRunner, RealRunner
 
 
 class FileSystemTest(TempRootCase):
@@ -139,7 +139,7 @@ class RealRunnerTest(unittest.TestCase):
         self.assertEqual(res.stdout, "a b\n")
 
     def test_missing_program(self) -> None:
-        self.assertEqual(RealRunner().run(["pokus-no-such-program-xyz"]).returncode, EXIT_NOT_FOUND)
+        self.assertEqual(RealRunner().run(["pinka-no-such-program-xyz"]).returncode, EXIT_NOT_FOUND)
 
     def test_timeout(self) -> None:
         res = RealRunner().run([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.3)

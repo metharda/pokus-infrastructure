@@ -1,27 +1,27 @@
-# Managed by pokus-infra (ansible/roles/backup/vars/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/backup/vars/main.yml). Local changes will be overwritten.
 
 # Helper, its configuration and state.
-backup_helper: /usr/local/libexec/pokus/backup
-backup_config_dir: /etc/pokus/backup
-backup_known_hosts: /etc/pokus/backup/known_hosts
-backup_secrets_dir: /etc/pokus/secrets/backup
-backup_cache_dir: /var/cache/pokus/restic
-backup_state_dir: /var/lib/pokus/backup
-backup_pgdump_dir: "{{ pokus_root }}/backups/pg"
+backup_helper: /usr/local/libexec/pinka/backup
+backup_config_dir: /etc/pinka/backup
+backup_known_hosts: /etc/pinka/backup/known_hosts
+backup_secrets_dir: /etc/pinka/secrets/backup
+backup_cache_dir: /var/cache/pinka/restic
+backup_state_dir: /var/lib/pinka/backup
+backup_pgdump_dir: "{{ pinka_root }}/backups/pg"
 # Textfile directory of the node exporter (observability role).
-backup_textfile_dir: /var/lib/pokus/node-exporter
+backup_textfile_dir: /var/lib/pinka/node-exporter
 # The pinned restic binary (versions.lock.yml binaries.restic, bzip2-compressed).
-backup_restic_version: "{{ pokus_versions.binaries.restic.version }}"
-backup_restic_asset: "{{ pokus_versions.binaries.restic.assets[ansible_facts['architecture']] }}"
-backup_restic_dir: "/opt/pokus/restic/{{ pokus_versions.binaries.restic.version }}"
+backup_restic_version: "{{ pinka_versions.binaries.restic.version }}"
+backup_restic_asset: "{{ pinka_versions.binaries.restic.assets[ansible_facts['architecture']] }}"
+backup_restic_dir: "/opt/pinka/restic/{{ pinka_versions.binaries.restic.version }}"
 backup_restic: /usr/local/bin/restic
-# Secret material under /etc/pokus: excluded unless backup_include_secrets.
+# Secret material under /etc/pinka: excluded unless backup_include_secrets.
 backup_secret_paths:
-  - /etc/pokus/secrets
-  - /etc/pokus/postgres-reader
-  - /etc/pokus/incus
-  - /etc/pokus/signing
-  - /etc/pokus/inference
+  - /etc/pinka/secrets
+  - /etc/pinka/postgres-reader
+  - /etc/pinka/incus
+  - /etc/pinka/signing
+  - /etc/pinka/inference
 # Whether a repository is configured, and whether it is reached over SFTP.
 backup_configured: "{{ backup_repository | length > 0 }}"
 backup_sftp: "{{ backup_repository is match('sftp:') }}"
@@ -29,16 +29,16 @@ backup_sftp: "{{ backup_repository is match('sftp:') }}"
 backup_has_postgres: "{{ node_role in ['full', 'lab'] }}"
 # Paths of a backup and the exclusions.
 backup_paths: >-
-  {{ backup_include | map('regex_replace', '^', pokus_root ~ '/') | list
-     + ([pokus_root ~ '/models'] if backup_include_models else [])
-     + (backup_include_state | map('regex_replace', '^', pokus_root ~ '/state/') | list)
-     + ['/etc/pokus'] }}
+  {{ backup_include | map('regex_replace', '^', pinka_root ~ '/') | list
+     + ([pinka_root ~ '/models'] if backup_include_models else [])
+     + (backup_include_state | map('regex_replace', '^', pinka_root ~ '/state/') | list)
+     + ['/etc/pinka'] }}
 backup_excludes: "{{ [] if backup_include_secrets else backup_secret_paths }}"
 # Units: name, helper command, schedule, and whether the timer is enabled.
 backup_jobs:
-  - {name: pokus-pgdump, command: pgdump, schedule: "{{ backup_pgdump_schedule }}", enabled: "{{ backup_has_postgres }}",
-     description: "PostgreSQL dump of the lab database", after: pokus-core.service}
-  - {name: pokus-backup, command: run, schedule: "{{ backup_schedule }}", enabled: "{{ backup_configured }}",
-     description: "restic backup of the lab", after: pokus-pgdump.service network-online.target}
-  - {name: pokus-backup-prune, command: prune, schedule: "{{ backup_prune_schedule }}", enabled: "{{ backup_configured }}",
-     description: "restic retention and prune", after: pokus-backup.service network-online.target}
+  - {name: pinka-pgdump, command: pgdump, schedule: "{{ backup_pgdump_schedule }}", enabled: "{{ backup_has_postgres }}",
+     description: "PostgreSQL dump of the lab database", after: pinka-core.service}
+  - {name: pinka-backup, command: run, schedule: "{{ backup_schedule }}", enabled: "{{ backup_configured }}",
+     description: "restic backup of the lab", after: pinka-pgdump.service network-online.target}
+  - {name: pinka-backup-prune, command: prune, schedule: "{{ backup_prune_schedule }}", enabled: "{{ backup_configured }}",
+     description: "restic retention and prune", after: pinka-backup.service network-online.target}

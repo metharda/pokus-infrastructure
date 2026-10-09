@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/pokus/schema/models-catalog.schema.json",
+  "$id": "https://example.com/pinka/schema/models-catalog.schema.json",
   "title": "models.catalog.yml",
   "description": "Curated candidate models per serving profile (BUILD_PROMPT §7.12); entries stay proposed until the owner approves them (owner answer E7).",
   "type": "object",

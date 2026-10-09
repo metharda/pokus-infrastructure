@@ -1,0 +1,14 @@
+# Managed by pinka (ansible/roles/firewall/templates/pinka-docker-incus-compat.service.j2). Local changes will be overwritten.
+[Unit]
+Description=pinka: let Incus bridge traffic pass Docker's FORWARD policy
+After=docker.service incus.service
+PartOf=docker.service
+ConditionPathExists=/usr/bin/docker
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/pinka/docker-incus-compat
+
+[Install]
+WantedBy=multi-user.target docker.service

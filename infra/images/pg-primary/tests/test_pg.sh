@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (images/pg-primary/tests/test_pg.sh). Local changes will be overwritten.
+# Managed by pinka (images/pg-primary/tests/test_pg.sh). Local changes will be overwritten.
 #
 # Post-build assertions of `pg-primary`, run inside the build instance.
 set -eu

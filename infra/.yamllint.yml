@@ -1,4 +1,4 @@
-# Managed by pokus-infra (.yamllint.yml).
+# Managed by pinka (.yamllint.yml).
 # Compatible with ansible-lint's yamllint requirements.
 extends: default
 ignore-from-file: .gitignore

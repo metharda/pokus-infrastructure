@@ -1,16 +1,16 @@
-# Managed by pokus-infra (ansible/roles/platform/tasks/signing.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform/tasks/signing.yml). Local changes will be overwritten.
 #
 # The run-manifest signing key (contracts.md, C9d): ed25519, PEM PKCS#8,
-# generated on the host, readable only by pokus-orch. Its public key
+# generated on the host, readable only by potka-orch. Its public key
 # (SubjectPublicKeyInfo) is published as
-# <pokus_root>/shared/signing-keys/<machine>-<YYYYMMDD>.pub and kept forever.
+# <pinka_root>/shared/signing-keys/<machine>-<YYYYMMDD>.pub and kept forever.
 
 - name: Create the signing key directory
   ansible.builtin.file:
     path: "{{ platform_signing_dir }}"
     state: directory
     owner: root
-    group: pokus-orch
+    group: potka-orch
     mode: "0750"
   register: platform_signing_dir_state
 
@@ -20,8 +20,8 @@
     path: "{{ platform_signing_key }}"
     type: Ed25519
     format: pkcs8
-    owner: pokus-orch
-    group: pokus-orch
+    owner: potka-orch
+    group: potka-orch
     mode: "0400"
     regenerate: never
   when: not (ansible_check_mode and platform_signing_dir_state is changed)
@@ -41,7 +41,7 @@
     path: "{{ platform_signing_published }}"
     state: directory
     owner: root
-    group: pokus
+    group: pinka
     mode: "0755"
 
 - name: Read the public key

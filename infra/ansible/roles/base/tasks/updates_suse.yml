@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/tasks/updates_suse.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/tasks/updates_suse.yml). Local changes will be overwritten.
 #
 # TODO(verify): `zypper patch --category security` as the security-only update
 # on Leap and SLES; locked packages (pkg role) are left alone by zypper.
@@ -9,14 +9,14 @@
     owner: root
     group: root
     mode: "0644"
-  loop: [pokus-security-patch.service, pokus-security-patch.timer]
+  loop: [pinka-security-patch.service, pinka-security-patch.timer]
   notify: Reload systemd
 
 - name: Enable or disable the security patch timer
   ansible.builtin.systemd_service:
-    name: pokus-security-patch.timer
+    name: pinka-security-patch.timer
     enabled: "{{ base_auto_updates_effective }}"
     state: "{{ 'started' if base_auto_updates_effective else 'stopped' }}"
     daemon_reload: true
-  # In check mode the units above are not written (pokus_present: platform_facts).
-  when: not ansible_check_mode or 'pokus-security-patch.timer' in pokus_present.units
+  # In check mode the units above are not written (pinka_present: platform_facts).
+  when: not ansible_check_mode or 'pinka-security-patch.timer' in pinka_present.units

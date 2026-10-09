@@ -1,24 +1,24 @@
-# Managed by pokus-infra (compose/inference/compose.yml). Local changes will be overwritten.
+# Managed by pinka (compose/inference/compose.yml). Local changes will be overwritten.
 #
 # vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the OpenAI-compatible API
 # on 127.0.0.1 only (host network; vLLM binds the address of the rendered
-# configuration), models read-only from /srv/pokus/models, no Hub access.
-# /etc/pokus/vllm/current.yaml (the `vllm serve --config` file) and
-# current.env are rendered by /usr/local/libexec/pokus/vllm-deploy; current.env
+# configuration), models read-only from /srv/pinka/models, no Hub access.
+# /etc/pinka/vllm/current.yaml (the `vllm serve --config` file) and
+# current.env are rendered by /usr/local/libexec/pinka/vllm-deploy; current.env
 # carries the configuration's hash, so a new deployment recreates the
 # container. One service per GPU method (Compose profile from .env).
-name: pokus-inference
+name: pinka-inference
 
 x-vllm: &vllm
   image: ${VLLM_IMAGE:?pinned image missing}
-  container_name: pokus-vllm
+  container_name: pinka-vllm
   restart: unless-stopped
   network_mode: host
-  command: ["--config", "/etc/pokus/vllm/current.yaml"]
+  command: ["--config", "/etc/pinka/vllm/current.yaml"]
   # Optional so that the project validates before the first deployment; the
   # unit only starts once a deployment is rendered.
   env_file:
-    - path: /etc/pokus/vllm/current.env
+    - path: /etc/pinka/vllm/current.env
       required: false
   shm_size: 2gb
   read_only: true
@@ -26,9 +26,9 @@ x-vllm: &vllm
   cap_drop: [ALL]
   tmpfs: [/tmp]
   volumes:
-    - ${POKUS_ROOT:?}/models:/models:ro
-    - /etc/pokus/vllm:/etc/pokus/vllm:ro
-    - ${POKUS_ROOT:?}/state/vllm-cache:/root/.cache
+    - ${PINKA_ROOT:?}/models:/models:ro
+    - /etc/pinka/vllm:/etc/pinka/vllm:ro
+    - ${PINKA_ROOT:?}/state/vllm-cache:/root/.cache
   healthcheck:
     test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${VLLM_PORT:?}/health', timeout=5)"]
     interval: 15s

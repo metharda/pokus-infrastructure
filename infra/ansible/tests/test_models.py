@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-import pokus_models_fetch as fetch
+import pinka_models_fetch as fetch
 import pytest
 
 from ansible_testlib import INFRA, ROLES, load_yaml
@@ -58,7 +58,7 @@ def run_fetch(
         data,
         kind,
         root,
-        "/opt/pokus/models-venv/bin/hf",
+        "/opt/pinka/models-venv/bin/hf",
         hub,
         now=lambda: NOW,
         tool_version="2.1.1",
@@ -73,7 +73,7 @@ def test_download_verify_and_manifest(tmp_path: Path) -> None:
     assert result == {"changed": True, "path": str(dest)}
     argv, env = hub.calls[0]
     assert argv[:4] == [
-        "/opt/pokus/models-venv/bin/hf",
+        "/opt/pinka/models-venv/bin/hf",
         "download",
         "example-org/test-model",
         "config.json",

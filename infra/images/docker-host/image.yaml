@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/docker-host/image.yaml). Local changes will be overwritten.
+# Managed by pinka (images/docker-host/image.yaml). Local changes will be overwritten.
 #
 # Golden image blueprint `docker-host` (BUILD_PROMPT §7.13): Docker Engine
 # inside the target (needs security.nesting) running one containerized web

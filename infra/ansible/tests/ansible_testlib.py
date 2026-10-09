@@ -27,7 +27,7 @@ ROLES = ANSIBLE / "roles"
 GROUP_VARS = ANSIBLE / "group_vars" / "all" / "main.yml"
 FIXTURES = INFRA / "preflight" / "tests" / "fixtures"
 FAMILIES = ("debian", "redhat", "suse", "archlinux")
-HEADER = "Managed by pokus-infra ({path}). Local changes will be overwritten."
+HEADER = "Managed by pinka ({path}). Local changes will be overwritten."
 
 # Ansible reads its configuration when first imported; keep its state below
 # build/ like the Makefile does, not in the home directory.
@@ -69,7 +69,7 @@ def debian_codenames() -> dict[str, Any]:
 
 @functools.cache
 def _fixture_profile(name: str) -> str:
-    from pokus_preflight import cli  # noqa: PLC0415 - preflight is only needed here
+    from pinka_preflight import cli  # noqa: PLC0415 - preflight is only needed here
 
     args_file = FIXTURES / name / "args.json"
     args = json.loads(args_file.read_text(encoding="utf-8")) if args_file.exists() else []

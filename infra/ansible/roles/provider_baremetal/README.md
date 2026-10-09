@@ -20,7 +20,7 @@ Bare-metal provider (BUILD_PROMPT §3.2).
   `--allow-reboot` was given, after the play has ended.
 - **Power policy**: `never_sleep` masks the sleep targets (and unmasks them if
   the policy changes later); `lab_session_inhibit` installs
-  `pokus-sleep-inhibit.service`, which `pokus-lab.target` pulls in;
+  `pinka-sleep-inhibit.service`, which `pinka-lab.target` pulls in;
   `os_default` changes nothing.
 
 The Incus storage device is handled by the incus role (BUILD_PROMPT §13.1).

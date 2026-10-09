@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/deploy_source/tasks/deploy.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/deploy_source/tasks/deploy.yml). Local changes will be overwritten.
 #
 # Extract one component at a ref into <root>/<name>/ with DEPLOYED_FROM.json
 # (contracts.md). Sets deploy_source_result: changed, name, path, provenance.
@@ -9,7 +9,7 @@
     argv: >-
       {{ [deploy_source_helper, 'prepare', '--mirror', deploy_source_mirror,
           '--component', deploy_source_component, '--ref', deploy_source_ref,
-          '--root', deploy_source_root, '--repo', pokus_source_repo,
+          '--root', deploy_source_root, '--repo', pinka_source_repo,
           '--owner', deploy_source_owner, '--group', deploy_source_group,
           '--dir-mode', deploy_source_dir_mode, '--file-mode', deploy_source_file_mode,
           '--allowed-signers', deploy_source_allowed_signers]

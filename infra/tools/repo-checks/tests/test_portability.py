@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from pokus_repo_checks import cli, portability
+from pinka_repo_checks import cli, portability
 
 
 @pytest.mark.parametrize(
@@ -33,12 +33,12 @@ def test_flags_distribution_facts(text: str, fact: str) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "when: pokus_family == 'debian'",
+        "when: pinka_family == 'debian'",
         "{{ ansible_facts['architecture'] }}",
         "{{ ansible_facts.getent_group['docker'] }}",
         "{{ ansible_facts['kernel'] }}",
         "my_ansible_distribution_note: x",
-        "pokus_distro: '{{ platform_facts_identity.distro }}'",
+        "pinka_distro: '{{ platform_facts_identity.distro }}'",
     ],
 )
 def test_allows_other_facts(text: str) -> None:
@@ -52,7 +52,7 @@ def make_tree(root: Path) -> None:
         "roles/base/templates/a.conf.j2": "{{ ansible_facts.distribution }}\n",
         "roles/base/README.md": "Never use ansible_distribution.\n",
         "roles/platform_facts/tasks/main.yml": "x: '{{ ansible_distribution }}'\n",
-        "filter_plugins/pokus.py": "# ansible_os_family is mapped here\n",
+        "filter_plugins/pinka.py": "# ansible_os_family is mapped here\n",
     }.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,7 +75,7 @@ def test_cli_exit_codes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     assert "BUILD_PROMPT §19.1" in out.out
     assert "portability: 2 finding(s)" in out.err
     (tmp_path / "roles/base/tasks/main.yml").write_text("- name: x\n", encoding="utf-8")
-    (tmp_path / "roles/base/templates/a.conf.j2").write_text("{{ pokus_distro }}\n", "utf-8")
+    (tmp_path / "roles/base/templates/a.conf.j2").write_text("{{ pinka_distro }}\n", "utf-8")
     assert cli.main(["portability", "--ansible-dir", str(tmp_path)]) == 0
     assert cli.main(["portability", "--ansible-dir", str(tmp_path / "missing")]) == 2
 

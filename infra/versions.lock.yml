@@ -1,4 +1,4 @@
-# Managed by pokus-infra (versions.lock.yml).
+# Managed by pinka (versions.lock.yml).
 #
 # Single source of truth for every external artifact (BUILD_PROMPT §10.1,
 # §19.4). Every value is verified at build time and its section records
@@ -31,7 +31,7 @@ fedora_supported_releases:
 
 binaries:
   uv:
-    # Installed to /opt/pokus/bin/uv by bootstrap (BUILD_PROMPT §5.2, §19.3).
+    # Installed to /opt/pinka/bin/uv by bootstrap (BUILD_PROMPT §5.2, §19.3).
     version: "0.12.23"
     verified_on: 2026-10-05
     source: >-
@@ -118,22 +118,22 @@ binaries:
         sha256: 9a1f3625529c6f01240fe68286dde06aa0b23c5253da700ac48f4d943ff8a4de
 
 python:
-  # CPython installed by the pinned uv into /opt/pokus/python; uv checks the
+  # CPython installed by the pinned uv into /opt/pinka/python; uv checks the
   # download against the sha256 in its own release metadata.
   python_version: "3.12.15"
   python_build: >-
     python-build-standalone 20261003
     (cpython-3.12.15+20261003-<arch>-unknown-linux-gnu-install_only_stripped)
-  # Packages of /opt/pokus/ansible-venv (hash-locked in bootstrap/requirements.lock).
+  # Packages of /opt/pinka/ansible-venv (hash-locked in bootstrap/requirements.lock).
   packages:
     ansible-core: "2.21.5"
     jmespath: "1.1.0"      # json_query filter
     cryptography: "50.0.2"  # community.crypto modules (owner answer E12)
-  # Packages of /opt/pokus/models-venv, the models role's download tool
+  # Packages of /opt/pinka/models-venv, the models role's download tool
   # (hash-locked in ansible/roles/models/files/requirements.lock).
   model_tools:
     huggingface-hub: "2.1.1"  # the `hf download` CLI (BUILD_PROMPT §7.12)
-  # Packages of /opt/pokus/installer-venv, the installer TUI (BUILD_PROMPT
+  # Packages of /opt/pinka/installer-venv, the installer TUI (BUILD_PROMPT
   # §18.2), on top of the `packages` above (ansible-core for the vault API);
   # hash-locked in installer/requirements.lock (owner answer E11).
   installer:
@@ -151,7 +151,7 @@ python:
 
 containers:
   # Every lab service image, pinned by the digest of its multi-platform index
-  # (BUILD_PROMPT §7.6-§7.11). `platforms` lists the platforms Pokus needs and
+  # (BUILD_PROMPT §7.6-§7.11). `platforms` lists the platforms pinka needs and
   # that the index was verified to contain. Tags are informational: only the
   # digest is used.
   verified_on: 2026-10-05

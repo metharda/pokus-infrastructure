@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/docker/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/docker/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Docker Engine with Compose and buildx, pinned and held, and its daemon configuration.
@@ -26,7 +26,7 @@ argument_specs:
           Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
       docker_cgroup_parent:
         type: str
-        default: "{{ pokus_services_slice }}"
+        default: "{{ pinka_services_slice }}"
         description: >-
           Systemd slice of every container (daemon.json cgroup-parent), the lab
           services' slice that AllowedCPUs pins to cpuset_services.

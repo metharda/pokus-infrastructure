@@ -47,7 +47,7 @@ def profile(tmp_path: Path, fixture: str, name: str = "profile.json") -> Path:
         [
             sys.executable,
             "-m",
-            "pokus_preflight",
+            "pinka_preflight",
             "--root",
             str(FIXTURES / fixture),
             "--offline",
@@ -152,7 +152,7 @@ def test_json_escape_and_events(tmp_path: Path) -> None:
         emit_event bootstrap.stage git started
         emit_event bootstrap.signal ansible signaled 75 {q(text)}
         """,
-        env={"POKUS_EVENTS_FILE": str(events)},
+        env={"PINKA_EVENTS_FILE": str(events)},
     )
     assert res.returncode == 0, res.stderr
     lines = [json.loads(line) for line in events.read_text().splitlines()]
@@ -165,7 +165,7 @@ def test_json_escape_and_events(tmp_path: Path) -> None:
 
 
 def test_no_events_without_events_file() -> None:
-    res = bash("emit_event bootstrap.stage git started; echo done", env={"POKUS_EVENTS_FILE": ""})
+    res = bash("emit_event bootstrap.stage git started; echo done", env={"PINKA_EVENTS_FILE": ""})
     assert res.stdout.strip() == "done"
 
 
@@ -423,7 +423,7 @@ def test_planned_mok_enrollment_needs_the_password_first(tmp_path: Path) -> None
     other = profile(tmp_path, "ubuntu2404-baremetal-no-gpu", "other.json")
     script = """
     profile_tool() {
-      PYTHONPATH="$INFRA_DIR/preflight" pokus_python -m pokus_preflight.profile_tool "$@"
+      PYTHONPATH="$INFRA_DIR/preflight" pinka_python -m pinka_preflight.profile_tool "$@"
     }
     rc=0; require_mok_password "$1" || rc=$?; printf '\n%s|%s' "$rc" "${#MOK_PASSWORD}"
     """
@@ -534,7 +534,7 @@ OPT_MACHINE=lab1 OPT_TAGS=base,ssh OPT_SKIP_TAGS='' OPT_ACCEPT_DEGRADED=false
 OPT_FORCE_UNSUPPORTED=true OPT_ALLOW_DIRTY=true OPT_RESTORE=true
 GIT_COMMIT=0123456789abcdef0123456789abcdef01234567
 GIT_INFRA_TREE=fedcba9876543210fedcba9876543210fedcba98
-GIT_INFRA_DIRTY=true STARTED_AT=2026-10-05T09:00:00Z LOG_FILE='/var/log/pokus-bootstrap/x "y".log'
+GIT_INFRA_DIRTY=true STARTED_AT=2026-10-05T09:00:00Z LOG_FILE='/var/log/pinka-bootstrap/x "y".log'
 LAST_STAGE=doctor GRANTED_OVERRIDES=(accept_degraded)
 """
 
@@ -556,7 +556,7 @@ def test_state_json(tmp_path: Path) -> None:
     assert state["result"] == "doctor_warnings"
     assert state["exit_code"] == 1
     assert state["signal"] is None
-    assert state["log_file"] == '/var/log/pokus-bootstrap/x "y".log'
+    assert state["log_file"] == '/var/log/pinka-bootstrap/x "y".log'
     assert (state["started_at"], state["finished_at"]) == (
         "2026-10-05T09:00:00Z",
         "2026-10-05T10:00:00Z",
@@ -591,10 +591,10 @@ def test_extra_vars_json(tmp_path: Path) -> None:
     res = bash(STATE_SETUP + f"OPT_CHECK=true OPT_ALLOW_REBOOT=false\nextra_vars_json {q(path)}")
     data = json.loads(res.stdout)
     assert data["host_profile"] == json.loads(path.read_text())
-    assert data["pokus_bootstrap"]["check"] is True
-    assert data["pokus_bootstrap"]["allow_reboot"] is False
-    assert data["pokus_bootstrap"]["machine"] == "lab1"
-    assert data["pokus_bootstrap"]["signal_file"] == "/run/pokus/bootstrap-signal.json"
+    assert data["pinka_bootstrap"]["check"] is True
+    assert data["pinka_bootstrap"]["allow_reboot"] is False
+    assert data["pinka_bootstrap"]["machine"] == "lab1"
+    assert data["pinka_bootstrap"]["signal_file"] == "/run/pinka/bootstrap-signal.json"
 
 
 def test_vault_args(tmp_path: Path) -> None:
@@ -609,7 +609,7 @@ def test_vault_args(tmp_path: Path) -> None:
     )
     lines = res.stdout.splitlines()
     assert lines[0] == f"--vault-password-file {pass_file}"
-    # /etc/pokus/secrets/vault-pass does not exist on a development machine
+    # /etc/pinka/secrets/vault-pass does not exist on a development machine
     assert lines[1:] == ["--ask-vault-pass", "no-password"]
 
 
@@ -658,7 +658,7 @@ def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
     code, out, calls = frontend(tmp_path, "")
     assert code == 0, out
     assert "machine=lab1 restore=false" in out
-    assert "venv /opt/pokus/installer-venv" in calls
+    assert "venv /opt/pinka/installer-venv" in calls
     assert "installer apply --answers" in calls and "--machine lab1" in calls
 
 
@@ -724,7 +724,7 @@ def test_unsuitable_terminals_are_refused() -> None:
 
 def test_verify_sha256(tmp_path: Path) -> None:
     target = tmp_path / "file"
-    target.write_text("pokus\n")
+    target.write_text("pinka\n")
     wrong = "0" * 64
     digest = subprocess.run(
         ["sha256sum", str(target)], capture_output=True, text=True, check=True

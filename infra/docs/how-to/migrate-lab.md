@@ -30,9 +30,9 @@ host_vars file, the researchers' keys and the encrypted vault.
 
     <!-- qa:run env=E2 -->
     ```bash
-    sudo pokus-lab stop --timeout 1800
-    sudo pokus-lab backup now
-    sudo pokus-lab backup list
+    sudo pinka stop --timeout 1800
+    sudo pinka backup now
+    sudo pinka backup list
     ```
 
     The last line of the list is the new snapshot; note its ID.
@@ -59,8 +59,8 @@ different name and the researchers' connections break.
 
     <!-- qa:skip reason="needs the repository address" -->
     ```bash
-    git clone <repository-url> ~/pokus
-    cd ~/pokus/infra
+    git clone <repository-url> ~/pinka
+    cd ~/pinka/infra
     git checkout machine/<machine>
     ```
 
@@ -88,13 +88,13 @@ different name and the researchers' connections break.
 
 The signing key never leaves a machine: the new machine generates its own key
 and publishes its public key as
-`/srv/pokus/shared/signing-keys/<machine>-<date>.pub`. The old machine's
+`/srv/pinka/shared/signing-keys/<machine>-<date>.pub`. The old machine's
 public keys come back with the research space, so manifests signed on the
 old machine stay verifiable. Check that both are there:
 
 <!-- qa:run env=E2 -->
 ```bash
-ls -l /srv/pokus/shared/signing-keys/
+ls -l /srv/pinka/shared/signing-keys/
 ```
 
 Tell whoever verifies your manifests (for example the QA team) that the new
@@ -112,12 +112,12 @@ You should now have the lab running on the new machine with the old data:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo pokus-lab doctor
-sudo pokus-lab fingerprint
+sudo pinka doctor
+sudo pinka fingerprint
 ```
 
 Doctor exits with 0, or 1 when only warnings remain. The fingerprint differs
 from the old machine's, because the hardware and the host changed: runs from
 before and after the migration are not comparable without saying so. A
 researcher can log in over the tailnet with the old name, and their files in
-`/srv/pokus` are back. Then wipe or reuse the old machine.
+`/srv/pinka` are back. Then wipe or reuse the old machine.

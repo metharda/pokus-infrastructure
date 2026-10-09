@@ -11,7 +11,7 @@ description: Trust zones, components and data flows of a Pokus lab host, and its
 
 A Pokus lab is one Linux host that runs everything: the shared lab services,
 the research platform, local inference, and the sandbox in which benchmark
-targets are broken and repaired. This page describes the host as pokus-infra
+targets are broken and repaired. This page describes the host as Pokus Infrastructure (pinka)
 builds it. The platform's services are described in the platform's own
 architecture page; the interface between the two is the
 [integration contract](contracts.md).
@@ -28,13 +28,13 @@ convention.
 | Lab host | the operating system, Docker, Incus, systemd units | root only; researchers reach it over SSH on `tailscale0` |
 | Control plane | platform services as separate service accounts, PostgreSQL, OPA, the observability stack, vLLM | Unix sockets with group, ACL and peer-credential checks; services listen on `127.0.0.1` |
 | Benchmark sandbox | Incus instances of a run, one bridge `r-<short>` per run | Incus projects and ACLs; no uplink, no route out of the run network |
-| Personal sandboxes | researchers' own Incus projects and `/srv/pokus/users/<name>/` | Incus's restricted per-user projects; directory mode 0700 |
+| Personal sandboxes | researchers' own Incus projects and `/srv/pinka/users/<name>/` | Incus's restricted per-user projects; directory mode 0700 |
 
 `<short>` and `<name>` are placeholders: the run network suffix chosen by the
 platform, and a researcher's account name.
 
 The agent under test is the least trusted principal on the host. Its account,
-`pokus-agent`, can call exactly two sockets (the LLM gateway and the tool
+`potka-agent`, can call exactly two sockets (the LLM gateway and the tool
 executor, plus agent-session endpoints of the orchestrator) and has no access
 to Docker, Incus, the catalog, artifacts, secrets or the database. Everything
 the agent does to a target goes through the executor, which reaches Incus
@@ -98,8 +98,8 @@ that uses vLLM on a paired `inference` node over the tailnet with mutual TLS;
   orchestrator switches vLLM's deployment through a socket-activated root
   helper ([How to add a model](how-to/add-a-model.md)).
 - **Database.** PostgreSQL has no network listener: the platform's services
-  and the metrics exporter use the socket directory `/run/pokus/postgres/`,
-  researchers and Grafana the reader directory `/run/pokus/postgres-reader/`
+  and the metrics exporter use the socket directory `/run/pinka/postgres/`,
+  researchers and Grafana the reader directory `/run/pinka/postgres-reader/`
   ([ADR-0010](adr/0010-postgres-socket-only.md)).
 - **Researchers.** Researchers log in over SSH on `tailscale0` and use local
   port forwards for Grafana and the gateway's ad-hoc endpoint; nothing is
@@ -107,9 +107,9 @@ that uses vLLM on a paired `inference` node over the tailnet with mutual TLS;
 
 ## Directory layout
 
-The `layout` role creates these directories from `pokus_layout` and
-`pokus_system_layout` in `ansible/group_vars/all/main.yml`; the table below is
-generated from the same data. `/srv/pokus` is the default of `pokus_root`. The
+The `layout` role creates these directories from `pinka_layout` and
+`pinka_system_layout` in `ansible/group_vars/all/main.yml`; the table below is
+generated from the same data. `/srv/pinka` is the default of `pinka_root`. The
 accounts and groups that own them are listed in
 [Accounts and groups](reference/accounts.md).
 
@@ -118,27 +118,27 @@ accounts and groups that own them are listed in
 
 | Path | Owner:group | Mode | Default ACL | Notes |
 | --- | --- | --- | --- | --- |
-| `/etc/pokus/` | root:root | 0755 | — | host profile, bootstrap state, rendered non-secret config |
-| `/etc/pokus/secrets/` | root:pokus-svc | 0750 | — | rendered secrets (files 0640 or per-service 0600) |
-| `/var/lib/pokus/` | root:root | 0755 | — | service homes and lab state |
-| `/srv/pokus/` | root:pokus | 2775 | — | research space root |
-| `/srv/pokus/deploy/` | root:root | 0755 | — | read-only deployments of platform and catalog tags |
-| `/srv/pokus/catalog/` | root:pokus-gt | 0750 | — | scenario catalog including ground truth |
-| `/srv/pokus/models/` | pokus-orch:pokus | 0755 | — | model weights, 0444 after verification |
-| `/srv/pokus/datasets/` | root:pokus | 2775 | group:pokus:rwX | shared datasets |
-| `/srv/pokus/artifacts/` | pokus-orch:pokus | 0750 | — | content-addressed, write-once 0440 |
-| `/srv/pokus/reports/` | pokus-eval:pokus | 2775 | — | evaluation reports |
-| `/srv/pokus/images/` | root:pokus-admin | 0750 | — | exported golden image tarballs with sha256 |
-| `/srv/pokus/shared/` | root:pokus | 2770 | group:pokus:rwX | shared files |
-| `/srv/pokus/users/` | root:root | 0755 | — | parent of the per-researcher directories |
-| /srv/pokus/users/&lt;name&gt;/ | &lt;name&gt;:&lt;name&gt; | 0700 | — | one per researcher |
-| `/srv/pokus/services/` | root:pokus-admin | 0750 | — | rendered compose and config, never plaintext secrets readable by all |
-| `/srv/pokus/state/` | root:root | 0755 | — | parent of state/&lt;service&gt;/ (container UID, 0700), created by the service roles |
-| `/srv/pokus/backups/` | root:root | 0700 | — | local backup staging only |
+| `/etc/pinka/` | root:root | 0755 | — | host profile, bootstrap state, rendered non-secret config |
+| `/etc/pinka/secrets/` | root:potka-svc | 0750 | — | rendered secrets (files 0640 or per-service 0600) |
+| `/var/lib/pinka/` | root:root | 0755 | — | service homes and lab state |
+| `/srv/pinka/` | root:pinka | 2775 | — | research space root |
+| `/srv/pinka/deploy/` | root:root | 0755 | — | read-only deployments of platform and catalog tags |
+| `/srv/pinka/catalog/` | root:pinka-gt | 0750 | — | scenario catalog including ground truth |
+| `/srv/pinka/models/` | potka-orch:pinka | 0755 | — | model weights, 0444 after verification |
+| `/srv/pinka/datasets/` | root:pinka | 2775 | group:pinka:rwX | shared datasets |
+| `/srv/pinka/artifacts/` | potka-orch:pinka | 0750 | — | content-addressed, write-once 0440 |
+| `/srv/pinka/reports/` | potka-eval:pinka | 2775 | — | evaluation reports |
+| `/srv/pinka/images/` | root:pinka-admin | 0750 | — | exported golden image tarballs with sha256 |
+| `/srv/pinka/shared/` | root:pinka | 2770 | group:pinka:rwX | shared files |
+| `/srv/pinka/users/` | root:root | 0755 | — | parent of the per-researcher directories |
+| /srv/pinka/users/&lt;name&gt;/ | &lt;name&gt;:&lt;name&gt; | 0700 | — | one per researcher |
+| `/srv/pinka/services/` | root:pinka-admin | 0750 | — | rendered compose and config, never plaintext secrets readable by all |
+| `/srv/pinka/state/` | root:root | 0755 | — | parent of state/&lt;service&gt;/ (container UID, 0700), created by the service roles |
+| `/srv/pinka/backups/` | root:root | 0700 | — | local backup staging only |
 <!-- generated:layout:end -->
 
 Directories inside `state/` are created by the service roles, one per
 service, owned by the user ID of that service's container with mode 0700.
-Runtime sockets live in `/run/pokus/`, created by systemd's
+Runtime sockets live in `/run/pinka/`, created by systemd's
 `RuntimeDirectory=`; the socket table is part of the
 [integration contract](contracts.md#sockets).

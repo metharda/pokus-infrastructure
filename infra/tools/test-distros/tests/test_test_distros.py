@@ -10,11 +10,11 @@ from typing import Any
 
 import pytest
 import yaml
-from pokus_test_distros import checkmode, cli, harness, results, targets
-from pokus_test_distros.incus import Incus, Result
+from pinka_test_distros import checkmode, cli, harness, results, targets
+from pinka_test_distros.incus import Incus, Result
 
-from pokus_preflight.detect.os_release import OsRelease
-from pokus_preflight.matrix import load_matrix, match_os
+from pinka_preflight.detect.os_release import OsRelease
+from pinka_preflight.matrix import load_matrix, match_os
 
 INFRA = Path(__file__).resolve().parents[3]
 AUTHKEY = "placeholder-auth-key-for-tests"
@@ -139,7 +139,7 @@ class FakeIncus:
         return 0, ""
 
     def pull(self, remote: str, local: Path) -> tuple[int, str]:
-        if remote == "etc/pokus/bootstrap-state.json":
+        if remote == "etc/pinka/bootstrap-state.json":
             local.write_text(
                 json.dumps({"log_file": f"/var/log/run-{self.runs}.log", "result": "ok"})
             )
@@ -147,7 +147,7 @@ class FakeIncus:
             local.write_text(
                 GOOD_LOG if remote.endswith("1.log") else str(self.behaviour["second_log"])
             )
-        elif remote == "etc/pokus/host-profile.json":
+        elif remote == "etc/pinka/host-profile.json":
             local.write_text(json.dumps({"firewall": {"backend": self.behaviour["backend"]}}))
         else:
             return 1, ""
@@ -175,11 +175,11 @@ def make_test(
     tmp_path: Path, target_id: str, keep: str = "failed", **behaviour: Any
 ) -> tuple[harness.Test, FakeIncus]:
     fake = FakeIncus(tmp_path, **behaviour)
-    incus = Incus(fake, "pokus-test-distros", sleep=lambda _s: None)
-    tar = tmp_path / "pokus.tar"
+    incus = Incus(fake, "pinka-test-distros", sleep=lambda _s: None)
+    tar = tmp_path / "pinka.tar"
     tar.write_text("tar")
     secrets_env = tmp_path / "secrets.env"
-    secrets_env.write_text(f"POKUS_SECRET_TAILSCALE_AUTHKEY={AUTHKEY}\n")
+    secrets_env.write_text(f"PINKA_SECRET_TAILSCALE_AUTHKEY={AUTHKEY}\n")
     times = iter(
         [dt.datetime(2026, 1, 1, 10, tzinfo=dt.UTC), dt.datetime(2026, 1, 1, 11, 30, tzinfo=dt.UTC)]
     )
@@ -217,15 +217,15 @@ def test_a_passing_test(tmp_path: Path) -> None:
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
     first, second = [s for s in scripts if "bootstrap.sh" in s]
-    assert "--answers /root/pokus/infra/installer-answers/ptd-debian-13-abcdef.yml" in first
+    assert "--answers /root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml" in first
     assert "--accept-degraded" in first and "--answers" not in second
-    assert any(s == "pokus-lab backup now" for s in scripts)
+    assert any(s == "pinka backup now" for s in scripts)
     # Secrets travel in 0600 files, never on a command line.
     assert all(AUTHKEY not in " ".join(c) for c in fake.calls)
     assert fake.pushed["root/ci-secrets.env"][1] == "0600"
     assert fake.pushed["root/ci-vault-pass"][1] == "0600"
     answers = yaml.safe_load(
-        fake.pushed["root/pokus/infra/installer-answers/ptd-debian-13-abcdef.yml"][0]
+        fake.pushed["root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml"][0]
     )
     assert answers["machine"]["name"] == "ptd-debian-13-abcdef"
     # Deleted after leaving the tailnet.
@@ -303,7 +303,7 @@ def test_results_file(tmp_path: Path) -> None:
     results.update(path, [record("a", {**passed, "smoke": "failed"})], ["a", "b"])
     loaded = results.load(path)
     assert [r["target"] for r in loaded] == ["a", "b"]
-    assert path.read_text().startswith("# Managed by pokus-infra (tests/distros/results.yml).")
+    assert path.read_text().startswith("# Managed by pinka (tests/distros/results.yml).")
     assert results.status(loaded[0]) == "failed: smoke"
     assert results.status(loaded[1]) == "passed"
     assert results.status(None) == "not tested"
@@ -335,7 +335,7 @@ def test_cli_list(capsys: pytest.CaptureFixture[str]) -> None:
 
 def test_lab_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     active = lambda argv, timeout=None: Result(tuple(argv), 0, "", "")  # noqa: E731
-    assert cli.lab_running(active) is Path("/etc/pokus/lab.json").exists()
+    assert cli.lab_running(active) is Path("/etc/pinka/lab.json").exists()
 
 
 # --- the CI fast lane -----------------------------------------------------------------------------
@@ -378,7 +378,7 @@ class FakeDocker:
             out = next(self.boot)
         elif args[1] == "exec" and args[3] == "sh":
             out = "/usr/bin/python3\n"
-        elif args[1] == "exec" and "pokus_preflight" in args:
+        elif args[1] == "exec" and "pinka_preflight" in args:
             if self.preflight_crash:
                 return Result(args, 1, "", self.preflight_crash)
             rc, out = 20, json.dumps(self.profile)
@@ -403,16 +403,16 @@ def test_check_mode_run(tmp_path: Path) -> None:
     # The trees the play reads on the target go to the same paths as on the controller,
     # outside /tmp, a tmpfs that docker cp cannot write into.
     mkdir = next(i for i, c in enumerate(fake.calls) if c[1:2] == ("exec",) and c[3] == "mkdir")
-    assert {"/opt/pokus-ci", str(INFRA / "tools")} <= set(fake.calls[mkdir][4:])
+    assert {"/opt/pinka-ci", str(INFRA / "tools")} <= set(fake.calls[mkdir][4:])
     copies = [c[-1] for c in fake.calls if c[:2] == ("docker", "cp")]
     assert copies == [
-        f"pokus-ci-debian-13:{INFRA / 'preflight'}",
-        f"pokus-ci-debian-13:{INFRA / 'tools' / 'pokus-lab'}",
-        "pokus-ci-debian-13:/opt/pokus-ci/host-profile.json",
+        f"pinka-ci-debian-13:{INFRA / 'preflight'}",
+        f"pinka-ci-debian-13:{INFRA / 'tools' / 'pinka-lab'}",
+        "pinka-ci-debian-13:/opt/pinka-ci/host-profile.json",
     ]
     assert verbs.index("cp") > mkdir
-    preflight = next(c for c in fake.calls if "pokus_preflight" in c)
-    assert preflight[preflight.index("--srv-path") + 1] == "/srv/pokus" and "--offline" in preflight
+    preflight = next(c for c in fake.calls if "pinka_preflight" in c)
+    assert preflight[preflight.index("--srv-path") + 1] == "/srv/pinka" and "--offline" in preflight
     assert preflight[preflight.index("--nvidia-driver") + 1] == "auto"  # example-machine's
     stored = json.loads((tmp_path / "debian_13-host-profile.json").read_text())
     assert stored == PROFILE  # preflight_gate compares its own run with this file
@@ -421,21 +421,21 @@ def test_check_mode_run(tmp_path: Path) -> None:
     assert profile["provider"] == "baremetal"  # treated like bare metal
     assert profile["overrides"]["force_unsupported"] is True  # a container is unsupported
     assert variables["ansible_python_interpreter"] == "/usr/bin/python3"
-    assert "pokus_python" not in variables  # bootstrap's CPython path, linked to the container's
+    assert "pinka_python" not in variables  # bootstrap's CPython path, linked to the container's
     link = next(c for c in fake.calls if c[1:2] == ("exec",) and c[3] == "ln")
-    assert link[-2:] == ("/usr/bin/python3", "/opt/pokus/python/bin/python3")
+    assert link[-2:] == ("/usr/bin/python3", "/opt/pinka/python/bin/python3")
     assert variables["machine"] == "example-machine"
-    bootstrap = variables["pokus_bootstrap"]
-    assert bootstrap["profile_path"] == "/opt/pokus-ci/host-profile.json"
+    bootstrap = variables["pinka_bootstrap"]
+    assert bootstrap["profile_path"] == "/opt/pinka-ci/host-profile.json"
     assert bootstrap["offline"] is True and bootstrap["refresh_profile"] is False
     vault = json.loads((tmp_path / "debian_13-vault.json").read_text())
-    assert vault["vault_restic_repository"] == "/var/backups/pokus-restic"
+    assert vault["vault_restic_repository"] == "/var/backups/pinka-restic"
     assert set(vault) == set(yaml.safe_load(checkmode.VAULT_EXAMPLE.read_text()))
     inventory = (tmp_path / "debian_13-inventory.ini").read_text()
     assert inventory.split() == [
         "localhost",
         "ansible_connection=community.docker.docker",
-        "ansible_host=pokus-ci-debian-13",
+        "ansible_host=pinka-ci-debian-13",
     ]
     assert play[play.index("--inventory") + 1] == str(tmp_path / "debian_13-inventory.ini")
     assert "--skip-tags" not in play  # the required run skips nothing
@@ -537,9 +537,9 @@ def test_check_mode_failures(tmp_path: Path) -> None:
     assert checkmode.main("debian_13", broken, tmp_path, write=printed.append, sleep=NO_SLEEP) == 2
     assert "no host profile" in printed[-1]
     assert broken.calls[-1][:2] == ("docker", "rm")  # removed although it failed
-    crash = FakeDocker(preflight_crash="No module named pokus_preflight")
+    crash = FakeDocker(preflight_crash="No module named pinka_preflight")
     assert checkmode.main("debian_13", crash, tmp_path, write=printed.append, sleep=NO_SLEEP) == 2
-    assert "exit status 1" in printed[-1] and "No module named pokus_preflight" in printed[-1]
+    assert "exit status 1" in printed[-1] and "No module named pinka_preflight" in printed[-1]
     assert (
         checkmode.main(
             "debian_13", FakeDocker(ansible_rc=2), tmp_path, write=printed.append, sleep=NO_SLEEP

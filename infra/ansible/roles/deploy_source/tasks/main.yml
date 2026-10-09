@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/deploy_source/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/deploy_source/tasks/main.yml). Local changes will be overwritten.
 #
-# The root-only bare mirror of the Pokus repository (resolution B2, owner
+# The root-only bare mirror of the pokus-platform repository (resolution B2, owner
 # answers E3 and E16): the deployment helper, the SSH deploy key and the
 # pinned host keys (SSH sources), the allowed signers of signed tags, and a
 # fetch of every branch and tag. Included by the catalog and platform roles,
@@ -9,15 +9,15 @@
 - name: Check the source repository
   ansible.builtin.assert:
     that:
-      - pokus_source_repo | length > 0
+      - pinka_source_repo | length > 0
       - deploy_source_transport != 'invalid'
       - deploy_source_transport != 'ssh' or deploy_source_known_host_lines | length > 0
-      - not require_signed_tags or pokus_allowed_signers | length > 0
+      - not require_signed_tags or pinka_allowed_signers | length > 0
     fail_msg: >-
-      pokus_source_repo must be an SSH URL (git@host:path, ssh://...) or an anonymous
+      pinka_source_repo must be an SSH URL (git@host:path, ssh://...) or an anonymous
       https:// URL without credentials (owner answer E3). An SSH source needs pinned host
       keys: GitHub's come from versions.lock.yml once verified, other hosts need
-      pokus_source_known_hosts. require_signed_tags needs pokus_allowed_signers.
+      pinka_source_known_hosts. require_signed_tags needs pinka_allowed_signers.
     quiet: true
 
 - name: Create the mirror directory (root only)
@@ -31,7 +31,7 @@
 
 - name: Install the deployment helper
   ansible.builtin.copy:
-    src: pokus_deploy_source.py
+    src: pinka_deploy_source.py
     dest: "{{ deploy_source_helper }}"
     owner: root
     group: root
@@ -41,7 +41,7 @@
   community.crypto.openssh_keypair:
     path: "{{ deploy_source_key }}"
     type: ed25519
-    comment: "pokus-deploy@{{ machine_name }}"
+    comment: "pinka-deploy@{{ machine_name }}"
     owner: root
     group: root
     mode: "0600"
@@ -53,7 +53,7 @@
 - name: Show the deploy key (add it to the Git host as a read-only deploy key)
   ansible.builtin.debug:
     msg: >-
-      Deploy key of this host for {{ pokus_source_repo }} (read-only):
+      Deploy key of this host for {{ pinka_source_repo }} (read-only):
       {{ deploy_source_keypair.public_key | default('') }}
   when: deploy_source_transport == 'ssh'
 
@@ -69,7 +69,7 @@
 - name: Write the allowed signers of signed tags
   ansible.builtin.copy:
     dest: "{{ deploy_source_allowed_signers }}"
-    content: "{{ (pokus_allowed_signers | join('\n') ~ '\n') if pokus_allowed_signers else '' }}"
+    content: "{{ (pinka_allowed_signers | join('\n') ~ '\n') if pinka_allowed_signers else '' }}"
     owner: root
     group: root
     mode: "0644"
@@ -77,7 +77,7 @@
 - name: Fetch the source repository into the mirror
   ansible.builtin.command:
     argv: >-
-      {{ [deploy_source_helper, 'fetch', '--mirror', deploy_source_mirror, '--repo', pokus_source_repo]
+      {{ [deploy_source_helper, 'fetch', '--mirror', deploy_source_mirror, '--repo', pinka_source_repo]
          + (['--ssh-key', deploy_source_key, '--known-hosts', deploy_source_known_hosts]
             if deploy_source_transport == 'ssh' else []) }}
   register: deploy_source_fetch

@@ -1,13 +1,13 @@
-# Managed by pokus-infra (ansible/roles/platform_facts/meta/argument_specs.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform_facts/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
     short_description: Derive the platform facts from the host profile.
     description:
-      - Sets pokus_family, pokus_distro, pokus_release, pokus_parent_release, pokus_release_key,
-        pokus_release_identity, pokus_source_group, pokus_release_model, pokus_pkg_manager,
-        pokus_service_names, pokus_initramfs_tool, pokus_version_hold_method, pokus_provider,
-        pokus_mac, pokus_firewall_backend, pokus_repositories, pokus_component_sources and
-        pokus_community_repos_allowed.
+      - Sets pinka_family, pinka_distro, pinka_release, pinka_parent_release, pinka_release_key,
+        pinka_release_identity, pinka_source_group, pinka_release_model, pinka_pkg_manager,
+        pinka_service_names, pinka_initramfs_tool, pinka_version_hold_method, pinka_provider,
+        pinka_mac, pinka_firewall_backend, pinka_repositories, pinka_component_sources and
+        pinka_community_repos_allowed.
       - The only role that interprets the distribution (BUILD_PROMPT §19.1).
     options:
       host_profile:

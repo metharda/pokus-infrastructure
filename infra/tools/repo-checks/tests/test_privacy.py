@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from pokus_repo_checks import privacy
+from pinka_repo_checks import privacy
 
 PLAIN = Path("docs/page.md")
 
@@ -37,7 +37,7 @@ def rules(text: str, path: Path = PLAIN, denylist: tuple[str, ...] = ()) -> list
         "researcher1@example.com",
         "ops@lab.example.org",
         "x@host.test",
-        "git clone git@github.com:example-org/pokus.git",
+        "git clone git@github.com:example-org/pokus-platform.git",
         "PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com",
         "uses: actions/checkout@v4",
         "npm install cspell@10.3.6",

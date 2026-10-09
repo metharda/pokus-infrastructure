@@ -1,4 +1,4 @@
-"""Tests for the pokus_incus_object module against an in-memory Incus API."""
+"""Tests for the pinka_incus_object module against an in-memory Incus API."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-import pokus_incus_object as mod
+import pinka_incus_object as mod
 
 DEFAULTS: dict[str, Any] = {
     "name": None,
@@ -82,7 +82,7 @@ class FakeIncus:
 
 def self_signed_pem() -> str:
     key = ec.generate_private_key(ec.SECP384R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "pokus-test")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "pinka-test")])
     now = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
     cert = (
         x509.CertificateBuilder()
@@ -118,16 +118,16 @@ def test_update_keeps_unmanaged_keys() -> None:
     api = FakeIncus()
     mod.converge(
         api,
-        params(kind="network", name="pokus-build0", type="bridge", config={"ipv4.nat": True}),
+        params(kind="network", name="pinka-build0", type="bridge", config={"ipv4.nat": True}),
         check_mode=False,
     )
     result = mod.converge(
         api,
-        params(kind="network", name="pokus-build0", config={"ipv4.nat": False}),
+        params(kind="network", name="pinka-build0", config={"ipv4.nat": False}),
         check_mode=False,
     )
     assert result["action"] == "update"
-    stored = api.objects[("/1.0/networks", "default")]["pokus-build0"]
+    stored = api.objects[("/1.0/networks", "default")]["pinka-build0"]
     assert stored["config"] == {"ipv4.nat": "false", "volatile.generated": "x"}
     assert stored["type"] == "bridge"
 
@@ -148,7 +148,7 @@ def test_create_only_never_updates() -> None:
 
 def test_profiles_are_project_scoped_and_devices_managed_whole() -> None:
     api = FakeIncus()
-    devices = {"root": {"type": "disk", "path": "/", "pool": "pokus-targets", "size": "8GiB"}}
+    devices = {"root": {"type": "disk", "path": "/", "pool": "pinka-targets", "size": "8GiB"}}
     p = params(
         kind="profile",
         name="target-container",
@@ -176,9 +176,9 @@ def test_acl_rules_ignore_empty_fields() -> None:
         "destination_port": 4317,
         "protocol": "tcp",
     }
-    p = params(kind="network_acl", name="pokus-run-default", egress=[rule], ingress=[])
+    p = params(kind="network_acl", name="pinka-run-default", egress=[rule], ingress=[])
     mod.converge(api, p, check_mode=False)
-    stored = api.objects[("/1.0/network-acls", "default")]["pokus-run-default"]
+    stored = api.objects[("/1.0/network-acls", "default")]["pinka-run-default"]
     # The API returns every rule field, unset ones as empty strings.
     stored["egress"][0].update({"source": "", "icmp_type": "", "description": ""})
     assert mod.converge(api, p, check_mode=False)["changed"] is False
@@ -212,7 +212,7 @@ def test_certificates_by_fingerprint() -> None:
     api = FakeIncus()
     p = params(
         kind="certificate",
-        name="pokus-orch",
+        name="potka-orch",
         certificate=pem,
         restricted=True,
         projects=["bench", "build"],
@@ -230,7 +230,7 @@ def test_certificates_by_fingerprint() -> None:
     assert api.objects[("/1.0/certificates", "default")][fp]["projects"] == ["bench"]
     metrics = mod.converge(
         api,
-        params(kind="certificate", name="pokus-metrics", certificate=pem, type="metrics"),
+        params(kind="certificate", name="pinka-metrics", certificate=pem, type="metrics"),
         check_mode=True,
     )
     assert metrics["diff"]["after"]["type"] == "metrics"
@@ -244,11 +244,11 @@ def test_values_are_strings() -> None:
     }
     body = mod.create_body(
         "storage_pool",
-        params(kind="storage_pool", name="pokus-targets", driver="btrfs"),
+        params(kind="storage_pool", name="pinka-targets", driver="btrfs"),
         {"config": {"size": "300GiB"}},
     )
     assert json.loads(json.dumps(body)) == {
         "config": {"size": "300GiB"},
-        "name": "pokus-targets",
+        "name": "pinka-targets",
         "driver": "btrfs",
     }

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/firewall/tasks/ufw.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/firewall/tasks/ufw.yml). Local changes will be overwritten.
 #
 # ufw rules only; ufw's default policies and other rules are left alone.
 # Incus bridges follow Incus 6.0.6 doc/howto/network_bridge_firewalld.md: run
@@ -14,7 +14,7 @@
     interface: "{{ firewall_tailnet_interface }}"
     port: "{{ item | string }}"
     proto: tcp
-    comment: pokus-infra
+    comment: pinka
   loop: "{{ firewall_tailnet_tcp_ports }}"
 
 - name: Allow SSH on the extra interfaces
@@ -24,7 +24,7 @@
     interface: "{{ item }}"
     port: "22"
     proto: tcp
-    comment: pokus-infra
+    comment: pinka
   loop: "{{ ssh_extra_allowed_interfaces }}"
 
 - name: Allow DHCP and DNS from the run networks to Incus's dnsmasq
@@ -34,7 +34,7 @@
     interface: "{{ firewall_run_bridge_pattern | replace('*', '+') }}"
     port: "{{ item.port }}"
     proto: "{{ item.proto }}"
-    comment: pokus-infra
+    comment: pinka
   loop:
     - {port: "67", proto: udp}
     - {port: "547", proto: udp}
@@ -46,19 +46,19 @@
     rule: allow
     direction: in
     interface: "{{ firewall_run_bridge_pattern | replace('*', '+') }}"
-    to_ip: "{{ pokus_vm_otlp.address }}"
+    to_ip: "{{ pinka_vm_otlp.address }}"
     to_port: "{{ item | string }}"
     proto: tcp
-    comment: pokus-infra
+    comment: pinka
     delete: "{{ firewall_vm_otlp_ports | length == 0 }}"
-  loop: "{{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http] }}"
+  loop: "{{ [pinka_ports.otlp_grpc, pinka_ports.otlp_http] }}"
 
 - name: Allow traffic from the bridges with an uplink to the host
   community.general.ufw:
     rule: allow
     direction: in
     interface: "{{ item | replace('*', '+') }}"
-    comment: pokus-infra
+    comment: pinka
   loop: "{{ firewall_uplink_bridge_patterns }}"
 
 - name: Allow forwarding for the bridges with an uplink
@@ -67,5 +67,5 @@
     route: true
     direction: "{{ item.1 }}"
     interface: "{{ item.0 | replace('*', '+') }}"
-    comment: pokus-infra
+    comment: pinka
   loop: "{{ firewall_uplink_bridge_patterns | product(['in', 'out']) | list }}"

@@ -1,4 +1,4 @@
-# Managed by pokus-infra (images/pg-primary/provision.yml). Local changes will be overwritten.
+# Managed by pinka (images/pg-primary/provision.yml). Local changes will be overwritten.
 #
 # PostgreSQL and the application database (BUILD_PROMPT §7.13), on top of `_base`.
 - name: Provision the PostgreSQL blueprint

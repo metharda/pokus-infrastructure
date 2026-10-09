@@ -7,7 +7,7 @@ import tomllib
 
 from ruamel.yaml import YAML
 
-from pokus_installer.paths import INFRA
+from pinka_installer.paths import INFRA
 
 
 def normalize(name: str) -> str:

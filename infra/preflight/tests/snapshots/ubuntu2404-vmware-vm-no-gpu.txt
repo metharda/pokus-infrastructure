@@ -1,4 +1,4 @@
-Pokus preflight: DEGRADED (exit 10)
+pinka preflight: DEGRADED (exit 10)
   tier supported (os supported, arch supported) · release model fixed · provider vm
 
 Environment
@@ -10,7 +10,7 @@ OS and kernel
 Hardware
   CPU x86-64 test CPU: 24 threads (vmx no, svm no)
   memory 32.0 GiB, swap 8.0 GiB
-  disk srv_pokus: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
   disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
 GPU
   none

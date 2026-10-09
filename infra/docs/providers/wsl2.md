@@ -9,7 +9,7 @@ description: What the wsl2 provider configures, how WSL restarts work, the recom
 
 # WSL2 hosts
 
-A WSL2 distribution on a Windows workstation is a supported lab host. Pokus
+A WSL2 distribution on a Windows workstation is a supported lab host. Pokus Infrastructure (pinka)
 treats it as a Linux host that happens to run on Windows: nothing in the lab
 calls Windows programs, and bootstrap never changes anything on the Windows
 side. The `provider_wsl2` role applies when preflight detects WSL2. WSL1 is
@@ -18,7 +18,7 @@ on the Windows side, where `<distro>` is the name `wsl --list` shows.
 
 ## What the provider configures
 
-`/etc/wsl.conf` is managed by Pokus:
+`/etc/wsl.conf` is managed by Pokus Infrastructure:
 
 | Section | Setting | Value | Why |
 | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ change them if you know why.
 
 The GPU is provided by the Windows NVIDIA driver through `/dev/dxg` and the
 libraries in `/usr/lib/wsl/lib`, which the provider adds to the dynamic linker
-path. **Pokus never installs a Linux NVIDIA kernel driver under WSL2**, and
+path. **Pokus Infrastructure never installs a Linux NVIDIA kernel driver under WSL2**, and
 preflight refuses a host where one is installed, because it would replace the
 libraries WSL provides.
 
@@ -58,7 +58,7 @@ command; it continues where it stopped.
 The memory, CPUs and swap of the WSL virtual machine are set in
 `%UserProfile%\.wslconfig` on Windows, which Linux cannot change. The provider
 renders a recommendation for this machine into
-`/srv/pokus/services/contrib/wslconfig.recommended`; copy it to Windows
+`/srv/pinka/services/contrib/wslconfig.recommended`; copy it to Windows
 yourself and restart WSL with `wsl --shutdown`. It contains:
 
 | Setting | Value | Why |
@@ -76,7 +76,7 @@ expectations in host_vars. A template with comments is in
 ## Keeping the distribution running
 
 Windows stops an idle WSL distribution and may let the workstation sleep.
-The optional helper `contrib/windows/pokus-wsl.ps1` is a PowerShell profile
+The optional helper `contrib/windows/pinka-wsl.ps1` is a PowerShell profile
 function that starts a hidden keep-alive process in the distribution and asks
 Windows not to sleep while it runs. It is never executed by bootstrap and
 nothing in the lab depends on it; read the comments in the file before you

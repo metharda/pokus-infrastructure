@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/images/tasks/blueprint.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/images/tasks/blueprint.yml). Local changes will be overwritten.
 #
 # One blueprint (images_name): build it when neither its alias nor its export
 # exist, import it from its export when only the alias is missing, export it
@@ -31,7 +31,7 @@
 
 - name: Decide what the blueprint needs
   ansible.builtin.set_fact:
-    images_image: "{{ images_list.stdout | from_json | pokus_image_by_alias(images_alias) }}"
+    images_image: "{{ images_list.stdout | from_json | pinka_image_by_alias(images_alias) }}"
     images_record: "{{ (images_record_raw.content | b64decode | from_json) if images_record_file.stat.exists else {} }}"
 
 - name: Choose the action for the blueprint
@@ -58,7 +58,7 @@
   ansible.builtin.set_fact:
     images_base_fingerprint: >-
       {{ (images_list.stdout | from_json
-          | pokus_image_by_alias(images_spec.base.blueprint ~ '/' ~ images_specs[images_spec.base.blueprint].version)).fingerprint
+          | pinka_image_by_alias(images_spec.base.blueprint ~ '/' ~ images_specs[images_spec.base.blueprint].version)).fingerprint
          | mandatory('the base blueprint ' ~ images_spec.base.blueprint ~ ' has no image') }}
   when:
     - images_spec.base.blueprint is defined

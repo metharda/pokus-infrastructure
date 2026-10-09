@@ -1,15 +1,15 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/objects.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/objects.yml). Local changes will be overwritten.
 #
-# Converge every Incus object Pokus maintains. The storage pool and the
+# Converge every Incus object pinka maintains. The storage pool and the
 # networks are only created when missing: their addresses and sources are
 # chosen once and never rewritten.
 - name: Configure the Incus server
-  pokus_incus_object:
+  pinka_incus_object:
     kind: server
     config: "{{ incus_server_config }}"
 
 - name: Create the storage pool {{ incus_pool_name }}
-  pokus_incus_object:
+  pinka_incus_object:
     kind: storage_pool
     name: "{{ incus_pool.name }}"
     description: "{{ incus_pool.description }}"
@@ -18,7 +18,7 @@
     update: false
 
 - name: Create the networks
-  pokus_incus_object:
+  pinka_incus_object:
     kind: network
     name: "{{ item.name }}"
     type: "{{ item.type }}"
@@ -30,15 +30,15 @@
     label: "{{ item.name }}"
 
 - name: Converge the run network ACL {{ incus_run_acl }}
-  pokus_incus_object:
+  pinka_incus_object:
     kind: network_acl
     name: "{{ incus_run_acl }}"
-    description: "Pokus run networks: nothing leaves the bridge except DHCP, DNS and the VM telemetry listener"
+    description: "pinka run networks: nothing leaves the bridge except DHCP, DNS and the VM telemetry listener"
     ingress: []
     egress: "{{ incus_run_acl_egress }}"
 
 - name: Converge the projects
-  pokus_incus_object:
+  pinka_incus_object:
     kind: project
     name: "{{ item.name }}"
     description: "{{ item.description }}"
@@ -48,7 +48,7 @@
     label: "{{ item.name }}"
 
 - name: Converge the profiles
-  pokus_incus_object:
+  pinka_incus_object:
     kind: profile
     name: "{{ item.name }}"
     project: "{{ item.project }}"

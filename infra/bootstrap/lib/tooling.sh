@@ -1,26 +1,26 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034 # paths are read by the scripts that source this file
-# Managed by pokus-infra (bootstrap/lib/tooling.sh). Local changes will be overwritten.
+# Managed by pinka (bootstrap/lib/tooling.sh). Local changes will be overwritten.
 #
-# Pinned tooling under /opt/pokus (BUILD_PROMPT §5.2 steps 2, 4-7; §19.3):
+# Pinned tooling under /opt/pinka (BUILD_PROMPT §5.2 steps 2, 4-7; §19.3):
 # uv (checksum-verified), CPython installed by uv, the hash-locked Ansible
 # environment, the pinned Ansible collections, and the check that generated
 # version files match versions.lock.yml. Every function is idempotent.
 
-readonly POKUS_OPT=/opt/pokus
-readonly POKUS_BIN=$POKUS_OPT/bin
-readonly POKUS_PYTHON_DIR=$POKUS_OPT/python
-readonly POKUS_PYTHON=$POKUS_PYTHON_DIR/bin/python3
-readonly ANSIBLE_VENV=$POKUS_OPT/ansible-venv
-readonly ANSIBLE_COLLECTIONS=$POKUS_OPT/ansible-collections
-readonly INSTALLER_VENV=$POKUS_OPT/installer-venv
-readonly UV_CACHE=/var/cache/pokus/uv
+readonly PINKA_OPT=/opt/pinka
+readonly PINKA_BIN=$PINKA_OPT/bin
+readonly PINKA_PYTHON_DIR=$PINKA_OPT/python
+readonly PINKA_PYTHON=$PINKA_PYTHON_DIR/bin/python3
+readonly ANSIBLE_VENV=$PINKA_OPT/ansible-venv
+readonly ANSIBLE_COLLECTIONS=$PINKA_OPT/ansible-collections
+readonly INSTALLER_VENV=$PINKA_OPT/installer-venv
+readonly UV_CACHE=/var/cache/pinka/uv
 readonly SHA256_RE='^[0-9a-f]{64}$'
 
 # uv_env: the environment every uv call runs with (no user or system uv config).
 uv_env() {
-  env UV_NO_CONFIG=1 UV_CACHE_DIR="$UV_CACHE" UV_PYTHON_INSTALL_DIR="$POKUS_PYTHON_DIR" \
-    UV_PYTHON_BIN_DIR="$POKUS_PYTHON_DIR/bin" UV_NO_PROGRESS=1 "$POKUS_BIN/uv" "$@"
+  env UV_NO_CONFIG=1 UV_CACHE_DIR="$UV_CACHE" UV_PYTHON_INSTALL_DIR="$PINKA_PYTHON_DIR" \
+    UV_PYTHON_BIN_DIR="$PINKA_PYTHON_DIR/bin" UV_NO_PROGRESS=1 "$PINKA_BIN/uv" "$@"
 }
 
 # download URL FILE: fetch an https URL with curl or wget.
@@ -54,20 +54,20 @@ verify_sha256() {
 # uv_asset ARCH: print "<url> <sha256>" of the pinned uv archive for ARCH.
 uv_asset() {
   case $1 in
-    x86_64) printf '%s %s\n' "$POKUS_UV_URL_X86_64" "$POKUS_UV_SHA256_X86_64" ;;
-    aarch64) printf '%s %s\n' "$POKUS_UV_URL_AARCH64" "$POKUS_UV_SHA256_AARCH64" ;;
+    x86_64) printf '%s %s\n' "$PINKA_UV_URL_X86_64" "$PINKA_UV_SHA256_X86_64" ;;
+    aarch64) printf '%s %s\n' "$PINKA_UV_URL_AARCH64" "$PINKA_UV_SHA256_AARCH64" ;;
     *) return 1 ;;
   esac
 }
 
-# install_uv: install the pinned uv into /opt/pokus/bin (skips a matching install).
+# install_uv: install the pinned uv into /opt/pinka/bin (skips a matching install).
 install_uv() {
   local arch asset url sha tmp found current=''
-  if [[ -x $POKUS_BIN/uv ]]; then
-    current=$("$POKUS_BIN/uv" --version 2>/dev/null) || current=''
+  if [[ -x $PINKA_BIN/uv ]]; then
+    current=$("$PINKA_BIN/uv" --version 2>/dev/null) || current=''
   fi
-  if [[ $current == "uv $POKUS_UV_VERSION" || $current == "uv $POKUS_UV_VERSION "* ]]; then
-    log_info "uv $POKUS_UV_VERSION already installed"
+  if [[ $current == "uv $PINKA_UV_VERSION" || $current == "uv $PINKA_UV_VERSION "* ]]; then
+    log_info "uv $PINKA_UV_VERSION already installed"
     return 0
   fi
   arch=$(uname -m)
@@ -86,7 +86,7 @@ install_uv() {
     rm -rf -- "$tmp"
     return "$EXIT_TOOLING"
   fi
-  install -d -m 0755 "$POKUS_BIN"
+  install -d -m 0755 "$PINKA_BIN"
   for found in uv uvx; do
     local path
     path=$(find "$tmp" -type f -name "$found" -perm -u+x | head -n 1)
@@ -95,34 +95,34 @@ install_uv() {
       rm -rf -- "$tmp"
       return "$EXIT_TOOLING"
     fi
-    install -m 0755 "$path" "$POKUS_BIN/$found"
+    install -m 0755 "$path" "$PINKA_BIN/$found"
   done
   rm -rf -- "$tmp"
-  log_info "installed uv $POKUS_UV_VERSION to $POKUS_BIN"
+  log_info "installed uv $PINKA_UV_VERSION to $PINKA_BIN"
 }
 
-# install_python: install the pinned CPython with uv and link /opt/pokus/python/bin/python3.
+# install_python: install the pinned CPython with uv and link /opt/pinka/python/bin/python3.
 install_python() {
-  local minor=${POKUS_PYTHON_VERSION%.*}
-  install -d -m 0755 "$POKUS_PYTHON_DIR" "$UV_CACHE"
-  if ! uv_env python install "$POKUS_PYTHON_VERSION"; then
-    log_error "uv could not install CPython $POKUS_PYTHON_VERSION"
+  local minor=${PINKA_PYTHON_VERSION%.*}
+  install -d -m 0755 "$PINKA_PYTHON_DIR" "$UV_CACHE"
+  if ! uv_env python install "$PINKA_PYTHON_VERSION"; then
+    log_error "uv could not install CPython $PINKA_PYTHON_VERSION"
     return "$EXIT_TOOLING"
   fi
-  ln -sfn "python$minor" "$POKUS_PYTHON"
-  if [[ $("$POKUS_PYTHON" --version 2>&1) != "Python $POKUS_PYTHON_VERSION" ]]; then
-    log_error "$POKUS_PYTHON is not Python $POKUS_PYTHON_VERSION"
+  ln -sfn "python$minor" "$PINKA_PYTHON"
+  if [[ $("$PINKA_PYTHON" --version 2>&1) != "Python $PINKA_PYTHON_VERSION" ]]; then
+    log_error "$PINKA_PYTHON is not Python $PINKA_PYTHON_VERSION"
     return "$EXIT_TOOLING"
   fi
-  log_info "CPython $POKUS_PYTHON_VERSION ready at $POKUS_PYTHON"
+  log_info "CPython $PINKA_PYTHON_VERSION ready at $PINKA_PYTHON"
 }
 
 # setup_venv VENV LOCKFILE: create VENV with the pinned CPython and sync it to LOCKFILE.
 setup_venv() {
   local venv=$1 lock=$2
-  if [[ ! -x $venv/bin/python ]] || [[ $("$venv/bin/python" --version 2>&1) != "Python $POKUS_PYTHON_VERSION" ]]; then
+  if [[ ! -x $venv/bin/python ]] || [[ $("$venv/bin/python" --version 2>&1) != "Python $PINKA_PYTHON_VERSION" ]]; then
     rm -rf -- "$venv"
-    if ! uv_env venv --python "$POKUS_PYTHON" "$venv"; then
+    if ! uv_env venv --python "$PINKA_PYTHON" "$venv"; then
       log_error "uv could not create $venv"
       return "$EXIT_TOOLING"
     fi
@@ -165,8 +165,8 @@ lock_digest() {
 check_versions_sync() {
   local lock=$1 versions=$2 digest recorded
   digest=$(lock_digest "$lock")
-  recorded=$(sed -n 's/^pokus_versions_lock_sha256: *"\{0,1\}\([0-9a-f]\{64\}\)"\{0,1\} *$/\1/p' "$versions")
-  if [[ $recorded != "$digest" || $POKUS_LOCK_SHA256 != "$digest" ]]; then
+  recorded=$(sed -n 's/^pinka_versions_lock_sha256: *"\{0,1\}\([0-9a-f]\{64\}\)"\{0,1\} *$/\1/p' "$versions")
+  if [[ $recorded != "$digest" || $PINKA_LOCK_SHA256 != "$digest" ]]; then
     log_error "generated version files are out of date with versions.lock.yml; run 'make generate' and commit"
     return 1
   fi

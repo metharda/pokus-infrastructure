@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/observability/tasks/grafana_users.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/observability/tasks/grafana_users.yml). Local changes will be overwritten.
 #
 # Grafana accounts (BUILD_PROMPT §7.9): the admin password from the vault and
 # one account per researcher with the role of observability_grafana_user_role
@@ -17,7 +17,7 @@
 # GF_SECURITY_ADMIN_PASSWORD__FILE applies only when the database is created.
 - name: Set the Grafana admin password from the vault
   ansible.builtin.command:
-    argv: [docker, exec, --interactive, pokus-grafana, grafana, cli, admin, reset-admin-password, --password-from-stdin]
+    argv: [docker, exec, --interactive, pinka-grafana, grafana, cli, admin, reset-admin-password, --password-from-stdin]
     stdin: "{{ observability_grafana_admin_password }}"
   changed_when: true
   no_log: true

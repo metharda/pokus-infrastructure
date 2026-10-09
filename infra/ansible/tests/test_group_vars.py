@@ -8,33 +8,33 @@ from ansible_testlib import ANSIBLE, GROUP_VARS, INFRA, load_yaml
 
 DATA = load_yaml(GROUP_VARS)
 MODE_RE = re.compile(r"^[0-7]{4}$")
-ROOT_ONLY_SECRETS = {"pokus-gt", "docker", "incus", "incus-admin"}
+ROOT_ONLY_SECRETS = {"pinka-gt", "docker", "incus", "incus-admin"}
 
 
 def test_groups_and_accounts() -> None:
-    groups = {g["name"] for g in DATA["pokus_groups"]}
+    groups = {g["name"] for g in DATA["pinka_groups"]}
     assert groups == {
-        "pokus",
-        "pokus-admin",
-        "pokus-gt",
-        "pokus-svc",
-        "pokus-exec-clients",
-        "pokus-gw-clients",
+        "pinka",
+        "pinka-admin",
+        "pinka-gt",
+        "potka-svc",
+        "potka-exec-clients",
+        "potka-gw-clients",
     }
     accounts = {a["name"]: set(a["groups"]) for a in DATA["service_accounts"]}
     assert set(accounts) == {
-        f"pokus-{s}" for s in ("orch", "agent", "gw", "exec", "inject", "verify", "eval")
+        f"potka-{s}" for s in ("orch", "agent", "gw", "exec", "inject", "verify", "eval")
     }
     for name, member_of in accounts.items():
-        assert "pokus-svc" in member_of, name
+        assert "potka-svc" in member_of, name
         assert member_of <= groups, name
     # Safety invariant 4: the agent gets no catalog, Docker, Incus or database access.
-    assert accounts["pokus-agent"] == {"pokus-svc", "pokus-exec-clients", "pokus-gw-clients"}
-    assert not accounts["pokus-agent"] & ROOT_ONLY_SECRETS
-    assert {n for n, g in accounts.items() if "pokus-gw-clients" in g} == {"pokus-agent"}
-    assert {n for n, g in accounts.items() if "pokus-exec-clients" in g} == {
-        "pokus-agent",
-        "pokus-orch",
+    assert accounts["potka-agent"] == {"potka-svc", "potka-exec-clients", "potka-gw-clients"}
+    assert not accounts["potka-agent"] & ROOT_ONLY_SECRETS
+    assert {n for n, g in accounts.items() if "potka-gw-clients" in g} == {"potka-agent"}
+    assert {n for n, g in accounts.items() if "potka-exec-clients" in g} == {
+        "potka-agent",
+        "potka-orch",
     }
 
 
@@ -53,31 +53,31 @@ def test_layout_matches_the_spec() -> None:
     # BUILD_PROMPT §6.2; state/<service>/ and users/<name>/ are created per service
     # and per researcher.
     expected = {
-        "": ("root", "pokus", "2775"),
+        "": ("root", "pinka", "2775"),
         "deploy": ("root", "root", "0755"),
-        "catalog": ("root", "pokus-gt", "0750"),
-        "models": ("pokus-orch", "pokus", "0755"),
-        "datasets": ("root", "pokus", "2775"),
-        "artifacts": ("pokus-orch", "pokus", "0750"),
-        "reports": ("pokus-eval", "pokus", "2775"),
-        "images": ("root", "pokus-admin", "0750"),
-        "shared": ("root", "pokus", "2770"),
+        "catalog": ("root", "pinka-gt", "0750"),
+        "models": ("potka-orch", "pinka", "0755"),
+        "datasets": ("root", "pinka", "2775"),
+        "artifacts": ("potka-orch", "pinka", "0750"),
+        "reports": ("potka-eval", "pinka", "2775"),
+        "images": ("root", "pinka-admin", "0750"),
+        "shared": ("root", "pinka", "2770"),
         "users": ("root", "root", "0755"),
-        "services": ("root", "pokus-admin", "0750"),
+        "services": ("root", "pinka-admin", "0750"),
         "state": ("root", "root", "0755"),
         "backups": ("root", "root", "0700"),
     }
-    layout = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pokus_layout"]}
+    layout = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pinka_layout"]}
     assert layout == expected
-    acls = {e["path"]: e.get("default_acl") for e in DATA["pokus_layout"] if e.get("default_acl")}
-    assert acls == {"datasets": ["group:pokus:rwX"], "shared": ["group:pokus:rwX"]}
-    assert DATA["pokus_layout_user_mode"] == "0700"
-    for entry in DATA["pokus_layout"] + DATA["pokus_system_layout"]:
+    acls = {e["path"]: e.get("default_acl") for e in DATA["pinka_layout"] if e.get("default_acl")}
+    assert acls == {"datasets": ["group:pinka:rwX"], "shared": ["group:pinka:rwX"]}
+    assert DATA["pinka_layout_user_mode"] == "0700"
+    for entry in DATA["pinka_layout"] + DATA["pinka_system_layout"]:
         assert MODE_RE.match(entry["mode"]), entry
         assert entry["notes"], entry
-    system = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pokus_system_layout"]}
-    assert system["/etc/pokus"] == ("root", "root", "0755")
-    assert system["/etc/pokus/secrets"] == ("root", "pokus-svc", "0750")
+    system = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pinka_system_layout"]}
+    assert system["/etc/pinka"] == ("root", "root", "0755")
+    assert system["/etc/pinka/secrets"] == ("root", "potka-svc", "0750")
 
 
 def contract_ports() -> set[int]:
@@ -92,15 +92,15 @@ def contract_ports() -> set[int]:
 
 
 def test_ports_match_the_contract() -> None:
-    ports = list(DATA["pokus_ports"].values())
+    ports = list(DATA["pinka_ports"].values())
     assert len(ports) == len(set(ports))
     assert set(ports) == contract_ports()
 
 
 def test_bridge_patterns_match_the_contract() -> None:
     text = (INFRA / "docs" / "contracts.md").read_text(encoding="utf-8")
-    assert "infra treats bridges matching `r-*` and `pokus-build0` as Incus bridges" in text
-    assert DATA["pokus_incus_bridge_patterns"] == ["r-*", "pokus-build0"]
+    assert "infra treats bridges matching `r-*` and `pinka-build0` as Incus bridges" in text
+    assert DATA["pinka_incus_bridge_patterns"] == ["r-*", "pinka-build0"]
 
 
 def test_example_host_vars_show_the_lab_wide_defaults() -> None:

@@ -11,19 +11,19 @@ description: Pin the upstream base image, build the blueprints of images/, chang
 
 The `images` role builds every blueprint of `images/` that has no image yet,
 runs its tests and the leakage lint, publishes it as `<blueprint>/<version>`
-and exports it to `/srv/pokus/images/`. Bootstrap applies it on `full` and
+and exports it to `/srv/pinka/images/`. Bootstrap applies it on `full` and
 `lab` hosts; this guide runs it on its own.
 [How golden images are built](../explanation/golden-images.md) explains the
 pipeline.
 
 !!! note "Prerequisites"
     - A lab host provisioned at least once (Incus with the `build` project and
-      the `pokus-build0` network), and an admin account on it (member of
-      `pokus-admin`) in the infra directory bootstrap runs from.
+      the `pinka-build0` network), and an admin account on it (member of
+      `pinka-admin`) in the infra directory bootstrap runs from.
     - Internet access from the lab host: the build downloads the base image,
       Ubuntu packages, the agent package and preloaded container images.
     - Room in the Incus pool for one build instance at a time
-      (`incus_build_instance.root_size`) and in `/srv/pokus/images` for every
+      (`incus_build_instance.root_size`) and in `/srv/pinka/images` for every
       exported image and the exported base.
 
 ## Pin the upstream base image
@@ -91,7 +91,7 @@ sudo incus exec --project build build-<blueprint> -- bash
 
 `<blueprint>` is the blueprint's name without underscores (`build-base` for
 `_base`). The output of the provisioning run is in
-`/var/lib/pokus/image-builds/<blueprint>/provision.log`. The next run deletes
+`/var/lib/pinka/image-builds/<blueprint>/provision.log`. The next run deletes
 the instance and builds again.
 
 A leakage finding is printed as `leakage: <kind> <path>: <token>`. Remove what
@@ -118,7 +118,7 @@ List the golden images with their properties:
 <!-- qa:run env=E2 -->
 ```bash
 sudo incus image list --format json \
-  | jq -r '.[] | select(.aliases | length > 0) | [.aliases[0].name, .fingerprint[:12], .properties["pokus.built_at"]] | @tsv'
+  | jq -r '.[] | select(.aliases | length > 0) | [.aliases[0].name, .fingerprint[:12], .properties["pinka.built_at"]] | @tsv'
 ```
 
 Every blueprint appears with its version, a fingerprint and the build time.
@@ -126,8 +126,8 @@ Check an export against its fingerprint and its sums:
 
 <!-- qa:run env=E2 -->
 ```bash
-cd /srv/pokus/images/<blueprint>/<version>
-sudo /usr/local/libexec/pokus/image-files verify --dir . --fingerprint "$(sudo jq -r .fingerprint build.json)"
+cd /srv/pinka/images/<blueprint>/<version>
+sudo /usr/local/libexec/pinka/image-files verify --dir . --fingerprint "$(sudo jq -r .fingerprint build.json)"
 sudo sha256sum -c SHA256SUMS
 ```
 

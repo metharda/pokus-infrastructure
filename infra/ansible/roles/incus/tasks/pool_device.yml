@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/pool_device.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/pool_device.yml). Local changes will be overwritten.
 #
 # Safety invariant 1 (BUILD_PROMPT §13): a device is formatted only if
 # incus_pool_device_confirm repeats incus_pool_device exactly, it is not
@@ -77,7 +77,7 @@
   ansible.builtin.pause:
     prompt: "Type the device path {{ incus_pool_device }} to format it, anything else to stop"
   register: incus_device_answer
-  when: pokus_bootstrap.interactive | default(false)
+  when: pinka_bootstrap.interactive | default(false)
 
 - name: Stop unless the operator confirmed
   ansible.builtin.assert:
@@ -85,4 +85,4 @@
       - incus_device_answer.user_input | default('') | trim == incus_pool_device
     fail_msg: "The device was not confirmed. Nothing was formatted."
     quiet: true
-  when: pokus_bootstrap.interactive | default(false)
+  when: pinka_bootstrap.interactive | default(false)

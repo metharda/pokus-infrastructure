@@ -11,7 +11,7 @@ description: Reach the lab host over Tailscale and SSH, forward Grafana, the ad-
 
 The lab host is reachable only through the lab's tailnet: sshd accepts
 connections on the Tailscale interface (and on interfaces the operator listed
-in `ssh_extra_allowed_interfaces`), with keys only, for members of the `pokus`
+in `ssh_extra_allowed_interfaces`), with keys only, for members of the `pinka`
 group. Every service of the lab listens on `127.0.0.1` of the host; you reach
 it by SSH port forwarding.
 
@@ -45,7 +45,7 @@ it by SSH port forwarding.
     id -nG
     ```
 
-    The output contains `pokus`; admins also see `pokus-admin`. Researchers
+    The output contains `pinka`; admins also see `pinka-admin`. Researchers
     are never in `docker` or `incus-admin`.
 
 ## Forward a lab service to your computer
@@ -64,8 +64,8 @@ stop it with ++ctrl+c++.
 | Service | `<port>` | Then open | Details |
 | --- | --- | --- | --- |
 | Grafana | 18700 | `http://127.0.0.1:18700/` | [How to reach Grafana and the lab database](reach-grafana.md) |
-| LLM gateway, ad-hoc endpoint | 18705 | an OpenAI-compatible client on `127.0.0.1:18705` | the platform documents the path and the personal key (`pokus llm key`) |
-| Documentation | 18706 | `http://127.0.0.1:18706/` | served by `pokus-lab docs serve`, below |
+| LLM gateway, ad-hoc endpoint | 18705 | an OpenAI-compatible client on `127.0.0.1:18705` | the platform documents the path and the personal key (`potka llm key`) |
+| Documentation | 18706 | `http://127.0.0.1:18706/` | served by `pinka docs serve`, below |
 
 Grafana can also be published on the tailnet by the operator
 (`grafana_tailscale_serve: true`); then no forwarding is needed.
@@ -74,12 +74,12 @@ Grafana can also be published on the tailnet by the operator
 
 The lab can serve its own documentation, so it is available without internet
 access. The operator extracts the documentation tarball of the lab's release
-into `/usr/local/share/pokus/docs/` once. Then anyone with an account starts
+into `/usr/local/share/pinka/docs/` once. Then anyone with an account starts
 the server on the lab:
 
 <!-- qa:run env=E2 -->
 ```bash
-pokus-lab docs serve
+pinka docs serve
 ```
 
 It serves the files read-only on `127.0.0.1:18706` until you press

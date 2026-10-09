@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §1, §7.7)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §1, §7.7)
 
 ## Context
 
@@ -22,14 +22,14 @@ be able to escape a target or reach the host and the lab services.
 ## Decision
 
 1. Targets are Incus system containers by default and Incus VMs for
-   kernel-level scenarios, built from Pokus's own golden images.
+   kernel-level scenarios, built from pinka's own golden images.
 2. Incus runs the LTS line (6.0), pinned and held.
 3. Official runs live in the restricted project `bench`, image builds in
    `build`, researchers' sandboxes in one restricted project each.
 4. Platform services talk to Incus over its HTTPS API on `127.0.0.1` with
    restricted client certificates; the agent has no Incus access.
 5. Each run gets its own bridge with no uplink and the ACL
-   `pokus-run-default`.
+   `pinka-run-default`.
 
 ## Consequences
 
@@ -47,4 +47,4 @@ be able to escape a target or reach the host and the lab services.
 - **VMs only (libvirt)**: heavy for the common case, slow to reset, and a
   second API for networks and images.
 - **LXD**: the same model, but officially distributed only as a snap, which
-  Pokus cannot pin and hold the same way as packages.
+  Pokus Infrastructure (pinka) cannot pin and hold the same way as packages.

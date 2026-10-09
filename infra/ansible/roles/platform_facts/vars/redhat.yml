@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform_facts/vars/redhat.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform_facts/vars/redhat.yml). Local changes will be overwritten.
 #
 # Red Hat family (Fedora, RHEL, AlmaLinux, Rocky Linux, CentOS Stream, Oracle Linux).
 platform_facts_family:

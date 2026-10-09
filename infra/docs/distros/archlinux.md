@@ -27,15 +27,15 @@ package names are still being verified; see
   `IgnorePkg` in a managed block of `/etc/pacman.conf`, so `pacman -Syu`
   leaves them alone. Their versions are recorded in the fingerprint.
 - **Updates:** there are no automatic updates. Update the host with
-  `pokus-lab update-host`, which drains the lab, updates, re-runs bootstrap
+  `pinka update-host`, which drains the lab, updates, re-runs bootstrap
   and doctor, and shows the fingerprint difference. Results are comparable
   only within one fingerprint.
 
 ## Firewall and MAC
 
-- **Firewall:** Arch enables no firewall manager by default, so Pokus uses
-  its own nftables table (`pokus-nftables.service`). If you enabled firewalld
-  or ufw, Pokus uses that instead.
+- **Firewall:** Arch enables no firewall manager by default, so Pokus Infrastructure (pinka) uses
+  its own nftables table (`pinka-nftables.service`). If you enabled firewalld
+  or ufw, Pokus Infrastructure uses that instead.
 - **MAC:** none by default. Hosts that added SELinux or AppArmor manage it
   themselves.
 
@@ -43,7 +43,7 @@ package names are still being verified; see
 
 `install_nvidia_driver: auto` installs `nvidia-open` (prebuilt for the
 distribution kernel) and rebuilds the initramfs with `mkinitcpio`. With
-Secure Boot, Arch has no MOK tooling in the default installation and Pokus
+Secure Boot, Arch has no MOK tooling in the default installation and Pokus Infrastructure
 signs nothing: sign the kernel and modules yourself (for example with
 `sbctl`), or use `install_nvidia_driver: manual`.
 

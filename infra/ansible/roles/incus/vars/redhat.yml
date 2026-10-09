@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/vars/redhat.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/vars/redhat.yml). Local changes will be overwritten.
 #
 # TODO(verify): group, unit and path names of the Incus packages of this
 # family (its mirrors are not reachable from the build environment). Upstream

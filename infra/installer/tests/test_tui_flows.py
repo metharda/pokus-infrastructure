@@ -37,14 +37,14 @@ from tui_fakes import (
     preflight,
 )
 
-from pokus_installer import answers as answers_mod
-from pokus_installer import apply, cli, hostvars, state, vault
-from pokus_installer.paths import Paths
-from pokus_installer.tui.app import InstallerApp
-from pokus_installer.tui.base import Context, StepScreen
-from pokus_installer.tui.host import CommandResult
-from pokus_installer.tui.screens_install import SignalScreen
-from pokus_installer.tui.widgets import Confirm, PasswordPrompt, ShownOnce, TypedConfirm
+from pinka_installer import answers as answers_mod
+from pinka_installer import apply, cli, hostvars, state, vault
+from pinka_installer.paths import Paths
+from pinka_installer.tui.app import InstallerApp
+from pinka_installer.tui.base import Context, StepScreen
+from pinka_installer.tui.host import CommandResult
+from pinka_installer.tui.screens_install import SignalScreen
+from pinka_installer.tui.widgets import Confirm, PasswordPrompt, ShownOnce, TypedConfirm
 
 PASSWORD = "correct horse battery staple 42"  # noqa: S105 - test fixture
 SIZE = (120, 40)
@@ -164,7 +164,7 @@ async def progress_to_end(pilot: Pilot[Any]) -> None:
 def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
     host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
     runner = FakeRunner([("events-success.jsonl", 1)])
-    installer = app(context(repo, host, runner, machine="pokus-lab"))
+    installer = app(context(repo, host, runner, machine="pinka-lab"))
     key = public_key()
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -200,22 +200,22 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
         progress = pilot.app.screen
         assert "ok" in str(progress.query_one("#status", Static).content)
         assert "login.tailscale.com" not in str(progress.query_one("#login", Static).content)
-        assert "ssh-ed25519 KEYPLACEHOLDER pokus-deploy@pokus-lab" in str(
+        assert "ssh-ed25519 KEYPLACEHOLDER pinka-deploy@pinka-lab" in str(
             progress.query_one("#deploy-key", Static).content
         )
         await progress_to_end(pilot)
 
     assert drive(installer, flow) == 1  # doctor warnings
     request = runner.requests[0]
-    assert request.machine == "pokus-lab"
+    assert request.machine == "pinka-lab"
     assert request.vault_password == PASSWORD
     assert request.options == []
-    values = hostvars.load(repo.host_vars("pokus-lab").read_text(encoding="utf-8"))
-    assert values["machine_name"] == "pokus-lab"
+    values = hostvars.load(repo.host_vars("pinka-lab").read_text(encoding="utf-8"))
+    assert values["machine_name"] == "pinka-lab"
     assert values["incus_pool_source"] == "loop"
     assert values["power_policy"] == "os_default"
     assert values["vllm_profile"]
-    saved = answers_mod.load(repo.answers("pokus-lab"), apply.context(repo))
+    saved = answers_mod.load(repo.answers("pinka-lab"), apply.context(repo))
     assert [r.name for r in saved.researchers] == ["researcher1", "researcher2"]
     assert saved.backups.repository.host == "backup.example.com"
     assert (
@@ -235,12 +235,12 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
     password_file = tmp_path / "vault-pass"
     password_file.write_text(PASSWORD + "\n", encoding="utf-8")
     password_file.chmod(0o600)
-    argv = ["--infra", str(replay.infra), "apply", "--answers", str(repo.answers("pokus-lab"))]
+    argv = ["--infra", str(replay.infra), "apply", "--answers", str(repo.answers("pinka-lab"))]
     assert cli.main([*argv, "--vault-password-file", str(password_file)]) == 0
     for name in ("host_vars", "group_vars_main", "answers", "models_lock"):
         mine, theirs = getattr(repo, name), getattr(replay, name)
         if callable(mine):
-            mine, theirs = mine("pokus-lab"), theirs("pokus-lab")
+            mine, theirs = mine("pinka-lab"), theirs("pinka-lab")
         assert theirs.read_bytes() == mine.read_bytes(), name
     keys = {p.name: p.read_bytes() for p in repo.users_dir.glob("*.pub")}
     assert keys == {p.name: p.read_bytes() for p in replay.users_dir.glob("*.pub")}
@@ -255,7 +255,7 @@ def test_bare_metal_with_a_dedicated_pool_disk(repo: Paths) -> None:
     async def flow(pilot: Pilot[int]) -> None:
         await welcome_to_mode(pilot)
         await forward(pilot, "machine")
-        fill(pilot, name="pokus-lab")
+        fill(pilot, name="pinka-lab")
         await forward(pilot, "resources")
         await forward(pilot, "storage")
         table = pilot.app.screen.query_one("#disks", DataTable)
@@ -296,7 +296,7 @@ def test_bare_metal_with_a_dedicated_pool_disk(repo: Paths) -> None:
         await progress_to_end(pilot)
 
     assert drive(installer, flow) == 0
-    values = hostvars.load(repo.host_vars("pokus-lab").read_text(encoding="utf-8"))
+    values = hostvars.load(repo.host_vars("pinka-lab").read_text(encoding="utf-8"))
     assert values["incus_pool_source"] == "device"
     assert values["incus_pool_device"] == values["incus_pool_device_confirm"] == DISK_BY_ID
     assert values["incus_pool_device_force_wipe"] is False
@@ -335,7 +335,7 @@ def test_a_disk_with_signatures_needs_wipe(repo: Paths) -> None:
 def test_degraded_host_without_gpu(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
     runner = FakeRunner([("events-success.jsonl", 0)])
-    installer = app(context(repo, host, runner, machine="pokus-lab"))
+    installer = app(context(repo, host, runner, machine="pinka-lab"))
     found = notes(installer)
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -363,7 +363,7 @@ SECURE_BOOT = "ubuntu2404-baremetal-nvidia-no-driver-secureboot"
 def test_secure_boot_mok_consent(repo: Paths) -> None:
     host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
     runner = FakeRunner([("events-signal76.jsonl", 76)])
-    installer = app(context(repo, host, runner, machine="pokus-lab"))
+    installer = app(context(repo, host, runner, machine="pinka-lab"))
     found = notes(installer)
     mok = "one-time mok"
 
@@ -418,14 +418,14 @@ def test_secure_boot_mok_consent(repo: Paths) -> None:
     assert installer.ctx.wizard.answers.gpu.accept_mok_enrollment
     assert mok not in repo.state_file.read_text(encoding="utf-8")
     assert not [c for c in host.calls if c[0][0] == "mokutil"]  # bootstrap imports the key
-    exported = repo.answers("pokus-lab").read_text(encoding="utf-8")
+    exported = repo.answers("pinka-lab").read_text(encoding="utf-8")
     assert "accept_mok_enrollment: true" in exported
     assert mok not in exported
 
 
 def test_secure_boot_without_the_driver(repo: Paths) -> None:
     host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
-    installer = app(context(repo, host, machine="pokus-lab"))
+    installer = app(context(repo, host, machine="pinka-lab"))
 
     async def flow(pilot: Pilot[int]) -> None:
         await forward(pilot, "preflight")
@@ -471,15 +471,15 @@ def test_unsupported_host_can_only_be_forced_by_typing(repo: Paths) -> None:
 
 def test_restore_mode(repo: Paths) -> None:
     snapshots = [
-        {"time": "2026-01-01T03:00:00Z", "hostname": "pokus-lab", "short_id": "0a1b2c3d",
-         "id": "0a1b2c3d" * 8, "paths": ["/srv/pokus", "/var/lib/pokus/backup"]},
+        {"time": "2026-01-01T03:00:00Z", "hostname": "pinka-lab", "short_id": "0a1b2c3d",
+         "id": "0a1b2c3d" * 8, "paths": ["/srv/pinka", "/var/lib/pinka/backup"]},
     ]  # fmt: skip
     host = FakeHost(
         preflight("ubuntu2404-baremetal-no-gpu"),
         replies={"restic -r": CommandResult(0, json.dumps(snapshots))},
     )
     runner = FakeRunner([("events-success.jsonl", 0)])
-    installer = app(context(repo, host, runner, machine="pokus-lab"), first="mode")
+    installer = app(context(repo, host, runner, machine="pinka-lab"), first="mode")
     installer.ctx.wizard.consents.add("accept_degraded")
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -518,14 +518,14 @@ def test_restore_mode(repo: Paths) -> None:
                          "snapshots", "--json"]  # fmt: skip
     assert restic[1] == {"RESTIC_PASSWORD": "restic-password-for-tests"}
     assert runner.requests[0].options == ["--accept-degraded", "--restore"]
-    saved = answers_mod.load(repo.answers("pokus-lab"), apply.context(repo))
+    saved = answers_mod.load(repo.answers("pinka-lab"), apply.context(repo))
     assert (saved.mode, saved.restore_snapshot) == ("restore", "0a1b2c3d")
 
 
 def installed(repo: Paths) -> None:
     """A lab installed with the CI answers (headless), to modify."""
     loaded = answers_mod.load(repo.infra / "tests" / "answers" / "ci.yml", apply.context(repo))
-    loaded.machine.name = "pokus-lab"
+    loaded.machine.name = "pinka-lab"
     loaded.researchers[0].name = "researcher1"
     plan = apply.plan(
         loaded, repo, vault.Provided(tailscale_authkey="authkey-placeholder"), PASSWORD
@@ -535,13 +535,13 @@ def installed(repo: Paths) -> None:
 
 def test_modify_mode(repo: Paths) -> None:
     installed(repo)
-    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pokus-lab")
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
     runner = FakeRunner([("events-success.jsonl", 0)])
     ctx = context(repo, host, runner)
     assert ctx.wizard.answers.mode == "modify"  # an installed lab opens in modify mode
-    assert ctx.wizard.answers.machine.name == "pokus-lab"
+    assert ctx.wizard.answers.machine.name == "pinka-lab"
     installer = app(ctx, first="mode")
-    before = repo.host_vars("pokus-lab").read_text(encoding="utf-8")
+    before = repo.host_vars("pinka-lab").read_text(encoding="utf-8")
     restic = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -555,16 +555,16 @@ def test_modify_mode(repo: Paths) -> None:
         fill(pilot, vault1=PASSWORD)  # the existing vault's password
         await forward(pilot, "review")
         titles = [c.title for c in pilot.app.screen.query(Collapsible)]
-        assert "ansible/inventory/host_vars/pokus-lab.yml (changed)" in titles
+        assert "ansible/inventory/host_vars/pinka-lab.yml (changed)" in titles
         assert "ansible/group_vars/all/main.yml (unchanged)" in titles
-        assert repo.host_vars("pokus-lab").read_text(encoding="utf-8") == before  # not yet
+        assert repo.host_vars("pinka-lab").read_text(encoding="utf-8") == before  # not yet
         await forward(pilot, "progress")
 
     drive(installer, flow)
     after = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
     # the existing repository's password is kept: a new one would lock out every backup
     assert after["vault_restic_password"] == restic["vault_restic_password"]
-    assert "backup_schedule: '*-*-* 04:30:00'" in repo.host_vars("pokus-lab").read_text(
+    assert "backup_schedule: '*-*-* 04:30:00'" in repo.host_vars("pinka-lab").read_text(
         encoding="utf-8"
     )
     assert runner.requests[0].options == []
@@ -580,7 +580,7 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         errors = shown_errors(pilot)
         assert any("lower-case letters" in e for e in errors), errors
         assert any("absolute" in e for e in errors), errors
-        fill(pilot, name="pokus-lab", srv_path="/srv/pokus")
+        fill(pilot, name="pinka-lab", srv_path="/srv/pinka")
         await forward(pilot, "resources")
         fill(pilot, cpuset_services="0-11", cpuset_targets="8-23", postgres="lots")
         await forward(pilot, "resources")
@@ -600,8 +600,8 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         await click(pilot, "#remove")
         await pilot.pause()
         await forward(pilot, "researchers")
-        await add_researcher(pilot, "pokus-svc", public_key())
-        assert any("pokus-" in e for e in shown_errors(pilot)), shown_errors(pilot)
+        await add_researcher(pilot, "potka-svc", public_key())
+        assert any("pinka-" in e for e in shown_errors(pilot)), shown_errors(pilot)
         pilot.app.screen.query_one("#r-name", Input).value = "researcher2"
         pilot.app.screen.query_one("#r-keys", TextArea).text = private_key()
         await click(pilot, "#r-ok")
@@ -628,8 +628,8 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
 def test_resume_after_a_wsl_restart(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
     first = FakeRunner([("events-signal75.jsonl", 75)])
-    installer = app(context(repo, host, first, machine="pokus-lab"), first="secrets")
-    installer.ctx.wizard.answers.machine.name = "pokus-lab"
+    installer = app(context(repo, host, first, machine="pinka-lab"), first="secrets")
+    installer.ctx.wizard.answers.machine.name = "pinka-lab"
     installer.ctx.wizard.answers.researchers = [answers_mod.Researcher("researcher1", True)]
 
     async def flow(pilot: Pilot[int]) -> None:
@@ -648,7 +648,7 @@ def test_resume_after_a_wsl_restart(repo: Paths) -> None:
     assert drive(installer, flow) == 75
 
     second = FakeRunner([("events-success.jsonl", 1)])
-    again = app(context(repo, host, second, machine="pokus-lab"))
+    again = app(context(repo, host, second, machine="pinka-lab"))
 
     async def resume(pilot: Pilot[int]) -> None:
         assert pilot.app.screen.query_one("#resume-yes", RadioButton).value
@@ -668,13 +668,13 @@ def test_resume_after_a_wsl_restart(repo: Paths) -> None:
 
     assert drive(again, resume) == 1
     assert second.requests[0].vault_password == PASSWORD
-    assert again.ctx.wizard.answers.machine.name == "pokus-lab"
+    assert again.ctx.wizard.answers.machine.name == "pinka-lab"
 
 
 def test_a_failed_run_offers_retry(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
     runner = FakeRunner([("events-failure.jsonl", 60), ("events-success.jsonl", 0)])
-    ctx = context(repo, host, runner, machine="pokus-lab")
+    ctx = context(repo, host, runner, machine="pinka-lab")
     ctx.wizard.vault_password = PASSWORD
     installer = app(ctx, first="progress")
 
@@ -696,7 +696,7 @@ def test_a_failed_run_offers_retry(repo: Paths) -> None:
 
 def test_quit_asks_and_keeps_the_state(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
-    installer = app(context(repo, host, machine="pokus-lab"), first="machine")
+    installer = app(context(repo, host, machine="pinka-lab"), first="machine")
 
     async def flow(pilot: Pilot[int]) -> None:
         fill(pilot, name="lab-two")
@@ -733,7 +733,7 @@ def test_theme_cycles_with_f2(repo: Paths) -> None:
             seen.append(pilot.app.theme)
 
     drive(installer, flow)
-    assert seen == ["textual-light", "pokus-high-contrast", "textual-dark"]
+    assert seen == ["textual-light", "pinka-high-contrast", "textual-dark"]
 
 
 def test_back_keeps_what_was_entered(repo: Paths) -> None:
@@ -742,12 +742,12 @@ def test_back_keeps_what_was_entered(repo: Paths) -> None:
     )
 
     async def flow(pilot: Pilot[int]) -> None:
-        fill(pilot, name="pokus-lab")
+        fill(pilot, name="pinka-lab")
         await forward(pilot, "resources")
         await pilot.press("ctrl+b")
         await settle(pilot)
         assert at(pilot) == "machine"
-        assert pilot.app.screen.query_one("#name", Input).value == "pokus-lab"
+        assert pilot.app.screen.query_one("#name", Input).value == "pinka-lab"
 
     drive(installer, flow)
 
@@ -773,8 +773,8 @@ def ctx_for(repo: Paths, fixture: str) -> Context:
 
 def test_doctor_and_finish(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
-    ctx = context(repo, host, machine="pokus-lab")
-    ctx.wizard.answers.machine.name = "pokus-lab"
+    ctx = context(repo, host, machine="pinka-lab")
+    ctx.wizard.answers.machine.name = "pinka-lab"
     ctx.wizard.answers.researchers = [answers_mod.Researcher("researcher1", True)]
     installer = app(ctx, first="doctor")
     found = notes(installer)
@@ -789,18 +789,18 @@ def test_doctor_and_finish(repo: Paths) -> None:
         await settle(pilot)
 
     drive(installer, flow)
-    assert ["pokus-lab", "doctor", "--json", "--smoke"] in [c[0] for c in host.calls]
+    assert ["pinka", "doctor", "--json", "--smoke"] in [c[0] for c in host.calls]
     git = [c[0] for c in host.calls if c[0][:1] == ["sudo"]]
     assert git[0][:4] == ["sudo", "-u", "researcher1", "git"]
-    assert git[0][-3:] == ["switch", "-C", "machine/pokus-lab"]
-    assert "committed on machine/pokus-lab; push it to your private repository" in found
+    assert git[0][-3:] == ["switch", "-C", "machine/pinka-lab"]
+    assert "committed on machine/pinka-lab; push it to your private repository" in found
 
 
 def test_pairing_on_an_inference_node(repo: Paths) -> None:
     host = FakeHost(
         preflight("ubuntu2404-baremetal-nvidia-driver-loaded"),
         replies={
-            "pokus-lab pair show": CommandResult(
+            "pinka pair show": CommandResult(
                 0, "Code: 123-456\nPaired with lab node lab-node (abc).\n"
             )
         },
@@ -829,7 +829,7 @@ def test_pairing_on_an_inference_node(repo: Paths) -> None:
 def test_the_terminal_must_fit() -> None:
     from os import terminal_size  # noqa: PLC0415
 
-    from pokus_installer.tui.app import terminal_problem  # noqa: PLC0415
+    from pinka_installer.tui.app import terminal_problem  # noqa: PLC0415
 
     assert terminal_problem("dumb", True, terminal_size((120, 40))) == "TERM is dumb"
     assert terminal_problem(None, True, terminal_size((120, 40))) == "TERM is unset"
@@ -841,7 +841,7 @@ def test_the_terminal_must_fit() -> None:
 
 
 def test_run_refuses_an_unsuitable_terminal(repo: Paths, capsys: Any, monkeypatch: Any) -> None:
-    from pokus_installer.tui import app as app_mod  # noqa: PLC0415
+    from pinka_installer.tui import app as app_mod  # noqa: PLC0415
 
     monkeypatch.setenv("TERM", "dumb")
     assert app_mod.run(repo) == 77
@@ -862,7 +862,7 @@ def test_review_shows_a_password_the_vault_generates(repo: Paths) -> None:
     data = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
     data["vault_restic_password"] = ""  # as after an install with backups set up later
     repo.vault.write_text(vault.encrypt(data, PASSWORD), encoding="utf-8")
-    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pokus-lab")
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
     ctx = context(repo, host)
     ctx.wizard.vault_password = PASSWORD
     installer = app(ctx, first="review")

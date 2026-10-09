@@ -1,4 +1,4 @@
-# Managed by pokus-infra (Makefile).
+# Managed by pinka (Makefile).
 #
 # Developer and CI entry points. Nothing here provisions a host: targets that
 # would (role tests in throwaway Incus instances, distro VM tests) are added in
@@ -14,9 +14,9 @@ NPM ?= npm
 VENV := .venv
 BIN := $(VENV)/bin
 NODE_BIN := node_modules/.bin
-REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pokus_repo_checks
-GEN := PYTHONPATH=tools/gen:preflight:tools/pokus-lab:tools/test-distros:installer $(BIN)/python -m pokus_infra_gen
-LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pokus_lockcheck
+REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks
+GEN := PYTHONPATH=tools/gen:preflight:tools/pinka-lab:tools/test-distros:installer $(BIN)/python -m pinka_gen
+LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pinka_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
   preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
@@ -35,7 +35,7 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
-  ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pokus-lab \
+  ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins
 PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
@@ -43,8 +43,8 @@ DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/.
 ANSIBLE_ENV := PATH="$(CURDIR)/$(BIN):$$PATH" ANSIBLE_HOME=$(CURDIR)/$(BUILD)/ansible-home \
   ANSIBLE_CONFIG=ansible/ansible.cfg ANSIBLE_COLLECTIONS_PATH=$(CURDIR)/$(DEV_COLLECTIONS)
-# CPython version of /opt/pokus/ansible-venv (generated from versions.lock.yml).
-BOOTSTRAP_PYTHON = $(shell sed -n "s/^readonly POKUS_PYTHON_VERSION=//p" bootstrap/lib/pins.sh)
+# CPython version of /opt/pinka/ansible-venv (generated from versions.lock.yml).
+BOOTSTRAP_PYTHON = $(shell sed -n "s/^readonly PINKA_PYTHON_VERSION=//p" bootstrap/lib/pins.sh)
 # A browser for mermaid-cli; CI sets it to the runner's Chrome.
 PUPPETEER_EXECUTABLE_PATH ?= $(firstword $(wildcard /opt/pw-browsers/chromium-*/chrome-linux/chrome) /usr/bin/google-chrome)
 export PUPPETEER_EXECUTABLE_PATH
@@ -52,7 +52,7 @@ export PUPPETEER_EXECUTABLE_PATH
 # OPA CLI pinned in versions.lock.yml (binaries.opa) for the policy tests;
 # installed only after its sha256 matched.
 OPA := $(BUILD)/tools/opa
-export POKUS_OPA := $(CURDIR)/$(OPA)
+export PINKA_OPA := $(CURDIR)/$(OPA)
 
 # Every file git would track (tracked plus untracked-but-not-ignored).
 GIT_FILES = git ls-files -z --cached --others --exclude-standard
@@ -91,11 +91,11 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
 	  ansible/roles/deploy_source/files ansible/roles/platform/files ansible/roles/inference_control/files \
-	  ansible/tests tools/test-distros/pokus_test_distros tools/test-distros/tests \
-	  installer/pokus_installer installer/tests ansible/callback_plugins
+	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
+	  installer/pinka_installer installer/tests ansible/callback_plugins
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
-	$(BIN)/mypy --python-version 3.10 preflight/pokus_preflight preflight/tests
-	$(BIN)/mypy --python-version 3.10 tools/pokus-lab/pokus_lab tools/pokus-lab/tests
+	$(BIN)/mypy --python-version 3.10 preflight/pinka_preflight preflight/tests
+	$(BIN)/mypy --python-version 3.10 tools/pinka-lab/pinka_lab tools/pinka-lab/tests
 
 .PHONY: lint-shell
 lint-shell: setup ## shellcheck and shfmt on every shell script
@@ -122,7 +122,7 @@ lint-ansible: setup ## ansible-lint (production profile) and --syntax-check of e
 
 .PHONY: lint-portability
 lint-portability: ## Only platform_facts may read distribution facts (BUILD_PROMPT §19.1)
-	PYTHONPATH=tools/repo-checks python3 -m pokus_repo_checks portability --ansible-dir ansible
+	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks portability --ansible-dir ansible
 
 .PHONY: lint-markdown
 lint-markdown: setup ## markdownlint
@@ -151,11 +151,11 @@ lint-mermaid: setup ## Validate Mermaid diagram syntax with mermaid-cli
 
 .PHONY: privacy
 privacy: ## Privacy scan: no personal or installation-specific data (stdlib only)
-	PYTHONPATH=tools/repo-checks python3 -m pokus_repo_checks privacy .
+	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks privacy .
 
 .PHONY: links
 links: ## Check external links in Markdown files (network; weekly in CI)
-	PYTHONPATH=tools/repo-checks python3 -m pokus_repo_checks links .
+	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks links .
 
 .PHONY: test
 test: setup test-py39 ## Unit tests (pytest) and the preflight suite on the oldest supported Python
@@ -163,21 +163,21 @@ test: setup test-py39 ## Unit tests (pytest) and the preflight suite on the olde
 
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
-	PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros run $(TEST_DISTROS_ARGS)
+	PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
 check-mode: setup ## Required CI fast lane (§11, §19.9): base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
-	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros check-mode --image $(CI_IMAGE)
+	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: check-mode-extended
 check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in check mode; components with unverified sources are skipped and listed as not tested; CI_IMAGE=<key>
-	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pokus_test_distros check-mode --extended --image $(CI_IMAGE)
+	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
 
 .PHONY: test-py39
-test-py39: ## Preflight and pokus-lab test suites with plain unittest on CPython 3.9 (stdlib only)
+test-py39: ## Preflight and pinka test suites with plain unittest on CPython 3.9 (stdlib only)
 	cd preflight && PYTHONPATH=.:tests $(UV) run --no-project --python $(PREFLIGHT_MIN_PYTHON) \
 	  python -m unittest discover -s tests -t tests
-	cd tools/pokus-lab && PYTHONPATH=.:tests:../../preflight $(UV) run --no-project \
+	cd tools/pinka-lab && PYTHONPATH=.:tests:../../preflight $(UV) run --no-project \
 	  --python $(PREFLIGHT_MIN_PYTHON) python -m unittest discover -s tests -t tests
 
 .PHONY: generate
@@ -215,7 +215,7 @@ models-lock: setup ## Compile the models role's hash-locked requirements.lock (n
 	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
 	  --python-version $(BOOTSTRAP_PYTHON) ansible/roles/models/files/requirements.in \
 	  -o $(BUILD)/models-requirements.lock
-	{ echo "# Managed by pokus-infra (ansible/roles/models/files/requirements.lock). Local changes will be overwritten."; \
+	{ echo "# Managed by pinka (ansible/roles/models/files/requirements.lock). Local changes will be overwritten."; \
 	  echo "# Compiled from requirements.in by 'make models-lock' (uv pip compile --generate-hashes)."; \
 	  cat $(BUILD)/models-requirements.lock; } > ansible/roles/models/files/requirements.lock
 
@@ -223,7 +223,7 @@ models-lock: setup ## Compile the models role's hash-locked requirements.lock (n
 installer-lock: setup ## Compile installer/requirements.lock from requirements.in (needs PyPI)
 	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
 	  --python-version $(BOOTSTRAP_PYTHON) installer/requirements.in -o $(BUILD)/installer-requirements.lock
-	{ echo "# Managed by pokus-infra (installer/requirements.lock). Local changes will be overwritten."; \
+	{ echo "# Managed by pinka (installer/requirements.lock). Local changes will be overwritten."; \
 	  echo "# Compiled from requirements.in by 'make installer-lock' (uv pip compile --generate-hashes)."; \
 	  cat $(BUILD)/installer-requirements.lock; } > installer/requirements.lock
 

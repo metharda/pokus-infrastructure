@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pokus_installer.paths import INFRA, Paths
+from pinka_installer.paths import INFRA, Paths
 
 COPIED = (
     "ansible/inventory/host_vars/example-machine.yml",

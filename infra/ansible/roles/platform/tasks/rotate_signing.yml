@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/platform/tasks/rotate_signing.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/platform/tasks/rotate_signing.yml). Local changes will be overwritten.
 #
 # rotate.yml --tags signing: replace the signing key. Manifests signed with the
 # old key stay verifiable through its published public key, which is kept.
@@ -16,7 +16,7 @@
 
 - name: Restart the orchestrator with the new key
   ansible.builtin.systemd_service:
-    name: pokus-orchestrator.service
+    name: potka-orchestrator.service
     state: restarted
   when:
     - platform_enabled | bool

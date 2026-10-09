@@ -1,22 +1,22 @@
 # deploy_source
 
-The root-only bare mirror of the Pokus repository and deployments of one of
+The root-only bare mirror of the pokus-platform repository and deployments of one of
 its subtrees (contracts.md, "Deployment of platform and catalog"; resolutions
 B2 and B4, owner answers E3 and E16). Included by the `catalog` and
 `platform` roles only; it has no tag of its own.
 
-- `tasks/main.yml` installs `/usr/local/libexec/pokus/deploy-source`, creates
-  `/var/lib/pokus/git` (root, 0700) and fetches every branch and tag of
-  `pokus_source_repo` into the bare repository `pokus.git` there. An SSH
+- `tasks/main.yml` installs `/usr/local/libexec/pinka/deploy-source`, creates
+  `/var/lib/pinka/git` (root, 0700) and fetches every branch and tag of
+  `pinka_source_repo` into the bare repository `potka.git` there. An SSH
   source uses a read-only deploy key generated on the host
   (`deploy_key`, shown once to add to the Git host) and the pinned host keys
   in `known_hosts`: GitHub's from `versions.lock.yml`, others from
-  `pokus_source_known_hosts`. An anonymous `https://` URL needs neither. No
+  `pinka_source_known_hosts`. An anonymous `https://` URL needs neither. No
   personal tokens are supported.
 - `tasks/deploy.yml` resolves `deploy_source_ref` (a component tag, another
   tag, a branch or a full commit), checks the SSH signature of the tag when
   `require_signed_tags` is set (`allowed_signers` from
-  `pokus_allowed_signers`), and extracts `git archive <commit>:<component>`
+  `pinka_allowed_signers`), and extracts `git archive <commit>:<component>`
   into `<root>/<name>/`: `<name>` is the component tag, otherwise the full
   commit. `DEPLOYED_FROM.json` records the source, the commit, the tree of
   the subdirectory, the component tag the commit carries and the signature.

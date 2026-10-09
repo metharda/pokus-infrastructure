@@ -1,5 +1,5 @@
 #!/bin/sh
-# Managed by pokus-infra (tests/distros/containers/prepare.sh). Local changes will be overwritten.
+# Managed by pinka (tests/distros/containers/prepare.sh). Local changes will be overwritten.
 #
 # Installs systemd, Python 3 (3.11 on openSUSE Leap, whose python3 is too old
 # for Ansible), sudo and procps (sysctl; every real host has it) in a CI

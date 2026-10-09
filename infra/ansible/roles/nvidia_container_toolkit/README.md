@@ -16,7 +16,7 @@ applied only on hosts with the `gpu_inference` feature:
   one is active from that file and never edits it;
 - a check runs `nvidia-smi` in the pinned CUDA base image, by digest, with the
   active method, and records the GPU name, driver, memory and compute
-  capability with the method in `/var/lib/pokus/verify/gpu-docker.txt`.
+  capability with the method in `/var/lib/pinka/verify/gpu-docker.txt`.
 
 ## Variables
 

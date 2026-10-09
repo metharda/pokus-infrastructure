@@ -1,4 +1,4 @@
-# Managed by pokus-infra (.github/workflows/ci.yml).
+# Managed by pinka (.github/workflows/ci.yml).
 #
 # Canonical CI definition of this component. Every job only calls make
 # targets, so CI and local runs are identical. CI never provisions anything:
@@ -23,7 +23,7 @@ concurrency:
 
 env:
   PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
-  POKUS_PRIVACY_DENYLIST: ${{ secrets.POKUS_PRIVACY_DENYLIST }}
+  PINKA_PRIVACY_DENYLIST: ${{ secrets.POKUS_PRIVACY_DENYLIST }}
 
 jobs:
   lint:

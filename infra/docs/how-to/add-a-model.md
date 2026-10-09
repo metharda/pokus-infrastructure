@@ -12,7 +12,7 @@ description: Pin a model in models.lock.yml, download and verify it, serve it wi
 vLLM serves only models that are pinned in `models.lock.yml` (a full commit
 hash and a sha256 for every file) and that the `models` role downloaded and
 verified. What vLLM serves is a *deployment*: a file
-`/etc/pokus/vllm/deployments/<id>@<version>.yml` that names the model, the
+`/etc/pinka/vllm/deployments/<id>@<version>.yml` that names the model, the
 serving profile and a few allowed overrides. This guide adds a model, serves
 it, and switches deployments by hand. The orchestrator switches deployments
 through the same helper during campaigns
@@ -21,7 +21,7 @@ through the same helper during campaigns
 !!! note "Prerequisites"
     - A lab host with the `gpu_inference` feature and `node_role` `full` or
       `inference`, provisioned at least once.
-    - An admin account on it (member of `pokus-admin`) and the infra directory
+    - An admin account on it (member of `pinka-admin`) and the infra directory
       bootstrap runs from.
     - The model approved by the lab's owner: candidates from
       `models.catalog.yml`, which lists permissive licenses first and gated or
@@ -122,7 +122,7 @@ through the same helper during campaigns
 
     `<machine>` is the name of this lab host's host_vars file. The `models`
     role downloads only what is missing into
-    `/srv/pokus/models/<hf_repo>/<revision>/`, checks every sha256 (a
+    `/srv/pinka/models/<hf_repo>/<revision>/`, checks every sha256 (a
     mismatch deletes the file and fails), makes the files read-only and writes
     `MANIFEST.json`. The `vllm` role renders the deployment, starts vLLM and
     runs the serving verification.
@@ -134,7 +134,7 @@ through the same helper during campaigns
 
     <!-- qa:skip reason="changes the lab host's configuration" -->
     ```bash
-    sudo tee /etc/pokus/vllm/deployments/<id>@<version>.yml >/dev/null <<'EOF'
+    sudo tee /etc/pinka/vllm/deployments/<id>@<version>.yml >/dev/null <<'EOF'
     id: <id>
     version: <version>
     model_id: <model-id>
@@ -155,14 +155,14 @@ through the same helper during campaigns
 
     <!-- qa:skip reason="restarts the inference service" -->
     ```bash
-    sudo /usr/local/libexec/pokus/vllm-deploy render <id>@<version>
-    sudo /usr/local/libexec/pokus/vllm-deploy activate <id>@<version>
+    sudo /usr/local/libexec/pinka/vllm-deploy render <id>@<version>
+    sudo /usr/local/libexec/pinka/vllm-deploy activate <id>@<version>
     ```
 
     `<id>@<version>` names the file from step 1. The helper validates the
     file, the profile and the verified model, writes
-    `/etc/pokus/vllm/current.yaml` and `current.env`, points `current.yml` at
-    the deployment and restarts `pokus-inference.service`. It prints
+    `/etc/pinka/vllm/current.yaml` and `current.env`, points `current.yml` at
+    the deployment and restarts `pinka-inference.service`. It prints
     `{"ok": true, "changed": true}`; on a validation error nothing changes.
     Bootstrap re-renders the current deployment on later runs and never
     replaces it with the default one.
@@ -171,8 +171,8 @@ through the same helper during campaigns
 
     <!-- qa:skip reason="sends requests to the inference service" -->
     ```bash
-    sudo /usr/local/libexec/pokus/vllm-verify --model <model-id> \
-      --deployment <id>@<version> --out /var/lib/pokus/verify/vllm-<id>@<version>.json
+    sudo /usr/local/libexec/pinka/vllm-verify --model <model-id> \
+      --deployment <id>@<version> --out /var/lib/pinka/verify/vllm-<id>@<version>.json
     ```
 
     `<model-id>`, `<id>` and `<version>` are the values from step 1.
@@ -185,7 +185,7 @@ fails unless a well-formed tool call comes back. Read its report:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo jq '{ok, models, tool_call, error}' /var/lib/pokus/verify/vllm-<id>@<version>.json
+sudo jq '{ok, models, tool_call, error}' /var/lib/pinka/verify/vllm-<id>@<version>.json
 ```
 
 `<id>@<version>` is the deployment (`default-<profile>@1` for the default

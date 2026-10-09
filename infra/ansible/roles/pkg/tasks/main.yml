@@ -1,9 +1,9 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/pkg/tasks/main.yml). Local changes will be overwritten.
 #
 # Install packages, pinned to the versions from versions.lock.yml when given
 # (BUILD_PROMPT §19.3, §19.4). The family-specific module lives in
 # install_<package manager>.yml; ansible-core respawns apt and dnf under the
 # system interpreter that has their bindings.
 - name: Install packages ({{ pkg_packages | join(', ') }})
-  ansible.builtin.include_tasks: "install_{{ pokus_pkg_manager }}.yml"
+  ansible.builtin.include_tasks: "install_{{ pinka_pkg_manager }}.yml"
   when: pkg_packages | length > 0

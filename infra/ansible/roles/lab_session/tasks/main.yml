@@ -1,6 +1,6 @@
-# Managed by pokus-infra (ansible/roles/lab_session/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/lab_session/tasks/main.yml). Local changes will be overwritten.
 #
-# pokus-lab.target with the health gate and the session record (BUILD_PROMPT
+# pinka-lab.target with the health gate and the session record (BUILD_PROMPT
 # §7.16). Sleep inhibition belongs to the provider roles (power_policy).
 
 - name: Create the directories of the helpers and the session records
@@ -22,8 +22,8 @@
     group: root
     mode: "0755"
   loop:
-    - {src: pokus_health_gate.py, dest: health-gate}
-    - {src: pokus_session_start.py, dest: session-start}
+    - {src: pinka_health_gate.py, dest: health-gate}
+    - {src: pinka_session_start.py, dest: session-start}
 
 - name: Read the Docker daemon configuration (how containers get the GPU)
   ansible.builtin.slurp:
@@ -35,7 +35,7 @@
 - name: Describe the checks of the health gate
   ansible.builtin.set_fact:
     lab_session_checks: >-
-      {{ {'time': {'wsl': pokus_provider == 'wsl2', 'ntp_reference': lab_session_ntp_reference,
+      {{ {'time': {'wsl': pinka_provider == 'wsl2', 'ntp_reference': lab_session_ntp_reference,
                    'max_offset': lab_session_max_clock_offset | float},
           'collector': {'url': lab_session_collector_health}}
          | combine({'postgres': {'container': lab_session_postgres_container}, 'incus': {}}
@@ -73,17 +73,17 @@
     name: "{{ item }}"
     enabled: true
     daemon_reload: "{{ lab_session_unit_files is changed }}"
-  loop: [pokus-health-gate.service, pokus-session-start.service]
-  when: not ansible_check_mode or item in pokus_present.units
+  loop: [pinka-health-gate.service, pinka-session-start.service]
+  when: not ansible_check_mode or item in pinka_present.units
 
 - name: Start the lab at boot or not
   ansible.builtin.systemd_service:
-    name: pokus-lab.target
+    name: pinka-lab.target
     enabled: "{{ lab_session_autostart | bool }}"
-  when: not ansible_check_mode or 'pokus-lab.target' in pokus_present.units
+  when: not ansible_check_mode or 'pinka-lab.target' in pinka_present.units
 
 - name: Bring the lab up (waits for the health gate and the session record)
   ansible.builtin.systemd_service:
-    name: pokus-lab.target
+    name: pinka-lab.target
     state: started
   when: not ansible_check_mode

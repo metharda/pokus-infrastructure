@@ -39,8 +39,8 @@ TEMPLATES = (
     "prometheus/prometheus.yml",
     "loki/loki.yaml",
     "tempo/tempo.yaml",
-    "grafana/provisioning/datasources/pokus.yaml",
-    "grafana/provisioning/dashboards/pokus.yaml",
+    "grafana/provisioning/datasources/pinka.yaml",
+    "grafana/provisioning/dashboards/pinka.yaml",
 )
 DASHBOARDS = sorted((CONFIG / "grafana" / "dashboards").glob("*.json"))
 LISTEN_KEYS = re.compile(r"(endpoint|listen_address|http_listen_address|grpc_listen_address|host)$")
@@ -50,9 +50,9 @@ def obs_vars(vm: bool = False, gpu: bool = False, node_role: str = "full") -> di
     profile = fixture_profile("ubuntu2404-baremetal-nvidia-driver-loaded")
     variables: dict[str, Any] = {
         "host_profile": profile,
-        "pokus_features": {**profile["features"], "vm_targets": vm, "gpu_inference": gpu},
+        "pinka_features": {**profile["features"], "vm_targets": vm, "gpu_inference": gpu},
         "node_role": node_role,
-        "vault_postgres_passwords": {"pokus_grafana": "test"},
+        "vault_postgres_passwords": {"potka_grafana": "test"},
         "vault_grafana_admin_password": "test-admin",
     }
     return ansible_vars(
@@ -85,7 +85,7 @@ def listen_addresses(node: Any, path: str = "") -> list[tuple[str, str]]:
 @pytest.mark.parametrize("name", TEMPLATES)
 def test_templates_render_with_headers(name: str) -> None:
     text = render_file(CONFIG / f"{name}.j2", obs_vars(vm=True, gpu=True))
-    assert text.startswith(f"# Managed by pokus-infra (config/{name}.j2).")
+    assert text.startswith(f"# Managed by pinka (config/{name}.j2).")
     assert yaml.safe_load(text)
 
 
@@ -166,26 +166,26 @@ def test_prometheus_targets_are_loopback(gpu: bool, node_role: str, jobs: set[st
 
 def test_internal_ports_do_not_collide() -> None:
     variables = ansible_vars(GROUP_VARS)
-    ports = list(variables["pokus_ports"].values()) + list(
-        variables["pokus_internal_ports"].values()
+    ports = list(variables["pinka_ports"].values()) + list(
+        variables["pinka_internal_ports"].values()
     )
     assert len(ports) == len(set(ports))
-    address = ipaddress.ip_address(variables["pokus_vm_otlp"]["address"])
+    address = ipaddress.ip_address(variables["pinka_vm_otlp"]["address"])
     assert not address.is_global
     assert address in ipaddress.ip_network("198.18.0.0/15")  # RFC 2544 benchmarking range
 
 
 def test_grafana_datasources() -> None:
-    config = rendered("grafana/provisioning/datasources/pokus.yaml")
+    config = rendered("grafana/provisioning/datasources/pinka.yaml")
     sources = {d["uid"]: d for d in config["datasources"]}
     assert set(sources) == {"prometheus", "loki", "tempo", "postgres"}
     for uid in ("prometheus", "loki", "tempo"):
         assert sources[uid]["url"].startswith("http://127.0.0.1:"), uid
     postgres = sources["postgres"]
-    assert postgres["url"] == "/run/pokus/postgres-reader"
-    assert postgres["user"] == "pokus_grafana"
+    assert postgres["url"] == "/run/pinka/postgres-reader"
+    assert postgres["user"] == "potka_grafana"
     secret = postgres["secureJsonData"]["password"]
-    assert secret == "$__file{/run/secrets/pokus-grafana}"  # noqa: S105 - a file reference
+    assert secret == "$__file{/run/secrets/potka-grafana}"  # noqa: S105 - a file reference
     # "$$" is Grafana's escape for a literal "$".
     assert sources["loki"]["jsonData"]["derivedFields"][0]["url"] == "$${__value.raw}"
 
@@ -193,9 +193,11 @@ def test_grafana_datasources() -> None:
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.name)
 def test_dashboards_use_provisioned_datasources(path: Path) -> None:
     dashboard = json.loads(path.read_text(encoding="utf-8"))
-    assert dashboard["uid"] == f"pokus-{path.stem}"
+    # The run explorer shows the platform's runs (Q8); the others are infra's.
+    owner = "potka" if path.stem == "run-explorer" else "pinka"
+    assert dashboard["uid"] == f"{owner}-{path.stem}"
     assert dashboard["description"].startswith(
-        f"Managed by pokus-infra (config/grafana/dashboards/{path.name})."
+        f"Managed by pinka (config/grafana/dashboards/{path.name})."
     )
     assert dashboard["timezone"] == "utc"
     ids = [panel["id"] for panel in dashboard["panels"]]
@@ -216,18 +218,18 @@ def test_expected_dashboards() -> None:
     explorer = json.loads((CONFIG / "grafana/dashboards/run-explorer.json").read_text())
     assert [v["name"] for v in explorer["templating"]["list"]] == ["run_id", "trace_id"]
     queries = json.dumps(explorer["panels"])
-    assert 'pokus_run_id=\\"${run_id}\\"' in queries
-    assert "resource.pokus.run_id" in queries
+    assert 'potka_run_id=\\"${run_id}\\"' in queries
+    assert "resource.potka.run_id" in queries
 
 
 def test_vm_listener_unit() -> None:
-    text = render_template("observability", "pokus-vm-otlp-address.service.j2", obs_vars(vm=True))
+    text = render_template("observability", "pinka-vm-otlp-address.service.j2", obs_vars(vm=True))
     unit = configparser.ConfigParser(interpolation=None, strict=False)
     unit.optionxform = str  # type: ignore[assignment,method-assign]
     unit.read_string(text)
     assert unit["Unit"]["Before"] == "docker.service"
-    assert "ip address replace 198.18.0.1/32 dev pokus-otlp0" in text
-    assert unit["Service"]["ExecStop"] == "ip link delete pokus-otlp0"
+    assert "ip address replace 198.18.0.1/32 dev pinka-otlp0" in text
+    assert unit["Service"]["ExecStop"] == "ip link delete pinka-otlp0"
 
 
 def test_compose_services_bind_loopback() -> None:
@@ -246,7 +248,7 @@ def test_compose_services_bind_loopback() -> None:
     # No host files besides the gateway's own read-only copy of the pairing material.
     assert gateway["volumes"] == [
         "./config/otel:/etc/otelcol:ro",
-        "/etc/pokus/secrets/containers/otel-pairing:/etc/pokus-pairing:ro",
+        "/etc/pinka/secrets/containers/otel-pairing:/etc/pinka-pairing:ro",
     ]
     assert gateway["user"] == "10001:10001"
     stores = {
@@ -303,8 +305,8 @@ def gateway(variables: dict[str, Any]) -> Any:
 
 
 PAIRING_TLS = {
-    "cert_file": "/etc/pokus-pairing/self.crt",
-    "key_file": "/etc/pokus-pairing/self.key",
+    "cert_file": "/etc/pinka-pairing/self.crt",
+    "key_file": "/etc/pinka-pairing/self.key",
     "min_version": "1.3",
 }
 
@@ -314,14 +316,14 @@ def test_inference_node_forwards_only_once_paired() -> None:
     assert set(unpaired["exporters"]) == {"nop"}  # nothing leaves an unpaired node
     for pipeline in unpaired["service"]["pipelines"].values():
         assert pipeline["exporters"] == ["nop"]
-    paired = gateway(split_vars("inference", "pokus-lab"))
+    paired = gateway(split_vars("inference", "pinka-lab"))
     assert set(paired["exporters"]) == {"otlp_grpc/lab"}
     lab = paired["exporters"]["otlp_grpc/lab"]
     assert lab["endpoint"] == "100.64.0.1:4317"
     assert lab["tls"] == {
         **PAIRING_TLS,
-        "ca_file": "/etc/pokus-pairing/peer.crt",
-        "server_name_override": "pokus-lab",
+        "ca_file": "/etc/pinka-pairing/peer.crt",
+        "server_name_override": "pinka-lab",
     }
     assert set(paired["service"]["pipelines"]) == {"logs", "metrics", "traces"}
     for name, pipeline in paired["service"]["pipelines"].items():
@@ -345,18 +347,18 @@ def test_inference_node_forwards_only_once_paired() -> None:
 
 def test_lab_node_receives_the_paired_node_over_mutual_tls() -> None:
     assert "otlp/inference" not in gateway(split_vars("lab"))["receivers"]
-    paired = gateway(split_vars("lab", "pokus-gpu"))
+    paired = gateway(split_vars("lab", "pinka-gpu"))
     receiver = paired["receivers"]["otlp/inference"]["protocols"]
     assert set(receiver) == {"grpc"}
     assert receiver["grpc"]["endpoint"] == "100.64.0.1:4317"
     assert receiver["grpc"]["tls"] == {
         **PAIRING_TLS,
-        "client_ca_file": "/etc/pokus-pairing/peer.crt",
+        "client_ca_file": "/etc/pinka-pairing/peer.crt",
     }
     attributes = {a["key"]: a for a in paired["processors"]["resource/inference"]["attributes"]}
-    assert attributes["pokus.machine"] == {
-        "key": "pokus.machine",
-        "value": "pokus-gpu",
+    assert attributes["pinka.machine"] == {
+        "key": "pinka.machine",
+        "value": "pinka-gpu",
         "action": "upsert",
     }
     pipelines = paired["service"]["pipelines"]

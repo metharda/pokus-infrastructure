@@ -1,34 +1,34 @@
 # lab_session
 
-`pokus-lab.target`, the startup health gate and the session record of every
+`pinka-lab.target`, the startup health gate and the session record of every
 boot (BUILD_PROMPT §7.16, `docs/contracts.md`); tag `lab_session`.
 
-- `pokus-lab.target`: the lab is up while it is active. The lab's units
+- `pinka-lab.target`: the lab is up while it is active. The lab's units
   (Compose projects, the sleep inhibitor of `power_policy:
   lab_session_inhibit`, later the platform's services) are `WantedBy` and
   `PartOf` it. `lab_session_autostart` makes `multi-user.target` want it.
-- `pokus-health-gate.service` runs `/usr/local/libexec/pokus/health-gate`
-  with `/etc/pokus/health-gate.json` and repeats the checks until all pass or
+- `pinka-health-gate.service` runs `/usr/local/libexec/pinka/health-gate`
+  with `/etc/pinka/health-gate.json` and repeats the checks until all pass or
   `lab_session_gate_timeout` expires:
   - time: `timedatectl` reports NTP synchronization; on WSL the clock is also
     compared with `lab_session_ntp_reference` (SNTP), skipped when the server
     does not answer;
-  - postgres: the container `pokus-postgres` is healthy (`full`, `lab`);
+  - postgres: the container `pinka-postgres` is healthy (`full`, `lab`);
   - collector: the gateway's health endpoint answers 200;
   - incus: `incus query /1.0` succeeds (`full`, `lab`);
   - gpu: with `gpu_inference` on `full` and `inference` nodes, a container of
     the pinned CUDA image lists a GPU, with the GPU method of
     `/etc/docker/daemon.json` (CDI or the NVIDIA runtime).
-  The result goes to `/run/pokus/health-gate.json`. Platform services
+  The result goes to `/run/pinka/health-gate.json`. Platform services
   `Require` and order themselves after this unit (contracts.md).
-- `pokus-session-start.service` runs `/usr/local/libexec/pokus/session-start`
-  once per boot: `/var/lib/pokus/sessions/<boot_id>.json` (0644 root) with the
+- `pinka-session-start.service` runs `/usr/local/libexec/pinka/session-start`
+  once per boot: `/var/lib/pinka/sessions/<boot_id>.json` (0644 root) with the
   boot ID, start time, environment fingerprint and hash
-  (`pokus-lab fingerprint --json`) and the outcome of a fresh preflight
-  (`pokus-lab preflight --json`). A failed command leaves its field `null`
+  (`pinka fingerprint --json`) and the outcome of a fresh preflight
+  (`pinka preflight --json`). A failed command leaves its field `null`
   and its reason under `errors`; the record is written anyway.
-- The ordered shutdown (`pokus-lab stop`, draining the orchestrator first) is
-  part of the `pokus-lab` CLI.
+- The ordered shutdown (`pinka stop`, draining the orchestrator first) is
+  part of the `pinka` CLI.
 
 ## Variables
 

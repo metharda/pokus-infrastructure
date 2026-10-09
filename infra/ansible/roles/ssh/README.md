@@ -1,7 +1,7 @@
 # ssh
 
-sshd hardening (BUILD_PROMPT §7.3) through `/etc/ssh/sshd_config.d/10-pokus.conf`:
-key-only login, no root login, `AllowGroups pokus`, no X11 forwarding, local
+sshd hardening (BUILD_PROMPT §7.3) through `/etc/ssh/sshd_config.d/10-pinka.conf`:
+key-only login, no root login, `AllowGroups pinka`, no X11 forwarding, local
 TCP forwarding only (researchers forward Grafana and the gateway's ad-hoc
 endpoint), `ClientAliveInterval 60`.
 

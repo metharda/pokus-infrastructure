@@ -1,7 +1,7 @@
-# Managed by pokus-infra (ansible/roles/incus/meta/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/meta/main.yml). Local changes will be overwritten.
 galaxy_info:
   role_name: incus
-  namespace: pokus
+  namespace: pinka
   author: Pokus project
   description: "Incus LTS for benchmark targets: storage pool, networks, ACL, projects, profiles, client certificates"
   license: Apache-2.0
@@ -19,5 +19,5 @@ galaxy_info:
       versions: [all]
     - name: ArchLinux
       versions: [all]
-  galaxy_tags: [pokus]
+  galaxy_tags: [pinka]
 dependencies: []

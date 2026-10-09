@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/observability/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/observability/tasks/main.yml). Local changes will be overwritten.
 #
 # Observability stack (BUILD_PROMPT §7.9, contracts.md#telemetry): the
 # collector gateway and the journald collector, Prometheus, Loki, Tempo,
@@ -12,16 +12,16 @@
     that:
       - not observability_stores or vault_grafana_admin_password is defined
       - not observability_stores or vault_grafana_admin_password | length >= 8
-      - not observability_stores or vault_postgres_passwords.pokus_grafana is defined
-      - not observability_stores or '$' not in vault_postgres_passwords.pokus_grafana
+      - not observability_stores or vault_postgres_passwords.potka_grafana is defined
+      - not observability_stores or '$' not in vault_postgres_passwords.potka_grafana
       - >-
         not observability_stores or observability_grafana_researchers
         | difference(observability_grafana_user_passwords.keys() | list) | length == 0
       - observability_gpu_exporter in ['nvidia_smi', 'dcgm']
-      - observability_gpu_exporter != 'dcgm' or pokus_versions.containers.images.dcgm_exporter.digest is match('sha256:')
+      - observability_gpu_exporter != 'dcgm' or pinka_versions.containers.images.dcgm_exporter.digest is match('sha256:')
     fail_msg: >-
       group_vars/all/vault.yml needs vault_grafana_admin_password (8 or more
-      characters), vault_postgres_passwords.pokus_grafana (without "$", which
+      characters), vault_postgres_passwords.potka_grafana (without "$", which
       Grafana's provisioning expands) and vault_grafana_user_passwords for
       every researcher with a Grafana account (full and lab nodes); observability_gpu_exporter is
       nvidia_smi or dcgm, and dcgm only once its image is verified in versions.lock.yml.
@@ -35,7 +35,7 @@
 
 - name: Create the data directories
   ansible.builtin.file:
-    path: "{{ pokus_root }}/state/{{ item.name }}"
+    path: "{{ pinka_root }}/state/{{ item.name }}"
     state: directory
     owner: "{{ item.uid }}"
     group: "{{ item.gid }}"
@@ -67,7 +67,7 @@
     group: "{{ item.group | default('root') }}"
     mode: "{{ item.mode | default('0755') }}"
   loop:
-    - {path: "{{ observability_config_dir | dirname }}", group: pokus-admin, mode: "0750"}
+    - {path: "{{ observability_config_dir | dirname }}", group: pinka-admin, mode: "0750"}
     - {path: "{{ observability_config_dir }}"}
     - {path: "{{ observability_config_dir }}/otel"}
     - {path: "{{ observability_config_dir }}/prometheus"}
@@ -83,7 +83,7 @@
 
 - name: Render the configuration
   ansible.builtin.template:
-    src: "{{ pokus_infra_dir }}/config/{{ item }}.j2"
+    src: "{{ pinka_dir }}/config/{{ item }}.j2"
     dest: "{{ observability_config_dir }}/{{ item }}"
     owner: root
     group: root
@@ -91,12 +91,12 @@
   loop: >-
     {{ ['otel/gateway.yaml', 'otel/journald.yaml']
        + (['prometheus/prometheus.yml', 'loki/loki.yaml', 'tempo/tempo.yaml',
-           'grafana/provisioning/datasources/pokus.yaml', 'grafana/provisioning/dashboards/pokus.yaml']
+           'grafana/provisioning/datasources/pinka.yaml', 'grafana/provisioning/dashboards/pinka.yaml']
           if observability_stores else []) }}
 
 - name: Install the dashboards
   ansible.builtin.copy:
-    src: "{{ pokus_infra_dir }}/config/grafana/dashboards/"
+    src: "{{ pinka_dir }}/config/grafana/dashboards/"
     dest: "{{ observability_config_dir }}/grafana/dashboards/"
     owner: root
     group: root
@@ -125,11 +125,11 @@
   delay: 5
   until: observability_ready.status == 200
   loop: >-
-    {{ ['http://127.0.0.1:' ~ pokus_internal_ports.collector_health ~ '/',
-        'http://127.0.0.1:' ~ pokus_internal_ports.journald_health ~ '/']
-       + (['http://127.0.0.1:' ~ pokus_ports.prometheus ~ '/-/ready',
-           'http://127.0.0.1:' ~ pokus_ports.loki ~ '/ready',
-           'http://127.0.0.1:' ~ pokus_ports.tempo ~ '/ready',
+    {{ ['http://127.0.0.1:' ~ pinka_internal_ports.collector_health ~ '/',
+        'http://127.0.0.1:' ~ pinka_internal_ports.journald_health ~ '/']
+       + (['http://127.0.0.1:' ~ pinka_ports.prometheus ~ '/-/ready',
+           'http://127.0.0.1:' ~ pinka_ports.loki ~ '/ready',
+           'http://127.0.0.1:' ~ pinka_ports.tempo ~ '/ready',
            observability_grafana_url ~ '/api/health'] if observability_stores else []) }}
   when: not ansible_check_mode
 

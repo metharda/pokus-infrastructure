@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/incus/tasks/desired.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/incus/tasks/desired.yml). Local changes will be overwritten.
 #
 # The desired Incus objects, rendered from incus/projects/*.yaml.j2 and
 # incus/profiles/*.yaml.j2. The preseed and the convergence use the same data.
@@ -44,7 +44,7 @@
       core.https_address: "{{ incus_https_address }}"
     incus_pool:
       name: "{{ incus_pool_name }}"
-      description: Pokus instances
+      description: pinka instances
       driver: "{{ 'btrfs' if host_profile.storage_backend == 'btrfs' else 'lvm' }}"
       config: >-
         {{ ({'size': incus_pool_size} if incus_pool_source == 'loop' else {'source': incus_pool_device})
@@ -52,7 +52,7 @@
     incus_networks:
       - name: "{{ incus_build_network }}"
         type: bridge
-        description: Pokus image builds (NAT)
+        description: pinka image builds (NAT)
         config: {ipv4.address: auto, ipv4.nat: "true", ipv6.address: none}
     incus_projects: []
     incus_profiles: []
@@ -68,13 +68,13 @@
 
 - name: Render the shared projects
   ansible.builtin.set_fact:
-    incus_projects: "{{ incus_projects + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/projects/' ~ item ~ '.yaml.j2') | from_yaml] }}"
+    incus_projects: "{{ incus_projects + [lookup('ansible.builtin.template', pinka_dir ~ '/incus/projects/' ~ item ~ '.yaml.j2') | from_yaml] }}"
   loop: [bench, build]
 
 - name: Render the personal projects
   ansible.builtin.set_fact:
     incus_projects: >-
-      {{ incus_projects + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/projects/user.yaml.j2',
+      {{ incus_projects + [lookup('ansible.builtin.template', pinka_dir ~ '/incus/projects/user.yaml.j2',
                                   template_vars={'incus_user': item}) | from_yaml] }}
   loop: "{{ incus_researchers | default([]) }}"
   loop_control:
@@ -82,13 +82,13 @@
 
 - name: Render the shared profiles
   ansible.builtin.set_fact:
-    incus_profiles: "{{ incus_profiles + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/profiles/' ~ item ~ '.yaml.j2') | from_yaml] }}"
-  loop: "{{ ['target-container', 'probe-client', 'build'] + (['target-vm'] if pokus_features.vm_targets else []) }}"
+    incus_profiles: "{{ incus_profiles + [lookup('ansible.builtin.template', pinka_dir ~ '/incus/profiles/' ~ item ~ '.yaml.j2') | from_yaml] }}"
+  loop: "{{ ['target-container', 'probe-client', 'build'] + (['target-vm'] if pinka_features.vm_targets else []) }}"
 
 - name: Render the default profiles of the personal projects
   ansible.builtin.set_fact:
     incus_profiles: >-
-      {{ incus_profiles + [lookup('ansible.builtin.template', pokus_infra_dir ~ '/incus/profiles/user-default.yaml.j2',
+      {{ incus_profiles + [lookup('ansible.builtin.template', pinka_dir ~ '/incus/profiles/user-default.yaml.j2',
                                   template_vars={'incus_user': item}) | from_yaml] }}
   loop: "{{ incus_researchers | default([]) }}"
   loop_control:

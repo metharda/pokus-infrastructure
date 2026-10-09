@@ -11,7 +11,7 @@ description: Every lab-wide and role variable of the provisioning play, with def
 
 # Ansible variables
 
-Set per machine in `ansible/inventory/host_vars/<machine>.yml` (start from the commented `example-machine.yml`); secrets go into the Ansible Vault file `ansible/group_vars/all/vault.yml`. Lab-wide defaults live in `ansible/group_vars/all/main.yml`; role variables are defined by each role's `meta/argument_specs.yml`, which Ansible also uses to validate them. Host facts such as `pokus_family` are not variables: the `platform_facts` role derives them from the host profile.
+Set per machine in `ansible/inventory/host_vars/<machine>.yml` (start from the commented `example-machine.yml`); secrets go into the Ansible Vault file `ansible/group_vars/all/vault.yml`. Lab-wide defaults live in `ansible/group_vars/all/main.yml`; role variables are defined by each role's `meta/argument_specs.yml`, which Ansible also uses to validate them. Host facts such as `pinka_family` are not variables: the `platform_facts` role derives them from the host profile.
 
 ## Lab-wide variables
 
@@ -19,7 +19,7 @@ Set per machine in `ansible/inventory/host_vars/<machine>.yml` (start from the c
 
 Host name of the machine in the tailnet, in /etc/wsl.conf and in the fingerprint.
 
-- Default: `pokus-lab`
+- Default: `pinka-lab`
 
 ### `lab_mode`
 
@@ -35,7 +35,7 @@ Provider role: auto (the provider preflight detected), baremetal, wsl2 or vm. An
 
 ### `power_policy`
 
-Power policy on bare metal and VMs: never_sleep (sleep targets masked), lab_session_inhibit (a sleep inhibitor while pokus-lab.target is up) or os_default.
+Power policy on bare metal and VMs: never_sleep (sleep targets masked), lab_session_inhibit (a sleep inhibitor while pinka-lab.target is up) or os_default.
 
 - Default: `lab_session_inhibit`
 
@@ -75,11 +75,11 @@ Interfaces besides tailscale0 on which sshd accepts connections.
 
 - Default: `[]`
 
-### `pokus_root`
+### `pinka_root`
 
 Root of the research space (BUILD_PROMPT §6.2).
 
-- Default: `/srv/pokus`
+- Default: `/srv/pinka`
 
 ### `cpuset_services`
 
@@ -93,11 +93,11 @@ CPUs of the Incus benchmark targets; empty: no pinning. The platform pins target
 
 - Default: `''`
 
-### `pokus_services_slice`
+### `pinka_services_slice`
 
 Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
 
-- Default: `pokus-services.slice`
+- Default: `pinka-services.slice`
 
 ### `allow_kernel_updates`
 
@@ -105,26 +105,26 @@ Let automatic security updates update the kernel on bare metal (held by default)
 
 - Default: `false`
 
-### `pokus_tailscale_tags`
+### `pinka_tailscale_tags`
 
 Tailscale tag of the host per lab_mode (owner answer E2).
 
-- Default: `{production: 'tag:pokus-lab', staging: 'tag:pokus-qa'}`
+- Default: `{production: 'tag:pinka-lab', staging: 'tag:pinka-qa'}`
 
-### `pokus_groups`
+### `pinka_groups`
 
 Groups created by users_groups.
 
 - Default:
 
     ```yaml
-    - {name: pokus, system: false, description: all researchers}
-    - {name: pokus-admin, system: false, description: researchers with sudo}
-    - {name: pokus-gt, system: true, description: may read the ground truth and the catalog}
-    - {name: pokus-svc, system: true, description: all service accounts}
-    - {name: pokus-exec-clients, system: true, description: may call the executor socket (agent
+    - {name: pinka, system: false, description: all researchers}
+    - {name: pinka-admin, system: false, description: researchers with sudo}
+    - {name: pinka-gt, system: true, description: may read the ground truth and the catalog}
+    - {name: potka-svc, system: true, description: all service accounts}
+    - {name: potka-exec-clients, system: true, description: may call the executor socket (agent
         and orchestrator)}
-    - {name: pokus-gw-clients, system: true, description: may call the gateway's agent socket
+    - {name: potka-gw-clients, system: true, description: may call the gateway's agent socket
         (agent only)}
     ```
 
@@ -154,108 +154,108 @@ Admins that are explicitly allowed into the docker group (logged loudly).
 
 ### `service_accounts`
 
-System accounts of the platform services: no login, no password, no SSH keys. pokus-agent never gets pokus-gt, incus, docker or database access.
+System accounts of the platform services: no login, no password, no SSH keys. potka-agent never gets pinka-gt, incus, docker or database access.
 
 - Default:
 
     ```yaml
-    - name: pokus-orch
-      groups: [pokus-svc, pokus-gt, pokus-exec-clients]
+    - name: potka-orch
+      groups: [potka-svc, pinka-gt, potka-exec-clients]
       description: orchestrator
-    - name: pokus-agent
-      groups: [pokus-svc, pokus-exec-clients, pokus-gw-clients]
+    - name: potka-agent
+      groups: [potka-svc, potka-exec-clients, potka-gw-clients]
       description: agent runtime
-    - name: pokus-gw
-      groups: [pokus-svc]
+    - name: potka-gw
+      groups: [potka-svc]
       description: LLM gateway
-    - name: pokus-exec
-      groups: [pokus-svc]
+    - name: potka-exec
+      groups: [potka-svc]
       description: tool executor
-    - name: pokus-inject
-      groups: [pokus-svc, pokus-gt]
+    - name: potka-inject
+      groups: [potka-svc, pinka-gt]
       description: fault injector
-    - name: pokus-verify
-      groups: [pokus-svc, pokus-gt]
+    - name: potka-verify
+      groups: [potka-svc, pinka-gt]
       description: verifier
-    - name: pokus-eval
-      groups: [pokus-svc, pokus-gt]
+    - name: potka-eval
+      groups: [potka-svc, pinka-gt]
       description: evaluator
     ```
 
-### `pokus_service_home`
+### `pinka_service_home`
 
-Parent of the service account homes (/var/lib/pokus/&lt;account&gt;).
+Parent of the service account homes (/var/lib/pinka/&lt;account&gt;).
 
-- Default: `/var/lib/pokus`
+- Default: `/var/lib/pinka`
 
-### `pokus_python`
+### `pinka_python`
 
 Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
 
-- Default: `/opt/pokus/python/bin/python3`
+- Default: `/opt/pinka/python/bin/python3`
 
-### `pokus_layout`
+### `pinka_layout`
 
-The research space layout, the single source of truth: the layout role creates exactly these entries, and tools/gen renders them into docs/architecture.md. `path` is relative to pokus_root ("" is pokus_root itself).
+The research space layout, the single source of truth: the layout role creates exactly these entries, and tools/gen renders them into docs/architecture.md. `path` is relative to pinka_root ("" is pinka_root itself).
 
 - Default:
 
     ```yaml
-    - {path: '', owner: root, group: pokus, mode: '2775', notes: research space root}
+    - {path: '', owner: root, group: pinka, mode: '2775', notes: research space root}
     - {path: deploy, owner: root, group: root, mode: '0755', notes: read-only deployments of platform
         and catalog tags}
-    - {path: catalog, owner: root, group: pokus-gt, mode: '0750', notes: scenario catalog including
+    - {path: catalog, owner: root, group: pinka-gt, mode: '0750', notes: scenario catalog including
         ground truth}
-    - {path: models, owner: pokus-orch, group: pokus, mode: '0755', notes: 'model weights, 0444
+    - {path: models, owner: potka-orch, group: pinka, mode: '0755', notes: 'model weights, 0444
         after verification'}
     - path: datasets
       owner: root
-      group: pokus
+      group: pinka
       mode: '2775'
-      default_acl: ['group:pokus:rwX']
+      default_acl: ['group:pinka:rwX']
       notes: shared datasets
-    - {path: artifacts, owner: pokus-orch, group: pokus, mode: '0750', notes: 'content-addressed,
+    - {path: artifacts, owner: potka-orch, group: pinka, mode: '0750', notes: 'content-addressed,
         write-once 0440'}
-    - {path: reports, owner: pokus-eval, group: pokus, mode: '2775', notes: evaluation reports}
-    - {path: images, owner: root, group: pokus-admin, mode: '0750', notes: exported golden image
+    - {path: reports, owner: potka-eval, group: pinka, mode: '2775', notes: evaluation reports}
+    - {path: images, owner: root, group: pinka-admin, mode: '0750', notes: exported golden image
         tarballs with sha256}
     - path: shared
       owner: root
-      group: pokus
+      group: pinka
       mode: '2770'
-      default_acl: ['group:pokus:rwX']
+      default_acl: ['group:pinka:rwX']
       notes: shared files
     - {path: users, owner: root, group: root, mode: '0755', notes: parent of the per-researcher
         directories}
-    - {path: services, owner: root, group: pokus-admin, mode: '0750', notes: 'rendered compose
+    - {path: services, owner: root, group: pinka-admin, mode: '0750', notes: 'rendered compose
         and config, never plaintext secrets readable by all'}
     - {path: state, owner: root, group: root, mode: '0755', notes: 'parent of state/<service>/
         (container UID, 0700), created by the service roles'}
     - {path: backups, owner: root, group: root, mode: '0700', notes: local backup staging only}
     ```
 
-### `pokus_layout_user_mode`
+### `pinka_layout_user_mode`
 
 Per-researcher directory: users/&lt;name&gt;/ owned by &lt;name&gt;:&lt;name&gt;, mode 0700.
 
 - Default: `0700`
 
-### `pokus_system_layout`
+### `pinka_system_layout`
 
-Host paths outside pokus_root (absolute).
+Host paths outside pinka_root (absolute).
 
 - Default:
 
     ```yaml
-    - {path: /etc/pokus, owner: root, group: root, mode: '0755', notes: 'host profile, bootstrap
+    - {path: /etc/pinka, owner: root, group: root, mode: '0755', notes: 'host profile, bootstrap
         state, rendered non-secret config'}
-    - {path: /etc/pokus/secrets, owner: root, group: pokus-svc, mode: '0750', notes: rendered
+    - {path: /etc/pinka/secrets, owner: root, group: potka-svc, mode: '0750', notes: rendered
         secrets (files 0640 or per-service 0600)}
-    - {path: /var/lib/pokus, owner: root, group: root, mode: '0755', notes: service homes and
+    - {path: /var/lib/pinka, owner: root, group: root, mode: '0755', notes: service homes and
         lab state}
     ```
 
-### `pokus_ports`
+### `pinka_ports`
 
 Listener ports of the lab services (contracts.md#ports).
 
@@ -266,7 +266,7 @@ Listener ports of the lab services (contracts.md#ports).
       loki: 18702, tempo: 18703, vllm: 18704, gateway_adhoc: 18705, docs_serve: 18706, inference_control: 18710}
     ```
 
-### `pokus_internal_ports`
+### `pinka_internal_ports`
 
 Loopback ports of lab-internal listeners: exporters, the collectors' own metrics and health checks, Loki's and Tempo's internal servers. Not part of the contract; every observability container uses the host network and binds 127.0.0.1 (BUILD_PROMPT §7.9).
 
@@ -278,31 +278,31 @@ Loopback ports of lab-internal listeners: exporters, the collectors' own metrics
       loki_grpc: 18728, tempo_grpc: 18729, collector_health: 18730, journald_health: 18731}
     ```
 
-### `pokus_vm_otlp`
+### `pinka_vm_otlp`
 
-Dedicated collector listener for VM targets (contracts.md#telemetry, C4): an address on a dummy interface, reachable only from run networks through the run ACL and the firewall, OTLP gRPC and HTTP on the ports of pokus_ports. Set up only with the vm_targets feature.
+Dedicated collector listener for VM targets (contracts.md#telemetry, C4): an address on a dummy interface, reachable only from run networks through the run ACL and the firewall, OTLP gRPC and HTTP on the ports of pinka_ports. Set up only with the vm_targets feature.
 
-- Default: `{interface: pokus-otlp0, address: 198.18.0.1}`
+- Default: `{interface: pinka-otlp0, address: 198.18.0.1}`
 
-### `pokus_incus_bridge_patterns`
+### `pinka_incus_bridge_patterns`
 
-Incus bridges the firewall treats as Incus networks (contracts.md: run networks are named r-&lt;short&gt;; image builds use pokus-build0).
+Incus bridges the firewall treats as Incus networks (contracts.md: run networks are named r-&lt;short&gt;; image builds use pinka-build0).
 
-- Default: `[r-*, pokus-build0]`
+- Default: `[r-*, pinka-build0]`
 
-### `pokus_incus_personal_bridge_patterns`
+### `pinka_incus_personal_bridge_patterns`
 
 Bridges of the researchers' personal Incus projects (incusbr-&lt;uid&gt;); unlike run networks they have NAT and an uplink.
 
 - Default: `[incusbr-*]`
 
-### `pokus_source_repo`
+### `pinka_source_repo`
 
-The deployer's copy of the Pokus repository, required when the platform or the catalog is enabled (owner answer E3): an SSH URL (read-only deploy key generated on the host) or an anonymous HTTPS URL. Never a URL with credentials.
+The deployer's copy of the pokus-platform repository, required when the platform or the catalog is enabled (owner answer E3): an SSH URL (read-only deploy key generated on the host) or an anonymous HTTPS URL. Never a URL with credentials.
 
 - Default: `''`
 
-### `pokus_source_known_hosts`
+### `pinka_source_known_hosts`
 
 Extra known_hosts lines for an SSH source (GitHub's keys come from versions.lock.yml).
 
@@ -314,7 +314,7 @@ Deploy only tags carrying a valid SSH signature of an allowed signer (owner answ
 
 - Default: `false`
 
-### `pokus_allowed_signers`
+### `pinka_allowed_signers`
 
 Allowed signers for signed tags, ssh-keygen allowed_signers lines ("&lt;principal&gt; &lt;key type&gt; &lt;key&gt;").
 
@@ -340,9 +340,9 @@ QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of {name:
 
 ## backup
 
-restic backups of pokus_root and /etc/pokus, PostgreSQL dumps, retention and backup metrics.
+restic backups of pinka_root and /etc/pinka, PostgreSQL dumps, retention and backup metrics.
 
-Entry points: `main` (restic backups of pokus_root and /etc/pokus, PostgreSQL dumps, retention and backup metrics). Role README: `ansible/roles/backup/README.md`.
+Entry points: `main` (restic backups of pinka_root and /etc/pinka, PostgreSQL dumps, retention and backup metrics). Role README: `ansible/roles/backup/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -350,8 +350,8 @@ Variables the role reads from elsewhere:
 | --- | --- | --- |
 | `machine_name` | [lab-wide](#machine_name) | Host name recorded in the snapshots; prune and restore select this host's snapshots. |
 | `node_role` | [lab-wide](#node_role) | PostgreSQL is dumped on full and lab nodes. |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space root; its directories of backup_include are backed up. |
-| `pokus_versions` | host_vars | The pinned versions (the restic binary). |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space root; its directories of backup_include are backed up. |
+| `pinka_versions` | host_vars | The pinned versions (the restic binary). |
 
 ### `backup_repository`
 
@@ -376,7 +376,7 @@ known_hosts lines of the SFTP backup server, required for an sftp repository.
 
 ### `backup_include`
 
-Directories below pokus_root that are backed up.
+Directories below pinka_root that are backed up.
 
 - Type: `list` of `str`
 - Default: `[catalog, artifacts, reports, images, datasets, shared, users, backups/pg]`
@@ -390,14 +390,14 @@ Also back up the model weights (re-downloaded and verified on restore otherwise)
 
 ### `backup_include_state`
 
-Directories of pokus_root/state to back up as well (prometheus, loki, tempo).
+Directories of pinka_root/state to back up as well (prometheus, loki, tempo).
 
 - Type: `list` of `str`
 - Default: `[]`
 
 ### `backup_include_secrets`
 
-Also back up the secret material under /etc/pokus (needs backup_secrets_acknowledged).
+Also back up the secret material under /etc/pinka (needs backup_secrets_acknowledged).
 
 - Type: `bool`
 - Default: `false`
@@ -494,11 +494,11 @@ Automatic security updates on fixed releases (never on rolling releases).
 Derived; base_auto_updates and not a rolling release.
 
 - Type: `bool`
-- Default: `{{ base_auto_updates | bool and pokus_release_model != 'rolling' }}`
+- Default: `{{ base_auto_updates | bool and pinka_release_model != 'rolling' }}`
 
 ### `base_held_package_patterns`
 
-Packages automatic updates never touch (pinned by Pokus).
+Packages automatic updates never touch (pinned by pinka).
 
 - Type: `list` of `str`
 - Default:
@@ -513,7 +513,7 @@ Packages automatic updates never touch (pinned by Pokus).
 Derived; hold the kernel (bare metal unless allow_kernel_updates).
 
 - Type: `bool`
-- Default: `{{ pokus_provider == 'baremetal' and not (allow_kernel_updates | bool) }}`
+- Default: `{{ pinka_provider == 'baremetal' and not (allow_kernel_updates | bool) }}`
 
 ### `base_kernel_package_patterns`
 
@@ -531,7 +531,7 @@ Kernel package patterns for dnf.
 
 ### `base_sysctl`
 
-Kernel settings in /etc/sysctl.d/60-pokus.conf.
+Kernel settings in /etc/sysctl.d/60-pinka.conf.
 
 - Type: `dict`
 - Default:
@@ -563,10 +563,10 @@ What the operator has to do; printed by bootstrap.sh.
 
 ### `bootstrap_signal_file`
 
-Signal file; bootstrap.sh passes its path in pokus_bootstrap.signal_file.
+Signal file; bootstrap.sh passes its path in pinka_bootstrap.signal_file.
 
 - Type: `path`
-- Default: `{{ pokus_bootstrap.signal_file | default('/run/pokus/bootstrap-signal.json') }}`
+- Default: `{{ pinka_bootstrap.signal_file | default('/run/pinka/bootstrap-signal.json') }}`
 
 ### `bootstrap_signal_mok_key`
 
@@ -577,16 +577,16 @@ With code 76, a Machine Owner Key that bootstrap.sh imports (mokutil --import) w
 
 ## catalog
 
-Deploy the scenario catalog at catalog_ref into /srv/pokus/catalog (only if enabled).
+Deploy the scenario catalog at catalog_ref into /srv/pinka/catalog (only if enabled).
 
-Entry points: `main` (Deploy the scenario catalog at catalog_ref into /srv/pokus/catalog (only if enabled)). Role README: `ansible/roles/catalog/README.md`.
+Entry points: `main` (Deploy the scenario catalog at catalog_ref into /srv/pinka/catalog (only if enabled)). Role README: `ansible/roles/catalog/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `node_role` | [lab-wide](#node_role) | The catalog is deployed on full and lab nodes only. |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space root. |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space root. |
 
 ### `catalog_enabled`
 
@@ -612,7 +612,7 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (compose/&lt;project&gt;/compose.yml). |
+| `pinka_dir` | host_vars | Infra directory of the checkout (compose/&lt;project&gt;/compose.yml). |
 
 ### `compose_project`
 
@@ -624,7 +624,7 @@ Compose project.
 
 ### `compose_description`
 
-Description of pokus-&lt;project&gt;.service.
+Description of pinka-&lt;project&gt;.service.
 
 - Type: `str`
 - Default: `''`
@@ -666,17 +666,17 @@ Seconds `docker compose up --wait` waits for healthy containers.
 
 ### `compose_root`
 
-Directory of the rendered projects (pokus_root/services).
+Directory of the rendered projects (pinka_root/services).
 
 - Type: `path`
-- Default: `{{ pokus_root }}/services`
+- Default: `{{ pinka_root }}/services`
 
 ### `compose_images`
 
 Images pinned by digest (versions.lock.yml containers.images).
 
 - Type: `dict`
-- Default: `{{ pokus_versions.containers.images }}`
+- Default: `{{ pinka_versions.containers.images }}`
 
 ### `compose_extra_env`
 
@@ -687,19 +687,19 @@ Further variables for the project's .env file (the same for every role of a proj
 
 ## deploy_source
 
-Install the deployment helper and fetch the Pokus repository into the root-only bare mirror.
+Install the deployment helper and fetch the pokus-platform repository into the root-only bare mirror.
 
-Entry points: `main` (Install the deployment helper and fetch the Pokus repository into the root-only bare mirror), `deploy` (Extract one component at a ref into its deployment directory with DEPLOYED_FROM.json), `activate` (Point the deployment root's current link at a prepared deployment, atomically). Role README: `ansible/roles/deploy_source/README.md`.
+Entry points: `main` (Install the deployment helper and fetch the pokus-platform repository into the root-only bare mirror), `deploy` (Extract one component at a ref into its deployment directory with DEPLOYED_FROM.json), `activate` (Point the deployment root's current link at a prepared deployment, atomically). Role README: `ansible/roles/deploy_source/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `machine_name` | [lab-wide](#machine_name) | Machine name, the comment of the deploy key. |
-| `pokus_allowed_signers` | [lab-wide](#pokus_allowed_signers) | ssh-keygen allowed_signers lines for signed tags. |
-| `pokus_source_known_hosts` | [lab-wide](#pokus_source_known_hosts) | Extra known_hosts lines for an SSH source. |
-| `pokus_source_repo` | [lab-wide](#pokus_source_repo) | SSH or anonymous HTTPS URL of the deployer's copy of the Pokus repository (owner answer E3). |
-| `pokus_versions` | host_vars | The pinned versions (GitHub's SSH host keys). |
+| `pinka_allowed_signers` | [lab-wide](#pinka_allowed_signers) | ssh-keygen allowed_signers lines for signed tags. |
+| `pinka_source_known_hosts` | [lab-wide](#pinka_source_known_hosts) | Extra known_hosts lines for an SSH source. |
+| `pinka_source_repo` | [lab-wide](#pinka_source_repo) | SSH or anonymous HTTPS URL of the deployer's copy of the pokus-platform repository (owner answer E3). |
+| `pinka_versions` | host_vars | The pinned versions (GitHub's SSH host keys). |
 | `require_signed_tags` | [lab-wide](#require_signed_tags) | Deploy only validly SSH-signed component tags (owner answer E16). |
 
 ### `deploy_source_component`
@@ -721,7 +721,7 @@ A component tag, another tag, a branch or a full commit.
 
 ### `deploy_source_root`
 
-Deployment root (/srv/pokus/deploy/platform or /srv/pokus/catalog).
+Deployment root (/srv/pinka/deploy/platform or /srv/pinka/catalog).
 
 - Type: `path`
 - Default: `''`
@@ -799,7 +799,7 @@ Address pools for Docker networks; must not overlap Incus bridges, Tailscale's 1
 Systemd slice of every container (daemon.json cgroup-parent), the lab services' slice that AllowedCPUs pins to cpuset_services.
 
 - Type: `str`
-- Default: `{{ pokus_services_slice }}`
+- Default: `{{ pinka_services_slice }}`
 
 ### `docker_log_max_size`
 
@@ -824,22 +824,22 @@ First Docker Engine major version with CDI device support; older engines get the
 
 ## doctor
 
-The pokus-lab operator CLI, a copy of preflight it runs, and the lab description /etc/pokus/lab.json.
+The pinka operator CLI, a copy of preflight it runs, and the lab description /etc/pinka/lab.json.
 
-Entry points: `main` (The pokus-lab operator CLI, a copy of preflight it runs, and the lab description /etc/pokus/lab.json). Role README: `ansible/roles/doctor/README.md`.
+Entry points: `main` (The pinka operator CLI, a copy of preflight it runs, and the lab description /etc/pinka/lab.json). Role README: `ansible/roles/doctor/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `host_profile` | bootstrap.sh | The validated host profile (storage backend of the Incus pool). |
-| `machine` | bootstrap.sh | Name of the host_vars file (bootstrap --machine); pokus-lab passes it back to bootstrap. |
+| `machine` | bootstrap.sh | Name of the host_vars file (bootstrap --machine); pinka passes it back to bootstrap. |
 | `machine_name` | [lab-wide](#machine_name) | Machine name; the Tailscale host name doctor expects. |
 | `node_role` | [lab-wide](#node_role) | full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks. |
-| `pokus_features` | host_vars | Feature flags of the host profile (gpu_inference, vm_targets). |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints. |
-| `pokus_provider` | host_vars | Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path). |
-| `pokus_versions` | host_vars | The pinned versions (the image and digest every lab container must run). |
+| `pinka_dir` | host_vars | Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints. |
+| `pinka_features` | host_vars | Feature flags of the host profile (gpu_inference, vm_targets). |
+| `pinka_provider` | host_vars | Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path). |
+| `pinka_versions` | host_vars | The pinned versions (the image and digest every lab container must run). |
 
 ### `doctor_max_clock_offset`
 
@@ -885,7 +885,7 @@ Days before a pairing certificate expires at which doctor fails inference.pairin
 
 ### `doctor_drain_timeout`
 
-Seconds `pokus-lab update-host` gives the orchestrator to drain.
+Seconds `pinka update-host` gives the orchestrator to drain.
 
 - Type: `int`
 - Default: `1800`
@@ -910,10 +910,10 @@ Variables the role reads from elsewhere:
 | `grafana_tailscale_serve` | [lab-wide](#grafana_tailscale_serve) | Open the Grafana serve port on the tailnet interface. |
 | `inference_remote_node` | [lab-wide](#inference_remote_node) | The paired inference node of a lab node; its telemetry arrives on OTLP gRPC. |
 | `node_role` | [lab-wide](#node_role) | Inference nodes and paired lab nodes open the split-inference ports. |
-| `pokus_incus_bridge_patterns` | [lab-wide](#pokus_incus_bridge_patterns) | Interface name patterns of Incus bridges (run networks and the build bridge). |
-| `pokus_incus_personal_bridge_patterns` | [lab-wide](#pokus_incus_personal_bridge_patterns) | Interface name patterns of the bridges of personal Incus projects. |
-| `pokus_ports` | [lab-wide](#pokus_ports) | Contract ports (vllm, inference_control, otlp_grpc). |
-| `pokus_vm_otlp` | [lab-wide](#pokus_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
+| `pinka_incus_bridge_patterns` | [lab-wide](#pinka_incus_bridge_patterns) | Interface name patterns of Incus bridges (run networks and the build bridge). |
+| `pinka_incus_personal_bridge_patterns` | [lab-wide](#pinka_incus_personal_bridge_patterns) | Interface name patterns of the bridges of personal Incus projects. |
+| `pinka_ports` | [lab-wide](#pinka_ports) | Contract ports (vllm, inference_control, otlp_grpc). |
+| `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
 | `ssh_extra_allowed_interfaces` | [lab-wide](#ssh_extra_allowed_interfaces) | Interfaces besides tailscale0 on which SSH is reachable. |
 
 ### `firewall_tailnet_interface`
@@ -940,8 +940,8 @@ TCP ports open on the tailnet interface (derived: 22, the serve port if enabled,
     ```jinja
     {{ [22]
        + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else [])
-       + ([pokus_ports.vllm, pokus_ports.inference_control] if node_role == 'inference' else [])
-       + ([pokus_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
+       + ([pinka_ports.vllm, pinka_ports.inference_control] if node_role == 'inference' else [])
+       + ([pinka_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
     ```
 
 ### `firewall_tailscale_udp_port`
@@ -966,8 +966,8 @@ OTLP ports VM targets may reach on the listener address (derived; empty without 
 - Default:
 
     ```jinja
-    {{ [pokus_ports.otlp_grpc, pokus_ports.otlp_http]
-       if (pokus_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}
+    {{ [pinka_ports.otlp_grpc, pinka_ports.otlp_http]
+       if (pinka_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}
     ```
 
 ### `firewall_incus_bridge_patterns`
@@ -975,14 +975,14 @@ OTLP ports VM targets may reach on the listener address (derived; empty without 
 Every Incus bridge that may use DHCP and DNS on the host (derived).
 
 - Type: `list` of `str`
-- Default: `{{ pokus_incus_bridge_patterns + pokus_incus_personal_bridge_patterns }}`
+- Default: `{{ pinka_incus_bridge_patterns + pinka_incus_personal_bridge_patterns }}`
 
 ### `firewall_uplink_bridge_patterns`
 
 Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
 
 - Type: `list` of `str`
-- Default: `{{ ['pokus-build0'] + pokus_incus_personal_bridge_patterns }}`
+- Default: `{{ ['pinka-build0'] + pinka_incus_personal_bridge_patterns }}`
 
 ## images
 
@@ -994,10 +994,10 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_bootstrap` | bootstrap.sh | Bootstrap options; repo_commit and infra_dirty become the pokus.recipe_commit property. |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (images/ recipes). |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space root; the exports go to its images/ directory. |
-| `pokus_versions` | host_vars | The pinned versions (generated group_vars versions.yml): the base images, the agent and the target container images. |
+| `pinka_bootstrap` | bootstrap.sh | Bootstrap options; repo_commit and infra_dirty become the pinka.recipe_commit property. |
+| `pinka_dir` | host_vars | Infra directory of the checkout (images/ recipes). |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space root; the exports go to its images/ directory. |
+| `pinka_versions` | host_vars | The pinned versions (generated group_vars versions.yml): the base images, the agent and the target container images. |
 
 ### `images_blueprints`
 
@@ -1015,10 +1015,10 @@ Build the listed blueprints again although their alias and export exist; the new
 
 ### `images_export_root`
 
-Root of the exports, &lt;blueprint&gt;/&lt;version&gt;/ and _upstream/&lt;base&gt;/&lt;fingerprint&gt;/ (pokus_root/images).
+Root of the exports, &lt;blueprint&gt;/&lt;version&gt;/ and _upstream/&lt;base&gt;/&lt;fingerprint&gt;/ (pinka_root/images).
 
 - Type: `path`
-- Default: `{{ pokus_root }}/images`
+- Default: `{{ pinka_root }}/images`
 
 ### `images_project`
 
@@ -1082,9 +1082,9 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware) passed by bootstrap. |
-| `pokus_bootstrap` | bootstrap.sh | Bootstrap options (adopt_incus, interactive). |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (incus/ templates). |
-| `pokus_vm_otlp` | [lab-wide](#pokus_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
+| `pinka_bootstrap` | bootstrap.sh | Bootstrap options (adopt_incus, interactive). |
+| `pinka_dir` | host_vars | Infra directory of the checkout (incus/ templates). |
+| `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
 | `researchers` | [lab-wide](#researchers) | Researchers; each gets a personal project and joins the Incus user group. |
 
 ### `incus_pool_name`
@@ -1092,7 +1092,7 @@ Variables the role reads from elsewhere:
 Storage pool of all instances.
 
 - Type: `str`
-- Default: `pokus-targets`
+- Default: `pinka-targets`
 
 ### `incus_pool_source`
 
@@ -1142,14 +1142,14 @@ Address of the Incus HTTPS API (restricted TLS clients and metrics).
 NAT bridge of the build project.
 
 - Type: `str`
-- Default: `pokus-build0`
+- Default: `pinka-build0`
 
 ### `incus_run_acl`
 
 Network ACL the platform attaches to every run network.
 
 - Type: `str`
-- Default: `pokus-run-default`
+- Default: `pinka-run-default`
 
 ### `incus_run_acl_egress`
 
@@ -1160,10 +1160,10 @@ Egress rules of the run ACL (derived; OTLP to the VM listener with vm_targets).
 
     ```jinja
     {{ [{'action': 'allow', 'state': 'enabled', 'protocol': 'tcp',
-         'destination': pokus_vm_otlp.address ~ '/32',
-         'destination_port': pokus_ports.otlp_grpc ~ ',' ~ pokus_ports.otlp_http,
+         'destination': pinka_vm_otlp.address ~ '/32',
+         'destination_port': pinka_ports.otlp_grpc ~ ',' ~ pinka_ports.otlp_http,
          'description': 'OTLP to the collector listener for VM targets'}]
-       if pokus_features.vm_targets | default(false) else [] }}
+       if pinka_features.vm_targets | default(false) else [] }}
     ```
 
 ### `incus_max_virtual_machines`
@@ -1182,7 +1182,7 @@ Project limits of bench (derived from the host's memory and CPUs, or from cpuset
 
     ```yaml
     {limits.memory: '{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB',
-      limits.cpu: "{{ (cpuset_targets | pokus_cpuset_cpus | length) if cpuset_targets\n   else\
+      limits.cpu: "{{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets\n   else\
         \ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}", limits.instances: '40'}
     ```
 
@@ -1237,27 +1237,31 @@ Default limits and root disk of instances in personal projects.
 Directory of the client certificates (one subdirectory per service).
 
 - Type: `path`
-- Default: `/etc/pokus/incus`
+- Default: `/etc/pinka/incus`
 
 ### `incus_service_certificates`
 
-Platform services that get a restricted client certificate ({account, short, projects}).
+Platform services that get a restricted client certificate ({account, short, name, projects}); name is its common and trust name.
 
 - Type: `list` of `dict`
 - Default:
 
     ```yaml
-    - account: pokus-orch
+    - account: potka-orch
       short: orch
+      name: potka-orch
       projects: [bench, build]
-    - account: pokus-exec
+    - account: potka-exec
       short: exec
+      name: potka-exec
       projects: [bench]
-    - account: pokus-inject
+    - account: potka-inject
       short: inject
+      name: potka-inject
       projects: [bench]
-    - account: pokus-verify
+    - account: potka-verify
       short: verify
+      name: potka-verify
       projects: [bench]
     ```
 
@@ -1266,7 +1270,7 @@ Platform services that get a restricted client certificate ({account, short, pro
 The metrics-only certificate for Prometheus.
 
 - Type: `dict`
-- Default: `{account: root, short: metrics, type: metrics}`
+- Default: `{account: root, short: metrics, name: pinka-metrics, type: metrics}`
 
 ### `incus_certificate_days`
 
@@ -1280,7 +1284,7 @@ Validity of generated client certificates in days.
 Journal identifier of the Incus event feed.
 
 - Type: `str`
-- Default: `pokus-incus-events`
+- Default: `pinka-incus-events`
 
 ## inference_control
 
@@ -1296,7 +1300,7 @@ Variables the role reads from elsewhere:
 | `inference_remote_node` | [lab-wide](#inference_remote_node) | Lab node only. Tailnet name of the paired inference node; must match peer.json. |
 | `machine_name` | [lab-wide](#machine_name) | Tailnet name of this node; the subject alternative name of its certificate. |
 | `node_role` | [lab-wide](#node_role) | The role runs on lab and inference nodes only. |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space root (model weights under models/). |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space root (model weights under models/). |
 
 ### `inference_control_certificate_days`
 
@@ -1314,22 +1318,22 @@ Seconds the verification call waits for vLLM's health.
 
 ## lab_session
 
-pokus-lab.target, the startup health gate and the per-boot session record.
+pinka-lab.target, the startup health gate and the per-boot session record.
 
-Entry points: `main` (pokus-lab.target, the startup health gate and the per-boot session record). Role README: `ansible/roles/lab_session/README.md`.
+Entry points: `main` (pinka-lab.target, the startup health gate and the per-boot session record). Role README: `ansible/roles/lab_session/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `node_role` | [lab-wide](#node_role) | full, lab or inference; selects the checks of the health gate. |
-| `pokus_features` | host_vars | Feature flags of the host profile (gpu_inference adds the GPU check). |
-| `pokus_provider` | host_vars | Provider of this host; on wsl2 the gate also compares the clock with an NTP reference. |
-| `pokus_versions` | host_vars | The pinned versions (the CUDA image of the GPU check). |
+| `pinka_features` | host_vars | Feature flags of the host profile (gpu_inference adds the GPU check). |
+| `pinka_provider` | host_vars | Provider of this host; on wsl2 the gate also compares the clock with an NTP reference. |
+| `pinka_versions` | host_vars | The pinned versions (the CUDA image of the GPU check). |
 
 ### `lab_session_autostart`
 
-Start the lab at boot (multi-user.target wants pokus-lab.target).
+Start the lab at boot (multi-user.target wants pinka-lab.target).
 
 - Type: `bool`
 - Default: `true`
@@ -1372,10 +1376,10 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_layout` | [lab-wide](#pokus_layout) | Entries {path (relative to pokus_root), owner, group, mode, default_acl, notes}. |
-| `pokus_layout_user_mode` | [lab-wide](#pokus_layout_user_mode) | Mode of users/&lt;name&gt;/ (owned by &lt;name&gt;:&lt;name&gt;). |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space base path. |
-| `pokus_system_layout` | [lab-wide](#pokus_system_layout) | Absolute host paths {path, owner, group, mode, notes}. |
+| `pinka_layout` | [lab-wide](#pinka_layout) | Entries {path (relative to pinka_root), owner, group, mode, default_acl, notes}. |
+| `pinka_layout_user_mode` | [lab-wide](#pinka_layout_user_mode) | Mode of users/&lt;name&gt;/ (owned by &lt;name&gt;:&lt;name&gt;). |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space base path. |
+| `pinka_system_layout` | [lab-wide](#pinka_system_layout) | Absolute host paths {path, owner, group, mode, notes}. |
 | `researchers` | [lab-wide](#researchers) | Researchers; each gets users/&lt;name&gt;/. |
 
 ## mac
@@ -1388,7 +1392,7 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space labeled with the rules below. |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space labeled with the rules below. |
 
 ### `mac_selinux_fcontexts`
 
@@ -1398,9 +1402,9 @@ Persistent file context rules ({target, setype}).
 - Default:
 
     ```yaml
-    - {target: '{{ pokus_root }}/state(/.*)?', setype: container_file_t}
-    - {target: '{{ pokus_root }}/models(/.*)?', setype: container_ro_file_t}
-    - {target: '{{ pokus_root }}/services(/.*)?', setype: container_ro_file_t}
+    - {target: '{{ pinka_root }}/state(/.*)?', setype: container_file_t}
+    - {target: '{{ pinka_root }}/models(/.*)?', setype: container_ro_file_t}
+    - {target: '{{ pinka_root }}/services(/.*)?', setype: container_ro_file_t}
     ```
 
 ### `mac_restorecon_always`
@@ -1420,29 +1424,29 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (models.lock.yml). |
-| `pokus_python` | [lab-wide](#pokus_python) | The pinned CPython the environment is created with. |
+| `pinka_dir` | host_vars | Infra directory of the checkout (models.lock.yml). |
+| `pinka_python` | [lab-wide](#pinka_python) | The pinned CPython the environment is created with. |
 
 ### `models_root`
 
-Root of the weights and adapters (pokus_root/models).
+Root of the weights and adapters (pinka_root/models).
 
 - Type: `path`
-- Default: `{{ pokus_root }}/models`
+- Default: `{{ pinka_root }}/models`
 
 ### `models_venv`
 
 Isolated environment of the pinned huggingface_hub CLI.
 
 - Type: `path`
-- Default: `/opt/pokus/models-venv`
+- Default: `/opt/pinka/models-venv`
 
 ### `models_uv`
 
 Pinned uv installed by bootstrap.
 
 - Type: `path`
-- Default: `/opt/pokus/bin/uv`
+- Default: `/opt/pinka/bin/uv`
 
 ### `models_hf_token`
 
@@ -1469,7 +1473,7 @@ Entry points: `main` (NVIDIA Container Toolkit with CDI GPU access and a contain
 Directory of the GPU check record gpu-docker.txt.
 
 - Type: `path`
-- Default: `/var/lib/pokus/verify`
+- Default: `/var/lib/pinka/verify`
 
 ### `nvidia_container_toolkit_cdi_device`
 
@@ -1490,7 +1494,7 @@ Fields of nvidia-smi --query-gpu recorded by the check (stable values only).
 The pinned CUDA base image of the GPU check, by digest (from versions.lock.yml).
 
 - Type: `str`
-- Default: `{{ pokus_versions.containers.images.cuda_base_test.image }}@{{ pokus_versions.containers.images.cuda_base_test.digest }}`
+- Default: `{{ pinka_versions.containers.images.cuda_base_test.image }}@{{ pinka_versions.containers.images.cuda_base_test.digest }}`
 
 ## observability
 
@@ -1502,9 +1506,9 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (config/otel, prometheus, loki, tempo, grafana). |
+| `pinka_dir` | host_vars | Infra directory of the checkout (config/otel, prometheus, loki, tempo, grafana). |
 | `vault_grafana_admin_password` | host_vars | Grafana's admin password (vault, 8 or more characters). |
-| `vault_postgres_passwords` | host_vars | Database passwords (vault); Grafana uses pokus_grafana, which must not contain "$". |
+| `vault_postgres_passwords` | host_vars | Database passwords (vault); Grafana uses potka_grafana, which must not contain "$". |
 
 ### `observability_collector_memory_mib`
 
@@ -1544,10 +1548,10 @@ GPU exporter with gpu_inference; dcgm is refused while its image is unverified.
 
 ### `observability_grafana_db_password`
 
-Password of pokus_grafana (default vault_postgres_passwords.pokus_grafana).
+Password of potka_grafana (default vault_postgres_passwords.potka_grafana).
 
 - Type: `str`
-- Default: `{{ vault_postgres_passwords.pokus_grafana }}`
+- Default: `{{ vault_postgres_passwords.potka_grafana }}`
 
 ### `observability_grafana_admin_password`
 
@@ -1573,10 +1577,10 @@ Organization role of new researcher accounts.
 
 ### `observability_config_dir`
 
-Rendered configuration (pokus_root/services/observability/config).
+Rendered configuration (pinka_root/services/observability/config).
 
 - Type: `path`
-- Default: `{{ pokus_root }}/services/observability/config`
+- Default: `{{ pinka_root }}/services/observability/config`
 
 ## opa
 
@@ -1588,28 +1592,28 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (config/opa/). |
+| `pinka_dir` | host_vars | Infra directory of the checkout (config/opa/). |
 
 ### `opa_platform_policy_dir`
 
-Policy directory of the deployed platform (pokus_root/deploy/platform/current/policy); the placeholder is used while it does not exist.
+Policy directory of the deployed platform (pinka_root/deploy/platform/current/policy); the placeholder is used while it does not exist.
 
 - Type: `path`
-- Default: `{{ pokus_root }}/deploy/platform/current/policy`
+- Default: `{{ pinka_root }}/deploy/platform/current/policy`
 
 ### `opa_config_dir`
 
-Rendered configuration (pokus_root/services/core/config/opa), mounted at /config.
+Rendered configuration (pinka_root/services/core/config/opa), mounted at /config.
 
 - Type: `path`
-- Default: `{{ pokus_root }}/services/core/config/opa`
+- Default: `{{ pinka_root }}/services/core/config/opa`
 
 ### `opa_policy_link`
 
-Symbolic link to the active policy directory (pokus_root/services/core/policy), mounted at /policy.
+Symbolic link to the active policy directory (pinka_root/services/core/policy), mounted at /policy.
 
 - Type: `path`
-- Default: `{{ pokus_root }}/services/core/policy`
+- Default: `{{ pinka_root }}/services/core/policy`
 
 ## pkg
 
@@ -1687,8 +1691,8 @@ Variables the role reads from elsewhere:
 | `lab_mode` | [lab-wide](#lab_mode) | production or staging; scripted inference needs staging. |
 | `machine_name` | [lab-wide](#machine_name) | Machine name (endpoints.toml, published signing keys). |
 | `node_role` | [lab-wide](#node_role) | The platform runs on full and lab nodes only. |
-| `pokus_features` | host_vars | Feature flags (gpu_inference decides local inference). |
-| `pokus_versions` | host_vars | The pinned versions (Quarto). |
+| `pinka_features` | host_vars | Feature flags (gpu_inference decides local inference). |
+| `pinka_versions` | host_vars | The pinned versions (Quarto). |
 | `qa_trusted_keys` | [lab-wide](#qa_trusted_keys) | QA public keys trusted for attestations, {name, pem}. |
 
 ### `platform_enabled`
@@ -1709,7 +1713,7 @@ A platform-v tag (recommended), another tag, a branch or a full commit.
 
 ### `platform_settings`
 
-Non-secret settings per service short name, rendered into /etc/pokus/platform/&lt;svc&gt;.toml and checked against the platform's schemas (C9b).
+Non-secret settings per service short name, rendered into /etc/pinka/platform/&lt;svc&gt;.toml and checked against the platform's schemas (C9b).
 
 - Type: `dict`
 - Default: `{}`
@@ -1758,7 +1762,7 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `host_profile` | bootstrap.sh | Host profile (hardware.memory_gib sizes the memory settings). |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (config/postgres/*.j2). |
+| `pinka_dir` | host_vars | Infra directory of the checkout (config/postgres/*.j2). |
 | `vault_postgres_passwords` | host_vars | Passwords of the platform, reader and Grafana roles (vault; printable ASCII). |
 
 ### `postgres_shared_buffers`
@@ -1808,21 +1812,21 @@ UID of the exporter container (nobody).
 Name of the PostgreSQL container.
 
 - Type: `str`
-- Default: `pokus-postgres`
+- Default: `pinka-postgres`
 
 ### `postgres_state_dir`
 
-Data directory on the host (pokus_root/state/postgres).
+Data directory on the host (pinka_root/state/postgres).
 
 - Type: `path`
-- Default: `{{ pokus_root }}/state/postgres`
+- Default: `{{ pinka_root }}/state/postgres`
 
 ### `postgres_config_dir`
 
-Rendered configuration (pokus_root/services/core/config/postgres).
+Rendered configuration (pinka_root/services/core/config/postgres).
 
 - Type: `path`
-- Default: `{{ pokus_root }}/services/core/config/postgres`
+- Default: `{{ pinka_root }}/services/core/config/postgres`
 
 ### `postgres_service_roles`
 
@@ -1832,13 +1836,13 @@ Platform roles with a password file and the file's owner, group and mode.
 - Default:
 
     ```yaml
-    - {role: pokus_migrator, owner: root, group: root, mode: '0600'}
-    - {role: pokus_orch, owner: root, group: pokus-orch, mode: '0640'}
-    - {role: pokus_gw, owner: root, group: pokus-gw, mode: '0640'}
-    - {role: pokus_exec, owner: root, group: pokus-exec, mode: '0640'}
-    - {role: pokus_inject, owner: root, group: pokus-inject, mode: '0640'}
-    - {role: pokus_verify, owner: root, group: pokus-verify, mode: '0640'}
-    - {role: pokus_eval, owner: root, group: pokus-eval, mode: '0640'}
+    - {role: potka_migrator, owner: root, group: root, mode: '0600'}
+    - {role: potka_orch, owner: root, group: potka-orch, mode: '0640'}
+    - {role: potka_gw, owner: root, group: potka-gw, mode: '0640'}
+    - {role: potka_exec, owner: root, group: potka-exec, mode: '0640'}
+    - {role: potka_inject, owner: root, group: potka-inject, mode: '0640'}
+    - {role: potka_verify, owner: root, group: potka-verify, mode: '0640'}
+    - {role: potka_eval, owner: root, group: potka-eval, mode: '0640'}
     ```
 
 ### `postgres_reader_role`
@@ -1846,21 +1850,21 @@ Platform roles with a password file and the file's owner, group and mode.
 Researchers' read-only role.
 
 - Type: `str`
-- Default: `pokus_reader`
+- Default: `potka_reader`
 
 ### `postgres_grafana_role`
 
 Grafana's read-only role.
 
 - Type: `str`
-- Default: `pokus_grafana`
+- Default: `potka_grafana`
 
 ### `postgres_monitor_role`
 
 Role of the metrics exporter (pg_monitor).
 
 - Type: `str`
-- Default: `pokus_monitor`
+- Default: `pinka_monitor`
 
 ## preflight_gate
 
@@ -1874,21 +1878,21 @@ Variables the role reads from elsewhere:
 | --- | --- | --- |
 | `host_profile` | bootstrap.sh | Host profile validated by bootstrap.sh for this run. |
 | `install_nvidia_driver` | [lab-wide](#install_nvidia_driver) | The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did. |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space; preflight measures its free disk space. |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space; preflight measures its free disk space. |
 
 ### `preflight_gate_command`
 
 Preflight wrapper of this checkout.
 
 - Type: `path`
-- Default: `{{ pokus_infra_dir }}/preflight/pokus-preflight`
+- Default: `{{ pinka_dir }}/preflight/pinka-preflight`
 
 ### `preflight_gate_profile_path`
 
-Profile to compare with; bootstrap passes the profile it validated (pokus_bootstrap.profile_path).
+Profile to compare with; bootstrap passes the profile it validated (pinka_bootstrap.profile_path).
 
 - Type: `path`
-- Default: `{{ pokus_bootstrap.profile_path | default('/etc/pokus/host-profile.json') }}`
+- Default: `{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}`
 
 ## provider_baremetal
 
@@ -1913,7 +1917,7 @@ Targets masked by never_sleep.
 
 ### `provider_baremetal_initramfs_commands`
 
-Command that rebuilds the initramfs, per pokus_initramfs_tool.
+Command that rebuilds the initramfs, per pinka_initramfs_tool.
 
 - Type: `dict`
 - Default:
@@ -1958,7 +1962,7 @@ Variables the role reads from elsewhere:
 | `expected` | host_vars | host_vars `expected` (memory_gib, cpu_threads). |
 | `host_profile` | bootstrap.sh | Host profile (init.systemd, gpu.present). |
 | `machine_name` | [lab-wide](#machine_name) | Host name written to wsl.conf. |
-| `pokus_root` | [lab-wide](#pokus_root) | Research space; the file goes to services/contrib/wslconfig.recommended. |
+| `pinka_root` | [lab-wide](#pinka_root) | Research space; the file goes to services/contrib/wslconfig.recommended. |
 
 ### `provider_wsl2_automount`
 
@@ -2042,16 +2046,16 @@ Swap in the recommendation.
 
 ## ssh
 
-sshd drop-in with key-only login for the pokus group.
+sshd drop-in with key-only login for the pinka group.
 
-Entry points: `main` (sshd drop-in with key-only login for the pokus group). Role README: `ansible/roles/ssh/README.md`.
+Entry points: `main` (sshd drop-in with key-only login for the pinka group). Role README: `ansible/roles/ssh/README.md`.
 
 ### `ssh_allow_groups`
 
 Groups allowed to log in (AllowGroups).
 
 - Type: `list` of `str`
-- Default: `[pokus]`
+- Default: `[pinka]`
 
 ### `ssh_client_alive_interval`
 
@@ -2082,7 +2086,7 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `grafana_tailscale_serve` | [lab-wide](#grafana_tailscale_serve) | Publish Grafana on the tailnet with `tailscale serve` (never Funnel). |
-| `lab_mode` | [lab-wide](#lab_mode) | Selects the tag (tag:pokus-lab or tag:pokus-qa). |
+| `lab_mode` | [lab-wide](#lab_mode) | Selects the tag (tag:pinka-lab or tag:pinka-qa). |
 | `machine_name` | [lab-wide](#machine_name) | Host name on the tailnet. |
 
 ### `tailscale_tag`
@@ -2090,7 +2094,7 @@ Variables the role reads from elsewhere:
 Advertised tag; derived from lab_mode.
 
 - Type: `str`
-- Default: `{{ pokus_tailscale_tags[lab_mode] }}`
+- Default: `{{ pinka_tailscale_tags[lab_mode] }}`
 
 ### `tailscale_accept_dns`
 
@@ -2136,8 +2140,8 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `break_glass_docker` | [lab-wide](#break_glass_docker) | Admins explicitly allowed into the docker group (added by the docker role, logged loudly). |
-| `pokus_groups` | [lab-wide](#pokus_groups) | Groups ({name, system}) from group_vars/all/main.yml. |
-| `pokus_service_home` | [lab-wide](#pokus_service_home) | Parent of the service account homes. |
+| `pinka_groups` | [lab-wide](#pinka_groups) | Groups ({name, system}) from group_vars/all/main.yml. |
+| `pinka_service_home` | [lab-wide](#pinka_service_home) | Parent of the service account homes. |
 | `researchers` | [lab-wide](#researchers) | Researchers ({name, admin, shell, keys_file}); keys_file is relative to the infra directory. |
 | `researchers_removed` | [lab-wide](#researchers_removed) | Researchers that are locked (password, shell nologin, expired), never deleted. |
 | `service_accounts` | [lab-wide](#service_accounts) | Service accounts ({name, groups}); system users without login. |
@@ -2159,7 +2163,7 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `pokus_infra_dir` | host_vars | Infra directory of the checkout (vllm/profiles, models.lock.yml, models.catalog.yml). |
+| `pinka_dir` | host_vars | Infra directory of the checkout (vllm/profiles, models.lock.yml, models.catalog.yml). |
 
 ### `vllm_profile`
 

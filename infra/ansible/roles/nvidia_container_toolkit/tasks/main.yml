@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/nvidia_container_toolkit/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/nvidia_container_toolkit/tasks/main.yml). Local changes will be overwritten.
 #
 # NVIDIA Container Toolkit (BUILD_PROMPT §7.6), only on hosts with the
 # gpu_inference feature. Containers reach the GPU through CDI where Docker
@@ -10,9 +10,9 @@
 - name: Look up the NVIDIA Container Toolkit source
   ansible.builtin.set_fact:
     nvidia_container_toolkit_source: >-
-      {{ pokus_component_sources | pokus_component_source('nvidia_container_toolkit', pokus_source_group) }}
+      {{ pinka_component_sources | pinka_component_source('nvidia_container_toolkit', pinka_source_group) }}
     nvidia_container_toolkit_versions: >-
-      {{ pokus_versions.packages | pokus_lock_packages('nvidia_container_toolkit', pokus_release_key) }}
+      {{ pinka_versions.packages | pinka_lock_packages('nvidia_container_toolkit', pinka_release_key) }}
 
 - name: Refuse an unverified NVIDIA Container Toolkit source
   ansible.builtin.assert:
@@ -20,7 +20,7 @@
       - nvidia_container_toolkit_source.verify is not defined
     fail_msg: >-
       ansible/component-sources.yml marks the NVIDIA Container Toolkit source for
-      {{ pokus_source_group }} as unverified ({{ nvidia_container_toolkit_source.verify | default('') }}).
+      {{ pinka_source_group }} as unverified ({{ nvidia_container_toolkit_source.verify | default('') }}).
     quiet: true
 
 - name: Add the NVIDIA Container Toolkit repository
@@ -37,7 +37,7 @@
   ansible.builtin.meta: end_role
   when:
     - ansible_check_mode
-    - "'nvidia-ctk' not in pokus_present.commands"
+    - "'nvidia-ctk' not in pinka_present.commands"
 
 - name: Install the NVIDIA Container Toolkit
   ansible.builtin.include_role:
@@ -62,16 +62,16 @@
     owner: root
     group: root
     mode: "0755"
-  when: pokus_provider == 'wsl2'
+  when: pinka_provider == 'wsl2'
 
 - name: Generate the CDI specification in WSL mode on WSL2
   ansible.builtin.template:
-    src: nvidia-cdi-refresh-pokus.conf.j2
-    dest: /etc/systemd/system/nvidia-cdi-refresh.service.d/50-pokus.conf
+    src: nvidia-cdi-refresh-pinka.conf.j2
+    dest: /etc/systemd/system/nvidia-cdi-refresh.service.d/50-pinka.conf
     owner: root
     group: root
     mode: "0644"
-  when: pokus_provider == 'wsl2'
+  when: pinka_provider == 'wsl2'
   notify: Regenerate the CDI specification
 
 - name: Keep the CDI specification current
@@ -158,7 +158,7 @@
       ansible.builtin.copy:
         dest: "{{ nvidia_container_toolkit_verify_dir }}/gpu-docker.txt"
         content: |
-          # Written by pokus-infra (nvidia_container_toolkit): nvidia-smi in the pinned CUDA image
+          # Written by pinka (nvidia_container_toolkit): nvidia-smi in the pinned CUDA image
           image: {{ nvidia_container_toolkit_image }}
           method: {{ nvidia_container_toolkit_method }}
           {{ nvidia_container_toolkit_smi.stdout }}

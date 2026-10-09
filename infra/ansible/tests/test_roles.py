@@ -38,12 +38,12 @@ HOLD_METHODS = sorted(
 )
 # Possible values of the variables used in dynamic include names.
 VALUES = {
-    "pokus_family": FAMILIES,
+    "pinka_family": FAMILIES,
     "host_profile.family": FAMILIES,
-    "pokus_pkg_manager": ("apt", "dnf", "zypper", "pacman"),
-    "pokus_version_hold_method": HOLD_METHODS,
-    "pokus_firewall_backend": ("nftables", "firewalld", "ufw"),
-    "pokus_provider": ("baremetal", "wsl2", "vm"),
+    "pinka_pkg_manager": ("apt", "dnf", "zypper", "pacman"),
+    "pinka_version_hold_method": HOLD_METHODS,
+    "pinka_firewall_backend": ("nftables", "firewalld", "ufw"),
+    "pinka_provider": ("baremetal", "wsl2", "vm"),
     "pkg_repo.type": ("apt", "rpm"),
 }
 EXPRESSION_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
@@ -280,7 +280,7 @@ PREEXISTING_UNITS = {
 # Tasks that need something that exists whenever they run, with the reason.
 EXISTS_WHEN_RUN = {
     ("provider_baremetal", "Mask the sleep targets (never_sleep)"): "systemd's own sleep targets",
-    ("provider_baremetal", "Unmask the sleep targets Pokus masked (policy changed)"): (
+    ("provider_baremetal", "Unmask the sleep targets pinka masked (policy changed)"): (
         "systemd's own sleep targets"
     ),
     ("observability", "Stop and disable the VM listener address"): "only when its unit file exists",
@@ -392,8 +392,8 @@ def test_site_roles_skip_in_check_mode_what_the_run_would_create() -> None:
         if handlers.is_file():
             walk.tasks(role, handlers, load_yaml(handlers), False)
     facts = load_yaml(ROLES / "platform_facts" / "tasks" / "main.yml")
-    present = next(t for t in facts if "pokus_present" in t.get("ansible.builtin.set_fact", {}))
-    assert set(present["ansible.builtin.set_fact"]["pokus_present"]) == {
+    present = next(t for t in facts if "pinka_present" in t.get("ansible.builtin.set_fact", {}))
+    assert set(present["ansible.builtin.set_fact"]["pinka_present"]) == {
         "units",
         "users",
         "commands",
@@ -412,6 +412,6 @@ def test_check_mode_end_role_commands_are_probed() -> None:
             for task in walk_tasks(load_yaml(path)):
                 if _ends_role_in_check_mode(task):
                     used.update(
-                        re.findall(r"'([\w-]+)' not in pokus_present\.commands", _when(task))
+                        re.findall(r"'([\w-]+)' not in pinka_present\.commands", _when(task))
                     )
     assert used and used <= set(commands)

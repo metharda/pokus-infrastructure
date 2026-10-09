@@ -1,8 +1,8 @@
-# Managed by pokus-infra (ansible/roles/compose/tasks/main.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/compose/tasks/main.yml). Local changes will be overwritten.
 #
 # One Compose project of the lab services (BUILD_PROMPT §7.6): the project
 # file from compose/<project>/compose.yml, an .env file with the pinned image
-# digests, ports and paths, and pokus-<project>.service (oneshot,
+# digests, ports and paths, and pinka-<project>.service (oneshot,
 # RemainAfterExit) that runs `docker compose up -d --wait` and `down`. The
 # roles render their configuration under <project>/config/<name>/ first; the
 # .env file carries one hash per directory (<NAME>_CONFIG_HASH), which the
@@ -19,15 +19,15 @@
     path: "{{ compose_root }}/{{ compose_project }}"
     state: directory
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0750"
 
 - name: Install the Compose file of {{ compose_project }}
   ansible.builtin.copy:
-    src: "{{ pokus_infra_dir }}/compose/{{ compose_project }}/compose.yml"
+    src: "{{ pinka_dir }}/compose/{{ compose_project }}/compose.yml"
     dest: "{{ compose_root }}/{{ compose_project }}/compose.yml"
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0640"
   register: compose_file
 
@@ -37,7 +37,7 @@
   register: compose_daemon_json
   failed_when: false
 
-- name: Read the groups (pokus and pokus-svc open the socket directories)
+- name: Read the groups (pinka and potka-svc open the socket directories)
   ansible.builtin.getent:
     database: group
 
@@ -47,8 +47,8 @@
 - name: Derive the Docker settings the project needs
   ansible.builtin.set_fact:
     compose_docker: "{{ compose_daemon_json.content | default('e30=') | b64decode | from_json }}"
-    compose_pokus_gid: "{{ (ansible_facts.getent_group['pokus'] | default(none) or ['', ''])[1] }}"
-    compose_pokus_svc_gid: "{{ (ansible_facts.getent_group['pokus-svc'] | default(none) or ['', ''])[1] }}"
+    compose_pinka_gid: "{{ (ansible_facts.getent_group['pinka'] | default(none) or ['', ''])[1] }}"
+    compose_potka_svc_gid: "{{ (ansible_facts.getent_group['potka-svc'] | default(none) or ['', ''])[1] }}"
 
 - name: Derive the GPU method
   ansible.builtin.set_fact:
@@ -80,11 +80,11 @@
     src: env.j2
     dest: "{{ compose_root }}/{{ compose_project }}/.env"
     owner: root
-    group: pokus-admin
+    group: pinka-admin
     mode: "0640"
   vars:
     compose_config_hashes: >-
-      {{ compose_config_files.files | pokus_config_hashes(compose_root ~ '/' ~ compose_project ~ '/config') }}
+      {{ compose_config_files.files | pinka_config_hashes(compose_root ~ '/' ~ compose_project ~ '/config') }}
 
 - name: Check the project with docker compose config
   ansible.builtin.command:
@@ -94,18 +94,18 @@
 
 - name: Install the systemd unit of {{ compose_project }}
   ansible.builtin.template:
-    src: pokus-compose.service.j2
-    dest: "/etc/systemd/system/pokus-{{ compose_project }}.service"
+    src: pinka-compose.service.j2
+    dest: "/etc/systemd/system/pinka-{{ compose_project }}.service"
     owner: root
     group: root
     mode: "0644"
 
 - name: Enable the systemd unit of {{ compose_project }}
   ansible.builtin.systemd_service:
-    name: "pokus-{{ compose_project }}.service"
+    name: "pinka-{{ compose_project }}.service"
     enabled: "{{ compose_start }}"
     daemon_reload: true
-  when: not ansible_check_mode or ('pokus-' ~ compose_project ~ '.service') in pokus_present.units
+  when: not ansible_check_mode or ('pinka-' ~ compose_project ~ '.service') in pinka_present.units
 
 # `up` creates missing containers and recreates those whose definition changed,
 # including the config-hash label of a changed configuration directory.
@@ -125,7 +125,7 @@
 
 - name: Mark the systemd unit as active for {{ compose_project }}
   ansible.builtin.systemd_service:
-    name: "pokus-{{ compose_project }}.service"
+    name: "pinka-{{ compose_project }}.service"
     state: started
   when:
     - not ansible_check_mode

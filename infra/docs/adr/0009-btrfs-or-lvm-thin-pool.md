@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infra maintainers (BUILD_PROMPT §2, §7.7)
+- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §2, §7.7)
 
 ## Context
 
@@ -21,7 +21,7 @@ cannot enforce disk quotas for containers.
 
 ## Decision
 
-1. The pool `pokus-targets` uses btrfs, or LVM thin where btrfs is not
+1. The pool `pinka-targets` uses btrfs, or LVM thin where btrfs is not
    available; preflight decides (`storage_backend`) and refuses hosts that
    have neither.
 2. The pool lives on a dedicated device when one is configured, otherwise on a

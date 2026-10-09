@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/pokus/schema/answers.schema.json",
-  "title": "Pokus installer answers",
-  "description": "Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin) are checked by pokus_installer.answers.",
+  "$id": "https://example.com/pinka/schema/answers.schema.json",
+  "title": "pinka installer answers",
+  "description": "Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin) are checked by pinka_installer.answers.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -50,7 +50,7 @@
             "production",
             "staging"
           ],
-          "description": "production, or staging: a QA lab with its own vault, research space and Tailscale identity (tag:pokus-qa) that never pairs with production."
+          "description": "production, or staging: a QA lab with its own vault, research space and Tailscale identity (tag:pinka-qa) that never pairs with production."
         },
         "node_role": {
           "enum": [
@@ -79,7 +79,7 @@
         },
         "srv_path": {
           "$ref": "#/$defs/absolute_path",
-          "description": "The research space, /srv/pokus by default."
+          "description": "The research space, /srv/pinka by default."
         },
         "docker_data_root": {
           "$ref": "#/$defs/absolute_path",
@@ -207,7 +207,7 @@
           },
           "admin": {
             "type": "boolean",
-            "description": "Member of pokus-admin (sudo on the host); at least one researcher is an admin."
+            "description": "Member of pinka-admin (sudo on the host); at least one researcher is an admin."
           },
           "grafana": {
             "description": "Create a Grafana account (password generated into the vault).",
@@ -235,10 +235,10 @@
         "tailscale_tag": {
           "type": "string",
           "pattern": "^tag:[a-z][a-z0-9-]{0,62}$",
-          "description": "The node's tailnet tag; empty: tag:pokus-lab, or tag:pokus-qa on staging."
+          "description": "The node's tailnet tag; empty: tag:pinka-lab, or tag:pinka-qa on staging."
         },
         "tailscale_login": {
-          "description": "auth_key: from POKUS_SECRET_TAILSCALE_AUTHKEY or the TUI; interactive: the login URL is shown during the install.",
+          "description": "auth_key: from PINKA_SECRET_TAILSCALE_AUTHKEY or the TUI; interactive: the login URL is shown during the install.",
           "enum": [
             "auth_key",
             "interactive"
@@ -265,7 +265,7 @@
       "description": "Tailscale and SSH access."
     },
     "split_inference": {
-      "description": "For node_role lab or inference: the machine name of the other node once paired (docs/node-roles.md); pairing can also come later (pokus-lab pair).",
+      "description": "For node_role lab or inference: the machine name of the other node once paired (docs/node-roles.md); pairing can also come later (pinka pair).",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -400,7 +400,7 @@
           "description": "The restic repository by type: sftp (host, user, path), rest (url), local (path; not a real backup) or later (doctor warns until it is set)."
         },
         "password": {
-          "description": "The restic password: generated (shown once) or provided (POKUS_SECRET_RESTIC_PASSWORD).",
+          "description": "The restic password: generated (shown once) or provided (PINKA_SECRET_RESTIC_PASSWORD).",
           "enum": [
             "generate",
             "provided"
@@ -444,7 +444,7 @@
         },
         "include_secrets": {
           "type": "boolean",
-          "description": "Back up /etc/pokus/secrets inside restic's encryption."
+          "description": "Back up /etc/pinka/secrets inside restic's encryption."
         }
       },
       "description": "restic backups."
@@ -465,7 +465,7 @@
       }
     },
     "source": {
-      "description": "The Pokus repository that platform and catalog are deployed from (owner answer E3).",
+      "description": "The pokus-platform repository that platform and catalog are deployed from (owner answer E3).",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -540,21 +540,21 @@
           "const": "all"
         },
         "grafana_admin": {
-          "description": "generate, or provided (POKUS_SECRET_GRAFANA_ADMIN_PASSWORD).",
+          "description": "generate, or provided (PINKA_SECRET_GRAFANA_ADMIN_PASSWORD).",
           "enum": [
             "generate",
             "provided"
           ]
         },
         "hf_token": {
-          "description": "provided (POKUS_SECRET_HF_TOKEN) for gated models, else none.",
+          "description": "provided (PINKA_SECRET_HF_TOKEN) for gated models, else none.",
           "enum": [
             "none",
             "provided"
           ]
         },
         "store_vault_password": {
-          "description": "Keep the vault password root-only in /etc/pokus/secrets/vault-pass.",
+          "description": "Keep the vault password root-only in /etc/pinka/secrets/vault-pass.",
           "type": "boolean"
         }
       },
@@ -619,7 +619,7 @@
     "username": {
       "type": "string",
       "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
-      "description": "Linux user name: lower-case, starting with a letter, not reserved, not pokus-*."
+      "description": "Linux user name: lower-case, starting with a letter, not reserved, not pinka-*, potka-* or pokus-*."
     },
     "username_any": {
       "type": "string",

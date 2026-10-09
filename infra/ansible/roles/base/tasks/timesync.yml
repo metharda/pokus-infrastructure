@@ -1,4 +1,4 @@
-# Managed by pokus-infra (ansible/roles/base/tasks/timesync.yml). Local changes will be overwritten.
+# Managed by pinka (ansible/roles/base/tasks/timesync.yml). Local changes will be overwritten.
 #
 # Keep whatever the distribution uses (systemd-timesyncd or chronyd); install
 # the family default only if neither is present.
@@ -8,7 +8,7 @@
 - name: Find the time sync service in use
   ansible.builtin.set_fact:
     base_timesync_service: >-
-      {{ (pokus_service_names.timesync
+      {{ (pinka_service_names.timesync
           | select('in', ansible_facts.services | dict2items | map(attribute='key') | map('regex_replace', '\.service$', '') | list)
           | list + [''])[0] }}
 
