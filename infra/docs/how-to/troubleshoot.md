@@ -167,6 +167,31 @@ The command line was invalid; the message names the option. List the options:
 
 See also the [bootstrap.sh reference](../reference/cli/bootstrap.md).
 
+## Exit code 65: platform release refused {#exit-code-65}
+
+The platform release or its sources break contract v2. Bootstrap printed
+every reason, one per line, as `<where>: <what> [<rule>]`; the deployment
+changed nothing on the host, and a running platform keeps running. Fix the
+cause and run bootstrap again:
+
+- A rule of the manifest or the release (for example `secrets-forbidden`,
+  `command-missing`): fix the release and tag a new version.
+  [Platform manifest](../reference/platform-manifest.md) and
+  [Platform privilege profiles](../reference/platform-profiles.md) describe
+  every rule.
+- `platform-active`: another platform is active. A release with a new name
+  replaces it only with `--replace-platform <active name>`; see
+  [How to deploy a platform](deploy-platform.md).
+- `source-*`, `content-*`, `tag-signature`, `moved-tag`: the `platform` and
+  `content` settings in the host variables, or the repository, are wrong:
+  an unknown ref or path, overlapping paths, an undeclared or missing
+  content package, an unsigned tag, or a tag that now names another commit.
+- `build-modified-release`: the release's build changed files of the release
+  itself; the release must build without that.
+
+To see the problems and the summary without deploying, run bootstrap with
+`--inspect-platform`.
+
 ## Exit code 70: internal error {#exit-code-70}
 
 A command failed that bootstrap did not expect to fail. The message names the

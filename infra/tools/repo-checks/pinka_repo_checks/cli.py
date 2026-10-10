@@ -30,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
             "addresses outside RFC 2606 domains, public IP addresses, MAC addresses "
             "outside the documentation range, non-nil UUIDs, SSH/PGP key material "
             "outside test-key fixtures, credential tokens, and the optional "
-            "maintainer denylist from the PINKA_PRIVACY_DENYLIST environment variable."
+            "maintainer denylist from the PINKA_PRIVACY_DENYLIST environment variable. "
+            "Inside a git work tree it also checks every commit message reachable "
+            "from HEAD for attribution lines (Co-Authored-By and the like)."
         ),
     )
     privacy.add_argument(

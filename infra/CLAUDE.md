@@ -55,7 +55,8 @@ the prompt text where they differ.
 3. Never enable Tailscale Funnel; lab services bind only to loopback, Unix
    sockets or internal Docker networks (sshd excepted, firewalled).
 4. Humans are never added to `docker` or `incus-admin` implicitly; the agent
-   account never gets Docker, Incus, catalog, artifacts or secrets access.
+   account never gets Docker, Incus, restricted data, artifacts or secrets
+   access.
 5. Secrets are never committed in plaintext, never logged (`no_log: true`),
    never baked into images.
 6. Every external artifact is pinned and verified; no `latest`; no `curl | bash`.
@@ -86,7 +87,7 @@ the prompt text where they differ.
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
   `docs/reference/{answers,cli/pinka-installer}.md`,
-  `docs/reference/{platform-manifest,platform-profiles,cli/pinka-platform}.md`,
+  `docs/reference/{platform-manifest,platform-profiles,platform-records,cli/pinka-platform}.md`,
   `contract/reserved-names.yml` and the `$defs.reserved_*` of
   `contract/platform-manifest.schema.json`, the screenshots
   `docs/assets/installer/*.svg` (copies of TUI snapshots),
@@ -116,9 +117,10 @@ the prompt text where they differ.
 
 ## Monorepo specifics (see ../PROGRESS.md)
 
-- Platform and catalog are deployed from a root-only bare mirror with
-  `git archive` of one subtree; no `.git` and no catalog content ever appears
-  in a deployed path outside `/srv/pinka/catalog` (B2).
+- A platform release and its content packages are deployed from root-only
+  bare mirrors with `git archive` of one subtree each; no `.git` ever appears
+  in a deployed path, and restricted content is only ever extracted into
+  `/srv/pinka/restricted/<platform>/` (B2, contract v2 §12.4).
 - Bootstrap records the repository commit and the `infra/` tree hash; the
   dirty-tree check covers `infra/` only (B3).
 - Release tags are `infra-vX.Y.Z` (B4).
@@ -173,6 +175,15 @@ the prompt text where they differ.
   schema validator implements exactly the keywords the schema uses, and the
   tests compare it with `jsonschema` on every fixture. The manifest is read
   without anchors, aliases, duplicate or non-string keys.
+- Deployment (§7.14) runs in `tools/platform` (`pinka-platform deploy
+  prepare|build|pull|publish|retire-plan|activate|clean`, `purge`), installed
+  on the host below `/usr/local/lib/pinka/platform` with the contract; the
+  `platform` role only orders the steps. A refused release ends bootstrap
+  with exit code 65 before anything on the host changes. Builds run as
+  `pinka-build` in a `systemd-run` sandbox; never run a release's code as
+  root. `contract/records/` holds the schemas of `DEPLOYED_FROM.json`,
+  `active.json` and `retired.json`; change them only with a contract version
+  bump.
 - No infra code names a platform: the Pokus Platform's manifest is only a
   test fixture (`tools/platform/tests/fixtures/manifests/`). Every new rule
   gets an invalid case in `tools/platform/tests/test_validate.py`; golden

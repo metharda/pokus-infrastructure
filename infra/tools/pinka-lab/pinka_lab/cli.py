@@ -20,7 +20,7 @@ EPILOG = (
 )
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per command
     """The argument parser (also used to generate the reference page).
 
     Returns:
@@ -131,6 +131,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="drain, update the OS keeping the holds, bootstrap, doctor, fingerprint diff (root)",
     )
     update.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    platform = sub.add_parser("platform", help="the lab's platform (root)")
+    platform_sub = platform.add_subparsers(dest="platform_action", required=True, metavar="ACTION")
+    purge = platform_sub.add_parser(
+        "purge",
+        help="remove a replaced platform's releases, state, restricted area and database (root)",
+    )
+    purge.add_argument("name", help="the replaced platform")
+    purge.add_argument(
+        "--confirm",
+        metavar="NAME",
+        help="the platform name again, typed (otherwise pinka asks for it)",
+    )
     add_docs_parser(sub)
     return parser
 
@@ -209,7 +221,7 @@ def run_fingerprint(system: System, config: LabConfig, as_json: bool) -> int:
     return 0
 
 
-def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int:  # noqa: PLR0911 - one branch per command
+def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int:  # noqa: PLR0911, PLR0912 - one branch per command
     """Run the chosen command.
 
     Args:
@@ -248,6 +260,8 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
         if args.images_action == "build":
             return commands.images_build(system, config, args.blueprint, args.rebuild, [])
         return commands.images_export(system, config, [])
+    if args.command == "platform":
+        return commands.platform_purge(system, config, args.name, args.confirm)
     if args.command == "pair":
         if args.pair_action == "show":
             return commands.pair_show(system, config, args.timeout)

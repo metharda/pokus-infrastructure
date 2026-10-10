@@ -51,7 +51,7 @@
           "gpu"
         ]
       },
-      "description": "Infra facilities the platform needs; the health gate checks exactly these."
+      "description": "Infra facilities the platform needs; the health gate checks exactly these. A manifest that uses a facility it does not declare is refused (see Facilities in the profiles reference)."
     },
     "services": {
       "type": "array",
@@ -519,7 +519,6 @@
         "pinka-admin",
         "pinka-build",
         "pinka-datasets",
-        "pinka-gt",
         "pinka-lab",
         "pinka-monitor",
         "pinka-query",
@@ -653,9 +652,7 @@
       "enum": [
         "artifacts",
         "backups",
-        "catalog",
         "datasets",
-        "deploy",
         "images",
         "models",
         "platforms",

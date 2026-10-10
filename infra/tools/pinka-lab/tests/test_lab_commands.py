@@ -388,3 +388,36 @@ class DocsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlatformPurgeTest(unittest.TestCase):
+    def test_purge_runs_the_deployment_tool(self) -> None:
+        system = FakeSystem(interactive_rc=0)
+        code, _, _ = captured(lambda: commands.platform_purge(system, lab(), "oldplat", "oldplat"))
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            system.interactive_calls[0][0],
+            [commands.PLATFORM_TOOL, "purge", "oldplat", "--confirm", "oldplat"],
+        )
+
+    def test_purge_asks_for_the_name(self) -> None:
+        import builtins
+        from unittest import mock
+
+        system = FakeSystem(interactive_rc=0)
+        with mock.patch.object(builtins, "input", return_value="oldplat\n"):
+            code, out, _ = captured(lambda: commands.platform_purge(system, lab(), "oldplat", None))
+        self.assertEqual(code, 0)
+        self.assertIn("cannot be undone", out)
+        with mock.patch.object(builtins, "input", return_value="other"):  # noqa: SIM117 - Python 3.9
+            with self.assertRaisesRegex(CommandError, "not confirmed"):
+                captured(lambda: commands.platform_purge(system, lab(), "oldplat", None))
+        self.assertEqual(len(system.interactive_calls), 1)
+
+    def test_purge_refusals(self) -> None:
+        with self.assertRaisesRegex(CommandError, "needs root"):
+            commands.platform_purge(FakeSystem(euid=1000), lab(), "oldplat", "oldplat")
+        with self.assertRaisesRegex(CommandError, "not a platform name"):
+            commands.platform_purge(FakeSystem(), lab(), "../etc", "../etc")
+        with self.assertRaisesRegex(CommandError, "not confirmed"):
+            commands.platform_purge(FakeSystem(), lab(), "oldplat", "oldpla")

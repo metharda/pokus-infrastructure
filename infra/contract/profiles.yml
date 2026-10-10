@@ -36,6 +36,37 @@ human_classes:
   researchers: {group: pinka, description: every researcher}
   admins: {group: pinka-admin, description: researchers with sudo}
 
+# What makes a manifest need a facility in `requires`: a service or job with
+# one of `profiles`, or one of `fields` set (present, and not false or
+# empty). The health gate checks exactly the declared facilities, so a
+# manifest that uses an undeclared one is refused (owner decision on 3d.1,
+# an approved deviation).
+facilities:
+  postgres:
+    description: the platform database, its roles and the socket directories
+    profiles: []
+    fields: [backup.database]
+  incus:
+    description: the restricted Incus certificate, projects and run networks
+    profiles: [sandbox-operator, restricted-operator]
+    fields: []
+  telemetry:
+    description: the collector, the query proxy and Grafana
+    profiles: []
+    fields: [dashboards, telemetry]
+  inference:
+    description: the inference API (vLLM, or the forwarder on a lab node)
+    profiles: [inference-broker]
+    fields: []
+  opa:
+    description: the policy engine with the platform's bundle
+    profiles: []
+    fields: [policy]
+  gpu:
+    description: the GPU arbiter, which also runs CPU-only jobs
+    profiles: [gpu-trainer]
+    fields: []
+
 # The columns of the profile table, in order, with their headings.
 columns:
   database: Database

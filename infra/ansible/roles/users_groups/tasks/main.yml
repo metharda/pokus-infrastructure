@@ -3,7 +3,8 @@
 # Groups and accounts (BUILD_PROMPT §6.1, contracts.md). Researchers are
 # members of pinka (and of Incus's per-user group, added by the incus role);
 # admins also of pinka-admin with sudo. Nobody is added to docker or
-# incus-admin implicitly. Service accounts are system users without login.
+# incus-admin implicitly. Infra and service accounts are system users
+# without login.
 - name: Create the pinka groups
   ansible.builtin.group:
     name: "{{ item.name }}"
@@ -11,17 +12,17 @@
     state: present
   loop: "{{ pinka_groups }}"
 
-# Each service account has a primary group of its own name: the contract's
-# sockets and password files are owned by it (contracts.md#sockets, #paths),
-# and useradd only creates one where USERGROUPS_ENAB is set.
-- name: Create the groups of the service accounts
+# Each infra and service account has a primary group of its own name: the
+# contract's sockets and password files are owned by it (contracts.md#sockets,
+# #paths), and useradd only creates one where USERGROUPS_ENAB is set.
+- name: Create the groups of the infra and service accounts
   ansible.builtin.group:
     name: "{{ item.name }}"
     system: true
     state: present
-  loop: "{{ service_accounts }}"
+  loop: "{{ infra_accounts + service_accounts }}"
 
-- name: Create the service accounts
+- name: Create the infra and service accounts
   ansible.builtin.user:
     name: "{{ item.name }}"
     group: "{{ item.name }}"
@@ -33,7 +34,7 @@
     groups: "{{ item.groups }}"
     append: false
     state: present
-  loop: "{{ service_accounts }}"
+  loop: "{{ infra_accounts + service_accounts }}"
 
 - name: Create the researchers
   ansible.builtin.user:

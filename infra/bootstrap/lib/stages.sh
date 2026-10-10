@@ -19,7 +19,7 @@ readonly STORED_VAULT_PASS=/etc/pinka/secrets/vault-pass
 readonly LOG_DIR=/var/log/pinka-bootstrap
 readonly LOCK_FILE=/run/lock/pinka-bootstrap.lock
 readonly PINKA_LAB=/usr/local/bin/pinka
-readonly SIGNAL_CODES=' 75 76 77 '
+readonly SIGNAL_CODES=' 65 75 76 77 '
 
 # Run-time state (read by the EXIT trap and the state file).
 CURRENT_STAGE=''
@@ -364,6 +364,7 @@ state_json() {
     "force_unsupported": $(json_bool "$OPT_FORCE_UNSUPPORTED"),
     "adopt_incus": $(json_bool "$OPT_ADOPT_INCUS"),
     "accept_mok_enrollment": $(json_bool "$OPT_ACCEPT_MOK_ENROLLMENT"),
+    "replace_platform": "$(json_escape "$OPT_REPLACE_PLATFORM")",
     "allow_dirty": $(json_bool "$OPT_ALLOW_DIRTY"),
     "allow_community_repos": $(json_bool "$OPT_ALLOW_COMMUNITY_REPOS"),
     "refresh_profile": $(json_bool "$OPT_REFRESH_PROFILE")
@@ -404,6 +405,8 @@ extra_vars_json() {
   "refresh_profile": $(json_bool "$OPT_REFRESH_PROFILE"),
   "allow_reboot": $(json_bool "$OPT_ALLOW_REBOOT"),
   "adopt_incus": $(json_bool "$OPT_ADOPT_INCUS"),
+  "inspect_platform": $(json_bool "$OPT_INSPECT_PLATFORM"),
+  "replace_platform": "$(json_escape "$OPT_REPLACE_PLATFORM")",
   "allow_community_repos": $(json_bool "$OPT_ALLOW_COMMUNITY_REPOS"),
   "offline": $(json_bool "$OPT_OFFLINE"),
   "interactive": $(json_bool "$INTERACTIVE"),
@@ -743,6 +746,18 @@ run_playbook() {
 stage_ansible() {
   enter_stage ansible
   run_playbook site.yml
+  leave_stage
+}
+
+# stage_inspect_platform: --inspect-platform runs only the platform role, which
+# fetches, stages and validates the release, prints its summary and ends the
+# play (§7.14 step 4). No bootstrap state is written: nothing was provisioned.
+stage_inspect_platform() {
+  enter_stage inspect-platform
+  STATE_ENABLED=false
+  OPT_TAGS=platform
+  run_playbook site.yml
+  FINAL_RC=0
   leave_stage
 }
 

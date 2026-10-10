@@ -2279,3 +2279,168 @@ principals and endpoints files.
   a manifest whose services or fields need an undeclared facility (an
   Incus profile without `incus`, `policy` without `opa`, a GPU job without
   `gpu`), so the health gate checks everything the platform uses.
+
+### Owner decisions on 3d.1 (with the "commit")
+
+- Interpretations 1-13 approved: the own schema validator, the YAML rules,
+  the names, the caps, the post-build command check, the policy path,
+  `cli.run`, the literal socket table, the same-platform host exemption, the
+  layouts of `endpoints.toml` and `principals.json`, the signing key at
+  `/etc/pinka/signing/<platform>/signing.key`, and mutated fixtures.
+- Added in 3d.2 as asked: a test that fails when the manifest schema uses a
+  keyword the validator does not implement (found independently of the
+  validator, plus one enforcing case per implemented keyword; the contract
+  also refuses to load such a schema), and a drift test that `profiles.yml`
+  matches the profile table of BUILD_PROMPT §12.2 cell by cell.
+- Both findings approved as stricter validation, recorded as approved
+  deviations for the next spec edit: content packages from one repository
+  may not overlap each other either (`source-overlap`), and a manifest that
+  uses a facility it does not declare in `requires` is refused
+  (`facility-undeclared`; `profiles.yml` `facilities` names the profiles and
+  fields that need each facility).
+
+## Contract v2, step 2: deployment (plan step 3d.2)
+
+BUILD_PROMPT §16 step 16 ("Deployment: sources and content packages,
+staging, sandboxed build, job image pulls by digest, provenance, the
+one-platform rule, replace and purge"), §7.14 steps 1-6 and 9, the switch of
+step 8 without hooks, and §12.10.
+
+- **Engine** (`tools/platform/pinka_platform/`): `sources.py` (the
+  `platform` and `content` settings), `mirror.py` (root-only mirrors, refs,
+  signed tags, safe extraction; ported from the contract v1 helper),
+  `deploy.py` (prepare, build, pull, publish, retire plan, activate, clean,
+  purge) and `pinka-platform deploy <step>` / `pinka-platform purge`.
+  Installed on the host below `/usr/local/lib/pinka/platform` with the
+  contract; command `/usr/local/libexec/pinka/pinka-platform`.
+- **Ansible**: the `platform` role orders the steps (`engine.yml`,
+  `sources.yml`, `prepare.yml`, `deploy.yml`, `retire.yml`); the
+  `deploy_source` and `catalog` roles of contract v1 are gone.
+  `users_groups` creates `infra_accounts` (`pinka-build`); `pinka-gt` is now
+  `pinka-restricted`; the layout gains `platforms`, `restricted` and the
+  root-only `/var/lib/pinka/{git,staging,platforms}` and the build's uv cache.
+- **Bootstrap**: `--inspect-platform`, `--replace-platform NAME`, exit code
+  65 (`EXIT_RELEASE_REFUSED`) through the signal file.
+- **pinka**: `pinka platform purge <name> [--confirm <name>]`.
+- **Records**: `contract/records/{deployed-from,active-platform,retired-platform}.schema.json`
+  and the generated `docs/reference/platform-records.md`.
+- **Tests**: 86 deployment tests in `tools/platform/tests/test_deploy*.py`
+  with real Git repositories (the 17 tests of the removed
+  `ansible/tests/test_deploy_source.py` are ported there); role variable,
+  layout, bootstrap and `pinka` tests.
+
+### Interpretations awaiting owner confirmation (3d.2)
+
+1. **Where 3d.2 ends.** Contract v1's deployment is replaced now (mirror,
+   extraction, catalog role, the v1 steps of the platform role). Contract
+   v1's rendering (the potka unit template, the socket and config helpers,
+   the signing tasks) stays in the role with its tests but unused until 3d.3
+   replaces it with rendering from the profiles; doctor's v1 platform
+   checks, the fingerprint's platform provenance, the OPA bundle path and
+   root-only backups of the restricted area follow in 3d.3 and 3d.4.
+   Alternatives: keep v1 rendering running on top of the v2 deployment
+   (glue code thrown away in 3d.3), or delete it now with its tests.
+2. **Engine in Python** in `tools/platform`, run with the Ansible
+   environment's Python 3.12 (PyYAML), next to the validator it calls.
+   Alternative: Ansible tasks and a module.
+3. **Settings.** `tag_prefix` is the prefix of the source's release tags:
+   the tag recorded in the provenance is the newest such tag on the commit;
+   with `require_signed_tags` the ref must be such a tag and is verified for
+   every source (release and packages). A deployed directory is named after
+   the tag when the ref is that tag, otherwise after the full commit (the v1
+   rule).
+4. **Mirrors**: one per repository (the URL without a trailing `/` or
+   `.git`), named `<last segment>-<12 hex digits of its SHA-256>.git`; SSH
+   sources share the host's one deploy key.
+5. **`file://` repositories** must be owned by root (or the running user),
+   and neither they nor a parent directory may be writable by group or
+   others; a sticky world-writable parent such as `/tmp` is accepted.
+6. **Refused (65) or failed (60).** Every problem with the release, its
+   sources or the settings refuses (unknown ref or path, signature, overlap,
+   content packages against the manifest, a moved tag, the manifest and the
+   release, the one-platform rule, a build that changes the release, the
+   checks after the build). Fetch, network, credentials, a failed build or
+   image pull fail the play (60).
+7. **`--replace-platform NAME`** must name the active platform; it is
+   refused without an active platform, for another name, and when the
+   release is the active platform itself.
+8. **Build sandbox** (`systemd-run --wait --pipe --collect`): `User=` and
+   `Group=pinka-build`, `ProtectSystem=strict`, `ProtectHome`,
+   `PrivateTmp`, `PrivateDevices`, kernel and control-group protections,
+   `NoNewPrivileges`, no capabilities, `RuntimeMaxSec=3600`, the infra
+   internals inaccessible (mirrors, secrets, signing, Incus, inference and
+   QA directories, the restricted area, backups, training, Docker, Incus
+   and `/run/pinka`). The staged release is bound at its final path, so the
+   environment's absolute paths are right after publishing; it may write
+   only there, in the uv cache (`/var/cache/pinka/uv`, `pinka-build` 0700)
+   and its private `/tmp`. Network access stays (uv downloads the locked
+   packages). `uv sync --frozen --all-packages --no-dev --no-editable
+   --compile-bytecode --python /opt/pinka/python/bin/python3` with
+   `UV_PYTHON_DOWNLOADS=never` and `UV_NO_CONFIG=1`.
+9. **The build may not change the release**: every entry that existed before
+   the build must be unchanged afterwards (`build-modified-release`); new
+   entries outside `.venv/` are allowed but checked for links leaving the
+   release, and links in `.venv/` (to infra's Python) are allowed.
+10. **Job images**: pulled only when `docker image inspect` does not show
+    the digest in `RepoDigests`, and checked again after the pull.
+11. **Publishing**: copies with links preserved, renamed into place; the
+    release and non-restricted content root:root 0755/0644, restricted
+    content root:`pinka-restricted` 0750/0640 (executables keep the
+    executable bit); a published directory with the same commit and tree is
+    left alone. `current` links: `releases/current` and
+    `content/<package>/current`.
+12. **Records**: `DEPLOYED_FROM.json` (kind, package, restricted, source,
+    commit, tree, tag, signature check, platform name, version, runtime,
+    manifest SHA-256, time); `active.json` (also the services with their
+    profiles, the jobs, the CLI and every derived name by namespace, which
+    the next host check exempts); `retired.json` and an append-only
+    `deployments.jsonl` in `/var/lib/pinka/platforms/<platform>/` (0700).
+13. **Replacing** works from the old `active.json`: units
+    `<platform>-<service>.service` and `/run/pinka/platform/<service>`
+    removed, the CLI link removed if it is a link, the accounts of services,
+    jobs and `<platform>-migrate` locked (password and shell), the recorded
+    database roles `NOLOGIN`, the Incus trust entries named
+    `<platform>-<service>` of Incus-capable profiles removed. The drain hook
+    joins in 3d.4.
+14. **Purge**: only a replaced platform (`retired.json`), never the active
+    one, with its name typed (prompt or `--confirm`). The database is dropped
+    first (`DROP DATABASE ... WITH (FORCE)`, then the recorded roles), so a
+    database failure removes nothing; then `/srv/pinka/platforms/<platform>`
+    and `/srv/pinka/restricted/<platform>`. Accounts stay locked, published
+    signing keys stay, the records stay with `purged_at`. Alternative: also
+    delete the accounts, groups and secrets directories.
+15. **`--inspect-platform`** runs only the platform step (tag `platform`),
+    writes no bootstrap state and runs no doctor; it excludes `--check`,
+    `--restore`, `--tags` and `--skip-tags`. The JSON summary for the
+    installer comes with 3d.7.
+16. **Check mode** skips every step that fetches or writes (prepare and the
+    later steps).
+17. **Consumers of the old paths**: `backup_include` backs up `restricted`
+    instead of `catalog`; the inference control service hides
+    `/srv/pinka/restricted` instead of `/srv/pinka/catalog`.
+18. **Attribution check** (owner rule): `Co-Authored-By`, `Claude-Session`
+    and lines starting with `Generated with` or `Generated by` in any commit
+    message reachable from `HEAD`; a shallow clone is a finding, outside git
+    the history is not checked; the jobs that run the scan fetch the whole
+    history.
+
+### Findings to report (3d.2)
+
+- `0503e86` and `8df9199` are both on `main`, and `0503e86` is `main`'s root
+  commit. Rewriting the working branch to drop their trailers changes the
+  hash of every commit, `main`'s history included; `main` keeps the trailers
+  unless it is replaced by the rewritten branch, which the rewrite exception
+  does not cover.
+- `git archive` itself refuses a tree with a `.git` entry ("invalid path");
+  the engine reports that as `source-git-entry`, and its tar filter refuses
+  such entries too.
+- The installer still writes the contract v1 keys (`platform_enabled`,
+  `platform_ref`, `catalog_ref`, `pinka_source_repo`), which no longer have
+  any effect; its sources screen follows in 3d.7. `docs/contracts.md` still
+  describes contract v1 and is rewritten in 3d.8.
+- Not verified on a real host (needs a VM, 3e or `make test-distros`): the
+  build sandbox (`BindPaths` into `/srv` under `ProtectSystem=strict`, uv
+  with network access as `pinka-build`), the Incus trust list's `name` and
+  `fingerprint` fields, and a full deployment of `refplat`.
+  (`DROP DATABASE ... WITH (FORCE)` exists since PostgreSQL 13; 18 is
+  pinned.)

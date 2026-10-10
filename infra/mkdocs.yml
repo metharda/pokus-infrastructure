@@ -80,7 +80,8 @@ nav:
       - Update the host operating system: how-to/update-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
       - Add a model and activate a deployment: how-to/add-a-model.md
-      - Deploy the platform and the scenario catalog: how-to/deploy-platform.md
+      - Deploy a platform: how-to/deploy-platform.md
+      - Replace the lab's platform: how-to/replace-platform.md
       - Run inference on a separate GPU node: how-to/pair-inference-node.md
       - Connect to the lab: how-to/connect.md
       - Reach Grafana and the lab database: how-to/reach-grafana.md
@@ -108,6 +109,7 @@ nav:
       - "CLI: pinka-platform": reference/cli/pinka-platform.md
       - Platform manifest: reference/platform-manifest.md
       - Platform privilege profiles: reference/platform-profiles.md
+      - Platform records: reference/platform-records.md
       - Installer answers file: reference/answers.md
       - Doctor checks: reference/doctor-checks.md
       - Exit codes: reference/exit-codes.md

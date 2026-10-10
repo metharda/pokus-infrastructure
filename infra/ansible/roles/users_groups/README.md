@@ -3,10 +3,11 @@
 Groups and accounts (BUILD_PROMPT §6.1, `docs/contracts.md`).
 
 - Groups from `pinka_groups`.
-- Service accounts from `service_accounts`: system users, shell `nologin`,
-  home `/var/lib/pinka/<name>`, locked password, a primary group of the same
-  name (the contract's sockets and password files use it) and exactly the
-  listed supplementary groups.
+- Infra accounts from `infra_accounts` (`pinka-build`, which runs platform
+  builds) and service accounts from `service_accounts`: system users, shell
+  `nologin`, home `/var/lib/pinka/<name>`, locked password, a primary group of
+  the same name (the contract's sockets and password files use it) and
+  exactly the listed supplementary groups.
 - Researchers from `researchers`: members of `pinka` (admins also
   `pinka-admin`, with sudo through `/etc/sudoers.d/90-pinka-admin`, checked
   with `visudo -cf`). Incus's per-user group is added by the incus role.

@@ -281,7 +281,7 @@ def test_backed_up_paths_follow_the_specification() -> None:
     )
     paths = evaluate("backup_paths", variables)
     assert paths == [
-        "/srv/pinka/catalog",
+        "/srv/pinka/restricted",
         "/srv/pinka/artifacts",
         "/srv/pinka/reports",
         "/srv/pinka/images",

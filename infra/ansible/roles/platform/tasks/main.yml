@@ -1,281 +1,43 @@
 # Managed by pinka (ansible/roles/platform/tasks/main.yml). Local changes will be overwritten.
 #
-# The platform services (BUILD_PROMPT §7.14, contracts.md): platform/ at
-# platform_ref from the root-only mirror into /srv/pinka/deploy/platform/<ref>/,
-# its uv environment, the configuration in /etc/pinka/platform (checked
-# against the platform's own schemas), the signing key, the QA paths, the
-# pinned Quarto CLI, hardened units with their socket permissions, database
-# migrations, and finally the atomic `current` switch. Changed units restart
-# at the end of the play. While platform_enabled is false the units, if any,
-# are stopped and disabled; deployments are kept.
+# Generic platform deployment (BUILD_PROMPT §7.14, contract v2): at most one
+# platform per lab, from the release and the content packages the host
+# settings name (platform, content), validated against contract v2 before
+# anything on the host changes. The role names no platform: everything comes
+# from the manifest and the host settings. The steps run in the deployment
+# tool pinka-platform (tools/platform): fetch into root-only mirrors, stage,
+# validate (a refusal ends bootstrap with exit code 65), build in a sandbox,
+# pull job images by digest, publish read-only with provenance, replace the
+# previous platform, switch. Rendering from the profiles (accounts, units,
+# sockets, database roles, certificates) follows in plan step 3d.3.
 
 - name: Deploy the platform
-  when: platform_enabled | bool
+  when: platform_deploy | bool
   block:
-    - name: Check the platform settings
-      ansible.builtin.assert:
-        that:
-          - platform_ref | length > 0
-          - node_role in ['full', 'lab']
-          - platform_inference in ['local', 'remote', 'scripted']
-          - platform_inference != 'local' or ((pinka_features.gpu_inference | default(false)) and node_role == 'full')
-          - platform_inference != 'remote' or inference_remote_node | length > 0
-          - platform_inference != 'scripted' or (lab_mode == 'staging' and platform_scripted_api_url | length > 0)
-          - platform_settings.keys() | difference(platform_units | map(attribute='svc') | unique) | length == 0
-        fail_msg: >-
-          platform_enabled needs platform_ref and a full or lab node. Inference: local needs this
-          node to serve inference, remote needs inference_remote_node (pair the nodes first),
-          scripted needs lab_mode staging and platform_scripted_api_url (D3). platform_settings
-          keys must be service short names.
-        quiet: true
+    - name: Install the deployment tool
+      ansible.builtin.include_tasks: engine.yml
 
-    - name: Fetch the source repository
-      ansible.builtin.include_role:
-        name: deploy_source
+    - name: Set up the sources
+      ansible.builtin.include_tasks: sources.yml
 
-    - name: Extract the platform
-      ansible.builtin.include_role:
-        name: deploy_source
-        tasks_from: deploy
-      vars:
-        deploy_source_component: platform
-        deploy_source_ref: "{{ platform_ref }}"
-        deploy_source_root: "{{ platform_root }}"
-
-    - name: Remember the release directory
-      ansible.builtin.set_fact:
-        platform_release: "{{ platform_root }}/{{ deploy_source_result.name }}"
-        platform_commit: "{{ deploy_source_result.provenance.commit }}"
+    - name: Fetch, stage and validate the release
+      ansible.builtin.include_tasks: prepare.yml
       when: not ansible_check_mode
 
-    - name: Create the platform directories
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: directory
-        owner: root
-        group: "{{ item.group | default('root') }}"
-        mode: "{{ item.mode }}"
-      loop:
-        - {path: "{{ platform_config_dir }}", mode: "0755"}
-        - {path: "{{ platform_state_dir }}", mode: "0700"}
-        - {path: "{{ platform_uv_cache }}", mode: "0700"}
-        - {path: "{{ platform_libexec }}", mode: "0755"}
-        - {path: "{{ platform_qa_dir }}", mode: "0755"}
-        - {path: "{{ platform_qa_dir }}/trusted-keys", mode: "0755"}
-        - {path: "{{ platform_qa_dir }}/attestations", mode: "0750", group: potka-orch}
-      loop_control:
-        label: "{{ item.path }}"
-
-    - name: Create the platform's Python environment
-      ansible.builtin.command:
-        argv:
-          - "{{ platform_uv }}"
-          - sync
-          - --frozen
-          - --all-packages
-          - --no-dev
-          - --no-editable
-          - --compile-bytecode
-          - --python
-          - "{{ pinka_python }}"
-        chdir: "{{ platform_release }}"
-        creates: "{{ platform_release }}/.venv/bin/python"
-      environment:
-        UV_CACHE_DIR: "{{ platform_uv_cache }}"
-        UV_PYTHON_DOWNLOADS: never
-      when: not ansible_check_mode
-
-    - name: Check the console scripts of the contract
-      ansible.builtin.stat:
-        path: "{{ platform_release }}/.venv/bin/{{ item }}"
-      loop: "{{ platform_units | map(attribute='script') | list + ['potka-migrate', 'potka'] }}"
-      register: platform_scripts
-      when: not ansible_check_mode
-
-    - name: Require every console script
-      ansible.builtin.assert:
-        that: platform_scripts.results | rejectattr('stat.exists') | list | length == 0
-        fail_msg: >-
-          The platform at {{ platform_ref }} lacks console scripts of the contract:
-          {{ platform_scripts.results | rejectattr('stat.exists') | map(attribute='item') | join(', ') }}
-        quiet: true
-      when: not ansible_check_mode
-
-    - name: Install the platform helpers
-      ansible.builtin.copy:
-        src: "{{ item.src }}"
-        dest: "{{ platform_libexec }}/{{ item.dest }}"
-        owner: root
-        group: root
-        mode: "{{ item.mode }}"
-      loop:
-        - {src: pinka_socket_perms.py, dest: socket-perms, mode: "0755"}
-        - {src: pinka_platform_config_check.py, dest: platform-config-check.py, mode: "0644"}
-
-    - name: Find out whether /run supports POSIX ACLs (C8)
-      ansible.builtin.shell:
-        cmd: |
-          set -eu
-          probe=$(mktemp /run/pinka/.acl-probe.XXXXXX)
-          trap 'rm -f "$probe"' EXIT
-          setfacl --modify user:root:rw- "$probe"
-        executable: /bin/sh
-      register: platform_acl_probe
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: Remember the socket permission method
-      ansible.builtin.set_fact:
-        platform_socket_acls: "{{ platform_acl_probe.rc == 0 }}"
-
-    - name: Write endpoints.toml
-      ansible.builtin.copy:
-        dest: "{{ platform_config_dir }}/endpoints.toml"
-        content: "{{ platform_endpoints | pinka_to_toml(platform_toml_header ~ 'endpoints.toml') }}"
-        owner: root
-        group: root
-        mode: "0644"
-      notify: Restart the platform
-
-    - name: Write the service configuration (checked against the platform's schemas)
-      ansible.builtin.copy:
-        dest: "{{ platform_config_dir }}/{{ item }}.toml"
-        content: "{{ platform_settings[item] | default({}) | pinka_to_toml(platform_toml_header ~ item ~ '.toml') }}"
-        owner: root
-        group: root
-        mode: "0644"
-        validate: >-
-          {{ platform_release }}/.venv/bin/python -I {{ platform_libexec }}/platform-config-check.py
-          --schema {{ platform_release }}/schemas/config/{{ item }}.schema.json %s
-      loop: "{{ platform_units | map(attribute='svc') | unique | list }}"
-      notify: Restart the platform
-      when: not ansible_check_mode
-
-    - name: Record the socket permissions for doctor
-      ansible.builtin.copy:
-        dest: "{{ platform_config_dir }}/sockets.json"
-        content: "{{ platform_socket_expectations | to_nice_json }}\n"
-        owner: root
-        group: root
-        mode: "0644"
-
-    - name: Create the secrets directories of the services
-      ansible.builtin.file:
-        path: "{{ platform_secrets_dir }}/{{ item.svc }}"
-        state: directory
-        owner: root
-        group: "{{ item.account }}"
-        mode: "0750"
-      loop: "{{ platform_units | unique(attribute='svc') }}"
-      loop_control:
-        label: "{{ item.svc }}"
-
-    - name: Signing key
-      ansible.builtin.include_tasks: signing.yml
-
-    - name: Install the trusted QA public keys
-      ansible.builtin.copy:
-        dest: "{{ platform_qa_dir }}/trusted-keys/{{ item.name }}.pem"
-        content: "{{ item.pem | trim }}\n"
-        owner: root
-        group: root
-        mode: "0644"
-      loop: "{{ qa_trusted_keys }}"
-      loop_control:
-        label: "{{ item.name }}"
-
-    - name: Quarto CLI
-      ansible.builtin.include_tasks: quarto.yml
-
-    - name: Install the platform units
-      ansible.builtin.template:
-        src: potka-platform.service.j2
-        dest: "/etc/systemd/system/{{ platform_unit.unit }}"
-        owner: root
-        group: root
-        mode: "0644"
-      loop: "{{ platform_units }}"
-      loop_control:
-        loop_var: platform_unit
-        label: "{{ platform_unit.unit }}"
-      register: platform_unit_files
-      notify: Restart the platform
-
-    - name: Enable the platform units (pinka-lab.target wants them)
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: true
-        daemon_reload: "{{ platform_unit_files is changed }}"
-      loop: "{{ platform_units | map(attribute='unit') | list }}"
-      when: not ansible_check_mode
-
-    - name: Read the commit the database was last migrated with
-      ansible.builtin.slurp:
-        src: "{{ platform_state_dir }}/migrated-commit"
-      register: platform_migrated
-      failed_when: false
-
-    - name: Migrate the database (potka-migrate upgrade, C9f)
-      ansible.builtin.command:
-        argv: ["{{ platform_release }}/.venv/bin/potka-migrate", upgrade]
-      register: platform_migrate
-      changed_when: true
+    - name: Build, publish and switch to the release
+      ansible.builtin.include_tasks: deploy.yml
       when:
         - not ansible_check_mode
-        - (platform_migrated.content | default('') | b64decode | trim) != platform_commit
+        - not platform_inspect | bool
 
-    - name: Record the migrated commit
-      ansible.builtin.copy:
-        dest: "{{ platform_state_dir }}/migrated-commit"
-        content: "{{ platform_commit }}\n"
-        owner: root
-        group: root
-        mode: "0600"
-      when: not ansible_check_mode
-
-    - name: Make the platform current
-      ansible.builtin.include_role:
-        name: deploy_source
-        tasks_from: activate
-      vars:
-        deploy_source_component: platform
-        deploy_source_root: "{{ platform_root }}"
-        deploy_source_name: "{{ deploy_source_result.name }}"
-      when: not ansible_check_mode
-
-    - name: Restart the platform after a new release
-      ansible.builtin.debug:
-        msg: "{{ platform_root }}/current now points to {{ deploy_source_result.name }}."
-      changed_when: true
-      notify: Restart the platform
-      when:
-        - not ansible_check_mode
-        - deploy_source_activate is changed
-
-    - name: Put the potka CLI on the PATH (C9g)
-      ansible.builtin.file:
-        src: "{{ platform_current }}/.venv/bin/potka"
-        dest: "{{ platform_cli_link }}"
-        state: link
-        force: true
-        owner: root
-        group: root
-
-- name: Stop the platform while it is disabled
-  when: not platform_enabled | bool
-  block:
-    - name: Look for installed platform units
-      ansible.builtin.stat:
-        path: "/etc/systemd/system/{{ item }}"
-      loop: "{{ platform_units | map(attribute='unit') | list }}"
-      register: platform_installed
-
-    - name: Stop and disable the installed platform units
-      ansible.builtin.systemd_service:
-        name: "{{ item.item }}"
-        state: stopped
-        enabled: false
-      loop: "{{ platform_installed.results | selectattr('stat.exists') | list }}"
-      loop_control:
-        label: "{{ item.item }}"
+- name: Refuse --inspect-platform without a platform source
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      --inspect-platform needs the platform source: set platform (repo, ref, path,
+      tag_prefix) in the host variables.
+  when:
+    - platform_inspect | bool
+    - not platform_deploy | bool

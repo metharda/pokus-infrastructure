@@ -9,8 +9,8 @@ argument_specs:
       bootstrap_signal_code:
         type: int
         required: true
-        choices: [75, 76, 77]
-        description: 75 WSL restart required, 76 reboot or MOK enrollment required, 77 operator action required.
+        choices: [65, 75, 76, 77]
+        description: 65 platform release refused, 75 WSL restart required, 76 reboot or MOK enrollment required, 77 operator action required.
       bootstrap_signal_message:
         type: str
         required: true

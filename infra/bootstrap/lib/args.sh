@@ -27,6 +27,8 @@ Options:
   --allow-reboot           Allow automatic reboot on bare metal / VM
   --allow-dirty            Continue with uncommitted changes in infra/ (recorded)
   --adopt-incus            Adopt an existing Incus installation
+  --inspect-platform       Fetch, stage and validate the platform release, print its summary, change nothing else
+  --replace-platform NAME  Allow a platform with another name to replace the active platform NAME
   --accept-mok-enrollment  With Secure Boot and install_nvidia_driver: auto, install the NVIDIA driver and import a Machine Owner Key (recorded)
   --mok-password-stdin     Read the one-time MOK password from the first line of standard input
   --allow-community-repos  Permit non-vendor, non-distro repositories (COPR, OBS, RPM Fusion)
@@ -38,8 +40,8 @@ Options:
   -h, --help               Show this help and exit
 
 Exit codes: see docs/reference/exit-codes.md (0 success; 1/2 doctor warnings/failures;
-10, 11, 20, 30, 40 preflight gate; 50 tooling; 60 play; 64 usage; 70 internal;
-75 WSL restart; 76 reboot; 77 operator action).
+10, 11, 20, 30, 40 preflight gate; 50 tooling; 60 play; 64 usage; 65 platform
+release refused; 70 internal; 75 WSL restart; 76 reboot; 77 operator action).
 EOF
 }
 
@@ -57,6 +59,8 @@ OPT_REFRESH_PROFILE=false
 OPT_ALLOW_REBOOT=false
 OPT_ALLOW_DIRTY=false
 OPT_ADOPT_INCUS=false
+OPT_INSPECT_PLATFORM=false
+OPT_REPLACE_PLATFORM=''
 OPT_ACCEPT_MOK_ENROLLMENT=false
 OPT_MOK_PASSWORD_STDIN=false
 OPT_ALLOW_COMMUNITY_REPOS=false
@@ -69,6 +73,7 @@ OPT_HELP=false
 
 readonly MACHINE_RE='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
 readonly TAGS_RE='^[a-z0-9_]+(,[a-z0-9_]+)*$'
+readonly PLATFORM_NAME_RE='^[a-z][a-z0-9]{1,11}$'
 
 # usage_error MESSAGE: print the message and a hint, return EXIT_USAGE.
 usage_error() {
@@ -119,6 +124,11 @@ parse_args() {
         OPT_ANSWERS=$2
         shift 2
         ;;
+      --replace-platform)
+        need_value "$1" $# || return
+        OPT_REPLACE_PLATFORM=$2
+        shift 2
+        ;;
       --restore) OPT_RESTORE=true && shift ;;
       --check) OPT_CHECK=true && shift ;;
       --accept-degraded) OPT_ACCEPT_DEGRADED=true && shift ;;
@@ -128,6 +138,7 @@ parse_args() {
       --allow-reboot) OPT_ALLOW_REBOOT=true && shift ;;
       --allow-dirty) OPT_ALLOW_DIRTY=true && shift ;;
       --adopt-incus) OPT_ADOPT_INCUS=true && shift ;;
+      --inspect-platform) OPT_INSPECT_PLATFORM=true && shift ;;
       --accept-mok-enrollment) OPT_ACCEPT_MOK_ENROLLMENT=true && shift ;;
       --mok-password-stdin) OPT_MOK_PASSWORD_STDIN=true && shift ;;
       --allow-community-repos) OPT_ALLOW_COMMUNITY_REPOS=true && shift ;;
@@ -170,6 +181,16 @@ validate_args() {
   if [[ $OPT_TUI == on ]] && "$OPT_MOK_PASSWORD_STDIN"; then
     usage_error "--tui and --mok-password-stdin exclude each other (the TUI asks for the password)"
     return
+  fi
+  if [[ -n $OPT_REPLACE_PLATFORM && ! $OPT_REPLACE_PLATFORM =~ $PLATFORM_NAME_RE ]]; then
+    usage_error "invalid platform name '$OPT_REPLACE_PLATFORM' (2-12 lower-case letters and digits)"
+    return
+  fi
+  if "$OPT_INSPECT_PLATFORM"; then
+    if "$OPT_CHECK" || "$OPT_RESTORE" || [[ -n $OPT_TAGS || -n $OPT_SKIP_TAGS ]]; then
+      usage_error "--inspect-platform excludes --check, --restore, --tags and --skip-tags"
+      return
+    fi
   fi
   if [[ -n $OPT_ANSWERS && ! -r $OPT_ANSWERS ]]; then
     usage_error "answers file '$OPT_ANSWERS' is not readable"

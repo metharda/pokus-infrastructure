@@ -106,6 +106,10 @@ main() {
   stage_frontend
   stage_preflight
   stage_ansible_env
+  if "$OPT_INSPECT_PLATFORM"; then
+    stage_inspect_platform
+    exit "$FINAL_RC"
+  fi
   stage_ansible
   if "$OPT_RESTORE"; then
     stage_restore

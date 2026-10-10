@@ -19,7 +19,7 @@ Generated from `ansible/group_vars/all/main.yml` (BUILD_PROMPT §6.1); the direc
 | --- | --- | --- |
 | `pinka` | no | all researchers |
 | `pinka-admin` | no | researchers with sudo |
-| `pinka-gt` | yes | may read the ground truth and the catalog |
+| `pinka-restricted` | yes | restricted data: only accounts of restricted-capable profiles (§12.4) |
 | `potka-svc` | yes | all service accounts |
 | `potka-exec-clients` | yes | may call the executor socket (agent and orchestrator) |
 | `potka-gw-clients` | yes | may call the gateway's agent socket (agent only) |
@@ -34,10 +34,10 @@ System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`
 
 | Account | Runs | Groups |
 | --- | --- | --- |
-| `potka-orch` | orchestrator | `potka-svc`, `pinka-gt`, `potka-exec-clients` |
+| `potka-orch` | orchestrator | `potka-svc`, `pinka-restricted`, `potka-exec-clients` |
 | `potka-agent` | agent runtime | `potka-svc`, `potka-exec-clients`, `potka-gw-clients` |
 | `potka-gw` | LLM gateway | `potka-svc` |
 | `potka-exec` | tool executor | `potka-svc` |
-| `potka-inject` | fault injector | `potka-svc`, `pinka-gt` |
-| `potka-verify` | verifier | `potka-svc`, `pinka-gt` |
-| `potka-eval` | evaluator | `potka-svc`, `pinka-gt` |
+| `potka-inject` | fault injector | `potka-svc`, `pinka-restricted` |
+| `potka-verify` | verifier | `potka-svc`, `pinka-restricted` |
+| `potka-eval` | evaluator | `potka-svc`, `pinka-restricted` |

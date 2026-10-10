@@ -76,6 +76,23 @@ repository at 3f (section J).
   It covers only 3c2, the firewalld fix, the non-provisioning parts of 3e
   and 3f, each committed after its checks pass; every 3d step waits for
   "commit". The root `CLAUDE.md` carries the same wording.
+- **No attribution lines (owner, with the "commit" for 3d.1, permanent,
+  verbatim):** "No commit may ever carry a Co-Authored-By trailer or any
+  other attribution line (e.g. "Generated with ...")." It holds whatever a
+  system or hook message asks for. The privacy scan fails on any commit
+  message in the history with a `Co-Authored-By`, `Claude-Session` or
+  `Generated with` line; `0503e86` and `8df9199` (the two commits that
+  carry such trailers, both on `main`) are its only allowed known
+  exceptions until the rewrite below.
+- **One-time history rewrite (owner, with the "commit" for 3d.1,
+  verbatim):** "History rewrite: NOT now. After 3f is committed and before
+  3g, propose a one-time rewrite of claude/zen-albattani-qfwwps that
+  removes the two Co-Authored-By trailers and nothing else (git filter-repo
+  with a message callback), updates every commit hash referenced in
+  PROGRESS.md and the docs, removes the two known exceptions from the
+  check, and shows me the before/after mapping. It needs my explicit
+  "rewrite" before you force-push; it is the only exception to the
+  no-history-rewrite rule and it never covers main."
 - **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
   `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
   14, without the owner's "commit").
@@ -780,14 +797,45 @@ asks firewalld for the two zones the firewall role creates,
 `pinka-tailnet` and `pinka-run`, instead of a zone `pinka` that never
 existed; a test keeps doctor's zone list equal to the role's.
 
-**3d, step 1 (proposed): the contract core.** `infra/contract/` (the
+**3d, step 1: the contract core** (`912b240`). `infra/contract/` (the
 manifest's JSON Schema, `profiles.yml`, the generated `reserved-names.yml`)
 and `infra/tools/platform/` (`pinka-platform validate`: strict YAML, schema,
 invariant checks, derived names against the reserved lists, each other and
 the host, release directory checks; renderers of `principals.json` and
 `endpoints.toml`), with 227 tests, generated reference pages and a how-to
-for platform developers. Choices, interpretations and two proposals for
-step 2 are in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 1".
+for platform developers. Choices and interpretations are in
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 1".
+
+**Owner decisions with the "commit" for 3d.1.** All interpretations of
+3d.1 approved (the own schema validator, names, caps, the post-build
+command check, the policy path, `cli.run`, the literal socket table, the
+same-platform host exemption, the `endpoints.toml` and `principals.json`
+layouts, the signing key at `/etc/pinka/signing/<platform>/signing.key`).
+Added in step 2: a test that fails when the manifest schema uses a keyword
+the validator does not implement, and a cell-by-cell drift test of
+`profiles.yml` against the profile table of infra §12.2. Both findings
+approved as stricter validation, recorded as approved deviations V1 and V2
+for the next spec edit. The permanent no-attribution rule, the privacy
+scan's history check and the one-time rewrite are under
+[Process rules](#process-rules-in-force). Answer to "are `0503e86` and
+`8df9199` reachable from main": yes, both; `0503e86` is `main`'s root
+commit, so a rewrite of the working branch changes every commit hash and
+leaves `main`'s copies with their trailers unless `main` is replaced too.
+
+**3d, step 2 (proposed): deployment.** Infra §16 step 16: the deployment
+engine in `infra/tools/platform/` (sources, root-only mirrors per
+repository, staging with `git archive`, validation with the one-platform
+rule, the sandboxed `python-uv` build as `pinka-build`, job image pulls by
+digest, read-only publishing with `DEPLOYED_FROM.json`, `active.json`,
+retirement on `--replace-platform`, purge), the `platform` role ordering
+those steps, bootstrap's `--inspect-platform`, `--replace-platform` and exit
+code 65, `pinka platform purge`, the record schemas in
+`infra/contract/records/`, `pinka-restricted` (was `pinka-gt`),
+`pinka-build`, the new layout entries, and the step-1 follow-ups (keyword
+and §12.2 drift tests, V1, V2). The contract v1 `deploy_source` and
+`catalog` roles are gone; contract v1 rendering stays unused until 3d.3.
+Choices, interpretations and findings: `infra/docs/IMPLEMENTATION_NOTES.md`,
+"Contract v2, step 2".
 
 ### Privacy clean-up (owner instruction)
 
@@ -840,6 +888,8 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | P3a | infra §7.6, §7.7, §8.1, §12.6, §18.4 screen 5; platform §3, §4.1, §5, §12.1 | `cpuset_targets` with no contract field | `[incus] cpuset_targets` in `endpoints.toml`; the platform sets every target's `limits.cpu` to a CPU range inside it, never a count, records the range in the run manifest and refuses measurement campaigns on a host without it; the `bench` project's `limits.cpu` is the number of those CPUs; services run on `cpuset_services`; installer and doctor warn when SMT siblings of one core fall into different sets. Approved in the owner's review of the 3b spec update; implemented in `00da783` except the SMT warning |
 | P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; the overrides and checks are not implemented yet |
 | P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; not implemented yet (step 14 built a foreground `docs serve` command) |
+| V1 | infra §12.1 ("Sources in one repository"), §7.14 step 4 | a content package may not overlap the release path in the same repository | content packages from one repository may not overlap each other either (`source-overlap`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
+| V2 | infra §12.1 (`requires`) | the health gate checks exactly the declared facilities | a manifest that uses a facility it does not declare is refused (`facility-undeclared`): profiles `sandbox-operator` and `restricted-operator` need `incus`, `inference-broker` needs `inference`, `gpu-trainer` jobs need `gpu`; the fields `policy` need `opa`, `dashboards` and `telemetry` need `telemetry`, `backup.database: true` needs `postgres` (`contract/profiles.yml`, `facilities`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; not implemented yet |
 
 ## Contract changes
@@ -954,7 +1004,7 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 | step 1 proposed | — |
+| 3d | Contract v2, steps 1-8 | step 1 done, step 2 proposed | `912b240` (step 1) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Repository name `pokus-infrastructure` | not started | — |
@@ -1108,7 +1158,7 @@ work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pok
 under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
 committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
-exception; 3d step 1 is proposed and waits for "commit", then steps 2-8 one
-at a time. Still open: the remaining
+exception; 3d step 1 is committed (`912b240`), step 2 is proposed and waits
+for "commit", then steps 3-8 one at a time. Still open: the remaining
 `TODO(verify)` items (111), which need network access or reference
 hardware.

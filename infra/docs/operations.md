@@ -62,8 +62,10 @@ and most of its commands need `sudo`.
 
 ## Platform, QA and split inference
 
-- Deploy or update the platform services and the scenario catalog:
-  [How to deploy the platform and the scenario catalog](how-to/deploy-platform.md).
+- Deploy or update the platform and its content packages:
+  [How to deploy a platform](how-to/deploy-platform.md); replace it with another
+  platform and purge the old one:
+  [How to replace the lab's platform](how-to/replace-platform.md).
 - Run a maintenance window on a staging lab:
   [How to run a QA maintenance window on staging](how-to/staging-window.md).
 - Install the QA team's trusted keys and attestations:

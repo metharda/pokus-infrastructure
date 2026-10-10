@@ -28,6 +28,7 @@ description: Exit codes of the pokus-infrastructure tools.
 | 50 | `EXIT_TOOLING` | Tooling failed | Installing uv, CPython, the Ansible environment or the Ansible collections failed, or a checksum did not match | [Exit code 50](../how-to/troubleshoot.md#exit-code-50) |
 | 60 | `EXIT_ANSIBLE` | Play failed | An Ansible play failed without a bootstrap signal, or a later stage is not installed yet | [Exit code 60](../how-to/troubleshoot.md#exit-code-60) |
 | 64 | `EXIT_USAGE` | Usage error | Invalid command-line options | [Exit code 64](../how-to/troubleshoot.md#exit-code-64) |
+| 65 | `EXIT_RELEASE_REFUSED` | Platform release refused | The release or its sources break contract v2; every reason is printed and nothing on the host changed | [Exit code 65](../how-to/troubleshoot.md#exit-code-65) |
 | 70 | `EXIT_INTERNAL` | Internal error | Unexpected error in bootstrap itself; the failing line is in the log | [Exit code 70](../how-to/troubleshoot.md#exit-code-70) |
 | 75 | `EXIT_WSL_RESTART` | WSL restart required | Run 'wsl --terminate &lt;distro&gt;' on the Windows side, then re-run bootstrap | [Exit code 75](../how-to/troubleshoot.md#exit-code-75) |
 | 76 | `EXIT_REBOOT` | Reboot required | Reboot (and enroll the MOK if asked), then re-run bootstrap | [Exit code 76](../how-to/troubleshoot.md#exit-code-76) |

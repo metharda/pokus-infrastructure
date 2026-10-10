@@ -5,3 +5,7 @@
       {{ ['systemctl', 'try-restart']
          + (platform_units | rejectattr('type', 'defined') | map(attribute='unit') | list) }}
   changed_when: true
+
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true

@@ -100,7 +100,12 @@ def validate_release(
         manifest = load_file(directory / MANIFEST_NAME, int(contract.caps["manifest_bytes"]))
     except ManifestError as exc:
         return Result(None, [exc.problem])
-    problems = release.check_symlinks(directory)
+    skip = (
+        (release.BUILT_PREFIX.rstrip("/"),)
+        if built and manifest.get("runtime") == "python-uv"
+        else ()
+    )
+    problems = release.check_symlinks(directory, skip)
     problems += check_manifest(manifest, contract, host)
     if not any(p.code == "schema" for p in problems):
         problems += release.check_files(directory, manifest, built=built)

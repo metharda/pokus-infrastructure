@@ -1,0 +1,17 @@
+#!/bin/sh
+# Managed by pinka (ansible/roles/platform/files/pinka-platform). Local changes will be overwritten.
+#
+# The deployment tool, installed as /usr/local/libexec/pinka/pinka-platform:
+# runs the pinka_platform package (with the published contract next to it)
+# with the Python of the Ansible environment, which carries PyYAML. Run by
+# the platform role and by `pinka platform purge`, as root. POSIX sh.
+set -eu
+
+lib=${PINKA_PLATFORM_LIB:-/usr/local/lib/pinka/platform}
+python=${PINKA_PLATFORM_PYTHON:-/opt/pinka/ansible-venv/bin/python3}
+
+# Isolated mode (-I) ignores PYTHON* variables and the current directory; the
+# package directory is put on sys.path explicitly.
+exec "$python" -I -c 'import runpy, sys
+sys.path[:0] = [sys.argv.pop(1)]
+runpy.run_module("pinka_platform", run_name="__main__", alter_sys=True)' "$lib" "$@"

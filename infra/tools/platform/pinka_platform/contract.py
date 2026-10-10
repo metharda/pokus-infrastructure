@@ -11,7 +11,18 @@ from typing import Any
 
 import yaml
 
-DEFAULT_DIR = Path(__file__).resolve().parents[3] / "contract"
+from pinka_platform.schema import SchemaError, check_keywords
+
+
+def _default_dir() -> Path:
+    # Installed (/usr/local/lib/pinka/platform): contract/ next to the package;
+    # in a checkout: infra/contract.
+    here = Path(__file__).resolve().parent
+    installed = here.parent / "contract"
+    return installed if installed.is_dir() else here.parents[2] / "contract"
+
+
+DEFAULT_DIR = _default_dir()
 SCHEMA_FILE = "platform-manifest.schema.json"
 PROFILES_FILE = "profiles.yml"
 RESERVED_FILE = "reserved-names.yml"
@@ -108,6 +119,8 @@ class Contract:
         defaults: Defaults for omitted limits.
         relaxations: The fixed list of relaxations.
         human_classes: Human client classes and their groups.
+        facilities: Per facility of ``requires``, the profiles and manifest
+            fields that need it.
         reserved: Reserved names per namespace.
         reserved_paths: Reserved path segments per parent directory.
     """
@@ -119,6 +132,7 @@ class Contract:
     defaults: dict[str, Any]
     relaxations: dict[str, Any]
     human_classes: dict[str, Any]
+    facilities: dict[str, Any]
     reserved: dict[str, Namespace]
     reserved_paths: dict[str, frozenset[str]]
 
@@ -154,6 +168,9 @@ def load(directory: Path = DEFAULT_DIR) -> Contract:
 
     Returns:
         The contract.
+
+    Raises:
+        SchemaError: The manifest schema uses a keyword the validator does not implement.
     """
     profiles_data = _yaml(directory / PROFILES_FILE)
     reserved_data = _yaml(directory / RESERVED_FILE)
@@ -164,14 +181,20 @@ def load(directory: Path = DEFAULT_DIR) -> Contract:
     reserved_paths = {
         base: frozenset(segments) for base, segments in reserved_data["path_segments"].items()
     }
+    manifest_schema = json.loads((directory / SCHEMA_FILE).read_text(encoding="utf-8"))
+    unsupported = check_keywords(manifest_schema)
+    if unsupported:
+        # A keyword the validator does not implement would be silently ignored.
+        raise SchemaError(f"unsupported schema keywords: {'; '.join(unsupported)}")
     return Contract(
         version=int(profiles_data["contract_version"]),
-        schema=json.loads((directory / SCHEMA_FILE).read_text(encoding="utf-8")),
+        schema=manifest_schema,
         profiles={n: Profile(n, d) for n, d in profiles_data["profiles"].items()},
         caps=dict(profiles_data["caps"]),
         defaults=dict(profiles_data["defaults"]),
         relaxations=dict(profiles_data["relaxations"]),
         human_classes=dict(profiles_data["human_classes"]),
+        facilities=dict(profiles_data["facilities"]),
         reserved=reserved,
         reserved_paths=reserved_paths,
     )

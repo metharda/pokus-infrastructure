@@ -23,18 +23,24 @@ def _inside(root: Path, target: Path) -> bool:
     return True
 
 
-def check_symlinks(release: Path) -> list[Problem]:
+def check_symlinks(release: Path, skip: tuple[str, ...] = ()) -> list[Problem]:
     """Refuse symbolic links that leave the release.
 
     Args:
-        release: The staged release.
+        release: The staged release (or a content package).
+        skip: Top-level entries not to check: after the build, ``.venv``
+            links to infra's pinned Python by design.
 
     Returns:
         Problems.
     """
     root = release.resolve()
     problems = []
-    for directory, dirs, files in os.walk(release):
+    for directory, dirs, found in os.walk(release):
+        files = found
+        if Path(directory) == release:
+            dirs[:] = [d for d in dirs if d not in skip]
+            files = [f for f in found if f not in skip]
         for name in sorted(dirs + files):
             path = Path(directory) / name
             if path.is_symlink() and not _inside(root, path.resolve()):

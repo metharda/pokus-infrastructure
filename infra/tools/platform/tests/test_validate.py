@@ -57,6 +57,20 @@ def _set(path: str, value: Any) -> Mutation:
     return mutate
 
 
+def _drop_requirement(facility: str) -> Mutation:
+    def mutate(data: dict[str, Any]) -> None:
+        data["requires"] = [r for r in data["requires"] if r != facility]
+
+    return mutate
+
+
+def _delete(key: str) -> Mutation:
+    def mutate(data: dict[str, Any]) -> None:
+        del data[key]
+
+    return mutate
+
+
 def _add_service(**fields: Any) -> Mutation:
     def mutate(data: dict[str, Any]) -> None:
         data["services"].append(fields)
@@ -368,6 +382,46 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
         ),
         "name-too-long",
     ),
+    # Owner decision on 3d.1: everything a manifest uses is declared in requires.
+    (
+        "inference broker without inference",
+        "potka",
+        _drop_requirement("inference"),
+        "facility-undeclared",
+    ),
+    ("sandbox operator without incus", "potka", _drop_requirement("incus"), "facility-undeclared"),
+    (
+        "restricted operator without incus",
+        "refplat",
+        _add_service(name="rop", profile="restricted-operator", start=[".venv/bin/rop"]),
+        "facility-undeclared",
+    ),
+    ("job without gpu", "refplat", _drop_requirement("gpu"), "facility-undeclared"),
+    (
+        "CPU-only job without gpu",
+        "refplat",
+        _both(_drop_requirement("gpu"), _set("jobs.0.resources.gpus", 0)),
+        "facility-undeclared",
+    ),
+    ("policy without opa", "potka", _drop_requirement("opa"), "facility-undeclared"),
+    (
+        "dashboards without telemetry",
+        "allprof",
+        _both(_drop_requirement("telemetry"), _delete("telemetry")),
+        "facility-undeclared",
+    ),
+    (
+        "telemetry labels without telemetry",
+        "refplat",
+        _both(_drop_requirement("telemetry"), _set("telemetry", {"labels": ["refplat.run"]})),
+        "facility-undeclared",
+    ),
+    (
+        "database backup without postgres",
+        "refplat",
+        _drop_requirement("postgres"),
+        "facility-undeclared",
+    ),
 ]
 
 
@@ -520,6 +574,60 @@ def test_release_and_content_paths_must_not_overlap_in_one_repository(
     )
     assert bool(problems) == overlaps
     assert all(p.code == "source-overlap" for p in problems)
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "same_repo", "overlaps"),
+    [
+        ("catalog", "datasets", True, False),
+        ("catalog", "catalog/restricted", True, True),
+        ("catalog", "", True, True),
+        ("catalog", "catalog", True, True),
+        ("catalog", "catalog", False, False),
+    ],
+)
+def test_content_packages_must_not_overlap_each_other_in_one_repository(
+    first: str, second: str, same_repo: bool, overlaps: bool
+) -> None:
+    # Owner decision on 3d.1, an approved deviation: package against package too.
+    repo = "https://git.example.com/example-org/content.git"
+    problems = checks.check_sources(
+        checks.SourceRef("https://git.example.com/example-org/platform.git", ""),
+        {
+            "cases": checks.SourceRef(repo, first),
+            "notes": checks.SourceRef(
+                repo if same_repo else "https://git.example.com/example-org/other.git", second
+            ),
+        },
+    )
+    assert [(p.code, p.where) for p in problems] == (
+        [("source-overlap", "content.cases")] if overlaps else []
+    )
+
+
+def test_an_undeclared_facility_names_its_users() -> None:
+    data = manifest("refplat")
+    _add_service(name="rop", profile="restricted-operator", start=[".venv/bin/rop"])(data)
+    data["requires"].remove("gpu")
+    data["policy"] = {"bundle": "policy", "decision_path": "refplat/decide"}
+    problems = validate.check_manifest(data, CONTRACT)
+    assert [str(p) for p in problems] == [
+        "requires: 'incus' is not declared but used by services 'rop' (restricted-operator)"
+        " [facility-undeclared]",
+        "requires: 'opa' is not declared but used by field 'policy' [facility-undeclared]",
+        "requires: 'gpu' is not declared but used by jobs 'tune' (gpu-trainer)"
+        " [facility-undeclared]",
+    ]
+
+
+def test_facilities_declared_but_unused_are_fine() -> None:
+    data = manifest("refplat")
+    data["requires"] = [*data["requires"], "opa", "incus", "inference"]
+    assert codes(data) == set()
+    data = manifest("refplat")
+    data["requires"].remove("postgres")
+    data["backup"]["database"] = False
+    assert codes(data) == set()
 
 
 def test_problems_render_as_one_line() -> None:

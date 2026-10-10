@@ -1,6 +1,0 @@
-# Managed by pinka (ansible/roles/catalog/defaults/main.yml). Local changes will be overwritten.
-
-# Deploy the scenario catalog (BUILD_PROMPT §7.14). Off by default.
-catalog_enabled: false
-# Catalog ref to deploy: a catalog-v tag (recommended), another tag, a branch or a full commit.
-catalog_ref: ""

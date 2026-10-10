@@ -1,0 +1,96 @@
+# Managed by pinka (ansible/roles/platform/tasks/retire.yml). Local changes will be overwritten.
+#
+# --replace-platform (§7.14 "One platform per lab"): stop the replaced
+# platform, remove its units, sockets and CLI link, lock its accounts, make
+# its database roles NOLOGIN and remove its Incus certificates from the trust
+# store. Its state, database, restricted area and releases stay on disk until
+# `pinka platform purge <name>`. The names come from its active.json record.
+# Its drain hook runs here once hooks exist (plan step 3d.4).
+
+- name: Read what the replaced platform has
+  ansible.builtin.command:
+    argv: ["{{ platform_tool }}", deploy, retire-plan]
+  register: platform_retire_plan
+  changed_when: false
+
+- name: Remember what the replaced platform has
+  ansible.builtin.set_fact:
+    platform_retire: "{{ platform_retire_plan.stdout | from_json }}"
+
+- name: Look for the replaced platform's units
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  loop: "{{ platform_retire.units }}"
+  register: platform_retire_units
+
+- name: Stop and disable the replaced platform's units
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ platform_retire_units.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Remove the replaced platform's units and socket directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ platform_retire.units | map('regex_replace', '^', '/etc/systemd/system/') | list
+       + platform_retire.socket_dirs }}
+  notify: Reload systemd
+
+- name: Look at the replaced platform's CLI link
+  ansible.builtin.stat:
+    path: "{{ platform_retire.cli_link }}"
+  register: platform_retire_cli
+  when: platform_retire.cli_link
+
+- name: Remove the replaced platform's CLI link
+  ansible.builtin.file:
+    path: "{{ platform_retire.cli_link }}"
+    state: absent
+  when:
+    - platform_retire.cli_link
+    - platform_retire_cli.stat.islnk | default(false)
+
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Lock the replaced platform's accounts
+  ansible.builtin.user:
+    name: "{{ item }}"
+    password_lock: true
+    shell: "{{ users_groups_nologin_shell | default('/usr/sbin/nologin') }}"
+  loop: "{{ platform_retire.accounts | select('in', ansible_facts.getent_passwd) | list }}"
+
+- name: Make the replaced platform's database roles NOLOGIN
+  ansible.builtin.command:
+    argv: >-
+      {{ platform_psql + ['--command',
+         'DO $$ BEGIN IF EXISTS (SELECT FROM pg_roles WHERE rolname = ' ~ "'" ~ item ~ "'"
+         ~ ') THEN ALTER ROLE "' ~ item ~ '" NOLOGIN; END IF; END $$;'] }}
+  loop: "{{ platform_retire.postgresql_roles | select('match', '^[a-z_][a-z0-9_]{0,62}$') | list }}"
+  changed_when: true
+
+- name: Read the Incus trust store
+  ansible.builtin.command:
+    argv: [incus, config, trust, list, --format, json]
+  register: platform_trust
+  changed_when: false
+  when: platform_retire.incus_certificates | length > 0
+
+- name: Remove the replaced platform's Incus certificates from the trust store
+  ansible.builtin.command:
+    argv: [incus, config, trust, remove, "{{ item.fingerprint }}"]
+  loop: >-
+    {{ (platform_trust.stdout | default('[]', true) | from_json)
+       | selectattr('name', 'in', platform_retire.incus_certificates) | list }}
+  loop_control:
+    label: "{{ item.name }}"
+  register: platform_trust_removed
+  changed_when: platform_trust_removed.rc == 0
+  failed_when: platform_trust_removed.rc != 0 and 'not found' not in (platform_trust_removed.stderr | lower)
+  when: platform_retire.incus_certificates | length > 0

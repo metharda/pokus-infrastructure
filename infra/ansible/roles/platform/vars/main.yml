@@ -1,5 +1,83 @@
 # Managed by pinka (ansible/roles/platform/vars/main.yml). Local changes will be overwritten.
 
+# --- Deployment (BUILD_PROMPT §7.14, contract v2) ---------------------------------
+
+# The deployment tool: the package and the contract, and its command.
+platform_tool_lib: /usr/local/lib/pinka/platform
+platform_tool: /usr/local/libexec/pinka/pinka-platform
+# Files installed below platform_tool_lib (src relative to the infra directory).
+platform_tool_files:
+  - {src: tools/platform/pinka_platform, patterns: ["*.py"], dest: pinka_platform}
+  - {src: contract, patterns: ["*.json", "*.yml"], dest: contract}
+  - {src: contract/records, patterns: ["*.json"], dest: contract/records}
+# Root-only mirrors with the deploy key, the pinned host keys and the allowed signers.
+platform_git_dir: /var/lib/pinka/git
+platform_deploy_key: /var/lib/pinka/git/deploy_key
+platform_known_hosts: /var/lib/pinka/git/known_hosts
+platform_allowed_signers: /var/lib/pinka/git/allowed_signers
+# Root-only staging area and the settings file the tool reads.
+platform_staging_dir: /var/lib/pinka/staging
+platform_settings_file: /var/lib/pinka/staging/settings.json
+
+# A platform is deployed when its source is set.
+platform_deploy: "{{ ((platform | default({}, true)).repo | default('')) | length > 0 }}"
+# Every source: the release and the content packages.
+platform_sources: >-
+  {{ ([platform] if platform_deploy | bool else [])
+     + ((content | default({}, true)).values() | list) }}
+# SSH sources, and their hosts ("[host]:port" with a port, as in known_hosts).
+platform_ssh_repos: >-
+  {{ platform_sources | map(attribute='repo') | map('string')
+     | select('match', '^(ssh://[^/]+/|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/])') | list }}
+platform_ssh_hosts: >-
+  {{ platform_ssh_repos
+     | map('regex_replace', '^ssh://([^@/]+@)?([^:/]+)(:([0-9]+))?/.*$', '[\2]:\4')
+     | map('regex_replace', '^\[([^]]+)\]:$', '\1')
+     | map('regex_replace', '^[^@/]+@([^:/]+):.*$', '\1') | unique | list }}
+# GitHub's published host keys (owner answer E3) whose values are verified.
+platform_github_keys: >-
+  {{ pinka_versions.github_ssh_host_keys['keys'] | dict2items
+     | rejectattr('value.public_key', 'search', 'TODO')
+     | map(attribute='key') | zip(pinka_versions.github_ssh_host_keys['keys'] | dict2items
+       | rejectattr('value.public_key', 'search', 'TODO') | map(attribute='value.public_key'))
+     | map('join', ' ') | map('regex_replace', '^', 'github.com ') | list }}
+platform_known_host_lines: >-
+  {{ (platform_github_keys if 'github.com' in platform_ssh_hosts else [])
+     + pinka_source_known_hosts }}
+# What the tool reads: the sources, the signature settings, the key files and
+# who owns what it writes.
+platform_tool_settings:
+  platform: "{{ platform | default({}, true) }}"
+  content: "{{ content | default({}, true) }}"
+  require_signed_tags: "{{ require_signed_tags | bool }}"
+  allowed_signers: "{{ platform_allowed_signers }}"
+  ssh_key: "{{ platform_deploy_key if platform_ssh_repos | length > 0 else '' }}"
+  known_hosts: "{{ platform_known_hosts if platform_ssh_repos | length > 0 else '' }}"
+  replace: "{{ platform_replace }}"
+  owners:
+    user: root
+    group: root
+    restricted_group: pinka-restricted
+    build_user: pinka-build
+    build_group: pinka-build
+# psql as the superuser inside the PostgreSQL container (replacing a platform).
+platform_psql:
+  - docker
+  - exec
+  - --user
+  - postgres
+  - pinka-postgres
+  - sh
+  - -c
+  - >-
+    PGPASSWORD="$(cat /run/secrets/postgres-superuser)"
+    exec psql --no-psqlrc --set=ON_ERROR_STOP=1 --host=/var/run/postgresql
+    --username=postgres --dbname=postgres "$@"
+  - psql
+
+# --- Contract v1 rendering, replaced by rendering from the profiles in plan
+# step 3d.3 (kept with its template, helpers and tests until then) -------------
+
 # Paths (contracts.md#paths).
 platform_root: "{{ pinka_root }}/deploy/platform"
 platform_current: "{{ pinka_root }}/deploy/platform/current"
@@ -61,7 +139,7 @@ platform_units:
     svc: orch
     script: potka-reconcile
     account: potka-orch
-    groups: [potka-svc, pinka-gt, potka-exec-clients]
+    groups: [potka-svc, pinka-restricted, potka-exec-clients]
     description: potka reconcile (cleans up after a crash or power loss)
     type: oneshot
     before: [potka-orchestrator.service]
@@ -72,7 +150,7 @@ platform_units:
     svc: orch
     script: potka-orchestrator
     account: potka-orch
-    groups: [potka-svc, pinka-gt, potka-exec-clients]
+    groups: [potka-svc, pinka-restricted, potka-exec-clients]
     description: potka orchestrator
     requires: [potka-reconcile.service]
     read_write: ["{{ pinka_root }}/artifacts"]
@@ -104,27 +182,27 @@ platform_units:
     svc: inject
     script: potka-injector
     account: potka-inject
-    groups: [potka-svc, pinka-gt]
+    groups: [potka-svc, pinka-restricted]
     description: potka fault injector
     read_write: []
     sockets:
       - {path: /run/pinka/inject/api.sock, owner: potka-inject, group: potka-inject, mode: "0600",
-         acl: ["user:potka-orch:rw-"], fallback: {group: pinka-gt, mode: "0660"}}
+         acl: ["user:potka-orch:rw-"], fallback: {group: pinka-restricted, mode: "0660"}}
   - unit: potka-verifier.service
     svc: verify
     script: potka-verifier
     account: potka-verify
-    groups: [potka-svc, pinka-gt]
+    groups: [potka-svc, pinka-restricted]
     description: potka verifier
     read_write: []
     sockets:
       - {path: /run/pinka/verify/api.sock, owner: potka-verify, group: potka-verify, mode: "0600",
-         acl: ["user:potka-orch:rw-"], fallback: {group: pinka-gt, mode: "0660"}}
+         acl: ["user:potka-orch:rw-"], fallback: {group: pinka-restricted, mode: "0660"}}
   - unit: potka-evaluator.service
     svc: eval
     script: potka-evaluator
     account: potka-eval
-    groups: [potka-svc, pinka-gt]
+    groups: [potka-svc, pinka-restricted]
     description: potka evaluator (evaluation job worker)
     read_write: ["{{ pinka_root }}/reports"]
     # Quarto's Deno and Typst generate code at run time.

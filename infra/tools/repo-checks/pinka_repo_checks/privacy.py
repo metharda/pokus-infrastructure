@@ -14,7 +14,11 @@ platform §16.9, docs spec §A.4 and §A.6). The scanner reports:
 * terms from the optional maintainer denylist in ``PINKA_PRIVACY_DENYLIST``
   (newline- or comma-separated, matched case-insensitively as whole words, so a
   term inside a longer word or a hash does not match). The denylist comes from
-  a CI secret and is never committed; findings never print the term.
+  a CI secret and is never committed; findings never print the term;
+* attribution lines in the commit messages of the history (owner rule: no
+  commit carries a ``Co-Authored-By`` trailer or any other attribution line).
+  Inside a git work tree every commit reachable from ``HEAD`` is checked; a
+  shallow clone is a finding, because its history cannot be checked.
 
 Findings print the rule and position but not the matched value, so CI logs do
 not spread personal data further. ``--show-matches`` prints values for local
@@ -37,6 +41,9 @@ from pathlib import Path
 MAX_FILE_BYTES = 10 * 1024 * 1024
 IPV6_FULL_FORM_COLONS = 7
 GIT_LS_FILES = ("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+GIT_INSIDE = ("git", "rev-parse", "--is-inside-work-tree")
+GIT_SHALLOW = ("git", "rev-parse", "--is-shallow-repository")
+GIT_LOG = ("git", "log", "-z", "--format=%H%n%B", "HEAD")
 DENYLIST_ENV = "PINKA_PRIVACY_DENYLIST"
 
 RFC2606_DOMAINS = ("example.com", "example.org", "example.net")
@@ -76,6 +83,21 @@ TOKEN_RES = (
         re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b"),
     ),
     ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+)
+
+ATTRIBUTION_RES = (
+    ("co-authored-by", re.compile(r"^\s*co-authored-by\s*:", re.IGNORECASE)),
+    ("session-trailer", re.compile(r"^\s*claude-session\s*:", re.IGNORECASE)),
+    ("generated-with", re.compile(r"^[^A-Za-z0-9]*generated (?:with|by)\b", re.IGNORECASE)),
+)
+# The two commits that carry such trailers (both on main). They stay allowed
+# until the owner's one-time rewrite after plan step 3f removes the trailers;
+# the rewrite removes them from this list too. Nothing else is ever added.
+KNOWN_ATTRIBUTION_COMMITS = frozenset(
+    {
+        "0503e863c34c5807da63b6a56fb9757fbbeeb77b",
+        "8df919918faa98b6a8c348874aca5c7cc5eabdf0",
+    }
 )
 
 
@@ -311,8 +333,120 @@ def read_text(path: Path) -> str | None:
     return data.decode("utf-8", errors="replace")
 
 
+@dataclass(frozen=True)
+class CommitFinding:
+    """One attribution line in a commit message, or a history that cannot be checked.
+
+    Attributes:
+        commit: Full commit hash, empty for a shallow clone.
+        line: 1-based line of the commit message, 0 for a shallow clone.
+        rule: Stable rule identifier.
+        message: Human-readable description without the matched value.
+        value: The matched line, printed only with ``--show-matches``.
+    """
+
+    commit: str
+    line: int
+    rule: str
+    message: str
+    value: str
+
+
+def scan_message(commit: str, message: str) -> list[CommitFinding]:
+    """Find attribution lines in one commit message.
+
+    Args:
+        commit: Full commit hash, for reporting.
+        message: The raw commit message.
+
+    Returns:
+        Findings in message order.
+    """
+    findings = []
+    for lineno, line in enumerate(message.splitlines(), start=1):
+        for rule, pattern in ATTRIBUTION_RES:
+            if pattern.search(line):
+                findings.append(
+                    CommitFinding(
+                        commit, lineno, rule, "attribution line in a commit message", line.strip()
+                    )
+                )
+    return findings
+
+
+def _git(argv: Sequence[str]) -> bytes | None:
+    try:
+        return subprocess.run(argv, check=True, capture_output=True).stdout  # noqa: S603
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+@dataclass(frozen=True)
+class History:
+    """The commit messages of ``HEAD``'s history.
+
+    Attributes:
+        commits: (full hash, message) pairs, newest first.
+        shallow: The clone is shallow, so older commits are missing.
+    """
+
+    commits: list[tuple[str, str]]
+    shallow: bool
+
+
+def read_history() -> History | None:
+    """Read the commit messages of ``HEAD``'s history in the current directory.
+
+    Returns:
+        The history, or None outside a git work tree.
+    """
+    if (_git(GIT_INSIDE) or b"").strip() != b"true":
+        return None
+    shallow = (_git(GIT_SHALLOW) or b"").strip() == b"true"
+    commits = []
+    for record in (_git(GIT_LOG) or b"").decode("utf-8", errors="replace").split("\0"):
+        commit, _, message = record.partition("\n")
+        if commit:
+            commits.append((commit, message))
+    return History(commits, shallow)
+
+
+def scan_history(
+    history: History, known: frozenset[str] = KNOWN_ATTRIBUTION_COMMITS
+) -> tuple[list[CommitFinding], int]:
+    """Check commit messages for attribution lines.
+
+    Args:
+        history: The history from `read_history`.
+        known: Commits whose attribution lines are allowed known exceptions.
+
+    Returns:
+        The findings and the number of known exceptions seen.
+    """
+    findings: list[CommitFinding] = []
+    if history.shallow:
+        findings.append(
+            CommitFinding(
+                "",
+                0,
+                "shallow-history",
+                "shallow clone: the commit history cannot be checked "
+                "(git fetch --unshallow, or fetch-depth: 0 in CI)",
+                "",
+            )
+        )
+    known_seen = 0
+    for commit, message in history.commits:
+        hits = scan_message(commit, message)
+        if hits and commit in known:
+            known_seen += 1
+            continue
+        findings.extend(hits)
+    return findings, known_seen
+
+
 def run(paths: Sequence[Path], *, show_matches: bool = False) -> int:
-    """Scan paths and print findings.
+    """Scan paths and the commit history, and print findings.
 
     Args:
         paths: Files or directories to scan.
@@ -321,6 +455,25 @@ def run(paths: Sequence[Path], *, show_matches: bool = False) -> int:
     Returns:
         0 when no findings were made, 1 otherwise.
     """
+    status = _run_files(paths, show_matches=show_matches)
+    history = read_history()
+    if history is None:
+        print("privacy scan: history not checked, not a git work tree", file=sys.stderr)
+        return status
+    findings, known_seen = scan_history(history)
+    for cf in findings:
+        where = f"commit {cf.commit[:12]}:{cf.line}" if cf.commit else "history"
+        suffix = f" [{cf.value}]" if show_matches and cf.value else ""
+        print(f"{where}: {cf.rule}: {cf.message}{suffix}")
+    print(
+        f"privacy scan: history of {len(history.commits)} commits, {len(findings)} findings, "
+        f"{known_seen} known exceptions",
+        file=sys.stderr,
+    )
+    return 1 if findings else status
+
+
+def _run_files(paths: Sequence[Path], *, show_matches: bool) -> int:
     denylist = load_denylist()
     files = list_files(paths)
     findings: list[Finding] = []

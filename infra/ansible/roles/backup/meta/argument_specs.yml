@@ -34,7 +34,7 @@ argument_specs:
       backup_include:
         type: list
         elements: str
-        default: [catalog, artifacts, reports, images, datasets, shared, users, backups/pg]
+        default: [restricted, artifacts, reports, images, datasets, shared, users, backups/pg]
         description: Directories below pinka_root that are backed up.
       backup_include_models:
         type: bool

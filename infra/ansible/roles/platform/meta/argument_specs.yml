@@ -1,16 +1,38 @@
 # Managed by pinka (ansible/roles/platform/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Deploy the platform services at platform_ref with hardened units (only if enabled).
+    short_description: Deploy the platform release and its content packages (contract v2), if a platform source is set.
     options:
-      platform_enabled:
+      platform:
+        type: dict
+        default: {}
+        description: "The platform source: {repo, ref, path, tag_prefix}; empty: no platform."
+      content:
+        type: dict
+        default: {}
+        description: "Sources of the manifest's content packages: {<package>: {repo, ref, path, tag_prefix}}."
+      pinka_source_known_hosts:
+        type: list
+        elements: str
+        default: []
+        description: known_hosts lines for SSH sources other than GitHub.
+      require_signed_tags:
         type: bool
         default: false
-        description: Deploy the platform; when false, installed platform units are stopped and disabled.
-      platform_ref:
+        description: Deploy only release tags with a valid SSH signature of an allowed signer.
+      pinka_allowed_signers:
+        type: list
+        elements: str
+        default: []
+        description: ssh-keygen allowed_signers lines for signed tags.
+      platform_replace:
         type: str
         default: ""
-        description: A platform-v tag (recommended), another tag, a branch or a full commit.
+        description: The active platform a release with another name may replace (--replace-platform).
+      platform_inspect:
+        type: bool
+        default: false
+        description: Fetch, stage and validate only, print the summary (--inspect-platform).
       platform_settings:
         type: dict
         default: {}
@@ -56,10 +78,10 @@ argument_specs:
   rotate_signing:
     short_description: Replace the run-manifest signing key; old public keys stay published.
     options:
-      platform_enabled:
-        type: bool
-        default: false
-        description: Restart the orchestrator with the new key when the platform is enabled.
+      platform:
+        type: dict
+        default: {}
+        description: The platform source; the orchestrator restarts with the new key when it is set.
       machine_name:
         type: str
         required: true

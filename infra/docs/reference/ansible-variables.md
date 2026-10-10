@@ -120,7 +120,8 @@ Groups created by users_groups.
     ```yaml
     - {name: pinka, system: false, description: all researchers}
     - {name: pinka-admin, system: false, description: researchers with sudo}
-    - {name: pinka-gt, system: true, description: may read the ground truth and the catalog}
+    - {name: pinka-restricted, system: true, description: "restricted data: only accounts of restricted-capable\
+        \ profiles (\xA712.4)"}
     - {name: potka-svc, system: true, description: all service accounts}
     - {name: potka-exec-clients, system: true, description: may call the executor socket (agent
         and orchestrator)}
@@ -152,15 +153,27 @@ Admins that are explicitly allowed into the docker group (logged loudly).
 
 - Default: `[]`
 
+### `infra_accounts`
+
+Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5).
+
+- Default:
+
+    ```yaml
+    - name: pinka-build
+      groups: []
+      description: unprivileged platform builds
+    ```
+
 ### `service_accounts`
 
-System accounts of the platform services: no login, no password, no SSH keys. potka-agent never gets pinka-gt, incus, docker or database access.
+System accounts of the platform services: no login, no password, no SSH keys. potka-agent never gets pinka-restricted, incus, docker or database access.
 
 - Default:
 
     ```yaml
     - name: potka-orch
-      groups: [potka-svc, pinka-gt, potka-exec-clients]
+      groups: [potka-svc, pinka-restricted, potka-exec-clients]
       description: orchestrator
     - name: potka-agent
       groups: [potka-svc, potka-exec-clients, potka-gw-clients]
@@ -172,13 +185,13 @@ System accounts of the platform services: no login, no password, no SSH keys. po
       groups: [potka-svc]
       description: tool executor
     - name: potka-inject
-      groups: [potka-svc, pinka-gt]
+      groups: [potka-svc, pinka-restricted]
       description: fault injector
     - name: potka-verify
-      groups: [potka-svc, pinka-gt]
+      groups: [potka-svc, pinka-restricted]
       description: verifier
     - name: potka-eval
-      groups: [potka-svc, pinka-gt]
+      groups: [potka-svc, pinka-restricted]
       description: evaluator
     ```
 
@@ -202,10 +215,10 @@ The research space layout, the single source of truth: the layout role creates e
 
     ```yaml
     - {path: '', owner: root, group: pinka, mode: '2775', notes: research space root}
-    - {path: deploy, owner: root, group: root, mode: '0755', notes: read-only deployments of platform
-        and catalog tags}
-    - {path: catalog, owner: root, group: pinka-gt, mode: '0750', notes: scenario catalog including
-        ground truth}
+    - {path: platforms, owner: root, group: root, mode: '0755', notes: 'per platform: releases/<ref>/,
+        content/<package>/<ref>/, state/'}
+    - {path: restricted, owner: root, group: pinka-restricted, mode: '0750', notes: 'restricted
+        data per platform, files 0640'}
     - {path: models, owner: potka-orch, group: pinka, mode: '0755', notes: 'model weights, 0444
         after verification'}
     - path: datasets
@@ -253,6 +266,17 @@ Host paths outside pinka_root (absolute).
         secrets (files 0640 or per-service 0600)}
     - {path: /var/lib/pinka, owner: root, group: root, mode: '0755', notes: service homes and
         lab state}
+    - {path: /etc/pinka/platform, owner: root, group: root, mode: '0755', notes: 'the active platform:
+        active.json, principals.json, endpoints.toml'}
+    - {path: /var/lib/pinka/git, owner: root, group: root, mode: '0700', notes: root-only Git
+        mirrors of the platform and content sources}
+    - {path: /var/lib/pinka/staging, owner: root, group: root, mode: '0700', notes: root-only
+        run directories of deployments}
+    - {path: /var/lib/pinka/platforms, owner: root, group: root, mode: '0700', notes: deployment
+        and retirement records per platform}
+    - {path: /var/cache/pinka, owner: root, group: root, mode: '0755', notes: caches}
+    - {path: /var/cache/pinka/uv, owner: pinka-build, group: pinka-build, mode: '0700', notes: uv
+        cache of the platform builds}
     ```
 
 ### `pinka_ports`
@@ -296,15 +320,21 @@ Bridges of the researchers' personal Incus projects (incusbr-&lt;uid&gt;); unlik
 
 - Default: `[incusbr-*]`
 
-### `pinka_source_repo`
+### `platform`
 
-The deployer's copy of the pokus-platform repository, required when the platform or the catalog is enabled (owner answer E3): an SSH URL (read-only deploy key generated on the host) or an anonymous HTTPS URL. Never a URL with credentials.
+The platform release to deploy: {repo, ref, path, tag_prefix}; empty: no platform. repo is an SSH URL (read-only deploy key generated on the host), an anonymous HTTPS URL or a root-owned file:/// repository, never a URL with credentials; ref a tag (recommended), branch or full commit; path the release's subdirectory ("" for the repository root); tag_prefix the prefix of its release tags.
 
-- Default: `''`
+- Default: `{}`
+
+### `content`
+
+Content packages of the platform's manifest: {&lt;package&gt;: {repo, ref, path, tag_prefix}}. A package from the release's repository must not overlap the release path or another package.
+
+- Default: `{}`
 
 ### `pinka_source_known_hosts`
 
-Extra known_hosts lines for an SSH source (GitHub's keys come from versions.lock.yml).
+Extra known_hosts lines for SSH sources (GitHub's keys come from versions.lock.yml).
 
 - Default: `[]`
 
@@ -379,7 +409,7 @@ known_hosts lines of the SFTP backup server, required for an sftp repository.
 Directories below pinka_root that are backed up.
 
 - Type: `list` of `str`
-- Default: `[catalog, artifacts, reports, images, datasets, shared, users, backups/pg]`
+- Default: `[restricted, artifacts, reports, images, datasets, shared, users, backups/pg]`
 
 ### `backup_include_models`
 
@@ -548,10 +578,10 @@ Entry points: `main` (Stop the play with a bootstrap signal). Role README: `ansi
 
 ### `bootstrap_signal_code`
 
-75 WSL restart required, 76 reboot or MOK enrollment required, 77 operator action required.
+65 platform release refused, 75 WSL restart required, 76 reboot or MOK enrollment required, 77 operator action required.
 
 - Type: `int`
-- Choices: `75`, `76`, `77`
+- Choices: `65`, `75`, `76`, `77`
 - Required, no default
 
 ### `bootstrap_signal_message`
@@ -573,33 +603,6 @@ Signal file; bootstrap.sh passes its path in pinka_bootstrap.signal_file.
 With code 76, a Machine Owner Key that bootstrap.sh imports (mokutil --import) with the operator's one-time password before it exits.
 
 - Type: `path`
-- Default: `''`
-
-## catalog
-
-Deploy the scenario catalog at catalog_ref into /srv/pinka/catalog (only if enabled).
-
-Entry points: `main` (Deploy the scenario catalog at catalog_ref into /srv/pinka/catalog (only if enabled)). Role README: `ansible/roles/catalog/README.md`.
-
-Variables the role reads from elsewhere:
-
-| Variable | Set by | Description |
-| --- | --- | --- |
-| `node_role` | [lab-wide](#node_role) | The catalog is deployed on full and lab nodes only. |
-| `pinka_root` | [lab-wide](#pinka_root) | Research space root. |
-
-### `catalog_enabled`
-
-Deploy the catalog.
-
-- Type: `bool`
-- Default: `false`
-
-### `catalog_ref`
-
-A catalog-v tag (recommended), another tag, a branch or a full commit.
-
-- Type: `str`
 - Default: `''`
 
 ## compose
@@ -684,88 +687,6 @@ Further variables for the project's .env file (the same for every role of a proj
 
 - Type: `dict`
 - Default: `{}`
-
-## deploy_source
-
-Install the deployment helper and fetch the pokus-platform repository into the root-only bare mirror.
-
-Entry points: `main` (Install the deployment helper and fetch the pokus-platform repository into the root-only bare mirror), `deploy` (Extract one component at a ref into its deployment directory with DEPLOYED_FROM.json), `activate` (Point the deployment root's current link at a prepared deployment, atomically). Role README: `ansible/roles/deploy_source/README.md`.
-
-Variables the role reads from elsewhere:
-
-| Variable | Set by | Description |
-| --- | --- | --- |
-| `machine_name` | [lab-wide](#machine_name) | Machine name, the comment of the deploy key. |
-| `pinka_allowed_signers` | [lab-wide](#pinka_allowed_signers) | ssh-keygen allowed_signers lines for signed tags. |
-| `pinka_source_known_hosts` | [lab-wide](#pinka_source_known_hosts) | Extra known_hosts lines for an SSH source. |
-| `pinka_source_repo` | [lab-wide](#pinka_source_repo) | SSH or anonymous HTTPS URL of the deployer's copy of the pokus-platform repository (owner answer E3). |
-| `pinka_versions` | host_vars | The pinned versions (GitHub's SSH host keys). |
-| `require_signed_tags` | [lab-wide](#require_signed_tags) | Deploy only validly SSH-signed component tags (owner answer E16). |
-
-### `deploy_source_component`
-
-Component to deploy (its subdirectory of the repository).
-
-- Type: `str`
-- Choices: `platform`, `catalog`
-- Default: `''`
-- Entry points: `deploy`, `activate`
-
-### `deploy_source_ref`
-
-A component tag, another tag, a branch or a full commit.
-
-- Type: `str`
-- Default: `''`
-- Entry points: `deploy`, `activate`
-
-### `deploy_source_root`
-
-Deployment root (/srv/pinka/deploy/platform or /srv/pinka/catalog).
-
-- Type: `path`
-- Default: `''`
-- Entry points: `deploy`, `activate`
-
-### `deploy_source_owner`
-
-Owner of the deployed tree.
-
-- Type: `str`
-- Default: `root`
-- Entry points: `deploy`
-
-### `deploy_source_group`
-
-Group of the deployed tree.
-
-- Type: `str`
-- Default: `root`
-- Entry points: `deploy`
-
-### `deploy_source_dir_mode`
-
-Mode of directories and executable files.
-
-- Type: `str`
-- Default: `0755`
-- Entry points: `deploy`
-
-### `deploy_source_file_mode`
-
-Mode of other files.
-
-- Type: `str`
-- Default: `0644`
-- Entry points: `deploy`
-
-### `deploy_source_name`
-
-Name of the prepared deployment directory.
-
-- Type: `str`
-- Default: `''`
-- Entry points: `activate`
 
 ## docker
 
@@ -1680,36 +1601,41 @@ dnf plugin package that provides `dnf versionlock`.
 
 ## platform
 
-Deploy the platform services at platform_ref with hardened units (only if enabled).
+Deploy the platform release and its content packages (contract v2), if a platform source is set.
 
-Entry points: `main` (Deploy the platform services at platform_ref with hardened units (only if enabled)), `rotate_signing` (Replace the run-manifest signing key; old public keys stay published). Role README: `ansible/roles/platform/README.md`.
+Entry points: `main` (Deploy the platform release and its content packages (contract v2), if a platform source is set), `rotate_signing` (Replace the run-manifest signing key; old public keys stay published). Role README: `ansible/roles/platform/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
+| `content` | [lab-wide](#content) | Sources of the manifest's content packages: {&lt;package&gt;: {repo, ref, path, tag_prefix}}. |
 | `inference_remote_node` | [lab-wide](#inference_remote_node) | Tailnet name of the paired inference node (remote mode). |
 | `lab_mode` | [lab-wide](#lab_mode) | production or staging; scripted inference needs staging. |
 | `machine_name` | [lab-wide](#machine_name) | Machine name (endpoints.toml, published signing keys). |
 | `node_role` | [lab-wide](#node_role) | The platform runs on full and lab nodes only. |
+| `pinka_allowed_signers` | [lab-wide](#pinka_allowed_signers) | ssh-keygen allowed_signers lines for signed tags. |
 | `pinka_features` | host_vars | Feature flags (gpu_inference decides local inference). |
+| `pinka_source_known_hosts` | [lab-wide](#pinka_source_known_hosts) | known_hosts lines for SSH sources other than GitHub. |
 | `pinka_versions` | host_vars | The pinned versions (Quarto). |
+| `platform` | [lab-wide](#platform) | The platform source: {repo, ref, path, tag_prefix}; empty: no platform. |
 | `qa_trusted_keys` | [lab-wide](#qa_trusted_keys) | QA public keys trusted for attestations, {name, pem}. |
+| `require_signed_tags` | [lab-wide](#require_signed_tags) | Deploy only release tags with a valid SSH signature of an allowed signer. |
 
-### `platform_enabled`
+### `platform_replace`
 
-Deploy the platform; when false, installed platform units are stopped and disabled.
-
-- Type: `bool`
-- Default: `false`
-- Entry points: `main`, `rotate_signing`
-
-### `platform_ref`
-
-A platform-v tag (recommended), another tag, a branch or a full commit.
+The active platform a release with another name may replace (--replace-platform).
 
 - Type: `str`
-- Default: `''`
+- Default: `{{ (pinka_bootstrap | default({})).replace_platform | default('') }}`
+- Entry points: `main`
+
+### `platform_inspect`
+
+Fetch, stage and validate only, print the summary (--inspect-platform).
+
+- Type: `bool`
+- Default: `{{ (pinka_bootstrap | default({})).inspect_platform | default(false) }}`
 - Entry points: `main`
 
 ### `platform_settings`
@@ -2141,6 +2067,7 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `break_glass_docker` | [lab-wide](#break_glass_docker) | Admins explicitly allowed into the docker group (added by the docker role, logged loudly). |
+| `infra_accounts` | [lab-wide](#infra_accounts) | Infra's own accounts ({name, groups}), such as pinka-build; system users without login. |
 | `pinka_groups` | [lab-wide](#pinka_groups) | Groups ({name, system}) from group_vars/all/main.yml. |
 | `pinka_service_home` | [lab-wide](#pinka_service_home) | Parent of the service account homes. |
 | `researchers` | [lab-wide](#researchers) | Researchers ({name, admin, shell, keys_file}); keys_file is relative to the infra directory. |

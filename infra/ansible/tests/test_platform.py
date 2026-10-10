@@ -1,4 +1,6 @@
-"""Tests for the catalog and platform roles: units, sockets, configuration, helpers."""
+"""Tests for the platform role: the deployment settings, and the contract v1 units,
+sockets, configuration and helpers that rendering from the profiles replaces
+in plan step 3d.3."""
 
 from __future__ import annotations
 
@@ -209,7 +211,7 @@ def test_sockets_cover_the_contract() -> None:
         s["path"]: s
         for s in evaluate("platform_socket_expectations", variables(platform_socket_acls=False))
     }
-    assert fallback["/run/pinka/inject/api.sock"]["group"] == "pinka-gt"
+    assert fallback["/run/pinka/inject/api.sock"]["group"] == "pinka-restricted"
     assert fallback["/run/pinka/inject/api.sock"]["expect_acl"] == []
 
 
@@ -432,11 +434,94 @@ def test_socket_perms_reports_a_missing_socket(capsys: pytest.CaptureFixture[str
 # --- role data ---------------------------------------------------------------------------
 
 
-def test_catalog_root_and_defaults_are_off() -> None:
-    assert load_yaml(ROLES / "catalog" / "defaults" / "main.yml")["catalog_enabled"] is False
-    assert load_yaml(ROLE / "defaults" / "main.yml")["platform_enabled"] is False
-    catalog = ansible_vars(GROUP_VARS, ROLES / "catalog" / "vars" / "main.yml")
-    assert evaluate("catalog_root", catalog) == "/srv/pinka/catalog"
+def test_no_platform_is_deployed_by_default() -> None:
+    data = load_yaml(GROUP_VARS)
+    assert data["platform"] == {}
+    assert data["content"] == {}
+    assert evaluate("platform_deploy", variables()) is False
+    assert evaluate("platform_sources", variables()) == []
+    assert evaluate("platform_replace", variables()) == ""
+    assert evaluate("platform_inspect", variables()) is False
+
+
+def source(repo: str, **extra: str) -> dict[str, str]:
+    return {"repo": repo, "ref": "platform-v0.1.0", "path": "platform", **extra}
+
+
+@pytest.mark.parametrize(
+    ("repo", "host"),
+    [
+        ("git@github.com:example-org/pokus-platform.git", "github.com"),
+        ("ssh://git@git.example.com/example-org/pokus-platform.git", "git.example.com"),
+        (
+            "ssh://git@git.example.com:2222/example-org/pokus-platform.git",
+            "[git.example.com]:2222",
+        ),
+        ("https://git.example.com/example-org/pokus-platform.git", None),
+        ("file:///srv/git/pokus-platform.git", None),
+    ],
+)
+def test_ssh_sources_and_hosts(repo: str, host: str | None) -> None:
+    scope = variables(platform=source(repo))
+    assert evaluate("platform_deploy", scope) is True
+    assert evaluate("platform_ssh_repos", scope) == ([repo] if host else [])
+    assert evaluate("platform_ssh_hosts", scope) == ([host] if host else [])
+
+
+def test_content_sources_count_too() -> None:
+    scope = variables(
+        platform=source("https://git.example.com/example-org/platform.git"),
+        content={"catalog": source("git@git.example.com:example-org/catalog.git", path="")},
+    )
+    assert evaluate("platform_ssh_hosts", scope) == ["git.example.com"]
+    settings = evaluate("platform_tool_settings", scope)
+    assert settings["ssh_key"] == "/var/lib/pinka/git/deploy_key"
+    assert settings["known_hosts"] == "/var/lib/pinka/git/known_hosts"
+    assert settings["content"]["catalog"]["repo"].startswith("git@")
+
+
+def test_known_hosts_pin_only_verified_github_keys() -> None:
+    github = variables(platform=source("git@github.com:example-org/pokus-platform.git"))
+    lock = load_yaml(GROUP_VARS.parent / "versions.yml")["pinka_versions"]["github_ssh_host_keys"]
+    verified = {k: v for k, v in lock["keys"].items() if "TODO" not in v["public_key"]}
+    lines = evaluate("platform_known_host_lines", github)
+    assert lines == [f"github.com {k} {v['public_key']}" for k, v in verified.items()]
+    extra = ["[git.example.com]:2222 ssh-ed25519 AAAAC3Nza"]
+    other = variables(
+        platform=source("ssh://git@git.example.com:2222/example-org/pokus-platform.git"),
+        pinka_source_known_hosts=extra,
+    )
+    assert evaluate("platform_known_host_lines", other) == extra
+
+
+def test_tool_settings_for_https_and_bootstrap_options() -> None:
+    scope = variables(
+        platform=source("https://git.example.com/example-org/platform.git"),
+        pinka_bootstrap={"replace_platform": "old", "inspect_platform": True},
+    )
+    settings = evaluate("platform_tool_settings", scope)
+    assert settings["ssh_key"] == ""
+    assert settings["known_hosts"] == ""
+    assert settings["replace"] == "old"
+    assert settings["require_signed_tags"] is False
+    assert settings["owners"] == {
+        "user": "root",
+        "group": "root",
+        "restricted_group": "pinka-restricted",
+        "build_user": "pinka-build",
+        "build_group": "pinka-build",
+    }
+    assert evaluate("platform_inspect", scope) is True
+
+
+def test_the_tool_files_exist() -> None:
+    from ansible_testlib import INFRA  # noqa: PLC0415 - only here
+
+    for entry in evaluate("platform_tool_files", variables()):
+        assert list((INFRA / entry["src"]).glob(entry["patterns"][0])), entry
+    wrapper = (ROLE / "files" / "pinka-platform").read_text(encoding="utf-8")
+    assert 'runpy.run_module("pinka_platform"' in wrapper
+    assert "/opt/pinka/ansible-venv/bin/python3" in wrapper
 
 
 def test_quarto_asset_is_pinned() -> None:

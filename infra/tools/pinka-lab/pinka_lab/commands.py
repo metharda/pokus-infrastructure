@@ -40,6 +40,11 @@ DOCS_DIR = "/usr/local/share/pinka/docs"
 DOCS_PORT = 18706
 
 
+# The deployment tool (platform role) that purges a replaced platform (BUILD_PROMPT §7.14).
+PLATFORM_TOOL = "/usr/local/libexec/pinka/pinka-platform"
+PLATFORM_NAME_RE = re.compile(r"^[a-z][a-z0-9]{1,11}$")
+
+
 class CommandError(RuntimeError):
     """A command cannot do what was asked; the message says why."""
 
@@ -824,3 +829,36 @@ def docs_serve(
     except OSError as exc:
         raise CommandError(f"cannot listen on {DOCS_ADDRESS}:{number}: {exc}") from exc
     return 0
+
+
+def platform_purge(system: System, config: LabConfig, name: str, confirm: str | None) -> int:
+    """Remove a replaced platform's releases, state, restricted area and database.
+
+    The deployment tool refuses the active platform and a platform that was
+    never replaced; its accounts stay locked.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        name: The replaced platform.
+        confirm: The name typed as confirmation; None asks for it.
+
+    Returns:
+        The deployment tool's exit code.
+
+    Raises:
+        CommandError: Without root, a bad name or a wrong confirmation.
+    """
+    require_root(system, "platform purge")
+    if not PLATFORM_NAME_RE.match(name):
+        raise CommandError(f"{name!r} is not a platform name")
+    if confirm is None:
+        out(
+            f"This removes the releases, content, state, restricted area and database of the "
+            f"replaced platform {name}. It cannot be undone; take a backup first."
+        )
+        confirm = input("Type the platform name to purge it: ").strip()
+    if confirm != name:
+        raise CommandError("not confirmed: the typed name differs")
+    tool = str(config.get("paths", "platform_tool", default=PLATFORM_TOOL))
+    return system.interactive([tool, "purge", name, "--confirm", confirm])

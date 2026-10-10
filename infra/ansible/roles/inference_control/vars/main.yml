@@ -19,7 +19,7 @@ inference_control_expected_peer: "{{ inference_lab_node if node_role == 'inferen
 inference_control_denied_paths:
   - /etc/pinka/secrets
   - /etc/pinka/signing
-  - /srv/pinka/catalog
+  - /srv/pinka/restricted
   - /srv/pinka/artifacts
   - /var/lib/pinka/git
 # control.json: the fields of the endpoint's Config. The address comes from

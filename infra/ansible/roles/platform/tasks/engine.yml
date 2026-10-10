@@ -1,0 +1,48 @@
+# Managed by pinka (ansible/roles/platform/tasks/engine.yml). Local changes will be overwritten.
+#
+# The deployment tool: the pinka_platform package and the published contract
+# under /usr/local/lib/pinka/platform, run by the wrapper
+# /usr/local/libexec/pinka/pinka-platform with the Ansible environment's Python
+# (Python 3.12 with PyYAML; contract v2 step 1).
+
+- name: Create the directories of the deployment tool
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ platform_tool_lib }}"
+    - "{{ platform_tool_lib }}/pinka_platform"
+    - "{{ platform_tool_lib }}/contract"
+    - "{{ platform_tool_lib }}/contract/records"
+    - "{{ platform_tool | dirname }}"
+
+- name: Find the files of the deployment tool
+  ansible.builtin.find:
+    paths: "{{ pinka_dir }}/{{ item.src }}"
+    patterns: "{{ item.patterns }}"
+  loop: "{{ platform_tool_files }}"
+  loop_control:
+    label: "{{ item.src }}"
+  register: platform_tool_sources
+
+- name: Install the files of the deployment tool
+  ansible.builtin.copy:
+    src: "{{ item.1.path }}"
+    dest: "{{ platform_tool_lib }}/{{ item.0.item.dest }}/{{ item.1.path | basename }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ platform_tool_sources.results | subelements('files') }}"
+  loop_control:
+    label: "{{ item.0.item.dest }}/{{ item.1.path | basename }}"
+
+- name: Install the pinka-platform command
+  ansible.builtin.copy:
+    src: pinka-platform
+    dest: "{{ platform_tool }}"
+    owner: root
+    group: root
+    mode: "0755"

@@ -3,7 +3,7 @@ galaxy_info:
   role_name: platform
   namespace: pinka
   author: Pokus project
-  description: "The platform services deployed from the root-only mirror, with hardened units"
+  description: "Generic platform deployment from root-only mirrors (contract v2)"
   license: Apache-2.0
   min_ansible_version: "2.21"
   platforms:

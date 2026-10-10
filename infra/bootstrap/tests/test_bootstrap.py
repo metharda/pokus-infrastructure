@@ -96,6 +96,8 @@ def test_help_lists_every_option() -> None:
         "--answers",
         "--tui",
         "--no-tui",
+        "--inspect-platform",
+        "--replace-platform",
         "--help",
     ):
         assert option in res.stdout
@@ -115,6 +117,15 @@ def test_help_lists_every_option() -> None:
         (["--machine", "lab1", "--tui", "--mok-password-stdin"], "exclude each other"),
         (["--machine", "lab1", "--answers", "/nonexistent/answers.yml"], "is not readable"),
         (["--machine", "lab1", "--vault-password-file", "/nonexistent/pass"], "is not readable"),
+        (["--machine", "lab1", "--replace-platform"], "needs a value"),
+        (["--machine", "lab1", "--replace-platform", "Old-One"], "invalid platform name"),
+        (["--machine", "lab1", "--replace-platform", "x"], "invalid platform name"),
+        (["--machine", "lab1", "--inspect-platform", "--check"], "--inspect-platform excludes"),
+        (["--machine", "lab1", "--inspect-platform", "--restore"], "--inspect-platform excludes"),
+        (
+            ["--machine", "lab1", "--inspect-platform", "--tags", "base"],
+            "--inspect-platform excludes",
+        ),
     ],
 )
 def test_usage_errors_exit_64(args: list[str], message: str) -> None:
@@ -278,7 +289,7 @@ def signal_result(tmp_path: Path, rc: int, content: str | None) -> tuple[int, st
     return int(code), f"{signal_code}|{message}"
 
 
-@pytest.mark.parametrize("code", [75, 76, 77])
+@pytest.mark.parametrize("code", [65, 75, 76, 77])
 def test_playbook_signal(tmp_path: Path, code: int) -> None:
     message = "Run on Windows: wsl --terminate <distro>\nthen re-run bootstrap"
     content = json.dumps({"code": code, "message": message})
@@ -553,6 +564,7 @@ def test_state_json(tmp_path: Path) -> None:
     assert state["overrides"]["force_unsupported"] is True
     assert state["overrides"]["accept_experimental"] is False
     assert state["overrides"]["accept_mok_enrollment"] is False
+    assert state["overrides"]["replace_platform"] == ""
     assert state["result"] == "doctor_warnings"
     assert state["exit_code"] == 1
     assert state["signal"] is None
@@ -595,6 +607,16 @@ def test_extra_vars_json(tmp_path: Path) -> None:
     assert data["pinka_bootstrap"]["allow_reboot"] is False
     assert data["pinka_bootstrap"]["machine"] == "lab1"
     assert data["pinka_bootstrap"]["signal_file"] == "/run/pinka/bootstrap-signal.json"
+    assert data["pinka_bootstrap"]["inspect_platform"] is False
+    assert data["pinka_bootstrap"]["replace_platform"] == ""
+    res = bash(
+        STATE_SETUP
+        + "OPT_INSPECT_PLATFORM=true OPT_REPLACE_PLATFORM=refplat\n"
+        + f"extra_vars_json {q(path)}"
+    )
+    data = json.loads(res.stdout)
+    assert data["pinka_bootstrap"]["inspect_platform"] is True
+    assert data["pinka_bootstrap"]["replace_platform"] == "refplat"
 
 
 def test_vault_args(tmp_path: Path) -> None:
@@ -880,6 +902,14 @@ def test_main_runs_the_stages_in_order(tmp_path: Path) -> None:
         "stage_doctor",
     ]
     assert "doctor warnings" in err
+
+
+def test_inspect_platform_runs_no_play_and_no_doctor(tmp_path: Path) -> None:
+    code, calls, _ = main_with_stubs(tmp_path, "--machine lab1 --inspect-platform")
+    assert code == 0
+    assert calls[-2:] == ["stage_ansible_env", "stage_inspect_platform"]
+    assert "stage_ansible" not in calls
+    assert "stage_doctor" not in calls
 
 
 def test_main_skips_restore_by_default(tmp_path: Path) -> None:

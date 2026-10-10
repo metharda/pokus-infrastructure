@@ -1,4 +1,0 @@
-# Managed by pinka (ansible/roles/catalog/vars/main.yml). Local changes will be overwritten.
-
-# Deployment root (contracts.md#paths): /srv/pinka/catalog/<ref>/ and current.
-catalog_root: "{{ pinka_root }}/catalog"

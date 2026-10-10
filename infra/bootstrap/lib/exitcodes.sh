@@ -18,6 +18,7 @@ readonly EXIT_PREFLIGHT_ERROR=40 # preflight error: host detection failed unexpe
 readonly EXIT_TOOLING=50         # tooling failed: installing uv, CPython, the Ansible environment or the Ansible collections failed, or a checksum did not match
 readonly EXIT_ANSIBLE=60         # play failed: an Ansible play failed without a bootstrap signal, or a later stage is not installed yet
 readonly EXIT_USAGE=64           # usage error: invalid command-line options
+readonly EXIT_RELEASE_REFUSED=65 # platform release refused: the release or its sources break contract v2; every reason is printed and nothing on the host changed
 readonly EXIT_INTERNAL=70        # internal error: unexpected error in bootstrap itself; the failing line is in the log
 readonly EXIT_WSL_RESTART=75     # WSL restart required: run 'wsl --terminate <distro>' on the Windows side, then re-run bootstrap
 readonly EXIT_REBOOT=76          # reboot required: reboot (and enroll the MOK if asked), then re-run bootstrap

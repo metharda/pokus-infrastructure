@@ -9,7 +9,7 @@ backup_password: "{{ vault_restic_password | default('') }}"
 # SFTP repositories: known_hosts lines of the backup server, checked out of band.
 backup_sftp_known_hosts: []
 # Directories below pinka_root that are backed up (BUILD_PROMPT §7.15).
-backup_include: [catalog, artifacts, reports, images, datasets, shared, users, backups/pg]
+backup_include: [restricted, artifacts, reports, images, datasets, shared, users, backups/pg]
 # Model weights are re-downloaded and verified on restore, so they are left out.
 backup_include_models: false
 # Time-series state (prometheus, loki, tempo) is left out unless listed here.

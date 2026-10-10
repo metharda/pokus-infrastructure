@@ -435,7 +435,15 @@ class SourceRef:
     path: str
 
 
-def _repo_key(url: str) -> str:
+def repo_key(url: str) -> str:
+    """The identity of a repository URL: without a trailing slash or `.git`.
+
+    Args:
+        url: Repository URL.
+
+    Returns:
+        The key.
+    """
     return url.rstrip("/").removesuffix(".git")
 
 
@@ -443,11 +451,24 @@ def _segments(path: str) -> list[str]:
     return [p for p in path.split("/") if p and p != "."]
 
 
+def _overlap(a: str, b: str) -> bool:
+    first, second = _segments(a), _segments(b)
+    shorter = min(len(first), len(second))
+    return first[:shorter] == second[:shorter]
+
+
+def _where(path: str) -> str:
+    return repr(path) if _segments(path) else "(root)"
+
+
 def check_sources(release: SourceRef, packages: Mapping[str, SourceRef]) -> list[Problem]:
-    """Refuse a content package whose path overlaps the release path in the same repository.
+    """Refuse overlapping source paths in the same repository.
 
     Paths overlap when one is a prefix of the other by path segments; an empty
-    path (the repository root) overlaps every path (§12.1, §7.14 step 4).
+    path (the repository root) overlaps every path. A content package may not
+    overlap the release (§12.1, §7.14 step 4) nor, an approved deviation of
+    3d.1, another content package, so no package is ever extracted as part of
+    another source.
 
     Args:
         release: Source of the release.
@@ -457,19 +478,77 @@ def check_sources(release: SourceRef, packages: Mapping[str, SourceRef]) -> list
         Problems.
     """
     problems = []
-    base = _segments(release.path)
-    for name, source in sorted(packages.items()):
-        if _repo_key(source.repo) != _repo_key(release.repo):
-            continue
-        other = _segments(source.path)
-        shorter = min(len(base), len(other))
-        if base[:shorter] == other[:shorter]:
+    names = sorted(packages)
+    for i, name in enumerate(names):
+        source = packages[name]
+        if repo_key(source.repo) == repo_key(release.repo) and _overlap(source.path, release.path):
             problems.append(
                 Problem(
                     "source-overlap",
                     f"content.{name}",
-                    f"path {source.path or '(root)'!r} overlaps the release path "
-                    f"{release.path or '(root)'!r} in the same repository",
+                    f"path {_where(source.path)} overlaps the release path "
+                    f"{_where(release.path)} in the same repository",
+                )
+            )
+        for other in names[i + 1 :]:
+            theirs = packages[other]
+            if repo_key(source.repo) == repo_key(theirs.repo) and _overlap(
+                source.path, theirs.path
+            ):
+                problems.append(
+                    Problem(
+                        "source-overlap",
+                        f"content.{name}",
+                        f"path {_where(source.path)} overlaps the path {_where(theirs.path)} "
+                        f"of content package {other!r} in the same repository",
+                    )
+                )
+    return problems
+
+
+def _field_used(manifest: Mapping[str, Any], field: str) -> bool:
+    value: Any = manifest
+    for part in field.split("."):
+        if not isinstance(value, Mapping) or part not in value:
+            return False
+        value = value[part]
+    return value not in (None, False, [], {})
+
+
+def check_requires(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
+    """Refuse a manifest that uses a facility it does not declare in ``requires``.
+
+    An approved deviation of 3d.1: the health gate checks exactly the declared
+    facilities, so everything the platform uses must be declared.
+    ``profiles.yml`` (``facilities``) names the profiles and fields that need each.
+
+    Args:
+        manifest: A manifest that passed the schema.
+        contract: The contract.
+
+    Returns:
+        Problems.
+    """
+    declared = set(manifest.get("requires", []))
+    problems = []
+    units = [("services", s) for s in manifest["services"]] + [
+        ("jobs", j) for j in manifest.get("jobs", [])
+    ]
+    for facility, uses in contract.facilities.items():
+        if facility in declared:
+            continue
+        users = [
+            f"{kind} {unit['name']!r} ({unit['profile']})"
+            for kind, unit in units
+            if unit["profile"] in uses["profiles"]
+        ]
+        users += [f"field {f!r}" for f in uses["fields"] if _field_used(manifest, f)]
+        if users:
+            problems.append(
+                Problem(
+                    "facility-undeclared",
+                    "requires",
+                    f"{facility!r} is not declared but used by {', '.join(users)}",
                 )
             )
     return problems
@@ -494,4 +573,5 @@ def check_all(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
         + check_paths(manifest)
         + check_backup(manifest)
         + check_content_and_policy(manifest)
+        + check_requires(manifest, contract)
     )

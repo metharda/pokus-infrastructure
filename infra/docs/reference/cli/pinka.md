@@ -54,6 +54,8 @@ Every command also accepts `-h`, `--help`.
 | `pinka pair connect` | on the lab node: pair with the inference node |
 | `pinka wsl-helpers` | where the optional Windows helpers are (wsl2 only) |
 | `pinka update-host` | drain, update the OS keeping the holds, bootstrap, doctor, fingerprint diff (root) |
+| `pinka platform` | the lab's platform (root) |
+| `pinka platform purge` | remove a replaced platform's releases, state, restricted area and database (root) |
 | `pinka docs` | the documentation of the lab |
 | `pinka docs serve` | serve the built documentation read-only on 127.0.0.1 |
 
@@ -282,6 +284,27 @@ pinka update-host [-h] [--yes]
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--yes` | — | — | do not ask for confirmation |
+
+### pinka platform
+
+The lab's platform (root).
+
+```text
+pinka platform [-h] ACTION ...
+```
+
+### pinka platform purge
+
+Remove a replaced platform's releases, state, restricted area and database (root).
+
+```text
+pinka platform purge [-h] [--confirm NAME] name
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `name` | — | — | the replaced platform |
+| `--confirm` | `NAME` | — | the platform name again, typed (otherwise pinka asks for it) |
 
 ### pinka docs
 

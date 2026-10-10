@@ -94,6 +94,7 @@ walk through a complete installation.
 | 50 | tooling failed | installing uv, CPython, the Ansible environment or the Ansible collections failed, or a checksum did not match |
 | 60 | play failed | an Ansible play failed without a bootstrap signal, or a later stage is not installed yet |
 | 64 | usage error | invalid command-line options |
+| 65 | platform release refused | the release or its sources break contract v2; every reason is printed and nothing on the host changed |
 | 70 | internal error | unexpected error in bootstrap itself; the failing line is in the log |
 | 75 | WSL restart required | run 'wsl --terminate &lt;distro&gt;' on the Windows side, then re-run bootstrap |
 | 76 | reboot required | reboot (and enroll the MOK if asked), then re-run bootstrap |
@@ -127,7 +128,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `compose/`, `config/` | Compose files and configuration of the lab services (Postgres, OPA, the telemetry stack, vLLM), rendered by their roles. |
 | `incus/` | Incus preseed, profiles and projects. |
 | `vllm/` | vLLM serving profiles per GPU class. |
-| `contract/` | Contract v2, published with every release: the platform manifest's JSON Schema, the eight privilege profiles and the reserved names (generated). |
+| `contract/` | Contract v2, published with every release: the platform manifest's JSON Schema, the eight privilege profiles, the reserved names (generated) and, in `records/`, the schemas of the deployment records. |
 | `tests/` | The CI answers file and the distribution test targets and results. |
 | `contrib/windows/` | An optional Windows-side helper for WSL hosts. |
 | `tools/pinka-lab/` | `pinka`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
@@ -135,7 +136,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
 | `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. |
 | `tools/repo-checks/` | Repository checks: privacy scan, docs lint, link check, Mermaid extraction. |
-| `tools/platform/` | `pinka-platform`: the contract v2 manifest validator and the renderer of the principals and endpoints files. |
+| `tools/platform/` | `pinka-platform`: the contract v2 validator, the platform deployment (sources, mirrors, staging, sandboxed build, publishing, replace and purge) and the renderer of the principals and endpoints files. |
 | `versions.lock.yml` | Every pinned external artifact with its verification source (`docs/reference/versions.md`). |
 | `.github/workflows/ci.yml` | CI: lint, unit tests, strict docs build, weekly link check. CI never provisions anything. |
 
@@ -170,7 +171,10 @@ is excluded by `.gitignore`. `make privacy` enforces this; CI can add a private
 denylist through the `PINKA_PRIVACY_DENYLIST` secret. Its value is a list of
 terms separated by newlines or commas, matched case-insensitively as whole
 words; findings never print a term. The same variable works locally:
-`PINKA_PRIVACY_DENYLIST="<terms>" make privacy`.
+`PINKA_PRIVACY_DENYLIST="<terms>" make privacy`. Inside a git work tree the
+scan also checks every commit message reachable from `HEAD`: no commit
+carries a `Co-Authored-By` trailer or another attribution line, and a
+shallow clone fails because its history cannot be checked.
 
 ## License
 

@@ -34,6 +34,8 @@ sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]
 | `--allow-reboot` | — | Allow automatic reboot on bare metal / VM |
 | `--allow-dirty` | — | Continue with uncommitted changes in infra/ (recorded) |
 | `--adopt-incus` | — | Adopt an existing Incus installation |
+| `--inspect-platform` | — | Fetch, stage and validate the platform release, print its summary, change nothing else |
+| `--replace-platform` | `NAME` | Allow a platform with another name to replace the active platform NAME |
 | `--accept-mok-enrollment` | — | With Secure Boot and install_nvidia_driver: auto, install the NVIDIA driver and import a Machine Owner Key (recorded) |
 | `--mok-password-stdin` | — | Read the one-time MOK password from the first line of standard input |
 | `--allow-community-repos` | — | Permit non-vendor, non-distro repositories (COPR, OBS, RPM Fusion) |

@@ -39,6 +39,19 @@ Root can always connect. A socket the agent uses is dedicated to it (`untrusted_
 | `untrusted-agent` | serves no sockets | — |
 | `gpu-trainer` | serves no sockets | — |
 
+## Facilities
+
+A manifest declares in `requires` every infra facility it uses; the health gate checks exactly these. It is refused when a service or job of one of these profiles, or one of these fields, needs a facility it does not declare. A field counts when it is present and not false or empty.
+
+| Facility | What it is | Needed by profiles | Needed by fields |
+| --- | --- | --- | --- |
+| `postgres` | the platform database, its roles and the socket directories | — | `backup.database` |
+| `incus` | the restricted Incus certificate, projects and run networks | `sandbox-operator`, `restricted-operator` | — |
+| `telemetry` | the collector, the query proxy and Grafana | — | `dashboards`, `telemetry` |
+| `inference` | the inference API (vLLM, or the forwarder on a lab node) | `inference-broker` | — |
+| `opa` | the policy engine with the platform's bundle | — | `policy` |
+| `gpu` | the GPU arbiter, which also runs CPU-only jobs | `gpu-trainer` | — |
+
 ## Caps
 
 | Cap | Value |

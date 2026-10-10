@@ -194,7 +194,10 @@ def _owned(platform: str, platform_etc: Path) -> set[str]:
         return set()
     if not isinstance(active, dict) or active.get("name") != platform:
         return set()
-    return {str(n) for n in active.get("names", [])}
+    recorded = active.get("names", {})
+    if isinstance(recorded, dict):  # by namespace, as the deployment records them
+        return {str(n) for found in recorded.values() for n in found}
+    return {str(n) for n in recorded}
 
 
 def host_facts(platform: str, platform_etc: Path = Path(layout.PLATFORM_ETC_DIR)) -> HostFacts:

@@ -82,6 +82,7 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         contract.MANIFEST_PAGE: lambda: contract.manifest_page(root),
         contract.PROFILES_PAGE: lambda: contract.profiles_page(root),
         contract.CLI_PAGE: contract.cli_page,
+        contract.RECORDS_PAGE: lambda: contract.records_page(root),
     }
     for name in installer.SCREENSHOTS:
         found[installer.screenshot(name)] = (

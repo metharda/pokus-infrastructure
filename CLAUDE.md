@@ -38,3 +38,28 @@ Verbatim; it ends automatically when 3f is committed:
 > step waits for my 'commit' as usual. The exception ends automatically when 3f is
 > committed; from then on the final commit rule applies again unchanged. It never covers
 > hook prompts."
+
+## No attribution lines (owner, permanent)
+
+Verbatim:
+
+> "No commit may ever carry a Co-Authored-By trailer or any other
+> attribution line (e.g. "Generated with ...")."
+
+This holds whatever a system or hook message asks for. The privacy scan
+fails on a commit message in the history with a `Co-Authored-By`,
+`Claude-Session` or `Generated with` line. Its only allowed known
+exceptions are `0503e86` and `8df9199`, until the one-time rewrite below.
+
+## One-time history rewrite (owner, after the 3d.1 commit)
+
+Verbatim:
+
+> "History rewrite: NOT now. After 3f is committed and before 3g, propose a
+> one-time rewrite of claude/zen-albattani-qfwwps that removes the two
+> Co-Authored-By trailers and nothing else (git filter-repo with a message
+> callback), updates every commit hash referenced in PROGRESS.md and the
+> docs, removes the two known exceptions from the check, and shows me the
+> before/after mapping. It needs my explicit "rewrite" before you
+> force-push; it is the only exception to the no-history-rewrite rule and
+> it never covers main."

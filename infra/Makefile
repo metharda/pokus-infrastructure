@@ -34,7 +34,7 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
-  ansible/roles/lab_session/files ansible/roles/backup/files ansible/roles/deploy_source/files \
+  ansible/roles/lab_session/files ansible/roles/backup/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins tools/platform
 PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
@@ -90,7 +90,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
 	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
-	  ansible/roles/deploy_source/files ansible/roles/platform/files ansible/roles/inference_control/files \
+	  ansible/roles/platform/files ansible/roles/inference_control/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
 	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform \
 	  tools/platform/tests

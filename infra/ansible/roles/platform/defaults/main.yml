@@ -1,12 +1,13 @@
 # Managed by pinka (ansible/roles/platform/defaults/main.yml). Local changes will be overwritten.
 
-# Deploy the platform services (BUILD_PROMPT §7.14). Off by default.
-platform_enabled: false
-# Platform ref to deploy: a platform-v tag (recommended), another tag, a branch or a full commit.
-platform_ref: ""
-# Non-secret settings per service short name (orch, agent, gw, exec, inject,
-# verify, eval), rendered into /etc/pinka/platform/<svc>.toml and checked
-# against the deployed platform's schemas/config/<svc>.schema.json (C9b).
+# --replace-platform NAME: the active platform that a release with another name
+# may replace (BUILD_PROMPT §7.14 "One platform per lab"); "" refuses that.
+platform_replace: "{{ (pinka_bootstrap | default({})).replace_platform | default('') }}"
+# --inspect-platform: fetch, stage and validate the release, print its summary,
+# change nothing else.
+platform_inspect: "{{ (pinka_bootstrap | default({})).inspect_platform | default(false) }}"
+# Non-secret settings per service, checked against the release's config
+# schemas (rendered from the profiles in plan step 3d.3).
 platform_settings: {}
 # Inference backend of endpoints.toml (C5): auto (local where this node serves
 # inference, otherwise remote), local, remote, or scripted (staging only, D3).

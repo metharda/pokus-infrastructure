@@ -192,6 +192,7 @@
         sessions: "{{ lab_session_sessions_dir }}"
         python: "{{ pinka_python }}"
         ansible: /opt/pinka/ansible-venv/bin/ansible
+        platform_tool: /usr/local/libexec/pinka/pinka-platform
       fingerprint:
         cache: "{{ doctor_fingerprint_dir }}/current.json"
         versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"

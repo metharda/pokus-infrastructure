@@ -20,7 +20,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: Privacy scan of root-level files
+          fetch-depth: 0  # the privacy scan checks every commit message
+      - name: Privacy scan of root-level files and the commit history
         run: |
           mapfile -d '' paths < <(git ls-files -z -- . ':!:infra' ':!:platform' ':!:catalog' ':!:docs-site')
           PYTHONPATH=infra/tools/repo-checks python3 -m pinka_repo_checks privacy "${paths[@]}"

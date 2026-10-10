@@ -29,6 +29,10 @@ PROFILES = "contract/profiles.yml"
 MANIFEST_PAGE = "docs/reference/platform-manifest.md"
 PROFILES_PAGE = "docs/reference/platform-profiles.md"
 CLI_PAGE = "docs/reference/cli/pinka-platform.md"
+RECORDS = "contract/records"
+RECORDS_PAGE = "docs/reference/platform-records.md"
+# The records in the order a deployment writes them.
+RECORD_FILES = ("deployed-from", "active-platform", "retired-platform")
 GROUP_VARS = "ansible/group_vars/all/main.yml"
 
 # The reserved lists of BUILD_PROMPT §12.1, including names infra creates in
@@ -348,6 +352,27 @@ def profiles_page(root: Path) -> str:
         }[rules["agent"]]
         rows.append([f"`{name}`", ", ".join(users), agent])
     out.append(table(["Served by", "May be used by", "The agent"], rows))
+    out.append("\n## Facilities\n\n")
+    out.append(
+        "A manifest declares in `requires` every infra facility it uses; the health gate "
+        "checks exactly these. It is refused when a service or job of one of these profiles, "
+        "or one of these fields, needs a facility it does not declare. A field counts when it "
+        "is present and not false or empty.\n\n"
+    )
+    out.append(
+        table(
+            ["Facility", "What it is", "Needed by profiles", "Needed by fields"],
+            [
+                [
+                    f"`{name}`",
+                    f["description"],
+                    ", ".join(f"`{p}`" for p in f["profiles"]) or "—",
+                    ", ".join(f"`{x}`" for x in f["fields"]) or "—",
+                ]
+                for name, f in data["facilities"].items()
+            ],
+        )
+    )
     out.append("\n## Caps\n\n")
     out.append(table(["Cap", "Value"], [[f"`{k}`", f"`{v}`"] for k, v in data["caps"].items()]))
     out.append("\n## Relaxations\n\n")
@@ -432,6 +457,38 @@ def manifest_page(root: Path) -> str:
     return "".join(out).rstrip("\n") + "\n"
 
 
+def records_page(root: Path) -> str:
+    """Render the reference page of the deployment records from ``contract/records``.
+
+    Args:
+        root: Component root.
+
+    Returns:
+        Page text.
+    """
+    out = [
+        front_matter(
+            "Platform records",
+            ["operator", "developer"],
+            "The records a platform deployment writes (DEPLOYED_FROM.json, active.json and "
+            "retired.json) in contract v2.",
+        ),
+        "# Platform records\n\n",
+        "A platform deployment records where every deployed directory came from, which "
+        "platform is active, and which platform it replaced. The records are part of "
+        f"contract v2; their JSON Schemas (draft 2020-12) are in `{RECORDS}/`.\n\n",
+    ]
+    for name in RECORD_FILES:
+        schema = json.loads((root / RECORDS / f"{name}.schema.json").read_text(encoding="utf-8"))
+        out.append(f"## {schema['title']}\n\n")
+        out.append(f"{schema['description']} Schema file: `{RECORDS}/{name}.schema.json`.\n\n")
+        out.append(
+            table(["Field", "Type", "Required", "Description"], list(schema_rows(schema, "")))
+        )
+        out.append("\n")
+    return "".join(out).rstrip("\n") + "\n"
+
+
 def _subcommands(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
@@ -450,12 +507,15 @@ def cli_page() -> str:
         front_matter(
             "pinka-platform command",
             ["developer", "operator"],
-            "Every command and option of pinka-platform, the contract v2 manifest validator.",
+            "Every command and option of pinka-platform, the contract v2 validator and "
+            "deployment tool.",
         ),
         "# pinka-platform command\n\n",
         "`pinka-platform` checks a platform release against contract v2 before anything on the "
-        "host changes; bootstrap runs it during a platform deployment, and platform developers "
-        "run it on their releases (see [Platform manifest](../platform-manifest.md)).\n\n",
+        "host changes, and deploys it. Platform developers run `validate` on their releases "
+        "(see [Platform manifest](../platform-manifest.md)); the platform role runs the `deploy` "
+        "steps on the lab host, and `pinka platform purge` runs `purge` (see "
+        "[Platform records](../platform-records.md)).\n\n",
         f"```text\n{usage(parser)}\n```\n\n",
         f"{parser.description}\n\n",
     ]
@@ -509,4 +569,10 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
         (f"pinka-platform exit code {code}", CLI_PAGE, f"| {code} |")
         for code in platform_cli.EXIT_CODES
     ]
+    for name in RECORD_FILES:
+        record = json.loads((root / RECORDS / f"{name}.schema.json").read_text(encoding="utf-8"))
+        entries += [
+            (f"record {record['title']} field {row[0]}", RECORDS_PAGE, str(row[0]))
+            for row in schema_rows(record, "")
+        ]
     return entries

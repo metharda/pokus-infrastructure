@@ -8,7 +8,7 @@ from ansible_testlib import ANSIBLE, GROUP_VARS, INFRA, load_yaml
 
 DATA = load_yaml(GROUP_VARS)
 MODE_RE = re.compile(r"^[0-7]{4}$")
-ROOT_ONLY_SECRETS = {"pinka-gt", "docker", "incus", "incus-admin"}
+ROOT_ONLY_SECRETS = {"pinka-restricted", "docker", "incus", "incus-admin"}
 
 
 def test_groups_and_accounts() -> None:
@@ -16,7 +16,7 @@ def test_groups_and_accounts() -> None:
     assert groups == {
         "pinka",
         "pinka-admin",
-        "pinka-gt",
+        "pinka-restricted",
         "potka-svc",
         "potka-exec-clients",
         "potka-gw-clients",
@@ -28,7 +28,7 @@ def test_groups_and_accounts() -> None:
     for name, member_of in accounts.items():
         assert "potka-svc" in member_of, name
         assert member_of <= groups, name
-    # Safety invariant 4: the agent gets no catalog, Docker, Incus or database access.
+    # Safety invariant 4: the agent gets no restricted data, Docker, Incus or database access.
     assert accounts["potka-agent"] == {"potka-svc", "potka-exec-clients", "potka-gw-clients"}
     assert not accounts["potka-agent"] & ROOT_ONLY_SECRETS
     assert {n for n, g in accounts.items() if "potka-gw-clients" in g} == {"potka-agent"}
@@ -54,8 +54,8 @@ def test_layout_matches_the_spec() -> None:
     # and per researcher.
     expected = {
         "": ("root", "pinka", "2775"),
-        "deploy": ("root", "root", "0755"),
-        "catalog": ("root", "pinka-gt", "0750"),
+        "platforms": ("root", "root", "0755"),
+        "restricted": ("root", "pinka-restricted", "0750"),
         "models": ("potka-orch", "pinka", "0755"),
         "datasets": ("root", "pinka", "2775"),
         "artifacts": ("potka-orch", "pinka", "0750"),
@@ -78,6 +78,21 @@ def test_layout_matches_the_spec() -> None:
     system = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pinka_system_layout"]}
     assert system["/etc/pinka"] == ("root", "root", "0755")
     assert system["/etc/pinka/secrets"] == ("root", "potka-svc", "0750")
+    # Deployment (BUILD_PROMPT §6.2, §7.14): root-only mirrors, staging and records.
+    assert system["/etc/pinka/platform"] == ("root", "root", "0755")
+    for root_only in ("/var/lib/pinka/git", "/var/lib/pinka/staging", "/var/lib/pinka/platforms"):
+        assert system[root_only] == ("root", "root", "0700"), root_only
+    assert system["/var/cache/pinka/uv"] == ("pinka-build", "pinka-build", "0700")
+
+
+def test_infra_accounts() -> None:
+    # BUILD_PROMPT §6.1: pinka-build runs platform builds and belongs to no group.
+    assert DATA["infra_accounts"] == [
+        {"name": "pinka-build", "groups": [], "description": "unprivileged platform builds"}
+    ]
+    assert not {a["name"] for a in DATA["infra_accounts"]} & {
+        a["name"] for a in DATA["service_accounts"]
+    }
 
 
 def contract_ports() -> set[int]:

@@ -88,7 +88,7 @@ def test_architecture_region_is_replaced_and_stable() -> None:
     page = ansible_docs.architecture_page(ROOT)
     assert page == (ROOT / ansible_docs.ARCHITECTURE).read_text(encoding="utf-8")
     region = page.split(ansible_docs.LAYOUT_START, 1)[1].split(ansible_docs.LAYOUT_END, 1)[0]
-    assert "| `/srv/pinka/catalog/` | root:pinka-gt | 0750 |" in region
+    assert "| `/srv/pinka/restricted/` | root:pinka-restricted | 0750 |" in region
     assert "| /srv/pinka/users/&lt;name&gt;/ | &lt;name&gt;:&lt;name&gt; | 0700 |" in region
     assert "| `/etc/pinka/secrets/` | root:potka-svc | 0750 |" in region
 
