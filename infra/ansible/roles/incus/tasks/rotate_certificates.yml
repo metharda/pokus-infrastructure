@@ -10,6 +10,10 @@
   ansible.builtin.include_vars:
     file: "{{ pinka_family }}.yml"
 
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
 - name: Read the current client certificates
   community.crypto.x509_certificate_info:
     path: "{{ incus_cert_dir }}/{{ item.short }}/client.crt"

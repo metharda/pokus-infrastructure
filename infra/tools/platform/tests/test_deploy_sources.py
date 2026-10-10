@@ -60,12 +60,12 @@ def codes(platform: Any, content: Any = None) -> list[str]:
 def test_a_complete_setting() -> None:
     release, packages, problems = sources.parse(
         {**GOOD, "path": "./platform/", "tag_prefix": "platform-v"},
-        {"catalog": {**GOOD, "path": "catalog"}},
+        {"cases": {**GOOD, "path": "cases"}},
     )
     assert problems == []
     assert release == sources.Source(None, GOOD["repo"], "main", "platform", "platform-v")
-    assert packages["catalog"].path == "catalog"
-    assert packages["catalog"].label == "content.catalog"
+    assert packages["cases"].path == "cases"
+    assert packages["cases"].label == "content.cases"
     assert release is not None
     assert release.as_dict() == {
         "repo": GOOD["repo"],
@@ -94,28 +94,28 @@ def test_bad_platform_settings(platform: Any, code: str) -> None:
 
 
 def test_bad_content_settings() -> None:
-    assert codes(GOOD, ["catalog"]) == ["source-setting"]
+    assert codes(GOOD, ["cases"]) == ["source-setting"]
     assert codes(GOOD, {"Bad_Name": GOOD}) == ["source-setting"]
-    assert codes(GOOD, {"catalog": {"repo": GOOD["repo"]}}) == ["source-setting"]
+    assert codes(GOOD, {"cases": {"repo": GOOD["repo"]}}) == ["source-setting"]
     assert codes(GOOD, None) == []
 
 
 @pytest.mark.parametrize(
     ("release_path", "package_path", "overlaps"),
-    [("platform", "catalog", False), ("platform", "", True), ("platform", "platform/x", True)],
+    [("platform", "cases", False), ("platform", "", True), ("platform", "platform/x", True)],
 )
 def test_overlaps_in_one_repository(release_path: str, package_path: str, overlaps: bool) -> None:
     found = codes(
         {**GOOD, "path": release_path},
-        {"catalog": {**GOOD, "repo": GOOD["repo"].removesuffix(".git"), "path": package_path}},
+        {"cases": {**GOOD, "repo": GOOD["repo"].removesuffix(".git"), "path": package_path}},
     )
     assert found == (["source-overlap"] if overlaps else [])
 
 
 def test_mirror_names() -> None:
-    a = sources.mirror_name("git@github.com:example-org/pokus-platform.git")
-    assert a == sources.mirror_name("git@github.com:example-org/pokus-platform")
-    assert a.startswith("pokus-platform-")
+    a = sources.mirror_name("git@github.com:example-org/demo-platform.git")
+    assert a == sources.mirror_name("git@github.com:example-org/demo-platform")
+    assert a.startswith("demo-platform-")
     assert a.endswith(".git")
     assert a != sources.mirror_name("git@github.com:example-org/other.git")
     assert sources.mirror_name("file:///").endswith(".git")

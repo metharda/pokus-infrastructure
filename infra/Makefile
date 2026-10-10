@@ -33,7 +33,7 @@ DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
 DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
-  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
+  ansible/roles/incus/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins tools/platform
@@ -81,14 +81,14 @@ node_modules/.installed: package.json package-lock.json
 	@touch $@
 
 .PHONY: lint
-lint: lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-markdown lint-spelling lint-docs lint-mermaid privacy ## Run every linter and the privacy scan
+lint: lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral lint-markdown lint-spelling lint-docs lint-mermaid privacy ## Run every linter, the neutrality lint and the privacy scan
 
 .PHONY: lint-python
 lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/ruff check $(PY_SOURCES)
 	$(BIN)/ruff format --check $(PY_SOURCES)
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
-	  ansible/roles/incus/library ansible/roles/models/files ansible/roles/vllm/files \
+	  ansible/roles/incus/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files \
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
 	  ansible/roles/platform/files ansible/roles/inference_control/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
@@ -124,6 +124,10 @@ lint-ansible: setup ## ansible-lint (production profile) and --syntax-check of e
 .PHONY: lint-portability
 lint-portability: ## Only platform_facts may read distribution facts (BUILD_PROMPT §19.1)
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks portability --ansible-dir ansible
+
+.PHONY: lint-neutral
+lint-neutral: ## Infra's code names no particular platform (BUILD_PROMPT §11)
+	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks neutrality --root .
 
 .PHONY: lint-markdown
 lint-markdown: setup ## markdownlint

@@ -23,7 +23,7 @@ from pinka_preflight.runner import CommandResult, Runner
 
 PSQL_SCRIPT = (
     'PGPASSWORD="$(cat /run/secrets/postgres-superuser)" exec psql --no-psqlrc '
-    "--set=ON_ERROR_STOP=1 --host=/var/run/postgresql --username=postgres --dbname=potka "
+    "--set=ON_ERROR_STOP=1 --host=/var/run/postgresql --username=postgres --dbname=postgres "
     '"$@"'
 )
 KEY_MODE = 0o600
@@ -59,12 +59,13 @@ def _preflight(ctx: Context) -> dict[str, Any] | None:
     return report
 
 
-def psql(ctx: Context, query: str) -> Any:  # noqa: ANN401 - JSON value
+def psql(ctx: Context, query: str, database: str = "postgres") -> Any:  # noqa: ANN401 - JSON
     """Run a query as the database superuser inside the PostgreSQL container.
 
     Args:
         ctx: Check context.
         query: SQL returning one JSON value.
+        database: The database to connect to.
 
     Returns:
         The parsed value.
@@ -85,6 +86,7 @@ def psql(ctx: Context, query: str) -> Any:  # noqa: ANN401 - JSON value
         "psql",
         "--tuples-only",
         "--no-align",
+        f"--dbname={database}",
         "--command",
         query,
     ]
@@ -562,7 +564,7 @@ def check_layout(ctx: Context) -> Outcome:
 
 
 def check_accounts(ctx: Context) -> Outcome:
-    """Researchers are not in docker or the Incus admin group, service accounts not in docker."""
+    """Researchers are not in docker or the Incus admin group, platform accounts not in docker."""
     privileged = list(ctx.config.get("accounts", "privileged_groups", default=["docker"]))
     break_glass = set(ctx.config.get("accounts", "break_glass_docker", default=[]))
     problems = []
@@ -570,31 +572,31 @@ def check_accounts(ctx: Context) -> Outcome:
         for group in ctx.system.user_groups(user) or []:
             if group in privileged and not (group == "docker" and user in break_glass):
                 problems.append(f"researcher {user} is in {group}")
-    for user in ctx.config.get("accounts", "service_accounts", default=[]):
+    for user in ctx.config.get("accounts", "platform_accounts", default=[]):
         if "docker" in (ctx.system.user_groups(user) or []):
-            problems.append(f"service account {user} is in docker")
+            problems.append(f"platform account {user} is in docker")
     if problems:
         return failed("; ".join(problems))
     note = f" (break-glass: {', '.join(sorted(break_glass))})" if break_glass else ""
-    return passed("no researcher or service account in a privileged group" + note)
+    return passed("no researcher or platform account in a privileged group" + note)
 
 
 def check_deployed_paths(ctx: Context) -> Outcome:
-    """No .git in deployed paths and no catalog content outside the catalog directory (B2)."""
+    """No .git in deployed paths, no restricted package outside the restricted area (§12.4)."""
     root = ctx.config.pinka_root
     problems = []
-    for top in (f"{root}/deploy", f"{root}/catalog"):
+    for top in (f"{root}/platforms", f"{root}/restricted"):
         for directory in ctx.system.walk_dirs(top, max_depth=8):
             if directory.rsplit("/", 1)[-1] == ".git":
                 problems.append(f"{directory} exists")
-    for directory in ctx.system.walk_dirs(f"{root}/deploy", max_depth=3):
+    for directory in ctx.system.walk_dirs(f"{root}/platforms", max_depth=5):
         text = ctx.system.read_text(f"{directory}/DEPLOYED_FROM.json")
         provenance = json.loads(text) if text else {}
-        if provenance.get("component") == "catalog":
-            problems.append(f"catalog deployed in {directory}")
+        if provenance.get("restricted"):
+            problems.append(f"restricted package {provenance.get('package')} in {directory}")
     if problems:
         return failed("; ".join(problems))
-    return passed("no .git in deployed paths, catalog only in its own directory")
+    return passed("no .git in deployed paths, restricted packages only in the restricted area")
 
 
 def check_hardening(ctx: Context) -> Outcome:
@@ -653,7 +655,7 @@ def check_sockets(ctx: Context) -> Outcome:
 
 
 def check_postgres(ctx: Context) -> Outcome:
-    """Database roles exist, the reader and Grafana roles cannot read gt, durability is on."""
+    """Database roles exist, reader and Grafana cannot use schema restricted, durability is on."""
     if not ctx.config.runs_lab:
         return skipped("no PostgreSQL on this node")
     roles = list(ctx.config.get("postgres", "roles", default=[]))
@@ -664,14 +666,20 @@ def check_postgres(ctx: Context) -> Outcome:
     )
     problems = [f"role {r} missing" for r in roles if r not in (existing or [])]
     restricted = list(ctx.config.get("postgres", "restricted_roles", default=[]))
-    if restricted:
+    database = str(ctx.config.get("postgres", "database", default="") or "")
+    if database and not SQL_NAME_RE.match(database):
+        return failed(f"database name {database!r} in the lab description is not a plain name")
+    if restricted and database:
         reads = psql(
             ctx,
-            "SELECT coalesce(json_object_agg(r, has_schema_privilege(r, 'gt', 'USAGE')), '{}') "  # noqa: S608
-            f"FROM unnest(ARRAY[{sql_names(restricted)}]) AS r WHERE EXISTS "
-            "(SELECT 1 FROM pg_namespace WHERE nspname = 'gt')",
+            "SELECT coalesce(json_object_agg(r, has_schema_privilege(r, 'restricted', 'USAGE')),"  # noqa: S608
+            f" '{{}}') FROM unnest(ARRAY[{sql_names(restricted)}]) AS r WHERE EXISTS "
+            "(SELECT 1 FROM pg_namespace WHERE nspname = 'restricted')",
+            database=database,
         )
-        problems += [f"{r} can use schema gt" for r, allowed in (reads or {}).items() if allowed]
+        problems += [
+            f"{r} can use schema restricted" for r, allowed in (reads or {}).items() if allowed
+        ]
     settings = psql(
         ctx,
         "SELECT json_object_agg(name, setting) FROM pg_settings WHERE name IN "
@@ -681,7 +689,8 @@ def check_postgres(ctx: Context) -> Outcome:
     if problems:
         return failed("; ".join(problems))
     return passed(
-        f"{len(roles)} roles, gt closed to {', '.join(restricted) or 'nobody'}, durability on"
+        f"{len(roles)} roles, schema restricted closed to {', '.join(restricted) or 'nobody'},"
+        " durability on"
     )
 
 
@@ -715,7 +724,7 @@ def _otlp_payloads(run_id: str, trace_id: str, now_ns: int) -> dict[str, dict[st
     resource = {
         "attributes": [
             {"key": "service.name", "value": {"stringValue": "pinka-doctor"}},
-            {"key": "potka.run_id", "value": {"stringValue": run_id}},
+            {"key": "pinka.probe_id", "value": {"stringValue": run_id}},
         ]
     }
     return {
@@ -798,12 +807,12 @@ def check_telemetry(ctx: Context) -> Outcome:
                 f"the collector rejected the {signal} probe ({response.status or response.body})"
             )
     start = int(now.timestamp()) - 60
-    query = f'{{service_name="pinka-doctor"}} | potka_run_id="{run_id}"'
+    query = f'{{service_name="pinka-doctor"}} | pinka_probe_id="{run_id}"'
     pending = {
         "Loki": f"{obs['loki']}/loki/api/v1/query_range?start={start}&query=" + _quote(query),
         "Tempo": f"{obs['tempo']}/api/traces/{trace_id}",
         "Prometheus": f"{obs['prometheus']}/api/v1/query?query="
-        + _quote(f'pinka_doctor_probe{{potka_run_id="{run_id}"}}'),
+        + _quote(f'pinka_doctor_probe{{pinka_probe_id="{run_id}"}}'),
     }
     deadline = time.monotonic() + float(obs.get("wait_seconds", 60))
     while pending:
@@ -1162,7 +1171,7 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "deploy.provenance",
-        "No .git in deployed paths; catalog content only in the catalog directory (B2).",
+        "No .git in deployed paths; restricted packages only in the restricted area (§12.4).",
         "error",
         "Remove the deployment and deploy again from the mirror.",
         check_deployed_paths,
@@ -1183,7 +1192,7 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "postgres.roles",
-        "Roles exist, reader and Grafana cannot read gt, durability is on.",
+        "Roles exist, reader and Grafana cannot use schema restricted, durability is on.",
         "error",
         "Run bootstrap with --tags postgres.",
         check_postgres,

@@ -65,7 +65,7 @@ def test_settings_fit_the_endpoint(tmp_path: Path) -> None:
     )
     assert config.gpu_metrics == "http://127.0.0.1:18726/metrics"
     assert config.models == Path("/srv/pinka/models")
-    socket_unit = render_template("vllm", "pinka-vllm-deploy.socket.j2", {})
+    socket_unit = render_template("vllm", "pinka-vllm-deploy.socket.j2", {"vllm_deploy_peer": "x"})
     assert f"ListenStream={config.deploy_socket}\n" in socket_unit
     verify_task = load_yaml(ROLES / "vllm" / "tasks" / "verify.yml")[1]
     assert verify_task["ansible.builtin.command"]["argv"][0] == config.verify[0]
@@ -82,7 +82,7 @@ def test_unit() -> None:
         "ExecStart=/usr/local/libexec/pinka/inference-control"
         " --config /etc/pinka/inference/control.json",
         "ConditionPathExists=/etc/pinka/inference/peer.crt",
-        "User=potka-orch",
+        "User=pinka-inference",
         "CapabilityBoundingSet=",
         "NoNewPrivileges=yes",
         "ProtectSystem=strict",
@@ -423,16 +423,8 @@ def test_not_paired(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_units_carry_what_doctor_checks() -> None:
-    """The hardening doctor compares (pinka_unit_hardening) is in every unit template."""
-    platform = ansible_vars(
-        GROUP_VARS,
-        ROLES / "platform" / "defaults" / "main.yml",
-        ROLES / "platform" / "vars" / "main.yml",
-    )
+    """The hardening doctor compares (pinka_unit_hardening) is in the unit template."""
     rendered = [render_template("inference_control", "pinka-inference-control.service.j2", scope())]
-    for unit in evaluate("platform_units", platform):
-        variables = dict(platform, platform_unit=unit, platform_socket_acls=True)
-        rendered.append(render_template("platform", "potka-platform.service.j2", variables))
     for text in rendered:
         lines = set(text.splitlines())
         for key, value in pinka.UNIT_HARDENING.items():

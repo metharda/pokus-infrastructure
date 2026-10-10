@@ -26,12 +26,29 @@ def host(**extra_files: str) -> FakeSystem:
         "/etc/pinka/bootstrap-state.json": json.dumps(
             {"repo_commit": "c" * 40, "infra_tree": "d" * 40, "infra_dirty": False}
         ),
-        "/srv/pinka/deploy/platform/current/DEPLOYED_FROM.json": json.dumps(
+        "/etc/pinka/platform/active.json": json.dumps(
             {
-                "component": "platform",
-                "tag": "platform-v0.1.0",
-                "commit": "e" * 40,
-                "tree": "f" * 40,
+                "record_version": 1,
+                "name": "demo",
+                "version": "0.1.0",
+                "manifest_sha256": "a" * 64,
+                "release": {
+                    "name": "demo-v0.1.0",
+                    "tag": "demo-v0.1.0",
+                    "commit": "e" * 40,
+                    "tree": "f" * 40,
+                    "target": "/srv/pinka/platforms/demo/releases/demo-v0.1.0",
+                },
+                "content": {
+                    "cases": {
+                        "name": "cases-v1.0.0",
+                        "tag": "cases-v1.0.0",
+                        "commit": "1" * 40,
+                        "tree": "2" * 40,
+                        "target": "/srv/pinka/restricted/demo/cases/cases-v1.0.0",
+                        "restricted": True,
+                    }
+                },
             }
         ),
         "/proc/sys/kernel/random/boot_id": "00000000-0000-0000-0000-000000000000\n",
@@ -89,8 +106,21 @@ class ComputeTest(unittest.TestCase):
         config = fp["config"]
         self.assertEqual(config["infra_commit"], "c" * 40)
         self.assertEqual(config["versions_lock_sha256"], "0" * 64)
-        self.assertEqual(config["platform"]["tag"], "platform-v0.1.0")
-        self.assertIsNone(config["catalog"])
+        self.assertEqual(
+            config["platform"],
+            {
+                "name": "demo",
+                "version": "0.1.0",
+                "manifest_sha256": "a" * 64,
+                "release": {"tag": "demo-v0.1.0", "commit": "e" * 40, "tree": "f" * 40},
+                "content": {"cases": {"tag": "cases-v1.0.0", "commit": "1" * 40, "tree": "2" * 40}},
+            },
+        )
+        self.assertIsNone(
+            fingerprint.compute(host(**{"/etc/pinka/platform/active.json": ""}), lab())[
+                "fingerprint"
+            ]["config"]["platform"]
+        )
         self.assertNotIn("wsl", fp)
         self.assertEqual(result["computed_at"], "2026-01-01T12:00:00Z")
 

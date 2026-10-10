@@ -40,12 +40,23 @@ import re
 import shutil
 import stat
 import tempfile
+import tomllib
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from pinka_platform import mirror, names, release, sources, validate
+from pinka_platform import (
+    config,
+    database,
+    mirror,
+    names,
+    release,
+    render,
+    rendering,
+    sources,
+    validate,
+)
 from pinka_platform.contract import Contract
 from pinka_platform.loader import MANIFEST_NAME, load_file
 from pinka_platform.problems import ManifestError, Problem
@@ -53,6 +64,10 @@ from pinka_platform.problems import ManifestError, Problem
 PROVENANCE = "DEPLOYED_FROM.json"
 PLAN = "plan.json"
 ACTIVE = "active.json"
+RENDER = "render.json"
+RENDERED = "rendered.json"
+PRINCIPALS = "principals.json"
+ENDPOINTS = "endpoints.toml"
 RETIRED = "retired.json"
 DEPLOYMENTS = "deployments.jsonl"
 CURRENT = "current"
@@ -77,7 +92,16 @@ BUILD_HIDDEN = (
 )
 UV = "/opt/pinka/bin/uv"
 PYTHON = "/opt/pinka/python/bin/python3"
-UV_SYNC = ("sync", "--frozen", "--all-packages", "--no-dev", "--no-editable", "--compile-bytecode")
+UV_SYNC = ("sync", "--frozen", "--all-packages", "--no-dev", "--no-editable")
+# Phase 1 of the build (network): only the locked third-party wheels, checked
+# against the hashes in uv.lock; nothing is built and no interpreter starts on
+# the new environment (no bytecode compilation: a wheel's .pth file would run
+# then), so no package code runs.
+UV_FETCH = ("--no-install-project", "--no-install-workspace", "--no-build")
+# Phase 2 (no network): build and install the release itself with the build
+# backend that phase 1 installed from the "build" dependency group, then
+# compile the whole environment's bytecode.
+UV_BUILD = ("--offline", "--no-build-isolation", "--compile-bytecode")
 POSTGRES_CONTAINER = "pinka-postgres"
 PSQL_SCRIPT = (
     'PGPASSWORD="$(cat /run/secrets/postgres-superuser)" exec psql --no-psqlrc '
@@ -121,6 +145,8 @@ class Paths:
         etc_platform: The active platform's files.
         uv_cache: The build's uv cache.
         bin: Where the researchers' CLI links live.
+        secrets: Rendered secrets, one directory per platform account.
+        signing: Private signing keys, one directory per platform.
     """
 
     git: Path = Path("/var/lib/pinka/git")
@@ -130,6 +156,8 @@ class Paths:
     etc_platform: Path = Path("/etc/pinka/platform")
     uv_cache: Path = Path("/var/cache/pinka/uv")
     bin: Path = Path("/usr/local/bin")
+    secrets: Path = Path("/etc/pinka/secrets")
+    signing: Path = Path("/etc/pinka/signing")
 
     @classmethod
     def under(cls, root: Path) -> Paths:
@@ -206,6 +234,12 @@ class Settings:
         known_hosts: The pinned host keys for SSH sources.
         replace: The active platform the operator allows to be replaced
             (``--replace-platform``), or "".
+        owners: Who owns what a deployment writes.
+        platform_settings: Non-secret configuration per service.
+        lab: The lab facts of the endpoints file (:class:`render.LabFacts`).
+        vault_keys: The keys the vault holds, never their values, as dotted
+            names (``vault_postgres_passwords.<role>``,
+            ``vault_platform_secrets.<service>.<name>``).
     """
 
     platform: Mapping[str, Any] = field(default_factory=dict)
@@ -216,6 +250,9 @@ class Settings:
     known_hosts: str = ""
     replace: str = ""
     owners: Owners = field(default_factory=Owners)
+    platform_settings: Mapping[str, Any] = field(default_factory=dict)
+    lab: Mapping[str, Any] = field(default_factory=dict)
+    vault_keys: Sequence[str] = ()
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> Settings:
@@ -236,6 +273,9 @@ class Settings:
             known_hosts=str(data.get("known_hosts") or ""),
             replace=str(data.get("replace") or ""),
             owners=Owners(**{k: str(v) for k, v in (data.get("owners") or {}).items()}),
+            platform_settings=data.get("platform_settings") or {},
+            lab=data.get("lab") or {},
+            vault_keys=tuple(str(k) for k in data.get("vault_keys") or ()),
         )
 
 
@@ -445,6 +485,34 @@ def grouped_names(manifest: Mapping[str, Any], contract: Contract) -> dict[str, 
     return {namespace: sorted(found) for namespace, found in sorted(grouped.items())}
 
 
+def vault_keys(
+    manifest: Mapping[str, Any], contract: Contract, available: Sequence[str]
+) -> dict[str, list[str]]:
+    """The vault keys a release needs, and those the vault lacks.
+
+    Args:
+        manifest: A valid manifest.
+        contract: The contract.
+        available: The dotted keys the vault holds (``Settings.vault_keys``).
+
+    Returns:
+        ``{"needed": [...], "missing": [...]}`` as dotted vault keys.
+    """
+    needed: list[str] = []
+    if "postgres" in manifest.get("requires", []):
+        needed += [
+            f"vault_postgres_passwords.{role}"
+            for role in database.plan(manifest, contract)["vault_roles"]
+        ]
+    needed += [
+        f"vault_platform_secrets.{s['name']}.{secret}"
+        for s in manifest["services"]
+        for secret in s.get("secrets", [])
+    ]
+    have = set(available)
+    return {"needed": needed, "missing": [k for k in needed if k not in have]}
+
+
 def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
     settings: Settings,
     paths: Paths,
@@ -524,10 +592,12 @@ def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
         if manifest is None or problems:
             raise Refused(problems)
         problems += _content_problems(manifest, packages)
+        problems += config.check(manifest, release_dir, settings.platform_settings)
         for name, item in sorted((k, v) for k, v in staged.items() if k is not None):
             problems += [
                 replace(p, where=f"content.{name}: {p.where}")
                 for p in release.check_symlinks(item.directory)
+                + release.check_special_files(item.directory)
             ]
         active = read_active(paths)
         problems += one_platform_problems(active, platform, settings.replace)
@@ -586,6 +656,9 @@ def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
             "replace": settings.replace or None,
             "owners": dataclasses.asdict(settings.owners),
             "summary": validate.summary(manifest, contract),
+            "vault_keys": vault_keys(manifest, contract, settings.vault_keys),
+            "platform_settings": dict(settings.platform_settings),
+            "lab": dict(settings.lab),
         }
         write_json(run / PLAN, plan, 0o600)
     except BaseException:
@@ -665,20 +738,28 @@ def snapshot(top: Path, skip: str = ".venv") -> dict[str, str]:
     return out
 
 
-def sandbox_command(plan: Mapping[str, Any], paths: Paths, owners: Owners) -> list[str]:
-    """The ``systemd-run`` command of a ``python-uv`` build (§7.14 step 5).
+def sandbox_commands(
+    plan: Mapping[str, Any], paths: Paths, owners: Owners, *, build_group: bool
+) -> list[list[str]]:
+    """The two ``systemd-run`` commands of a ``python-uv`` build (§7.14 step 5).
 
-    The staged release is bound at its final path, so the environment's
-    absolute paths (script shebangs, ``pyvenv.cfg``) are right after
-    publishing. The build may write only the release and the uv cache.
+    Phase 1 (``fetch``) may use the network and installs only the locked
+    third-party wheels, checked against ``uv.lock``; it builds and compiles
+    nothing, so no package code runs. Phase 2 (``build``) has no network
+    (``PrivateNetwork=yes``, ``--offline``) and builds the release itself with
+    the build backend phase 1 installed from the ``build`` group. The staged
+    release is bound at its final path, so the environment's absolute paths
+    (script shebangs, ``pyvenv.cfg``) are right after publishing. Both phases
+    may write only the release and the uv cache.
 
     Args:
         plan: The deployment plan.
         paths: Host paths.
         owners: Owners (the build account).
+        build_group: The release has a ``build`` dependency group.
 
     Returns:
-        The command.
+        The commands, in order.
     """
     staged = Path(plan["run_dir"]) / "release"
     final = plan["release"]["target"]
@@ -713,18 +794,35 @@ def sandbox_command(plan: Mapping[str, Any], paths: Paths, owners: Owners) -> li
         "Environment=UV_NO_CONFIG=1",
         "Environment=HOME=/tmp",
     ]
-    argv = [
-        "systemd-run",
-        "--quiet",
-        "--wait",
-        "--pipe",
-        "--collect",
-        "--service-type=exec",
-        f"--unit=pinka-platform-build-{plan['run'].removeprefix('run-').lower()}",
-    ]
-    for prop in properties:
-        argv += ["--property", prop]
-    return [*argv, "--", UV, *UV_SYNC, "--python", PYTHON]
+    group = ["--group", release.BUILD_GROUP] if build_group else []
+    unit = f"pinka-platform-build-{plan['run'].removeprefix('run-').lower()}"
+    commands = []
+    for phase, extra_properties, extra_args in (
+        ("fetch", [], UV_FETCH),
+        ("build", ["PrivateNetwork=yes", "Environment=UV_OFFLINE=1"], UV_BUILD),
+    ):
+        argv = [
+            "systemd-run",
+            "--quiet",
+            "--wait",
+            "--pipe",
+            "--collect",
+            "--service-type=exec",
+            f"--unit={unit}-{phase}",
+        ]
+        for prop in [*properties, *extra_properties]:
+            argv += ["--property", prop]
+        commands.append([*argv, "--", UV, *UV_SYNC, *extra_args, *group, "--python", PYTHON])
+    return commands
+
+
+def _has_build_group(staged: Path) -> bool:
+    try:
+        data = tomllib.loads((staged / release.PYPROJECT).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return False
+    groups = data.get("dependency-groups", {})
+    return isinstance(groups, dict) and bool(groups.get(release.BUILD_GROUP))
 
 
 def _chown_tree(top: Path, uid: int, gid: int) -> None:
@@ -767,21 +865,30 @@ def build(
     created_mount_point = not final.exists()
     final.mkdir(parents=True, exist_ok=True)  # the bind mount's target
     try:
-        done = runner(sandbox_command(plan, paths, owners))
+        for phase, command in zip(
+            ("fetch", "build"),
+            sandbox_commands(plan, paths, owners, build_group=_has_build_group(staged)),
+            strict=True,
+        ):
+            done = runner(command)
+            if done.returncode != 0:
+                detail = (done.stderr or done.stdout).strip()[-2000:]
+                raise DeployError(f"the build's {phase} phase failed: {detail}")
+        # Before the tree goes back to root: chown clears setuid and setgid bits.
+        special = release.check_special_files(staged)
     finally:
         _chown_tree(staged, owners.uid(owners.user), owners.gid(owners.group))
         if created_mount_point:
             final.rmdir()
-    if done.returncode != 0:
-        raise DeployError(f"the build failed: {(done.stderr or done.stdout).strip()[-2000:]}")
     after = snapshot(staged)
     problems = [
         Problem("build-modified-release", relative, "the build changed or removed this entry")
         for relative in sorted(before)
         if after.get(relative) != before[relative]
     ]
+    problems += special
     result = validate.validate_release(staged, contract, None, built=True)
-    problems += result.problems
+    problems += [p for p in result.problems if p not in special]
     if problems:
         raise Refused(problems)
     return {"changed": True, "built": True}
@@ -968,6 +1075,145 @@ def publish(
     return {"changed": changed, "release": plan["release"]["target"], "content": content}
 
 
+# --- render (§7.14 step 7) ---------------------------------------------------------
+
+
+def published_manifest(plan: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
+    """The manifest of the published release.
+
+    Args:
+        plan: The deployment plan (after publish).
+        contract: The contract.
+
+    Returns:
+        The manifest, validated before it was published.
+    """
+    target = Path(plan["release"]["target"])
+    return load_file(target / MANIFEST_NAME, int(contract.caps["manifest_bytes"]))
+
+
+def read_rendered(paths: Paths) -> dict[str, Any] | None:
+    """What infra rendered for the active platform, or None."""
+    return read_json(paths.etc_platform / RENDERED)
+
+
+def render_step(plan: Mapping[str, Any], paths: Paths, contract: Contract) -> dict[str, Any]:
+    """Render everything the platform role applies (§7.14 step 7).
+
+    Args:
+        plan: The deployment plan (after publish).
+        paths: Host paths.
+        contract: The contract.
+
+    Returns:
+        ``{"changed": False, "render": document}``; the document is also
+        written to ``<run>/render.json``.
+    """
+    manifest = published_manifest(plan, contract)
+    lab = plan.get("lab") or {}
+    document = rendering.render(
+        manifest,
+        contract,
+        release_target=plan["release"]["target"],
+        ports=lab.get("ports") or {},
+        settings=plan.get("platform_settings") or {},
+        machine_name=str(lab.get("machine_name", "")),
+        previous=read_rendered(paths),
+    )
+    write_json(Path(plan["run_dir"]) / RENDER, document, 0o600)
+    return {"changed": False, "render": document}
+
+
+def lab_facts(lab: Mapping[str, Any]) -> render.LabFacts:
+    """The lab facts of the endpoints file from the settings' ``lab`` section.
+
+    Args:
+        lab: ``Settings.lab``.
+
+    Returns:
+        The facts.
+    """
+    return render.LabFacts(
+        machine_name=str(lab["machine_name"]),
+        lab_mode=str(lab["lab_mode"]),
+        node_role=str(lab["node_role"]),
+        ports={k: int(v) for k, v in lab["ports"].items()},
+        inference_mode=str(lab.get("inference_mode", "local")),
+        scripted_api_url=str(lab.get("scripted_api_url", "")),
+        vm_collector_address=str(lab.get("vm_collector_address", "198.18.0.1")),
+        cpuset_targets=str(lab.get("cpuset_targets", "")),
+    )
+
+
+def write_text(path: Path, text: str, mode: int = 0o644) -> bool:
+    """Write a file atomically if its content or mode differs.
+
+    Args:
+        path: The file.
+        text: Its content.
+        mode: Its permission bits.
+
+    Returns:
+        True if the file changed.
+    """
+    try:
+        same = (
+            path.read_text(encoding="utf-8") == text and stat.S_IMODE(path.stat().st_mode) == mode
+        )
+    except OSError:
+        same = False
+    if same:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        Path(tmp).chmod(mode)
+        Path(tmp).replace(path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return True
+
+
+def principals_step(
+    plan: Mapping[str, Any],
+    paths: Paths,
+    contract: Contract,
+    uid: Callable[[str], int] = lambda name: pwd.getpwnam(name).pw_uid,
+) -> dict[str, Any]:
+    """Write the principals and endpoints files once the accounts exist (§12.3).
+
+    Args:
+        plan: The deployment plan (after the accounts were created).
+        paths: Host paths.
+        contract: The contract.
+        uid: UID of an account.
+
+    Returns:
+        ``{"changed": bool}``.
+
+    Raises:
+        DeployError: An account does not exist yet.
+    """
+    manifest = published_manifest(plan, contract)
+    p = manifest["name"]
+    members = [*manifest["services"], *manifest.get("jobs", [])]
+    uids = {}
+    for member in members:
+        account = names.account(p, member["name"])
+        try:
+            uids[account] = uid(account)
+        except KeyError:
+            raise DeployError(f"account {account} does not exist; render creates it") from None
+    principals = render.principals_json(render.principals(manifest, contract, uids))
+    endpoints = render.endpoints_toml(render.endpoints(manifest, lab_facts(plan["lab"])))
+    changed = write_text(paths.etc_platform / PRINCIPALS, principals)
+    changed |= write_text(paths.etc_platform / ENDPOINTS, endpoints)
+    return {"changed": changed}
+
+
 # --- replace, activate, purge ----------------------------------------------------
 
 
@@ -975,7 +1221,9 @@ def retire_plan(active: Mapping[str, Any], contract: Contract, paths: Paths) -> 
     """What replacing the active platform takes away (§7.14 "One platform per lab").
 
     Its state, database, restricted area and releases stay until ``pinka
-    platform purge``.
+    platform purge``. What was rendered for it (``rendered.json``) names its
+    units, sockets, configuration files and CLI; without that record the
+    services in ``active.json`` stand in.
 
     Args:
         active: The active platform record of the platform being replaced.
@@ -983,19 +1231,48 @@ def retire_plan(active: Mapping[str, Any], contract: Contract, paths: Paths) -> 
         paths: Host paths.
 
     Returns:
-        Units to stop and remove, socket directories and the CLI link to
-        remove, accounts to lock, database roles to make ``NOLOGIN`` and the
-        Incus certificates to remove from the trust store.
+        Units to stop and remove, socket directories, configuration files and
+        the CLI link and wrapper to remove, accounts to lock, database roles
+        to make ``NOLOGIN`` and the Incus certificates to remove from the
+        trust store.
     """
     platform = active["name"]
     recorded = active.get("names", {})
     services = active.get("services", [])
-    units = [f"{names.account(platform, s['name'])}.service" for s in services]
+    rendered = read_rendered(paths)
+    if rendered is not None and rendered.get("platform") != platform:
+        rendered = None
+    if rendered is not None:
+        units = [
+            u["name"] for u in rendered.get("units", []) if u["name"] != "pinka-platform.target"
+        ]
+        config_files = [f["path"] for f in rendered.get("config_files", [])]
+        cli = rendered.get("cli") or {}
+        certificates = [c["name"] for c in rendered.get("incus_certificates", [])]
+        roles = sorted(
+            {
+                *recorded.get("postgresql_roles", []),
+                *((rendered.get("database") or {}).get("all_roles", [])),
+            }
+        )
+    else:
+        units = [f"{names.account(platform, s['name'])}.service" for s in services]
+        config_files = []
+        cli = {"link": str(paths.bin / active["cli"])} if active.get("cli") else {}
+        certificates = [
+            names.account(platform, s["name"])
+            for s in services
+            if s["profile"] in contract.profiles
+            and contract.profile(s["profile"]).data["incus_projects"]
+        ]
+        roles = list(recorded.get("postgresql_roles", []))
     return {
         "name": platform,
         "units": units,
         "socket_dirs": [f"/run/pinka/platform/{s['name']}" for s in services],
-        "cli_link": str(paths.bin / active["cli"]) if active.get("cli") else None,
+        "config_files": config_files,
+        "cli_link": cli.get("link"),
+        "cli_wrapper": cli.get("wrapper"),
         "accounts": [
             names.account(platform, member)
             for member in [
@@ -1004,13 +1281,8 @@ def retire_plan(active: Mapping[str, Any], contract: Contract, paths: Paths) -> 
                 "migrate",
             ]
         ],
-        "postgresql_roles": list(recorded.get("postgresql_roles", [])),
-        "incus_certificates": [
-            names.account(platform, s["name"])
-            for s in services
-            if s["profile"] in contract.profiles
-            and contract.profile(s["profile"]).data["incus_projects"]
-        ],
+        "postgresql_roles": roles,
+        "incus_certificates": certificates,
     }
 
 
@@ -1083,6 +1355,10 @@ def activate(
         "names": dict(plan["names"]),
         "activated_at": when,
     }
+    document = read_json(Path(plan["run_dir"]) / RENDER)
+    if document is not None:
+        text = json.dumps(rendering.public(document), indent=2, sort_keys=True) + "\n"
+        changed |= write_text(paths.etc_platform / RENDERED, text)
     same = previous is not None and {k: v for k, v in previous.items() if k != "activated_at"} == {
         k: v for k, v in record.items() if k != "activated_at"
     }
@@ -1140,28 +1416,66 @@ def _psql(runner: Runner, sql: str) -> None:
         raise DeployError(f"psql failed: {(done.stderr or done.stdout).strip()}")
 
 
+def _retired_accounts(record: Mapping[str, Any]) -> list[str]:
+    platform = record["name"]
+    members = [s["name"] for s in record.get("services", [])]
+    members += [j["name"] for j in record.get("jobs", [])]
+    return [names.account(platform, m) for m in [*members, "migrate"]]
+
+
+def _account_exists(account: str) -> bool:
+    try:
+        pwd.getpwnam(account)
+    except KeyError:
+        return False
+    return True
+
+
+def _secret_paths(paths: Paths, record: Mapping[str, Any]) -> list[Path]:
+    roles = [r for r in record.get("names", {}).get("postgresql_roles", []) if SQL_NAME_RE.match(r)]
+    candidates = [paths.secrets / a for a in _retired_accounts(record)]
+    candidates += [paths.secrets / "postgres" / r for r in roles]
+    candidates.append(paths.signing / record["name"])
+    return [c for c in candidates if c.exists() or c.is_symlink()]
+
+
+def _remove(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
 def purge(
     platform: str,
     confirm: str,
     paths: Paths,
     runner: Runner,
+    *,
+    remove_secrets: bool = False,
+    account_exists: Callable[[str], bool] = _account_exists,
     now: Callable[[], dt.datetime] = _now,
 ) -> dict[str, Any]:
     """Remove a replaced platform's releases, content, state, restricted area and database.
 
-    Accounts stay locked and its published signing keys stay (§12.10: kept
-    forever). Only a platform that was replaced can be purged, never the
-    active one, and only with its name typed as confirmation.
+    Its accounts stay locked and its published signing keys stay (§12.10:
+    kept forever); its secrets directories, database password files and
+    private signing key stay too unless ``remove_secrets`` (owner decision on
+    3d.2). The result lists everything that remains. Only a platform that
+    was replaced can be purged, never the active one, and only with its name
+    typed as confirmation.
 
     Args:
         platform: The platform.
         confirm: The typed confirmation; must equal ``platform``.
         paths: Host paths.
         runner: Command runner (psql in the PostgreSQL container).
+        remove_secrets: Also remove the secrets.
+        account_exists: Whether an account exists (tests).
         now: Clock.
 
     Returns:
-        What was removed.
+        What was removed and what remains.
 
     Raises:
         DeployError: Wrong confirmation, the active platform, never replaced,
@@ -1177,21 +1491,38 @@ def purge(
     retired = read_json(paths.records / platform / RETIRED)
     if retired is None:
         raise DeployError(f"{platform!r} was never replaced on this host (no {RETIRED})")
-    recorded = retired.get("active", {}).get("names", {})
+    record = retired.get("active", {})
+    recorded = record.get("names", {})
     databases = [d for d in recorded.get("postgresql_databases", []) if SQL_NAME_RE.match(d)]
     roles = [r for r in recorded.get("postgresql_roles", []) if SQL_NAME_RE.match(r)]
-    for database in databases:
-        _psql(runner, f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
+    for db_name in databases:
+        _psql(runner, f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)')
     for role_name in roles:
         _psql(runner, f'DROP ROLE IF EXISTS "{role_name}"')
     removed = []
     for directory in (paths.srv / "platforms" / platform, paths.srv / "restricted" / platform):
         if directory.exists() or directory.is_symlink():
-            if directory.is_symlink():
-                directory.unlink()
-            else:
-                shutil.rmtree(directory)
+            _remove(directory)
             removed.append(str(directory))
+    secrets = _secret_paths(paths, {**record, "name": platform})
+    if remove_secrets:
+        for path in secrets:
+            _remove(path)
+            removed.append(str(path))
+        secrets = []
+    published = sorted((paths.srv / "shared" / "signing-keys").glob(f"{platform}-*.pub"))
     retired["purged_at"] = utc(now())
     write_json(paths.records / platform / RETIRED, retired, 0o600)
-    return {"changed": True, "removed": removed, "databases": databases, "roles": roles}
+    return {
+        "changed": True,
+        "removed": removed,
+        "databases": databases,
+        "roles": roles,
+        "remaining": {
+            "locked_accounts": [
+                a for a in _retired_accounts({**record, "name": platform}) if account_exists(a)
+            ],
+            "secrets": [str(p) for p in secrets],
+            "published_signing_keys": [str(p) for p in published],
+        },
+    }

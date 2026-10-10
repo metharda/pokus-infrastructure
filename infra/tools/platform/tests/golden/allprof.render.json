@@ -1,0 +1,353 @@
+{
+  "backup": {
+    "database": false,
+    "paths": [
+      "/srv/pinka/platforms/allprof/state/ctl/records",
+      "/srv/pinka/platforms/allprof/state/rrd/reports/archive"
+    ]
+  },
+  "cli": {
+    "content": "#!/bin/sh\n# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.\n# allprof: the researchers' CLI of platform allprof.\nexec /srv/pinka/platforms/allprof/releases/current/bin/allprof \"$@\"\n",
+    "link": "/usr/local/bin/allprof",
+    "name": "allprof",
+    "wrapper": "/usr/local/lib/pinka/platform/cli/allprof"
+  },
+  "config_files": [
+    {
+      "content": "{\n  \"workers\": 2\n}\n",
+      "group": "allprof-ctl",
+      "mode": "0640",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config/ctl.json",
+      "service": "ctl"
+    }
+  ],
+  "controller": "allprof-ctl",
+  "dashboards": {
+    "database": "allprof",
+    "dir": "/srv/pinka/platforms/allprof/releases/allprof-v1/dashboards",
+    "folder": "allprof",
+    "role": "allprof_grafana",
+    "socket_dir": "/run/pinka/postgres-reader"
+  },
+  "database": {
+    "all_roles": [
+      "allprof_brk",
+      "allprof_controller",
+      "allprof_ctl",
+      "allprof_grafana",
+      "allprof_inference_broker",
+      "allprof_migrator",
+      "allprof_obs",
+      "allprof_observer",
+      "allprof_reader",
+      "allprof_restricted_operator",
+      "allprof_restricted_reader",
+      "allprof_rop",
+      "allprof_rrd",
+      "allprof_sandbox_operator",
+      "allprof_sbx"
+    ],
+    "database": "allprof",
+    "grafana": "allprof_grafana",
+    "group_roles": [
+      "allprof_controller",
+      "allprof_inference_broker",
+      "allprof_observer",
+      "allprof_restricted_operator",
+      "allprof_restricted_reader",
+      "allprof_sandbox_operator"
+    ],
+    "logins": [
+      {
+        "account": "allprof-ctl",
+        "group_role": "allprof_controller",
+        "profile": "controller",
+        "role": "allprof_ctl"
+      },
+      {
+        "account": "allprof-brk",
+        "group_role": "allprof_inference_broker",
+        "profile": "inference-broker",
+        "role": "allprof_brk"
+      },
+      {
+        "account": "allprof-sbx",
+        "group_role": "allprof_sandbox_operator",
+        "profile": "sandbox-operator",
+        "role": "allprof_sbx"
+      },
+      {
+        "account": "allprof-rop",
+        "group_role": "allprof_restricted_operator",
+        "profile": "restricted-operator",
+        "role": "allprof_rop"
+      },
+      {
+        "account": "allprof-rrd",
+        "group_role": "allprof_restricted_reader",
+        "profile": "restricted-reader",
+        "role": "allprof_rrd"
+      },
+      {
+        "account": "allprof-obs",
+        "group_role": "allprof_observer",
+        "profile": "observer",
+        "role": "allprof_obs"
+      }
+    ],
+    "migrator": "allprof_migrator",
+    "password_dir": "/etc/pinka/secrets/postgres",
+    "password_files": [
+      {
+        "group": "allprof-ctl",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_ctl"
+      },
+      {
+        "group": "allprof-brk",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_brk"
+      },
+      {
+        "group": "allprof-sbx",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_sbx"
+      },
+      {
+        "group": "allprof-rop",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_rop"
+      },
+      {
+        "group": "allprof-rrd",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_rrd"
+      },
+      {
+        "group": "allprof-obs",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_obs"
+      },
+      {
+        "group": "allprof-migrate",
+        "mode": "0640",
+        "owner": "root",
+        "role": "allprof_migrator"
+      }
+    ],
+    "platform": "allprof",
+    "reader": "allprof_reader",
+    "reader_credential": "/etc/pinka/postgres-reader/pgpass",
+    "restricted_allowed": [
+      "allprof_controller",
+      "allprof_ctl",
+      "allprof_migrator",
+      "allprof_restricted_operator",
+      "allprof_restricted_reader",
+      "allprof_rop",
+      "allprof_rrd"
+    ],
+    "socket_group": "allprof-db",
+    "stale_roles": [],
+    "vault_roles": [
+      "allprof_brk",
+      "allprof_ctl",
+      "allprof_grafana",
+      "allprof_migrator",
+      "allprof_obs",
+      "allprof_reader",
+      "allprof_rop",
+      "allprof_rrd",
+      "allprof_sbx"
+    ]
+  },
+  "directories": [
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/allprof/state"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/allprof/state/ctl"
+    },
+    {
+      "group": "allprof-ctl",
+      "mode": "0700",
+      "owner": "allprof-ctl",
+      "path": "/srv/pinka/platforms/allprof/state/ctl/records"
+    },
+    {
+      "group": "allprof-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/allprof-ctl"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/allprof/state/rrd"
+    },
+    {
+      "group": "allprof-rrd",
+      "mode": "0700",
+      "owner": "allprof-rrd",
+      "path": "/srv/pinka/platforms/allprof/state/rrd/reports"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/allprof/state/agt"
+    },
+    {
+      "group": "allprof-agt",
+      "mode": "0700",
+      "owner": "allprof-agt",
+      "path": "/srv/pinka/platforms/allprof/state/agt/scratch"
+    },
+    {
+      "group": "allprof-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/signing/allprof"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa/trusted-keys"
+    },
+    {
+      "group": "allprof-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/qa/attestations"
+    },
+    {
+      "group": "root",
+      "mode": "0711",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/postgres"
+    }
+  ],
+  "incus_certificates": [
+    {
+      "account": "allprof-ctl",
+      "dir": "/etc/pinka/incus/allprof-ctl",
+      "name": "allprof-ctl",
+      "projects": [
+        "bench",
+        "build"
+      ],
+      "short": "allprof-ctl"
+    },
+    {
+      "account": "allprof-sbx",
+      "dir": "/etc/pinka/incus/allprof-sbx",
+      "name": "allprof-sbx",
+      "projects": [
+        "bench"
+      ],
+      "short": "allprof-sbx"
+    },
+    {
+      "account": "allprof-rop",
+      "dir": "/etc/pinka/incus/allprof-rop",
+      "name": "allprof-rop",
+      "projects": [
+        "bench"
+      ],
+      "short": "allprof-rop"
+    }
+  ],
+  "opa": {
+    "bundle": "/srv/pinka/platforms/allprof/releases/allprof-v1/policy",
+    "decision_path": "allprof/decide"
+  },
+  "platform": "allprof",
+  "render_version": 1,
+  "requires": [
+    "gpu",
+    "incus",
+    "inference",
+    "opa",
+    "postgres",
+    "telemetry"
+  ],
+  "run_network": {
+    "socket_owner": "allprof-ctl"
+  },
+  "secrets": [
+    {
+      "group": "allprof-ctl",
+      "mode": "0640",
+      "name": "token",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/allprof-ctl/token",
+      "service": "ctl"
+    }
+  ],
+  "service_units": [
+    "allprof-ctl.service",
+    "allprof-brk.service",
+    "allprof-sbx.service",
+    "allprof-rop.service",
+    "allprof-rrd.service",
+    "allprof-obs.service",
+    "allprof-agt.service"
+  ],
+  "signing": {
+    "dir": "/etc/pinka/signing/allprof",
+    "key": "/etc/pinka/signing/allprof/signing.key",
+    "owner": "allprof-ctl",
+    "pub": "/etc/pinka/signing/allprof/signing.pub",
+    "published_dir": "/srv/pinka/shared/signing-keys",
+    "published_prefix": "allprof-pinka-lab-"
+  },
+  "socket_units": [
+    "allprof-ctl-api.socket",
+    "allprof-ctl-svc.socket",
+    "allprof-ctl-agent.socket",
+    "allprof-brk-agent.socket",
+    "allprof-brk-api.socket",
+    "allprof-sbx-agent.socket",
+    "allprof-sbx-api.socket",
+    "allprof-rop-api.socket",
+    "allprof-rrd-api.socket",
+    "allprof-obs-api.socket"
+  ],
+  "stale_units": [],
+  "telemetry_labels": [
+    "allprof.run",
+    "allprof.node",
+    "allprof.case",
+    "allprof.step"
+  ],
+  "tools": [
+    "quarto"
+  ]
+}

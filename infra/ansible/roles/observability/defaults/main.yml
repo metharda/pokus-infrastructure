@@ -13,8 +13,15 @@ observability_tempo_retention: 720h
 # WSL2) or dcgm (refused while the DCGM exporter image is unverified in
 # versions.lock.yml).
 observability_gpu_exporter: nvidia_smi
-# Grafana's password for the Postgres reader datasource (potka_grafana).
-observability_grafana_db_password: "{{ vault_postgres_passwords.potka_grafana }}"
+# The active platform's database plan and dashboards (from its rendering);
+# {} without them.
+observability_platform_db: "{{ (active_platform | default({}, true)).database | default({}, true) }}"
+observability_platform_dashboards: "{{ (active_platform | default({}, true)).dashboards | default({}, true) }}"
+# Grafana's password for the platform's PostgreSQL datasource (the platform's
+# Grafana role, through the reader socket directory); "" without one.
+observability_grafana_db_password: >-
+  {{ (vault_postgres_passwords | default({}))[observability_platform_db.grafana] | default('')
+     if observability_platform_db else '' }}
 # Grafana's admin password (vault).
 observability_grafana_admin_password: "{{ vault_grafana_admin_password }}"
 # Researchers' Grafana passwords by name (vault).

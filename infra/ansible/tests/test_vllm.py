@@ -255,7 +255,7 @@ def test_failed_validation_changes_nothing(tree: deploy.Settings) -> None:
     ("uid", "line", "ok", "error"),
     [
         (1000, '{"deployment": "dep-test@1"}\n', True, None),
-        (1001, '{"deployment": "dep-test@1"}\n', False, "only potka-orch"),
+        (1001, '{"deployment": "dep-test@1"}\n', False, "only the allowed account"),
         (1000, "not json\n", False, "one JSON line"),
         (1000, '{"deployment": "dep-test@1", "x": 1}\n', False, "request must be"),
         (1000, '["dep-test@1"]\n', False, "request must be"),
@@ -392,19 +392,42 @@ def test_verify_main_writes_the_report(server: int, tmp_path: Path) -> None:
 # --- units and the role -------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("overrides", "peer"),
+    [
+        ({}, "root"),
+        ({"active_platform": {"controller": "demo-ctl"}}, "demo-ctl"),
+        (
+            {"node_role": "inference", "active_platform": {"controller": "demo-ctl"}},
+            "pinka-inference",
+        ),
+    ],
+)
+def test_deploy_socket_belongs_to_the_peer(overrides: dict[str, Any], peer: str) -> None:
+    variables = ansible_vars(GROUP_VARS, ROLES / "vllm" / "defaults" / "main.yml", **overrides)
+    sock = configparser.ConfigParser(interpolation=None)
+    sock.optionxform = str  # type: ignore[assignment,method-assign]
+    sock.read_string(render_template("vllm", "pinka-vllm-deploy.socket.j2", variables))
+    assert (sock["Socket"]["SocketUser"], sock["Socket"]["SocketMode"]) == (peer, "0600")
+    service = configparser.ConfigParser(interpolation=None)
+    service.optionxform = str  # type: ignore[assignment,method-assign]
+    service.read_string(render_template("vllm", "pinka-vllm-deploy@.service.j2", variables))
+    assert service["Service"]["ExecStart"].endswith(f" serve --peer {peer}")
+
+
 def test_deploy_socket_and_service() -> None:
     variables = ansible_vars(GROUP_VARS, ROLES / "vllm" / "defaults" / "main.yml")
     sock = configparser.ConfigParser(interpolation=None)
     sock.optionxform = str  # type: ignore[assignment,method-assign]
     sock.read_string(render_template("vllm", "pinka-vllm-deploy.socket.j2", variables))
     assert sock["Socket"]["ListenStream"] == "/run/pinka/vllm-deploy.sock"
-    assert (sock["Socket"]["SocketUser"], sock["Socket"]["SocketMode"]) == ("potka-orch", "0600")
+    assert sock["Socket"]["SocketMode"] == "0600"
     assert sock["Socket"]["Accept"] == "yes"
     service = configparser.ConfigParser(interpolation=None)
     service.optionxform = str  # type: ignore[assignment,method-assign]
     service.read_string(render_template("vllm", "pinka-vllm-deploy@.service.j2", variables))
     unit = service["Service"]
-    assert unit["ExecStart"] == "/usr/local/libexec/pinka/vllm-deploy serve"
+    assert unit["ExecStart"] == "/usr/local/libexec/pinka/vllm-deploy serve --peer root"
     assert (unit["StandardInput"], unit["StandardOutput"]) == ("socket", "socket")
     assert unit["ReadWritePaths"] == "/etc/pinka/vllm"
     assert unit["PrivateNetwork"] == "yes"

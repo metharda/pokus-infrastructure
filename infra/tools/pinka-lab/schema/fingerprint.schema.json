@@ -22,16 +22,32 @@
   },
   "$defs": {
     "nullable_string": {"type": ["string", "null"]},
-    "deployment": {
-      "description": "Provenance of a deployed component (`DEPLOYED_FROM.json`), or null when it is not deployed.",
-      "type": ["object", "null"],
+    "source": {
+      "description": "Where a deployed release or content package came from.",
+      "type": "object",
       "additionalProperties": false,
-      "required": ["component", "tag", "commit", "tree"],
+      "required": ["tag", "commit", "tree"],
       "properties": {
-        "component": {"description": "Component name (`platform`, `catalog`).", "type": ["string", "null"]},
         "tag": {"description": "Release tag deployed.", "type": ["string", "null"]},
         "commit": {"description": "Commit the tag points to.", "type": ["string", "null"]},
         "tree": {"description": "Tree hash of the deployed subtree.", "type": ["string", "null"]}
+      }
+    },
+    "platform": {
+      "description": "The active platform (`/etc/pinka/platform/active.json`), or null without one.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["name", "version", "manifest_sha256", "release", "content"],
+      "properties": {
+        "name": {"description": "Platform name.", "type": ["string", "null"]},
+        "version": {"description": "Release version.", "type": ["string", "null"]},
+        "manifest_sha256": {"description": "sha256 of the release's manifest.", "type": ["string", "null"]},
+        "release": {"$ref": "#/$defs/source"},
+        "content": {
+          "description": "The content packages by name.",
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/source"}
+        }
       }
     },
     "fingerprint": {
@@ -157,8 +173,7 @@
             "infra_dirty",
             "versions_lock_sha256",
             "host_vars_sha256",
-            "platform",
-            "catalog"
+            "platform"
           ],
           "properties": {
             "infra_commit": {"description": "Repository commit bootstrap ran from.", "type": ["string", "null"]},
@@ -166,8 +181,7 @@
             "infra_dirty": {"description": "Whether `infra/` had uncommitted changes.", "type": ["boolean", "null"]},
             "versions_lock_sha256": {"description": "sha256 of `versions.lock.yml`.", "type": ["string", "null"]},
             "host_vars_sha256": {"description": "sha256 of the host_vars file.", "type": ["string", "null"]},
-            "platform": {"description": "Deployed platform.", "$ref": "#/$defs/deployment"},
-            "catalog": {"description": "Deployed catalog.", "$ref": "#/$defs/deployment"}
+            "platform": {"description": "The active platform.", "$ref": "#/$defs/platform"}
           }
         },
         "wsl": {

@@ -23,3 +23,8 @@ compose_images: "{{ pinka_versions.containers.images }}"
 # Further variables for the .env file; every role that includes the same
 # project must pass the same values (the file is shared).
 compose_extra_env: {}
+# Group of the database socket directory: the active platform's <platform>-db,
+# or root without a platform (the exporter joins it, §7.8).
+compose_db_socket_group: >-
+  {{ ((active_platform | default({}, true)).database | default({}, true)).socket_group
+     | default('root', true) }}

@@ -104,8 +104,8 @@ The validator derives every name the manifest would create (accounts, groups, un
 
 | Namespace | Meaning | Names | Patterns |
 | --- | --- | --- | --- |
-| `accounts_groups` | Accounts and groups; also every account or group already on the host. | `pinka`, `pinka-admin`, `pinka-build`, `pinka-datasets`, `pinka-lab`, `pinka-monitor`, `pinka-query`, `pinka-restricted`, `root` | — |
-| `units` | systemd units, targets and slices (names without .service). | `pinka-backup`, `pinka-backup-prune`, `pinka-compose`, `pinka-core`, `pinka-docker-incus-compat`, `pinka-docs`, `pinka-gpu-arbiter`, `pinka-gpu-job@`, `pinka-health-gate`, `pinka-hook@`, `pinka-incus-events`, `pinka-inference`, `pinka-inference-control`, `pinka-inference-forwarder`, `pinka-lab.target`, `pinka-nftables`, `pinka-observability`, `pinka-otlp-agent`, `pinka-pgdump`, `pinka-platform.target`, `pinka-run-network`, `pinka-security-patch`, `pinka-services.slice`, `pinka-session-start`, `pinka-sleep-inhibit`, `pinka-vllm-deploy`, `pinka-vllm-deploy@`, `pinka-vm-otlp-address`, `pinka-window-expiry` | — |
+| `accounts_groups` | Accounts and groups; also every account or group already on the host. | `pinka`, `pinka-admin`, `pinka-build`, `pinka-datasets`, `pinka-inference`, `pinka-lab`, `pinka-monitor`, `pinka-query`, `pinka-restricted`, `root` | — |
+| `units` | systemd units, targets and slices (names without .service). | `pinka-backup`, `pinka-backup-prune`, `pinka-compose`, `pinka-core`, `pinka-docker-incus-compat`, `pinka-docs`, `pinka-gpu-arbiter`, `pinka-gpu-job@`, `pinka-health-gate`, `pinka-hook@`, `pinka-incus-events`, `pinka-inference`, `pinka-inference-control`, `pinka-inference-forwarder`, `pinka-lab.target`, `pinka-nftables`, `pinka-observability`, `pinka-otlp-agent`, `pinka-pgdump`, `pinka-platform.target`, `pinka-run-network`, `pinka-run-network@`, `pinka-security-patch`, `pinka-services.slice`, `pinka-session-start`, `pinka-sleep-inhibit`, `pinka-vllm-deploy`, `pinka-vllm-deploy@`, `pinka-vm-otlp-address`, `pinka-window-expiry` | — |
 | `containers` | Container names. | `pinka-cadvisor`, `pinka-gpu-exporter`, `pinka-grafana`, `pinka-loki`, `pinka-node-exporter`, `pinka-opa`, `pinka-otel-gateway`, `pinka-otel-journald`, `pinka-postgres`, `pinka-postgres-exporter`, `pinka-prometheus`, `pinka-query-proxy`, `pinka-tempo`, `pinka-vllm` | `pinka-job-*` |
 | `incus` | Incus networks, network ACLs, interfaces, projects and storage pools. | `bench`, `build`, `pinka-build0`, `pinka-otlp0`, `pinka-run-default`, `pinka-targets` | `r-*` |
 | `postgresql_roles` | PostgreSQL roles. | `pinka_monitor`, `postgres` | `pg_*` |
@@ -115,7 +115,7 @@ The validator derives every name the manifest would create (accounts, groups, un
 
 | Below | Reserved path segments |
 | --- | --- |
-| `/srv/pinka` | `artifacts`, `backups`, `datasets`, `images`, `models`, `platforms`, `reports`, `restricted`, `services`, `shared`, `state`, `training`, `users` |
+| `/srv/pinka` | `backups`, `datasets`, `images`, `models`, `platforms`, `restricted`, `services`, `shared`, `state`, `training`, `users` |
 | `/etc/pinka` | `gpu`, `incus`, `inference`, `platform`, `postgres-reader`, `qa`, `secrets`, `signing`, `vllm` |
 | `/var/lib/pinka` | `fingerprint`, `git`, `gpu`, `platforms`, `run-networks`, `sessions`, `staging` |
 | `/run/pinka` | `gpu.sock`, `otlp`, `platform`, `postgres`, `postgres-reader`, `query.sock`, `run-network.sock` |

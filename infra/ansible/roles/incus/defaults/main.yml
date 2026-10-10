@@ -54,16 +54,19 @@ incus_user_limits:
   limits.disk: 60GiB
 incus_user_instance: {cpu: "1", memory: 1GiB, root_size: 10GiB}
 
-# Client certificates of the platform services (contracts.md#paths, #incus).
+# Client certificates of the platform services (§12.6): those of the active
+# platform's rendering, {account, short (the directory), name, projects}.
 incus_cert_dir: /etc/pinka/incus
-incus_service_certificates:
-  - {account: potka-orch, short: orch, name: potka-orch, projects: [bench, build]}
-  - {account: potka-exec, short: exec, name: potka-exec, projects: [bench]}
-  - {account: potka-inject, short: inject, name: potka-inject, projects: [bench]}
-  - {account: potka-verify, short: verify, name: potka-verify, projects: [bench]}
+incus_service_certificates: "{{ (active_platform | default({}, true)).incus_certificates | default([]) }}"
 # Metrics-only certificate for Prometheus (Incus certificate type "metrics").
 incus_metrics_certificate: {account: root, short: metrics, name: pinka-metrics, type: metrics}
 # Validity of generated client certificates (rotate.yml renews them).
 incus_certificate_days: 3650
 # Journal identifier of the lifecycle and logging events (collector input).
 incus_events_identifier: pinka-incus-events
+
+# The run-network helper (§7.7): its socket belongs to the active platform's
+# controller account, or to root without a platform.
+incus_run_network_owner: >-
+  {{ ((active_platform | default({}, true)).run_network | default({}, true)).socket_owner
+     | default('root', true) }}

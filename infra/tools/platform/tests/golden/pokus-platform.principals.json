@@ -12,43 +12,68 @@
       "name": "orch",
       "profile": "controller",
       "account": "potka-orch",
-      "uid": 2001
+      "uid": 2001,
+      "config": null,
+      "secrets_dir": null,
+      "state": {
+        "artifacts": "/srv/pinka/platforms/potka/state/orch/artifacts"
+      }
     },
     {
       "name": "agent",
       "profile": "untrusted-agent",
       "account": "potka-agent",
-      "uid": 2002
+      "uid": 2002,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     },
     {
       "name": "gw",
       "profile": "inference-broker",
       "account": "potka-gw",
-      "uid": 2003
+      "uid": 2003,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     },
     {
       "name": "exec",
       "profile": "sandbox-operator",
       "account": "potka-exec",
-      "uid": 2004
+      "uid": 2004,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     },
     {
       "name": "inject",
       "profile": "restricted-operator",
       "account": "potka-inject",
-      "uid": 2005
+      "uid": 2005,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     },
     {
       "name": "verify",
       "profile": "restricted-operator",
       "account": "potka-verify",
-      "uid": 2006
+      "uid": 2006,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     },
     {
       "name": "eval",
       "profile": "restricted-reader",
       "account": "potka-eval",
-      "uid": 2007
+      "uid": 2007,
+      "config": null,
+      "secrets_dir": null,
+      "state": {
+        "reports": "/srv/pinka/platforms/potka/state/eval/reports"
+      }
     }
   ],
   "jobs": [
@@ -67,6 +92,7 @@
       "owner": "potka-orch",
       "group": "potka-orch-api",
       "mode": "0660",
+      "fd_name": "api",
       "agent_dedicated": false,
       "clients": {
         "profiles": [],
@@ -89,6 +115,7 @@
       "owner": "potka-orch",
       "group": "potka-orch-svc",
       "mode": "0660",
+      "fd_name": "svc",
       "agent_dedicated": false,
       "clients": {
         "profiles": [
@@ -116,6 +143,7 @@
       "owner": "potka-orch",
       "group": "potka-orch-agent-session",
       "mode": "0660",
+      "fd_name": "agent-session",
       "agent_dedicated": true,
       "clients": {
         "profiles": [
@@ -136,6 +164,7 @@
       "owner": "potka-gw",
       "group": "potka-gw-agent",
       "mode": "0660",
+      "fd_name": "agent",
       "agent_dedicated": true,
       "clients": {
         "profiles": [
@@ -156,6 +185,7 @@
       "owner": "potka-gw",
       "group": "potka-gw-svc",
       "mode": "0660",
+      "fd_name": "svc",
       "agent_dedicated": false,
       "clients": {
         "profiles": [
@@ -176,6 +206,7 @@
       "owner": "potka-exec",
       "group": "potka-exec-agent",
       "mode": "0660",
+      "fd_name": "agent",
       "agent_dedicated": true,
       "clients": {
         "profiles": [
@@ -196,6 +227,7 @@
       "owner": "potka-exec",
       "group": "potka-exec-api",
       "mode": "0660",
+      "fd_name": "api",
       "agent_dedicated": false,
       "clients": {
         "profiles": [
@@ -216,6 +248,7 @@
       "owner": "potka-inject",
       "group": "potka-inject-api",
       "mode": "0660",
+      "fd_name": "api",
       "agent_dedicated": false,
       "clients": {
         "profiles": [
@@ -236,6 +269,7 @@
       "owner": "potka-verify",
       "group": "potka-verify-api",
       "mode": "0660",
+      "fd_name": "api",
       "agent_dedicated": false,
       "clients": {
         "profiles": [

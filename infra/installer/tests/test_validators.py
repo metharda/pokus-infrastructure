@@ -22,7 +22,7 @@ def test_hostname_bad(value: str) -> None:
 
 @pytest.mark.parametrize("value", ["researcher1", "_svc", "a-b_c", "r" * 32])
 def test_username_ok(value: str) -> None:
-    assert validators.username(value, ["potka-orch"]) is None
+    assert validators.username(value, ["pinka-build"]) is None
 
 
 @pytest.mark.parametrize(
@@ -33,14 +33,12 @@ def test_username_ok(value: str) -> None:
         ("r" * 33, "lower-case"),
         ("root", "reserved"),
         ("docker", "reserved"),
-        ("potka-orch", "service accounts"),
-        ("pinka-new", "service accounts"),
-        ("potka-new", "service accounts"),
-        ("pokus-new", "service accounts"),
+        ("pinka-build", "lab's own accounts"),
+        ("pinka-new", "lab's own accounts"),
     ],
 )
 def test_username_bad(value: str, reason: str) -> None:
-    message = validators.username(value, ["potka-orch"])
+    message = validators.username(value, ["pinka-build"])
     assert message and reason in message
 
 

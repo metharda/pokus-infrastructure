@@ -72,7 +72,7 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(launch[launch.index("--network") + 1], name)
         run_id = "smoke-" + name[2:]
         self.assertIn(
-            f"environment.OTEL_RESOURCE_ATTRIBUTES=potka.run_id={run_id},potka.node=smoke", launch
+            f"environment.OTEL_RESOURCE_ATTRIBUTES=pinka.probe_id={run_id},pinka.node=smoke", launch
         )
         self.assertIn("security.nesting=false", launch)
         nc_ports = [c[-1] for c in system.calls if "nc" in c]

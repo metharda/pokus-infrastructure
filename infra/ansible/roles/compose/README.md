@@ -8,8 +8,10 @@ E15):
   and writes `.env` with every image pinned by digest (from
   `versions.lock.yml`), the ports of `contracts.md` and the paths; the Compose
   file refers to them as `${...}` and fails if one is missing;
-- adds the Docker data root, the GIDs of the groups `pinka` and `potka-svc`
-  (containers join them to reach the socket directories) and, for projects
+- adds the Docker data root, the GIDs of the group `pinka` and of the active
+  platform's database socket group `<platform>-db` (`root` without a
+  platform; containers join them to reach the socket directories) and, for
+  projects
   with `compose_gpu`, `COMPOSE_PROFILES` (`gpu-cdi` or `gpu-runtime`, after
   the GPU method the docker role wrote into `/etc/docker/daemon.json`);
 - checks the project with `docker compose config`;

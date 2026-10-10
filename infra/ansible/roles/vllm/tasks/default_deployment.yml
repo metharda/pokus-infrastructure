@@ -3,7 +3,7 @@
 # The default deployment from host_vars (BUILD_PROMPT §7.11, contracts.md#inference):
 # /etc/pinka/vllm/deployments/<id>@<version>.yml. Deployment files are
 # immutable: a different spec under an existing id and version is refused.
-- name: Read the model lock and the catalog
+- name: Read the model lock and the starter list of models
   ansible.builtin.set_fact:
     vllm_lock: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.lock.yml') | from_yaml }}"
     vllm_catalog: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.catalog.yml') | from_yaml }}"

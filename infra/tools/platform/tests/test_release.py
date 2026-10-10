@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
-from platform_testlib import CONTRACT, dump, manifest, write_release
+from deploy_testlib import SPECIAL_CASES, fake_devices, make_special
+from platform_testlib import CONTRACT, FIRST_PLATFORM, VALID, dump, manifest, write_release
 
-from pinka_platform import cli, validate
+from pinka_platform import cli, release, validate
 
 
 def problem_codes(release: Path, *, built: bool = False) -> list[str]:
@@ -16,7 +17,7 @@ def problem_codes(release: Path, *, built: bool = False) -> list[str]:
     return [p.code for p in result.problems]
 
 
-@pytest.mark.parametrize("fixture", ["refplat", "potka", "allprof"])
+@pytest.mark.parametrize("fixture", VALID)
 def test_complete_releases_pass(tmp_path: Path, fixture: str) -> None:
     release = write_release(tmp_path, manifest(fixture), built=True)
     assert problem_codes(release, built=True) == []
@@ -73,6 +74,49 @@ def test_symlinks_inside_the_release_are_fine(tmp_path: Path) -> None:
     assert problem_codes(release) == []
 
 
+@pytest.mark.parametrize(("kind", "code"), SPECIAL_CASES.items())
+def test_special_files_and_setid_bits_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, code: str
+) -> None:
+    # Owner decision on 3d.2: none in the staged sources.
+    built = write_release(tmp_path, manifest("allprof"))
+    make_special(built / "docs" / "planted", kind)
+    monkeypatch.setattr(release, "_lstat", fake_devices(kind))
+    assert problem_codes(built) == [code]
+
+
+@pytest.mark.parametrize(
+    ("relative", "text", "code"),
+    [
+        ("authz.rego", "package system.authz\n", "policy-package"),
+        ("system/data.json", "{}", "policy-data"),
+        ("data.json", '{"pinka": {}}', "policy-data"),
+    ],
+)
+def test_a_policy_bundle_in_infra_namespaces_is_refused(
+    tmp_path: Path, relative: str, text: str, code: str
+) -> None:
+    # OPA's own authorization and infra's placeholder (§7.10).
+    built = write_release(tmp_path, manifest("allprof"))
+    path = built / "policy" / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    assert problem_codes(built) == [code]
+
+
+def test_python_uv_needs_pyproject_with_a_locked_build_backend(tmp_path: Path) -> None:
+    built = write_release(tmp_path, manifest("refplat"))
+    pyproject = built / "pyproject.toml"
+    pyproject.write_text("[project]\nname = 'refplat'\n[build-system]\nrequires = ['hatchling']\n")
+    assert problem_codes(built) == ["build-backend-unlocked"]
+    pyproject.write_text("[project]\nname = 'refplat'\n")  # no build system: nothing to build
+    assert problem_codes(built) == []
+    pyproject.write_text("[project\n")
+    assert problem_codes(built) == ["pyproject-invalid"]
+    pyproject.unlink()
+    assert problem_codes(built) == ["pyproject-missing"]
+
+
 def test_config_schema_must_be_json(tmp_path: Path) -> None:
     release = write_release(tmp_path, manifest("allprof"))
     (release / "schemas" / "ctl.schema.json").write_text("not json")
@@ -113,11 +157,13 @@ def test_manifest_must_be_a_regular_utf8_file(tmp_path: Path) -> None:
 
 
 def test_cli_prints_the_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    release = write_release(tmp_path, manifest("potka"))
+    data = manifest(FIRST_PLATFORM)
+    release = write_release(tmp_path, data)
     assert cli.main(["validate", str(release), "--no-host-check"]) == cli.EXIT_VALID
     out = capsys.readouterr().out
-    assert out.startswith("platform potka 0.1.0 (python-uv)\n")
-    assert "socket gw/agent: untrusted-agent  [dedicated to the agent]" in out
+    assert out.startswith(f"platform {data['name']} 0.1.0 (python-uv)\n")
+    broker = next(s["name"] for s in data["services"] if s["profile"] == "inference-broker")
+    assert f"socket {broker}/agent: untrusted-agent  [dedicated to the agent]" in out
 
 
 def test_cli_refuses_with_every_problem(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

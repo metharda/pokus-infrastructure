@@ -16,8 +16,9 @@ doctor_packages:
 doctor_runs_lab: "{{ node_role in ['full', 'lab'] }}"
 doctor_serves_inference: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
 
-# The platform's units when it is deployed here (platform role).
-doctor_platform: "{{ doctor_runs_lab and (platform_enabled | default(false) | bool) }}"
+# The platform's units, sockets and hardening: checked once the switch with the
+# hooks starts them (plan step 3d.4); until then nothing of the platform runs.
+doctor_platform: false
 # An inference node configured with its paired lab node runs the control endpoint.
 doctor_inference_control: "{{ node_role == 'inference' and inference_lab_node | length > 0 }}"
 
@@ -38,7 +39,7 @@ doctor_units: >-
 doctor_hardening: >-
   {{ (platform_units | pinka_unit_hardening(platform_denied_paths, platform_agent_denied_paths)
       if doctor_platform else [])
-     + ([{'unit': inference_control_unit, 'account': 'potka-orch'}]
+     + ([{'unit': inference_control_unit, 'account': inference_control_account}]
         | pinka_unit_hardening(inference_control_denied_paths)
         if node_role == 'inference' else []) }}
 

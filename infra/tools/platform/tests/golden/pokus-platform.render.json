@@ -1,0 +1,322 @@
+{
+  "backup": {
+    "database": true,
+    "paths": [
+      "/srv/pinka/platforms/potka/state/orch/artifacts",
+      "/srv/pinka/platforms/potka/state/eval/reports"
+    ]
+  },
+  "cli": {
+    "content": "#!/bin/sh\n# Managed by pinka (platform potka, contract v2). Local changes will be overwritten.\n# potka: the researchers' CLI of platform potka.\nexec /srv/pinka/platforms/potka/releases/current/.venv/bin/potka \"$@\"\n",
+    "link": "/usr/local/bin/potka",
+    "name": "potka",
+    "wrapper": "/usr/local/lib/pinka/platform/cli/potka"
+  },
+  "config_files": [],
+  "controller": "potka-orch",
+  "dashboards": {
+    "database": "potka",
+    "dir": "/srv/pinka/platforms/potka/releases/potka-v1/dashboards",
+    "folder": "potka",
+    "role": "potka_grafana",
+    "socket_dir": "/run/pinka/postgres-reader"
+  },
+  "database": {
+    "all_roles": [
+      "potka_controller",
+      "potka_eval",
+      "potka_exec",
+      "potka_grafana",
+      "potka_gw",
+      "potka_inference_broker",
+      "potka_inject",
+      "potka_migrator",
+      "potka_orch",
+      "potka_reader",
+      "potka_restricted_operator",
+      "potka_restricted_reader",
+      "potka_sandbox_operator",
+      "potka_verify"
+    ],
+    "database": "potka",
+    "grafana": "potka_grafana",
+    "group_roles": [
+      "potka_controller",
+      "potka_inference_broker",
+      "potka_restricted_operator",
+      "potka_restricted_reader",
+      "potka_sandbox_operator"
+    ],
+    "logins": [
+      {
+        "account": "potka-orch",
+        "group_role": "potka_controller",
+        "profile": "controller",
+        "role": "potka_orch"
+      },
+      {
+        "account": "potka-gw",
+        "group_role": "potka_inference_broker",
+        "profile": "inference-broker",
+        "role": "potka_gw"
+      },
+      {
+        "account": "potka-exec",
+        "group_role": "potka_sandbox_operator",
+        "profile": "sandbox-operator",
+        "role": "potka_exec"
+      },
+      {
+        "account": "potka-inject",
+        "group_role": "potka_restricted_operator",
+        "profile": "restricted-operator",
+        "role": "potka_inject"
+      },
+      {
+        "account": "potka-verify",
+        "group_role": "potka_restricted_operator",
+        "profile": "restricted-operator",
+        "role": "potka_verify"
+      },
+      {
+        "account": "potka-eval",
+        "group_role": "potka_restricted_reader",
+        "profile": "restricted-reader",
+        "role": "potka_eval"
+      }
+    ],
+    "migrator": "potka_migrator",
+    "password_dir": "/etc/pinka/secrets/postgres",
+    "password_files": [
+      {
+        "group": "potka-orch",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_orch"
+      },
+      {
+        "group": "potka-gw",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_gw"
+      },
+      {
+        "group": "potka-exec",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_exec"
+      },
+      {
+        "group": "potka-inject",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_inject"
+      },
+      {
+        "group": "potka-verify",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_verify"
+      },
+      {
+        "group": "potka-eval",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_eval"
+      },
+      {
+        "group": "potka-migrate",
+        "mode": "0640",
+        "owner": "root",
+        "role": "potka_migrator"
+      }
+    ],
+    "platform": "potka",
+    "reader": "potka_reader",
+    "reader_credential": "/etc/pinka/postgres-reader/pgpass",
+    "restricted_allowed": [
+      "potka_controller",
+      "potka_eval",
+      "potka_inject",
+      "potka_migrator",
+      "potka_orch",
+      "potka_restricted_operator",
+      "potka_restricted_reader",
+      "potka_verify"
+    ],
+    "socket_group": "potka-db",
+    "stale_roles": [],
+    "vault_roles": [
+      "potka_eval",
+      "potka_exec",
+      "potka_grafana",
+      "potka_gw",
+      "potka_inject",
+      "potka_migrator",
+      "potka_orch",
+      "potka_reader",
+      "potka_verify"
+    ]
+  },
+  "directories": [
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/potka/state"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/potka/state/orch"
+    },
+    {
+      "group": "potka-orch",
+      "mode": "0700",
+      "owner": "potka-orch",
+      "path": "/srv/pinka/platforms/potka/state/orch/artifacts"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/potka/state/eval"
+    },
+    {
+      "group": "potka-eval",
+      "mode": "0700",
+      "owner": "potka-eval",
+      "path": "/srv/pinka/platforms/potka/state/eval/reports"
+    },
+    {
+      "group": "potka-orch",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/signing/potka"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa/trusted-keys"
+    },
+    {
+      "group": "potka-orch",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/qa/attestations"
+    },
+    {
+      "group": "root",
+      "mode": "0711",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/postgres"
+    }
+  ],
+  "incus_certificates": [
+    {
+      "account": "potka-orch",
+      "dir": "/etc/pinka/incus/potka-orch",
+      "name": "potka-orch",
+      "projects": [
+        "bench",
+        "build"
+      ],
+      "short": "potka-orch"
+    },
+    {
+      "account": "potka-exec",
+      "dir": "/etc/pinka/incus/potka-exec",
+      "name": "potka-exec",
+      "projects": [
+        "bench"
+      ],
+      "short": "potka-exec"
+    },
+    {
+      "account": "potka-inject",
+      "dir": "/etc/pinka/incus/potka-inject",
+      "name": "potka-inject",
+      "projects": [
+        "bench"
+      ],
+      "short": "potka-inject"
+    },
+    {
+      "account": "potka-verify",
+      "dir": "/etc/pinka/incus/potka-verify",
+      "name": "potka-verify",
+      "projects": [
+        "bench"
+      ],
+      "short": "potka-verify"
+    }
+  ],
+  "opa": {
+    "bundle": "/srv/pinka/platforms/potka/releases/potka-v1/policy",
+    "decision_path": "potka/action/decision"
+  },
+  "platform": "potka",
+  "render_version": 1,
+  "requires": [
+    "gpu",
+    "incus",
+    "inference",
+    "opa",
+    "postgres",
+    "telemetry"
+  ],
+  "run_network": {
+    "socket_owner": "potka-orch"
+  },
+  "secrets": [],
+  "service_units": [
+    "potka-orch.service",
+    "potka-agent.service",
+    "potka-gw.service",
+    "potka-exec.service",
+    "potka-inject.service",
+    "potka-verify.service",
+    "potka-eval.service"
+  ],
+  "signing": {
+    "dir": "/etc/pinka/signing/potka",
+    "key": "/etc/pinka/signing/potka/signing.key",
+    "owner": "potka-orch",
+    "pub": "/etc/pinka/signing/potka/signing.pub",
+    "published_dir": "/srv/pinka/shared/signing-keys",
+    "published_prefix": "potka-pinka-lab-"
+  },
+  "socket_units": [
+    "potka-orch-api.socket",
+    "potka-orch-svc.socket",
+    "potka-orch-agent-session.socket",
+    "potka-gw-agent.socket",
+    "potka-gw-svc.socket",
+    "potka-exec-agent.socket",
+    "potka-exec-api.socket",
+    "potka-inject-api.socket",
+    "potka-verify-api.socket"
+  ],
+  "stale_units": [],
+  "telemetry_labels": [
+    "potka.run_id",
+    "potka.node"
+  ],
+  "tools": [
+    "quarto"
+  ]
+}

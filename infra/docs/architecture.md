@@ -119,7 +119,7 @@ accounts and groups that own them are listed in
 | Path | Owner:group | Mode | Default ACL | Notes |
 | --- | --- | --- | --- | --- |
 | `/etc/pinka/` | root:root | 0755 | — | host profile, bootstrap state, rendered non-secret config |
-| `/etc/pinka/secrets/` | root:potka-svc | 0750 | — | rendered secrets (files 0640 or per-service 0600) |
+| `/etc/pinka/secrets/` | root:root | 0711 | — | rendered secrets, one directory per platform account (0750 root:&lt;account&gt;) |
 | `/var/lib/pinka/` | root:root | 0755 | — | service homes and lab state |
 | `/etc/pinka/platform/` | root:root | 0755 | — | the active platform: active.json, principals.json, endpoints.toml |
 | `/var/lib/pinka/git/` | root:root | 0700 | — | root-only Git mirrors of the platform and content sources |
@@ -130,10 +130,12 @@ accounts and groups that own them are listed in
 | `/srv/pinka/` | root:pinka | 2775 | — | research space root |
 | `/srv/pinka/platforms/` | root:root | 0755 | — | per platform: releases/&lt;ref&gt;/, content/&lt;package&gt;/&lt;ref&gt;/, state/ |
 | `/srv/pinka/restricted/` | root:pinka-restricted | 0750 | — | restricted data per platform, files 0640 |
-| `/srv/pinka/models/` | potka-orch:pinka | 0755 | — | model weights, 0444 after verification |
+| `/srv/pinka/models/` | root:pinka | 0755 | — | model weights, 0444 after verification |
+| `/srv/pinka/models/adapters/` | root:pinka | 0755 | — | registered adapters, read-only, with lineage |
+| `/srv/pinka/training/` | root:root | 0755 | — | parent of the training areas |
+| `/srv/pinka/training/datasets/` | root:pinka-datasets | 0750 | — | published training datasets, files 0640, each with PROVENANCE.json |
+| `/srv/pinka/training/jobs/` | root:root | 0755 | — | per job run: output/ and checkpoints/, owned by the job's account |
 | `/srv/pinka/datasets/` | root:pinka | 2775 | group:pinka:rwX | shared datasets |
-| `/srv/pinka/artifacts/` | potka-orch:pinka | 0750 | — | content-addressed, write-once 0440 |
-| `/srv/pinka/reports/` | potka-eval:pinka | 2775 | — | evaluation reports |
 | `/srv/pinka/images/` | root:pinka-admin | 0750 | — | exported golden image tarballs with sha256 |
 | `/srv/pinka/shared/` | root:pinka | 2770 | group:pinka:rwX | shared files |
 | `/srv/pinka/users/` | root:root | 0755 | — | parent of the per-researcher directories |

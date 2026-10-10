@@ -12,7 +12,7 @@ from packaging.version import Version
 from pinka_repo_checks import docs_lint
 
 UNVERIFIED = "last_verified: {date: null, rc: null, by: null}"
-VERIFIED = 'last_verified: {date: 2026-10-01, rc: "infra@abc platform@def catalog@012", by: run-1}'
+VERIFIED = 'last_verified: {date: 2026-10-01, rc: "infra@abc platform@def cases@012", by: run-1}'
 
 
 def front(page_type: str = "reference", last_verified: str = UNVERIFIED) -> str:

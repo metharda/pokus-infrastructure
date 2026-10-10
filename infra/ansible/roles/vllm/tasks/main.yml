@@ -4,6 +4,10 @@
 # Compose project, the serving profiles, the deploy helper behind
 # pinka-vllm-deploy.socket (C3), the default deployment and the serving
 # verification. Applied with gpu_inference on full and inference nodes.
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
 - name: Create the vLLM directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -66,7 +70,7 @@
     path: /etc/pinka/vllm/current.yml
   register: vllm_current
 
-# The orchestrator's choice wins: once current.yml exists, it is re-rendered
+# The platform's choice wins: once current.yml exists, it is re-rendered
 # (a new profile or helper may change it) and never replaced by the default.
 - name: Choose the deployment to serve
   ansible.builtin.set_fact:

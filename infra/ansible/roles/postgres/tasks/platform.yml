@@ -1,0 +1,122 @@
+# Managed by pinka (ansible/roles/postgres/tasks/platform.yml). Local changes will be overwritten.
+#
+# The active platform's database (BUILD_PROMPT §7.8, §12.5), run by the
+# platform role with a fresh rendering (active_platform.database): the socket
+# directory's group and pg_hba.conf for its roles, the password files from the
+# vault, the bootstrap SQL (database, login and group roles, the migrator as
+# owner of the schemas public and restricted, the revokes), the passwords,
+# and the restricted-schema check. A violation of the check fails the
+# deployment; it is revoked either way. The SQL goes to psql on stdin, so no
+# file of the platform enters the container's configuration directory.
+
+- name: Check the platform's database passwords in the vault
+  ansible.builtin.assert:
+    that:
+      - postgres_platform.vault_roles | difference(vault_postgres_passwords.keys() | list) | length == 0
+      - >-
+        postgres_platform.vault_roles | map('extract', vault_postgres_passwords) | map('string')
+        | reject('match', '^[ -~]+$') | list | length == 0
+    fail_msg: >-
+      group_vars/all/vault.yml must define vault_postgres_passwords for
+      {{ postgres_platform.vault_roles | join(', ') }} (see vault.yml.example), each
+      non-empty printable ASCII (PostgreSQL normalizes other characters).
+    quiet: true
+  no_log: true
+
+- name: Give the socket directory to the platform's database group
+  ansible.builtin.include_tasks: sockets.yml
+
+- name: Render pg_hba.conf for the platform's roles and start the containers
+  ansible.builtin.include_tasks: config.yml
+
+- name: Create the directory of the database password files
+  ansible.builtin.file:
+    path: "{{ postgres_password_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0711"
+
+- name: Write the database password files (0640 root:<account>)
+  ansible.builtin.copy:
+    content: "{{ vault_postgres_passwords[item.role] }}"
+    dest: "{{ postgres_password_dir }}/{{ item.role }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ postgres_platform.password_files }}"
+  loop_control:
+    label: "{{ item.role }}"
+  no_log: true
+
+- name: Create the directory of the reader credential
+  ansible.builtin.file:
+    path: "{{ postgres_reader_credential | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# libpq ignores a password file that its group may read, so researchers copy
+# this file to ~/.pgpass (0600) or let a client read the password from it.
+- name: Write the reader credential
+  ansible.builtin.template:
+    src: pgpass.j2
+    dest: "{{ postgres_reader_credential }}"
+    owner: root
+    group: pinka
+    mode: "0640"
+  no_log: true
+
+- name: Wait until PostgreSQL accepts the superuser
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--tuples-only', '--no-align', '--command', 'SELECT 1'] }}"
+  register: postgres_ready
+  retries: 20
+  delay: 3
+  until: postgres_ready.rc == 0
+  changed_when: false
+
+- name: Create the platform's database, roles and schemas
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--quiet'] }}"
+    stdin: "{{ postgres_platform.bootstrap_sql }}"
+  register: postgres_platform_bootstrap
+  changed_when: "'pinka-changed:' in postgres_platform_bootstrap.stderr"
+
+- name: Read the stored password secrets
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--tuples-only', '--no-align', '--command', postgres_secrets_query] }}"
+  register: postgres_stored
+  changed_when: false
+  no_log: true
+
+- name: Set the passwords whose stored secret does not match
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--quiet'] }}"
+    stdin: >-
+      ALTER ROLE "{{ item }}" PASSWORD '{{ vault_postgres_passwords[item] | pinka_scram_verifier }}';
+  loop: "{{ postgres_platform_logins }}"
+  when: >-
+    not (vault_postgres_passwords[item]
+         | pinka_scram_matches((postgres_stored.stdout | from_json).get(item)))
+  changed_when: true
+  no_log: true
+
+# Runs after every migration (the migrate hook follows with plan step 3d.4).
+- name: Check schema restricted (revoke and report every forbidden access)
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--quiet', '--dbname=' ~ postgres_platform.database] }}"
+    stdin: "{{ postgres_platform.restricted_check_sql }}"
+  register: postgres_restricted_check
+  changed_when: "'pinka-' in postgres_restricted_check.stderr"
+
+- name: Fail the deployment on a forbidden grant in schema restricted
+  ansible.builtin.fail:
+    msg: >-
+      A grant reaches schema restricted from a role outside the controller,
+      restricted-operator and restricted-reader profiles; it has been revoked,
+      and the release does not start:
+      {{ postgres_restricted_check.stderr_lines | select('search', 'pinka-violation:')
+         | map('regex_replace', '^.*pinka-violation: ', '') | join('; ') }}
+  when: "'pinka-violation:' in postgres_restricted_check.stderr"

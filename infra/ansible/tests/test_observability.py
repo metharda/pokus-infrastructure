@@ -46,14 +46,24 @@ DASHBOARDS = sorted((CONFIG / "grafana" / "dashboards").glob("*.json"))
 LISTEN_KEYS = re.compile(r"(endpoint|listen_address|http_listen_address|grpc_listen_address|host)$")
 
 
-def obs_vars(vm: bool = False, gpu: bool = False, node_role: str = "full") -> dict[str, Any]:
+# What the rendering of a platform with a database and dashboards holds.
+PLATFORM = {
+    "database": {"platform": "demo", "database": "demo", "grafana": "demo_grafana"},
+    "dashboards": {"folder": "demo", "dir": "/srv/pinka/platforms/demo/releases/v1/dashboards"},
+}
+
+
+def obs_vars(
+    vm: bool = False, gpu: bool = False, node_role: str = "full", platform: bool = True
+) -> dict[str, Any]:
     profile = fixture_profile("ubuntu2404-baremetal-nvidia-driver-loaded")
     variables: dict[str, Any] = {
         "host_profile": profile,
         "pinka_features": {**profile["features"], "vm_targets": vm, "gpu_inference": gpu},
         "node_role": node_role,
-        "vault_postgres_passwords": {"potka_grafana": "test"},
+        "vault_postgres_passwords": {"demo_grafana": "test"},
         "vault_grafana_admin_password": "test-admin",
+        "active_platform": PLATFORM if platform else {},
     }
     return ansible_vars(
         GROUP_VARS,
@@ -178,24 +188,47 @@ def test_internal_ports_do_not_collide() -> None:
 def test_grafana_datasources() -> None:
     config = rendered("grafana/provisioning/datasources/pinka.yaml")
     sources = {d["uid"]: d for d in config["datasources"]}
-    assert set(sources) == {"prometheus", "loki", "tempo", "postgres"}
+    assert set(sources) == {"prometheus", "loki", "tempo", "platform-postgres"}
     for uid in ("prometheus", "loki", "tempo"):
         assert sources[uid]["url"].startswith("http://127.0.0.1:"), uid
-    postgres = sources["postgres"]
+    postgres = sources["platform-postgres"]
+    assert postgres["name"] == "demo PostgreSQL"
     assert postgres["url"] == "/run/pinka/postgres-reader"
-    assert postgres["user"] == "potka_grafana"
+    assert postgres["user"] == "demo_grafana"
+    assert postgres["jsonData"]["database"] == "demo"
     secret = postgres["secureJsonData"]["password"]
-    assert secret == "$__file{/run/secrets/potka-grafana}"  # noqa: S105 - a file reference
+    assert secret == "$__file{/run/secrets/platform-grafana}"  # noqa: S105 - a file reference
     # "$$" is Grafana's escape for a literal "$".
     assert sources["loki"]["jsonData"]["derivedFields"][0]["url"] == "$${__value.raw}"
+
+
+def test_without_a_platform_there_is_no_database_datasource() -> None:
+    config = rendered("grafana/provisioning/datasources/pinka.yaml", platform=False)
+    assert {d["uid"] for d in config["datasources"]} == {"prometheus", "loki", "tempo"}
+    providers = rendered("grafana/provisioning/dashboards/pinka.yaml", platform=False)["providers"]
+    assert [p["name"] for p in providers] == ["pinka"]
+    assert evaluate("observability_grafana_db_password", obs_vars(platform=False)) == ""
+
+
+def test_platform_dashboards_get_a_folder_of_the_platform() -> None:
+    providers = rendered("grafana/provisioning/dashboards/pinka.yaml")["providers"]
+    platform = next(p for p in providers if p["name"] == "platform")
+    assert platform["folder"] == "demo"
+    assert platform["options"]["path"] == "/etc/grafana/platform-dashboards"
+    assert platform["allowUiUpdates"] is False
+    compose = load_yaml(INFRA / "compose" / "observability" / "compose.yml")
+    volumes = compose["services"]["grafana"]["volumes"]
+    assert "./config/grafana/platform-dashboards:/etc/grafana/platform-dashboards:ro" in volumes
+    assert (
+        "/etc/pinka/secrets/containers/platform-grafana:/run/secrets/platform-grafana:ro" in volumes
+    )
 
 
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.name)
 def test_dashboards_use_provisioned_datasources(path: Path) -> None:
     dashboard = json.loads(path.read_text(encoding="utf-8"))
-    # The run explorer shows the platform's runs (Q8); the others are infra's.
-    owner = "potka" if path.stem == "run-explorer" else "pinka"
-    assert dashboard["uid"] == f"{owner}-{path.stem}"
+    # Infra's own dashboards; a platform's ship with its release (§7.9).
+    assert dashboard["uid"] == f"pinka-{path.stem}"
     assert dashboard["description"].startswith(
         f"Managed by pinka (config/grafana/dashboards/{path.name})."
     )
@@ -204,7 +237,7 @@ def test_dashboards_use_provisioned_datasources(path: Path) -> None:
     assert len(ids) == len(set(ids))
     for panel in dashboard["panels"]:
         for item in [panel, *panel["targets"]]:
-            assert item["datasource"]["uid"] in {"prometheus", "loki", "tempo", "postgres"}
+            assert item["datasource"]["uid"] in {"prometheus", "loki", "tempo"}
 
 
 def test_expected_dashboards() -> None:
@@ -213,13 +246,7 @@ def test_expected_dashboards() -> None:
         "host-overview",
         "incus-targets",
         "lab-services",
-        "run-explorer",
     ]
-    explorer = json.loads((CONFIG / "grafana/dashboards/run-explorer.json").read_text())
-    assert [v["name"] for v in explorer["templating"]["list"]] == ["run_id", "trace_id"]
-    queries = json.dumps(explorer["panels"])
-    assert 'potka_run_id=\\"${run_id}\\"' in queries
-    assert "resource.potka.run_id" in queries
 
 
 def test_vm_listener_unit() -> None:

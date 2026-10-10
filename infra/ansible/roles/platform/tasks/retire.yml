@@ -4,8 +4,9 @@
 # platform, remove its units, sockets and CLI link, lock its accounts, make
 # its database roles NOLOGIN and remove its Incus certificates from the trust
 # store. Its state, database, restricted area and releases stay on disk until
-# `pinka platform purge <name>`. The names come from its active.json record.
-# Its drain hook runs here once hooks exist (plan step 3d.4).
+# `pinka platform purge <name>`. The names come from what was rendered for it
+# (rendered.json) and its active.json record. Its drain hook runs here once
+# hooks exist (plan step 3d.4).
 
 - name: Read what the replaced platform has
   ansible.builtin.command:
@@ -40,6 +41,18 @@
     {{ platform_retire.units | map('regex_replace', '^', '/etc/systemd/system/') | list
        + platform_retire.socket_dirs }}
   notify: Reload systemd
+
+- name: Remove the replaced platform's configuration files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ platform_retire.config_files }}"
+
+- name: Remove the replaced platform's CLI wrapper
+  ansible.builtin.file:
+    path: "{{ platform_retire.cli_wrapper }}"
+    state: absent
+  when: platform_retire.cli_wrapper
 
 - name: Look at the replaced platform's CLI link
   ansible.builtin.stat:

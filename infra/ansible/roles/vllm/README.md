@@ -14,10 +14,14 @@ applied with `gpu_inference` on `full` and `inference` nodes:
 - deployments `/etc/pinka/vllm/deployments/<id>@<version>.yml` (immutable);
   `current.yml` links the active one; `/usr/local/libexec/pinka/vllm-deploy`
   renders `current.yaml` (the `vllm serve --config` file) and `current.env`;
-- the deploy helper (C3): `pinka-vllm-deploy.socket`
-  (`/run/pinka/vllm-deploy.sock`, 0600 `potka-orch`) starts one root helper
-  per connection; it checks the peer is `potka-orch`, validates the request
-  and the deployment, switches and restarts `pinka-inference.service`. No sudo;
+- the deploy helper (C3, until the GPU arbiter replaces it in plan step
+  3d.5): `pinka-vllm-deploy.socket` (`/run/pinka/vllm-deploy.sock`, 0600)
+  belongs to `vllm_deploy_peer`: the active platform's controller account,
+  `pinka-inference` on an inference node, `root` without a platform. It
+  starts one root helper per connection (`serve --peer <account>`); the
+  helper checks the peer's UID (that account or root), validates the request
+  and the deployment, switches and restarts `pinka-inference.service`. No
+  sudo;
 - the default deployment from `vllm_default_deployment` (tool-call parser
   from the model's catalog entry unless overridden), served after
   installation unless `start_after_install: false`; without a deployment the
@@ -37,7 +41,7 @@ See `meta/argument_specs.yml`.
 ## Idempotency
 
 Once `current.yml` exists, the role re-renders that deployment and never
-replaces the orchestrator's choice with the default. The helper writes files
+replaces the platform's choice with the default. The helper writes files
 only when their content changes; `current.env` carries the hash of
 `current.yaml`, so Compose recreates vLLM exactly when the rendering changed.
 The verification reports no change.

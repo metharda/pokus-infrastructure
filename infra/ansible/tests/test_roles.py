@@ -27,7 +27,7 @@ REQUIRED_FILES = (
     "tasks/main.yml",
 )
 # Roles that are only included by other roles, never applied by site.yml.
-HELPER_ROLES = {"pkg", "bootstrap_signal", "compose"}
+HELPER_ROLES = {"pkg", "bootstrap_signal", "compose", "active_platform"}
 HOLD_METHODS = sorted(
     {
         load_yaml(ROLES / "platform_facts" / "vars" / f"{f}.yml")["platform_facts_family"][
@@ -284,7 +284,11 @@ EXISTS_WHEN_RUN = {
         "systemd's own sleep targets"
     ),
     ("observability", "Stop and disable the VM listener address"): "only when its unit file exists",
-    ("platform", "Stop and disable the installed platform units"): "only units whose file exists",
+    ("platform", "Stop the units this release no longer has"): "only units whose file exists",
+    ("platform", "Stop and disable the replaced platform's units"): "only units whose file exists",
+    ("observability", "Install the platform dashboards"): (
+        "only files the find in the published release returned"
+    ),
     ("pkg", "Install the verified key of {{ pkg_repo_name }}"): "downloaded in check mode too",
 }
 

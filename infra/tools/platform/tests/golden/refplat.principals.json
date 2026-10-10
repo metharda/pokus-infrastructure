@@ -12,13 +12,22 @@
       "name": "ctl",
       "profile": "controller",
       "account": "refplat-ctl",
-      "uid": 2001
+      "uid": 2001,
+      "config": "/etc/pinka/platform/config/ctl.json",
+      "secrets_dir": "/etc/pinka/secrets/refplat-ctl",
+      "state": {
+        "records": "/srv/pinka/platforms/refplat/state/ctl/records",
+        "datasets": "/srv/pinka/platforms/refplat/state/ctl/datasets"
+      }
     },
     {
       "name": "agent",
       "profile": "untrusted-agent",
       "account": "refplat-agent",
-      "uid": 2002
+      "uid": 2002,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     }
   ],
   "jobs": [
@@ -37,6 +46,7 @@
       "owner": "refplat-ctl",
       "group": "refplat-ctl-api",
       "mode": "0660",
+      "fd_name": "api",
       "agent_dedicated": false,
       "clients": {
         "profiles": [],
@@ -57,6 +67,7 @@
       "owner": "refplat-ctl",
       "group": "refplat-ctl-session",
       "mode": "0660",
+      "fd_name": "session",
       "agent_dedicated": true,
       "clients": {
         "profiles": [

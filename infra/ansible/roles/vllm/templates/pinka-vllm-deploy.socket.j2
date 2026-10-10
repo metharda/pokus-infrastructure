@@ -1,14 +1,16 @@
 # Managed by pinka (ansible/roles/vllm/templates/pinka-vllm-deploy.socket.j2). Local changes will be overwritten.
 #
 # Socket of the vLLM deploy helper (contracts.md#inference and #sockets, C3):
-# only potka-orch can connect; every connection starts one helper instance.
+# only the allowed account (the active platform's controller, or the control
+# endpoint's account on an inference node) and root can connect; every
+# connection starts one helper instance.
 [Unit]
 Description=pinka vLLM deploy helper socket
 
 [Socket]
 ListenStream=/run/pinka/vllm-deploy.sock
-SocketUser=potka-orch
-SocketGroup=potka-orch
+SocketUser={{ vllm_deploy_peer }}
+SocketGroup=root
 SocketMode=0600
 Accept=yes
 MaxConnections=4

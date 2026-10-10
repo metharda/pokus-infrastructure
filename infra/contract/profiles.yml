@@ -2,8 +2,8 @@
 #
 # The eight privilege profiles of contract v2 (BUILD_PROMPT §12.2): the single
 # source of the profile table, of the socket connection rules (§12.3) and of
-# infra's caps on manifest values. The manifest validator reads it, the
-# renderer will (contract v2 step 3), and tools/gen turns it into
+# infra's caps on manifest values. The manifest validator and the renderer
+# read it, and tools/gen turns it into
 # docs/reference/platform-profiles.md. Published with every release in
 # contract/; it changes only with a contract version bump.
 contract_version: 2
@@ -199,7 +199,7 @@ profiles:
     uses_sockets: true
   restricted-operator:
     kind: service
-    summary: works on targets with restricted data (for example a fault injector or a verifier)
+    summary: works on targets with restricted data
     table:
       database: own login role; `restricted` allowed
       incus: restricted certificate for project `bench`
@@ -231,7 +231,7 @@ profiles:
     uses_sockets: true
   restricted-reader:
     kind: service
-    summary: reads restricted data without touching targets (for example an evaluator)
+    summary: reads restricted data without touching targets
     table:
       database: own login role; `restricted` allowed
       incus: none

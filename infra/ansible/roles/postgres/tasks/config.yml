@@ -1,0 +1,35 @@
+# Managed by pinka (ansible/roles/postgres/tasks/config.yml). Local changes will be overwritten.
+#
+# postgresql.conf, pg_hba.conf (with the active platform's login roles) and
+# infra's bootstrap SQL, then the core Compose project: a changed file changes
+# its directory's hash, and Compose recreates the container.
+- name: Create the configuration directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ postgres_config_dir | dirname | dirname }}", group: pinka-admin, mode: "0750"}
+    - {path: "{{ postgres_config_dir | dirname }}", group: root, mode: "0755"}
+    - {path: "{{ postgres_config_dir }}", group: root, mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Render the PostgreSQL configuration
+  ansible.builtin.template:
+    src: "{{ pinka_dir }}/config/postgres/{{ item }}.j2"
+    dest: "{{ postgres_config_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [postgresql.conf, pg_hba.conf, bootstrap.sql]
+
+- name: Start PostgreSQL and its exporter
+  ansible.builtin.include_role:
+    name: compose
+  vars:
+    compose_project: core
+    compose_description: PostgreSQL and OPA
+    compose_services: [postgres, postgres_exporter]

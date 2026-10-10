@@ -20,7 +20,16 @@ from typing import Any
 
 import pytest
 
-from ansible_testlib import ROLES, evaluate, load_yaml, render_template, role_names, role_vars
+from ansible_testlib import (
+    GROUP_VARS,
+    ROLES,
+    ansible_vars,
+    evaluate,
+    load_yaml,
+    render_template,
+    role_names,
+    role_vars,
+)
 
 TESTED_TEMPLATES = {
     ("base", "52pinka-unattended-upgrades.j2"),
@@ -58,8 +67,10 @@ TESTED_TEMPLATES = {
     # Tested in test_backup.py:
     ("backup", "backup-job.service.j2"),
     ("backup", "backup-job.timer.j2"),
-    # Tested in test_platform.py:
-    ("platform", "potka-platform.service.j2"),
+    # Tested in test_run_network.py:
+    ("incus", "pinka-run-network.socket.j2"),
+    ("incus", "pinka-run-network@.service.j2"),
+    # Tested in test_inference_control.py:
     ("inference_control", "pinka-inference-control.service.j2"),
 }
 
@@ -229,6 +240,37 @@ def test_sudoers_drop_in_is_valid(tmp_path: Path) -> None:
         pytest.skip("visudo is not installed")
     result = subprocess.run([visudo, "-cf", str(path)], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("name", "clash"),
+    [
+        ("researcher1", False),
+        ("pinka-build", True),
+        ("pinka-admin", True),
+        ("demo-ctl", True),
+        ("demo-db", True),
+        ("pinka-restricted", True),
+    ],
+)
+def test_researchers_never_take_an_account_of_the_lab(name: str, clash: bool) -> None:
+    platform = {
+        "accounts": [{"name": "demo-ctl"}, {"name": "demo-agent"}],
+        "groups": ["demo-db", "demo-ctl-api"],
+        "infra_groups": ["pinka-restricted"],
+    }
+    variables = ansible_vars(
+        GROUP_VARS,
+        ROLES / "users_groups" / "vars" / "main.yml",
+        researchers=[{"name": name}],
+        active_platform=platform,
+    )
+    assert evaluate("users_groups_clashes", variables) == ([name] if clash else [])
+    tasks = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
+    names = [t["name"] for t in tasks]
+    assert names.index("Refuse researchers named like an account or group of the lab") < (
+        names.index("Create the researchers")
+    )
 
 
 # --- providers -----------------------------------------------------------------
@@ -429,5 +471,6 @@ def test_lab_units_run_in_the_services_slice() -> None:
             "backup-job.service.j2",
             "pinka-incus-events.service.j2",
             "pinka-vllm-deploy@.service.j2",
+            "pinka-run-network@.service.j2",
         }
         assert ("Slice={{ pinka_services_slice }}" in text) == lab_unit, path

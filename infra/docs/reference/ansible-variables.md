@@ -122,11 +122,10 @@ Groups created by users_groups.
     - {name: pinka-admin, system: false, description: researchers with sudo}
     - {name: pinka-restricted, system: true, description: "restricted data: only accounts of restricted-capable\
         \ profiles (\xA712.4)"}
-    - {name: potka-svc, system: true, description: all service accounts}
-    - {name: potka-exec-clients, system: true, description: may call the executor socket (agent
-        and orchestrator)}
-    - {name: potka-gw-clients, system: true, description: may call the gateway's agent socket
-        (agent only)}
+    - {name: pinka-datasets, system: true, description: "published training datasets: no human\
+        \ members (\xA77.18)"}
+    - {name: pinka-query, system: true, description: "the telemetry query proxy: exactly the accounts\
+        \ of the profiles that query (\xA77.9)"}
     ```
 
 ### `researchers`
@@ -155,7 +154,7 @@ Admins that are explicitly allowed into the docker group (logged loudly).
 
 ### `infra_accounts`
 
-Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5).
+Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5); pinka-inference runs the inference control endpoint of an inference node (§19.10) and holds its mutual-TLS key.
 
 - Default:
 
@@ -163,41 +162,20 @@ Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH 
     - name: pinka-build
       groups: []
       description: unprivileged platform builds
+    - name: pinka-inference
+      groups: []
+      description: the inference control endpoint of an inference node
     ```
 
-### `service_accounts`
+### `inference_control_account`
 
-System accounts of the platform services: no login, no password, no SSH keys. potka-agent never gets pinka-restricted, incus, docker or database access.
+The account of the inference control endpoint.
 
-- Default:
-
-    ```yaml
-    - name: potka-orch
-      groups: [potka-svc, pinka-restricted, potka-exec-clients]
-      description: orchestrator
-    - name: potka-agent
-      groups: [potka-svc, potka-exec-clients, potka-gw-clients]
-      description: agent runtime
-    - name: potka-gw
-      groups: [potka-svc]
-      description: LLM gateway
-    - name: potka-exec
-      groups: [potka-svc]
-      description: tool executor
-    - name: potka-inject
-      groups: [potka-svc, pinka-restricted]
-      description: fault injector
-    - name: potka-verify
-      groups: [potka-svc, pinka-restricted]
-      description: verifier
-    - name: potka-eval
-      groups: [potka-svc, pinka-restricted]
-      description: evaluator
-    ```
+- Default: `pinka-inference`
 
 ### `pinka_service_home`
 
-Parent of the service account homes (/var/lib/pinka/&lt;account&gt;).
+Parent of the infra and platform account homes (/var/lib/pinka/&lt;account&gt;).
 
 - Default: `/var/lib/pinka`
 
@@ -219,17 +197,21 @@ The research space layout, the single source of truth: the layout role creates e
         content/<package>/<ref>/, state/'}
     - {path: restricted, owner: root, group: pinka-restricted, mode: '0750', notes: 'restricted
         data per platform, files 0640'}
-    - {path: models, owner: potka-orch, group: pinka, mode: '0755', notes: 'model weights, 0444
-        after verification'}
+    - {path: models, owner: root, group: pinka, mode: '0755', notes: 'model weights, 0444 after
+        verification'}
+    - {path: models/adapters, owner: root, group: pinka, mode: '0755', notes: 'registered adapters,
+        read-only, with lineage'}
+    - {path: training, owner: root, group: root, mode: '0755', notes: parent of the training areas}
+    - {path: training/datasets, owner: root, group: pinka-datasets, mode: '0750', notes: 'published
+        training datasets, files 0640, each with PROVENANCE.json'}
+    - {path: training/jobs, owner: root, group: root, mode: '0755', notes: 'per job run: output/
+        and checkpoints/, owned by the job''s account'}
     - path: datasets
       owner: root
       group: pinka
       mode: '2775'
       default_acl: ['group:pinka:rwX']
       notes: shared datasets
-    - {path: artifacts, owner: potka-orch, group: pinka, mode: '0750', notes: 'content-addressed,
-        write-once 0440'}
-    - {path: reports, owner: potka-eval, group: pinka, mode: '2775', notes: evaluation reports}
     - {path: images, owner: root, group: pinka-admin, mode: '0750', notes: exported golden image
         tarballs with sha256}
     - path: shared
@@ -262,8 +244,8 @@ Host paths outside pinka_root (absolute).
     ```yaml
     - {path: /etc/pinka, owner: root, group: root, mode: '0755', notes: 'host profile, bootstrap
         state, rendered non-secret config'}
-    - {path: /etc/pinka/secrets, owner: root, group: potka-svc, mode: '0750', notes: rendered
-        secrets (files 0640 or per-service 0600)}
+    - {path: /etc/pinka/secrets, owner: root, group: root, mode: '0711', notes: 'rendered secrets,
+        one directory per platform account (0750 root:<account>)'}
     - {path: /var/lib/pinka, owner: root, group: root, mode: '0755', notes: service homes and
         lab state}
     - {path: /etc/pinka/platform, owner: root, group: root, mode: '0755', notes: 'the active platform:
@@ -367,6 +349,19 @@ Tailnet name of the paired lab node of an inference node (node_role: inference),
 QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of {name: &lt;file name without .pem&gt;, pem: &lt;PEM public key&gt;}.
 
 - Default: `[]`
+
+## active_platform
+
+Read what infra rendered for the active platform.
+
+Entry points: `main` (Read what infra rendered for the active platform). Role README: `ansible/roles/active_platform/README.md`.
+
+### `active_platform_file`
+
+The rendering of the active platform (infra-internal, no secrets).
+
+- Type: `path`
+- Default: `/etc/pinka/platform/rendered.json`
 
 ## backup
 
@@ -688,6 +683,18 @@ Further variables for the project's .env file (the same for every role of a proj
 - Type: `dict`
 - Default: `{}`
 
+### `compose_db_socket_group`
+
+Group of the database socket directory, which the exporter joins (the active platform's &lt;platform&gt;-db, or root).
+
+- Type: `str`
+- Default:
+
+    ```jinja
+    {{ ((active_platform | default({}, true)).database | default({}, true)).socket_group
+       | default('root', true) }}
+    ```
+
 ## docker
 
 Docker Engine with Compose and buildx, pinned and held, and its daemon configuration.
@@ -806,7 +813,7 @@ Days before a pairing certificate expires at which doctor fails inference.pairin
 
 ### `doctor_drain_timeout`
 
-Seconds `pinka update-host` gives the orchestrator to drain.
+Seconds `pinka stop` and `update-host` give the platform's drain hook.
 
 - Type: `int`
 - Default: `1800`
@@ -1163,29 +1170,10 @@ Directory of the client certificates (one subdirectory per service).
 
 ### `incus_service_certificates`
 
-Platform services that get a restricted client certificate ({account, short, name, projects}); name is its common and trust name.
+Platform services that get a restricted client certificate ({account, short, name, projects}), from the active platform's rendering; name is its common and trust name.
 
 - Type: `list` of `dict`
-- Default:
-
-    ```yaml
-    - account: potka-orch
-      short: orch
-      name: potka-orch
-      projects: [bench, build]
-    - account: potka-exec
-      short: exec
-      name: potka-exec
-      projects: [bench]
-    - account: potka-inject
-      short: inject
-      name: potka-inject
-      projects: [bench]
-    - account: potka-verify
-      short: verify
-      name: potka-verify
-      projects: [bench]
-    ```
+- Default: `{{ (active_platform | default({}, true)).incus_certificates | default([]) }}`
 
 ### `incus_metrics_certificate`
 
@@ -1200,6 +1188,18 @@ Validity of generated client certificates in days.
 
 - Type: `int`
 - Default: `3650`
+
+### `incus_run_network_owner`
+
+Owner of the run-network helper's socket, the active platform's controller account (root without a platform).
+
+- Type: `str`
+- Default:
+
+    ```jinja
+    {{ ((active_platform | default({}, true)).run_network | default({}, true)).socket_owner
+       | default('root', true) }}
+    ```
 
 ### `incus_events_identifier`
 
@@ -1430,7 +1430,7 @@ Variables the role reads from elsewhere:
 | --- | --- | --- |
 | `pinka_dir` | host_vars | Infra directory of the checkout (config/otel, prometheus, loki, tempo, grafana). |
 | `vault_grafana_admin_password` | host_vars | Grafana's admin password (vault, 8 or more characters). |
-| `vault_postgres_passwords` | host_vars | Database passwords (vault); Grafana uses potka_grafana, which must not contain "$". |
+| `vault_postgres_passwords` | host_vars | Database passwords (vault); Grafana uses the active platform's Grafana role, whose password must not contain "$". |
 
 ### `observability_collector_memory_mib`
 
@@ -1470,10 +1470,29 @@ GPU exporter with gpu_inference; dcgm is refused while its image is unverified.
 
 ### `observability_grafana_db_password`
 
-Password of potka_grafana (default vault_postgres_passwords.potka_grafana).
+Password of the active platform's Grafana role (default from vault_postgres_passwords; "" without a platform database).
 
 - Type: `str`
-- Default: `{{ vault_postgres_passwords.potka_grafana }}`
+- Default:
+
+    ```jinja
+    {{ (vault_postgres_passwords | default({}))[observability_platform_db.grafana] | default('')
+       if observability_platform_db else '' }}
+    ```
+
+### `observability_platform_db`
+
+The active platform's database plan, from its rendering ({} without one).
+
+- Type: `dict`
+- Default: `{{ (active_platform | default({}, true)).database | default({}, true) }}`
+
+### `observability_platform_dashboards`
+
+The active platform's dashboards (folder and directory in its release), from its rendering ({} without them).
+
+- Type: `dict`
+- Default: `{{ (active_platform | default({}, true)).dashboards | default({}, true) }}`
 
 ### `observability_grafana_admin_password`
 
@@ -1506,9 +1525,9 @@ Rendered configuration (pinka_root/services/observability/config).
 
 ## opa
 
-OPA on 127.0.0.1:8181 serving the platform policy or a deny-all placeholder.
+OPA on 127.0.0.1:8181 serving the active platform's policy bundle and the deny-all placeholder.
 
-Entry points: `main` (OPA on 127.0.0.1:8181 serving the platform policy or a deny-all placeholder). Role README: `ansible/roles/opa/README.md`.
+Entry points: `main` (OPA on 127.0.0.1:8181 serving the active platform's policy bundle and the deny-all placeholder). Role README: `ansible/roles/opa/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -1518,10 +1537,17 @@ Variables the role reads from elsewhere:
 
 ### `opa_platform_policy_dir`
 
-Policy directory of the deployed platform (pinka_root/deploy/platform/current/policy); the placeholder is used while it does not exist.
+The active platform's policy bundle in its published release (from its rendering); empty without a platform or without a policy, and then an empty directory is mounted.
 
-- Type: `path`
-- Default: `{{ pinka_root }}/deploy/platform/current/policy`
+- Type: `str`
+- Default: `{{ ((active_platform | default({}, true)).opa | default({}, true)).bundle | default('') }}`
+
+### `opa_decision_path`
+
+The active platform's decision path below /v1/data (manifest policy.decision_path); empty without one.
+
+- Type: `str`
+- Default: `{{ ((active_platform | default({}, true)).opa | default({}, true)).decision_path | default('') }}`
 
 ### `opa_config_dir`
 
@@ -1603,24 +1629,29 @@ dnf plugin package that provides `dnf versionlock`.
 
 Deploy the platform release and its content packages (contract v2), if a platform source is set.
 
-Entry points: `main` (Deploy the platform release and its content packages (contract v2), if a platform source is set), `rotate_signing` (Replace the run-manifest signing key; old public keys stay published). Role README: `ansible/roles/platform/README.md`.
+Entry points: `main` (Deploy the platform release and its content packages (contract v2), if a platform source is set), `rotate_signing` (Replace the active platform's signing key; old public keys stay published). Role README: `ansible/roles/platform/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
+| `active_platform_file` | host_vars | What infra rendered for the active platform; its controller restarts with the new key. |
 | `content` | [lab-wide](#content) | Sources of the manifest's content packages: {&lt;package&gt;: {repo, ref, path, tag_prefix}}. |
-| `inference_remote_node` | [lab-wide](#inference_remote_node) | Tailnet name of the paired inference node (remote mode). |
+| `cpuset_targets` | [lab-wide](#cpuset_targets) | CPUs of the targets (endpoints.toml). |
 | `lab_mode` | [lab-wide](#lab_mode) | production or staging; scripted inference needs staging. |
 | `machine_name` | [lab-wide](#machine_name) | Machine name (endpoints.toml, published signing keys). |
 | `node_role` | [lab-wide](#node_role) | The platform runs on full and lab nodes only. |
 | `pinka_allowed_signers` | [lab-wide](#pinka_allowed_signers) | ssh-keygen allowed_signers lines for signed tags. |
 | `pinka_features` | host_vars | Feature flags (gpu_inference decides local inference). |
+| `pinka_ports` | [lab-wide](#pinka_ports) | Effective ports (endpoints.toml, the inference broker's port). |
 | `pinka_source_known_hosts` | [lab-wide](#pinka_source_known_hosts) | known_hosts lines for SSH sources other than GitHub. |
 | `pinka_versions` | host_vars | The pinned versions (Quarto). |
+| `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | The VM collector address (endpoints.toml). |
 | `platform` | [lab-wide](#platform) | The platform source: {repo, ref, path, tag_prefix}; empty: no platform. |
-| `qa_trusted_keys` | [lab-wide](#qa_trusted_keys) | QA public keys trusted for attestations, {name, pem}. |
+| `qa_trusted_keys` | [lab-wide](#qa_trusted_keys) | QA public keys trusted for attestations, {name, pem}, installed in /etc/pinka/qa/trusted-keys/. |
 | `require_signed_tags` | [lab-wide](#require_signed_tags) | Deploy only release tags with a valid SSH signature of an allowed signer. |
+| `vault_platform_secrets` | host_vars | The secrets the manifest names, {&lt;service&gt;: {&lt;name&gt;: value}}. |
+| `vault_postgres_passwords` | host_vars | Database passwords by role; the release's roles must be there (missing keys end bootstrap with exit code 77). |
 
 ### `platform_replace`
 
@@ -1640,7 +1671,7 @@ Fetch, stage and validate only, print the summary (--inspect-platform).
 
 ### `platform_settings`
 
-Non-secret settings per service short name, rendered into /etc/pinka/platform/&lt;svc&gt;.toml and checked against the platform's schemas (C9b).
+Non-secret configuration per service name, checked against the service's config schema in the release and written to /etc/pinka/platform/config/&lt;service&gt;.json.
 
 - Type: `dict`
 - Default: `{}`
@@ -1657,7 +1688,7 @@ Inference backend of endpoints.toml; auto is local where this node serves infere
 
 ### `platform_scripted_api_url`
 
-OpenAI-compatible endpoint of the scripted backend (staging only, D3).
+OpenAI-compatible endpoint of the scripted backend (staging only).
 
 - Type: `str`
 - Default: `''`
@@ -1680,17 +1711,18 @@ Variables the role reads from elsewhere:
 
 ## postgres
 
-PostgreSQL on Unix sockets with the contract's roles, schemas and revokes.
+PostgreSQL on Unix sockets with infra's own role; pg_hba and socket groups for the active platform.
 
-Entry points: `main` (PostgreSQL on Unix sockets with the contract's roles, schemas and revokes). Role README: `ansible/roles/postgres/README.md`.
+Entry points: `main` (PostgreSQL on Unix sockets with infra's own role; pg_hba and socket groups for the active platform), `platform` (The active platform's database, roles, password files and restricted-schema check (run by the platform role)). Role README: `ansible/roles/postgres/README.md`.
 
 Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
+| `active_platform` | host_vars | The platform role's fresh rendering; its database key is the plan (roles, password files, SQL). |
 | `host_profile` | bootstrap.sh | Host profile (hardware.memory_gib sizes the memory settings). |
 | `pinka_dir` | host_vars | Infra directory of the checkout (config/postgres/*.j2). |
-| `vault_postgres_passwords` | host_vars | Passwords of the platform, reader and Grafana roles (vault; printable ASCII). |
+| `vault_postgres_passwords` | host_vars | Passwords of the platform's login roles (vault; printable ASCII). |
 
 ### `postgres_shared_buffers`
 
@@ -1698,6 +1730,7 @@ shared_buffers (default 1/16 of the memory, 128 MB to 4 GB).
 
 - Type: `str`
 - Default: `{{ [[(host_profile.hardware.memory_gib * 64) | int, 128] | max, 4096] | min }}MB`
+- Entry points: `main`
 
 ### `postgres_effective_cache_size`
 
@@ -1705,6 +1738,7 @@ effective_cache_size (default 1/4 of the memory, 512 MB to 16 GB).
 
 - Type: `str`
 - Default: `{{ [[(host_profile.hardware.memory_gib * 256) | int, 512] | max, 16384] | min }}MB`
+- Entry points: `main`
 
 ### `postgres_max_connections`
 
@@ -1712,6 +1746,7 @@ max_connections.
 
 - Type: `int`
 - Default: `100`
+- Entry points: `main`
 
 ### `postgres_container_uid`
 
@@ -1719,6 +1754,7 @@ UID of the postgres user in the pinned image.
 
 - Type: `int`
 - Default: `999`
+- Entry points: `main`
 
 ### `postgres_container_gid`
 
@@ -1726,6 +1762,7 @@ GID of the postgres user in the pinned image.
 
 - Type: `int`
 - Default: `999`
+- Entry points: `main`
 
 ### `postgres_exporter_uid`
 
@@ -1733,6 +1770,7 @@ UID of the exporter container (nobody).
 
 - Type: `int`
 - Default: `65534`
+- Entry points: `main`
 
 ### `postgres_container`
 
@@ -1740,6 +1778,7 @@ Name of the PostgreSQL container.
 
 - Type: `str`
 - Default: `pinka-postgres`
+- Entry points: `main`
 
 ### `postgres_state_dir`
 
@@ -1747,6 +1786,7 @@ Data directory on the host (pinka_root/state/postgres).
 
 - Type: `path`
 - Default: `{{ pinka_root }}/state/postgres`
+- Entry points: `main`
 
 ### `postgres_config_dir`
 
@@ -1754,37 +1794,7 @@ Rendered configuration (pinka_root/services/core/config/postgres).
 
 - Type: `path`
 - Default: `{{ pinka_root }}/services/core/config/postgres`
-
-### `postgres_service_roles`
-
-Platform roles with a password file and the file's owner, group and mode.
-
-- Type: `list` of `dict`
-- Default:
-
-    ```yaml
-    - {role: potka_migrator, owner: root, group: root, mode: '0600'}
-    - {role: potka_orch, owner: root, group: potka-orch, mode: '0640'}
-    - {role: potka_gw, owner: root, group: potka-gw, mode: '0640'}
-    - {role: potka_exec, owner: root, group: potka-exec, mode: '0640'}
-    - {role: potka_inject, owner: root, group: potka-inject, mode: '0640'}
-    - {role: potka_verify, owner: root, group: potka-verify, mode: '0640'}
-    - {role: potka_eval, owner: root, group: potka-eval, mode: '0640'}
-    ```
-
-### `postgres_reader_role`
-
-Researchers' read-only role.
-
-- Type: `str`
-- Default: `potka_reader`
-
-### `postgres_grafana_role`
-
-Grafana's read-only role.
-
-- Type: `str`
-- Default: `potka_grafana`
+- Entry points: `main`
 
 ### `postgres_monitor_role`
 
@@ -1792,6 +1802,7 @@ Role of the metrics exporter (pg_monitor).
 
 - Type: `str`
 - Default: `pinka_monitor`
+- Entry points: `main`
 
 ## preflight_gate
 
@@ -2072,7 +2083,7 @@ Variables the role reads from elsewhere:
 | `pinka_service_home` | [lab-wide](#pinka_service_home) | Parent of the service account homes. |
 | `researchers` | [lab-wide](#researchers) | Researchers ({name, admin, shell, keys_file}); keys_file is relative to the infra directory. |
 | `researchers_removed` | [lab-wide](#researchers_removed) | Researchers that are locked (password, shell nologin, expired), never deleted. |
-| `service_accounts` | [lab-wide](#service_accounts) | Service accounts ({name, groups}); system users without login. |
+| `service_accounts` | host_vars | Service accounts ({name, groups}); system users without login. |
 
 ### `users_groups_nologin_shell`
 
@@ -2120,3 +2131,15 @@ Run the serving verification after start.
 
 - Type: `bool`
 - Default: `true`
+
+### `vllm_deploy_peer`
+
+The account allowed to switch deployments besides root (the control endpoint's account on an inference node, the active platform's controller elsewhere, root without one).
+
+- Type: `str`
+- Default:
+
+    ```jinja
+    {{ inference_control_account if node_role == 'inference'
+       else ((active_platform | default({}, true)).controller | default('root', true)) }}
+    ```

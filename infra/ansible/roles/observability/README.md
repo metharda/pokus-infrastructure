@@ -11,7 +11,8 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   the VM listener address (C4); `memory_limiter` → `resource` (`pinka.machine`,
   `pinka.lab_mode`) → `batch`; logs to Loki's native OTLP endpoint, traces to
   Tempo, metrics to a Prometheus exporter that Prometheus scrapes (owner
-  answer E14), with resource attributes such as `potka.run_id` as labels.
+  answer E14), with resource attributes (such as a platform's run
+  identifiers) as labels.
 - **Journald collector**: a second collector instance that reads the host
   journal with the host's `journalctl` (chroot into the read-only host root)
   and forwards it to the gateway; separate so that the instance that accepts
@@ -24,10 +25,14 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   `/srv/pinka/state/` and retention by their compactors; rings in memory, so no
   cluster port opens.
 - **Grafana** with provisioned data sources (Prometheus, Loki with trace
-  links, Tempo, PostgreSQL as `potka_grafana` through the reader socket
-  directory) and the dashboards of `config/grafana/dashboards/`: host
-  overview, GPU and vLLM, Incus targets, lab services health and the run
-  explorer (`run_id` variable). Anonymous access is off; the admin password
+  links, Tempo and, when the active platform has a database, its PostgreSQL
+  database on the read-only role `<platform>_grafana` through the reader
+  socket directory) and the dashboards of `config/grafana/dashboards/`: host
+  overview, GPU and vLLM, Incus targets and lab services health. The active
+  platform's dashboards (the JSON files of the manifest's `dashboards`
+  directory in its published release) are provisioned read-only into a
+  folder named after the platform; run dashboards ship with the platform,
+  never with infra. Anonymous access is off; the admin password
   and one account per researcher (named after `display_name`) come from the
   vault; researchers with `grafana: false` and removed researchers are
   disabled.

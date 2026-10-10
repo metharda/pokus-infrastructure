@@ -11,7 +11,7 @@ description: Deploy a platform with another name in place of the active one, and
 
 A lab runs one platform at a time. A release with another name than the
 active platform is refused unless you name the platform it replaces. The
-replaced platform stops: its units, sockets and CLI link go, its accounts
+replaced platform stops: its units, sockets, configuration and CLI go, its accounts
 are locked, its database roles can no longer log in and its Incus
 certificates leave the trust store. Its releases, state, restricted area and
 database stay on disk until you purge them.
@@ -58,8 +58,20 @@ database stay on disk until you purge them.
     ```
 
     `<old>` is the replaced platform's name; type it again when asked.
-    The active platform is never purged. Its accounts stay locked, and its
-    published signing keys stay in `/srv/pinka/shared/signing-keys/`.
+    The active platform is never purged. Its accounts stay locked, its
+    secrets directories stay in `/etc/pinka/secrets/`, and its published
+    signing keys stay in `/srv/pinka/shared/signing-keys/`; the command
+    lists what remains.
+
+2. To remove the replaced platform's secrets directories as well, add
+   `--remove-secrets`:
+
+    <!-- qa:skip reason="removes data on the lab host" -->
+    ```bash
+    sudo pinka platform purge <old> --remove-secrets
+    ```
+
+    `<old>` is the replaced platform's name.
 
 ## Verify
 

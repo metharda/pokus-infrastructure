@@ -409,7 +409,7 @@ class Context:
         model_ids: Ids in ``models.lock.yml``.
         vllm_profiles: Profile names in ``vllm/profiles/``.
         blueprints: Golden image blueprints in ``images/``.
-        service_accounts: The lab's service account names.
+        service_accounts: The lab's own account names (infra_accounts).
         cpu_count: CPUs of the host, if known.
         interfaces: Network interfaces of the host, if known.
     """

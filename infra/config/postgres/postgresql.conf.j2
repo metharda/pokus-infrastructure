@@ -3,8 +3,8 @@
 # PostgreSQL for the lab (BUILD_PROMPT §7.8, contracts.md#postgresql).
 # Durability settings are fixed; the postgres role checks them after start.
 
-# Unix sockets for the host: {{ postgres_service_socket_dir }} (service roles,
-# group potka-svc) and {{ postgres_reader_socket_dir }} (researchers' reader
+# Unix sockets for the host: {{ postgres_service_socket_dir }} (the platform's
+# service roles, group <platform>-db) and {{ postgres_reader_socket_dir }} (researchers' reader
 # role, group pinka); /var/run/postgresql stays for maintenance inside the
 # container. The directory permissions on the host gate access; pg_hba cannot
 # tell the directories apart, so the password files decide the role.

@@ -57,6 +57,12 @@ jobs:
         with:
           node-version-file: .node-version
       - run: make setup
+      - name: ssh-keygen is present (the signed-tag test must run in CI)
+        run: command -v ssh-keygen
+      - name: PostgreSQL server binaries and systemd-analyze are present (the SQL and unit checks must run in CI)
+        run: |
+          ls /usr/lib/postgresql/*/bin/initdb
+          command -v systemd-analyze
       - run: make test
 
   docs:

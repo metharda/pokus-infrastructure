@@ -14,7 +14,22 @@ from pinka_platform import contract as contract_mod
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "manifests"
 GOLDEN = HERE / "golden"
-VALID = ("refplat", "potka", "allprof")
+# The Pokus Platform's manifest, as infra's tests keep it (§12.1).
+FIRST_PLATFORM = "pokus-platform"
+VALID = ("refplat", FIRST_PLATFORM, "allprof")
+# A python-uv release's pyproject.toml with its build backend locked in the
+# "build" dependency group (the build's second phase runs without network).
+PYPROJECT = """[project]
+name = "{name}"
+version = "0.1.0"
+
+[dependency-groups]
+build = ["hatchling"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+"""
 CONTRACT = contract_mod.load()
 
 
@@ -59,6 +74,9 @@ def write_release(root: Path, data: dict[str, Any], *, built: bool = False) -> P
     (release / "platform-manifest.yaml").write_text(dump(data), encoding="utf-8")
     if data["runtime"] == "python-uv":
         (release / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+        (release / "pyproject.toml").write_text(
+            PYPROJECT.format(name=data["name"]), encoding="utf-8"
+        )
     commands = [s["start"][0] for s in data["services"]]
     commands += [h["run"][0] for h in data["hooks"].values()]
     if "cli" in data:

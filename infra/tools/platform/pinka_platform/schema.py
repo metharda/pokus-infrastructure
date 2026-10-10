@@ -42,6 +42,12 @@ SUPPORTED = frozenset(
         "anyOf",
     }
 )
+# Annotation keywords that validate nothing (draft 2020-12): accepted in the
+# release's configuration schemas, never in the manifest schema.
+ANNOTATIONS = frozenset(
+    {"$comment", "default", "examples", "format", "deprecated", "readOnly", "writeOnly"}
+)
+CONFIG_KEYWORDS = SUPPORTED | ANNOTATIONS
 _TYPES: dict[str, type | tuple[type, ...]] = {
     "object": dict,
     "array": list,
@@ -90,6 +96,7 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
     schema: Mapping[str, Any],
     root: Mapping[str, Any] | None = None,
     path: str = "",
+    allowed: frozenset[str] = SUPPORTED,
 ) -> Iterator[tuple[str, str]]:
     """Validate a value against a schema node.
 
@@ -98,6 +105,7 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
         schema: The schema node.
         root: The whole schema, for ``$ref``; defaults to ``schema``.
         path: Location of the value, for messages (empty: the whole manifest).
+        allowed: The keywords the schema may use.
 
     Yields:
         ``(path, message)`` per violation.
@@ -106,11 +114,11 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
         SchemaError: The schema uses an unsupported keyword.
     """
     root = schema if root is None else root
-    unknown = set(schema) - SUPPORTED
+    unknown = set(schema) - allowed
     if unknown:
         raise SchemaError(f"unsupported schema keywords: {', '.join(sorted(unknown))}")
     if "$ref" in schema:
-        yield from errors(value, _resolve(root, schema["$ref"]), root, path)
+        yield from errors(value, _resolve(root, schema["$ref"]), root, path, allowed)
     if "type" in schema:
         types = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
         if not any(_is_type(value, t) for t in types):
@@ -124,9 +132,11 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
         value == option and _type_name(value) == _type_name(option) for option in schema["enum"]
     ):
         yield path, f"{value!r} is not one of {', '.join(repr(o) for o in schema['enum'])}"
-    if "not" in schema and not list(errors(value, schema["not"], root, path)):
+    if "not" in schema and not list(errors(value, schema["not"], root, path, allowed)):
         yield path, f"{value!r} is not allowed here"
-    if "anyOf" in schema and all(list(errors(value, s, root, path)) for s in schema["anyOf"]):
+    if "anyOf" in schema and all(
+        list(errors(value, s, root, path, allowed)) for s in schema["anyOf"]
+    ):
         yield path, f"{value!r} matches none of the allowed forms"
     if _is_type(value, "number"):
         if "minimum" in schema and value < schema["minimum"]:
@@ -149,7 +159,7 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
             yield path, "has duplicate items"
         if "items" in schema:
             for i, item in enumerate(value):
-                yield from errors(item, schema["items"], root, f"{path}[{i}]")
+                yield from errors(item, schema["items"], root, f"{path}[{i}]", allowed)
     if isinstance(value, dict):
         for key in schema.get("required", []):
             if key not in value:
@@ -159,18 +169,19 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
         for key, item in value.items():
             where = f"{path}.{key}" if path else key
             if key in props:
-                yield from errors(item, props[key], root, where)
+                yield from errors(item, props[key], root, where, allowed)
             elif extra is False:
                 yield path, f"unknown field {key!r}"
             elif isinstance(extra, Mapping):
-                yield from errors(item, extra, root, where)
+                yield from errors(item, extra, root, where, allowed)
 
 
-def check_keywords(schema: Mapping[str, Any]) -> list[str]:
+def check_keywords(schema: Mapping[str, Any], allowed: frozenset[str] = SUPPORTED) -> list[str]:
     """List the unsupported keywords anywhere in a schema.
 
     Args:
         schema: The schema.
+        allowed: The keywords the schema may use.
 
     Returns:
         Unsupported keywords with their locations.
@@ -180,7 +191,7 @@ def check_keywords(schema: Mapping[str, Any]) -> list[str]:
     def walk(node: Any, where: str) -> None:  # noqa: ANN401 - a schema node
         if not isinstance(node, Mapping):
             return
-        found.extend(f"{where}: {key}" for key in sorted(set(node) - SUPPORTED))
+        found.extend(f"{where}: {key}" for key in sorted(set(node) - allowed))
         for key in ("properties", "$defs"):
             for name, child in node.get(key, {}).items():
                 walk(child, f"{where}/{key}/{name}")

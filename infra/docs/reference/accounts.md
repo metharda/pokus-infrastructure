@@ -20,24 +20,22 @@ Generated from `ansible/group_vars/all/main.yml` (BUILD_PROMPT §6.1); the direc
 | `pinka` | no | all researchers |
 | `pinka-admin` | no | researchers with sudo |
 | `pinka-restricted` | yes | restricted data: only accounts of restricted-capable profiles (§12.4) |
-| `potka-svc` | yes | all service accounts |
-| `potka-exec-clients` | yes | may call the executor socket (agent and orchestrator) |
-| `potka-gw-clients` | yes | may call the gateway's agent socket (agent only) |
+| `pinka-datasets` | yes | published training datasets: no human members (§7.18) |
+| `pinka-query` | yes | the telemetry query proxy: exactly the accounts of the profiles that query (§7.9) |
 
 ## Researchers
 
 Every researcher in `researchers` is a member of `pinka` (and, once Incus is installed, of Incus's restricted per-user group); admins are also in `pinka-admin`, which may use sudo (`/etc/sudoers.d/90-pinka-admin`). No researcher is added to `docker` or `incus-admin`; an admin listed in `break_glass_docker` is the only exception. Researchers in `researchers_removed` are locked, never deleted.
 
-## Service accounts
+## Infra accounts
 
-System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`, no password and no SSH keys. Each account's primary group is a system group of the same name, which the contract uses for socket and password-file ownership.
+System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`, no password and no SSH keys. Each account's primary group is a system group of the same name.
 
 | Account | Runs | Groups |
 | --- | --- | --- |
-| `potka-orch` | orchestrator | `potka-svc`, `pinka-restricted`, `potka-exec-clients` |
-| `potka-agent` | agent runtime | `potka-svc`, `potka-exec-clients`, `potka-gw-clients` |
-| `potka-gw` | LLM gateway | `potka-svc` |
-| `potka-exec` | tool executor | `potka-svc` |
-| `potka-inject` | fault injector | `potka-svc`, `pinka-restricted` |
-| `potka-verify` | verifier | `potka-svc`, `pinka-restricted` |
-| `potka-eval` | evaluator | `potka-svc`, `pinka-restricted` |
+| `pinka-build` | unprivileged platform builds | — |
+| `pinka-inference` | the inference control endpoint of an inference node | — |
+
+## Platform accounts
+
+The active platform's accounts and groups are not listed here: the platform role renders them from the manifest and the profiles (contract v2): `<platform>-<service>` per service, `<platform>-<job>` per training job, `<platform>-migrate` for the `migrate` hook, the database socket group `<platform>-db` and one client group per socket. They are system users like the infra accounts, each with a primary group of its own name, and their other groups follow from their profiles only: the [profile reference](platform-profiles.md) lists what each profile grants. A researcher may not have the name of an infra or platform account or group; the users_groups role refuses one.

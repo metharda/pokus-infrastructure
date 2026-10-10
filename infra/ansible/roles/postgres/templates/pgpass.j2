@@ -1,4 +1,4 @@
 # Managed by pinka (ansible/roles/postgres/templates/pgpass.j2). Local changes will be overwritten.
-# Reader credential (contracts.md#paths, owner answer E13). libpq ignores a
-# group-readable password file: copy it to ~/.pgpass with mode 0600.
-{{ postgres_reader_socket_dir }}:5432:pinka:{{ postgres_reader_role }}:{{ vault_postgres_passwords[postgres_reader_role] | replace('\\', '\\\\') | replace(':', '\\:') }}
+# The researchers' reader credential of the platform database (§12.5). libpq
+# ignores a group-readable password file: copy it to ~/.pgpass with mode 0600.
+{{ postgres_reader_socket_dir }}:5432:{{ postgres_platform.database }}:{{ postgres_platform.reader }}:{{ vault_postgres_passwords[postgres_platform.reader] | replace('\\', '\\\\') | replace(':', '\\:') }}

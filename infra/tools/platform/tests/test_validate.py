@@ -9,7 +9,7 @@ from typing import Any
 import jsonschema
 import pytest
 import yaml
-from platform_testlib import CONTRACT, VALID, dump, manifest
+from platform_testlib import CONTRACT, FIRST_PLATFORM, VALID, dump, manifest
 
 from pinka_platform import checks, names, validate
 from pinka_platform.contract import Namespace
@@ -130,7 +130,12 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
         _set("services.1.profile", "gpu-trainer"),
         "schema",
     ),
-    ("unknown relaxation", "potka", _set("services.6.relaxations", ["no-sandbox"]), "schema"),
+    (
+        "unknown relaxation",
+        FIRST_PLATFORM,
+        _set("services.6.relaxations", ["no-sandbox"]),
+        "schema",
+    ),
     (
         "job without digest",
         "refplat",
@@ -162,15 +167,15 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
     ("backup path escapes", "refplat", _set("backup.paths", ["ctl/../../etc"]), "schema"),
     (
         "five telemetry labels",
-        "potka",
+        FIRST_PLATFORM,
         _set("telemetry.labels", ["a", "b", "c", "d", "e"]),
         "schema",
     ),
-    ("unknown tool", "potka", _set("tools", ["texlive"]), "schema"),
+    ("unknown tool", FIRST_PLATFORM, _set("tools", ["texlive"]), "schema"),
     (
         "decision path with /v1/data",
-        "potka",
-        _set("policy.decision_path", "/v1/data/potka/x"),
+        FIRST_PLATFORM,
+        _set("policy.decision_path", "/v1/data/somewhere/x"),
         "schema",
     ),
     ("size without unit", "refplat", _set("jobs.0.resources.memory_max", "4096"), "schema"),
@@ -184,7 +189,7 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
     ("no controller", "refplat", _set("services.0.profile", "observer"), "controller-count"),
     (
         "second inference broker",
-        "potka",
+        FIRST_PLATFORM,
         _add_service(name="gw2", profile="inference-broker", start=["bin/x"]),
         "broker-count",
     ),
@@ -325,13 +330,13 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
     ("start order cycle", "refplat", _set("services.0.after", ["agent"]), "after"),
     (
         "decision path in infra's namespace",
-        "potka",
+        FIRST_PLATFORM,
         _set("policy.decision_path", "pinka/placeholder/active"),
         "policy-namespace",
     ),
     (
         "decision path in OPA's namespace",
-        "potka",
+        FIRST_PLATFORM,
         _set("policy.decision_path", "system/authz/allow"),
         "policy-namespace",
     ),
@@ -385,11 +390,16 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
     # Owner decision on 3d.1: everything a manifest uses is declared in requires.
     (
         "inference broker without inference",
-        "potka",
+        FIRST_PLATFORM,
         _drop_requirement("inference"),
         "facility-undeclared",
     ),
-    ("sandbox operator without incus", "potka", _drop_requirement("incus"), "facility-undeclared"),
+    (
+        "sandbox operator without incus",
+        FIRST_PLATFORM,
+        _drop_requirement("incus"),
+        "facility-undeclared",
+    ),
     (
         "restricted operator without incus",
         "refplat",
@@ -403,7 +413,7 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
         _both(_drop_requirement("gpu"), _set("jobs.0.resources.gpus", 0)),
         "facility-undeclared",
     ),
-    ("policy without opa", "potka", _drop_requirement("opa"), "facility-undeclared"),
+    ("policy without opa", FIRST_PLATFORM, _drop_requirement("opa"), "facility-undeclared"),
     (
         "dashboards without telemetry",
         "allprof",
@@ -549,10 +559,10 @@ def test_strict_loader_reads_plain_yaml() -> None:
 @pytest.mark.parametrize(
     ("release_path", "package_path", "same_repo", "overlaps"),
     [
-        ("platform", "catalog", True, False),
+        ("platform", "cases", True, False),
         ("platform", "", True, True),
-        ("", "catalog", True, True),
-        ("platform", "platform/catalog", True, True),
+        ("", "cases", True, True),
+        ("platform", "platform/cases", True, True),
         ("platform/sub", "platform", True, True),
         ("platform", "platforms", True, False),
         ("platform/", "./platform", True, True),
@@ -563,11 +573,11 @@ def test_release_and_content_paths_must_not_overlap_in_one_repository(
     release_path: str, package_path: str, same_repo: bool, overlaps: bool
 ) -> None:
     repo = "git@github.com:example-org/pokus-platform.git"
-    other = repo if same_repo else "https://git.example.com/example-org/catalog.git"
+    other = repo if same_repo else "https://git.example.com/example-org/cases.git"
     problems = checks.check_sources(
         checks.SourceRef(repo, release_path),
         {
-            "catalog": checks.SourceRef(
+            "cases": checks.SourceRef(
                 other.removesuffix(".git") if same_repo else other, package_path
             )
         },
@@ -579,11 +589,11 @@ def test_release_and_content_paths_must_not_overlap_in_one_repository(
 @pytest.mark.parametrize(
     ("first", "second", "same_repo", "overlaps"),
     [
-        ("catalog", "datasets", True, False),
-        ("catalog", "catalog/restricted", True, True),
-        ("catalog", "", True, True),
-        ("catalog", "catalog", True, True),
-        ("catalog", "catalog", False, False),
+        ("cases", "datasets", True, False),
+        ("cases", "cases/restricted", True, True),
+        ("cases", "", True, True),
+        ("cases", "cases", True, True),
+        ("cases", "cases", False, False),
     ],
 )
 def test_content_packages_must_not_overlap_each_other_in_one_repository(
@@ -640,12 +650,19 @@ def test_problems_render_as_one_line() -> None:
 
 
 def test_summary_marks_dedicated_sockets_and_restricted_access() -> None:
-    summary = validate.summary(manifest("potka"), CONTRACT)
+    data = manifest(FIRST_PLATFORM)
+    summary = validate.summary(data, CONTRACT)
     dedicated = {(s["service"], s["name"]) for s in summary["sockets"] if s["agent_dedicated"]}
-    assert dedicated == {("orch", "agent-session"), ("gw", "agent"), ("exec", "agent")}
+    assert dedicated == {
+        (s["service"], s["name"]) for s in data["sockets"] if s.get("untrusted_clients")
+    }
+    assert len(dedicated) == 3
     restricted = {s["name"] for s in summary["services"] if s["restricted_data"]}
-    assert restricted == {"orch", "inject", "verify", "eval"}
+    capable = {"controller", "restricted-operator", "restricted-reader"}
+    assert restricted == {s["name"] for s in data["services"] if s["profile"] in capable}
+    assert len(restricted) == 4
     text = validate.summary_text(summary)
-    assert "socket orch/agent-session: untrusted-agent  [dedicated to the agent]" in text
-    assert "content catalog (restricted)" in text
-    assert yaml.safe_load(dump(manifest("potka")))["name"] == summary["name"]
+    service, socket = sorted(dedicated)[0]
+    assert f"socket {service}/{socket}: untrusted-agent  [dedicated to the agent]" in text
+    assert f"content {data['content'][0]['name']} (restricted)" in text
+    assert yaml.safe_load(dump(data))["name"] == summary["name"]

@@ -2,28 +2,35 @@
 
 # Contract paths (contracts.md#paths, #sockets); compose/core/compose.yml
 # mounts the same paths.
-# Socket directory of the service roles (group potka-svc may connect).
+# Socket directory of the platform's service roles (group <platform>-db, whose
+# members are the platform accounts with a database role, §12.5).
 postgres_service_socket_dir: /run/pinka/postgres
 # Socket directory of the researchers' reader role (group pinka may connect).
 postgres_reader_socket_dir: /run/pinka/postgres-reader
-# Password files of the platform roles.
+# Password files of the platform roles (0711: each file is 0640 root:<account>).
 postgres_password_dir: /etc/pinka/secrets/postgres
 # Researchers' reader credential in pgpass format (owner answer E13).
 postgres_reader_credential: /etc/pinka/postgres-reader/pgpass
 # Secrets mounted into containers: directory 0700 root, each file 0400 owned
 # by the UID of the container that reads it.
 postgres_container_secrets_dir: /etc/pinka/secrets/containers
-# Socket directories with the group that may connect.
+# The active platform's database plan (from its rendering), or {} without a
+# platform or without postgres in its requires.
+postgres_platform: "{{ (active_platform | default({}, true)).database | default({}, true) }}"
+# Socket directories with the group that may connect: without a platform the
+# service directory belongs to root, and only the exporter reaches it.
+postgres_service_group: "{{ postgres_platform.socket_group | default('root') }}"
 postgres_socket_dirs:
-  - {path: "{{ postgres_service_socket_dir }}", group: potka-svc}
+  - {path: "{{ postgres_service_socket_dir }}", group: "{{ postgres_service_group }}"}
   - {path: "{{ postgres_reader_socket_dir }}", group: pinka}
 
-# Roles allowed on the Unix sockets (pg_hba.conf local lines).
-postgres_socket_roles: "{{ postgres_service_roles | map(attribute='role') | list + [postgres_reader_role] }}"
-# Every login role the bootstrap SQL creates.
-postgres_all_roles: "{{ postgres_socket_roles + [postgres_grafana_role, postgres_monitor_role] }}"
-# Roles whose passwords come from the vault (vault_postgres_passwords).
-postgres_vault_roles: "{{ postgres_socket_roles + [postgres_grafana_role] }}"
+# The platform's login roles (pg_hba.conf local lines for its database).
+postgres_platform_logins: >-
+  {{ (postgres_platform.logins | default([]) | map(attribute='role') | list)
+     + ([postgres_platform.migrator, postgres_platform.reader, postgres_platform.grafana]
+        if postgres_platform else []) }}
+# Roles whose stored secrets the password tasks compare.
+postgres_all_roles: "{{ postgres_platform_logins + [postgres_monitor_role] }}"
 # Stored SCRAM secrets of the login roles, as one JSON object.
 postgres_secrets_query: >-
   SELECT coalesce(json_object_agg(rolname, rolpassword), '{}') FROM pg_authid
@@ -46,5 +53,5 @@ postgres_psql:
   - >-
     PGPASSWORD="$(cat /run/secrets/postgres-superuser)"
     exec psql --no-psqlrc --set=ON_ERROR_STOP=1 --host=/var/run/postgresql
-    --username=postgres --dbname=potka "$@"
+    --username=postgres --dbname=postgres "$@"
   - psql

@@ -80,7 +80,9 @@ RESERVED_USERNAMES = frozenset(
     }
 )
 # Prefixes of infra's and the platform's accounts; the old project prefix stays refused.
-SERVICE_ACCOUNT_PREFIXES = ("pinka-", "potka-", "pokus-")
+# Infra's own accounts and groups start with pinka- (§6.1); the platform's are
+# checked against the host when it is deployed (§12.1).
+SERVICE_ACCOUNT_PREFIXES = ("pinka-",)
 
 # Key types accepted for researchers (ssh-keygen -t; the sk- variants are FIDO keys).
 SSH_KEY_TYPES = frozenset(
@@ -130,7 +132,7 @@ def username(value: str, service_accounts: Iterable[str] = ()) -> str | None:
 
     Args:
         value: The name.
-        service_accounts: The lab's service account names (``service_accounts``).
+        service_accounts: The lab's own account names (``infra_accounts``).
 
     Returns:
         The error, or None.
@@ -140,7 +142,7 @@ def username(value: str, service_accounts: Iterable[str] = ()) -> str | None:
     if value in RESERVED_USERNAMES:
         return f"'{value}' is reserved on Linux or by the lab"
     if value in set(service_accounts) or value.startswith(SERVICE_ACCOUNT_PREFIXES):
-        return f"'{value}' clashes with the lab's service accounts (pinka-*, potka-*, pokus-*)"
+        return f"'{value}' clashes with the lab's own accounts (pinka-*)"
     return None
 
 

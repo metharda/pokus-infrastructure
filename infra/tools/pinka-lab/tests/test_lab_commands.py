@@ -73,21 +73,11 @@ class LabTest(unittest.TestCase):
         self.assertEqual((code, err), (1, "health gate failed\n"))
 
     def test_drain(self) -> None:
-        self.assertIn("nothing to drain", commands.drain(FakeSystem(), 10))
-        sock = {commands.ORCH_API: info("potka-orch", "pinka", 0o660)}
-        system = FakeSystem(
-            infos=sock,
-            unix={"POST /lab/drain": (202, "{}"), "GET /lab/status": (200, {"active_runs": 0})},
-        )
-        self.assertEqual(commands.drain(system, 10), "drained: no active runs")
-        self.assertEqual(system.unix_calls[0], ("POST", "/lab/drain", b'{"timeout_seconds": 10}'))
-        refused = FakeSystem(infos=sock, unix={"POST /lab/drain": (403, "forbidden")})
-        self.assertIn("did not accept", commands.drain(refused, 10))
-        busy = FakeSystem(
-            infos=sock,
-            unix={"POST /lab/drain": (202, "{}"), "GET /lab/status": (200, {"active_runs": 2})},
-        )
-        self.assertIn("timeout after 0 s", commands.drain(busy, 0))
+        # The platform's drain hook follows with the hooks (plan step 3d.4).
+        self.assertIn("no active platform", commands.drain(FakeSystem(), 10))
+        active = FakeSystem(infos={commands.ACTIVE_PLATFORM: info("root", "root", 0o644)})
+        self.assertIn("drain hook is not run yet", commands.drain(active, 10))
+        self.assertEqual(active.unix_calls, [])
 
     def test_stop_drains_first(self) -> None:
         system = FakeSystem({"systemctl stop pinka-lab.target": (0, "")})
@@ -95,7 +85,7 @@ class LabTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(
             out.splitlines(),
-            ["no orchestrator socket; nothing to drain", "pinka-lab.target stopped"],
+            ["no active platform; nothing to drain", "pinka-lab.target stopped"],
         )
 
     def test_status(self) -> None:
@@ -390,21 +380,57 @@ if __name__ == "__main__":
     unittest.main()
 
 
+PURGED = json.dumps(
+    {
+        "changed": True,
+        "removed": ["/srv/pinka/platforms/oldplat", "/srv/pinka/restricted/oldplat"],
+        "databases": ["oldplat"],
+        "roles": ["oldplat_ctl"],
+        "remaining": {
+            "locked_accounts": ["oldplat-ctl"],
+            "secrets": ["/etc/pinka/secrets/oldplat-ctl"],
+            "published_signing_keys": ["/srv/pinka/shared/signing-keys/oldplat-lab-20260101.pub"],
+        },
+    }
+)
+
+
 class PlatformPurgeTest(unittest.TestCase):
-    def test_purge_runs_the_deployment_tool(self) -> None:
-        system = FakeSystem(interactive_rc=0)
-        code, _, _ = captured(lambda: commands.platform_purge(system, lab(), "oldplat", "oldplat"))
+    def test_purge_runs_the_deployment_tool_and_prints_what_remains(self) -> None:
+        system = FakeSystem({f"{commands.PLATFORM_TOOL} purge *": (0, PURGED)})
+        code, out, _ = captured(
+            lambda: commands.platform_purge(system, lab(), "oldplat", "oldplat")
+        )
         self.assertEqual(code, 0)
         self.assertEqual(
-            system.interactive_calls[0][0],
-            [commands.PLATFORM_TOOL, "purge", "oldplat", "--confirm", "oldplat"],
+            system.calls[0], [commands.PLATFORM_TOOL, "purge", "oldplat", "--confirm", "oldplat"]
         )
+        self.assertIn("removed /srv/pinka/platforms/oldplat", out)
+        self.assertIn("dropped database oldplat", out)
+        self.assertIn("remains: locked account oldplat-ctl", out)
+        self.assertIn("remains: secret /etc/pinka/secrets/oldplat-ctl", out)
+        self.assertIn("remains: published signing key", out)
+        self.assertIn("--remove-secrets", out)
+
+    def test_purge_can_remove_the_secrets(self) -> None:
+        system = FakeSystem({f"{commands.PLATFORM_TOOL} purge *": (0, PURGED)})
+        captured(lambda: commands.platform_purge(system, lab(), "oldplat", "oldplat", True))
+        self.assertEqual(system.calls[0][-1], "--remove-secrets")
+
+    def test_purge_reports_a_failure(self) -> None:
+        failed = json.dumps({"changed": False, "error": "psql failed: no container"})
+        system = FakeSystem({f"{commands.PLATFORM_TOOL} purge *": (1, failed)})
+        code, _, err = captured(
+            lambda: commands.platform_purge(system, lab(), "oldplat", "oldplat")
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("psql failed", err)
 
     def test_purge_asks_for_the_name(self) -> None:
         import builtins
         from unittest import mock
 
-        system = FakeSystem(interactive_rc=0)
+        system = FakeSystem({f"{commands.PLATFORM_TOOL} purge *": (0, PURGED)})
         with mock.patch.object(builtins, "input", return_value="oldplat\n"):
             code, out, _ = captured(lambda: commands.platform_purge(system, lab(), "oldplat", None))
         self.assertEqual(code, 0)
@@ -412,7 +438,7 @@ class PlatformPurgeTest(unittest.TestCase):
         with mock.patch.object(builtins, "input", return_value="other"):  # noqa: SIM117 - Python 3.9
             with self.assertRaisesRegex(CommandError, "not confirmed"):
                 captured(lambda: commands.platform_purge(system, lab(), "oldplat", None))
-        self.assertEqual(len(system.interactive_calls), 1)
+        self.assertEqual(len(system.calls), 1)
 
     def test_purge_refusals(self) -> None:
         with self.assertRaisesRegex(CommandError, "needs root"):

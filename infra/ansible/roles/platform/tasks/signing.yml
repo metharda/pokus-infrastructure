@@ -1,35 +1,36 @@
 # Managed by pinka (ansible/roles/platform/tasks/signing.yml). Local changes will be overwritten.
 #
-# The run-manifest signing key (contracts.md, C9d): ed25519, PEM PKCS#8,
-# generated on the host, readable only by potka-orch. Its public key
+# The platform's signing key (§12.10): ed25519, PEM PKCS#8, generated on this
+# host, readable only by the controller account (0400). Its public key
 # (SubjectPublicKeyInfo) is published as
-# <pinka_root>/shared/signing-keys/<machine>-<YYYYMMDD>.pub and kept forever.
+# <pinka_root>/shared/signing-keys/<platform>-<machine>-<YYYYMMDD>.pub and kept
+# forever. Paths and the owner come from the rendering (active_platform.signing).
 
 - name: Create the signing key directory
   ansible.builtin.file:
-    path: "{{ platform_signing_dir }}"
+    path: "{{ active_platform.signing.dir }}"
     state: directory
     owner: root
-    group: potka-orch
+    group: "{{ active_platform.signing.owner }}"
     mode: "0750"
   register: platform_signing_dir_state
 
 # In check mode the key waits until its directory exists.
 - name: Generate the signing key
   community.crypto.openssl_privatekey:
-    path: "{{ platform_signing_key }}"
+    path: "{{ active_platform.signing.key }}"
     type: Ed25519
     format: pkcs8
-    owner: potka-orch
-    group: potka-orch
+    owner: "{{ active_platform.signing.owner }}"
+    group: "{{ active_platform.signing.owner }}"
     mode: "0400"
     regenerate: never
   when: not (ansible_check_mode and platform_signing_dir_state is changed)
 
 - name: Write the signing key's public key
   community.crypto.openssl_publickey:
-    path: "{{ platform_signing_pub }}"
-    privatekey_path: "{{ platform_signing_key }}"
+    path: "{{ active_platform.signing.pub }}"
+    privatekey_path: "{{ active_platform.signing.key }}"
     format: PEM
     owner: root
     group: root
@@ -38,7 +39,7 @@
 
 - name: Create the directory of published signing keys
   ansible.builtin.file:
-    path: "{{ platform_signing_published }}"
+    path: "{{ active_platform.signing.published_dir }}"
     state: directory
     owner: root
     group: pinka
@@ -46,22 +47,24 @@
 
 - name: Read the public key
   ansible.builtin.stat:
-    path: "{{ platform_signing_pub }}"
+    path: "{{ active_platform.signing.pub }}"
     checksum_algorithm: sha256
   register: platform_signing_pub_stat
 
-- name: Find the published keys of this machine
+- name: Find the published keys of this platform on this machine
   ansible.builtin.find:
-    paths: "{{ platform_signing_published }}"
-    patterns: ["{{ machine_name }}-*.pub"]
+    paths: "{{ active_platform.signing.published_dir }}"
+    patterns: ["{{ active_platform.signing.published_prefix }}*.pub"]
     get_checksum: true
     checksum_algorithm: sha256
   register: platform_signing_published_keys
 
 - name: Publish the public key (kept forever)
   ansible.builtin.copy:
-    src: "{{ platform_signing_pub }}"
-    dest: "{{ platform_signing_published }}/{{ machine_name }}-{{ now(utc=true).strftime('%Y%m%d') }}.pub"
+    src: "{{ active_platform.signing.pub }}"
+    dest: >-
+      {{ active_platform.signing.published_dir }}/{{ active_platform.signing.published_prefix
+      }}{{ now(utc=true).strftime('%Y%m%d') }}.pub
     remote_src: true
     force: false
     owner: root

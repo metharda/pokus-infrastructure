@@ -2,7 +2,7 @@
 #
 # One vLLM deploy helper per connection (contracts.md#inference, C3). Runs as
 # root because it rewrites /etc/pinka/vllm and restarts
-# pinka-inference.service; it checks the peer is potka-orch itself.
+# pinka-inference.service; it checks the peer itself.
 [Unit]
 Description=pinka vLLM deploy helper
 CollectMode=inactive-or-failed
@@ -10,7 +10,7 @@ CollectMode=inactive-or-failed
 [Service]
 Slice={{ pinka_services_slice }}
 Type=oneshot
-ExecStart=/usr/local/libexec/pinka/vllm-deploy serve
+ExecStart=/usr/local/libexec/pinka/vllm-deploy serve --peer {{ vllm_deploy_peer }}
 StandardInput=socket
 StandardOutput=socket
 StandardError=journal

@@ -1,0 +1,580 @@
+===== allprof-agt.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service agt (untrusted-agent)
+PartOf=pinka-platform.target allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket
+Requires=pinka-health-gate.service allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket allprof-ctl.service allprof-brk.service allprof-sbx.service
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/agt --verbose
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-agt
+Group=allprof-agt
+SupplementaryGroups=allprof-brk-agent allprof-ctl-agent allprof-sbx-agent
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX
+PrivateNetwork=yes
+TemporaryFileSystem=/srv/pinka:ro /etc/pinka:ro /var/lib/pinka:ro /run/pinka:ro
+BindReadOnlyPaths=/srv/pinka/platforms/allprof/releases /run/pinka/platform/ctl/agent.sock /run/pinka/platform/brk/agent.sock /run/pinka/platform/sbx/agent.sock -/run/pinka/otlp/agent.sock
+BindPaths=/srv/pinka/platforms/allprof/state/agt/scratch
+ReadWritePaths=/srv/pinka/platforms/allprof/state/agt/scratch
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-brk-agent.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket agent of brk for the agent
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/brk/agent.sock
+SocketUser=allprof-brk
+SocketGroup=allprof-brk-agent
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=agent
+Service=allprof-brk.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-brk-api.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket api of brk
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/brk/api.sock
+SocketUser=allprof-brk
+SocketGroup=allprof-brk-api
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=api
+Service=allprof-brk.service
+ExecStartPost=/usr/local/libexec/pinka/socket-acl /run/pinka/platform/brk/api.sock pinka
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-brk.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service brk (inference-broker)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service allprof-brk-agent.socket allprof-brk-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-brk-agent.socket allprof-brk-api.socket allprof-ctl.service
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/brk
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-brk
+Group=allprof-brk
+SupplementaryGroups=allprof-ctl-svc allprof-db allprof-obs-api
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+SocketBindAllow=tcp:18705
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/incus -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-ctl-agent.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket agent of ctl for the agent
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/ctl/agent.sock
+SocketUser=allprof-ctl
+SocketGroup=allprof-ctl-agent
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=agent
+Service=allprof-ctl.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-ctl-api.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket api of ctl
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/ctl/api.sock
+SocketUser=allprof-ctl
+SocketGroup=allprof-ctl-api
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=api
+Service=allprof-ctl.service
+ExecStartPost=/usr/local/libexec/pinka/socket-acl /run/pinka/platform/ctl/api.sock pinka pinka-admin
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-ctl-svc.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket svc of ctl
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/ctl/svc.sock
+SocketUser=allprof-ctl
+SocketGroup=allprof-ctl-svc
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=svc
+Service=allprof-ctl.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-ctl.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service ctl (controller)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service allprof-ctl-api.socket allprof-ctl-svc.socket allprof-ctl-agent.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-ctl-api.socket allprof-ctl-svc.socket allprof-ctl-agent.socket
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/ctl
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-ctl
+Group=allprof-ctl
+SupplementaryGroups=allprof-brk-api allprof-db allprof-obs-api allprof-rop-api allprof-rrd-api allprof-sbx-api pinka-query pinka-restricted
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=1G
+TasksMax=256
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/srv/pinka/platforms/allprof/state/ctl/records
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current /etc/pinka/platform/config/ctl.json
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-obs-api.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket api of obs
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/obs/api.sock
+SocketUser=allprof-obs
+SocketGroup=allprof-obs-api
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=api
+Service=allprof-obs.service
+ExecStartPost=/usr/local/libexec/pinka/socket-acl /run/pinka/platform/obs/api.sock pinka pinka-admin
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-obs.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service obs (observer)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service allprof-obs-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-obs-api.socket
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/obs
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-obs
+Group=allprof-obs
+SupplementaryGroups=allprof-ctl-svc allprof-db allprof-obs-api pinka-query
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/incus -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-rop-api.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket api of rop
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/rop/api.sock
+SocketUser=allprof-rop
+SocketGroup=allprof-rop-api
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=api
+Service=allprof-rop.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-rop.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service rop (restricted-operator)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service allprof-rop-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-rop-api.socket
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/rop
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-rop
+Group=allprof-rop
+SupplementaryGroups=allprof-ctl-svc allprof-db pinka-restricted
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-rrd-api.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket api of rrd
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/rrd/api.sock
+SocketUser=allprof-rrd
+SocketGroup=allprof-rrd-api
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=api
+Service=allprof-rrd.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-rrd.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service rrd (restricted-reader)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service allprof-rrd-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-rrd-api.socket
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/rrd
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-rrd
+Group=allprof-rrd
+SupplementaryGroups=allprof-ctl-svc allprof-db pinka-query pinka-restricted
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=no
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/srv/pinka/platforms/allprof/state/rrd/reports
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/incus -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-sbx-agent.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket agent of sbx for the agent
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/sbx/agent.sock
+SocketUser=allprof-sbx
+SocketGroup=allprof-sbx-agent
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=agent
+Service=allprof-sbx.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-sbx-api.socket
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: socket api of sbx
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/sbx/api.sock
+SocketUser=allprof-sbx
+SocketGroup=allprof-sbx-api
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=api
+Service=allprof-sbx.service
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-sbx.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: service sbx (sandbox-operator)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service allprof-sbx-agent.socket allprof-sbx-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-sbx-agent.socket allprof-sbx-api.socket allprof-ctl.service
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/sbx
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+Restart=on-failure
+RestartSec=5
+User=allprof-sbx
+Group=allprof-sbx
+SupplementaryGroups=allprof-ctl-svc allprof-db pinka-query
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
+===== pinka-platform.target
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof of the lab
+Requires=pinka-health-gate.service
+After=pinka-health-gate.service
+PartOf=pinka-lab.target
+
+[Install]
+WantedBy=pinka-lab.target

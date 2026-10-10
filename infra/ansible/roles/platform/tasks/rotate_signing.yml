@@ -1,29 +1,30 @@
 # Managed by pinka (ansible/roles/platform/tasks/rotate_signing.yml). Local changes will be overwritten.
 #
-# rotate.yml --tags signing: replace the signing key. Manifests signed with the
-# old key stay verifiable through its published public key, which is kept.
+# rotate.yml --tags signing: replace the active platform's signing key.
+# Manifests signed with the old key stay verifiable through its published
+# public key, which is kept. The controller reads the key when it starts, so
+# its service is restarted if it runs.
 
-- name: Remove the current signing key
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "{{ platform_signing_key }}"
-    - "{{ platform_signing_pub }}"
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
 
-- name: Generate and publish the new signing key
-  ansible.builtin.include_tasks: signing.yml
+- name: Rotate the signing key of the active platform
+  when: active_platform.signing is defined
+  block:
+    - name: Remove the current signing key
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ active_platform.signing.key }}"
+        - "{{ active_platform.signing.pub }}"
 
-- name: Look for the orchestrator unit
-  ansible.builtin.stat:
-    path: /etc/systemd/system/potka-orchestrator.service
-  register: platform_orchestrator_unit
+    - name: Generate and publish the new signing key
+      ansible.builtin.include_tasks: signing.yml
 
-- name: Restart the orchestrator with the new key
-  ansible.builtin.systemd_service:
-    name: potka-orchestrator.service
-    state: restarted
-  when:
-    - platform_deploy | bool
-    - platform_orchestrator_unit.stat.exists
-    - not ansible_check_mode
+    - name: Restart the controller with the new key if it runs
+      ansible.builtin.command:
+        argv: [systemctl, try-restart, "{{ active_platform.controller }}.service"]
+      changed_when: true
+      when: not ansible_check_mode

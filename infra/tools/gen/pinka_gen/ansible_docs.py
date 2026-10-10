@@ -327,7 +327,7 @@ def accounts_page(root: Path) -> str:
     groups = [[f"`{g['name']}`", g["system"], g["description"]] for g in data["pinka_groups"]]
     accounts = [
         [f"`{a['name']}`", a["description"], ", ".join(f"`{g}`" for g in a["groups"])]
-        for a in data["service_accounts"]
+        for a in data["infra_accounts"]
     ]
     return "".join(
         [
@@ -350,12 +350,22 @@ def accounts_page(root: Path) -> str:
             "No researcher is added to `docker` or `incus-admin`; an admin listed in "
             "`break_glass_docker` is the only exception. Researchers in "
             "`researchers_removed` are locked, never deleted.\n\n",
-            "## Service accounts\n\n",
+            "## Infra accounts\n\n",
             f"System users with the shell `/usr/sbin/nologin`, home "
             f"`{data['pinka_service_home']}/<account>`, no password and no SSH keys. "
-            "Each account's primary group is a system group of the same name, which "
-            "the contract uses for socket and password-file ownership.\n\n",
+            "Each account's primary group is a system group of the same name.\n\n",
             pages.table(["Account", "Runs", "Groups"], accounts),
+            "\n## Platform accounts\n\n",
+            "The active platform's accounts and groups are not listed here: the platform "
+            "role renders them from the manifest and the profiles (contract v2): "
+            "`<platform>-<service>` per service, `<platform>-<job>` per training job, "
+            "`<platform>-migrate` for the `migrate` hook, the database socket group "
+            "`<platform>-db` and one client group per socket. They are system users "
+            "like the infra accounts, each with a primary group of its own name, and "
+            "their other groups follow from their profiles only: the "
+            "[profile reference](platform-profiles.md) lists what each profile grants. "
+            "A researcher may not have the name of an infra or platform account or "
+            "group; the users_groups role refuses one.\n",
         ]
     )
 

@@ -2444,3 +2444,246 @@ step 8 without hooks, and §12.10.
   `fingerprint` fields, and a full deployment of `refplat`.
   (`DROP DATABASE ... WITH (FORCE)` exists since PostgreSQL 13; 18 is
   pinned.)
+
+## Contract v2, step 3: rendering from the profiles (plan step 3d.3)
+
+BUILD_PROMPT §16 step 17 ("Rendering from profiles: accounts, groups, units,
+sockets (dedicated agent sockets included), ACLs, database and `restricted`
+schema, Incus certificates, the run-network helper, OPA, dashboards, tools,
+CLI link; platform special cases removed; the neutrality lint; tests proving
+that the agent has no IP access and no database socket group"), §7.14 step
+7, and the follow-ups the owner asked for with the "commit" for 3d.2.
+
+- **Engine** (`tools/platform/pinka_platform/`): `accounts.py` (accounts,
+  groups and memberships from the profiles, with the §12.4 refusals),
+  `units.py` (service, socket and target units), `database.py` (the
+  bootstrap and restricted-check SQL), `config.py` (the services'
+  configuration against their schemas), `rendering.py` (one document with
+  everything the role applies); deployment steps `deploy render` and `deploy
+  principals`; `rendered.json`; the vault keys a release needs; the policy
+  bundle check.
+- **Ansible**: `platform` applies the rendering (`tasks/render.yml`); the new
+  helper role `active_platform` gives the other roles the rendering; the
+  `postgres` role sets up the platform database (`tasks_from: platform`);
+  the `incus` role gets the run-network helper and issues the certificates
+  from the rendering; `opa`, `observability`, `compose`, `vllm`, `backup`
+  and `doctor` read the active platform instead of naming one;
+  `users_groups` refuses researchers named like a lab account;
+  `inference_control` runs as the new infra account `pinka-inference`;
+  model files are `root:pinka`.
+- **Removed platform special cases**: the contract v1 unit template, the
+  socket and configuration helpers of v1 (`pinka_socket_perms.py` became the
+  generic `pinka_socket_acl.py`), the potka OPA placeholder, the run explorer
+  dashboard, `service_accounts` and the potka database roles of
+  `group_vars`, the gateway's ACL on the inference client key, the
+  orchestrator's drain call in `pinka stop`, and every platform name in
+  infra's code and tests. The Pokus Platform's manifest stays a test fixture
+  (`pokus-platform.yaml`).
+- **Neutrality lint** (`make lint-neutral`, part of `make lint`):
+  `tools/repo-checks/pinka_repo_checks/neutrality.py` with its lists in
+  `neutrality.json`.
+- **3d.2 follow-ups**: device files, FIFOs, sockets and setuid or setgid bits
+  refused in staged sources, content packages and build output; the
+  two-phase build; purge keeps accounts, secrets and published keys by
+  default, lists what remains, and removes the secrets directories with
+  `--remove-secrets`; CI asserts `ssh-keygen`, the PostgreSQL server
+  binaries and `systemd-analyze`, so the signed-tag test, the SQL tests and
+  the unit check skip only outside CI.
+- **Tests**: `tools/platform/tests/test_rendering.py` (68, golden files of units,
+  accounts, SQL and the document per fixture, `systemd-analyze verify` of
+  every rendered unit), `test_deploy_render.py` (34),
+  `ansible/tests/test_postgres_sql.py` (24, the SQL against a real
+  PostgreSQL server), `test_run_network.py` (26),
+  `tools/repo-checks/tests/test_neutrality.py` (38) and the updated role,
+  doctor, fingerprint, installer and generator tests; `make test` runs
+  2324 tests.
+
+### Interpretations awaiting owner confirmation (3d.3)
+
+1. **Where rendering happens.** `pinka-platform deploy render` computes one
+   document from the manifest, the profiles and the host settings; the
+   platform role applies it with ordinary modules (`group`, `user`, `file`,
+   `copy`) and the postgres and incus roles. The public part of the document
+   stays as `/etc/pinka/platform/rendered.json` (0644, without the
+   configuration contents), which the other roles read through
+   `active_platform` and which replacing uses to find what to remove. It is
+   infra-internal, not part of the contract. Alternatives: Jinja templates
+   per object in the roles (the profile rules then live in two languages),
+   or the tool applying everything itself as root.
+2. **Sockets by socket activation.** Each socket of the manifest is a socket
+   unit `<platform>-<service>-<socket>.socket` (`SocketUser` the serving
+   account, `SocketGroup` the client group, 0660, `DirectoryMode=0755`,
+   `RemoveOnStop=yes`, `FileDescriptorName=<socket>`,
+   `Service=<platform>-<service>.service`). The service receives its
+   sockets as file descriptors (`LISTEN_FDS`, `LISTEN_FDNAMES`) and never
+   creates them. This touches the contract: a platform service must accept
+   its sockets from systemd; `docs/contracts.md` gets it in 3d.8, the
+   validate how-to has it now. Alternative: services bind the sockets
+   themselves and infra fixes owner, group, mode and ACL after start, which
+   races with clients and needs a writable directory per service.
+3. **No `RuntimeDirectory=` (proposed deviation V4 from the §7.14
+   baseline).** The baseline lists `RuntimeDirectory=pinka/platform/<service>`.
+   With socket units it cannot be used: systemd removes the runtime
+   directory, sockets included, when the service stops, and changes the
+   ownership of everything in it to the service's account when it starts,
+   which resets the client groups of the sockets. The socket units create
+   `/run/pinka/platform/<service>/` (root, 0755) instead; §6.2's
+   "`/run/pinka/` (runtime sockets via systemd `RuntimeDirectory=`)" holds
+   for infra's own units.
+4. **ACL entries** for `pinka` and `pinka-admin` are set by the socket unit
+   (`ExecStartPost`, `/usr/local/libexec/pinka/socket-acl`) only on sockets
+   whose clients include researchers or admins. Without ACL support on
+   `/run` the helper makes the socket 0666 and the platform's peer-credential
+   check alone separates the clients (§12.3). Sockets of `restricted-*`
+   services never have human clients, so they never fall back.
+5. **The hardening baseline** is rendered in the order of §7.14, from the
+   profile only: `IPAddressAllow=localhost` for the profiles with loopback
+   access, none for the others; `SocketBindDeny=any` everywhere and
+   `SocketBindAllow=tcp:<gateway_adhoc>` for the inference broker only;
+   `MemoryDenyWriteExecute=no` only with the relaxation `wx-memory`, which
+   the validator refuses for the agent; `Restart=on-failure`; ordered after
+   the health gate and the facilities the manifest requires, and after the
+   services it lists in `after`; part of `pinka-platform.target`.
+6. **Infra internals hidden from every profile** (`InaccessiblePaths`, each
+   with `-` so a missing path is no error): the Git mirrors, staging,
+   `/var/lib/incus`, `/var/lib/docker` and the Docker sockets, infra's
+   container and backup secrets, the inference node keys, the backups, the
+   GPU arbiter's and the run-network helper's sockets (not for the
+   controller), the restricted area (not for the three restricted
+   profiles), the database socket directories (without a database role),
+   the Incus certificates (without Incus access) and the signing directory
+   (not for the controller).
+7. **The agent's allowlist**: `PrivateNetwork=yes`,
+   `RestrictAddressFamilies=AF_UNIX`, `IPAddressDeny=any` without any allow
+   rule, `TemporaryFileSystem=` (read-only) over `/srv/pinka`, `/etc/pinka`,
+   `/var/lib/pinka` and `/run/pinka`, with only the platform's `releases`
+   directory (all published releases; `current` is a link into it), its own
+   configuration file, its dedicated sockets and the agent OTLP socket
+   (`-/run/pinka/otlp/agent.sock`, optional until 3d.4) bound in read-only
+   and its own state read-write; its only supplementary groups are the
+   client groups of its dedicated sockets; it `Requires` those socket units
+   and stops with them. Tests prove no IP access, no database socket group,
+   no other group and nothing else visible.
+8. **Accounts**: `<platform>-<service>`, `<platform>-<job>` and
+   `<platform>-migrate` are system accounts with shell `nologin`, home
+   `/var/lib/pinka/<account>` (not created; the units use `ProtectHome`),
+   a locked password, a primary group of their own name and exactly the
+   groups their profile grants (`append: false`): `pinka-restricted` for
+   the restricted profiles and the controller, `pinka-query` for the
+   profiles that query, `<platform>-db` for the profiles with a database
+   role, `pinka-datasets` for training jobs, the client groups of the
+   sockets they may use. The tool refuses host groups (`docker`, `incus*`,
+   `sudo`, `wheel`, `adm`, `pinka`, `pinka-admin`, ...), any of the three
+   restricted groups for the agent and training jobs, any group but the
+   dedicated client groups for the agent, and unknown groups.
+9. **Database**: one database `<platform>` per platform; a login role
+   `<platform>_<service>` per service whose profile has a database role,
+   each in a `NOLOGIN` group role per profile (`<platform>_<profile>`); the
+   migrator `<platform>_migrator` owns the database and the schemas
+   `public` and `restricted`; the reader and Grafana roles; `CONNECT` only
+   for these roles; roles a previous release had become `NOLOGIN`. The
+   restricted check revokes and reports every privilege outside the allowed
+   set (the migrator, the group and login roles of `controller`,
+   `restricted-operator` and `restricted-reader`), including column and
+   function privileges, default privileges, views outside the schema that
+   read it, `SECURITY DEFINER` functions of allowed roles and memberships
+   in allowed roles; `PUBLIC`'s default `EXECUTE` on functions in the
+   schema is revoked as a change, not reported. Every statement was run
+   against PostgreSQL 16 here; the lab pins 18.
+10. **Passwords** come from the vault (`vault_postgres_passwords.<role>`,
+    `vault_platform_secrets.<service>.<name>`); `deploy prepare` lists the
+    keys a release needs, and a missing one stops bootstrap with exit code 77
+    before anything changes. Infra generates no platform password.
+    Alternative: generate missing passwords on the host like infra's own
+    (then the installer could not show them and a reinstall would change
+    them).
+11. **Configuration**: `platform_settings.<service>` in the host settings,
+    checked at prepare against the service's schema in the release with the
+    keywords of the manifest schema plus annotations; an unknown service, a
+    setting for a service without a schema and any other keyword are
+    refused (65). Written as JSON to
+    `/etc/pinka/platform/config/<service>.json` (0640 `root:<account>`).
+12. **Incus certificates**: one per service whose profile has Incus projects,
+    named `<platform>-<service>` (its account), in
+    `/etc/pinka/incus/<platform>-<service>/`, restricted to the profile's
+    projects; issued by the incus role's certificate tasks from the
+    rendering.
+13. **Run-network helper**: socket-activated with `Accept=yes`, one root
+    instance per connection, no network, only `AF_UNIX`, no capabilities,
+    writing only `/var/lib/pinka/run-networks/`. The bridge keys
+    (`ipv4.address=auto`, `ipv4.nat=false`, `ipv6.address=none`,
+    `security.acls`) were checked against the Incus 6.0 option list
+    (`doc/config_options.txt` on the `stable-6.0` branch); a network that
+    exists with other settings, an uplink included, is refused. The socket
+    belongs to the active platform's controller account, root without a
+    platform.
+14. **OPA**: the authorization policy allows exactly the manifest's
+    decision path and infra's placeholder path; the bundle is mounted from
+    the published release. A bundle module may not declare a package below
+    `system` or `pinka`, and no data file may sit below `system/` or
+    `pinka/` or put those keys at the top of `data` (refused, 65).
+15. **Dashboards**: the JSON files of the manifest's directory, copied
+    read-only into a Grafana folder named after the platform; the
+    PostgreSQL datasource exists only with a platform database and uses
+    `<platform>_grafana` through the reader socket directory.
+16. **CLI**: a wrapper `/usr/local/lib/pinka/platform/cli/<cli>` (a shell
+    script that `exec`s `cli.run` in `releases/current`, every word quoted)
+    and a link to it in `/usr/local/bin`; replacing removes both.
+17. **Units are installed, not started**: no unit is enabled or started
+    until the switch with the hooks (3d.4); `pinka stop` reports that the
+    drain hook is not run yet.
+18. **Signing key**: `/etc/pinka/signing/<platform>/` (`root:<controller>`
+    0750), published as `<platform>-<machine>-<YYYYMMDD>.pub` in
+    `/srv/pinka/shared/signing-keys/` and kept there.
+19. **The neutrality lint** scans every file git tracks or would track,
+    reporting the Pokus Platform's name, its service and unit names as
+    whole tokens, and the project name outside its allowed forms. Excluded,
+    each with a reason: the documentation and READMEs, test fixtures and
+    golden files, the reserved-name list, the leakage lint's patterns, lock
+    files, and, until 3d.7 rewrites them, the installer and its answers
+    files (proposed deviation V5). Two files may name them on lines that
+    are exactly one listed word (the reserved list's source and the leakage
+    lint's test words).
+20. **Researcher names**: `users_groups` refuses a researcher named like an
+    infra or platform account or group before it changes anything (the
+    user module would otherwise make that account a human one).
+21. **The installer's validator** refuses only `pinka-*` and infra's own
+    accounts; it no longer knows the platform's names. Platform accounts
+    are protected by the host check of the deployment (a name that exists
+    on the host and is not the same platform's is refused) and by item 20.
+22. **The two-phase build** (owner request on 3d.2): phase 1 `uv sync
+    --frozen --no-install-project --no-install-workspace --no-build` with
+    network installs only the locked wheels, verified against `uv.lock`; it
+    builds nothing and compiles nothing, so no interpreter starts on the new
+    environment (a wheel's `.pth` file would run then). Phase 2 runs with
+    `PrivateNetwork=yes` and `--offline --no-build-isolation
+    --compile-bytecode`: the release itself is built with the backend that
+    phase 1 installed and the whole environment is compiled. A release with
+    a `[build-system]` must therefore lock its backend in a dependency
+    group `build`, and every dependency must be available as a wheel
+    (proposed deviation V3). The flags were checked with `uv sync --help` of
+    the pinned uv 0.12.23. Residual risk: phase 2 runs the release's own
+    build backend and hooks, without network; a backend left in the runtime
+    environment.
+
+### Findings to report (3d.3)
+
+- The manifest's `telemetry.labels` are rendered, but the collector does not
+  yet turn them into Loki labels: Loki's OTLP configuration must be checked
+  against the pinned release first. It follows with the telemetry work of
+  3d.4.
+- Backups do not yet include the platform's `backup.paths`; the database
+  dump follows `backup.database` already. Both belong to 3d.4 (backup and
+  restore).
+- Doctor's v1 platform checks (unit hardening and socket permissions from
+  fixed lists) are switched off (`doctor_platform: false`, so those checks
+  report "skip"); the checks from the profiles and the manifest follow in
+  3d.4.
+- `ruff format` run on a wrong path list reformatted the vendored lint
+  collections in the gitignored `.ansible-collections/`; their code is
+  unchanged (ruff keeps the syntax tree), Galaxy is blocked here, so they
+  stay so until the next `make setup` on a machine that reaches Galaxy.
+- Not verified on a real host (needs a VM, 3e or `make test-distros`):
+  starting the rendered units and socket activation, the socket-ACL helper
+  on `/run`, the run-network helper against Incus, the certificates' trust
+  entries, the two build phases, and the SQL on PostgreSQL 18.

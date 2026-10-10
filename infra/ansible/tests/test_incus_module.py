@@ -212,7 +212,7 @@ def test_certificates_by_fingerprint() -> None:
     api = FakeIncus()
     p = params(
         kind="certificate",
-        name="potka-orch",
+        name="demo-ctl",
         certificate=pem,
         restricted=True,
         projects=["bench", "build"],

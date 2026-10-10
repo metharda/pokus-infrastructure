@@ -52,12 +52,6 @@
         group: root
         mode: "0755"
 
-    - name: Read the owner of the weights
-      ansible.builtin.getent:
-        database: passwd
-        key: potka-orch
-        fail_key: "{{ not ansible_check_mode }}"  # in check mode the account may not exist yet
-
     - name: Read the group of the weights
       ansible.builtin.getent:
         database: group
@@ -70,7 +64,7 @@
         argv: >-
           {{ ['/usr/local/libexec/pinka/models-fetch', '--kind', item.0.kind, '--entry', item.1 | to_json,
               '--root', models_root, '--hf', models_venv ~ '/bin/hf',
-              '--uid', ansible_facts.getent_passwd['potka-orch'][1],
+              '--uid', '0',
               '--gid', ansible_facts.getent_group['pinka'][1],
               '--tool-version', pinka_versions.python.model_tools['huggingface-hub'],
               '--token-stdin' if item.1.gated else '--no-token']

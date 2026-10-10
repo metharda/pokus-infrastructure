@@ -30,12 +30,26 @@ Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
 - **Profiles:** `target-container`, `target-vm` (with `vm_targets`),
   `probe-client` in `bench`, `build` in `build`, and the `default` profile of
   each personal project. Target profiles set `security.guestapi=false`.
-- **API and trust:** HTTPS on `127.0.0.1:8443`; client certificates generated
-  on the host for `potka-orch` (bench and build), `potka-exec`,
-  `potka-inject` and `potka-verify` (bench), restricted to those projects, in
-  `/etc/pinka/incus/<svc>/` (0600, owned by the service account, with the
-  server certificate); a metrics-only certificate in
-  `/etc/pinka/incus/metrics/`.
+- **API and trust:** HTTPS on `127.0.0.1:8443`; one restricted client
+  certificate per platform service whose profile has Incus access, generated
+  on the host from the active platform's rendering (`controller` for
+  `bench` and `build`, `sandbox-operator` and `restricted-operator` for
+  `bench`), in `/etc/pinka/incus/<platform>-<service>/` (0600, owned by the
+  service's account, with the server certificate); a metrics-only
+  certificate in `/etc/pinka/incus/metrics/`. The platform role issues the
+  certificates (`tasks_from: certificates`) once the accounts exist.
+- **Run-network helper:** `pinka-run-network.socket`
+  (`/run/pinka/run-network.sock`, 0600, owned by the active platform's
+  controller account, root without a platform) starts one root helper per
+  connection (`pinka-run-network@.service`, no network, only `AF_UNIX`, no
+  capabilities). It checks the peer's UID, accepts exactly
+  `create r-<12 letters or digits>` and `delete r-<...>`, creates the bridge
+  in the `default` project with fixed settings (`ipv4.address=auto`,
+  `ipv4.nat=false`, `ipv6.address=none`, `security.acls=pinka-run-default`,
+  no uplink) and refuses an existing network with other settings. Every
+  operation goes to `/var/lib/pinka/run-networks/operations.jsonl` (0600) and
+  the journal. `run-network unknown` lists the networks that neither infra
+  created nor the log records, for doctor.
 - **Events:** `pinka-incus-events.service` runs
   `incus monitor --all-projects --type=lifecycle --type=logging --format=json`
   into the journal with the identifier `pinka-incus-events` (blank lines

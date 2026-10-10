@@ -9,18 +9,22 @@
 #
 # Per-machine identities are NOT secrets in this file; they are generated on
 # the host: SSH host keys, the Tailscale node identity, Incus certificates and
-# the run-manifest signing key.
+# the platform's signing key.
 
-vault_postgres_passwords:          # one per database role (contracts.md)
-  potka_migrator: "<generated>"
-  potka_orch: "<generated>"
-  potka_gw: "<generated>"
-  potka_exec: "<generated>"
-  potka_inject: "<generated>"
-  potka_verify: "<generated>"
-  potka_eval: "<generated>"
-  potka_reader: "<generated>"
-  potka_grafana: "<generated>"
+# One password per database role of the platform release (§12.5): its
+# services' login roles <platform>_<service>, and <platform>_migrator,
+# <platform>_reader and <platform>_grafana. `bootstrap.sh --inspect-platform`
+# lists the keys a release needs; a missing one stops bootstrap (exit 77).
+vault_postgres_passwords:
+  "<platform>_<service>": "<generated>"
+  "<platform>_migrator": "<generated>"
+  "<platform>_reader": "<generated>"
+  "<platform>_grafana": "<generated>"
+
+# The secrets the platform's manifest names, per service (§8.2).
+vault_platform_secrets:
+  "<service>":
+    "<name>": "<value>"
 
 vault_grafana_admin_password: "<generated or entered>"
 vault_grafana_user_passwords:      # one per researcher with a Grafana account
@@ -33,5 +37,6 @@ vault_restic_password: "<generated>"
 
 vault_tailscale_authkey: ""        # optional; empty = interactive login
 vault_hf_token: ""                 # optional; only for gated models
-vault_git_deploy_key_platform: ""  # optional; empty = generated deploy key or anonymous HTTPS
-vault_git_deploy_key_catalog: ""   # optional
+# Optional deploy keys per source (the release or a content package, §8.2).
+# Not read yet: bootstrap generates the host's deploy key and prints it.
+vault_git_deploy_keys: {}

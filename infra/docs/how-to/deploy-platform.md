@@ -64,6 +64,47 @@ on the host. The platform runs on `full` and `lab` nodes only.
    a deploy key on the host and prints its public key; add it to the
    repository as a read-only deploy key.
 
+## Configure the services
+
+1. Give each service that names a configuration schema in the manifest its
+   non-secret configuration in the host_vars file:
+
+    <!-- qa:skip reason="example of a host_vars file" -->
+    ```yaml
+    platform_settings:
+      <service>:
+        <key>: <value>
+    ```
+
+    `<service>` is a service name from the manifest, `<key>` and `<value>`
+    a setting its schema allows. A service without settings gets `{}`.
+    The check of the next section refuses settings that do not match the
+    schema, a service without a schema and an unknown service. Infra writes
+    the configuration to `/etc/pinka/platform/config/<service>.json`,
+    readable only by root and the service's account.
+
+2. Put the platform's secrets in the vault
+   (`ansible-vault edit group_vars/all/vault.yml`):
+
+    <!-- qa:skip reason="example of vault content" -->
+    ```yaml
+    vault_postgres_passwords:
+      <role>: "<password>"
+    vault_platform_secrets:
+      <service>:
+        <name>: "<value>"
+    ```
+
+    `<role>` is a database role of the platform and `<password>` its
+    password; `<service>` is a service name from the manifest, `<name>` one
+    of its `secrets` and `<value>` the secret. The check of the next section
+    lists every key the release needs under "Vault keys" and marks the
+    missing ones: one password per database role (`<platform>_<service>` for
+    each service with a database role, and `<platform>_migrator`,
+    `<platform>_reader`, `<platform>_grafana`) and each secret the manifest
+    names. A deployment with a missing key stops with exit code 77 before
+    anything on the host changes.
+
 ## Check the release
 
 1. Fetch, stage and validate the release without changing anything else:
@@ -75,8 +116,8 @@ on the host. The platform runs on `full` and `lab` nodes only.
 
     `<machine>` is the name of this lab host's host_vars file. Bootstrap
     prints the release's summary (services and their profiles, sockets, jobs,
-    content) and exits 0, or prints every problem and exits 65
-    ([exit code 65](troubleshoot.md#exit-code-65)).
+    content, the vault keys it needs) and exits 0, or prints every problem
+    and exits 65 ([exit code 65](troubleshoot.md#exit-code-65)).
 
 ## Deploy the release
 
@@ -84,13 +125,21 @@ on the host. The platform runs on `full` and `lab` nodes only.
 
     <!-- qa:skip reason="provisions the lab host" -->
     ```bash
-    sudo ./bootstrap/bootstrap.sh --machine <machine> --tags platform,opa
+    sudo ./bootstrap/bootstrap.sh --machine <machine>
     ```
 
     `<machine>` is the name of this lab host's host_vars file. The platform
     step validates the release again, builds it, pulls the training job
     images by digest, publishes the release and the content packages with
-    their `DEPLOYED_FROM.json`, and switches `current`.
+    their `DEPLOYED_FROM.json`, then renders everything the profiles grant:
+    the accounts and groups, directories, configuration and secret files,
+    the systemd units with their sockets, the database with its roles and
+    the closed `restricted` schema, the Incus certificates, the signing key,
+    `principals.json` and `endpoints.toml`, and the CLI link. Then it
+    switches `current`. The roles after it pick up the policy bundle, the
+    dashboards and the database dump from the same rendering. In this
+    version the units are installed but not started; starting them follows
+    with the platform's hooks.
 
 2. To update, set `ref` to the new release and apply it again. The new
    release is published next to the old ones and `current` switches; a
@@ -119,3 +168,14 @@ request: [How to replace the lab's platform](replace-platform.md).
     published directory carries `DEPLOYED_FROM.json` with its source, commit,
     tree, tag and signature check; the formats are in
     [Platform records](../reference/platform-records.md).
+
+2. Check what the platform's services are told:
+
+    <!-- qa:run env=E2 -->
+    ```bash
+    cat /etc/pinka/platform/principals.json /etc/pinka/platform/endpoints.toml
+    ```
+
+    `principals.json` lists every service and job with its account and UID
+    and every socket with its path and allowed clients; `endpoints.toml`
+    lists the addresses and paths infra provides.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -68,7 +69,7 @@ def test_branches_and_commits_are_named_by_the_commit(bare: Path, source: Path) 
     assert by_branch.name == commit
     assert by_branch.tag == "allprof-v1.2.3"  # the release tag the commit carries
     assert mirror.resolve(mirror.run_git, bare, commit, "platform", "allprof-v") == by_branch
-    other_prefix = mirror.resolve(mirror.run_git, bare, "main", "catalog", "cases-v")
+    other_prefix = mirror.resolve(mirror.run_git, bare, "main", "cases", "cases-v")
     assert other_prefix.tag == "cases-v1"
 
 
@@ -95,21 +96,21 @@ def test_bad_refs_and_paths(bare: Path, ref: str, path: str, code: str) -> None:
 def test_extract(tmp_path: Path, bare: Path, source: Path) -> None:
     target = tmp_path / "out"
     target.mkdir()
-    mirror.extract(bare, git(source, "rev-parse", "HEAD"), "catalog", target)
+    mirror.extract(bare, git(source, "rev-parse", "HEAD"), "cases", target)
     assert sorted(p.name for p in target.iterdir()) == ["run.sh", "scenarios"]
     assert (target / "run.sh").stat().st_mode & 0o100
     assert not list(target.rglob(".git"))
 
 
 def test_extract_refuses_links_leaving_the_tree(tmp_path: Path, bare: Path, source: Path) -> None:
-    (source / "catalog" / "escape").symlink_to("/etc/passwd")
+    (source / "cases" / "escape").symlink_to("/etc/passwd")
     git(source, "add", ".")
     git(source, "commit", "--quiet", "-m", "link")
     mirror.fetch(mirror.run_git, bare, str(source), {})
     target = tmp_path / "out"
     target.mkdir()
     with pytest.raises(mirror.SourceError) as exc:
-        mirror.extract(bare, git(source, "rev-parse", "HEAD"), "catalog", target)
+        mirror.extract(bare, git(source, "rev-parse", "HEAD"), "cases", target)
     assert exc.value.code == "source-unsafe-entry"
 
 
@@ -142,8 +143,20 @@ def test_verify_tag_needs_signers_and_a_signature(tmp_path: Path, bare: Path) ->
         mirror.verify_tag(mirror.run_git, bare, "allprof-v1.2.3", signers)
 
 
-@pytest.mark.skipif(shutil.which("ssh-keygen") is None, reason="needs ssh-keygen (OpenSSH)")
+def require_ssh_keygen() -> None:
+    """Skip without ssh-keygen locally; in CI (CI=true) it must be there.
+
+    Owner decision on 3d.2.
+    """
+    if shutil.which("ssh-keygen") is not None:
+        return
+    if os.environ.get("CI", "").lower() == "true":
+        pytest.fail("ssh-keygen is missing in CI; the signed-tag test must run there")
+    pytest.skip("needs ssh-keygen (OpenSSH); allowed to skip only outside CI")
+
+
 def test_ssh_signed_tags_end_to_end(tmp_path: Path, source: Path) -> None:
+    require_ssh_keygen()
     key = tmp_path / "signing"
     subprocess.run(
         ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "", "-f", str(key)], check=True
@@ -170,3 +183,13 @@ def test_ssh_signed_tags_end_to_end(tmp_path: Path, source: Path) -> None:
     )
     with pytest.raises(mirror.SourceError, match="no valid signature"):
         mirror.verify_tag(mirror.run_git, bare, "allprof-v1.2.3", signers)
+
+
+def test_the_signed_tag_test_only_skips_outside_ci(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    monkeypatch.setenv("CI", "true")
+    with pytest.raises(pytest.fail.Exception, match="ssh-keygen is missing in CI"):
+        require_ssh_keygen()
+    monkeypatch.delenv("CI")
+    with pytest.raises(pytest.skip.Exception):
+        require_ssh_keygen()

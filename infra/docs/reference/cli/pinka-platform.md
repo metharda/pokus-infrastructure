@@ -44,7 +44,7 @@ Validate a staged release directory and print every problem, or a summary.
 pinka-platform deploy [-h] [--settings SETTINGS] [--run RUN]
                              [--inspect] [--contract CONTRACT] [--root ROOT]
                              [--no-host-check]
-                             {prepare,build,pull,publish,retire-plan,activate,clean}
+                             {prepare,build,pull,publish,retire-plan,render,principals,activate,clean}
 ```
 
 One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one JSON object. prepare fetches, stages and validates and writes a run directory below the staging directory; the other steps work on that run directory.
@@ -63,8 +63,9 @@ One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one JS
 ## pinka-platform purge
 
 ```text
-pinka-platform purge [-h] --confirm CONFIRM [--contract CONTRACT]
-                            [--root ROOT] [--no-host-check]
+pinka-platform purge [-h] --confirm CONFIRM [--remove-secrets]
+                            [--contract CONTRACT] [--root ROOT]
+                            [--no-host-check]
                             platform
 ```
 
@@ -75,6 +76,7 @@ Remove a replaced platform's releases, content, state, restricted area and datab
 | `platform` | — | — | name of the replaced platform |
 | `-h`, `--help` | — | — | show the help and exit |
 | `--confirm` | `CONFIRM` | — | the platform name again, typed |
+| `--remove-secrets` | — | — | also remove its secrets directories, database password files and private signing key (kept by default) |
 | `--contract` | `CONTRACT` | `/home/user/pokus/infra/contract` | contract directory (default: the installed contract) |
 | `--root` | `ROOT` | — | prefix for every host path (tests and fixtures; default: /) |
 | `--no-host-check` | — | — | skip the checks against the accounts, groups and commands of this host |

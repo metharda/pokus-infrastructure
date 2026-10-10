@@ -1,4 +1,4 @@
-"""The models role: lock and catalog, the hash-locked tool environment, models-fetch."""
+"""The models role: the lock and the candidates, the hash-locked tool environment, models-fetch."""
 
 from __future__ import annotations
 
@@ -167,21 +167,21 @@ def test_main_requires_a_token_for_gated_entries(
     assert "no Hugging Face token" in capsys.readouterr().err
 
 
-def test_lock_and_catalog() -> None:
+def test_lock_and_candidates() -> None:
     lock = load_yaml(INFRA / "models.lock.yml")
     assert lock == {"schema_version": 1, "models": [], "adapters": []}
-    catalog = load_yaml(INFRA / "models.catalog.yml")
-    assert catalog["status"] == "proposed"  # owner answer E7: not final without approval
+    candidates = load_yaml(INFRA / "models.catalog.yml")
+    assert candidates["status"] == "proposed"  # owner answer E7: not final without approval
     permissive = {"apache-2.0", "mit"}
-    assert 3 <= len(catalog["models"]) <= 5
-    for model in catalog["models"]:
+    assert 3 <= len(candidates["models"]) <= 5
+    for model in candidates["models"]:
         assert model["license"] in permissive and not model["gated"], model["id"]
         assert model["status"] == "proposed"
         assert "ada-12g" in model["profiles"]
-    for model in catalog["restricted"]:
+    for model in candidates["restricted"]:
         assert model["license"] not in permissive or model["gated"], model["id"]
     profile = load_yaml(INFRA / "vllm/profiles/ada-12g.yml")
-    for model in catalog["models"] + catalog["restricted"]:
+    for model in candidates["models"] + candidates["restricted"]:
         assert model["quantization"] in profile["quantizations"], model["id"]
 
 

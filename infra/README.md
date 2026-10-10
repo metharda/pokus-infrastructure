@@ -112,7 +112,8 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
   each failed check; `docs/how-to/fix-doctor-checks.md` has a section per
   check.
 - `sudo pinka status` shows the units, containers, Incus instances, GPU
-  and last backup; the units log to the journal (`journalctl -u 'pinka-*' -u 'potka-*'`).
+  and last backup; the units log to the journal (`journalctl -u 'pinka-*'`; the active
+  platform's units are named `<platform>-<service>`).
 - `docs/operations.md` maps every day-to-day task to its guide.
 
 ## Repository layout

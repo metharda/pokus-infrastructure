@@ -86,6 +86,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--ansible-dir", type=Path, default=Path("ansible"), help="the Ansible directory"
     )
 
+    neutrality = sub.add_parser(
+        "neutrality",
+        help="fail if infra's code names a particular platform (BUILD_PROMPT §11)",
+        description=(
+            "Scan infra's code for the Pokus Platform's names: its name anywhere, its "
+            "service and unit names as whole tokens, and the project name outside the "
+            "allowed repository and display names (lists: neutrality.json). "
+            "Documentation, test fixtures and the reserved-name list are excluded."
+        ),
+    )
+    neutrality.add_argument(
+        "--root", type=Path, default=Path(), help="the infra directory (default: current)"
+    )
+
     mermaid = sub.add_parser(
         "mermaid-extract",
         help="write each Mermaid block of the documentation to its own .mmd file",
@@ -96,7 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str]) -> int:  # noqa: PLR0911 - one return per check
     """Run one check.
 
     Args:
@@ -128,6 +142,10 @@ def main(argv: list[str]) -> int:
         from pinka_repo_checks import portability  # noqa: PLC0415 - stdlib-only path
 
         return portability.run(args.ansible_dir)
+    if args.command == "neutrality":
+        from pinka_repo_checks import neutrality  # noqa: PLC0415 - stdlib-only path
+
+        return neutrality.run(args.root)
     if args.command == "mermaid-extract":
         from pinka_repo_checks import docs_lint  # noqa: PLC0415 - needs dev dependencies
 

@@ -600,7 +600,7 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         await click(pilot, "#remove")
         await pilot.pause()
         await forward(pilot, "researchers")
-        await add_researcher(pilot, "potka-svc", public_key())
+        await add_researcher(pilot, "pinka-svc", public_key())
         assert any("pinka-" in e for e in shown_errors(pilot)), shown_errors(pilot)
         pilot.app.screen.query_one("#r-name", Input).value = "researcher2"
         pilot.app.screen.query_one("#r-keys", TextArea).text = private_key()

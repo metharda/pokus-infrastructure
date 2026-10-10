@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
 
     sub.add_parser("status", help="units, containers, Incus instances, GPU, disk and last backup")
     sub.add_parser("start", help="start pinka-lab.target (root)")
-    stop = sub.add_parser("stop", help="drain the orchestrator, then stop pinka-lab.target (root)")
+    stop = sub.add_parser("stop", help="drain the platform, then stop pinka-lab.target (root)")
     stop.add_argument(
         "--timeout", type=float, default=1800, metavar="SECONDS", help="how long the drain may take"
     )
@@ -142,6 +142,11 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
         "--confirm",
         metavar="NAME",
         help="the platform name again, typed (otherwise pinka asks for it)",
+    )
+    purge.add_argument(
+        "--remove-secrets",
+        action="store_true",
+        help="also remove its secrets, database password files and private signing key",
     )
     add_docs_parser(sub)
     return parser
@@ -261,7 +266,7 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
             return commands.images_build(system, config, args.blueprint, args.rebuild, [])
         return commands.images_export(system, config, [])
     if args.command == "platform":
-        return commands.platform_purge(system, config, args.name, args.confirm)
+        return commands.platform_purge(system, config, args.name, args.confirm, args.remove_secrets)
     if args.command == "pair":
         if args.pair_action == "show":
             return commands.pair_show(system, config, args.timeout)

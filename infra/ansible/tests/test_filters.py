@@ -197,6 +197,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_socket_specs",
         "pinka_unit_hardening",
         "pinka_cpuset_cpus",
+        "pinka_vault_keys",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pinka_release_identity(c)", {"p": profile, "c": debian_codenames()})

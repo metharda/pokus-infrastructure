@@ -4,10 +4,16 @@ Groups and accounts (BUILD_PROMPT §6.1, `docs/contracts.md`).
 
 - Groups from `pinka_groups`.
 - Infra accounts from `infra_accounts` (`pinka-build`, which runs platform
-  builds) and service accounts from `service_accounts`: system users, shell
-  `nologin`, home `/var/lib/pinka/<name>`, locked password, a primary group of
-  the same name (the contract's sockets and password files use it) and
-  exactly the listed supplementary groups.
+  builds, and `pinka-inference`, the inference control endpoint of an
+  inference node): system users, shell `nologin`, home
+  `/var/lib/pinka/<name>`, locked password, a primary group of the same name
+  and exactly the listed supplementary groups. The active platform's
+  accounts and groups come from the platform role, rendered from the
+  manifest and the profiles.
+- Before anything changes, a researcher named like an account or group of
+  infra or of the active platform (`/etc/pinka/platform/rendered.json`, read
+  by the `active_platform` role) is refused: the user module would otherwise
+  turn that account into a human one.
 - Researchers from `researchers`: members of `pinka` (admins also
   `pinka-admin`, with sudo through `/etc/sudoers.d/90-pinka-admin`, checked
   with `visudo -cf`). Incus's per-user group is added by the incus role.

@@ -106,6 +106,7 @@ def validate_release(
         else ()
     )
     problems = release.check_symlinks(directory, skip)
+    problems += release.check_special_files(directory)
     problems += check_manifest(manifest, contract, host)
     if not any(p.code == "schema" for p in problems):
         problems += release.check_files(directory, manifest, built=built)

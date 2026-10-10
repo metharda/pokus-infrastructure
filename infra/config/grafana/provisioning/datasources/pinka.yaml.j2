@@ -1,8 +1,9 @@
 # Managed by pinka (config/grafana/provisioning/datasources/pinka.yaml.j2). Local changes will be overwritten.
 #
 # Data sources of the lab (BUILD_PROMPT §7.9). Everything is on 127.0.0.1
-# (Grafana uses the host network); PostgreSQL through the reader socket
-# directory with the read-only role potka_grafana. "$$" is a literal "$".
+# (Grafana uses the host network); with an active platform that has a
+# database, its PostgreSQL through the reader socket directory with the
+# platform's read-only Grafana role. "$$" is a literal "$".
 apiVersion: 1
 
 prune: true
@@ -44,15 +45,17 @@ datasources:
       serviceMap:
         datasourceUid: prometheus
 
-  - name: PostgreSQL
-    uid: postgres
+{% if observability_platform_db %}
+  - name: {{ observability_platform_db.platform }} PostgreSQL
+    uid: platform-postgres
     type: grafana-postgresql-datasource
     url: /run/pinka/postgres-reader
-    user: potka_grafana
+    user: {{ observability_platform_db.grafana }}
     editable: false
     jsonData:
-      database: potka
+      database: {{ observability_platform_db.database }}
       sslmode: disable
       postgresVersion: 1500
     secureJsonData:
-      password: "$__file{/run/secrets/potka-grafana}"
+      password: "$__file{/run/secrets/platform-grafana}"
+{% endif %}

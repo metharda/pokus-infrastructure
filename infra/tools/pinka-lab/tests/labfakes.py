@@ -76,12 +76,13 @@ LAB: dict[str, Any] = {
         "projects": ["bench", "build"],
         "profiles": [{"name": "target-container", "project": "bench"}],
         "cert_dir": "/etc/pinka/incus",
-        "certificates": [{"account": "potka-orch", "short": "orch", "name": "potka-orch"}],
+        "certificates": [{"account": "demo-ctl", "short": "demo-ctl", "name": "demo-ctl"}],
     },
     "postgres": {
         "container": "pinka-postgres",
-        "roles": ["potka_orch", "potka_reader"],
-        "restricted_roles": ["potka_reader"],
+        "roles": ["demo_ctl", "demo_reader"],
+        "database": "demo",
+        "restricted_roles": ["demo_reader"],
     },
     "opa": {"url": "http://127.0.0.1:8181"},
     "observability": {
@@ -104,7 +105,7 @@ LAB: dict[str, Any] = {
     ],
     "accounts": {
         "researchers": ["researcher1", "researcher2"],
-        "service_accounts": ["potka-orch", "potka-agent"],
+        "platform_accounts": ["demo-ctl", "demo-agent"],
         "privileged_groups": ["docker", "incus-admin"],
         "break_glass_docker": [],
     },

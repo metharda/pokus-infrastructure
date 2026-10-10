@@ -18,7 +18,7 @@ Pinned model weights and LoRA adapters (BUILD_PROMPT §7.12,
   `/srv/pinka/models/<hf_repo>/<revision>/` (adapters into
   `/srv/pinka/models/adapters/<name>/<sha256 of the weights file>/`),
   verifies every sha256 (a mismatching file is deleted and the run fails),
-  sets `potka-orch:pinka`, files 0444, and writes `MANIFEST.json` (entry,
+  sets `root:pinka`, files 0444, and writes `MANIFEST.json` (entry,
   files with hashes and sizes, download time in UTC, tool version).
 - Gated entries use `vault_hf_token`, passed on stdin, never on a command line.
 

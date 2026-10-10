@@ -59,9 +59,8 @@ pinka_groups:
   - {name: pinka, system: false, description: all researchers}
   - {name: pinka-admin, system: false, description: researchers with sudo}
   - {name: pinka-restricted, system: true, description: "restricted data: only accounts of restricted-capable profiles (§12.4)"}
-  - {name: potka-svc, system: true, description: all service accounts}
-  - {name: potka-exec-clients, system: true, description: may call the executor socket (agent and orchestrator)}
-  - {name: potka-gw-clients, system: true, description: "may call the gateway's agent socket (agent only)"}
+  - {name: pinka-datasets, system: true, description: "published training datasets: no human members (§7.18)"}
+  - {name: pinka-query, system: true, description: "the telemetry query proxy: exactly the accounts of the profiles that query (§7.9)"}
 
 # Placeholders (owner answer E1). keys_file is relative to the infra directory;
 # key files are never committed (users/*.pub is excluded by .gitignore).
@@ -79,22 +78,19 @@ researchers_removed: []
 break_glass_docker: []
 
 # Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no
-# SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5).
+# SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5);
+# pinka-inference runs the inference control endpoint of an inference node
+# (§19.10) and holds its mutual-TLS key.
 infra_accounts:
   - {name: pinka-build, groups: [], description: unprivileged platform builds}
+  - {name: pinka-inference, groups: [], description: the inference control endpoint of an inference node}
+# The account of the inference control endpoint.
+inference_control_account: pinka-inference
 
-# System accounts of the platform services: no login, no password, no SSH keys.
-# potka-agent never gets pinka-restricted, incus, docker or database access.
-service_accounts:
-  - {name: potka-orch, groups: [potka-svc, pinka-restricted, potka-exec-clients], description: orchestrator}
-  - {name: potka-agent, groups: [potka-svc, potka-exec-clients, potka-gw-clients], description: agent runtime}
-  - {name: potka-gw, groups: [potka-svc], description: LLM gateway}
-  - {name: potka-exec, groups: [potka-svc], description: tool executor}
-  - {name: potka-inject, groups: [potka-svc, pinka-restricted], description: fault injector}
-  - {name: potka-verify, groups: [potka-svc, pinka-restricted], description: verifier}
-  - {name: potka-eval, groups: [potka-svc, pinka-restricted], description: evaluator}
+# The platform's accounts and groups are not listed here: the platform role
+# renders them from the active platform's manifest and profiles (§6.1, §12.2).
 
-# Parent of the service account homes (/var/lib/pinka/<account>).
+# Parent of the infra and platform account homes (/var/lib/pinka/<account>).
 pinka_service_home: /var/lib/pinka
 
 # Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
@@ -109,10 +105,12 @@ pinka_layout:
   - {path: "", owner: root, group: pinka, mode: "2775", notes: "research space root"}
   - {path: platforms, owner: root, group: root, mode: "0755", notes: "per platform: releases/<ref>/, content/<package>/<ref>/, state/"}
   - {path: restricted, owner: root, group: pinka-restricted, mode: "0750", notes: "restricted data per platform, files 0640"}
-  - {path: models, owner: potka-orch, group: pinka, mode: "0755", notes: "model weights, 0444 after verification"}
+  - {path: models, owner: root, group: pinka, mode: "0755", notes: "model weights, 0444 after verification"}
+  - {path: models/adapters, owner: root, group: pinka, mode: "0755", notes: "registered adapters, read-only, with lineage"}
+  - {path: training, owner: root, group: root, mode: "0755", notes: "parent of the training areas"}
+  - {path: training/datasets, owner: root, group: pinka-datasets, mode: "0750", notes: "published training datasets, files 0640, each with PROVENANCE.json"}
+  - {path: training/jobs, owner: root, group: root, mode: "0755", notes: "per job run: output/ and checkpoints/, owned by the job's account"}
   - {path: datasets, owner: root, group: pinka, mode: "2775", default_acl: ["group:pinka:rwX"], notes: "shared datasets"}
-  - {path: artifacts, owner: potka-orch, group: pinka, mode: "0750", notes: "content-addressed, write-once 0440"}
-  - {path: reports, owner: potka-eval, group: pinka, mode: "2775", notes: "evaluation reports"}
   - {path: images, owner: root, group: pinka-admin, mode: "0750", notes: "exported golden image tarballs with sha256"}
   - {path: shared, owner: root, group: pinka, mode: "2770", default_acl: ["group:pinka:rwX"], notes: "shared files"}
   - {path: users, owner: root, group: root, mode: "0755", notes: "parent of the per-researcher directories"}
@@ -126,7 +124,7 @@ pinka_layout_user_mode: "0700"
 # Host paths outside pinka_root (absolute).
 pinka_system_layout:
   - {path: /etc/pinka, owner: root, group: root, mode: "0755", notes: "host profile, bootstrap state, rendered non-secret config"}
-  - {path: /etc/pinka/secrets, owner: root, group: potka-svc, mode: "0750", notes: "rendered secrets (files 0640 or per-service 0600)"}
+  - {path: /etc/pinka/secrets, owner: root, group: root, mode: "0711", notes: "rendered secrets, one directory per platform account (0750 root:<account>)"}
   - {path: /var/lib/pinka, owner: root, group: root, mode: "0755", notes: "service homes and lab state"}
   - {path: /etc/pinka/platform, owner: root, group: root, mode: "0755", notes: "the active platform: active.json, principals.json, endpoints.toml"}
   - {path: /var/lib/pinka/git, owner: root, group: root, mode: "0700", notes: "root-only Git mirrors of the platform and content sources"}

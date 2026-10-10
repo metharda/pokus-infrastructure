@@ -37,7 +37,7 @@ Every command also accepts `-h`, `--help`.
 | `pinka doctor` | run the health and security checks (root) |
 | `pinka status` | units, containers, Incus instances, GPU, disk and last backup |
 | `pinka start` | start pinka-lab.target (root) |
-| `pinka stop` | drain the orchestrator, then stop pinka-lab.target (root) |
+| `pinka stop` | drain the platform, then stop pinka-lab.target (root) |
 | `pinka fingerprint` | print the environment fingerprint and its hash |
 | `pinka backup` | back up now or list the snapshots (root) |
 | `pinka restore` | run bootstrap with --restore (root) |
@@ -102,7 +102,7 @@ pinka start [-h]
 
 ### pinka stop
 
-Drain the orchestrator, then stop pinka-lab.target (root).
+Drain the platform, then stop pinka-lab.target (root).
 
 ```text
 pinka stop [-h] [--timeout SECONDS]
@@ -298,13 +298,14 @@ pinka platform [-h] ACTION ...
 Remove a replaced platform's releases, state, restricted area and database (root).
 
 ```text
-pinka platform purge [-h] [--confirm NAME] name
+pinka platform purge [-h] [--confirm NAME] [--remove-secrets] name
 ```
 
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
 | `name` | — | — | the replaced platform |
 | `--confirm` | `NAME` | — | the platform name again, typed (otherwise pinka asks for it) |
+| `--remove-secrets` | — | — | also remove its secrets, database password files and private signing key |
 
 ### pinka docs
 

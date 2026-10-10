@@ -5,10 +5,13 @@
 Installed as ``/usr/local/libexec/pinka/vllm-deploy`` by the vllm role and run
 as root, never through sudo:
 
-* ``serve``: started by ``pinka-vllm-deploy.socket`` (``Accept=yes``) for one
-  connection on stdin/stdout. The peer must be ``potka-orch``
-  (``SO_PEERCRED``); it sends one JSON line ``{"deployment": "<id>@<version>"}``
-  and gets ``{"ok": true}`` or ``{"ok": false, "error": "..."}``.
+* ``serve --peer <account>``: started by ``pinka-vllm-deploy.socket``
+  (``Accept=yes``) for one connection on stdin/stdout. The peer must be the
+  account the vllm role names (the active platform's controller; on an
+  inference node the control endpoint's account) or root (``SO_PEERCRED``);
+  it sends one JSON line ``{"deployment": "<id>@<version>"}`` and gets
+  ``{"ok": true}`` or ``{"ok": false, "error": "..."}``. The GPU arbiter
+  replaces this helper with plan step 3d.5.
 * ``activate <id>@<version> [--no-restart]``: the same switch for root
   (Ansible, operators); prints ``{"ok": true, "changed": bool}``.
 * ``render <id>@<version>``: print the vLLM configuration and environment
@@ -60,7 +63,6 @@ SAMPLING_KEYS = {
 }
 MAX_REQUEST = 4096
 UNIT = "pinka-inference.service"
-PEER = "potka-orch"
 CONTAINER_MODELS = "/models"
 Runner = Callable[[Sequence[str]], None]
 
@@ -410,15 +412,15 @@ def serve(
         stdin: The connection, readable.
         stdout: The connection, writable.
         uid: The peer's uid.
-        allowed_uid: The uid of potka-orch.
+        allowed_uid: The uid of the allowed account (root is always allowed).
         run: Runs a command and raises on failure.
 
     Returns:
         0 if the switch succeeded, 1 otherwise.
     """
     try:
-        if uid != allowed_uid:
-            raise DeployError("only potka-orch may switch deployments")
+        if uid not in {0, allowed_uid}:
+            raise DeployError("only the allowed account and root may switch deployments")
         line = stdin.readline(MAX_REQUEST + 1)
         if len(line) > MAX_REQUEST:
             raise DeployError("request too long")
@@ -453,7 +455,10 @@ def main(argv: Sequence[str]) -> int:
     """
     parser = argparse.ArgumentParser(prog="vllm-deploy", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("serve", help="answer one request on stdin/stdout (socket activation)")
+    serve_cmd = sub.add_parser(
+        "serve", help="answer one request on stdin/stdout (socket activation)"
+    )
+    serve_cmd.add_argument("--peer", default="root", help="the account allowed besides root")
     activate_cmd = sub.add_parser("activate", help="switch to a deployment as root")
     activate_cmd.add_argument("deployment")
     activate_cmd.add_argument("--no-restart", action="store_true")
@@ -467,7 +472,7 @@ def main(argv: Sequence[str]) -> int:
             sys.stdin,
             sys.stdout,
             uid=peer_uid(0),
-            allowed_uid=pwd.getpwnam(PEER).pw_uid,
+            allowed_uid=pwd.getpwnam(args.peer).pw_uid,
             run=_run,
         )
     try:

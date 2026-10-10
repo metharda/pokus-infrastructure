@@ -20,7 +20,7 @@
     path: "{{ inference_control_dir }}"
     state: directory
     owner: root
-    group: potka-orch
+    group: "{{ inference_control_account }}"
     mode: "0750"
   register: inference_control_dir_state
 
@@ -30,12 +30,12 @@
     type: ECC
     curve: secp256r1
     owner: root
-    group: potka-orch
+    group: "{{ inference_control_account }}"
     mode: "0640"
   when: not (ansible_check_mode and inference_control_dir_state is changed)  # the directory may not exist yet
 
-# The tailnet name is the subject alternative name: the gateway, the
-# orchestrator and the collectors verify the peer by it.
+# The tailnet name is the subject alternative name: the paired node's
+# clients and the collectors verify the peer by it.
 - name: Create the node's identity certificate
   when: not ansible_check_mode
   block:
@@ -58,27 +58,9 @@
         provider: selfsigned
         selfsigned_not_after: "+{{ inference_control_certificate_days }}d"
         owner: root
-        group: potka-orch
+        group: "{{ inference_control_account }}"
         mode: "0644"
       notify: Restart the inference control endpoint
-
-# The contract gives the directory to potka-orch; the gateway's remote
-# backend also needs the client key (IMPLEMENTATION_NOTES, step 11).
-- name: Let the LLM gateway read the client key
-  ansible.posix.acl:
-    path: "{{ item.path }}"
-    entity: potka-gw
-    etype: user
-    permissions: "{{ item.permissions }}"
-    state: present
-  loop:
-    - {path: "{{ inference_control_dir }}", permissions: rx}
-    - {path: "{{ inference_control_key }}", permissions: r}
-  loop_control:
-    label: "{{ item.path }}"
-  when:
-    - node_role == 'lab'
-    - not ansible_check_mode
 
 - name: Check the pairing
   ansible.builtin.include_tasks: pairing.yml

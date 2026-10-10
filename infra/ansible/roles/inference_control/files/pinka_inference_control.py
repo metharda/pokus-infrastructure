@@ -3,14 +3,14 @@
 """The inference control endpoint of an inference node (BUILD_PROMPT §19.10).
 
 Installed as ``/usr/local/libexec/pinka/inference-control`` and run as
-``pinka-inference-control.service`` (user potka-orch) on ``node_role:
+``pinka-inference-control.service`` (user pinka-inference) on ``node_role:
 inference``. It listens on the node's tailnet address only, with mutual TLS
 1.3: the client must present exactly the certificate of the paired lab node
 (``/etc/pinka/inference/peer.crt``, exchanged during pairing). Two listeners:
 
 * the API port (18704) forwards every accepted connection byte for byte to
-  vLLM on 127.0.0.1, so the lab node's gateway and orchestrator use the
-  OpenAI-compatible API unchanged;
+  vLLM on 127.0.0.1, so the lab node's clients use the OpenAI-compatible
+  API unchanged;
 * the control port (18710) answers exactly these requests, as JSON:
   ``GET /health`` (with this node's fingerprint hash), ``GET /model`` (the
   served model, its deployment and the ``MANIFEST.json`` whose hashes the

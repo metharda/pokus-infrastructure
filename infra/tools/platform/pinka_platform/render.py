@@ -63,12 +63,21 @@ def principals(
             "uid": uids[account],
         }
 
+    def service(entry: Mapping[str, Any]) -> dict[str, Any]:
+        account = names.account(p, entry["name"])
+        return {
+            **member(entry),
+            "config": layout.config_file(entry["name"]) if "config" in entry else None,
+            "secrets_dir": f"{layout.SECRETS_DIR}/{account}" if entry.get("secrets") else None,
+            "state": {d: layout.state_dir(p, entry["name"], d) for d in entry.get("state", [])},
+        }
+
     return {
         "schema_version": SCHEMA_VERSION,
         "contract_version": contract.version,
         "platform": p,
         "groups": {h: contract.human_classes[h]["group"] for h in sorted(contract.human_classes)},
-        "services": [member(s) for s in manifest["services"]],
+        "services": [service(s) for s in manifest["services"]],
         "jobs": [member(j) for j in manifest.get("jobs", [])],
         "sockets": [
             {
@@ -78,6 +87,7 @@ def principals(
                 "owner": names.account(p, s["service"]),
                 "group": names.client_group(p, s["service"], s["name"]),
                 "mode": "0660",
+                "fd_name": s["name"],
                 "agent_dedicated": bool(s.get("untrusted_clients", False)),
                 "clients": _clients(s, manifest, contract),
             }

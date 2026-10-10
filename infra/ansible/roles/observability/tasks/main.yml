@@ -2,18 +2,24 @@
 #
 # Observability stack (BUILD_PROMPT §7.9, contracts.md#telemetry): the
 # collector gateway and the journald collector, Prometheus, Loki, Tempo,
-# Grafana, node_exporter, cAdvisor and, with gpu_inference, the GPU exporter.
+# Grafana (with the active platform's dashboards in a folder of its name and
+# a read-only datasource on its Grafana role), node_exporter, cAdvisor and,
+# with gpu_inference, the GPU exporter.
 # Every container uses the host network and binds 127.0.0.1; the VM listener
 # address (C4) exists only with vm_targets. An inference node runs no stores
 # (Prometheus, Loki, Tempo, Grafana): its gateway forwards everything to the
 # paired lab node over mutual TLS (BUILD_PROMPT §19.10, pairing.yml).
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
 - name: Check the secrets and the GPU exporter choice
   ansible.builtin.assert:
     that:
       - not observability_stores or vault_grafana_admin_password is defined
       - not observability_stores or vault_grafana_admin_password | length >= 8
-      - not observability_stores or vault_postgres_passwords.potka_grafana is defined
-      - not observability_stores or '$' not in vault_postgres_passwords.potka_grafana
+      - not observability_stores or not observability_platform_db or observability_platform_db.grafana in (vault_postgres_passwords | default({}))
+      - not observability_stores or '$' not in observability_grafana_db_password
       - >-
         not observability_stores or observability_grafana_researchers
         | difference(observability_grafana_user_passwords.keys() | list) | length == 0
@@ -21,8 +27,9 @@
       - observability_gpu_exporter != 'dcgm' or pinka_versions.containers.images.dcgm_exporter.digest is match('sha256:')
     fail_msg: >-
       group_vars/all/vault.yml needs vault_grafana_admin_password (8 or more
-      characters), vault_postgres_passwords.potka_grafana (without "$", which
-      Grafana's provisioning expands) and vault_grafana_user_passwords for
+      characters), with a platform database the password of its Grafana role in
+      vault_postgres_passwords (without "$", which Grafana's provisioning
+      expands), and vault_grafana_user_passwords for
       every researcher with a Grafana account (full and lab nodes); observability_gpu_exporter is
       nvidia_smi or dcgm, and dcgm only once its image is verified in versions.lock.yml.
     quiet: true
@@ -78,6 +85,7 @@
     - {path: "{{ observability_config_dir }}/grafana/provisioning/datasources"}
     - {path: "{{ observability_config_dir }}/grafana/provisioning/dashboards"}
     - {path: "{{ observability_config_dir }}/grafana/dashboards"}
+    - {path: "{{ observability_config_dir }}/grafana/platform-dashboards"}
   loop_control:
     label: "{{ item.path }}"
 
@@ -101,6 +109,10 @@
     owner: root
     group: root
     mode: "0644"
+  when: observability_stores
+
+- name: Install the active platform's dashboards
+  ansible.builtin.include_tasks: platform_dashboards.yml
   when: observability_stores
 
 - name: Start the observability services

@@ -69,26 +69,37 @@ def test_endpoints_toml_reads_back(fixture: str) -> None:
 
 
 def test_principals_lists_the_accounts_of_client_profiles() -> None:
-    data = manifest("potka")
+    data = manifest("allprof")
     document = render.principals(data, CONTRACT, uids(data))
     sockets = {(s["service"], s["name"]): s for s in document["sockets"]}
-    svc = sockets[("orch", "svc")]
+    svc = sockets[("ctl", "svc")]
     assert svc["clients"]["accounts"] == [
-        "potka-eval",
-        "potka-exec",
-        "potka-gw",
-        "potka-inject",
-        "potka-verify",
+        "allprof-brk",
+        "allprof-obs",
+        "allprof-rop",
+        "allprof-rrd",
+        "allprof-sbx",
     ]
-    assert svc["owner"] == "potka-orch"
-    assert svc["group"] == "potka-orch-svc"
-    assert svc["path"] == "/run/pinka/platform/orch/svc.sock"
-    agent = sockets[("gw", "agent")]
+    assert svc["owner"] == "allprof-ctl"
+    assert svc["group"] == "allprof-ctl-svc"
+    assert svc["path"] == "/run/pinka/platform/ctl/svc.sock"
+    assert svc["fd_name"] == "svc"
+    agent = sockets[("brk", "agent")]
     assert agent["agent_dedicated"]
-    assert agent["clients"]["accounts"] == ["potka-agent"]
-    assert sockets[("orch", "api")]["clients"]["human_groups"] == ["pinka", "pinka-admin"]
+    assert agent["clients"]["accounts"] == ["allprof-agt"]
+    assert sockets[("ctl", "api")]["clients"]["human_groups"] == ["pinka", "pinka-admin"]
     assert document["groups"] == {"admins": "pinka-admin", "researchers": "pinka"}
-    assert json.loads(render.principals_json(document))["platform"] == "potka"
+    assert json.loads(render.principals_json(document))["platform"] == "allprof"
+
+
+def test_principals_name_each_service_s_paths() -> None:
+    data = manifest("allprof")
+    services = {s["name"]: s for s in render.principals(data, CONTRACT, uids(data))["services"]}
+    assert services["ctl"]["config"] == "/etc/pinka/platform/config/ctl.json"
+    assert services["ctl"]["secrets_dir"] == "/etc/pinka/secrets/allprof-ctl"
+    assert services["ctl"]["state"] == {"records": "/srv/pinka/platforms/allprof/state/ctl/records"}
+    assert services["agt"]["config"] is None
+    assert services["agt"]["secrets_dir"] is None
 
 
 def test_endpoints_carry_only_the_required_facilities() -> None:
@@ -112,12 +123,12 @@ def test_endpoints_carry_only_the_required_facilities() -> None:
 def test_endpoints_follow_port_overrides() -> None:
     ports = dict(PORTS, otlp_grpc=14317, opa=18181, vllm=28704)
     facts = render.LabFacts("pinka-lab", "production", "full", ports)
-    document = render.endpoints(manifest("potka"), facts)
+    document = render.endpoints(manifest("allprof"), facts)
     assert document["telemetry"]["otlp_grpc"] == "127.0.0.1:14317"
     assert document["telemetry"]["vm_collector_grpc"] == "198.18.0.1:14317"
     assert document["opa"] == {
         "url": "http://127.0.0.1:18181",
-        "decision_path": "/v1/data/potka/action/decision",
+        "decision_path": "/v1/data/allprof/decide",
     }
     assert document["inference"]["api_url"] == "http://127.0.0.1:28704"
     assert document["ports"]["vllm"] == 28704
@@ -125,7 +136,7 @@ def test_endpoints_follow_port_overrides() -> None:
 
 def test_remote_inference_goes_through_the_local_forwarder() -> None:
     facts = render.LabFacts("pinka-lab", "production", "lab", PORTS, inference_mode="remote")
-    inference = render.endpoints(manifest("potka"), facts)["inference"]
+    inference = render.endpoints(manifest("allprof"), facts)["inference"]
     assert inference == {
         "mode": "remote",
         "researcher_endpoint": "127.0.0.1:18705",
@@ -137,12 +148,14 @@ def test_remote_inference_goes_through_the_local_forwarder() -> None:
 def test_scripted_inference_only_on_staging() -> None:
     url = "http://127.0.0.1:9999/v1"
     staging = render.LabFacts("pinka-qa", "staging", "full", PORTS, "scripted", url)
-    assert render.endpoints(manifest("potka"), staging)["inference"]["api_url"] == url
+    assert render.endpoints(manifest("allprof"), staging)["inference"]["api_url"] == url
     production = render.LabFacts("pinka-lab", "production", "full", PORTS, "scripted", url)
     with pytest.raises(ValueError, match="staging"):
-        render.endpoints(manifest("potka"), production)
+        render.endpoints(manifest("allprof"), production)
     with pytest.raises(ValueError, match="unknown"):
-        render.endpoints(manifest("potka"), render.LabFacts("x", "staging", "full", PORTS, "other"))
+        render.endpoints(
+            manifest("allprof"), render.LabFacts("x", "staging", "full", PORTS, "other")
+        )
 
 
 def test_toml_writer() -> None:
@@ -154,6 +167,18 @@ def test_toml_writer() -> None:
         toml.dumps({"a": 1.5})
 
 
+GOLDEN_KINDS = (
+    "principals.json",
+    "endpoints.toml",
+    # test_rendering.py
+    "units.txt",
+    "accounts.json",
+    "bootstrap.sql",
+    "restricted-check.sql",
+    "render.json",
+)
+
+
 def test_golden_directory_has_no_stray_files() -> None:
-    expected = {f"{f}.{kind}" for f in VALID for kind in ("principals.json", "endpoints.toml")}
+    expected = {f"{f}.{kind}" for f in VALID for kind in GOLDEN_KINDS}
     assert {p.name for p in Path(GOLDEN).iterdir()} == expected

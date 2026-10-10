@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/postgres/tasks/bootstrap.yml). Local changes will be overwritten.
 #
-# Idempotent bootstrap through psql inside the container (the superuser
-# password never leaves it), then the role passwords: a role whose stored
+# Idempotent bootstrap of infra's role through psql inside the container (the
+# superuser password never leaves it), then its password: a role whose stored
 # SCRAM secret does not match its password gets a new secret, computed here,
 # so neither the password nor a change is reported on later runs.
 - name: Wait until PostgreSQL accepts the superuser
@@ -13,7 +13,7 @@
   until: postgres_ready.rc == 0
   changed_when: false
 
-- name: Create the roles, the schemas and the revokes
+- name: Create infra's own role
   ansible.builtin.command:
     argv: "{{ postgres_psql + ['--quiet', '--file', '/etc/postgresql/bootstrap.sql'] }}"
   register: postgres_bootstrap
@@ -37,9 +37,7 @@
     argv: "{{ postgres_psql + ['--quiet'] }}"
     stdin: >-
       ALTER ROLE "{{ item.key }}" PASSWORD '{{ item.value | pinka_scram_verifier }}';
-  loop: >-
-    {{ vault_postgres_passwords | dict2items | selectattr('key', 'in', postgres_vault_roles)
-       + [{'key': postgres_monitor_role, 'value': postgres_monitor_secret.content | b64decode}] }}
+  loop: "{{ [{'key': postgres_monitor_role, 'value': postgres_monitor_secret.content | b64decode}] }}"
   loop_control:
     label: "{{ item.key }}"
   when: not (item.value | pinka_scram_matches((postgres_stored.stdout | from_json).get(item.key)))

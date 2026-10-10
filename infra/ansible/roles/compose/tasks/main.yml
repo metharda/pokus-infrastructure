@@ -37,7 +37,11 @@
   register: compose_daemon_json
   failed_when: false
 
-- name: Read the groups (pinka and potka-svc open the socket directories)
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+- name: Read the groups (pinka and the database socket group open the socket directories)
   ansible.builtin.getent:
     database: group
 
@@ -48,7 +52,8 @@
   ansible.builtin.set_fact:
     compose_docker: "{{ compose_daemon_json.content | default('e30=') | b64decode | from_json }}"
     compose_pinka_gid: "{{ (ansible_facts.getent_group['pinka'] | default(none) or ['', ''])[1] }}"
-    compose_potka_svc_gid: "{{ (ansible_facts.getent_group['potka-svc'] | default(none) or ['', ''])[1] }}"
+    compose_db_socket_gid: >-
+      {{ (ansible_facts.getent_group[compose_db_socket_group] | default(none) or ['', ''])[1] }}
 
 - name: Derive the GPU method
   ansible.builtin.set_fact:

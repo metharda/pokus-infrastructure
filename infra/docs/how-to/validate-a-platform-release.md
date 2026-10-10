@@ -76,6 +76,41 @@ Run the same check on your release before you tag it.
 
     `<release>` is the same release directory as in step 1.
 
+## Prepare for the deployment
+
+1. With runtime `python-uv` and a `[build-system]` in `pyproject.toml`, lock
+   the build backend in a dependency group named `build`:
+
+    <!-- qa:skip reason="example of a pyproject.toml section" -->
+    ```toml
+    [dependency-groups]
+    build = ["<backend>"]
+    ```
+
+    `<backend>` is the package of your `build-backend`, as in
+    `[build-system] requires`. Run `uv lock` afterwards. The deployment
+    installs the locked wheels with network access first, without building
+    or running anything, and then builds your release without network, so
+    the backend must come from `uv.lock`. Every locked dependency must
+    therefore be available as a wheel.
+
+2. Let your services take their sockets from systemd instead of creating
+   them. Infra creates every socket of the manifest with its owner, group,
+   mode and ACL and passes it to the serving service by socket activation:
+   the file descriptors start at 3, `LISTEN_FDS` gives their number and
+   `LISTEN_FDNAMES` their socket names from the manifest.
+
+3. Keep each service's configuration schema (`config`) to the JSON Schema
+   keywords of the manifest schema plus annotations (`$comment`,
+   `default`, `examples`, `format`, `deprecated`, `readOnly`,
+   `writeOnly`); a schema with another keyword is refused, because infra
+   would not check it.
+
+4. Keep a policy bundle (`policy.bundle`) out of OPA's own namespaces: no
+   module may declare a package below `system` or `pinka`, and no data file
+   may sit below a `system/` or `pinka/` directory or put those keys at the
+   top of `data`.
+
 ## Verify
 
 The command exits 0 and prints the summary. `--json` prints the same result

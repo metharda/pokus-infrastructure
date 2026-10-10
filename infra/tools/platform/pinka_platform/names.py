@@ -113,6 +113,7 @@ def derive(manifest: Mapping[str, Any], contract: Contract) -> list[Derived]:
     for i, socket in enumerate(manifest.get("sockets", [])):
         group = client_group(p, socket["service"], socket["name"])
         out.append(Derived("accounts_groups", group, f"client group of sockets[{i}]"))
+        out.append(Derived("units", group, f"socket unit of sockets[{i}]"))
     if "cli" in manifest:
         out.append(Derived("commands", manifest["cli"]["name"], "the researchers' CLI"))
     return out

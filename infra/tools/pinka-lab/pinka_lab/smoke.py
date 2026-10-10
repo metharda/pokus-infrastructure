@@ -96,7 +96,7 @@ def smoke_one(ctx: Context, blueprint: dict[str, Any], alias: str) -> Outcome:
             "--config",
             f"security.nesting={'true' if blueprint.get('nesting') else 'false'}",
             "--config",
-            f"environment.OTEL_RESOURCE_ATTRIBUTES=potka.run_id={run_id},potka.node=smoke",
+            f"environment.OTEL_RESOURCE_ATTRIBUTES=pinka.probe_id={run_id},pinka.node=smoke",
             timeout=300,
         )
         if not launched.ok:
@@ -168,7 +168,7 @@ def _telemetry(ctx: Context, run_id: str) -> list[str]:
     if not loki:
         return []
     start = int(ctx.system.now().timestamp()) - 600
-    query = quote(f'{{service_name=~".+"}} | potka_run_id="{run_id}"', safe="")
+    query = quote(f'{{service_name=~".+"}} | pinka_probe_id="{run_id}"', safe="")
     url = f"{loki}/loki/api/v1/query_range?start={start}&query={query}"
     deadline = time.monotonic() + float(
         ctx.config.get("observability", "smoke_wait_seconds", default=120)

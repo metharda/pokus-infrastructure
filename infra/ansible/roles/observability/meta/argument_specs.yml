@@ -13,8 +13,8 @@ argument_specs:
         description: Grafana's admin password (vault, 8 or more characters).
       vault_postgres_passwords:
         type: dict
-        required: true
-        description: Database passwords (vault); Grafana uses potka_grafana, which must not contain "$".
+        default: {}
+        description: Database passwords (vault); Grafana uses the active platform's Grafana role, whose password must not contain "$".
       observability_collector_memory_mib:
         type: int
         default: 512
@@ -38,7 +38,13 @@ argument_specs:
         description: GPU exporter with gpu_inference; dcgm is refused while its image is unverified.
       observability_grafana_db_password:
         type: str
-        description: Password of potka_grafana (default vault_postgres_passwords.potka_grafana).
+        description: Password of the active platform's Grafana role (default from vault_postgres_passwords; "" without a platform database).
+      observability_platform_db:
+        type: dict
+        description: The active platform's database plan, from its rendering ({} without one).
+      observability_platform_dashboards:
+        type: dict
+        description: The active platform's dashboards (folder and directory in its release), from its rendering ({} without them).
       observability_grafana_admin_password:
         type: str
         description: Grafana's admin password (default vault_grafana_admin_password).

@@ -17,7 +17,6 @@ services:
     labels:
       org.pinka.config-hash: ${POSTGRES_CONFIG_HASH:-}
     environment:
-      POSTGRES_DB: potka
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser
       POSTGRES_INITDB_ARGS: --data-checksums --auth-local=scram-sha-256 --auth-host=scram-sha-256
@@ -31,14 +30,14 @@ services:
     stop_grace_period: 60s
     network_mode: none
     healthcheck:
-      test: ["CMD", "pg_isready", "--host", "/var/run/postgresql", "--dbname", "potka", "--username", "postgres"]
+      test: ["CMD", "pg_isready", "--host", "/var/run/postgresql", "--dbname", "postgres", "--username", "postgres"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 60s
 
   # Host network on 127.0.0.1 for Prometheus; the database through the
-  # service socket directory (group potka-svc).
+  # service socket directory (its group: the platform's <platform>-db, or root).
   postgres_exporter:
     image: ${POSTGRES_EXPORTER_IMAGE:?pinned image missing}
     container_name: pinka-postgres-exporter
@@ -47,10 +46,10 @@ services:
       postgres: {condition: service_healthy}
     network_mode: host
     user: "65534:65534"
-    group_add: ["${POTKA_SVC_GID:?}"]
+    group_add: ["${POSTGRES_SOCKET_GID:?}"]
     command: ["--web.listen-address=127.0.0.1:${POSTGRES_EXPORTER_PORT:?}"]
     environment:
-      DATA_SOURCE_URI: /pinka?host=/run/pinka/postgres&sslmode=disable
+      DATA_SOURCE_URI: /postgres?host=/run/pinka/postgres&sslmode=disable
       DATA_SOURCE_USER: pinka_monitor
       DATA_SOURCE_PASS_FILE: /run/secrets/pinka-monitor
     volumes:
@@ -65,9 +64,10 @@ services:
     container_name: pinka-opa
     restart: unless-stopped
     # Authorization on: /config/authz.rego (package system.authz) allows only
-    # decision queries and health checks (resolution C6). ./policy is a
-    # symbolic link to the deployed platform's policy directory or to the
-    # deny-all placeholder (opa role); Docker resolves it when the container starts.
+    # the two decision queries and health checks (§7.10). The deny-all
+    # placeholder is always loaded; ./policy is a symbolic link to the active
+    # platform's policy bundle or to an empty directory (opa role); Docker
+    # resolves it when the container starts.
     labels:
       org.pinka.config-hash: ${OPA_CONFIG_HASH:-}
     command:
@@ -77,6 +77,7 @@ services:
       - --authorization=basic
       - --config-file=/config/opa.yaml
       - /config/authz.rego
+      - /config/placeholder
       - /policy
     ports:
       - 127.0.0.1:${OPA_PORT:?}:8181

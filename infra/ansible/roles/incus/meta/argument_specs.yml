@@ -103,7 +103,9 @@ argument_specs:
       incus_service_certificates:
         type: list
         elements: dict
-        description: Platform services that get a restricted client certificate ({account, short, name, projects}); name is its common and trust name.
+        description: >-
+          Platform services that get a restricted client certificate ({account, short, name,
+          projects}), from the active platform's rendering; name is its common and trust name.
       incus_metrics_certificate:
         type: dict
         default: {account: root, short: metrics, name: pinka-metrics, type: metrics}
@@ -112,6 +114,9 @@ argument_specs:
         type: int
         default: 3650
         description: Validity of generated client certificates in days.
+      incus_run_network_owner:
+        type: str
+        description: Owner of the run-network helper's socket, the active platform's controller account (root without a platform).
       incus_events_identifier:
         type: str
         default: pinka-incus-events

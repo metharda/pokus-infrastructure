@@ -7,6 +7,8 @@ import grp
 import json
 import os
 import pwd
+import socket
+import stat
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -87,10 +89,10 @@ def make_repo(root: Path) -> Path:
     repo = root / "src"
     repo.mkdir()
     add_release(repo, manifest("allprof"))
-    (repo / "catalog" / "scenarios").mkdir(parents=True)
-    (repo / "catalog" / "scenarios" / "s1.yml").write_text("id: case-1\nanswer: secret\n")
-    (repo / "catalog" / "run.sh").write_text("#!/bin/sh\n")
-    (repo / "catalog" / "run.sh").chmod(0o755)
+    (repo / "cases" / "scenarios").mkdir(parents=True)
+    (repo / "cases" / "scenarios" / "s1.yml").write_text("id: case-1\nanswer: secret\n")
+    (repo / "cases" / "run.sh").write_text("#!/bin/sh\n")
+    (repo / "cases" / "run.sh").chmod(0o755)
     (repo / "guides").mkdir()
     (repo / "guides" / "intro.md").write_text("# guide\n")
     git(repo, "init", "--quiet", "--initial-branch=main")
@@ -120,7 +122,7 @@ def settings(repo: Path, **changes: Any) -> deploy.Settings:
             "tag_prefix": "allprof-v",
         },
         "content": {
-            "cases": {"repo": url, "ref": "cases-v1", "path": "catalog", "tag_prefix": "cases-v"},
+            "cases": {"repo": url, "ref": "cases-v1", "path": "cases", "tag_prefix": "cases-v"},
             "guides": {"repo": url, "ref": "main", "path": "guides"},
         },
         "owners": OWNERS,
@@ -166,3 +168,64 @@ def schema(name: str) -> dict[str, Any]:
         (CONTRACT_RECORDS / f"{name}.schema.json").read_text(encoding="utf-8")
     )
     return data
+
+
+# The kinds of entry a release and its build output must never contain, with
+# the problem code each one raises (owner decision on 3d.2).
+SPECIAL_CASES = {
+    "chardev": "special-file",
+    "blockdev": "special-file",
+    "fifo": "special-file",
+    "socket": "special-file",
+    "setuid": "setid-bit",
+    "setgid": "setid-bit",
+}
+FAKED_DEVICES = {"chardev": stat.S_IFCHR, "blockdev": stat.S_IFBLK}
+
+
+def make_special(path: Path, kind: str) -> None:
+    """Create an entry of one of SPECIAL_CASES.
+
+    Device files need root, so a regular file stands in for them and
+    ``fake_devices`` makes ``lstat`` report it as a device.
+
+    Args:
+        path: Where to create it.
+        kind: A key of SPECIAL_CASES.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if kind == "fifo":
+        os.mkfifo(path)
+    elif kind == "socket":
+        cwd = Path.cwd()
+        os.chdir(path.parent)  # a socket path is limited to 108 bytes
+        try:
+            with socket.socket(socket.AF_UNIX) as sock:
+                sock.bind(path.name)
+        finally:
+            os.chdir(cwd)
+    else:
+        path.write_text("#!/bin/sh\n")
+        path.chmod({"setuid": 0o4755, "setgid": 0o2755}.get(kind, 0o644))
+
+
+def fake_devices(kind: str) -> Any:
+    """An ``lstat`` that reports entries named ``planted`` as the device ``kind``.
+
+    Args:
+        kind: A key of SPECIAL_CASES.
+
+    Returns:
+        The replacement.
+    """
+    real = Path.lstat
+
+    def lstat(path: Path) -> os.stat_result:
+        info = real(path)
+        if path.name == "planted" and kind in FAKED_DEVICES:
+            fields = list(info)
+            fields[0] = FAKED_DEVICES[kind] | 0o644
+            return os.stat_result(fields)
+        return info
+
+    return lstat

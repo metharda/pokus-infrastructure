@@ -1,0 +1,12 @@
+# Managed by pinka (ansible/roles/users_groups/vars/main.yml). Local changes will be overwritten.
+#
+# Names a researcher may not have: infra's accounts and groups and the active
+# platform's accounts and groups (rendered.json, read by active_platform).
+users_groups_taken: >-
+  {{ (infra_accounts | map(attribute='name') | list)
+     + (pinka_groups | map(attribute='name') | list)
+     + ((active_platform | default({}, true)).accounts | default([], true) | map(attribute='name') | list)
+     + ((active_platform | default({}, true)).groups | default([], true))
+     + ((active_platform | default({}, true)).infra_groups | default([], true)) }}
+users_groups_clashes: >-
+  {{ researchers | map(attribute='name') | select('in', users_groups_taken) | list }}

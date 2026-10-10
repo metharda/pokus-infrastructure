@@ -27,14 +27,24 @@ Output of `pinka fingerprint --json` and the `fingerprint` field of every sessio
 
 string or null
 
-### deployment
+### source
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `deployment.component` | string or null | yes | Component name (`platform`, `catalog`). |
-| `deployment.tag` | string or null | yes | Release tag deployed. |
-| `deployment.commit` | string or null | yes | Commit the tag points to. |
-| `deployment.tree` | string or null | yes | Tree hash of the deployed subtree. |
+| `source.tag` | string or null | yes | Release tag deployed. |
+| `source.commit` | string or null | yes | Commit the tag points to. |
+| `source.tree` | string or null | yes | Tree hash of the deployed subtree. |
+
+### platform
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `platform.name` | string or null | yes | Platform name. |
+| `platform.version` | string or null | yes | Release version. |
+| `platform.manifest_sha256` | string or null | yes | sha256 of the release's manifest. |
+| `platform.release` | see `source` | yes | — |
+| `platform.content` | object | yes | The content packages by name. |
+| `platform.content.*` | see `source` | no | any key; value as described |
 
 ### fingerprint
 
@@ -85,8 +95,7 @@ string or null
 | `fingerprint.config.infra_dirty` | boolean or null | yes | Whether `infra/` had uncommitted changes. |
 | `fingerprint.config.versions_lock_sha256` | string or null | yes | sha256 of `versions.lock.yml`. |
 | `fingerprint.config.host_vars_sha256` | string or null | yes | sha256 of the host_vars file. |
-| `fingerprint.config.platform` | see `deployment` | yes | Deployed platform. |
-| `fingerprint.config.catalog` | see `deployment` | yes | Deployed catalog. |
+| `fingerprint.config.platform` | see `platform` | yes | The active platform. |
 | `fingerprint.wsl` | object | no | WSL hosts only. |
 | `fingerprint.wsl.wsl_conf` | object | yes | Effective `/etc/wsl.conf`: section to key to value. |
 | `fingerprint.wsl.wsl_conf.*` | object | no | any key; value as described |

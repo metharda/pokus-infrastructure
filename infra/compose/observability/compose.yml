@@ -129,10 +129,11 @@ services:
     volumes:
       - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./config/grafana/platform-dashboards:/etc/grafana/platform-dashboards:ro
       - ${PINKA_ROOT:?}/state/grafana:/var/lib/grafana
       - /run/pinka/postgres-reader:/run/pinka/postgres-reader
       - /etc/pinka/secrets/containers/grafana-admin:/run/secrets/grafana-admin:ro
-      - /etc/pinka/secrets/containers/pinka-grafana:/run/secrets/potka-grafana:ro
+      - /etc/pinka/secrets/containers/platform-grafana:/run/secrets/platform-grafana:ro
 
   node_exporter:
     <<: *hardened

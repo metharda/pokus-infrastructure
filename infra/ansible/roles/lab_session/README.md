@@ -27,8 +27,9 @@ boot (BUILD_PROMPT §7.16, `docs/contracts.md`); tag `lab_session`.
   (`pinka fingerprint --json`) and the outcome of a fresh preflight
   (`pinka preflight --json`). A failed command leaves its field `null`
   and its reason under `errors`; the record is written anyway.
-- The ordered shutdown (`pinka stop`, draining the orchestrator first) is
-  part of the `pinka` CLI.
+- The ordered shutdown (`pinka stop`, running the active platform's `drain`
+  hook first once infra runs hooks, plan step 3d.4) is part of the `pinka`
+  CLI.
 
 ## Variables
 

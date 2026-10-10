@@ -2,7 +2,9 @@
 #
 # §7.14 steps 5-9 on the run directory that prepare.yml created: the
 # sandboxed build, the job images by digest, the optional tools, publishing
-# with provenance, replacing the previous platform, and the switch. A failure
+# with provenance, replacing the previous platform, rendering from the
+# profiles, and the switch of current. The hooks and starting the services
+# follow with plan step 3d.4. A failure
 # before the switch leaves the running release untouched. The run directory
 # is removed in every case.
 
@@ -45,6 +47,9 @@
     - name: Retire the platform this release replaces
       ansible.builtin.include_tasks: retire.yml
       when: platform_plan.replace
+
+    - name: Render the platform from its profiles (§7.14 step 7)
+      ansible.builtin.include_tasks: render.yml
 
     - name: Switch to the release (§7.14 step 8)
       ansible.builtin.command:

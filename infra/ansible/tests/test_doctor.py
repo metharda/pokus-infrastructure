@@ -223,23 +223,38 @@ def test_split_inference_pairing() -> None:
     assert render()["inference"]["peer"] == ""
 
 
-def test_platform_units_and_sockets() -> None:
-    sockets = [{"path": "/run/pinka/gw/svc.sock", "expect_mode": "0660", "expect_acl": []}]
-    content = base64.b64encode(json.dumps(sockets).encode()).decode()
-    data = render(platform_enabled=True, doctor_platform_sockets={"content": content})
-    assert data["sockets"] == sockets
-    hardening = {h["unit"]: h for h in data["hardening"]}
-    assert len(hardening) == 8
-    agent = hardening["potka-agent-runner.service"]
-    assert agent["properties"]["User"] == "potka-agent"
-    assert "/etc/pinka/inference" in agent["inaccessible_paths"]
-    gateway = hardening["potka-llm-gateway.service"]
-    assert "/etc/pinka/inference" not in gateway["inaccessible_paths"]  # its remote backend
-    evaluator = hardening["potka-evaluator.service"]["properties"]
-    assert evaluator["MemoryDenyWriteExecute"] == "no"
-    assert "potka-orchestrator.service" in data["units"]
-    assert "potka-reconcile.service" not in data["units"]  # oneshot
-    assert render(doctor_platform_sockets={"content": content})["sockets"] == []
+def test_platform_checks_wait_for_the_switch() -> None:
+    # The platform's units, sockets and hardening are checked once the switch
+    # with the hooks starts them (plan step 3d.4).
+    rendered = {"accounts": [{"name": "demo-ctl"}, {"name": "demo-agt"}], "service_units": []}
+    data = render(active_platform=rendered)
+    assert data["hardening"] == []
+    assert data["sockets"] == []
+    assert data["accounts"]["platform_accounts"] == ["demo-ctl", "demo-agt"]
+    assert data["paths"]["active_platform"] == "/etc/pinka/platform/active.json"
+
+
+def test_the_database_check_follows_the_platform() -> None:
+    db = {
+        "database": "demo",
+        "reader": "demo_reader",
+        "grafana": "demo_grafana",
+        "migrator": "demo_migrator",
+        "logins": [{"role": "demo_ctl"}],
+    }
+    data = render(active_platform={"database": db})
+    assert data["postgres"]["database"] == "demo"
+    assert data["postgres"]["restricted_roles"] == ["demo_reader", "demo_grafana"]
+    assert data["postgres"]["roles"] == [
+        "demo_ctl",
+        "demo_migrator",
+        "demo_reader",
+        "demo_grafana",
+        "pinka_monitor",
+    ]
+    standalone = render()
+    assert standalone["postgres"]["roles"] == ["pinka_monitor"]
+    assert standalone["postgres"]["restricted_roles"] == []
 
 
 def test_incus_and_images() -> None:
@@ -250,18 +265,20 @@ def test_incus_and_images() -> None:
     assert incus["projects"] == ["bench", "build"]
     assert {"name": "target-vm", "project": "bench"} in incus["profiles"]
     assert incus["cert_dir"] == "/etc/pinka/incus"
-    assert [c["short"] for c in incus["certificates"]] == [
-        "orch",
-        "exec",
-        "inject",
-        "verify",
-        "metrics",
-    ]
-    assert [c["name"] for c in incus["certificates"]] == [
-        "potka-orch",
-        "potka-exec",
-        "potka-inject",
-        "potka-verify",
+    assert [c["short"] for c in incus["certificates"]] == ["metrics"]
+    assert [c["name"] for c in incus["certificates"]] == ["pinka-metrics"]
+    certificate = {
+        "account": "demo-ctl",
+        "short": "demo-ctl",
+        "name": "demo-ctl",
+        "projects": ["bench"],
+    }
+    with_platform = render(
+        pinka_features={"gpu_inference": False, "vm_targets": True},
+        active_platform={"incus_certificates": [certificate]},
+    )
+    assert [c["name"] for c in with_platform["incus"]["certificates"]] == [
+        "demo-ctl",
         "pinka-metrics",
     ]
     assert data["listeners"]["addresses"] == ["198.18.0.1"]
@@ -282,7 +299,10 @@ def test_layout_is_absolute() -> None:
     layout = {e["path"]: e for e in render()["layout"]}
     assert layout["/srv/pinka"]["mode"] == "2775"
     assert layout["/srv/pinka/shared"]["default_acl"] == ["group:pinka:rwX"]
-    assert layout["/etc/pinka/secrets"]["group"] == "potka-svc"
+    assert (layout["/etc/pinka/secrets"]["group"], layout["/etc/pinka/secrets"]["mode"]) == (
+        "root",
+        "0711",
+    )
     assert all(path.startswith("/") and not path.endswith("/") for path in layout)
 
 

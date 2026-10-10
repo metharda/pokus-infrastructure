@@ -7,7 +7,7 @@
 start time, the environment fingerprint and its hash (``pinka fingerprint
 --json``, run as root, which also refreshes the fingerprint cache) and the
 outcome of a fresh read-only preflight (``pinka preflight --json``); the
-orchestrator imports the records. A record that exists is never rewritten.
+active platform's controller reads the records. A record that exists is never rewritten.
 When a command fails, its field is ``null`` and the reason is recorded, so a
 session is still recorded.
 """

@@ -51,15 +51,22 @@ fails on a commit message in the history with a `Co-Authored-By`,
 `Claude-Session` or `Generated with` line. Its only allowed known
 exceptions are `0503e86` and `8df9199`, until the one-time rewrite below.
 
-## One-time history rewrite (owner, after the 3d.1 commit)
+## One-time history rewrite and a fresh repository (owner, after the 3d.2 commit)
 
-Verbatim:
+Verbatim; it replaces the rewrite decision given after the 3d.1 commit:
 
-> "History rewrite: NOT now. After 3f is committed and before 3g, propose a
-> one-time rewrite of claude/zen-albattani-qfwwps that removes the two
-> Co-Authored-By trailers and nothing else (git filter-repo with a message
-> callback), updates every commit hash referenced in PROGRESS.md and the
-> docs, removes the two known exceptions from the check, and shows me the
-> before/after mapping. It needs my explicit "rewrite" before you
-> force-push; it is the only exception to the no-history-rewrite rule and
-> it never covers main."
+> "I choose a fresh repository. 3g changes: instead of renaming, I will
+> create a new empty repository pokus-infrastructure. After 3f, propose the
+> one-time rewrite of the full history (main and
+> claude/zen-albattani-qfwwps) that removes the two Co-Authored-By trailers
+> and nothing else, with the before/after hash mapping and every hash in
+> PROGRESS.md and the docs updated. After my "rewrite", push the rewritten
+> main and branch to the new repository only; never force-push the old one.
+> Then give me a checklist of what I must recreate by hand on the new
+> repository (secrets including PINKA_PRIVACY_DENYLIST, branch protection,
+> Actions settings, anything else you know of)."
+
+The rewrite also removes the two known exceptions from the privacy scan's
+history check. It is the only exception to the no-history-rewrite rule, it
+needs the owner's explicit "rewrite", and the old repository is never
+force-pushed.

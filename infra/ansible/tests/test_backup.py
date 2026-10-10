@@ -56,7 +56,7 @@ def config(tmp_path: Path) -> dict[str, Any]:
     secrets.mkdir()
     (secrets / "repository").write_text("sftp:backup@backup.example.com:/srv/restic/lab\n")
     (secrets / "password").write_text("pw")
-    data = tmp_path / "srv" / "catalog"
+    data = tmp_path / "srv" / "shared"
     data.mkdir(parents=True)
     return {
         "restic": "/usr/local/bin/restic",
@@ -72,7 +72,7 @@ def config(tmp_path: Path) -> dict[str, Any]:
         "retention": {"daily": 7, "weekly": 4, "monthly": 12},
         "pgdump": {
             "container": "pinka-postgres",
-            "database": "potka",
+            "database": "demo",
             "dir": str(tmp_path / "pg"),
             "keep": 2,
         },
@@ -191,7 +191,7 @@ def test_snapshots_restore_and_passwd(
     assert json.loads(capsys.readouterr().out) == [{"id": "abc"}]
     runner = FakeRunner({})
     assert (
-        backup.cmd_restore(config, "latest", ["/srv/pinka/catalog", "/etc/pinka/qa"], runner) == 0
+        backup.cmd_restore(config, "latest", ["/srv/pinka/platforms", "/etc/pinka/qa"], runner) == 0
     )
     argv = runner.calls[0]["argv"]
     assert argv[3:7] == ["restore", "latest", "--target", "/"]
@@ -208,19 +208,19 @@ def test_pgdump_checks_and_keeps_the_newest(config: dict[str, Any]) -> None:
     directory = Path(config["pgdump"]["dir"])
     directory.mkdir()
     for stamp in ("20260101T000000Z", "20260102T000000Z"):
-        (directory / f"potka-{stamp}.dump").write_bytes(b"old")
+        (directory / f"demo-{stamp}.dump").write_bytes(b"old")
     runner = FakeRunner({})
     assert backup.cmd_pgdump(config, runner) == 0
-    dumps = sorted(p.name for p in directory.glob("potka-*.dump"))
+    dumps = sorted(p.name for p in directory.glob("demo-*.dump"))
     assert len(dumps) == 2
-    assert dumps[0] == "potka-20260102T000000Z.dump"
+    assert dumps[0] == "demo-20260102T000000Z.dump"
     newest = directory / dumps[1]
     assert newest.read_bytes() == b"PGDMP-test"
     assert newest.stat().st_mode & 0o777 == 0o600
     dump_call, list_call = runner.calls
     assert dump_call["argv"][:6] == ["docker", "exec", "--user", "postgres", "pinka-postgres", "sh"]
     assert "/run/secrets/postgres-superuser" in dump_call["argv"][7]  # read inside the container
-    assert dump_call["argv"][8:] == ["pg_dump", "--format=custom", "--dbname=potka"]
+    assert dump_call["argv"][8:] == ["pg_dump", "--format=custom", "--dbname=demo"]
     assert list_call["argv"][2] == "--interactive"
     assert list_call["argv"][-2:] == ["pg_restore", "--list"]
     assert list_call["stdin"] == b"PGDMP-test"
@@ -235,7 +235,7 @@ def test_failed_dump_leaves_nothing(config: dict[str, Any], failing: str) -> Non
 
 
 def test_pgrestore_replaces_the_dumped_objects(config: dict[str, Any], tmp_path: Path) -> None:
-    dump = tmp_path / "potka-x.dump"
+    dump = tmp_path / "demo-x.dump"
     dump.write_bytes(b"PGDMP-x")
     runner = FakeRunner({})
     assert backup.cmd_pgrestore(config, dump, runner) == 0
@@ -247,7 +247,7 @@ def test_pgrestore_replaces_the_dumped_objects(config: dict[str, Any], tmp_path:
         "--if-exists",
         "--single-transaction",
         "--exit-on-error",
-        "--dbname=potka",
+        "--dbname=demo",
     ]
     assert runner.calls[0]["stdin"] == b"PGDMP-x"
 
@@ -270,8 +270,7 @@ def role_variables(**extra: Any) -> dict[str, Any]:
         GROUP_VARS.parent / "versions.yml",
         ROLE / "defaults" / "main.yml",
         ROLE / "vars" / "main.yml",
-        node_role="full",
-        **extra,
+        **{"node_role": "full", **extra},
     )
 
 
@@ -306,14 +305,42 @@ def test_optional_paths_and_secrets() -> None:
     assert evaluate("backup_excludes", variables) == []
 
 
-def test_unconfigured_repository_disables_backup_and_prune() -> None:
-    variables = role_variables()
-    assert evaluate("backup_configured", variables) is False
-    jobs = {
+def enabled_jobs(variables: dict[str, Any]) -> dict[str, bool]:
+    return {
         j["name"]: evaluate(j["enabled"].strip()[2:-2], variables)
         for j in load_yaml(ROLE / "vars" / "main.yml")["backup_jobs"]
     }
+
+
+def test_unconfigured_repository_disables_backup_and_prune() -> None:
+    variables = role_variables(active_platform=DUMPED)
+    assert evaluate("backup_configured", variables) is False
+    jobs = enabled_jobs(variables)
     assert jobs == {"pinka-pgdump": True, "pinka-backup": False, "pinka-backup-prune": False}
+
+
+DUMPED = {"database": {"database": "demo"}, "backup": {"database": True, "paths": []}}
+
+
+@pytest.mark.parametrize(
+    ("platform", "node_role", "dumped"),
+    [
+        (DUMPED, "full", True),
+        (DUMPED, "lab", True),
+        (DUMPED, "inference", False),
+        ({}, "full", False),
+        ({"database": None, "backup": {"database": False, "paths": []}}, "full", False),
+        ({"database": {"database": "demo"}, "backup": {"database": False}}, "full", False),
+    ],
+)
+def test_the_dump_follows_the_active_platform(
+    platform: dict[str, Any], node_role: str, dumped: bool
+) -> None:
+    variables = role_variables(active_platform=platform, node_role=node_role)
+    assert enabled_jobs(variables)["pinka-pgdump"] is dumped
+    assert evaluate("backup_database", variables) == (
+        "demo" if (platform.get("database") or {}).get("database") else ""
+    )
 
 
 def test_units_render() -> None:
@@ -366,13 +393,13 @@ SNAPSHOTS = [
         "id": "1" * 64,
         "short_id": "11111111",
         "time": "2026-10-01T03:00:00Z",
-        "paths": ["/etc/pinka", "/srv/pinka/catalog"],
+        "paths": ["/etc/pinka", "/srv/pinka/platforms"],
     },
     {
         "id": "2" * 64,
         "short_id": "22222222",
         "time": "2026-10-02T03:00:00Z",
-        "paths": ["/etc/pinka", "/srv/pinka/catalog"],
+        "paths": ["/etc/pinka", "/srv/pinka/platforms"],
     },
 ]
 
@@ -404,7 +431,7 @@ def test_restore_brings_back_data_but_not_rendered_configuration() -> None:
     )
     assert argv[:4] == ["/usr/local/libexec/pinka/backup", "restore", "--snapshot", "1" * 64]
     includes = [a.removeprefix("--include=") for a in argv[4:]]
-    assert includes[0] == "/srv/pinka/catalog"
+    assert includes[0] == "/srv/pinka/platforms"
     assert "/etc/pinka" not in includes  # bootstrap renders the rest of /etc/pinka
     assert "/etc/pinka/vllm/current.yml" in includes
 

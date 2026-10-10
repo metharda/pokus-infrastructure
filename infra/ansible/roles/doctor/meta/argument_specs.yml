@@ -62,7 +62,7 @@ argument_specs:
       doctor_drain_timeout:
         type: int
         default: 1800
-        description: Seconds `pinka update-host` gives the orchestrator to drain.
+        description: Seconds `pinka stop` and `update-host` give the platform's drain hook.
       doctor_listener_processes:
         type: list
         elements: str

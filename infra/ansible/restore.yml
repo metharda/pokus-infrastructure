@@ -134,10 +134,14 @@
         - name: Load the newest PostgreSQL dump
           when: node_role in ['full', 'lab']
           block:
-            - name: Find the PostgreSQL dumps
+            - name: Read the active platform
+              ansible.builtin.include_role:
+                name: active_platform
+
+            - name: Find the dumps of the platform database
               ansible.builtin.find:
                 paths: "{{ pinka_root }}/backups/pg"
-                patterns: "potka-*.dump"
+                patterns: "{{ ((active_platform.database | default({}, true)).database | default('none', true)) ~ '-*.dump' }}"
               register: restore_dumps
 
             - name: Start PostgreSQL
@@ -156,11 +160,19 @@
               changed_when: true
               when: restore_dumps.files | length > 0
 
-            - name: Apply the database roles, grants and revokes again
+            - name: Apply infra's database role again
               ansible.builtin.include_role:
                 name: postgres
                 tasks_from: bootstrap
               when: restore_dumps.files | length > 0
+
+            - name: Apply the platform's roles, grants, revokes and the restricted check again
+              ansible.builtin.include_role:
+                name: postgres
+                tasks_from: platform
+              when:
+                - restore_dumps.files | length > 0
+                - active_platform.database | default({}, true)
 
         - name: Re-import the golden images
           ansible.builtin.include_role:

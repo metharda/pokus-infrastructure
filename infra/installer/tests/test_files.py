@@ -89,10 +89,18 @@ def test_group_vars_round_trip_keeps_everything_else(repo: Paths) -> None:
     }
 
 
-def test_postgres_roles_match_the_vault_example(repo: Paths) -> None:
+def test_postgres_roles_come_from_the_release(repo: Paths) -> None:
+    # The platform's roles are known only from its release (§12.5): the vault
+    # example shows their shape with placeholders, and the installer generates
+    # none of them before a release is inspected (plan step 3d.7).
     example = YAML(typ="safe").load(repo.vault_example.read_text(encoding="utf-8"))
-    roles = vault.postgres_roles(repo.postgres_defaults)
-    assert roles == list(example["vault_postgres_passwords"])
+    assert list(example["vault_postgres_passwords"]) == [
+        "<platform>_<service>",
+        "<platform>_migrator",
+        "<platform>_reader",
+        "<platform>_grafana",
+    ]
+    assert vault.postgres_roles(repo.postgres_defaults) == []
 
 
 def test_vault_build_generates_once_and_keeps_existing(repo: Paths) -> None:

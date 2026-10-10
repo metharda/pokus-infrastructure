@@ -84,15 +84,22 @@ repository at 3f (section J).
   `Generated with` line; `0503e86` and `8df9199` (the two commits that
   carry such trailers, both on `main`) are its only allowed known
   exceptions until the rewrite below.
-- **One-time history rewrite (owner, with the "commit" for 3d.1,
-  verbatim):** "History rewrite: NOT now. After 3f is committed and before
-  3g, propose a one-time rewrite of claude/zen-albattani-qfwwps that
-  removes the two Co-Authored-By trailers and nothing else (git filter-repo
-  with a message callback), updates every commit hash referenced in
-  PROGRESS.md and the docs, removes the two known exceptions from the
-  check, and shows me the before/after mapping. It needs my explicit
-  "rewrite" before you force-push; it is the only exception to the
-  no-history-rewrite rule and it never covers main."
+- **One-time history rewrite and a fresh repository (owner, with the
+  "commit" for 3d.2, verbatim; replaces the rewrite decision given with the
+  "commit" for 3d.1):** "I choose a fresh repository. 3g changes: instead of
+  renaming, I will create a new empty repository pokus-infrastructure.
+  After 3f, propose the one-time rewrite of the full history (main and
+  claude/zen-albattani-qfwwps) that removes the two Co-Authored-By
+  trailers and nothing else, with the before/after hash mapping and every
+  hash in PROGRESS.md and the docs updated. After my "rewrite", push the
+  rewritten main and branch to the new repository only; never force-push
+  the old one. Then give me a checklist of what I must recreate by hand on
+  the new repository (secrets including PINKA_PRIVACY_DENYLIST, branch
+  protection, Actions settings, anything else you know of)." The rewrite
+  also removes the two known exceptions from the privacy scan's history
+  check (from the decision with the 3d.1 "commit"), and it is the only
+  exception to the no-history-rewrite rule. The old repository is never
+  force-pushed.
 - **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
   `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
   14, without the owner's "commit").
@@ -548,11 +555,20 @@ proposal, and waits for the owner's "commit".
   copy for `pokus-platform`); the infra spec master is renamed per Q13.
   Gate: `make lint test docs` green, CI green on the branch, residue check
   clean.
-- **3g** Repository name: the assistant stops and asks the owner to rename
-  the repository to `pokus-infrastructure` on the Git host; after the
-  owner's confirmation, one small commit proposal updates every reference
-  to the repository's name and URL (README, docs, the `CITATION.cff`
-  placeholder, examples).
+- **3g** Fresh repository (owner decision with the "commit" for 3d.2,
+  replacing the rename): after 3f, the assistant proposes the one-time
+  rewrite of the full history (`main` and `claude/zen-albattani-qfwwps`)
+  that removes the two `Co-Authored-By` trailers and nothing else, with the
+  before/after hash mapping, every hash in `PROGRESS.md` and the docs
+  updated, and the two known exceptions removed from the privacy scan. The
+  owner creates a new empty repository `pokus-infrastructure`. After the
+  owner's "rewrite", the rewritten `main` and branch are pushed to the new
+  repository only; the old repository is never force-pushed. Then the
+  assistant gives the owner a checklist of what to recreate by hand on the
+  new repository (secrets including `PINKA_PRIVACY_DENYLIST`, branch
+  protection, Actions settings and the rest), and one small commit proposal
+  updates every reference to the repository's name and URL (README, docs,
+  the `CITATION.cff` placeholder, examples).
 - **3h** Final report: `TEST_REPORT.md` and `HANDOFF.md` for infra as the
   master prompt describes, their commit proposal, then stop. After 3h the
   assistant waits for the owner's explicit instruction.
@@ -784,7 +800,9 @@ the names of their time.
 - After 3f: stop and ask the owner to rename the repository to
   `pokus-infrastructure` on the Git host (3g); after the confirmation, 3g
   and 3h under the normal commit rule, then stop. The platform is not
-  started.
+  started. (Changed with the "commit" for 3d.2: a fresh repository instead
+  of the rename, see 3g above and
+  [Process rules](#process-rules-in-force).)
 
 **3c2, images free of project names.** `images_leakage_patterns` gains
 `(?i)pokus`, `(?i)pinka` and `(?i)potka` (no allow rule); the files
@@ -822,7 +840,7 @@ scan's history check and the one-time rewrite are under
 commit, so a rewrite of the working branch changes every commit hash and
 leaves `main`'s copies with their trailers unless `main` is replaced too.
 
-**3d, step 2 (proposed): deployment.** Infra §16 step 16: the deployment
+**3d, step 2: deployment** (`9ece578`). Infra §16 step 16: the deployment
 engine in `infra/tools/platform/` (sources, root-only mirrors per
 repository, staging with `git archive`, validation with the one-platform
 rule, the sandboxed `python-uv` build as `pinka-build`, job image pulls by
@@ -836,6 +854,54 @@ and §12.2 drift tests, V1, V2). The contract v1 `deploy_source` and
 `catalog` roles are gone; contract v1 rendering stays unused until 3d.3.
 Choices, interpretations and findings: `infra/docs/IMPLEMENTATION_NOTES.md`,
 "Contract v2, step 2".
+
+**Owner decisions with the "commit" for 3d.2.** Approved: where 3d.2 stops,
+65 for refusals and 60 for failures, unchanged pre-build files, the purge
+order, the exact-name replace, restricted publishing, V1 and V2. Asked for
+in step 3:
+
+- purge keeps accounts, secrets and published signing keys by default, prints
+  what remains, and gets `--remove-secrets` for the secrets directories;
+- releases, content packages and build output refuse device files, FIFOs,
+  sockets and any setuid or setgid bit, with one test per case;
+- a proposal for a two-phase build (a fetch phase with network that runs no
+  package code, locked hashes only, then a build phase without network), or,
+  if uv cannot do that cleanly, why not and the residual risk in
+  `infra/docs/IMPLEMENTATION_NOTES.md`;
+- the signed-tag test runs in CI (`ssh-keygen` present there); it may skip
+  only locally.
+
+3g changes to a fresh repository with a rewrite of the full history (see
+[Process rules](#process-rules-in-force) and 3g above).
+
+**3d, step 3: rendering from the profiles** (built, awaiting "commit").
+Infra §16 step 17: `pinka-platform deploy render` computes from the
+manifest, the profiles and the host settings everything the platform role
+applies: accounts and groups with the memberships the profiles allow (the
+§12.4 refusals in the tool), directories, the services' configuration
+(`platform_settings`, checked against the release's schemas) and secrets
+(from the vault; a missing key stops bootstrap with 77), hardened service
+units and socket units (sockets by socket activation, ACL entries for the
+human groups, the agent's empty lab directories with only its allowlist
+bound in), the database with its roles and the closed `restricted` schema
+and its check (run against a real PostgreSQL server in the tests), the
+Incus certificates, the run-network helper (socket-activated root helper
+with fixed bridge settings and its log), OPA's decision path and bundle, the
+dashboards with their datasource, the signing key, `principals.json` and
+`endpoints.toml`, and the CLI wrapper and link; `rendered.json` lets the
+other roles and replacing use the same result. Units are installed, not
+started (3d.4). Every platform special case left infra's code and tests;
+the neutrality lint (`make lint-neutral`) keeps it so. The 3d.2 follow-ups
+are in: special files and setuid/setgid bits refused, the two-phase build,
+purge keeps secrets unless `--remove-secrets` and lists what remains, and
+CI asserts `ssh-keygen`, the PostgreSQL server binaries and
+`systemd-analyze`. Choices, interpretations and findings:
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 3". Proposed
+deviations for the owner's decision: V3 (a `build` dependency group for
+releases with a `[build-system]`, and wheels only), V4 (no
+`RuntimeDirectory=` in the §7.14 baseline: socket units create the socket
+directories) and V5 (the installer and its answers files are excluded from
+the neutrality lint until 3d.7).
 
 ### Privacy clean-up (owner instruction)
 
@@ -1004,10 +1070,10 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 | step 1 done, step 2 proposed | `912b240` (step 1) |
+| 3d | Contract v2, steps 1-8 | steps 1-2 done, step 3 built and awaiting "commit" | `912b240` (1), `9ece578` (2) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
-| 3g | Repository name `pokus-infrastructure` | not started | — |
+| 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
 ### Platform, catalog, docs site
@@ -1146,9 +1212,8 @@ step 4" through "after step 13"):
   recorded event streams (see the step 13 notes); Phase 5 runs it on the
   reference hosts.
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
-  SSH-signed tag deployments is skipped here (it runs where OpenSSH is
-  installed, as in CI), and the socket ACL handling is tested with a fake
-  `setfacl` only.
+  SSH-signed tag deployments is skipped here (CI asserts `ssh-keygen` and
+  runs it), and the socket ACL helper is tested with a fake `setfacl` only.
 
 ## Next step
 
@@ -1158,7 +1223,7 @@ work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pok
 under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
 committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
-exception; 3d step 1 is committed (`912b240`), step 2 is proposed and waits
-for "commit", then steps 3-8 one at a time. Still open: the remaining
+exception; 3d steps 1 (`912b240`) and 2 (`9ece578`) are committed, step 3
+is built and waits for the owner's "commit", then steps 4-8 one at a time. Still open: the remaining
 `TODO(verify)` items (111), which need network access or reference
 hardware.

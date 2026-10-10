@@ -4,8 +4,9 @@
 #
 # Git provenance of the infra checkout (BUILD_PROMPT §5.2 step 1; owner answer
 # B3): the repository commit, the tree hash of infra/, and whether infra/ has
-# uncommitted changes. Platform and catalog are deployed from tags through a
-# mirror, so changes outside infra/ do not make the tree dirty.
+# uncommitted changes. The platform release and its content packages are
+# deployed from tags through a mirror, so changes outside infra/ do not make
+# the tree dirty.
 #
 # Git runs as root in a checkout that usually belongs to the admin who invoked
 # sudo. The checkout must be owned by root or by that user (SUDO_UID); only then

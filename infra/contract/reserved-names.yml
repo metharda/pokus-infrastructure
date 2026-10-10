@@ -11,6 +11,7 @@ namespaces:
       - pinka-admin
       - pinka-build
       - pinka-datasets
+      - pinka-inference
       - pinka-lab
       - pinka-monitor
       - pinka-query
@@ -40,6 +41,7 @@ namespaces:
       - pinka-pgdump
       - pinka-platform.target
       - pinka-run-network
+      - pinka-run-network@
       - pinka-security-patch
       - pinka-services.slice
       - pinka-session-start
@@ -110,13 +112,11 @@ namespaces:
       - training
 path_segments:
   /srv/pinka:
-    - artifacts
     - backups
     - datasets
     - images
     - models
     - platforms
-    - reports
     - restricted
     - services
     - shared

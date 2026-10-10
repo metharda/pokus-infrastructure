@@ -24,3 +24,9 @@ argument_specs:
         type: bool
         default: true
         description: Run the serving verification after start.
+      vllm_deploy_peer:
+        type: str
+        description: >-
+          The account allowed to switch deployments besides root (the control endpoint's
+          account on an inference node, the active platform's controller elsewhere, root
+          without one).

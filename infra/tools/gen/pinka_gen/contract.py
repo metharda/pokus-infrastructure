@@ -178,6 +178,7 @@ def _collected(root: Path) -> dict[str, set[str]]:
     found["accounts_groups"] |= {
         g["name"] for g in group_vars["pinka_groups"] if g["name"].startswith("pinka")
     }
+    found["accounts_groups"] |= {a["name"] for a in group_vars["infra_accounts"]}
     for template in (root / "ansible/roles").glob("*/templates/*.j2"):
         match = _UNIT_RE.match(template.name)
         if match:

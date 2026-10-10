@@ -530,6 +530,26 @@ def unit_hardening(
     return expected
 
 
+def vault_keys(
+    postgres_passwords: Mapping[str, Any] | None, platform_secrets: Mapping[str, Any] | None
+) -> list[str]:
+    """The keys the vault holds for a platform, never their values.
+
+    Args:
+        postgres_passwords: ``vault_postgres_passwords``.
+        platform_secrets: ``vault_platform_secrets`` (per service, per secret).
+
+    Returns:
+        Dotted keys such as ``vault_postgres_passwords.<role>`` and
+        ``vault_platform_secrets.<service>.<name>``, sorted.
+    """
+    keys = [f"vault_postgres_passwords.{role}" for role in (postgres_passwords or {})]
+    for service, named in (platform_secrets or {}).items():
+        if isinstance(named, Mapping):
+            keys += [f"vault_platform_secrets.{service}.{name}" for name in named]
+    return sorted(keys)
+
+
 CPUSET_RE = re.compile(r"^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")
 
 
@@ -585,4 +605,5 @@ class FilterModule:
             "pinka_socket_specs": socket_specs,
             "pinka_unit_hardening": unit_hardening,
             "pinka_cpuset_cpus": cpuset_cpus,
+            "pinka_vault_keys": vault_keys,
         }

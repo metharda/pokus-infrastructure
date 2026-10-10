@@ -19,19 +19,5 @@ postgres_container: pinka-postgres
 postgres_state_dir: "{{ pinka_root }}/state/postgres"
 # Rendered postgresql.conf, pg_hba.conf and bootstrap.sql (mounted read-only).
 postgres_config_dir: "{{ pinka_root }}/services/core/config/postgres"
-# Platform roles with a password file: owner, group and mode of the file
-# (contracts.md#paths; the migrator's file is readable by root only).
-postgres_service_roles:
-  - {role: potka_migrator, owner: root, group: root, mode: "0600"}
-  - {role: potka_orch, owner: root, group: potka-orch, mode: "0640"}
-  - {role: potka_gw, owner: root, group: potka-gw, mode: "0640"}
-  - {role: potka_exec, owner: root, group: potka-exec, mode: "0640"}
-  - {role: potka_inject, owner: root, group: potka-inject, mode: "0640"}
-  - {role: potka_verify, owner: root, group: potka-verify, mode: "0640"}
-  - {role: potka_eval, owner: root, group: potka-eval, mode: "0640"}
-# Researchers' read-only role (reader socket directory, never the gt schema).
-postgres_reader_role: potka_reader
-# Grafana's read-only role (internal Docker network only).
-postgres_grafana_role: potka_grafana
 # Role of the metrics exporter (pg_monitor; its password is generated on the host).
 postgres_monitor_role: pinka_monitor

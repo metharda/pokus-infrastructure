@@ -34,7 +34,17 @@ EXIT_CODES = {
     EXIT_USAGE: ("usage", "wrong arguments"),
     EXIT_REFUSED: ("refused", "the release breaks contract v2; every reason is printed"),
 }
-DEPLOY_STEPS = ("prepare", "build", "pull", "publish", "retire-plan", "activate", "clean")
+DEPLOY_STEPS = (
+    "prepare",
+    "build",
+    "pull",
+    "publish",
+    "retire-plan",
+    "render",
+    "principals",
+    "activate",
+    "clean",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,6 +116,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     gone.add_argument("platform", help="name of the replaced platform")
     gone.add_argument("--confirm", required=True, help="the platform name again, typed")
+    gone.add_argument(
+        "--remove-secrets",
+        action="store_true",
+        help="also remove its secrets directories, database password files and private "
+        "signing key (kept by default)",
+    )
     _common(gone)
     return parser
 
@@ -147,6 +163,23 @@ def _problems(problems: Sequence[Problem]) -> list[dict[str, str]]:
     return [{"code": p.code, "where": p.where, "message": p.message} for p in problems]
 
 
+def vault_text(keys: dict[str, list[str]]) -> str:
+    """The vault keys a release needs, for the summary.
+
+    Args:
+        keys: ``{"needed": [...], "missing": [...]}``.
+
+    Returns:
+        Lines for the summary text ("" when the release needs none).
+    """
+    if not keys["needed"]:
+        return ""
+    missing = set(keys["missing"])
+    lines = ["Vault keys:"]
+    lines += [f"  {k}{' (missing)' if k in missing else ''}" for k in keys["needed"]]
+    return "\n".join(lines) + "\n"
+
+
 def _deploy(args: argparse.Namespace, paths: deploy.Paths) -> dict[str, Any]:
     contract = contract_mod.load(args.contract)
     if args.step == "prepare":
@@ -167,10 +200,11 @@ def _deploy(args: argparse.Namespace, paths: deploy.Paths) -> dict[str, Any]:
             "run_dir": plan["run_dir"],
             "platform": plan["platform"],
             "summary": plan["summary"],
-            "summary_text": validate.summary_text(plan["summary"]),
+            "summary_text": validate.summary_text(plan["summary"]) + vault_text(plan["vault_keys"]),
             "replace": plan["replace"],
             "tools": plan["tools"],
             "jobs": plan["jobs"],
+            "vault_keys": plan["vault_keys"],
         }
     if args.step == "retire-plan":
         active = deploy.read_active(paths)
@@ -187,6 +221,8 @@ def _deploy(args: argparse.Namespace, paths: deploy.Paths) -> dict[str, Any]:
         "build": lambda: deploy.build(plan, paths, contract, run_command),
         "pull": lambda: deploy.pull(plan, run_command),
         "publish": lambda: deploy.publish(plan, paths),
+        "render": lambda: deploy.render_step(plan, paths, contract),
+        "principals": lambda: deploy.principals_step(plan, paths, contract),
         "activate": lambda: deploy.activate(plan, paths),
     }
     return steps[args.step]()
@@ -196,7 +232,9 @@ def _run_step(args: argparse.Namespace) -> int:
     paths = deploy.Paths.under(args.root) if args.root else deploy.Paths()
     try:
         if args.command == "purge":
-            result = deploy.purge(args.platform, args.confirm, paths, run_command)
+            result = deploy.purge(
+                args.platform, args.confirm, paths, run_command, remove_secrets=args.remove_secrets
+            )
         else:
             result = _deploy(args, paths)
     except deploy.Refused as exc:

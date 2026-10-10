@@ -3,8 +3,21 @@
 # Groups and accounts (BUILD_PROMPT §6.1, contracts.md). Researchers are
 # members of pinka (and of Incus's per-user group, added by the incus role);
 # admins also of pinka-admin with sudo. Nobody is added to docker or
-# incus-admin implicitly. Infra and service accounts are system users
-# without login.
+# incus-admin implicitly. Infra accounts are system users without login.
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+# A researcher with an account's name would turn that account into a human
+# one (the user module below adds it to pinka): refuse before anything changes.
+- name: Refuse researchers named like an account or group of the lab
+  ansible.builtin.assert:
+    that: users_groups_clashes | length == 0
+    fail_msg: >-
+      researcher names {{ users_groups_clashes | join(', ') }} are accounts or
+      groups of infra or of the active platform; choose other names
+    quiet: true
+
 - name: Create the pinka groups
   ansible.builtin.group:
     name: "{{ item.name }}"
@@ -12,17 +25,17 @@
     state: present
   loop: "{{ pinka_groups }}"
 
-# Each infra and service account has a primary group of its own name: the
-# contract's sockets and password files are owned by it (contracts.md#sockets,
-# #paths), and useradd only creates one where USERGROUPS_ENAB is set.
-- name: Create the groups of the infra and service accounts
+# Each infra account has a primary group of its own name; useradd only creates
+# one where USERGROUPS_ENAB is set. The platform's accounts and groups come
+# from the platform role (rendered from its manifest and profiles).
+- name: Create the groups of the infra accounts
   ansible.builtin.group:
     name: "{{ item.name }}"
     system: true
     state: present
-  loop: "{{ infra_accounts + service_accounts }}"
+  loop: "{{ infra_accounts }}"
 
-- name: Create the infra and service accounts
+- name: Create the infra accounts
   ansible.builtin.user:
     name: "{{ item.name }}"
     group: "{{ item.name }}"
@@ -34,7 +47,7 @@
     groups: "{{ item.groups }}"
     append: false
     state: present
-  loop: "{{ infra_accounts + service_accounts }}"
+  loop: "{{ infra_accounts }}"
 
 - name: Create the researchers
   ansible.builtin.user:

@@ -60,6 +60,21 @@ platform_tool_settings:
     restricted_group: pinka-restricted
     build_user: pinka-build
     build_group: pinka-build
+  platform_settings: "{{ platform_settings }}"
+  lab:
+    machine_name: "{{ machine_name }}"
+    lab_mode: "{{ lab_mode }}"
+    node_role: "{{ node_role }}"
+    ports: "{{ pinka_ports }}"
+    inference_mode: "{{ platform_inference }}"
+    scripted_api_url: "{{ platform_scripted_api_url }}"
+    vm_collector_address: "{{ pinka_vm_otlp.address }}"
+    cpuset_targets: "{{ cpuset_targets }}"
+  # The keys the vault holds, never their values (the release's needs are
+  # checked against them right after the validation).
+  vault_keys: >-
+    {{ vault_postgres_passwords | default({}, true)
+       | pinka_vault_keys(vault_platform_secrets | default({}, true)) }}
 # psql as the superuser inside the PostgreSQL container (replacing a platform).
 platform_psql:
   - docker
@@ -75,191 +90,24 @@ platform_psql:
     --username=postgres --dbname=postgres "$@"
   - psql
 
-# --- Contract v1 rendering, replaced by rendering from the profiles in plan
-# step 3d.3 (kept with its template, helpers and tests until then) -------------
+# --- Rendering (§7.14 step 7) ------------------------------------------------------
 
-# Paths (contracts.md#paths).
-platform_root: "{{ pinka_root }}/deploy/platform"
-platform_current: "{{ pinka_root }}/deploy/platform/current"
-platform_config_dir: /etc/pinka/platform
-platform_secrets_dir: /etc/pinka/secrets
-platform_state_dir: /var/lib/pinka/platform
-platform_signing_dir: /etc/pinka/signing
-platform_signing_key: /etc/pinka/signing/manifest-signing.key
-platform_signing_pub: /etc/pinka/signing/manifest-signing.pub
-platform_signing_published: "{{ pinka_root }}/shared/signing-keys"
-platform_qa_dir: /etc/pinka/qa
-platform_inference_dir: /etc/pinka/inference
-platform_cli_link: /usr/local/bin/potka
+# The socket ACL helper the platform's socket units run (§12.3).
 platform_libexec: /usr/local/libexec/pinka
-platform_uv: /opt/pinka/bin/uv
-platform_uv_cache: /var/cache/pinka/uv
+# Where systemd units live.
+platform_systemd_dir: /etc/systemd/system
+# Published signing keys (§12.10), kept forever.
+platform_signing_published: "{{ pinka_root }}/shared/signing-keys"
 
-# Quarto CLI for the evaluator's reports (pinned in versions.lock.yml).
+# Quarto CLI, an optional tool a manifest may request (pinned in versions.lock.yml).
 platform_quarto_version: "{{ pinka_versions.binaries.quarto.version }}"
 platform_quarto_asset: "{{ pinka_versions.binaries.quarto.assets[ansible_facts['architecture']] }}"
 platform_quarto_dir: "/opt/pinka/quarto/{{ pinka_versions.binaries.quarto.version }}"
 platform_quarto_link: /usr/local/bin/quarto
 
-# The inference backend this node uses (C5, D3).
+# The inference backend of endpoints.toml: local where this node serves
+# inference, otherwise remote (through the inference forwarder, §12.8).
 platform_inference: >-
   {{ platform_inference_mode if platform_inference_mode != 'auto'
      else ('local' if (pinka_features.gpu_inference | default(false)) and node_role == 'full'
            else 'remote') }}
-
-# Paths every platform unit is denied (BUILD_PROMPT §7.14); the agent runner's
-# own list (contracts.md, C2) comes on top.
-platform_denied_paths:
-  - /var/lib/pinka/git
-  - /var/lib/incus
-  - /run/docker.sock
-  - /etc/pinka/secrets/containers
-  - /etc/pinka/secrets/backup
-platform_agent_denied_paths:
-  - "{{ pinka_root }}/catalog"
-  - "{{ pinka_root }}/artifacts"
-  - "{{ pinka_root }}/services"
-  - /etc/pinka/secrets
-  - /etc/pinka/incus
-  - /run/pinka/postgres
-  - /run/pinka/postgres-reader
-  - /run/pinka/inject
-  - /run/pinka/verify
-  - /run/pinka/vllm-deploy.sock
-  - /run/pinka/orch/api.sock
-  - /run/pinka/gw/svc.sock
-  - /etc/pinka/signing
-  - /etc/pinka/inference
-
-# The platform units (contracts.md, "Accounts, groups and services").
-# sockets: the Unix sockets the service creates in its RuntimeDirectory;
-# infra sets their owner, group, mode and ACL (C8) once they exist.
-platform_units:
-  - unit: potka-reconcile.service
-    svc: orch
-    script: potka-reconcile
-    account: potka-orch
-    groups: [potka-svc, pinka-restricted, potka-exec-clients]
-    description: potka reconcile (cleans up after a crash or power loss)
-    type: oneshot
-    before: [potka-orchestrator.service]
-    runtime_dir: false
-    read_write: ["{{ pinka_root }}/artifacts"]
-    sockets: []
-  - unit: potka-orchestrator.service
-    svc: orch
-    script: potka-orchestrator
-    account: potka-orch
-    groups: [potka-svc, pinka-restricted, potka-exec-clients]
-    description: potka orchestrator
-    requires: [potka-reconcile.service]
-    read_write: ["{{ pinka_root }}/artifacts"]
-    sockets:
-      - {path: /run/pinka/orch/api.sock, owner: potka-orch, group: pinka, mode: "0660",
-         acl: ["group:potka-svc:rw-"], fallback: {group: pinka, mode: "0660"}}
-      - {path: /run/pinka/orch/svc.sock, owner: potka-orch, group: potka-svc, mode: "0660", acl: []}
-  - unit: potka-llm-gateway.service
-    svc: gw
-    script: potka-llm-gateway
-    account: potka-gw
-    groups: [potka-svc]
-    description: potka LLM gateway
-    read_write: []
-    sockets:
-      - {path: /run/pinka/gw/agent.sock, owner: potka-gw, group: potka-gw-clients, mode: "0660", acl: []}
-      - {path: /run/pinka/gw/svc.sock, owner: potka-gw, group: potka-gw, mode: "0600",
-         acl: ["user:potka-orch:rw-"], fallback: {group: potka-svc, mode: "0660"}}
-  - unit: potka-executor.service
-    svc: exec
-    script: potka-executor
-    account: potka-exec
-    groups: [potka-svc]
-    description: potka tool executor
-    read_write: []
-    sockets:
-      - {path: /run/pinka/exec/api.sock, owner: potka-exec, group: potka-exec-clients, mode: "0660", acl: []}
-  - unit: potka-injector.service
-    svc: inject
-    script: potka-injector
-    account: potka-inject
-    groups: [potka-svc, pinka-restricted]
-    description: potka fault injector
-    read_write: []
-    sockets:
-      - {path: /run/pinka/inject/api.sock, owner: potka-inject, group: potka-inject, mode: "0600",
-         acl: ["user:potka-orch:rw-"], fallback: {group: pinka-restricted, mode: "0660"}}
-  - unit: potka-verifier.service
-    svc: verify
-    script: potka-verifier
-    account: potka-verify
-    groups: [potka-svc, pinka-restricted]
-    description: potka verifier
-    read_write: []
-    sockets:
-      - {path: /run/pinka/verify/api.sock, owner: potka-verify, group: potka-verify, mode: "0600",
-         acl: ["user:potka-orch:rw-"], fallback: {group: pinka-restricted, mode: "0660"}}
-  - unit: potka-evaluator.service
-    svc: eval
-    script: potka-evaluator
-    account: potka-eval
-    groups: [potka-svc, pinka-restricted]
-    description: potka evaluator (evaluation job worker)
-    read_write: ["{{ pinka_root }}/reports"]
-    # Quarto's Deno and Typst generate code at run time.
-    memory_deny_write_execute: false
-    sockets: []
-  - unit: potka-agent-runner.service
-    svc: agent
-    script: potka-agent-runner
-    account: potka-agent
-    groups: [potka-svc, potka-exec-clients, potka-gw-clients]
-    description: potka agent runner
-    # Started after the services whose sockets it must not reach, so that their
-    # paths exist when InaccessiblePaths is applied, and restarted with them.
-    after: [potka-orchestrator.service, potka-llm-gateway.service, potka-executor.service,
-            potka-injector.service, potka-verifier.service]
-    part_of: [potka-orchestrator.service, potka-llm-gateway.service]
-    read_write: []
-    agent: true
-    sockets: []
-
-# /etc/pinka/platform/endpoints.toml (contracts.md, "Configuration"); only the
-# table of the active inference mode is present.
-platform_inference_tables:
-  local:
-    api_url: "http://127.0.0.1:{{ pinka_ports.vllm }}"
-    deploy_helper_socket: /run/pinka/vllm-deploy.sock
-  remote:
-    api_url: "https://{{ inference_remote_node }}:{{ pinka_ports.vllm }}"
-    control_url: "https://{{ inference_remote_node }}:{{ pinka_ports.inference_control }}"
-    tls_dir: "{{ platform_inference_dir }}"
-  scripted:
-    api_url: "{{ platform_scripted_api_url }}"
-platform_endpoints:
-  lab:
-    machine_name: "{{ machine_name }}"
-    lab_mode: "{{ lab_mode }}"
-    node_role: "{{ node_role }}"
-  telemetry:
-    otlp_grpc: "127.0.0.1:{{ pinka_ports.otlp_grpc }}"
-    otlp_http: "127.0.0.1:{{ pinka_ports.otlp_http }}"
-  query:
-    prometheus_url: "http://127.0.0.1:{{ pinka_ports.prometheus }}"
-    loki_url: "http://127.0.0.1:{{ pinka_ports.loki }}"
-    tempo_url: "http://127.0.0.1:{{ pinka_ports.tempo }}"
-  opa:
-    url: "http://127.0.0.1:{{ pinka_ports.opa }}"
-    decision_path: /v1/data/potka/action/decision
-  # cpuset_targets: the CPUs the platform pins targets to (limits.cpu ranges inside it).
-  incus: >-
-    {{ {'url': 'https://' ~ incus_https_address}
-       | combine({'cpuset_targets': cpuset_targets} if cpuset_targets else {}) }}
-  inference: "{{ {'mode': platform_inference, platform_inference: platform_inference_tables[platform_inference]} }}"
-  gateway:
-    adhoc_listen: "127.0.0.1:{{ pinka_ports.gateway_adhoc }}"
-
-# First lines of every rendered TOML file.
-platform_toml_header: "Managed by pinka (ansible/roles/platform). Local changes will be overwritten.\n/etc/pinka/platform/"
-# Effective socket permissions, recorded in /etc/pinka/platform/sockets.json for doctor.
-platform_socket_expectations: >-
-  {{ platform_units | map(attribute='sockets') | flatten | pinka_socket_specs(platform_socket_acls) }}

@@ -352,14 +352,14 @@ class IncusTest(Base):
 
     def test_certificates(self) -> None:
         good = {
-            "/etc/pinka/incus/orch/client.crt": info("potka-orch", "root", 0o600),
-            "/etc/pinka/incus/orch/client.key": info("potka-orch", "root", 0o600),
+            "/etc/pinka/incus/demo-ctl/client.crt": info("demo-ctl", "root", 0o600),
+            "/etc/pinka/incus/demo-ctl/client.key": info("demo-ctl", "root", 0o600),
         }
-        trusted = {"incus query /1.0/certificates?recursion=1": (0, [{"name": "potka-orch"}])}
+        trusted = {"incus query /1.0/certificates?recursion=1": (0, [{"name": "demo-ctl"}])}
         self.assertOutcome(
             run(checks.check_incus_certificates, FakeSystem(trusted, infos=good)), "pass"
         )
-        loose = dict(good, **{"/etc/pinka/incus/orch/client.key": info("root", "root", 0o644)})
+        loose = dict(good, **{"/etc/pinka/incus/demo-ctl/client.key": info("root", "root", 0o644)})
         self.assertOutcome(
             run(checks.check_incus_certificates, FakeSystem(trusted, infos=loose)),
             "fail",
@@ -369,7 +369,7 @@ class IncusTest(Base):
         self.assertOutcome(
             run(checks.check_incus_certificates, FakeSystem(untrusted, infos={})),
             "fail",
-            "potka-orch is not trusted",
+            "demo-ctl is not trusted",
         )
 
     def test_metrics_and_events(self) -> None:
@@ -413,7 +413,7 @@ class LayoutAccountsTest(Base):
         clean = {
             "researcher1": ["researcher1", "pinka", "pinka-admin"],
             "researcher2": ["researcher2", "pinka"],
-            "potka-orch": ["potka-orch", "potka-svc"],
+            "demo-ctl": ["demo-ctl", "demo-db"],
         }
         self.assertOutcome(run(checks.check_accounts, FakeSystem(groups=clean)), "pass")
         docker = dict(clean, researcher1=["researcher1", "docker", "incus-admin"])
@@ -427,44 +427,55 @@ class LayoutAccountsTest(Base):
         )
         self.assertNotIn("is in docker", outcome.detail)
         self.assertOutcome(outcome, "fail", "incus-admin")
-        svc = dict(clean, **{"potka-agent": ["potka-agent", "docker"]})
+        svc = dict(clean, **{"demo-agent": ["demo-agent", "docker"]})
         self.assertOutcome(
             run(checks.check_accounts, FakeSystem(groups=svc)),
             "fail",
-            "service account potka-agent is in docker",
+            "platform account demo-agent is in docker",
         )
 
     def test_deployed_paths(self) -> None:
-        clean = FakeSystem(dirs={"/srv/pinka/deploy/platform": [], "/srv/pinka/catalog/x": []})
-        self.assertOutcome(run(checks.check_deployed_paths, clean), "pass")
-        git = FakeSystem(dirs={"/srv/pinka/deploy/platform/v1/.git": []})
-        self.assertOutcome(run(checks.check_deployed_paths, git), "fail", ".git exists")
-        catalog = FakeSystem(
-            dirs={"/srv/pinka/deploy/catalog-v1": []},
+        clean = FakeSystem(
+            dirs={
+                "/srv/pinka/platforms/demo/releases/1.0.0": [],
+                "/srv/pinka/restricted/demo/cases-1.0.0": [],
+            },
             files={
-                "/srv/pinka/deploy/catalog-v1/DEPLOYED_FROM.json": json.dumps(
-                    {"component": "catalog"}
+                "/srv/pinka/restricted/demo/cases-1.0.0/DEPLOYED_FROM.json": json.dumps(
+                    {"package": "cases", "restricted": True}
                 )
             },
         )
-        self.assertOutcome(run(checks.check_deployed_paths, catalog), "fail", "catalog deployed in")
+        self.assertOutcome(run(checks.check_deployed_paths, clean), "pass")
+        for top in ("platforms/demo/releases/1.0.0", "restricted/demo/cases-1.0.0"):
+            git = FakeSystem(dirs={f"/srv/pinka/{top}/.git": []})
+            self.assertOutcome(run(checks.check_deployed_paths, git), "fail", ".git exists")
+        outside = FakeSystem(
+            dirs={"/srv/pinka/platforms/demo/content/cases-1.0.0": []},
+            files={
+                "/srv/pinka/platforms/demo/content/cases-1.0.0/DEPLOYED_FROM.json": json.dumps(
+                    {"package": "cases", "restricted": True}
+                )
+            },
+        )
+        self.assertOutcome(
+            run(checks.check_deployed_paths, outside), "fail", "restricted package cases in"
+        )
 
     def test_hardening(self) -> None:
         self.assertOutcome(run(checks.check_hardening, FakeSystem()), "skip")
         unit = {
-            "unit": "potka-agent-runner.service",
+            "unit": "demo-agent.service",
             "properties": {"NoNewPrivileges": "yes"},
-            "inaccessible_paths": ["/srv/pinka/catalog", "/run/pinka/vllm-deploy.sock"],
+            "inaccessible_paths": ["/srv/pinka/restricted", "/run/pinka/vllm-deploy.sock"],
         }
-        show = (
-            "systemctl show potka-agent-runner.service --property=NoNewPrivileges,InaccessiblePaths"
-        )
+        show = "systemctl show demo-agent.service --property=NoNewPrivileges,InaccessiblePaths"
         good = FakeSystem(
             {
                 show: (
                     0,
                     "NoNewPrivileges=yes\n"
-                    "InaccessiblePaths=-/srv/pinka/catalog /etc/pinka -/run/pinka/vllm-deploy.sock\n",
+                    "InaccessiblePaths=-/srv/pinka/restricted /etc/pinka -/run/pinka/vllm-deploy.sock\n",
                 )
             }
         )
@@ -472,62 +483,66 @@ class LayoutAccountsTest(Base):
         bad = FakeSystem({show: (0, "NoNewPrivileges=no\nInaccessiblePaths=\n")})
         outcome = run(checks.check_hardening, bad, hardening=[unit])
         self.assertOutcome(outcome, "fail", "NoNewPrivileges='no'")
-        self.assertIn("InaccessiblePaths lacks /srv/pinka/catalog", outcome.detail)
+        self.assertIn("InaccessiblePaths lacks /srv/pinka/restricted", outcome.detail)
 
     def test_sockets(self) -> None:
         self.assertOutcome(run(checks.check_sockets, FakeSystem()), "skip")
         entry = {
-            "path": "/run/pinka/orch/api.sock",
-            "owner": "potka-orch",
+            "path": "/run/pinka/platform/demo/ctl-api.sock",
+            "owner": "demo-ctl",
             "group": "pinka",
             "mode": "0660",
-            "acl": ["group:potka-svc:rw-"],
+            "acl": ["group:demo-api:rw-"],
         }
-        getfacl = "getfacl --omit-header --absolute-names /run/pinka/orch/api.sock"
+        getfacl = "getfacl --omit-header --absolute-names /run/pinka/platform/demo/ctl-api.sock"
         system = FakeSystem(
-            {getfacl: (0, "user::rw-\ngroup:potka-svc:rw-\n")},
-            infos={"/run/pinka/orch/api.sock": info("potka-orch", "pinka", 0o660)},
+            {getfacl: (0, "user::rw-\ngroup:demo-api:rw-\n")},
+            infos={"/run/pinka/platform/demo/ctl-api.sock": info("demo-ctl", "pinka", 0o660)},
         )
         self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "pass")
         system.commands[getfacl] = (0, "user::rw-\n")
         self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "fail", "lacks ACL")
 
     def test_sockets_with_a_mask(self) -> None:
-        path = "/run/pinka/gw/svc.sock"
+        path = "/run/pinka/platform/demo/relay-svc.sock"
         entry = {
             "path": path,
-            "owner": "potka-gw",
-            "group": "potka-gw",
+            "owner": "demo-relay",
+            "group": "demo-relay",
             "mode": "0600",
-            "acl": ["user:potka-orch:rw-"],
+            "acl": ["user:demo-ctl:rw-"],
             "expect_mode": "0660",
-            "expect_acl": ["user:potka-orch:rw-", "group::---", "mask::rw-"],
+            "expect_acl": ["user:demo-ctl:rw-", "group::---", "mask::rw-"],
         }
         getfacl = f"getfacl --omit-header --absolute-names {path}"
-        acl = "user::rw-\nuser:potka-orch:rw-\ngroup::---\nmask::rw-\nother::---\n"
-        system = FakeSystem({getfacl: (0, acl)}, infos={path: info("potka-gw", "potka-gw", 0o660)})
+        acl = "user::rw-\nuser:demo-ctl:rw-\ngroup::---\nmask::rw-\nother::---\n"
+        system = FakeSystem(
+            {getfacl: (0, acl)}, infos={path: info("demo-relay", "demo-relay", 0o660)}
+        )
         self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "pass")
         # A narrower mask: getfacl marks the entry's effective rights.
         system.commands[getfacl] = (
             0,
-            "user::rw-\nuser:potka-orch:rw-\t#effective:r--\ngroup::---\nmask::r--\nother::---\n",
+            "user::rw-\nuser:demo-ctl:rw-\t#effective:r--\ngroup::---\nmask::r--\nother::---\n",
         )
         self.assertOutcome(
             run(checks.check_sockets, system, sockets=[entry]), "fail", "lacks ACL mask::rw-"
         )
-        system.infos[path] = info("potka-gw", "potka-gw", 0o600)
+        system.infos[path] = info("demo-relay", "demo-relay", 0o600)
         self.assertOutcome(
-            run(checks.check_sockets, system, sockets=[entry]), "fail", "potka-gw:potka-gw 0600"
+            run(checks.check_sockets, system, sockets=[entry]), "fail", "demo-relay:demo-relay 0600"
         )
 
 
-def psql_answers(roles: Sequence[str], gt: dict[str, bool], settings: dict[str, str]) -> Any:
+def psql_answers(
+    roles: Sequence[str], restricted: dict[str, bool], settings: dict[str, str]
+) -> Any:
     def answer(argv: Sequence[str]) -> tuple[int, str]:
         query = argv[-1]
         if "json_agg(rolname)" in query:
             return 0, json.dumps(list(roles))
         if "has_schema_privilege" in query:
-            return 0, json.dumps(gt)
+            return 0, json.dumps(restricted)
         return 0, json.dumps(settings)
 
     return answer
@@ -545,11 +560,7 @@ class DatabasePolicyTest(Base):
 
     def test_postgres(self) -> None:
         good = FakeSystem(
-            {
-                "docker exec *": psql_answers(
-                    ["potka_orch", "potka_reader"], {"potka_reader": False}, ON
-                )
-            }
+            {"docker exec *": psql_answers(["demo_ctl", "demo_reader"], {"demo_reader": False}, ON)}
         )
         self.assertOutcome(run(checks.check_postgres, good), "pass", "2 roles")
         argv = good.calls[0]
@@ -557,13 +568,13 @@ class DatabasePolicyTest(Base):
         bad = FakeSystem(
             {
                 "docker exec *": psql_answers(
-                    ["potka_orch"], {"potka_reader": True}, dict(ON, fsync="off")
+                    ["demo_ctl"], {"demo_reader": True}, dict(ON, fsync="off")
                 )
             }
         )
         outcome = run(checks.check_postgres, bad)
-        self.assertOutcome(outcome, "fail", "role potka_reader missing")
-        self.assertIn("potka_reader can use schema gt", outcome.detail)
+        self.assertOutcome(outcome, "fail", "role demo_reader missing")
+        self.assertIn("demo_reader can use schema restricted", outcome.detail)
         self.assertIn("fsync is off", outcome.detail)
         with self.assertRaises(RuntimeError):
             run(checks.check_postgres, FakeSystem())
@@ -607,7 +618,7 @@ class TelemetryTest(Base):
         self.assertEqual([u.rsplit("/", 1)[-1] for _, u in posted], ["logs", "traces", "metrics"])
         body = json.loads(system.http_calls[0][2] or b"{}")
         attributes = body["resourceLogs"][0]["resource"]["attributes"]
-        run_id = next(a["value"]["stringValue"] for a in attributes if a["key"] == "potka.run_id")
+        run_id = next(a["value"]["stringValue"] for a in attributes if a["key"] == "pinka.probe_id")
         self.assertTrue(run_id.startswith("doctor-"))
         queried = " ".join(u for m, u, _ in system.http_calls if m == "GET")
         self.assertIn(run_id, queried)
@@ -743,7 +754,7 @@ class PairingTest(Base):
         end = (NOW + dt.timedelta(days=days)).strftime("%b %d %H:%M:%S %Y GMT")
         infos = (
             {
-                f"{self.DIR}/{n}": info("root", "potka-orch", 0o640)
+                f"{self.DIR}/{n}": info("root", "demo-ctl", 0o640)
                 for n in ("self.crt", "self.key", "peer.crt")
             }
             if files

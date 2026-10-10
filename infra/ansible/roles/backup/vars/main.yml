@@ -25,8 +25,13 @@ backup_secret_paths:
 # Whether a repository is configured, and whether it is reached over SFTP.
 backup_configured: "{{ backup_repository | length > 0 }}"
 backup_sftp: "{{ backup_repository is match('sftp:') }}"
-# PostgreSQL runs (and is dumped) on full and lab nodes.
-backup_has_postgres: "{{ node_role in ['full', 'lab'] }}"
+# The active platform's database, dumped on full and lab nodes when its
+# manifest sets backup.database (§7.15).
+backup_database: >-
+  {{ ((active_platform | default({}, true)).database | default({}, true)).database | default('', true) }}
+backup_has_postgres: >-
+  {{ node_role in ['full', 'lab'] and backup_database | length > 0
+     and ((active_platform | default({}, true)).backup | default({}, true)).database | default(false) }}
 # Paths of a backup and the exclusions.
 backup_paths: >-
   {{ backup_include | map('regex_replace', '^', pinka_root ~ '/') | list
@@ -37,7 +42,7 @@ backup_excludes: "{{ [] if backup_include_secrets else backup_secret_paths }}"
 # Units: name, helper command, schedule, and whether the timer is enabled.
 backup_jobs:
   - {name: pinka-pgdump, command: pgdump, schedule: "{{ backup_pgdump_schedule }}", enabled: "{{ backup_has_postgres }}",
-     description: "PostgreSQL dump of the lab database", after: pinka-core.service}
+     description: "PostgreSQL dump of the platform database", after: pinka-core.service}
   - {name: pinka-backup, command: run, schedule: "{{ backup_schedule }}", enabled: "{{ backup_configured }}",
      description: "restic backup of the lab", after: pinka-pgdump.service network-online.target}
   - {name: pinka-backup-prune, command: prune, schedule: "{{ backup_prune_schedule }}", enabled: "{{ backup_configured }}",

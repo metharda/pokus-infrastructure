@@ -1,0 +1,187 @@
+{
+  "backup": {
+    "database": true,
+    "paths": [
+      "/srv/pinka/platforms/refplat/state/ctl/records"
+    ]
+  },
+  "cli": {
+    "content": "#!/bin/sh\n# Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.\n# refplat: the researchers' CLI of platform refplat.\nexec /srv/pinka/platforms/refplat/releases/current/.venv/bin/refplat \"$@\"\n",
+    "link": "/usr/local/bin/refplat",
+    "name": "refplat",
+    "wrapper": "/usr/local/lib/pinka/platform/cli/refplat"
+  },
+  "config_files": [
+    {
+      "content": "{}\n",
+      "group": "refplat-ctl",
+      "mode": "0640",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config/ctl.json",
+      "service": "ctl"
+    }
+  ],
+  "controller": "refplat-ctl",
+  "dashboards": null,
+  "database": {
+    "all_roles": [
+      "refplat_controller",
+      "refplat_ctl",
+      "refplat_grafana",
+      "refplat_migrator",
+      "refplat_reader"
+    ],
+    "database": "refplat",
+    "grafana": "refplat_grafana",
+    "group_roles": [
+      "refplat_controller"
+    ],
+    "logins": [
+      {
+        "account": "refplat-ctl",
+        "group_role": "refplat_controller",
+        "profile": "controller",
+        "role": "refplat_ctl"
+      }
+    ],
+    "migrator": "refplat_migrator",
+    "password_dir": "/etc/pinka/secrets/postgres",
+    "password_files": [
+      {
+        "group": "refplat-ctl",
+        "mode": "0640",
+        "owner": "root",
+        "role": "refplat_ctl"
+      },
+      {
+        "group": "refplat-migrate",
+        "mode": "0640",
+        "owner": "root",
+        "role": "refplat_migrator"
+      }
+    ],
+    "platform": "refplat",
+    "reader": "refplat_reader",
+    "reader_credential": "/etc/pinka/postgres-reader/pgpass",
+    "restricted_allowed": [
+      "refplat_controller",
+      "refplat_ctl",
+      "refplat_migrator"
+    ],
+    "socket_group": "refplat-db",
+    "stale_roles": [],
+    "vault_roles": [
+      "refplat_ctl",
+      "refplat_grafana",
+      "refplat_migrator",
+      "refplat_reader"
+    ]
+  },
+  "directories": [
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/refplat/state"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/refplat/state/ctl"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0700",
+      "owner": "refplat-ctl",
+      "path": "/srv/pinka/platforms/refplat/state/ctl/records"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0700",
+      "owner": "refplat-ctl",
+      "path": "/srv/pinka/platforms/refplat/state/ctl/datasets"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/refplat-ctl"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/signing/refplat"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa/trusted-keys"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/qa/attestations"
+    },
+    {
+      "group": "root",
+      "mode": "0711",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/postgres"
+    }
+  ],
+  "incus_certificates": [],
+  "opa": null,
+  "platform": "refplat",
+  "render_version": 1,
+  "requires": [
+    "gpu",
+    "postgres",
+    "telemetry"
+  ],
+  "run_network": null,
+  "secrets": [
+    {
+      "group": "refplat-ctl",
+      "mode": "0640",
+      "name": "api-token",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/refplat-ctl/api-token",
+      "service": "ctl"
+    }
+  ],
+  "service_units": [
+    "refplat-ctl.service",
+    "refplat-agent.service"
+  ],
+  "signing": {
+    "dir": "/etc/pinka/signing/refplat",
+    "key": "/etc/pinka/signing/refplat/signing.key",
+    "owner": "refplat-ctl",
+    "pub": "/etc/pinka/signing/refplat/signing.pub",
+    "published_dir": "/srv/pinka/shared/signing-keys",
+    "published_prefix": "refplat-pinka-lab-"
+  },
+  "socket_units": [
+    "refplat-ctl-api.socket",
+    "refplat-ctl-session.socket"
+  ],
+  "stale_units": [],
+  "telemetry_labels": [],
+  "tools": []
+}

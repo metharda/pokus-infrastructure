@@ -122,7 +122,7 @@ def context(
         p.parent.name for p in paths.images_dir.glob("*/image.yaml") if p.parent.is_dir()
     )
     group_vars = safe.load(paths.group_vars_main.read_text(encoding="utf-8")) or {}
-    accounts = frozenset(str(a["name"]) for a in group_vars.get("service_accounts") or [])
+    accounts = frozenset(str(a["name"]) for a in group_vars.get("infra_accounts") or [])
     return Context(
         model_ids=model_ids,
         vllm_profiles=profiles,

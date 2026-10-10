@@ -97,17 +97,22 @@ class Result:
 
 
 def postgres_roles(defaults: Path) -> list[str]:
-    """The database roles that get a password, from the postgres role's defaults.
+    """The database roles that get a password before any release is known.
+
+    The platform's roles come from its release (``bootstrap.sh
+    --inspect-platform`` lists the vault keys it needs; the installer's
+    Platform review screen follows with plan step 3d.7). Infra's own roles
+    get passwords generated on the host, so none is listed here unless the
+    postgres role's defaults name some (``postgres_vault_roles``).
 
     Args:
         defaults: ``ansible/roles/postgres/defaults/main.yml``.
 
     Returns:
-        Role names: the service roles, the researchers' reader role and Grafana's.
+        Role names.
     """
-    data = YAML(typ="safe").load(defaults.read_text(encoding="utf-8"))
-    roles = [str(r["role"]) for r in data["postgres_service_roles"]]
-    return [*roles, str(data["postgres_reader_role"]), str(data["postgres_grafana_role"])]
+    data = YAML(typ="safe").load(defaults.read_text(encoding="utf-8")) or {}
+    return [str(r) for r in data.get("postgres_vault_roles") or []]
 
 
 def _token() -> str:
@@ -292,7 +297,7 @@ def keys_of(data: Mapping[str, Any]) -> list[str]:
         data: Vault content.
 
     Returns:
-        Dotted names such as ``vault_postgres_passwords.potka_orch``.
+        Dotted names such as ``vault_postgres_passwords.<platform>_<service>``.
     """
     names = []
     for key, value in data.items():

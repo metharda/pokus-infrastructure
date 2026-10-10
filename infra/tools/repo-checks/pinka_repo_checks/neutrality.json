@@ -1,0 +1,39 @@
+{
+  "_comment": "The neutrality lint's lists (BUILD_PROMPT §11), read by neutrality.py; this file is excluded from the lint itself. tokens: the Pokus Platform's names that are not ordinary words (its accounts and units all contain the substring; its service names agent, exec, verify and eval are ordinary words and programming terms, so they are not listed). allowed: the only forms of the project name in code, besides the display name. allowed_lines: per file, the quoted words a line may consist of (one per line), with the reason.",
+  "substring": "potka",
+  "tokens": [
+    "orchestrator",
+    "agent-runner",
+    "llm-gateway",
+    "gt",
+    "catalog",
+    "orch",
+    "gw",
+    "inject"
+  ],
+  "project": "pokus",
+  "allowed": [
+    "pokus-infrastructure",
+    "pokus-platform",
+    "Pokus Infrastructure",
+    "Pokus Platform"
+  ],
+  "display": "Pokus",
+  "allowed_lines": {
+    "tools/gen/pinka_gen/contract.py": {
+      "reason": "the reserved-name list's source (§12.1)",
+      "words": [
+        "pokus"
+      ]
+    },
+    "ansible/tests/test_images.py": {
+      "reason": "the leakage lint's test words: images carry none of these names (§7.13)",
+      "words": [
+        "inject",
+        "pokus",
+        "POTKA",
+        "potka_orch"
+      ]
+    }
+  }
+}

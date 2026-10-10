@@ -619,7 +619,7 @@
     "username": {
       "type": "string",
       "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
-      "description": "Linux user name: lower-case, starting with a letter, not reserved, not pinka-*, potka-* or pokus-*."
+      "description": "Linux user name: lower-case, starting with a letter, not reserved, not pinka-*."
     },
     "username_any": {
       "type": "string",

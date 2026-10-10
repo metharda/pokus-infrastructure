@@ -101,6 +101,10 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
 - name: Install the pinka command
   ansible.builtin.copy:
     src: "{{ pinka_dir }}/tools/pinka-lab/pinka"
@@ -193,6 +197,7 @@
         python: "{{ pinka_python }}"
         ansible: /opt/pinka/ansible-venv/bin/ansible
         platform_tool: /usr/local/libexec/pinka/pinka-platform
+        active_platform: /etc/pinka/platform/active.json
       fingerprint:
         cache: "{{ doctor_fingerprint_dir }}/current.json"
         versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
@@ -232,7 +237,10 @@
       postgres:
         container: "{{ postgres_container }}"
         roles: "{{ postgres_all_roles if doctor_runs_lab else [] }}"
-        restricted_roles: "{{ [postgres_reader_role, postgres_grafana_role] if doctor_runs_lab else [] }}"
+        database: "{{ postgres_platform.database | default('') if doctor_runs_lab else '' }}"
+        restricted_roles: >-
+          {{ [postgres_platform.reader, postgres_platform.grafana]
+             if doctor_runs_lab and postgres_platform else [] }}
       opa:
         url: "http://127.0.0.1:{{ pinka_ports.opa }}"
       # An inference node has no stores: its telemetry is checked on the lab node.
@@ -240,7 +248,7 @@
       layout: "{{ doctor_layout | default([]) }}"
       accounts:
         researchers: "{{ researchers | map(attribute='name') | list }}"
-        service_accounts: "{{ service_accounts | map(attribute='name') | list }}"
+        platform_accounts: "{{ (active_platform | default({}, true)).accounts | default([]) | map(attribute='name') | list }}"
         privileged_groups: [docker, incus-admin]
         break_glass_docker: "{{ break_glass_docker }}"
       hardening: "{{ doctor_hardening }}"

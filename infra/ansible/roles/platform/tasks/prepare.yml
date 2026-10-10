@@ -4,7 +4,9 @@
 # into a fresh run directory and validate the sources, the manifest, the
 # release and the one-platform rule. A refused release ends the play with
 # bootstrap exit code 65 and every reason; nothing else on the host changed.
-# --inspect-platform prints the summary and ends the play here.
+# --inspect-platform prints the summary (with the vault keys the release
+# needs) and ends the play here; otherwise a missing vault key ends it with
+# exit code 77.
 
 - name: Create the staging directory (root only)
   ansible.builtin.file:
@@ -52,3 +54,14 @@
 - name: End the inspection (--inspect-platform changes nothing else)
   ansible.builtin.meta: end_play
   when: platform_inspect | bool
+
+- name: Ask for the vault keys the release needs (bootstrap exit code 77)
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      The release needs these keys in group_vars/all/vault.yml (see
+      vault.yml.example); nothing on the host changed:
+      {{ platform_plan.vault_keys.missing | join(', ') }}
+  when: platform_plan.vault_keys.missing | length > 0

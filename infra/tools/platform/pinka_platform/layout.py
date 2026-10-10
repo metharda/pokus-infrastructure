@@ -13,7 +13,13 @@ SIGNING_KEYS_PUBLIC_DIR = f"{SRV}/shared/signing-keys"
 PLATFORM_VAR_DIR = f"{VAR_LIB}/platforms"
 SESSIONS_DIR = f"{VAR_LIB}/sessions"
 PLATFORM_ETC_DIR = f"{ETC}/platform"
+# Per-service configuration, checked against the release's config schemas.
+CONFIG_DIR = f"{PLATFORM_ETC_DIR}/config"
+# What infra rendered for the active platform (infra-internal, not contract).
+RENDERED_FILE = f"{PLATFORM_ETC_DIR}/rendered.json"
 SECRETS_DIR = f"{ETC}/secrets"
+POSTGRES_PASSWORD_DIR = f"{SECRETS_DIR}/postgres"
+POSTGRES_READER_CREDENTIAL = f"{ETC}/postgres-reader/pgpass"
 SIGNING_DIR = f"{ETC}/signing"
 # In SIGNING_DIR/<platform>/: the private key (PEM PKCS#8) and its public key (PEM).
 SIGNING_KEY_NAME = "signing.key"
@@ -29,6 +35,66 @@ QUERY_SOCKET = f"{RUN}/query.sock"
 GPU_SOCKET = f"{RUN}/gpu.sock"
 RUN_NETWORK_SOCKET = f"{RUN}/run-network.sock"
 FINGERPRINT_COMMAND = ("pinka", "fingerprint", "--json")
+SYSTEMD_DIR = "/etc/systemd/system"
+CLI_BIN_DIR = "/usr/local/bin"
+# The researchers' CLI: a wrapper per platform command, linked into CLI_BIN_DIR.
+CLI_WRAPPER_DIR = "/usr/local/lib/pinka/platform/cli"
+LIBEXEC = "/usr/local/libexec/pinka"
+SOCKET_ACL_HELPER = f"{LIBEXEC}/socket-acl"
+SERVICE_HOME_DIR = VAR_LIB
+# Paths no platform unit may reach (BUILD_PROMPT §7.14 "infra internals").
+INFRA_INTERNALS = (
+    f"{VAR_LIB}/git",
+    f"{VAR_LIB}/staging",
+    "/var/lib/incus",
+    "/var/lib/docker",
+    "/run/docker.sock",
+    "/var/run/docker.sock",
+    f"{SECRETS_DIR}/containers",
+    f"{SECRETS_DIR}/backup",
+    f"{ETC}/inference",
+    f"{SRV}/backups",
+)
+# Sockets only the controller may reach among the platform's units.
+CONTROLLER_SOCKETS = (GPU_SOCKET, RUN_NETWORK_SOCKET)
+
+
+def release_current(platform: str) -> str:
+    """The active release of a platform through its ``current`` link.
+
+    Args:
+        platform: Platform name.
+
+    Returns:
+        ``/srv/pinka/platforms/<platform>/releases/current``.
+    """
+    return f"{PLATFORMS_DIR}/{platform}/releases/current"
+
+
+def state_dir(platform: str, service: str, directory: str) -> str:
+    """A state directory the manifest declares.
+
+    Args:
+        platform: Platform name.
+        service: Declaring service.
+        directory: Directory name.
+
+    Returns:
+        ``/srv/pinka/platforms/<platform>/state/<service>/<directory>``.
+    """
+    return f"{PLATFORMS_DIR}/{platform}/state/{service}/{directory}"
+
+
+def config_file(service: str) -> str:
+    """A service's configuration file.
+
+    Args:
+        service: Service name.
+
+    Returns:
+        ``/etc/pinka/platform/config/<service>.json``.
+    """
+    return f"{CONFIG_DIR}/{service}.json"
 
 
 def socket_path(service: str, socket: str) -> str:

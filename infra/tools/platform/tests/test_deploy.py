@@ -13,16 +13,19 @@ import pytest
 from deploy_testlib import (
     ME,
     NOW,
+    SPECIAL_CASES,
     add_release,
+    fake_devices,
     git,
     make_repo,
+    make_special,
     prepare,
     schema,
     settings,
 )
 from platform_testlib import CONTRACT, manifest
 
-from pinka_platform import cli, deploy, mirror, names
+from pinka_platform import cli, deploy, mirror, names, release
 
 
 @pytest.fixture
@@ -142,13 +145,13 @@ def test_unknown_refs_and_paths(repo: Path, paths: deploy.Paths) -> None:
 
 
 def test_symlinks_leaving_a_source_are_refused(repo: Path, paths: deploy.Paths) -> None:
-    (repo / "catalog" / "escape").symlink_to("/etc/passwd")
+    (repo / "cases" / "escape").symlink_to("/etc/passwd")
     git(repo, "add", "-A")
     git(repo, "commit", "--quiet", "-m", "link")
     url = f"file://{repo}"
     s = settings(
         repo,
-        content={"cases": {"repo": url, "ref": "main", "path": "catalog"}},
+        content={"cases": {"repo": url, "ref": "main", "path": "cases"}},
     )
     assert refused(paths, s) == ["source-unsafe-entry"]
 
@@ -169,17 +172,17 @@ def git_input(repo: Path, text: str, *args: str) -> str:
 
 def test_a_dot_git_entry_is_refused(repo: Path, paths: deploy.Paths) -> None:
     blob = git_input(repo, "gitdir: /elsewhere\n", "hash-object", "-w", "--stdin")
-    catalog = tree_with(repo, "HEAD:catalog", ".git", f"100644 blob {blob}")
+    cases = tree_with(repo, "HEAD:cases", ".git", f"100644 blob {blob}")
     root = git(repo, "rev-parse", "HEAD^{tree}")
     lines = [
-        line if not line.endswith("\tcatalog") else f"040000 tree {catalog}\tcatalog"
+        line if not line.endswith("\tcases") else f"040000 tree {cases}\tcases"
         for line in git(repo, "ls-tree", root).splitlines()
     ]
     tree = git_input(repo, "\n".join(lines) + "\n", "mktree")
     commit = git(repo, "commit-tree", tree, "-p", "HEAD", "-m", "dot git")
     git(repo, "update-ref", "refs/heads/dotgit", commit)
     url = f"file://{repo}"
-    s = settings(repo, content={"cases": {"repo": url, "ref": "dotgit", "path": "catalog"}})
+    s = settings(repo, content={"cases": {"repo": url, "ref": "dotgit", "path": "cases"}})
     assert refused(paths, s) == ["source-git-entry"]
 
 
@@ -409,6 +412,57 @@ def test_purge(repo: Path, paths: deploy.Paths) -> None:
     assert retired["purged_at"] == "2026-01-01T12:00:00Z"
 
 
+def plant_secrets(paths: deploy.Paths) -> list[Path]:
+    planted = [
+        paths.secrets / "allprof-ctl",
+        paths.secrets / "postgres" / "allprof_ctl",
+        paths.signing / "allprof",
+    ]
+    for path in planted:
+        if path.name == "allprof_ctl":
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("secret\n")
+        else:
+            path.mkdir(parents=True)
+            (path / "token").write_text("secret\n")
+    published = paths.srv / "shared" / "signing-keys" / "allprof-lab-20260101.pub"
+    published.parent.mkdir(parents=True)
+    published.write_text("public\n")
+    return planted
+
+
+def test_purge_keeps_secrets_and_says_what_remains(repo: Path, paths: deploy.Paths) -> None:
+    deployed(paths, settings(repo))
+    deployed(paths, other_platform(repo))
+    planted = plant_secrets(paths)
+    result = deploy.purge(
+        "allprof", "allprof", paths, FakeRunner(), account_exists=lambda a: a == "allprof-ctl"
+    )
+    assert all(path.exists() for path in planted)
+    assert result["remaining"] == {
+        "locked_accounts": ["allprof-ctl"],
+        "secrets": [str(p) for p in planted],
+        "published_signing_keys": [
+            str(paths.srv / "shared" / "signing-keys" / "allprof-lab-20260101.pub")
+        ],
+    }
+
+
+def test_purge_removes_secrets_on_request(repo: Path, paths: deploy.Paths) -> None:
+    deployed(paths, settings(repo))
+    deployed(paths, other_platform(repo))
+    planted = plant_secrets(paths)
+    result = deploy.purge(
+        "allprof", "allprof", paths, FakeRunner(), remove_secrets=True, account_exists=bool
+    )
+    assert not any(path.exists() for path in planted)
+    assert {str(p) for p in planted} <= set(result["removed"])
+    assert result["remaining"]["secrets"] == []
+    # Published public keys are kept forever (§12.10).
+    assert result["remaining"]["published_signing_keys"]
+    assert (paths.srv / "shared" / "signing-keys" / "allprof-lab-20260101.pub").exists()
+
+
 def test_purge_removes_nothing_when_the_database_fails(repo: Path, paths: deploy.Paths) -> None:
     deployed(paths, settings(repo))
     deployed(paths, other_platform(repo))
@@ -428,23 +482,38 @@ def uv_release(repo: Path) -> deploy.Settings:
     return settings(
         repo,
         platform={"repo": f"file://{repo}", "ref": "main", "path": "refplat"},
-        content={"cases": {"repo": f"file://{repo}", "ref": "main", "path": "catalog"}},
+        content={"cases": {"repo": f"file://{repo}", "ref": "main", "path": "cases"}},
     )
 
 
 class FakeUv:
-    """Stands in for systemd-run: creates the console scripts uv would create."""
+    """Stands in for systemd-run: phase 1 adds the environment, phase 2 the scripts."""
 
-    def __init__(self, plan: dict[str, Any], *, touch: str = "", rc: int = 0) -> None:
+    def __init__(
+        self,
+        plan: dict[str, Any],
+        *,
+        touch: str = "",
+        rc: int = 0,
+        fail_phase: str = "",
+        special: str = "",
+    ) -> None:
         self.release = Path(plan["run_dir"]) / "release"
         self.touch = touch
         self.rc = rc
-        self.argv: list[str] = []
+        self.fail_phase = fail_phase
+        self.special = special
+        self.calls: list[list[str]] = []
 
     def __call__(self, argv: Sequence[str]) -> mirror.Done:
-        self.argv = list(argv)
-        if self.rc:
-            return mirror.Done(self.rc, "", "uv failed")
+        self.calls.append(list(argv))
+        phase = "fetch" if len(self.calls) == 1 else "build"
+        if self.rc and self.fail_phase in ("", phase):
+            return mirror.Done(self.rc, "", f"uv failed in {phase}")
+        if phase == "fetch":
+            (self.release / ".venv" / "bin").mkdir(parents=True)
+            (self.release / ".venv" / "bin" / "python").symlink_to("/opt/pinka/python/bin/python3")
+            return mirror.Done(0, "", "")
         data = manifest("refplat")
         commands = [s["start"][0] for s in data["services"]]
         commands += [h["run"][0] for h in data["hooks"].values()] + [data["cli"]["run"][0]]
@@ -453,9 +522,10 @@ class FakeUv:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("#!/bin/sh\n")
             path.chmod(0o755)
-        (self.release / ".venv" / "bin" / "python").symlink_to("/opt/pinka/python/bin/python3")
         if self.touch:
             (self.release / self.touch).write_text("changed by the build\n")
+        if self.special:
+            make_special(self.release / ".venv" / "lib" / "planted", self.special)
         return mirror.Done(0, "", "")
 
 
@@ -463,32 +533,56 @@ def property_values(argv: Sequence[str]) -> list[str]:
     return [argv[i + 1] for i, a in enumerate(argv) if a == "--property"]
 
 
-def test_build_runs_uv_in_the_sandbox(repo: Path, paths: deploy.Paths) -> None:
+def test_build_runs_uv_in_two_sandboxed_phases(repo: Path, paths: deploy.Paths) -> None:
     plan = prepare(paths, uv_release(repo))
     fake = FakeUv(plan)
     assert deploy.build(plan, paths, CONTRACT, fake) == {"changed": True, "built": True}
-    props = property_values(fake.argv)
+    fetch, build = fake.calls
     final = plan["release"]["target"]
-    assert f"User={ME}" in props
-    assert f"BindPaths={plan['run_dir']}/release:{final}" in props
-    assert f"ReadWritePaths={paths.uv_cache}" in props
-    assert "InaccessiblePaths=-/var/lib/pinka/git" in props
-    assert "InaccessiblePaths=-/srv/pinka/restricted" in props
-    assert "ProtectSystem=strict" in props
-    assert "NoNewPrivileges=yes" in props
-    assert f"WorkingDirectory={final}" in props
-    assert fake.argv[fake.argv.index("--") + 1 :] == [
-        deploy.UV,
-        "sync",
-        "--frozen",
-        "--all-packages",
-        "--no-dev",
-        "--no-editable",
-        "--compile-bytecode",
-        "--python",
-        deploy.PYTHON,
+    for argv in (fetch, build):
+        props = property_values(argv)
+        assert f"User={ME}" in props
+        assert f"BindPaths={plan['run_dir']}/release:{final}" in props
+        assert f"ReadWritePaths={paths.uv_cache}" in props
+        assert "InaccessiblePaths=-/var/lib/pinka/git" in props
+        assert "InaccessiblePaths=-/srv/pinka/restricted" in props
+        assert "ProtectSystem=strict" in props
+        assert "NoNewPrivileges=yes" in props
+        assert f"WorkingDirectory={final}" in props
+    sync = [deploy.UV, "sync", "--frozen", "--all-packages", "--no-dev", "--no-editable"]
+    tail = ["--group", "build", "--python", deploy.PYTHON]
+    # Phase 1: network, only locked wheels, nothing built, no interpreter started.
+    assert "PrivateNetwork=yes" not in property_values(fetch)
+    assert fetch[fetch.index("--") + 1 :] == [
+        *sync,
+        "--no-install-project",
+        "--no-install-workspace",
+        "--no-build",
+        *tail,
     ]
+    # Phase 2: no network, the release built with the locked backend.
+    assert "PrivateNetwork=yes" in property_values(build)
+    assert "Environment=UV_OFFLINE=1" in property_values(build)
+    assert "--compile-bytecode" not in fetch
+    assert build[build.index("--") + 1 :] == [
+        *sync,
+        "--offline",
+        "--no-build-isolation",
+        "--compile-bytecode",
+        *tail,
+    ]
+    assert next(a for a in fetch if a.startswith("--unit=")).endswith("-fetch")
+    assert next(a for a in build if a.startswith("--unit=")).endswith("-build")
     assert not Path(final).exists(), "the mount point is removed again"
+
+
+@pytest.mark.parametrize("phase", ["fetch", "build"])
+def test_a_failed_build_phase_fails(repo: Path, paths: deploy.Paths, phase: str) -> None:
+    plan = prepare(paths, uv_release(repo))
+    with pytest.raises(deploy.DeployError, match=f"the build's {phase} phase failed"):
+        deploy.build(plan, paths, CONTRACT, FakeUv(plan, rc=1, fail_phase=phase))
+    final = Path(plan["release"]["target"])
+    assert not final.exists()
 
 
 def test_a_build_that_changes_the_release_is_refused(repo: Path, paths: deploy.Paths) -> None:
@@ -498,10 +592,17 @@ def test_a_build_that_changes_the_release_is_refused(repo: Path, paths: deploy.P
     assert codes(exc) == ["build-modified-release"]
 
 
-def test_a_failed_build_fails(repo: Path, paths: deploy.Paths) -> None:
+@pytest.mark.parametrize(("kind", "code"), SPECIAL_CASES.items())
+def test_special_files_and_setid_bits_from_the_build_are_refused(
+    repo: Path, paths: deploy.Paths, monkeypatch: pytest.MonkeyPatch, kind: str, code: str
+) -> None:
+    # Owner decision on 3d.2: none in the build output, .venv included.
     plan = prepare(paths, uv_release(repo))
-    with pytest.raises(deploy.DeployError, match="uv failed"):
-        deploy.build(plan, paths, CONTRACT, FakeUv(plan, rc=1))
+    monkeypatch.setattr(release, "_lstat", fake_devices(kind))
+    with pytest.raises(deploy.Refused) as exc:
+        deploy.build(plan, paths, CONTRACT, FakeUv(plan, special=kind))
+    assert codes(exc) == [code]
+    assert exc.value.problems[0].where == ".venv/lib/planted"
 
 
 def test_a_build_without_the_commands_is_refused(repo: Path, paths: deploy.Paths) -> None:

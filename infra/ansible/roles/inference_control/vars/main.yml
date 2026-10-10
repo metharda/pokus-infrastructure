@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/inference_control/vars/main.yml). Local changes will be overwritten.
 
-# The mTLS material (contracts.md#paths): directory 0750 root:potka-orch.
+# The mTLS material (§12.8, §19.10): directory 0750 root:<inference_control_account>.
 inference_control_dir: /etc/pinka/inference
 # This node's identity, created on lab and inference nodes.
 inference_control_cert: "{{ inference_control_dir }}/self.crt"

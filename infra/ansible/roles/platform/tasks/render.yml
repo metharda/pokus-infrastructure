@@ -1,0 +1,185 @@
+# Managed by pinka (ansible/roles/platform/tasks/render.yml). Local changes will be overwritten.
+#
+# §7.14 step 7: everything rendered from the profiles, applied with ordinary
+# modules. The deployment tool computes it (accounts, groups, directories,
+# configuration and secret files, units, the database plan with its SQL, the
+# Incus certificates, the signing key, the run-network helper's socket owner,
+# the CLI); the roles after this one read the same rendering (active_platform)
+# for OPA, the dashboards and the telemetry labels. Units are installed but
+# neither enabled nor started: the switch with the hooks follows with plan
+# step 3d.4.
+
+- name: Render the release
+  ansible.builtin.command:
+    argv: ["{{ platform_tool }}", deploy, render, --run, "{{ platform_plan.run_dir }}"]
+  register: platform_render_out
+  changed_when: false
+
+- name: Remember the rendering
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - the lab-wide active_platform fact
+    active_platform: "{{ (platform_render_out.stdout | from_json).render }}"
+
+- name: Create the platform's groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    system: true
+    state: present
+  loop: "{{ active_platform.groups }}"
+
+# The memberships follow from the profiles only; the tool refuses any that
+# §12.4 forbids (the agent and training jobs never join pinka-restricted,
+# the database socket group or pinka-query).
+- name: Create the platform's accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    group: "{{ item.group }}"
+    groups: "{{ item.groups }}"
+    append: false
+    system: true
+    shell: "{{ users_groups_nologin_shell | default('/usr/sbin/nologin') }}"
+    home: "{{ item.home }}"
+    create_home: false
+    password: "!"
+    comment: "{{ item.comment }}"
+    state: present
+  loop: "{{ active_platform.accounts }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create the platform's directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ active_platform.directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Write the services' configuration
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ active_platform.config_files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Write the services' secrets
+  ansible.builtin.copy:
+    content: "{{ vault_platform_secrets[item.service][item.name] }}"
+    dest: "{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ active_platform.secrets }}"
+  loop_control:
+    label: "{{ item.path }}"
+  no_log: true
+
+- name: Install the QA keys trusted for attestations (§12.10)
+  ansible.builtin.copy:
+    content: "{{ item.pem }}"
+    dest: "/etc/pinka/qa/trusted-keys/{{ item.name }}.pem"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ qa_trusted_keys }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write the principals and endpoints files (§12.3)
+  ansible.builtin.command:
+    argv: ["{{ platform_tool }}", deploy, principals, --run, "{{ platform_plan.run_dir }}"]
+  register: platform_principals
+  changed_when: (platform_principals.stdout | from_json).changed
+
+- name: Generate and publish the signing key
+  ansible.builtin.include_tasks: signing.yml
+
+- name: Issue the Incus certificates of the services
+  ansible.builtin.include_role:
+    name: incus
+    tasks_from: certificates
+  vars:
+    incus_service_certificates: "{{ active_platform.incus_certificates }}"
+  when: active_platform.incus_certificates | length > 0
+
+- name: Bootstrap the platform database
+  ansible.builtin.include_role:
+    name: postgres
+    tasks_from: platform
+  when: active_platform.database
+
+- name: Give the run-network helper's socket to the controller
+  ansible.builtin.include_role:
+    name: incus
+    tasks_from: run_network
+  when: active_platform.run_network
+
+- name: Look for units that this release no longer has
+  ansible.builtin.stat:
+    path: "{{ platform_systemd_dir }}/{{ item }}"
+  loop: "{{ active_platform.stale_units }}"
+  register: platform_stale_units
+
+- name: Stop the units this release no longer has
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ platform_stale_units.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Remove the units this release no longer has
+  ansible.builtin.file:
+    path: "{{ platform_systemd_dir }}/{{ item }}"
+    state: absent
+  loop: "{{ active_platform.stale_units }}"
+  notify: Reload systemd
+
+- name: Install the units (target, services, sockets)
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ platform_systemd_dir }}/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ active_platform.units }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd
+
+- name: Create the directory of the CLI wrappers
+  ansible.builtin.file:
+    path: "{{ active_platform.cli.wrapper | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: active_platform.cli
+
+- name: Install the researchers' CLI wrapper
+  ansible.builtin.copy:
+    content: "{{ active_platform.cli.content }}"
+    dest: "{{ active_platform.cli.wrapper }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: active_platform.cli
+
+- name: Link the researchers' CLI into the PATH
+  ansible.builtin.file:
+    src: "{{ active_platform.cli.wrapper }}"
+    dest: "{{ active_platform.cli.link }}"
+    state: link
+    owner: root
+    group: root
+  when: active_platform.cli
+
+- name: Reload systemd before the switch
+  ansible.builtin.meta: flush_handlers

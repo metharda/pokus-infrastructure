@@ -4,6 +4,10 @@
 # restic backups of pinka_root and /etc/pinka on timers, retention, and
 # metrics for the node exporter's textfile collector.
 
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
 - name: Refuse to back up secrets without the acknowledgement
   ansible.builtin.assert:
     that: not backup_include_secrets or backup_secrets_acknowledged
@@ -171,7 +175,7 @@
           'cache_dir': backup_cache_dir, 'state': backup_state_dir ~ '/state.json',
           'textfile_dir': backup_textfile_dir,
           'paths': backup_paths, 'excludes': backup_excludes, 'retention': backup_retention,
-          'pgdump': {'container': 'pinka-postgres', 'database': 'potka', 'dir': backup_pgdump_dir,
+          'pgdump': {'container': 'pinka-postgres', 'database': backup_database, 'dir': backup_pgdump_dir,
                      'keep': backup_pgdump_keep | int}} | to_nice_json }}
     owner: root
     group: root

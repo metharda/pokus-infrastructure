@@ -105,7 +105,7 @@ exporters:
       insecure: true
   prometheus:
     endpoint: 127.0.0.1:{{ pinka_internal_ports.collector_metrics }}
-    # Resource attributes such as potka.run_id and potka.node become labels,
+    # Resource attributes, such as a platform's run identifiers, become labels,
     # so dashboards can filter target metrics by run.
     resource_to_telemetry_conversion:
       enabled: true

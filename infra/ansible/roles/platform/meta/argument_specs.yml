@@ -36,7 +36,9 @@ argument_specs:
       platform_settings:
         type: dict
         default: {}
-        description: Non-secret settings per service short name, rendered into /etc/pinka/platform/<svc>.toml and checked against the platform's schemas (C9b).
+        description: >-
+          Non-secret configuration per service name, checked against the service's config
+          schema in the release and written to /etc/pinka/platform/config/<service>.json.
       platform_inference_mode:
         type: str
         default: auto
@@ -45,16 +47,32 @@ argument_specs:
       platform_scripted_api_url:
         type: str
         default: ""
-        description: OpenAI-compatible endpoint of the scripted backend (staging only, D3).
-      inference_remote_node:
-        type: str
-        default: ""
-        description: Tailnet name of the paired inference node (remote mode).
+        description: OpenAI-compatible endpoint of the scripted backend (staging only).
+      vault_postgres_passwords:
+        type: dict
+        default: {}
+        description: Database passwords by role; the release's roles must be there (missing keys end bootstrap with exit code 77).
+      vault_platform_secrets:
+        type: dict
+        default: {}
+        description: "The secrets the manifest names, {<service>: {<name>: value}}."
       qa_trusted_keys:
         type: list
         elements: dict
         default: []
-        description: QA public keys trusted for attestations, {name, pem}.
+        description: "QA public keys trusted for attestations, {name, pem}, installed in /etc/pinka/qa/trusted-keys/."
+      pinka_ports:
+        type: dict
+        required: true
+        description: Effective ports (endpoints.toml, the inference broker's port).
+      pinka_vm_otlp:
+        type: dict
+        required: true
+        description: The VM collector address (endpoints.toml).
+      cpuset_targets:
+        type: str
+        default: ""
+        description: CPUs of the targets (endpoints.toml).
       node_role:
         type: str
         required: true
@@ -76,13 +94,9 @@ argument_specs:
         required: true
         description: The pinned versions (Quarto).
   rotate_signing:
-    short_description: Replace the run-manifest signing key; old public keys stay published.
+    short_description: Replace the active platform's signing key; old public keys stay published.
     options:
-      platform:
-        type: dict
-        default: {}
-        description: The platform source; the orchestrator restarts with the new key when it is set.
-      machine_name:
-        type: str
-        required: true
-        description: Machine name of the published key file.
+      active_platform_file:
+        type: path
+        default: /etc/pinka/platform/rendered.json
+        description: What infra rendered for the active platform; its controller restarts with the new key.

@@ -19,7 +19,7 @@ from typing import Any
 from pinka_lab.config import LabConfig
 from pinka_lab.system import System
 
-ORCH_API = "/run/pinka/orch/api.sock"
+ACTIVE_PLATFORM = "/etc/pinka/platform/active.json"
 CONTROL_UNIT = "pinka-inference-control.service"
 NAME_RE = re.compile(r"^[a-z][a-z0-9]{1,31}$")
 KEY_RE = re.compile(
@@ -128,32 +128,27 @@ def start(system: System) -> int:
 
 
 def drain(system: System, timeout: float) -> str:
-    """Ask the orchestrator to drain and wait until no run is active.
+    """Drain the active platform before its services stop (contract v2 §12.9).
+
+    The platform's ``drain`` hook runs here once infra runs hooks (plan step
+    3d.4); until then nothing of the platform is started, so there is nothing
+    to drain.
 
     Args:
         system: Host access.
-        timeout: Seconds to wait.
+        timeout: Seconds the drain may take.
 
     Returns:
         What happened, for the operator.
     """
-    if system.info(ORCH_API) is None:
-        return "no orchestrator socket; nothing to drain"
-    body = json.dumps({"timeout_seconds": int(timeout)}).encode()
-    started = system.unix_http(ORCH_API, "POST", "/lab/drain", body)
-    if started.status not in (200, 202):
-        return f"the orchestrator did not accept the drain ({started.status or started.body})"
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        status = system.unix_http(ORCH_API, "GET", "/lab/status").json() or {}
-        if status.get("active_runs", 1) == 0:
-            return "drained: no active runs"
-        time.sleep(5)
-    return f"timeout after {timeout:g} s; runs still active become interrupted"
+    del timeout
+    if system.info(ACTIVE_PLATFORM) is None:
+        return "no active platform; nothing to drain"
+    return "the platform's drain hook is not run yet (it follows with the hooks)"
 
 
 def stop(system: System, timeout: float) -> int:
-    """Drain the orchestrator, then stop pinka-lab.target.
+    """Drain the active platform, then stop pinka-lab.target.
 
     Args:
         system: Host access.
@@ -831,20 +826,30 @@ def docs_serve(
     return 0
 
 
-def platform_purge(system: System, config: LabConfig, name: str, confirm: str | None) -> int:
+def platform_purge(
+    system: System,
+    config: LabConfig,
+    name: str,
+    confirm: str | None,
+    remove_secrets: bool = False,
+) -> int:
     """Remove a replaced platform's releases, state, restricted area and database.
 
     The deployment tool refuses the active platform and a platform that was
-    never replaced; its accounts stay locked.
+    never replaced. Its accounts stay locked and its published signing keys
+    stay; its secrets stay too unless ``remove_secrets``. What remains is
+    printed.
 
     Args:
         system: Host access.
         config: The lab description.
         name: The replaced platform.
         confirm: The name typed as confirmation; None asks for it.
+        remove_secrets: Also remove its secrets directories, database password
+            files and private signing key.
 
     Returns:
-        The deployment tool's exit code.
+        0 when purged, 1 when the deployment tool failed.
 
     Raises:
         CommandError: Without root, a bad name or a wrong confirmation.
@@ -861,4 +866,27 @@ def platform_purge(system: System, config: LabConfig, name: str, confirm: str | 
     if confirm != name:
         raise CommandError("not confirmed: the typed name differs")
     tool = str(config.get("paths", "platform_tool", default=PLATFORM_TOOL))
-    return system.interactive([tool, "purge", name, "--confirm", confirm])
+    argv = [tool, "purge", name, "--confirm", confirm]
+    if remove_secrets:
+        argv.append("--remove-secrets")
+    done = system.run(argv, timeout=1800)
+    result = done.json() if done.stdout else None
+    if done.returncode != 0 or not isinstance(result, dict):
+        detail = result.get("error") if isinstance(result, dict) else done.stderr.strip()
+        sys.stderr.write(f"pinka: purge failed: {detail}\n")
+        return 1
+    for path in result.get("removed", []):
+        out(f"removed {path}")
+    for database in result.get("databases", []):
+        out(f"dropped database {database}")
+    remaining = result.get("remaining", {})
+    for label, key in (
+        ("locked account", "locked_accounts"),
+        ("secret", "secrets"),
+        ("published signing key", "published_signing_keys"),
+    ):
+        for item in remaining.get(key, []):
+            out(f"remains: {label} {item}")
+    if remaining.get("secrets"):
+        out(f"Remove the secrets too with: pinka platform purge {name} --remove-secrets")
+    return 0

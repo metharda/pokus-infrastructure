@@ -4,8 +4,8 @@
 # the LTS line from the component source matrix, one storage pool, the build
 # bridge, the run network ACL, the projects build, bench and one per
 # researcher, the target profiles, restricted client certificates for the
-# platform services, the HTTPS API on 127.0.0.1, and a journal feed of Incus
-# events. A new installation is initialized once from incus/preseed.yaml.j2;
+# active platform's services, the run-network helper, the HTTPS API on
+# 127.0.0.1, and a journal feed of Incus events. A new installation is initialized once from incus/preseed.yaml.j2;
 # every run then converges the same objects with pinka_incus_object, which
 # never deletes anything.
 - name: Load the Incus names of this family
@@ -24,8 +24,15 @@
 - name: Converge the Incus objects
   ansible.builtin.include_tasks: objects.yml
 
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
 - name: Issue the client certificates
   ansible.builtin.include_tasks: certificates.yml
+
+- name: Install the run-network helper
+  ansible.builtin.include_tasks: run_network.yml
 
 - name: Give researchers their personal projects
   ansible.builtin.include_tasks: access.yml

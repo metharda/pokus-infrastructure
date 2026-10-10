@@ -12,30 +12,18 @@ ROOT_ONLY_SECRETS = {"pinka-restricted", "docker", "incus", "incus-admin"}
 
 
 def test_groups_and_accounts() -> None:
-    groups = {g["name"] for g in DATA["pinka_groups"]}
+    # BUILD_PROMPT §6.1: infra's groups; the platform's accounts and groups are
+    # rendered from its manifest (platform role), never listed here.
+    groups = {g["name"]: g["system"] for g in DATA["pinka_groups"]}
     assert groups == {
-        "pinka",
-        "pinka-admin",
-        "pinka-restricted",
-        "potka-svc",
-        "potka-exec-clients",
-        "potka-gw-clients",
+        "pinka": False,
+        "pinka-admin": False,
+        "pinka-restricted": True,
+        "pinka-datasets": True,
+        "pinka-query": True,
     }
-    accounts = {a["name"]: set(a["groups"]) for a in DATA["service_accounts"]}
-    assert set(accounts) == {
-        f"potka-{s}" for s in ("orch", "agent", "gw", "exec", "inject", "verify", "eval")
-    }
-    for name, member_of in accounts.items():
-        assert "potka-svc" in member_of, name
-        assert member_of <= groups, name
-    # Safety invariant 4: the agent gets no restricted data, Docker, Incus or database access.
-    assert accounts["potka-agent"] == {"potka-svc", "potka-exec-clients", "potka-gw-clients"}
-    assert not accounts["potka-agent"] & ROOT_ONLY_SECRETS
-    assert {n for n, g in accounts.items() if "potka-gw-clients" in g} == {"potka-agent"}
-    assert {n for n, g in accounts.items() if "potka-exec-clients" in g} == {
-        "potka-agent",
-        "potka-orch",
-    }
+    assert "service_accounts" not in DATA
+    assert DATA["inference_control_account"] == "pinka-inference"
 
 
 def test_researchers_are_placeholders() -> None:
@@ -56,10 +44,12 @@ def test_layout_matches_the_spec() -> None:
         "": ("root", "pinka", "2775"),
         "platforms": ("root", "root", "0755"),
         "restricted": ("root", "pinka-restricted", "0750"),
-        "models": ("potka-orch", "pinka", "0755"),
+        "models": ("root", "pinka", "0755"),
+        "models/adapters": ("root", "pinka", "0755"),
+        "training": ("root", "root", "0755"),
+        "training/datasets": ("root", "pinka-datasets", "0750"),
+        "training/jobs": ("root", "root", "0755"),
         "datasets": ("root", "pinka", "2775"),
-        "artifacts": ("potka-orch", "pinka", "0750"),
-        "reports": ("potka-eval", "pinka", "2775"),
         "images": ("root", "pinka-admin", "0750"),
         "shared": ("root", "pinka", "2770"),
         "users": ("root", "root", "0755"),
@@ -77,7 +67,7 @@ def test_layout_matches_the_spec() -> None:
         assert entry["notes"], entry
     system = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pinka_system_layout"]}
     assert system["/etc/pinka"] == ("root", "root", "0755")
-    assert system["/etc/pinka/secrets"] == ("root", "potka-svc", "0750")
+    assert system["/etc/pinka/secrets"] == ("root", "root", "0711")
     # Deployment (BUILD_PROMPT §6.2, §7.14): root-only mirrors, staging and records.
     assert system["/etc/pinka/platform"] == ("root", "root", "0755")
     for root_only in ("/var/lib/pinka/git", "/var/lib/pinka/staging", "/var/lib/pinka/platforms"):
@@ -86,13 +76,16 @@ def test_layout_matches_the_spec() -> None:
 
 
 def test_infra_accounts() -> None:
-    # BUILD_PROMPT §6.1: pinka-build runs platform builds and belongs to no group.
+    # BUILD_PROMPT §6.1: pinka-build runs platform builds; pinka-inference the
+    # inference control endpoint (§19.10). Neither belongs to a group.
     assert DATA["infra_accounts"] == [
-        {"name": "pinka-build", "groups": [], "description": "unprivileged platform builds"}
+        {"name": "pinka-build", "groups": [], "description": "unprivileged platform builds"},
+        {
+            "name": "pinka-inference",
+            "groups": [],
+            "description": "the inference control endpoint of an inference node",
+        },
     ]
-    assert not {a["name"] for a in DATA["infra_accounts"]} & {
-        a["name"] for a in DATA["service_accounts"]
-    }
 
 
 def contract_ports() -> set[int]:

@@ -147,11 +147,26 @@ def _software(system: System, config: LabConfig) -> dict[str, Any]:
     }
 
 
-def _deployed(system: System, path: str) -> dict[str, Any] | None:
-    provenance = _json_file(system, path)
-    if not provenance:
+def _platform(system: System, path: str) -> dict[str, Any] | None:
+    # The active platform (contract v2, active.json): its release and content
+    # packages by tag, commit and tree.
+    active = _json_file(system, path)
+    if not active:
         return None
-    return {k: provenance.get(k) for k in ("component", "tag", "commit", "tree")}
+
+    def source(entry: Any) -> dict[str, Any]:  # noqa: ANN401 - a JSON value
+        entry = entry if isinstance(entry, dict) else {}
+        return {k: entry.get(k) for k in ("tag", "commit", "tree")}
+
+    found = active.get("content")
+    content: dict[str, Any] = found if isinstance(found, dict) else {}
+    return {
+        "name": active.get("name"),
+        "version": active.get("version"),
+        "manifest_sha256": active.get("manifest_sha256"),
+        "release": source(active.get("release")),
+        "content": {name: source(entry) for name, entry in sorted(content.items())},
+    }
 
 
 def _configuration(system: System, config: LabConfig) -> dict[str, Any]:
@@ -159,15 +174,16 @@ def _configuration(system: System, config: LabConfig) -> dict[str, Any]:
         system,
         str(config.get("paths", "bootstrap_state", default="/etc/pinka/bootstrap-state.json")),
     )
-    root = config.pinka_root
     return {
         "infra_commit": state.get("repo_commit"),
         "infra_tree": state.get("infra_tree"),
         "infra_dirty": state.get("infra_dirty"),
         "versions_lock_sha256": config.get("fingerprint", "versions_lock_sha256"),
         "host_vars_sha256": config.get("fingerprint", "host_vars_sha256"),
-        "platform": _deployed(system, f"{root}/deploy/platform/current/DEPLOYED_FROM.json"),
-        "catalog": _deployed(system, f"{root}/catalog/current/DEPLOYED_FROM.json"),
+        "platform": _platform(
+            system,
+            str(config.get("paths", "active_platform", default="/etc/pinka/platform/active.json")),
+        ),
     }
 
 

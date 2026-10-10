@@ -28,20 +28,26 @@ from ansible_testlib import (
     render_template,
 )
 
-VAULT = {
-    role: "test"
-    for role in (
-        "potka_migrator",
-        "potka_orch",
-        "potka_gw",
-        "potka_exec",
-        "potka_inject",
-        "potka_verify",
-        "potka_eval",
-        "potka_reader",
-        "potka_grafana",
-    )
+# The database plan of a rendered platform (pinka-platform, database.py).
+PLATFORM_DB = {
+    "platform": "demo",
+    "database": "demo",
+    "socket_group": "demo-db",
+    "logins": [
+        {"role": "demo_ctl", "account": "demo-ctl", "group_role": "demo_controller"},
+        {"role": "demo_obs", "account": "demo-obs", "group_role": "demo_observer"},
+    ],
+    "migrator": "demo_migrator",
+    "reader": "demo_reader",
+    "grafana": "demo_grafana",
+    "password_files": [
+        {"role": "demo_ctl", "owner": "root", "group": "demo-ctl", "mode": "0640"},
+        {"role": "demo_obs", "owner": "root", "group": "demo-obs", "mode": "0640"},
+        {"role": "demo_migrator", "owner": "root", "group": "demo-migrate", "mode": "0640"},
+    ],
+    "vault_roles": ["demo_ctl", "demo_grafana", "demo_migrator", "demo_obs", "demo_reader"],
 }
+VAULT = dict.fromkeys(PLATFORM_DB["vault_roles"], "test")
 LOCK = load_yaml(INFRA / "versions.lock.yml")
 # Role defaults that the include_role vars refer to.
 DEFAULTS = ansible_vars(
@@ -58,16 +64,17 @@ def compose_vars(project: str, **extra: Any) -> dict[str, Any]:
         "compose_docker": {"data-root": "/var/lib/docker"},
         "compose_gpu_method": "none",
         "compose_pinka_gid": "1000",
-        "compose_potka_svc_gid": "999",
+        "compose_db_socket_gid": "999",
         **extra,
     }
     return ansible_vars(GROUP_VARS, ROLES / "compose" / "defaults" / "main.yml", **variables)
 
 
-def postgres_vars(**extra: Any) -> dict[str, Any]:
+def postgres_vars(platform: bool = True, **extra: Any) -> dict[str, Any]:
     variables: dict[str, Any] = {
         "host_profile": fixture_profile("ubuntu2404-baremetal-nvidia-driver-loaded"),
         "vault_postgres_passwords": VAULT,
+        "active_platform": {"database": PLATFORM_DB} if platform else {},
         **extra,
     }
     return ansible_vars(
@@ -206,55 +213,58 @@ def test_postgres_configuration() -> None:
     )
 
 
-def test_pg_hba_admits_only_contract_roles_on_sockets() -> None:
+def test_pg_hba_admits_only_the_platform_roles_on_its_database() -> None:
     text = render_file(INFRA / "config/postgres/pg_hba.conf.j2", postgres_vars())
     rules = [line.split() for line in text.splitlines() if line and not line.startswith("#")]
-    roles = (
-        "potka_migrator,potka_orch,potka_gw,potka_exec,potka_inject,potka_verify,potka_eval,"
-        "potka_reader,potka_grafana,pinka_monitor"
-    )
     assert rules == [
         ["local", "all", "postgres", "scram-sha-256"],
-        ["local", "potka", roles, "scram-sha-256"],
+        ["local", "postgres", "pinka_monitor", "scram-sha-256"],
+        [
+            "local",
+            "demo",
+            "demo_ctl,demo_obs,demo_migrator,demo_reader,demo_grafana",
+            "scram-sha-256",
+        ],
     ]
     conf = render_file(INFRA / "config/postgres/postgresql.conf.j2", postgres_vars())
     assert "listen_addresses = ''" in conf.splitlines()
     compose = load_yaml(INFRA / "compose/core/compose.yml")["services"]
     assert compose["postgres"]["network_mode"] == "none"
     assert "ports" not in compose["postgres"]
+    assert "POSTGRES_DB" not in compose["postgres"]["environment"]
+    exporter = compose["postgres_exporter"]
+    assert exporter["environment"]["DATA_SOURCE_URI"].startswith("/postgres?")
+    assert exporter["group_add"] == ["${POSTGRES_SOCKET_GID:?}"]
 
 
 def test_socket_directories_and_reader_credential() -> None:
-    variables = postgres_vars()
-    tmpfiles = render_template("postgres", "pinka-postgres.tmpfiles.conf.j2", variables)
+    tmpfiles = render_template("postgres", "pinka-postgres.tmpfiles.conf.j2", postgres_vars())
     entries = [line.split() for line in tmpfiles.splitlines() if line and not line.startswith("#")]
     assert entries == [
         ["d", "/run/pinka", "0755", "root", "root", "-"],
-        ["d", "/run/pinka/postgres", "0750", "999", "potka-svc", "-"],
+        ["d", "/run/pinka/postgres", "0750", "999", "demo-db", "-"],
         ["d", "/run/pinka/postgres-reader", "0750", "999", "pinka", "-"],
     ]
-    vault = {**VAULT, "potka_reader": "a:b\\c"}
+    standalone = render_template(
+        "postgres", "pinka-postgres.tmpfiles.conf.j2", postgres_vars(platform=False)
+    )
+    assert "d /run/pinka/postgres 0750 999 root -" in standalone
+    vault = {**VAULT, "demo_reader": "a:b\\c"}
     pgpass = render_template("postgres", "pgpass.j2", postgres_vars(vault_postgres_passwords=vault))
     lines = [line for line in pgpass.splitlines() if not line.startswith("#")]
-    assert lines == ["/run/pinka/postgres-reader:5432:pinka:potka_reader:a\\:b\\\\c"]
+    assert lines == ["/run/pinka/postgres-reader:5432:demo:demo_reader:a\\:b\\\\c"]
 
 
-def test_password_files_follow_the_contract() -> None:
-    files = {f["role"]: f for f in evaluate("postgres_service_roles", postgres_vars())}
-    assert files.pop("potka_migrator") == {
-        "role": "potka_migrator",
-        "owner": "root",
-        "group": "root",
-        "mode": "0600",
-    }
-    for role, entry in files.items():
-        assert entry == {
-            "role": role,
-            "owner": "root",
-            "group": role.replace("_", "-"),
-            "mode": "0640",
-        }
-    assert sorted(evaluate("postgres_vault_roles", postgres_vars())) == sorted(VAULT)
+def test_password_roles_follow_the_platform() -> None:
+    assert evaluate("postgres_platform_logins", postgres_vars()) == [
+        "demo_ctl",
+        "demo_obs",
+        "demo_migrator",
+        "demo_reader",
+        "demo_grafana",
+    ]
+    assert evaluate("postgres_all_roles", postgres_vars(platform=False)) == ["pinka_monitor"]
+    assert evaluate("postgres_service_group", postgres_vars(platform=False)) == "root"
 
 
 def test_psql_never_puts_the_password_on_a_command_line() -> None:
@@ -267,12 +277,23 @@ def test_psql_never_puts_the_password_on_a_command_line() -> None:
 def test_opa_files_and_link() -> None:
     variables = ansible_vars(GROUP_VARS, ROLES / "opa" / "defaults" / "main.yml")
     assert evaluate("opa_policy_link", variables) == "/srv/pinka/services/core/policy"
-    assert evaluate("opa_platform_policy_dir", variables) == (
-        "/srv/pinka/deploy/platform/current/policy"
+    assert evaluate("opa_platform_policy_dir", variables) == ""
+    assert evaluate("opa_decision_path", variables) == ""
+    rendered = {
+        "opa": {
+            "bundle": "/srv/pinka/platforms/demo/releases/v1/policy",
+            "decision_path": "demo/decide",
+        }
+    }
+    with_platform = ansible_vars(
+        GROUP_VARS, ROLES / "opa" / "defaults" / "main.yml", active_platform=rendered
     )
+    assert evaluate("opa_platform_policy_dir", with_platform) == rendered["opa"]["bundle"]
+    assert evaluate("opa_decision_path", with_platform) == "demo/decide"
     compose = load_yaml(INFRA / "compose/core/compose.yml")
     opa = compose["services"]["opa"]
     assert "./policy:/policy:ro" in opa["volumes"]
+    assert opa["command"][-3:] == ["/config/authz.rego", "/config/placeholder", "/policy"]
     assert "--authorization=basic" in opa["command"]
     assert opa["ports"] == ["127.0.0.1:${OPA_PORT:?}:8181"]
     assert yaml.safe_load((INFRA / "config/opa/opa.yaml").read_text()) == {
