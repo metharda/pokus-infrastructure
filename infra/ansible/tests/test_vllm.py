@@ -123,7 +123,7 @@ def test_render(tree: deploy.Settings) -> None:
 
 
 def test_helper_constants_match_the_contract() -> None:
-    ports = ansible_vars(GROUP_VARS)["pinka_ports"]
+    ports = ansible_vars(GROUP_VARS)["pinka_default_ports"]
     settings = deploy.Settings()
     assert settings.port == ports["vllm"]
     assert settings.otlp == f"http://127.0.0.1:{ports['otlp_grpc']}"

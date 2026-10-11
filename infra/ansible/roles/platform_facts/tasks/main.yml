@@ -61,6 +61,31 @@
     fail_msg: "firewall_backend must be auto, nftables, firewalld or ufw."
     quiet: true
 
+# BUILD_PROMPT §12.11: ports are overridden by name; the effective ports must
+# stay distinct from each other and from the lab's internal listeners.
+- name: Check the port overrides
+  ansible.builtin.assert:
+    that:
+      - ports is mapping
+      - ports.keys() | difference(pinka_default_ports.keys()) | length == 0
+      - ports.values() | select('integer') | select('ge', 1) | select('le', 65535) | list | length == ports | length
+      - pinka_ports.values() | unique | list | length == pinka_ports | length
+      - pinka_ports.values() | intersect(pinka_internal_ports.values()) | length == 0
+    fail_msg: >-
+      ports must map names of {{ pinka_default_ports.keys() | join(', ') }} to TCP ports
+      (1-65535); the effective ports {{ pinka_ports }} must be distinct and must not use the
+      lab's internal ports {{ pinka_internal_ports.values() | sort | join(', ') }}.
+    quiet: true
+
+- name: Check the address of the collector listener for VM targets
+  ansible.builtin.assert:
+    that:
+      - vm_collector_address is string
+      - vm_collector_address is match(platform_facts_ipv4_pattern)
+      - vm_collector_address is not match('^(0|127)[.]')
+    fail_msg: "vm_collector_address must be an IPv4 address outside 0.0.0.0/8 and 127.0.0.0/8, not {{ vm_collector_address }}."
+    quiet: true
+
 # Check mode changes nothing, so what exists when the play starts is what
 # exists throughout it: tasks that need a unit or an account created earlier
 # in the same run are skipped in check mode while it is missing.

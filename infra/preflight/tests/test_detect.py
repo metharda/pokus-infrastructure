@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from helpers import TempRootCase, runner
@@ -12,6 +13,7 @@ from pinka_preflight.detect import (
     gpu,
     hardware,
     kernel,
+    lab,
     os_release,
     timesync,
 )
@@ -316,6 +318,49 @@ class GpuTest(TempRootCase):
         self.assertIsNone(gpus[1][1])
         self.assertEqual(len(gpus), 2)
 
+    def test_parse_driver_cuda(self) -> None:
+        version = (
+            "NVIDIA-SMI version  : 590.48.01\nNVML version        : 590.48\n"
+            "DRIVER version      : 590.48.01\nCUDA Version        : 13.1\n"
+        )
+        banner = (
+            "| NVIDIA-SMI 590.48.01              Driver Version: 590.48.01"
+            "      CUDA Version: 13.1     |\n"
+        )
+        renamed = (
+            'CUDA version : Deprecated, see "CUDA UMD version" instead\nCUDA UMD version : 13.3\n'
+        )
+        self.assertEqual(gpu.parse_driver_cuda(version), "13.1")
+        self.assertEqual(gpu.parse_driver_cuda(banner), "13.1")
+        self.assertEqual(gpu.parse_driver_cuda(renamed), "13.3")
+        self.assertEqual(gpu.parse_driver_cuda("CUDA Version : 13.0.2\n"), "13.0")
+        self.assertIsNone(gpu.parse_driver_cuda("CUDA Version : N/A\n"))
+        self.assertIsNone(gpu.parse_driver_cuda(""))
+
+    def test_driver_cuda_from_version_or_banner(self) -> None:
+        self.put("/sys/bus/pci/devices/0000:01:00.0/vendor", "0x10de\n")
+        self.put("/sys/bus/pci/devices/0000:01:00.0/class", "0x030000\n")
+        self.put("/proc/driver/nvidia/version", "NVRM version: 580.82.07\n")
+        query = f"nvidia-smi {' '.join(gpu.QUERY)}"
+        row = "GPU, 12282 MiB, 580.82.07, 8.9\n"
+        info = gpu.detect_gpu(
+            self.fs(),
+            runner({query: row, "nvidia-smi --version": "CUDA Version : 13.0\n"}),
+            "baremetal",
+        )
+        self.assertEqual(info.driver_cuda, "13.0")
+        banner = "| NVIDIA-SMI 580.82.07   Driver Version: 580.82.07   CUDA Version: 13.0 |\n"
+        info = gpu.detect_gpu(
+            self.fs(),
+            runner({query: row, "nvidia-smi --version": ("", 2), "nvidia-smi": banner}),
+            "baremetal",
+        )
+        self.assertEqual(info.driver_cuda, "13.0")
+        info = gpu.detect_gpu(self.fs(), runner({query: row}), "baremetal")
+        self.assertIsNone(info.driver_cuda)
+        self.assertTrue(info.usable)
+        self.assertIn("nvidia-smi did not report the CUDA version the driver supports", info.notes)
+
     def test_amd_is_reported_unsupported_and_vm_without_passthrough(self) -> None:
         self.put("/sys/bus/pci/devices/0000:03:00.0/vendor", "0x1002\n")
         self.put("/sys/bus/pci/devices/0000:03:00.0/class", "0x030000\n")
@@ -490,3 +535,133 @@ class TimeSyncTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+TCP_HEADER = (
+    "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt"
+    "   uid  timeout inode\n"
+)
+
+
+def tcp_line(address: str, port: int, inode: int, state: str = "0A") -> str:
+    """A line of /proc/net/tcp* (address already in the kernel's hex form)."""
+    return (
+        f"   0: {address}:{port:04X} 00000000:0000 {state} 00000000:00000000 00:00000000"
+        f" 00000000     0        0 {inode} 1 0000000000000000 100 0 0 10 0\n"
+    )
+
+
+class LabPortTest(TempRootCase):
+    PORTS = {"grafana": 18700, "otlp_grpc": 4317}
+
+    def listen(self, port: int, pid: str, cgroup: str, comm: str = "python3") -> None:
+        self.put("/proc/net/tcp", TCP_HEADER + tcp_line("0100007F", port, 777))
+        self.put(f"/proc/{pid}/comm", comm + "\n")
+        self.put(f"/proc/{pid}/cgroup", f"0::{cgroup}\n")
+        self.mkdir(f"/proc/{pid}/fd")
+        self.meta(symlinks={f"/proc/{pid}/fd/3": "socket:[777]"})
+
+    def test_parse_tcp_tables(self) -> None:
+        text = (
+            TCP_HEADER
+            + tcp_line("0100007F", 18700, 11)
+            + tcp_line("00000000", 22, 12)
+            + tcp_line("0100007F", 4317, 13, state="01")  # established, not listening
+        )
+        self.assertEqual(
+            lab.parse_tcp_table(text),
+            [("127.0.0.1", 18700, "11"), ("0.0.0.0", 22, "12")],  # noqa: S104 - parsed, not bound
+        )
+        six = TCP_HEADER + tcp_line("00000000000000000000000001000000", 4318, 14)
+        self.assertEqual(lab.parse_tcp_table(six), [("::1", 4318, "14")])
+
+    def test_a_process_outside_the_lab_is_reported(self) -> None:
+        self.listen(18700, "4242", "/user.slice/user-1000.slice/session-2.scope")
+        (found,) = lab.port_conflicts(self.fs(), self.PORTS)
+        self.assertEqual((found.id, found.severity), ("lab_port_in_use", "needs_action"))
+        self.assertIn("Lab port 18700 (grafana) is in use by python3 (PID 4242)", found.message)
+        self.assertIn("ports: {grafana: <free port>}", found.remediation)
+        # Moving the lab's port away solves it.
+        self.assertEqual(lab.port_conflicts(self.fs(), {"grafana": 18750}), [])
+
+    def test_the_labs_own_listeners_are_not_conflicts(self) -> None:
+        for cgroup in (
+            "/pinka-services.slice/docker-0123.scope",
+            "/system.slice/pinka-inference-control.service",
+        ):
+            self.listen(18700, "4242", cgroup, comm="grafana")
+            self.assertEqual(lab.port_conflicts(self.fs(), self.PORTS), [], cgroup)
+
+    def test_managed_daemons_are_the_labs(self) -> None:
+        self.listen(4317, "99", "/system.slice/docker.service", comm="docker-proxy")
+        self.put("/etc/docker/daemon.json", '{"bip": "172.30.0.1/24"}\n')
+        self.assertEqual(len(lab.port_conflicts(self.fs(), self.PORTS)), 1)
+        self.put("/etc/docker/daemon.json", "// Managed by pinka (daemon.json)\n{}\n")
+        self.assertEqual(lab.port_conflicts(self.fs(), self.PORTS), [])
+        self.listen(4317, "99", "/system.slice/incus.service", comm="incusd")
+        self.assertEqual(len(lab.port_conflicts(self.fs(), self.PORTS)), 1)
+        self.put("/etc/pinka/managed-incus", "")
+        self.assertEqual(lab.port_conflicts(self.fs(), self.PORTS), [])
+
+    def test_an_invisible_owner_is_a_warning(self) -> None:
+        self.put("/proc/net/tcp6", TCP_HEADER + tcp_line("0" * 32, 18700, 5))
+        (found,) = lab.port_conflicts(self.fs(), self.PORTS)
+        self.assertEqual((found.id, found.severity), ("lab_port_unknown_owner", "warning"))
+        self.assertIn("Run preflight as root", found.remediation)
+        self.assertEqual(lab.port_conflicts(self.fs(), {"grafana": 18750}), [])
+
+
+class VmCollectorAddressTest(TempRootCase):
+    DEFAULTS = {
+        "vm_collector": {"address": "198.18.0.1", "interface": "pinka-otlp0"},
+        "docker_address_pools": [{"base": "172.30.0.0/16", "size": 24}],
+        "tailnet": "100.64.0.0/10",
+    }
+
+    def check(self, address: str = "198.18.0.1", **commands: object) -> list[str]:
+        table = {
+            "ip -j addr": json.dumps(commands.get("addr", [])),
+            "ip -j route": json.dumps(commands.get("route", [])),
+        }
+        which = {}
+        if "incus" in commands:
+            table["incus network list --format json"] = json.dumps(commands["incus"])
+            which["incus"] = "/usr/bin/incus"
+        found = lab.vm_address_conflicts(
+            self.fs(), runner(table, which=which), address, self.DEFAULTS
+        )
+        return [c.message for c in found]
+
+    def test_free_address_and_the_labs_own_interface(self) -> None:
+        own = [
+            {
+                "ifname": "pinka-otlp0",
+                "addr_info": [{"family": "inet", "local": "198.18.0.1", "prefixlen": 32}],
+            }
+        ]
+        route = [{"dst": "default", "dev": "eth0"}, {"dst": "192.0.2.0/24", "dev": "eth0"}]
+        self.assertEqual(self.check(addr=own, route=route), [])
+
+    def test_every_kind_of_conflict(self) -> None:
+        addr = [
+            {
+                "ifname": "eth1",
+                "addr_info": [{"family": "inet", "local": "198.18.0.7", "prefixlen": 15}],
+            }
+        ]
+        (message,) = self.check(addr=addr)
+        self.assertIn("interface eth1 has 198.18.0.7/15", message)
+        (message,) = self.check(route=[{"dst": "198.18.0.0/24", "dev": "wg0"}])
+        self.assertIn("route 198.18.0.0/24 via wg0", message)
+        (message,) = self.check("172.30.4.1")
+        self.assertIn("Docker address pool 172.30.0.0/16", message)
+        self.put("/etc/docker/daemon.json", '{"default-address-pools": [{"base": "10.9.0.0/16"}]}')
+        (message,) = self.check("10.9.1.1")
+        self.assertIn("Docker address pool 10.9.0.0/16", message)
+        incus = [{"name": "r-abc", "config": {"ipv4.address": "10.20.30.1/24"}}]
+        (message,) = self.check("10.20.30.9", incus=incus)
+        self.assertIn("Incus network r-abc (10.20.30.0/24)", message)
+        (message,) = self.check("100.100.1.1")
+        self.assertIn("the tailnet range 100.64.0.0/10", message)
+        (message,) = self.check("not-an-address")
+        self.assertIn("is not an IPv4 address", message)

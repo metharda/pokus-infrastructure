@@ -84,6 +84,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `gpu.vram_gib` | number or null | yes | — |
 | `gpu.driver` | string or null | yes | — |
 | `gpu.compute_capability` | string or null | yes | — |
+| `gpu.driver_cuda` | string or null | yes | The highest CUDA version the loaded NVIDIA driver supports (major.minor, from nvidia-smi; on WSL2 the Windows driver's). |
 | `gpu.path` | one of `wsl-dxg`, `native`, `passthrough`, `null` | yes | — |
 | `gpu.driver_state` | one of `windows_driver`, `not_installed`, `installed_not_loaded`, `loaded`, `null` | yes | — |
 | `gpu.unsupported_devices` | array | yes | — |
@@ -132,6 +133,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `disabled_features[].feature` | string | yes | — |
 | `disabled_features[].impact` | string | yes | — |
 | `disabled_features[].unmet` | string | yes | — |
+| `disabled_features[].remediation` | string | no | What makes the feature available, when the matrix names it (for example the driver update of gpu_inference). |
 | `storage_backend` | one of `btrfs`, `lvm`, `null` | yes | Backend for the Incus pool; null means no quota-capable storage. |
 | `conflicts` | array | yes | — |
 | `unsupported_reasons` | array | yes | — |

@@ -112,7 +112,10 @@ def consent_text(profile: dict[str, Any], kind: str) -> list[str]:
     """
     if kind == "degraded":
         lines = ["The following optional features are disabled on this host:"]
-        lines += [f"  - {d['feature']}: {d['impact']}" for d in profile["disabled_features"]]
+        lines += [
+            f"  - {d['feature']}: {d['impact']} {d.get('remediation', '')}".rstrip()
+            for d in profile["disabled_features"]
+        ]
         return lines
     lines = [
         f"This host is on the experimental tier (OS tier: {profile['os_tier']}, "

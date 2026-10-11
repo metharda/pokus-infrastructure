@@ -14,7 +14,7 @@ description: Every command and option of pinka-platform, the contract v2 validat
 `pinka-platform` checks a platform release against contract v2 before anything on the host changes, and deploys it. Platform developers run `validate` on their releases (see [Platform manifest](../platform-manifest.md)); the platform role runs the `deploy` steps on the lab host, and `pinka platform purge` runs `purge` (see [Platform records](../platform-records.md)).
 
 ```text
-pinka-platform [-h] {validate,deploy,purge} ...
+pinka-platform [-h] {validate,deploy,purge,hook,hook-exec} ...
 ```
 
 Validate a platform release against contract v2: the manifest's schema, the reserved names and the host, the invariant checks and the release's files.
@@ -44,7 +44,7 @@ Validate a staged release directory and print every problem, or a summary.
 pinka-platform deploy [-h] [--settings SETTINGS] [--run RUN]
                              [--inspect] [--contract CONTRACT] [--root ROOT]
                              [--no-host-check]
-                             {prepare,build,pull,publish,retire-plan,render,principals,activate,clean}
+                             {prepare,build,pull,publish,retire-plan,render,principals,migrate,activate,clean}
 ```
 
 One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one JSON object. prepare fetches, stages and validates and writes a run directory below the staging directory; the other steps work on that run directory.
@@ -81,11 +81,45 @@ Remove a replaced platform's releases, content, state, restricted area and datab
 | `--root` | `ROOT` | — | prefix for every host path (tests and fixtures; default: /) |
 | `--no-host-check` | — | — | skip the checks against the accounts, groups and commands of this host |
 
+## pinka-platform hook
+
+```text
+pinka-platform hook [-h] [--timeout SECONDS] [--until-healthy SECONDS]
+                           [--contract CONTRACT] [--root ROOT]
+                           {drain,health}
+```
+
+Run the active platform's drain or health hook in its own transient unit (an instance of pinka-hook@, §12.9) and print the result as JSON. Without an active platform, or when the manifest declares no such hook, the result is skipped.
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `hook` | — | — | the hook |
+| `-h`, `--help` | — | — | show the help and exit |
+| `--timeout` | `SECONDS` | — | the hook's timeout (default: the manifest's timeout_seconds); drain also gets it as --timeout |
+| `--until-healthy` | `SECONDS` | — | health: run the hook every few seconds until it answers ok or SECONDS pass |
+| `--contract` | `CONTRACT` | `/home/user/pokus/infra/contract` | contract directory (default: the installed contract) |
+| `--root` | `ROOT` | — | prefix for every host path (tests; default: /) |
+
+## pinka-platform hook-exec
+
+```text
+pinka-platform hook-exec [-h] --hook {migrate,reconcile,drain,health}
+                                ...
+```
+
+Run a release's hook command, capture the one JSON line it prints on stdout and print the judged result (§12.9). The hook's stderr goes to the journal.
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `argv` | — | — | -- then the release's command and arguments |
+| `-h`, `--help` | — | — | show the help and exit |
+| `--hook` | `migrate`, `reconcile`, `drain`, `health` | — | the hook |
+
 ## Exit codes
 
 | Code | Name | Meaning |
 | --- | --- | --- |
 | 0 | `valid` | the release passed every check, or the deployment step succeeded |
-| 1 | `failed` | a deployment step failed (fetch, build, image pull, publish, purge); the reason is printed |
+| 1 | `failed` | a deployment step failed (fetch, build, image pull, publish, migrate, purge), or a hook failed; the reason is printed |
 | 2 | `usage` | wrong arguments |
 | 65 | `refused` | the release breaks contract v2; every reason is printed |

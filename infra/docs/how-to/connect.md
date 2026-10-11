@@ -73,9 +73,11 @@ Grafana can also be published on the tailnet by the operator
 ## Read the documentation on the lab
 
 The lab can serve its own documentation, so it is available without internet
-access. The operator extracts the documentation tarball of the lab's release
-into `/usr/local/share/pinka/docs/` once. Then anyone with an account starts
-the server on the lab:
+access. When the operator has installed a documentation release
+([How to serve a documentation release on the lab](install-docs-release.md)),
+the docs service already serves it on port 18706: forward that port as above.
+On a lab without the service, anyone with an account can start a server for
+the installed release by hand:
 
 <!-- qa:run env=E2 -->
 ```bash

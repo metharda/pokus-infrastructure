@@ -56,6 +56,7 @@ oneshot
 osinfo
 pacman
 peercred
+pgdg
 pgdump
 pgpass
 pids

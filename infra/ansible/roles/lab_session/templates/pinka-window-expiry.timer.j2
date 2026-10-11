@@ -1,0 +1,13 @@
+# Managed by pinka (ansible/roles/lab_session/templates/pinka-window-expiry.timer.j2). Local changes will be overwritten.
+#
+# Checks every minute whether the staging lab's maintenance window has ended
+# (BUILD_PROMPT §7.20).
+[Unit]
+Description=Check the end of the staging lab's maintenance window
+
+[Timer]
+OnCalendar=minutely
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

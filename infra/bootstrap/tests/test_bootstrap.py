@@ -948,3 +948,33 @@ def test_bootstrap_sh_is_executable() -> None:
     for script in ("bootstrap.sh", "lib/prepreflight.sh"):
         assert os.access(BOOTSTRAP / script, os.X_OK), script
     assert shutil.which("bash")
+
+
+def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
+    # BUILD_PROMPT §2.2, §12.11: preflight checks the ports and the VM collector
+    # address the machine configures, not only the defaults.
+    host_vars = tmp_path / "ansible" / "inventory" / "host_vars"
+    host_vars.mkdir(parents=True)
+    script = f"INFRA_DIR={q(tmp_path)} OPT_MACHINE=lab1; lab_preflight_args"
+    cases = {
+        "x: 1\n": "",
+        "ports: {}\n": "",
+        "ports: {grafana: 18750, loki : 18752}  # moved\n": (
+            "--port=grafana=18750\n--port=loki=18752\n"
+        ),
+        "ports:\n  grafana: 18750  # moved\n\n  # a comment\n  loki: 18752\nother: 1\n  x: 2\n": (
+            "--port=grafana=18750\n--port=loki=18752\n"
+        ),
+        "vm_collector_address: 198.19.0.1\nports: {}\n": "--vm-collector-address=198.19.0.1\n",
+    }
+    for text, expected in cases.items():
+        (host_vars / "lab1.yml").write_text(text)
+        res = bash(script)
+        assert (res.returncode, res.stdout) == (0, expected), (text, res.stderr)
+    for text in ("ports: {grafana: '18750'}\n", "ports:\n  grafana: high\n", "ports: [18750]\n"):
+        (host_vars / "lab1.yml").write_text(text)
+        res = bash(script)
+        assert res.returncode == 77, text
+        assert "must map port names to numbers" in res.stderr
+    (host_vars / "lab1.yml").unlink()
+    assert bash(script).stdout == ""

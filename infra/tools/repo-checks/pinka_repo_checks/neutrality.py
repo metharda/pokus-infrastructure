@@ -16,7 +16,9 @@ of ``neutrality.json``:
   names and the display names (``allowed``, ``display``).
 
 Test fixtures, the documentation and the reserved-name list are excluded
-(§11), and each further exclusion in :data:`EXCLUDED` carries its reason. The
+(§11), and each further exclusion in :data:`EXCLUDED` carries its reason; the
+one temporary exclusion, :data:`TEMPORARY_EXCLUSIONS_UNTIL_3D7`, is named apart
+and must be gone after plan step 3d.7. The
 allowed forms apply to this lint over repository code only: target images, the
 platform's trace-cleanup scan and its ticket lint allow none of these names.
 
@@ -33,6 +35,8 @@ import sys
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from pinka_repo_checks.trees import THIRD_PARTY_TREES, in_third_party_tree
 
 LISTS = json.loads((Path(__file__).parent / "neutrality.json").read_text(encoding="utf-8"))
 FORBIDDEN_SUBSTRING: str = LISTS["substring"]
@@ -65,15 +69,17 @@ EXCLUDED: tuple[tuple[str, str], ...] = (
     ),
     ("*.lock", "generated lock files: third-party names and hashes"),
     ("package-lock.json", "generated lock file: third-party names and hashes"),
+)
+# V5, the one temporary exclusion (owner decision with the "commit" for 3d.3):
+# plan step 3d.7 rewrites the installer's sources screen and answers schema for
+# contract v2 and must delete this tuple; 3d.7 is not done while it exists.
+TEMPORARY_EXCLUSIONS_UNTIL_3D7: tuple[tuple[str, str], ...] = (
     (
         "installer/*",
-        "until plan step 3d.7: the installer's sources screen and answers schema still have "
-        "contract v1's components of the release and its content (BUILD_PROMPT §16 step 21)",
+        "the installer's sources screen and answers schema still have contract v1's "
+        "components of the release and its content (BUILD_PROMPT §16 step 21)",
     ),
-    (
-        "tests/answers/*",
-        "until plan step 3d.7: answers files of the installer's contract v1 schema",
-    ),
+    ("tests/answers/*", "answers files of the installer's contract v1 schema"),
 )
 # Lines that may name the project or the platform, by file: a line that is
 # exactly one of the listed quoted words (``"word",``); the reasons are in
@@ -119,6 +125,9 @@ def excluded(relative: str) -> str | None:
     for pattern, reason in EXCLUDED:
         if fnmatch.fnmatch(relative, pattern) or fnmatch.fnmatch(f"./{relative}", pattern):
             return reason
+    for pattern, reason in TEMPORARY_EXCLUSIONS_UNTIL_3D7:
+        if fnmatch.fnmatch(relative, pattern):
+            return f"until plan step 3d.7: {reason}"
     return None
 
 
@@ -199,14 +208,14 @@ def _git_files(root: Path) -> list[str] | None:
     return sorted({p for p in done.stdout.decode().split("\0") if p})
 
 
-_SKIP_DIRS = {".git", ".venv", "node_modules", "site", "build", "__pycache__", ".pytest_cache"}
+_SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", *THIRD_PARTY_TREES}
 
 
 def _walk(root: Path) -> list[str]:
     out = []
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
-        if any(part in _SKIP_DIRS or part.startswith(".ansible") for part in relative.parts):
+        if in_third_party_tree(relative) or any(part in _SKIP_DIRS for part in relative.parts):
             continue
         if path.is_file():
             out.append(relative.as_posix())
@@ -264,9 +273,14 @@ def run(root: Path) -> int:
         print(f"neutrality: {len(findings)} finding(s)", file=sys.stderr)
         return 1
     print("neutrality: no platform-specific names in infra's code")
+    for pattern, _ in TEMPORARY_EXCLUSIONS_UNTIL_3D7:
+        print(f"neutrality: {pattern} is excluded until plan step 3d.7 removes it (V5)")
     return 0
 
 
 def exclusions() -> Sequence[tuple[str, str]]:
     """The excluded paths with their reasons (for the documentation)."""
-    return EXCLUDED
+    return (
+        *EXCLUDED,
+        *((p, f"until plan step 3d.7: {r}") for p, r in TEMPORARY_EXCLUSIONS_UNTIL_3D7),
+    )

@@ -1,0 +1,16 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "features": {
+    "dcgm_metrics": true,
+    "gpu_inference": false,
+    "vm_targets": true
+  },
+  "outcome": "degraded",
+  "provider": "baremetal",
+  "remediation_contains": [
+    "supports CUDA 12.8, the pinned vLLM image needs 13.0",
+    "install a driver branch that supports CUDA 13.0"
+  ]
+}

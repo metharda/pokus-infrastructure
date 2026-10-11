@@ -2687,3 +2687,185 @@ that the agent has no IP access and no database socket group"), §7.14 step
   starting the rendered units and socket activation, the socket-ACL helper
   on `/run`, the run-network helper against Incus, the certificates' trust
   entries, the two build phases, and the SQL on PostgreSQL 18.
+
+### Owner decisions on 3d.3 (with the "commit")
+
+- V3 approved, and carried into the requests for the next platform spec edit
+  (wheels only, the build backend locked in a `build` dependency group).
+- V4 approved on one condition: a service that needs its own runtime
+  directory gets one at a separate path that contains no sockets (3d.4).
+- V5 approved only as an explicit, named exclusion in the lint configuration
+  with a comment pointing to 3d.7; 3d.7 must remove it.
+- Ground-truth blindness: the agent must see only the active release,
+  resolved at render time; the answer and the proposal (V6) are in
+  `../PROGRESS.md`; the fix follows in 3d.4.
+- 3d.4 also records which sockets fell back to 0666 (doctor warns), runs the
+  restricted-schema SQL tests against PostgreSQL 18 from PGDG in CI, and makes
+  `make setup` verify the lint collections against the lock.
+- The new repository gets only `main` and `moving/on`, which becomes the
+  working branch (root `CLAUDE.md`).
+
+## Contract v2, step 4: operations (plan step 3d.4)
+
+BUILD_PROMPT §16 step 18, the 3d.3 follow-ups and the answer on
+ground-truth blindness:
+
+- **Hooks (§12.9).** Every hook runs as a transient unit
+  `pinka-hook@<platform>-<hook>-<id>.service` (`systemd-run --wait --collect
+  --service-type=exec`) with the hardening of the account it runs as,
+  `RuntimeMaxSec` from the manifest, `StandardOutput=file:` a result file in
+  `/run/pinka/hooks/` and `StandardError=journal`; `pinka-platform hook-exec`
+  inside it judges the one JSON line (`ok` or `drained` true and exit 0).
+  `reconcile` is a oneshot unit ordered before the services. The switch
+  (§7.14 step 8) drains and stops early on a release or content change,
+  migrates a new release, runs the restricted-schema check, activates and
+  starts; `start.yml` ends `site.yml` and waits for `health`.
+  `pinka start`, `stop`, `status` and `update-host` call the hooks.
+- **Health gate.** The clock always, then exactly the manifest's `requires`
+  read from `rendered.json` at every start; a facility this node lacks
+  fails the gate.
+- **Backup and restore (§7.15).** The platform's `backup.paths`, the fixed
+  restricted area, training data and adapters; doctor's
+  `backup.platform_state` lists state directories left out. Restore drains
+  first, redeploys the recorded release and content refs and waits for
+  `health`.
+- **Telemetry isolation (§7.9 option b, ADR-0016, proposed).** Platform
+  accounts get UIDs from 60578-61183; `inet pinka_telemetry_guard` drops
+  their connections to the stores and the query proxy's loopback port. The
+  query proxy (nginx, the golden images' pinned release) serves
+  `/run/pinka/query.sock` (a link to `/run/pinka/query/query.sock`, 0660
+  `pinka-query`) and `127.0.0.1:18733` for Grafana, with an allowlist of
+  query routes. The agent OTLP socket starts `systemd-socket-proxyd` to the
+  collector's `otlp/agent` receiver, which stamps `pinka.trust=untrusted`;
+  Loki indexes `pinka.trust` and the manifest's `telemetry.labels`
+  (`limits_config.otlp_config`).
+- **Driver CUDA (§2.2).** `cuda` of the vLLM image in `versions.lock.yml`
+  (re-verified: `CUDA_VERSION=13.0.2` in both platform images'
+  configuration, `NVIDIA_REQUIRE_CUDA` `cuda>=13.0`); preflight reads the
+  driver's CUDA version from `nvidia-smi --version` (falling back to the
+  banner of a plain `nvidia-smi`), `driver_cuda_min` compares major and minor
+  and a per-environment remediation names the update (on WSL2 on Windows);
+  doctor repeats it (`gpu.driver_cuda`); fixtures
+  `ubuntu2404-baremetal-nvidia-old-driver` and `ubuntu2404-wsl2-gpu-old-driver`.
+- **Ports (§12.11).** `pinka_default_ports`, the host_vars `ports:`
+  overrides and the effective `pinka_ports` (validated in
+  `platform_facts`); `vm_collector_address` with its check. Bootstrap passes
+  the overrides to preflight (`--port`, `--vm-collector-address`), and so do
+  the preflight gate and doctor. Preflight reports a lab port another program
+  listens on (`lab_port_in_use`, needs_action) and a VM collector address
+  already assigned, routed, or inside the Docker pools, an Incus network or
+  the tailnet range (`vm_collector_address_conflict`); fixtures
+  `ubuntu2404-lab-port-in-use` and `ubuntu2404-vm-collector-address-routed`.
+  Unlisted releases of the implemented distributions are now explicitly
+  unsupported (St2-3).
+- **Doctor from the rendering (§7.17).** `systemd.hardening` compares the
+  `systemctl show` values of each platform unit with `hardening` in
+  `rendered.json` (per profile); `sockets.permissions` reads the rendered
+  sockets and names the agent's; `sockets.agent_view` lists the sockets the
+  running agent finds through `/proc/<pid>/root`; `platform.manifest`
+  validates the active release again and compares its manifest hash with
+  `active.json` and the provenance. The v1 `sockets.json` path is gone.
+- **Records.** `contract/records/session-record.schema.json` (new) and the
+  fingerprint schema, moved from `tools/pinka-lab/schema/` to
+  `contract/records/fingerprint.schema.json`.
+- **Docs service (§7.19, P3c).** The `docs` role, `pinka-docs.service`
+  (`pinka docs serve` as a dynamic user), `pinka docs install` (checksum,
+  safe unpacking, `current` switched in one step, three versions kept) and
+  `docs rollback`, `docs_release`, `docs_tailscale_serve`, doctor
+  `docs.service`.
+- **Maintenance windows (§7.20, P3d).** `pinka window open|close|expire`,
+  the record, refusals in `pinka start`, the health gate's window rule, the
+  expiry timer (staging on shared hardware), doctor `lab.window`.
+- **Agent view.** The agent binds only the release being deployed, resolved at
+  render time (`releases/<name>`, never the `current` link or other
+  releases), and runs from it; a test lists what it may see and fails for
+  other releases, content packages, other services' state, configuration,
+  sockets and runtime directories, secrets and infra's internals.
+
+### Verified in 3d.4
+
+- systemd v252 and v255 sources: `systemd-run --pipe` overrides
+  `StandardError=` (hence the result files); `systemctl show` prints booleans
+  as `yes`/`no`, string properties as written and an address-family allow
+  list as names (deny lists with `~`); `docs/UIDS-GIDS.md` lists
+  60578-61183 as unused.
+- iproute2 (commit `e11870d5b9414b2e0770463bd6fc2399744dc734`): the JSON keys
+  `ifname`, `addr_info`, `family`, `local`, `prefixlen`, `dst` and `dev`, and
+  `dst` `default` for the default route.
+- nvidia_gpu_exporter v1.15.1 (commit `87afc069c5ce6a37b13db58989ec0f30d9b87217`):
+  the `nvidia-smi --version` line `CUDA Version : 13.1` and the banner's
+  `CUDA Version: 13.1` in its captures of drivers 590 and 595; its parser
+  also reads `CUDA UMD version` (drivers of the 610 branch); the
+  `--query-compute-apps` fields `pid` and `process_name`.
+- The vLLM image's configuration (registry API, 2026-10-10): `CUDA_VERSION`
+  and `NVIDIA_REQUIRE_CUDA` above.
+- restic v0.19.1: `dump` of a recorded file for `platform-record`.
+- Prometheus v3.15.0, Loki v3.7.8 and Tempo v2.10.8 sources: the query
+  routes of the proxy's allowlist and Loki's `otlp_config`.
+- Incus: `config` of `incus network list --format json` with
+  `ipv4.address` in CIDR form.
+
+### Interpretations awaiting owner confirmation (3d.4)
+
+- ADR-0016 (telemetry isolation by UID range and nftables guard, option b):
+  proposed. Researchers and infra's own accounts can still query the stores
+  on the loopback directly; an allowlist of infra UIDs would close that.
+- The query socket is a link (`/run/pinka/query.sock` →
+  `/run/pinka/query/query.sock`): the proxy container cannot create a
+  socket in root-owned `/run/pinka`. The agent socket speaks OTLP/HTTP.
+- The restricted-schema check runs after `migrate` and also at render.
+- Restore redeploys the recorded release and content refs from the mirrors
+  of the current host_vars repositories.
+- Driver CUDA: major and minor compared (nvidia-smi reports no patch level;
+  the image requires `cuda>=13.0`); a GPU whose driver reports no CUDA
+  version keeps `gpu_inference` off with the "unknown" remediation.
+- Ports: preflight reads listeners from `/proc/net/tcp*` and their owners
+  from `/proc/<pid>/fd` instead of `ss` (stable kernel interface, no parsing
+  of `ss` output); a process belongs to the lab when its cgroup is
+  `pinka-services.slice` or a `pinka-` unit, or it is the Docker or Incus
+  daemon the lab manages; a listener whose owner preflight cannot see is a
+  warning. Bootstrap reads `ports:` only as indented lines or a one-line
+  mapping. The VM address is checked only when KVM is usable. The Docker
+  pools checked are the lab's default plus those in `daemon.json`.
+- Doctor's hardening check compares the properties `systemctl show` prints
+  as written (a fixed list), the address families and the inaccessible
+  paths; `platform.manifest` validates with `--built --no-host-check`.
+- Docs service: version directories are named after the tarball (or
+  `--version`); `tailscale serve` uses HTTPS port 10000; `docs.service` is a
+  warning.
+- Windows: `window open` refuses on staging with its own hardware;
+  `window close` on staging stops a running staging lab first; the health
+  gate fails at once on a window (also for staging outside its window at
+  boot); the expiry timer checks every minute; the staging start check counts
+  any listener on a configured port that is not this host's lab, an unknown
+  owner included; staging on its own hardware ignores the record entirely
+  (also a broken one).
+- The installer keeps an explicit `null` in `group_vars/all/main.yml`
+  (`docs_release: null`): its round trip now writes every null as `null`, so
+  a key an operator left empty comes back as `key: null` (same value).
+- The contract document's port table (`docs/contracts.md`) is updated with
+  the contract v2 documentation in 3d.8.
+- V6 proper (proposal in `../PROGRESS.md`): the agent sees the whole active
+  release now, not yet only its own package and environment. Narrowing to
+  the package needs a manifest field for agent services and a build change
+  (an environment of their own), a contract change for the owner.
+
+### Findings to report (3d.4)
+
+- The vLLM image's `TORCH_CUDA_ARCH_LIST` on amd64 starts at 7.5, while the
+  support matrix (and §2.3) accepts compute capability 7.0 for
+  `gpu_inference`: a 7.0 GPU passes preflight but vLLM has no kernels for it.
+- There is no `platform/docs/contracts.md` in this repository, although
+  `CLAUDE.md` asks for byte identity with it (C1 goes in 3f).
+- The installer's recorded event streams (`installer/tests/data/`) still
+  carried the `catalog` role removed in 3d.2; re-recorded with the `docs`
+  role (only timings differ otherwise), and the progress screenshots with
+  them.
+- Not verified on a real host: hooks in transient units, the telemetry
+  guard and the query proxy, the agent socket, the docs service under
+  `DynamicUser=`, the window rules at boot, the port and address checks on a
+  running lab, the agent's view through `/proc/<pid>/root`.
+
+### Open `TODO(verify)` items after 3d.4
+
+- `tailscale serve --https=10000` in the pinned Tailscale (docs service).

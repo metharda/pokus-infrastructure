@@ -24,6 +24,11 @@ from pinka_platform import accounts, database, layout, names, units
 from pinka_platform.contract import Contract
 
 RENDER_VERSION = 1
+# The key of rendered.json that the socket-ACL helper keeps up to date at
+# every start of a socket: the sockets that fell back to mode 0666 because
+# /run has no ACL support (owner decision with the "commit" for 3d.3). It is
+# present only while the list is not empty; doctor warns about each socket.
+SOCKET_ACL_FALLBACK = "socket_acl_fallback"
 
 
 def _strip(path: str) -> str:
@@ -78,6 +83,22 @@ def _directories(manifest: Mapping[str, Any], contract: Contract) -> list[dict[s
 
 def _controller(manifest: Mapping[str, Any]) -> str:
     return str(next(s["name"] for s in manifest["services"] if s["profile"] == "controller"))
+
+
+def _socket(platform: str, socket: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
+    # What doctor compares the bound socket with (§12.3). Without ACL support
+    # on /run the helper makes it 0666 and records that in rendered.json
+    # (SOCKET_ACL_FALLBACK); doctor then warns.
+    service, name = socket["service"], socket["name"]
+    return {
+        "path": layout.socket_path(service, name),
+        "unit": units.socket_unit(platform, service, name),
+        "owner": names.account(platform, service),
+        "group": names.client_group(platform, service, name),
+        "mode": "0660",
+        "acl": [f"group:{g}:rw-" for g in units.human_groups(socket, contract)],
+        "untrusted_clients": bool(socket.get("untrusted_clients", False)),
+    }
 
 
 def config_text(value: Mapping[str, Any]) -> str:
@@ -143,7 +164,8 @@ def render(
     requires = set(manifest.get("requires", []))
     acc = accounts.render(manifest, contract)
     by_name = {a["name"]: a for a in acc["accounts"]}
-    unit_texts = units.render(manifest, contract, by_name, ports)
+    # The agent's units name the release itself (resolved now), never the link.
+    unit_texts = units.render(manifest, contract, by_name, ports, release=release_target)
     controller = names.account(p, _controller(manifest))
     previous = previous if previous and previous.get("platform") == p else None
     previous_units = {u["name"] for u in (previous or {}).get("units", [])}
@@ -234,6 +256,8 @@ def render(
         "socket_units": [
             units.socket_unit(p, s["service"], s["name"]) for s in manifest.get("sockets", [])
         ],
+        "sockets": [_socket(p, s, contract) for s in manifest.get("sockets", [])],
+        "hardening": units.hardening(manifest, contract, by_name, ports, release=release_target),
         "database": db,
         "incus_certificates": certificates,
         "signing": {
@@ -248,6 +272,12 @@ def render(
         "opa": opa,
         "dashboards": dashboards,
         "telemetry_labels": list(manifest.get("telemetry", {}).get("labels", [])),
+        # Every declared state directory: doctor lists those backup.paths leaves out.
+        "state_dirs": [
+            layout.state_dir(p, s["name"], d)
+            for s in manifest["services"]
+            for d in s.get("state", [])
+        ],
         "backup": {
             "database": bool(manifest.get("backup", {}).get("database", False)) and db is not None,
             "paths": [

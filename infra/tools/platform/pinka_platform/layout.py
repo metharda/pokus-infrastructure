@@ -41,7 +41,17 @@ CLI_BIN_DIR = "/usr/local/bin"
 CLI_WRAPPER_DIR = "/usr/local/lib/pinka/platform/cli"
 LIBEXEC = "/usr/local/libexec/pinka"
 SOCKET_ACL_HELPER = f"{LIBEXEC}/socket-acl"
+# The deployment tool; hooks run through its hook-exec wrapper (§12.9).
+PLATFORM_TOOL = f"{LIBEXEC}/pinka-platform"
+# Root-only (0700): systemd opens a hook unit's stdout here as root before
+# the unit drops to its account; the caller reads the result and deletes it.
+HOOK_RESULTS_DIR = f"{RUN}/hooks"
 SERVICE_HOME_DIR = VAR_LIB
+# The UIDs of platform accounts (§7.9 option b, ADR-0016): unused in systemd's
+# allocation table (UIDS-GIDS.md, v255); the telemetry guard drops their
+# connections to the telemetry backends. Equal to pinka_platform_uids.
+PLATFORM_UID_MIN = 60578
+PLATFORM_UID_MAX = 61183
 # Paths no platform unit may reach (BUILD_PROMPT §7.14 "infra internals").
 INFRA_INTERNALS = (
     f"{VAR_LIB}/git",
@@ -95,6 +105,25 @@ def config_file(service: str) -> str:
         ``/etc/pinka/platform/config/<service>.json``.
     """
     return f"{CONFIG_DIR}/{service}.json"
+
+
+# Each service's own runtime directory, apart from its sockets (V4, owner
+# decision with the "commit" for 3d.3): systemd creates it at start
+# (RuntimeDirectory=, 0700, owned by the service's account) and removes it
+# at stop; infra puts nothing in it.
+PLATFORM_RUNTIME_DIR = f"{RUN}/platform-runtime"
+
+
+def runtime_dir(service: str) -> str:
+    """The runtime directory of a platform service.
+
+    Args:
+        service: Service name.
+
+    Returns:
+        ``/run/pinka/platform-runtime/<service>``.
+    """
+    return f"{PLATFORM_RUNTIME_DIR}/{service}"
 
 
 def socket_path(service: str, socket: str) -> str:

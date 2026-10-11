@@ -1,0 +1,19 @@
+#!/usr/sbin/nft -f
+# Managed by pinka (ansible/roles/firewall/templates/pinka-telemetry-guard.nft.j2). Local changes will be overwritten.
+#
+# The telemetry guard (BUILD_PROMPT §7.9 option b, ADR-0016): platform
+# accounts (UIDs {{ pinka_platform_uids.min }}-{{ pinka_platform_uids.max }}) never connect to Prometheus, Loki,
+# Tempo, the collector's metrics exporter or the query proxy's loopback port;
+# they query telemetry only through the proxy's socket (group pinka-query)
+# and send it only to the collector's OTLP receivers. Only this table is
+# replaced, on every firewall backend; tables of Docker, Incus, firewalld
+# and ufw are not touched.
+table inet pinka_telemetry_guard
+delete table inet pinka_telemetry_guard
+
+table inet pinka_telemetry_guard {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		meta skuid {{ pinka_platform_uids.min }}-{{ pinka_platform_uids.max }} tcp dport { {{ pinka_telemetry_guard_ports | join(', ') }} } drop
+	}
+}

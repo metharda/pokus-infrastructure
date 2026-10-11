@@ -4,16 +4,21 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Start the lab, stop it without losing runs by draining the orchestrator first, and know what happens after a power loss.
+description: Start the lab and its platform, stop it without losing work by running the platform's drain hook first, and know what happens after a power loss.
 ---
 
 # How to start, stop and drain the lab
 
 The lab is up while `pinka-lab.target` is active: the Compose projects, the
 sleep inhibitor (bare metal and VMs with `power_policy:
-lab_session_inhibit`) and later the platform's services belong to it. Starting
-it waits for the [health gate](../explanation/lab-session.md); stopping it with
-`pinka stop` first lets running benchmark runs finish.
+lab_session_inhibit`) and the platform's `pinka-platform.target` belong to it.
+Starting it waits for the [health gate](../explanation/lab-session.md) and the
+platform's `health` hook; stopping it with `pinka stop` first runs the
+platform's `drain` hook, so its work ends cleanly or is recorded as
+interrupted. Infra knows the platform only through these hooks; each runs in
+its own transient unit `pinka-hook@<platform>-<hook>-<id>.service` under the
+platform controller's account and hardening, and writes its diagnostics to
+the journal.
 
 !!! note "Prerequisites"
     - A lab host provisioned by bootstrap (`pinka` is installed with it).
@@ -28,14 +33,20 @@ it waits for the [health gate](../explanation/lab-session.md); stopping it with
     sudo pinka start
     ```
 
-    The command returns when the health gate has passed and this boot's session
-    record exists. If the gate fails, the command fails too; see
+    The command returns when the health gate has passed, this boot's session
+    record exists and the platform's `health` hook answers ok. Before the
+    platform's services start, its `reconcile` hook runs once (the unit
+    `<platform>-reconcile.service`); if it fails, no service starts. If the
+    gate fails, the command fails too; see
     [Fix a failed doctor check](fix-doctor-checks.md#check-lab-health_gate).
+    If the platform stays unhealthy for `lab.health_wait` seconds (300 by
+    default, `doctor_health_wait` in the host_vars file), the command says
+    so and exits with 1; the lab keeps running.
 
 2. The lab starts at boot unless `lab_session_autostart: false` is set in the
    host_vars file. With autostart off, start it by hand after every boot.
 
-## Stop the lab and drain the orchestrator
+## Stop the lab and drain the platform
 
 1. Stop the lab:
 
@@ -44,16 +55,18 @@ it waits for the [health gate](../explanation/lab-session.md); stopping it with
     sudo pinka stop --timeout 1800
     ```
 
-    `pinka stop` asks the orchestrator to drain through its socket
-    `/run/pinka/orch/api.sock`: it starts no new runs and waits until the
-    running ones end. When none are left, or after `--timeout` seconds,
-    `pinka-lab.target` and everything that belongs to it stop. Runs still active
-    at the timeout are stopped with the lab and recorded as interrupted. Before
-    the platform is deployed there is no orchestrator socket and nothing to
-    drain.
+    `pinka stop` runs the platform's `drain` hook with `--timeout 1800`: the
+    platform starts no new work and waits until the running work ends. The
+    hook answers when it is done; then `pinka-platform.target` stops, then
+    `pinka-lab.target` and everything else that belongs to it. Without
+    `--timeout`, the drain gets `lab.drain_timeout` seconds (1800 by default,
+    `doctor_drain_timeout` in the host_vars file). If the drain fails or
+    does not answer in time, systemd stops the hook and the services stop
+    anyway; the platform records what was interrupted. Without a platform
+    there is nothing to drain.
 
-2. To stop without waiting, give a timeout of 0. Use it only when no runs
-   matter, for example on a staging host.
+2. To stop with the shortest drain, give a timeout of 1 second. Use it only
+   when no work matters, for example on a staging host.
 
 ## What happens after a power loss
 
@@ -74,15 +87,18 @@ On WSL the Linux side stops when Windows sleeps or shuts down; see
 
 ## Verify the lab state
 
-1. Show the units, containers, Incus instances, GPU, disk and the last backup:
+1. Show the units, the platform and its health, containers, Incus
+   instances, GPU, disk and the last backup:
 
     <!-- qa:run env=E2 -->
     ```bash
     sudo pinka status
     ```
 
-    After `start`, `pinka-lab.target` and its units are `active`; after `stop`,
-    they are `inactive`.
+    After `start`, `pinka-lab.target`, `pinka-platform.target` and their
+    units are `active` and the platform's health is `healthy` (the `health`
+    hook runs once; without root it is not run); after `stop`, they are
+    `inactive`.
 
 2. After a start, run all checks:
 

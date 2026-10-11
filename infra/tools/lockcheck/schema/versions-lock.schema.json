@@ -153,6 +153,14 @@
             "vllm",
             "cuda_base_test"
           ],
+          "properties": {
+            "vllm": {
+              "$ref": "#/$defs/image",
+              "required": [
+                "cuda"
+              ]
+            }
+          },
           "propertyNames": {
             "$ref": "#/$defs/identifier"
           },
@@ -598,6 +606,18 @@
               "linux/arm64"
             ]
           }
+        },
+        "cuda": {
+          "description": "The CUDA version the image is built on (its CUDA_VERSION); preflight and doctor compare it with the driver (BUILD_PROMPT \u00a72.2).",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+            },
+            {
+              "$ref": "#/$defs/todo"
+            }
+          ]
         }
       }
     }

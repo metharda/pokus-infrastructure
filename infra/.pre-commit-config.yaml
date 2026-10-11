@@ -1,6 +1,8 @@
 # Managed by pinka (.pre-commit-config.yaml).
 # Local hooks only: they call the same make targets as CI, so no hook code is
 # fetched from the network. Install with: .venv/bin/pre-commit install
+# Third-party and generated trees are never passed to a hook.
+exclude: ^(\.ansible-collections|\.venv|node_modules|site|build)/
 repos:
   - repo: local
     hooks:

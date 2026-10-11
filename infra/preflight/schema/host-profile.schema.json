@@ -457,6 +457,7 @@
         "vram_gib",
         "driver",
         "compute_capability",
+        "driver_cuda",
         "path",
         "driver_state",
         "unsupported_devices",
@@ -514,6 +515,14 @@
             "string",
             "null"
           ]
+        },
+        "driver_cuda": {
+          "description": "The highest CUDA version the loaded NVIDIA driver supports (major.minor, from nvidia-smi; on WSL2 the Windows driver's).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+\\.[0-9]+$"
         },
         "path": {
           "enum": [
@@ -821,6 +830,10 @@
             "type": "string"
           },
           "unmet": {
+            "type": "string"
+          },
+          "remediation": {
+            "description": "What makes the feature available, when the matrix names it (for example the driver update of gpu_inference).",
             "type": "string"
           }
         }

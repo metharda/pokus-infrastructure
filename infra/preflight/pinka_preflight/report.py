@@ -196,6 +196,7 @@ def build_report(
             "vram_gib": gpu.vram_gib,
             "driver": gpu.driver,
             "compute_capability": gpu.compute_capability,
+            "driver_cuda": gpu.driver_cuda,
             "path": gpu.path,
             "driver_state": gpu.driver_state,
             "unsupported_devices": list(gpu.unsupported_devices),

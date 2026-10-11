@@ -18,10 +18,11 @@ pinka-preflight [-h] [--root PATH] [--output FILE] [--offline]
                        [--srv-path PATH] [--accept-degraded]
                        [--accept-experimental] [--force-unsupported]
                        [--adopt-incus] [--nvidia-driver {auto,manual,skip}]
-                       [--accept-mok-enrollment] [--allow-dirty] [--no-write]
-                       [--color {auto,always,never}] [--quiet]
+                       [--accept-mok-enrollment] [--port NAME=PORT]
+                       [--vm-collector-address ADDRESS] [--allow-dirty]
+                       [--no-write] [--color {auto,always,never}] [--quiet]
                        [--repo-commit SHA] [--matrix FILE] [--endpoints FILE]
-                       [--version]
+                       [--lab-defaults FILE] [--version]
 ```
 
 Detect the host, decide whether the Pokus lab is supported on it, and print a JSON host profile. Read-only except for storing the profile on real runs as root.
@@ -41,6 +42,8 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--adopt-incus` | — | — | treat an existing, unmanaged Incus installation as a warning instead of a blocking conflict |
 | `--nvidia-driver` | `auto`, `manual`, `skip` | `auto` | the host's install_nvidia_driver setting, which decides how a missing driver is judged (default: auto) |
 | `--accept-mok-enrollment` | — | — | record consent that bootstrap installs the NVIDIA driver and imports a Machine Owner Key on a Secure Boot host (install_nvidia_driver: auto) |
+| `--port` | `NAME=PORT` | `[]` | a lab port overridden in host_vars (ports:), checked instead of its default; repeat for each override |
+| `--vm-collector-address` | `ADDRESS` | — | the host's vm_collector_address (default: the lab's default) |
 | `--allow-dirty` | — | — | record that bootstrap runs from an infra/ tree with uncommitted changes |
 | `--no-write` | — | — | never store the profile in /etc/pinka or /var/lib/pinka |
 | `--color` | `auto`, `always`, `never` | `auto` | color the summary (auto: only on a terminal and without NO_COLOR) |
@@ -48,6 +51,7 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--repo-commit` | `SHA` | — | commit to record as repo_commit (default: detected with git) |
 | `--matrix` | `FILE` | `infra/preflight/support-matrix.json` | compiled support matrix (JSON) |
 | `--endpoints` | `FILE` | `infra/preflight/endpoints.json` | compiled endpoint list (JSON) |
+| `--lab-defaults` | `FILE` | `infra/preflight/lab-defaults.json` | the lab's default ports and addresses (JSON) |
 | `--version` | — | — | show program's version number and exit |
 
 Exit codes: 0 supported, 10 degraded, 20 unsupported, 30 needs_action, 40 preflight_error. See [Exit codes](../exit-codes.md).

@@ -5,8 +5,19 @@
 # its database roles NOLOGIN and remove its Incus certificates from the trust
 # store. Its state, database, restricted area and releases stay on disk until
 # `pinka platform purge <name>`. The names come from what was rendered for it
-# (rendered.json) and its active.json record. Its drain hook runs here once
-# hooks exist (plan step 3d.4).
+# (rendered.json) and its active.json record. Its drain hook runs first
+# (stop.yml), while active.json and rendered.json still describe it.
+
+- name: Look whether the replaced platform runs
+  ansible.builtin.command:
+    argv: [systemctl, is-active, --quiet, pinka-platform.target]
+  register: platform_retire_running
+  changed_when: false
+  failed_when: false
+
+- name: Drain and stop the replaced platform
+  ansible.builtin.include_tasks: stop.yml
+  when: platform_retire_running.rc == 0
 
 - name: Read what the replaced platform has
   ansible.builtin.command:

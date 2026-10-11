@@ -1,0 +1,43 @@
+# Managed by pinka (ansible/roles/platform/tasks/start.yml). Local changes will be overwritten.
+#
+# Start the active platform and wait for its health hook (BUILD_PROMPT §7.14
+# step 8, §12.9). Imported by site.yml after the lab session, so the platform
+# starts once OPA serves its policy bundle and the lab is up; also with
+# --tags platform. Starting pinka-platform.target runs the reconcile unit
+# before the services. An unhealthy platform is reported, not fatal: doctor
+# warns too.
+
+- name: Look for an active platform
+  ansible.builtin.stat:
+    path: /etc/pinka/platform/active.json
+  register: platform_active_record
+
+- name: Start the platform and wait for its health hook
+  when:
+    - platform_active_record.stat.exists
+    - not ansible_check_mode
+  block:
+    - name: Start the platform
+      ansible.builtin.systemd_service:
+        name: pinka-platform.target
+        state: started
+
+    - name: Wait until the platform's health hook answers ok
+      ansible.builtin.command:
+        argv:
+          - "{{ platform_tool }}"
+          - hook
+          - health
+          - --until-healthy
+          - "{{ platform_health_wait | string }}"
+      register: platform_health
+      changed_when: false
+      failed_when: false
+
+    - name: Report an unhealthy platform
+      ansible.builtin.debug:
+        msg: >-
+          The platform is unhealthy after {{ platform_health_wait }} seconds
+          ({{ platform_health.stderr | default('') | trim }}); see `pinka status`,
+          `pinka doctor` and the journal of its units.
+      when: platform_health.rc != 0

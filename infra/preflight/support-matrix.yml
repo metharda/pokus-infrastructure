@@ -100,6 +100,14 @@ os:  # first match wins
       RHEL-compatible release 8: it predates the unified cgroup v2 default and is not a supported
       release. The cgroup v2 hierarchy can be enabled with the kernel argument
       'systemd.unified_cgroup_hierarchy=1', but install a supported release (9 or 10) instead.
+  # Approved deviation St2-3: a release of an implemented distribution that no row
+  # above lists is explicitly unsupported, so it never falls through to the
+  # ID_LIKE rows below (Ubuntu's ID_LIKE is debian, Rocky's names rhel).
+  - match: {id_in: [ubuntu, debian, fedora, rhel, almalinux, rocky, centos, opensuse-leap, sles]}
+    tier: unsupported
+    reason: >-
+      Release not in the support matrix: only the releases docs/support-matrix.md lists are
+      supported or tested for this distribution. Install a listed release.
   # experimental: derivatives mapped to their parent through ID_LIKE (Mint, Pop!_OS, Zorin,
   # elementary, Kali, Oracle Linux, Manjaro, EndeavourOS, ...). Third-party repositories use the
   # PARENT release identity, never the derivative's own codename.
@@ -187,9 +195,28 @@ storage:  # first available backend wins (BUILD_PROMPT §2.3 note: no `dir` back
 
 features:  # optional; each becomes a boolean feature flag
   gpu_inference:
-    requires: [nvidia_gpu_usable, {gpu_vram_gib_min: 8}, {gpu_compute_capability_min: "7.0"}]
+    # driver_cuda_min: the CUDA version the pinned vLLM image is built on
+    # (BUILD_PROMPT §2.2); its major.minor is compared with the CUDA version
+    # the loaded driver supports (`nvidia-smi --version`, on WSL2 the Windows
+    # driver's).
+    requires:
+      - nvidia_gpu_usable
+      - {gpu_vram_gib_min: 8}
+      - {gpu_compute_capability_min: "7.0"}
+      - {driver_cuda_min: "@versions.lock:containers.images.vllm.cuda"}
     on_missing: degrade
     impact: "No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host."
+    remediation:
+      driver_cuda_min:
+        default: >-
+          The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}:
+          install a driver branch that supports CUDA {required}.
+        wsl2: >-
+          The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}:
+          update the NVIDIA driver on Windows (never install a Linux NVIDIA driver inside WSL).
+        unknown: >-
+          nvidia-smi did not report the CUDA version the NVIDIA driver supports; the pinned vLLM
+          image needs {required}: update the NVIDIA driver (on WSL2, on Windows).
   vm_targets:
     requires: [kvm_usable]
     on_missing: degrade

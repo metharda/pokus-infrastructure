@@ -42,6 +42,8 @@ TESTED_TEMPLATES = {
     ("firewall", "pinka-docker-incus-compat.service.j2"),
     ("firewall", "pinka-nftables.service.j2"),
     ("firewall", "pinka.nft.j2"),
+    ("firewall", "pinka-telemetry-guard.nft.j2"),
+    ("firewall", "pinka-telemetry-guard.service.j2"),
     ("provider_baremetal", "pinka-sleep-inhibit.service.j2"),
     ("provider_wsl2", "wsl.conf.j2"),
     ("provider_wsl2", "wslconfig.recommended.j2"),
@@ -57,6 +59,9 @@ TESTED_TEMPLATES = {
     ("postgres", "pinka-postgres.tmpfiles.conf.j2"),
     # Tested in test_observability.py:
     ("observability", "pinka-vm-otlp-address.service.j2"),
+    ("observability", "pinka-otlp-agent.socket.j2"),
+    ("observability", "pinka-otlp-agent.service.j2"),
+    ("observability", "pinka-query.tmpfiles.conf.j2"),
     # Tested in test_vllm.py:
     ("vllm", "pinka-vllm-deploy.socket.j2"),
     ("vllm", "pinka-vllm-deploy@.service.j2"),
@@ -72,6 +77,10 @@ TESTED_TEMPLATES = {
     ("incus", "pinka-run-network@.service.j2"),
     # Tested in test_inference_control.py:
     ("inference_control", "pinka-inference-control.service.j2"),
+    # Tested in test_docs_window.py:
+    ("docs", "pinka-docs.service.j2"),
+    ("lab_session", "pinka-window-expiry.service.j2"),
+    ("lab_session", "pinka-window-expiry.timer.j2"),
 }
 
 
@@ -174,6 +183,45 @@ def test_nft_ruleset_options() -> None:
     ]
     assert 'iifname "tailscale0" tcp dport { 22, 443 } accept' in lines
     assert 'iifname { "eth1" } tcp dport 22 accept' in lines
+
+
+def test_telemetry_guard_is_valid(tmp_path: Path) -> None:
+    text = render_template("firewall", "pinka-telemetry-guard.nft.j2", firewall_vars())
+    path = tmp_path / "telemetry-guard.nft"
+    path.write_text(text, encoding="utf-8")
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_telemetry_guard_drops_the_platform_range() -> None:
+    lines = [
+        line.strip()
+        for line in render_template(
+            "firewall", "pinka-telemetry-guard.nft.j2", firewall_vars()
+        ).splitlines()
+    ]
+    # Only its own table, never one of Docker, Incus, firewalld or ufw.
+    assert [line for line in lines if line.startswith(("table ", "delete table", "flush"))] == [
+        "table inet pinka_telemetry_guard",
+        "delete table inet pinka_telemetry_guard",
+        "table inet pinka_telemetry_guard {",
+    ]
+    assert "type filter hook output priority filter; policy accept;" in lines
+    # Prometheus, Loki, Tempo, their gRPC and OTLP ports, the collector's
+    # metrics exporter and the query proxy's loopback port.
+    ports = "18701, 18702, 18703, 18720, 18727, 18728, 18729, 18733"
+    assert f"meta skuid 60578-61183 tcp dport {{ {ports} }} drop" in lines
+    # The OTLP receivers stay open: platform services send telemetry there.
+    assert "4317" not in ports and "4318" not in ports
+
+
+def test_telemetry_guard_unit() -> None:
+    unit = ini(render_template("firewall", "pinka-telemetry-guard.service.j2", firewall_vars()))
+    assert (
+        unit["Service"]["ExecStart"] == "/usr/sbin/nft -f /etc/pinka/nftables/telemetry-guard.nft"
+    )
+    assert unit["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_telemetry_guard"
+    assert unit["Unit"]["Before"] == "network-pre.target"
 
 
 def test_docker_incus_compat_script(tmp_path: Path) -> None:
@@ -472,5 +520,6 @@ def test_lab_units_run_in_the_services_slice() -> None:
             "pinka-incus-events.service.j2",
             "pinka-vllm-deploy@.service.j2",
             "pinka-run-network@.service.j2",
+            "pinka-window-expiry.service.j2",
         }
         assert ("Slice={{ pinka_services_slice }}" in text) == lab_unit, path

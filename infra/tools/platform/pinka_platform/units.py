@@ -8,10 +8,14 @@ the human classes, and hands it to the service by socket activation
 (``LISTEN_FDS``; ``LISTEN_FDNAMES`` carries the socket names). Services never
 bind their sockets themselves.
 
-Deviation from the baseline: no ``RuntimeDirectory=``. systemd would chown a
-service's runtime directory recursively to the service account and so reset
-the client groups of the sockets in it; the socket units create
-``/run/pinka/platform/<service>/`` (root, 0755) instead.
+Deviation V4 from the baseline (approved with the "commit" for 3d.3): the
+socket directory ``/run/pinka/platform/<service>/`` is no ``RuntimeDirectory=``.
+systemd removes a runtime directory at stop and chowns it recursively to the
+service account at start, which would delete the sockets or reset their
+client groups; the socket units create it (root, 0755) instead. Each service
+gets its own runtime directory apart from it, with no sockets in it:
+``RuntimeDirectory=pinka/platform-runtime/<service>`` (0700,
+``$RUNTIME_DIRECTORY``).
 """
 
 from __future__ import annotations
@@ -27,6 +31,8 @@ HEADER = "# Managed by pinka (platform {platform}, contract v2). Local changes w
 TARGET = "pinka-platform.target"
 SLICE = "pinka-services.slice"
 HEALTH_GATE = "pinka-health-gate.service"
+# Infra's agent OTLP socket (§7.9), bound into the agent's file system.
+AGENT_OTLP_UNIT = "pinka-otlp-agent.socket"
 # The units of the facilities a manifest may require (ordering only).
 FACILITY_UNITS = {
     "postgres": "pinka-core.service",
@@ -164,7 +170,16 @@ def target_unit(platform: str) -> str:
     )
 
 
-def _human_groups(socket: Mapping[str, Any], contract: Contract) -> list[str]:
+def human_groups(socket: Mapping[str, Any], contract: Contract) -> list[str]:
+    """The groups of the human classes among a socket's clients (its ACL entries).
+
+    Args:
+        socket: The manifest's socket entry.
+        contract: The contract.
+
+    Returns:
+        Group names (``pinka``, ``pinka-admin``).
+    """
     return [
         contract.human_classes[c]["group"] for c in socket["clients"] if c in contract.human_classes
     ]
@@ -197,7 +212,7 @@ def socket_unit_text(platform: str, socket: Mapping[str, Any], contract: Contrac
         ("FileDescriptorName", name),
         ("Service", service_unit(platform, service)),
     ]
-    humans = _human_groups(socket, contract)
+    humans = human_groups(socket, contract)
     if humans:
         entries.append(("ExecStartPost", command_line([layout.SOCKET_ACL_HELPER, path, *humans])))
     agent = " for the agent" if socket.get("untrusted_clients") else ""
@@ -250,14 +265,19 @@ def _internals(profile: str, contract: Contract, platform: str) -> list[str]:
     return hidden
 
 
-def service_unit_text(
+def service_sections(
     manifest: Mapping[str, Any],
     service: Mapping[str, Any],
     contract: Contract,
     accounts: Mapping[str, Mapping[str, Any]],
     ports: Mapping[str, int],
-) -> str:
-    """A service unit with the hardening baseline of §7.14.
+    *,
+    release: str | None = None,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """The [Unit] and [Service] entries of a service with the baseline of §7.14.
+
+    The hook units reuse the [Service] entries of the account they run as
+    (:mod:`pinka_platform.hooks`).
 
     Args:
         manifest: A valid manifest.
@@ -265,16 +285,20 @@ def service_unit_text(
         contract: The contract.
         accounts: The rendered accounts by name (for the supplementary groups).
         ports: Effective ports (the inference broker's researcher endpoint).
+        release: The release being deployed, resolved (``releases/<name>``):
+            the only release an ``untrusted-agent`` sees and runs from; the
+            other profiles run from the ``current`` link.
 
     Returns:
-        Unit text.
+        ``(unit, service)`` entries in order.
     """
     p = manifest["name"]
     name, profile = service["name"], service["profile"]
     grant = contract.profile(profile)
     account = names.account(p, name)
-    current = layout.release_current(p)
     agent = profile == "untrusted-agent"
+    # The agent never sees the current link, nor another published release.
+    current = release if agent and release else layout.release_current(p)
     own = [socket_unit(p, name, s["name"]) for s in _own_sockets(manifest, name)]
     used = (
         [socket_unit(p, s["service"], s["name"]) for s in _agent_sockets(manifest)] if agent else []
@@ -283,12 +307,16 @@ def service_unit_text(
     facilities = sorted(
         {FACILITY_UNITS[f] for f in manifest.get("requires", []) if f in FACILITY_UNITS}
     )
+    reconcile = [reconcile_unit(p)] if "reconcile" in manifest["hooks"] else []
     unit: list[tuple[str, str]] = [
         ("Description", f"Platform {p}: service {name} ({profile})"),
         ("PartOf", " ".join([TARGET, *used])),
-        ("Requires", " ".join([HEALTH_GATE, *own, *used])),
-        ("After", " ".join([HEALTH_GATE, *facilities, *own, *used, *after_services])),
+        ("Requires", " ".join([HEALTH_GATE, *reconcile, *own, *used])),
+        ("After", " ".join([HEALTH_GATE, *facilities, *reconcile, *own, *used, *after_services])),
     ]
+    if agent:
+        # Its telemetry socket exists before the agent's file system is set up.
+        unit += [("Wants", AGENT_OTLP_UNIT), ("After", AGENT_OTLP_UNIT)]
     state = [layout.state_dir(p, name, d) for d in service.get("state", [])]
     config = [layout.config_file(name)] if "config" in service else []
     memory, tasks = _limits(service, contract)
@@ -312,10 +340,15 @@ def service_unit_text(
             entries.append(("IPAddressAllow", "localhost"))
         if key == "SocketBindDeny" and grant.data["listen_port"] is not None:
             entries.append(("SocketBindAllow", f"tcp:{ports['gateway_adhoc']}"))
+    runtime = layout.runtime_dir(name)
     entries += [
         ("MemoryMax", memory),
         ("TasksMax", tasks),
         ("RestrictAddressFamilies", "AF_UNIX" if agent else "AF_UNIX AF_INET AF_INET6"),
+        # Not the socket directory (V4): systemd would remove its sockets at
+        # stop and reset their client groups at start.
+        ("RuntimeDirectory", runtime.removeprefix("/run/")),
+        ("RuntimeDirectoryMode", "0700"),
     ]
     if agent:
         sockets = [layout.socket_path(s["service"], s["name"]) for s in _agent_sockets(manifest)]
@@ -326,7 +359,7 @@ def service_unit_text(
                 "BindReadOnlyPaths",
                 " ".join(
                     [
-                        f"{layout.PLATFORMS_DIR}/{p}/releases",
+                        current,
                         *config,
                         *sockets,
                         f"-{layout.AGENT_OTLP_SOCKET}",
@@ -334,28 +367,98 @@ def service_unit_text(
                 ),
             ),
         ]
-        if state:
-            entries += [("BindPaths", " ".join(state)), ("ReadWritePaths", " ".join(state))]
+        writable = [runtime, *state]
+        entries += [("BindPaths", " ".join(writable)), ("ReadWritePaths", " ".join(writable))]
     else:
         if state:
             entries.append(("ReadWritePaths", " ".join(state)))
         entries.append(("ReadOnlyPaths", " ".join([current, *config])))
-        entries.append(
-            ("InaccessiblePaths", " ".join(f"-{path}" for path in _internals(profile, contract, p)))
-        )
+    # Infra's internals are hidden from every profile (§7.14), the agent
+    # included: some lie outside the lab directories its empty file systems cover.
+    entries.append(
+        ("InaccessiblePaths", " ".join(f"-{path}" for path in _internals(profile, contract, p)))
+    )
+    return unit, entries
+
+
+def service_unit_text(
+    manifest: Mapping[str, Any],
+    service: Mapping[str, Any],
+    contract: Contract,
+    accounts: Mapping[str, Mapping[str, Any]],
+    ports: Mapping[str, int],
+    *,
+    release: str | None = None,
+) -> str:
+    """A service unit with the hardening baseline of §7.14.
+
+    Args:
+        manifest: A valid manifest.
+        service: The service's entry.
+        contract: The contract.
+        accounts: The rendered accounts by name (for the supplementary groups).
+        ports: Effective ports (the inference broker's researcher endpoint).
+        release: The release being deployed, resolved (see :func:`service_sections`).
+
+    Returns:
+        Unit text.
+    """
+    unit, entries = service_sections(manifest, service, contract, accounts, ports, release=release)
     return _unit_text(
-        p,
+        manifest["name"],
         [("Unit", unit), ("Service", entries), ("Install", [("WantedBy", TARGET)])],
     )
 
 
-def render(
+def reconcile_unit(platform: str) -> str:
+    """Name of the platform's reconcile unit (§12.9)."""
+    return f"{platform}-reconcile.service"
+
+
+# [Service] entries a hook does not take over from its account's service: how
+# the service starts and restarts, and its runtime directory (systemd would
+# remove the running service's directory when the hook stops).
+HOOK_DROPPED = frozenset(
+    {
+        "Type",
+        "ExecStart",
+        "WorkingDirectory",
+        "Restart",
+        "RestartSec",
+        "RuntimeDirectory",
+        "RuntimeDirectoryMode",
+    }
+)
+
+
+def hook_entries(
+    service_entries: Sequence[tuple[str, str]], release: str, command: Sequence[str]
+) -> list[tuple[str, str]]:
+    """The [Service] entries of a hook run under a service's account and hardening.
+
+    Args:
+        service_entries: The account's service entries (:func:`service_sections`).
+        release: The release directory the hook runs in.
+        command: The full command (the hook wrapper and the release's command).
+
+    Returns:
+        Entries: the hardening of the service, the hook's command and directory.
+    """
+    kept = [(k, v) for k, v in service_entries if k not in HOOK_DROPPED]
+    return [("ExecStart", command_line(command)), ("WorkingDirectory", release), *kept]
+
+
+def reconcile_unit_text(
     manifest: Mapping[str, Any],
     contract: Contract,
     accounts: Mapping[str, Mapping[str, Any]],
     ports: Mapping[str, int],
-) -> dict[str, str]:
-    """Every unit of a platform.
+) -> str:
+    """The reconcile hook as a oneshot unit before every service (§12.9).
+
+    It runs at every start of the platform under the controller's account and
+    hardening, through the hook wrapper, which requires the hook's one JSON
+    line with ``"ok": true``; when it fails, no service starts.
 
     Args:
         manifest: A valid manifest.
@@ -364,13 +467,154 @@ def render(
         ports: Effective ports.
 
     Returns:
+        Unit text.
+    """
+    p = manifest["name"]
+    controller = next(s for s in manifest["services"] if s["profile"] == "controller")
+    _, entries = service_sections(manifest, controller, contract, accounts, ports)
+    hook = manifest["hooks"]["reconcile"]
+    current = layout.release_current(p)
+    command = [
+        layout.PLATFORM_TOOL,
+        "hook-exec",
+        "--hook",
+        "reconcile",
+        "--",
+        f"{current}/{hook['run'][0]}",
+        *hook["run"][1:],
+    ]
+    facilities = sorted(
+        {FACILITY_UNITS[f] for f in manifest.get("requires", []) if f in FACILITY_UNITS}
+    )
+    service_units = [service_unit(p, s["name"]) for s in manifest["services"]]
+    unit = [
+        ("Description", f"Platform {p}: the reconcile hook before the services"),
+        ("PartOf", TARGET),
+        ("Requires", HEALTH_GATE),
+        ("After", " ".join([HEALTH_GATE, *facilities])),
+        ("Before", " ".join(service_units)),
+    ]
+    service = [
+        ("Type", "oneshot"),
+        ("RemainAfterExit", "yes"),
+        ("TimeoutStartSec", str(hook["timeout_seconds"])),
+        *hook_entries(entries, current, command),
+    ]
+    return _unit_text(
+        p, [("Unit", unit), ("Service", service), ("Install", [("WantedBy", TARGET)])]
+    )
+
+
+# [Service] entries that `systemctl show` prints as the unit file writes them
+# (booleans as yes/no, the other values as strings; systemd v252 and v255).
+# Doctor compares them per unit (systemd.hardening, §7.17).
+SHOWN_AS_WRITTEN = frozenset(
+    {
+        "User",
+        "Group",
+        "Slice",
+        "NoNewPrivileges",
+        "ProtectSystem",
+        "ProtectHome",
+        "PrivateTmp",
+        "PrivateDevices",
+        "PrivateNetwork",
+        "ProtectKernelTunables",
+        "ProtectKernelModules",
+        "ProtectControlGroups",
+        "ProtectKernelLogs",
+        "ProtectClock",
+        "ProtectHostname",
+        "ProtectProc",
+        "ProcSubset",
+        "RestrictSUIDSGID",
+        "RestrictRealtime",
+        "LockPersonality",
+        "MemoryDenyWriteExecute",
+    }
+)
+
+
+def hardening(
+    manifest: Mapping[str, Any],
+    contract: Contract,
+    accounts: Mapping[str, Mapping[str, Any]],
+    ports: Mapping[str, int],
+    *,
+    release: str | None = None,
+) -> list[dict[str, Any]]:
+    """What doctor expects of each service unit: the hardening of its profile (§7.17).
+
+    Args:
+        manifest: A valid manifest.
+        contract: The contract.
+        accounts: The rendered accounts by name.
+        ports: Effective ports.
+        release: The release being deployed, resolved (see :func:`service_sections`).
+
+    Returns:
+        Per service unit: its profile, the ``systemctl show`` values of
+        :data:`SHOWN_AS_WRITTEN`, its address families and inaccessible paths;
+        for the agent also the sockets its allowlist binds into its file
+        system and the directories it writes (where it may create its own).
+    """
+    p = manifest["name"]
+    found: list[dict[str, Any]] = []
+    for service in manifest["services"]:
+        _, entries = service_sections(manifest, service, contract, accounts, ports, release=release)
+        written = dict(entries)
+        entry: dict[str, Any] = {
+            "unit": service_unit(p, service["name"]),
+            "profile": service["profile"],
+            "properties": {k: v for k, v in entries if k in SHOWN_AS_WRITTEN},
+            "address_families": written["RestrictAddressFamilies"].split(),
+            "inaccessible_paths": [x.lstrip("-") for x in written["InaccessiblePaths"].split()],
+        }
+        if service["profile"] == "untrusted-agent":
+            entry["agent_view"] = {
+                "release": written["WorkingDirectory"],
+                "sockets": sorted(
+                    [
+                        *(
+                            layout.socket_path(s["service"], s["name"])
+                            for s in _agent_sockets(manifest)
+                        ),
+                        layout.AGENT_OTLP_SOCKET,
+                    ]
+                ),
+                "own_dirs": written["ReadWritePaths"].split(),
+            }
+        found.append(entry)
+    return found
+
+
+def render(
+    manifest: Mapping[str, Any],
+    contract: Contract,
+    accounts: Mapping[str, Mapping[str, Any]],
+    ports: Mapping[str, int],
+    *,
+    release: str | None = None,
+) -> dict[str, str]:
+    """Every unit of a platform.
+
+    Args:
+        manifest: A valid manifest.
+        contract: The contract.
+        accounts: The rendered accounts by name.
+        ports: Effective ports.
+        release: The release being deployed, resolved (the agent's only release).
+
+    Returns:
         Unit text by unit name: the target, the services, the sockets.
     """
     p = manifest["name"]
     out = {TARGET: target_unit(p)}
+    if "reconcile" in manifest["hooks"]:
+        out[reconcile_unit(p)] = reconcile_unit_text(manifest, contract, accounts, ports)
     for service in manifest["services"]:
         out[service_unit(p, service["name"])] = service_unit_text(
-            manifest, service, contract, accounts, ports
+            manifest, service, contract, accounts, ports, release=release
         )
     for socket in manifest.get("sockets", []):
         out[socket_unit(p, socket["service"], socket["name"])] = socket_unit_text(

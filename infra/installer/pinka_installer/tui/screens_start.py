@@ -269,7 +269,8 @@ class PreflightScreen(StepScreen):
             for item in profile.get("disabled_features") or []:
                 report.mount(
                     Checkbox(
-                        f"{item.get('feature')}: {item.get('impact')}",
+                        f"{item.get('feature')}: {item.get('impact')} "
+                        f"{item.get('remediation') or ''}".rstrip(),
                         value="accept_degraded" in self.wizard.consents,
                         classes="consent-feature",
                     )

@@ -40,9 +40,16 @@ PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/te
 PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
-# Ansible runs in user space for linting: its state stays below build/.
-ANSIBLE_ENV := PATH="$(CURDIR)/$(BIN):$$PATH" ANSIBLE_HOME=$(CURDIR)/$(BUILD)/ansible-home \
+# Ansible runs in user space for linting: its state stays below build/, and it
+# writes no bytecode into the collections (their integrity check would fail).
+ANSIBLE_ENV := PATH="$(CURDIR)/$(BIN):$$PATH" PYTHONDONTWRITEBYTECODE=1 \
+  ANSIBLE_HOME=$(CURDIR)/$(BUILD)/ansible-home \
   ANSIBLE_CONFIG=ansible/ansible.cfg ANSIBLE_COLLECTIONS_PATH=$(CURDIR)/$(DEV_COLLECTIONS)
+# Checks the installed collections against the lock, offline: the versions of
+# ansible/requirements.yml, and every file against the collection's own
+# FILES.json, whose checksum is in its MANIFEST.json.
+COLLECTIONS_VERIFY = $(ANSIBLE_ENV) $(BIN)/ansible-galaxy collection verify --offline \
+  -r ansible/requirements.yml -p $(DEV_COLLECTIONS) </dev/null
 # CPython version of /opt/pinka/ansible-venv (generated from versions.lock.yml).
 BOOTSTRAP_PYTHON = $(shell sed -n "s/^readonly PINKA_PYTHON_VERSION=//p" bootstrap/lib/pins.sh)
 # A browser for mermaid-cli; CI sets it to the runner's Chrome.
@@ -54,23 +61,37 @@ export PUPPETEER_EXECUTABLE_PATH
 OPA := $(BUILD)/tools/opa
 export PINKA_OPA := $(CURDIR)/$(OPA)
 
-# Every file git would track (tracked plus untracked-but-not-ignored).
-GIT_FILES = git ls-files -z --cached --others --exclude-standard
+# Every file git would track (tracked plus untracked-but-not-ignored); the
+# third-party and generated trees are named as well, so no linter reaches them
+# even if .gitignore changes.
+GIT_FILES = git ls-files -z --cached --others --exclude-standard -- . \
+  ':!:.ansible-collections' ':!:.venv' ':!:node_modules' ':!:site' ':!:build'
 
 .PHONY: help
 help: ## List targets
 	@grep -E '^[a-z][a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: $(VENV)/.synced node_modules/.installed $(DEV_COLLECTIONS)/.installed $(OPA) ## Install pinned development tools (user space only)
+setup: $(VENV)/.synced node_modules/.installed dev-collections $(OPA) ## Install pinned development tools (user space only)
 
 $(VENV)/.synced: pyproject.toml uv.lock
 	$(UV) sync --frozen
 	@touch $@
 
-$(DEV_COLLECTIONS)/.installed: ansible/requirements.yml $(VENV)/.synced
-	$(ANSIBLE_ENV) $(BIN)/ansible-galaxy collection install -r ansible/requirements.yml -p $(DEV_COLLECTIONS)
-	@touch $@
+# Every setup verifies the pinned collections and installs them again (from
+# Galaxy) when anything differs: a missing or changed file, an extra file, a
+# version that is not the locked one. No formatter or linter may touch them
+# (tools/repo-checks/tests/test_dev_tools.py).
+.PHONY: dev-collections
+dev-collections: $(VENV)/.synced
+	@mkdir -p $(BUILD)
+	@if ! $(COLLECTIONS_VERIFY) >$(BUILD)/collections-verify.log 2>&1; then \
+	  echo "dev-collections: the installed collections differ from the lock (see $(BUILD)/collections-verify.log); installing them again"; \
+	  $(ANSIBLE_ENV) $(BIN)/ansible-galaxy collection install --force \
+	    -r ansible/requirements.yml -p $(DEV_COLLECTIONS) </dev/null && \
+	  $(COLLECTIONS_VERIFY) >$(BUILD)/collections-verify.log 2>&1 || \
+	  { cat $(BUILD)/collections-verify.log; exit 1; }; \
+	fi
 
 $(OPA): versions.lock.yml $(VENV)/.synced
 	$(LOCKCHECK) fetch opa --dest $@

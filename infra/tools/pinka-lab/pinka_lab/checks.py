@@ -16,7 +16,9 @@ import uuid
 from collections.abc import Sequence
 from typing import Any
 
+from pinka_lab import window
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
+from pinka_preflight.detect import gpu
 from pinka_preflight.detect.timesync import detect_timesync
 from pinka_preflight.profile_tool import differences
 from pinka_preflight.runner import CommandResult, Runner
@@ -32,6 +34,11 @@ FIREWALLD_ZONES = ("pinka-tailnet", "pinka-run")
 SQL_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 PROCESS_RE = re.compile(r'\(\("([^"]+)"')
 LOOPBACK_V4 = "127."
+# What infra rendered for the active platform (pinka_platform, contract v2).
+RENDERED_PLATFORM = "/etc/pinka/platform/rendered.json"
+# The key the socket-ACL helper keeps in it (owner decision with the "commit" for 3d.3).
+SOCKET_ACL_FALLBACK = "socket_acl_fallback"
+FALLBACK_MODE = 0o666
 
 
 # --- helpers ---------------------------------------------------------------------------
@@ -50,8 +57,10 @@ def _preflight(ctx: Context) -> dict[str, Any] | None:
     """Run preflight once (read-only) and keep its report."""
     if "preflight" not in ctx.memo:
         command = str(ctx.config.get("paths", "preflight"))
+        extra = [str(arg) for arg in ctx.config.get("preflight_args", default=[])]
         done = ctx.system.run(
-            [command, "--no-write", "--quiet", "--srv-path", ctx.config.pinka_root], timeout=300
+            [command, "--no-write", "--quiet", "--srv-path", ctx.config.pinka_root, *extra],
+            timeout=300,
         )
         parsed = done.json() if done.returncode in (0, 10, 20, 30) else None
         ctx.memo["preflight"] = parsed if isinstance(parsed, dict) else None
@@ -209,8 +218,14 @@ def check_preflight_drift(ctx: Context) -> Outcome:
 
 
 def check_units(ctx: Context) -> Outcome:
-    """Every unit of pinka-lab.target is active."""
-    units = list(ctx.config.get("units", default=[]))
+    """Every unit of pinka-lab.target is active, the platform's services and sockets included."""
+    rendered = _rendered_platform(ctx)
+    platform = (
+        [*rendered.get("service_units", []), *rendered.get("socket_units", [])]
+        if isinstance(rendered, dict)
+        else []
+    )
+    units = [*ctx.config.get("units", default=[]), *(str(u) for u in platform)]
     inactive = []
     for unit in units:
         done = ctx.system.run(["systemctl", "is-active", unit])
@@ -373,6 +388,82 @@ def check_gpu(ctx: Context) -> Outcome:
     if not done.ok or not gpus:
         return failed(done.stderr.strip() or "no GPU visible in a container")
     return passed(f"{len(gpus)} GPU(s) visible in a container")
+
+
+def check_driver_cuda(ctx: Context) -> Outcome:
+    """The driver supports the CUDA version of the pinned vLLM image (§2.2)."""
+    if not ctx.config.serves_inference:
+        return skipped("this node serves no inference")
+    smi = str(ctx.config.get("gpu", "nvidia_smi", default="nvidia-smi"))
+    required = str(ctx.config.get("gpu", "vllm_cuda"))
+    needed = tuple(int(n) for n in required.split(".")[:2])
+    shown = ".".join(str(n) for n in needed)
+    where = (
+        "update the NVIDIA driver on Windows"
+        if ctx.config.provider == "wsl2"
+        else f"install a driver branch that supports CUDA {shown}"
+    )
+    actual = None
+    for args in (gpu.VERSION_QUERY, []):
+        done = ctx.system.run([smi, *args], timeout=30)
+        actual = gpu.parse_driver_cuda(done.stdout) if done.ok else None
+        if actual:
+            break
+    if actual is None:
+        return failed(f"{smi} does not report the CUDA version the driver supports: {where}")
+    if tuple(int(n) for n in actual.split(".")) < needed:
+        return failed(
+            f"the NVIDIA driver supports CUDA {actual}, "
+            f"the pinned vLLM image needs {shown}: {where}"
+        )
+    return passed(f"the driver supports CUDA {actual}; the vLLM image needs {shown}")
+
+
+WINDOW_RECORD = "/etc/pinka/maintenance-window.json"
+
+
+def check_window(ctx: Context) -> Outcome:
+    """Whether a maintenance window is recorded, and with which end (§7.20)."""
+    path = str(ctx.config.get("window", "record", default=WINDOW_RECORD))
+    text = ctx.system.read_text(path)
+    staging = ctx.config.get("lab_mode", default="production") == "staging"
+    shared = staging and bool(ctx.config.get("window", "shared_hardware", default=False))
+    if text is None:
+        if shared:
+            return passed("no maintenance window: this staging lab may not start")
+        return passed("no maintenance window")
+    try:
+        recorded = window.from_text(text)
+    except window.WindowError as exc:
+        return failed(str(exc))
+    is_open = recorded.is_open(ctx.system.now())
+    if not staging:
+        return failed(
+            f"a maintenance window is recorded ({recorded.describe()}): production stays stopped "
+            "until sudo pinka window close"
+        )
+    if is_open:
+        return passed(f"maintenance window open {recorded.describe()}")
+    return failed(f"the maintenance window {recorded.describe()} is not open now")
+
+
+DOCS_DIR = "/usr/local/share/pinka/docs"
+
+
+def check_docs(ctx: Context) -> Outcome:
+    """The docs service serves the installed release (§7.19)."""
+    if not ctx.config.get("docs", "configured", default=False):
+        return skipped("no documentation release is configured (docs_release)")
+    base = str(ctx.config.get("docs", "dir", default=DOCS_DIR))
+    version = ctx.system.docs_current(base)
+    if version is None:
+        return failed(f"no documentation release is installed in {base}")
+    unit = str(ctx.config.get("docs", "unit", default="pinka-docs.service"))
+    state = ctx.system.run(["systemctl", "is-active", unit]).stdout.strip() or "unknown"
+    if state != "active":
+        return failed(f"{unit} is {state}; {version} is installed but not served")
+    port = ctx.config.get("docs", "port", default=18706)
+    return passed(f"serving {version} on 127.0.0.1:{port}")
 
 
 def check_vllm(ctx: Context) -> Outcome:
@@ -599,19 +690,80 @@ def check_deployed_paths(ctx: Context) -> Outcome:
     return passed("no .git in deployed paths, restricted packages only in the restricted area")
 
 
+ACTIVE_PLATFORM = "/etc/pinka/platform/active.json"
+PLATFORM_TOOL = "/usr/local/libexec/pinka/pinka-platform"
+MANIFEST_FILE = "platform-manifest.yaml"
+PROVENANCE_FILE = "DEPLOYED_FROM.json"
+
+
+def check_platform_manifest(ctx: Context) -> Outcome:
+    """The active release's manifest is valid and its SHA-256 matches the records (§7.17)."""
+    path = str(ctx.config.get("paths", "active_platform", default=ACTIVE_PLATFORM))
+    text = ctx.system.read_text(path)
+    if not text:
+        return skipped("no platform is active")
+    try:
+        active = json.loads(text)
+        target = str(active["release"]["target"])
+        recorded = str(active["manifest_sha256"])
+    except (ValueError, KeyError, TypeError):
+        return failed(f"{path} is not an active-platform record")
+    problems = []
+    done = ctx.system.run(["sha256sum", f"{target}/{MANIFEST_FILE}"])
+    digest = done.stdout.split()[0] if done.ok and done.stdout.split() else ""
+    if not digest:
+        problems.append(f"{target}/{MANIFEST_FILE} cannot be read")
+    elif digest != recorded:
+        problems.append(f"the manifest's SHA-256 is {digest}, {path} records {recorded}")
+    provenance_text = ctx.system.read_text(f"{target}/{PROVENANCE_FILE}")
+    try:
+        provenance = json.loads(provenance_text) if provenance_text else {}
+    except ValueError:
+        provenance = {}
+    deployed = str((provenance.get("platform") or {}).get("manifest_sha256", ""))
+    if digest and deployed != digest:
+        problems.append(f"{PROVENANCE_FILE} records {deployed or 'no manifest hash'}")
+    tool = str(ctx.config.get("paths", "platform_tool", default=PLATFORM_TOOL))
+    check = ctx.system.run([tool, "validate", target, "--built", "--no-host-check", "--json"])
+    result = check.json() if check.returncode in (0, 65) else None
+    if not isinstance(result, dict):
+        problems.append(f"the validator failed: {check.stderr.strip() or check.returncode}")
+    elif not result.get("valid"):
+        reasons = [str(p.get("message")) for p in result.get("problems", [])][:3]
+        problems.append("the release no longer validates: " + "; ".join(reasons))
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"{active.get('name')} {active.get('version')}: manifest valid, hash recorded")
+
+
 def check_hardening(ctx: Context) -> Outcome:
-    """Platform units carry their systemd hardening (InaccessiblePaths of the agent runner)."""
-    units = list(ctx.config.get("hardening", default=[]))
+    """Units carry the hardening of their profile (§7.17): `systemctl show` against rendering."""
+    rendered = _rendered_platform(ctx)
+    units = [
+        *ctx.config.get("hardening", default=[]),
+        *(rendered.get("hardening", []) if isinstance(rendered, dict) else []),
+    ]
     if not units:
-        return skipped("the platform is not deployed")
+        return skipped("no platform and no hardened infra unit on this node")
     problems = []
     for unit in units:
         props = [*unit.get("properties", {}), "InaccessiblePaths"]
+        if "address_families" in unit:
+            props.append("RestrictAddressFamilies")
         done = ctx.system.run(["systemctl", "show", unit["unit"], "--property=" + ",".join(props)])
         values = dict(line.split("=", 1) for line in done.stdout.splitlines() if "=" in line)
         for name, wanted in unit.get("properties", {}).items():
             if values.get(name) != wanted:
                 problems.append(f"{unit['unit']}: {name}={values.get(name)!r}, expected {wanted!r}")
+        if "address_families" in unit:
+            # systemctl show prints an allow list as names, a deny list with "~".
+            shown = values.get("RestrictAddressFamilies", "")
+            families = set(shown.split()) if not shown.startswith("~") else set()
+            if families != set(unit["address_families"]):
+                problems.append(
+                    f"{unit['unit']}: RestrictAddressFamilies={shown!r}, expected "
+                    f"{' '.join(unit['address_families'])!r}"
+                )
         # systemd prefixes paths that may be missing with "-"; hyphens inside paths stay.
         paths = {p.lstrip("-") for p in values.get("InaccessiblePaths", "").split()}
         missing = [p for p in unit.get("inaccessible_paths", []) if p not in paths]
@@ -619,36 +771,173 @@ def check_hardening(ctx: Context) -> Outcome:
             problems.append(f"{unit['unit']}: InaccessiblePaths lacks {', '.join(missing)}")
     if problems:
         return failed("; ".join(problems))
-    return passed(f"{len(units)} unit(s) hardened as required")
+    return passed(f"{len(units)} unit(s) hardened as their profiles require")
 
 
 def check_sockets(ctx: Context) -> Outcome:
-    """Platform sockets have the contract's owners, modes and ACLs (C8)."""
-    sockets = list(ctx.config.get("sockets", default=[]))
+    """Platform sockets have the owners, modes and ACLs of their rendering (§7.17, §12.3)."""
+    rendered = _rendered_platform(ctx)
+    sockets = [s for s in (rendered or {}).get("sockets", []) if isinstance(s, dict)]
     if not sockets:
-        return skipped("the platform is not deployed")
+        return skipped("the platform is not deployed or has no sockets")
+    fell_back = {str(p) for p in (rendered or {}).get(SOCKET_ACL_FALLBACK) or []}
     problems = []
     for entry in sockets:
-        info = ctx.system.info(entry["path"])
+        path = str(entry["path"])
+        info = ctx.system.info(path)
         if info is None:
-            problems.append(f"{entry['path']} missing")
+            problems.append(f"{path} missing")
             continue
-        # The platform role records the effective mode and ACL: with ACL entries
-        # the group bits show the mask.
-        mode = entry.get("expect_mode", entry.get("mode"))
-        want = (entry["owner"], entry["group"], int(str(mode), 8))
-        if (info.owner, info.group, info.mode) != want:
-            problems.append(f"{entry['path']} is {info.owner}:{info.group} {info.mode:04o}")
-        acls = entry.get("expect_acl", entry.get("acl")) or []
+        # Without ACL support on /run the helper opens a socket with ACL entries
+        # to 0666 (sockets.acl_fallback reports it).
+        acls = [] if path in fell_back else list(entry.get("acl") or [])
+        mode = FALLBACK_MODE if path in fell_back else int(str(entry["mode"]), 8)
+        want = (entry["owner"], entry["group"], mode)
+        if (info.owner, info.group, info.mode & 0o7777) != want:
+            problems.append(
+                f"{path} is {info.owner}:{info.group} {info.mode:04o}, "
+                f"expected {want[0]}:{want[1]} {want[2]:04o}"
+            )
         if acls:
-            done = ctx.system.run(["getfacl", "--omit-header", "--absolute-names", entry["path"]])
+            done = ctx.system.run(["getfacl", "--omit-header", "--absolute-names", path])
             lines = {line.split()[0] for line in done.stdout.splitlines() if line.strip()}
-            for acl in acls:
-                if acl not in lines:
-                    problems.append(f"{entry['path']} lacks ACL {acl}")
+            problems += [f"{path} lacks ACL {acl}" for acl in acls if acl not in lines]
     if problems:
         return failed("; ".join(problems))
-    return passed(f"{len(sockets)} socket(s) as in the contract")
+    agent = sorted(str(s["path"]) for s in sockets if s.get("untrusted_clients"))
+    note = f"; dedicated agent sockets: {', '.join(agent)}" if agent else ""
+    return passed(f"{len(sockets)} socket(s) as rendered{note}")
+
+
+def _main_pid(ctx: Context, unit: str) -> str:
+    done = ctx.system.run(["systemctl", "show", unit, "--property=MainPID", "--value"])
+    pid = done.stdout.strip()
+    return pid if done.ok and pid.isdigit() and pid != "0" else ""
+
+
+def check_agent_view(ctx: Context) -> Outcome:
+    """The running agent sees no socket beyond its allowlist in its mount namespace (§7.17)."""
+    rendered = _rendered_platform(ctx)
+    agents = [
+        h
+        for h in ((rendered or {}).get("hardening") or [])
+        if isinstance(h, dict) and "agent_view" in h
+    ]
+    if not agents:
+        return skipped("no untrusted-agent service is deployed")
+    problems, checked = [], []
+    for agent in agents:
+        unit = str(agent["unit"])
+        pid = _main_pid(ctx, unit)
+        if not pid:
+            continue
+        root = f"/proc/{pid}/root"
+        # Through /proc/<pid>/root the walk resolves paths in the agent's own
+        # mount namespace; bind-mounted sockets are separate mounts, so no -xdev.
+        done = ctx.system.run(
+            [
+                "find",
+                root,
+                "-path",
+                f"{root}/proc",
+                "-prune",
+                "-o",
+                "-path",
+                f"{root}/sys",
+                "-prune",
+                "-o",
+                "-type",
+                "s",
+                "-print",
+            ],
+            timeout=300,
+        )
+        if not done.ok and not done.stdout.strip():
+            problems.append(f"{unit}: cannot inspect its file system ({done.stderr.strip()})")
+            continue
+        view = agent["agent_view"]
+        allowed = set(view.get("sockets", []))
+        own = [str(d).rstrip("/") + "/" for d in view.get("own_dirs", [])]
+        seen = sorted(
+            line[len(root) :] for line in done.stdout.splitlines() if line.startswith(root)
+        )
+        extra = [s for s in seen if s not in allowed and not any(s.startswith(d) for d in own)]
+        if extra:
+            problems.append(f"{unit} sees sockets beyond its allowlist: {', '.join(extra)}")
+        checked.append(f"{unit} ({len(seen)} socket(s))")
+    if problems:
+        return failed("; ".join(problems))
+    if not checked:
+        return skipped("no untrusted-agent service is running")
+    return passed("agent view within its allowlist: " + ", ".join(checked))
+
+
+def check_socket_acl_fallback(ctx: Context) -> Outcome:
+    """No platform socket fell back to mode 0666 for want of ACL support on /run."""
+    path = str(ctx.config.get("paths", "rendered_platform", default=RENDERED_PLATFORM))
+    text = ctx.system.read_text(path)
+    try:
+        rendered = json.loads(text) if text else None
+    except ValueError:
+        return failed(f"{path} is not JSON")
+    if not isinstance(rendered, dict):
+        return skipped("the platform is not deployed")
+    human = [s for s in rendered.get("sockets", []) if isinstance(s, dict) and s.get("acl")]
+    if not human:
+        return skipped("no platform socket has researchers or admins among its clients")
+    # The helper's record, and what the sockets show now (a start without the helper).
+    fell_back = {p for p in rendered.get(SOCKET_ACL_FALLBACK) or [] if isinstance(p, str)}
+    for entry in human:
+        info = ctx.system.info(str(entry.get("path")))
+        if info is not None and info.mode & 0o777 == FALLBACK_MODE:
+            fell_back.add(str(entry["path"]))
+    if fell_back:
+        return failed(
+            "; ".join(
+                f"{p} is 0666 without ACL entries (no ACL support on /run): only the "
+                "platform's peer-credential check separates researchers, admins and services"
+                for p in sorted(fell_back)
+            )
+        )
+    return passed(f"{len(human)} socket(s) with ACL entries for researchers or admins")
+
+
+QUERY_SOCKET_MODE = 0o660
+QUERY_GROUP = "pinka-query"
+AGENT_SOCKET_MODE = 0o666
+
+
+def check_telemetry_isolation(ctx: Context) -> Outcome:
+    """Platform accounts reach telemetry only through the query proxy and the collector."""
+    spec = ctx.config.get("telemetry_isolation", default={}) or {}
+    if not spec.get("ports"):
+        return skipped("this host has no telemetry isolation to check")
+    problems = []
+    done = ctx.system.run(["nft", "list", "table", "inet", "pinka_telemetry_guard"])
+    if not done.ok:
+        problems.append("the nftables table inet pinka_telemetry_guard is not loaded")
+    else:
+        uids = spec["uids"]
+        if f"meta skuid {uids['min']}-{uids['max']}" not in done.stdout:
+            problems.append("the telemetry guard does not name the platform UID range")
+        missing = [str(p) for p in spec["ports"] if str(p) not in done.stdout]
+        if missing:
+            problems.append(f"the telemetry guard leaves ports open: {', '.join(missing)}")
+    for key, mode, group in (
+        ("query_socket", QUERY_SOCKET_MODE, QUERY_GROUP),
+        ("agent_socket", AGENT_SOCKET_MODE, None),
+    ):
+        path = spec.get(key)
+        if not path:
+            continue
+        info = ctx.system.info(str(path))
+        if info is None:
+            problems.append(f"{path} is missing")
+        elif info.mode & 0o777 != mode or (group and info.group != group):
+            problems.append(f"{path} is {info.group} {info.mode & 0o777:04o}")
+    if problems:
+        return failed("; ".join(problems))
+    return passed("the telemetry guard is loaded and the query and agent sockets are in place")
 
 
 # --- database and policy -------------------------------------------------------------------
@@ -891,6 +1180,32 @@ def check_backup(ctx: Context) -> Outcome:
     return passed(f"last backup {age:.1f} h ago, repository reachable")
 
 
+def _rendered_platform(ctx: Context) -> Any:  # noqa: ANN401 - JSON
+    path = str(ctx.config.get("paths", "rendered_platform", default=RENDERED_PLATFORM))
+    text = ctx.system.read_text(path)
+    try:
+        return json.loads(text) if text else None
+    except ValueError:
+        return None
+
+
+def check_backup_platform_state(ctx: Context) -> Outcome:
+    """Every platform state directory is in the manifest's backup.paths (§7.15)."""
+    rendered = _rendered_platform(ctx)
+    if not isinstance(rendered, dict):
+        return skipped("the platform is not deployed")
+    state = [str(d) for d in rendered.get("state_dirs", [])]
+    if not state:
+        return skipped("the platform declares no state directories")
+    backed_up = {str(p) for p in (rendered.get("backup") or {}).get("paths", [])}
+    left_out = [d for d in state if d not in backed_up]
+    if left_out:
+        return failed(
+            "not backed up (the manifest's backup.paths leaves them out): " + ", ".join(left_out)
+        )
+    return passed(f"{len(state)} state director{'y' if len(state) == 1 else 'ies'} backed up")
+
+
 def check_health_gate(ctx: Context) -> Outcome:
     """The startup health gate passed."""
     text = ctx.system.read_text(
@@ -1107,11 +1422,35 @@ CHECKS: tuple[Check, ...] = (
         check_gpu,
     ),
     Check(
+        "gpu.driver_cuda",
+        "The NVIDIA driver supports the CUDA version the pinned vLLM image is built on.",
+        "error",
+        "Install a driver branch that supports that CUDA version; on WSL2 update the NVIDIA "
+        "driver on Windows (never a Linux driver inside WSL).",
+        check_driver_cuda,
+    ),
+    Check(
         "gpu.vllm",
         "vLLM answers /health when a deployment is active.",
         "error",
         "`journalctl -u pinka-inference.service`; reactivate the deployment.",
         check_vllm,
+    ),
+    Check(
+        "lab.window",
+        "Whether a maintenance window is recorded, and until when.",
+        "warning",
+        "Production: `sudo pinka window close` once staging is done, then `sudo pinka start`. "
+        "Staging: open a window on both sides or close the stale record.",
+        check_window,
+    ),
+    Check(
+        "docs.service",
+        "The docs service serves the installed documentation release.",
+        "warning",
+        "Install the release (`sudo pinka docs install TARBALL --sha256 SUM`, or bootstrap with "
+        "docs_release set), then `sudo systemctl start pinka-docs.service`.",
+        check_docs,
     ),
     Check(
         "inference.pairing",
@@ -1177,18 +1516,47 @@ CHECKS: tuple[Check, ...] = (
         check_deployed_paths,
     ),
     Check(
+        "platform.manifest",
+        "The active release's manifest validates; active.json and its provenance record its hash.",
+        "error",
+        "Deploy the release again with bootstrap (--tags platform); never edit a deployed release.",
+        check_platform_manifest,
+    ),
+    Check(
         "systemd.hardening",
-        "Platform units carry their hardening (agent runner InaccessiblePaths).",
+        "Platform units carry the hardening of their profiles; infra's hardened units theirs.",
         "error",
         "Run bootstrap with --tags platform.",
         check_hardening,
     ),
     Check(
         "sockets.permissions",
-        "Platform sockets have the contract's owners, modes and ACLs (C8).",
+        "Platform sockets have the owners, modes and ACLs of their rendering.",
         "error",
         "Restart the owning service; run bootstrap with --tags platform.",
         check_sockets,
+    ),
+    Check(
+        "sockets.agent_view",
+        "The running agent sees no socket beyond its allowlist inside its mount namespace.",
+        "error",
+        "Run bootstrap with --tags platform; if a socket stays visible, report it as a bug.",
+        check_agent_view,
+    ),
+    Check(
+        "sockets.acl_fallback",
+        "No platform socket fell back to mode 0666 for want of ACL support on /run.",
+        "warning",
+        "Enable POSIX ACLs on the /run tmpfs (kernel CONFIG_TMPFS_POSIX_ACL), then restart the "
+        "platform's sockets (`sudo pinka stop`, `sudo pinka start`).",
+        check_socket_acl_fallback,
+    ),
+    Check(
+        "telemetry.isolation",
+        "Platform accounts reach telemetry only through the query proxy and the collector.",
+        "error",
+        "Run bootstrap with --tags firewall,observability.",
+        check_telemetry_isolation,
     ),
     Check(
         "postgres.roles",
@@ -1224,6 +1592,14 @@ CHECKS: tuple[Check, ...] = (
         "warning",
         "Configure the repository (backup how-to) or check `journalctl -u pinka-backup.service`.",
         check_backup,
+    ),
+    Check(
+        "backup.platform_state",
+        "Every platform state directory is listed in the manifest's backup.paths.",
+        "warning",
+        "Add the directory to backup.paths in the platform's manifest and deploy the release, "
+        "or accept that it is not backed up.",
+        check_backup_platform_state,
     ),
     Check(
         "lab.health_gate",

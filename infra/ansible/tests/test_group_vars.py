@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
-from ansible_testlib import ANSIBLE, GROUP_VARS, INFRA, load_yaml
+from ansible_testlib import ANSIBLE, GROUP_VARS, INFRA, ansible_vars, evaluate, load_yaml
 
 DATA = load_yaml(GROUP_VARS)
 MODE_RE = re.compile(r"^[0-7]{4}$")
@@ -85,7 +86,25 @@ def test_infra_accounts() -> None:
             "groups": [],
             "description": "the inference control endpoint of an inference node",
         },
+        # §7.9: the query proxy's container runs as this account's UID.
+        {
+            "name": "pinka-query-proxy",
+            "groups": [],
+            "description": "the telemetry query proxy's container user (§7.9)",
+        },
     ]
+
+
+def test_platform_uid_range_matches_the_deployment_tool() -> None:
+    from pinka_platform import layout  # noqa: PLC0415 - the tool's own constants
+
+    assert DATA["pinka_platform_uids"] == {
+        "min": layout.PLATFORM_UID_MIN,
+        "max": layout.PLATFORM_UID_MAX,
+    }
+    # systemd's allocation table (UIDS-GIDS.md, v255): 60578..61183 is unused,
+    # between the container host users and the dynamic service users.
+    assert 60577 < DATA["pinka_platform_uids"]["min"] <= DATA["pinka_platform_uids"]["max"] < 61184
 
 
 def contract_ports() -> set[int]:
@@ -100,7 +119,7 @@ def contract_ports() -> set[int]:
 
 
 def test_ports_match_the_contract() -> None:
-    ports = list(DATA["pinka_ports"].values())
+    ports = list(DATA["pinka_default_ports"].values())
     assert len(ports) == len(set(ports))
     assert set(ports) == contract_ports()
 
@@ -119,3 +138,44 @@ def test_example_host_vars_show_the_lab_wide_defaults() -> None:
         shared
     )
     assert {name: example[name] for name in shared} == {name: DATA[name] for name in shared}
+
+
+def _platform_facts_check(name: str) -> list[str]:
+    tasks = load_yaml(ANSIBLE / "roles" / "platform_facts" / "tasks" / "main.yml")
+    task = next(t for t in tasks if t["name"] == name)
+    that: list[str] = task["ansible.builtin.assert"]["that"]
+    return that
+
+
+def _holds(that: list[str], **changes: Any) -> bool:
+    variables = ansible_vars(
+        GROUP_VARS, ANSIBLE / "roles" / "platform_facts" / "vars" / "main.yml", **changes
+    )
+    return all(evaluate(condition, variables) for condition in that)
+
+
+def test_port_overrides_make_the_effective_ports() -> None:
+    # BUILD_PROMPT §12.11: overrides by name; endpoints.toml gets pinka_ports.
+    variables = ansible_vars(GROUP_VARS, ports={"grafana": 18750})
+    effective = evaluate("pinka_ports", variables)
+    assert effective["grafana"] == 18750
+    assert {k: v for k, v in effective.items() if k != "grafana"} == {
+        k: v for k, v in DATA["pinka_default_ports"].items() if k != "grafana"
+    }
+    that = _platform_facts_check("Check the port overrides")
+    assert _holds(that)
+    assert _holds(that, ports={"grafana": 18750, "otlp_grpc": 14317})
+    assert not _holds(that, ports={"graphana": 18750})  # unknown name
+    assert not _holds(that, ports={"grafana": "18750"})  # not a number
+    assert not _holds(that, ports={"grafana": 70000})
+    assert not _holds(that, ports={"grafana": 18701})  # Prometheus's port
+    assert not _holds(that, ports={"grafana": 18720})  # an internal port
+
+
+def test_vm_collector_address_is_checked() -> None:
+    that = _platform_facts_check("Check the address of the collector listener for VM targets")
+    assert evaluate("pinka_vm_otlp.address", ansible_vars(GROUP_VARS)) == "198.18.0.1"
+    assert _holds(that)
+    assert _holds(that, vm_collector_address="198.19.255.1")
+    for bad in ("127.0.0.2", "0.1.2.3", "198.18.0", "300.1.1.1", "2001:db8::1"):
+        assert not _holds(that, vm_collector_address=bad), bad

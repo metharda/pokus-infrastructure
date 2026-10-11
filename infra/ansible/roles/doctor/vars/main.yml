@@ -16,37 +16,33 @@ doctor_packages:
 doctor_runs_lab: "{{ node_role in ['full', 'lab'] }}"
 doctor_serves_inference: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
 
-# The platform's units, sockets and hardening: checked once the switch with the
-# hooks starts them (plan step 3d.4); until then nothing of the platform runs.
-doctor_platform: false
 # An inference node configured with its paired lab node runs the control endpoint.
 doctor_inference_control: "{{ node_role == 'inference' and inference_lab_node | length > 0 }}"
 
-# Units of pinka-lab.target that must be active. The inference project is not
-# listed: it runs only while a deployment is active (doctor's gpu.vllm check);
-# neither is the platform's oneshot reconcile unit.
+# Infra's units of pinka-lab.target that must be active. The inference project
+# is not listed: it runs only while a deployment is active (doctor's gpu.vllm
+# check). Doctor adds the platform's services and sockets from its rendering
+# (/etc/pinka/platform/rendered.json), not its oneshot reconcile unit.
 doctor_units: >-
   {{ ['pinka-health-gate.service', 'pinka-session-start.service']
      + (['pinka-core.service'] if doctor_runs_lab else [])
      + ['pinka-observability.service']
      + (['pinka-sleep-inhibit.service']
         if pinka_provider in ['baremetal', 'vm'] and power_policy == 'lab_session_inhibit' else [])
-     + ((platform_units | rejectattr('type', 'defined') | map(attribute='unit') | list)
-        if doctor_platform else [])
      + ([inference_control_unit] if doctor_inference_control else []) }}
 
-# Hardening doctor compares with `systemctl show` (systemd.hardening).
+# Hardening of infra's own units doctor compares with `systemctl show`
+# (systemd.hardening); the platform's comes from its rendering, per profile.
 doctor_hardening: >-
-  {{ (platform_units | pinka_unit_hardening(platform_denied_paths, platform_agent_denied_paths)
-      if doctor_platform else [])
-     + ([{'unit': inference_control_unit, 'account': inference_control_account}]
-        | pinka_unit_hardening(inference_control_denied_paths)
-        if node_role == 'inference' else []) }}
+  {{ [{'unit': inference_control_unit, 'account': inference_control_account}]
+     | pinka_unit_hardening(inference_control_denied_paths)
+     if node_role == 'inference' else [] }}
 
 # Ports that listen on the tailnet address for split inference (the firewall
 # opens them on tailscale0): the control endpoint, or the collector receiving
 # the paired inference node's telemetry.
-doctor_tailnet_ports: "{{ firewall_tailnet_tcp_ports | difference([22, firewall_grafana_serve_port]) }}"
+doctor_tailnet_ports: >-
+  {{ firewall_tailnet_tcp_ports | difference([22, firewall_grafana_serve_port, firewall_docs_serve_port]) }}
 
 # Lab containers and the pinned image (versions.lock.yml containers.images) each runs.
 doctor_core_containers:

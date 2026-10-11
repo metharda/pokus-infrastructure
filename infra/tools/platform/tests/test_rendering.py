@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -139,17 +140,27 @@ def fake_root(tmp: Path, document: dict[str, Any], data: dict[str, Any]) -> Path
     release.mkdir(parents=True)
     (release.parent / "current").symlink_to(release.name)
     helper = root / layout.SOCKET_ACL_HELPER.lstrip("/")
-    for path in [helper, *(release / s["start"][0] for s in data["services"])]:
+    tool = root / layout.PLATFORM_TOOL.lstrip("/")
+    for path in [helper, tool, *(release / s["start"][0] for s in data["services"])]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("#!/bin/sh\n", encoding="utf-8")
         path.chmod(0o755)
-    stand_ins = ("pinka-health-gate", "pinka-core", "pinka-observability", "pinka-inference")
+    stand_ins = (
+        "pinka-health-gate",
+        "pinka-core",
+        "pinka-observability",
+        "pinka-inference",
+        "pinka-otlp-agent",
+    )
     for name in stand_ins:
         (system / f"{name}.service").write_text(
             f"[Unit]\nDescription=stand-in\n[Service]\nExecStart={layout.SOCKET_ACL_HELPER}\n",
             encoding="utf-8",
         )
     (system / "pinka-lab.target").write_text("[Unit]\nDescription=stand-in\n", encoding="utf-8")
+    (system / "pinka-otlp-agent.socket").write_text(
+        f"[Socket]\nListenStream={layout.AGENT_OTLP_SOCKET}\n", encoding="utf-8"
+    )
     for u in document["units"]:
         (system / u["name"]).write_text(u["content"], encoding="utf-8")
     return root
@@ -208,8 +219,26 @@ def test_every_service_unit_carries_the_baseline(fixture: str) -> None:
         assert settings["User"] == [account]
         assert settings["Group"] == [account]
         assert settings["MemoryMax"] and settings["TasksMax"]
-        assert "RuntimeDirectory" not in settings
         assert settings["Restart"] == ["on-failure"]
+
+
+@pytest.mark.parametrize("fixture", VALID)
+def test_every_service_has_a_runtime_directory_without_sockets(fixture: str) -> None:
+    # V4 and its condition (owner decision with the "commit" for 3d.3).
+    data = manifest(fixture)
+    document = render(fixture)
+    sockets = {layout.socket_path(s["service"], s["name"]) for s in data.get("sockets", [])}
+    for service in data["services"]:
+        settings = unit(document, units.service_unit(data["name"], service["name"]))
+        runtime = layout.runtime_dir(service["name"])
+        assert settings["RuntimeDirectory"] == [runtime.removeprefix("/run/")]
+        assert settings["RuntimeDirectoryMode"] == ["0700"]
+        assert not any(s.startswith(f"{runtime}/") for s in sockets)
+        assert not runtime.startswith(f"{layout.RUN}/platform/")
+    for name in document["socket_units"]:
+        settings = unit(document, name)
+        assert "RuntimeDirectory" not in settings
+        assert not settings["ListenStream"][0].startswith(layout.PLATFORM_RUNTIME_DIR)
 
 
 def test_limits_and_the_relaxation() -> None:
@@ -266,9 +295,7 @@ def test_loopback_profiles_reach_only_localhost() -> None:
 
 def test_infra_internals_are_hidden() -> None:
     document = render("allprof")
-    for name in document["service_units"]:
-        if name == "allprof-agt.service":
-            continue
+    for name in document["service_units"]:  # the agent included (§7.14)
         hidden = unit(document, name)["InaccessiblePaths"][0].split()
         for path in layout.INFRA_INTERNALS:
             assert f"-{path}" in hidden, (name, path)
@@ -305,8 +332,10 @@ def test_ordering_follows_after_and_the_facilities() -> None:
     assert "allprof-ctl.service" in after
     assert {"pinka-health-gate.service", "pinka-core.service"} <= set(after)
     assert brk["Requires"] == [
-        "pinka-health-gate.service allprof-brk-agent.socket allprof-brk-api.socket"
+        "pinka-health-gate.service allprof-reconcile.service allprof-brk-agent.socket "
+        "allprof-brk-api.socket"
     ]
+    assert "allprof-reconcile.service" in after
     assert brk["PartOf"] == ["pinka-platform.target"]
     assert brk["WantedBy"] == ["pinka-platform.target"]
 
@@ -393,22 +422,114 @@ def test_the_agent_sees_only_its_allowlist(fixture: str) -> None:
     ]
     agent = next(s for s in data["services"] if s["profile"] == "untrusted-agent")
     config = [layout.config_file(agent["name"])] if "config" in agent else []
-    assert bound == [
-        f"{layout.PLATFORMS_DIR}/{p}/releases",
-        *config,
-        *sockets,
-        f"-{layout.AGENT_OTLP_SOCKET}",
-    ]
+    # Only the release being deployed, resolved at render time (not the
+    # current link, not the other published releases).
+    release = f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v1"
+    assert bound == [release, *config, *sockets, f"-{layout.AGENT_OTLP_SOCKET}"]
+    assert settings["WorkingDirectory"] == [release]
+    assert settings["ExecStart"][0].startswith(f"{release}/")
     state = [layout.state_dir(p, agent["name"], d) for d in agent.get("state", [])]
-    assert settings.get("BindPaths", [""])[0].split() == state or not state
-    assert "InaccessiblePaths" not in settings
-    for hidden in (
+    writable = [layout.runtime_dir(agent["name"]), *state]
+    assert settings["BindPaths"][0].split() == writable
+    assert settings["ReadWritePaths"][0].split() == writable
+    hidden = settings["InaccessiblePaths"][0].split()
+    for path in (*layout.INFRA_INTERNALS, layout.GPU_SOCKET, layout.RUN_NETWORK_SOCKET):
+        assert f"-{path}" in hidden, path
+    for secret in (
         layout.POSTGRES_SOCKET_DIR,
         layout.RESTRICTED_DIR,
         layout.SECRETS_DIR,
         layout.QUERY_SOCKET,
     ):
-        assert not any(b.lstrip("-").startswith(hidden) for b in bound), hidden
+        assert not any(b.lstrip("-").startswith(secret) for b in bound), secret
+
+
+def agent_view(settings: dict[str, list[str]]) -> Callable[[str], bool]:
+    """Whether the agent's unit lets it see a path (§7.14, §12.2).
+
+    The lab directories are empty, read-only file systems in its namespace
+    except for what it binds; everywhere else, its inaccessible paths are
+    hidden.
+    """
+    hidden_roots = [r.split(":")[0] for r in settings["TemporaryFileSystem"][0].split()]
+    bound = [
+        b.lstrip("-")
+        for key in ("BindReadOnlyPaths", "BindPaths")
+        for b in settings.get(key, [""])[0].split()
+    ]
+    inaccessible = [x.lstrip("-") for x in settings["InaccessiblePaths"][0].split()]
+
+    def under(path: str, roots: list[str]) -> bool:
+        return any(path == r or path.startswith(r.rstrip("/") + "/") for r in roots)
+
+    def visible(path: str) -> bool:
+        if under(path, inaccessible):
+            return False
+        if under(path, hidden_roots):
+            return under(path, bound)
+        return True
+
+    return visible
+
+
+@pytest.mark.parametrize("fixture", VALID)
+def test_nothing_outside_the_agents_set_is_visible(fixture: str) -> None:
+    # Ground-truth blindness (owner, before 3d.4): the agent sees the active
+    # release only, its configuration, its dedicated sockets, the agent
+    # telemetry socket and its own runtime and state directories.
+    data = manifest(fixture)
+    p = data["name"]
+    agent = next(s for s in data["services"] if s["profile"] == "untrusted-agent")
+    visible = agent_view(agent_unit(render(fixture)))
+    release = f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v1"
+    allowed = [
+        f"{release}/.venv/bin/python",
+        f"{release}/platform-manifest.yaml",
+        *([layout.config_file(agent["name"])] if "config" in agent else []),
+        *(
+            layout.socket_path(s["service"], s["name"])
+            for s in data.get("sockets", [])
+            if s.get("untrusted_clients")
+        ),
+        layout.AGENT_OTLP_SOCKET,
+        f"{layout.runtime_dir(agent['name'])}/work",
+        *(f"{layout.state_dir(p, agent['name'], d)}/x" for d in agent.get("state", [])),
+    ]
+    for path in allowed:
+        assert visible(path), path
+    others = [s for s in data["services"] if s is not agent]
+    content = [c["name"] for c in data.get("content", [])]
+    forbidden = [
+        f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v0/.venv/bin/python",
+        f"{layout.PLATFORMS_DIR}/{p}/releases/current",
+        f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v2",
+        *(f"{layout.PLATFORMS_DIR}/{p}/content/{c}/main/data.json" for c in content),
+        *(f"{layout.RESTRICTED_DIR}/{p}/content/{c}/main/data.json" for c in content),
+        f"{layout.RESTRICTED_DIR}/{p}/cases",
+        *(f"{layout.PLATFORMS_DIR}/{p}/state/{s['name']}/x" for s in others),
+        *(layout.config_file(s["name"]) for s in others),
+        *(
+            layout.socket_path(s["service"], s["name"])
+            for s in data.get("sockets", [])
+            if not s.get("untrusted_clients")
+        ),
+        *(layout.runtime_dir(s["name"]) for s in others),
+        f"{layout.SECRETS_DIR}/{p}-{agent['name']}/token",
+        f"{layout.SIGNING_DIR}/{p}/signing.key",
+        layout.RENDERED_FILE,
+        f"{layout.POSTGRES_SOCKET_DIR}/.s.PGSQL.5432",
+        layout.QUERY_SOCKET,
+        layout.GPU_SOCKET,
+        layout.RUN_NETWORK_SOCKET,
+        layout.SESSIONS_DIR,
+        f"{layout.PLATFORM_VAR_DIR}/{p}/active.json",
+        f"{layout.VAR_LIB}/git/{p}.git",
+        "/var/lib/docker/volumes",
+        "/var/lib/incus/unix.socket",
+        "/run/docker.sock",
+    ]
+    for path in forbidden:
+        assert not visible(path), path
 
 
 def test_the_agent_restarts_with_its_sockets() -> None:

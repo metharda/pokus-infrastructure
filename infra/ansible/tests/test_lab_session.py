@@ -13,11 +13,12 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import pinka_health_gate as gate
 import pinka_session_start as session
 import pytest
 
-from ansible_testlib import ROLES, evaluate, load_yaml, render_template, role_vars
+from ansible_testlib import INFRA, ROLES, evaluate, load_yaml, render_template, role_vars
 
 TASKS = ROLES / "lab_session" / "tasks" / "main.yml"
 
@@ -50,7 +51,7 @@ HEALTHY = {
 CHECKS: dict[str, Any] = {
     "time": {"wsl": False, "ntp_reference": "", "max_offset": 1.0},
     "postgres": {"container": "pinka-postgres"},
-    "collector": {"url": "http://127.0.0.1:18730/"},
+    "telemetry": {"url": "http://127.0.0.1:18730/"},
     "incus": {},
     "gpu": {
         "image": "docker.io/nvidia/cuda@sha256:" + "0" * 64,
@@ -124,8 +125,86 @@ def test_postgres_check(answer: tuple[int, str], ok: bool) -> None:
 
 
 @pytest.mark.parametrize(("status", "ok"), [(200, True), (503, False), (0, False)])
-def test_collector_check(status: int, ok: bool) -> None:
-    assert gate.check_collector({"url": "http://127.0.0.1:1/"}, lambda url: status).ok is ok
+def test_http_checks(status: int, ok: bool) -> None:
+    assert gate.check_telemetry({"url": "http://127.0.0.1:1/"}, lambda url: status).ok is ok
+    assert gate.check_opa({"url": "http://127.0.0.1:1/health"}, lambda url: status).ok is ok
+
+
+def endpoints(tmp_path: Path, inference: str) -> dict[str, str]:
+    path = tmp_path / "endpoints.toml"
+    path.write_text(f"[inference]\n{inference}\n", encoding="utf-8")
+    return {"endpoints": str(path)}
+
+
+@pytest.mark.parametrize("mode", ["local", "remote"])
+def test_inference_checks_the_api_the_platform_is_told(tmp_path: Path, mode: str) -> None:
+    config = endpoints(tmp_path, f'mode = "{mode}"\napi_url = "http://127.0.0.1:18704"')
+    seen: list[str] = []
+
+    def fetch(url: str) -> int:
+        seen.append(url)
+        return 200
+
+    assert gate.check_inference(config, fetch).ok
+    assert seen == ["http://127.0.0.1:18704/health"]
+    assert not gate.check_inference(config, lambda url: 503).ok
+
+
+def test_a_scripted_backend_only_has_to_answer(tmp_path: Path) -> None:
+    config = endpoints(tmp_path, 'mode = "scripted"\napi_url = "http://127.0.0.1:9/v1"')
+    assert gate.check_inference(config, lambda url: 404).ok
+    assert not gate.check_inference(config, lambda url: 0).ok
+
+
+def test_inference_without_endpoints_fails(tmp_path: Path) -> None:
+    assert not gate.check_inference({"endpoints": str(tmp_path / "none.toml")}, lambda u: 200).ok
+    assert not gate.check_inference(endpoints(tmp_path, 'mode = "local"'), lambda u: 200).ok
+
+
+def rendered(tmp_path: Path, requires: Any) -> str:
+    path = tmp_path / "rendered.json"
+    path.write_text(json.dumps({"platform": "demo", "requires": requires}), encoding="utf-8")
+    return str(path)
+
+
+FACILITIES: dict[str, Any] = {name: config for name, config in CHECKS.items() if name != "time"}
+
+
+def test_without_a_platform_only_the_clock_is_checked(tmp_path: Path) -> None:
+    config: dict[str, Any] = {"checks": {"time": CHECKS["time"]}, "facilities": FACILITIES}
+    assert gate.select_checks(config) == ({"time": CHECKS["time"]}, [])
+    config["rendered"] = str(tmp_path / "missing.json")
+    assert gate.select_checks(config) == ({"time": CHECKS["time"]}, [])
+
+
+def test_exactly_the_required_facilities_are_checked(tmp_path: Path) -> None:
+    config = {
+        "checks": {"time": CHECKS["time"]},
+        "facilities": FACILITIES,
+        "rendered": rendered(tmp_path, ["postgres", "telemetry"]),
+    }
+    checks, missing = gate.select_checks(config)
+    assert sorted(checks) == ["postgres", "telemetry", "time"]
+    assert missing == []
+
+
+def test_a_required_facility_this_node_lacks_fails(tmp_path: Path) -> None:
+    config = {
+        "timeout": 0,
+        "checks": {"time": CHECKS["time"]},
+        "facilities": {"telemetry": CHECKS["telemetry"]},
+        "rendered": rendered(tmp_path, ["gpu", "telemetry"]),
+    }
+    passed, results, _ = gate.gate(
+        config, runner=FakeRunner(HEALTHY), fetch=lambda url: 200, sntp=no_sntp
+    )
+    assert not passed
+    assert [(r.name, r.ok) for r in results] == [
+        ("gpu", False),
+        ("time", True),
+        ("telemetry", True),
+    ]
+    assert "does not run it" in results[0].detail
 
 
 def test_gpu_check_uses_the_pinned_image_without_pulling() -> None:
@@ -169,7 +248,7 @@ def test_gate_waits_until_every_check_passes() -> None:
         clock=clock,
     )
     assert (passed, rounds, clock.now) == (True, 3, 10.0)
-    assert [r.name for r in results] == ["time", "postgres", "collector", "incus", "gpu"]
+    assert [r.name for r in results] == ["time", "postgres", "incus", "telemetry", "gpu"]
 
 
 def test_gate_gives_up_at_the_timeout() -> None:
@@ -185,6 +264,61 @@ def test_gate_gives_up_at_the_timeout() -> None:
     assert not passed
     assert rounds == 5
     assert not results[0].ok
+
+
+def window_record(tmp_path: Path, start: str, end: str) -> Path:
+    path = tmp_path / "maintenance-window.json"
+    path.write_text(json.dumps({"start": start, "end": end, "created_at": start}))
+    return path
+
+
+# 2026-01-01T12:00:00Z
+NOON = 1767268800.0
+
+
+def test_window_rules_of_the_gate(tmp_path: Path) -> None:
+    # BUILD_PROMPT §7.20: production does not start while its record exists;
+    # staging on shared hardware only inside its open window.
+    missing = tmp_path / "none.json"
+    open_now = window_record(tmp_path, "2026-01-01T11:00:00Z", "2026-01-01T15:00:00Z")
+    assert gate.check_window(None, NOON) is None
+    assert gate.check_window({"record": str(missing), "mode": "production"}, NOON) is None
+    held = gate.check_window({"record": str(open_now), "mode": "production"}, NOON)
+    assert held is not None and not held.ok
+    assert "production stays stopped" in held.detail
+    shared = {"record": str(open_now), "mode": "staging", "shared": True}
+    inside = gate.check_window(shared, NOON)
+    assert inside is not None and inside.ok
+    after = gate.check_window(shared, NOON + 4 * 3600)
+    assert after is not None and not after.ok
+    outside = gate.check_window({**shared, "record": str(missing)}, NOON)
+    assert outside is not None and not outside.ok
+    assert gate.check_window({**shared, "shared": False, "record": str(missing)}, NOON) is None
+    broken = tmp_path / "broken.json"
+    broken.write_text("{")
+    bad = gate.check_window({"record": str(broken), "mode": "production"}, NOON)
+    assert bad is not None and "not a maintenance window record" in bad.detail
+
+
+def test_a_window_fails_the_gate_at_once(tmp_path: Path) -> None:
+    record = window_record(tmp_path, "2026-01-01T11:00:00Z", "2026-01-01T15:00:00Z")
+    clock = Clock()
+    passed, results, rounds = gate.gate(
+        {
+            "timeout": 60,
+            "interval": 5,
+            "checks": CHECKS,
+            "window": {"record": str(record), "mode": "production", "shared": False},
+        },
+        runner=FakeRunner(HEALTHY),
+        fetch=lambda url: 200,
+        sntp=no_sntp,
+        sleep=clock.sleep,
+        clock=clock,
+        wall=lambda: NOON,
+    )
+    assert (passed, rounds, clock.now) == (False, 1, 0.0)
+    assert [r.name for r in results] == ["window"]
 
 
 def test_status_file(tmp_path: Path) -> None:
@@ -206,7 +340,7 @@ def test_main_reports_configuration_errors(tmp_path: Path) -> None:
 
 def test_main_once_with_a_failing_check(tmp_path: Path) -> None:
     config = tmp_path / "gate.json"
-    config.write_text(json.dumps({"checks": {"collector": {"url": "http://127.0.0.1:9/"}}}))
+    config.write_text(json.dumps({"checks": {"telemetry": {"url": "http://127.0.0.1:9/"}}}))
     status = tmp_path / "s.json"
     assert gate.main(["--config", str(config), "--status", str(status), "--once"]) == 1
     assert json.loads(status.read_text())["passed"] is False
@@ -301,6 +435,32 @@ def test_one_record_per_boot(tmp_path: Path) -> None:
     assert json.loads(path.read_text()) == record
 
 
+def test_records_follow_the_published_schema(tmp_path: Path) -> None:
+    # BUILD_PROMPT §7.16, §12.10: the schema in contract/records/ describes
+    # every record, complete or with the nulls of a failed collection.
+    schema = json.loads(
+        (INFRA / "contract" / "records" / "session-record.schema.json").read_text(encoding="utf-8")
+    )
+    jsonschema.Draft202012Validator.check_schema(schema)
+    validator = jsonschema.Draft202012Validator(schema)
+    boot_id = tmp_path / "boot_id"
+    boot_id.write_text("00000000-0000-0000-0000-000000000000\n")
+    for number, answers in enumerate(
+        [
+            ((0, json.dumps(FINGERPRINT)), (10, '{"outcome": "degraded"}')),
+            ((127, ""), (127, "")),
+            ((0, "not json"), (40, "")),
+        ]
+    ):
+        sessions = tmp_path / f"sessions{number}"
+        args = ["--sessions", str(sessions), "--boot-id-file", str(boot_id)]
+        assert session.main(args, session_runner(*answers)) == 0
+        record = json.loads((sessions / "00000000-0000-0000-0000-000000000000.json").read_text())
+        assert list(validator.iter_errors(record)) == [], record
+    assert not validator.is_valid({**record, "preflight_outcome": "great"})
+    assert not validator.is_valid({**record, "errors": {"gpu": "x"}})
+
+
 def test_missing_boot_id(tmp_path: Path) -> None:
     assert (
         session.main(["--boot-id-file", str(tmp_path / "none")], session_runner((0, ""), (0, "")))
@@ -327,8 +487,10 @@ def checks_for(**facts: Any) -> dict[str, Any]:
     from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
 
     variables.update({k: trust_as_template(v) for k, v in describe["vars"].items()})
-    expression = describe["ansible.builtin.set_fact"]["lab_session_checks"].strip()[2:-2]
-    result: dict[str, Any] = evaluate(expression, variables)
+    result: dict[str, Any] = {}
+    for fact in ("lab_session_checks", "lab_session_facilities"):
+        expression = describe["ansible.builtin.set_fact"][fact].strip()[2:-2]
+        result.update(evaluate(expression, variables))
     return result
 
 
@@ -342,15 +504,21 @@ GPU_FACTS = {"lab_session_gpu_image": "docker.io/nvidia/cuda@sha256:" + "0" * 64
             "full",
             True,
             {"features": {"cdi": True}},
-            ["collector", "gpu", "incus", "postgres", "time"],
+            ["gpu", "incus", "inference", "opa", "postgres", "telemetry", "time"],
             ["--device", "nvidia.com/gpu=all"],
         ),
-        ("lab", False, {}, ["collector", "incus", "postgres", "time"], None),
+        (
+            "lab",
+            False,
+            {},
+            ["incus", "inference", "opa", "postgres", "telemetry", "time"],
+            None,
+        ),
         (
             "inference",
             True,
             {"runtimes": {"nvidia": {}}},
-            ["collector", "gpu", "time"],
+            ["gpu", "telemetry", "time"],
             ["--runtime", "nvidia", "--gpus", "all"],
         ),
     ],

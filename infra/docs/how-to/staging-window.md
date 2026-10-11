@@ -22,7 +22,10 @@ never writes to one. Runs on staging are never official.
 
 !!! note "Prerequisites"
     - A machine for staging that preflight accepts (it may be a VM:
-      [Virtual machine hosts](../providers/vm.md)); never the production host.
+      [Virtual machine hosts](../providers/vm.md)), or a separate OS
+      instance on the production lab's hardware used only inside maintenance
+      windows ([below](#staging-on-productions-hardware)). Never the
+      production lab's own installation.
     - The release candidate's commits of infra, platform and catalog.
     - A tailnet policy that allows `tag:pinka-qa` (see
       [Security](../security.md#tailnet-policy)).
@@ -74,6 +77,39 @@ sudo pinka stop --timeout 0
 
 A timeout of 0 stops without waiting for runs, which is fine on staging. Keep
 the staging host for the next window, or reinstall it from scratch.
+
+## Staging on production's hardware {#staging-on-productions-hardware}
+
+When staging has no hardware of its own, it is a separate OS instance (its
+own `/srv/pinka`) on the production machine, and the two never run at the
+same time. Set `staging_shared_hardware: true` in the staging host_vars. Each
+side keeps its own record, `/etc/pinka/maintenance-window.json`, so open the
+window on both, production first:
+
+<!-- qa:skip reason="stops the production lab" -->
+```bash
+sudo pinka window open --start 2026-10-12T18:00Z --end 2026-10-12T22:00Z
+```
+
+Times are UTC. On production this drains and stops the lab exactly like
+`pinka stop`; while the record exists, `pinka start` refuses and the health
+gate fails, so production does not start at boot either. Then run the same
+command on staging. Staging starts only while its own window is open, the GPU
+is idle and every configured lab port is free; `pinka-window-expiry.timer`
+stops it when the end passes, and `pinka start` refuses again.
+
+Production stays stopped after the end until you close its window, so it never
+restarts while staging may still run. When staging is stopped:
+
+<!-- qa:skip reason="restarts the production lab" -->
+```bash
+sudo pinka window close
+sudo pinka start
+```
+
+Run `sudo pinka window close` on staging too (it stops a staging lab that
+still runs). Doctor's [`lab.window`](fix-doctor-checks.md#check-lab-window)
+check reports a recorded window on both sides.
 
 ## Verify the separation
 

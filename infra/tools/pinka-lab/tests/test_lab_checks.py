@@ -8,7 +8,7 @@ import unittest
 from collections.abc import Sequence
 from typing import Any
 
-from labfakes import DIGEST, NOW, PROFILE, FakeSystem, context, info
+from labfakes import DIGEST, LAB, NOW, PROFILE, FakeSystem, context, info
 
 from pinka_lab import checks, fingerprint
 from pinka_lab.checks import CHECKS
@@ -20,6 +20,8 @@ PREFLIGHT = (
 PROFILE_PATH = "/etc/pinka/host-profile.json"
 BOOT_ID = "00000000-0000-0000-0000-000000000000"
 NOW_TS = NOW.timestamp()
+
+RENDERED = "/etc/pinka/platform/rendered.json"
 
 
 def run(check: Any, system: FakeSystem, **changes: Any) -> Outcome:
@@ -100,6 +102,15 @@ class ServicesTest(Base):
         self.assertOutcome(run(checks.check_units, system), "fail", "pinka-core.service (failed)")
         system.commands["systemctl is-active pinka-core.service"] = (0, "active\n")
         self.assertOutcome(run(checks.check_units, system), "pass", "2 unit(s)")
+        # The platform's services and sockets come from its rendering.
+        system.files[RENDERED] = json.dumps(
+            {"service_units": ["demo-ctl.service"], "socket_units": ["demo-ctl-api.socket"]}
+        )
+        system.commands["systemctl is-active demo-ctl.service"] = (0, "active\n")
+        outcome = run(checks.check_units, system)
+        self.assertOutcome(outcome, "fail", "demo-ctl-api.socket")
+        system.commands["systemctl is-active demo-ctl-api.socket"] = (0, "active\n")
+        self.assertOutcome(run(checks.check_units, system), "pass", "4 unit(s)")
 
     def inspect(self, state: dict[str, Any], image: str) -> FakeSystem:
         return FakeSystem(
@@ -287,6 +298,45 @@ class GpuTest(Base):
         )
         self.assertOutcome(run(checks.check_gpu, FakeSystem(), node_role="lab"), "skip")
 
+    def test_driver_cuda(self) -> None:
+        version = "DRIVER version      : 580.82.07\nCUDA Version        : 13.1\n"
+        system = FakeSystem({"nvidia-smi --version": (0, version)})
+        self.assertOutcome(run(checks.check_driver_cuda, system), "pass", "supports CUDA 13.1")
+        old = FakeSystem({"nvidia-smi --version": (0, "CUDA Version : 12.8\n")})
+        self.assertOutcome(
+            run(checks.check_driver_cuda, old),
+            "fail",
+            "supports CUDA 12.8, the pinned vLLM image needs 13.0: install a driver branch",
+        )
+        self.assertOutcome(
+            run(checks.check_driver_cuda, old, provider="wsl2"),
+            "fail",
+            "update the NVIDIA driver on Windows",
+        )
+        banner = "| NVIDIA-SMI 580.82.07   Driver Version: 580.82.07   CUDA Version: 13.0 |\n"
+        fallback = FakeSystem({"nvidia-smi --version": (2, ""), "nvidia-smi": (0, banner)})
+        self.assertOutcome(run(checks.check_driver_cuda, fallback), "pass", "CUDA 13.0")
+        self.assertOutcome(run(checks.check_driver_cuda, FakeSystem()), "fail", "does not report")
+        self.assertOutcome(run(checks.check_driver_cuda, FakeSystem(), node_role="lab"), "skip")
+
+    def test_docs_service(self) -> None:
+        # §7.19: the service is checked only with a configured release.
+        self.assertOutcome(run(checks.check_docs, FakeSystem()), "skip", "docs_release")
+        docs = {
+            "dir": "/usr/local/share/pinka/docs",
+            "port": 18706,
+            "unit": "pinka-docs.service",
+            "configured": True,
+        }
+        system = FakeSystem({"systemctl is-active pinka-docs.service": (0, "active\n")})
+        self.assertOutcome(run(checks.check_docs, system, docs=docs), "fail", "no documentation")
+        system.docs_versions.append("pinka-docs-v1")
+        self.assertOutcome(
+            run(checks.check_docs, system, docs=docs), "pass", "serving pinka-docs-v1"
+        )
+        system.commands["systemctl is-active pinka-docs.service"] = (3, "inactive\n")
+        self.assertOutcome(run(checks.check_docs, system, docs=docs), "fail", "is inactive")
+
     def test_vllm(self) -> None:
         self.assertOutcome(run(checks.check_vllm, FakeSystem()), "skip", "no deployment")
         current = {"/etc/pinka/vllm/current.yml": "model: x\n"}
@@ -465,11 +515,14 @@ class LayoutAccountsTest(Base):
     def test_hardening(self) -> None:
         self.assertOutcome(run(checks.check_hardening, FakeSystem()), "skip")
         unit = {
-            "unit": "demo-agent.service",
+            "unit": "pinka-inference-control.service",
             "properties": {"NoNewPrivileges": "yes"},
             "inaccessible_paths": ["/srv/pinka/restricted", "/run/pinka/vllm-deploy.sock"],
         }
-        show = "systemctl show demo-agent.service --property=NoNewPrivileges,InaccessiblePaths"
+        show = (
+            "systemctl show pinka-inference-control.service "
+            "--property=NoNewPrivileges,InaccessiblePaths"
+        )
         good = FakeSystem(
             {
                 show: (
@@ -485,53 +538,290 @@ class LayoutAccountsTest(Base):
         self.assertOutcome(outcome, "fail", "NoNewPrivileges='no'")
         self.assertIn("InaccessiblePaths lacks /srv/pinka/restricted", outcome.detail)
 
+    def test_platform_hardening_comes_from_its_rendering(self) -> None:
+        # §7.17: per profile, from rendered.json, never from platform names.
+        agent = {
+            "unit": "demo-agt.service",
+            "profile": "untrusted-agent",
+            "properties": {"PrivateNetwork": "yes", "User": "demo-agt"},
+            "address_families": ["AF_UNIX"],
+            "inaccessible_paths": ["/run/pinka/postgres"],
+        }
+        rendered = json.dumps({"platform": "demo", "hardening": [agent]})
+        show = (
+            "systemctl show demo-agt.service "
+            "--property=PrivateNetwork,User,InaccessiblePaths,RestrictAddressFamilies"
+        )
+        values = (
+            "PrivateNetwork=yes\nUser=demo-agt\nInaccessiblePaths=-/run/pinka/postgres\n"
+            "RestrictAddressFamilies=AF_UNIX\n"
+        )
+        system = FakeSystem({show: (0, values)}, files={RENDERED: rendered})
+        self.assertOutcome(run(checks.check_hardening, system), "pass", "1 unit(s)")
+        system.commands[show] = (0, values.replace("AF_UNIX\n", "AF_UNIX AF_INET\n"))
+        self.assertOutcome(
+            run(checks.check_hardening, system), "fail", "RestrictAddressFamilies='AF_UNIX AF_INET'"
+        )
+        system.commands[show] = (0, values.replace("AF_UNIX\n", "~AF_INET\n"))
+        self.assertOutcome(run(checks.check_hardening, system), "fail", "~AF_INET")
+        system.commands[show] = (0, values.replace("PrivateNetwork=yes", "PrivateNetwork=no"))
+        self.assertOutcome(run(checks.check_hardening, system), "fail", "PrivateNetwork='no'")
+
+    def test_platform_manifest(self) -> None:
+        self.assertOutcome(run(checks.check_platform_manifest, FakeSystem()), "skip")
+        target = "/srv/pinka/platforms/demo/releases/v1.0.0"
+        digest = "a" * 64
+        active = {
+            "name": "demo",
+            "version": "1.0.0",
+            "manifest_sha256": digest,
+            "release": {"target": target},
+        }
+        provenance = {"platform": {"manifest_sha256": digest}}
+        validate = (
+            f"/usr/local/libexec/pinka/pinka-platform validate {target} --built "
+            "--no-host-check --json"
+        )
+        system = FakeSystem(
+            {
+                f"sha256sum {target}/platform-manifest.yaml": (0, f"{digest}  manifest\n"),
+                validate: (0, {"valid": True, "problems": []}),
+            },
+            files={
+                "/etc/pinka/platform/active.json": json.dumps(active),
+                f"{target}/DEPLOYED_FROM.json": json.dumps(provenance),
+            },
+        )
+        self.assertOutcome(run(checks.check_platform_manifest, system), "pass", "demo 1.0.0")
+        system.commands[f"sha256sum {target}/platform-manifest.yaml"] = (0, f"{'b' * 64}  m\n")
+        outcome = run(checks.check_platform_manifest, system)
+        self.assertOutcome(outcome, "fail", f"active.json records {digest}")
+        self.assertIn("DEPLOYED_FROM.json records", outcome.detail)
+        system.commands[f"sha256sum {target}/platform-manifest.yaml"] = (0, f"{digest}  m\n")
+        refused = {"valid": False, "problems": [{"message": "service x: unknown profile"}]}
+        system.commands[validate] = (65, refused)
+        self.assertOutcome(
+            run(checks.check_platform_manifest, system), "fail", "no longer validates: service x"
+        )
+
+    SOCKET = "/run/pinka/platform/ctl/api.sock"
+    AGENT_SOCKET = "/run/pinka/platform/ctl/agent.sock"
+
+    def socket_system(self, **extra: Any) -> FakeSystem:
+        sockets = [
+            {
+                "path": self.SOCKET,
+                "owner": "demo-ctl",
+                "group": "demo-ctl-api",
+                "mode": "0660",
+                "acl": ["group:pinka:rw-"],
+                "untrusted_clients": False,
+            },
+            {
+                "path": self.AGENT_SOCKET,
+                "owner": "demo-ctl",
+                "group": "demo-ctl-agent",
+                "mode": "0660",
+                "acl": [],
+                "untrusted_clients": True,
+            },
+        ]
+        getfacl = f"getfacl --omit-header --absolute-names {self.SOCKET}"
+        return FakeSystem(
+            {getfacl: (0, "user::rw-\ngroup::rw-\ngroup:pinka:rw-\nmask::rw-\nother::---\n")},
+            files={RENDERED: json.dumps({"platform": "demo", "sockets": sockets, **extra})},
+            infos={
+                self.SOCKET: info("demo-ctl", "demo-ctl-api", 0o660),
+                self.AGENT_SOCKET: info("demo-ctl", "demo-ctl-agent", 0o660),
+            },
+        )
+
     def test_sockets(self) -> None:
         self.assertOutcome(run(checks.check_sockets, FakeSystem()), "skip")
-        entry = {
-            "path": "/run/pinka/platform/demo/ctl-api.sock",
-            "owner": "demo-ctl",
-            "group": "pinka",
-            "mode": "0660",
-            "acl": ["group:demo-api:rw-"],
-        }
-        getfacl = "getfacl --omit-header --absolute-names /run/pinka/platform/demo/ctl-api.sock"
-        system = FakeSystem(
-            {getfacl: (0, "user::rw-\ngroup:demo-api:rw-\n")},
-            infos={"/run/pinka/platform/demo/ctl-api.sock": info("demo-ctl", "pinka", 0o660)},
+        system = self.socket_system()
+        self.assertOutcome(
+            run(checks.check_sockets, system),
+            "pass",
+            f"dedicated agent sockets: {self.AGENT_SOCKET}",
         )
-        self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "pass")
-        system.commands[getfacl] = (0, "user::rw-\n")
-        self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "fail", "lacks ACL")
+        getfacl = f"getfacl --omit-header --absolute-names {self.SOCKET}"
+        system.commands[getfacl] = (0, "user::rw-\ngroup::rw-\nother::---\n")
+        self.assertOutcome(run(checks.check_sockets, system), "fail", "lacks ACL group:pinka:rw-")
+        # A narrower mask shows in the group bits.
+        system = self.socket_system()
+        system.infos[self.SOCKET] = info("demo-ctl", "demo-ctl-api", 0o640)
+        self.assertOutcome(
+            run(checks.check_sockets, system), "fail", "demo-ctl:demo-ctl-api 0640, expected"
+        )
+        system.infos.pop(self.AGENT_SOCKET)
+        self.assertOutcome(
+            run(checks.check_sockets, system), "fail", f"{self.AGENT_SOCKET} missing"
+        )
 
-    def test_sockets_with_a_mask(self) -> None:
-        path = "/run/pinka/platform/demo/relay-svc.sock"
-        entry = {
-            "path": path,
-            "owner": "demo-relay",
-            "group": "demo-relay",
-            "mode": "0600",
-            "acl": ["user:demo-ctl:rw-"],
-            "expect_mode": "0660",
-            "expect_acl": ["user:demo-ctl:rw-", "group::---", "mask::rw-"],
+    def test_sockets_that_fell_back(self) -> None:
+        # The helper's fallback: 0666 without ACL entries (sockets.acl_fallback warns).
+        system = self.socket_system(socket_acl_fallback=[self.SOCKET])
+        system.infos[self.SOCKET] = info("demo-ctl", "demo-ctl-api", 0o666)
+        self.assertOutcome(run(checks.check_sockets, system), "pass")
+
+    def test_agent_view(self) -> None:
+        self.assertOutcome(run(checks.check_agent_view, FakeSystem()), "skip")
+        view = {
+            "sockets": ["/run/pinka/otlp/agent.sock", self.AGENT_SOCKET],
+            "own_dirs": ["/run/pinka/platform-runtime/agt"],
         }
-        getfacl = f"getfacl --omit-header --absolute-names {path}"
-        acl = "user::rw-\nuser:demo-ctl:rw-\ngroup::---\nmask::rw-\nother::---\n"
+        rendered = json.dumps(
+            {
+                "hardening": [
+                    {"unit": "demo-agt.service", "profile": "untrusted-agent", "agent_view": view}
+                ]
+            }
+        )
+        pid = "systemctl show demo-agt.service --property=MainPID --value"
+        root = "/proc/4242/root"
+        find = f"find {root} -path {root}/proc -prune -o -path {root}/sys -prune -o -type s -print"
+        seen = [f"{root}{self.AGENT_SOCKET}", f"{root}/run/pinka/platform-runtime/agt/own.sock"]
         system = FakeSystem(
-            {getfacl: (0, acl)}, infos={path: info("demo-relay", "demo-relay", 0o660)}
+            {pid: (0, "4242\n"), find: (0, "\n".join(seen) + "\n")}, files={RENDERED: rendered}
         )
-        self.assertOutcome(run(checks.check_sockets, system, sockets=[entry]), "pass")
-        # A narrower mask: getfacl marks the entry's effective rights.
-        system.commands[getfacl] = (
-            0,
-            "user::rw-\nuser:demo-ctl:rw-\t#effective:r--\ngroup::---\nmask::r--\nother::---\n",
-        )
+        self.assertOutcome(run(checks.check_agent_view, system), "pass", "2 socket(s)")
+        system.commands[find] = (0, "\n".join([*seen, f"{root}/run/pinka/postgres/.s.PGSQL.5432"]))
         self.assertOutcome(
-            run(checks.check_sockets, system, sockets=[entry]), "fail", "lacks ACL mask::rw-"
+            run(checks.check_agent_view, system),
+            "fail",
+            "beyond its allowlist: /run/pinka/postgres",
         )
-        system.infos[path] = info("demo-relay", "demo-relay", 0o600)
+        system.commands[pid] = (0, "0\n")
         self.assertOutcome(
-            run(checks.check_sockets, system, sockets=[entry]), "fail", "demo-relay:demo-relay 0600"
+            run(checks.check_agent_view, system), "skip", "no untrusted-agent service is running"
         )
+
+
+class SocketAclFallbackTest(Base):
+    API = "/run/pinka/platform/ctl/api.sock"
+    SVC = "/run/pinka/platform/ctl/svc.sock"
+    RENDERED = "/etc/pinka/platform/rendered.json"
+
+    def rendered(self, **extra: Any) -> str:
+        sockets = [
+            {"path": self.API, "acl": ["group:pinka:rw-"]},
+            {"path": self.SVC, "acl": []},
+        ]
+        return json.dumps({"platform": "demo", "sockets": sockets, **extra})
+
+    def test_skipped_without_a_platform_or_human_sockets(self) -> None:
+        self.assertOutcome(run(checks.check_socket_acl_fallback, FakeSystem()), "skip")
+        only_services = json.dumps({"sockets": [{"path": self.SVC, "acl": []}]})
+        system = FakeSystem(files={self.RENDERED: only_services})
+        self.assertOutcome(run(checks.check_socket_acl_fallback, system), "skip")
+
+    def test_sockets_with_acl_entries_pass(self) -> None:
+        system = FakeSystem(
+            files={self.RENDERED: self.rendered()},
+            infos={self.API: info("demo-ctl", "demo-ctl-api", 0o660)},
+        )
+        self.assertOutcome(run(checks.check_socket_acl_fallback, system), "pass", "1 socket")
+
+    def test_each_recorded_fallback_is_reported(self) -> None:
+        system = FakeSystem(
+            files={self.RENDERED: self.rendered(socket_acl_fallback=[self.API])},
+            infos={self.API: info("demo-ctl", "demo-ctl-api", 0o660)},
+        )
+        outcome = run(checks.check_socket_acl_fallback, system)
+        self.assertOutcome(outcome, "fail", f"{self.API} is 0666 without ACL entries")
+        check = next(c for c in checks.CHECKS if c.id == "sockets.acl_fallback")
+        self.assertEqual(check.severity, "warning")
+
+    def test_a_0666_socket_is_reported_without_a_record(self) -> None:
+        system = FakeSystem(
+            files={self.RENDERED: self.rendered()},
+            infos={self.API: info("demo-ctl", "demo-ctl-api", 0o666)},
+        )
+        self.assertOutcome(run(checks.check_socket_acl_fallback, system), "fail", self.API)
+
+    def test_the_path_comes_from_the_lab_description(self) -> None:
+        system = FakeSystem(
+            files={"/x/rendered.json": self.rendered(socket_acl_fallback=[self.API])}
+        )
+        outcome = run(
+            checks.check_socket_acl_fallback,
+            system,
+            paths={**LAB["paths"], "rendered_platform": "/x/rendered.json"},
+        )
+        self.assertOutcome(outcome, "fail", self.API)
+        broken = FakeSystem(files={self.RENDERED: "{"})
+        self.assertOutcome(run(checks.check_socket_acl_fallback, broken), "fail", "not JSON")
+
+
+class TelemetryIsolationTest(Base):
+    QUERY = "/run/pinka/query/query.sock"
+    AGENT = "/run/pinka/otlp/agent.sock"
+    SPEC: dict[str, Any] = {
+        "uids": {"min": 60578, "max": 61183},
+        "ports": [18701, 18702, 18733],
+        "query_socket": "/run/pinka/query/query.sock",
+        "agent_socket": "/run/pinka/otlp/agent.sock",
+    }
+    RULE = "meta skuid 60578-61183 tcp dport { 18701, 18702, 18733 } drop"
+
+    def system(
+        self, rule: str = RULE, query: int = 0o660, group: str = "pinka-query"
+    ) -> FakeSystem:
+        return FakeSystem(
+            {"nft list table inet pinka_telemetry_guard": (0, f"table inet x {{ {rule} }}")},
+            infos={
+                self.QUERY: info("pinka-query-proxy", group, query),
+                self.AGENT: info("root", "root", 0o666),
+            },
+        )
+
+    def test_skipped_without_a_specification(self) -> None:
+        outcome = run(checks.check_telemetry_isolation, FakeSystem(), telemetry_isolation={})
+        self.assertOutcome(outcome, "skip")
+
+    def test_guard_and_sockets_in_place(self) -> None:
+        outcome = run(
+            checks.check_telemetry_isolation, self.system(), telemetry_isolation=self.SPEC
+        )
+        self.assertOutcome(outcome, "pass")
+
+    def test_problems_are_named(self) -> None:
+        missing = FakeSystem({"nft list table inet pinka_telemetry_guard": (1, "")})
+        outcome = run(checks.check_telemetry_isolation, missing, telemetry_isolation=self.SPEC)
+        self.assertOutcome(outcome, "fail", "is not loaded")
+        self.assertIn("/run/pinka/query/query.sock is missing", outcome.detail)
+        narrow = self.system(rule="meta skuid 60578-61183 tcp dport { 18701 } drop")
+        outcome = run(checks.check_telemetry_isolation, narrow, telemetry_isolation=self.SPEC)
+        self.assertOutcome(outcome, "fail", "leaves ports open: 18702, 18733")
+        loose = self.system(query=0o666, group="pinka")
+        outcome = run(checks.check_telemetry_isolation, loose, telemetry_isolation=self.SPEC)
+        self.assertOutcome(outcome, "fail", "query.sock is pinka 0666")
+
+
+class BackupPlatformStateTest(Base):
+    RENDERED = "/etc/pinka/platform/rendered.json"
+    RECORDS = "/srv/pinka/platforms/demo/state/ctl/records"
+    CACHE = "/srv/pinka/platforms/demo/state/ctl/cache"
+
+    def system(self, state: list[str], paths: list[str]) -> FakeSystem:
+        rendered = {"platform": "demo", "state_dirs": state, "backup": {"paths": paths}}
+        return FakeSystem(files={self.RENDERED: json.dumps(rendered)})
+
+    def test_skipped_without_a_platform_or_state(self) -> None:
+        self.assertOutcome(run(checks.check_backup_platform_state, FakeSystem()), "skip")
+        self.assertOutcome(run(checks.check_backup_platform_state, self.system([], [])), "skip")
+
+    def test_every_state_directory_backed_up(self) -> None:
+        system = self.system([self.RECORDS], [self.RECORDS])
+        self.assertOutcome(run(checks.check_backup_platform_state, system), "pass", "1 state")
+
+    def test_left_out_directories_are_listed(self) -> None:
+        system = self.system([self.RECORDS, self.CACHE], [self.RECORDS])
+        outcome = run(checks.check_backup_platform_state, system)
+        self.assertOutcome(outcome, "fail", self.CACHE)
+        self.assertNotIn(self.RECORDS, outcome.detail)
+        check = next(c for c in checks.CHECKS if c.id == "backup.platform_state")
+        self.assertEqual(check.severity, "warning")
 
 
 def psql_answers(

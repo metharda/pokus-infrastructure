@@ -14,15 +14,25 @@ Without ACL support on ``/run`` the entries cannot be set; then, as the
 contract says, the platform's peer-credential check alone separates the
 classes: the socket becomes 0666 and a warning goes to the journal. Any other
 failure fails the socket unit, so the service does not start.
+
+Each run records the outcome in ``/etc/pinka/platform/rendered.json``: its
+``socket_acl_fallback`` lists the sockets that fell back to 0666 (owner
+decision with the "commit" for 3d.3), and doctor warns about each. The
+deployment tool takes the same lock (``.rendered.json.lock`` next to it) when
+it writes the file.
 """
 
 from __future__ import annotations
 
 import argparse
+import fcntl
+import json
+import os
 import re
 import stat
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -32,6 +42,9 @@ PATH_RE = re.compile(
 HUMAN_GROUPS = ("pinka", "pinka-admin")
 FALLBACK_MODE = 0o666
 NOT_SUPPORTED = "not supported"
+RENDERED = Path("/etc/pinka/platform/rendered.json")
+# The key of rendered.json (pinka_platform.rendering.SOCKET_ACL_FALLBACK).
+FALLBACK_KEY = "socket_acl_fallback"
 Runner = Callable[[Sequence[str]], subprocess.CompletedProcess[str]]
 
 
@@ -71,6 +84,57 @@ def apply(path: Path, groups: Sequence[str], run: Runner = _run) -> str:
     raise SocketError(f"setfacl failed on {path}: {result.stderr.strip()}")
 
 
+def record(rendered: Path, path: Path, fell_back: bool) -> bool:
+    """Record in ``rendered.json`` whether a socket fell back to 0666.
+
+    The list holds only sockets the rendering names and is left out while
+    empty; without a rendering there is nothing to record into.
+
+    Args:
+        rendered: ``rendered.json``.
+        path: The socket.
+        fell_back: Whether it fell back.
+
+    Returns:
+        True if the file changed.
+    """
+    lock = rendered.with_name(f".{rendered.name}.lock")
+    fd = os.open(lock, os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            data = json.loads(rendered.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        if not isinstance(data, dict):
+            return False
+        known = {s.get("path") for s in data.get("sockets") or [] if isinstance(s, dict)}
+        before = [p for p in data.get(FALLBACK_KEY) or [] if isinstance(p, str)]
+        after = set(before) - {str(path)}
+        if fell_back and str(path) in known:
+            after.add(str(path))
+        listed = sorted(after & known)
+        if listed == before:
+            return False
+        if listed:
+            data[FALLBACK_KEY] = listed
+        else:
+            data.pop(FALLBACK_KEY, None)
+        handle, tmp = tempfile.mkstemp(prefix=f".{rendered.name}.", dir=rendered.parent)
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as out:
+                json.dump(data, out, indent=2, sort_keys=True)
+                out.write("\n")
+            Path(tmp).chmod(0o644)
+            Path(tmp).replace(rendered)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+        return True
+    finally:
+        os.close(fd)
+
+
 def main(argv: Sequence[str], run: Runner = _run) -> int:
     """Set the ACL entries of a platform socket.
 
@@ -84,6 +148,7 @@ def main(argv: Sequence[str], run: Runner = _run) -> int:
     parser = argparse.ArgumentParser(prog="socket-acl", description=__doc__.splitlines()[0])
     parser.add_argument("path", type=Path)
     parser.add_argument("groups", nargs="+", choices=HUMAN_GROUPS)
+    parser.add_argument("--rendered", type=Path, default=RENDERED, help=argparse.SUPPRESS)
     args = parser.parse_args(list(argv))
     if not PATH_RE.match(str(args.path)):
         parser.error(f"not a platform socket path: {args.path}")
@@ -97,6 +162,11 @@ def main(argv: Sequence[str], run: Runner = _run) -> int:
             f"socket-acl: warning: no ACL support for {args.path}; the socket is 0666 and the"
             " platform's peer-credential check alone decides who may use it\n"
         )
+    try:
+        record(args.rendered, args.path, outcome == "fallback")
+    except OSError as exc:
+        # The socket is usable either way; doctor also checks the mode itself.
+        sys.stderr.write(f"socket-acl: warning: cannot record the outcome: {exc}\n")
     return 0
 
 

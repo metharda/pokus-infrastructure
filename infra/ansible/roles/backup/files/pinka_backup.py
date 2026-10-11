@@ -12,6 +12,8 @@ Commands, all run as root by the backup role's units or by ``restore.yml``:
 - ``prune``: ``restic forget --prune`` with the retention policy.
 - ``snapshots``: the snapshots of this host as JSON.
 - ``restore``: restore a snapshot's files in place.
+- ``platform-record``: print the active platform's record (``active.json``)
+  as the snapshot holds it, or ``null`` without one (``restic dump``).
 - ``pgrestore``: load a dump into the lab database (``pg_restore --clean``).
 - ``passwd``: change the repository password (``restic key passwd``).
 
@@ -36,6 +38,10 @@ from typing import IO, Any
 
 REPO_MISSING = 10  # restic: repository does not exist (since 0.17.0)
 INCOMPLETE = 3  # restic backup: some source data could not be read
+# The active platform's record, and restic dump's message for a path the
+# snapshot lacks (cmd/restic/cmd_dump.go of restic 0.19.1).
+PLATFORM_RECORD = "/etc/pinka/platform/active.json"
+DUMP_NOT_FOUND = "not found in snapshot"
 Runner = Callable[..., "subprocess.CompletedProcess[str]"]
 
 
@@ -401,6 +407,45 @@ def cmd_restore(
     return done.returncode
 
 
+def cmd_platform_record(config: Mapping[str, Any], snapshot: str, runner: Runner) -> int:
+    """Print the active platform's record as the snapshot holds it.
+
+    restore.yml redeploys the release and the content that this record names.
+
+    Args:
+        config: Helper configuration.
+        snapshot: Snapshot ID or ``latest``.
+        runner: Command runner.
+
+    Returns:
+        0 with the record (``null`` when the snapshot has none), restic's
+        exit status otherwise (2 when not configured).
+    """
+    location = repository(config)
+    if not location:
+        print("backup: no repository is configured", file=sys.stderr)
+        return 2
+    argv = [*restic_argv(config, location), "dump", snapshot, PLATFORM_RECORD]
+    if snapshot == "latest":
+        argv += ["--host", str(config["host"]), "--tag", str(config["tag"])]
+    done = runner(argv, env=restic_env(config))
+    if done.returncode != 0:
+        if DUMP_NOT_FOUND in done.stderr:
+            sys.stdout.write("null\n")
+            return 0
+        print(
+            f"backup: restic dump: exit {done.returncode}: {done.stderr.strip()}", file=sys.stderr
+        )
+        return done.returncode
+    try:
+        record = json.loads(done.stdout)
+    except ValueError:
+        print(f"backup: {PLATFORM_RECORD} in the snapshot is not JSON", file=sys.stderr)
+        return 1
+    sys.stdout.write(json.dumps(record if isinstance(record, dict) else None) + "\n")
+    return 0
+
+
 def cmd_passwd(config: Mapping[str, Any], new_password_file: Path, runner: Runner) -> int:
     """Replace the repository key of the current password with one of a new password.
 
@@ -568,6 +613,8 @@ def main(argv: Sequence[str], runner: Runner = run) -> int:
     restore = commands.add_parser("restore")
     restore.add_argument("--snapshot", required=True)
     restore.add_argument("--include", action="append", default=[], required=True)
+    record = commands.add_parser("platform-record")
+    record.add_argument("--snapshot", required=True)
     pgrestore = commands.add_parser("pgrestore")
     pgrestore.add_argument("--dump", type=Path, required=True)
     passwd = commands.add_parser("passwd")
@@ -584,6 +631,7 @@ def main(argv: Sequence[str], runner: Runner = run) -> int:
         "prune": lambda: cmd_prune(config, runner),
         "snapshots": lambda: cmd_snapshots(config, runner),
         "restore": lambda: cmd_restore(config, args.snapshot, args.include, runner),
+        "platform-record": lambda: cmd_platform_record(config, args.snapshot, runner),
         "pgrestore": lambda: cmd_pgrestore(config, args.dump, runner),
         "passwd": lambda: cmd_passwd(config, args.new_password_file, runner),
     }

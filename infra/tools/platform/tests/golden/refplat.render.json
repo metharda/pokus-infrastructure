@@ -145,6 +145,110 @@
       "path": "/etc/pinka/secrets/postgres"
     }
   ],
+  "hardening": [
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups"
+      ],
+      "profile": "controller",
+      "properties": {
+        "Group": "refplat-ctl",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "refplat-ctl"
+      },
+      "unit": "refplat-ctl.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX"
+      ],
+      "agent_view": {
+        "own_dirs": [
+          "/run/pinka/platform-runtime/agent"
+        ],
+        "release": "/srv/pinka/platforms/refplat/releases/refplat-v1",
+        "sockets": [
+          "/run/pinka/otlp/agent.sock",
+          "/run/pinka/platform/ctl/session.sock"
+        ]
+      },
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/run/pinka/postgres",
+        "/run/pinka/postgres-reader",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "untrusted-agent",
+      "properties": {
+        "Group": "refplat-agent",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateNetwork": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "refplat-agent"
+      },
+      "unit": "refplat-agent.service"
+    }
+  ],
   "incus_certificates": [],
   "opa": null,
   "platform": "refplat",
@@ -181,7 +285,33 @@
     "refplat-ctl-api.socket",
     "refplat-ctl-session.socket"
   ],
+  "sockets": [
+    {
+      "acl": [
+        "group:pinka:rw-"
+      ],
+      "group": "refplat-ctl-api",
+      "mode": "0660",
+      "owner": "refplat-ctl",
+      "path": "/run/pinka/platform/ctl/api.sock",
+      "unit": "refplat-ctl-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "refplat-ctl-session",
+      "mode": "0660",
+      "owner": "refplat-ctl",
+      "path": "/run/pinka/platform/ctl/session.sock",
+      "unit": "refplat-ctl-session.socket",
+      "untrusted_clients": true
+    }
+  ],
   "stale_units": [],
+  "state_dirs": [
+    "/srv/pinka/platforms/refplat/state/ctl/records",
+    "/srv/pinka/platforms/refplat/state/ctl/datasets"
+  ],
   "telemetry_labels": [],
   "tools": []
 }

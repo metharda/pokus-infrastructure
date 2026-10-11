@@ -11,7 +11,7 @@ description: Every field of the environment fingerprint printed by pinka fingerp
 
 # Fingerprint schema
 
-Output of `pinka fingerprint --json` and the `fingerprint` field of every session record (pokus-infrastructure BUILD_PROMPT §10.2, contracts.md C9c). `hash` is the sha256 of the canonical JSON of `fingerprint` (sorted keys, no whitespace, UTF-8); `computed_at` and `boot_id` are volatile and not hashed. Schema file: `tools/pinka-lab/schema/fingerprint.schema.json` (JSON Schema draft 2020-12).
+Output of `pinka fingerprint --json` and the `fingerprint` field of every session record (pokus-infrastructure BUILD_PROMPT §10.2, contracts.md C9c). `hash` is the sha256 of the canonical JSON of `fingerprint` (sorted keys, no whitespace, UTF-8); `computed_at` and `boot_id` are volatile and not hashed. Schema file: `contract/records/fingerprint.schema.json` (JSON Schema draft 2020-12).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

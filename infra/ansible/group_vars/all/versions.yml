@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "2974158391ee0582461d5a2689667e0934f7f6fd9e7b89fd18b88acb191ccbc7"
+pinka_versions_lock_sha256: "f091afc14e4706b84db418dcd7785970312fff818351710a8ec3292463fb41aa"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -192,6 +192,14 @@ pinka_versions:
         image: docker.io/vllm/vllm-openai
         tag: v0.31.0
         digest: sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+        platforms:
+          - linux/amd64
+          - linux/arm64
+        cuda: 13.0.2
+      query_proxy:
+        image: docker.io/library/nginx
+        tag: 1.30.5-alpine
+        digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
         platforms:
           - linux/amd64
           - linux/arm64

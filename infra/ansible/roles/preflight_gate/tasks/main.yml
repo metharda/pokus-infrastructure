@@ -30,6 +30,7 @@
           {{ [preflight_gate_command, '--no-write', '--quiet', '--output', preflight_gate_tmp.path,
               '--srv-path', pinka_root]
              + ['--nvidia-driver', install_nvidia_driver]
+             + pinka_preflight_args
              + (['--accept-mok-enrollment'] if host_profile.overrides.accept_mok_enrollment | default(false) else [])
              + (['--adopt-incus'] if pinka_bootstrap.adopt_incus | default(false) else [])
              + (['--offline'] if pinka_bootstrap.offline | default(false) else []) }}

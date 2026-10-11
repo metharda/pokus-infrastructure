@@ -1,0 +1,6 @@
+{
+  "needs_action": [
+    "vm_collector_address_conflict"
+  ],
+  "outcome": "needs_action"
+}

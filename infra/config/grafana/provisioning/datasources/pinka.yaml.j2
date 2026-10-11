@@ -1,9 +1,10 @@
 # Managed by pinka (config/grafana/provisioning/datasources/pinka.yaml.j2). Local changes will be overwritten.
 #
-# Data sources of the lab (BUILD_PROMPT §7.9). Everything is on 127.0.0.1
-# (Grafana uses the host network); with an active platform that has a
-# database, its PostgreSQL through the reader socket directory with the
-# platform's read-only Grafana role. "$$" is a literal "$".
+# Data sources of the lab (BUILD_PROMPT §7.9). Prometheus, Loki and Tempo
+# through the query proxy's loopback port (Grafana uses the host network), so
+# no Grafana user reaches a write or admin endpoint; with an active platform
+# that has a database, its PostgreSQL through the reader socket directory with
+# the platform's read-only Grafana role. "$$" is a literal "$".
 apiVersion: 1
 
 prune: true
@@ -13,7 +14,7 @@ datasources:
     uid: prometheus
     type: prometheus
     access: proxy
-    url: http://127.0.0.1:{{ pinka_ports.prometheus }}
+    url: http://127.0.0.1:{{ pinka_internal_ports.query_proxy }}/prometheus
     isDefault: true
     editable: false
 
@@ -21,7 +22,7 @@ datasources:
     uid: loki
     type: loki
     access: proxy
-    url: http://127.0.0.1:{{ pinka_ports.loki }}
+    url: http://127.0.0.1:{{ pinka_internal_ports.query_proxy }}/loki
     editable: false
     jsonData:
       derivedFields:
@@ -36,7 +37,7 @@ datasources:
     uid: tempo
     type: tempo
     access: proxy
-    url: http://127.0.0.1:{{ pinka_ports.tempo }}
+    url: http://127.0.0.1:{{ pinka_internal_ports.query_proxy }}/tempo
     editable: false
     jsonData:
       tracesToLogsV2:

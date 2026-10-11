@@ -1,0 +1,16 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "env_class": "wsl2",
+  "features": {
+    "gpu_inference": false,
+    "vm_targets": true
+  },
+  "outcome": "degraded",
+  "provider": "wsl2",
+  "remediation_contains": [
+    "supports CUDA 12.7, the pinned vLLM image needs 13.0",
+    "update the NVIDIA driver on Windows"
+  ]
+}

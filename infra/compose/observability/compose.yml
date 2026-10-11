@@ -98,6 +98,29 @@ services:
       - ./config/tempo:/etc/tempo:ro
       - ${PINKA_ROOT:?}/state/tempo:/var/tempo
 
+  # The only way to query telemetry (BUILD_PROMPT §7.9): forwards only the
+  # query endpoints of Prometheus, Loki and Tempo and answers 403 to
+  # everything else. Platform services reach it through
+  # /run/pinka/query.sock (a link to query/query.sock, 0660, group
+  # pinka-query; the umask makes the mode), Grafana through its loopback
+  # port. A socket left over from a crash is removed before nginx starts.
+  query_proxy:
+    <<: *hardened
+    profiles: [stores]
+    image: ${QUERY_PROXY_IMAGE:?pinned image missing}
+    container_name: pinka-query-proxy
+    labels:
+      org.pinka.config-hash: ${QUERY_PROXY_CONFIG_HASH:-}
+    user: "${QUERY_PROXY_UID:?}:${PINKA_QUERY_GID:?}"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - umask 0117 && rm -f /run/query/query.sock && exec nginx -c /etc/query-proxy/nginx.conf -g 'daemon off;'
+    tmpfs: [/tmp]
+    volumes:
+      - ./config/query-proxy:/etc/query-proxy:ro
+      - /run/pinka/query:/run/query
+
   grafana:
     <<: *hardened
     profiles: [stores]

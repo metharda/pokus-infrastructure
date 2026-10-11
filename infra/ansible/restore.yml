@@ -1,10 +1,13 @@
 # Managed by pinka (ansible/restore.yml). Local changes will be overwritten.
 #
 # Restore play run by `bootstrap.sh --restore` after site.yml (BUILD_PROMPT
-# §5.2 step 10, §7.15): stop the lab, restore a chosen restic snapshot of this
-# host, load the newest PostgreSQL dump, re-import the golden images from
-# their exports (aliases kept, fingerprints checked), re-verify the model
-# hashes (re-downloading what is missing), start the lab and run doctor.
+# §5.2 step 10, §7.15): drain the platform (its drain hook) and stop the lab,
+# restore a chosen restic snapshot of this host, load the newest PostgreSQL
+# dump, re-import the golden images from their exports (aliases kept,
+# fingerprints checked), re-verify the model hashes (re-downloading what is
+# missing), redeploy the platform release and content refs that the
+# snapshot's active.json records, start the lab, wait for the platform's
+# health hook and run doctor.
 #
 # The snapshot comes from restore_snapshot (host_vars: an ID or "latest") or,
 # in an interactive run, from a prompt. Files of /etc/pinka that bootstrap
@@ -118,6 +121,17 @@
     - name: Restore the snapshot
       when: not ansible_check_mode
       block:
+        - name: Look for an active platform
+          ansible.builtin.stat:
+            path: /etc/pinka/platform/active.json
+          register: restore_active_platform
+
+        - name: Drain and stop the platform (§12.9)
+          ansible.builtin.include_role:
+            name: platform
+            tasks_from: stop
+          when: restore_active_platform.stat.exists
+
         - name: Stop the lab
           ansible.builtin.systemd_service:
             name: pinka-lab.target
@@ -207,10 +221,61 @@
             - pinka_features.gpu_inference | default(false)
             - node_role in ['full', 'inference']
 
+        - name: Redeploy the platform the snapshot recorded
+          when:
+            - node_role in ['full', 'lab']
+            - (platform | default({}, true)).repo | default('') | length > 0
+          block:
+            - name: Read the platform record of the snapshot
+              ansible.builtin.command:
+                argv: ["{{ restore_backup }}", platform-record, --snapshot, "{{ restore_entry.id }}"]
+              register: restore_platform_record
+              changed_when: false
+
+            - name: Remember the recorded release
+              ansible.builtin.set_fact:
+                restore_record: "{{ restore_platform_record.stdout | from_json }}"
+
+            - name: Pin the platform source to the recorded release
+              ansible.builtin.set_fact:
+                restore_platform: >-
+                  {{ platform | combine({'ref': restore_record.release.tag or restore_record.release.commit}) }}
+              when: restore_record is mapping
+
+            # Content packages the snapshot does not record keep their host_vars refs.
+            - name: Pin the content sources to the recorded refs
+              ansible.builtin.set_fact:
+                restore_content: >-
+                  {{ restore_content | default({})
+                     | combine({item.key: item.value | combine(
+                         {'ref': restore_recorded.tag or restore_recorded.commit}
+                         if restore_recorded else {})}) }}
+              vars:
+                restore_recorded: "{{ (restore_record.content | default({}, true))[item.key] | default(none) }}"
+              loop: "{{ (content | default({}, true)) | dict2items }}"
+              loop_control:
+                label: "{{ item.key }}"
+              when: restore_record is mapping
+
+            - name: Deploy the recorded release and content (§7.15)
+              ansible.builtin.include_role:
+                name: platform
+              vars:
+                # The role's own source settings (host_vars names), pinned to the record.
+                platform: "{{ restore_platform }}"  # noqa: var-naming[no-role-prefix]
+                content: "{{ restore_content | default({}) }}"  # noqa: var-naming[no-role-prefix]
+              when: restore_record is mapping
+
         - name: Start the lab
           ansible.builtin.systemd_service:
             name: pinka-lab.target
             state: started
+
+        - name: Start the platform and wait for its health hook
+          ansible.builtin.include_role:
+            name: platform
+            tasks_from: start
+          when: node_role in ['full', 'lab']
 
     - name: Look for the pinka CLI
       ansible.builtin.stat:

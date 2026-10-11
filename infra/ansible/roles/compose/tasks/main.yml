@@ -54,6 +54,8 @@
     compose_pinka_gid: "{{ (ansible_facts.getent_group['pinka'] | default(none) or ['', ''])[1] }}"
     compose_db_socket_gid: >-
       {{ (ansible_facts.getent_group[compose_db_socket_group] | default(none) or ['', ''])[1] }}
+    # The query proxy's socket group (§7.9).
+    compose_query_gid: "{{ (ansible_facts.getent_group['pinka-query'] | default(none) or ['', ''])[1] }}"
 
 - name: Derive the GPU method
   ansible.builtin.set_fact:

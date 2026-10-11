@@ -155,7 +155,22 @@
           "on_missing": {"enum": ["degrade", "fallback"]},
           "fallback": {"$ref": "#/$defs/identifier"},
           "only_if_missing": {"$ref": "#/$defs/identifier"},
-          "impact": {"$ref": "#/$defs/text"}
+          "impact": {"$ref": "#/$defs/text"},
+          "remediation": {
+            "description": "Remediation per unmet requirement: the variant of the environment class, else `unknown` when the fact was not reported, else `default`; {actual} and {required} are filled in.",
+            "type": "object",
+            "propertyNames": {"enum": ["driver_cuda_min"]},
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["default", "unknown"],
+              "properties": {
+                "default": {"$ref": "#/$defs/text"},
+                "unknown": {"$ref": "#/$defs/text"},
+                "wsl2": {"$ref": "#/$defs/text"}
+              }
+            }
+          }
         }
       }
     },
@@ -263,7 +278,13 @@
           "properties": {
             "gpu_vram_gib_min": {"type": "number", "minimum": 0},
             "gpu_compute_capability_min": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
-            "environment_in": {"$ref": "#/$defs/strings"}
+            "environment_in": {"$ref": "#/$defs/strings"},
+            "driver_cuda_min": {
+              "oneOf": [
+                {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"},
+                {"$ref": "#/$defs/lock_reference"}
+              ]
+            }
           }
         }
       ]

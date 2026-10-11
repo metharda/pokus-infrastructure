@@ -117,9 +117,11 @@ def test_collector_listens_only_on_loopback_and_the_vm_address(vm: bool) -> None
 @pytest.mark.parametrize("vm", [False, True])
 def test_collector_pipelines_use_defined_components(vm: bool) -> None:
     config = rendered("otel/gateway.yaml", vm=vm)
-    receivers = set(config["receivers"])
+    receivers = set(config["receivers"]) - {"otlp/agent"}
     assert receivers == ({"otlp", "otlp/vm"} if vm else {"otlp"})
     for name, pipeline in config["service"]["pipelines"].items():
+        if name.endswith("/agent"):
+            continue
         assert set(pipeline["receivers"]) == receivers, name
         assert pipeline["processors"] == ["memory_limiter", "resource", "batch"], name
         assert set(pipeline["exporters"]) <= set(config["exporters"]), name
@@ -176,11 +178,11 @@ def test_prometheus_targets_are_loopback(gpu: bool, node_role: str, jobs: set[st
 
 def test_internal_ports_do_not_collide() -> None:
     variables = ansible_vars(GROUP_VARS)
-    ports = list(variables["pinka_ports"].values()) + list(
+    ports = list(variables["pinka_default_ports"].values()) + list(
         variables["pinka_internal_ports"].values()
     )
     assert len(ports) == len(set(ports))
-    address = ipaddress.ip_address(variables["pinka_vm_otlp"]["address"])
+    address = ipaddress.ip_address(variables["vm_collector_address"])
     assert not address.is_global
     assert address in ipaddress.ip_network("198.18.0.0/15")  # RFC 2544 benchmarking range
 
@@ -189,8 +191,9 @@ def test_grafana_datasources() -> None:
     config = rendered("grafana/provisioning/datasources/pinka.yaml")
     sources = {d["uid"]: d for d in config["datasources"]}
     assert set(sources) == {"prometheus", "loki", "tempo", "platform-postgres"}
+    # Through the query proxy's loopback port, never to the stores directly (§7.9).
     for uid in ("prometheus", "loki", "tempo"):
-        assert sources[uid]["url"].startswith("http://127.0.0.1:"), uid
+        assert sources[uid]["url"] == f"http://127.0.0.1:18733/{uid}", uid
     postgres = sources["platform-postgres"]
     assert postgres["name"] == "demo PostgreSQL"
     assert postgres["url"] == "/run/pinka/postgres-reader"
@@ -283,7 +286,7 @@ def test_compose_services_bind_loopback() -> None:
         for name, service in compose["services"].items()
         if "stores" in service.get("profiles", [])
     }
-    assert stores == {"prometheus", "loki", "tempo", "grafana"}
+    assert stores == {"prometheus", "loki", "tempo", "grafana", "query_proxy"}
 
 
 def test_derived_flags() -> None:
@@ -409,3 +412,178 @@ def test_stores_by_node_role() -> None:
     assert evaluate("observability_pairing_dir", obs_vars()).endswith(
         compose["services"]["otel_gateway"]["volumes"][1].split(":")[0].rsplit("/", 1)[1]
     )
+
+
+# --- the agent OTLP socket and the query proxy (§7.9) ------------------------------------
+
+
+def test_the_agent_socket_telemetry_is_stamped_untrusted() -> None:
+    config = rendered("otel/gateway.yaml")
+    agent = config["receivers"]["otlp/agent"]["protocols"]
+    assert agent == {"http": {"endpoint": "127.0.0.1:18732"}}
+    stamp = config["processors"]["resource/untrusted"]["attributes"]
+    assert stamp == [{"key": "pinka.trust", "value": "untrusted", "action": "upsert"}]
+    pipelines = config["service"]["pipelines"]
+    for signal in ("logs", "metrics", "traces"):
+        pipeline = pipelines[f"{signal}/agent"]
+        assert pipeline["receivers"] == ["otlp/agent"]
+        # After the lab's own resource attributes, so the stamp always wins.
+        assert pipeline["processors"] == [
+            "memory_limiter",
+            "resource",
+            "resource/untrusted",
+            "batch",
+        ]
+        assert pipeline["exporters"] == pipelines[signal]["exporters"]
+        assert "otlp/agent" not in pipelines[signal]["receivers"]
+    inference = rendered("otel/gateway.yaml", node_role="inference")
+    assert "otlp/agent" not in inference["receivers"]
+
+
+def test_loki_indexes_the_trust_and_the_platform_labels() -> None:
+    def labels(platform: dict[str, Any]) -> Any:
+        variables = obs_vars()
+        variables["active_platform"] = platform
+        config = yaml.safe_load(render_file(CONFIG / "loki/loki.yaml.j2", variables))
+        return config["limits_config"]["otlp_config"]["resource_attributes"]["attributes_config"]
+
+    assert labels({**PLATFORM, "telemetry_labels": ["run.id", "task.id"]}) == [
+        {"action": "index_label", "attributes": ["pinka.trust", "run.id", "task.id"]}
+    ]
+    assert labels({}) == [{"action": "index_label", "attributes": ["pinka.trust"]}]
+
+
+def test_agent_socket_units() -> None:
+    variables = obs_vars()
+    socket = configparser.ConfigParser(interpolation=None, strict=True)
+    socket.optionxform = str  # type: ignore[assignment,method-assign]
+    socket.read_string(
+        render_file(ROLES / "observability/templates/pinka-otlp-agent.socket.j2", variables)
+    )
+    assert socket["Socket"]["ListenStream"] == "/run/pinka/otlp/agent.sock"
+    assert socket["Socket"]["SocketMode"] == "0666"  # sending is all it allows
+    service = configparser.ConfigParser(interpolation=None, strict=True)
+    service.optionxform = str  # type: ignore[assignment,method-assign]
+    service.read_string(
+        render_file(ROLES / "observability/templates/pinka-otlp-agent.service.j2", variables)
+    )
+    assert service["Service"]["ExecStart"] == (
+        "/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=300 127.0.0.1:18732"
+    )
+    assert service["Service"]["DynamicUser"] == "yes"  # outside the platform's UID range
+    assert service["Service"]["IPAddressAllow"] == "localhost"
+    assert service["Service"]["IPAddressDeny"] == "any"
+
+
+def test_query_socket_directory_and_link() -> None:
+    text = render_file(ROLES / "observability/templates/pinka-query.tmpfiles.conf.j2", obs_vars())
+    lines = [line for line in text.splitlines() if line and not line.startswith("#")]
+    assert "d /run/pinka/query 0750 pinka-query-proxy pinka-query -" in lines
+    assert "L+ /run/pinka/query.sock - - - - query/query.sock" in lines
+
+
+def test_the_query_proxy_container() -> None:
+    proxy = load_yaml(INFRA / "compose/observability/compose.yml")["services"]["query_proxy"]
+    assert proxy["user"] == "${QUERY_PROXY_UID:?}:${PINKA_QUERY_GID:?}"
+    assert proxy["volumes"] == [
+        "./config/query-proxy:/etc/query-proxy:ro",
+        "/run/pinka/query:/run/query",
+    ]
+    command = proxy["entrypoint"][-1]
+    assert command.startswith("umask 0117 && ")  # the socket becomes 0660
+    assert "rm -f /run/query/query.sock" in command
+
+
+def proxy_locations() -> list[tuple[re.Pattern[str], set[str], str]]:
+    text = render_file(CONFIG / "query-proxy/nginx.conf.j2", obs_vars())
+    found = []
+    for match in re.finditer(
+        r"location ~ (\S+) \{\s*limit_except ([A-Z ]+) \{ deny all; \}\s*"
+        r"rewrite \S+ \$1 break;\s*proxy_pass (\S+);",
+        text,
+    ):
+        found.append((re.compile(match.group(1)), set(match.group(2).split()), match.group(3)))
+    return found
+
+
+def proxied(method: str, path: str) -> str | None:
+    for pattern, methods, upstream in proxy_locations():
+        if pattern.match(path):
+            return (
+                upstream if method in methods or (method == "HEAD" and "GET" in methods) else None
+            )
+    return None
+
+
+ALLOWED = [
+    ("GET", "/prometheus/api/v1/query", "http://127.0.0.1:18701"),
+    ("POST", "/prometheus/api/v1/query_range", "http://127.0.0.1:18701"),
+    ("GET", "/prometheus/api/v1/series", "http://127.0.0.1:18701"),
+    ("GET", "/prometheus/api/v1/labels", "http://127.0.0.1:18701"),
+    ("GET", "/prometheus/api/v1/label/job/values", "http://127.0.0.1:18701"),
+    ("GET", "/loki/loki/api/v1/query", "http://127.0.0.1:18702"),
+    ("POST", "/loki/loki/api/v1/query_range", "http://127.0.0.1:18702"),
+    ("GET", "/loki/loki/api/v1/series", "http://127.0.0.1:18702"),
+    ("GET", "/loki/loki/api/v1/labels", "http://127.0.0.1:18702"),
+    ("GET", "/loki/loki/api/v1/label/job/values", "http://127.0.0.1:18702"),
+    ("GET", "/tempo/api/traces/0123456789abcdef", "http://127.0.0.1:18703"),
+    ("GET", "/tempo/api/v2/traces/0123456789abcdef", "http://127.0.0.1:18703"),
+    ("GET", "/tempo/api/search", "http://127.0.0.1:18703"),
+    ("GET", "/tempo/api/search/tags", "http://127.0.0.1:18703"),
+    ("GET", "/tempo/api/search/tag/service.name/values", "http://127.0.0.1:18703"),
+    ("GET", "/tempo/api/v2/search/tags", "http://127.0.0.1:18703"),
+    ("GET", "/tempo/api/v2/search/tag/service.name/values", "http://127.0.0.1:18703"),
+]
+# Push and remote write, deletion, admin, configuration, flush, rules and
+# alerting, and the query paths with another method (the pinned releases'
+# routes, see the proxy's configuration).
+REFUSED = [
+    ("POST", "/prometheus/api/v1/write"),
+    ("POST", "/prometheus/api/v1/otlp/v1/metrics"),
+    ("POST", "/prometheus/api/v1/read"),
+    ("POST", "/prometheus/api/v1/admin/tsdb/delete_series"),
+    ("PUT", "/prometheus/api/v1/admin/tsdb/snapshot"),
+    ("GET", "/prometheus/api/v1/status/config"),
+    ("GET", "/prometheus/api/v1/targets"),
+    ("GET", "/prometheus/api/v1/rules"),
+    ("GET", "/prometheus/api/v1/alerts"),
+    ("DELETE", "/prometheus/api/v1/series"),
+    ("POST", "/prometheus/-/quit"),
+    ("POST", "/loki/loki/api/v1/push"),
+    ("POST", "/loki/otlp/v1/logs"),
+    ("POST", "/loki/loki/api/v1/delete"),
+    ("GET", "/loki/loki/api/v1/tail"),
+    ("GET", "/loki/loki/api/v1/rules"),
+    ("POST", "/loki/flush"),
+    ("GET", "/loki/config"),
+    ("PUT", "/loki/loki/api/v1/query"),
+    ("POST", "/tempo/api/search"),
+    ("POST", "/tempo/v1/traces"),
+    ("GET", "/tempo/api/overrides"),
+    ("POST", "/tempo/flush"),
+    ("GET", "/tempo/status/config"),
+    ("GET", "/prometheus/api/v1/label/a/b/values"),
+    ("GET", "/prometheus/api/v1/query/../admin"),
+    ("GET", "/api/v1/query"),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "upstream"), ALLOWED)
+def test_the_query_proxy_forwards_the_query_endpoints(
+    method: str, path: str, upstream: str
+) -> None:
+    assert proxied(method, path) == upstream
+
+
+@pytest.mark.parametrize(("method", "path"), REFUSED)
+def test_the_query_proxy_refuses_everything_else(method: str, path: str) -> None:
+    assert proxied(method, path) is None
+
+
+def test_the_query_proxy_listens_on_its_socket_and_loopback_only() -> None:
+    text = render_file(CONFIG / "query-proxy/nginx.conf.j2", obs_vars())
+    listens = re.findall(r"^\s*listen (\S+);", text, re.MULTILINE)
+    assert listens == ["unix:/run/query/query.sock", "127.0.0.1:18733"]
+    assert "location / {\n            return 403;" in text
+    assert len(proxy_locations()) == 3  # every location is parsed by the tests above
+    assert "proxy_set_header Authorization" not in text  # no credentials added

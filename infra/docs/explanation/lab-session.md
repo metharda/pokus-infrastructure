@@ -40,21 +40,28 @@ flowchart LR
 ## The health gate
 
 `pinka-health-gate.service` runs after the lab's services started and
-repeats a fixed set of checks until all pass or ten minutes are over
-(`lab_session_gate_timeout`):
+repeats its checks until all pass or ten minutes are over
+(`lab_session_gate_timeout`). The clock is always checked; then exactly the
+facilities that the active platform's manifest lists in `requires`, read
+from `/etc/pinka/platform/rendered.json` at every start. Without a platform
+only the clock is checked.
 
-| Check | Passes when |
-| --- | --- |
-| time | the system clock is NTP-synchronized; on WSL also within one second of an NTP server, when one answers |
-| postgres | the database container reports itself healthy |
-| collector | the OpenTelemetry gateway answers its health check |
-| incus | the Incus API answers |
-| gpu | with `gpu_inference`: a container of the pinned CUDA image sees the GPU, the way vLLM gets it |
+| Check | When | Passes when |
+| --- | --- | --- |
+| time | always | the system clock is NTP-synchronized; on WSL also within one second of an NTP server, when one answers |
+| postgres | `requires: [postgres]` | the database container reports itself healthy |
+| incus | `requires: [incus]` | the Incus API answers |
+| telemetry | `requires: [telemetry]` | the OpenTelemetry gateway answers its health check |
+| inference | `requires: [inference]` | the inference API that `endpoints.toml` gives the platform answers `/health` (a scripted staging backend only has to answer) |
+| opa | `requires: [opa]` | OPA answers `/health` |
+| gpu | `requires: [gpu]` | a container of the pinned CUDA image sees the GPU, the way vLLM gets it |
 
-The platform's services require this unit, so an orchestrator never starts
-runs on a lab whose clock jumped after a WSL resume, whose database is still
-recovering, or whose telemetry would be lost. The result of the last round is
-in `/run/pinka/health-gate.json`; a failed gate leaves the platform stopped
+A facility the manifest requires that this node does not run (for example
+`gpu` on a lab node without one) fails the gate. The platform's services
+require this unit, so the platform never starts work on a lab whose clock
+jumped after a WSL resume, whose database is still recovering, or whose
+telemetry would be lost. The result of the last round is in
+`/run/pinka/health-gate.json`; a failed gate leaves the platform stopped
 until an operator fixed the cause and started the target again.
 
 WSL deserves the extra clock check: the WSL virtual machine's clock can fall

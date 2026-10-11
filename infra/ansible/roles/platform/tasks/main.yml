@@ -8,8 +8,10 @@
 # tool pinka-platform (tools/platform): fetch into root-only mirrors, stage,
 # validate (a refusal ends bootstrap with exit code 65), build in a sandbox,
 # pull job images by digest, publish read-only with provenance, replace the
-# previous platform, switch. Rendering from the profiles (accounts, units,
-# sockets, database roles, certificates) follows in plan step 3d.3.
+# previous platform, render from the profiles (accounts, units, sockets,
+# database roles, certificates), switch with the drain and migrate hooks
+# (§12.9). start.yml, imported by site.yml after the lab session, starts the
+# platform and waits for its health hook.
 
 - name: Deploy the platform
   when: platform_deploy | bool

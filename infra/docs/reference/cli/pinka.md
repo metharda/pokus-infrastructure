@@ -36,8 +36,8 @@ Every command also accepts `-h`, `--help`.
 | `pinka preflight` | run preflight read-only |
 | `pinka doctor` | run the health and security checks (root) |
 | `pinka status` | units, containers, Incus instances, GPU, disk and last backup |
-| `pinka start` | start pinka-lab.target (root) |
-| `pinka stop` | drain the platform, then stop pinka-lab.target (root) |
+| `pinka start` | start pinka-lab.target and wait for the platform's health hook (root) |
+| `pinka stop` | drain the platform, then stop its target and pinka-lab.target (root) |
 | `pinka fingerprint` | print the environment fingerprint and its hash |
 | `pinka backup` | back up now or list the snapshots (root) |
 | `pinka restore` | run bootstrap with --restore (root) |
@@ -58,6 +58,12 @@ Every command also accepts `-h`, `--help`.
 | `pinka platform purge` | remove a replaced platform's releases, state, restricted area and database (root) |
 | `pinka docs` | the documentation of the lab |
 | `pinka docs serve` | serve the built documentation read-only on 127.0.0.1 |
+| `pinka docs install` | install a documentation release and make it current (root only) |
+| `pinka docs rollback` | switch the documentation back to the previous release (root only) |
+| `pinka window` | maintenance windows: staging on production's hardware (root only) |
+| `pinka window open` | record a window (production: drain and stop first) |
+| `pinka window close` | remove the record (staging: stop the lab first) |
+| `pinka window expire` | stop staging on shared hardware once its window has ended (run by pinka-window-expiry.timer) |
 
 ### pinka preflight
 
@@ -94,7 +100,7 @@ pinka status [-h]
 
 ### pinka start
 
-Start pinka-lab.target (root).
+Start pinka-lab.target and wait for the platform's health hook (root).
 
 ```text
 pinka start [-h]
@@ -102,7 +108,7 @@ pinka start [-h]
 
 ### pinka stop
 
-Drain the platform, then stop pinka-lab.target (root).
+Drain the platform, then stop its target and pinka-lab.target (root).
 
 ```text
 pinka stop [-h] [--timeout SECONDS]
@@ -110,7 +116,7 @@ pinka stop [-h] [--timeout SECONDS]
 
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
-| `--timeout` | `SECONDS` | `1800` | how long the drain may take |
+| `--timeout` | `SECONDS` | — | how long the platform's drain hook may take (default: lab.drain_timeout) |
 
 ### pinka fingerprint
 
@@ -327,5 +333,64 @@ pinka docs serve [-h] [--dir DIR] [--port PORT]
 | --- | --- | --- | --- |
 | `--dir` | `DIR` | — | built documentation site (default: docs.dir of the lab description, /usr/local/share/pinka/docs) |
 | `--port` | `PORT` | — | port (default: docs.port of the lab description, 18706) |
+
+### pinka docs install
+
+Verify a docs release tarball against its SHA-256, unpack it into a new version directory (refusing absolute paths, .. and links that leave it), switch current to it in one step and keep the three most recent versions.
+
+```text
+pinka docs install [-h] --sha256 SUM [--version NAME] tarball
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `tarball` | — | — | the release's documentation tarball |
+| `--sha256` | `SUM` | — | the tarball's SHA-256 (published with it) |
+| `--version` | `NAME` | — | version directory name (default: the tarball's file name without its suffix) |
+
+### pinka docs rollback
+
+Switch current back to the version installed before it.
+
+```text
+pinka docs rollback [-h]
+```
+
+### pinka window
+
+Open or close a maintenance window, recorded in /etc/pinka/maintenance-window.json on each side. On production, open drains and stops the lab first and it stays stopped until close; staging on shared hardware starts only inside its window.
+
+```text
+pinka window [-h] ACTION ...
+```
+
+### pinka window open
+
+Record a window (production: drain and stop first).
+
+```text
+pinka window open [-h] --start TIME --end TIME
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--start` | `TIME` | — | UTC start, such as 2026-10-12T18:00Z |
+| `--end` | `TIME` | — | UTC end, such as 2026-10-12T22:00Z |
+
+### pinka window close
+
+Remove the record (staging: stop the lab first).
+
+```text
+pinka window close [-h]
+```
+
+### pinka window expire
+
+Stop staging on shared hardware once its window has ended (run by pinka-window-expiry.timer).
+
+```text
+pinka window expire [-h]
+```
 
 Exit codes: 0 success; 1 failure (doctor: warnings only); 2 usage error (doctor: a check of severity error failed). See [Exit codes](../exit-codes.md).

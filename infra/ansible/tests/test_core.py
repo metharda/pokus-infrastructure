@@ -65,6 +65,8 @@ def compose_vars(project: str, **extra: Any) -> dict[str, Any]:
         "compose_gpu_method": "none",
         "compose_pinka_gid": "1000",
         "compose_db_socket_gid": "999",
+        "compose_query_gid": "998",
+        "observability_query_uid": "997",
         **extra,
     }
     return ansible_vars(GROUP_VARS, ROLES / "compose" / "defaults" / "main.yml", **variables)

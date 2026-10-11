@@ -15,3 +15,6 @@ platform_settings: {}
 platform_inference_mode: auto
 # OpenAI-compatible endpoint of the scripted backend (scripted mode only).
 platform_scripted_api_url: ""
+# Seconds bootstrap waits after starting the platform for its health hook to
+# answer ok (§12.9); an unhealthy platform is reported, not fatal.
+platform_health_wait: 300

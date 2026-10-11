@@ -224,10 +224,23 @@ containers:
       digest: sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e
       platforms: [linux/amd64, linux/arm64]
     vllm:
-      # Built on CUDA 13.0.2 (CUDA_VERSION in the image configuration).
+      # cuda: the CUDA version the image is built on (BUILD_PROMPT §2.2), read
+      # from CUDA_VERSION in the configuration of both platform images (also
+      # NVIDIA_REQUIRE_CUDA "cuda>=13.0"); re-verified on 2026-10-10 with the
+      # registry API. Preflight and doctor compare its major.minor with the
+      # CUDA version the driver supports.
       image: docker.io/vllm/vllm-openai
       tag: "v0.31.0"
       digest: sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+      platforms: [linux/amd64, linux/arm64]
+      cuda: "13.0.2"
+    query_proxy:
+      # The telemetry query proxy (BUILD_PROMPT §7.9): the nginx release and
+      # digest of target_images.docker_host_web below (stable line, verified
+      # on 2026-10-06 with the registry API).
+      image: docker.io/library/nginx
+      tag: "1.30.5-alpine"
+      digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
       platforms: [linux/amd64, linux/arm64]
     cuda_base_test:
       # GPU smoke test (BUILD_PROMPT §7.6); same CUDA version as the vLLM image.

@@ -393,24 +393,45 @@ def wsl_kvm(f: Fixture) -> None:
 
 # -------------------------------------------------------------------------- GPU
 
-NVSMI_RTX4070 = "NVIDIA GeForce RTX 4070, 12282 MiB, 580.82.07, 8.9\n"
+QUERY_GPU = "--query-gpu=name,memory.total,driver_version,compute_cap --format=csv,noheader"
+# Driver versions and the CUDA version each supports (`nvidia-smi --version`).
+CURRENT_DRIVER = ("580.82.07", "13.0")
+OLD_DRIVER = ("570.172.08", "12.8")
+OLD_WINDOWS_DRIVER = ("566.36", "12.7")
 
 
-def nvidia_pci(driver: str = "loaded", device: str = "0000:01:00.0") -> Layer:
-    """An NVIDIA GPU on the PCI bus with the given driver state."""
+def nvsmi_query(driver: str) -> str:
+    """``nvidia-smi --query-gpu`` output of an RTX 4070 with the given driver."""
+    return f"NVIDIA GeForce RTX 4070, 12282 MiB, {driver}, 8.9\n"
+
+
+def nvsmi_version(driver: str, cuda: str) -> str:
+    """``nvidia-smi --version`` output (the format of drivers 590 and 595)."""
+    return (
+        f"NVIDIA-SMI version  : {driver}\n"
+        f"NVML version        : {driver.rsplit('.', 1)[0]}\n"
+        f"DRIVER version      : {driver}\n"
+        f"CUDA Version        : {cuda}\n"
+    )
+
+
+def nvidia_pci(
+    driver: str = "loaded",
+    device: str = "0000:01:00.0",
+    version: tuple[str, str] = CURRENT_DRIVER,
+) -> Layer:
+    """An NVIDIA GPU on the PCI bus with the given driver state and version."""
 
     def apply(f: Fixture) -> None:
         f.files[f"/sys/bus/pci/devices/{device}/vendor"] = "0x10de\n"
         f.files[f"/sys/bus/pci/devices/{device}/class"] = "0x030000\n"
         if driver == "loaded":
             f.files["/proc/driver/nvidia/version"] = (
-                "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  580.82.07\n"
+                f"NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  {version[0]}\n"
             )
             f.data.setdefault("which", {})["nvidia-smi"] = "/usr/bin/nvidia-smi"
-            f.cmd(
-                "nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap --format=csv,noheader",
-                NVSMI_RTX4070,
-            )
+            f.cmd(f"nvidia-smi {QUERY_GPU}", nvsmi_query(version[0]))
+            f.cmd("nvidia-smi --version", nvsmi_version(*version))
             f.cmd("modinfo nvidia", "filename: /lib/modules/x/nvidia.ko\n")
         elif driver == "installed":
             f.cmd("modinfo nvidia", "filename: /lib/modules/x/nvidia.ko\n")
@@ -420,15 +441,57 @@ def nvidia_pci(driver: str = "loaded", device: str = "0000:01:00.0") -> Layer:
     return apply
 
 
-def wsl_gpu(f: Fixture) -> None:
-    """GPU shared by the Windows NVIDIA driver."""
-    f.chardev("/dev/dxg", rw=True)
-    f.files["/usr/lib/wsl/lib/libcuda.so.1"] = ""
-    f.files["/usr/lib/wsl/lib/nvidia-smi"] = ""
-    f.cmd(
-        "/usr/lib/wsl/lib/nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap --format=csv,noheader",
-        NVSMI_RTX4070,
-    )
+def windows_gpu(version: tuple[str, str] = CURRENT_DRIVER) -> Layer:
+    """GPU shared by the Windows NVIDIA driver of the given version."""
+
+    def apply(f: Fixture) -> None:
+        f.chardev("/dev/dxg", rw=True)
+        f.files["/usr/lib/wsl/lib/libcuda.so.1"] = ""
+        f.files["/usr/lib/wsl/lib/nvidia-smi"] = ""
+        f.cmd(f"/usr/lib/wsl/lib/nvidia-smi {QUERY_GPU}", nvsmi_query(version[0]))
+        f.cmd("/usr/lib/wsl/lib/nvidia-smi --version", nvsmi_version(*version))
+
+    return apply
+
+
+wsl_gpu = windows_gpu()
+
+
+# ------------------------------------------------------------- ports, addresses
+
+TCP_HEADER = (
+    "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt"
+    "   uid  timeout inode\n"
+)
+
+
+def port_in_use(port: int, pid: str = "4242", comm: str = "example-server") -> Layer:
+    """A process outside the lab listens on a lab port on 127.0.0.1."""
+
+    def apply(f: Fixture) -> None:
+        f.files["/proc/net/tcp"] = TCP_HEADER + (
+            f"   0: 0100007F:{port:04X} 00000000:0000 0A 00000000:00000000 00:00000000"
+            " 00000000     0        0 40001 1 0000000000000000 100 0 0 10 0\n"
+        )
+        f.files[f"/proc/{pid}/comm"] = comm + "\n"
+        f.files[f"/proc/{pid}/cgroup"] = f"0::/system.slice/{comm}.service\n"
+        f.dirs.append(f"/proc/{pid}/fd")
+        f.meta["symlinks"][f"/proc/{pid}/fd/3"] = "socket:[40001]"
+
+    return apply
+
+
+def routed(network: str, dev: str = "eth0") -> Layer:
+    """``ip -j addr`` and ``ip -j route`` with a route to ``network``."""
+
+    def apply(f: Fixture) -> None:
+        f.cmd("ip -j addr", json.dumps([{"ifname": "lo", "addr_info": []}]) + "\n")
+        f.cmd(
+            "ip -j route",
+            json.dumps([{"dst": "default", "dev": dev}, {"dst": network, "dev": dev}]) + "\n",
+        )
+
+    return apply
 
 
 def secure_boot_enabled(f: Fixture) -> None:
@@ -505,6 +568,22 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "family": "debian",
             "env_class": "baremetal",
             "features": FULL_FEATURES,
+        },
+    )
+    fx["ubuntu2404-baremetal-nvidia-old-driver"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded", version=OLD_DRIVER),
+        expected={
+            "outcome": "degraded",
+            "provider": "baremetal",
+            "disabled": ["gpu_inference"],
+            "features": {"gpu_inference": False, "dcgm_metrics": True, "vm_targets": True},
+            "remediation_contains": [
+                "supports CUDA 12.8, the pinned vLLM image needs 13.0",
+                "install a driver branch that supports CUDA 13.0",
+            ],
         },
     )
     fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot"] = build(
@@ -598,6 +677,25 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "provider": "wsl2",
             "env_class": "wsl2",
             "features": {"gpu_inference": True, "vm_targets": True, "btrfs_pool": True},
+        },
+    )
+    # BUILD_PROMPT §2.2: a driver whose CUDA version is below the pinned vLLM
+    # image's makes gpu_inference unavailable; WSL2 points to Windows.
+    fx["ubuntu2404-wsl2-gpu-old-driver"] = build(
+        *base_ubuntu,
+        wsl2(),
+        windows_gpu(OLD_WINDOWS_DRIVER),
+        wsl_kvm,
+        expected={
+            "outcome": "degraded",
+            "provider": "wsl2",
+            "env_class": "wsl2",
+            "disabled": ["gpu_inference"],
+            "features": {"gpu_inference": False, "vm_targets": True},
+            "remediation_contains": [
+                "supports CUDA 12.7, the pinned vLLM image needs 13.0",
+                "update the NVIDIA driver on Windows",
+            ],
         },
     )
     fx["ubuntu2404-wsl2-systemd-off"] = build(
@@ -881,6 +979,24 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "mac": ["selinux", "enforcing"],
             "conflicts": [],
         },
+    )
+    # BUILD_PROMPT §2.2, §12.11: a lab port taken by another program, and a VM
+    # collector address another network already routes.
+    fx["ubuntu2404-lab-port-in-use"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        port_in_use(18700),
+        expected={"outcome": "needs_action", "needs_action": ["lab_port_in_use"]},
+    )
+    fx["ubuntu2404-vm-collector-address-routed"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        routed("198.18.0.0/15"),
+        expected={"outcome": "needs_action", "needs_action": ["vm_collector_address_conflict"]},
     )
     fx["ubuntu2404-ufw-active"] = build(
         *base_ubuntu,

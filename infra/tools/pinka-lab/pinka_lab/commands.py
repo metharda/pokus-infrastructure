@@ -16,8 +16,9 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from pinka_lab import docs_store, window
 from pinka_lab.config import LabConfig
-from pinka_lab.system import System
+from pinka_lab.system import EXIT_NOT_FOUND, System
 
 ACTIVE_PLATFORM = "/etc/pinka/platform/active.json"
 CONTROL_UNIT = "pinka-inference-control.service"
@@ -38,11 +39,19 @@ UPDATE_COMMANDS = {
 DOCS_ADDRESS = "127.0.0.1"
 DOCS_DIR = "/usr/local/share/pinka/docs"
 DOCS_PORT = 18706
+DOCS_UNIT = "pinka-docs.service"
 
 
-# The deployment tool (platform role) that purges a replaced platform (BUILD_PROMPT §7.14).
+# The deployment tool (platform role): purges a replaced platform (BUILD_PROMPT
+# §7.14) and runs the active platform's hooks in their units (§12.9).
 PLATFORM_TOOL = "/usr/local/libexec/pinka/pinka-platform"
 PLATFORM_NAME_RE = re.compile(r"^[a-z][a-z0-9]{1,11}$")
+# Seconds `pinka start` waits for the health hook, unless lab.json says otherwise.
+HEALTH_WAIT = 300
+# Seconds a single health hook may take in `pinka status` (systemd-run included).
+STATUS_HEALTH_TIMEOUT = 120
+# Beyond a hook's own time: systemd-run, the stop grace and the tool itself.
+HOOK_SLACK = 120
 
 
 class CommandError(RuntimeError):
@@ -109,66 +118,339 @@ def preflight(system: System, config: LabConfig, as_json: bool) -> int:
     return system.interactive([*argv, "--output", os.devnull])
 
 
-def start(system: System) -> int:
-    """Start pinka-lab.target (it waits for the health gate).
+def _platform_tool(config: LabConfig) -> str:
+    return str(config.get("paths", "platform_tool", default=PLATFORM_TOOL))
+
+
+def hook(system: System, config: LabConfig, name: str, *extra: str, timeout: float) -> Any:  # noqa: ANN401 - JSON
+    """Run a hook of the active platform through the deployment tool (§12.9).
 
     Args:
         system: Host access.
+        config: The lab description.
+        name: ``drain`` or ``health``.
+        *extra: Further options of ``pinka-platform hook``.
+        timeout: Seconds before the tool itself is given up.
 
     Returns:
-        0 on success.
+        The tool's JSON result (``platform``, ``ok``, ``skipped``, ``error``,
+        ``output``), or a failed result when it printed none.
+    """
+    done = system.run([_platform_tool(config), "hook", name, *extra], timeout=timeout)
+    result = done.json() if done.stdout else None
+    if isinstance(result, dict):
+        return result
+    detail = done.stderr.strip() or f"exit code {done.returncode}"
+    return {"platform": None, "ok": False, "skipped": False, "error": detail}
+
+
+def _platform_label(result: Any) -> str:  # noqa: ANN401 - JSON
+    name = result.get("platform") if isinstance(result, dict) else None
+    return f"platform {name}" if name else "the platform"
+
+
+def start(system: System, config: LabConfig) -> int:
+    """Start pinka-lab.target, then wait for the platform's health hook.
+
+    The target waits for the health gate; the platform's reconcile unit runs
+    before its services. An unhealthy platform is reported (exit 1).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        0 on success, 1 when the lab did not start or the platform is unhealthy.
     """
     require_root(system, "start")
+    may_start(system, config)
     done = system.run(["systemctl", "start", "pinka-lab.target"], timeout=1200)
     if not done.ok:
         sys.stderr.write(done.stderr)
         return 1
     out("pinka-lab.target started")
+    if system.info(ACTIVE_PLATFORM) is None:
+        return 0
+    wait = float(config.get("lab", "health_wait", default=HEALTH_WAIT))
+    result = hook(
+        system, config, "health", "--until-healthy", str(int(wait)), timeout=wait + HOOK_SLACK
+    )
+    label = _platform_label(result)
+    if result.get("skipped"):
+        out(f"{label} has no health hook")
+        return 0
+    if result.get("ok"):
+        out(f"{label} is healthy")
+        return 0
+    out(f"{label} is unhealthy after {int(wait)} seconds: {result.get('error')}")
+    return 1
+
+
+def _window(system: System, config: LabConfig) -> window.Window | None:
+    path = str(config.get("window", "record", default=window.RECORD))
+    text = system.read_text(path)
+    if text is None:
+        return None
+    try:
+        return window.from_text(text)
+    except window.WindowError as exc:
+        raise CommandError(str(exc)) from exc
+
+
+def _shared_staging(config: LabConfig) -> bool:
+    return config.get("lab_mode", default="production") == "staging" and bool(
+        config.get("window", "shared_hardware", default=False)
+    )
+
+
+def gpu_processes(system: System, config: LabConfig) -> list[str]:
+    """Processes that use the GPU (an idle GPU has none).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        ``<name> (PID <pid>)`` per process; empty without a GPU.
+
+    Raises:
+        CommandError: If nvidia-smi exists but fails.
+    """
+    smi = str(config.get("gpu", "nvidia_smi", default="nvidia-smi"))
+    done = system.run([smi, "--query-compute-apps=pid,process_name", "--format=csv,noheader"])
+    if done.returncode == EXIT_NOT_FOUND:
+        return []
+    if not done.ok:
+        raise CommandError(f"{smi} failed: {done.stderr.strip() or done.returncode}")
+    found = []
+    for line in done.stdout.splitlines():
+        pid, _, name = (part.strip() for part in line.partition(","))
+        if pid:
+            found.append(f"{name or 'unknown'} (PID {pid})")
+    return found
+
+
+def may_start(system: System, config: LabConfig) -> None:
+    """Refuse a start a maintenance window forbids (§7.20).
+
+    Production does not start while its record exists. Staging on shared
+    hardware starts only inside its own open window, with the GPU idle and
+    every configured port free.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Raises:
+        CommandError: When the lab must not start.
+    """
+    recorded = _window(system, config)
+    if config.get("lab_mode", default="production") != "staging":
+        if recorded is not None:
+            raise CommandError(
+                f"a maintenance window is recorded ({recorded.describe()}): production stays "
+                "stopped until sudo pinka window close"
+            )
+        return
+    if not _shared_staging(config):
+        return
+    if recorded is None or not recorded.is_open(system.now()):
+        when = f" (recorded: {recorded.describe()})" if recorded else ""
+        raise CommandError(
+            "staging on shared hardware starts only inside an open maintenance window"
+            f"{when}; open one with sudo pinka window open --start ... --end ..."
+        )
+    busy = gpu_processes(system, config)
+    if busy:
+        raise CommandError(f"the GPU is in use by {', '.join(busy)}; staging needs it idle")
+    ports = {str(k): int(v) for k, v in (config.get("ports", default={}) or {}).items()}
+    taken = system.port_conflicts(ports)
+    if taken:
+        raise CommandError("lab ports are not free: " + "; ".join(taken))
+
+
+def window_open(system: System, config: LabConfig, start: str, end: str) -> int:
+    """Open a maintenance window (§7.20).
+
+    On production the lab is drained and stopped first, exactly like
+    ``pinka stop``; it stays stopped until ``pinka window close``.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        start: ``--start``, UTC.
+        end: ``--end``, UTC.
+
+    Returns:
+        0, or the exit code of a stop that failed.
+
+    Raises:
+        CommandError: Not root, a window already recorded, bad times, or a
+            staging host on its own hardware.
+    """
+    require_root(system, "window open")
+    recorded = _window(system, config)
+    if recorded is not None:
+        raise CommandError(
+            f"a maintenance window is already recorded ({recorded.describe()}); "
+            "close it first with sudo pinka window close"
+        )
+    try:
+        opened = window.new(start, end, system.now())
+    except window.WindowError as exc:
+        raise CommandError(str(exc)) from exc
+    production = config.get("lab_mode", default="production") != "staging"
+    if not production and not _shared_staging(config):
+        raise CommandError(
+            "this staging host has its own hardware (staging_shared_hardware: false); "
+            "it needs no maintenance window"
+        )
+    if production:
+        out("production: draining and stopping the lab first, as pinka stop does")
+        code = stop(system, config)
+        if code:
+            return code
+    path = str(config.get("window", "record", default=window.RECORD))
+    system.write_text(path, window.to_text(opened), 0o644)
+    out(f"maintenance window recorded {opened.describe()}")
+    if production:
+        out("production stays stopped, also after the end, until sudo pinka window close")
     return 0
 
 
-def drain(system: System, timeout: float) -> str:
-    """Drain the active platform before its services stop (contract v2 §12.9).
-
-    The platform's ``drain`` hook runs here once infra runs hooks (plan step
-    3d.4); until then nothing of the platform is started, so there is nothing
-    to drain.
+def window_close(system: System, config: LabConfig) -> int:
+    """Close a maintenance window (§7.20).
 
     Args:
         system: Host access.
-        timeout: Seconds the drain may take.
+        config: The lab description.
 
     Returns:
-        What happened, for the operator.
+        0, or the exit code of a stop that failed.
+
+    Raises:
+        CommandError: Not root, or a broken record.
     """
-    del timeout
-    if system.info(ACTIVE_PLATFORM) is None:
-        return "no active platform; nothing to drain"
-    return "the platform's drain hook is not run yet (it follows with the hooks)"
+    require_root(system, "window close")
+    recorded = _window(system, config)
+    if recorded is None:
+        out("no maintenance window is recorded")
+        return 0
+    if _shared_staging(config) and _active(system, "pinka-lab.target") != "inactive":
+        out("staging runs only inside a window: stopping the staging lab first")
+        code = stop(system, config)
+        if code:
+            return code
+    system.remove(str(config.get("window", "record", default=window.RECORD)))
+    out(f"maintenance window closed (was {recorded.describe()})")
+    if config.get("lab_mode", default="production") != "staging":
+        out("start production again with sudo pinka start")
+    return 0
 
 
-def stop(system: System, timeout: float) -> int:
-    """Drain the active platform, then stop pinka-lab.target.
+def window_expire(system: System, config: LabConfig) -> int:
+    """Stop staging on shared hardware once its window has ended (the expiry timer).
 
     Args:
         system: Host access.
-        timeout: Seconds the drain may take.
+        config: The lab description.
+
+    Returns:
+        0, or the exit code of a stop that failed.
+    """
+    require_root(system, "window expire")
+    if not _shared_staging(config):
+        return 0
+    recorded = _window(system, config)
+    if recorded is not None and recorded.is_open(system.now()):
+        return 0
+    if _active(system, "pinka-lab.target") in ("inactive", "failed", "unknown"):
+        return 0
+    reason = f"the window {recorded.describe()} has ended" if recorded else "no window is open"
+    out(f"{reason}: stopping the staging lab")
+    return stop(system, config)
+
+
+def drain(system: System, config: LabConfig, timeout: float) -> str:
+    """Drain the active platform before its services stop (contract v2 §12.9).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        timeout: Seconds the drain may take (the hook gets ``--timeout``).
+
+    Returns:
+        What happened, for the operator. A failed drain does not stop the
+        stop: the services stop anyway and the platform records what was
+        interrupted.
+    """
+    if system.info(ACTIVE_PLATFORM) is None:
+        return "no active platform; nothing to drain"
+    seconds = max(1, int(timeout))
+    result = hook(system, config, "drain", "--timeout", str(seconds), timeout=seconds + HOOK_SLACK)
+    label = _platform_label(result)
+    if result.get("skipped"):
+        return f"{label} has no drain hook"
+    if result.get("ok"):
+        return f"{label} drained"
+    return f"{label} did not drain ({result.get('error')}); its services stop anyway"
+
+
+def stop(system: System, config: LabConfig, timeout: float | None = None) -> int:
+    """Drain the active platform, then stop its target and pinka-lab.target.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        timeout: Seconds the drain may take (default: ``lab.drain_timeout``).
 
     Returns:
         0 on success.
     """
     require_root(system, "stop")
-    out(drain(system, timeout))
-    done = system.run(["systemctl", "stop", "pinka-lab.target"], timeout=600)
-    if not done.ok:
-        sys.stderr.write(done.stderr)
-        return 1
-    out("pinka-lab.target stopped")
+    seconds = (
+        float(config.get("lab", "drain_timeout", default=1800)) if timeout is None else timeout
+    )
+    out(drain(system, config, seconds))
+    # The GPU arbiter's idle request follows with the arbiter (plan step 3d.5).
+    units = ["pinka-platform.target", "pinka-lab.target"]
+    if system.info(ACTIVE_PLATFORM) is None:
+        units = units[1:]
+    for unit in units:
+        done = system.run(["systemctl", "stop", unit], timeout=600)
+        if not done.ok:
+            sys.stderr.write(done.stderr)
+            return 1
+        out(f"{unit} stopped")
     return 0
 
 
 def _active(system: System, unit: str) -> str:
     return system.run(["systemctl", "is-active", unit]).stdout.strip() or "unknown"
+
+
+def _platform_status(system: System, config: LabConfig) -> None:
+    text = system.read_text(ACTIVE_PLATFORM)
+    try:
+        active = json.loads(text) if text else None
+    except ValueError:
+        active = None
+    if not isinstance(active, dict):
+        out("platform: none")
+        return
+    release = (active.get("release") or {}).get("name", "?")
+    out(f"platform: {active.get('name')} {active.get('version')} (release {release})")
+    out(f"  {'pinka-platform.target':<40} {_active(system, 'pinka-platform.target')}")
+    if system.euid() != 0:
+        out("  health: needs root (sudo pinka status)")
+        return
+    result = hook(system, config, "health", timeout=STATUS_HEALTH_TIMEOUT)
+    if result.get("skipped"):
+        out("  health: the platform has no health hook")
+    elif result.get("ok"):
+        out("  health: healthy")
+    else:
+        out(f"  health: unhealthy ({result.get('error')})")
 
 
 def status(system: System, config: LabConfig) -> int:
@@ -188,6 +470,7 @@ def status(system: System, config: LabConfig) -> int:
     out("units:")
     for unit in ["pinka-lab.target", *config.get("units", default=[])]:
         out(f"  {unit:<40} {_active(system, unit)}")
+    _platform_status(system, config)
     out("containers:")
     for name in sorted(config.get("containers", default={})):
         done = system.run(
@@ -223,6 +506,20 @@ def status(system: System, config: LabConfig) -> int:
             ]
         )
         out(f"gpu: {done.stdout.strip() if done.ok else 'not available'}")
+    try:
+        recorded = _window(system, config)
+    except CommandError as exc:
+        out(f"maintenance window: {exc}")
+    else:
+        state = "open" if recorded and recorded.is_open(system.now()) else "recorded"
+        out(
+            f"maintenance window: {state} {recorded.describe()}"
+            if recorded
+            else "maintenance window: none"
+        )
+    version = system.docs_current(_docs_base(config))
+    unit = str(config.get("docs", "unit", default=DOCS_UNIT))
+    out(f"docs: {version} ({unit} {_active(system, unit)})" if version else "docs: none installed")
     df = system.run(
         ["df", "--human-readable", "--output=avail,size", config.pinka_root]
     ).stdout.splitlines()
@@ -772,7 +1069,7 @@ def update_host(system: System, config: LabConfig, yes: bool, extra: Sequence[st
     ):
         raise CommandError("not confirmed")
     before = fingerprint.current(system, config)
-    if stop(system, timeout=float(config.get("lab", "drain_timeout", default=1800))) != 0:
+    if stop(system, config) != 0:
         return 1
     for argv in UPDATE_COMMANDS[family]:
         code = system.interactive(argv)
@@ -807,12 +1104,13 @@ def docs_serve(
     Raises:
         CommandError: Without a built site, or when the port is taken.
     """
-    site = directory or (config.get("docs", "dir") if config else None) or DOCS_DIR
+    base = (config.get("docs", "dir") if config else None) or DOCS_DIR
+    site = directory or f"{base}/{docs_store.CURRENT}"
     number = port or (config.get("docs", "port") if config else None) or DOCS_PORT
     if system.info(f"{site}/index.html") is None:
         raise CommandError(
-            f"no built documentation in {site} (index.html is missing): extract the documentation "
-            "tarball of a release there, or pass --dir with a site built by make docs"
+            f"no built documentation in {site} (index.html is missing): install a release with "
+            "sudo pinka docs install, or pass --dir with a site built by make docs"
         )
     out(
         f"Serving {site} at http://{DOCS_ADDRESS}:{number}/ on this host only; Ctrl-C stops.\n"
@@ -823,6 +1121,66 @@ def docs_serve(
         system.serve_static(site, DOCS_ADDRESS, int(number))
     except OSError as exc:
         raise CommandError(f"cannot listen on {DOCS_ADDRESS}:{number}: {exc}") from exc
+    return 0
+
+
+def _docs_base(config: LabConfig | None) -> str:
+    return str((config.get("docs", "dir") if config else None) or DOCS_DIR)
+
+
+def _restart_docs_service(system: System, config: LabConfig | None) -> None:
+    unit = str((config.get("docs", "unit") if config else None) or DOCS_UNIT)
+    if system.run(["systemctl", "is-enabled", unit]).stdout.strip() == "enabled":
+        system.run(["systemctl", "restart", unit], timeout=60)
+
+
+def docs_install(
+    system: System, config: LabConfig | None, tarball: str, sha256: str, version: str | None
+) -> int:
+    """Install a documentation release and make it current (§7.19).
+
+    Args:
+        system: Host access.
+        config: The lab description, if this host has one.
+        tarball: The release tarball.
+        sha256: Its SHA-256, as published with the release.
+        version: The version name (default: from the tarball's file name).
+
+    Returns:
+        0.
+
+    Raises:
+        CommandError: Not root, or the release was refused.
+    """
+    require_root(system, "docs install")
+    try:
+        message = system.docs_install(_docs_base(config), tarball, sha256, version)
+    except docs_store.DocsError as exc:
+        raise CommandError(str(exc)) from exc
+    out(message)
+    # A service that found nothing to serve at boot starts now.
+    _restart_docs_service(system, config)
+    return 0
+
+
+def docs_rollback(system: System, config: LabConfig | None) -> int:
+    """Switch the documentation back to the previous release (§7.19).
+
+    Args:
+        system: Host access.
+        config: The lab description, if this host has one.
+
+    Returns:
+        0.
+
+    Raises:
+        CommandError: Not root, or there is nothing to roll back to.
+    """
+    require_root(system, "docs rollback")
+    try:
+        out(system.docs_rollback(_docs_base(config)))
+    except docs_store.DocsError as exc:
+        raise CommandError(str(exc)) from exc
     return 0
 
 

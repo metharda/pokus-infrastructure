@@ -13,6 +13,10 @@ machine_name: pinka-lab
 # production, or staging for QA environments (own vault, Tailscale tag and
 # signing key; never pairs with a production host).
 lab_mode: production
+# Staging only: this staging host runs on production's hardware, so it starts
+# only inside an open maintenance window with the GPU idle and its ports free
+# (BUILD_PROMPT §7.20, pinka window open).
+staging_shared_hardware: false
 # Provider role: auto (the provider preflight detected), baremetal, wsl2 or vm.
 # Any other value than auto must match the detected provider.
 lab_provider: auto
@@ -33,6 +37,12 @@ install_nvidia_driver: auto
 allow_community_repos: false
 # Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
 grafana_tailscale_serve: false
+# The documentation release the docs service serves (BUILD_PROMPT §7.19):
+# {url, sha256} of a release's documentation tarball (an https:// URL or an
+# absolute path); null: no docs service.
+docs_release: null
+# Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
+docs_tailscale_serve: false
 # Interfaces besides tailscale0 on which sshd accepts connections.
 ssh_extra_allowed_interfaces: []
 # Root of the research space (BUILD_PROMPT §6.2).
@@ -84,11 +94,26 @@ break_glass_docker: []
 infra_accounts:
   - {name: pinka-build, groups: [], description: unprivileged platform builds}
   - {name: pinka-inference, groups: [], description: the inference control endpoint of an inference node}
+  - {name: pinka-query-proxy, groups: [], description: "the telemetry query proxy's container user (§7.9)"}
 # The account of the inference control endpoint.
 inference_control_account: pinka-inference
 
 # The platform's accounts and groups are not listed here: the platform role
 # renders them from the active platform's manifest and profiles (§6.1, §12.2).
+# Their UIDs come from this range (§7.9 option b, ADR-0016): systemd's
+# table of UID and GID allocations (v255) lists it as unused; the deployment
+# tool never takes a UID that is already in use. The telemetry guard drops
+# the range's connections to the telemetry backends.
+pinka_platform_uids: {min: 60578, max: 61183}
+# Ports the telemetry guard closes to that range (§7.9 option b): Prometheus,
+# Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's
+# metrics exporter and the query proxy's loopback port (platform services use
+# its socket, which checks the group). The collector's OTLP receivers stay open.
+pinka_telemetry_guard_ports: >-
+  {{ [pinka_ports.prometheus, pinka_ports.loki, pinka_ports.tempo,
+      pinka_internal_ports.loki_grpc, pinka_internal_ports.tempo_grpc,
+      pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics,
+      pinka_internal_ports.query_proxy] | sort }}
 
 # Parent of the infra and platform account homes (/var/lib/pinka/<account>).
 pinka_service_home: /var/lib/pinka
@@ -135,8 +160,10 @@ pinka_system_layout:
 
 # --- Ports (contracts.md, resolution C10; every listener on 127.0.0.1) --------
 
-# Listener ports of the lab services (contracts.md#ports).
-pinka_ports:
+# Default listener ports of the lab services (contracts.md#ports, BUILD_PROMPT
+# §12.11). Override them per machine with `ports:`; read the effective values
+# from pinka_ports.
+pinka_default_ports:
   otlp_grpc: 4317
   otlp_http: 4318
   opa: 8181
@@ -149,6 +176,18 @@ pinka_ports:
   gateway_adhoc: 18705
   docs_serve: 18706
   inference_control: 18710
+# Port overrides by the names of pinka_default_ports, set in host_vars, for
+# example {grafana: 18750}. Preflight reports a configured port that a process
+# outside the lab uses; endpoints.toml carries the effective values.
+ports: {}
+# The effective listener ports: the defaults with the machine's overrides.
+pinka_ports: "{{ pinka_default_ports | combine(ports) }}"
+# The preflight options of the machine's port overrides and VM collector
+# address (bootstrap passes the same; the preflight gate and doctor re-run
+# preflight with them).
+pinka_preflight_args: >-
+  {{ (ports.items() | map('join', '=') | map('regex_replace', '^', '--port=') | list)
+     + ['--vm-collector-address', vm_collector_address] }}
 
 # Loopback ports of lab-internal listeners: exporters, the collectors' own
 # metrics and health checks, Loki's and Tempo's internal servers. Not part of
@@ -167,12 +206,21 @@ pinka_internal_ports:
   tempo_grpc: 18729
   collector_health: 18730
   journald_health: 18731
+  # The collector's receiver behind the agent OTLP socket (pinka-otlp-agent).
+  otlp_agent: 18732
+  # The query proxy's loopback port for Grafana; platform services use its socket.
+  query_proxy: 18733
 
+# Address of the collector listener for VM targets (BUILD_PROMPT §12.11) on
+# the dummy interface of pinka_vm_otlp. Preflight reports it when it is
+# already assigned or routed on the host, or overlaps the Docker pools, an
+# Incus network or the tailnet range; choose another one in host_vars.
+vm_collector_address: 198.18.0.1
 # Dedicated collector listener for VM targets (contracts.md#telemetry, C4):
 # an address on a dummy interface, reachable only from run networks through
 # the run ACL and the firewall, OTLP gRPC and HTTP on the ports of
 # pinka_ports. Set up only with the vm_targets feature.
-pinka_vm_otlp: {interface: pinka-otlp0, address: 198.18.0.1}
+pinka_vm_otlp: {interface: pinka-otlp0, address: "{{ vm_collector_address }}"}
 
 # Incus bridges the firewall treats as Incus networks (contracts.md: run
 # networks are named r-<short>; image builds use pinka-build0).

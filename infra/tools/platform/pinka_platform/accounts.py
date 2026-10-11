@@ -218,3 +218,50 @@ def render(manifest: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
         "groups": [*(a.name for a in accounts), *platform_groups(manifest)],
         "accounts": [a.as_dict() for a in accounts],
     }
+
+
+def assign_uids(rendered: list[dict[str, Any]], users: Mapping[str, int]) -> list[dict[str, Any]]:
+    """Give every platform account a UID from the platform range (§7.9 option b).
+
+    An existing account keeps its UID; a new one gets the lowest UID of the
+    range that no account on the host uses. The telemetry guard drops the
+    range's connections to the telemetry backends, so an account outside it
+    is refused rather than moved.
+
+    Args:
+        rendered: The rendered accounts (``name`` each).
+        users: Every account on the host, name to UID.
+
+    Returns:
+        The accounts with ``uid`` set.
+
+    Raises:
+        ValueError: An account exists outside the range, or the range is full.
+    """
+    used = set(users.values())
+    free = (
+        uid
+        for uid in range(layout.PLATFORM_UID_MIN, layout.PLATFORM_UID_MAX + 1)
+        if uid not in used
+    )
+    out = []
+    for account in rendered:
+        name = account["name"]
+        if name in users:
+            uid = users[name]
+            if not layout.PLATFORM_UID_MIN <= uid <= layout.PLATFORM_UID_MAX:
+                raise ValueError(
+                    f"account {name} exists with UID {uid}, outside the platform range "
+                    f"{layout.PLATFORM_UID_MIN}-{layout.PLATFORM_UID_MAX}; remove it (userdel) "
+                    "and deploy again"
+                )
+        else:
+            found = next(free, None)
+            if found is None:
+                raise ValueError(
+                    f"no free UID left in the platform range "
+                    f"{layout.PLATFORM_UID_MIN}-{layout.PLATFORM_UID_MAX}"
+                )
+            uid = found
+        out.append({**account, "uid": uid})
+    return out

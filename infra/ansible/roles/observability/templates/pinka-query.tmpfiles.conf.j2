@@ -1,0 +1,8 @@
+# Managed by pinka (ansible/roles/observability/templates/pinka-query.tmpfiles.conf.j2). Local changes will be overwritten.
+#
+# The query proxy's socket (BUILD_PROMPT §7.9): its container creates
+# query.sock in this directory (mode 0660, group pinka-query); the contract
+# path /run/pinka/query.sock is a link to it.
+d /run/pinka 0755 root root -
+d /run/pinka/query 0750 {{ observability_query_account }} pinka-query -
+L+ /run/pinka/query.sock - - - - query/query.sock

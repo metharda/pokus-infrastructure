@@ -25,6 +25,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from pinka_lab import docs_store
+from pinka_preflight.detect import lab as lab_ports
+from pinka_preflight.fs import FileSystem
+
 EXIT_NOT_FOUND = 127
 EXIT_TIMEOUT = 124
 
@@ -183,6 +187,26 @@ class System:
 
     def user_groups(self, user: str) -> list[str] | None:
         """Groups of a user including the primary group, or None if it does not exist."""
+        raise NotImplementedError
+
+    def remove(self, path: str) -> None:
+        """Remove a file; a missing file is not an error."""
+        raise NotImplementedError
+
+    def port_conflicts(self, ports: dict[str, int]) -> list[str]:
+        """Lab ports another program listens on, as preflight reports them (§12.11)."""
+        raise NotImplementedError
+
+    def docs_install(self, base: str, tarball: str, sha256: str, version: str | None) -> str:
+        """Install a documentation release and make it current (:mod:`pinka_lab.docs_store`)."""
+        raise NotImplementedError
+
+    def docs_rollback(self, base: str) -> str:
+        """Switch the documentation back to the previous release."""
+        raise NotImplementedError
+
+    def docs_current(self, base: str) -> str | None:
+        """The documentation release that is current, or None."""
         raise NotImplementedError
 
 
@@ -348,6 +372,26 @@ class RealSystem(System):
         with contextlib.suppress(KeyError):
             groups.add(grp.getgrgid(entry.pw_gid).gr_name)
         return sorted(groups)
+
+    def remove(self, path: str) -> None:  # noqa: D102
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(path)
+
+    def port_conflicts(self, ports: dict[str, int]) -> list[str]:  # noqa: D102
+        found = lab_ports.port_conflicts(FileSystem("/"), ports)
+        return [f"{c.message}" for c in found]
+
+    def docs_install(  # noqa: D102
+        self, base: str, tarball: str, sha256: str, version: str | None
+    ) -> str:
+        stamp = self.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        return docs_store.install(base, tarball, sha256, version, stamp)
+
+    def docs_rollback(self, base: str) -> str:  # noqa: D102
+        return docs_store.rollback(base)
+
+    def docs_current(self, base: str) -> str | None:  # noqa: D102
+        return docs_store.current(base)
 
 
 def static_server(directory: str, address: str, port: int) -> http.server.ThreadingHTTPServer:

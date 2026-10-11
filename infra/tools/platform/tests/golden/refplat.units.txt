@@ -15,13 +15,15 @@ WantedBy=pinka-lab.target
 [Unit]
 Description=Platform refplat: service agent (untrusted-agent)
 PartOf=pinka-platform.target refplat-ctl-session.socket
-Requires=pinka-health-gate.service refplat-ctl-session.socket
-After=pinka-health-gate.service pinka-core.service pinka-observability.service refplat-ctl-session.socket refplat-ctl.service
+Requires=pinka-health-gate.service refplat-reconcile.service refplat-ctl-session.socket
+After=pinka-health-gate.service pinka-core.service pinka-observability.service refplat-reconcile.service refplat-ctl-session.socket refplat-ctl.service
+Wants=pinka-otlp-agent.socket
+After=pinka-otlp-agent.socket
 
 [Service]
 Type=simple
-ExecStart=/srv/pinka/platforms/refplat/releases/current/.venv/bin/refplat-agent
-WorkingDirectory=/srv/pinka/platforms/refplat/releases/current
+ExecStart=/srv/pinka/platforms/refplat/releases/refplat-v1/.venv/bin/refplat-agent
+WorkingDirectory=/srv/pinka/platforms/refplat/releases/refplat-v1
 Restart=on-failure
 RestartSec=5
 User=refplat-agent
@@ -56,9 +58,14 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX
+RuntimeDirectory=pinka/platform-runtime/agent
+RuntimeDirectoryMode=0700
 PrivateNetwork=yes
 TemporaryFileSystem=/srv/pinka:ro /etc/pinka:ro /var/lib/pinka:ro /run/pinka:ro
-BindReadOnlyPaths=/srv/pinka/platforms/refplat/releases /run/pinka/platform/ctl/session.sock -/run/pinka/otlp/agent.sock
+BindReadOnlyPaths=/srv/pinka/platforms/refplat/releases/refplat-v1 /run/pinka/platform/ctl/session.sock -/run/pinka/otlp/agent.sock
+BindPaths=/run/pinka/platform-runtime/agent
+ReadWritePaths=/run/pinka/platform-runtime/agent
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/run/pinka/postgres -/run/pinka/postgres-reader -/etc/pinka/incus -/etc/pinka/signing
 
 [Install]
 WantedBy=pinka-platform.target
@@ -107,8 +114,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform refplat: service ctl (controller)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service refplat-ctl-api.socket refplat-ctl-session.socket
-After=pinka-health-gate.service pinka-core.service pinka-observability.service refplat-ctl-api.socket refplat-ctl-session.socket
+Requires=pinka-health-gate.service refplat-reconcile.service refplat-ctl-api.socket refplat-ctl-session.socket
+After=pinka-health-gate.service pinka-core.service pinka-observability.service refplat-reconcile.service refplat-ctl-api.socket refplat-ctl-session.socket
 
 [Service]
 Type=simple
@@ -116,6 +123,63 @@ ExecStart=/srv/pinka/platforms/refplat/releases/current/.venv/bin/refplat-ctl
 WorkingDirectory=/srv/pinka/platforms/refplat/releases/current
 Restart=on-failure
 RestartSec=5
+User=refplat-ctl
+Group=refplat-ctl
+SupplementaryGroups=pinka-query pinka-restricted refplat-db
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/ctl
+RuntimeDirectoryMode=0700
+ReadWritePaths=/srv/pinka/platforms/refplat/state/ctl/records /srv/pinka/platforms/refplat/state/ctl/datasets
+ReadOnlyPaths=/srv/pinka/platforms/refplat/releases/current /etc/pinka/platform/config/ctl.json
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups
+
+[Install]
+WantedBy=pinka-platform.target
+===== refplat-reconcile.service
+# Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform refplat: the reconcile hook before the services
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service
+After=pinka-health-gate.service pinka-core.service pinka-observability.service
+Before=refplat-ctl.service refplat-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+ExecStart=/usr/local/libexec/pinka/pinka-platform hook-exec --hook reconcile -- /srv/pinka/platforms/refplat/releases/current/.venv/bin/refplat-admin reconcile
+WorkingDirectory=/srv/pinka/platforms/refplat/releases/current
 User=refplat-ctl
 Group=refplat-ctl
 SupplementaryGroups=pinka-query pinka-restricted refplat-db

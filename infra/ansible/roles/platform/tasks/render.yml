@@ -6,8 +6,9 @@
 # Incus certificates, the signing key, the run-network helper's socket owner,
 # the CLI); the roles after this one read the same rendering (active_platform)
 # for OPA, the dashboards and the telemetry labels. Units are installed but
-# neither enabled nor started: the switch with the hooks follows with plan
-# step 3d.4.
+# neither enabled nor started here: the switch (deploy.yml) drains and stops
+# the running release when this changes what it runs, and start.yml starts
+# the platform at the end of the play.
 
 - name: Render the release
   ansible.builtin.command:
@@ -18,6 +19,25 @@
 - name: Remember the rendering
   ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - the lab-wide active_platform fact
     active_platform: "{{ (platform_render_out.stdout | from_json).render }}"
+    platform_switch: "{{ (platform_render_out.stdout | from_json).switch }}"
+
+- name: Look whether the platform runs
+  ansible.builtin.command:
+    argv: [systemctl, is-active, --quiet, pinka-platform.target]
+  register: platform_running
+  changed_when: false
+  failed_when: false
+
+# §7.14 step 8, before anything the running release uses changes: a new
+# release or new content drains and stops it first. A replaced platform was
+# drained by retire.yml; only its target is left to stop.
+- name: Drain and stop the running release before it changes
+  ansible.builtin.include_tasks: stop.yml
+  vars:
+    platform_drain_first: "{{ platform_switch.previous == platform_plan.platform.name }}"
+  when:
+    - platform_running.rc == 0
+    - platform_switch.release_changed or platform_switch.content_changed
 
 - name: Create the platform's groups
   ansible.builtin.group:
@@ -29,9 +49,12 @@
 # The memberships follow from the profiles only; the tool refuses any that
 # §12.4 forbids (the agent and training jobs never join pinka-restricted,
 # the database socket group or pinka-query).
+# UIDs from the platform range (pinka_platform_uids, §7.9 option b): the
+# telemetry guard drops their connections to the telemetry backends.
 - name: Create the platform's accounts
   ansible.builtin.user:
     name: "{{ item.name }}"
+    uid: "{{ item.uid }}"
     group: "{{ item.group }}"
     groups: "{{ item.groups }}"
     append: false
@@ -45,6 +68,7 @@
   loop: "{{ active_platform.accounts }}"
   loop_control:
     label: "{{ item.name }}"
+  register: platform_accounts_written
 
 - name: Create the platform's directories
   ansible.builtin.file:
@@ -67,6 +91,7 @@
   loop: "{{ active_platform.config_files }}"
   loop_control:
     label: "{{ item.path }}"
+  register: platform_config_written
 
 - name: Write the services' secrets
   ansible.builtin.copy:
@@ -78,6 +103,7 @@
   loop: "{{ active_platform.secrets }}"
   loop_control:
     label: "{{ item.path }}"
+  register: platform_secrets_written
   no_log: true
 
 - name: Install the QA keys trusted for attestations (§12.10)
@@ -152,6 +178,7 @@
   loop: "{{ active_platform.units }}"
   loop_control:
     label: "{{ item.name }}"
+  register: platform_units_written
   notify: Reload systemd
 
 - name: Create the directory of the CLI wrappers

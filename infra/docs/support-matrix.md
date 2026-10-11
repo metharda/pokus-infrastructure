@@ -30,6 +30,7 @@ Rules are evaluated top to bottom; the first match wins.
 | `id` = arch | archlinux | tested | rolling | — | — | — |
 | `id` = debian; `version_id` = 12 | — | unsupported | — | — | until 2026-07-11 | Debian 12 reached the end of regular security support on 2026-07-11 (Debian LTS continues until 2028-06-30). Upgrade to Debian 13. |
 | `id_or_like_in` = rhel, centos, almalinux, rocky, ol; `version_major_in` = 8 | — | unsupported | — | — | — | RHEL-compatible release 8: it predates the unified cgroup v2 default and is not a supported release. The cgroup v2 hierarchy can be enabled with the kernel argument 'systemd.unified_cgroup_hierarchy=1', but install a supported release (9 or 10) instead. |
+| `id_in` = ubuntu, debian, fedora, rhel, almalinux, rocky, centos, opensuse-leap, sles | — | unsupported | — | — | — | Release not in the support matrix: only the releases docs/support-matrix.md lists are supported or tested for this distribution. Install a listed release. |
 | `id_like_contains` = ubuntu | debian | experimental | fixed | UBUNTU_CODENAME | — | — |
 | `id_like_contains` = debian | debian | experimental | fixed | DEBIAN_CODENAME | — | — |
 | `id_like_contains_any` = rhel, fedora, centos | redhat | experimental | fixed | VERSION_ID | — | — |
@@ -107,7 +108,7 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 
 | Feature | Requires | When missing | Only matters without | Impact |
 | --- | --- | --- | --- | --- |
-| `gpu_inference` | nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: 7.0 | degrade | — | No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. |
+| `gpu_inference` | nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: 7.0, driver_cuda_min: 13.0.2 | degrade | — | No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. |
 | `vm_targets` | kvm_usable | degrade | — | No KVM: VM-class scenarios (kernel-level faults) cannot run on this host. |
 | `btrfs_pool` | btrfs_available | fallback | — | No btrfs: the Incus pool falls back to LVM thin provisioning. |
 | `lvm_thin_pool` | dm_thin_pool_available | degrade | btrfs_pool | No LVM thin provisioning. |

@@ -136,15 +136,22 @@ on the host. The platform runs on `full` and `lab` nodes only.
     the systemd units with their sockets, the database with its roles and
     the closed `restricted` schema, the Incus certificates, the signing key,
     `principals.json` and `endpoints.toml`, and the CLI link. Then it
-    switches `current`. The roles after it pick up the policy bundle, the
-    dashboards and the database dump from the same rendering. In this
-    version the units are installed but not started; starting them follows
-    with the platform's hooks.
+    switches: a running release is drained (its `drain` hook) and stopped,
+    the new release's `migrate` hook runs as `<platform>-migrate`, infra
+    revokes and checks the `restricted` schema, and `current` switches. The
+    roles after it pick up the policy bundle, the dashboards and the
+    database dump from the same rendering; at the end bootstrap starts
+    `pinka-platform.target` (the `reconcile` hook first, then the services)
+    and waits for the `health` hook. A failed `migrate` hook or a forbidden
+    grant on `restricted` ends bootstrap with the platform stopped; an
+    unhealthy platform is reported and doctor warns.
 
 2. To update, set `ref` to the new release and apply it again. The new
    release is published next to the old ones and `current` switches; a
    published release is never extracted or built again, and a tag that now
-   names another commit is refused.
+   names another commit is refused. The running release keeps running until
+   the new one is built and published; only the switch stops it. A rerun
+   with nothing changed neither stops nor migrates anything.
 
 3. To go back, set the ref of an earlier release and apply it again. Its
    directory is still there, so only `current` changes. Database migrations

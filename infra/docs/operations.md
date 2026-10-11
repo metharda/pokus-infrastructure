@@ -23,6 +23,8 @@ and most of its commands need `sudo`.
 | Start the lab | `sudo pinka start` | [Start, stop and drain the lab](how-to/start-stop-drain.md) |
 | Stop it without losing runs | `sudo pinka stop --timeout <seconds>` | [Start, stop and drain the lab](how-to/start-stop-drain.md) |
 | Serve the documentation | `pinka docs serve` | [How to connect to the lab](how-to/connect.md#read-the-documentation-on-the-lab) |
+| Install or roll back the served documentation | `sudo pinka docs install <tarball> --sha256 <sum>`, `sudo pinka docs rollback` | [How to serve a documentation release on the lab](how-to/install-docs-release.md) |
+| Lend production's hardware to staging | `sudo pinka window open --start <time> --end <time>`, `sudo pinka window close` | [How to run a QA maintenance window on staging](how-to/staging-window.md#staging-on-productions-hardware) |
 
 ## People
 

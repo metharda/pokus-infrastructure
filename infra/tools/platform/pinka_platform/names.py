@@ -91,6 +91,8 @@ def derive(manifest: Mapping[str, Any], contract: Contract) -> list[Derived]:
     services = manifest["services"]
     out.append(Derived("accounts_groups", f"{p}-migrate", "the migrate hook's account"))
     out.append(Derived("accounts_groups", f"{p}-db", "the database socket group"))
+    if "reconcile" in manifest.get("hooks", {}):
+        out.append(Derived("units", f"{p}-reconcile", "the reconcile hook's unit"))
     out.append(Derived("postgresql_databases", p, "the platform database"))
     for fixed in ("migrator", "reader", "grafana"):
         out.append(Derived("postgresql_roles", role(p, fixed), f"the {fixed} role"))

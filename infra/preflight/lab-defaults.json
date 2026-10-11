@@ -1,0 +1,29 @@
+{
+  "_generated_from": "ansible/group_vars/all/main.yml and ansible/roles/docker/defaults/main.yml by tools/gen (make generate); do not edit",
+  "schema_version": 1,
+  "ports": {
+    "otlp_grpc": 4317,
+    "otlp_http": 4318,
+    "opa": 8181,
+    "incus_https": 8443,
+    "grafana": 18700,
+    "prometheus": 18701,
+    "loki": 18702,
+    "tempo": 18703,
+    "vllm": 18704,
+    "gateway_adhoc": 18705,
+    "docs_serve": 18706,
+    "inference_control": 18710
+  },
+  "vm_collector": {
+    "address": "198.18.0.1",
+    "interface": "pinka-otlp0"
+  },
+  "docker_address_pools": [
+    {
+      "base": "172.30.0.0/16",
+      "size": 24
+    }
+  ],
+  "tailnet": "100.64.0.0/10"
+}

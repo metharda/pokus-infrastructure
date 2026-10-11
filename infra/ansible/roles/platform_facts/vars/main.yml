@@ -6,3 +6,6 @@
 # roles end after their repository step in check mode while the command is
 # missing (docker, incus, tailscale, nvidia_container_toolkit).
 platform_facts_component_commands: [dockerd, incus, tailscale, nvidia-ctk]
+
+# A dotted-quad IPv4 address (vm_collector_address).
+platform_facts_ipv4_pattern: '^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$'

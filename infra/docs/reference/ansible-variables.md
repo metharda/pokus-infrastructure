@@ -27,6 +27,12 @@ production, or staging for QA environments (own vault, Tailscale tag and signing
 
 - Default: `production`
 
+### `staging_shared_hardware`
+
+Staging only: this staging host runs on production's hardware, so it starts only inside an open maintenance window with the GPU idle and its ports free (BUILD_PROMPT §7.20, pinka window open).
+
+- Default: `false`
+
 ### `lab_provider`
 
 Provider role: auto (the provider preflight detected), baremetal, wsl2 or vm. Any other value than auto must match the detected provider.
@@ -66,6 +72,18 @@ Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded in 
 ### `grafana_tailscale_serve`
 
 Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
+
+- Default: `false`
+
+### `docs_release`
+
+The documentation release the docs service serves (BUILD_PROMPT §7.19): {url, sha256} of a release's documentation tarball (an https:// URL or an absolute path); null: no docs service.
+
+- Default: `null`
+
+### `docs_tailscale_serve`
+
+Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
 
 - Default: `false`
 
@@ -165,6 +183,9 @@ Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH 
     - name: pinka-inference
       groups: []
       description: the inference control endpoint of an inference node
+    - name: pinka-query-proxy
+      groups: []
+      description: "the telemetry query proxy's container user (\xA77.9)"
     ```
 
 ### `inference_control_account`
@@ -172,6 +193,25 @@ Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH 
 The account of the inference control endpoint.
 
 - Default: `pinka-inference`
+
+### `pinka_platform_uids`
+
+The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles (§6.1, §12.2). Their UIDs come from this range (§7.9 option b, ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use. The telemetry guard drops the range's connections to the telemetry backends.
+
+- Default: `{min: 60578, max: 61183}`
+
+### `pinka_telemetry_guard_ports`
+
+Ports the telemetry guard closes to that range (§7.9 option b): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's metrics exporter and the query proxy's loopback port (platform services use its socket, which checks the group). The collector's OTLP receivers stay open.
+
+- Default:
+
+    ```jinja
+    {{ [pinka_ports.prometheus, pinka_ports.loki, pinka_ports.tempo,
+        pinka_internal_ports.loki_grpc, pinka_internal_ports.tempo_grpc,
+        pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics,
+        pinka_internal_ports.query_proxy] | sort }}
+    ```
 
 ### `pinka_service_home`
 
@@ -261,15 +301,38 @@ Host paths outside pinka_root (absolute).
         cache of the platform builds}
     ```
 
-### `pinka_ports`
+### `pinka_default_ports`
 
-Listener ports of the lab services (contracts.md#ports).
+Default listener ports of the lab services (contracts.md#ports, BUILD_PROMPT §12.11). Override them per machine with `ports:`; read the effective values from pinka_ports.
 
 - Default:
 
     ```yaml
     {otlp_grpc: 4317, otlp_http: 4318, opa: 8181, incus_https: 8443, grafana: 18700, prometheus: 18701,
       loki: 18702, tempo: 18703, vllm: 18704, gateway_adhoc: 18705, docs_serve: 18706, inference_control: 18710}
+    ```
+
+### `ports`
+
+Port overrides by the names of pinka_default_ports, set in host_vars, for example {grafana: 18750}. Preflight reports a configured port that a process outside the lab uses; endpoints.toml carries the effective values.
+
+- Default: `{}`
+
+### `pinka_ports`
+
+The effective listener ports: the defaults with the machine's overrides.
+
+- Default: `{{ pinka_default_ports | combine(ports) }}`
+
+### `pinka_preflight_args`
+
+The preflight options of the machine's port overrides and VM collector address (bootstrap passes the same; the preflight gate and doctor re-run preflight with them).
+
+- Default:
+
+    ```jinja
+    {{ (ports.items() | map('join', '=') | map('regex_replace', '^', '--port=') | list)
+       + ['--vm-collector-address', vm_collector_address] }}
     ```
 
 ### `pinka_internal_ports`
@@ -281,14 +344,21 @@ Loopback ports of lab-internal listeners: exporters, the collectors' own metrics
     ```yaml
     {collector_metrics: 18720, collector_telemetry: 18721, journald_telemetry: 18722, node_exporter: 18723,
       cadvisor: 18724, postgres_exporter: 18725, gpu_exporter: 18726, tempo_otlp_grpc: 18727,
-      loki_grpc: 18728, tempo_grpc: 18729, collector_health: 18730, journald_health: 18731}
+      loki_grpc: 18728, tempo_grpc: 18729, collector_health: 18730, journald_health: 18731, otlp_agent: 18732,
+      query_proxy: 18733}
     ```
+
+### `vm_collector_address`
+
+Address of the collector listener for VM targets (BUILD_PROMPT §12.11) on the dummy interface of pinka_vm_otlp. Preflight reports it when it is already assigned or routed on the host, or overlaps the Docker pools, an Incus network or the tailnet range; choose another one in host_vars.
+
+- Default: `198.18.0.1`
 
 ### `pinka_vm_otlp`
 
 Dedicated collector listener for VM targets (contracts.md#telemetry, C4): an address on a dummy interface, reachable only from run networks through the run ACL and the firewall, OTLP gRPC and HTTP on the ports of pinka_ports. Set up only with the vm_targets feature.
 
-- Default: `{interface: pinka-otlp0, address: 198.18.0.1}`
+- Default: `{interface: pinka-otlp0, address: '{{ vm_collector_address }}'}`
 
 ### `pinka_incus_bridge_patterns`
 
@@ -401,10 +471,10 @@ known_hosts lines of the SFTP backup server, required for an sftp repository.
 
 ### `backup_include`
 
-Directories below pinka_root that are backed up.
+Infra's own directories below pinka_root that are backed up; the restricted area, the training datasets, the adapters and the platform's backup.paths always are.
 
 - Type: `list` of `str`
-- Default: `[restricted, artifacts, reports, images, datasets, shared, users, backups/pg]`
+- Default: `[images, datasets, shared, users, backups/pg]`
 
 ### `backup_include_models`
 
@@ -750,6 +820,46 @@ First Docker Engine major version with CDI device support; older engines get the
 - Type: `int`
 - Default: `25`
 
+## docs
+
+The documentation service on 127.0.0.1 serving the installed docs release (§7.19).
+
+Entry points: `main` (The documentation service on 127.0.0.1 serving the installed docs release (§7.19)). Role README: `ansible/roles/docs/README.md`.
+
+### `docs_release`
+
+The docs release to install, {url, sha256}: an HTTPS URL or a local path of the release's documentation tarball and its SHA-256; null keeps the service off.
+
+- Type: `dict`
+
+### `docs_dir`
+
+Installed versions and the current link (pinka docs install).
+
+- Type: `path`
+- Default: `/usr/local/share/pinka/docs`
+
+### `docs_cache`
+
+Where the downloaded release tarball is kept.
+
+- Type: `path`
+- Default: `/var/cache/pinka/docs`
+
+### `docs_unit`
+
+Name of the documentation service.
+
+- Type: `str`
+- Default: `pinka-docs.service`
+
+### `docs_cli`
+
+The pinka CLI that installs releases.
+
+- Type: `path`
+- Default: `/usr/local/bin/pinka`
+
 ## doctor
 
 The pinka operator CLI, a copy of preflight it runs, and the lab description /etc/pinka/lab.json.
@@ -818,6 +928,13 @@ Seconds `pinka stop` and `update-host` give the platform's drain hook.
 - Type: `int`
 - Default: `1800`
 
+### `doctor_health_wait`
+
+Seconds `pinka start` waits for the platform's health hook to answer ok.
+
+- Type: `int`
+- Default: `300`
+
 ### `doctor_listener_processes`
 
 Processes that may listen outside loopback (names as `ss -p` shows them).
@@ -858,6 +975,13 @@ TCP port of `tailscale serve` for Grafana.
 - Type: `int`
 - Default: `443`
 
+### `firewall_docs_serve_port`
+
+TCP port of `tailscale serve` for the docs service.
+
+- Type: `int`
+- Default: `10000`
+
 ### `firewall_tailnet_tcp_ports`
 
 TCP ports open on the tailnet interface (derived: 22, the serve port if enabled, 18704 and 18710 on an inference node, 4317 on a paired lab node).
@@ -868,6 +992,7 @@ TCP ports open on the tailnet interface (derived: 22, the serve port if enabled,
     ```jinja
     {{ [22]
        + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else [])
+       + ([firewall_docs_serve_port] if docs_tailscale_serve | bool and docs_release is not none else [])
        + ([pinka_ports.vllm, pinka_ports.inference_control] if node_role == 'inference' else [])
        + ([pinka_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
     ```
@@ -1629,7 +1754,7 @@ dnf plugin package that provides `dnf versionlock`.
 
 Deploy the platform release and its content packages (contract v2), if a platform source is set.
 
-Entry points: `main` (Deploy the platform release and its content packages (contract v2), if a platform source is set), `rotate_signing` (Replace the active platform's signing key; old public keys stay published). Role README: `ansible/roles/platform/README.md`.
+Entry points: `main` (Deploy the platform release and its content packages (contract v2), if a platform source is set), `rotate_signing` (Replace the active platform's signing key; old public keys stay published), `start` (Start the active platform and wait for its health hook (site.yml, after the lab session)). Role README: `ansible/roles/platform/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -1693,6 +1818,14 @@ OpenAI-compatible endpoint of the scripted backend (staging only).
 - Type: `str`
 - Default: `''`
 - Entry points: `main`
+
+### `platform_health_wait`
+
+Seconds bootstrap waits after starting the platform for its health hook.
+
+- Type: `int`
+- Default: `300`
+- Entry points: `main`, `start`
 
 ## platform_facts
 
@@ -2066,6 +2199,13 @@ HTTPS port of the Grafana serve.
 
 - Type: `int`
 - Default: `443`
+
+### `tailscale_docs_serve_port`
+
+HTTPS port of the docs service's serve.
+
+- Type: `int`
+- Default: `10000`
 
 ## users_groups
 

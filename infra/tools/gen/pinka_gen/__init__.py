@@ -8,7 +8,9 @@ schema field has a reference entry.
 Generated files:
 
 * ``preflight/support-matrix.json`` and ``preflight/endpoints.json`` (the
-  preflight evaluator reads only JSON; owner answer E10);
+  preflight evaluator reads only JSON; owner answer E10), and
+  ``preflight/lab-defaults.json`` (the default ports and addresses preflight
+  checks, from group_vars);
 * ``docs/support-matrix.md``;
 * ``docs/reference/cli/pinka-preflight.md``;
 * ``docs/reference/exit-codes.md``;

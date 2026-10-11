@@ -639,15 +639,72 @@ nvidia_driver_mode() {
   esac
 }
 
+# port_overrides FILE: print NAME=PORT for every entry of the top-level
+# `ports:` mapping of FILE, written as a block (`ports:`, then indented
+# `name: 18750` lines) or on one line (`ports: {name: 18750, other: 18751}`);
+# nothing if FILE or the key is missing. Returns 1 for any other form.
+port_overrides() {
+  [[ -f $1 ]] || return 0
+  awk '
+    function emit(entry, kv) {
+      sub(/^[ \t]+/, "", entry)
+      sub(/[ \t]+$/, "", entry)
+      if (entry == "") return
+      if (entry !~ /^[a-z_]+[ \t]*:[ \t]*[0-9]+$/) { bad = 1; return }
+      split(entry, kv, ":")
+      gsub(/[ \t]/, "", kv[1])
+      gsub(/[ \t]/, "", kv[2])
+      print kv[1] "=" kv[2]
+    }
+    function strip(line) {
+      sub(/[ \t]+#.*$/, "", line)
+      return line
+    }
+    /^ports:/ {
+      line = strip($0)
+      sub(/^ports:[ \t]*/, "", line)
+      if (line == "") { block = 1; next }
+      if (line !~ /^[{].*[}]$/) { bad = 1; next }
+      sub(/^[{]/, "", line)
+      sub(/[}]$/, "", line)
+      n = split(line, parts, ",")
+      for (i = 1; i <= n; i++) emit(parts[i])
+      next
+    }
+    block && /^[ \t]+[^ \t#]/ { emit(strip($0)); next }
+    block && /^[^ \t#]/ { block = 0 }
+    END { exit bad }
+  ' "$1"
+}
+
+# lab_preflight_args: the preflight options of the machine's port overrides
+# and VM collector address in host_vars, one per line (§2.2, §12.11).
+lab_preflight_args() {
+  local host_vars="$INFRA_DIR/ansible/inventory/host_vars/$OPT_MACHINE.yml" overrides entry address
+  overrides=$(port_overrides "$host_vars") || {
+    log_error "ports: in $host_vars must map port names to numbers, as indented lines or as {name: number}"
+    return "$EXIT_OPERATOR"
+  }
+  while IFS= read -r entry; do
+    [[ -z $entry ]] || printf -- '--port=%s\n' "$entry"
+  done <<<"$overrides"
+  address=$(yaml_scalar "$host_vars" vm_collector_address)
+  [[ -z $address ]] || printf -- '--vm-collector-address=%s\n' "$address"
+}
+
 # stage_preflight: run preflight, apply the gate, check for a changed host
 # profile and store the profile (§2.4, §2.6, §5.2 step 3).
 stage_preflight() {
-  local rc=0 outcome tier needs_action changes mode
+  local rc=0 outcome tier needs_action changes mode lab
   local -a args=(--no-write --output "$RUN_DIR/host-profile.json" --repo-commit "$GIT_COMMIT")
+  local -a lab_args=()
   enter_stage preflight
   install -d -m 0700 "$RUN_DIR"
   mode=$(nvidia_driver_mode) || exit "$EXIT_OPERATOR"
   args+=(--nvidia-driver "$mode")
+  lab=$(lab_preflight_args) || exit "$EXIT_OPERATOR"
+  [[ -z $lab ]] || mapfile -t lab_args <<<"$lab"
+  args+=("${lab_args[@]}")
   "$OPT_ACCEPT_MOK_ENROLLMENT" && args+=(--accept-mok-enrollment)
   "$OPT_ACCEPT_DEGRADED" && args+=(--accept-degraded)
   "$OPT_ACCEPT_EXPERIMENTAL" && args+=(--accept-experimental)

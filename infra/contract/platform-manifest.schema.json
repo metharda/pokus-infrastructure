@@ -523,6 +523,7 @@
         "pinka-lab",
         "pinka-monitor",
         "pinka-query",
+        "pinka-query-proxy",
         "pinka-restricted",
         "root"
       ]
@@ -556,6 +557,7 @@
         "pinka-services.slice",
         "pinka-session-start",
         "pinka-sleep-inhibit",
+        "pinka-telemetry-guard",
         "pinka-vllm-deploy",
         "pinka-vllm-deploy@",
         "pinka-vm-otlp-address",

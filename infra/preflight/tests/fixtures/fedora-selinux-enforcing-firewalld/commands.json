@@ -25,6 +25,11 @@
       "stderr": "",
       "stdout": "NVIDIA GeForce RTX 4070, 12282 MiB, 580.82.07, 8.9\n"
     },
+    "nvidia-smi --version": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "NVIDIA-SMI version  : 580.82.07\nNVML version        : 580.82\nDRIVER version      : 580.82.07\nCUDA Version        : 13.0\n"
+    },
     "stat -f -c %T /sys/fs/cgroup": {
       "rc": 0,
       "stderr": "",

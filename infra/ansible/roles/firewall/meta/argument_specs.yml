@@ -42,6 +42,10 @@ argument_specs:
         type: int
         default: 443
         description: TCP port of `tailscale serve` for Grafana.
+      firewall_docs_serve_port:
+        type: int
+        default: 10000
+        description: TCP port of `tailscale serve` for the docs service.
       firewall_tailnet_tcp_ports:
         type: list
         elements: int

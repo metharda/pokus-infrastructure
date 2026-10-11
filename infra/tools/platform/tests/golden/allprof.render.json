@@ -254,6 +254,349 @@
       "path": "/etc/pinka/secrets/postgres"
     }
   ],
+  "hardening": [
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups"
+      ],
+      "profile": "controller",
+      "properties": {
+        "Group": "allprof-ctl",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-ctl"
+      },
+      "unit": "allprof-ctl.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "inference-broker",
+      "properties": {
+        "Group": "allprof-brk",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-brk"
+      },
+      "unit": "allprof-brk.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/signing"
+      ],
+      "profile": "sandbox-operator",
+      "properties": {
+        "Group": "allprof-sbx",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-sbx"
+      },
+      "unit": "allprof-sbx.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/etc/pinka/signing"
+      ],
+      "profile": "restricted-operator",
+      "properties": {
+        "Group": "allprof-rop",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-rop"
+      },
+      "unit": "allprof-rop.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "restricted-reader",
+      "properties": {
+        "Group": "allprof-rrd",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "no",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-rrd"
+      },
+      "unit": "allprof-rrd.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "observer",
+      "properties": {
+        "Group": "allprof-obs",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-obs"
+      },
+      "unit": "allprof-obs.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX"
+      ],
+      "agent_view": {
+        "own_dirs": [
+          "/run/pinka/platform-runtime/agt",
+          "/srv/pinka/platforms/allprof/state/agt/scratch"
+        ],
+        "release": "/srv/pinka/platforms/allprof/releases/allprof-v1",
+        "sockets": [
+          "/run/pinka/otlp/agent.sock",
+          "/run/pinka/platform/brk/agent.sock",
+          "/run/pinka/platform/ctl/agent.sock",
+          "/run/pinka/platform/sbx/agent.sock"
+        ]
+      },
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/run/pinka/postgres",
+        "/run/pinka/postgres-reader",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "untrusted-agent",
+      "properties": {
+        "Group": "allprof-agt",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateNetwork": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "allprof-agt"
+      },
+      "unit": "allprof-agt.service"
+    }
+  ],
   "incus_certificates": [
     {
       "account": "allprof-ctl",
@@ -340,7 +683,112 @@
     "allprof-rrd-api.socket",
     "allprof-obs-api.socket"
   ],
+  "sockets": [
+    {
+      "acl": [
+        "group:pinka:rw-",
+        "group:pinka-admin:rw-"
+      ],
+      "group": "allprof-ctl-api",
+      "mode": "0660",
+      "owner": "allprof-ctl",
+      "path": "/run/pinka/platform/ctl/api.sock",
+      "unit": "allprof-ctl-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "allprof-ctl-svc",
+      "mode": "0660",
+      "owner": "allprof-ctl",
+      "path": "/run/pinka/platform/ctl/svc.sock",
+      "unit": "allprof-ctl-svc.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "allprof-ctl-agent",
+      "mode": "0660",
+      "owner": "allprof-ctl",
+      "path": "/run/pinka/platform/ctl/agent.sock",
+      "unit": "allprof-ctl-agent.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [],
+      "group": "allprof-brk-agent",
+      "mode": "0660",
+      "owner": "allprof-brk",
+      "path": "/run/pinka/platform/brk/agent.sock",
+      "unit": "allprof-brk-agent.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [
+        "group:pinka:rw-"
+      ],
+      "group": "allprof-brk-api",
+      "mode": "0660",
+      "owner": "allprof-brk",
+      "path": "/run/pinka/platform/brk/api.sock",
+      "unit": "allprof-brk-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "allprof-sbx-agent",
+      "mode": "0660",
+      "owner": "allprof-sbx",
+      "path": "/run/pinka/platform/sbx/agent.sock",
+      "unit": "allprof-sbx-agent.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [],
+      "group": "allprof-sbx-api",
+      "mode": "0660",
+      "owner": "allprof-sbx",
+      "path": "/run/pinka/platform/sbx/api.sock",
+      "unit": "allprof-sbx-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "allprof-rop-api",
+      "mode": "0660",
+      "owner": "allprof-rop",
+      "path": "/run/pinka/platform/rop/api.sock",
+      "unit": "allprof-rop-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "allprof-rrd-api",
+      "mode": "0660",
+      "owner": "allprof-rrd",
+      "path": "/run/pinka/platform/rrd/api.sock",
+      "unit": "allprof-rrd-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [
+        "group:pinka:rw-",
+        "group:pinka-admin:rw-"
+      ],
+      "group": "allprof-obs-api",
+      "mode": "0660",
+      "owner": "allprof-obs",
+      "path": "/run/pinka/platform/obs/api.sock",
+      "unit": "allprof-obs-api.socket",
+      "untrusted_clients": false
+    }
+  ],
   "stale_units": [],
+  "state_dirs": [
+    "/srv/pinka/platforms/allprof/state/ctl/records",
+    "/srv/pinka/platforms/allprof/state/rrd/reports",
+    "/srv/pinka/platforms/allprof/state/agt/scratch"
+  ],
   "telemetry_labels": [
     "allprof.run",
     "allprof.node",

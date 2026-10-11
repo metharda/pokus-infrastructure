@@ -92,8 +92,9 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
     lines.append(paint("GPU", "bold"))
     if gpu["present"]:
         lines.append(
-            f"  {_fmt(gpu['name'])}, {_fmt(gpu['vram_gib'])} GiB, driver {_fmt(gpu['driver'])},"
-            f" compute {_fmt(gpu['compute_capability'])}, path {_fmt(gpu['path'])},"
+            f"  {_fmt(gpu['name'])}, {_fmt(gpu['vram_gib'])} GiB, driver {_fmt(gpu['driver'])}"
+            f" (CUDA {_fmt(gpu['driver_cuda'])}), compute {_fmt(gpu['compute_capability'])},"
+            f" path {_fmt(gpu['path'])},"
             f" usable {_fmt(gpu['usable'])}"
         )
     else:
@@ -140,7 +141,10 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
     )
     section(
         "Disabled features",
-        [f"{d['feature']}: {d['impact']}" for d in report["disabled_features"]],
+        [
+            f"{d['feature']}: {d['impact']} {d.get('remediation', '')}".rstrip()
+            for d in report["disabled_features"]
+        ],
         "degraded",
     )
     section("Warnings", list(report["warnings"]), "degraded")

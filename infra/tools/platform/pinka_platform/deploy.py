@@ -31,6 +31,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import datetime as dt
+import fcntl
 import grp
 import hashlib
 import json
@@ -47,6 +48,7 @@ from pathlib import Path
 from typing import Any
 
 from pinka_platform import (
+    accounts,
     config,
     database,
     mirror,
@@ -1097,17 +1099,85 @@ def read_rendered(paths: Paths) -> dict[str, Any] | None:
     return read_json(paths.etc_platform / RENDERED)
 
 
-def render_step(plan: Mapping[str, Any], paths: Paths, contract: Contract) -> dict[str, Any]:
+@contextlib.contextmanager
+def rendered_lock(paths: Paths) -> Iterator[None]:
+    """Hold the lock of ``rendered.json``, shared with the socket-ACL helper.
+
+    The helper rewrites the file's ``socket_acl_fallback`` at every start of a
+    socket; the lock file lies next to it.
+
+    Args:
+        paths: Host paths.
+
+    Yields:
+        Nothing; the lock is held until the block ends.
+    """
+    lock = paths.etc_platform / f".{RENDERED}.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock, os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+def changes(plan: Mapping[str, Any], paths: Paths) -> dict[str, Any]:
+    """What the switch changes compared with the active platform (§7.14 step 8).
+
+    Args:
+        plan: The deployment plan.
+        paths: Host paths.
+
+    Returns:
+        ``{"previous": name or None, "release_changed": bool,
+        "content_changed": bool}``; another platform counts as a change of both.
+    """
+    active = read_active(paths)
+    same = active is not None and active.get("name") == plan["platform"]["name"]
+    if not same or active is None:
+        return {
+            "previous": (active or {}).get("name"),
+            "release_changed": True,
+            "content_changed": True,
+        }
+    before = {name: item.get("target") for name, item in (active.get("content") or {}).items()}
+    after = {name: item["target"] for name, item in plan["content"].items()}
+    return {
+        "previous": active["name"],
+        "release_changed": (active.get("release") or {}).get("target") != plan["release"]["target"],
+        "content_changed": before != after,
+    }
+
+
+def host_users() -> dict[str, int]:
+    """Every account of the host (NSS included), name to UID."""
+    return {entry.pw_name: entry.pw_uid for entry in pwd.getpwall()}
+
+
+def render_step(
+    plan: Mapping[str, Any],
+    paths: Paths,
+    contract: Contract,
+    users: Callable[[], Mapping[str, int]] = host_users,
+) -> dict[str, Any]:
     """Render everything the platform role applies (§7.14 step 7).
+
+    The accounts get their UIDs from the platform range here
+    (:func:`pinka_platform.accounts.assign_uids`).
 
     Args:
         plan: The deployment plan (after publish).
         paths: Host paths.
         contract: The contract.
+        users: The host's accounts, name to UID.
 
     Returns:
-        ``{"changed": False, "render": document}``; the document is also
-        written to ``<run>/render.json``.
+        ``{"changed": False, "render": document, "switch": ...}``; the
+        document is also written to ``<run>/render.json``.
+
+    Raises:
+        DeployError: An account cannot get a UID from the platform range.
     """
     manifest = published_manifest(plan, contract)
     lab = plan.get("lab") or {}
@@ -1120,8 +1190,12 @@ def render_step(plan: Mapping[str, Any], paths: Paths, contract: Contract) -> di
         machine_name=str(lab.get("machine_name", "")),
         previous=read_rendered(paths),
     )
+    try:
+        document["accounts"] = accounts.assign_uids(document["accounts"], users())
+    except ValueError as exc:
+        raise DeployError(str(exc)) from exc
     write_json(Path(plan["run_dir"]) / RENDER, document, 0o600)
-    return {"changed": False, "render": document}
+    return {"changed": False, "render": document, "switch": changes(plan, paths)}
 
 
 def lab_facts(lab: Mapping[str, Any]) -> render.LabFacts:
@@ -1357,8 +1431,23 @@ def activate(
     }
     document = read_json(Path(plan["run_dir"]) / RENDER)
     if document is not None:
-        text = json.dumps(rendering.public(document), indent=2, sort_keys=True) + "\n"
-        changed |= write_text(paths.etc_platform / RENDERED, text)
+        kept = rendering.public(document)
+        with rendered_lock(paths):
+            # The helper's record of the sockets that fell back to 0666 stays
+            # for the sockets this rendering still has; it is rewritten at
+            # their next start.
+            before = read_rendered(paths) or {}
+            if before.get("platform") == platform:
+                sockets = {s["path"] for s in kept.get("sockets", [])}
+                fallback = [
+                    path
+                    for path in before.get(rendering.SOCKET_ACL_FALLBACK) or []
+                    if path in sockets
+                ]
+                if fallback:
+                    kept[rendering.SOCKET_ACL_FALLBACK] = fallback
+            text = json.dumps(kept, indent=2, sort_keys=True) + "\n"
+            changed |= write_text(paths.etc_platform / RENDERED, text)
     same = previous is not None and {k: v for k, v in previous.items() if k != "activated_at"} == {
         k: v for k, v in record.items() if k != "activated_at"
     }

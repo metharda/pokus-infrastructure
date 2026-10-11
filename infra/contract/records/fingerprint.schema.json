@@ -1,5 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/records/fingerprint.schema.json",
   "title": "pinka environment fingerprint",
   "description": "Output of `pinka fingerprint --json` and the `fingerprint` field of every session record (pokus-infrastructure BUILD_PROMPT §10.2, contracts.md C9c). `hash` is the sha256 of the canonical JSON of `fingerprint` (sorted keys, no whitespace, UTF-8); `computed_at` and `boot_id` are volatile and not hashed.",
   "type": "object",

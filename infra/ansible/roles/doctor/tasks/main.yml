@@ -96,6 +96,7 @@
     - {name: pinka-preflight, mode: "0755"}
     - {name: support-matrix.json, mode: "0644"}
     - {name: endpoints.json, mode: "0644"}
+    - {name: lab-defaults.json, mode: "0644"}
     - {name: schema/host-profile.schema.json, mode: "0644"}
     - {name: schema/support-matrix.schema.json, mode: "0644"}
   loop_control:
@@ -160,15 +161,6 @@
   failed_when: false
   when: doctor_serves_inference
 
-# Written by the platform role with the effective modes and ACLs (with or
-# without ACL support on /run).
-- name: Read the platform's socket expectations
-  ansible.builtin.slurp:
-    src: /etc/pinka/platform/sockets.json
-  register: doctor_platform_sockets
-  failed_when: false
-  when: doctor_platform
-
 - name: Write the lab description
   ansible.builtin.copy:
     dest: "{{ doctor_config }}"
@@ -188,6 +180,9 @@
       provider: "{{ pinka_provider }}"
       features: "{{ pinka_features }}"
       lab_mode: "{{ lab_mode }}"
+      # The machine's port overrides and VM collector address, as bootstrap
+      # passes them to preflight (BUILD_PROMPT §2.2, §12.11).
+      preflight_args: "{{ pinka_preflight_args }}"
       paths:
         preflight: "{{ doctor_lib }}/preflight/pinka-preflight"
         host_profile: "{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}"
@@ -198,12 +193,14 @@
         ansible: /opt/pinka/ansible-venv/bin/ansible
         platform_tool: /usr/local/libexec/pinka/pinka-platform
         active_platform: /etc/pinka/platform/active.json
+        rendered_platform: /etc/pinka/platform/rendered.json
       fingerprint:
         cache: "{{ doctor_fingerprint_dir }}/current.json"
         versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
         host_vars_sha256: "{{ doctor_config_files.results[1].stat.checksum | default(none) }}"
       lab:
         drain_timeout: "{{ doctor_drain_timeout | int }}"
+        health_wait: "{{ doctor_health_wait | int }}"
       units: "{{ doctor_units }}"
       containers: "{{ doctor_containers }}"
       listeners:
@@ -223,6 +220,8 @@
           {{ ['--device', 'nvidia.com/gpu=all'] if (doctor_docker.features | default({})).cdi | default(false)
              else ['--runtime', 'nvidia', '--gpus', 'all'] }}
         nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pinka_provider == 'wsl2' else 'nvidia-smi' }}"
+        # The CUDA version the pinned vLLM image is built on (BUILD_PROMPT §2.2).
+        vllm_cuda: "{{ pinka_versions.containers.images.vllm.cuda | string }}"
       inference:
         dir: "{{ inference_control_dir }}"
         control_port: "{{ pinka_ports.inference_control | int }}"
@@ -252,9 +251,12 @@
         privileged_groups: [docker, incus-admin]
         break_glass_docker: "{{ break_glass_docker }}"
       hardening: "{{ doctor_hardening }}"
-      sockets: >-
-        {{ (doctor_platform_sockets.content | b64decode | from_json)
-           if doctor_platform and doctor_platform_sockets.content is defined else [] }}
+      # The telemetry isolation (§7.9 option b, ADR-0016).
+      telemetry_isolation:
+        uids: "{{ pinka_platform_uids }}"
+        ports: "{{ pinka_telemetry_guard_ports }}"
+        query_socket: "{{ '/run/pinka/query/query.sock' if doctor_runs_lab else '' }}"
+        agent_socket: "{{ '/run/pinka/otlp/agent.sock' if doctor_runs_lab else '' }}"
       images:
         blueprints: "{{ doctor_blueprints | default([]) }}"
         bench_project: bench
@@ -267,9 +269,18 @@
         max_age_hours: "{{ doctor_backup_max_age_hours | int }}"
       time:
         max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
+      # Maintenance windows (BUILD_PROMPT §7.20) and the effective lab ports
+      # that staging on shared hardware needs free before it starts.
+      window:
+        record: /etc/pinka/maintenance-window.json
+        shared_hardware: "{{ lab_mode == 'staging' and staging_shared_hardware | bool }}"
+      ports: "{{ pinka_ports }}"
       docs:
         dir: "{{ doctor_docs_dir }}"
         port: "{{ pinka_ports.docs_serve | int }}"
+        unit: pinka-docs.service
+        # The docs service runs only with a configured release (§7.19).
+        configured: "{{ docs_release is not none }}"
       cpusets:
         services: "{{ cpuset_services }}"
         targets: "{{ cpuset_targets }}"

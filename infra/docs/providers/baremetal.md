@@ -36,6 +36,12 @@ and rebuilds the initramfs with the family's tool (`update-initramfs`,
 `dracut` or `mkinitcpio`). The driver packages are held, so automatic updates
 never replace them.
 
+A loaded driver must also support the CUDA version the pinned vLLM image is
+built on. Preflight compares the CUDA version `nvidia-smi --version` reports
+with the image's (major and minor) and turns `gpu_inference` off when the
+driver is older, naming the update; doctor repeats the comparison
+([`gpu.driver_cuda`](../how-to/fix-doctor-checks.md#check-gpu-driver_cuda)).
+
 ## Secure Boot and reboots
 
 Pokus Infrastructure (pinka) never disables Secure Boot. A driver module built with DKMS on a host

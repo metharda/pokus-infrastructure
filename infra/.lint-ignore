@@ -1,0 +1,11 @@
+# Managed by pinka (.lint-ignore). Local changes will be overwritten.
+#
+# Third-party and generated trees that no formatter or linter may read or
+# change (gitignore syntax; read by yamllint, checked by
+# tools/repo-checks/tests/test_dev_tools.py together with the other tools'
+# exclusions).
+/.ansible-collections/
+/.venv/
+/node_modules/
+/site/
+/build/

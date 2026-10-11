@@ -40,6 +40,7 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
     found: dict[str, Callable[[], str]] = {
         "preflight/support-matrix.json": lambda: sources.support_matrix_json(root),
         "preflight/endpoints.json": lambda: sources.endpoints_json(root),
+        "preflight/lab-defaults.json": lambda: sources.lab_defaults_json(root),
         "docs/support-matrix.md": lambda: pages.support_matrix_page(root),
         "docs/reference/cli/pinka-preflight.md": lambda: pages.cli_page(
             pages.relative_defaults(preflight_parser(), root),

@@ -62,6 +62,7 @@ LAB: dict[str, Any] = {
         "image": "docker.io/nvidia/cuda@" + DIGEST,
         "device_args": ["--device", "nvidia.com/gpu=all"],
         "nvidia_smi": "nvidia-smi",
+        "vllm_cuda": "13.0.2",
     },
     "vllm": {
         "current": "/etc/pinka/vllm/current.yml",
@@ -250,6 +251,12 @@ class FakeSystem(System):
         self.interactive_rc = interactive_rc
         self.serve_error = serve_error
         self.served: list[tuple[str, str, int]] = []
+        self.docs_versions: list[str] = []
+        self.removed: list[str] = []
+        self.checked_ports: list[dict[str, int]] = []
+        self.busy_ports: list[str] = []
+        self.docs_calls: list[tuple[Any, ...]] = []
+        self.docs_error: Exception | None = None
         self.calls: list[list[str]] = []
         self.interactive_calls: list[tuple[list[str], dict[str, str]]] = []
         self.http_calls: list[tuple[str, str, bytes | None]] = []
@@ -349,6 +356,32 @@ class FakeSystem(System):
 
     def user_groups(self, user: str) -> list[str] | None:
         return self.groups.get(user)
+
+    def remove(self, path: str) -> None:
+        self.files.pop(path, None)
+        self.removed.append(path)
+
+    def port_conflicts(self, ports: dict[str, int]) -> list[str]:
+        self.checked_ports.append(dict(ports))
+        return list(self.busy_ports)
+
+    def docs_install(self, base: str, tarball: str, sha256: str, version: str | None) -> str:
+        self.docs_calls.append(("install", base, tarball, sha256, version))
+        if self.docs_error is not None:
+            raise self.docs_error
+        name = version or tarball.rsplit("/", 1)[-1].split(".tar", 1)[0]
+        self.docs_versions.append(name)
+        return f"installed {name}"
+
+    def docs_rollback(self, base: str) -> str:
+        self.docs_calls.append(("rollback", base))
+        if self.docs_error is not None:
+            raise self.docs_error
+        now = self.docs_versions.pop()
+        return f"switched from {now} back to {self.docs_versions[-1]}"
+
+    def docs_current(self, base: str) -> str | None:
+        return self.docs_versions[-1] if self.docs_versions else None
 
 
 def context(system: FakeSystem, **changes: Any) -> Context:

@@ -201,6 +201,45 @@ def test_snapshots_restore_and_passwd(
     assert runner.calls[1]["argv"][3:] == ["key", "passwd", "--new-password-file", "/tmp/new"]  # noqa: S108
 
 
+RECORD = {"name": "demo", "release": {"tag": "v1.2.0", "commit": "a" * 40}, "content": {}}
+
+
+@pytest.mark.parametrize(
+    ("answer", "printed", "code"),
+    [
+        ((0, json.dumps(RECORD)), RECORD, 0),
+        ((1, ""), None, 0),  # the snapshot holds no record (stderr below)
+        ((0, "[1]"), None, 0),
+    ],
+)
+def test_the_platform_record_of_a_snapshot(
+    config: dict[str, Any],
+    capsys: pytest.CaptureFixture[str],
+    answer: tuple[int, str],
+    printed: Any,
+    code: int,
+) -> None:
+    class Missing(FakeRunner):
+        def __call__(self, argv: Sequence[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            done = super().__call__(argv, **kwargs)
+            if done.returncode:
+                stderr = 'path "/etc/pinka/platform/active.json" not found in snapshot'
+                return subprocess.CompletedProcess(done.args, 1, "", stderr)
+            return done
+
+    runner = Missing({"dump": answer})
+    assert backup.cmd_platform_record(config, "latest", runner) == code
+    assert json.loads(capsys.readouterr().out) == printed
+    argv = runner.calls[0]["argv"]
+    assert argv[3:6] == ["dump", "latest", "/etc/pinka/platform/active.json"]
+    assert argv[argv.index("--host") + 1] == "pinka-lab"
+
+
+def test_a_failed_dump_is_reported(config: dict[str, Any]) -> None:
+    assert backup.cmd_platform_record(config, "1" * 64, FakeRunner({"dump": (12, "")})) == 12
+    assert backup.cmd_platform_record(config, "1" * 64, FakeRunner({"dump": (0, "{")})) == 1
+
+
 # --- PostgreSQL -----------------------------------------------------------------
 
 
@@ -280,19 +319,32 @@ def test_backed_up_paths_follow_the_specification() -> None:
     )
     paths = evaluate("backup_paths", variables)
     assert paths == [
-        "/srv/pinka/restricted",
-        "/srv/pinka/artifacts",
-        "/srv/pinka/reports",
         "/srv/pinka/images",
         "/srv/pinka/datasets",
         "/srv/pinka/shared",
         "/srv/pinka/users",
         "/srv/pinka/backups/pg",
+        "/srv/pinka/restricted",
+        "/srv/pinka/training/datasets",
+        "/srv/pinka/models/adapters",
         "/etc/pinka",
     ]
     assert "/etc/pinka/secrets" in evaluate("backup_excludes", variables)
     assert evaluate("backup_configured", variables) is True
     assert evaluate("backup_sftp", variables) is True
+
+
+def test_the_platforms_backup_paths_are_backed_up() -> None:
+    state = "/srv/pinka/platforms/demo/state/ctl/records"
+    variables = role_variables(
+        active_platform={"backup": {"database": False, "paths": [state]}},
+        backup_include=["images"],
+    )
+    paths = evaluate("backup_paths", variables)
+    assert state in paths
+    for fixed in ("restricted", "training/datasets", "models/adapters"):
+        assert f"/srv/pinka/{fixed}" in paths  # whatever backup_include says
+    assert "/srv/pinka/shared" not in paths
 
 
 def test_optional_paths_and_secrets() -> None:
@@ -434,6 +486,66 @@ def test_restore_brings_back_data_but_not_rendered_configuration() -> None:
     assert includes[0] == "/srv/pinka/platforms"
     assert "/etc/pinka" not in includes  # bootstrap renders the rest of /etc/pinka
     assert "/etc/pinka/vllm/current.yml" in includes
+
+
+def restore_names() -> list[str]:
+    block = play_task(ANSIBLE / "restore.yml", "Restore the snapshot")
+    names = []
+    for task in block["block"]:
+        names.append(task["name"])
+        names += [t["name"] for t in task.get("block", [])]
+    return names
+
+
+def test_restore_drains_first_and_starts_the_platform_last() -> None:
+    names = restore_names()
+    assert names.index("Drain and stop the platform (§12.9)") < names.index("Stop the lab")
+    assert names.index("Load the newest PostgreSQL dump") < names.index(
+        "Redeploy the platform the snapshot recorded"
+    )
+    assert names.index("Deploy the recorded release and content (§7.15)") < names.index(
+        "Start the lab"
+    )
+    assert names[-1] == "Start the platform and wait for its health hook"
+    drain = play_task(ANSIBLE / "restore.yml", "Drain and stop the platform (§12.9)")
+    assert drain["ansible.builtin.include_role"] == {"name": "platform", "tasks_from": "stop"}
+
+
+@pytest.mark.parametrize(
+    ("release", "ref"),
+    [
+        ({"tag": "v1.2.0", "commit": "a" * 40}, "v1.2.0"),
+        ({"tag": None, "commit": "a" * 40}, "a" * 40),
+    ],
+)
+def test_restore_pins_the_recorded_release(release: dict[str, Any], ref: str) -> None:
+    task = play_task(ANSIBLE / "restore.yml", "Pin the platform source to the recorded release")
+    source = {"repo": "https://example.com/platform.git", "ref": "main", "path": "platform"}
+    pinned = evaluate(
+        task["ansible.builtin.set_fact"]["restore_platform"].strip()[2:-2],
+        {"platform": source, "restore_record": {"release": release}},
+    )
+    assert pinned == {**source, "ref": ref}
+
+
+def test_restore_pins_the_recorded_content() -> None:
+    task = play_task(ANSIBLE / "restore.yml", "Pin the content sources to the recorded refs")
+    expression = task["ansible.builtin.set_fact"]["restore_content"].strip()[2:-2]
+    recorded_expr = task["vars"]["restore_recorded"].strip()[2:-2]
+    record = {"content": {"cases": {"tag": None, "commit": "b" * 40}}}
+    content: dict[str, Any] = {}
+    for key, value in {
+        "cases": {"repo": "https://example.com/c.git", "ref": "main"},
+        "extra": {"repo": "https://example.com/e.git", "ref": "v2"},
+    }.items():
+        item = {"key": key, "value": value}
+        recorded = evaluate(recorded_expr, {"restore_record": record, "item": item})
+        content = evaluate(
+            expression,
+            {"restore_content": content, "item": item, "restore_recorded": recorded},
+        )
+    assert content["cases"]["ref"] == "b" * 40
+    assert content["extra"]["ref"] == "v2"  # not recorded: the host_vars ref stays
 
 
 def test_rotation_revokes_the_replaced_certificates() -> None:

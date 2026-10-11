@@ -82,7 +82,7 @@ the prompt text where they differ.
 ## Generated files and fixtures
 
 - Never edit generated files by hand: `preflight/support-matrix.json`,
-  `preflight/endpoints.json`, `docs/support-matrix.md`,
+  `preflight/endpoints.json`, `preflight/lab-defaults.json`, `docs/support-matrix.md`,
   `docs/reference/{cli/pinka-preflight,cli/bootstrap,cli/pinka,exit-codes,host-profile}.md`,
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
@@ -159,7 +159,7 @@ the prompt text where they differ.
 - Every doctor check needs an ID, a description, a severity, a remediation
   and a section in `docs/how-to/fix-doctor-checks.md` (`{#check-<id>}`);
   the docs coverage check enforces it. The fingerprint's fields are defined
-  by `tools/pinka-lab/schema/fingerprint.schema.json`.
+  by `contract/records/fingerprint.schema.json`.
 
 ## Contract v2 (BUILD_PROMPT §12)
 

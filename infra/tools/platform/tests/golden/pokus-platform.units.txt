@@ -15,13 +15,15 @@ WantedBy=pinka-lab.target
 [Unit]
 Description=Platform potka: service agent (untrusted-agent)
 PartOf=pinka-platform.target potka-orch-agent-session.socket potka-gw-agent.socket potka-exec-agent.socket
-Requires=pinka-health-gate.service potka-orch-agent-session.socket potka-gw-agent.socket potka-exec-agent.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-orch-agent-session.socket potka-gw-agent.socket potka-exec-agent.socket potka-orch.service potka-gw.service potka-exec.service
+Requires=pinka-health-gate.service potka-reconcile.service potka-orch-agent-session.socket potka-gw-agent.socket potka-exec-agent.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service potka-orch-agent-session.socket potka-gw-agent.socket potka-exec-agent.socket potka-orch.service potka-gw.service potka-exec.service
+Wants=pinka-otlp-agent.socket
+After=pinka-otlp-agent.socket
 
 [Service]
 Type=simple
-ExecStart=/srv/pinka/platforms/potka/releases/current/.venv/bin/potka-agent-runner
-WorkingDirectory=/srv/pinka/platforms/potka/releases/current
+ExecStart=/srv/pinka/platforms/potka/releases/potka-v1/.venv/bin/potka-agent-runner
+WorkingDirectory=/srv/pinka/platforms/potka/releases/potka-v1
 Restart=on-failure
 RestartSec=5
 User=potka-agent
@@ -56,9 +58,14 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX
+RuntimeDirectory=pinka/platform-runtime/agent
+RuntimeDirectoryMode=0700
 PrivateNetwork=yes
 TemporaryFileSystem=/srv/pinka:ro /etc/pinka:ro /var/lib/pinka:ro /run/pinka:ro
-BindReadOnlyPaths=/srv/pinka/platforms/potka/releases /run/pinka/platform/orch/agent-session.sock /run/pinka/platform/gw/agent.sock /run/pinka/platform/exec/agent.sock -/run/pinka/otlp/agent.sock
+BindReadOnlyPaths=/srv/pinka/platforms/potka/releases/potka-v1 /run/pinka/platform/orch/agent-session.sock /run/pinka/platform/gw/agent.sock /run/pinka/platform/exec/agent.sock -/run/pinka/otlp/agent.sock
+BindPaths=/run/pinka/platform-runtime/agent
+ReadWritePaths=/run/pinka/platform-runtime/agent
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/run/pinka/postgres -/run/pinka/postgres-reader -/etc/pinka/incus -/etc/pinka/signing
 
 [Install]
 WantedBy=pinka-platform.target
@@ -68,8 +75,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform potka: service eval (restricted-reader)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service
+Requires=pinka-health-gate.service potka-reconcile.service
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service
 
 [Service]
 Type=simple
@@ -110,6 +117,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/eval
+RuntimeDirectoryMode=0700
 ReadWritePaths=/srv/pinka/platforms/potka/state/eval/reports
 ReadOnlyPaths=/srv/pinka/platforms/potka/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/incus -/etc/pinka/signing
@@ -160,8 +169,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform potka: service exec (sandbox-operator)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service potka-exec-agent.socket potka-exec-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-exec-agent.socket potka-exec-api.socket potka-orch.service
+Requires=pinka-health-gate.service potka-reconcile.service potka-exec-agent.socket potka-exec-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service potka-exec-agent.socket potka-exec-api.socket potka-orch.service
 
 [Service]
 Type=simple
@@ -202,6 +211,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/exec
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/potka/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/signing
 
@@ -251,8 +262,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform potka: service gw (inference-broker)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service potka-gw-agent.socket potka-gw-svc.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-gw-agent.socket potka-gw-svc.socket potka-orch.service
+Requires=pinka-health-gate.service potka-reconcile.service potka-gw-agent.socket potka-gw-svc.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service potka-gw-agent.socket potka-gw-svc.socket potka-orch.service
 
 [Service]
 Type=simple
@@ -294,6 +305,8 @@ SocketBindAllow=tcp:18705
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/gw
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/potka/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/incus -/etc/pinka/signing
 
@@ -324,8 +337,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform potka: service inject (restricted-operator)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service potka-inject-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-inject-api.socket potka-orch.service
+Requires=pinka-health-gate.service potka-reconcile.service potka-inject-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service potka-inject-api.socket potka-orch.service
 
 [Service]
 Type=simple
@@ -366,6 +379,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/inject
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/potka/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/signing
 
@@ -435,8 +450,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform potka: service orch (controller)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service potka-orch-api.socket potka-orch-svc.socket potka-orch-agent-session.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-orch-api.socket potka-orch-svc.socket potka-orch-agent-session.socket
+Requires=pinka-health-gate.service potka-reconcile.service potka-orch-api.socket potka-orch-svc.socket potka-orch-agent-session.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service potka-orch-api.socket potka-orch-svc.socket potka-orch-agent-session.socket
 
 [Service]
 Type=simple
@@ -444,6 +459,63 @@ ExecStart=/srv/pinka/platforms/potka/releases/current/.venv/bin/potka-orchestrat
 WorkingDirectory=/srv/pinka/platforms/potka/releases/current
 Restart=on-failure
 RestartSec=5
+User=potka-orch
+Group=potka-orch
+SupplementaryGroups=pinka-query pinka-restricted potka-db potka-exec-api potka-gw-svc potka-inject-api potka-verify-api
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/orch
+RuntimeDirectoryMode=0700
+ReadWritePaths=/srv/pinka/platforms/potka/state/orch/artifacts
+ReadOnlyPaths=/srv/pinka/platforms/potka/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups
+
+[Install]
+WantedBy=pinka-platform.target
+===== potka-reconcile.service
+# Managed by pinka (platform potka, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform potka: the reconcile hook before the services
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service
+Before=potka-orch.service potka-agent.service potka-gw.service potka-exec.service potka-inject.service potka-verify.service potka-eval.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=300
+ExecStart=/usr/local/libexec/pinka/pinka-platform hook-exec --hook reconcile -- /srv/pinka/platforms/potka/releases/current/.venv/bin/potka-reconcile
+WorkingDirectory=/srv/pinka/platforms/potka/releases/current
 User=potka-orch
 Group=potka-orch
 SupplementaryGroups=pinka-query pinka-restricted potka-db potka-exec-api potka-gw-svc potka-inject-api potka-verify-api
@@ -508,8 +580,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform potka: service verify (restricted-operator)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service potka-verify-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-verify-api.socket potka-orch.service
+Requires=pinka-health-gate.service potka-reconcile.service potka-verify-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service potka-reconcile.service potka-verify-api.socket potka-orch.service
 
 [Service]
 Type=simple
@@ -550,6 +622,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/verify
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/potka/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/signing
 

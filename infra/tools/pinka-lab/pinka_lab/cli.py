@@ -52,10 +52,18 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
     )
 
     sub.add_parser("status", help="units, containers, Incus instances, GPU, disk and last backup")
-    sub.add_parser("start", help="start pinka-lab.target (root)")
-    stop = sub.add_parser("stop", help="drain the platform, then stop pinka-lab.target (root)")
+    sub.add_parser(
+        "start", help="start pinka-lab.target and wait for the platform's health hook (root)"
+    )
+    stop = sub.add_parser(
+        "stop", help="drain the platform, then stop its target and pinka-lab.target (root)"
+    )
     stop.add_argument(
-        "--timeout", type=float, default=1800, metavar="SECONDS", help="how long the drain may take"
+        "--timeout",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="how long the platform's drain hook may take (default: lab.drain_timeout)",
     )
 
     fp = sub.add_parser("fingerprint", help="print the environment fingerprint and its hash")
@@ -149,11 +157,43 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
         help="also remove its secrets, database password files and private signing key",
     )
     add_docs_parser(sub)
+    add_window_parser(sub)
     return parser
 
 
+def add_window_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add ``pinka window open``, ``close`` and ``expire`` (§7.20).
+
+    Args:
+        sub: The subcommands of the parser.
+    """
+    win = sub.add_parser(
+        "window",
+        help="maintenance windows: staging on production's hardware (root only)",
+        description=(
+            "Open or close a maintenance window, recorded in /etc/pinka/maintenance-window.json "
+            "on each side. On production, open drains and stops the lab first and it stays "
+            "stopped until close; staging on shared hardware starts only inside its window."
+        ),
+    )
+    win_sub = win.add_subparsers(dest="window_action", required=True, metavar="ACTION")
+    opened = win_sub.add_parser("open", help="record a window (production: drain and stop first)")
+    opened.add_argument(
+        "--start", required=True, metavar="TIME", help="UTC start, such as 2026-10-12T18:00Z"
+    )
+    opened.add_argument(
+        "--end", required=True, metavar="TIME", help="UTC end, such as 2026-10-12T22:00Z"
+    )
+    win_sub.add_parser("close", help="remove the record (staging: stop the lab first)")
+    win_sub.add_parser(
+        "expire",
+        help="stop staging on shared hardware once its window has ended "
+        "(run by pinka-window-expiry.timer)",
+    )
+
+
 def add_docs_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``pinka docs serve``.
+    """Add ``pinka docs serve``, ``install`` and ``rollback`` (§7.19).
 
     Args:
         sub: The subcommands of the parser.
@@ -173,6 +213,29 @@ def add_docs_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--port",
         type=int,
         help=f"port (default: docs.port of the lab description, {commands.DOCS_PORT})",
+    )
+    install = docs_sub.add_parser(
+        "install",
+        help="install a documentation release and make it current (root only)",
+        description=(
+            "Verify a docs release tarball against its SHA-256, unpack it into a new version "
+            "directory (refusing absolute paths, .. and links that leave it), switch current to "
+            "it in one step and keep the three most recent versions."
+        ),
+    )
+    install.add_argument("tarball", help="the release's documentation tarball")
+    install.add_argument(
+        "--sha256", required=True, metavar="SUM", help="the tarball's SHA-256 (published with it)"
+    )
+    install.add_argument(
+        "--version",
+        metavar="NAME",
+        help="version directory name (default: the tarball's file name without its suffix)",
+    )
+    docs_sub.add_parser(
+        "rollback",
+        help="switch the documentation back to the previous release (root only)",
+        description="Switch current back to the version installed before it.",
     )
 
 
@@ -245,8 +308,8 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
         return run_fingerprint(system, config, args.json)
     simple = {
         "status": lambda: commands.status(system, config),
-        "start": lambda: commands.start(system),
-        "stop": lambda: commands.stop(system, args.timeout),
+        "start": lambda: commands.start(system, config),
+        "stop": lambda: commands.stop(system, config, args.timeout),
         "restore": lambda: commands.restore(system, config, args.bootstrap_options),
         "wsl-helpers": lambda: commands.wsl_helpers(config),
         "update-host": lambda: commands.update_host(system, config, args.yes, []),
@@ -265,6 +328,12 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
         if args.images_action == "build":
             return commands.images_build(system, config, args.blueprint, args.rebuild, [])
         return commands.images_export(system, config, [])
+    if args.command == "window":
+        if args.window_action == "open":
+            return commands.window_open(system, config, args.start, args.end)
+        if args.window_action == "close":
+            return commands.window_close(system, config)
+        return commands.window_expire(system, config)
     if args.command == "platform":
         return commands.platform_purge(system, config, args.name, args.confirm, args.remove_secrets)
     if args.command == "pair":
@@ -294,6 +363,12 @@ def main(argv: Sequence[str], system: System | None = None) -> int:
         if args.command == "docs":
             # The documentation can be served without a lab, from a checkout.
             optional = load(host, args.config) if host.info(args.config) else None
+            if args.docs_action == "install":
+                return commands.docs_install(
+                    host, optional, args.tarball, args.sha256, args.version
+                )
+            if args.docs_action == "rollback":
+                return commands.docs_rollback(host, optional)
             return commands.docs_serve(host, optional, args.dir, args.port)
         config = load(host, args.config)
         return dispatch(args, host, config)

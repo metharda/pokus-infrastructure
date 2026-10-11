@@ -63,6 +63,10 @@ argument_specs:
         type: int
         default: 1800
         description: Seconds `pinka stop` and `update-host` give the platform's drain hook.
+      doctor_health_wait:
+        type: int
+        default: 300
+        description: Seconds `pinka start` waits for the platform's health hook to answer ok.
       doctor_listener_processes:
         type: list
         elements: str

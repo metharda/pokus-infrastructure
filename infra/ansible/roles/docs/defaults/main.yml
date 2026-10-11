@@ -1,0 +1,11 @@
+# Managed by pinka (ansible/roles/docs/defaults/main.yml). Local changes will be overwritten.
+
+# Installed documentation releases (BUILD_PROMPT §7.19): one directory per
+# version and the `current` link the service serves (pinka docs install).
+docs_dir: /usr/local/share/pinka/docs
+# Where bootstrap keeps the downloaded release tarball of docs_release.
+docs_cache: /var/cache/pinka/docs
+# The documentation service.
+docs_unit: pinka-docs.service
+# The pinka CLI that installs releases (installed by the doctor role).
+docs_cli: /usr/local/bin/pinka

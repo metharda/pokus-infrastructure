@@ -4,13 +4,15 @@
 [Unit]
 Description=Platform allprof: service agt (untrusted-agent)
 PartOf=pinka-platform.target allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket
-Requires=pinka-health-gate.service allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket allprof-ctl.service allprof-brk.service allprof-sbx.service
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-ctl-agent.socket allprof-brk-agent.socket allprof-sbx-agent.socket allprof-ctl.service allprof-brk.service allprof-sbx.service
+Wants=pinka-otlp-agent.socket
+After=pinka-otlp-agent.socket
 
 [Service]
 Type=simple
-ExecStart=/srv/pinka/platforms/allprof/releases/current/bin/agt --verbose
-WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+ExecStart=/srv/pinka/platforms/allprof/releases/allprof-v1/bin/agt --verbose
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/allprof-v1
 Restart=on-failure
 RestartSec=5
 User=allprof-agt
@@ -45,11 +47,14 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX
+RuntimeDirectory=pinka/platform-runtime/agt
+RuntimeDirectoryMode=0700
 PrivateNetwork=yes
 TemporaryFileSystem=/srv/pinka:ro /etc/pinka:ro /var/lib/pinka:ro /run/pinka:ro
-BindReadOnlyPaths=/srv/pinka/platforms/allprof/releases /run/pinka/platform/ctl/agent.sock /run/pinka/platform/brk/agent.sock /run/pinka/platform/sbx/agent.sock -/run/pinka/otlp/agent.sock
-BindPaths=/srv/pinka/platforms/allprof/state/agt/scratch
-ReadWritePaths=/srv/pinka/platforms/allprof/state/agt/scratch
+BindReadOnlyPaths=/srv/pinka/platforms/allprof/releases/allprof-v1 /run/pinka/platform/ctl/agent.sock /run/pinka/platform/brk/agent.sock /run/pinka/platform/sbx/agent.sock -/run/pinka/otlp/agent.sock
+BindPaths=/run/pinka/platform-runtime/agt /srv/pinka/platforms/allprof/state/agt/scratch
+ReadWritePaths=/run/pinka/platform-runtime/agt /srv/pinka/platforms/allprof/state/agt/scratch
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/run/pinka/postgres -/run/pinka/postgres-reader -/etc/pinka/incus -/etc/pinka/signing
 
 [Install]
 WantedBy=pinka-platform.target
@@ -98,8 +103,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform allprof: service brk (inference-broker)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service allprof-brk-agent.socket allprof-brk-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-brk-agent.socket allprof-brk-api.socket allprof-ctl.service
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-brk-agent.socket allprof-brk-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-brk-agent.socket allprof-brk-api.socket allprof-ctl.service
 
 [Service]
 Type=simple
@@ -141,6 +146,8 @@ SocketBindAllow=tcp:18705
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/brk
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/incus -/etc/pinka/signing
 
@@ -210,8 +217,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform allprof: service ctl (controller)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service allprof-ctl-api.socket allprof-ctl-svc.socket allprof-ctl-agent.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-ctl-api.socket allprof-ctl-svc.socket allprof-ctl-agent.socket
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-ctl-api.socket allprof-ctl-svc.socket allprof-ctl-agent.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-ctl-api.socket allprof-ctl-svc.socket allprof-ctl-agent.socket
 
 [Service]
 Type=simple
@@ -252,6 +259,8 @@ SocketBindDeny=any
 MemoryMax=1G
 TasksMax=256
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/ctl
+RuntimeDirectoryMode=0700
 ReadWritePaths=/srv/pinka/platforms/allprof/state/ctl/records
 ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current /etc/pinka/platform/config/ctl.json
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups
@@ -284,8 +293,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform allprof: service obs (observer)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service allprof-obs-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-obs-api.socket
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-obs-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-obs-api.socket
 
 [Service]
 Type=simple
@@ -326,8 +335,65 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/obs
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/incus -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
+===== allprof-reconcile.service
+# Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform allprof: the reconcile hook before the services
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service
+Before=allprof-ctl.service allprof-brk.service allprof-sbx.service allprof-rop.service allprof-rrd.service allprof-obs.service allprof-agt.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+ExecStart=/usr/local/libexec/pinka/pinka-platform hook-exec --hook reconcile -- /srv/pinka/platforms/allprof/releases/current/bin/admin reconcile
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/current
+User=allprof-ctl
+Group=allprof-ctl
+SupplementaryGroups=allprof-brk-api allprof-db allprof-obs-api allprof-rop-api allprof-rrd-api allprof-sbx-api pinka-query pinka-restricted
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+MemoryMax=1G
+TasksMax=256
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/srv/pinka/platforms/allprof/state/ctl/records
+ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current /etc/pinka/platform/config/ctl.json
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups
 
 [Install]
 WantedBy=pinka-platform.target
@@ -356,8 +422,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform allprof: service rop (restricted-operator)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service allprof-rop-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-rop-api.socket
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-rop-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-rop-api.socket
 
 [Service]
 Type=simple
@@ -398,6 +464,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/rop
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/signing
 
@@ -428,8 +496,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform allprof: service rrd (restricted-reader)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service allprof-rrd-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-rrd-api.socket
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-rrd-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-rrd-api.socket
 
 [Service]
 Type=simple
@@ -470,6 +538,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/rrd
+RuntimeDirectoryMode=0700
 ReadWritePaths=/srv/pinka/platforms/allprof/state/rrd/reports
 ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/etc/pinka/incus -/etc/pinka/signing
@@ -520,8 +590,8 @@ WantedBy=pinka-platform.target
 [Unit]
 Description=Platform allprof: service sbx (sandbox-operator)
 PartOf=pinka-platform.target
-Requires=pinka-health-gate.service allprof-sbx-agent.socket allprof-sbx-api.socket
-After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-sbx-agent.socket allprof-sbx-api.socket allprof-ctl.service
+Requires=pinka-health-gate.service allprof-reconcile.service allprof-sbx-agent.socket allprof-sbx-api.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service allprof-reconcile.service allprof-sbx-agent.socket allprof-sbx-api.socket allprof-ctl.service
 
 [Service]
 Type=simple
@@ -562,6 +632,8 @@ SocketBindDeny=any
 MemoryMax=2G
 TasksMax=512
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/sbx
+RuntimeDirectoryMode=0700
 ReadOnlyPaths=/srv/pinka/platforms/allprof/releases/current
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/signing
 

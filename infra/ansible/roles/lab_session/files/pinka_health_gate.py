@@ -3,24 +3,33 @@
 """Startup gate of the lab (BUILD_PROMPT §7.16, contracts.md, C9h).
 
 ``pinka-health-gate.service`` runs this once per start of ``pinka-lab.target``;
-the platform's services require that unit, so no experiment starts before
-every check passed: the clock is synchronized (and, on WSL, within a threshold
-of an NTP reference when one answers), PostgreSQL is healthy, the collector
-gateway answers its health check, Incus answers, and the GPU works from a
-container when the lab serves inference. Checks are repeated until all pass
-or the timeout expires. The result is written as JSON for doctor and
-operators. Standard library only.
+the platform's services require that unit, so none starts before every check
+passed. The clock is always checked (synchronized and, on WSL, within a
+threshold of an NTP reference when one answers); then exactly the facilities
+that the active platform's manifest lists in ``requires`` (read from
+``rendered.json`` at every start), each healthy: ``postgres`` (the container
+reports healthy), ``incus`` (the API answers), ``telemetry`` (the collector
+gateway's health check), ``inference`` (the inference API the platform is
+told in ``endpoints.toml``), ``opa`` (its health endpoint) and ``gpu`` (a
+container sees the GPU). A facility the platform requires that this node does
+not run fails the gate. Without a platform only the clock is checked. Checks
+are repeated until all pass or the timeout expires. A maintenance window
+(§7.20) fails the gate at once: on production while its record exists, on
+staging with shared hardware unless its window is open now. The result is
+written as JSON for doctor and operators. Standard library only.
 """
 
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import socket
 import struct
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
@@ -31,6 +40,10 @@ from typing import Any
 NTP_EPOCH_OFFSET = 2208988800  # seconds from 1900-01-01 to 1970-01-01
 NTP_PORT = 123
 COMMAND_TIMEOUT = 60
+# The facilities a manifest may require (BUILD_PROMPT §12.2 `requires`), in
+# the order the gate checks them.
+FACILITIES = ("postgres", "incus", "telemetry", "inference", "opa", "gpu")
+HTTP_OK = 200
 
 
 @dataclass(frozen=True)
@@ -162,7 +175,7 @@ def check_postgres(config: Mapping[str, Any], runner: Runner) -> Result:
     return Result("postgres", ok=status == "healthy", detail=f"container health: {status}")
 
 
-def check_collector(config: Mapping[str, Any], fetch: Fetch) -> Result:
+def check_telemetry(config: Mapping[str, Any], fetch: Fetch) -> Result:
     """The collector gateway's health check answers 200.
 
     Args:
@@ -173,7 +186,51 @@ def check_collector(config: Mapping[str, Any], fetch: Fetch) -> Result:
         The result.
     """
     status = fetch(str(config["url"]))
-    return Result("collector", ok=status == 200, detail=f"HTTP {status or 'no answer'}")  # noqa: PLR2004
+    return Result("telemetry", ok=status == HTTP_OK, detail=f"HTTP {status or 'no answer'}")
+
+
+def check_opa(config: Mapping[str, Any], fetch: Fetch) -> Result:
+    """OPA's health endpoint answers 200.
+
+    Args:
+        config: ``url``.
+        fetch: HTTP status function.
+
+    Returns:
+        The result.
+    """
+    status = fetch(str(config["url"]))
+    return Result("opa", ok=status == HTTP_OK, detail=f"HTTP {status or 'no answer'}")
+
+
+def check_inference(config: Mapping[str, Any], fetch: Fetch) -> Result:
+    """The inference API the platform is told in ``endpoints.toml`` answers.
+
+    The local server and the forwarder of a lab node answer ``/health`` with
+    200; a scripted backend (staging) only has to answer at all.
+
+    Args:
+        config: ``endpoints``: the platform's endpoints file.
+        fetch: HTTP status function.
+
+    Returns:
+        The result.
+    """
+    try:
+        with Path(str(config["endpoints"])).open("rb") as handle:
+            inference = tomllib.load(handle).get("inference") or {}
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return Result("inference", ok=False, detail=f"no inference endpoint: {exc}")
+    url = str(inference.get("api_url", ""))
+    if not url:
+        return Result("inference", ok=False, detail="endpoints.toml names no inference API")
+    if inference.get("mode") == "scripted":
+        status = fetch(url)
+        return Result("inference", ok=status != 0, detail=f"scripted backend: HTTP {status}")
+    status = fetch(f"{url.rstrip('/')}/health")
+    return Result(
+        "inference", ok=status == HTTP_OK, detail=f"/health: HTTP {status or 'no answer'}"
+    )
 
 
 def check_incus(config: Mapping[str, Any], runner: Runner) -> Result:
@@ -226,13 +283,137 @@ def run_checks(checks: Mapping[str, Any], runner: Runner, fetch: Fetch, sntp: Sn
     table: dict[str, Callable[[Mapping[str, Any]], Result]] = {
         "time": lambda c: check_time(c, runner, sntp),
         "postgres": lambda c: check_postgres(c, runner),
-        "collector": lambda c: check_collector(c, fetch),
         "incus": lambda c: check_incus(c, runner),
+        "telemetry": lambda c: check_telemetry(c, fetch),
+        "inference": lambda c: check_inference(c, fetch),
+        "opa": lambda c: check_opa(c, fetch),
         "gpu": lambda c: check_gpu(c, runner),
     }
     unknown = sorted(set(checks) - set(table))
     results = [Result(name, ok=False, detail="unknown check") for name in unknown]
     return results + [table[name](checks[name]) for name in table if name in checks]
+
+
+def platform_requires(path: str | None) -> list[str]:
+    """The facilities the active platform's manifest requires.
+
+    Args:
+        path: ``rendered.json`` (None: no platform on this node).
+
+    Returns:
+        The ``requires`` list; empty without a platform.
+    """
+    if not path:
+        return []
+    try:
+        rendered = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    requires = rendered.get("requires") if isinstance(rendered, dict) else None
+    return [str(r) for r in requires] if isinstance(requires, list) else []
+
+
+WINDOW_TIME = "%Y-%m-%dT%H:%M:%SZ"
+
+
+class WindowRecordError(ValueError):
+    """The maintenance window record is not a window."""
+
+
+def read_window(path: Path) -> tuple[str, str, float, float] | None:
+    """Read a maintenance window record.
+
+    Args:
+        path: The record.
+
+    Returns:
+        ``(start, end, start_seconds, end_seconds)``, or None without a record.
+
+    Raises:
+        WindowRecordError: If the record cannot be read as a window.
+    """
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        start, end = str(record["start"]), str(record["end"])
+        return (
+            start,
+            end,
+            calendar.timegm(time.strptime(start, WINDOW_TIME)),
+            calendar.timegm(time.strptime(end, WINDOW_TIME)),
+        )
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise WindowRecordError(f"{path} is not a maintenance window record") from exc
+
+
+def check_window(config: Mapping[str, Any] | None, now: float) -> Result | None:
+    """A maintenance window that keeps the lab stopped (§7.20).
+
+    Args:
+        config: ``record`` (the window record), ``mode`` (``production`` or
+            ``staging``) and ``shared`` (staging on production's hardware);
+            None: no window rules on this node.
+        now: The wall clock, seconds since the epoch.
+
+    Returns:
+        A result when a window decides this start, else None.
+    """
+    if not config:
+        return None
+    staging = config.get("mode") == "staging"
+    if staging and not config.get("shared"):
+        return None  # staging on its own hardware needs no window
+    try:
+        window = read_window(Path(str(config["record"])))
+    except WindowRecordError as exc:
+        return Result("window", ok=False, detail=str(exc))
+    if not staging:
+        return (
+            None
+            if window is None
+            else Result(
+                "window",
+                ok=False,
+                detail=f"maintenance window {window[0]}-{window[1]} recorded: production "
+                "stays stopped until pinka window close",
+            )
+        )
+    if window is None or not window[2] <= now < window[3]:
+        return Result(
+            "window",
+            ok=False,
+            detail="staging on shared hardware starts only inside an open maintenance window",
+        )
+    return Result("window", ok=True, detail=f"maintenance window open until {window[1]}")
+
+
+def select_checks(config: Mapping[str, Any]) -> tuple[dict[str, Any], list[Result]]:
+    """The checks of this start: ``checks`` (the clock) and the required facilities.
+
+    Args:
+        config: ``checks``, ``facilities`` (what this node runs) and
+            ``rendered`` (the active platform's ``rendered.json``).
+
+    Returns:
+        The checks to run, and a failed result for each required facility
+        this node does not run.
+    """
+    checks = dict(config["checks"])
+    facilities = config.get("facilities") or {}
+    missing = []
+    for name in platform_requires(config.get("rendered")):
+        if name in facilities:
+            checks[name] = facilities[name]
+        else:
+            missing.append(
+                Result(
+                    name,
+                    ok=False,
+                    detail="the platform's manifest requires it; this node does not run it",
+                )
+            )
+    return checks, missing
 
 
 def gate(
@@ -243,26 +424,35 @@ def gate(
     sntp: Sntp = sntp_offset,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    wall: Callable[[], float] = time.time,
 ) -> tuple[bool, list[Result], int]:
     """Repeat the checks until all pass or the timeout expires.
 
     Args:
-        config: ``timeout``, ``interval`` (seconds) and ``checks``.
+        config: ``timeout``, ``interval`` (seconds), ``checks``, ``facilities``
+            and ``rendered`` (:func:`select_checks`).
         runner: Command runner.
         fetch: HTTP status function.
         sntp: NTP offset function.
         sleep: Sleep function.
         clock: Monotonic clock.
+        wall: Wall clock (the maintenance window).
 
     Returns:
         Whether all passed, the last results and the number of rounds.
     """
+    window = check_window(config.get("window"), wall())
+    if window is not None and not window.ok:
+        return False, [window], 1
     deadline = clock() + float(config.get("timeout", 600))
     interval = float(config.get("interval", 5))
+    checks, missing = select_checks(config)
+    if window is not None:
+        missing = [window, *missing]
     rounds = 0
     while True:
         rounds += 1
-        results = run_checks(config["checks"], runner, fetch, sntp)
+        results = missing + run_checks(checks, runner, fetch, sntp)
         if all(r.ok for r in results):
             return True, results, rounds
         if clock() + interval > deadline:

@@ -5,10 +5,10 @@ the rendered postgresql.conf and pg_hba.conf, infra's bootstrap SQL, the
 platform database rendered from a manifest fixture (database, login and group
 roles, schemas, revokes; BUILD_PROMPT §7.8, §12.5), the password handling of
 the postgres role, and the restricted-schema check: every kind of forbidden
-access a migration could grant is reported and revoked (§12.4). It uses the
-PostgreSQL server installed on the machine (the CI runners ship one; there the
-tests must run); the pinned image runs a newer major, and the SQL uses nothing
-that differs between them.
+access a migration could grant is reported and revoked (§12.4). Every test runs on
+each PostgreSQL major installed on the machine; CI installs 18, the major the
+lab pins, from PGDG next to the runner's own and requires it
+(``PINKA_POSTGRES_REQUIRED``).
 """
 
 from __future__ import annotations
@@ -57,22 +57,40 @@ DB = PLAN["database"]
 VAULT = {role: f"{role}-test-password" for role in PLAN["vault_roles"]}
 
 
-def server_bindir() -> Path | None:
+def server_major(bindir: Path) -> str:
+    """The major version of a server installation (``initdb --version``)."""
+    out = subprocess.run(
+        [str(bindir / "initdb"), "--version"], capture_output=True, text=True, check=True
+    ).stdout
+    return out.split()[-1].split(".")[0]
+
+
+def server_bindirs() -> dict[str, Path]:
+    """Every installed server major and its binaries, newest first."""
     candidates = sorted(
         Path("/usr/lib/postgresql").glob("*/bin"), key=lambda p: int(p.parent.name), reverse=True
     )
     if shutil.which("pg_ctl"):
         candidates.insert(0, Path(str(shutil.which("pg_ctl"))).parent)
-    return next((c for c in candidates if (c / "initdb").is_file()), None)
+    found: dict[str, Path] = {}
+    for bindir in candidates:
+        if (bindir / "initdb").is_file():
+            found.setdefault(server_major(bindir), bindir)
+    return found
 
 
-BINDIR = server_bindir()
+BINDIRS = server_bindirs()
+# The majors that must be tested: CI sets 18, the major the lab pins
+# (versions.lock.yml containers.postgres), installed from PGDG.
+REQUIRED = os.environ.get("PINKA_POSTGRES_REQUIRED", "").split()
 
 
-@pytest.fixture(scope="module", autouse=True)
-def require_server() -> None:
-    """Skip without PostgreSQL locally; in CI (CI=true) it must be there."""
-    if BINDIR is not None:
+def test_the_required_servers_are_installed() -> None:
+    """Skip without PostgreSQL locally; in CI (CI=true) the required majors must be there."""
+    missing = [major for major in REQUIRED if major not in BINDIRS]
+    if missing:
+        pytest.fail(f"PostgreSQL {', '.join(missing)} required but not installed")
+    if BINDIRS:
         return
     if os.environ.get("CI", "").lower() == "true":
         pytest.fail("PostgreSQL server binaries are missing in CI; the database tests must run")
@@ -135,9 +153,10 @@ def postgres_vars(socket_dir: Path) -> dict[str, Any]:
     )
 
 
-@pytest.fixture(scope="module")
-def cluster() -> Iterator[Cluster]:
-    assert BINDIR is not None
+@pytest.fixture(scope="module", params=sorted(BINDIRS), ids=lambda major: f"pg{major}")
+def cluster(request: pytest.FixtureRequest) -> Iterator[Cluster]:
+    """A throwaway cluster of each installed major (all of the SQL runs on each)."""
+    bindir = BINDIRS[request.param]
     root = Path(tempfile.mkdtemp(prefix="pinka-pg-"))
     prefix: list[str] = []
     if os.geteuid() == 0:  # initdb refuses to run as root
@@ -157,7 +176,7 @@ def cluster() -> Iterator[Cluster]:
     data = root / "data"
     # The arguments of the image's entrypoint for POSTGRES_INITDB_ARGS.
     initdb = [
-        str(BINDIR / "initdb"),
+        str(bindir / "initdb"),
         f"--pgdata={data}",
         "--username=postgres",
         f"--pwfile={root / 'pwfile'}",
@@ -177,14 +196,14 @@ def cluster() -> Iterator[Cluster]:
             "-c listen_addresses=''",
         ]
     )
-    start = [str(BINDIR / "pg_ctl"), f"--pgdata={data}", "--wait", f"--options={options}"]
+    start = [str(bindir / "pg_ctl"), f"--pgdata={data}", "--wait", f"--options={options}"]
     log = f"--log={root / 'server.log'}"
     subprocess.run([*prefix, *start, log, "start"], check=True, capture_output=True)
     try:
-        yield Cluster(BINDIR, root, sockets, prefix)
+        yield Cluster(bindir, root, sockets, prefix)
     finally:
         subprocess.run(
-            [*prefix, str(BINDIR / "pg_ctl"), f"--pgdata={data}", "--mode=immediate", "stop"],
+            [*prefix, str(bindir / "pg_ctl"), f"--pgdata={data}", "--mode=immediate", "stop"],
             check=False,
             capture_output=True,
         )

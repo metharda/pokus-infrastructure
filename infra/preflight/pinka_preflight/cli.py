@@ -22,11 +22,19 @@ from collections.abc import Sequence
 from typing import Any
 
 from pinka_preflight import __version__, render, schema_check
-from pinka_preflight.detect.conflicts import detect_conflicts
+from pinka_preflight.detect.conflicts import Conflict, detect_conflicts
 from pinka_preflight.detect.environment import detect_environment
 from pinka_preflight.detect.gpu import detect_gpu
 from pinka_preflight.detect.hardware import detect_hardware
 from pinka_preflight.detect.kernel import detect_kernel
+from pinka_preflight.detect.lab import (
+    LAB_DEFAULTS_JSON,
+    port_conflicts,
+    vm_address_conflicts,
+)
+from pinka_preflight.detect.lab import (
+    load_defaults as load_lab_defaults,
+)
 from pinka_preflight.detect.network import check_endpoints
 from pinka_preflight.detect.os_release import detect_os_release
 from pinka_preflight.detect.timesync import detect_timesync
@@ -52,6 +60,7 @@ from pinka_preflight.runner import FixtureRunner, RealRunner, Runner
 
 PREFLIGHT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENDPOINTS_JSON = os.path.join(PREFLIGHT_DIR, "endpoints.json")
+MAX_PORT = 65535
 DEFAULT_SRV_PATH = "/srv/pinka"
 EXIT_PREFLIGHT_ERROR = EXIT_CODES["preflight_error"]
 
@@ -129,6 +138,20 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--port",
+        metavar="NAME=PORT",
+        action="append",
+        type=_port_override,
+        default=[],
+        help="a lab port overridden in host_vars (ports:), checked instead of its default; "
+        "repeat for each override",
+    )
+    parser.add_argument(
+        "--vm-collector-address",
+        metavar="ADDRESS",
+        help="the host's vm_collector_address (default: the lab's default)",
+    )
+    parser.add_argument(
         "--allow-dirty",
         action="store_true",
         help="record that bootstrap runs from an infra/ tree with uncommitted changes",
@@ -156,8 +179,44 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--endpoints", metavar="FILE", default=ENDPOINTS_JSON, help="compiled endpoint list (JSON)"
     )
+    parser.add_argument(
+        "--lab-defaults",
+        metavar="FILE",
+        default=LAB_DEFAULTS_JSON,
+        help="the lab's default ports and addresses (JSON)",
+    )
     parser.add_argument("--version", action="version", version=f"pinka-preflight {__version__}")
     return parser
+
+
+def _port_override(text: str) -> tuple[str, int]:
+    name, sep, value = text.partition("=")
+    if not sep or not name or not value.isdigit() or not 1 <= int(value) <= MAX_PORT:
+        raise argparse.ArgumentTypeError(f"expected NAME=PORT with a port 1-{MAX_PORT}: {text!r}")
+    return name, int(value)
+
+
+def lab_conflicts(
+    args: argparse.Namespace, fs: FileSystem, runner: Runner, *, kvm_usable: bool
+) -> list[Conflict]:
+    """Ports in use and VM collector address conflicts (§2.2, §12.11).
+
+    Args:
+        args: Parsed arguments.
+        fs: Filesystem view.
+        runner: Command runner.
+        kvm_usable: KVM is usable, so VM targets are possible.
+
+    Returns:
+        The conflicts.
+    """
+    defaults = load_lab_defaults(args.lab_defaults)
+    ports = {**defaults["ports"], **dict(args.port)}
+    found = port_conflicts(fs, ports)
+    if kvm_usable:
+        address = args.vm_collector_address or str(defaults["vm_collector"]["address"])
+        found += vm_address_conflicts(fs, runner, address, defaults)
+    return found
 
 
 def _load_json_list(path: str, key: str) -> list[dict[str, Any]]:
@@ -206,6 +265,7 @@ def run_preflight(
         gpu_linux_driver_in_wsl=gpu.linux_driver_in_wsl,
         adopt_incus=args.adopt_incus,
     )
+    conflicts.conflicts += lab_conflicts(args, fs, runner, kvm_usable=kernel.kvm_usable)
     timesync = detect_timesync(runner)
     matrix = load_matrix(args.matrix)
     family = match_os(matrix, osr).get("family")
@@ -273,7 +333,14 @@ def main(argv: Sequence[str]) -> int:
     Returns:
         The exit code of the outcome, or 40 if detection failed.
     """
-    args = build_parser().parse_args(list(argv))
+    parser = build_parser()
+    args = parser.parse_args(list(argv))
+    known = set(load_lab_defaults(args.lab_defaults)["ports"])
+    unknown = sorted({name for name, _ in args.port} - known)
+    if unknown:
+        parser.error(
+            f"--port: unknown lab ports {', '.join(unknown)} (known: {', '.join(sorted(known))})"
+        )
     try:
         if args.root:
             fs = FileSystem(args.root)

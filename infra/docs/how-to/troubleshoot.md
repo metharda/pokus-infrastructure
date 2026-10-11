@@ -119,6 +119,9 @@ printed the exact remediation, for example:
   Preflight screen, or `gpu.accept_mok_enrollment: true` in an answers file),
   install the driver yourself, or set `install_nvidia_driver: skip`; see
   [Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots).
+- `lab_port_in_use` or `vm_collector_address_conflict`: another program uses
+  a lab port or the VM collector address. Stop it, or
+  [move the lab's port or address](move-a-lab-port.md).
 
 Do what it says, then run bootstrap again. `--force-unsupported` does not skip
 a required action.

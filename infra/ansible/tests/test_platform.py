@@ -131,6 +131,61 @@ def test_the_helper_reports_a_missing_socket(capsys: pytest.CaptureFixture[str])
     assert "socket-acl:" in capsys.readouterr().err
 
 
+API = "/run/pinka/platform/ctl/api.sock"
+SVC = "/run/pinka/platform/ctl/svc.sock"
+
+
+@pytest.fixture
+def rendered(tmp_path: Path) -> Path:
+    path = tmp_path / "rendered.json"
+    path.write_text(
+        json.dumps({"platform": "refplat", "sockets": [{"path": API}, {"path": SVC}]}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def fallback(path: Path) -> list[str] | None:
+    data: dict[str, list[str]] = json.loads(path.read_text(encoding="utf-8"))
+    return data.get(socket_acl.FALLBACK_KEY)
+
+
+def test_a_fallback_is_recorded_in_the_rendering(rendered: Path) -> None:
+    assert socket_acl.record(rendered, Path(SVC), fell_back=True) is True
+    assert socket_acl.record(rendered, Path(API), fell_back=True) is True
+    assert fallback(rendered) == [API, SVC]
+    assert socket_acl.record(rendered, Path(API), fell_back=True) is False  # unchanged
+    assert rendered.stat().st_mode & 0o777 == 0o644
+    lock = rendered.with_name(".rendered.json.lock")
+    assert lock.stat().st_mode & 0o777 == 0o600
+
+
+def test_acl_support_removes_the_record(rendered: Path) -> None:
+    socket_acl.record(rendered, Path(API), fell_back=True)
+    assert socket_acl.record(rendered, Path(API), fell_back=False) is True
+    assert fallback(rendered) is None  # left out while empty
+    assert socket_acl.record(rendered, Path(API), fell_back=False) is False
+
+
+def test_only_rendered_sockets_are_recorded(rendered: Path, tmp_path: Path) -> None:
+    assert socket_acl.record(rendered, Path("/run/pinka/platform/x/y.sock"), True) is False
+    assert fallback(rendered) is None
+    assert socket_acl.record(tmp_path / "missing.json", Path(API), fell_back=True) is False
+
+
+def test_the_helper_records_each_outcome(
+    rendered: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    outcomes = iter(["fallback", "acl"])
+    monkeypatch.setattr(socket_acl, "apply", lambda *_: next(outcomes))
+    argv = [API, "pinka", "--rendered", str(rendered)]
+    assert socket_acl.main(argv, Setfacl()) == 0
+    assert fallback(rendered) == [API]
+    assert "0666" in capsys.readouterr().err
+    assert socket_acl.main(argv, Setfacl()) == 0
+    assert fallback(rendered) is None
+
+
 # --- the tasks that apply the rendering (§7.14 step 7) --------------------------------
 
 
@@ -189,6 +244,97 @@ def test_render_applies_every_part_of_the_rendering() -> None:
     assert not [
         t for t in entries if t.get("ansible.builtin.systemd_service", {}).get("state") == "started"
     ]
+
+
+# --- the switch with the hooks (§7.14 step 8, §12.9) -----------------------------------
+
+
+def names_of(name: str) -> list[str]:
+    return [t["name"] for t in flat(tasks(name))]
+
+
+def argv_of(task: dict[str, Any]) -> list[str]:
+    argv: list[str] = task["ansible.builtin.command"]["argv"]
+    return argv
+
+
+def test_a_new_release_stops_the_running_one_before_anything_changes() -> None:
+    names = names_of("render.yml")
+    stop = names.index("Drain and stop the running release before it changes")
+    assert (
+        names.index("Remember the rendering") < stop < names.index("Create the platform's groups")
+    )
+    assert stop < names.index("Stop the units this release no longer has")
+    task = next(t for t in tasks("render.yml") if t["name"].startswith("Drain and stop"))
+    assert task["ansible.builtin.include_tasks"] == "stop.yml"
+    assert "platform_switch.release_changed or platform_switch.content_changed" in task["when"]
+    # A replaced platform was drained by retire.yml already.
+    assert "platform_switch.previous" in task["vars"]["platform_drain_first"]
+
+
+def test_stop_drains_first_and_never_fails_on_the_drain() -> None:
+    entries = tasks("stop.yml")
+    names = [t["name"] for t in entries]
+    assert names.index("Run the active platform's drain hook") < names.index("Stop the platform")
+    drain = entries[0]
+    assert argv_of(drain) == ["{{ platform_tool }}", "hook", "drain"]
+    assert drain["failed_when"] is False  # infra stops the services after the timeout
+    stop = next(t for t in entries if t["name"] == "Stop the platform")
+    assert stop["ansible.builtin.systemd_service"] == {
+        "name": "pinka-platform.target",
+        "state": "stopped",
+    }
+
+
+def test_the_switch_migrates_checks_and_then_switches() -> None:
+    entries = tasks("switch.yml")
+    names = [t["name"] for t in entries]
+    order = [
+        "Drain and stop the running release when its rendering changed",
+        "Run the new release's migrate hook (§12.9)",
+        "Check schema restricted after the migration (§7.8)",
+        "Switch current to the release and record it (§7.14 steps 8-9)",
+        "Enable the platform's units in pinka-platform.target",
+    ]
+    assert [n for n in names if n in order] == order
+    migrate = entries[1]
+    assert argv_of(migrate)[1:3] == ["deploy", "migrate"]
+    assert "failed_when" not in migrate  # a failed migration ends the deployment
+    check = entries[2]["ansible.builtin.include_role"]
+    assert check == {"name": "postgres", "tasks_from": "restricted_check"}
+    assert (ROLES / "postgres" / "tasks" / "restricted_check.yml").is_file()
+    restart = entries[0]["when"][-1]
+    for changed in ("accounts", "config", "secrets", "units"):
+        assert f"platform_{changed}_written is changed" in restart
+    assert "platform_principals is changed" in restart
+
+
+def test_the_platform_is_never_started_before_the_end_of_the_play() -> None:
+    for name in ("deploy.yml", "render.yml", "switch.yml", "retire.yml", "stop.yml"):
+        for task in flat(tasks(name)):
+            assert task.get("ansible.builtin.systemd_service", {}).get("state") != "started", name
+
+
+def test_retire_drains_the_replaced_platform_first() -> None:
+    names = names_of("retire.yml")
+    assert names.index("Drain and stop the replaced platform") < names.index(
+        "Stop and disable the replaced platform's units"
+    )
+
+
+def test_start_waits_for_the_health_hook_and_only_warns() -> None:
+    entries = flat(tasks("start.yml"))
+    start = next(t for t in entries if t["name"] == "Start the platform")
+    assert start["ansible.builtin.systemd_service"]["state"] == "started"
+    health = next(t for t in entries if t["name"].startswith("Wait until"))
+    assert argv_of(health)[1:4] == ["hook", "health", "--until-healthy"]
+    assert health["failed_when"] is False  # start reports "unhealthy"; doctor warns
+    site = load_yaml(ROLES.parent / "site.yml")
+    roles = [t.get("name") for play in site for t in play.get("tasks", [])]
+    assert roles.index("Start the platform") > roles.index(
+        "Lab session (target, health gate, session record)"
+    )
+    assert roles.index("Start the platform") > roles.index("Open Policy Agent")
 
 
 def test_the_database_and_certificates_come_from_their_roles() -> None:

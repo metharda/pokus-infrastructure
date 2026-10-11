@@ -78,6 +78,8 @@ Facts = dict[str, Any]
 NVIDIA_DRIVER_MODES = ("auto", "manual", "skip")
 # The operator's choices when none are given: bootstrap's defaults.
 DEFAULT_CHOICES: dict[str, Any] = {"nvidia_driver_mode": "auto", "mok_enrollment_accepted": False}
+# The fact a requirement with a remediation compares ({actual} of its text).
+REMEDIATION_FACTS = {"driver_cuda_min": "gpu_driver_cuda"}
 
 
 @dataclass
@@ -310,6 +312,7 @@ def build_facts(
         "nvidia_driver_loaded": gpu.driver_loaded,
         "gpu_vram_gib": gpu.vram_gib,
         "gpu_compute_capability": gpu.compute_capability,
+        "gpu_driver_cuda": gpu.driver_cuda,
         "wsl_conf_systemd": wsl.systemd if wsl else None,
         "wsl_interop_enabled": wsl.interop_enabled if wsl else None,
         "wsl_automount_enabled": wsl.automount if wsl else None,
@@ -347,7 +350,8 @@ def requirement_met(req: Any, facts: Facts) -> tuple[bool, str]:  # noqa: ANN401
 
     Args:
         req: A fact name (must be true) or a one-key mapping:
-            ``gpu_vram_gib_min``, ``gpu_compute_capability_min``, ``environment_in``.
+            ``gpu_vram_gib_min``, ``gpu_compute_capability_min``, ``environment_in``,
+            ``driver_cuda_min`` (major.minor compared, as ``nvidia-smi`` reports it).
         facts: Host facts.
 
     Returns:
@@ -365,7 +369,65 @@ def requirement_met(req: Any, facts: Facts) -> tuple[bool, str]:  # noqa: ANN401
         return ok, f"compute capability >= {value}"
     if key == "environment_in":
         return facts.get("environment") in value, f"environment in {value}"
+    if key == "driver_cuda_min":
+        cuda = facts.get("gpu_driver_cuda")
+        ok = cuda is not None and _version_tuple(str(cuda))[:2] >= cuda_major_minor(value)
+        return ok, f"driver CUDA >= {major_minor(value)}"
     raise ValueError(f"unknown requirement {key!r}")
+
+
+def cuda_major_minor(version: Any) -> tuple[int, ...]:  # noqa: ANN401 - YAML value
+    """Return the major and minor number of a CUDA version.
+
+    Args:
+        version: For example ``13.0.2``.
+
+    Returns:
+        For example ``(13, 0)``.
+    """
+    return _version_tuple(str(version))[:2]
+
+
+def major_minor(version: Any) -> str:  # noqa: ANN401 - YAML value
+    """Return a CUDA version as ``major.minor``.
+
+    Args:
+        version: For example ``13.0.2``.
+
+    Returns:
+        For example ``13.0``.
+    """
+    return ".".join(str(n) for n in cuda_major_minor(version))
+
+
+def _remediation(spec: Mapping[str, Any], facts: Facts) -> str:
+    """Remediation of a feature's unmet requirements that have one.
+
+    Args:
+        spec: The feature's matrix entry.
+        facts: Host facts.
+
+    Returns:
+        The remediation texts, joined; empty when no unmet requirement has one
+        or a fact the feature needs (for example a usable GPU) is missing.
+    """
+    texts: list[str] = []
+    if not all(facts.get(req) for req in spec["requires"] if isinstance(req, str)):
+        return ""
+    for req in spec["requires"]:
+        if isinstance(req, str) or requirement_met(req, facts)[0]:
+            continue
+        ((key, value),) = req.items()
+        variants = spec.get("remediation", {}).get(key)
+        if not variants:
+            continue
+        actual = facts.get(REMEDIATION_FACTS[key])
+        if actual is None:
+            text = variants["unknown"]
+        else:
+            text = variants.get(str(facts.get("environment")), variants["default"])
+        texts.append(str(text).format(actual=actual, required=major_minor(value)))
+    return " ".join(texts)
 
 
 def _core_checks(matrix: Mapping[str, Any], facts: Facts, kernel: KernelInfo) -> list[Check]:
@@ -445,13 +507,15 @@ def _features(
             continue
         detail = f"{name} disabled (unmet: {', '.join(unmet[name])})"
         if spec["on_missing"] == "degrade":
-            disabled.append(
-                {
-                    "feature": name,
-                    "impact": str(spec.get("impact", "")),
-                    "unmet": ", ".join(unmet[name]),
-                }
-            )
+            entry = {
+                "feature": name,
+                "impact": str(spec.get("impact", "")),
+                "unmet": ", ".join(unmet[name]),
+            }
+            remediation = _remediation(spec, facts)
+            if remediation:
+                entry["remediation"] = remediation
+            disabled.append(entry)
         else:
             notes.append(f"{detail}: {spec.get('impact', 'fallback in use')}")
     return flags, disabled, notes

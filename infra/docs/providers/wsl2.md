@@ -38,6 +38,11 @@ path. **Pokus Infrastructure never installs a Linux NVIDIA kernel driver under W
 preflight refuses a host where one is installed, because it would replace the
 libraries WSL provides.
 
+The Windows driver must support the CUDA version the pinned vLLM image is
+built on; when it is older, preflight turns `gpu_inference` off and asks you
+to update the NVIDIA driver on Windows, and doctor repeats the check
+([`gpu.driver_cuda`](../how-to/fix-doctor-checks.md#check-gpu-driver_cuda)).
+
 ## Restarting the distribution
 
 When `/etc/wsl.conf` changes, or systemd is not running as PID 1, the

@@ -226,6 +226,346 @@
       "path": "/etc/pinka/secrets/postgres"
     }
   ],
+  "hardening": [
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups"
+      ],
+      "profile": "controller",
+      "properties": {
+        "Group": "potka-orch",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-orch"
+      },
+      "unit": "potka-orch.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX"
+      ],
+      "agent_view": {
+        "own_dirs": [
+          "/run/pinka/platform-runtime/agent"
+        ],
+        "release": "/srv/pinka/platforms/potka/releases/potka-v1",
+        "sockets": [
+          "/run/pinka/otlp/agent.sock",
+          "/run/pinka/platform/exec/agent.sock",
+          "/run/pinka/platform/gw/agent.sock",
+          "/run/pinka/platform/orch/agent-session.sock"
+        ]
+      },
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/run/pinka/postgres",
+        "/run/pinka/postgres-reader",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "untrusted-agent",
+      "properties": {
+        "Group": "potka-agent",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateNetwork": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-agent"
+      },
+      "unit": "potka-agent.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "inference-broker",
+      "properties": {
+        "Group": "potka-gw",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-gw"
+      },
+      "unit": "potka-gw.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/signing"
+      ],
+      "profile": "sandbox-operator",
+      "properties": {
+        "Group": "potka-exec",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-exec"
+      },
+      "unit": "potka-exec.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/etc/pinka/signing"
+      ],
+      "profile": "restricted-operator",
+      "properties": {
+        "Group": "potka-inject",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-inject"
+      },
+      "unit": "potka-inject.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/etc/pinka/signing"
+      ],
+      "profile": "restricted-operator",
+      "properties": {
+        "Group": "potka-verify",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-verify"
+      },
+      "unit": "potka-verify.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "restricted-reader",
+      "properties": {
+        "Group": "potka-eval",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "no",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "potka-eval"
+      },
+      "unit": "potka-eval.service"
+    }
+  ],
   "incus_certificates": [
     {
       "account": "potka-orch",
@@ -311,7 +651,97 @@
     "potka-inject-api.socket",
     "potka-verify-api.socket"
   ],
+  "sockets": [
+    {
+      "acl": [
+        "group:pinka:rw-",
+        "group:pinka-admin:rw-"
+      ],
+      "group": "potka-orch-api",
+      "mode": "0660",
+      "owner": "potka-orch",
+      "path": "/run/pinka/platform/orch/api.sock",
+      "unit": "potka-orch-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "potka-orch-svc",
+      "mode": "0660",
+      "owner": "potka-orch",
+      "path": "/run/pinka/platform/orch/svc.sock",
+      "unit": "potka-orch-svc.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "potka-orch-agent-session",
+      "mode": "0660",
+      "owner": "potka-orch",
+      "path": "/run/pinka/platform/orch/agent-session.sock",
+      "unit": "potka-orch-agent-session.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [],
+      "group": "potka-gw-agent",
+      "mode": "0660",
+      "owner": "potka-gw",
+      "path": "/run/pinka/platform/gw/agent.sock",
+      "unit": "potka-gw-agent.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [],
+      "group": "potka-gw-svc",
+      "mode": "0660",
+      "owner": "potka-gw",
+      "path": "/run/pinka/platform/gw/svc.sock",
+      "unit": "potka-gw-svc.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "potka-exec-agent",
+      "mode": "0660",
+      "owner": "potka-exec",
+      "path": "/run/pinka/platform/exec/agent.sock",
+      "unit": "potka-exec-agent.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [],
+      "group": "potka-exec-api",
+      "mode": "0660",
+      "owner": "potka-exec",
+      "path": "/run/pinka/platform/exec/api.sock",
+      "unit": "potka-exec-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "potka-inject-api",
+      "mode": "0660",
+      "owner": "potka-inject",
+      "path": "/run/pinka/platform/inject/api.sock",
+      "unit": "potka-inject-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "potka-verify-api",
+      "mode": "0660",
+      "owner": "potka-verify",
+      "path": "/run/pinka/platform/verify/api.sock",
+      "unit": "potka-verify-api.socket",
+      "untrusted_clients": false
+    }
+  ],
   "stale_units": [],
+  "state_dirs": [
+    "/srv/pinka/platforms/potka/state/orch/artifacts",
+    "/srv/pinka/platforms/potka/state/eval/reports"
+  ],
   "telemetry_labels": [
     "potka.run_id",
     "potka.node"

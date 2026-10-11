@@ -14,10 +14,17 @@ from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.nodes import ScalarNode
+from ruamel.yaml.representer import RoundTripRepresenter
 
 from pinka_installer.answers import Researcher
 
 DEFAULT_SHELL = "/bin/bash"
+
+
+def _null(representer: RoundTripRepresenter, _: None) -> ScalarNode:
+    """Write ``null`` as ``null``; round-trip mode would leave the value empty."""
+    return representer.represent_scalar("tag:yaml.org,2002:null", "null")
 
 
 def _yaml() -> YAML:
@@ -25,6 +32,7 @@ def _yaml() -> YAML:
     yaml.preserve_quotes = True
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.width = 4096  # never re-wrap the operator's lines
+    yaml.representer.add_representer(type(None), _null)
     return yaml
 
 

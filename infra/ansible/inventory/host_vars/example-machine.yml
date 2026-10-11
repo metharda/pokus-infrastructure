@@ -14,6 +14,9 @@ machine_name: pinka-lab
 # Tailscale identity (tag:pinka-qa) and signing key, and never write to a
 # production host.
 lab_mode: production
+# Staging only: true when this staging host uses production's hardware; it then
+# starts only inside a maintenance window (pinka window open on both sides).
+staging_shared_hardware: false
 
 # auto | baremetal | wsl2 | vm. auto takes the provider from the host profile;
 # an explicit value must match it, or the play stops.
@@ -72,3 +75,11 @@ grafana_tailscale_serve: false
 
 # Extra interfaces on which sshd is reachable besides tailscale0, e.g. [enp5s0].
 ssh_extra_allowed_interfaces: []
+
+# Port overrides by the names of contracts.md#ports, e.g. {grafana: 18750}, for
+# a port another program on this machine already uses (preflight names it).
+ports: {}
+
+# Address of the collector listener for VM targets; choose another one when
+# preflight reports a conflict.
+vm_collector_address: 198.18.0.1

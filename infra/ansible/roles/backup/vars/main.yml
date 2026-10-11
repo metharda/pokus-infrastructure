@@ -32,12 +32,20 @@ backup_database: >-
 backup_has_postgres: >-
   {{ node_role in ['full', 'lab'] and backup_database | length > 0
      and ((active_platform | default({}, true)).backup | default({}, true)).database | default(false) }}
+# Always backed up (§7.15): the restricted area, the training datasets and the
+# adapters with their lineage, and the platform state directories the active
+# platform's manifest lists in backup.paths (absolute, from its rendering). A
+# state directory it does not list is not backed up; doctor lists those.
+backup_fixed: [restricted, training/datasets, models/adapters]
+backup_platform_paths: >-
+  {{ ((active_platform | default({}, true)).backup | default({}, true)).paths | default([], true) }}
 # Paths of a backup and the exclusions.
 backup_paths: >-
-  {{ backup_include | map('regex_replace', '^', pinka_root ~ '/') | list
-     + ([pinka_root ~ '/models'] if backup_include_models else [])
-     + (backup_include_state | map('regex_replace', '^', pinka_root ~ '/state/') | list)
-     + ['/etc/pinka'] }}
+  {{ ((backup_include + backup_fixed) | map('regex_replace', '^', pinka_root ~ '/') | list
+      + ([pinka_root ~ '/models'] if backup_include_models else [])
+      + (backup_include_state | map('regex_replace', '^', pinka_root ~ '/state/') | list)
+      + backup_platform_paths
+      + ['/etc/pinka']) | unique | list }}
 backup_excludes: "{{ [] if backup_include_secrets else backup_secret_paths }}"
 # Units: name, helper command, schedule, and whether the timer is enabled.
 backup_jobs:

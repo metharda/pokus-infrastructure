@@ -1,7 +1,9 @@
 # Managed by pinka (.yamllint.yml).
 # Compatible with ansible-lint's yamllint requirements.
 extends: default
-ignore-from-file: .gitignore
+# The third-party and generated trees are ignored explicitly, not only
+# through .gitignore (tools/repo-checks/tests/test_dev_tools.py).
+ignore-from-file: [.gitignore, .lint-ignore]
 rules:
   line-length:
     max: 160

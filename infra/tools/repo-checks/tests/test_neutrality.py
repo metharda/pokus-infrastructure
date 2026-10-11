@@ -126,3 +126,14 @@ def test_scan_without_git_walks_the_tree(tmp_path: Path) -> None:
 def test_the_repository_is_neutral() -> None:
     root = Path(__file__).resolve().parents[3]
     assert neutrality.scan(root) == []
+
+
+def test_the_temporary_exclusion_is_exactly_v5() -> None:
+    # Owner decision with the "commit" for 3d.3: named apart, removed by 3d.7.
+    # Plan step 3d.7 deletes TEMPORARY_EXCLUSIONS_UNTIL_3D7 and this test.
+    patterns = [pattern for pattern, _ in neutrality.TEMPORARY_EXCLUSIONS_UNTIL_3D7]
+    assert patterns == ["installer/*", "tests/answers/*"]
+    assert all("installer" not in pattern for pattern, _ in neutrality.EXCLUDED)
+    reason = neutrality.excluded("installer/pinka_installer/app.py")
+    assert reason is not None
+    assert reason.startswith("until plan step 3d.7")

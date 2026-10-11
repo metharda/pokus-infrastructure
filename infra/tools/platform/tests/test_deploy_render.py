@@ -8,9 +8,10 @@ from typing import Any
 
 import pytest
 from deploy_testlib import NOW, make_repo, prepare, settings
+from hooks_testlib import FakeSystemd, command, properties
 from platform_testlib import CONTRACT, manifest, write_release
 
-from pinka_platform import cli, config, deploy, release, rendering
+from pinka_platform import accounts, cli, config, deploy, hooks, layout, names, release, rendering
 
 PORTS = {
     "otlp_grpc": 4317,
@@ -222,6 +223,175 @@ def test_cli_render_and_principals(
     # The accounts do not exist on this machine: a clear failure, no traceback.
     assert cli.main(["deploy", "principals", *common]) == cli.EXIT_FAILED
     assert "does not exist" in json.loads(capsys.readouterr().out)["error"]
+
+
+# --- the switch (§7.14 step 8) and the hooks of the active platform ------------------
+
+
+def test_the_switch_knows_what_changes(repo: Path, paths: deploy.Paths) -> None:
+    plan = prepare(paths, settings(repo, lab=LAB))
+    deploy.publish(plan, paths, now=lambda: NOW)
+    first = deploy.render_step(plan, paths, CONTRACT)["switch"]
+    assert first == {"previous": None, "release_changed": True, "content_changed": True}
+    deploy.principals_step(plan, paths, CONTRACT, uid=uid_of)
+    deploy.activate(plan, paths, now=lambda: NOW)
+    again = deploy.render_step(plan, paths, CONTRACT)["switch"]
+    assert again == {"previous": "allprof", "release_changed": False, "content_changed": False}
+    record = json.loads(paths.active.read_text())
+    record["release"]["target"] = "/srv/pinka/platforms/allprof/releases/older"
+    paths.active.write_text(json.dumps(record))
+    assert deploy.changes(plan, paths)["release_changed"] is True
+    record["name"] = "other"
+    paths.active.write_text(json.dumps(record))
+    assert deploy.changes(plan, paths) == {
+        "previous": "other",
+        "release_changed": True,
+        "content_changed": True,
+    }
+
+
+def test_migrate_runs_the_new_release_before_the_switch(
+    repo: Path, paths: deploy.Paths, tmp_path: Path
+) -> None:
+    plan = prepare(paths, settings(repo, lab=LAB))
+    deploy.publish(plan, paths, now=lambda: NOW)
+    deploy.render_step(plan, paths, CONTRACT)
+    fake = FakeSystemd()
+    result = hooks.migrate_step(plan, CONTRACT, runner=fake, results_dir=tmp_path / "hooks")
+    assert result["changed"] is True
+    assert result["hook"]["ok"] is True
+    found = properties(fake.calls[0])
+    assert found["User"] == [names.account("allprof", "migrate")]
+    assert found["WorkingDirectory"] == [plan["release"]["target"]]
+    assert command(fake.calls[0])[5] == f"{plan['release']['target']}/bin/admin"
+    with pytest.raises(deploy.DeployError, match="the migrate hook failed"):
+        hooks.migrate_step(
+            plan, CONTRACT, runner=FakeSystemd('{"ok": false}'), results_dir=tmp_path / "hooks"
+        )
+
+
+def test_migrate_needs_the_rendering(repo: Path, paths: deploy.Paths) -> None:
+    plan = prepare(paths, settings(repo, lab=LAB))
+    deploy.publish(plan, paths, now=lambda: NOW)
+    with pytest.raises(deploy.DeployError, match="no rendering"):
+        hooks.migrate_step(plan, CONTRACT, runner=FakeSystemd())
+
+
+def test_the_active_target_comes_from_the_records(repo: Path, paths: deploy.Paths) -> None:
+    assert hooks.active_target(paths, CONTRACT) is None
+    plan = rendered_deployment(repo, paths)
+    target = hooks.active_target(paths, CONTRACT)
+    assert target is not None
+    assert target.platform == "allprof"
+    assert target.release == plan["release"]["target"]
+    assert target.manifest["name"] == "allprof"
+    assert names.account("allprof", "ctl") in target.accounts
+    record = paths.etc_platform / deploy.RENDERED
+    record.write_text(json.dumps({**json.loads(record.read_text()), "platform": "other"}))
+    with pytest.raises(deploy.DeployError, match="no rendering of the active platform"):
+        hooks.active_target(paths, CONTRACT)
+
+
+def test_cli_hook_runs_the_active_platforms_hook(
+    repo: Path,
+    paths: deploy.Paths,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = ["--root", str(tmp_path / "host")]
+    assert cli.main(["hook", "drain", *root]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "platform": None,
+        **hooks.HookResult("drain", ok=True, skipped=True).as_dict(),
+    }
+    rendered_deployment(repo, paths)
+    seen: list[tuple[str, int | None]] = []
+
+    def run_for(
+        target: hooks.Target, contract: Any, hook: str, *, timeout: int | None = None
+    ) -> hooks.HookResult:
+        seen.append((hook, timeout))
+        return hooks.HookResult(hook, ok=hook == "drain", error=None if hook == "drain" else "x")
+
+    monkeypatch.setattr(hooks, "run_for", run_for)
+    assert cli.main(["hook", "drain", "--timeout", "45", *root]) == 0
+    assert json.loads(capsys.readouterr().out)["platform"] == "allprof"
+    assert cli.main(["hook", "health", *root]) == cli.EXIT_FAILED
+    assert "the health hook failed: x" in capsys.readouterr().err
+    assert seen == [("drain", 45), ("health", None)]
+
+
+def test_activation_keeps_the_socket_acl_fallback_record(repo: Path, paths: deploy.Paths) -> None:
+    plan = rendered_deployment(repo, paths)
+    record = paths.etc_platform / deploy.RENDERED
+    kept = json.loads(record.read_text())
+    sockets = [s["path"] for s in kept["sockets"]]
+    gone = "/run/pinka/platform/gone/api.sock"
+    record.write_text(
+        json.dumps({**kept, rendering.SOCKET_ACL_FALLBACK: [sockets[0], gone]}, indent=2)
+    )
+    assert deploy.activate(plan, paths, now=lambda: NOW)["changed"] is True
+    assert json.loads(record.read_text())[rendering.SOCKET_ACL_FALLBACK] == [sockets[0]]
+    assert deploy.activate(plan, paths, now=lambda: NOW)["changed"] is False
+    assert (paths.etc_platform / f".{deploy.RENDERED}.lock").stat().st_mode & 0o777 == 0o600
+
+
+def test_the_rendering_lists_each_socket_for_doctor(repo: Path, paths: deploy.Paths) -> None:
+    rendered_deployment(repo, paths)
+    kept = deploy.read_rendered(paths) or {}
+    by_path = {s["path"]: s for s in kept["sockets"]}
+    api = by_path["/run/pinka/platform/ctl/api.sock"]
+    assert api["owner"] == names.account("allprof", "ctl")
+    assert api["group"] == names.client_group("allprof", "ctl", "api")
+    assert api["mode"] == "0660"
+    assert api["acl"] == ["group:pinka:rw-", "group:pinka-admin:rw-"]
+    assert api["unit"] in kept["socket_units"]
+    assert by_path["/run/pinka/platform/ctl/svc.sock"]["acl"] == []
+    assert len(by_path) == len(kept["socket_units"])
+    assert all(not s["acl"] for s in kept["sockets"] if s["untrusted_clients"])
+
+
+# --- UIDs from the platform range (§7.9 option b) ---------------------------------------
+
+
+def named(*names_: str) -> list[dict[str, Any]]:
+    return [{"name": n} for n in names_]
+
+
+def test_new_accounts_get_the_lowest_free_uids_of_the_range() -> None:
+    low = layout.PLATFORM_UID_MIN
+    users = {"root": 0, "researcher1": 1000, "other": low, "x-old": low + 2}
+    out = accounts.assign_uids(named("a-ctl", "a-agt", "a-brk"), users)
+    assert [a["uid"] for a in out] == [low + 1, low + 3, low + 4]
+
+
+def test_existing_accounts_keep_their_uid() -> None:
+    uid = layout.PLATFORM_UID_MIN + 40
+    out = accounts.assign_uids(named("a-ctl", "a-new"), {"a-ctl": uid})
+    assert out[0]["uid"] == uid
+    assert out[1]["uid"] == layout.PLATFORM_UID_MIN
+
+
+def test_an_account_outside_the_range_is_refused() -> None:
+    with pytest.raises(ValueError, match="outside the platform range"):
+        accounts.assign_uids(named("a-ctl"), {"a-ctl": 998})
+
+
+def test_a_full_range_is_refused() -> None:
+    every = {f"u{uid}": uid for uid in range(layout.PLATFORM_UID_MIN, layout.PLATFORM_UID_MAX + 1)}
+    with pytest.raises(ValueError, match="no free UID"):
+        accounts.assign_uids(named("a-ctl"), every)
+
+
+def test_the_render_step_assigns_the_uids(repo: Path, paths: deploy.Paths) -> None:
+    plan = prepare(paths, settings(repo, lab=LAB))
+    deploy.publish(plan, paths, now=lambda: NOW)
+    document = deploy.render_step(plan, paths, CONTRACT, users=lambda: {})["render"]
+    uids = [a["uid"] for a in document["accounts"]]
+    assert uids == list(range(layout.PLATFORM_UID_MIN, layout.PLATFORM_UID_MIN + len(uids)))
+    with pytest.raises(deploy.DeployError, match="outside the platform range"):
+        deploy.render_step(plan, paths, CONTRACT, users=lambda: {"allprof-ctl": 1001})
 
 
 # --- the policy bundle ------------------------------------------------------------------

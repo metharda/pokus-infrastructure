@@ -11,6 +11,10 @@
 # mutual TLS (nothing leaves it before pairing); the lab node receives them
 # on its tailnet address and stores them with pinka.machine set to the
 # inference node.
+# The agent OTLP socket (BUILD_PROMPT §7.9): pinka-otlp-agent.socket forwards
+# /run/pinka/otlp/agent.sock to the receiver otlp/agent (OTLP/HTTP on a
+# loopback port of its own); its pipelines stamp everything with
+# pinka.trust=untrusted, overwriting whatever the sender set.
 extensions:
   health_check:
     endpoint: 127.0.0.1:{{ pinka_internal_ports.collector_health }}
@@ -29,6 +33,12 @@ receivers:
         endpoint: {{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_grpc }}
       http:
         endpoint: {{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_http }}
+{% endif %}
+{% if observability_agent_otlp %}
+  otlp/agent:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:{{ pinka_internal_ports.otlp_agent }}
 {% endif %}
 {% if observability_inference_node %}
   otlp/inference:
@@ -83,6 +93,14 @@ processors:
         value: {{ lab_mode | to_json }}
         action: upsert
   batch: {}
+{% if observability_agent_otlp %}
+  # Everything from the agent socket is untrusted, whatever the agent claims.
+  resource/untrusted:
+    attributes:
+      - key: pinka.trust
+        value: untrusted
+        action: upsert
+{% endif %}
 {% if observability_inference_node %}
   # Mutual TLS proved the sender is the paired node.
   resource/inference:
@@ -146,6 +164,20 @@ service:
       receivers: [{{ observability_otlp_receivers | join(', ') }}]
       processors: [memory_limiter, resource, batch]
       exporters: [{{ observability_exporters.traces }}]
+{% if observability_agent_otlp %}
+    logs/agent:
+      receivers: [otlp/agent]
+      processors: [memory_limiter, resource, resource/untrusted, batch]
+      exporters: [{{ observability_exporters.logs }}]
+    metrics/agent:
+      receivers: [otlp/agent]
+      processors: [memory_limiter, resource, resource/untrusted, batch]
+      exporters: [{{ observability_exporters.metrics }}]
+    traces/agent:
+      receivers: [otlp/agent]
+      processors: [memory_limiter, resource, resource/untrusted, batch]
+      exporters: [{{ observability_exporters.traces }}]
+{% endif %}
 {% if observability_inference_node %}
     logs/inference:
       receivers: [otlp/inference]

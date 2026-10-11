@@ -38,6 +38,8 @@ from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from pinka_repo_checks.trees import in_third_party_tree
+
 MAX_FILE_BYTES = 10 * 1024 * 1024
 IPV6_FULL_FORM_COLONS = 7
 GIT_LS_FILES = ("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
@@ -306,7 +308,13 @@ def list_files(paths: Iterable[Path]) -> list[Path]:
                 capture_output=True,
             ).stdout
         except (OSError, subprocess.CalledProcessError):
-            result.update(f for f in p.rglob("*") if f.is_file() and ".git" not in f.parts)
+            result.update(
+                f
+                for f in p.rglob("*")
+                if f.is_file()
+                and ".git" not in f.parts
+                and not in_third_party_tree(f.relative_to(p))
+            )
             continue
         for raw in out.split(b"\0"):
             if raw:

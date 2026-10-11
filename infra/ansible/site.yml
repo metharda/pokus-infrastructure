@@ -172,7 +172,21 @@
         name: doctor
       tags: [doctor]
 
+    - name: Documentation service
+      ansible.builtin.import_role:
+        name: docs
+      tags: [docs]
+
     - name: Lab session (target, health gate, session record)
       ansible.builtin.import_role:
         name: lab_session
       tags: [lab_session]
+
+    # After the lab is up and OPA serves the new policy bundle (§7.14 step 8):
+    # start the active platform and wait for its health hook.
+    - name: Start the platform
+      ansible.builtin.import_role:
+        name: platform
+        tasks_from: start
+      when: *pinka_runs_lab
+      tags: [platform, lab_session]

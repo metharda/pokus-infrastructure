@@ -24,6 +24,15 @@ observability_gateway_uid: 10001
 # The dedicated OTLP listener for VM targets exists only with vm_targets (C4),
 # on nodes that run Incus.
 observability_vm_listener: "{{ (pinka_features.vm_targets | default(false) | bool) and observability_stores }}"
+# The agent OTLP socket and its untrusted pipelines, on the nodes that run the
+# platform (BUILD_PROMPT §7.9).
+observability_agent_otlp: "{{ observability_stores }}"
+# The agent OTLP socket (contract path) and systemd's socket proxy behind it
+# (installed by systemd at this path, verified in the v255 build).
+observability_agent_socket: /run/pinka/otlp/agent.sock
+observability_socket_proxyd: /usr/lib/systemd/systemd-socket-proxyd
+# The query proxy's container user (an infra account, so its UID is the host's).
+observability_query_account: pinka-query-proxy
 # OTLP receivers of the gateway's pipelines.
 observability_otlp_receivers: "{{ ['otlp'] + (['otlp/vm'] if observability_vm_listener else []) }}"
 # An inference node's gateway scrapes the local exporters itself (receiver prometheus).
@@ -51,6 +60,9 @@ observability_secrets_dir: /etc/pinka/secrets/containers
 # The Incus metrics certificate (incus role) and its copy for Prometheus.
 observability_incus_cert_dir: /etc/pinka/incus/metrics
 observability_incus_server_cert: /var/lib/incus/server.crt
+# The active platform's telemetry.labels, which Loki indexes as labels (§7.9).
+observability_loki_labels: >-
+  {{ (active_platform | default({}, true)).telemetry_labels | default([], true) | list }}
 # Grafana's HTTP API on the host.
 observability_grafana_url: "http://127.0.0.1:{{ pinka_ports.grafana }}"
 # Directory of the node exporter's textfile collector (backup and other host metrics).

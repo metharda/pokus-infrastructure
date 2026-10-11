@@ -66,6 +66,10 @@
 - name: Write the secrets
   ansible.builtin.include_tasks: secrets.yml
 
+- name: Set up the query proxy's socket and the agent OTLP socket
+  ansible.builtin.include_tasks: query.yml
+  when: observability_stores
+
 - name: Create the configuration directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -86,6 +90,7 @@
     - {path: "{{ observability_config_dir }}/grafana/provisioning/dashboards"}
     - {path: "{{ observability_config_dir }}/grafana/dashboards"}
     - {path: "{{ observability_config_dir }}/grafana/platform-dashboards"}
+    - {path: "{{ observability_config_dir }}/query-proxy"}
   loop_control:
     label: "{{ item.path }}"
 
@@ -99,7 +104,8 @@
   loop: >-
     {{ ['otel/gateway.yaml', 'otel/journald.yaml']
        + (['prometheus/prometheus.yml', 'loki/loki.yaml', 'tempo/tempo.yaml',
-           'grafana/provisioning/datasources/pinka.yaml', 'grafana/provisioning/dashboards/pinka.yaml']
+           'grafana/provisioning/datasources/pinka.yaml', 'grafana/provisioning/dashboards/pinka.yaml',
+           'query-proxy/nginx.conf']
           if observability_stores else []) }}
 
 - name: Install the dashboards
@@ -127,6 +133,7 @@
       PROMETHEUS_RETENTION: "{{ observability_prometheus_retention }}"
       GRAFANA_AUTO_ASSIGN_ORG_ROLE: "{{ observability_grafana_user_role }}"
       OTEL_PAIRING_HASH: "{{ observability_pairing_hash | default('') }}"
+      QUERY_PROXY_UID: "{{ observability_query_uid | default('', true) }}"
 
 - name: Wait until the services answer
   ansible.builtin.uri:
@@ -144,6 +151,26 @@
            'http://127.0.0.1:' ~ pinka_ports.tempo ~ '/ready',
            observability_grafana_url ~ '/api/health'] if observability_stores else []) }}
   when: not ansible_check_mode
+
+# A query endpoint answers through the socket; a push endpoint is refused.
+- name: Wait until the query proxy answers on its socket
+  ansible.builtin.uri:
+    unix_socket: /run/pinka/query.sock
+    url: "http://localhost{{ item.path }}"
+    method: "{{ item.method }}"
+    status_code: "{{ item.status }}"
+  register: observability_proxy_ready
+  retries: 30
+  delay: 5
+  until: observability_proxy_ready.status == item.status
+  loop:
+    - {path: /prometheus/api/v1/labels, method: GET, status: 200}
+    - {path: /loki/loki/api/v1/push, method: POST, status: 403}
+  loop_control:
+    label: "{{ item.method }} {{ item.path }}"
+  when:
+    - observability_stores
+    - not ansible_check_mode
 
 - name: Provision the Grafana accounts
   ansible.builtin.include_tasks: grafana_users.yml

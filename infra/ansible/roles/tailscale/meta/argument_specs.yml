@@ -37,3 +37,7 @@ argument_specs:
         type: int
         default: 443
         description: HTTPS port of the Grafana serve.
+      tailscale_docs_serve_port:
+        type: int
+        default: 10000
+        description: HTTPS port of the docs service's serve.

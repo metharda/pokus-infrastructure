@@ -15,7 +15,7 @@ CLI_PAGE = "docs/reference/cli/pinka.md"
 CHECKS_PAGE = "docs/reference/doctor-checks.md"
 FINGERPRINT_PAGE = "docs/reference/fingerprint.md"
 FIX_PAGE = "docs/how-to/fix-doctor-checks.md"
-FINGERPRINT_SCHEMA = "tools/pinka-lab/schema/fingerprint.schema.json"
+FINGERPRINT_SCHEMA = "contract/records/fingerprint.schema.json"
 DOCTOR_EXIT_CODES = (
     (EXIT_OK, "every check passed or was skipped"),
     (EXIT_WARNINGS, "only checks of severity warning failed"),

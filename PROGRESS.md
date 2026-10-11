@@ -100,6 +100,20 @@ repository at 3f (section J).
   check (from the decision with the 3d.1 "commit"), and it is the only
   exception to the no-history-rewrite rule. The old repository is never
   force-pushed.
+- **Branches in the new repository (owner, with the "commit" for 3d.3,
+  verbatim; part of the 3g plan):**
+
+  > - The new repository pokus-infrastructure must have no branch named claude/...
+  >   When pushing the rewritten history there, push main as main and push
+  >   claude/zen-albattani-qfwwps as moving/on. These two are the only branches.
+  > - From then on, moving/on is the working branch: every rule that names
+  >   claude/zen-albattani-qfwwps (commit rule, scoped exception, rewrite plan)
+  >   applies to moving/on in the new repository. Update CLAUDE.md, PROGRESS.md and the docs to
+  >   say so now, as part of the recorded 3g plan.
+
+  Until the rewritten history is pushed, the working branch stays
+  `claude/zen-albattani-qfwwps` here. The root `CLAUDE.md` carries the same
+  wording.
 - **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
   `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
   14, without the owner's "commit").
@@ -483,7 +497,9 @@ no v2 code before the spec update (3b) and the rename (3c).
     in v2) and infra's `pinka.placeholder`, nothing else. A test proves it.
   - Q11: no copy of the privacy scan now; it stays in this repository with
     infra and is handled when `pokus-platform` is created.
-  - Q15: the working branch stays `claude/zen-albattani-qfwwps`.
+  - Q15: the working branch stays `claude/zen-albattani-qfwwps` (until 3g;
+    then `moving/on` in `pokus-infrastructure`, owner decision with the
+    "commit" for 3d.3).
   - The rename follows the rename table's rules: no behavior change;
     generated files regenerated, never hand-edited; verbatim quotes, commit
     history, upstream names and the spec copies unchanged; the image
@@ -535,7 +551,10 @@ proposal, and waits for the owner's "commit".
 - **3d** Contract v2: steps 1-8 of the proposal's "Effort and order", one
   commit proposal per step, following the updated specs. Verification items:
   can a certificate restricted to `bench` create networks in Incus's
-  `default` project at all (run-network helper, infra §7.7)?
+  `default` project at all (run-network helper, infra §7.7)? Required in
+  3d.7 (owner decision with the "commit" for 3d.3): remove the named
+  temporary exclusion of the installer and its answers files from the
+  neutrality lint (V5); 3d.7 is not done while it exists.
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
   stated honestly). Anything that needs a VM or a real host is described
@@ -562,8 +581,15 @@ proposal, and waits for the owner's "commit".
   before/after hash mapping, every hash in `PROGRESS.md` and the docs
   updated, and the two known exceptions removed from the privacy scan. The
   owner creates a new empty repository `pokus-infrastructure`. After the
-  owner's "rewrite", the rewritten `main` and branch are pushed to the new
-  repository only; the old repository is never force-pushed. Then the
+  owner's "rewrite", the rewritten `main` is pushed there as `main` and the
+  rewritten `claude/zen-albattani-qfwwps` as `moving/on`, the only two
+  branches (no `claude/...` branch in the new repository); the old
+  repository is never force-pushed. From then on `moving/on` is the working
+  branch, and every rule that names `claude/zen-albattani-qfwwps` (the
+  commit rule, the scoped commit exception, the rewrite plan) applies to
+  `moving/on` there (owner decision with the "commit" for 3d.3). If this
+  session cannot push to a branch outside `claude/`, the owner pushes with
+  the commands the assistant gives. Then the
   assistant gives the owner a checklist of what to recreate by hand on the
   new repository (secrets including `PINKA_PRIVACY_DENYLIST`, branch
   protection, Actions settings and the rest), and one small commit proposal
@@ -752,6 +778,10 @@ read-only; the owner keeps its master for `pokus-platform`):
 - The official check requires `result` success in
   `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
   `doctor_warnings` also counts is decided in that edit.
+- V3 (owner decision with the "commit" for 3d.3): a `python-uv` release
+  locks its build backend in a `[dependency-groups] build` group and every
+  dependency is available as a wheel; infra builds it in two phases (locked
+  wheels with network, then the release built offline).
 
 **3c, the rename (committed `63b7e56`).** `infra/` follows the rename table: 149 paths
 moved with `git mv`, every generated file regenerated, the spec copies
@@ -874,7 +904,7 @@ in step 3:
 3g changes to a fresh repository with a rewrite of the full history (see
 [Process rules](#process-rules-in-force) and 3g above).
 
-**3d, step 3: rendering from the profiles** (built, awaiting "commit").
+**3d, step 3: rendering from the profiles** (`212121c`).
 Infra §16 step 17: `pinka-platform deploy render` computes from the
 manifest, the profiles and the host settings everything the platform role
 applies: accounts and groups with the memberships the profiles allow (the
@@ -902,6 +932,61 @@ releases with a `[build-system]`, and wheels only), V4 (no
 `RuntimeDirectory=` in the §7.14 baseline: socket units create the socket
 directories) and V5 (the installer and its answers files are excluded from
 the neutrality lint until 3d.7).
+
+**Owner decisions with the "commit" for 3d.3.** V3 approved, to be carried
+into the platform spec as well (wheels only, the build backend locked in a
+`build` dependency group). V4 approved on one condition: a service that
+needs its own runtime directory gets one at a separate path that contains no
+sockets. V5 approved only as an explicit, named exclusion in the lint
+configuration with a comment pointing to 3d.7, which must remove it (a
+required item of 3d.7 in the plan above). Ground-truth blindness, answered
+before 3d.4 and fixed in 3d.4 if needed: the agent must see only the active
+release, resolved at render time; what a published release can contain
+besides code, and whether anything of a content package, scenario,
+injector, verifier or evaluator is visible to the agent, with a proposal to
+narrow its view and a test that fails if anything outside that set is
+visible. Follow-ups for 3d.4: sockets whose ACL fell back to 0666 recorded
+in `rendered.json` and reported by doctor as warnings; the restricted-schema
+SQL tests in CI against PostgreSQL 18 from PGDG (16 only if it costs
+nothing); `make setup` verifies the lint collections against the lock and
+reinstalls them when they differ, and every formatter and linter excludes
+`infra/.ansible-collections/`. The branches of the new repository are under
+[Process rules](#process-rules-in-force).
+
+**Answer on ground-truth blindness (before 3d.4).** A published release is
+the whole `platform.path` subtree plus the built `.venv`: besides the code it
+can hold the manifest, `pyproject.toml`, `uv.lock`, docs, config schemas,
+the policy bundle, dashboards, migrations, any data files the platform keeps
+there and `DEPLOYED_FROM.json`; content packages are never in it. Through
+its allowlist (`releases/`, bound whole) the agent of 3d.3 sees every
+published release; for the Pokus Platform that is the injector with its
+fault primitive library (`potka-primitives`: what each fault does and
+touches, the "injection details" of the platform spec's first principle),
+the verifier with its probes, the evaluator, the migrations (the ground
+truth tables), the policy bundle, the docs and the dashboards, all also
+importable from the shared `.venv`. Neither restricted nor non-restricted
+content packages are visible. Also found: the agent unit lacks the
+`InaccessiblePaths` of infra's internals outside the four lab directories
+(`/var/lib/incus`, `/var/lib/docker`, the Docker sockets), which §7.14 hides
+from every profile. Proposed fix (V6, in 3d.4): an untrusted-agent service
+names its workspace package (`python-uv`) or its subdirectory (`static`);
+the build gives it an environment of its own with only that package and its
+locked dependencies; the agent sees only that directory of the active
+release (the resolved path), its configuration, its dedicated sockets, the
+agent OTLP socket and its state, and infra's internals are hidden from it;
+a test fails if anything else is visible.
+
+**3d.4 status of ground-truth blindness.** Done in 3d.4: the agent binds
+only the release being deployed, resolved at render time (never the
+`current` link or another published release), runs from it, and infra's
+internals outside the lab directories are hidden from it; a rendering test
+lists everything the agent may see and fails for other releases, content
+packages, other services' state, configuration, sockets and runtime
+directories, secrets and infra's internals, and doctor's
+`sockets.agent_view` lists the sockets the running agent can see. Waiting
+for the owner: V6 proper, the narrowing to the agent's own package and
+environment, which needs a manifest field for `untrusted-agent` services
+and a separate environment from the build (a contract change).
 
 ### Privacy clean-up (owner instruction)
 
@@ -949,14 +1034,17 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; implemented in commit "feat(infra): install the NVIDIA driver on Secure Boot hosts with MOK consent" (`--accept-mok-enrollment`, `--mok-password-stdin`, `gpu.accept_mok_enrollment`; bootstrap imports the key named by the play's 76) |
 | I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; implemented in commit "ci(infra): split the fast lane into a required and an extended job" (`make check-mode`, `make check-mode-extended`) |
 | St2-1 | infra §2.3, §19.2 | Debian 12 in the `tested` tier | Debian 12 removed from `tested`, with an explicit `unsupported` row naming the end of regular security support (E8 policy). Implemented in step 2; approved after the 3b commit |
-| St2-3 | infra §2.3 | releases not listed fall through to the `ID_LIKE` rows or `unsupported` | an explicit `unsupported` row per implemented distribution for its unlisted releases ("release not in the support matrix"), placed before the `ID_LIKE` rows. Approved after the 3b commit; not implemented yet, planned with the other preflight additions of 3d step 4 |
+| St2-3 | infra §2.3 | releases not listed fall through to the `ID_LIKE` rows or `unsupported` | an explicit `unsupported` row per implemented distribution for its unlisted releases ("release not in the support matrix"), placed before the `ID_LIKE` rows. Approved after the 3b commit; implemented in 3d.4 |
 | St7-1 | infra §7.11 | `current.yml` rendered to `current.env` | `current.yaml` (the `vllm serve --config` file) rendered next to `current.env`, which carries its hash; an infra-internal detail, not a contract item. Implemented in step 7 (deploy helper; the GPU arbiter keeps it in 3d); approved after the 3b commit |
 | P3a | infra §7.6, §7.7, §8.1, §12.6, §18.4 screen 5; platform §3, §4.1, §5, §12.1 | `cpuset_targets` with no contract field | `[incus] cpuset_targets` in `endpoints.toml`; the platform sets every target's `limits.cpu` to a CPU range inside it, never a count, records the range in the run manifest and refuses measurement campaigns on a host without it; the `bench` project's `limits.cpu` is the number of those CPUs; services run on `cpuset_services`; installer and doctor warn when SMT siblings of one core fall into different sets. Approved in the owner's review of the 3b spec update; implemented in `00da783` except the SMT warning |
-| P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; the overrides and checks are not implemented yet |
-| P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; not implemented yet (step 14 built a foreground `docs serve` command) |
+| P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; implemented in 3d.4 (preflight reads listeners from `/proc/net/tcp*`, details in `infra/docs/IMPLEMENTATION_NOTES.md`) |
+| P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; implemented in 3d.4 (the service runs `pinka docs serve`) |
 | V1 | infra §12.1 ("Sources in one repository"), §7.14 step 4 | a content package may not overlap the release path in the same repository | content packages from one repository may not overlap each other either (`source-overlap`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
 | V2 | infra §12.1 (`requires`) | the health gate checks exactly the declared facilities | a manifest that uses a facility it does not declare is refused (`facility-undeclared`): profiles `sandbox-operator` and `restricted-operator` need `incus`, `inference-broker` needs `inference`, `gpu-trainer` jobs need `gpu`; the fields `policy` need `opa`, `dashboards` and `telemetry` need `telemetry`, `backup.database: true` needs `postgres` (`contract/profiles.yml`, `facilities`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
-| P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; not implemented yet |
+| V3 | infra §7.14 step 5, §12.1 (`runtime: python-uv`); platform spec (release layout) | `uv sync --frozen` builds the release | two build phases: locked wheels with network, nothing built or compiled; then the release built offline with the backend from a `build` dependency group. A release with a `[build-system]` locks its backend in that group, and every dependency is a wheel. Approved with the "commit" for 3d.3; to be carried into the platform spec too |
+| V4 | infra §7.14 (hardening baseline), §6.2 | `RuntimeDirectory=pinka/platform/<service>` | no `RuntimeDirectory=` on the socket directories: socket units create `/run/pinka/platform/<service>/` (root, 0755). Approved with the "commit" for 3d.3 on condition that a service that needs its own runtime directory gets one at a separate path that contains no sockets; done in 3d.4 (`/run/pinka/platform-runtime/<service>`) |
+| V5 | infra §11 (neutrality lint) | the lint excludes test fixtures, docs and the reserved list | the installer and its answers files are excluded too, as an explicit named exclusion in the lint configuration with a comment pointing to 3d.7. Approved with the "commit" for 3d.3; 3d.7 must remove it |
+| P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
 
 ## Contract changes
 
@@ -1070,7 +1158,7 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 | steps 1-2 done, step 3 built and awaiting "commit" | `912b240` (1), `9ece578` (2) |
+| 3d | Contract v2, steps 1-8 | steps 1-3 done, step 4 built and proposed for commit | `912b240` (1), `9ece578` (2), `212121c` (3) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -1223,7 +1311,8 @@ work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pok
 under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
 committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
-exception; 3d steps 1 (`912b240`) and 2 (`9ece578`) are committed, step 3
-is built and waits for the owner's "commit", then steps 4-8 one at a time. Still open: the remaining
-`TODO(verify)` items (111), which need network access or reference
+exception; 3d steps 1 (`912b240`), 2 (`9ece578`) and 3 (`212121c`) are committed,
+step 4 is built and waits for the owner's "commit", then steps 5-8 one at
+a time. Still open: the remaining
+`TODO(verify)` items (112), which need network access or reference
 hardware.

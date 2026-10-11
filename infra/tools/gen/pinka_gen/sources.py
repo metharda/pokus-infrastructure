@@ -112,3 +112,35 @@ def endpoints_json(root: Path) -> str:
     if not isinstance(data, dict):
         raise TypeError("endpoints file must be a mapping")
     return dump_json(data, "preflight/endpoints.yml")
+
+
+# The tailnet range a VM collector address must not fall into (BUILD_PROMPT §2.2).
+TAILNET_RANGE = "100.64.0.0/10"
+
+
+def lab_defaults_json(root: Path) -> str:
+    """Compile the lab's default ports and addresses for preflight (§2.2, §12.11).
+
+    Args:
+        root: Component root.
+
+    Returns:
+        JSON text with the default ports (``pinka_default_ports``), the VM
+        collector address and interface, the Docker address pools and the
+        tailnet range.
+    """
+    group_vars = load_yaml(root / "ansible/group_vars/all/main.yml")
+    docker = load_yaml(root / "ansible/roles/docker/defaults/main.yml")
+    data = {
+        "schema_version": 1,
+        "ports": jsonable(group_vars["pinka_default_ports"]),
+        "vm_collector": {
+            "address": str(group_vars["vm_collector_address"]),
+            "interface": str(group_vars["pinka_vm_otlp"]["interface"]),
+        },
+        "docker_address_pools": jsonable(docker["docker_address_pools"]),
+        "tailnet": TAILNET_RANGE,
+    }
+    return dump_json(
+        data, "ansible/group_vars/all/main.yml and ansible/roles/docker/defaults/main.yml"
+    )

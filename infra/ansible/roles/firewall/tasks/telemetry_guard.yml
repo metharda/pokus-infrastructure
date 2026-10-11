@@ -1,0 +1,38 @@
+# Managed by pinka (ansible/roles/firewall/tasks/telemetry_guard.yml). Local changes will be overwritten.
+#
+# The telemetry guard (BUILD_PROMPT §7.9 option b, ADR-0016) on every backend:
+# its own nftables table, loaded by its own unit before the network comes up.
+- name: Create the directory of pinka's nftables files
+  ansible.builtin.file:
+    path: /etc/pinka/nftables
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the telemetry guard
+  ansible.builtin.template:
+    src: pinka-telemetry-guard.nft.j2
+    dest: /etc/pinka/nftables/telemetry-guard.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  register: firewall_guard_rules
+
+- name: Install the telemetry guard's unit
+  ansible.builtin.template:
+    src: pinka-telemetry-guard.service.j2
+    dest: /etc/systemd/system/pinka-telemetry-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall_guard_unit
+
+- name: Enable and load the telemetry guard
+  ansible.builtin.systemd_service:
+    name: pinka-telemetry-guard.service
+    enabled: true
+    state: "{{ 'restarted' if firewall_guard_rules is changed or firewall_guard_unit is changed else 'started' }}"
+    daemon_reload: "{{ firewall_guard_unit is changed }}"
+  when: not ansible_check_mode or 'pinka-telemetry-guard.service' in pinka_present.units

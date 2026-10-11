@@ -1,0 +1,26 @@
+# Managed by pinka (ansible/roles/postgres/tasks/restricted_check.yml). Local changes will be overwritten.
+#
+# The restricted-schema revoke and check (BUILD_PROMPT §7.8, §12.5): after the
+# bootstrap SQL and after every migrate hook (the platform role includes it
+# from its switch), infra revokes every privilege on schema restricted from
+# the roles outside the controller, restricted-operator and restricted-reader
+# group roles, and from the reader and Grafana roles. A grant that a
+# migration made to such a role fails the deployment, and the release does
+# not start.
+
+- name: Check schema restricted (revoke and report every forbidden access)
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--quiet', '--dbname=' ~ postgres_platform.database] }}"
+    stdin: "{{ postgres_platform.restricted_check_sql }}"
+  register: postgres_restricted_check
+  changed_when: "'pinka-' in postgres_restricted_check.stderr"
+
+- name: Fail the deployment on a forbidden grant in schema restricted
+  ansible.builtin.fail:
+    msg: >-
+      A grant reaches schema restricted from a role outside the controller,
+      restricted-operator and restricted-reader profiles; it has been revoked,
+      and the release does not start:
+      {{ postgres_restricted_check.stderr_lines | select('search', 'pinka-violation:')
+         | map('regex_replace', '^.*pinka-violation: ', '') | join('; ') }}
+  when: "'pinka-violation:' in postgres_restricted_check.stderr"

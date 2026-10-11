@@ -87,6 +87,45 @@ class MatchTest(unittest.TestCase):
         )
         self.assertEqual(matrix.match_os(self.m, None)["tier"], "unsupported")
 
+    def test_unlisted_releases_never_fall_through_to_id_like(self) -> None:
+        # Approved deviation St2-3.
+        for release in (
+            osr(id="ubuntu", id_like=["debian"], version_id="20.04"),
+            osr(id="debian", version_id="11"),
+            osr(id="almalinux", id_like=["rhel", "centos", "fedora"], version_id="11.0"),
+            osr(id="opensuse-leap", id_like=["suse", "opensuse"], version_id="15.5"),
+        ):
+            rule = matrix.match_os(self.m, release)
+            self.assertEqual(rule["tier"], "unsupported", release.id)
+            self.assertIn("Release not in the support matrix", rule["reason"])
+        # Derivatives still map to their parent through ID_LIKE.
+        mint = osr(id="linuxmint", id_like=["ubuntu", "debian"], version_id="22")
+        self.assertEqual(matrix.match_os(self.m, mint)["tier"], "experimental")
+
+    def test_driver_cuda_remediation(self) -> None:
+        spec = self.m["features"]["gpu_inference"]
+        # Resolved from versions.lock.yml at generation: the vLLM image's CUDA.
+        (required,) = [r["driver_cuda_min"] for r in spec["requires"] if "driver_cuda_min" in r]
+        self.assertRegex(required, r"^[0-9]+\.[0-9]+\.[0-9]+$")
+        facts = {
+            "nvidia_gpu_usable": True,
+            "gpu_vram_gib": 12.0,
+            "gpu_compute_capability": "8.9",
+            "gpu_driver_cuda": "12.8",
+            "environment": "baremetal",
+        }
+        text = matrix._remediation(spec, facts)
+        self.assertIn("supports CUDA 12.8, the pinned vLLM image needs 13.0", text)
+        self.assertIn("install a driver branch that supports CUDA 13.0", text)
+        wsl = matrix._remediation(spec, {**facts, "environment": "wsl2"})
+        self.assertIn("update the NVIDIA driver on Windows", wsl)
+        self.assertNotIn("driver branch", wsl)
+        unknown = matrix._remediation(spec, {**facts, "gpu_driver_cuda": None})
+        self.assertIn("nvidia-smi did not report", unknown)
+        self.assertEqual(matrix._remediation(spec, {**facts, "gpu_driver_cuda": "13.0"}), "")
+        # No usable GPU: the driver is not the reason, so no driver remediation.
+        self.assertEqual(matrix._remediation(spec, {**facts, "nvidia_gpu_usable": False}), "")
+
     def test_arch(self) -> None:
         self.assertEqual(matrix.match_arch(self.m, "x86_64")["tier"], "supported")
         self.assertEqual(matrix.match_arch(self.m, "aarch64")["tier"], "experimental")
@@ -104,6 +143,12 @@ class MatchTest(unittest.TestCase):
         self.assertTrue(matrix.requirement_met({"gpu_compute_capability_min": "7.0"}, facts)[0])
         self.assertFalse(matrix.requirement_met({"gpu_compute_capability_min": "9.0"}, facts)[0])
         self.assertFalse(matrix.requirement_met({"environment_in": ["baremetal"]}, facts)[0])
+        cuda = {"driver_cuda_min": "13.0.2"}
+        self.assertTrue(matrix.requirement_met(cuda, {"gpu_driver_cuda": "13.0"})[0])
+        self.assertTrue(matrix.requirement_met(cuda, {"gpu_driver_cuda": "13.1"})[0])
+        self.assertFalse(matrix.requirement_met(cuda, {"gpu_driver_cuda": "12.9"})[0])
+        self.assertFalse(matrix.requirement_met(cuda, {})[0])
+        self.assertEqual(matrix.requirement_met(cuda, {})[1], "driver CUDA >= 13.0")
         self.assertFalse(matrix.requirement_met("kvm_usable", facts)[0])
         self.assertFalse(matrix.requirement_met({"gpu_vram_gib_min": 8}, {})[0])
         with self.assertRaises(ValueError):

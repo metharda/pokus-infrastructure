@@ -179,6 +179,23 @@
     },
     {
       "match": {
+        "id_in": [
+          "ubuntu",
+          "debian",
+          "fedora",
+          "rhel",
+          "almalinux",
+          "rocky",
+          "centos",
+          "opensuse-leap",
+          "sles"
+        ]
+      },
+      "tier": "unsupported",
+      "reason": "Release not in the support matrix: only the releases docs/support-matrix.md lists are supported or tested for this distribution. Install a listed release."
+    },
+    {
+      "match": {
         "id_like_contains": "ubuntu"
       },
       "family": "debian",
@@ -362,10 +379,20 @@
         },
         {
           "gpu_compute_capability_min": "7.0"
+        },
+        {
+          "driver_cuda_min": "13.0.2"
         }
       ],
       "on_missing": "degrade",
-      "impact": "No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host."
+      "impact": "No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.",
+      "remediation": {
+        "driver_cuda_min": {
+          "default": "The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}: install a driver branch that supports CUDA {required}.",
+          "wsl2": "The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}: update the NVIDIA driver on Windows (never install a Linux NVIDIA driver inside WSL).",
+          "unknown": "nvidia-smi did not report the CUDA version the NVIDIA driver supports; the pinned vLLM image needs {required}: update the NVIDIA driver (on WSL2, on Windows)."
+        }
+      }
     },
     "vm_targets": {
       "requires": [

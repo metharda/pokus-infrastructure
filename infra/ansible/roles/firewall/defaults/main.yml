@@ -4,13 +4,16 @@
 firewall_tailnet_interface: tailscale0
 # Port of `tailscale serve` for Grafana (grafana_tailscale_serve).
 firewall_grafana_serve_port: 443
-# TCP ports open on the tailnet interface: SSH, the Grafana serve port, and for
+# Port of `tailscale serve` for the docs service (docs_tailscale_serve).
+firewall_docs_serve_port: 10000
+# TCP ports open on the tailnet interface: SSH, the Grafana and docs serve ports, and for
 # split inference (BUILD_PROMPT §19.10) the forwarded vLLM API and the control
 # endpoint on an inference node, OTLP gRPC from the paired inference node on a
 # lab node. Mutual TLS guards the split-inference ports.
 firewall_tailnet_tcp_ports: >-
   {{ [22]
      + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else [])
+     + ([firewall_docs_serve_port] if docs_tailscale_serve | bool and docs_release is not none else [])
      + ([pinka_ports.vllm, pinka_ports.inference_control] if node_role == 'inference' else [])
      + ([pinka_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
 # UDP port of the WireGuard transport of tailscaled.

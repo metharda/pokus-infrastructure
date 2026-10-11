@@ -104,12 +104,22 @@ def _containers(lock: dict[str, Any]) -> list[str]:
         [name, f"`{e['image']}`", _code(e["tag"]), _code(e["digest"]), e["platforms"]]
         for name, e in section.get("target_images", {}).items()
     ]
+    built_on = [
+        f"`{name}` is built on CUDA {_code(e['cuda'])}"
+        for name, e in section["images"].items()
+        if "cuda" in e
+    ]
     parts = [
         "\n## Container images\n\n",
         "Every image is used by digest; the tag is informational. ",
         _section_note(section),
         pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], rows),
     ]
+    if built_on:
+        parts.append(
+            f"\n{'; '.join(built_on)}: preflight and doctor compare it with the CUDA version "
+            "the NVIDIA driver supports (BUILD_PROMPT §2.2).\n"
+        )
     if targets:
         parts += [
             "\nPulled inside golden images by blueprints with a container engine "

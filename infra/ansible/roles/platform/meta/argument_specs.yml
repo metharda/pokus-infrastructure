@@ -48,6 +48,10 @@ argument_specs:
         type: str
         default: ""
         description: OpenAI-compatible endpoint of the scripted backend (staging only).
+      platform_health_wait:
+        type: int
+        default: 300
+        description: Seconds bootstrap waits after starting the platform for its health hook.
       vault_postgres_passwords:
         type: dict
         default: {}
@@ -100,3 +104,10 @@ argument_specs:
         type: path
         default: /etc/pinka/platform/rendered.json
         description: What infra rendered for the active platform; its controller restarts with the new key.
+  start:
+    short_description: Start the active platform and wait for its health hook (site.yml, after the lab session).
+    options:
+      platform_health_wait:
+        type: int
+        default: 300
+        description: Seconds to wait for the health hook to answer ok; an unhealthy platform is reported.

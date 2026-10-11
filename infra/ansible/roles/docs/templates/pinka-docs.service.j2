@@ -1,0 +1,51 @@
+# Managed by pinka (ansible/roles/docs/templates/pinka-docs.service.j2). Local changes will be overwritten.
+#
+# The documentation service (BUILD_PROMPT §7.19): the installed docs release
+# that `current` names, read-only on 127.0.0.1 only, as a dynamic user with
+# the hardening baseline of §7.14. `pinka docs install` and `rollback` switch
+# `current`; the server follows the link on every request.
+[Unit]
+Description=Pokus lab documentation on 127.0.0.1:{{ pinka_ports.docs_serve }}
+PartOf=pinka-lab.target
+ConditionPathExists={{ docs_dir }}/current/index.html
+
+[Service]
+Type=simple
+ExecStart={{ docs_cli }} docs serve --dir {{ docs_dir }}/current --port {{ pinka_ports.docs_serve }}
+Restart=on-failure
+RestartSec=5
+DynamicUser=yes
+Slice={{ pinka_services_slice }}
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+SocketBindAllow=tcp:{{ pinka_ports.docs_serve }}
+ReadOnlyPaths={{ docs_dir }}
+InaccessiblePaths=-{{ pinka_root }} -/etc/pinka/secrets -/var/lib/pinka -/run/pinka
+
+[Install]
+WantedBy=pinka-lab.target

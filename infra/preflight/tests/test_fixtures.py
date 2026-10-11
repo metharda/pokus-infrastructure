@@ -77,6 +77,8 @@ class FixtureTreeTest(unittest.TestCase):
     def test_required_fixtures_exist(self) -> None:
         required = {
             "ubuntu2404-baremetal-nvidia-driver-loaded",
+            "ubuntu2404-baremetal-nvidia-old-driver",
+            "ubuntu2404-wsl2-gpu-old-driver",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot-manual",
@@ -163,6 +165,12 @@ class FixtureDecisionTest(unittest.TestCase):
                     self.assertTrue(
                         any(needle in r for r in doc["unsupported_reasons"]),
                         f"{name}: reason {needle!r}",
+                    )
+            elif key == "remediation_contains":
+                remediations = [d.get("remediation", "") for d in doc["disabled_features"]]
+                for needle in value:
+                    self.assertTrue(
+                        any(needle in r for r in remediations), f"{name}: remediation {needle!r}"
                     )
             elif key == "mac":
                 self.assertEqual([doc["mac"]["system"], doc["mac"]["mode"]], value, name)

@@ -9,9 +9,14 @@ description: Configure the restic repository, check that backups run, restore a 
 
 # How to back up the lab, restore it, and run a restore drill
 
-The `backup` role dumps the lab database every night and backs up the
-research space and `/etc/pinka` with restic to a repository on another
-machine. Until a repository is configured the lab runs without backups and
+The `backup` role dumps the platform database every night (when the
+platform's manifest sets `backup.database`) and backs up with restic, to a
+repository on another machine: infra's own directories under `/srv/pinka`
+(`images`, `datasets`, `shared`, `users`, `backups/pg`; `backup_include`),
+the restricted area, the training datasets, the adapters with their lineage,
+the platform state directories that the manifest lists in `backup.paths`,
+and `/etc/pinka` without its secrets. A state directory the manifest leaves
+out is not backed up; doctor lists it (`backup.platform_state`). Until a repository is configured the lab runs without backups and
 the metric `pinka_backup_configured` is 0. Restoring is part of bootstrap:
 `bootstrap.sh --restore` provisions the host and then restores a snapshot.
 
@@ -91,12 +96,16 @@ next boot. `pinka_backup_job_success{job="backup"}` and
 
 ## Restore a snapshot
 
-A restore stops the lab, restores the research space directories of the
-snapshot and the parts of `/etc/pinka` that bootstrap cannot recreate (vLLM
-deployments, QA keys and attestations), loads the newest database dump,
-re-imports the golden images from their exports, checks the model files by
-hash (downloading what is missing) and starts the lab again. Files newer than
-the snapshot are kept.
+A restore runs the platform's `drain` hook and stops the lab, restores the
+research space directories of the snapshot and the parts of `/etc/pinka`
+that bootstrap cannot recreate (vLLM deployments, QA keys and attestations),
+loads the newest database dump, re-imports the golden images from their
+exports and checks the model files by hash (downloading what is missing).
+Then it deploys the platform release and the content packages that the
+snapshot's `active.json` records (by tag, or by commit when a release was
+deployed from one), from the repositories in the host_vars file, starts the
+lab and waits for the platform's `health` hook. Files newer than the
+snapshot are kept.
 
 1. On a new machine, prepare it as for a first installation with the same
    host_vars file and vault (the vault holds the repository and its

@@ -63,11 +63,29 @@ jobs:
       - run: make setup
       - name: ssh-keygen is present (the signed-tag test must run in CI)
         run: command -v ssh-keygen
+      # PostgreSQL 18, the major the lab pins, from PGDG with the signing key that
+      # Ubuntu's postgresql-common ships; its fingerprint was verified from that
+      # package (infra/docs/IMPLEMENTATION_NOTES.md, "Verified in 3d.4").
+      - name: PostgreSQL 18 from PGDG (the restricted-schema SQL tests run on it)
+        run: |
+          set -euo pipefail
+          keyring=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          fpr="$(gpg --show-keys --with-colons "$keyring" | awk -F: '$1 == "fpr" {print $10; exit}')"
+          test "$fpr" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+          . /etc/os-release
+          printf 'Types: deb\nURIs: https://apt.postgresql.org/pub/repos/apt\nSuites: %s-pgdg\nComponents: main\nSigned-By: %s\n' \
+            "$VERSION_CODENAME" "$keyring" | sudo tee /etc/apt/sources.list.d/pgdg.sources
+          sudo install -d /etc/postgresql-common/createcluster.d
+          echo 'create_main_cluster = false' | sudo tee /etc/postgresql-common/createcluster.d/pinka-ci.conf
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends postgresql-18
       - name: PostgreSQL server binaries and systemd-analyze are present (the SQL and unit checks must run in CI)
         run: |
           ls /usr/lib/postgresql/*/bin/initdb
           command -v systemd-analyze
       - run: make test
+        env:
+          PINKA_POSTGRES_REQUIRED: "18"
 
   docs:
     if: github.event_name != 'schedule'

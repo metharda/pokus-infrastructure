@@ -119,6 +119,34 @@ with `nvidia-smi` (on WSL `/usr/lib/wsl/lib/nvidia-smi`), then run bootstrap
 with `--tags nvidia_container_toolkit`. After a driver update on bare metal a
 reboot is often needed.
 
+## `gpu.driver_cuda`: the driver is too old for the vLLM image {#check-gpu-driver_cuda}
+
+The NVIDIA driver supports an older CUDA version than the one the pinned vLLM
+image is built on (`cuda` of `containers.images.vllm` in `versions.lock.yml`;
+doctor compares major and minor), or `nvidia-smi --version` does not report
+it. Preflight makes the same comparison and turns `gpu_inference` off.
+
+- **Bare metal or a VM with passthrough:** install a driver branch that
+  supports that CUDA version with your distribution's packages, then reboot.
+  pinka never upgrades an installed driver on its own.
+- **WSL2:** update the NVIDIA driver on Windows. Never install a Linux NVIDIA
+  driver inside WSL.
+
+Check the result with `nvidia-smi --version` (on WSL
+`/usr/lib/wsl/lib/nvidia-smi --version`): its `CUDA Version` line must be at
+least the image's major and minor version.
+
+## `docs.service`: the docs service does not serve the release {#check-docs-service}
+
+A documentation release is configured (`docs_release`), but no release is
+installed in `/usr/local/share/pinka/docs` or `pinka-docs.service` is not
+active. Install the release (`sudo pinka docs install TARBALL --sha256 SUM`,
+or run bootstrap with `docs_release` set), then start the service with
+`sudo systemctl start pinka-docs.service` and read its log with
+`journalctl -u pinka-docs.service -b`. See
+[How to serve a documentation release on the lab](install-docs-release.md).
+Skipped while `docs_release` is null.
+
 ## `gpu.vllm`: vLLM does not answer {#check-gpu-vllm}
 
 A deployment is active but vLLM's `/health` does not answer 200. Read the
@@ -206,26 +234,94 @@ A deployment under `/srv/pinka/deploy` or `/srv/pinka/catalog` contains a
 directory (resolution B2). Remove that deployment and deploy again from the
 mirror with bootstrap.
 
+## `platform.manifest`: the active release's manifest changed or no longer validates {#check-platform-manifest}
+
+The manifest of the active release (`platform-manifest.yaml` in the release
+directory `active.json` names) must have the SHA-256 that
+`/etc/pinka/platform/active.json` and the release's `DEPLOYED_FROM.json`
+record, and must still pass `pinka-platform validate` against the installed
+contract. A changed hash means someone edited a deployed release; a refusal
+after an infra update means the release needs a version that follows the
+contract. Never edit a deployed release: deploy it again from its mirror with
+bootstrap (`--tags platform`), or deploy a newer release. Skipped when no
+platform is active.
+
 ## `systemd.hardening`: a platform unit lacks its hardening {#check-systemd-hardening}
 
-A platform unit's systemd properties (account, `NoNewPrivileges`,
-`ProtectSystem` and the rest of the baseline, `InaccessiblePaths`) differ from
-what the platform role installs, for example the agent runner can reach the
-catalog. Compare with `systemctl show UNIT` and run bootstrap with
-`--tags platform`. On an inference node the check covers
-`pinka-inference-control.service`; run bootstrap with
-`--tags inference_control` there. Skipped on a full or lab node until the
-platform is deployed.
+A platform service's systemd properties differ from what its profile
+requires: the account, the baseline of `NoNewPrivileges`, `ProtectSystem` and
+the rest, `PrivateNetwork` and `RestrictAddressFamilies` of the agent, or the
+`InaccessiblePaths` that hide infra's internals. The expected values are in
+`hardening` of `/etc/pinka/platform/rendered.json`, written when the platform
+is rendered; compare with `systemctl show UNIT`. A drop-in under
+`/etc/systemd/system/UNIT.d/` that overrides a property is the usual cause:
+remove it, then run bootstrap with `--tags platform`. On an inference node the
+check covers `pinka-inference-control.service`; run bootstrap with
+`--tags inference_control` there. Skipped when neither applies.
 
 ## `sockets.permissions`: a platform socket has the wrong owner, mode or ACL {#check-sockets-permissions}
 
-A socket under `/run/pinka/` differs from the contract (resolution C8).
-With ACL entries, `ls -l` shows the ACL mask in the group bits (a 0600 socket
-with `user:potka-orch:rw-` shows as 0660); the expected values are in
-`/etc/pinka/platform/sockets.json`, and `getfacl SOCKET` shows the entries.
-Restart the owning service, which sets them again when it starts; if that
-does not help, run bootstrap with `--tags platform`. Skipped until the
-platform is deployed.
+A platform socket differs from its rendering (`sockets` of
+`/etc/pinka/platform/rendered.json`: owner, group, mode and ACL entries).
+With ACL entries, `ls -l` shows the ACL mask in the group bits;
+`getfacl SOCKET` shows the entries. The check's result lists the dedicated
+agent sockets (`untrusted_clients`). Restart the owning socket unit, which sets
+them again when it starts; if that does not help, run bootstrap with
+`--tags platform`. A socket that fell back to 0666 is reported by
+[`sockets.acl_fallback`](#check-sockets-acl_fallback) instead. Skipped until
+the platform is deployed.
+
+## `sockets.agent_view`: the agent sees a socket beyond its allowlist {#check-sockets-agent_view}
+
+Doctor walks the running `untrusted-agent` service's file system through
+`/proc/<pid>/root`, which resolves paths in the agent's own mount namespace,
+and lists every socket it finds. The agent may see only its dedicated sockets,
+the agent telemetry socket and sockets in its own runtime and state
+directories (`agent_view` in `hardening` of
+`/etc/pinka/platform/rendered.json`). Anything else means its allowlist leaks:
+run bootstrap with `--tags platform` and restart the platform
+(`sudo pinka stop && sudo pinka start`); if the socket is still visible,
+report it as a bug, because the agent must never reach it. Skipped while no
+agent runs.
+
+## `sockets.acl_fallback`: a platform socket fell back to mode 0666 {#check-sockets-acl_fallback}
+
+A platform socket that researchers or admins may use gets ACL entries for
+their groups (`pinka`, `pinka-admin`) when its unit starts. Where `/run` has
+no ACL support, the helper makes the socket 0666 instead, records it in
+`socket_acl_fallback` of `/etc/pinka/platform/rendered.json`, and the
+platform's peer-credential check alone separates researchers, admins and
+services. Doctor warns about each such socket, recorded or found at mode
+0666. Use a kernel whose tmpfs supports POSIX ACLs (`CONFIG_TMPFS_POSIX_ACL`),
+then restart the platform:
+
+<!-- qa:skip reason="restarts the lab on the lab host" -->
+```bash
+sudo pinka stop && sudo pinka start
+```
+
+At the next start the helper sets the ACL entries and removes the socket
+from the record. Skipped until the platform is deployed, or when no socket
+has researchers or admins among its clients.
+
+## `telemetry.isolation`: the telemetry guard or a telemetry socket is missing {#check-telemetry-isolation}
+
+Platform accounts (UIDs 60578-61183) may query telemetry only through the
+query proxy's socket and send it only to the collector. Doctor checks that
+the nftables table `inet pinka_telemetry_guard` is loaded with the platform
+range and every guarded port, that `/run/pinka/query/query.sock` is 0660
+with group `pinka-query`, and that the agent OTLP socket exists. Load the
+guard and recreate the sockets:
+
+<!-- qa:skip reason="changes the firewall of the lab host" -->
+```bash
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags firewall,observability
+```
+
+`<machine>` is the name of this host's host_vars file.
+`systemctl status pinka-telemetry-guard.service pinka-otlp-agent.socket` and
+`docker logs pinka-query-proxy` show why one of them is not running. See
+[How telemetry flows through the lab](../explanation/telemetry.md).
 
 ## `postgres.roles`: database roles or settings are wrong {#check-postgres-roles}
 
@@ -261,6 +357,24 @@ No backup repository is configured, the last successful backup is older than
 `doctor_backup_max_age_hours`, or the repository does not answer. See
 [How to back up the lab](backup-and-restore.md); the backup log is in
 `journalctl -u pinka-backup.service`.
+
+## `backup.platform_state`: a platform state directory is not backed up {#check-backup-platform_state}
+
+The platform's manifest declares state directories for its services, and
+lists in `backup.paths` those that backups include. Doctor names every
+state directory that `backup.paths` leaves out. If its data matter, add it
+to `backup.paths` in the platform's manifest and deploy the release; if not
+(a cache, for example), the warning stays as a reminder.
+
+## `lab.window`: a maintenance window is recorded {#check-lab-window}
+
+On production, `/etc/pinka/maintenance-window.json` exists: a staging lab may
+be using this machine's hardware, and production stays stopped (also after the
+window's end) until an admin runs `sudo pinka window close` and then
+`sudo pinka start`. On staging with `staging_shared_hardware: true`, the check
+fails when the recorded window is not open now, and notes when none is
+recorded: staging starts only inside an open window. See
+[How to run a QA maintenance window on staging](staging-window.md#staging-on-productions-hardware).
 
 ## `lab.health_gate`: the startup health gate did not pass {#check-lab-health_gate}
 

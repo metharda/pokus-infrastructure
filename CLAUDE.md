@@ -70,3 +70,21 @@ The rewrite also removes the two known exceptions from the privacy scan's
 history check. It is the only exception to the no-history-rewrite rule, it
 needs the owner's explicit "rewrite", and the old repository is never
 force-pushed.
+
+## Branches in the new repository (owner, with the "commit" for 3d.3)
+
+Verbatim; part of the recorded 3g plan:
+
+> - The new repository pokus-infrastructure must have no branch named claude/...
+>   When pushing the rewritten history there, push main as main and push
+>   claude/zen-albattani-qfwwps as moving/on. These two are the only branches.
+> - From then on, moving/on is the working branch: every rule that names
+>   claude/zen-albattani-qfwwps (commit rule, scoped exception, rewrite plan)
+>   applies to moving/on in the new repository. Update CLAUDE.md, PROGRESS.md and the docs to
+>   say so now, as part of the recorded 3g plan.
+
+Until the rewritten history is in `pokus-infrastructure`, the working branch
+stays `claude/zen-albattani-qfwwps` in this repository. Whether this session
+can push to a branch that does not start with `claude/` is not known (it
+cannot be tried here without breaking the commit rule); if it cannot, the
+owner pushes to the new repository with the commands the assistant gives.

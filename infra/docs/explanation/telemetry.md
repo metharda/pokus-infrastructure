@@ -36,12 +36,16 @@ flowchart LR
     ct --> gw
     vm --> gw
     jd --> gw
+    agent["Agent OTLP socket<br/>(pinka.trust=untrusted)"]
+    qp["Query proxy<br/>query.sock, 127.0.0.1:18733"]
+    agent --> gw
     gw -- "logs (OTLP)" --> loki
     gw -- "traces (OTLP)" --> tempo
     gw -- "metrics exporter, scraped" --> prom
-    prom --> graf
-    loki --> graf
-    tempo --> graf
+    prom --> qp
+    loki --> qp
+    tempo --> qp
+    qp --> graf
     pg --> graf
 ```
 
@@ -57,6 +61,30 @@ then `batch`:
 - **Metrics** go to a Prometheus exporter on the gateway, which Prometheus
   scrapes (owner answer E14). Resource attributes become labels, so target
   metrics carry `potka_run_id` and `potka_node`.
+
+## Who may send and who may query
+
+Sending and querying are separate ways in (BUILD_PROMPT §7.9,
+[ADR-0016](../adr/0016-telemetry-query-isolation.md)):
+
+- Platform services send OTLP to the collector. The `untrusted-agent`, which
+  has no network, sends OTLP/HTTP to `/run/pinka/otlp/agent.sock`; systemd's
+  socket proxy forwards it to the collector's receiver `otlp/agent`, whose
+  pipelines set `pinka.trust=untrusted` on everything, whatever the agent
+  claimed. Loki indexes `pinka.trust` and the platform's `telemetry.labels`
+  as labels.
+- Telemetry is queried only through the query proxy, an nginx container. It
+  forwards only the query endpoints of Prometheus, Loki and Tempo (instant
+  and range queries, series, labels and label values, trace lookup and
+  search) and answers 403 to everything else: push and remote write,
+  deletion, admin, configuration, flush, rules and alerting. Platform
+  services that query (their profiles put them in `pinka-query`) use
+  `/run/pinka/query.sock`; Grafana's data sources use its loopback port.
+- Platform accounts get UIDs from 60578-61183. The telemetry guard, an
+  nftables table of its own on every firewall backend, drops their
+  connections to the stores' ports, the collector's metrics exporter and the
+  proxy's loopback port, so the socket and its group are their only way to
+  query. Doctor checks the guard and both sockets (`telemetry.isolation`).
 
 ## Where the data comes from
 

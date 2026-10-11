@@ -150,8 +150,16 @@ def test_full_node_description() -> None:
     assert data["backup"]["configured"] is False
     assert data["images"]["files_helper"] == "/usr/local/libexec/pinka/image-files"
     assert data["images"]["export_root"] == "/srv/pinka/images"
-    assert data["hardening"] == [] and data["sockets"] == []
-    assert data["docs"] == {"dir": "/usr/local/share/pinka/docs", "port": 18706}
+    # The platform's hardening and sockets come from its rendering at run time.
+    assert data["hardening"] == []
+    assert "sockets" not in data
+    assert data["paths"]["rendered_platform"] == "/etc/pinka/platform/rendered.json"
+    assert data["docs"] == {
+        "dir": "/usr/local/share/pinka/docs",
+        "port": 18706,
+        "unit": "pinka-docs.service",
+        "configured": False,
+    }
 
 
 def test_every_key_the_cli_reads_is_rendered() -> None:
@@ -223,15 +231,19 @@ def test_split_inference_pairing() -> None:
     assert render()["inference"]["peer"] == ""
 
 
-def test_platform_checks_wait_for_the_switch() -> None:
-    # The platform's units, sockets and hardening are checked once the switch
-    # with the hooks starts them (plan step 3d.4).
+def test_platform_checks_read_the_rendering() -> None:
+    # §7.17: the platform's units, sockets and hardening come from the profiles
+    # and the manifest through rendered.json, which doctor reads at run time;
+    # the lab description carries no platform names.
     rendered = {"accounts": [{"name": "demo-ctl"}, {"name": "demo-agt"}], "service_units": []}
     data = render(active_platform=rendered)
     assert data["hardening"] == []
-    assert data["sockets"] == []
+    assert "sockets" not in data
+    assert not [u for u in data["units"] if u.startswith("demo-")]
     assert data["accounts"]["platform_accounts"] == ["demo-ctl", "demo-agt"]
     assert data["paths"]["active_platform"] == "/etc/pinka/platform/active.json"
+    assert data["paths"]["rendered_platform"] == "/etc/pinka/platform/rendered.json"
+    assert data["paths"]["platform_tool"] == "/usr/local/libexec/pinka/pinka-platform"
 
 
 def test_the_database_check_follows_the_platform() -> None:

@@ -3,21 +3,26 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import io
 import json
 import unittest
 from collections.abc import Callable
 from typing import Any
 
-from labfakes import PROFILE, FakeSystem, info, lab
+from labfakes import PROFILE, FakeSystem, lab
 
-from pinka_lab import commands
+from pinka_lab import commands, docs_store
 from pinka_lab.commands import CommandError
 
 INFRA = "/srv/checkout/pinka/infra"
 BOOTSTRAP = f"{INFRA}/bootstrap/bootstrap.sh"
 HOST_VARS = f"{INFRA}/ansible/inventory/host_vars/pinka-lab.yml"
 KEY = "ssh-ed25519 " + "A" * 68 + " researcher3@example.com\n"
+TOOL = commands.PLATFORM_TOOL
+ACTIVE = json.dumps(
+    {"name": "demo", "version": "1.2.0", "release": {"name": "demo-v1.2.0-0123456789ab"}}
+)
 
 
 def captured(call: Callable[[], int]) -> tuple[int, str, str]:
@@ -50,8 +55,8 @@ class LabTest(unittest.TestCase):
     def test_root_only(self) -> None:
         user = FakeSystem(euid=1000)
         calls: list[Callable[[], int]] = [
-            lambda: commands.start(user),
-            lambda: commands.stop(user, 0),
+            lambda: commands.start(user, lab()),
+            lambda: commands.stop(user, lab(), 0),
             lambda: commands.backup_now(user, lab()),
             lambda: commands.backup_list(user, lab()),
             lambda: commands.restore(user, lab(), []),
@@ -66,27 +71,80 @@ class LabTest(unittest.TestCase):
 
     def test_start(self) -> None:
         system = FakeSystem({"systemctl start pinka-lab.target": (0, "")})
-        code, out, _ = captured(lambda: commands.start(system))
+        code, out, _ = captured(lambda: commands.start(system, lab()))
         self.assertEqual((code, out), (0, "pinka-lab.target started\n"))
+        self.assertEqual(len(system.calls), 1)  # no platform: no health hook
         failing = FakeSystem({"systemctl start pinka-lab.target": (1, "", "health gate failed\n")})
-        code, _, err = captured(lambda: commands.start(failing))
+        code, _, err = captured(lambda: commands.start(failing, lab()))
         self.assertEqual((code, err), (1, "health gate failed\n"))
 
+    def test_start_waits_for_the_health_hook(self) -> None:
+        healthy = {"platform": "demo", "ok": True, "skipped": False, "error": None}
+        system = FakeSystem(
+            {"systemctl start pinka-lab.target": (0, ""), f"{TOOL} hook health *": (0, healthy)},
+            files={commands.ACTIVE_PLATFORM: ACTIVE},
+        )
+        code, out, _ = captured(lambda: commands.start(system, lab(lab={"health_wait": 90})))
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines()[-1], "platform demo is healthy")
+        self.assertEqual(system.calls[1], [TOOL, "hook", "health", "--until-healthy", "90"])
+        sick = {**healthy, "ok": False, "error": '"ok" is not true'}
+        system = FakeSystem(
+            {"systemctl start pinka-lab.target": (0, ""), f"{TOOL} hook health *": (1, sick)},
+            files={commands.ACTIVE_PLATFORM: ACTIVE},
+        )
+        code, out, _ = captured(lambda: commands.start(system, lab(lab={"health_wait": 90})))
+        self.assertEqual(code, 1)
+        self.assertIn("platform demo is unhealthy after 90 seconds", out)
+
     def test_drain(self) -> None:
-        # The platform's drain hook follows with the hooks (plan step 3d.4).
-        self.assertIn("no active platform", commands.drain(FakeSystem(), 10))
-        active = FakeSystem(infos={commands.ACTIVE_PLATFORM: info("root", "root", 0o644)})
-        self.assertIn("drain hook is not run yet", commands.drain(active, 10))
-        self.assertEqual(active.unix_calls, [])
+        self.assertIn("no active platform", commands.drain(FakeSystem(), lab(), 10))
+        answers = {
+            (0, json.dumps({"platform": "demo", "ok": True})): "platform demo drained",
+            (0, json.dumps({"platform": "demo", "ok": True, "skipped": True})): (
+                "platform demo has no drain hook"
+            ),
+            (1, json.dumps({"platform": "demo", "ok": False, "error": "timeout"})): (
+                "platform demo did not drain (timeout); its services stop anyway"
+            ),
+            (1, ""): "the platform did not drain (boom); its services stop anyway",
+        }
+        for answer, message in answers.items():
+            system = FakeSystem(
+                {f"{TOOL} hook drain *": (*answer, "boom")},
+                files={commands.ACTIVE_PLATFORM: ACTIVE},
+            )
+            self.assertEqual(commands.drain(system, lab(), 10.5), message)
+            self.assertEqual(system.calls, [[TOOL, "hook", "drain", "--timeout", "10"]])
 
     def test_stop_drains_first(self) -> None:
         system = FakeSystem({"systemctl stop pinka-lab.target": (0, "")})
-        code, out, _ = captured(lambda: commands.stop(system, 5))
+        code, out, _ = captured(lambda: commands.stop(system, lab(), 5))
         self.assertEqual(code, 0)
         self.assertEqual(
             out.splitlines(),
             ["no active platform; nothing to drain", "pinka-lab.target stopped"],
         )
+
+    def test_stop_drains_the_platform_then_stops_its_target(self) -> None:
+        system = FakeSystem(
+            {
+                f"{TOOL} hook drain *": (0, {"platform": "demo", "ok": True}),
+                "systemctl stop *": (0, ""),
+            },
+            files={commands.ACTIVE_PLATFORM: ACTIVE},
+        )
+        code, out, _ = captured(lambda: commands.stop(system, lab(lab={"drain_timeout": 60})))
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            system.calls,
+            [
+                [TOOL, "hook", "drain", "--timeout", "60"],
+                ["systemctl", "stop", "pinka-platform.target"],
+                ["systemctl", "stop", "pinka-lab.target"],
+            ],
+        )
+        self.assertEqual(out.splitlines()[0], "platform demo drained")
 
     def test_status(self) -> None:
         system = FakeSystem(
@@ -114,9 +172,36 @@ class LabTest(unittest.TestCase):
         self.assertIn("gpu: Example GPU", out)
         self.assertIn("disk /srv/pinka: 200G  1.0T", out)
         self.assertIn("last backup: never", out)
+        self.assertIn("platform: none", out)
         system._euid = 1000
         _, _, err = captured(lambda: commands.status(system, lab()))
         self.assertIn("sudo pinka status", err)
+
+    def test_status_shows_the_platform_and_its_health(self) -> None:
+        answers = [
+            ((0, {"platform": "demo", "ok": True}), "  health: healthy"),
+            (
+                (0, {"platform": "demo", "ok": True, "skipped": True}),
+                "  health: the platform has no health hook",
+            ),
+            (
+                (1, {"platform": "demo", "ok": False, "error": "db down"}),
+                "  health: unhealthy (db down)",
+            ),
+        ]
+        for answer, line in answers:
+            system = FakeSystem(
+                {"systemctl is-active *": (0, "active\n"), f"{TOOL} hook health": answer},
+                files={commands.ACTIVE_PLATFORM: ACTIVE},
+            )
+            _, out, _ = captured(functools.partial(commands.status, system, lab()))
+            self.assertIn("platform: demo 1.2.0 (release demo-v1.2.0-0123456789ab)", out)
+            self.assertRegex(out, r"pinka-platform\.target\s+active")
+            self.assertIn(line + "\n", out)
+        user = FakeSystem(files={commands.ACTIVE_PLATFORM: ACTIVE}, euid=1000)
+        _, out, _ = captured(lambda: commands.status(user, lab()))
+        self.assertIn("health: needs root", out)
+        self.assertFalse([c for c in user.calls if c[0] == TOOL])
 
 
 class BackupTest(unittest.TestCase):
@@ -349,7 +434,9 @@ class WslUpdateTest(unittest.TestCase):
 
 
 class DocsTest(unittest.TestCase):
-    SITE = "/usr/local/share/pinka/docs"
+    BASE = "/usr/local/share/pinka/docs"
+    # §7.19: the service serves the release the current link names.
+    SITE = f"{BASE}/current"
 
     def test_serve_from_the_lab_description(self) -> None:
         system = FakeSystem(files={f"{self.SITE}/index.html": "<html></html>"})
@@ -374,6 +461,36 @@ class DocsTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(CommandError, "cannot listen on 127.0.0.1:18706"):
             captured(lambda: commands.docs_serve(busy, lab(), None, None))
+
+    def test_install_and_rollback(self) -> None:
+        system = FakeSystem({"systemctl is-enabled pinka-docs.service": (0, "enabled\n")})
+        code, out, _ = captured(
+            lambda: commands.docs_install(
+                system, lab(), "/tmp/pinka-docs-v1.tar.gz", "a" * 64, None
+            )
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("installed pinka-docs-v1", out)
+        self.assertEqual(
+            system.docs_calls[0],
+            ("install", self.BASE, "/tmp/pinka-docs-v1.tar.gz", "a" * 64, None),
+        )
+        # A service that found nothing to serve at boot starts now.
+        self.assertIn(["systemctl", "restart", "pinka-docs.service"], system.calls)
+        captured(lambda: commands.docs_install(system, lab(), "/tmp/v2.tgz", "b" * 64, "v2"))
+        code, out, _ = captured(lambda: commands.docs_rollback(system, lab()))
+        self.assertEqual(code, 0)
+        self.assertIn("switched from v2 back to pinka-docs-v1", out)
+
+    def test_install_needs_root_and_reports_refusals(self) -> None:
+        with self.assertRaisesRegex(CommandError, "root"):
+            commands.docs_install(FakeSystem(euid=1000), lab(), "/tmp/x.tgz", "a" * 64, None)
+        with self.assertRaisesRegex(CommandError, "root"):
+            commands.docs_rollback(FakeSystem(euid=1000), lab())
+        refused = FakeSystem()
+        refused.docs_error = docs_store.DocsError("checksum mismatch")
+        with self.assertRaisesRegex(CommandError, "checksum mismatch"):
+            commands.docs_install(refused, lab(), "/tmp/x.tgz", "a" * 64, None)
 
 
 if __name__ == "__main__":

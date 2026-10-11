@@ -11,6 +11,8 @@ doctor_telemetry_wait: 60
 doctor_smoke_wait: 120
 # Seconds `pinka stop` and `update-host` give the platform's drain hook.
 doctor_drain_timeout: 1800
+# Seconds `pinka start` waits for the platform's health hook to answer ok.
+doctor_health_wait: 300
 # Processes that may listen outside loopback: sshd (firewalled), Tailscale,
 # Incus's DNS and DHCP server on its bridges, DHCP clients and time daemons.
 doctor_listener_processes: [sshd, tailscaled, dnsmasq, systemd-network, dhclient, NetworkManager, chronyd]

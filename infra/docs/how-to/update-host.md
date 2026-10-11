@@ -22,7 +22,7 @@ prints how the [environment fingerprint](../reproducibility.md) changed.
     - A lab host provisioned by bootstrap, with the checkout bootstrap runs
       from.
     - An admin account on the host (member of `pinka-admin`).
-    - A time when the lab may stop: running benchmark runs are drained first.
+    - A time when the lab may stop: the platform's `drain` hook runs first.
     - On a WSL host, Windows itself is updated separately; this page covers the
       Linux side only.
 
@@ -38,7 +38,8 @@ prints how the [environment fingerprint](../reproducibility.md) changed.
     It asks for confirmation (`--yes` skips the question), then:
 
     1. records the current fingerprint;
-    2. drains the orchestrator and stops `pinka-lab.target`, as in
+    2. runs the platform's `drain` hook and stops `pinka-platform.target`
+       and `pinka-lab.target`, as in
        [How to start, stop and drain the lab](start-stop-drain.md);
     3. updates the packages with the family's package manager; held packages
        stay at their pinned versions:

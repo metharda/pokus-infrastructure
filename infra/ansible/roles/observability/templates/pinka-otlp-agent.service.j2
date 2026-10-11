@@ -1,0 +1,40 @@
+# Managed by pinka (ansible/roles/observability/templates/pinka-otlp-agent.service.j2). Local changes will be overwritten.
+#
+# The small proxy behind the agent OTLP socket (BUILD_PROMPT §7.9): systemd's
+# socket proxy forwards each connection to the collector's receiver
+# otlp/agent on loopback. It runs as a dynamic user outside the platform's
+# UID range, with nothing but loopback access.
+[Unit]
+Description=pinka agent OTLP forwarder to the collector
+Requires=pinka-otlp-agent.socket
+After=pinka-otlp-agent.socket pinka-observability.service
+PartOf=pinka-lab.target
+
+[Service]
+ExecStart={{ observability_socket_proxyd }} --exit-idle-time=300 127.0.0.1:{{ pinka_internal_ports.otlp_agent }}
+Slice={{ pinka_services_slice }}
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=128M
+TasksMax=64

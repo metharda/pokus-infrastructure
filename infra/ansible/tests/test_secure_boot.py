@@ -91,6 +91,7 @@ def gate_argv(profile: dict[str, Any], mode: str) -> list[str]:
         "pinka_bootstrap": {},
         "install_nvidia_driver": mode,
         "host_profile": profile,
+        "pinka_preflight_args": ["--port=grafana=18750", "--vm-collector-address", "198.18.0.1"],
     }
     argv: list[str] = evaluate(expression(run["ansible.builtin.command"]["argv"]), variables)
     return argv
@@ -103,6 +104,8 @@ def test_the_gate_runs_preflight_with_bootstraps_choices() -> None:
     plain = gate_argv(fixture_profile("ubuntu2404-baremetal-no-gpu"), "manual")
     assert plain[plain.index("--nvidia-driver") + 1] == "manual"
     assert "--accept-mok-enrollment" not in plain
+    # The machine's port overrides and VM collector address, as bootstrap passes them.
+    assert plain[-3:] == ["--port=grafana=18750", "--vm-collector-address", "198.18.0.1"]
 
 
 def test_the_gate_stops_when_the_driver_setting_differs() -> None:
