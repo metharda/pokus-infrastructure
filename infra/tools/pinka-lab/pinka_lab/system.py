@@ -189,6 +189,14 @@ class System:
         """Groups of a user including the primary group, or None if it does not exist."""
         raise NotImplementedError
 
+    def uid_of(self, user: str) -> int | None:
+        """The UID of a user, or None if it does not exist."""
+        raise NotImplementedError
+
+    def readlink(self, path: str) -> str | None:
+        """The target of a symbolic link as written, or None if it is not a link."""
+        raise NotImplementedError
+
     def remove(self, path: str) -> None:
         """Remove a file; a missing file is not an error."""
         raise NotImplementedError
@@ -372,6 +380,18 @@ class RealSystem(System):
         with contextlib.suppress(KeyError):
             groups.add(grp.getgrgid(entry.pw_gid).gr_name)
         return sorted(groups)
+
+    def uid_of(self, user: str) -> int | None:  # noqa: D102
+        try:
+            return pwd.getpwnam(user).pw_uid
+        except KeyError:
+            return None
+
+    def readlink(self, path: str) -> str | None:  # noqa: D102
+        try:
+            return os.readlink(path)
+        except OSError:
+            return None
 
     def remove(self, path: str) -> None:  # noqa: D102
         with contextlib.suppress(FileNotFoundError):

@@ -280,7 +280,7 @@ def test_compose_services_bind_loopback() -> None:
         "./config/otel:/etc/otelcol:ro",
         "/etc/pinka/secrets/containers/otel-pairing:/etc/pinka-pairing:ro",
     ]
-    assert gateway["user"] == "10001:10001"
+    assert gateway["user"] == "${OTELCOL_UID:?}:${OTELCOL_GID:?}"
     stores = {
         name
         for name, service in compose["services"].items()
@@ -407,11 +407,37 @@ def test_stores_by_node_role() -> None:
     assert evaluate("observability_vm_listener", obs_vars(vm=True, node_role="inference")) is False
     assert evaluate("observability_vm_listener", obs_vars(vm=True, node_role="lab")) is True
     compose = load_yaml(INFRA / "compose/observability/compose.yml")
-    uid = evaluate("observability_gateway_uid", obs_vars())
-    assert compose["services"]["otel_gateway"]["user"] == f"{uid}:{uid}"
+    assert evaluate("observability_gateway_account", obs_vars()) == "pinka-otelcol"
     assert evaluate("observability_pairing_dir", obs_vars()).endswith(
         compose["services"]["otel_gateway"]["volumes"][1].split(":")[0].rsplit("/", 1)[1]
     )
+
+
+def test_the_stores_run_as_infra_accounts() -> None:
+    # ADR-0016 as decided with the "commit" for 3d.4: the telemetry guard
+    # names exactly infra's accounts, so no container that reaches the stores
+    # runs as its image's default user (nobody, 10001, 472).
+    compose = load_yaml(INFRA / "compose/observability/compose.yml")["services"]
+    variables = obs_vars()
+    accounts = evaluate("observability_container_accounts", variables)
+    infra = {a["name"] for a in evaluate("infra_accounts", variables)}
+    clients = {c["account"] for c in evaluate("pinka_telemetry_clients", variables)}
+    assert set(accounts.values()) <= infra
+    assert set(accounts.values()) == clients - {"root"}
+    for service, account in accounts.items():
+        user = compose[service]["user"]
+        assert re.match(r"^\$\{[A-Z_]+_UID:\?\}:", user), service
+        assert account in infra, service
+    assert compose["grafana"]["user"] == "${GRAFANA_UID:?}:0"
+    dirs = {d["name"]: d for d in evaluate("observability_state_dirs", variables)}
+    assert {dirs[n]["container"] for n in ("prometheus", "loki", "tempo", "grafana")} == {
+        "prometheus",
+        "loki",
+        "tempo",
+        "grafana",
+    }
+    secrets = (ROLES / "observability" / "tasks" / "secrets.yml").read_text(encoding="utf-8")
+    assert '"472"' not in secrets and '"65534"' not in secrets
 
 
 # --- the agent OTLP socket and the query proxy (§7.9) ------------------------------------

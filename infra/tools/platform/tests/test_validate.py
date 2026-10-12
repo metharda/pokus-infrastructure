@@ -202,6 +202,45 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
     ("service and job share a name", "refplat", _set("jobs.0.name", "ctl"), "duplicate-name"),
     ("duplicate content package", "allprof", _set("content.1.name", "cases"), "duplicate-name"),
     ("agent secrets", "refplat", _set("services.1.secrets", ["key"]), "secrets-forbidden"),
+    # V6: the agent's own package (owner decision with the "commit" for 3d.4).
+    ("agent without its package", "refplat", _drop("services.1.package"), "agent-package-missing"),
+    (
+        "package of a service that is not the agent",
+        "refplat",
+        _set("services.0.package", "packages/refplat-ctl/"),
+        "package-not-agent",
+    ),
+    (
+        "agent package in the shared environment",
+        "refplat",
+        _set("services.1.package", ".venv/lib"),
+        "agent-package-reserved",
+    ),
+    (
+        "agent package in the agents' environments",
+        "refplat",
+        _set("services.1.package", ".agent-venvs/agent"),
+        "agent-package-reserved",
+    ),
+    ("agent package outside the release", "refplat", _set("services.1.package", "../x"), "schema"),
+    (
+        "agent starting outside its package (python-uv)",
+        "refplat",
+        _set("services.1.start", ["bin/refplat-agent"]),
+        "agent-start-outside",
+    ),
+    (
+        "agent starting outside its package (static)",
+        "allprof",
+        _set("services.6.start", ["bin/agt"]),
+        "agent-start-outside",
+    ),
+    (
+        "static agent starting below .venv",
+        "allprof",
+        _set("services.6.start", [".venv/bin/agt"]),
+        "agent-start-outside",
+    ),
     (
         "agent relaxation",
         "refplat",

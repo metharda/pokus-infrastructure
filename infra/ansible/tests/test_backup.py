@@ -511,28 +511,56 @@ def test_restore_drains_first_and_starts_the_platform_last() -> None:
     assert drain["ansible.builtin.include_role"] == {"name": "platform", "tasks_from": "stop"}
 
 
+def test_restore_checks_the_recorded_platform_before_it_changes_anything() -> None:
+    # Owner decision with the "commit" for 3d.4: a commit the mirror lost, a
+    # moved tag or another tree refuses the restore before the drain.
+    plays = load_yaml(ANSIBLE / "restore.yml")
+    top = [t["name"] for play in plays for t in play.get("tasks", [])]
+    assert top.index("Check the platform the snapshot records") < top.index("Restore the snapshot")
+    check = play_task(ANSIBLE / "restore.yml", "Check the platform the snapshot records")
+    steps = {t["name"]: t for t in check["block"]}
+    include = steps["Check that the recorded commits and trees can be deployed"]
+    assert include["ansible.builtin.include_role"] == {"name": "platform", "tasks_from": "check"}
+    assert include["vars"]["platform"] == "{{ restore_platform }}"
+    tasks = load_yaml(ROLES / "platform" / "tasks" / "check.yml")
+    run = next(t for t in tasks if "ansible.builtin.command" in t)
+    assert run["ansible.builtin.command"]["argv"][-1] == "--inspect"
+    signal = next(t for t in tasks if t.get("ansible.builtin.include_role"))
+    assert signal["vars"]["bootstrap_signal_code"] == 65
+
+
 @pytest.mark.parametrize(
-    ("release", "ref"),
+    ("release", "signed", "ref"),
     [
-        ({"tag": "v1.2.0", "commit": "a" * 40}, "v1.2.0"),
-        ({"tag": None, "commit": "a" * 40}, "a" * 40),
+        # Exactly the recorded commit and tree (owner decision with the "commit"
+        # for 3d.4); the recorded tag only where signed tags are required.
+        ({"tag": "v1.2.0", "commit": "a" * 40, "tree": "c" * 40}, False, "a" * 40),
+        ({"tag": None, "commit": "a" * 40, "tree": "c" * 40}, False, "a" * 40),
+        ({"tag": "v1.2.0", "commit": "a" * 40, "tree": "c" * 40}, True, "v1.2.0"),
+        ({"tag": None, "commit": "a" * 40, "tree": "c" * 40}, True, "a" * 40),
     ],
 )
-def test_restore_pins_the_recorded_release(release: dict[str, Any], ref: str) -> None:
-    task = play_task(ANSIBLE / "restore.yml", "Pin the platform source to the recorded release")
+def test_restore_pins_the_recorded_commit_and_tree(
+    release: dict[str, Any], signed: bool, ref: str
+) -> None:
+    task = play_task(
+        ANSIBLE / "restore.yml", "Pin the platform source to the recorded commit and tree"
+    )
     source = {"repo": "https://example.com/platform.git", "ref": "main", "path": "platform"}
     pinned = evaluate(
         task["ansible.builtin.set_fact"]["restore_platform"].strip()[2:-2],
-        {"platform": source, "restore_record": {"release": release}},
+        {"platform": source, "restore_record": {"release": release}, "require_signed_tags": signed},
     )
-    assert pinned == {**source, "ref": ref}
+    assert pinned == {**source, "ref": ref, "commit": "a" * 40, "tree": "c" * 40}
 
 
 def test_restore_pins_the_recorded_content() -> None:
-    task = play_task(ANSIBLE / "restore.yml", "Pin the content sources to the recorded refs")
+    task = play_task(
+        ANSIBLE / "restore.yml", "Pin the content sources to the recorded commits and trees"
+    )
     expression = task["ansible.builtin.set_fact"]["restore_content"].strip()[2:-2]
     recorded_expr = task["vars"]["restore_recorded"].strip()[2:-2]
-    record = {"content": {"cases": {"tag": None, "commit": "b" * 40}}}
+    record = {"content": {"cases": {"tag": "cases-v1", "commit": "b" * 40, "tree": "d" * 40}}}
     content: dict[str, Any] = {}
     for key, value in {
         "cases": {"repo": "https://example.com/c.git", "ref": "main"},
@@ -542,10 +570,20 @@ def test_restore_pins_the_recorded_content() -> None:
         recorded = evaluate(recorded_expr, {"restore_record": record, "item": item})
         content = evaluate(
             expression,
-            {"restore_content": content, "item": item, "restore_recorded": recorded},
+            {
+                "restore_content": content,
+                "item": item,
+                "restore_recorded": recorded,
+                "require_signed_tags": False,
+            },
         )
-    assert content["cases"]["ref"] == "b" * 40
-    assert content["extra"]["ref"] == "v2"  # not recorded: the host_vars ref stays
+    assert content["cases"] == {
+        "repo": "https://example.com/c.git",
+        "ref": "b" * 40,
+        "commit": "b" * 40,
+        "tree": "d" * 40,
+    }
+    assert content["extra"] == {"repo": "https://example.com/e.git", "ref": "v2"}  # not recorded
 
 
 def test_rotation_revokes_the_replaced_certificates() -> None:

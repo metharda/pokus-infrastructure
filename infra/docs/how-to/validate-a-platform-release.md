@@ -66,15 +66,24 @@ Run the same check on your release before you tag it.
     [Platform privilege profiles](../reference/platform-profiles.md) what
     each profile may do and who may use whose sockets.
 
-3. After `uv sync --frozen` in the release (runtime `python-uv`), check
-   again with `--built`: the commands below `.venv/` must exist then.
+3. With runtime `python-uv`, build the release as the deployment does and
+   check again with `--built`: the commands below `.venv/` must exist then,
+   and the agent's own environment may hold only its package and its locked
+   dependencies.
 
     <!-- qa:run env=E0 -->
     ```bash
+    cd <release>
+    uv sync --frozen --all-packages --no-dev --no-editable
+    UV_PROJECT_ENVIRONMENT=.agent-venvs/<service> uv sync --frozen --package <package> --no-dev --no-editable
+    cd <checkout>/infra
     PYTHONPATH=tools/platform .venv/bin/python -m pinka_platform validate <release> --no-host-check --built
     ```
 
-    `<release>` is the same release directory as in step 1.
+    `<release>` and `<checkout>` are the directories of step 1,
+    `<service>` the name of your `untrusted-agent` service and `<package>`
+    the project name of its package. The release you tag never contains
+    `.venv` or `.agent-venvs`: the deployment builds both.
 
 ## Prepare for the deployment
 
@@ -94,19 +103,42 @@ Run the same check on your release before you tag it.
     the backend must come from `uv.lock`. Every locked dependency must
     therefore be available as a wheel.
 
-2. Let your services take their sockets from systemd instead of creating
+2. Give your `untrusted-agent` service a package of its own and name its
+   directory in the manifest:
+
+    <!-- qa:skip reason="example of a manifest entry" -->
+    ```yaml
+    - name: agent
+      profile: untrusted-agent
+      package: packages/<agent-package>/
+      start: [.venv/bin/<agent-command>]
+    ```
+
+    `<agent-package>` is the directory of the agent's workspace member and
+    `<agent-command>` its console script. Of the release, the agent sees only
+    this directory and an environment of its own that the deployment builds
+    from it, with only that package and its locked dependencies; `.venv/` in
+    its start command means that environment. Every dependency of the agent
+    package must come from a package index: a dependency on another package
+    of your release, also through other packages, or on a path, Git or URL
+    source is refused, because it would put code the agent must not see into
+    its environment. Move what the agent needs from shared packages into its
+    own package. With runtime `static`, `package` is the directory the agent
+    runs from, and its start command lies inside it.
+
+3. Let your services take their sockets from systemd instead of creating
    them. Infra creates every socket of the manifest with its owner, group,
    mode and ACL and passes it to the serving service by socket activation:
    the file descriptors start at 3, `LISTEN_FDS` gives their number and
    `LISTEN_FDNAMES` their socket names from the manifest.
 
-3. Keep each service's configuration schema (`config`) to the JSON Schema
+4. Keep each service's configuration schema (`config`) to the JSON Schema
    keywords of the manifest schema plus annotations (`$comment`,
    `default`, `examples`, `format`, `deprecated`, `readOnly`,
    `writeOnly`); a schema with another keyword is refused, because infra
    would not check it.
 
-4. Keep a policy bundle (`policy.bundle`) out of OPA's own namespaces: no
+5. Keep a policy bundle (`policy.bundle`) out of OPA's own namespaces: no
    module may declare a package below `system` or `pinka`, and no data file
    may sit below a `system/` or `pinka/` directory or put those keys at the
    top of `data`.

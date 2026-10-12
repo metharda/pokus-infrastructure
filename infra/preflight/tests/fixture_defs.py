@@ -400,9 +400,16 @@ OLD_DRIVER = ("570.172.08", "12.8")
 OLD_WINDOWS_DRIVER = ("566.36", "12.7")
 
 
-def nvsmi_query(driver: str) -> str:
-    """``nvidia-smi --query-gpu`` output of an RTX 4070 with the given driver."""
-    return f"NVIDIA GeForce RTX 4070, 12282 MiB, {driver}, 8.9\n"
+# GPUs as ``nvidia-smi --query-gpu`` names them: name, memory, compute capability.
+RTX_4070 = ("NVIDIA GeForce RTX 4070", "12282 MiB", "8.9")
+# Compute capability 7.0: below the pinned vLLM image's kernels (V7).
+TITAN_V = ("NVIDIA TITAN V", "12288 MiB", "7.0")
+
+
+def nvsmi_query(driver: str, gpu: tuple[str, str, str] = RTX_4070) -> str:
+    """``nvidia-smi --query-gpu`` output of a GPU (an RTX 4070) with the given driver."""
+    name, memory, capability = gpu
+    return f"{name}, {memory}, {driver}, {capability}\n"
 
 
 def nvsmi_version(driver: str, cuda: str) -> str:
@@ -419,6 +426,7 @@ def nvidia_pci(
     driver: str = "loaded",
     device: str = "0000:01:00.0",
     version: tuple[str, str] = CURRENT_DRIVER,
+    gpu: tuple[str, str, str] = RTX_4070,
 ) -> Layer:
     """An NVIDIA GPU on the PCI bus with the given driver state and version."""
 
@@ -430,7 +438,7 @@ def nvidia_pci(
                 f"NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  {version[0]}\n"
             )
             f.data.setdefault("which", {})["nvidia-smi"] = "/usr/bin/nvidia-smi"
-            f.cmd(f"nvidia-smi {QUERY_GPU}", nvsmi_query(version[0]))
+            f.cmd(f"nvidia-smi {QUERY_GPU}", nvsmi_query(version[0], gpu))
             f.cmd("nvidia-smi --version", nvsmi_version(*version))
             f.cmd("modinfo nvidia", "filename: /lib/modules/x/nvidia.ko\n")
         elif driver == "installed":
@@ -583,6 +591,23 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "remediation_contains": [
                 "supports CUDA 12.8, the pinned vLLM image needs 13.0",
                 "install a driver branch that supports CUDA 13.0",
+            ],
+        },
+    )
+    # V7: compute capability 7.5 at least; no override enables GPU inference below.
+    fx["ubuntu2404-baremetal-nvidia-compute-7-0"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded", gpu=TITAN_V),
+        expected={
+            "outcome": "degraded",
+            "provider": "baremetal",
+            "disabled": ["gpu_inference"],
+            "features": {"gpu_inference": False, "dcgm_metrics": True, "vm_targets": True},
+            "remediation_contains": [
+                "compute capability is 7.0, below 7.5",
+                "GPU inference is refused on this GPU",
             ],
         },
     )

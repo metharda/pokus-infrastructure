@@ -1,7 +1,32 @@
 # Managed by pinka (ansible/roles/firewall/tasks/telemetry_guard.yml). Local changes will be overwritten.
 #
-# The telemetry guard (BUILD_PROMPT §7.9 option b, ADR-0016) on every backend:
-# its own nftables table, loaded by its own unit before the network comes up.
+# The telemetry guard (BUILD_PROMPT §7.9, ADR-0016) on every backend: its own
+# nftables table, loaded by its own unit before the network comes up. Only the
+# accounts of pinka_telemetry_clients reach the stores on the loopback; the
+# users_groups role created them before this role runs.
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Find the UIDs of the telemetry clients
+  ansible.builtin.set_fact:
+    firewall_telemetry_client_uids: >-
+      {{ pinka_telemetry_clients | map(attribute='account')
+         | map('extract', ansible_facts.getent_passwd) | select('defined')
+         | map(attribute=1) | map('int') | unique | sort }}
+    firewall_telemetry_clients_missing: >-
+      {{ pinka_telemetry_clients | map(attribute='account')
+         | reject('in', ansible_facts.getent_passwd) | list }}
+
+- name: Check that every telemetry client exists
+  ansible.builtin.assert:
+    that: firewall_telemetry_clients_missing | length == 0
+    fail_msg: >-
+      The telemetry clients {{ firewall_telemetry_clients_missing | join(', ') }} do not exist;
+      run bootstrap again (the users_groups role creates them).
+    quiet: true
+  when: not ansible_check_mode
+
 - name: Create the directory of pinka's nftables files
   ansible.builtin.file:
     path: /etc/pinka/nftables

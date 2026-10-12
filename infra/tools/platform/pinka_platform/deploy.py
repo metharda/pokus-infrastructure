@@ -49,6 +49,7 @@ from typing import Any
 
 from pinka_platform import (
     accounts,
+    agentpkg,
     config,
     database,
     mirror,
@@ -94,7 +95,7 @@ BUILD_HIDDEN = (
 )
 UV = "/opt/pinka/bin/uv"
 PYTHON = "/opt/pinka/python/bin/python3"
-UV_SYNC = ("sync", "--frozen", "--all-packages", "--no-dev", "--no-editable")
+UV_SYNC = ("sync", "--frozen", "--no-dev", "--no-editable")
 # Phase 1 of the build (network): only the locked third-party wheels, checked
 # against the hashes in uv.lock; nothing is built and no interpreter starts on
 # the new environment (no bytecode compilation: a wheel's .pth file would run
@@ -104,6 +105,10 @@ UV_FETCH = ("--no-install-project", "--no-install-workspace", "--no-build")
 # backend that phase 1 installed from the "build" dependency group, then
 # compile the whole environment's bytecode.
 UV_BUILD = ("--offline", "--no-build-isolation", "--compile-bytecode")
+# The agent's own environment (V6): only its package and its locked
+# dependencies, built offline like phase 2 from the wheels phase 1 fetched;
+# a last pass without the build group removes the build backend again.
+UV_AGENT_PRUNE = ("--offline", "--no-build")
 POSTGRES_CONTAINER = "pinka-postgres"
 PSQL_SCRIPT = (
     'PGPASSWORD="$(cat /run/secrets/postgres-superuser)" exec psql --no-psqlrc '
@@ -370,6 +375,27 @@ def _signature(
     return signed
 
 
+def _check_pins(source: sources.Source, resolved: mirror.Resolved) -> None:
+    """Refuse a source whose ref no longer resolves to its pinned commit and tree.
+
+    Raises:
+        mirror.SourceError: The commit or the tree differs.
+    """
+    if source.commit and resolved.commit != source.commit:
+        raise mirror.SourceError(
+            "source-commit",
+            f"{source.ref!r} resolves to {resolved.commit}, not the recorded commit "
+            f"{source.commit}",
+        )
+    if source.tree and resolved.tree != source.tree:
+        where = source.path or "the repository root"
+        raise mirror.SourceError(
+            "source-tree",
+            f"{where} at {resolved.commit} has the tree {resolved.tree}, not the recorded "
+            f"tree {source.tree}",
+        )
+
+
 def _fetch_all(
     git: mirror.Git, paths: Paths, all_sources: Sequence[sources.Source], settings: Settings
 ) -> dict[str, Path]:
@@ -568,6 +594,7 @@ def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
                 resolved = mirror.resolve(
                     git, mirror_dir, source.ref, source.path, source.tag_prefix
                 )
+                _check_pins(source, resolved)
                 signed = _signature(git, mirror_dir, source, resolved, settings)
                 target.mkdir(parents=True)
                 mirror.extract(mirror_dir, resolved.commit, source.path, target)
@@ -706,24 +733,24 @@ def load_plan(run: Path) -> dict[str, Any]:
 # --- build (step 5) ------------------------------------------------------------
 
 
-def _entries(top: Path, skip: str) -> Iterator[tuple[str, Path]]:
+def _entries(top: Path, skip: Sequence[str]) -> Iterator[tuple[str, Path]]:
     for directory, dirs, found in os.walk(top):
         here = Path(directory)
         files = found
         if here == top:
-            dirs[:] = [d for d in dirs if d != skip]
-            files = [f for f in found if f != skip]
+            dirs[:] = [d for d in dirs if d not in skip]
+            files = [f for f in found if f not in skip]
         for name in dirs + files:
             path = here / name
             yield str(path.relative_to(top)), path
 
 
-def snapshot(top: Path, skip: str = ".venv") -> dict[str, str]:
-    """What the release holds outside the built environment: type, mode and content.
+def snapshot(top: Path, skip: Sequence[str] = release.BUILT_ENTRIES) -> dict[str, str]:
+    """What the release holds outside the built environments: type, mode and content.
 
     Args:
         top: The release.
-        skip: The top-level entry the build creates.
+        skip: The top-level entries the build creates.
 
     Returns:
         Relative path to a description that changes with the entry.
@@ -741,9 +768,14 @@ def snapshot(top: Path, skip: str = ".venv") -> dict[str, str]:
 
 
 def sandbox_commands(
-    plan: Mapping[str, Any], paths: Paths, owners: Owners, *, build_group: bool
-) -> list[list[str]]:
-    """The two ``systemd-run`` commands of a ``python-uv`` build (§7.14 step 5).
+    plan: Mapping[str, Any],
+    paths: Paths,
+    owners: Owners,
+    *,
+    build_group: bool,
+    agents: Sequence[tuple[str, str]] = (),
+) -> list[tuple[str, list[str]]]:
+    """The ``systemd-run`` commands of a ``python-uv`` build (§7.14 step 5).
 
     Phase 1 (``fetch``) may use the network and installs only the locked
     third-party wheels, checked against ``uv.lock``; it builds and compiles
@@ -754,14 +786,21 @@ def sandbox_commands(
     (script shebangs, ``pyvenv.cfg``) are right after publishing. Both phases
     may write only the release and the uv cache.
 
+    Then, for each agent with its own package (V6), ``agent-<service>`` builds
+    its environment below ``.agent-venvs/`` the same way, offline, with only
+    that package and its locked dependencies; with a build group,
+    ``agent-<service>-prune`` syncs it again without the group, which removes
+    the build backend.
+
     Args:
         plan: The deployment plan.
         paths: Host paths.
         owners: Owners (the build account).
         build_group: The release has a ``build`` dependency group.
+        agents: ``(service, distribution)`` of each agent package.
 
     Returns:
-        The commands, in order.
+        ``(phase, command)`` in order.
     """
     staged = Path(plan["run_dir"]) / "release"
     final = plan["release"]["target"]
@@ -796,13 +835,22 @@ def sandbox_commands(
         "Environment=UV_NO_CONFIG=1",
         "Environment=HOME=/tmp",
     ]
+    offline = ["PrivateNetwork=yes", "Environment=UV_OFFLINE=1"]
     group = ["--group", release.BUILD_GROUP] if build_group else []
+    phases: list[tuple[str, list[str], list[str]]] = [
+        ("fetch", [], ["--all-packages", *UV_FETCH, *group]),
+        ("build", offline, ["--all-packages", *UV_BUILD, *group]),
+    ]
+    for service, dist in agents:
+        env = [f"Environment=UV_PROJECT_ENVIRONMENT={final}/{agentpkg.env_dir(service)}"]
+        phases.append((f"agent-{service}", offline + env, ["--package", dist, *UV_BUILD, *group]))
+        if build_group:
+            phases.append(
+                (f"agent-{service}-prune", offline + env, ["--package", dist, *UV_AGENT_PRUNE])
+            )
     unit = f"pinka-platform-build-{plan['run'].removeprefix('run-').lower()}"
     commands = []
-    for phase, extra_properties, extra_args in (
-        ("fetch", [], UV_FETCH),
-        ("build", ["PrivateNetwork=yes", "Environment=UV_OFFLINE=1"], UV_BUILD),
-    ):
+    for phase, extra_properties, extra_args in phases:
         argv = [
             "systemd-run",
             "--quiet",
@@ -814,8 +862,30 @@ def sandbox_commands(
         ]
         for prop in [*properties, *extra_properties]:
             argv += ["--property", prop]
-        commands.append([*argv, "--", UV, *UV_SYNC, *extra_args, *group, "--python", PYTHON])
+        commands.append((phase, [*argv, "--", UV, *UV_SYNC, *extra_args, "--python", PYTHON]))
     return commands
+
+
+def agent_packages(staged: Path, max_bytes: int) -> list[tuple[str, str]]:
+    """``(service, distribution)`` of each agent with its own package (V6).
+
+    Args:
+        staged: The staged release (its manifest passed validation).
+        max_bytes: The manifest size cap.
+
+    Returns:
+        The agents; a package without a readable project name is skipped
+        (validation refused it already).
+    """
+    manifest = load_file(staged / MANIFEST_NAME, max_bytes)
+    found = []
+    for service in manifest["services"]:
+        if "package" not in service:
+            continue
+        dist = agentpkg.distribution(staged, agentpkg.package_dir(service))
+        if dist is not None:
+            found.append((str(service["name"]), dist))
+    return found
 
 
 def _has_build_group(staged: Path) -> bool:
@@ -829,7 +899,7 @@ def _has_build_group(staged: Path) -> bool:
 
 def _chown_tree(top: Path, uid: int, gid: int) -> None:
     os.lchown(top, uid, gid)
-    for _, path in _entries(top, ""):
+    for _, path in _entries(top, ()):
         os.lchown(path, uid, gid)
 
 
@@ -861,16 +931,15 @@ def build(
     staged = Path(plan["run_dir"]) / "release"
     final = Path(plan["release"]["target"])
     before = snapshot(staged)
+    agents = agent_packages(staged, int(contract.caps["manifest_bytes"]))
     paths.uv_cache.mkdir(parents=True, exist_ok=True)
     build_uid, build_gid = owners.uid(owners.build_user), owners.gid(owners.build_group)
     _chown_tree(staged, build_uid, build_gid)
     created_mount_point = not final.exists()
     final.mkdir(parents=True, exist_ok=True)  # the bind mount's target
     try:
-        for phase, command in zip(
-            ("fetch", "build"),
-            sandbox_commands(plan, paths, owners, build_group=_has_build_group(staged)),
-            strict=True,
+        for phase, command in sandbox_commands(
+            plan, paths, owners, build_group=_has_build_group(staged), agents=agents
         ):
             done = runner(command)
             if done.returncode != 0:
@@ -982,7 +1051,7 @@ def _normalize(top: Path, uid: int, gid: int, dir_mode: int, file_mode: int) -> 
     exec_bits = dir_mode & 0o111
     _chown_tree(top, uid, gid)
     top.chmod(dir_mode)
-    for _, path in _entries(top, ""):
+    for _, path in _entries(top, ()):
         info = path.lstat()
         if stat.S_ISLNK(info.st_mode):
             continue

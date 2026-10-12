@@ -79,7 +79,10 @@ NVIDIA_DRIVER_MODES = ("auto", "manual", "skip")
 # The operator's choices when none are given: bootstrap's defaults.
 DEFAULT_CHOICES: dict[str, Any] = {"nvidia_driver_mode": "auto", "mok_enrollment_accepted": False}
 # The fact a requirement with a remediation compares ({actual} of its text).
-REMEDIATION_FACTS = {"driver_cuda_min": "gpu_driver_cuda"}
+REMEDIATION_FACTS = {
+    "driver_cuda_min": "gpu_driver_cuda",
+    "gpu_compute_capability_min": "gpu_compute_capability",
+}
 
 
 @dataclass

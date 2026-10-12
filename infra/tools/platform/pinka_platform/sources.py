@@ -4,6 +4,11 @@ The host settings name one source for the release (``platform``) and one per
 content package (``content``), each ``{repo, ref, path, tag_prefix}``. The
 transports are SSH with pinned host keys, anonymous HTTPS and root-owned
 ``file://`` repositories; a URL with credentials is refused.
+
+A source may also pin what its ref must resolve to: ``commit`` and ``tree``
+(full IDs). A restore sets both from the snapshot's record, so it deploys
+exactly the recorded commit and tree or nothing (owner decision with the
+"commit" for 3d.4).
 """
 
 from __future__ import annotations
@@ -20,7 +25,8 @@ from typing import Any
 from pinka_platform import checks
 from pinka_platform.problems import Problem
 
-KEYS = frozenset({"repo", "ref", "path", "tag_prefix"})
+KEYS = frozenset({"repo", "ref", "path", "tag_prefix", "commit", "tree"})
+OBJECT_RE = re.compile(r"^[0-9a-f]{40}$")
 REQUIRED_KEYS = ("repo", "ref")
 SSH_URL_RE = re.compile(r"^ssh://(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9.-]+(?::[0-9]{1,5})?/\S+$")
 SCP_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/\s]\S*$")
@@ -42,6 +48,8 @@ class Source:
         ref: Tag, branch or full commit to deploy.
         path: Subdirectory in the repository, normalized ("" is the root).
         tag_prefix: Prefix of this source's release tags ("" for any tag).
+        commit: The commit the ref must resolve to, or None.
+        tree: The tree the path must have at that commit, or None.
     """
 
     package: str | None
@@ -49,6 +57,8 @@ class Source:
     ref: str
     path: str
     tag_prefix: str
+    commit: str | None = None
+    tree: str | None = None
 
     @property
     def label(self) -> str:
@@ -62,12 +72,14 @@ class Source:
 
     def as_dict(self) -> dict[str, Any]:
         """The source as JSON-compatible data."""
-        return {
+        data: dict[str, Any] = {
             "repo": self.repo,
             "ref": self.ref,
             "path": self.path,
             "tag_prefix": self.tag_prefix,
         }
+        data.update({k: v for k, v in (("commit", self.commit), ("tree", self.tree)) if v})
+        return data
 
 
 def transport(repo: str) -> str | None:
@@ -143,9 +155,18 @@ def _source(package: str | None, where: str, raw: Any) -> tuple[Source | None, l
         problems.append(
             Problem("source-setting", f"{where}.tag_prefix", f"not a tag prefix: {tag_prefix!r}")
         )
+    pins = {key: raw.get(key) for key in ("commit", "tree") if raw.get(key) is not None}
+    for key, value in pins.items():
+        if not isinstance(value, str) or not OBJECT_RE.match(value):
+            problems.append(
+                Problem("source-setting", f"{where}.{key}", f"not a full object ID: {value!r}")
+            )
     if problems or path is None:
         return None, problems
-    return Source(package, repo, ref, path, tag_prefix), []
+    return (
+        Source(package, repo, ref, path, tag_prefix, pins.get("commit"), pins.get("tree")),
+        [],
+    )
 
 
 def parse(

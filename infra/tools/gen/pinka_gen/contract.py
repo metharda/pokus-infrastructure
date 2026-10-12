@@ -353,6 +353,22 @@ def profiles_page(root: Path) -> str:
         }[rules["agent"]]
         rows.append([f"`{name}`", ", ".join(users), agent])
     out.append(table(["Served by", "May be used by", "The agent"], rows))
+    own = [name for name, p in profiles.items() if p.get("own_package")]
+    out.append("\n## The agent's own package\n\n")
+    out.append(
+        "A service of "
+        + ", ".join(f"`{name}`" for name in own)
+        + " names its own package in the manifest (`package`, required) and sees only that "
+        "package and its own environment of the release, never the rest of it: no other "
+        "package, no migrations, policy bundle, docs or dashboards (approved deviation V6, which "
+        "narrows the release in the table above). For `python-uv` the package is a workspace "
+        "member; the build installs it with only its locked dependencies into "
+        "`.agent-venvs/<service>/`, and a start command below `.venv/` runs from there. Every "
+        "dependency must come from an `https://` package index: a manifest whose agent package "
+        "depends, directly or through others, on another package of the release, or on a path, "
+        "Git or URL source, is refused. For `static` the package is the directory the agent "
+        "runs from.\n"
+    )
     out.append("\n## Facilities\n\n")
     out.append(
         "A manifest declares in `requires` every infra facility it uses; the health gate "

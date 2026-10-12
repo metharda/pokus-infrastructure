@@ -11,12 +11,17 @@ namespaces:
       - pinka-admin
       - pinka-build
       - pinka-datasets
+      - pinka-grafana
       - pinka-inference
       - pinka-lab
+      - pinka-loki
       - pinka-monitor
+      - pinka-otelcol
+      - pinka-prometheus
       - pinka-query
       - pinka-query-proxy
       - pinka-restricted
+      - pinka-tempo
       - root
   units:
     description: systemd units, targets and slices (names without .service).

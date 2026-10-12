@@ -186,6 +186,21 @@ Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH 
     - name: pinka-query-proxy
       groups: []
       description: "the telemetry query proxy's container user (\xA77.9)"
+    - name: pinka-otelcol
+      groups: []
+      description: "the gateway collector's container user (\xA77.9)"
+    - name: pinka-prometheus
+      groups: []
+      description: "Prometheus's container user (\xA77.9)"
+    - name: pinka-loki
+      groups: []
+      description: "Loki's container user (\xA77.9)"
+    - name: pinka-tempo
+      groups: []
+      description: "Tempo's container user (\xA77.9)"
+    - name: pinka-grafana
+      groups: []
+      description: "Grafana's container user (\xA77.9)"
     ```
 
 ### `inference_control_account`
@@ -196,13 +211,30 @@ The account of the inference control endpoint.
 
 ### `pinka_platform_uids`
 
-The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles (§6.1, §12.2). Their UIDs come from this range (§7.9 option b, ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use. The telemetry guard drops the range's connections to the telemetry backends.
+The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles (§6.1, §12.2). Their UIDs come from this range (ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use.
 
 - Default: `{min: 60578, max: 61183}`
 
+### `pinka_telemetry_clients`
+
+The only accounts that reach the telemetry stores directly (§7.9, ADR-0016 as decided with the "commit" for 3d.4): infra's own clients, each by name. The telemetry guard resets every other account's connection to the ports below on the host loopback: researchers, the platform's services and everyone else query through the read-only query proxy (Grafana for the researchers) and send through the collector's OTLP receivers.
+
+- Default:
+
+    ```yaml
+    - {account: root, reason: 'doctor, the health gate and administrators (sudo)'}
+    - {account: pinka-otelcol, reason: the gateway collector writes to Loki and Tempo}
+    - {account: pinka-prometheus, reason: 'Prometheus scrapes the collector, Loki, Tempo and itself'}
+    - {account: pinka-loki, reason: Loki's own gRPC port}
+    - {account: pinka-tempo, reason: Tempo's own gRPC and OTLP ports}
+    - {account: pinka-grafana, reason: 'Grafana''s data sources, through the query proxy''s loopback
+        port'}
+    - {account: pinka-query-proxy, reason: 'the query proxy, which forwards the query endpoints'}
+    ```
+
 ### `pinka_telemetry_guard_ports`
 
-Ports the telemetry guard closes to that range (§7.9 option b): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's metrics exporter and the query proxy's loopback port (platform services use its socket, which checks the group). The collector's OTLP receivers stay open.
+Ports the telemetry guard closes to every other account (§7.9): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's metrics exporter and the query proxy's loopback port (the platform's services use its socket, which checks the group). The collector's OTLP receivers stay open.
 
 - Default:
 
@@ -1761,7 +1793,7 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `active_platform_file` | host_vars | What infra rendered for the active platform; its controller restarts with the new key. |
-| `content` | [lab-wide](#content) | Sources of the manifest's content packages: {&lt;package&gt;: {repo, ref, path, tag_prefix}}. |
+| `content` | [lab-wide](#content) | Sources of the manifest's content packages: {&lt;package&gt;: {repo, ref, path, tag_prefix}}, each optionally with the commit and tree its ref must resolve to. |
 | `cpuset_targets` | [lab-wide](#cpuset_targets) | CPUs of the targets (endpoints.toml). |
 | `lab_mode` | [lab-wide](#lab_mode) | production or staging; scripted inference needs staging. |
 | `machine_name` | [lab-wide](#machine_name) | Machine name (endpoints.toml, published signing keys). |
@@ -1772,7 +1804,7 @@ Variables the role reads from elsewhere:
 | `pinka_source_known_hosts` | [lab-wide](#pinka_source_known_hosts) | known_hosts lines for SSH sources other than GitHub. |
 | `pinka_versions` | host_vars | The pinned versions (Quarto). |
 | `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | The VM collector address (endpoints.toml). |
-| `platform` | [lab-wide](#platform) | The platform source: {repo, ref, path, tag_prefix}; empty: no platform. |
+| `platform` | [lab-wide](#platform) | The platform source: {repo, ref, path, tag_prefix}, and optionally the commit and tree its ref must resolve to (restore pins both); empty: no platform. |
 | `qa_trusted_keys` | [lab-wide](#qa_trusted_keys) | QA public keys trusted for attestations, {name, pem}, installed in /etc/pinka/qa/trusted-keys/. |
 | `require_signed_tags` | [lab-wide](#require_signed_tags) | Deploy only release tags with a valid SSH signature of an allowed signer. |
 | `vault_platform_secrets` | host_vars | The secrets the manifest names, {&lt;service&gt;: {&lt;name&gt;: value}}. |

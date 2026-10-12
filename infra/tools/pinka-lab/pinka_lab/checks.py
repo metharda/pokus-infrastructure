@@ -13,7 +13,7 @@ import re
 import ssl
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from pinka_lab import window
@@ -815,8 +815,42 @@ def _main_pid(ctx: Context, unit: str) -> str:
     return pid if done.ok and pid.isdigit() and pid != "0" else ""
 
 
+# How many unexpected entries a message names.
+SHOWN = 5
+
+
+def _release_view_problems(
+    ctx: Context, unit: str, root: str, view: Mapping[str, Any]
+) -> list[str]:
+    """What the running agent sees of the release beyond its package and environment (V6)."""
+    release = str(view.get("release") or "")
+    allowed = [str(p).strip("/") for p in view.get("release_paths", [])]
+    if not release:
+        return []
+    top = f"{root}{release}"
+    depth = max((len(p.split("/")) for p in allowed), default=1)
+    done = ctx.system.run(
+        ["find", top, "-mindepth", "1", "-maxdepth", str(depth), "-print"], timeout=60
+    )
+    if not done.ok and not done.stdout.strip():
+        return [f"{unit}: cannot list its view of the release ({done.stderr.strip()})"]
+    seen = [line[len(top) + 1 :] for line in done.stdout.splitlines() if line.startswith(top + "/")]
+    extra = [
+        s
+        for s in seen
+        if not any(a == s or a.startswith(s + "/") or s.startswith(a + "/") for a in allowed)
+    ]
+    if not extra:
+        return []
+    shown = ", ".join(extra[:SHOWN]) + (f" and {len(extra) - SHOWN} more" if extra[SHOWN:] else "")
+    return [f"{unit} sees parts of the release beyond its package and environment: {shown}"]
+
+
 def check_agent_view(ctx: Context) -> Outcome:
-    """The running agent sees no socket beyond its allowlist in its mount namespace (§7.17)."""
+    """The running agent sees no socket beyond its allowlist in its mount namespace (§7.17).
+
+    Of the release it sees only its own package and environment (V6).
+    """
     rendered = _rendered_platform(ctx)
     agents = [
         h
@@ -864,6 +898,7 @@ def check_agent_view(ctx: Context) -> Outcome:
         extra = [s for s in seen if s not in allowed and not any(s.startswith(d) for d in own)]
         if extra:
             problems.append(f"{unit} sees sockets beyond its allowlist: {', '.join(extra)}")
+        problems += _release_view_problems(ctx, unit, root, view)
         checked.append(f"{unit} ({len(seen)} socket(s))")
     if problems:
         return failed("; ".join(problems))
@@ -903,26 +938,94 @@ def check_socket_acl_fallback(ctx: Context) -> Outcome:
 
 
 QUERY_SOCKET_MODE = 0o660
+# The query socket's directory (observability role, tmpfiles.d).
+QUERY_DIR_MODE = 0o750
 QUERY_GROUP = "pinka-query"
 AGENT_SOCKET_MODE = 0o666
 
 
+GUARD_TABLE = "pinka_telemetry_guard"
+GUARD_SET = "telemetry_clients"
+
+
+def _guard_problems(ctx: Context, spec: Mapping[str, Any]) -> list[str]:
+    """The loaded telemetry guard against its specification (ADR-0016)."""
+    done = ctx.system.run(["nft", "-j", "list", "table", "inet", GUARD_TABLE])
+    try:
+        items = [i for i in json.loads(done.stdout)["nftables"] if isinstance(i, dict)]
+    except (ValueError, KeyError, TypeError):
+        items = []
+    if not done.ok or not items:
+        return [f"the nftables table inet {GUARD_TABLE} is not loaded"]
+    problems = []
+    elements = next(
+        (i["set"].get("elem", []) for i in items if i.get("set", {}).get("name") == GUARD_SET),
+        None,
+    )
+    expected = {}
+    for account in spec.get("clients", []):
+        uid = ctx.system.uid_of(str(account))
+        if uid is None:
+            problems.append(f"the telemetry client {account} does not exist")
+        else:
+            expected[uid] = str(account)
+    if elements is None:
+        problems.append(f"the telemetry guard has no set {GUARD_SET}")
+    else:
+        loaded = {e for e in elements if isinstance(e, int)}
+        extra = sorted(loaded - set(expected))
+        missing = sorted(set(expected) - loaded)
+        if extra:
+            problems.append("the telemetry guard also admits UIDs " + ", ".join(map(str, extra)))
+        if missing:
+            names = ", ".join(expected[u] for u in missing)
+            problems.append(f"the telemetry guard does not admit {names}")
+    rule = json.dumps([i["rule"] for i in items if "rule" in i])
+    if f'"right": "@{GUARD_SET}"' not in rule or '"op": "!="' not in rule:
+        problems.append("the telemetry guard has no rule for the accounts outside its set")
+    missing_ports = [str(p) for p in spec.get("ports", []) if str(p) not in rule]
+    if missing_ports:
+        problems.append(f"the telemetry guard leaves ports open: {', '.join(missing_ports)}")
+    return problems
+
+
+def _query_link_problems(ctx: Context, spec: Mapping[str, Any]) -> list[str]:
+    """The query socket's link, its target and the target directory's owner (§7.9)."""
+    link = str(spec.get("query_link") or "")
+    if not link:
+        return []
+    problems = []
+    target = ctx.system.readlink(link)
+    expected = str(spec.get("query_target", ""))
+    if target is None:
+        problems.append(f"{link} is not a link")
+    elif target != expected:
+        problems.append(f"{link} points to {target}, not {expected}")
+    directory = str(spec.get("query_dir", ""))
+    owner = str(spec.get("query_owner", ""))
+    info = ctx.system.info(directory) if directory else None
+    if directory and info is None:
+        problems.append(f"{directory} is missing")
+    elif info is not None and (
+        not info.is_dir
+        or info.owner != owner
+        or info.group != QUERY_GROUP
+        or info.mode != QUERY_DIR_MODE
+    ):
+        problems.append(
+            f"{directory} is {info.owner}:{info.group} {info.mode:04o}, "
+            f"not {owner}:{QUERY_GROUP} {QUERY_DIR_MODE:04o}"
+        )
+    return problems
+
+
 def check_telemetry_isolation(ctx: Context) -> Outcome:
-    """Platform accounts reach telemetry only through the query proxy and the collector."""
+    """Only infra's own clients reach the stores; the query and agent sockets are in place."""
     spec = ctx.config.get("telemetry_isolation", default={}) or {}
     if not spec.get("ports"):
         return skipped("this host has no telemetry isolation to check")
-    problems = []
-    done = ctx.system.run(["nft", "list", "table", "inet", "pinka_telemetry_guard"])
-    if not done.ok:
-        problems.append("the nftables table inet pinka_telemetry_guard is not loaded")
-    else:
-        uids = spec["uids"]
-        if f"meta skuid {uids['min']}-{uids['max']}" not in done.stdout:
-            problems.append("the telemetry guard does not name the platform UID range")
-        missing = [str(p) for p in spec["ports"] if str(p) not in done.stdout]
-        if missing:
-            problems.append(f"the telemetry guard leaves ports open: {', '.join(missing)}")
+    problems = _guard_problems(ctx, spec)
+    problems += _query_link_problems(ctx, spec)
     for key, mode, group in (
         ("query_socket", QUERY_SOCKET_MODE, QUERY_GROUP),
         ("agent_socket", AGENT_SOCKET_MODE, None),
@@ -937,7 +1040,10 @@ def check_telemetry_isolation(ctx: Context) -> Outcome:
             problems.append(f"{path} is {info.group} {info.mode & 0o777:04o}")
     if problems:
         return failed("; ".join(problems))
-    return passed("the telemetry guard is loaded and the query and agent sockets are in place")
+    return passed(
+        "the telemetry guard admits only infra's clients; the query link and the query and "
+        "agent sockets are in place"
+    )
 
 
 # --- database and policy -------------------------------------------------------------------
@@ -1538,7 +1644,8 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "sockets.agent_view",
-        "The running agent sees no socket beyond its allowlist inside its mount namespace.",
+        "The running agent sees no socket beyond its allowlist inside its mount namespace, and "
+        "of the release only its own package and environment.",
         "error",
         "Run bootstrap with --tags platform; if a socket stays visible, report it as a bug.",
         check_agent_view,
@@ -1553,7 +1660,8 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "telemetry.isolation",
-        "Platform accounts reach telemetry only through the query proxy and the collector.",
+        "Only infra's own clients reach the telemetry stores; the query socket's link, its "
+        "directory and the query and agent sockets are right.",
         "error",
         "Run bootstrap with --tags firewall,observability.",
         check_telemetry_isolation,

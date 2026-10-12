@@ -95,20 +95,39 @@ infra_accounts:
   - {name: pinka-build, groups: [], description: unprivileged platform builds}
   - {name: pinka-inference, groups: [], description: the inference control endpoint of an inference node}
   - {name: pinka-query-proxy, groups: [], description: "the telemetry query proxy's container user (§7.9)"}
+  - {name: pinka-otelcol, groups: [], description: "the gateway collector's container user (§7.9)"}
+  - {name: pinka-prometheus, groups: [], description: "Prometheus's container user (§7.9)"}
+  - {name: pinka-loki, groups: [], description: "Loki's container user (§7.9)"}
+  - {name: pinka-tempo, groups: [], description: "Tempo's container user (§7.9)"}
+  - {name: pinka-grafana, groups: [], description: "Grafana's container user (§7.9)"}
 # The account of the inference control endpoint.
 inference_control_account: pinka-inference
 
 # The platform's accounts and groups are not listed here: the platform role
 # renders them from the active platform's manifest and profiles (§6.1, §12.2).
-# Their UIDs come from this range (§7.9 option b, ADR-0016): systemd's
-# table of UID and GID allocations (v255) lists it as unused; the deployment
-# tool never takes a UID that is already in use. The telemetry guard drops
-# the range's connections to the telemetry backends.
+# Their UIDs come from this range (ADR-0016): systemd's table of UID and GID
+# allocations (v255) lists it as unused; the deployment tool never takes a
+# UID that is already in use.
 pinka_platform_uids: {min: 60578, max: 61183}
-# Ports the telemetry guard closes to that range (§7.9 option b): Prometheus,
+# The only accounts that reach the telemetry stores directly (§7.9, ADR-0016
+# as decided with the "commit" for 3d.4): infra's own clients, each by name.
+# The telemetry guard resets every other account's connection to the ports
+# below on the host loopback: researchers, the platform's services and
+# everyone else query through the read-only query proxy (Grafana for the
+# researchers) and send through the collector's OTLP receivers.
+pinka_telemetry_clients:
+  - {account: root, reason: "doctor, the health gate and administrators (sudo)"}
+  - {account: pinka-otelcol, reason: the gateway collector writes to Loki and Tempo}
+  - {account: pinka-prometheus, reason: "Prometheus scrapes the collector, Loki, Tempo and itself"}
+  - {account: pinka-loki, reason: Loki's own gRPC port}
+  - {account: pinka-tempo, reason: "Tempo's own gRPC and OTLP ports"}
+  - {account: pinka-grafana, reason: "Grafana's data sources, through the query proxy's loopback port"}
+  - {account: pinka-query-proxy, reason: "the query proxy, which forwards the query endpoints"}
+# Ports the telemetry guard closes to every other account (§7.9): Prometheus,
 # Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's
-# metrics exporter and the query proxy's loopback port (platform services use
-# its socket, which checks the group). The collector's OTLP receivers stay open.
+# metrics exporter and the query proxy's loopback port (the platform's
+# services use its socket, which checks the group). The collector's OTLP
+# receivers stay open.
 pinka_telemetry_guard_ports: >-
   {{ [pinka_ports.prometheus, pinka_ports.loki, pinka_ports.tempo,
       pinka_internal_ports.loki_grpc, pinka_internal_ports.tempo_grpc,

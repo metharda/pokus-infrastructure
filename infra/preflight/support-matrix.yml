@@ -202,11 +202,22 @@ features:  # optional; each becomes a boolean feature flag
     requires:
       - nvidia_gpu_usable
       - {gpu_vram_gib_min: 8}
-      - {gpu_compute_capability_min: "7.0"}
+      # V7 (owner decision with the "commit" for 3d.4): the pinned vLLM image
+      # has kernels from compute capability 7.5 on (its TORCH_CUDA_ARCH_LIST);
+      # no override enables gpu_inference below it.
+      - {gpu_compute_capability_min: "7.5"}
       - {driver_cuda_min: "@versions.lock:containers.images.vllm.cuda"}
     on_missing: degrade
     impact: "No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host."
     remediation:
+      gpu_compute_capability_min:
+        default: >-
+          The GPU's compute capability is {actual}, below {required}, the oldest the pinned vLLM
+          image has kernels for: GPU inference is refused on this GPU; use a GPU with compute
+          capability {required} or newer.
+        unknown: >-
+          nvidia-smi did not report the GPU's compute capability; GPU inference needs compute
+          capability {required} or newer.
       driver_cuda_min:
         default: >-
           The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}:

@@ -66,7 +66,7 @@ jobs:
       # PostgreSQL 18, the major the lab pins, from PGDG with the signing key that
       # Ubuntu's postgresql-common ships; its fingerprint was verified from that
       # package (infra/docs/IMPLEMENTATION_NOTES.md, "Verified in 3d.4").
-      - name: PostgreSQL 18 from PGDG (the restricted-schema SQL tests run on it)
+      - name: PostgreSQL 18 from PGDG (the restricted-schema SQL tests run on it) and nftables
         run: |
           set -euo pipefail
           keyring=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
@@ -78,11 +78,13 @@ jobs:
           sudo install -d /etc/postgresql-common/createcluster.d
           echo 'create_main_cluster = false' | sudo tee /etc/postgresql-common/createcluster.d/pinka-ci.conf
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends postgresql-18
-      - name: PostgreSQL server binaries and systemd-analyze are present (the SQL and unit checks must run in CI)
+          sudo apt-get install -y -q --no-install-recommends postgresql-18 nftables
+      - name: PostgreSQL server binaries, systemd-analyze and nft are present (the SQL, unit and telemetry guard checks must run in CI)
         run: |
           ls /usr/lib/postgresql/*/bin/initdb
           command -v systemd-analyze
+          command -v nft
+          sudo -n true
       - run: make test
         env:
           PINKA_POSTGRES_REQUIRED: "18"

@@ -24,7 +24,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
-from pinka_platform import layout, names
+from pinka_platform import agentpkg, layout, names
 from pinka_platform.contract import Contract
 
 HEADER = "# Managed by pinka (platform {platform}, contract v2). Local changes will be overwritten."
@@ -265,6 +265,28 @@ def _internals(profile: str, contract: Contract, platform: str) -> list[str]:
     return hidden
 
 
+def agent_release_view(
+    manifest: Mapping[str, Any], service: Mapping[str, Any], release: str
+) -> list[str]:
+    """What an ``untrusted-agent`` binds of the release: its package, its environment (V6).
+
+    Args:
+        manifest: A valid manifest.
+        service: The agent's entry.
+        release: The release directory it runs from.
+
+    Returns:
+        Absolute paths, the package first; empty without a package (a
+        manifest validation refuses), so the agent sees nothing of the release.
+    """
+    if "package" not in service:
+        return []
+    view = [f"{release}/{agentpkg.package_dir(service)}"]
+    if manifest["runtime"] == "python-uv":
+        view.append(f"{release}/{agentpkg.env_dir(service['name'])}")
+    return view
+
+
 def service_sections(
     manifest: Mapping[str, Any],
     service: Mapping[str, Any],
@@ -299,6 +321,7 @@ def service_sections(
     agent = profile == "untrusted-agent"
     # The agent never sees the current link, nor another published release.
     current = release if agent and release else layout.release_current(p)
+    view = agent_release_view(manifest, service, current) if agent else None
     own = [socket_unit(p, name, s["name"]) for s in _own_sockets(manifest, name)]
     used = (
         [socket_unit(p, s["service"], s["name"]) for s in _agent_sockets(manifest)] if agent else []
@@ -321,10 +344,11 @@ def service_sections(
     config = [layout.config_file(name)] if "config" in service else []
     memory, tasks = _limits(service, contract)
     relaxations = set(service.get("relaxations", []))
+    start = agentpkg.start_path(service, manifest["runtime"])
     entries: list[tuple[str, str]] = [
         ("Type", "simple"),
-        ("ExecStart", command_line([f"{current}/{service['start'][0]}", *service["start"][1:]])),
-        ("WorkingDirectory", current),
+        ("ExecStart", command_line([f"{current}/{start}", *service["start"][1:]])),
+        ("WorkingDirectory", view[0] if view else current),
         ("Restart", "on-failure"),
         ("RestartSec", "5"),
         ("User", account),
@@ -359,7 +383,8 @@ def service_sections(
                 "BindReadOnlyPaths",
                 " ".join(
                     [
-                        current,
+                        # Only its own package and environment of the release (V6).
+                        *(view or []),
                         *config,
                         *sockets,
                         f"-{layout.AGENT_OTLP_SOCKET}",
@@ -571,8 +596,13 @@ def hardening(
             "inaccessible_paths": [x.lstrip("-") for x in written["InaccessiblePaths"].split()],
         }
         if service["profile"] == "untrusted-agent":
+            current = release or layout.release_current(p)
             entry["agent_view"] = {
-                "release": written["WorkingDirectory"],
+                "release": current,
+                "release_paths": [
+                    path.removeprefix(f"{current}/")
+                    for path in agent_release_view(manifest, service, current)
+                ],
                 "sockets": sorted(
                     [
                         *(

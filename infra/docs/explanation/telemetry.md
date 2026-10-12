@@ -80,11 +80,16 @@ Sending and querying are separate ways in (BUILD_PROMPT §7.9,
   deletion, admin, configuration, flush, rules and alerting. Platform
   services that query (their profiles put them in `pinka-query`) use
   `/run/pinka/query.sock`; Grafana's data sources use its loopback port.
-- Platform accounts get UIDs from 60578-61183. The telemetry guard, an
-  nftables table of its own on every firewall backend, drops their
-  connections to the stores' ports, the collector's metrics exporter and the
-  proxy's loopback port, so the socket and its group are their only way to
-  query. Doctor checks the guard and both sockets (`telemetry.isolation`).
+- Only infra's own clients reach the stores directly: root (doctor, the
+  health gate), the collector, Prometheus, Loki, Tempo, Grafana and the query
+  proxy, each running as an infra account of its own
+  (`pinka_telemetry_clients`). The telemetry guard, an nftables table of its
+  own on every firewall backend, resets every other account's connection to
+  the stores' ports, the collector's metrics exporter and the proxy's
+  loopback port on the host loopback: researchers query through Grafana,
+  the platform's services through the socket and its group. Doctor checks
+  that the guard admits exactly these accounts, the query socket's link and
+  directory, and both sockets (`telemetry.isolation`).
 
 ## Where the data comes from
 
@@ -145,8 +150,9 @@ and mutual TLS (port 4317 of the lab node's tailnet address). Until the node
 is paired, nothing leaves it. On the lab node a separate receiver accepts
 only the paired node's certificate and sets `pinka.machine` to that node's
 name, so its data shows up with `pinka_machine="<inference-node>"` next to
-the lab node's own. The collector's container user (10001) reads a private
-copy of the pairing material in `/etc/pinka/secrets/containers/otel-pairing`.
+the lab node's own. The collector's container user (`pinka-otelcol`) reads a
+private copy of the pairing material in
+`/etc/pinka/secrets/containers/otel-pairing`.
 
 ## Why every service uses the host network on 127.0.0.1
 

@@ -13,6 +13,7 @@ services:
     state: [artifacts]
   - name: agent
     profile: untrusted-agent
+    package: packages/potka-agent/
     start: [.venv/bin/potka-agent-runner]
     after: [orch, gw, exec]
   - name: gw

@@ -39,6 +39,10 @@ Root can always connect. A socket the agent uses is dedicated to it (`untrusted_
 | `untrusted-agent` | serves no sockets | — |
 | `gpu-trainer` | serves no sockets | — |
 
+## The agent's own package
+
+A service of `untrusted-agent` names its own package in the manifest (`package`, required) and sees only that package and its own environment of the release, never the rest of it: no other package, no migrations, policy bundle, docs or dashboards (approved deviation V6, which narrows the release in the table above). For `python-uv` the package is a workspace member; the build installs it with only its locked dependencies into `.agent-venvs/<service>/`, and a start command below `.venv/` runs from there. Every dependency must come from an `https://` package index: a manifest whose agent package depends, directly or through others, on another package of the release, or on a path, Git or URL source, is refused. For `static` the package is the directory the agent runs from.
+
 ## Facilities
 
 A manifest declares in `requires` every infra facility it uses; the health gate checks exactly these. It is refused when a service or job of one of these profiles, or one of these fields, needs a facility it does not declare. A field counts when it is present and not false or empty.

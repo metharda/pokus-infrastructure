@@ -11,6 +11,7 @@ BUILD_PROMPT §3.1 (wsl.conf), §7.2 (updates), §7.3 (sshd) and §7.5 (firewall
 from __future__ import annotations
 
 import configparser
+import json
 import os
 import shutil
 import subprocess
@@ -185,19 +186,27 @@ def test_nft_ruleset_options() -> None:
     assert 'iifname { "eth1" } tcp dport 22 accept' in lines
 
 
+# Sample UIDs of infra's telemetry clients (root first) as getent finds them.
+TELEMETRY_CLIENT_UIDS = [0, 991, 992, 993, 994, 995, 996]
+
+
+def guard_vars() -> dict[str, Any]:
+    return firewall_vars(firewall_telemetry_client_uids=TELEMETRY_CLIENT_UIDS)
+
+
 def test_telemetry_guard_is_valid(tmp_path: Path) -> None:
-    text = render_template("firewall", "pinka-telemetry-guard.nft.j2", firewall_vars())
+    text = render_template("firewall", "pinka-telemetry-guard.nft.j2", guard_vars())
     path = tmp_path / "telemetry-guard.nft"
     path.write_text(text, encoding="utf-8")
     result = nft_check(path)
     assert result.returncode == 0, result.stderr
 
 
-def test_telemetry_guard_drops_the_platform_range() -> None:
+def test_telemetry_guard_allows_only_infras_clients() -> None:
     lines = [
         line.strip()
         for line in render_template(
-            "firewall", "pinka-telemetry-guard.nft.j2", firewall_vars()
+            "firewall", "pinka-telemetry-guard.nft.j2", guard_vars()
         ).splitlines()
     ]
     # Only its own table, never one of Docker, Incus, firewalld or ufw.
@@ -207,12 +216,153 @@ def test_telemetry_guard_drops_the_platform_range() -> None:
         "table inet pinka_telemetry_guard {",
     ]
     assert "type filter hook output priority filter; policy accept;" in lines
+    assert "elements = { 0, 991, 992, 993, 994, 995, 996 }" in lines
     # Prometheus, Loki, Tempo, their gRPC and OTLP ports, the collector's
     # metrics exporter and the query proxy's loopback port.
     ports = "18701, 18702, 18703, 18720, 18727, 18728, 18729, 18733"
-    assert f"meta skuid 60578-61183 tcp dport {{ {ports} }} drop" in lines
+    assert (
+        f'oifname "lo" tcp dport {{ {ports} }} meta skuid != @telemetry_clients '
+        "reject with tcp reset"
+    ) in lines
     # The OTLP receivers stay open: platform services send telemetry there.
     assert "4317" not in ports and "4318" not in ports
+
+
+def test_the_telemetry_clients_are_infras_own_accounts() -> None:
+    # ADR-0016 as decided with the "commit" for 3d.4: an explicit allowlist of
+    # infra's accounts; no image's default user (nobody, 10001, 472), which
+    # other host processes may share.
+    variables = firewall_vars()
+    clients = [c["account"] for c in evaluate("pinka_telemetry_clients", variables)]
+    infra = {a["name"] for a in evaluate("infra_accounts", variables)}
+    assert clients[0] == "root"
+    assert set(clients[1:]) <= infra
+    assert set(clients[1:]) == {
+        "pinka-otelcol",
+        "pinka-prometheus",
+        "pinka-loki",
+        "pinka-tempo",
+        "pinka-grafana",
+        "pinka-query-proxy",
+    }
+    tasks = (ROLES / "firewall" / "tasks" / "telemetry_guard.yml").read_text(encoding="utf-8")
+    assert "pinka_telemetry_clients" in tasks and "getent" in tasks
+
+
+# Run in a private network namespace as root: load the guard, listen on the
+# store ports and an open port, connect as each UID, print what connected.
+GUARD_PROBE = """
+import fcntl, json, os, socket, struct, subprocess, sys
+nft, ruleset, spec = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+flags = struct.unpack("16sh22x", fcntl.ioctl(s, 0x8913, struct.pack("16sh22x", b"lo", 0)))[1]
+fcntl.ioctl(s, 0x8914, struct.pack("16sh22x", b"lo", flags | 1))
+subprocess.run([nft, "-f", ruleset], check=True)
+listeners = []
+for port in spec["ports"]:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", port))
+    sock.listen(64)
+    listeners.append(sock)
+results = {}
+for name, uid in spec["uids"].items():
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(r)
+        os.setgroups([])
+        os.setgid(uid)
+        os.setuid(uid)
+        out = {}
+        for port in spec["ports"]:
+            c = socket.socket()
+            c.settimeout(3)
+            try:
+                c.connect(("127.0.0.1", port))
+                out[str(port)] = True
+            except OSError:
+                out[str(port)] = False
+            c.close()
+        os.write(w, json.dumps(out).encode())
+        os._exit(0)
+    os.close(w)
+    data = os.read(r, 65536)
+    os.waitpid(pid, 0)
+    results[name] = json.loads(data)
+print(json.dumps(results))
+"""
+
+
+def privileged() -> list[str]:
+    """How to run as root: directly, or with sudo -n in CI; skip otherwise."""
+    if os.geteuid() == 0:
+        return []
+    sudo = shutil.which("sudo")
+    if sudo and subprocess.run([sudo, "-n", "true"], check=False).returncode == 0:
+        return [sudo, "-n"]
+    if os.environ.get("CI") == "true":
+        pytest.fail("the telemetry guard test needs root or sudo -n in CI")
+    pytest.skip("needs root or sudo -n; allowed to skip only outside CI")
+
+
+def test_telemetry_guard_per_account_class(tmp_path: Path) -> None:
+    # One connection per account class against the kernel's rule (ADR-0016):
+    # only root and infra's telemetry clients reach the stores; researchers,
+    # the platform's services, the agent, infra's other accounts and the
+    # images' default users are reset. The collector's OTLP port stays open.
+    argv = nft_argv(tmp_path / "x")
+    if argv is None:
+        pytest.skip("nft or unshare is not installed")
+    nft, unshare = argv[2], argv[0]
+    prefix = privileged()
+    ruleset = tmp_path / "guard.nft"
+    ruleset.write_text(
+        render_template("firewall", "pinka-telemetry-guard.nft.j2", guard_vars()), encoding="utf-8"
+    )
+    probe = tmp_path / "probe.py"
+    probe.write_text(GUARD_PROBE, encoding="utf-8")
+    variables = guard_vars()
+    stores = [int(p) for p in evaluate("pinka_telemetry_guard_ports", variables)]
+    otlp = int(evaluate("pinka_ports.otlp_http", variables))
+    classes = {
+        "root (doctor, the health gate)": 0,
+        **{f"infra client {uid}": uid for uid in TELEMETRY_CLIENT_UIDS[1:]},
+        "another infra account": 990,
+        "researcher": 1000,
+        "platform service": 60578,
+        "untrusted agent": 60580,
+        "nobody (an image's default)": 65534,
+        "Loki's image default": 10001,
+        "Grafana's image default": 472,
+    }
+    spec = {"ports": [*stores, otlp], "uids": classes}
+    done = subprocess.run(
+        [
+            *prefix,
+            unshare,
+            "-n",
+            sys.executable,
+            "-I",
+            str(probe),
+            nft,
+            str(ruleset),
+            json.dumps(spec),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0 and "Operation not permitted" in done.stderr and not prefix:
+        pytest.skip("this container cannot load nftables rules in a namespace")
+    assert done.returncode == 0, done.stderr
+    results = json.loads(done.stdout)
+    allowed = {"root (doctor, the health gate)"} | {
+        f"infra client {u}" for u in TELEMETRY_CLIENT_UIDS[1:]
+    }
+    for name, reached in results.items():
+        assert reached[str(otlp)] is True, f"{name}: the OTLP receiver must stay open"
+        expected = name in allowed
+        assert {p: reached[str(p)] for p in stores} == dict.fromkeys(stores, expected), name
 
 
 def test_telemetry_guard_unit() -> None:

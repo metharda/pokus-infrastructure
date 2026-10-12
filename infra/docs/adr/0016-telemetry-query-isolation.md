@@ -8,8 +8,10 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0016: Telemetry reached only through the query proxy and the agent socket
 
-- **Status:** proposed (plan step 3d.4; the owner decides with the step's commit)
-- **Date:** 2026-10-10
+- **Status:** accepted with the owner's alternative (with the "commit" for
+  3d.4; implemented in 3d.4b): an allowlist of infra's own accounts instead
+  of a denylist of the platform's UID range
+- **Date:** 2026-10-10, decided 2026-10-11
 - **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.9, §7.11)
 
 ## Context
@@ -37,52 +39,57 @@ Option (a) does not hold on this lab:
 
 ## Decision
 
-1. **Option (b).** Platform accounts get UIDs from 60578-61183
-   (`pinka_platform_uids`), a range that systemd's allocation table
-   (`docs/UIDS-GIDS.md`, v255) lists as unused, between the host users mapped
-   into containers (60514-60577) and the dynamic service users (61184-65519).
-   The deployment tool keeps an account's UID, gives a new account the lowest
-   UID of the range that no account on the host uses, and refuses an existing
-   account outside the range instead of moving it.
+1. **Option (b), as an allowlist.** Only infra's own clients of the stores
+   reach them directly (`pinka_telemetry_clients` in group_vars): root
+   (doctor, the health gate, administrators through sudo), the gateway
+   collector, Prometheus, Loki, Tempo, Grafana and the query proxy. Each
+   container runs as an infra account of its own (`pinka-otelcol`,
+   `pinka-prometheus`, `pinka-loki`, `pinka-tempo`, `pinka-grafana`,
+   `pinka-query-proxy`), so the allowlist names no image's default user
+   (`nobody`, 10001, 472), which other host processes may share; Incus's
+   dnsmasq, for one, can run as `nobody` and answers untrusted targets.
 2. **The telemetry guard.** Its own nftables table `inet
    pinka_telemetry_guard`, loaded by `pinka-telemetry-guard.service` on every
-   firewall backend, drops TCP connections from the range to Prometheus,
-   Loki and Tempo (HTTP, gRPC, Tempo's OTLP receiver), the collector's
-   metrics exporter and the query proxy's loopback port. The collector's OTLP
-   receivers stay open: platform services send telemetry there.
+   firewall backend, holds the UIDs of those accounts in the set
+   `telemetry_clients` (resolved from the host's accounts when the firewall
+   role runs) and resets every other account's TCP connection on the host
+   loopback to Prometheus, Loki and Tempo (HTTP, gRPC, Tempo's OTLP
+   receiver), the collector's metrics exporter and the query proxy's
+   loopback port. Researchers, the platform's services and everyone else
+   query through the proxy (researchers with Grafana, the platform's
+   services with its socket); the collector's OTLP receivers stay open, so
+   everyone still sends telemetry. A test loads the rendered rule in a
+   private network namespace and connects as one UID per account class.
 3. **The query proxy** is an nginx container (the pinned nginx release of the
    golden images) in the observability project. It listens on a socket that
    `/run/pinka/query.sock` links to (0660, group `pinka-query`) and on a
    loopback port for Grafana, whose Prometheus, Loki and Tempo data sources
    go through it. Its allowlist of methods and paths was checked against the
    routes of the pinned releases; everything else is answered with 403.
+   Doctor checks the link's target and that its directory belongs to
+   `pinka-query-proxy` (owner's condition for the link).
 4. **The agent socket.** `pinka-otlp-agent.socket` (`/run/pinka/otlp/agent.sock`)
    starts systemd's socket proxy, which forwards OTLP/HTTP to the collector's
    receiver `otlp/agent` on a loopback port of its own. Its pipelines stamp
    every resource with `pinka.trust=untrusted`, overwriting what the sender
    set; Loki indexes `pinka.trust` as a label.
+5. **The platform's UID range** (60578-61183) stays: the deployment tool
+   still gives platform accounts UIDs from it, between the host users mapped
+   into containers (60514-60577) and the dynamic service users
+   (61184-65519), but the guard no longer depends on it.
 
 ## Consequences
 
 - The isolation does not depend on the stores' own features, and the same
-  rule extends to the inference API in plan step 3d.5 (§7.11 option b).
-- The range overlaps Debian's band for globally allocated, on-demand accounts
-  (60000-64999). The deployment tool never takes a UID in use, so a later
-  package account in the range only narrows the free UIDs.
-- Humans and infra's own accounts are outside the range: researchers can
-  still reach the stores on the host loopback directly. Closing that too
-  (an allowlist of infra's UIDs instead of a denylist of the platform's) is
-  open for the owner.
+  allowlist idea extends to the inference API in plan step 3d.5 (§7.11
+  option b).
+- Researchers no longer reach Prometheus, Loki or Tempo directly, also not
+  through an SSH forward (sshd forwards as the researcher's account); they
+  query through Grafana. The proxy's socket stays for the profiles that
+  query (§7.9).
+- An infra component that needs the stores directly needs an account on the
+  allowlist; adding one is a change to `pinka_telemetry_clients`.
 - The socket path is a link: the proxy's container cannot create a socket
   directly in `/run/pinka`, which belongs to root.
 - The isolation probe of the reference platform (§7.18, plan step 3d.6)
   proves it on a host; doctor checks the guard on every host.
-
-## Alternatives considered
-
-- **Basic authentication on Prometheus only** (option a's fallback): leaves
-  Loki and Tempo open.
-- **An allowlist of infra UIDs** for the backend ports: also closes the
-  stores to researchers on the host, but needs every container's UID fixed
-  and is stricter than §7.9 asks.
-- **A Docker network for the stores**: reachable from the host anyway.

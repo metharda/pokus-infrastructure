@@ -6,11 +6,15 @@ argument_specs:
       platform:
         type: dict
         default: {}
-        description: "The platform source: {repo, ref, path, tag_prefix}; empty: no platform."
+        description: >-
+          The platform source: {repo, ref, path, tag_prefix}, and optionally the commit and tree
+          its ref must resolve to (restore pins both); empty: no platform.
       content:
         type: dict
         default: {}
-        description: "Sources of the manifest's content packages: {<package>: {repo, ref, path, tag_prefix}}."
+        description: >-
+          Sources of the manifest's content packages: {<package>: {repo, ref, path, tag_prefix}},
+          each optionally with the commit and tree its ref must resolve to.
       pinka_source_known_hosts:
         type: list
         elements: str

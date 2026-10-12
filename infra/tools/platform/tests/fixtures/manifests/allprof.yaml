@@ -34,7 +34,8 @@ services:
     start: [bin/obs]
   - name: agt
     profile: untrusted-agent
-    start: [bin/agt, --verbose]
+    package: agent/
+    start: [agent/agt, --verbose]
     state: [scratch]
     after: [ctl, brk, sbx]
 jobs:

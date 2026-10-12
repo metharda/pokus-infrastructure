@@ -86,7 +86,11 @@
           },
           "start": {
             "$ref": "#/$defs/command",
-            "description": "Start command inside the release."
+            "description": "Start command inside the release; for an untrusted-agent, inside its package or (python-uv) below .venv/, which is its own environment."
+          },
+          "package": {
+            "$ref": "#/$defs/relative_path",
+            "description": "The service's own package, a directory inside the release: required for untrusted-agent and refused for every other profile (V6). python-uv: a workspace member, built into an environment of its own with only that package and its locked dependencies, which must all come from a package index; a start command below .venv/ runs from that environment. static: the files the agent runs, and its start command lies inside. The agent sees only this directory and its environment of the release."
           },
           "after": {
             "type": "array",
@@ -519,12 +523,17 @@
         "pinka-admin",
         "pinka-build",
         "pinka-datasets",
+        "pinka-grafana",
         "pinka-inference",
         "pinka-lab",
+        "pinka-loki",
         "pinka-monitor",
+        "pinka-otelcol",
+        "pinka-prometheus",
         "pinka-query",
         "pinka-query-proxy",
         "pinka-restricted",
+        "pinka-tempo",
         "root"
       ]
     },

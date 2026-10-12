@@ -91,7 +91,8 @@ def validate_release(
         directory: The release (``platform-manifest.yaml`` at its root).
         contract: The contract.
         host: Facts of the host, or None to skip the host checks.
-        built: Whether the build has run (then commands below ``.venv/`` must exist).
+        built: Whether the build has run (then commands below ``.venv/`` must exist,
+            and an agent's environment must hold only its package and dependencies).
 
     Returns:
         The result.
@@ -100,11 +101,7 @@ def validate_release(
         manifest = load_file(directory / MANIFEST_NAME, int(contract.caps["manifest_bytes"]))
     except ManifestError as exc:
         return Result(None, [exc.problem])
-    skip = (
-        (release.BUILT_PREFIX.rstrip("/"),)
-        if built and manifest.get("runtime") == "python-uv"
-        else ()
-    )
+    skip = release.BUILT_ENTRIES if built and manifest.get("runtime") == "python-uv" else ()
     problems = release.check_symlinks(directory, skip)
     problems += release.check_special_files(directory)
     problems += check_manifest(manifest, contract, host)

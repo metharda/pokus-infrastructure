@@ -5,15 +5,6 @@
 # container creates its socket in /run/pinka/query (owned by its account,
 # group pinka-query); /run/pinka/query.sock links to it, both recreated by
 # tmpfiles.d at every boot.
-- name: Read the accounts of the host
-  ansible.builtin.getent:
-    database: passwd
-
-- name: Remember the query proxy's account
-  ansible.builtin.set_fact:
-    observability_query_uid: >-
-      {{ (ansible_facts.getent_passwd[observability_query_account] | default(none) or ['', ''])[1] }}
-
 - name: Recreate the query socket's directory and link at boot
   ansible.builtin.template:
     src: pinka-query.tmpfiles.conf.j2

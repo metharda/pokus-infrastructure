@@ -19,8 +19,19 @@ observability_grafana_opted_out: >-
 observability_grafana_researchers: >-
   {{ researchers | map(attribute='name') | reject('in', observability_grafana_opted_out) | list }}
 observability_grafana_disabled: "{{ observability_grafana_opted_out + researchers_removed }}"
-# Container user of the collector gateway (compose/observability/compose.yml).
-observability_gateway_uid: 10001
+# The infra accounts the containers run as (compose/observability/compose.yml):
+# their UIDs are the host's, so the telemetry guard can name exactly these
+# (ADR-0016), and no image's default user (nobody, 10001, 472), which other
+# host processes may share, reaches the stores.
+observability_container_accounts:
+  otel_gateway: pinka-otelcol
+  prometheus: pinka-prometheus
+  loki: pinka-loki
+  tempo: pinka-tempo
+  grafana: pinka-grafana
+  query_proxy: pinka-query-proxy
+# The collector gateway's account (it reads the pairing material).
+observability_gateway_account: "{{ observability_container_accounts.otel_gateway }}"
 # The dedicated OTLP listener for VM targets exists only with vm_targets (C4),
 # on nodes that run Incus.
 observability_vm_listener: "{{ (pinka_features.vm_targets | default(false) | bool) and observability_stores }}"
@@ -32,7 +43,7 @@ observability_agent_otlp: "{{ observability_stores }}"
 observability_agent_socket: /run/pinka/otlp/agent.sock
 observability_socket_proxyd: /usr/lib/systemd/systemd-socket-proxyd
 # The query proxy's container user (an infra account, so its UID is the host's).
-observability_query_account: pinka-query-proxy
+observability_query_account: "{{ observability_container_accounts.query_proxy }}"
 # OTLP receivers of the gateway's pipelines.
 observability_otlp_receivers: "{{ ['otlp'] + (['otlp/vm'] if observability_vm_listener else []) }}"
 # An inference node's gateway scrapes the local exporters itself (receiver prometheus).
@@ -48,13 +59,14 @@ observability_exporters: >-
 observability_gpu: "{{ pinka_features.gpu_inference | default(false) | bool }}"
 # vLLM serves on this host (node_role full or inference) with gpu_inference.
 observability_vllm: "{{ observability_gpu and node_role in ['full', 'inference'] }}"
-# Data directories under pinka_root/state with the UID and GID of the image's user.
+# Data directories under pinka_root/state, owned by the container that writes
+# them (Grafana keeps group 0: its image grants its own paths to group 0).
 observability_state_dirs:
-  - {name: prometheus, uid: 65534, gid: 65534}
-  - {name: loki, uid: 10001, gid: 10001}
-  - {name: tempo, uid: 10001, gid: 10001}
-  - {name: grafana, uid: 472, gid: 0}
-  - {name: otelcol-journald, uid: 0, gid: 0}
+  - {name: prometheus, container: prometheus}
+  - {name: loki, container: loki}
+  - {name: tempo, container: tempo}
+  - {name: grafana, container: grafana, group: root}
+  - {name: otelcol-journald, owner: root, group: root}
 # Secrets mounted into containers (directory 0700 root; files 0400 owned by the reader's UID).
 observability_secrets_dir: /etc/pinka/secrets/containers
 # The Incus metrics certificate (incus role) and its copy for Prometheus.

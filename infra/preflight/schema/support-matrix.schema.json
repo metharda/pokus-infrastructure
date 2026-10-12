@@ -159,7 +159,7 @@
           "remediation": {
             "description": "Remediation per unmet requirement: the variant of the environment class, else `unknown` when the fact was not reported, else `default`; {actual} and {required} are filled in.",
             "type": "object",
-            "propertyNames": {"enum": ["driver_cuda_min"]},
+            "propertyNames": {"enum": ["driver_cuda_min", "gpu_compute_capability_min"]},
             "additionalProperties": {
               "type": "object",
               "additionalProperties": false,

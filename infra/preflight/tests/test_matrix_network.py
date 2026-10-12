@@ -126,6 +126,30 @@ class MatchTest(unittest.TestCase):
         # No usable GPU: the driver is not the reason, so no driver remediation.
         self.assertEqual(matrix._remediation(spec, {**facts, "nvidia_gpu_usable": False}), "")
 
+    def test_compute_capability_minimum(self) -> None:
+        # V7 (owner decision with the "commit" for 3d.4): 7.5, the oldest the
+        # pinned vLLM image has kernels for.
+        spec = self.m["features"]["gpu_inference"]
+        (required,) = [
+            r["gpu_compute_capability_min"]
+            for r in spec["requires"]
+            if "gpu_compute_capability_min" in r
+        ]
+        self.assertEqual(required, "7.5")
+        facts = {
+            "nvidia_gpu_usable": True,
+            "gpu_vram_gib": 12.0,
+            "gpu_compute_capability": "7.0",
+            "gpu_driver_cuda": "13.0",
+            "environment": "baremetal",
+        }
+        text = matrix._remediation(spec, facts)
+        self.assertIn("compute capability is 7.0, below 7.5", text)
+        self.assertIn("GPU inference is refused on this GPU", text)
+        unknown = matrix._remediation(spec, {**facts, "gpu_compute_capability": None})
+        self.assertIn("did not report the GPU's compute capability", unknown)
+        self.assertEqual(matrix._remediation(spec, {**facts, "gpu_compute_capability": "7.5"}), "")
+
     def test_arch(self) -> None:
         self.assertEqual(matrix.match_arch(self.m, "x86_64")["tier"], "supported")
         self.assertEqual(matrix.match_arch(self.m, "aarch64")["tier"], "experimental")
@@ -140,7 +164,9 @@ class MatchTest(unittest.TestCase):
         }
         self.assertTrue(matrix.requirement_met({"gpu_vram_gib_min": 8}, facts)[0])
         self.assertFalse(matrix.requirement_met({"gpu_vram_gib_min": 16}, facts)[0])
-        self.assertTrue(matrix.requirement_met({"gpu_compute_capability_min": "7.0"}, facts)[0])
+        self.assertTrue(matrix.requirement_met({"gpu_compute_capability_min": "7.5"}, facts)[0])
+        volta = {**facts, "gpu_compute_capability": "7.0"}
+        self.assertFalse(matrix.requirement_met({"gpu_compute_capability_min": "7.5"}, volta)[0])
         self.assertFalse(matrix.requirement_met({"gpu_compute_capability_min": "9.0"}, facts)[0])
         self.assertFalse(matrix.requirement_met({"environment_in": ["baremetal"]}, facts)[0])
         cuda = {"driver_cuda_min": "13.0.2"}

@@ -21,6 +21,7 @@ dbname
 DCGM
 distros
 DKMS
+dnsmasq
 docstrings
 dracut
 EPEL

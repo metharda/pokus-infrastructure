@@ -32,8 +32,8 @@ services:
     labels:
       org.pinka.config-hash: ${OTEL_CONFIG_HASH:-}
       org.pinka.pairing-hash: ${OTEL_PAIRING_HASH:-}
-    # Fixed so the copy of the pairing material can be given to it (observability role).
-    user: "10001:10001"
+    # Infra accounts (observability role), the telemetry guard's allowlist (ADR-0016).
+    user: "${OTELCOL_UID:?}:${OTELCOL_GID:?}"
     command: ["--config=/etc/otelcol/gateway.yaml"]
     volumes:
       - ./config/otel:/etc/otelcol:ro
@@ -62,6 +62,7 @@ services:
     profiles: [stores]
     image: ${PROMETHEUS_IMAGE:?pinned image missing}
     container_name: pinka-prometheus
+    user: "${PROMETHEUS_UID:?}:${PROMETHEUS_GID:?}"
     labels:
       org.pinka.config-hash: ${PROMETHEUS_CONFIG_HASH:-}
     command:
@@ -79,6 +80,7 @@ services:
     profiles: [stores]
     image: ${LOKI_IMAGE:?pinned image missing}
     container_name: pinka-loki
+    user: "${LOKI_UID:?}:${LOKI_GID:?}"
     labels:
       org.pinka.config-hash: ${LOKI_CONFIG_HASH:-}
     command: ["-config.file=/etc/loki/loki.yaml"]
@@ -91,6 +93,7 @@ services:
     profiles: [stores]
     image: ${TEMPO_IMAGE:?pinned image missing}
     container_name: pinka-tempo
+    user: "${TEMPO_UID:?}:${TEMPO_GID:?}"
     labels:
       org.pinka.config-hash: ${TEMPO_CONFIG_HASH:-}
     command: ["-config.file=/etc/tempo/tempo.yaml"]
@@ -126,6 +129,8 @@ services:
     profiles: [stores]
     image: ${GRAFANA_IMAGE:?pinned image missing}
     container_name: pinka-grafana
+    # Group 0: the image grants its own paths to group 0 for any user.
+    user: "${GRAFANA_UID:?}:0"
     labels:
       org.pinka.config-hash: ${GRAFANA_CONFIG_HASH:-}
     # Membership of the host group pinka opens the reader socket directory.

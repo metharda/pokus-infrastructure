@@ -239,6 +239,8 @@ class FakeSystem(System):
         dirs: dict[str, list[str]] | None = None,
         interactive_rc: int = 0,
         serve_error: OSError | None = None,
+        uids: dict[str, int] | None = None,
+        links: dict[str, str] | None = None,
     ) -> None:
         self.commands = dict(commands or {})
         self.files = dict(files or {})
@@ -250,6 +252,8 @@ class FakeSystem(System):
         self.dirs = dict(dirs or {})
         self.interactive_rc = interactive_rc
         self.serve_error = serve_error
+        self.uids = dict(uids or {"root": 0})
+        self.links = dict(links or {})
         self.served: list[tuple[str, str, int]] = []
         self.docs_versions: list[str] = []
         self.removed: list[str] = []
@@ -356,6 +360,12 @@ class FakeSystem(System):
 
     def user_groups(self, user: str) -> list[str] | None:
         return self.groups.get(user)
+
+    def uid_of(self, user: str) -> int | None:
+        return self.uids.get(user)
+
+    def readlink(self, path: str) -> str | None:
+        return self.links.get(path)
 
     def remove(self, path: str) -> None:
         self.files.pop(path, None)

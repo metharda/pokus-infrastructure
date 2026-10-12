@@ -271,14 +271,17 @@ them again when it starts; if that does not help, run bootstrap with
 [`sockets.acl_fallback`](#check-sockets-acl_fallback) instead. Skipped until
 the platform is deployed.
 
-## `sockets.agent_view`: the agent sees a socket beyond its allowlist {#check-sockets-agent_view}
+## `sockets.agent_view`: the agent sees beyond its allowlist {#check-sockets-agent_view}
 
 Doctor walks the running `untrusted-agent` service's file system through
 `/proc/<pid>/root`, which resolves paths in the agent's own mount namespace,
 and lists every socket it finds. The agent may see only its dedicated sockets,
 the agent telemetry socket and sockets in its own runtime and state
 directories (`agent_view` in `hardening` of
-`/etc/pinka/platform/rendered.json`). Anything else means its allowlist leaks:
+`/etc/pinka/platform/rendered.json`). Doctor also lists what the agent sees
+of the release: only its own package and its own environment
+(`release_paths`); a manifest, another package, migrations or the shared
+`.venv` in that list fail the check too. Anything else means its allowlist leaks:
 run bootstrap with `--tags platform` and restart the platform
 (`sudo pinka stop && sudo pinka start`); if the socket is still visible,
 report it as a bug, because the agent must never reach it. Skipped while no
@@ -304,14 +307,18 @@ At the next start the helper sets the ACL entries and removes the socket
 from the record. Skipped until the platform is deployed, or when no socket
 has researchers or admins among its clients.
 
-## `telemetry.isolation`: the telemetry guard or a telemetry socket is missing {#check-telemetry-isolation}
+## `telemetry.isolation`: the telemetry guard, the query link or a telemetry socket is wrong {#check-telemetry-isolation}
 
-Platform accounts (UIDs 60578-61183) may query telemetry only through the
-query proxy's socket and send it only to the collector. Doctor checks that
-the nftables table `inet pinka_telemetry_guard` is loaded with the platform
-range and every guarded port, that `/run/pinka/query/query.sock` is 0660
-with group `pinka-query`, and that the agent OTLP socket exists. Load the
-guard and recreate the sockets:
+Only infra's own clients (`pinka_telemetry_clients`: root, the collector,
+Prometheus, Loki, Tempo, Grafana and the query proxy) reach the telemetry
+stores directly; everyone else queries through the query proxy and sends to
+the collector. Doctor checks that the nftables table
+`inet pinka_telemetry_guard` is loaded, admits exactly the UIDs of those
+accounts and covers every guarded port; that `/run/pinka/query.sock` is a
+link to `query/query.sock`, whose directory `/run/pinka/query` is
+`pinka-query-proxy:pinka-query` 0750; that `/run/pinka/query/query.sock` is
+0660 with group `pinka-query`; and that the agent OTLP socket exists. Load
+the guard and recreate the sockets:
 
 <!-- qa:skip reason="changes the firewall of the lab host" -->
 ```bash

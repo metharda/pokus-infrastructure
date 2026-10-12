@@ -23,7 +23,8 @@ The manifest every platform release carries at its root as platform-manifest.yam
 | `services` | array | yes | The platform's services: exactly one controller, at most one inference-broker. |
 | `services[].name` | string | yes | Service name: 1-10 lowercase letters and digits, starting with a letter. |
 | `services[].profile` | one of `controller`, `inference-broker`, `sandbox-operator`, `restricted-operator`, `restricted-reader`, `observer`, `untrusted-agent` | yes | Privilege profile (contract/profiles.yml); gpu-trainer is for jobs only. |
-| `services[].start` | see `command` | yes | Start command inside the release. |
+| `services[].start` | see `command` | yes | Start command inside the release; for an untrusted-agent, inside its package or (python-uv) below .venv/, which is its own environment. |
+| `services[].package` | see `relative_path` | no | The service's own package, a directory inside the release: required for untrusted-agent and refused for every other profile (V6). python-uv: a workspace member, built into an environment of its own with only that package and its locked dependencies, which must all come from a package index; a start command below .venv/ runs from that environment. static: the files the agent runs, and its start command lies inside. The agent sees only this directory and its environment of the release. |
 | `services[].after` | array | no | Services of this manifest that start first. |
 | `services[].state` | array | no | State directories of the service. |
 | `services[].config` | see `relative_path` | no | JSON Schema (inside the release) the service's configuration is checked against. |
@@ -104,7 +105,7 @@ The validator derives every name the manifest would create (accounts, groups, un
 
 | Namespace | Meaning | Names | Patterns |
 | --- | --- | --- | --- |
-| `accounts_groups` | Accounts and groups; also every account or group already on the host. | `pinka`, `pinka-admin`, `pinka-build`, `pinka-datasets`, `pinka-inference`, `pinka-lab`, `pinka-monitor`, `pinka-query`, `pinka-query-proxy`, `pinka-restricted`, `root` | — |
+| `accounts_groups` | Accounts and groups; also every account or group already on the host. | `pinka`, `pinka-admin`, `pinka-build`, `pinka-datasets`, `pinka-grafana`, `pinka-inference`, `pinka-lab`, `pinka-loki`, `pinka-monitor`, `pinka-otelcol`, `pinka-prometheus`, `pinka-query`, `pinka-query-proxy`, `pinka-restricted`, `pinka-tempo`, `root` | — |
 | `units` | systemd units, targets and slices (names without .service). | `pinka-backup`, `pinka-backup-prune`, `pinka-compose`, `pinka-core`, `pinka-docker-incus-compat`, `pinka-docs`, `pinka-gpu-arbiter`, `pinka-gpu-job@`, `pinka-health-gate`, `pinka-hook@`, `pinka-incus-events`, `pinka-inference`, `pinka-inference-control`, `pinka-inference-forwarder`, `pinka-lab.target`, `pinka-nftables`, `pinka-observability`, `pinka-otlp-agent`, `pinka-pgdump`, `pinka-platform.target`, `pinka-run-network`, `pinka-run-network@`, `pinka-security-patch`, `pinka-services.slice`, `pinka-session-start`, `pinka-sleep-inhibit`, `pinka-telemetry-guard`, `pinka-vllm-deploy`, `pinka-vllm-deploy@`, `pinka-vm-otlp-address`, `pinka-window-expiry` | — |
 | `containers` | Container names. | `pinka-cadvisor`, `pinka-gpu-exporter`, `pinka-grafana`, `pinka-loki`, `pinka-node-exporter`, `pinka-opa`, `pinka-otel-gateway`, `pinka-otel-journald`, `pinka-postgres`, `pinka-postgres-exporter`, `pinka-prometheus`, `pinka-query-proxy`, `pinka-tempo`, `pinka-vllm` | `pinka-job-*` |
 | `incus` | Incus networks, network ACLs, interfaces, projects and storage pools. | `bench`, `build`, `pinka-build0`, `pinka-otlp0`, `pinka-run-default`, `pinka-targets` | `r-*` |

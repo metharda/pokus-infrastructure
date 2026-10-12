@@ -251,10 +251,15 @@
         privileged_groups: [docker, incus-admin]
         break_glass_docker: "{{ break_glass_docker }}"
       hardening: "{{ doctor_hardening }}"
-      # The telemetry isolation (§7.9 option b, ADR-0016).
+      # The telemetry isolation (§7.9, ADR-0016): infra's clients, the guarded
+      # ports, the query socket's link with its target and directory.
       telemetry_isolation:
-        uids: "{{ pinka_platform_uids }}"
+        clients: "{{ pinka_telemetry_clients | map(attribute='account') | list }}"
         ports: "{{ pinka_telemetry_guard_ports }}"
+        query_link: "{{ '/run/pinka/query.sock' if doctor_runs_lab else '' }}"
+        query_target: query/query.sock
+        query_dir: /run/pinka/query
+        query_owner: pinka-query-proxy
         query_socket: "{{ '/run/pinka/query/query.sock' if doctor_runs_lab else '' }}"
         agent_socket: "{{ '/run/pinka/otlp/agent.sock' if doctor_runs_lab else '' }}"
       images:

@@ -23,9 +23,9 @@ from deploy_testlib import (
     schema,
     settings,
 )
-from platform_testlib import CONTRACT, manifest
+from platform_testlib import CONTRACT, manifest, write_agent_env
 
-from pinka_platform import cli, deploy, mirror, names, release
+from pinka_platform import agentpkg, cli, deploy, mirror, names, release
 
 
 @pytest.fixture
@@ -84,6 +84,56 @@ def test_prepare_stages_and_plans(repo: Path, paths: deploy.Paths) -> None:
     assert "allprof-ctl" in plan["names"]["accounts_groups"]
     assert json.loads((run / deploy.PLAN).read_text())["run"] == run.name
     assert len(list(paths.git.glob("*.git"))) == 1, "one mirror per repository"
+
+
+def pinned(repo: Path, **pins: str) -> deploy.Settings:
+    """Settings with the release pinned like a restore pins it."""
+    source = {
+        "repo": f"file://{repo}",
+        "ref": git(repo, "rev-parse", "HEAD"),
+        "path": "platform",
+        "tag_prefix": "allprof-v",
+        "commit": git(repo, "rev-parse", "HEAD"),
+        "tree": git(repo, "rev-parse", "HEAD:platform"),
+    }
+    source.update(pins)
+    return settings(repo, platform=source)
+
+
+def test_a_restore_deploys_exactly_the_recorded_commit_and_tree(
+    repo: Path, paths: deploy.Paths
+) -> None:
+    # Owner decision with the "commit" for 3d.4.
+    plan = prepare(paths, pinned(repo))
+    assert plan["release"]["commit"] == git(repo, "rev-parse", "HEAD")
+    assert plan["release"]["tree"] == git(repo, "rev-parse", "HEAD:platform")
+    deploy.clean(Path(plan["run_dir"]), paths)
+    # The recorded tag still points to the recorded commit (signed tags).
+    plan = prepare(paths, pinned(repo, ref="allprof-v1.2.3"))
+    assert plan["release"]["name"] == "allprof-v1.2.3"
+
+
+def test_a_restore_refuses_a_missing_commit_or_another_tree(
+    repo: Path, paths: deploy.Paths
+) -> None:
+    head = git(repo, "rev-parse", "HEAD")
+    gone = "1" * 40
+    assert refused(paths, pinned(repo, ref=gone, commit=gone)) == ["source-ref"]
+    with pytest.raises(deploy.Refused) as exc:
+        prepare(paths, pinned(repo, ref=gone, commit=gone))
+    assert exc.value.problems[0].message == f"the mirror does not have the commit {gone}"
+    other_tree = git(repo, "rev-parse", "HEAD:cases")
+    assert refused(paths, pinned(repo, tree=other_tree)) == ["source-tree"]
+    # The tag was moved to another commit since the snapshot recorded it.
+    (repo / "guides" / "intro.md").write_text("# moved\n")
+    git(repo, "commit", "--quiet", "-am", "two")
+    git(repo, "tag", "-f", "-a", "allprof-v1.2.3", "-m", "moved")
+    assert refused(paths, pinned(repo, ref="allprof-v1.2.3", commit=head)) == ["source-commit"]
+
+
+@pytest.mark.parametrize("key", ["commit", "tree"])
+def test_pins_must_be_full_object_ids(repo: Path, paths: deploy.Paths, key: str) -> None:
+    assert refused(paths, pinned(repo, **{key: "abc123"})) == ["source-setting"]
 
 
 def test_inspect_changes_nothing_but_the_mirror(repo: Path, paths: deploy.Paths) -> None:
@@ -336,6 +386,8 @@ def other_platform(repo: Path) -> deploy.Settings:
     data["runtime"] = "static"
     for service in data["services"]:
         service["start"] = [f"bin/{service['name']}"]
+        if "package" in service:  # the agent runs from its own package (V6)
+            service["start"] = [f"{service['package'].rstrip('/')}/run"]
     for hook in data["hooks"].values():
         hook["run"] = ["bin/admin", hook["run"][1]]
     data["cli"]["run"] = ["bin/refplat"]
@@ -487,7 +539,8 @@ def uv_release(repo: Path) -> deploy.Settings:
 
 
 class FakeUv:
-    """Stands in for systemd-run: phase 1 adds the environment, phase 2 the scripts."""
+    """Stands in for systemd-run: phase 1 adds the environment, phase 2 the scripts,
+    the agent phase the agent's own environment (V6)."""
 
     def __init__(
         self,
@@ -497,25 +550,41 @@ class FakeUv:
         rc: int = 0,
         fail_phase: str = "",
         special: str = "",
+        agent_extra: Sequence[str] = (),
     ) -> None:
         self.release = Path(plan["run_dir"]) / "release"
         self.touch = touch
         self.rc = rc
         self.fail_phase = fail_phase
         self.special = special
+        self.agent_extra = list(agent_extra)
         self.calls: list[list[str]] = []
 
     def __call__(self, argv: Sequence[str]) -> mirror.Done:
         self.calls.append(list(argv))
-        phase = "fetch" if len(self.calls) == 1 else "build"
+        unit = next(a for a in argv if a.startswith("--unit="))
+        phase = next(
+            p for p in ("agent-agent-prune", "agent-agent", "fetch", "build") if unit.endswith(p)
+        )
         if self.rc and self.fail_phase in ("", phase):
             return mirror.Done(self.rc, "", f"uv failed in {phase}")
+        data = manifest("refplat")
+        agent = next(s for s in data["services"] if "package" in s)
+        if phase == "agent-agent":
+            env = write_agent_env(self.release, agent, *self.agent_extra)
+            script = self.release / agentpkg.start_path(agent, "python-uv")
+            script.parent.mkdir(parents=True, exist_ok=True)
+            script.write_text("#!/bin/sh\n")
+            script.chmod(0o755)
+            (env / "bin" / "python").symlink_to("/opt/pinka/python/bin/python3")
+            return mirror.Done(0, "", "")
+        if phase == "agent-agent-prune":
+            return mirror.Done(0, "", "")
         if phase == "fetch":
             (self.release / ".venv" / "bin").mkdir(parents=True)
             (self.release / ".venv" / "bin" / "python").symlink_to("/opt/pinka/python/bin/python3")
             return mirror.Done(0, "", "")
-        data = manifest("refplat")
-        commands = [s["start"][0] for s in data["services"]]
+        commands = [s["start"][0] for s in data["services"] if s is not agent]
         commands += [h["run"][0] for h in data["hooks"].values()] + [data["cli"]["run"][0]]
         for relative in commands:
             path = self.release / relative
@@ -533,13 +602,13 @@ def property_values(argv: Sequence[str]) -> list[str]:
     return [argv[i + 1] for i, a in enumerate(argv) if a == "--property"]
 
 
-def test_build_runs_uv_in_two_sandboxed_phases(repo: Path, paths: deploy.Paths) -> None:
+def test_build_runs_uv_in_sandboxed_phases(repo: Path, paths: deploy.Paths) -> None:
     plan = prepare(paths, uv_release(repo))
     fake = FakeUv(plan)
     assert deploy.build(plan, paths, CONTRACT, fake) == {"changed": True, "built": True}
-    fetch, build = fake.calls
+    fetch, build, agent, prune = fake.calls
     final = plan["release"]["target"]
-    for argv in (fetch, build):
+    for argv in (fetch, build, agent, prune):
         props = property_values(argv)
         assert f"User={ME}" in props
         assert f"BindPaths={plan['run_dir']}/release:{final}" in props
@@ -549,16 +618,19 @@ def test_build_runs_uv_in_two_sandboxed_phases(repo: Path, paths: deploy.Paths) 
         assert "ProtectSystem=strict" in props
         assert "NoNewPrivileges=yes" in props
         assert f"WorkingDirectory={final}" in props
-    sync = [deploy.UV, "sync", "--frozen", "--all-packages", "--no-dev", "--no-editable"]
-    tail = ["--group", "build", "--python", deploy.PYTHON]
+    sync = [deploy.UV, "sync", "--frozen", "--no-dev", "--no-editable"]
+    group = ["--group", "build"]
+    python = ["--python", deploy.PYTHON]
     # Phase 1: network, only locked wheels, nothing built, no interpreter started.
     assert "PrivateNetwork=yes" not in property_values(fetch)
     assert fetch[fetch.index("--") + 1 :] == [
         *sync,
+        "--all-packages",
         "--no-install-project",
         "--no-install-workspace",
         "--no-build",
-        *tail,
+        *group,
+        *python,
     ]
     # Phase 2: no network, the release built with the locked backend.
     assert "PrivateNetwork=yes" in property_values(build)
@@ -566,14 +638,54 @@ def test_build_runs_uv_in_two_sandboxed_phases(repo: Path, paths: deploy.Paths) 
     assert "--compile-bytecode" not in fetch
     assert build[build.index("--") + 1 :] == [
         *sync,
+        "--all-packages",
         "--offline",
         "--no-build-isolation",
         "--compile-bytecode",
-        *tail,
+        *group,
+        *python,
     ]
-    assert next(a for a in fetch if a.startswith("--unit=")).endswith("-fetch")
-    assert next(a for a in build if a.startswith("--unit=")).endswith("-build")
+    # V6: the agent's own environment, offline, only its package; then the
+    # build backend is synced away again.
+    environment = f"Environment=UV_PROJECT_ENVIRONMENT={final}/.agent-venvs/agent"
+    for argv in (agent, prune):
+        assert {"PrivateNetwork=yes", "Environment=UV_OFFLINE=1", environment} <= set(
+            property_values(argv)
+        )
+    assert agent[agent.index("--") + 1 :] == [
+        *sync,
+        "--package",
+        "refplat-agent",
+        "--offline",
+        "--no-build-isolation",
+        "--compile-bytecode",
+        *group,
+        *python,
+    ]
+    assert prune[prune.index("--") + 1 :] == [
+        *sync,
+        "--package",
+        "refplat-agent",
+        "--offline",
+        "--no-build",
+        *python,
+    ]
+    units = [next(a for a in c if a.startswith("--unit=")) for c in fake.calls]
+    assert [u.rsplit("-", 1)[-1] for u in units[:2]] == ["fetch", "build"]
+    assert units[2].endswith("-agent-agent") and units[3].endswith("-agent-agent-prune")
     assert not Path(final).exists(), "the mount point is removed again"
+
+
+def test_an_agent_environment_with_more_than_its_package_is_refused(
+    repo: Path, paths: deploy.Paths
+) -> None:
+    # V6: whatever uv leaves behind, the environment holds only the agent's
+    # package and its locked dependencies (here: a build backend not synced away).
+    plan = prepare(paths, uv_release(repo))
+    with pytest.raises(deploy.Refused) as exc:
+        deploy.build(plan, paths, CONTRACT, FakeUv(plan, agent_extra=["hatchling"]))
+    assert codes(exc) == ["agent-env-extra"]
+    assert "hatchling" in exc.value.problems[0].message
 
 
 @pytest.mark.parametrize("phase", ["fetch", "build"])
@@ -588,7 +700,7 @@ def test_a_failed_build_phase_fails(repo: Path, paths: deploy.Paths, phase: str)
 def test_a_build_that_changes_the_release_is_refused(repo: Path, paths: deploy.Paths) -> None:
     plan = prepare(paths, uv_release(repo))
     with pytest.raises(deploy.Refused) as exc:
-        deploy.build(plan, paths, CONTRACT, FakeUv(plan, touch="uv.lock"))
+        deploy.build(plan, paths, CONTRACT, FakeUv(plan, touch="docs/.keep"))
     assert codes(exc) == ["build-modified-release"]
 
 
@@ -613,7 +725,7 @@ def test_a_build_without_the_commands_is_refused(repo: Path, paths: deploy.Paths
 
     with pytest.raises(deploy.Refused) as exc:
         deploy.build(plan, paths, CONTRACT, nothing)
-    assert set(codes(exc)) == {"command-missing"}
+    assert set(codes(exc)) == {"command-missing", "agent-env-missing"}
 
 
 def test_static_and_published_releases_are_not_built(repo: Path, paths: deploy.Paths) -> None:

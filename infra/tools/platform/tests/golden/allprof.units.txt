@@ -11,8 +11,8 @@ After=pinka-otlp-agent.socket
 
 [Service]
 Type=simple
-ExecStart=/srv/pinka/platforms/allprof/releases/allprof-v1/bin/agt --verbose
-WorkingDirectory=/srv/pinka/platforms/allprof/releases/allprof-v1
+ExecStart=/srv/pinka/platforms/allprof/releases/allprof-v1/agent/agt --verbose
+WorkingDirectory=/srv/pinka/platforms/allprof/releases/allprof-v1/agent
 Restart=on-failure
 RestartSec=5
 User=allprof-agt
@@ -51,7 +51,7 @@ RuntimeDirectory=pinka/platform-runtime/agt
 RuntimeDirectoryMode=0700
 PrivateNetwork=yes
 TemporaryFileSystem=/srv/pinka:ro /etc/pinka:ro /var/lib/pinka:ro /run/pinka:ro
-BindReadOnlyPaths=/srv/pinka/platforms/allprof/releases/allprof-v1 /run/pinka/platform/ctl/agent.sock /run/pinka/platform/brk/agent.sock /run/pinka/platform/sbx/agent.sock -/run/pinka/otlp/agent.sock
+BindReadOnlyPaths=/srv/pinka/platforms/allprof/releases/allprof-v1/agent /run/pinka/platform/ctl/agent.sock /run/pinka/platform/brk/agent.sock /run/pinka/platform/sbx/agent.sock -/run/pinka/otlp/agent.sock
 BindPaths=/run/pinka/platform-runtime/agt /srv/pinka/platforms/allprof/state/agt/scratch
 ReadWritePaths=/run/pinka/platform-runtime/agt /srv/pinka/platforms/allprof/state/agt/scratch
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/run/pinka/postgres -/run/pinka/postgres-reader -/etc/pinka/incus -/etc/pinka/signing

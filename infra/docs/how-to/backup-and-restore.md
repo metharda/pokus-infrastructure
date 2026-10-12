@@ -101,10 +101,14 @@ research space directories of the snapshot and the parts of `/etc/pinka`
 that bootstrap cannot recreate (vLLM deployments, QA keys and attestations),
 loads the newest database dump, re-imports the golden images from their
 exports and checks the model files by hash (downloading what is missing).
-Then it deploys the platform release and the content packages that the
-snapshot's `active.json` records (by tag, or by commit when a release was
-deployed from one), from the repositories in the host_vars file, starts the
-lab and waits for the platform's `health` hook. Files newer than the
+Then it deploys exactly the commit and tree of the platform release and of
+each content package that the snapshot's `active.json` records, from the
+repositories in the host_vars file (with `require_signed_tags`, through the
+recorded tag, which must still point to that commit), starts the lab and
+waits for the platform's `health` hook. If a repository no longer has the
+recorded commit, or the release's directory has another tree there, the
+restore stops before anything on the host changes: `source-ref`,
+`source-commit` or `source-tree` name the package. Files newer than the
 snapshot are kept.
 
 1. On a new machine, prepare it as for a first installation with the same

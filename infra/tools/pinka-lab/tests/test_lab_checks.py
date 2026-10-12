@@ -666,7 +666,7 @@ class LayoutAccountsTest(Base):
 
     def test_agent_view(self) -> None:
         self.assertOutcome(run(checks.check_agent_view, FakeSystem()), "skip")
-        view = {
+        view: dict[str, Any] = {
             "sockets": ["/run/pinka/otlp/agent.sock", self.AGENT_SOCKET],
             "own_dirs": ["/run/pinka/platform-runtime/agt"],
         }
@@ -685,6 +685,29 @@ class LayoutAccountsTest(Base):
             {pid: (0, "4242\n"), find: (0, "\n".join(seen) + "\n")}, files={RENDERED: rendered}
         )
         self.assertOutcome(run(checks.check_agent_view, system), "pass", "2 socket(s)")
+        # V6: of the release only its package and its environment.
+        release = "/srv/pinka/platforms/demo/releases/demo-v1"
+        view.update(release=release, release_paths=["packages/demo-agent", ".agent-venvs/agt"])
+        system.files[RENDERED] = json.dumps(
+            {"hardening": [{"unit": "demo-agt.service", "agent_view": view}]}
+        )
+        listing = f"find {root}{release} -mindepth 1 -maxdepth 2 -print"
+        own = ["packages", "packages/demo-agent", ".agent-venvs", ".agent-venvs/agt"]
+        system.commands[listing] = (0, "".join(f"{root}{release}/{p}\n" for p in own))
+        self.assertOutcome(run(checks.check_agent_view, system), "pass", "2 socket(s)")
+        system.commands[listing] = (
+            0,
+            "".join(
+                f"{root}{release}/{p}\n"
+                for p in [*own, "packages/demo-injector", "platform-manifest.yaml"]
+            ),
+        )
+        self.assertOutcome(
+            run(checks.check_agent_view, system),
+            "fail",
+            "beyond its package and environment: packages/demo-injector, platform-manifest.yaml",
+        )
+        system.commands[listing] = (0, "".join(f"{root}{release}/{p}\n" for p in own))
         system.commands[find] = (0, "\n".join([*seen, f"{root}/run/pinka/postgres/.s.PGSQL.5432"]))
         self.assertOutcome(
             run(checks.check_agent_view, system),
@@ -753,49 +776,127 @@ class SocketAclFallbackTest(Base):
         self.assertOutcome(run(checks.check_socket_acl_fallback, broken), "fail", "not JSON")
 
 
+def guard_json(elements: list[int], ports: list[int], negated: bool = True) -> str:
+    """``nft -j list table`` output of a telemetry guard."""
+    rule = {
+        "expr": [
+            {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": "lo"}},
+            {
+                "match": {
+                    "op": "==",
+                    "left": {"payload": {"protocol": "tcp", "field": "dport"}},
+                    "right": {"set": ports},
+                }
+            },
+            {
+                "match": {
+                    "op": "!=" if negated else "==",
+                    "left": {"meta": {"key": "skuid"}},
+                    "right": "@telemetry_clients",
+                }
+            },
+            {"reject": {"type": "tcp reset"}},
+        ]
+    }
+    return json.dumps(
+        {
+            "nftables": [
+                {"metainfo": {"version": "1.0.9"}},
+                {"table": {"family": "inet", "name": "pinka_telemetry_guard"}},
+                {"set": {"name": "telemetry_clients", "type": "uid", "elem": elements}},
+                {"rule": rule},
+            ]
+        }
+    )
+
+
 class TelemetryIsolationTest(Base):
     QUERY = "/run/pinka/query/query.sock"
+    LINK = "/run/pinka/query.sock"
+    DIR = "/run/pinka/query"
     AGENT = "/run/pinka/otlp/agent.sock"
+    NFT = "nft -j list table inet pinka_telemetry_guard"
+    CLIENTS = {"root": 0, "pinka-otelcol": 991, "pinka-query-proxy": 992}
     SPEC: dict[str, Any] = {
-        "uids": {"min": 60578, "max": 61183},
+        "clients": ["root", "pinka-otelcol", "pinka-query-proxy"],
         "ports": [18701, 18702, 18733],
+        "query_link": "/run/pinka/query.sock",
+        "query_target": "query/query.sock",
+        "query_dir": "/run/pinka/query",
+        "query_owner": "pinka-query-proxy",
         "query_socket": "/run/pinka/query/query.sock",
         "agent_socket": "/run/pinka/otlp/agent.sock",
     }
-    RULE = "meta skuid 60578-61183 tcp dport { 18701, 18702, 18733 } drop"
 
     def system(
-        self, rule: str = RULE, query: int = 0o660, group: str = "pinka-query"
+        self,
+        guard: str | None = None,
+        query: int = 0o660,
+        group: str = "pinka-query",
+        target: str = "query/query.sock",
+        owner: str = "pinka-query-proxy",
     ) -> FakeSystem:
+        loaded = guard if guard is not None else guard_json([0, 991, 992], [18701, 18702, 18733])
         return FakeSystem(
-            {"nft list table inet pinka_telemetry_guard": (0, f"table inet x {{ {rule} }}")},
+            {self.NFT: (0, loaded)},
             infos={
                 self.QUERY: info("pinka-query-proxy", group, query),
                 self.AGENT: info("root", "root", 0o666),
+                self.DIR: info(owner, "pinka-query", 0o750, is_dir=True),
             },
+            uids=dict(self.CLIENTS),
+            links={self.LINK: target},
         )
+
+    def check(self, system: FakeSystem) -> Any:
+        return run(checks.check_telemetry_isolation, system, telemetry_isolation=self.SPEC)
 
     def test_skipped_without_a_specification(self) -> None:
         outcome = run(checks.check_telemetry_isolation, FakeSystem(), telemetry_isolation={})
         self.assertOutcome(outcome, "skip")
 
     def test_guard_and_sockets_in_place(self) -> None:
-        outcome = run(
-            checks.check_telemetry_isolation, self.system(), telemetry_isolation=self.SPEC
-        )
-        self.assertOutcome(outcome, "pass")
+        self.assertOutcome(self.check(self.system()), "pass", "admits only infra's clients")
+
+    def test_the_guard_admits_exactly_infras_clients(self) -> None:
+        # ADR-0016 as decided with the "commit" for 3d.4: an allowlist, no more.
+        wider = self.system(guard=guard_json([0, 991, 992, 1000], [18701, 18702, 18733]))
+        self.assertOutcome(self.check(wider), "fail", "also admits UIDs 1000")
+        narrower = self.system(guard=guard_json([0, 991], [18701, 18702, 18733]))
+        self.assertOutcome(self.check(narrower), "fail", "does not admit pinka-query-proxy")
+        inverted = self.system(guard=guard_json([0, 991, 992], [18701, 18702, 18733], False))
+        self.assertOutcome(self.check(inverted), "fail", "no rule for the accounts outside")
+        system = self.system()
+        del system.uids["pinka-otelcol"]
+        self.assertOutcome(self.check(system), "fail", "client pinka-otelcol does not exist")
 
     def test_problems_are_named(self) -> None:
-        missing = FakeSystem({"nft list table inet pinka_telemetry_guard": (1, "")})
-        outcome = run(checks.check_telemetry_isolation, missing, telemetry_isolation=self.SPEC)
+        missing = FakeSystem({self.NFT: (1, "")}, uids=dict(self.CLIENTS))
+        outcome = self.check(missing)
         self.assertOutcome(outcome, "fail", "is not loaded")
         self.assertIn("/run/pinka/query/query.sock is missing", outcome.detail)
-        narrow = self.system(rule="meta skuid 60578-61183 tcp dport { 18701 } drop")
-        outcome = run(checks.check_telemetry_isolation, narrow, telemetry_isolation=self.SPEC)
-        self.assertOutcome(outcome, "fail", "leaves ports open: 18702, 18733")
+        narrow = self.system(guard=guard_json([0, 991, 992], [18701]))
+        self.assertOutcome(self.check(narrow), "fail", "leaves ports open: 18702, 18733")
         loose = self.system(query=0o666, group="pinka")
-        outcome = run(checks.check_telemetry_isolation, loose, telemetry_isolation=self.SPEC)
-        self.assertOutcome(outcome, "fail", "query.sock is pinka 0666")
+        self.assertOutcome(self.check(loose), "fail", "query.sock is pinka 0666")
+
+    def test_the_query_link_and_its_directory(self) -> None:
+        # The owner's condition for the link (with the "commit" for 3d.4).
+        elsewhere = self.system(target="/tmp/query.sock")
+        self.assertOutcome(
+            self.check(elsewhere),
+            "fail",
+            "/run/pinka/query.sock points to /tmp/query.sock, not query/query.sock",
+        )
+        not_a_link = self.system()
+        not_a_link.links.clear()
+        self.assertOutcome(self.check(not_a_link), "fail", "/run/pinka/query.sock is not a link")
+        taken = self.system(owner="pinka-build")
+        self.assertOutcome(
+            self.check(taken),
+            "fail",
+            "/run/pinka/query is pinka-build:pinka-query 0750, not pinka-query-proxy:pinka-query",
+        )
 
 
 class BackupPlatformStateTest(Base):

@@ -19,16 +19,29 @@ def problem_codes(release: Path, *, built: bool = False) -> list[str]:
 
 @pytest.mark.parametrize("fixture", VALID)
 def test_complete_releases_pass(tmp_path: Path, fixture: str) -> None:
-    release = write_release(tmp_path, manifest(fixture), built=True)
+    release = write_release(tmp_path / "built", manifest(fixture), built=True)
     assert problem_codes(release, built=True) == []
-    assert problem_codes(release) == []
+    source = write_release(tmp_path / "source", manifest(fixture))
+    assert problem_codes(source) == []
 
 
 def test_built_commands_are_checked_after_the_build(tmp_path: Path) -> None:
     release = write_release(tmp_path, manifest("refplat"))
     assert problem_codes(release) == []
     missing = problem_codes(release, built=True)
-    assert missing and set(missing) == {"command-missing"}
+    # The agent's start command lies in its own environment, which is missing too.
+    assert missing and set(missing) == {"command-missing", "agent-env-missing"}
+
+
+@pytest.mark.parametrize("entry", [".venv", ".agent-venvs"])
+def test_a_source_does_not_ship_what_the_build_creates(tmp_path: Path, entry: str) -> None:
+    # V6: the shared and the agents' environments come only from the build.
+    release = write_release(tmp_path, manifest("refplat"))
+    (release / entry / "bin").mkdir(parents=True)
+    assert problem_codes(release) == ["built-entry"]
+    static = write_release(tmp_path / "static", manifest("allprof"))
+    (static / ".agent-venvs").mkdir()
+    assert problem_codes(static) == ["built-entry"]
 
 
 def test_static_commands_are_checked_before_the_build(tmp_path: Path) -> None:
@@ -110,6 +123,10 @@ def test_python_uv_needs_pyproject_with_a_locked_build_backend(tmp_path: Path) -
     pyproject.write_text("[project]\nname = 'refplat'\n[build-system]\nrequires = ['hatchling']\n")
     assert problem_codes(built) == ["build-backend-unlocked"]
     pyproject.write_text("[project]\nname = 'refplat'\n")  # no build system: nothing to build
+    # ...but the agent's package is a workspace member with a build system.
+    assert problem_codes(built) == ["build-backend-unlocked"]
+    member = built / "packages" / "refplat-agent" / "pyproject.toml"
+    member.write_text("[project]\nname = 'refplat-agent'\n")
     assert problem_codes(built) == []
     pyproject.write_text("[project\n")
     assert problem_codes(built) == ["pyproject-invalid"]

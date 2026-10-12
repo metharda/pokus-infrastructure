@@ -318,6 +318,77 @@ def check_hooks(manifest: Mapping[str, Any], contract: Contract) -> list[Problem
     ]
 
 
+# Top-level entries of a release that only the build creates: the shared
+# environment of python-uv and the agents' own environments (V6).
+BUILT_ENTRIES = (".venv", ".agent-venvs")
+
+
+def _inside_dir(path: str, directory: str) -> bool:
+    directory = directory.removesuffix("/")
+    return path.removesuffix("/") == directory or path.startswith(directory + "/")
+
+
+def check_agent_package(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
+    """The agent's own package (V6, owner decision with the "commit" for 3d.4).
+
+    A service whose profile has ``own_package`` (``untrusted-agent``) names
+    the directory of its own package; no other service does. Its start
+    command lies inside that package, or for ``python-uv`` below ``.venv/``,
+    which for the agent is its own environment built from the package.
+
+    Args:
+        manifest: A manifest that passed the schema.
+        contract: The contract.
+
+    Returns:
+        Problems.
+    """
+    problems: list[Problem] = []
+    python_uv = manifest["runtime"] == "python-uv"
+    for i, service in enumerate(_services(manifest)):
+        where = f"services[{i}]"
+        own = contract.profile(service["profile"]).flag("own_package")
+        package = service.get("package")
+        if package is None:
+            if own:
+                problems.append(
+                    Problem(
+                        "agent-package-missing",
+                        f"{where}.package",
+                        f"an {service['profile']} service names its own package, the only part "
+                        "of the release it sees",
+                    )
+                )
+            continue
+        if not own:
+            problems.append(
+                Problem(
+                    "package-not-agent",
+                    f"{where}.package",
+                    f"only an untrusted-agent service names a package, not {service['profile']}",
+                )
+            )
+            continue
+        top = package.removesuffix("/").split("/")[0]
+        if top in BUILT_ENTRIES:
+            problems.append(
+                Problem("agent-package-reserved", f"{where}.package", f"{top} is the build's")
+            )
+            continue
+        start = service["start"][0]
+        built = python_uv and start.startswith(".venv/")
+        if not built and not _inside_dir(start, package):
+            inside = "inside its package" + (" or below .venv/" if python_uv else "")
+            problems.append(
+                Problem(
+                    "agent-start-outside",
+                    f"{where}.start[0]",
+                    f"{start!r} is not {inside}: the agent sees nothing else of the release",
+                )
+            )
+    return problems
+
+
 def check_paths(manifest: Mapping[str, Any]) -> list[Problem]:
     """Every path and command path in the manifest is relative and normalized.
 
@@ -330,6 +401,8 @@ def check_paths(manifest: Mapping[str, Any]) -> list[Problem]:
     found: list[tuple[str, str]] = []
     for i, service in enumerate(_services(manifest)):
         found.append((f"services[{i}].start[0]", service["start"][0]))
+        if "package" in service:
+            found.append((f"services[{i}].package", service["package"]))
         if "config" in service:
             found.append((f"services[{i}].config", service["config"]))
     for name, hook in manifest["hooks"].items():
@@ -571,6 +644,7 @@ def check_all(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
         + check_sockets(manifest, contract)
         + check_hooks(manifest, contract)
         + check_paths(manifest)
+        + check_agent_package(manifest, contract)
         + check_backup(manifest)
         + check_content_and_policy(manifest)
         + check_requires(manifest, contract)

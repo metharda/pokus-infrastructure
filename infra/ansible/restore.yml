@@ -118,6 +118,68 @@
         fail_msg: "{{ restore_chosen }} is not a snapshot of {{ machine_name }}."
         quiet: true
 
+    # Before anything changes: the platform the snapshot records must still be
+    # deployable exactly, its commits and trees (owner decision with the
+    # "commit" for 3d.4).
+    - name: Check the platform the snapshot records
+      when:
+        - not ansible_check_mode
+        - node_role in ['full', 'lab']
+        - (platform | default({}, true)).repo | default('') | length > 0
+      block:
+        - name: Read the platform record of the snapshot
+          ansible.builtin.command:
+            argv: ["{{ restore_backup }}", platform-record, --snapshot, "{{ restore_entry.id }}"]
+          register: restore_platform_record
+          changed_when: false
+
+        - name: Remember the recorded release
+          ansible.builtin.set_fact:
+            restore_record: "{{ restore_platform_record.stdout | from_json }}"
+
+        # Exactly the recorded commit and tree (owner decision with the
+        # "commit" for 3d.4): the deployment refuses if the mirror no longer
+        # has the commit or the tree differs. With signed tags required the
+        # ref is the recorded tag, which must still point to that commit.
+        - name: Pin the platform source to the recorded commit and tree
+          ansible.builtin.set_fact:
+            restore_platform: >-
+              {{ platform | combine({
+                   'ref': restore_record.release.tag
+                          if (require_signed_tags | bool) and restore_record.release.tag
+                          else restore_record.release.commit,
+                   'commit': restore_record.release.commit,
+                   'tree': restore_record.release.tree}) }}
+          when: restore_record is mapping
+
+        # Content packages the snapshot does not record keep their host_vars refs.
+        - name: Pin the content sources to the recorded commits and trees
+          ansible.builtin.set_fact:
+            restore_content: >-
+              {{ restore_content | default({})
+                 | combine({item.key: item.value | combine(
+                     {'ref': restore_recorded.tag
+                             if (require_signed_tags | bool) and restore_recorded.tag
+                             else restore_recorded.commit,
+                      'commit': restore_recorded.commit,
+                      'tree': restore_recorded.tree}
+                     if restore_recorded else {})}) }}
+          vars:
+            restore_recorded: "{{ (restore_record.content | default({}, true))[item.key] | default(none) }}"
+          loop: "{{ (content | default({}, true)) | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          when: restore_record is mapping
+
+        - name: Check that the recorded commits and trees can be deployed
+          ansible.builtin.include_role:
+            name: platform
+            tasks_from: check
+          vars:
+            platform: "{{ restore_platform }}"  # noqa: var-naming[no-role-prefix]
+            content: "{{ restore_content | default({}) }}"  # noqa: var-naming[no-role-prefix]
+          when: restore_record is mapping
+
     - name: Restore the snapshot
       when: not ansible_check_mode
       block:
@@ -226,37 +288,6 @@
             - node_role in ['full', 'lab']
             - (platform | default({}, true)).repo | default('') | length > 0
           block:
-            - name: Read the platform record of the snapshot
-              ansible.builtin.command:
-                argv: ["{{ restore_backup }}", platform-record, --snapshot, "{{ restore_entry.id }}"]
-              register: restore_platform_record
-              changed_when: false
-
-            - name: Remember the recorded release
-              ansible.builtin.set_fact:
-                restore_record: "{{ restore_platform_record.stdout | from_json }}"
-
-            - name: Pin the platform source to the recorded release
-              ansible.builtin.set_fact:
-                restore_platform: >-
-                  {{ platform | combine({'ref': restore_record.release.tag or restore_record.release.commit}) }}
-              when: restore_record is mapping
-
-            # Content packages the snapshot does not record keep their host_vars refs.
-            - name: Pin the content sources to the recorded refs
-              ansible.builtin.set_fact:
-                restore_content: >-
-                  {{ restore_content | default({})
-                     | combine({item.key: item.value | combine(
-                         {'ref': restore_recorded.tag or restore_recorded.commit}
-                         if restore_recorded else {})}) }}
-              vars:
-                restore_recorded: "{{ (restore_record.content | default({}, true))[item.key] | default(none) }}"
-              loop: "{{ (content | default({}, true)) | dict2items }}"
-              loop_control:
-                label: "{{ item.key }}"
-              when: restore_record is mapping
-
             - name: Deploy the recorded release and content (§7.15)
               ansible.builtin.include_role:
                 name: platform

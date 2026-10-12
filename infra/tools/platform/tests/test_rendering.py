@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from platform_testlib import CONTRACT, FIRST_PLATFORM, GOLDEN, VALID, manifest
 
-from pinka_platform import accounts, database, layout, names, rendering, units
+from pinka_platform import accounts, agentpkg, database, layout, names, rendering, units
 
 PORTS = {
     "otlp_grpc": 4317,
@@ -141,7 +141,8 @@ def fake_root(tmp: Path, document: dict[str, Any], data: dict[str, Any]) -> Path
     (release.parent / "current").symlink_to(release.name)
     helper = root / layout.SOCKET_ACL_HELPER.lstrip("/")
     tool = root / layout.PLATFORM_TOOL.lstrip("/")
-    for path in [helper, tool, *(release / s["start"][0] for s in data["services"])]:
+    starts = [release / agentpkg.start_path(s, data["runtime"]) for s in data["services"]]
+    for path in [helper, tool, *starts]:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("#!/bin/sh\n", encoding="utf-8")
         path.chmod(0o755)
@@ -422,12 +423,16 @@ def test_the_agent_sees_only_its_allowlist(fixture: str) -> None:
     ]
     agent = next(s for s in data["services"] if s["profile"] == "untrusted-agent")
     config = [layout.config_file(agent["name"])] if "config" in agent else []
-    # Only the release being deployed, resolved at render time (not the
-    # current link, not the other published releases).
+    # Of the release being deployed, resolved at render time (not the current
+    # link, not the other published releases), only its own package and, for
+    # python-uv, its own environment (V6).
     release = f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v1"
-    assert bound == [release, *config, *sockets, f"-{layout.AGENT_OTLP_SOCKET}"]
-    assert settings["WorkingDirectory"] == [release]
-    assert settings["ExecStart"][0].startswith(f"{release}/")
+    package = f"{release}/{agent['package'].rstrip('/')}"
+    env = [f"{release}/.agent-venvs/{agent['name']}"] if data["runtime"] == "python-uv" else []
+    assert bound == [package, *env, *config, *sockets, f"-{layout.AGENT_OTLP_SOCKET}"]
+    assert settings["WorkingDirectory"] == [package]
+    start = settings["ExecStart"][0].split()[0]
+    assert start.startswith(f"{(env or [package])[0]}/"), start
     state = [layout.state_dir(p, agent["name"], d) for d in agent.get("state", [])]
     writable = [layout.runtime_dir(agent["name"]), *state]
     assert settings["BindPaths"][0].split() == writable
@@ -474,17 +479,21 @@ def agent_view(settings: dict[str, list[str]]) -> Callable[[str], bool]:
 
 @pytest.mark.parametrize("fixture", VALID)
 def test_nothing_outside_the_agents_set_is_visible(fixture: str) -> None:
-    # Ground-truth blindness (owner, before 3d.4): the agent sees the active
-    # release only, its configuration, its dedicated sockets, the agent
-    # telemetry socket and its own runtime and state directories.
+    # Ground-truth blindness (owner, before 3d.4 and V6 with the "commit" for
+    # 3d.4): of the active release the agent sees only its own package and
+    # environment; besides, its configuration, its dedicated sockets, the
+    # agent telemetry socket and its own runtime and state directories.
     data = manifest(fixture)
     p = data["name"]
     agent = next(s for s in data["services"] if s["profile"] == "untrusted-agent")
     visible = agent_view(agent_unit(render(fixture)))
     release = f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v1"
+    package = f"{release}/{agent['package'].rstrip('/')}"
+    python_uv = data["runtime"] == "python-uv"
     allowed = [
-        f"{release}/.venv/bin/python",
-        f"{release}/platform-manifest.yaml",
+        f"{package}/pyproject.toml",
+        f"{release}/{agentpkg.start_path(agent, data['runtime'])}",
+        *([f"{release}/.agent-venvs/{agent['name']}/lib/python3.12/site-packages"] * python_uv),
         *([layout.config_file(agent["name"])] if "config" in agent else []),
         *(
             layout.socket_path(s["service"], s["name"])
@@ -498,8 +507,34 @@ def test_nothing_outside_the_agents_set_is_visible(fixture: str) -> None:
     for path in allowed:
         assert visible(path), path
     others = [s for s in data["services"] if s is not agent]
+    assert "package" not in str(others)
     content = [c["name"] for c in data.get("content", [])]
+    # The rest of the release: the manifest and its provenance, the shared
+    # environment, the other packages (the injector, primitives, verifier and
+    # evaluator among them), the migrations, the policy bundle, docs,
+    # dashboards, schemas and the other agents' environments.
+    rest = [
+        "platform-manifest.yaml",
+        "DEPLOYED_FROM.json",
+        "pyproject.toml",
+        "uv.lock",
+        ".venv/bin/python",
+        ".venv/lib/python3.12/site-packages/injector/__init__.py",
+        ".agent-venvs/other/bin/python",
+        "packages/injector/pyproject.toml",
+        "packages/primitives/primitives/faults.py",
+        "packages/verifier/pyproject.toml",
+        "packages/evaluator/pyproject.toml",
+        "packages/core/pyproject.toml",
+        "packages/db/migrations/0001_ground_truth.py",
+        *(data[key] for key in ("docs", "dashboards") if key in data),
+        *([data["policy"]["bundle"]] if "policy" in data else []),
+        *(f"{h['run'][0]}" for h in data["hooks"].values()),
+        *(s["start"][0] for s in others if not s["start"][0].startswith(".venv/")),
+    ]
     forbidden = [
+        *(f"{release}/{r}" for r in rest),
+        f"{release}/{agent['package'].rstrip('/')}-other/x",
         f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v0/.venv/bin/python",
         f"{layout.PLATFORMS_DIR}/{p}/releases/current",
         f"{layout.PLATFORMS_DIR}/{p}/releases/{p}-v2",

@@ -1,0 +1,16 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "features": {
+    "dcgm_metrics": true,
+    "gpu_inference": false,
+    "vm_targets": true
+  },
+  "outcome": "degraded",
+  "provider": "baremetal",
+  "remediation_contains": [
+    "compute capability is 7.0, below 7.5",
+    "GPU inference is refused on this GPU"
+  ]
+}

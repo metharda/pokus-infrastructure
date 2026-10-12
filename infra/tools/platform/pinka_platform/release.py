@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from pinka_platform import loader
+from pinka_platform import agentpkg, loader
 from pinka_platform.problems import ManifestError, Problem
 
 UV_LOCK = "uv.lock"
@@ -29,8 +29,10 @@ SPECIAL_KINDS = {
     stat.S_IFSOCK: "socket",
 }
 Lstat = Callable[[Path], os.stat_result]
-# Files that only exist after the build (python-uv: uv sync creates .venv).
+# Files that only exist after the build (python-uv: uv sync creates .venv,
+# and the agents' own environments below .agent-venvs, V6).
 BUILT_PREFIX = ".venv/"
+BUILT_ENTRIES = (".venv", agentpkg.AGENT_VENVS)
 
 
 def _inside(root: Path, target: Path) -> bool:
@@ -130,7 +132,7 @@ def check_build_backend(release: Path) -> list[Problem]:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         return [Problem("pyproject-invalid", PYPROJECT, str(exc))]
-    if "build-system" not in data:
+    if "build-system" not in data and not _member_builds(release):
         return []
     groups = data.get("dependency-groups", {})
     if not isinstance(groups, dict) or not groups.get(BUILD_GROUP):
@@ -145,9 +147,30 @@ def check_build_backend(release: Path) -> list[Problem]:
     return []
 
 
-def _commands(manifest: Mapping[str, Any]) -> Iterator[tuple[str, str]]:
+def _member_builds(release: Path) -> bool:
+    """Whether a workspace member of the release has a ``[build-system]`` to run."""
+    try:
+        packages = agentpkg.read_lock(release)
+    except agentpkg.LockError:
+        return False
+    for package in packages:
+        directory = package.source.get("editable", package.source.get("directory"))
+        if not isinstance(directory, str) or directory.removesuffix("/") in ("", "."):
+            continue
+        try:
+            text = (release / directory / PYPROJECT).read_text(encoding="utf-8")
+            if "build-system" in tomllib.loads(text):
+                return True
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            continue
+    return False
+
+
+def _commands(manifest: Mapping[str, Any], *, built: bool) -> Iterator[tuple[str, str]]:
+    runtime = manifest["runtime"]
     for i, service in enumerate(manifest["services"]):
-        yield f"services[{i}].start[0]", service["start"][0]
+        start = agentpkg.start_path(service, runtime) if built else service["start"][0]
+        yield f"services[{i}].start[0]", start
     for name, hook in manifest["hooks"].items():
         yield f"hooks.{name}.run[0]", hook["run"][0]
     if "cli" in manifest:
@@ -187,7 +210,13 @@ def check_files(release: Path, manifest: Mapping[str, Any], *, built: bool) -> l
         )
     if python_uv:
         problems += check_build_backend(release)
-    for where, relative in _commands(manifest):
+    if not built:
+        problems += [
+            Problem("built-entry", entry, "the build creates it; a release does not ship it")
+            for entry in BUILT_ENTRIES
+            if (python_uv or entry != ".venv") and (release / entry).exists()
+        ]
+    for where, relative in _commands(manifest, built=built):
         if python_uv and not built and relative.startswith(BUILT_PREFIX):
             continue
         if not _regular_file(release, relative):
@@ -210,6 +239,43 @@ def check_files(release: Path, manifest: Mapping[str, Any], *, built: bool) -> l
         if not isinstance(schema, dict):
             problems.append(Problem("config-invalid", where, "not a JSON Schema object"))
     problems += _check_directories(release, manifest)
+    problems += check_agent_packages(release, manifest, built=built)
+    return problems
+
+
+def check_agent_packages(
+    release: Path, manifest: Mapping[str, Any], *, built: bool
+) -> list[Problem]:
+    """The agent's own package and, after the build, its environment (V6).
+
+    Args:
+        release: The staged release.
+        manifest: A manifest that passed the schema and the invariant checks.
+        built: Whether the build has run.
+
+    Returns:
+        Problems.
+    """
+    problems: list[Problem] = []
+    for i, service in enumerate(manifest["services"]):
+        if "package" not in service:
+            continue
+        where = f"services[{i}].package"
+        directory = agentpkg.package_dir(service)
+        if not _directory(release, directory):
+            problems.append(
+                Problem("agent-package-dir", where, f"{directory!r} is not a directory")
+            )
+            continue
+        if manifest["runtime"] != "python-uv" or not (release / UV_LOCK).is_file():
+            continue  # a missing uv.lock is reported once, as uv-lock
+        problems += agentpkg.dependency_problems(release, directory, where)
+        if built:
+            problems += [
+                p
+                for p in agentpkg.env_problems(release, service["name"], directory, where)
+                if p not in problems
+            ]
     return problems
 
 

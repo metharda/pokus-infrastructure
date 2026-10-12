@@ -378,7 +378,7 @@
           "gpu_vram_gib_min": 8
         },
         {
-          "gpu_compute_capability_min": "7.0"
+          "gpu_compute_capability_min": "7.5"
         },
         {
           "driver_cuda_min": "13.0.2"
@@ -387,6 +387,10 @@
       "on_missing": "degrade",
       "impact": "No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.",
       "remediation": {
+        "gpu_compute_capability_min": {
+          "default": "The GPU's compute capability is {actual}, below {required}, the oldest the pinned vLLM image has kernels for: GPU inference is refused on this GPU; use a GPU with compute capability {required} or newer.",
+          "unknown": "nvidia-smi did not report the GPU's compute capability; GPU inference needs compute capability {required} or newer."
+        },
         "driver_cuda_min": {
           "default": "The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}: install a driver branch that supports CUDA {required}.",
           "wsl2": "The NVIDIA driver supports CUDA {actual}, the pinned vLLM image needs {required}: update the NVIDIA driver on Windows (never install a Linux NVIDIA driver inside WSL).",

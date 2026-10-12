@@ -198,6 +198,10 @@
           "/run/pinka/platform-runtime/agent"
         ],
         "release": "/srv/pinka/platforms/refplat/releases/refplat-v1",
+        "release_paths": [
+          "packages/refplat-agent",
+          ".agent-venvs/agent"
+        ],
         "sockets": [
           "/run/pinka/otlp/agent.sock",
           "/run/pinka/platform/ctl/session.sock"

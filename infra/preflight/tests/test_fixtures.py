@@ -79,6 +79,7 @@ class FixtureTreeTest(unittest.TestCase):
             "ubuntu2404-baremetal-nvidia-driver-loaded",
             "ubuntu2404-baremetal-nvidia-old-driver",
             "ubuntu2404-wsl2-gpu-old-driver",
+            "ubuntu2404-baremetal-nvidia-compute-7-0",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent",
             "ubuntu2404-baremetal-nvidia-no-driver-secureboot-manual",

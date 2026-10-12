@@ -189,6 +189,12 @@ the prompt text where they differ.
   gets an invalid case in `tools/platform/tests/test_validate.py`; golden
   files of the principals and endpoints files change only with
   `PINKA_UPDATE_SNAPSHOTS=1`.
+- An `untrusted-agent` service names its own package; the build gives it an
+  environment of its own (`.agent-venvs/<service>/`) and the agent binds
+  nothing else of the release (V6). The tests that run uv
+  (`tools/platform/tests/test_agent_package.py`) need the uv that
+  `versions.lock.yml` pins (`PINKA_UV=<path>` when another is on the PATH);
+  CI installs it.
 
 ## Installer (BUILD_PROMPT §18)
 

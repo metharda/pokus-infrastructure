@@ -544,6 +544,9 @@
           "/srv/pinka/platforms/allprof/state/agt/scratch"
         ],
         "release": "/srv/pinka/platforms/allprof/releases/allprof-v1",
+        "release_paths": [
+          "agent"
+        ],
         "sockets": [
           "/run/pinka/otlp/agent.sock",
           "/run/pinka/platform/brk/agent.sock",

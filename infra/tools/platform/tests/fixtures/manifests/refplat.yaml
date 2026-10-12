@@ -14,6 +14,7 @@ services:
     secrets: [api-token]
   - name: agent
     profile: untrusted-agent
+    package: packages/refplat-agent/
     start: [.venv/bin/refplat-agent]
     after: [ctl]
 jobs:

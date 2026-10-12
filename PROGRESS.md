@@ -554,7 +554,13 @@ proposal, and waits for the owner's "commit".
   `default` project at all (run-network helper, infra §7.7)? Required in
   3d.7 (owner decision with the "commit" for 3d.3): remove the named
   temporary exclusion of the installer and its answers files from the
-  neutrality lint (V5); 3d.7 is not done while it exists.
+  neutrality lint (V5); 3d.7 is not done while it exists. Step 3d.4b
+  (owner decision with the "commit" for 3d.4) comes between 3d.4 and 3d.5
+  as its own step and waits for the owner's "commit" like every 3d step:
+  V6 (the agent's own package and environment), the telemetry stores
+  reachable only by an allowlist of infra UIDs (the alternative of
+  ADR-0016), restore of exactly the recorded commit and tree hash, V7 (GPU
+  compute capability 7.5) and doctor's check of the query socket link.
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
   stated honestly). Anything that needs a VM or a real host is described
@@ -988,6 +994,46 @@ for the owner: V6 proper, the narrowing to the agent's own package and
 environment, which needs a manifest field for `untrusted-agent` services
 and a separate environment from the build (a contract change).
 
+**3d, step 4: operations** (`9b932f6`). Infra §16 step 18 and the 3d.3
+follow-ups, as summarized in `infra/docs/IMPLEMENTATION_NOTES.md`,
+"Contract v2, step 4".
+
+**Owner decisions with the "commit" for 3d.4.** V6 approved, as its own
+step 3d.4b before 3d.5: an `untrusted-agent` service names its own package
+in the manifest; the build gives it a separate environment with only that
+package and its locked dependencies; the agent binds only that package and
+that environment, not the rest of the release (no other packages,
+migrations, policy bundle, docs or dashboards). The tests must prove both
+that these files are not visible and that the injector, primitives,
+verifier and evaluator modules cannot be imported from the agent's
+environment. A manifest whose agent package depends, directly or
+transitively, on another package of the same release is refused. Recorded
+as V6, with the schema, the how-to and the reference pages updated.
+ADR-0016: the alternative is chosen; only an explicit allowlist of infra
+UIDs (the collector, Grafana, the query proxy, doctor and whatever else
+infra itself needs) may reach the telemetry stores directly; everyone else,
+researchers included, goes through the read-only query proxy, with a test
+per account class (3d.4b). Restore redeploys exactly the commit and tree
+hash recorded in `DEPLOYED_FROM.json` and refuses if the mirror no longer
+has that commit or the tree hash differs (3d.4b). V7: the supported GPU
+minimum is compute capability 7.5, matching the vLLM image, and preflight
+refuses anything below it; support matrix and docs updated (3d.4b). The
+query socket link is approved, provided doctor checks the link's target and
+the owner of the target directory. All other choices of 3d.4 approved.
+
+**3d, step 4b: the owner's 3d.4 decisions** (built, proposed for commit).
+V6: the agent's own package (`package`), its own environment
+`.agent-venvs/<service>/` with only that package and its index
+dependencies, the agent binding nothing else of the release, the refusal of
+a dependency on the release's other packages, and tests for visibility and
+imports (the import test builds a workspace with the pinned uv). ADR-0016
+accepted with the allowlist: the store containers run as infra accounts of
+their own, the guard admits only infra's clients, a kernel test per account
+class. Restore pins the recorded commits and trees and checks them before it
+stops anything. V7: compute capability 7.5. Doctor checks the query socket's
+link and directory. Choices, interpretations and findings:
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b".
+
 ### Privacy clean-up (owner instruction)
 
 Scan everything already written for personal or installation-specific data,
@@ -1044,6 +1090,8 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | V3 | infra §7.14 step 5, §12.1 (`runtime: python-uv`); platform spec (release layout) | `uv sync --frozen` builds the release | two build phases: locked wheels with network, nothing built or compiled; then the release built offline with the backend from a `build` dependency group. A release with a `[build-system]` locks its backend in that group, and every dependency is a wheel. Approved with the "commit" for 3d.3; to be carried into the platform spec too |
 | V4 | infra §7.14 (hardening baseline), §6.2 | `RuntimeDirectory=pinka/platform/<service>` | no `RuntimeDirectory=` on the socket directories: socket units create `/run/pinka/platform/<service>/` (root, 0755). Approved with the "commit" for 3d.3 on condition that a service that needs its own runtime directory gets one at a separate path that contains no sockets; done in 3d.4 (`/run/pinka/platform-runtime/<service>`) |
 | V5 | infra §11 (neutrality lint) | the lint excludes test fixtures, docs and the reserved list | the installer and its answers files are excluded too, as an explicit named exclusion in the lint configuration with a comment pointing to 3d.7. Approved with the "commit" for 3d.3; 3d.7 must remove it |
+| V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
+| V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
 
 ## Contract changes
@@ -1158,7 +1206,7 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 | steps 1-3 done, step 4 built and proposed for commit | `912b240` (1), `9ece578` (2), `212121c` (3) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-4 done, 4b built and proposed for commit | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -1311,8 +1359,8 @@ work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pok
 under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
 committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
-exception; 3d steps 1 (`912b240`), 2 (`9ece578`) and 3 (`212121c`) are committed,
-step 4 is built and waits for the owner's "commit", then steps 5-8 one at
-a time. Still open: the remaining
+exception; 3d steps 1 (`912b240`), 2 (`9ece578`), 3 (`212121c`) and 4
+(`9b932f6`) are committed; step 4b is built and waits for the owner's
+"commit", then steps 5-8 one at a time. Still open: the remaining
 `TODO(verify)` items (112), which need network access or reference
 hardware.

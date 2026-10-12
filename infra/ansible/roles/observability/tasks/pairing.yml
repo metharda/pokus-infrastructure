@@ -10,7 +10,7 @@
   ansible.builtin.file:
     path: "{{ observability_pairing_dir }}"
     state: directory
-    owner: "{{ observability_gateway_uid }}"
+    owner: "{{ observability_ids.otel_gateway.uid or omit }}"
     group: root
     mode: "0500"
 
@@ -37,7 +37,7 @@
         src: "/etc/pinka/inference/{{ item }}"
         remote_src: true
         dest: "{{ observability_pairing_dir }}/{{ item }}"
-        owner: "{{ observability_gateway_uid }}"
+        owner: "{{ observability_ids.otel_gateway.uid or omit }}"
         group: root
         mode: "0400"
       loop: "{{ observability_pairing_files }}"

@@ -34,6 +34,31 @@
       nvidia_smi or dcgm, and dcgm only once its image is verified in versions.lock.yml.
     quiet: true
 
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Find the UIDs and GIDs of the containers' accounts
+  ansible.builtin.set_fact:
+    observability_ids: >-
+      {{ observability_ids | default({}) | combine({item.key: {
+           'uid': (ansible_facts.getent_passwd[item.value] | default(['', '', ''], true))[1],
+           'gid': (ansible_facts.getent_passwd[item.value] | default(['', '', ''], true))[2]}}) }}
+  loop: "{{ observability_container_accounts | dict2items }}"
+  loop_control:
+    label: "{{ item.value }}"
+
+# The users_groups role creates them; only a check-mode run on a fresh host
+# may not find them yet.
+- name: Check that the containers' accounts exist
+  ansible.builtin.assert:
+    that: observability_ids.values() | map(attribute='uid') | select('equalto', '') | list | length == 0
+    fail_msg: >-
+      The containers' accounts ({{ observability_container_accounts.values() | join(', ') }})
+      must exist; run bootstrap again (the users_groups role creates them).
+    quiet: true
+  when: not ansible_check_mode
+
 - name: Prepare the forwarding between paired nodes
   ansible.builtin.include_tasks: pairing.yml
 
@@ -44,8 +69,8 @@
   ansible.builtin.file:
     path: "{{ pinka_root }}/state/{{ item.name }}"
     state: directory
-    owner: "{{ item.uid }}"
-    group: "{{ item.gid }}"
+    owner: "{{ item.owner if item.owner is defined else (observability_ids[item.container].uid or omit) }}"
+    group: "{{ item.group if item.group is defined else (observability_ids[item.container].gid or omit) }}"
     mode: "0700"
   loop: "{{ observability_state_dirs | selectattr('name', 'in', observability_state_names) }}"
   loop_control:
@@ -133,7 +158,16 @@
       PROMETHEUS_RETENTION: "{{ observability_prometheus_retention }}"
       GRAFANA_AUTO_ASSIGN_ORG_ROLE: "{{ observability_grafana_user_role }}"
       OTEL_PAIRING_HASH: "{{ observability_pairing_hash | default('') }}"
-      QUERY_PROXY_UID: "{{ observability_query_uid | default('', true) }}"
+      OTELCOL_UID: "{{ observability_ids.otel_gateway.uid }}"
+      OTELCOL_GID: "{{ observability_ids.otel_gateway.gid }}"
+      PROMETHEUS_UID: "{{ observability_ids.prometheus.uid }}"
+      PROMETHEUS_GID: "{{ observability_ids.prometheus.gid }}"
+      LOKI_UID: "{{ observability_ids.loki.uid }}"
+      LOKI_GID: "{{ observability_ids.loki.gid }}"
+      TEMPO_UID: "{{ observability_ids.tempo.uid }}"
+      TEMPO_GID: "{{ observability_ids.tempo.gid }}"
+      GRAFANA_UID: "{{ observability_ids.grafana.uid }}"
+      QUERY_PROXY_UID: "{{ observability_ids.query_proxy.uid }}"
 
 - name: Wait until the services answer
   ansible.builtin.uri:

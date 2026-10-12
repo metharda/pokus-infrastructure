@@ -22,8 +22,8 @@ After=pinka-otlp-agent.socket
 
 [Service]
 Type=simple
-ExecStart=/srv/pinka/platforms/potka/releases/potka-v1/.venv/bin/potka-agent-runner
-WorkingDirectory=/srv/pinka/platforms/potka/releases/potka-v1
+ExecStart=/srv/pinka/platforms/potka/releases/potka-v1/.agent-venvs/agent/bin/potka-agent-runner
+WorkingDirectory=/srv/pinka/platforms/potka/releases/potka-v1/packages/potka-agent
 Restart=on-failure
 RestartSec=5
 User=potka-agent
@@ -62,7 +62,7 @@ RuntimeDirectory=pinka/platform-runtime/agent
 RuntimeDirectoryMode=0700
 PrivateNetwork=yes
 TemporaryFileSystem=/srv/pinka:ro /etc/pinka:ro /var/lib/pinka:ro /run/pinka:ro
-BindReadOnlyPaths=/srv/pinka/platforms/potka/releases/potka-v1 /run/pinka/platform/orch/agent-session.sock /run/pinka/platform/gw/agent.sock /run/pinka/platform/exec/agent.sock -/run/pinka/otlp/agent.sock
+BindReadOnlyPaths=/srv/pinka/platforms/potka/releases/potka-v1/packages/potka-agent /srv/pinka/platforms/potka/releases/potka-v1/.agent-venvs/agent /run/pinka/platform/orch/agent-session.sock /run/pinka/platform/gw/agent.sock /run/pinka/platform/exec/agent.sock -/run/pinka/otlp/agent.sock
 BindPaths=/run/pinka/platform-runtime/agent
 ReadWritePaths=/run/pinka/platform-runtime/agent
 InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/run/pinka/postgres -/run/pinka/postgres-reader -/etc/pinka/incus -/etc/pinka/signing

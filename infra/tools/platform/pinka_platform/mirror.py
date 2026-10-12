@@ -207,6 +207,8 @@ def resolve(git: Git, mirror: Path, ref: str, path: str, tag_prefix: str) -> Res
     if commit is None and COMMIT_RE.match(ref):
         done = _git(git, mirror, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
         commit = done.stdout.strip() if done.returncode == 0 else None
+    if commit is None and COMMIT_RE.match(ref):
+        raise SourceError("source-ref", f"the mirror does not have the commit {ref}")
     if commit is None:
         raise SourceError(
             "source-ref", f"{ref!r} is neither a tag, a branch nor a full commit of the source"

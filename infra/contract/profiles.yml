@@ -98,6 +98,9 @@ columns:
 #                      human classes, root, and the agent (dedicated: only on
 #                      a socket marked untrusted_clients; never)
 #   uses_sockets       may be a socket client
+#   own_package        names its own package in the manifest and sees only that
+#                      package and its own environment of the release, never the
+#                      rest of it (V6, approved with the "commit" for 3d.4)
 profiles:
   controller:
     kind: service
@@ -133,6 +136,7 @@ profiles:
       root: true
       agent: dedicated
     uses_sockets: true
+    own_package: false
   inference-broker:
     kind: service
     summary: brokers inference for the agent and the researchers
@@ -165,6 +169,7 @@ profiles:
       root: true
       agent: dedicated
     uses_sockets: true
+    own_package: false
   sandbox-operator:
     kind: service
     summary: operates the target sandbox in project bench
@@ -197,6 +202,7 @@ profiles:
       root: true
       agent: dedicated
     uses_sockets: true
+    own_package: false
   restricted-operator:
     kind: service
     summary: works on targets with restricted data
@@ -229,6 +235,7 @@ profiles:
       root: true
       agent: never
     uses_sockets: true
+    own_package: false
   restricted-reader:
     kind: service
     summary: reads restricted data without touching targets
@@ -261,6 +268,7 @@ profiles:
       root: true
       agent: never
     uses_sockets: true
+    own_package: false
   observer:
     kind: service
     summary: reads telemetry and non-restricted data (for example a dashboard or report exporter)
@@ -293,6 +301,7 @@ profiles:
       root: true
       agent: never
     uses_sockets: true
+    own_package: false
   untrusted-agent:
     kind: service
     summary: the AI agent under test; trusted with nothing
@@ -323,6 +332,7 @@ profiles:
     serves_sockets: false
     socket_clients: null
     uses_sockets: true
+    own_package: true
   gpu-trainer:
     kind: job
     summary: a training container of the platform (jobs only)
@@ -353,3 +363,4 @@ profiles:
     serves_sockets: false
     socket_clients: null
     uses_sockets: false
+    own_package: false

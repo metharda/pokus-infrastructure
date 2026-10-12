@@ -2869,3 +2869,125 @@ ground-truth blindness:
 ### Open `TODO(verify)` items after 3d.4
 
 - `tailscale serve --https=10000` in the pinned Tailscale (docs service).
+
+### Owner decisions on 3d.4 (with the "commit")
+
+- V6 approved as its own step 3d.4b: the agent's own package and
+  environment, refusal of an agent package that depends on another package
+  of the release, tests for visibility and for imports.
+- ADR-0016: the alternative; only an allowlist of infra UIDs reaches the
+  telemetry stores directly, everyone else (researchers included) goes
+  through the query proxy; a test per account class (3d.4b).
+- Restore deploys exactly the recorded commit and tree hash, or refuses
+  (3d.4b).
+- V7: GPU compute capability 7.5 at least; preflight refuses below it
+  (3d.4b).
+- The query socket link is approved, provided doctor checks the link's
+  target and the owner of the target directory (3d.4b).
+- Every other choice of 3d.4 is approved.
+
+## Contract v2, step 4b: the owner's 3d.4 decisions (plan step 3d.4b)
+
+- **V6, the agent's own package.** An `untrusted-agent` service names the
+  directory of its own package (`package`, required for that profile only:
+  `own_package` in `contract/profiles.yml`). For `python-uv` the directory
+  is a workspace member locked in `uv.lock`; every package it depends on,
+  directly or through others, must come from an `https://` package index,
+  otherwise the release is refused (`agent-package-depends`). The build
+  gives each agent an environment of its own, `.agent-venvs/<service>/`:
+  `uv sync --package <name>` with the `build` group (no build isolation),
+  then once more without the group, which removes the build backend; after
+  the build, an environment holding anything but the package and its locked
+  dependencies is refused (`agent-env-extra`), whatever uv did. A start
+  command below `.venv/` runs from that environment. The agent's unit binds
+  only the package directory and its environment of the release and runs
+  from the package directory; doctor's `sockets.agent_view` also lists what
+  the running agent sees of the release. A release that ships `.venv` or
+  `.agent-venvs` is refused (`built-entry`).
+- **Telemetry stores (ADR-0016 accepted with the owner's alternative).** Only
+  infra's own clients reach Prometheus, Loki and Tempo directly
+  (`pinka_telemetry_clients`): root, the collector, Prometheus, Loki, Tempo,
+  Grafana and the query proxy, each container running as an infra account
+  of its own (`pinka-otelcol`, `pinka-prometheus`, `pinka-loki`,
+  `pinka-tempo`, `pinka-grafana`, `pinka-query-proxy`). The guard's set
+  holds their UIDs and resets everyone else's loopback connections to the
+  guarded ports. Doctor compares the loaded set (`nft -j`) with the
+  accounts' UIDs.
+- **Restore** pins every recorded source to its commit and tree (`commit`,
+  `tree` in the source settings) and checks them with `deploy prepare
+  --inspect` before it stops anything; the deployment refuses a commit the
+  mirror lacks (`source-ref`), a moved tag (`source-commit`) or another tree
+  (`source-tree`).
+- **V7.** `gpu_inference` needs compute capability 7.5; below it preflight
+  refuses GPU inference with a remediation naming the GPU's capability;
+  fixture `ubuntu2404-baremetal-nvidia-compute-7-0`.
+- **Query link.** Doctor's `telemetry.isolation` checks that
+  `/run/pinka/query.sock` links to `query/query.sock` and that
+  `/run/pinka/query` is `pinka-query-proxy:pinka-query` 0750.
+
+### Verified in 3d.4b
+
+- uv 0.12.23 (the pinned binary, its checksum from `versions.lock.yml`) on a
+  workspace built offline: `uv sync --package <member>` with `--group build`
+  installs the member, its dependencies and the workspace root's `build`
+  group (a single selected member inherits the root's groups,
+  `crates/uv/src/commands/project/install_target.rs`); a second sync without
+  the group and with `--no-build` uninstalls the group's packages and keeps
+  the member without rebuilding it; `UV_PROJECT_ENVIRONMENT` with an
+  absolute path creates the environment there. `UV_NO_CONFIG=1` also
+  ignores `[tool.uv]` in `pyproject.toml` (the build installs from the lock
+  anyway). uv 0.8.17 does not inherit the root's groups: the tests that run
+  uv require the pinned version (`PINKA_UV`, skipped otherwise outside CI).
+- nftables 1.0.9: a `type uid` set with `meta skuid != @set` and `reject
+  with tcp reset`; `nft -j list table` shows the set's elements as numbers.
+  The per-account-class test ran against the kernel here (root in a private
+  network namespace).
+
+### Interpretations awaiting owner confirmation (3d.4b)
+
+- `package` names the package's directory, not its distribution name; the
+  distribution is read from its `pyproject.toml` and must be the workspace
+  member locked at that directory.
+- "Another package of the same release" is read strictly: a dependency from
+  a path, a Git repository, a URL or a local wheel directory is refused too,
+  because it can hold the release's own code; only an `https://` index
+  counts. Markers are not evaluated (a declared dependency counts on every
+  platform); extras count only where requested.
+- The agent binds its package directory as well as its environment and
+  starts in the package directory; with `static`, the package is the
+  directory it runs from, and its start command must lie inside.
+- A workspace member with a `[build-system]` now needs the root's `build`
+  group too (V3 checked only the root before; the build would fail
+  otherwise).
+- The store containers run as new infra accounts instead of their images'
+  users; Grafana keeps group 0, which its image grants its own paths to.
+  Data directories created earlier under the old UIDs keep their owners
+  (no lab has been deployed yet).
+- The guard matches connections on the loopback interface only and resets
+  them instead of dropping them; the platform's UID range stays for the
+  accounts but no longer matters to the guard. Researchers query through
+  Grafana; they are not added to `pinka-query` (§7.9: exactly the profiles
+  that query).
+- Restore deploys through the recorded tag only when `require_signed_tags`
+  is on (the tag must still point to the recorded commit); otherwise through
+  the commit. Content packages the snapshot does not record keep their
+  host_vars refs, as before.
+- V7: a GPU below 7.5 leaves the host degraded (GPU inference off, no
+  override), not unsupported.
+
+### Findings to report (3d.4b)
+
+- The Pokus Platform's spec places the agent runner in `potka-agent` next to
+  the shared `potka-core` (socket client, schemas, telemetry). Under V6 the
+  agent package may not depend on `potka-core`: the platform must move what
+  the agent needs into `potka-agent` (a platform spec change).
+- A source tree could ship its own `.venv`, which the build would have
+  synced into; now refused.
+- The image default users were a real risk for an allowlist: Incus's
+  dnsmasq can run as `nobody`, Prometheus's image user.
+- CI now installs nftables and asserts `nft` and `sudo -n`, so the guard's
+  kernel test runs there.
+- Not verified on a real host: the agent environment's build inside the
+  `systemd-run` sandbox, the store containers under their new accounts
+  (Grafana above all), the guard with the real accounts, a restore end to
+  end.

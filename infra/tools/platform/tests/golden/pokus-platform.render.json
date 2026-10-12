@@ -279,6 +279,10 @@
           "/run/pinka/platform-runtime/agent"
         ],
         "release": "/srv/pinka/platforms/potka/releases/potka-v1",
+        "release_paths": [
+          "packages/potka-agent",
+          ".agent-venvs/agent"
+        ],
         "sockets": [
           "/run/pinka/otlp/agent.sock",
           "/run/pinka/platform/exec/agent.sock",

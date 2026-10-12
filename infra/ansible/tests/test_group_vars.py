@@ -92,6 +92,23 @@ def test_infra_accounts() -> None:
             "groups": [],
             "description": "the telemetry query proxy's container user (§7.9)",
         },
+        # ADR-0016 (with the "commit" for 3d.4): every container that reaches
+        # the telemetry stores runs as an account of its own, never as its
+        # image's default user, so the telemetry guard's allowlist names only
+        # infra's accounts.
+        {
+            "name": "pinka-otelcol",
+            "groups": [],
+            "description": "the gateway collector's container user (§7.9)",
+        },
+        {
+            "name": "pinka-prometheus",
+            "groups": [],
+            "description": "Prometheus's container user (§7.9)",
+        },
+        {"name": "pinka-loki", "groups": [], "description": "Loki's container user (§7.9)"},
+        {"name": "pinka-tempo", "groups": [], "description": "Tempo's container user (§7.9)"},
+        {"name": "pinka-grafana", "groups": [], "description": "Grafana's container user (§7.9)"},
     ]
 
 
