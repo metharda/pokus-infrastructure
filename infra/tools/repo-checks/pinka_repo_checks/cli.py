@@ -100,6 +100,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--root", type=Path, default=Path(), help="the infra directory (default: current)"
     )
 
+    gate = sub.add_parser(
+        "gate",
+        help="run a gate target's steps quietly: one summary line, every failure in full",
+        description=(
+            "Run make setup once, then every step of a gate target (lint, test, docs) "
+            "as its own make target, each step's output in <log-dir>/<gate>/<step>.log. "
+            "On success print one line with the counts of passed, failed and skipped "
+            "items and of warnings; on failure print the complete output of every "
+            "failing step first. The Makefile uses it unless VERBOSE=1."
+        ),
+    )
+    gate.add_argument("name", help="the gate target (lint, test or docs)")
+    gate.add_argument("steps", nargs="+", help="the make targets that make up the gate")
+    gate.add_argument("--make", default="make", help="the make command ($(MAKE))")
+    gate.add_argument(
+        "--log-dir", type=Path, default=Path("build/gate"), help="parent of the step logs"
+    )
+
     mermaid = sub.add_parser(
         "mermaid-extract",
         help="write each Mermaid block of the documentation to its own .mmd file",
@@ -146,6 +164,10 @@ def main(argv: list[str]) -> int:  # noqa: PLR0911 - one return per check
         from pinka_repo_checks import neutrality  # noqa: PLC0415 - stdlib-only path
 
         return neutrality.run(args.root)
+    if args.command == "gate":
+        from pinka_repo_checks import gate  # noqa: PLC0415 - stdlib-only path
+
+        return gate.run(args.name, args.steps, make=args.make, log_dir=args.log_dir)
     if args.command == "mermaid-extract":
         from pinka_repo_checks import docs_lint  # noqa: PLC0415 - needs dev dependencies
 

@@ -24,6 +24,14 @@ the prompt text where they differ.
   `docs/DOCS_SPEC.md`: front matter, one task per page, `qa:run`/`qa:skip`
   markers, generated references, strict build, coverage and drift checks.
 - `make lint test docs` must pass before a step is proposed for commit.
+  They are quiet by default (one line per target with the counts of passed,
+  failed, skipped and warnings; every failing step's complete output first;
+  logs in `build/gate/<target>/`); `VERBOSE=1` prints everything. While
+  building, run only the tests relevant to the change; run the full gate
+  once before the summary and always before proposing a commit. Never
+  weaken a check, never hide a failure, a skip or a warning.
+- Read `docs/BUILD_PROMPT.md` and `docs/DOCS_SPEC.md` by section for the
+  step at hand, not whole.
 - Never commit, push or tag on your own; the owner's process in
   `../PROGRESS.md` applies.
 

@@ -77,7 +77,25 @@ help: ## List targets
 	@grep -E '^[a-z][a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 .PHONY: setup
+
+# The quiet gate (lint, test, docs): setup once, then every step as its own
+# make target, its output in build/gate/<target>/<step>.log. On success one
+# line with the counts of passed, failed and skipped items and of warnings; on
+# failure the complete output of every failing step (pytest with --tb=long)
+# first. VERBOSE=1 runs the steps directly and prints everything, as before.
+VERBOSE ?= 0
+GATE = PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks gate --make "$(MAKE)" --log-dir $(BUILD)/gate
+LINT_STEPS := lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral \
+  lint-markdown lint-spelling lint-docs lint-mermaid privacy
+TEST_STEPS := test-py39 test-pytest
+DOCS_STEPS := drift-check docs-coverage docs-build
+
+ifeq ($(GATE_SETUP_DONE),1)
+# A step of the quiet gate: the gate ran setup already.
+setup: ;
+else
 setup: $(VENV)/.synced node_modules/.installed dev-collections $(OPA) $(UV_PINNED) ## Install pinned development tools (user space only)
+endif
 
 $(VENV)/.synced: pyproject.toml uv.lock
 	$(UV) sync --frozen
@@ -111,7 +129,13 @@ node_modules/.installed: package.json package-lock.json
 	@touch $@
 
 .PHONY: lint
-lint: lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral lint-markdown lint-spelling lint-docs lint-mermaid privacy ## Run every linter, the neutrality lint and the privacy scan
+lint: ## Run every linter, the neutrality lint and the privacy scan (quiet; VERBOSE=1 prints everything)
+ifeq ($(VERBOSE),1)
+lint: $(LINT_STEPS)
+else
+lint:
+	@$(GATE) lint $(LINT_STEPS)
+endif
 
 .PHONY: lint-python
 lint-python: setup ## ruff, ruff format, mypy --strict
@@ -194,8 +218,16 @@ privacy: ## Privacy scan: no personal or installation-specific data (stdlib only
 links: ## Check external links in Markdown files (network; weekly in CI)
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks links .
 
-.PHONY: test
-test: setup test-py39 ## Unit tests (pytest) and the preflight suite on the oldest supported Python
+.PHONY: test test-pytest
+test: ## Unit tests (pytest) and the preflight suite on the oldest supported Python (quiet; VERBOSE=1 prints everything)
+ifeq ($(VERBOSE),1)
+test: setup $(TEST_STEPS)
+else
+test:
+	@$(GATE) test $(TEST_STEPS)
+endif
+
+test-pytest: setup ## The pytest suites
 	$(BIN)/pytest
 
 .PHONY: test-distros
@@ -272,8 +304,16 @@ drift-check: setup ## Fail if a generated file differs from a fresh generation
 docs-coverage: setup ## Fail unless every CLI option, exit code and schema field has a reference entry
 	$(GEN) coverage
 
-.PHONY: docs
-docs: drift-check docs-coverage ## Drift check, coverage check and strict documentation build
+.PHONY: docs docs-build
+docs: ## Drift check, coverage check and strict documentation build (quiet; VERBOSE=1 prints everything)
+ifeq ($(VERBOSE),1)
+docs: $(DOCS_STEPS)
+else
+docs:
+	@$(GATE) docs $(DOCS_STEPS)
+endif
+
+docs-build: setup ## Strict documentation build into site/
 	$(BIN)/mkdocs build --strict --site-dir site
 
 .PHONY: check-all

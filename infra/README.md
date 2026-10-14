@@ -155,6 +155,13 @@ make docs       # drift check, docs coverage check and strict documentation buil
 make generate   # rewrite generated files after changing their sources
 ```
 
+`make lint`, `make test` and `make docs` are quiet: each runs its steps one by
+one and prints a single line with the counts of passed, failed and skipped
+items and of warnings, plus where the step logs are (`build/gate/<target>/`).
+When a step fails, its complete output comes first (pytest with
+`--tb=long`), and every other step still runs. `VERBOSE=1` prints everything
+as the steps run, as CI does.
+
 `make setup` also downloads the OPA and uv releases of `versions.lock.yml`
 into `build/tools/` after checking their sha256: the policy tests need that
 OPA and the agent environment tests that uv. Outside CI these tests are

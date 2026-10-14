@@ -41,7 +41,7 @@ jobs:
         with:
           node-version-file: .node-version
       - run: make setup
-      - run: make lint
+      - run: make lint VERBOSE=1
 
   test:
     if: github.event_name != 'schedule'
@@ -81,7 +81,7 @@ jobs:
           command -v systemd-analyze
           command -v nft
           sudo -n true
-      - run: make test
+      - run: make test VERBOSE=1
         env:
           PINKA_POSTGRES_REQUIRED: "18"
 
@@ -99,7 +99,7 @@ jobs:
         with:
           node-version-file: .node-version
       - run: make setup
-      - run: make docs
+      - run: make docs VERBOSE=1
 
   lock-check:
     # Re-verifies every pin over the network and fails while any unverified

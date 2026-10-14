@@ -1,13 +1,20 @@
 # PROGRESS
 
-Single source of truth for the build of Pokus in this repository: owner
-answers, approved deviations, contract changes, step status with commit SHAs,
-open `TODO(verify)` items, known issues and the next step.
+Single source of truth for the build of Pokus in this repository: the
+current state, the remaining plan, open items, every approved deviation, the
+process rules in force (the scoped commit exception, the one-time history
+rewrite and the 3g plan among them) and the platform spec changes pending.
+Completed plan steps, the owner's earlier answers and the record of each
+step's decisions are in [PROGRESS-ARCHIVE.md](PROGRESS-ARCHIVE.md), moved
+there unchanged (owner decision with the "commit" for 3d.5; nothing was
+deleted).
 
 **After a context reset or in a new session:** read this file, then the
-`BUILD_PROMPT.md` and `CLAUDE.md` of the component you work in; check the
-repository state with read-only git commands (`git status`, `git log`);
-continue from [Next step](#next-step). Never redo a completed step from memory.
+`BUILD_PROMPT.md` and `CLAUDE.md` of the component you work in, the specs
+by section for the step at hand; check the repository state with read-only
+git commands (`git status`, `git log`); continue from
+[Next step](#next-step). Never redo a completed step from memory; the
+archive and `infra/docs/IMPLEMENTATION_NOTES.md` hold the record of each.
 
 This file is part of the public repository and follows the privacy invariant:
 no personal or installation-specific data.
@@ -15,7 +22,7 @@ no personal or installation-specific data.
 ## Specifications
 
 `specs/` holds the master copies, read-only for the assistant. The
-exceptions are plan item 3b ([section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
+exceptions are plan item 3b ([section J](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
 the spec update for contract v2 (`d99d2ed`), and one further edit before 3c
 (3b2 in section J); after its commit the specs are read-only again.
 Component copies are byte-identical.
@@ -124,399 +131,80 @@ repository at 3f (section J).
 - **Checks per step.** Each numbered step ends with the spec's checks
   (`make lint test docs` for every component touched), a summary, and proposed
   commits.
+- **Every 3d step (owner, with the "commit" for 3c; the record is in the
+  archive):** built, `make lint test docs` green, documentation alongside,
+  this file updated, then a stop with a summary (what was built, every
+  implementation choice the specs left open with the choice and its
+  alternatives, anything touching security, ground-truth blindness,
+  isolation or the contract, test results, remaining `TODO(verify)`) and a
+  commit proposal that waits for "commit".
+- **Stop and ask (owner, with the "commit" for 3c):** outside 3d, the
+  assistant stops and asks (questions collected and sent together) only
+  when something would deviate from the specs, or the specs do not decide
+  it and the choice affects security, ground-truth blindness, isolation,
+  the contract or data safety; when a test or check needs a VM, a real
+  host, Incus, Docker or a GPU (what and where, never provisioning this
+  machine); or when a failing check could only be fixed by weakening a test
+  or relaxing a spec limit.
+- **Token efficiency (owner, with the "commit" for 3d.5, verbatim):**
 
-## Owner answers
+  > Token efficiency — never weaken a check, never hide a failure, a skip or a warning:
+  >
+  > - Add a quiet mode to the gate and use it by default. On success each target prints
+  >   one summary line that always includes the counts of passed, failed, skipped and
+  >   warnings. On failure it prints the full output of every failing test and every
+  >   finding, with full tracebacks. The full verbose run stays available as before.
+  >   No third-party output filters or command-rewriting hooks.
+  > - While building a step, run only the tests relevant to what you changed; run the
+  >   full gate once before the summary, and always before proposing a commit.
+  > - Move completed plan steps out of PROGRESS.md into PROGRESS-ARCHIVE.md. PROGRESS.md
+  >   keeps only the current state, the remaining plan, open items, all approved
+  >   deviations, the scoped exception, the rewrite and 3g plan, and "Platform spec
+  >   changes pending". Keep CLAUDE.md to rules only; move history out of it. Nothing
+  >   is deleted, only moved.
+  > - Read the specs by section for the step at hand, not whole.
 
-Recorded from the owner's answers to the open questions (§5 of the master
-prompt). "Approved" means the assistant's stated default is implemented
-exactly.
+  In `infra/`, `make lint`, `make test` and `make docs` are quiet by
+  default: one line per target with the counts of passed, failed and
+  skipped items and of warnings, the complete output of every failing step
+  first, step logs in `infra/build/gate/<target>/`; `VERBOSE=1` prints
+  everything as before (CI uses it).
 
-### A. Inputs, process, environment
+## Current state
 
-- **A1** `specs/` copies: approved; byte-identical, sha256 above.
-- **A2** Git process: see [Process rules](#process-rules-in-force).
-- **A3** Version verification: the owner will allow network access for the
-  domains listed in `infra/docs/IMPLEMENTATION_NOTES.md`. Until then items stay
-  `TODO(verify)` and `lock-check` / `verify-todos` keep failing; this is the
-  correct behavior and is not worked around.
-- **A4** Dev tools: approved; user space only, pinned, nothing via apt or under
-  `/etc`. PostgreSQL for integration tests: a pinned, checksum-verified static
-  `micromamba` installs `postgresql` from conda-forge, pinned to the same major
-  version as the Postgres container in infra's `versions.lock.yml`, into a
-  user-space prefix; a throwaway cluster runs on a Unix socket in a temporary
-  directory; tests read the DSN from an environment variable; CI uses a service
-  container of the same major version.
+- Working branch `claude/zen-albattani-qfwwps` of this repository; the
+  owner merges to `main`. Last step commit: `3da2671` (3d.5).
+- Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
+  1-5 (with 3d.4b). The commit of each is in the table below and, for the
+  steps before section J, in the archive.
+- Next: 3d.6 in a fresh session (owner), starting with the items the owner
+  set with the "commit" for 3d.5 (below, Remaining plan).
 
-### B. One-repository mapping
+### Status of the plan of section J
 
-- **B1** Spec copies: approved, including `docs-site/docs/BUILD_PROMPT.md` =
-  full docs spec; spec copies and `IMPLEMENTATION_NOTES.md` are excluded from
-  MkDocs builds.
-- **B2** Ground-truth exposure from monorepo deployment: approved exactly as
-  proposed: root-only bare mirror in `/var/lib/pokus/git/` (0700); tag and
-  signature checks there; `git archive` of a single subtree per deployment;
-  never any `.git` in deployed paths; `catalog/` only into
-  `/srv/pokus/catalog/<ref>/` (root:pokus-gt 0750); `DEPLOYED_FROM.json`
-  provenance file in the contract and used by the platform's official check.
-  Add a doctor check and a test asserting that no deployed path contains
-  `.git` or catalog content outside `/srv/pokus/catalog`.
-- **B3** Bootstrap git checks: record the repository commit plus the `infra/`
-  tree hash; dirty-tree check limited to `infra/` (platform and catalog are
-  deployed from tags via the mirror, never from the working tree).
-- **B4** Tags and versions: prefixes `infra-v`, `platform-v`, `catalog-v`,
-  `docs-v`; "deployed from a tag" = the commit carries a tag with that
-  component's prefix; RC triple = three commits of this repository plus each
-  component's tree hash; all components start at 0.1.0; the owner creates tags.
-- **B5** CI: canonical `<component>/.github/workflows/ci.yml` calling make
-  targets, thin root workflows with `working-directory` and `paths` filters.
-  Runs on GitHub Actions, but only lint, unit, type checks, docs
-  build/coverage/drift, lock-check and syntax/check-mode jobs. Never
-  provisioning, distro VM harnesses or real-host tests on Actions.
-- **B6** Catalog lint dependency: a permanent uv path dependency on
-  `../platform` inside this monorepo (lint always runs with the platform of the
-  same commit). `catalog/README` documents that a future split replaces it with
-  a git URL pinned by commit.
-- **B7** Starter catalog for platform tests: `POKUS_TEST_CATALOG`, Makefile
-  default `../catalog`; no vendored copy.
-- **B8** Starter content is written into `catalog/` during platform step 4;
-  Phase 3 completes `catalog/` as a self-contained component.
-- **B9** Docs site: no submodules; `git archive` of `infra/`, `platform/`,
-  `catalog/` at the given commits.
+| Item | Content | Status | Commit |
+| --- | --- | --- | --- |
+| 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
+| 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
+| 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
+| 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
+| 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
+| 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-5 and 4b done; 6-8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5) |
+| 3e | Infra self-test without provisioning | not started | — |
+| 3f | Move infra to the repository root | not started | — |
+| 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
+| 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
-### C. Integration contract
+### Platform, catalog, docs site
 
-- **C1** One merged `contract_version 1`, byte-identical `docs/contracts.md` in
-  `infra/` and `platform/` (added to the platform layout), a CI check that fails
-  if the copies differ. Spec files are not edited; `contracts.md` is the
-  resolved contract and each resolution cites the sections it reconciles.
-- **C2** Agent-reachable sockets: gateway `agent.sock`, executor socket,
-  orchestrator `svc.sock`; every other `/run/pokus/*` path and the Postgres
-  socket in `InaccessiblePaths`. The orchestrator's `svc.sock` endpoints
-  enforce peercred allowlists so `pokus-agent` can only call the agent-session
-  endpoints.
-- **C3** vLLM deployment switching: socket-activated root helper unit reachable
-  only by `pokus-orch` (peercred-checked); argument = deployment spec ID only,
-  validated against `/etc/pokus/vllm/deployments/`; the orchestrator keeps full
-  hardening; no sudo anywhere.
-- **C4** VM telemetry: the VM alternative is in the merged contract; Incus
-  proxy-device support for VMs is verified in infra step 6; if unsupported, the
-  ACL-restricted route to a dedicated collector listener is used.
-- **C5** Inference modes `local | remote | scripted`, `endpoints.toml`,
-  `/etc/pokus/inference/` and deployment specs on both nodes are in the merged
-  contract.
-- **C6** OPA on `127.0.0.1:8181`, started with authorization enabled and a
-  `system.authz` policy allowing only decision queries (GET/POST on
-  `/v1/data/pokus/...`) and health, denying all policy and data writes. Verify
-  that writes are rejected; add a doctor check and a test.
-- **C7** `<svc>` short names `orch, agent, gw, exec, inject, verify, eval`;
-  Postgres password files keep role names.
-- **C8** Socket permissions as proposed (group + POSIX ACL where two principals
-  are needed, peercred allowlists everywhere), with the group + peercred
-  fallback if ACLs are unavailable on `/run`; doctor verifies effective
-  permissions.
-- **C9** Contract gaps (a)-(h) approved as proposed. For (e) LoRA adapters:
-  only what the specs define (adapters table, deployment `adapter_ids`, storage
-  path `/srv/pokus/models/adapters/<name>/<sha256>/` with a `MANIFEST.json` the
-  platform imports read-only and whose hashes infra's models role verifies).
-  No training or adapter-creation flow.
-- **C10** Ports: proposed in infra step 1 (`infra/docs/contracts.md#ports`).
-  Everything on `127.0.0.1`, no common-collision ports (avoid 3000, 5432, 8000,
-  8080, 9090 defaults where possible), documented in `contracts.md`.
+Not in this repository: they live later in the separate repository
+`pokus-platform`, which the owner starts (section J).
 
-### D. External verification hooks
+## Remaining plan
 
-The repository that consumes these hooks is not part of this build and its
-instructions will not be provided. The hooks below are part of the merged
-contract.
-
-- **D1** `lab_mode: production | staging`. Staging hosts use their own vault,
-  `/srv/pokus`, Tailscale identity (`tag:pokus-qa`) and signing key, never pair
-  with or write to a production host; `scripted` inference backends are
-  accepted only in staging.
-- **D2** Attestation format owned and verified by the platform (JSON Schema in
-  `platform/schemas/`): fields `schema_version`, `attestation_id` (ULID), `rc`
-  (infra/platform/catalog commits), `tree_hashes` (same three),
-  `verification_run_id`, `verifier_commit`, `suites`, `verdict` (`pass|fail`),
-  `issued_at` (UTC ISO 8601 Z), `key_id` (sha256 of the public key).
-  Canonicalized with RFC 8785 (JCS); detached ed25519 signature in
-  `<file>.sig` (base64); trusted public keys as PEM in
-  `/etc/pokus/qa/trusted-keys/`. The official check requires verdict `pass`, a
-  trusted key, a valid signature, and rc commits + tree hashes equal to the
-  `DEPLOYED_FROM.json` of the deployed platform and catalog and the infra commit
-  recorded by bootstrap.
-- **D3** `scripted` backend: any OpenAI-compatible endpoint configured in
-  `endpoints.toml`; no scripted model server is built; runs using it are always
-  `official=false`.
-- **D4** `qa:run` / `qa:skip` markers: syntax implemented and validated by a
-  docs lint (env labels `E0`-`E3` as opaque strings); nothing here executes them.
-- **D5** `last_verified` with no verification runs:
-  `{date: null, rc: null, by: null}`, flagged by CI, never fabricated.
-- **D6** `make site`: `QA=` optional; the footer reads "no attestation" when absent.
-
-### E. infra
-
-- **E1** Researchers: placeholders only — `researcher1` (admin),
-  `researcher2`, `researcher3`, display names "Researcher 1/2/3". No key files
-  are ever committed; real researchers and keys are entered through the TUI on a
-  deployed host and live in that lab's private configuration. Doctor and TUI
-  flag missing keys.
-- **E2** Tailscale tags: `tag:pokus-lab` (production), `tag:pokus-qa` (staging).
-- **E3** Git URL for deployments: required variable `pokus_source_repo`, asked
-  by the TUI, never hard-coded; examples use
-  `git@github.com:example-org/pokus.git`. Authentication: SSH with a read-only
-  deploy key generated on the host; Git host keys pinned in a managed
-  `known_hosts` (for GitHub, its published fingerprints pinned in
-  `versions.lock.yml`); anonymous public HTTPS clones also supported. No
-  personal tokens.
-- **E4** Backup destination: default "configure later" (doctor warns). restic
-  over SFTP to a deployer-chosen host is the primary path, rest-server
-  secondary, local path test-only. Examples use placeholder hosts only
-  (`backup.example.com`, documentation IP ranges).
-- **E5** Disk safety: approved.
-- **E6** Host vars: only `example-machine.yml` and `tests/answers/ci.yml` committed.
-- **E7** Model candidates: permissive, non-gated licenses first (Apache-2.0,
-  MIT or equivalent); gated or custom-license models only listed separately and
-  only with owner approval; presented in step 7.
-- **E8** Distro matrix: changes presented in step 2. Only non-EOL releases in
-  any tier; Ubuntu 26.04 added as `tested` if released and supported by Docker,
-  Incus, NVIDIA toolkit and Tailscale; EOL releases dropped; supported tier
-  stays Ubuntu 24.04 + Debian 13 unless a reason is shown. Incus: newest LTS
-  line packaged for the supported-tier distros; report the finding.
-- **E9** RHEL 8: explicit `unsupported` row for RHEL-compatible major 8 before
-  the `ID_LIKE` rows; remediation names the cgroup v2 kernel argument and
-  recommends a supported release; the `rhel8-cgroup-v1` fixture expects
-  unsupported.
-- **E10** YAML in preflight: generated, committed, drift-checked JSON.
-- **E11** Lockfiles: `infra/pyproject.toml` + `uv.lock` for dev tools only; the
-  installer keeps its own lockfile; `bootstrap/requirements.lock` stays separate.
-- **E12** Certificates and keys: `community.crypto`, pinned.
-- **E13** Researcher DB access: separate reader socket directory (group
-  `pokus`) and reader credential 0640 group `pokus`; the reader role can never
-  see the `gt` schema (tested).
-- **E14** Metrics path: approved (collector Prometheus exporter, scraped).
-- **E15** Compose unit pattern: approved.
-- **E16** `require_signed_tags`: default `false`; SSH-signed tags against a
-  committed allowed-signers file when `true`; both paths implemented and tested.
-
-### F. platform
-
-- **F1** SQLAlchemy Core + psycopg 3, with an ADR.
-- **F2** Dependencies approved as listed (httpx, PyYAML, jsonschema, pyarrow,
-  numpy, scipy, matplotlib, zstandard; own ULID, CloudEvents, canonical JSON
-  and unified-diff code) and an argparse CLI. Canonical JSON implements RFC 8785
-  (JCS) exactly, tested against the RFC's test vectors. The unified-diff
-  applier rejects any fuzz or offset mismatch. All property-tested; versions
-  verified and locked.
-- **F3** Reports: compute in Python, code-free `.qmd` templates, no Jupyter.
-- **F4** Approval delivery: long-poll with the campaign's approval timeout.
-- **F5** Logprobs: JSONL + zstd.
-- **F6** MTTD/MTTR: Kaplan–Meier median and IQR plus a resolution-by-time
-  curve; the method is documented in the metrics reference.
-- **F7** `pokus dev`: records and artifacts through new orchestrator
-  `api.sock` endpoints, stored `kind=dev`, `official=false`; no new DB role.
-- **F8** Admin = membership in `pokus-admin`.
-- **F9** `pokus catalog show`: as specified (pokus-gt members only), documented.
-- **F10** Policy rule 8: `budgets.max_same_action_repeats` from the agent config.
-- **F11** LLM-as-judge: implemented, disabled by default.
-
-### G. catalog
-
-- **G1** Splits `train | dev | test`; all eight starter scenarios in `dev`.
-- **G2** Blueprints: DOCKER-001 → docker-host, DB-001 → pg-primary, all others
-  including CONTROL-000 → web-nginx-flask; the redis-cache blueprint has no
-  starter scenario. Full designs presented in platform step 4.
-
-### H. Documentation and docs-site
-
-- **H1** License: Apache-2.0 for code, CC-BY-4.0 for catalog content and documentation.
-- **H2** `CITATION.cff`: project-level only — title "Pokus", authors as the
-  entity "The Pokus contributors", license, version and release date filled at
-  release time. No personal names, ORCIDs, affiliations or thesis details. The
-  public repository URL goes in once published (placeholder until then,
-  flagged by CI only at release time).
-- **H3** Code of conduct: Contributor Covenant 2.1; enforcement contact is the
-  repository's private reporting channel (GitHub private vulnerability
-  reporting / a maintainers' issue form), described generically; no personal
-  e-mail. Same for `SECURITY.md`.
-- **H4** Docs tooling: approved (MkDocs Material pinned, Node tools pinned via
-  `package-lock.json`, mermaid-cli with a preinstalled Chromium, weekly link check).
-- **H5** Page ownership: approved in principle; the page-by-page table is in
-  `infra/docs/IMPLEMENTATION_NOTES.md` for approval.
-- **H6** Front matter scope: approved (site pages and ADRs; not README,
-  CLAUDE, CHANGELOG, role READMEs, spec copies or IMPLEMENTATION_NOTES).
-- **H7** Tour screenshots: report screenshot from the fake end-to-end report;
-  Grafana screenshot marked pending a real-host run and listed as a known gap.
-- **H8** Changelogs: hand-maintained per component.
-- **H9** Publishing: release tarball + `pokus-lab docs serve` (127.0.0.1
-  only); no GitHub Pages.
-- **H10** PDF export: pinned Quarto/Typst.
-- **H11** Versioned docs: mike, demonstrated with two test versions.
-
-### I. Contract v2: plug-in platforms (owner decision after infra step 14)
-
-Infra becomes a standalone lab product that any testing platform plugs into
-through a manifest, with Pokus as the first platform. Approved overall with
-changes; the proposal document itself is kept outside the repository. The
-per-section spec changes and the rename table are part of the proposal. The
-repository split of decision 12 is replaced by the plan in
-[section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure):
-no v2 code before the spec update (3b) and the rename (3c).
-
-- **Approved as recommended:** decisions 2 (profiles), 4 (runtimes
-  `python-uv` and `static`, builds as `pokus-build`), 5 (hooks as commands),
-  6 (`<platform>-migrate` account), 8 (optional pinned tools), 9 (extra
-  manifest fields), 11 (`file://` sources), 13 (installer inspects the
-  release).
-- **1, naming (replaced after infra step 14; also replaces N1):** "Pokus"
-  is only the overall project name and no longer a technical identifier of
-  either product. Infrastructure product: repository `pokus-infrastructure`,
-  display name "Pokus Infrastructure", technical short name `pinka`; infra's
-  whole namespace becomes `pinka` (paths `/srv/pinka`, `/etc/pinka`,
-  `/var/lib/pinka`, `/run/pinka`, `/opt/pinka`, `/usr/local/share/pinka`,
-  `/usr/local/libexec/pinka`; CLIs `pinka`, `pinka-preflight`; groups,
-  units, targets, slices, containers, Incus networks `pinka-*`; DB role
-  `pinka_monitor`; telemetry `pinka.*`; Python packages `pinka_*`; Tailscale
-  `tag:pinka-lab`, `tag:pinka-qa`, default machine `pinka-lab`); this
-  repository becomes `pokus-infrastructure` (section J). Platform product:
-  repository `pokus-platform` (a new, separate repository the owner starts
-  later), display name "Pokus Platform", technical short name `potka`; the manifest's platform name is `potka` and every name
-  derived from the platform uses it (accounts `potka-*`, database `potka`,
-  roles `potka_*`, CLI `potka`, packages `potka_*`, run attributes
-  `potka.run_id`, `potka.node`). Docs say "Pokus Infrastructure (pinka)" and
-  "Pokus Platform (potka)"; "Pokus" only for the project as a whole. The
-  reserved platform names gain `pinka` and `pokus`; platform objects stay
-  `<platform>-<service>` and the schema lists every reserved infra name per
-  namespace. The rename is purely mechanical, without behavior change, as
-  its own commit (plan item 3c), separate from any functional change,
-  before v2 work starts. The neutrality lint rejects
-  potka-specific names in infra code outside test fixtures and docs; the
-  privacy scan's allowlists follow the rename.
-- **3, agent sockets:** a socket marked `untrusted_clients: true` is
-  dedicated to `untrusted-agent`, never shared with other profiles or humans;
-  the platform spec obliges that its endpoints never return restricted data,
-  proven by a platform test; installer and doctor highlight these sockets.
-- **7, GPU:** GPU training jobs are a first-class v2 capability:
-  - 7.1 an eighth profile `gpu-trainer`, the only one that ever gets GPU
-    devices, for the new manifest field `jobs[]` (image pinned by digest,
-    pulled at deployment, never at job start);
-  - 7.2 a root-owned, socket-activated GPU arbiter (`pokus-gpu-arbiter`,
-    `/run/pokus/gpu.sock`) replacing the deploy helper: modes `idle`,
-    `serving <deployment>`, `training <run>`, one at a time; `train` only
-    with no running or waiting vLLM requests and the controller's sessions
-    drained; every transition in `/var/lib/pokus/gpu/transitions.jsonl`;
-    admins use `pokus-lab gpu status|serve|train|idle`;
-  - 7.3 OCI training containers with options fixed by infra, never from the
-    manifest (`--network none`, read-only root, `--cap-drop ALL`,
-    no-new-privileges, default seccomp, non-root job account, GPU via CDI,
-    limits within infra's caps);
-  - 7.4 a datasets area `/srv/pokus/training/datasets/<sha256>/`
-    (root:`pokus-datasets`, read-only) published by the arbiter with
-    `PROVENANCE.json` (every instance with its split, source runs, builder
-    commit); the split guard refuses to publish or mount any dataset that
-    lists a `test`-split instance; completeness of the provenance is the
-    platform's obligation;
-  - 7.5 adapters hashed and registered read-only under
-    `/srv/pokus/models/adapters/<name>/<sha256>/` with `LINEAGE.json` (base
-    model, dataset and image hashes, job-spec hash, hyperparameters, seed,
-    platform and infra commits, times), served as `<name>@<sha256>` in
-    `adapter_ids`; adapters and datasets are backed up;
-  - 7.6 checkpoints and resume: jobs checkpoint into their run directory; at
-    boot a job left in `training` is `interrupted` and resumed from its
-    checkpoint only with `resumable: true`, else the arbiter restores the
-    previous deployment or stays `idle`;
-  - 7.7 a tiny training job in the reference platform, with a CPU-only
-    variant (`resources.gpus: 0`) for hosts and CI without a GPU;
-  - 7.8 platform-side spec additions: dataset builder with the split guard,
-    job submission through the controller, lineage import, base-versus-adapter
-    comparison campaigns, and the contamination flag (test results are
-    flagged when their scenario template is in the adapter's training data,
-    read from the lineage).
-- **10, restricted schema:** the revoke and check after every migration is
-  the guarantee; the event trigger only after its `GRANT`/`REVOKE` coverage
-  is verified on the pinned PostgreSQL release.
-- **12, repositories (replaced after infra step 14 by section J):** two
-  repositories, as decided: infra with the reference platform, and the
-  platform with catalog and the Pokus docs. The way there changed: no new
-  infra repository and no `git filter-repo`. This repository becomes
-  `pokus-infrastructure`; infra moves to its root at the end (3f) and gets
-  `ci.yml` at the root without a wrapper, tags `vX.Y.Z` and its own docs
-  site. The platform, catalog and Pokus docs site live later in the new
-  repository `pokus-platform`, which the owner starts; its CI validates the
-  Pokus manifest against the schema of the infra release it targets, and a
-  release candidate becomes an infra release plus the platform and catalog
-  commits there. Infra publishes contract v2, the manifest schema and the
-  profile table with each release, replacing the byte-identical
-  `contracts.md` copies (C1).
-- **Additions:** the v1 agent-runner finding (TCP access, `pokus-svc`
-  membership) is not patched separately in v1; v2 step 3 includes tests
-  proving both are closed. The neutrality lint matches an explicit name list
-  as whole words. Out of scope for v2, recorded: an OCI runtime for platform
-  services, Incus fine-grained authorization, several platforms at once.
-- **New points, decided after infra step 14:** N1 is replaced by the naming
-  decision above. N2 approved: every socket the agent may use is dedicated to
-  it, including the broker and sandbox-operator sockets; the executor gets
-  separate agent and orchestrator sockets. N3 approved for infra: the
-  training datasets area belongs to `pinka-datasets` with no human members;
-  platform addition (platform §4.1 and §4.9): `potka datasets inspect <hash>`
-  shows provenance and sample records through the controller, is allowed
-  only for `pinka-admin` members, and is logged as an event. N4 approved: in
-  v2, training runs only on `node_role: full`; on lab + inference topologies
-  the installer and doctor state clearly that training is unavailable there,
-  and the docs record split-node training as future work.
-- **Rename decisions (owner, on the rename table's open questions):**
-  - Approved as recommended:
-    - Q1: header `Managed by pinka (<path>)`, also the `org.pinka.managed`
-      label value.
-    - Q2: `pokus-lab` becomes the CLI `pinka`, the machine name and
-      Tailscale tag `pinka-lab`, `pinka-lab.target`, the package `pinka_lab`
-      in `tools/pinka-lab/`, `PINKA_LAB*`, `Start-PinkaLab` and
-      `Stop-PinkaLab`, and the reference page `reference/cli/pinka.md`.
-    - Q3: `pokus-infra` in derived names becomes `pinka`: `pinka-gen`,
-      `pinka_gen`, `pinka-dev`, `pinka-doc-tools`, `pinka_dir`.
-    - Q4: the v1 platform groups become `potka-svc`, `potka-exec-clients`,
-      `potka-gw-clients` (`POTKA_SVC_GID`, `potka_svc_gid`,
-      `compose_potka_svc_gid`); N2 replaces them in v2.
-    - Q5: `pokus-gt` becomes `pinka-gt`, then `pinka-restricted` in v2.
-    - Q6: `pokus_grafana` becomes `potka_grafana`, its secret
-      `/run/secrets/potka-grafana`.
-    - Q8: `pokus-run-explorer` becomes `potka-run-explorer` and moves to the
-      platform's dashboards in v2.
-    - Q9: the bare mirror becomes `/var/lib/pinka/git/potka.git`; v2 keeps
-      one mirror per source.
-    - Q10: platform-derived names in infra's v1 code become `potka` at the
-      rename; the neutrality lint arrives with v2 step 3 and then forbids
-      `potka` and `pokus` in infra code outside test fixtures and docs.
-    - Q12: the lock-check test key "Pokus Test Key" stays.
-    - Q13: the infra spec master is renamed
-      `pokus-infrastructure-claude-code-prompt.md` (at 3f).
-    - Q14: prose is reviewed sentence by sentence: infra "Pokus
-      Infrastructure (pinka)", platform "Pokus Platform (potka)", the
-      project "Pokus"; "the lab" stays a common noun.
-  - Q7, approved as the permanent design: OPA's authz allows exactly two
-    decision paths, the platform's (`potka.action` now, the manifest's path
-    in v2) and infra's `pinka.placeholder`, nothing else. A test proves it.
-  - Q11: no copy of the privacy scan now; it stays in this repository with
-    infra and is handled when `pokus-platform` is created.
-  - Q15: the working branch stays `claude/zen-albattani-qfwwps` (until 3g;
-    then `moving/on` in `pokus-infrastructure`, owner decision with the
-    "commit" for 3d.3).
-  - The rename follows the rename table's rules: no behavior change;
-    generated files regenerated, never hand-edited; verbatim quotes, commit
-    history, upstream names and the spec copies unchanged; the image
-    leakage lint forbids `pokus`, `pinka` and `potka`; the installer's
-    username check refuses `pinka-`, `potka-` and `pokus-`; a residue check
-    lists the remaining `pokus` uses and allows only the project name in
-    prose, the repository names, the reserved-name list, verbatim quotes and
-    the Q12 test key.
-- **Proposal status:** the proposal (decision table, profile table with
-  `gpu-trainer` and the arbiter, security model and threat table, training
-  flow, repository split, test plan, effort), the per-section spec change
-  list for infra, platform and docs, and the rename table with its open
-  questions were delivered after infra step 14 and decided as recorded
-  here. Nothing of v2 and nothing of the rename is implemented; the order
-  of work is section J.
-
-### J. Plan after infra step 14: this repository becomes pokus-infrastructure
+From section J of the owner answers; its completed items are in the
+[archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure).
 
 Owner decision, replacing the split steps that assumed `git filter-repo` and
 a new infra repository: this repository becomes `pokus-infrastructure`.
@@ -526,28 +214,6 @@ owner starts; the assistant does not start the platform, the catalog or the
 Pokus docs site. Each item ends with its checks green and a commit
 proposal, and waits for the owner's "commit".
 
-- **3a** `PROGRESS.md`: the final commit rule, the rename decisions and this
-  plan; the root `CLAUDE.md` states the same commit rule (owner, after 3a
-  was proposed: not deferred to 3f), in the same commit.
-- **3b** Spec update: the owner authorized the assistant to edit the spec
-  masters in `specs/` for this one change: apply the proposal's Spec changes
-  list exactly (contract v2 including decision 7's training, N2-N4, the
-  pinka/potka naming and the rename decisions) to the infra prompt, the
-  platform prompt and the docs spec. Spec changes only, no code. The copies
-  in `infra/docs/` stay byte-identical; the new sha256 values are recorded.
-  The commit proposal comes with a section-by-section summary of the diff.
-  After that commit the specs are read-only again.
-- **3b2** Spec edit before 3c (owner decision after the 3b commit; the
-  specs are read-only again after its commit), limited to: the proposals of
-  steps 7-11 decided as below (2, 3, 4, 6, 7), items A-D, and the isolation
-  probe per profile. 3c starts only after this commit and after the open
-  interpretations (`infra/docs/IMPLEMENTATION_NOTES.md`) are decided.
-- **3c** Rename: the mechanical `pokus` → `pinka`/`potka` rename in `infra/`,
-  per the rename table, with the residue check; no behavior change.
-- **3c2** Images free of project names (owner decision): a separate small
-  commit right after 3c drops the managed header from files installed into
-  images and adds `pokus`, `pinka` and `potka` to `images_leakage_patterns`
-  (infra §7.13: target images carry none of the three strings).
 - **3d** Contract v2: steps 1-8 of the proposal's "Effort and order", one
   commit proposal per step, following the updated specs. Verification items:
   can a certificate restricted to `bench` create networks in Incus's
@@ -561,6 +227,43 @@ proposal, and waits for the owner's "commit".
   reachable only by an allowlist of infra UIDs (the alternative of
   ADR-0016), restore of exactly the recorded commit and tree hash, V7 (GPU
   compute capability 7.5) and doctor's check of the query socket link.
+- **3d.6** (infra §16 step 20), first the owner's decisions with the
+  "commit" for 3d.5, each with tests:
+  - **Size caps (first item):** `training_caps` gains a maximum dataset
+    size and a maximum combined size of `/output` and `/checkpoints` per
+    run, with conservative defaults. The arbiter checks free disk space
+    before it starts a run, and stops the run and records it as failed
+    when a cap is exceeded. `/tmp` in the job container is a tmpfs with a
+    size limit counted against the job's memory.
+  - **Resume:** `pinka start` and a reboot behave the same way: a
+    resumable interrupted run resumes in both cases, and the resume is
+    logged as a transition.
+  - **Lab node private key:** 0600 root on a lab node; `root:pinka-inference`
+    0640 only where `pinka-inference` needs it.
+  - **Purge:** `pinka platform purge` reloads the inference guard, so no
+    purged platform UID stays on the allowlist.
+  - **Hash format:** specify and test that paths are sorted bytewise (C
+    locale), with the exact line format, so the same tree gives the same
+    hash on every machine.
+  - **`training_caps` at submission** stays (approved), but validation and
+    doctor warn when a deployed job's resources exceed the host's
+    `training_caps`.
+  - Then step 20: the reference platform `refplat` with its training job
+    and CPU-only variant, the isolation probe per loopback-capable profile,
+    the extended check-mode job, the `make test-distros` additions.
+  - Planned for earlier steps and not built yet (found when this file was
+    split): the SMT warning of P3a (siblings of one core in different CPU
+    sets; installer and doctor), and interpretation 11.13 as changed by the
+    owner (once paired, the split-inference ports accept only the paired
+    peer's tailnet address; the pairing port is open only while pairing).
+    They belong to 3d.6 unless the owner places them elsewhere.
+- **3d.7** (infra §16 step 21): the installer (release inspection, the
+  Platform review screen, the GPU screen, sources, secrets, answers schema,
+  snapshots), and the removal of the V5 exclusion (see 3d above).
+- **3d.8** (infra §16 step 22): documentation (contract v2 with
+  `docs/contracts.md` rewritten for v2, generated references, new pages,
+  ADR-0014 and ADR-0015, security).
+
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
   stated honestly). Anything that needs a VM or a real host is described
@@ -605,480 +308,10 @@ proposal, and waits for the owner's "commit".
   master prompt describes, their commit proposal, then stop. After 3h the
   assistant waits for the owner's explicit instruction.
 
-**3b notes (spec update).** Question **S1** (the Pokus Platform's executor,
-a `sandbox-operator` service, runs the agent's `query_logs` and
-`query_metrics` tools) is resolved by the owner's review, item K2: every
-telemetry query goes through infra's read-only query proxy, and
-`sandbox-operator` gets "send; query (via proxy)". Choices made while writing
-the spec text, beyond the change list:
-
-- The Pokus manifest's service names are `orch`, `agent`, `gw`, `exec`,
-  `inject`, `verify`, `eval`, so accounts and roles keep the v1 suffixes
-  (`potka-orch`, `potka_orch`); units become `<platform>-<service>.service`.
-  The change list's "eight services" counted reconcile, which is now a hook:
-  Pokus has seven services. Its training job is named `lora`.
-- The agent runner holds no gateway credential: the `untrusted-agent`
-  profile allows no secrets, so the gateway identifies it by peer
-  credentials on its dedicated socket and by the session token. The gateway
-  header becomes `X-Potka-Session`.
-- From the proposal, not listed in the change list: restore redeploys the
-  platform and re-registers adapters (§7.15); one signing key per platform
-  (§8.2, §12.10); `pinka update-host` runs the `drain` hook and arbiter
-  `idle` (§19.5); `pinka platform purge` (§9); the run explorer and
-  dashboards move to the platform repository (platform §18).
-- The installer's GPU & inference screen is screen 9 in the infra prompt
-  (the change list said 7); the new Platform review screen makes the flow 19
-  screens. The external verification repository keeps the name `pokus-qa`
-  (review item O1); only the Tailscale tag becomes `tag:pinka-qa`.
-- Example values in `host_vars` (tag prefixes `platform-v`, `catalog-v`,
-  path `platform/`, training caps) are placeholders.
-
-**Owner's review of the first 3b draft** (applied in the working tree, not
-committed): K1 the platform repository layout (`platform/` and `catalog/` as
-separate subtrees) and the refusal of overlapping release and content paths
-from one repository; K2 the read-only telemetry query proxy everywhere,
-Grafana's datasources included, with the owner's order of preference for
-keeping the backends out of reach (decided at implementation in an ADR) and
-a required test in the reference platform's isolation probe; K3
-every approved deviation folded into the spec text; O1 the external
-verification repository is `pokus-qa`; O2 the attestation format defined in
-the platform spec (§12.2); O3 `potka catalog show` through the orchestrator
-API, `pinka-admin` only, logged; O4 Grafana mounts the reader socket
-directory, no PostgreSQL TCP listener; O5 the NVIDIA Container Toolkit also
-for `gpu_training`; O6 the neutrality lint with the `pokus` allowlist,
-for repository code only (target images, the platform's trace-cleanup scan
-and its ticket lint allow no `pokus`, `pinka` or `potka` string at all); O7
-deployment specs named `<id>@<version>.yml`; and the minor items (docs spec
-A.1, the infra §9 table rows, the duplicate uv install in infra §5.2,
-`require_signed_tags: false` in the example, `QA=` optional).
-
-The owner also confirmed the threat coverage (infra §15, §11, invariant
-21) and two interpretations: the SMT warning (siblings of one core in
-different CPU sets) and the platform's `docs/` inside `platform/`. The review
-also approved the four pending proposals of the report after infra step
-14. They had not been recorded as approved before; they are listed as
-P3a-P3d under [Approved deviations](#approved-deviations) (P for
-"proposal", to keep them apart from plan items 3a-3h).
-
-Approved deviations deliberately not folded into the spec text, with the
-reason:
-
-- A2 (the assistant runs the approved commit commands): a process rule,
-  replaced by the final commit rule in this file and the root `CLAUDE.md`.
-- B2 (bare mirror and `git archive` of one subtree): already in the spec
-  through contract v2 (infra §7.14).
-- B3, B5, C1 (dirty check and tree hash limited to `infra/`, root CI
-  wrappers, `platform/docs/contracts.md` copy): monorepo arrangements that
-  end with 3f; the spec text describes the infra-only repository, and under
-  contract v2 the platform keeps no copy of the contract.
-- B4 (one repository's commits as the release candidate): replaced by
-  contract v2's release candidate (infra release, platform release, catalog
-  content package; infra §12.10, platform §12.2).
-- B6 (catalog lint with a `../platform` path dependency): a monorepo
-  arrangement; in `pokus-platform` the catalog has no code of its own.
-- C2, C3, C8 (agent on `svc.sock`, the deploy helper, socket groups and
-  ACLs): superseded by contract v2's dedicated agent sockets (N2), the GPU
-  arbiter and the socket rendering of infra §12.3.
-- C5, C9b, C9f-C9h, D1, I2: already in the spec text.
-- D4 (`qa:run` markers linted only here): describes this repository's role;
-  the docs spec's rule that QA bots execute them stays true for `pokus-qa`.
-- F9 (`catalog show` for restricted members): superseded by review item O3.
-- H7 and H11 (Grafana screenshot pending, versioned docs shown with two test
-  versions): interim states, not spec changes.
-- The contract proposals of infra steps 7-11 that were never approved (the
-  image property `requirements.nesting`, the session record's fields, the
-  fingerprint document, the inference control API, `current.yaml`, the
-  gateway's ACL on the mTLS material, the `LoadCredential=` question): they
-  stay proposals; the lab drain on `api.sock` is replaced by the `drain`
-  hook.
-
-Not implemented yet, to be built with contract v2 (infra §16, step 18,
-which is step 4 of plan item 3d): the query proxy, the port overrides and
-the preflight port and VM-address checks, the docs service (it replaces the
-foreground `docs serve` command of step 14), maintenance windows, the SMT
-warning, and the reader-socket mount for Grafana. Added by 3b2: the
-run-network helper (§16 step 17), the driver CUDA check and the record
-schemas in `contract/records/` (step 18), the inference forwarder, the
-control API's `POST /activate` through the arbiter and the inference API's
-reachability (step 19), and the isolation probe per loopback-capable
-profile (step 20); the drain hook replaces the `/lab/drain` calls (step 18).
-
-**Decisions after the 3b commit (owner).** On the contract proposals of
-infra steps 7-11 (details in `infra/docs/IMPLEMENTATION_NOTES.md`, steps
-7-11):
-
-1. `current.yaml` next to `current.env`: approved as an infra-internal detail
-   (approved deviation St7-1).
-2. Image property `requirements.nesting`: approved as the fourth image
-   property of the contract (3b2: infra §7.13, §12.6; platform §3).
-3. Session record: approved; its JSON Schema is published in
-   `contract/records/` (3b2: infra §7.16, §12.10; platform §3, §6).
-4. Fingerprint document: approved as the contract v2 format, its schema in
-   `contract/records/` (3b2: infra §10.2, §12.10; platform §3).
-5. `POST /lab/drain` and `GET /lab/status` calls: reverted in 3d step 4; the
-   `drain` hook replaces them.
-6. Inference client key: option (a), a root-run local mutual-TLS forwarder
-   on lab nodes; `controller` and `inference-broker` stay loopback-only (3b2:
-   infra §12.2, §12.8, §12.11, §19.10, invariant 22; platform §3). The
-   gateway's ACLs on `/etc/pokus/inference/` from step 11 go in 3d.
-7. Inference control API: approved, with `POST /activate` sent to the
-   inference node's GPU arbiter as `serve <id>@<version>` (3b2: infra §12.8,
-   §19.10; platform §3, §4.1).
-8. The agent's secrets: closed; the validator refuses `secrets` on an
-   `untrusted-agent` service and infra creates no secrets directory for it
-   (3d).
-
-Further items (owner, folded in by 3b2): **A** a root-run, socket-activated
-run-network helper for the controller only (infra §7.7, §12.2, §12.6,
-invariant 23; platform §3, §4.1, §4.2, §5); **B** vLLM reachable only by
-`inference-broker`, `controller` and infra's own checks, by the mechanism of
-K2 (infra §7.11, §12.2, invariant 22); **C** preflight and doctor check that
-the NVIDIA driver supports the pinned vLLM image's CUDA version, with a
-remediation (infra §2.2, §2.3, §9, §10.1, §11); **D** the
-`debian13-baremetal` fixture is `supported` (infra §11); and the isolation
-probe runs for every loopback-capable profile as a transient unit with that
-profile's rendered hardening (infra §7.18, §11). Also decided: the image
-header fix as 3c2; from step 2, Debian 12 removed from `tested` and an
-explicit unsupported row per implemented distribution for unlisted releases
-(approved deviations St2-1, St2-3). With the owner's approval of 3b2, item A
-was broadened: doctor and the platform's integrity check flag any Incus
-network that neither infra created nor the helper's log records, whatever
-its name (infra §7.7, §11).
-
-**Interpretations (owner, after the 3b commit).** Every interpretation that
-`infra/docs/IMPLEMENTATION_NOTES.md` lists as "awaiting owner confirmation"
-in steps 2-14 and the follow-ups after step 13, and that contract v2 does
-not supersede, is approved as recommended: 2.4-2.6, 3.1-3.6, 3.8-3.10,
-4.1-4.4, 5.1-5.7, 6.1-6.6, 6.8, 7.1, 7.3, 7.7, 7.8, 7.10-7.12, 8.1, 8.2,
-8.4-8.11, 9.1-9.11, 10.1-10.12, 11.1, 11.3, 11.5, 11.6, 11.8, 11.10-11.14,
-12.1-12.6, 13.1-13.8, 13.10-13.12, CPU sets 1, 2 and 4, and 14.3. With
-these notes and one change:
-
-- 3.1: ADR-0002 is accepted (its status is updated with 3b2).
-- 3.4: the state file at every exit is approved; "the official check
-  requires `result` success" is a request for the next platform spec edit
-  (below).
-- 4.2: the CUDA 13.0 vLLM image stays; item C makes a too-old driver visible.
-- 6.3: the managed `daemon.json` label becomes `org.pinka.managed` in 3c.
-- 7.1: Prometheus, Loki and Tempo follow the K2 mechanism and its ADR; the
-  collector, Grafana and the exporters stay on the host network.
-- 9.7: the health gate's thresholds stay; its facilities follow `requires`
-  in 3d. 10.5: the listener allowlist gains the non-loopback block of infra
-  §12.11. 10.6: the telemetry round trip goes through the query proxy.
-  11.3: the console-script check becomes the manifest command check. 11.5:
-  socket expectations come from `principals.json`.
-- 11.13, changed: once paired, the split-inference ports accept only the
-  paired peer's tailnet address; the pairing port is open only while pairing
-  (built in 3d with the inference forwarder).
-
-Superseded by contract v2, reworked in 3d: 7.9 (adapters come only from the
-GPU arbiter; adapter entries leave `models.lock.yml`), 11.7 (the evaluator
-uses the `wx-memory` relaxation), 14.1 and 14.2 (the docs service, P3c) and
-14.4 (maintenance windows, P3d). Decided earlier, not repeated: 2.1-2.3,
-4.5 (A3), 5.8 and both check-mode items (I2), 7.2, 7.4-7.6, 8.3, 11.2,
-11.4, 11.9, 13.9, CPU sets 3; obsolete: 3.7, 3.11, 6.7.
-
-**Requests for the next platform spec edit** (the platform spec is
-read-only; the owner keeps its master for `pokus-platform`):
-
-- The official check requires `result` success in
-  `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
-  `doctor_warnings` also counts is decided in that edit.
-- V3 (owner decision with the "commit" for 3d.3): a `python-uv` release
-  locks its build backend in a `[dependency-groups] build` group and every
-  dependency is available as a wheel; infra builds it in two phases (locked
-  wheels with network, then the release built offline).
-
-**3c, the rename (committed `63b7e56`).** `infra/` follows the rename table: 149 paths
-moved with `git mv`, every generated file regenerated, the spec copies
-untouched; the residue check (`git grep -n -i pokus` in `infra/` and
-`.github/`) lists only allowed uses: the project name in prose ("Pokus",
-"Pokus lab"), the repository names, the refused username prefix `pokus-`
-and the Rego test that the old decision path is rejected, the spelling
-dictionary, the step 8 note on the word itself and the test key (Q12). Behavior changes are only the two the owner decided: OPA's
-authorization allows exactly the two decision paths (Q7, with a test), and
-the installer refuses the prefixes `pinka-`, `potka-` and `pokus-`. The
-interpretations and findings are in `infra/docs/IMPLEMENTATION_NOTES.md`,
-"Rename (plan step 3c)"; in short: "Pokus lab" stays the project's lab;
-markers left on hosts say `pinka` (Q1); Incus client certificates carry
-their name (`potka-*`, `pinka-metrics`); found, not fixed: doctor's
-firewalld check looks for a zone `pinka` that the firewall role never
-creates (fixed in 3c3, owner decision). Records in this file written before 3c keep
-the names of their time.
-
-**Owner decisions with the "commit" for 3c.**
-
-- The five rename interpretations of `infra/docs/IMPLEMENTATION_NOTES.md`
-  ("Rename (plan step 3c)", items 1-5) are approved.
-- The firewalld zone bug is fixed as its own small commit right after 3c2
-  (3c3), not in 3d.
-- The secret `POKUS_PRIVACY_DENYLIST` never existed (the 3c record wrongly
-  assumed it). The owner creates `PINKA_PRIVACY_DENYLIST` as a repository
-  secret; 3c2 switches the workflows to it, and until it exists the scan
-  runs without a denylist, as it has so far. The owner received the value's
-  format and the local commands for the working tree and the whole history
-  (also in `infra/README.md`, "Privacy", for the working tree).
-- Scoped commit exception: see [Process rules](#process-rules-in-force).
-- Order: 3c2 → firewalld fix (3c3) → 3d steps 1-8, one at a time → 3e →
-  3f. Each 3d step: built, `make lint test docs` green, documentation
-  alongside, this file updated, then a stop with a summary (what was built,
-  every implementation choice the specs left open with the choice and its
-  alternatives, anything touching security, ground-truth blindness,
-  isolation or the contract, test results, remaining `TODO(verify)`) and a
-  commit proposal that waits for "commit".
-- Outside 3d, the assistant stops and asks (questions collected and sent
-  together) only when something would deviate from the specs, or the specs
-  do not decide it and the choice affects security, ground-truth blindness,
-  isolation, the contract or data safety; when a test or check needs a VM,
-  a real host, Incus, Docker or a GPU (what and where, never provisioning
-  this machine); or when a failing check could only be fixed by weakening a
-  test or relaxing a spec limit.
-- After 3f: stop and ask the owner to rename the repository to
-  `pokus-infrastructure` on the Git host (3g); after the confirmation, 3g
-  and 3h under the normal commit rule, then stop. The platform is not
-  started. (Changed with the "commit" for 3d.2: a fresh repository instead
-  of the rename, see 3g above and
-  [Process rules](#process-rules-in-force).)
-
-**3c2, images free of project names.** `images_leakage_patterns` gains
-`(?i)pokus`, `(?i)pinka` and `(?i)potka` (no allow rule); the files
-installed into images (`infra/images/*/files/`) lose the managed header;
-the workflows read the secret `PINKA_PRIVACY_DENYLIST`. Details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Images free of project names".
-
-**3c3, doctor's firewalld check.** Doctor's `network.firewall` check now
-asks firewalld for the two zones the firewall role creates,
-`pinka-tailnet` and `pinka-run`, instead of a zone `pinka` that never
-existed; a test keeps doctor's zone list equal to the role's.
-
-**3d, step 1: the contract core** (`912b240`). `infra/contract/` (the
-manifest's JSON Schema, `profiles.yml`, the generated `reserved-names.yml`)
-and `infra/tools/platform/` (`pinka-platform validate`: strict YAML, schema,
-invariant checks, derived names against the reserved lists, each other and
-the host, release directory checks; renderers of `principals.json` and
-`endpoints.toml`), with 227 tests, generated reference pages and a how-to
-for platform developers. Choices and interpretations are in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 1".
-
-**Owner decisions with the "commit" for 3d.1.** All interpretations of
-3d.1 approved (the own schema validator, names, caps, the post-build
-command check, the policy path, `cli.run`, the literal socket table, the
-same-platform host exemption, the `endpoints.toml` and `principals.json`
-layouts, the signing key at `/etc/pinka/signing/<platform>/signing.key`).
-Added in step 2: a test that fails when the manifest schema uses a keyword
-the validator does not implement, and a cell-by-cell drift test of
-`profiles.yml` against the profile table of infra §12.2. Both findings
-approved as stricter validation, recorded as approved deviations V1 and V2
-for the next spec edit. The permanent no-attribution rule, the privacy
-scan's history check and the one-time rewrite are under
-[Process rules](#process-rules-in-force). Answer to "are `0503e86` and
-`8df9199` reachable from main": yes, both; `0503e86` is `main`'s root
-commit, so a rewrite of the working branch changes every commit hash and
-leaves `main`'s copies with their trailers unless `main` is replaced too.
-
-**3d, step 2: deployment** (`9ece578`). Infra §16 step 16: the deployment
-engine in `infra/tools/platform/` (sources, root-only mirrors per
-repository, staging with `git archive`, validation with the one-platform
-rule, the sandboxed `python-uv` build as `pinka-build`, job image pulls by
-digest, read-only publishing with `DEPLOYED_FROM.json`, `active.json`,
-retirement on `--replace-platform`, purge), the `platform` role ordering
-those steps, bootstrap's `--inspect-platform`, `--replace-platform` and exit
-code 65, `pinka platform purge`, the record schemas in
-`infra/contract/records/`, `pinka-restricted` (was `pinka-gt`),
-`pinka-build`, the new layout entries, and the step-1 follow-ups (keyword
-and §12.2 drift tests, V1, V2). The contract v1 `deploy_source` and
-`catalog` roles are gone; contract v1 rendering stays unused until 3d.3.
-Choices, interpretations and findings: `infra/docs/IMPLEMENTATION_NOTES.md`,
-"Contract v2, step 2".
-
-**Owner decisions with the "commit" for 3d.2.** Approved: where 3d.2 stops,
-65 for refusals and 60 for failures, unchanged pre-build files, the purge
-order, the exact-name replace, restricted publishing, V1 and V2. Asked for
-in step 3:
-
-- purge keeps accounts, secrets and published signing keys by default, prints
-  what remains, and gets `--remove-secrets` for the secrets directories;
-- releases, content packages and build output refuse device files, FIFOs,
-  sockets and any setuid or setgid bit, with one test per case;
-- a proposal for a two-phase build (a fetch phase with network that runs no
-  package code, locked hashes only, then a build phase without network), or,
-  if uv cannot do that cleanly, why not and the residual risk in
-  `infra/docs/IMPLEMENTATION_NOTES.md`;
-- the signed-tag test runs in CI (`ssh-keygen` present there); it may skip
-  only locally.
-
-3g changes to a fresh repository with a rewrite of the full history (see
-[Process rules](#process-rules-in-force) and 3g above).
-
-**3d, step 3: rendering from the profiles** (`212121c`).
-Infra §16 step 17: `pinka-platform deploy render` computes from the
-manifest, the profiles and the host settings everything the platform role
-applies: accounts and groups with the memberships the profiles allow (the
-§12.4 refusals in the tool), directories, the services' configuration
-(`platform_settings`, checked against the release's schemas) and secrets
-(from the vault; a missing key stops bootstrap with 77), hardened service
-units and socket units (sockets by socket activation, ACL entries for the
-human groups, the agent's empty lab directories with only its allowlist
-bound in), the database with its roles and the closed `restricted` schema
-and its check (run against a real PostgreSQL server in the tests), the
-Incus certificates, the run-network helper (socket-activated root helper
-with fixed bridge settings and its log), OPA's decision path and bundle, the
-dashboards with their datasource, the signing key, `principals.json` and
-`endpoints.toml`, and the CLI wrapper and link; `rendered.json` lets the
-other roles and replacing use the same result. Units are installed, not
-started (3d.4). Every platform special case left infra's code and tests;
-the neutrality lint (`make lint-neutral`) keeps it so. The 3d.2 follow-ups
-are in: special files and setuid/setgid bits refused, the two-phase build,
-purge keeps secrets unless `--remove-secrets` and lists what remains, and
-CI asserts `ssh-keygen`, the PostgreSQL server binaries and
-`systemd-analyze`. Choices, interpretations and findings:
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 3". Proposed
-deviations for the owner's decision: V3 (a `build` dependency group for
-releases with a `[build-system]`, and wheels only), V4 (no
-`RuntimeDirectory=` in the §7.14 baseline: socket units create the socket
-directories) and V5 (the installer and its answers files are excluded from
-the neutrality lint until 3d.7).
-
-**Owner decisions with the "commit" for 3d.3.** V3 approved, to be carried
-into the platform spec as well (wheels only, the build backend locked in a
-`build` dependency group). V4 approved on one condition: a service that
-needs its own runtime directory gets one at a separate path that contains no
-sockets. V5 approved only as an explicit, named exclusion in the lint
-configuration with a comment pointing to 3d.7, which must remove it (a
-required item of 3d.7 in the plan above). Ground-truth blindness, answered
-before 3d.4 and fixed in 3d.4 if needed: the agent must see only the active
-release, resolved at render time; what a published release can contain
-besides code, and whether anything of a content package, scenario,
-injector, verifier or evaluator is visible to the agent, with a proposal to
-narrow its view and a test that fails if anything outside that set is
-visible. Follow-ups for 3d.4: sockets whose ACL fell back to 0666 recorded
-in `rendered.json` and reported by doctor as warnings; the restricted-schema
-SQL tests in CI against PostgreSQL 18 from PGDG (16 only if it costs
-nothing); `make setup` verifies the lint collections against the lock and
-reinstalls them when they differ, and every formatter and linter excludes
-`infra/.ansible-collections/`. The branches of the new repository are under
-[Process rules](#process-rules-in-force).
-
-**Answer on ground-truth blindness (before 3d.4).** A published release is
-the whole `platform.path` subtree plus the built `.venv`: besides the code it
-can hold the manifest, `pyproject.toml`, `uv.lock`, docs, config schemas,
-the policy bundle, dashboards, migrations, any data files the platform keeps
-there and `DEPLOYED_FROM.json`; content packages are never in it. Through
-its allowlist (`releases/`, bound whole) the agent of 3d.3 sees every
-published release; for the Pokus Platform that is the injector with its
-fault primitive library (`potka-primitives`: what each fault does and
-touches, the "injection details" of the platform spec's first principle),
-the verifier with its probes, the evaluator, the migrations (the ground
-truth tables), the policy bundle, the docs and the dashboards, all also
-importable from the shared `.venv`. Neither restricted nor non-restricted
-content packages are visible. Also found: the agent unit lacks the
-`InaccessiblePaths` of infra's internals outside the four lab directories
-(`/var/lib/incus`, `/var/lib/docker`, the Docker sockets), which §7.14 hides
-from every profile. Proposed fix (V6, in 3d.4): an untrusted-agent service
-names its workspace package (`python-uv`) or its subdirectory (`static`);
-the build gives it an environment of its own with only that package and its
-locked dependencies; the agent sees only that directory of the active
-release (the resolved path), its configuration, its dedicated sockets, the
-agent OTLP socket and its state, and infra's internals are hidden from it;
-a test fails if anything else is visible.
-
-**3d.4 status of ground-truth blindness.** Done in 3d.4: the agent binds
-only the release being deployed, resolved at render time (never the
-`current` link or another published release), runs from it, and infra's
-internals outside the lab directories are hidden from it; a rendering test
-lists everything the agent may see and fails for other releases, content
-packages, other services' state, configuration, sockets and runtime
-directories, secrets and infra's internals, and doctor's
-`sockets.agent_view` lists the sockets the running agent can see. Waiting
-for the owner: V6 proper, the narrowing to the agent's own package and
-environment, which needs a manifest field for `untrusted-agent` services
-and a separate environment from the build (a contract change).
-
-**3d, step 4: operations** (`9b932f6`). Infra §16 step 18 and the 3d.3
-follow-ups, as summarized in `infra/docs/IMPLEMENTATION_NOTES.md`,
-"Contract v2, step 4".
-
-**Owner decisions with the "commit" for 3d.4.** V6 approved, as its own
-step 3d.4b before 3d.5: an `untrusted-agent` service names its own package
-in the manifest; the build gives it a separate environment with only that
-package and its locked dependencies; the agent binds only that package and
-that environment, not the rest of the release (no other packages,
-migrations, policy bundle, docs or dashboards). The tests must prove both
-that these files are not visible and that the injector, primitives,
-verifier and evaluator modules cannot be imported from the agent's
-environment. A manifest whose agent package depends, directly or
-transitively, on another package of the same release is refused. Recorded
-as V6, with the schema, the how-to and the reference pages updated.
-ADR-0016: the alternative is chosen; only an explicit allowlist of infra
-UIDs (the collector, Grafana, the query proxy, doctor and whatever else
-infra itself needs) may reach the telemetry stores directly; everyone else,
-researchers included, goes through the read-only query proxy, with a test
-per account class (3d.4b). Restore redeploys exactly the commit and tree
-hash recorded in `DEPLOYED_FROM.json` and refuses if the mirror no longer
-has that commit or the tree hash differs (3d.4b). V7: the supported GPU
-minimum is compute capability 7.5, matching the vLLM image, and preflight
-refuses anything below it; support matrix and docs updated (3d.4b). The
-query socket link is approved, provided doctor checks the link's target and
-the owner of the target directory. All other choices of 3d.4 approved.
-
-**3d, step 4b: the owner's 3d.4 decisions** (`9c152a3`).
-V6: the agent's own package (`package`), its own environment
-`.agent-venvs/<service>/` with only that package and its index
-dependencies, the agent binding nothing else of the release, the refusal of
-a dependency on the release's other packages, and tests for visibility and
-imports (the import test builds a workspace with the pinned uv). ADR-0016
-accepted with the allowlist: the store containers run as infra accounts of
-their own, the guard admits only infra's clients, a kernel test per account
-class. Restore pins the recorded commits and trees and checks them before it
-stops anything. V7: compute capability 7.5. Doctor checks the query socket's
-link and directory. Choices, interpretations and findings:
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b".
-
-**Owner decisions with the "commit" for 3d.4b.** Grafana comes off the
-telemetry allowlist, as the first item of 3d.5: its data sources point at
-the read-only query proxy, not at the stores, so no Grafana user (editor or
-admin included) reaches a push, admin or delete API through Grafana's data
-source proxy or a new data source; the allowlist is then the collector, the
-stores where they talk to each other, the query proxy and root; the kernel
-test, doctor's check and ADR-0016 follow. The firewall rule matches by UID
-only, never by GID, so Grafana's group 0 admits nothing; a test shows that
-an account with GID 0 outside the allowlist is reset. Approved: strict
-dependency sources, `package` as a directory, restore through signed tags,
-a GPU below 7.5 as degraded, and the two stricter checks (no shipped
-`.venv`/`.agent-venvs`; the `build` group for members with a build system).
-`make setup` installs the pinned uv locally so the V6 uv tests run instead
-of skipping; in CI a skipped uv test fails the job. Every approved deviation
-the platform must follow is listed under
-[Platform spec changes pending](#platform-spec-changes-pending); the owner
-folds them into the platform spec.
-
-**3d, step 5: the GPU arbiter and training** (awaiting the "commit"). First
-the 3d.4b decisions: Grafana off the store allowlist (its own set
-`query_port_clients` admits it to the query proxy's port only), the guard
-matching by UID only with a GID-0 kernel test, `make setup` installing uv
-0.12.23 into `infra/build/tools/uv`, and a skipped uv test failing CI. Then
-infra §16 step 19: the root-owned GPU arbiter replacing the deploy helper
-(modes, transition log, boot handling, `pinka gpu`), vLLM started only
-through it, training runs in fixed containers, published datasets with the
-split guard, registered adapters with lineage and `adapter_ids`, the
-control API's `POST /activate` through the arbiter, the lab node's inference
-forwarder, the inference API's reachability as a UID allowlist (ADR-0016,
-decision 6), and six doctor checks. Choices, interpretations and findings:
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 5".
-
-### Privacy clean-up (owner instruction)
-
-Scan everything already written for personal or installation-specific data,
-replace it with placeholders, report changes; add the privacy scan to every
-component's `make lint` and to CI. Result at infra step 1: nothing had been
-written before the instruction (the repository was empty), so nothing needed
-replacing; `make privacy` is part of `infra`'s `make lint`, and CI runs it for
-`infra/` and for the root-level files (`.github/workflows/repo-root.yml`).
-
 ## Approved deviations
 
-Resolutions above that differ from the spec text. Contract-level resolutions
-are also recorded with citations in `infra/docs/contracts.md#resolutions`.
+Resolutions that differ from the spec text (the owner answers they come from
+are in the archive). Contract-level resolutions are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 
 | ID | Spec section | Spec text (short) | Approved resolution |
 | --- | --- | --- | --- |
@@ -1144,7 +377,8 @@ the platform.
 | V7 | GPU inference needs an NVIDIA GPU with compute capability 7.5 or newer (the pinned vLLM image's kernels); the platform's hardware requirements and docs state 7.5. |
 | (restore) | A restore deploys exactly the recorded commit and tree, through the recorded tag only with signed tags required (owner decision with the "commit" for 3d.4): the platform's release process never moves or deletes a release tag and never rewrites history a deployed release came from. |
 
-Built in 3d.5 and awaiting the owner's decision; if approved, the platform
+Built in 3d.5 and approved with the "commit" for 3d.5 (the arbiter's
+protocol, the job interface, the inference API's clients); the platform
 must follow them too:
 
 - The controller switches deployments with the GPU arbiter's `serve`
@@ -1165,134 +399,22 @@ must follow them too:
   `inference_api` (the controller and the inference broker); on a lab node
   only the controller reaches the control port.
 
-## Contract changes
+**Requests for the next platform spec edit** (the platform spec is
+read-only; the owner keeps its master for `pokus-platform`):
 
-`contract_version 1` is defined by `infra/docs/contracts.md` (resolutions B2,
-B3, B4, C2-C10, D1-D3, E3, E13). The ports table (C10) and the CPU sets are
-approved with the 3b review (P3b, P3a); contract v2 (infra §12) replaces
-this contract in plan item 3d. The owner decided every proposal below after
-the 3b commit (section J, "Decisions after the 3b commit").
-
-Proposed in infra step 7 (awaiting owner approval; written into
-`infra/docs/contracts.md`, details in `infra/docs/IMPLEMENTATION_NOTES.md`,
-"Step 7"):
-
-- Telemetry, VMs (C4): the dedicated collector listener `198.18.0.1:4317`/
-  `4318` on the dummy interface `pokus-otlp0`, one egress rule in
-  `pokus-run-default`, nothing else from run networks; listed in the ports table.
-- Sockets: `/run/pokus/postgres/` also serves infra's metrics exporter
-  (`pokus_monitor`); `/run/pokus/postgres-reader/` also serves Grafana as
-  `pokus_grafana`; `pg_hba` cannot tell the directories apart, the password
-  files decide the role (replaces "role `pokus_reader` only (`pg_hba`)").
-- PostgreSQL: no TCP listener at all; the infra-internal role `pokus_monitor`.
-- Inference: the deploy helper also renders `current.yaml` (the
-  `vllm serve --config` file) next to `current.env`.
-
-Proposed in infra step 8 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 8"):
-
-- Golden images: the Incus property `requirements.nesting` is `true` for
-  blueprints that need nesting (a container engine inside the target), so the
-  platform launches them with `security.nesting=true`.
-
-Proposed in infra step 9 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 9"):
-
-- Session records: the record's fields (`schema_version`, `boot_id`,
-  `started_at`, `fingerprint_hash`, `fingerprint`, `preflight_outcome`,
-  `errors`), matching the platform's `lab_sessions` table; a field that could
-  not be computed is `null` with its reason under `errors`.
-
-Proposed in infra step 10 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 10"):
-
-- Fingerprint document: `fingerprint_schema_version`, `hash`
-  (`sha256:<hex>` of the canonical JSON of `fingerprint`), `fingerprint`,
-  `computed_at` and `boot_id` (not hashed), with the JSON Schema
-  `infra/tools/pokus-lab/schema/fingerprint.schema.json`.
-- Lab drain: `POST /lab/drain` with `{"timeout_seconds": <int>}` and
-  `GET /lab/status` answering `{"active_runs": <int>}` on the orchestrator's
-  `api.sock`, called as root by `pokus-lab stop` and `update-host`; runs still
-  active when the lab stops are recorded as interrupted.
-
-Proposed in infra step 11 (same status, except the two port items, which
-P3b approved; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Step 11";
-`contracts.md` itself is unchanged):
-
-- Inference mTLS material: on lab nodes also `u:pokus-gw:r-x` on
-  `/etc/pokus/inference/` and `u:pokus-gw:r--` on `self.key`, because the LLM
-  gateway calls the remote inference node too.
-- Inference control API: `GET /health` (`ok`, `vllm_status`, `deployment`,
-  `fingerprint` with `hash` and `computed_at`), `GET /model` (`deployment`,
-  `models`, the served model's verified `manifest`), `GET /metrics`,
-  `POST /activate` with `{"deployment": "<id>@<version>"}` (the deploy
-  helper's answer) and `POST /verify` (the serving verification's report).
-- Ports: pairing uses 18710 while the control endpoint is stopped; a paired
-  lab node receives the inference node's telemetry with OTLP gRPC on 4317 of
-  its tailnet address (mutual TLS).
-- Inference node: vLLM stays on `127.0.0.1:18704`; the control endpoint
-  terminates mutual TLS on the tailnet address and forwards 18704 (instead
-  of vLLM itself bound to `tailscale0`).
-- Question: the agent runner cannot read `/etc/pokus/secrets/agent/`
-  because `/etc/pokus/secrets` is in its `InaccessiblePaths` (C2); proposed
-  `LoadCredential=` if the agent needs a secret.
-
-Proposed after infra step 13 (approved as P3a; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Follow-up after step 13: CPU sets"):
-
-- Incus: `[incus] cpuset_targets` in `endpoints.toml` when host_vars sets it;
-  the platform sets every bench instance's `limits.cpu` to CPUs inside it
-  (never a plain count), and the `bench` project's `limits.cpu` is the number
-  of those CPUs.
-
-## Step status
-
-### Phase 1 — infra/
-
-| Step | Content | Status | Commit |
-| --- | --- | --- | --- |
-| 1 | Skeleton, tooling, CLAUDE.md, IMPLEMENTATION_NOTES | done | `8df9199` (with steps 2-4; root files in `0503e86`) |
-| 2 | Preflight | done | `8df9199` |
-| 3 | bootstrap.sh | done | `8df9199` |
-| 4 | versions.lock.yml + lock-check | done | `8df9199` |
-| 5 | Ansible foundation roles (four families) | done | `ced6b6d` |
-| 6 | docker, nvidia_container_toolkit, incus | done | `ea46ba3` |
-| 7 | postgres, observability, opa, vllm, models | done | `99768ea` |
-| 8 | images | done | `5526e43` |
-| 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
-| 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
-| 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
-| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`; whole play in check mode `40e214c`, its findings `0f8f2aa`, `cce39fe`, `8b5a0e8`) |
-| 13 | Installer TUI | done | `01fc3e3` (CPU sets in `00da783`) |
-| 14 | Documentation completion | done | `a967052` |
-| I1, I2 | Secure Boot MOK consent; required and extended fast-lane jobs | done | `ea0c7bf`, `48102a3`, `009edb1` (with the records `4aec5fc`, `4915ce1`; all five committed outside the rule, kept by owner decision) |
-
-### Phase 1, continued — plan of section J
-
-| Item | Content | Status | Commit |
-| --- | --- | --- | --- |
-| 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
-| 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
-| 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
-| 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
-| 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
-| 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-4 and 4b done, 5 built and awaiting the "commit" | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b) |
-| 3e | Infra self-test without provisioning | not started | — |
-| 3f | Move infra to the repository root | not started | — |
-| 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
-| 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
-
-### Platform, catalog, docs site
-
-Not in this repository: they live later in the separate repository
-`pokus-platform`, which the owner starts (section J).
+- The official check requires `result` success in
+  `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
+  `doctor_warnings` also counts is decided in that edit.
+- V3 (owner decision with the "commit" for 3d.3): a `python-uv` release
+  locks its build backend in a `[dependency-groups] build` group and every
+  dependency is available as a wheel; infra builds it in two phases (locked
+  wheels with network, then the release built offline).
 
 ## Open questions
 
 Decided after the 3b commit: every interpretation of steps 2-14 and of the
 follow-ups after step 13 that `infra/docs/IMPLEMENTATION_NOTES.md` lists as
-"awaiting owner confirmation" (section J, "Interpretations"); the notes keep
+"awaiting owner confirmation" (archive, section J, "Interpretations"); the notes keep
 the original wording and the findings of each step. Still open, from step 1
 ("Questions raised by step 1"): reference agents for scenario validation and
 the QA results schema (both for `pokus-platform` and `pokus-qa`), and the
@@ -1424,15 +546,11 @@ step 4" through "after step 13"):
 
 ## Next step
 
-Infra steps 1-14, I1 and I2 are done (I1's interpretations to confirm are in
-`infra/docs/IMPLEMENTATION_NOTES.md`, section "Approved deviation I1"). The
-work follows [section J](#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)
-under the final commit rule in [Process rules](#process-rules-in-force):
-3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
-committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
-exception; 3d steps 1 (`912b240`), 2 (`9ece578`), 3 (`212121c`) and 4
-(`9b932f6`) and 4b (`9c152a3`) are committed; step 5 is built and waits
-for the owner's "commit" and decisions, then steps 6-8 one at a time (6:
-the reference platform and the isolation probe per profile, §16 step 20). Still open: the remaining
-`TODO(verify)` items (112), which need network access or reference
-hardware.
+3d.6, started by the owner in a fresh session: first the items the owner
+set with the "commit" for 3d.5 (size caps, resume after `pinka start`, the
+lab node's key, the guard reload on purge, the hash format, the
+`training_caps` warning), then infra §16 step 20; see
+[Remaining plan](#remaining-plan). Each 3d step waits for the owner's
+"commit" under the [Process rules](#process-rules-in-force). Still open:
+the remaining `TODO(verify)` items (112), which need network access or
+reference hardware.

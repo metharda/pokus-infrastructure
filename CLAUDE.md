@@ -1,7 +1,22 @@
 # CLAUDE.md
 
 Read PROGRESS.md first, then the BUILD_PROMPT.md and CLAUDE.md of the
-component you are working in.
+component you are working in. PROGRESS.md holds the current state, the
+remaining plan, open items and the rules in force; completed steps and the
+history of decisions are in PROGRESS-ARCHIVE.md, read only when a record is
+needed. This file holds rules only.
+
+## Token efficiency (owner, with the "commit" for 3d.5)
+
+Verbatim in PROGRESS.md ("Process rules in force"). In short: never weaken
+a check, never hide a failure, a skip or a warning; the gate is quiet by
+default (`make lint test docs` print one line each with the counts of
+passed, failed, skipped and warnings, and the complete output of every
+failing step; `VERBOSE=1` prints everything); while building a step, run
+only the tests relevant to the change, the full gate once before the
+summary and always before proposing a commit; completed steps move from
+PROGRESS.md to PROGRESS-ARCHIVE.md, nothing is deleted; read the specs by
+section for the step at hand, not whole.
 
 ## Commit rule
 

@@ -49,7 +49,7 @@ reproducible and auditable:
 ## Open questions and answers
 
 Every question raised before implementation, with the answer. Full wording in
-`../PROGRESS.md`.
+`../PROGRESS-ARCHIVE.md` (owner answers).
 
 | ID | Question (spec section) | Answer |
 | --- | --- | --- |
@@ -2104,7 +2104,7 @@ the password from standard input moved from the installer to
 ## Rename (plan step 3c): `pokus` → `pinka` and `potka`
 
 The mechanical rename of the approved rename table (owner decisions Q1-Q15
-in `../PROGRESS.md`, section J): infra's own names become `pinka`, names
+in `../PROGRESS-ARCHIVE.md`, section J): infra's own names become `pinka`, names
 derived from the platform become `potka`, "Pokus" stays the project's name.
 Files and directories moved with `git mv`; generated files came from their
 generators (`make generate`, `uv lock` with no version change, the TUI
@@ -2698,7 +2698,7 @@ that the agent has no IP access and no database socket group"), §7.14 step
   with a comment pointing to 3d.7; 3d.7 must remove it.
 - Ground-truth blindness: the agent must see only the active release,
   resolved at render time; the answer and the proposal (V6) are in
-  `../PROGRESS.md`; the fix follows in 3d.4.
+  `../PROGRESS-ARCHIVE.md`; the fix follows in 3d.4.
 - 3d.4 also records which sockets fell back to 0666 (doctor warns), runs the
   restricted-schema SQL tests against PostgreSQL 18 from PGDG in CI, and makes
   `make setup` verify the lint collections against the lock.
@@ -2845,7 +2845,7 @@ ground-truth blindness:
   a key an operator left empty comes back as `key: null` (same value).
 - The contract document's port table (`docs/contracts.md`) is updated with
   the contract v2 documentation in 3d.8.
-- V6 proper (proposal in `../PROGRESS.md`): the agent sees the whole active
+- V6 proper (proposal in `../PROGRESS-ARCHIVE.md`): the agent sees the whole active
   release now, not yet only its own package and environment. Narrowing to
   the package needs a manifest field for agent services and a build change
   (an environment of their own), a contract change for the owner.
@@ -3221,3 +3221,50 @@ ground-truth blindness:
 ### Open `TODO(verify)` items after 3d.5
 
 None new.
+
+### Owner decisions on 3d.5 (with the "commit")
+
+- Approved: the inference API's UID allowlist, the arbiter's process model,
+  the job interface (mounts, environment, adapter path), the run ID format,
+  the topology, and `training_caps` checked at submission.
+- For 3d.6, with tests: size caps in `training_caps` (dataset size;
+  combined size of `/output` and `/checkpoints` per run; a free disk space
+  check before a run; a run over a cap stopped and failed; `/tmp` a
+  size-limited tmpfs counted against the job's memory) as the first item;
+  resume after `pinka start` as after a reboot, logged as a transition; the
+  lab node's private key 0600 root; the inference guard reloaded by
+  `pinka platform purge`; the hash format specified and tested (paths
+  sorted byte by byte, C locale, the exact line format); validation and doctor
+  warn when a deployed job's resources exceed the host's `training_caps`.
+- The platform impact (the arbiter's protocol, the job interface, the
+  inference API's clients) is approved and marked so in `../PROGRESS.md`.
+
+## Token efficiency: the quiet gate (after 3d.5)
+
+- `make lint`, `make test` and `make docs` run through
+  `pinka_repo_checks gate` (standard library only) unless `VERBOSE=1`: it
+  runs `make setup` once, then each step as its own make target with
+  `GATE_SETUP_DONE=1` (which makes `setup` a no-op for that call), keeps
+  going after a failure, and writes each step's output to
+  `build/gate/<target>/<step>.log`. On success it prints one line with the
+  counts of passed, failed and skipped items and of warnings; on failure the
+  complete output of every failing step first, then the line marked
+  `FAILED`. pytest runs with `--tb=long` (`PYTEST_ADDOPTS`).
+- New step targets: `test-pytest` (the pytest part of `test`) and
+  `docs-build` (the mkdocs build of `docs`); with `VERBOSE=1` the targets
+  run exactly the steps and order they ran before.
+- Counting: pytest's and unittest's results count tests; any other step
+  counts as one check; a non-zero exit always counts a failure. Warnings are
+  pytest's and ansible-lint's counts plus every line that is a warning by
+  its form (documented in the module); a warning a tool both prints and
+  counts may be counted twice, never fewer. The Material for MkDocs notice
+  about MkDocs 2.0 counts as the docs build's one warning.
+
+### Interpretations awaiting owner confirmation (quiet gate)
+
+- CI keeps the full output (`make lint VERBOSE=1` and the same for `test`
+  and `docs`): CI logs are read by people, and nothing there costs tokens.
+- On success the line gives counts and the log directory, not the text of
+  each skip or warning; the logs keep them.
+- Each step runs in its own make process, so a failing step no longer stops
+  the target: every failure of one run is reported.
