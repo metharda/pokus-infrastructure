@@ -154,6 +154,16 @@
       when: *pinka_serves_inference
       tags: [vllm]
 
+    # After vLLM, which it serves; on a full node without a GPU it runs
+    # CPU-only training jobs (BUILD_PROMPT §7.18).
+    - name: GPU arbiter
+      ansible.builtin.include_role:
+        name: gpu_arbiter
+        apply:
+          tags: [gpu_arbiter]
+      when: node_role in ['full', 'inference']
+      tags: [gpu_arbiter, vllm]
+
     - name: Golden images
       ansible.builtin.include_role:
         name: images

@@ -6,6 +6,7 @@ import copy
 import hashlib
 import io
 import subprocess
+import tarfile
 import urllib.error
 import urllib.request
 from email.message import Message
@@ -237,8 +238,9 @@ def test_fetch_binary_installs_verified_executables(tmp_path: Path) -> None:
     ("doc", "name", "machine", "message"),
     [
         (binary_doc(), "other", "x86_64", "no binary"),
-        (binary_doc("tar.gz"), "tool", "x86_64", "not a single binary"),
-        (binary_doc("deb"), "tool", "x86_64", "not a single binary"),
+        (binary_doc("tar.gz"), "tool", "x86_64", "a tar.gz archive: name its executable"),
+        (binary_doc("deb"), "tool", "x86_64", "not a single binary or a tar.gz archive"),
+        (binary_doc("bzip2"), "tool", "x86_64", "not a single binary or a tar.gz archive"),
         (binary_doc(), "tool", "riscv64", "no asset for riscv64"),
         (binary_doc(sha256="TODO(verify)"), "tool", "x86_64", "not verified"),
         (binary_doc(sha256="0" * 64), "tool", "x86_64", "sha256 is"),
@@ -257,6 +259,98 @@ def test_fetch_binary_refuses(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["tool"]
 
 
+Member = tuple[str, bytes | None, str | None]
+
+
+def tar_gz(members: list[Member]) -> bytes:
+    """A tar.gz of ``(name, content, link target)``: a file, a symlink or a directory."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for name, content, link in members:
+            info = tarfile.TarInfo(name)
+            if link is not None:
+                info.type, info.linkname = tarfile.SYMTYPE, link
+                tar.addfile(info)
+            elif content is None:
+                info.type = tarfile.DIRTYPE
+                tar.addfile(info)
+            else:
+                info.size, info.mode = len(content), 0o755
+                tar.addfile(info, io.BytesIO(content))
+    return buffer.getvalue()
+
+
+def archive_doc(archive: bytes, sha256: str | None = None) -> dict[str, Any]:
+    digest = sha256 or hashlib.sha256(archive).hexdigest()
+    asset = {"url": "https://example.com/tool.tar.gz", "sha256": digest}
+    return {"binaries": {"tool": {"format": "tar.gz", "assets": {"x86_64": asset}}}}
+
+
+UV_LIKE: list[Member] = [
+    ("uv-x86_64-unknown-linux-gnu", None, None),
+    ("uv-x86_64-unknown-linux-gnu/uv", b"uv binary", None),
+    ("uv-x86_64-unknown-linux-gnu/uvx", b"uvx binary", None),
+]
+
+
+def test_fetch_binary_installs_the_executable_of_an_archive(tmp_path: Path) -> None:
+    archive = tar_gz(UV_LIKE)
+    dest = tmp_path / "tools" / "uv"
+    digest = checks.fetch_binary(
+        archive_doc(archive),
+        "tool",
+        dest,
+        member="uv",
+        machine="x86_64",
+        downloader=fake_downloader(archive),
+    )
+    assert digest == hashlib.sha256(archive).hexdigest()
+    assert dest.read_bytes() == b"uv binary"
+    assert dest.stat().st_mode & 0o777 == 0o755
+    assert sorted(p.name for p in dest.parent.iterdir()) == ["uv"]  # no download left behind
+
+
+@pytest.mark.parametrize(
+    ("members", "sha256", "message"),
+    [
+        (UV_LIKE, "0" * 64, "sha256 is"),
+        (UV_LIKE[:1], None, "0 member"),
+        ([*UV_LIKE, ("other/uv", b"second", None)], None, "2 member"),
+        ([("top/uv", None, "/usr/bin/uv")], None, "link or directory"),
+        ([("top/uv", None, None)], None, "link or directory"),
+    ],
+)
+def test_fetch_binary_refuses_an_archive(
+    tmp_path: Path,
+    members: list[Member],
+    sha256: str | None,
+    message: str,
+) -> None:
+    archive = tar_gz(members)
+    dest = tmp_path / "uv"
+    dest.write_bytes(b"old")
+    with pytest.raises(checks.FetchRefusedError, match=message):
+        checks.fetch_binary(
+            archive_doc(archive, sha256),
+            "tool",
+            dest,
+            member="uv",
+            machine="x86_64",
+            downloader=fake_downloader(archive),
+        )
+    assert dest.read_bytes() == b"old"  # never replaced by unverified content
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["uv"]
+
+
+def test_the_pinned_uv_is_fetched_from_its_archive() -> None:
+    # make setup installs the uv of versions.lock.yml for the V6 tests.
+    makefile = (INFRA / "Makefile").read_text(encoding="utf-8")
+    assert "$(LOCKCHECK) fetch uv --member uv --dest $@" in makefile
+    assert "export PINKA_UV := $(CURDIR)/$(UV_PINNED)" in makefile
+    entry = checks.load(INFRA / "versions.lock.yml")["binaries"]["uv"]
+    assert entry["format"] == "tar.gz"
+
+
 def test_fetch_command_reports_refusals(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code = cli.main(
         [
@@ -269,7 +363,7 @@ def test_fetch_command_reports_refusals(tmp_path: Path, capsys: pytest.CaptureFi
         ]
     )
     assert code == 1
-    assert "not a single binary" in capsys.readouterr().err
+    assert "a tar.gz archive: name its executable" in capsys.readouterr().err
 
 
 def test_key_fingerprints() -> None:

@@ -174,6 +174,118 @@ is wrong:
 
 The check is skipped on a node that is neither paired nor configured.
 
+## `gpu.arbiter`: the GPU arbiter's socket, mode or log is wrong {#check-gpu-arbiter}
+
+One of these is wrong:
+
+- `/run/pinka/gpu.sock` is missing, or it does not belong to the active
+  platform's controller (`root` before the platform is deployed,
+  `pinka-inference` on an inference node) with mode 0600.
+- `/var/lib/pinka/gpu/state.json` holds no valid mode.
+- The GPU is `training` a run whose unit `pinka-gpu-job@<run>.service` is
+  not running.
+- `/var/lib/pinka/gpu/transitions.jsonl` has a line that is not JSON.
+
+Read the arbiter's log, then install the arbiter again; the boot unit
+settles a run whose unit is gone:
+
+<!-- qa:skip reason="changes the lab host" -->
+```bash
+journalctl -u 'pinka-gpu-*' -b
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags gpu_arbiter
+sudo systemctl restart pinka-gpu-arbiter.service
+```
+
+`<machine>` is the name of this host's host_vars file. Never edit
+`state.json` or `transitions.jsonl` by hand. See
+[The GPU arbiter](../explanation/gpu-arbiter.md). Skipped on a `lab` node,
+which has no arbiter.
+
+## `training.containers`: a training job's container has other options {#check-training-containers}
+
+A running `pinka-job-<run>` container has a network, a writable root file
+system, a capability, no `no-new-privileges`, an unconfined profile, a host
+namespace, runs as root, or has a mount other than the base model and
+datasets (read-only) and the run's `output/` and `checkpoints/`. The arbiter
+never starts such a container: something else started or changed it. Stop
+the run and install the arbiter again:
+
+<!-- qa:skip reason="stops a training run on the lab host" -->
+```bash
+sudo pinka gpu idle
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags gpu_arbiter
+```
+
+`<machine>` is the name of this host's host_vars file. Treat the run's
+adapter as untrusted: it is not registered when the run did not end
+`succeeded`. [GPU arbiter requests](../reference/gpu-arbiter.md#the-jobs-container)
+lists the options. Skipped while no run is running.
+
+## `training.adapters`: a registered adapter is damaged {#check-training-adapters}
+
+An adapter directory below `/srv/pinka/models/adapters/<name>/<sha256>/`
+is not root's with mode 0555, has no `MANIFEST.json` or `LINEAGE.json`, its
+manifest names another hash, or its files no longer match the hash in its
+name. A registered adapter is never changed; remove the damaged directory
+and train it again (a deployment that names it is refused until then):
+
+<!-- qa:skip reason="removes an adapter on the lab host" -->
+```bash
+sudo rm -rf /srv/pinka/models/adapters/<name>/<sha256>
+```
+
+`<name>` and `<sha256>` are the adapter's name and hash from doctor's
+message. [How to run a training job](run-training-job.md) shows how to train
+it again. Skipped while no adapter is registered.
+
+## `training.datasets`: a published dataset is damaged or lists test instances {#check-training-datasets}
+
+A dataset below `/srv/pinka/training/datasets/<sha256>/` has no
+`PROVENANCE.json`, its provenance names another hash, it lists an instance
+of the `test` split, its files no longer match its hash, or it is not
+`root:pinka-datasets` 0750. The arbiter refuses to mount it either way.
+Remove it and have the platform publish it again (a dataset with test
+instances is a platform defect: report it to the platform's developers):
+
+<!-- qa:skip reason="removes a dataset on the lab host" -->
+```bash
+sudo rm -rf /srv/pinka/training/datasets/<sha256>
+```
+
+`<sha256>` is the dataset's hash from doctor's message. Skipped while no
+dataset is published, and on hosts that do not train.
+
+## `training.availability`: whether this host trains {#check-training-availability}
+
+A notice, not an error: training runs only on a `full` node. On a `lab` or
+`inference` node the arbiter refuses `train` and `publish-dataset`, and
+`pinka status` says so. Training on a lab and inference pair is future work;
+to train, use a `full` node ([Node roles](../node-roles.md)).
+
+## `inference.isolation`: the inference guard admits the wrong accounts {#check-inference-isolation}
+
+Only root, infra's scrapers (`pinka_inference_clients`) and the active
+platform's controller and inference broker reach the inference API on
+`127.0.0.1` (vLLM, or on a lab node the inference forwarder); only root and
+the controller reach the forwarder's control port. Doctor checks that the
+nftables table `inet pinka_inference_guard` is loaded and that its sets
+`inference_clients` and `inference_control_clients` admit exactly the UIDs
+of those accounts on their ports. The guard resolves the platform's accounts
+when it loads, so a deployment that did not reload it leaves the old ones.
+Load the guard again:
+
+<!-- qa:skip reason="changes the firewall of the lab host" -->
+```bash
+sudo systemctl restart pinka-inference-guard.service
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags firewall,platform
+```
+
+`<machine>` is the name of this host's host_vars file; run bootstrap when
+the restart does not help. `systemctl status pinka-inference-guard.service`
+shows why the guard did not load. See
+[ADR-0016](../adr/0016-telemetry-query-isolation.md) for why accounts, not
+vLLM's API key, decide.
+
 ## `incus.pool`: wrong backend or little free space {#check-incus-pool}
 
 The Incus pool uses another driver than preflight chose, or has less free
@@ -310,11 +422,13 @@ has researchers or admins among its clients.
 ## `telemetry.isolation`: the telemetry guard, the query link or a telemetry socket is wrong {#check-telemetry-isolation}
 
 Only infra's own clients (`pinka_telemetry_clients`: root, the collector,
-Prometheus, Loki, Tempo, Grafana and the query proxy) reach the telemetry
-stores directly; everyone else queries through the query proxy and sends to
-the collector. Doctor checks that the nftables table
-`inet pinka_telemetry_guard` is loaded, admits exactly the UIDs of those
-accounts and covers every guarded port; that `/run/pinka/query.sock` is a
+Prometheus, Loki, Tempo and the query proxy) reach the telemetry stores
+directly, and only root and Grafana (`pinka_query_port_clients`) the query
+proxy's loopback port; everyone else queries through the query proxy and
+sends to the collector. Doctor checks that the nftables table
+`inet pinka_telemetry_guard` is loaded, that its sets `telemetry_clients`
+and `query_port_clients` admit exactly the UIDs of those accounts and that
+each set's rule covers its ports; that `/run/pinka/query.sock` is a
 link to `query/query.sock`, whose directory `/run/pinka/query` is
 `pinka-query-proxy:pinka-query` 0750; that `/run/pinka/query/query.sock` is
 0660 with group `pinka-query`; and that the agent OTLP socket exists. Load

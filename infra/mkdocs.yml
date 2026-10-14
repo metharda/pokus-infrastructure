@@ -80,6 +80,7 @@ nav:
       - Update the host operating system: how-to/update-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
       - Add a model and activate a deployment: how-to/add-a-model.md
+      - Run a training job and serve its adapter: how-to/run-training-job.md
       - Deploy a platform: how-to/deploy-platform.md
       - Replace the lab's platform: how-to/replace-platform.md
       - Run inference on a separate GPU node: how-to/pair-inference-node.md
@@ -112,6 +113,7 @@ nav:
       - Platform manifest: reference/platform-manifest.md
       - Platform privilege profiles: reference/platform-profiles.md
       - Platform records: reference/platform-records.md
+      - GPU arbiter requests: reference/gpu-arbiter.md
       - Installer answers file: reference/answers.md
       - Doctor checks: reference/doctor-checks.md
       - Exit codes: reference/exit-codes.md
@@ -130,6 +132,7 @@ nav:
       - How telemetry, metrics and logs flow: explanation/telemetry.md
       - How golden images are built: explanation/golden-images.md
       - How the lab comes up: explanation/lab-session.md
+      - The GPU arbiter: explanation/gpu-arbiter.md
       - Node roles and split inference: node-roles.md
       - Reproducibility, fingerprints and sessions: reproducibility.md
       - Security of the lab host: security.md

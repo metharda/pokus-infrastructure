@@ -32,7 +32,8 @@ inference_control_settings:
   cert: "{{ inference_control_cert }}"
   key: "{{ inference_control_key }}"
   peer: "{{ inference_control_peer_cert }}"
-  deploy_socket: /run/pinka/vllm-deploy.sock
+  gpu_socket: /run/pinka/gpu.sock
+  activate_timeout: "{{ gpu_arbiter_serve_timeout | default(1200) | int + 300 }}"
   gpu_metrics: "http://127.0.0.1:{{ pinka_internal_ports.gpu_exporter }}/metrics"
   current: /etc/pinka/vllm/current.yml
   verify: [/usr/local/libexec/pinka/vllm-verify]
@@ -40,3 +41,16 @@ inference_control_settings:
   state_dir: "{{ inference_control_state_dir }}"
   models: "{{ pinka_root }}/models"
   fingerprint: /var/lib/pinka/fingerprint/current.json
+# The inference forwarder of a lab node (§12.8): program, settings and unit.
+inference_control_forwarder_program: /usr/local/libexec/pinka/inference-forwarder
+inference_control_forwarder_config: "{{ inference_control_dir }}/forwarder.json"
+inference_control_forwarder_unit: pinka-inference-forwarder.service
+# forwarder.json: the fields of the forwarder's Config.
+inference_control_forwarder_settings:
+  remote: "{{ inference_remote_node }}"
+  listen: 127.0.0.1
+  api_port: "{{ pinka_ports.vllm | int }}"
+  control_port: "{{ pinka_ports.inference_control | int }}"
+  cert: "{{ inference_control_cert }}"
+  key: "{{ inference_control_key }}"
+  peer: "{{ inference_control_peer_cert }}"

@@ -35,7 +35,7 @@ DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOC
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files \
-  ansible/roles/platform/files ansible/roles/inference_control/files ansible/tests tools/pinka-lab \
+  ansible/roles/platform/files ansible/roles/inference_control/files ansible/roles/gpu_arbiter/files ansible/roles/firewall/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins tools/platform
 PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
@@ -60,6 +60,11 @@ export PUPPETEER_EXECUTABLE_PATH
 # installed only after its sha256 matched.
 OPA := $(BUILD)/tools/opa
 export PINKA_OPA := $(CURDIR)/$(OPA)
+# The uv of versions.lock.yml (binaries.uv), which the agent environment
+# tests (V6) need: the build's commands depend on its behavior. Installed only
+# after the archive's sha256 matched; the tests find it here without PINKA_UV.
+UV_PINNED := $(BUILD)/tools/uv
+export PINKA_UV := $(CURDIR)/$(UV_PINNED)
 
 # Every file git would track (tracked plus untracked-but-not-ignored); the
 # third-party and generated trees are named as well, so no linter reaches them
@@ -72,7 +77,7 @@ help: ## List targets
 	@grep -E '^[a-z][a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-16s %s\n", $$1, $$2}'
 
 .PHONY: setup
-setup: $(VENV)/.synced node_modules/.installed dev-collections $(OPA) ## Install pinned development tools (user space only)
+setup: $(VENV)/.synced node_modules/.installed dev-collections $(OPA) $(UV_PINNED) ## Install pinned development tools (user space only)
 
 $(VENV)/.synced: pyproject.toml uv.lock
 	$(UV) sync --frozen
@@ -97,6 +102,10 @@ $(OPA): versions.lock.yml $(VENV)/.synced
 	$(LOCKCHECK) fetch opa --dest $@
 	@touch $@
 
+$(UV_PINNED): versions.lock.yml $(VENV)/.synced
+	$(LOCKCHECK) fetch uv --member uv --dest $@
+	@touch $@
+
 node_modules/.installed: package.json package-lock.json
 	PUPPETEER_SKIP_DOWNLOAD=1 $(NPM) ci --no-audit --no-fund
 	@touch $@
@@ -111,10 +120,12 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	$(BIN)/mypy tools/repo-checks tools/gen tools/lockcheck bootstrap/tests ansible/filter_plugins \
 	  ansible/roles/incus/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files \
 	  ansible/roles/images/files ansible/roles/lab_session/files ansible/roles/backup/files \
-	  ansible/roles/platform/files ansible/roles/inference_control/files \
+	  ansible/roles/platform/files ansible/roles/inference_control/files ansible/roles/gpu_arbiter/files \
+	  ansible/roles/firewall/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
-	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform \
-	  tools/platform/tests
+	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform
+	@# A run of its own: installer/tests has a conftest module too.
+	$(BIN)/mypy tools/platform/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
 	$(BIN)/mypy --python-version 3.10 preflight/pinka_preflight preflight/tests
 	$(BIN)/mypy --python-version 3.10 tools/pinka-lab/pinka_lab tools/pinka-lab/tests

@@ -45,6 +45,7 @@ TESTED_TEMPLATES = {
     ("firewall", "pinka.nft.j2"),
     ("firewall", "pinka-telemetry-guard.nft.j2"),
     ("firewall", "pinka-telemetry-guard.service.j2"),
+    ("firewall", "pinka-inference-guard.service.j2"),
     ("provider_baremetal", "pinka-sleep-inhibit.service.j2"),
     ("provider_wsl2", "wsl.conf.j2"),
     ("provider_wsl2", "wslconfig.recommended.j2"),
@@ -63,9 +64,12 @@ TESTED_TEMPLATES = {
     ("observability", "pinka-otlp-agent.socket.j2"),
     ("observability", "pinka-otlp-agent.service.j2"),
     ("observability", "pinka-query.tmpfiles.conf.j2"),
-    # Tested in test_vllm.py:
-    ("vllm", "pinka-vllm-deploy.socket.j2"),
-    ("vllm", "pinka-vllm-deploy@.service.j2"),
+    # Tested in test_gpu_arbiter.py:
+    ("gpu_arbiter", "arbiter.json.j2"),
+    ("gpu_arbiter", "pinka-gpu-arbiter.socket.j2"),
+    ("gpu_arbiter", "pinka-gpu-arbiter@.service.j2"),
+    ("gpu_arbiter", "pinka-gpu-arbiter.service.j2"),
+    ("gpu_arbiter", "pinka-gpu-job@.service.j2"),
     # Tested in test_lab_session.py:
     ("lab_session", "pinka-lab.target.j2"),
     ("lab_session", "pinka-health-gate.service.j2"),
@@ -78,6 +82,7 @@ TESTED_TEMPLATES = {
     ("incus", "pinka-run-network@.service.j2"),
     # Tested in test_inference_control.py:
     ("inference_control", "pinka-inference-control.service.j2"),
+    ("inference_control", "pinka-inference-forwarder.service.j2"),
     # Tested in test_docs_window.py:
     ("docs", "pinka-docs.service.j2"),
     ("lab_session", "pinka-window-expiry.service.j2"),
@@ -186,12 +191,18 @@ def test_nft_ruleset_options() -> None:
     assert 'iifname { "eth1" } tcp dport 22 accept' in lines
 
 
-# Sample UIDs of infra's telemetry clients (root first) as getent finds them.
-TELEMETRY_CLIENT_UIDS = [0, 991, 992, 993, 994, 995, 996]
+# Sample UIDs as getent finds them: the stores' clients (root, the collector,
+# Prometheus, Loki, Tempo, the query proxy) and the query port's (root, Grafana).
+TELEMETRY_CLIENT_UIDS = [0, 991, 992, 993, 994, 996]
+GRAFANA_UID = 995
+QUERY_PORT_CLIENT_UIDS = [0, GRAFANA_UID]
 
 
 def guard_vars() -> dict[str, Any]:
-    return firewall_vars(firewall_telemetry_client_uids=TELEMETRY_CLIENT_UIDS)
+    return firewall_vars(
+        firewall_telemetry_client_uids=TELEMETRY_CLIENT_UIDS,
+        firewall_query_port_client_uids=QUERY_PORT_CLIENT_UIDS,
+    )
 
 
 def test_telemetry_guard_is_valid(tmp_path: Path) -> None:
@@ -216,41 +227,55 @@ def test_telemetry_guard_allows_only_infras_clients() -> None:
         "table inet pinka_telemetry_guard {",
     ]
     assert "type filter hook output priority filter; policy accept;" in lines
-    assert "elements = { 0, 991, 992, 993, 994, 995, 996 }" in lines
-    # Prometheus, Loki, Tempo, their gRPC and OTLP ports, the collector's
-    # metrics exporter and the query proxy's loopback port.
-    ports = "18701, 18702, 18703, 18720, 18727, 18728, 18729, 18733"
+    assert "elements = { 0, 991, 992, 993, 994, 996 }" in lines
+    assert "elements = { 0, 995 }" in lines
+    # Sets of UIDs only: a group never admits anything.
+    assert [line for line in lines if line.startswith("type ") and "hook" not in line] == [
+        "type uid",
+        "type uid",
+    ]
+    assert not any("skgid" in line for line in lines)
+    # Prometheus, Loki, Tempo, their gRPC and OTLP ports and the collector's
+    # metrics exporter; the query proxy's loopback port has its own rule.
+    ports = "18701, 18702, 18703, 18720, 18727, 18728, 18729"
     assert (
         f'oifname "lo" tcp dport {{ {ports} }} meta skuid != @telemetry_clients '
         "reject with tcp reset"
+    ) in lines
+    assert (
+        'oifname "lo" tcp dport 18733 meta skuid != @query_port_clients reject with tcp reset'
     ) in lines
     # The OTLP receivers stay open: platform services send telemetry there.
     assert "4317" not in ports and "4318" not in ports
 
 
 def test_the_telemetry_clients_are_infras_own_accounts() -> None:
-    # ADR-0016 as decided with the "commit" for 3d.4: an explicit allowlist of
-    # infra's accounts; no image's default user (nobody, 10001, 472), which
-    # other host processes may share.
+    # ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b: an explicit
+    # allowlist of infra's accounts, without Grafana, whose data sources go
+    # through the query proxy; no image's default user (nobody, 10001, 472),
+    # which other host processes may share.
     variables = firewall_vars()
     clients = [c["account"] for c in evaluate("pinka_telemetry_clients", variables)]
+    query = [c["account"] for c in evaluate("pinka_query_port_clients", variables)]
     infra = {a["name"] for a in evaluate("infra_accounts", variables)}
-    assert clients[0] == "root"
-    assert set(clients[1:]) <= infra
+    assert clients[0] == "root" and query[0] == "root"
+    assert set(clients[1:]) | set(query[1:]) <= infra
     assert set(clients[1:]) == {
         "pinka-otelcol",
         "pinka-prometheus",
         "pinka-loki",
         "pinka-tempo",
-        "pinka-grafana",
         "pinka-query-proxy",
     }
+    assert query[1:] == ["pinka-grafana"]
     tasks = (ROLES / "firewall" / "tasks" / "telemetry_guard.yml").read_text(encoding="utf-8")
-    assert "pinka_telemetry_clients" in tasks and "getent" in tasks
+    assert "pinka_telemetry_clients" in tasks and "pinka_query_port_clients" in tasks
+    assert "getent" in tasks
 
 
 # Run in a private network namespace as root: load the guard, listen on the
-# store ports and an open port, connect as each UID, print what connected.
+# guarded ports and an open port, connect as each UID and GID, print what
+# connected.
 GUARD_PROBE = """
 import fcntl, json, os, socket, struct, subprocess, sys
 nft, ruleset, spec = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
@@ -265,13 +290,13 @@ for port in spec["ports"]:
     sock.listen(64)
     listeners.append(sock)
 results = {}
-for name, uid in spec["uids"].items():
+for name, (uid, gid) in spec["accounts"].items():
     r, w = os.pipe()
     pid = os.fork()
     if pid == 0:
         os.close(r)
-        os.setgroups([])
-        os.setgid(uid)
+        os.setgroups([gid])
+        os.setgid(gid)
         os.setuid(uid)
         out = {}
         for port in spec["ports"]:
@@ -306,12 +331,15 @@ def privileged() -> list[str]:
 
 
 def test_telemetry_guard_per_account_class(tmp_path: Path) -> None:
-    # One connection per account class against the kernel's rule (ADR-0016):
-    # only root and infra's telemetry clients reach the stores; researchers,
-    # the platform's services, the agent, infra's other accounts and the
-    # images' default users are reset. The collector's OTLP port stays open.
+    # One connection per account class against the kernel's rules (ADR-0016):
+    # only root and infra's store clients reach the stores, only root and
+    # Grafana the query proxy's port; researchers, the platform's services,
+    # the agent, infra's other accounts, the images' default users and an
+    # account in group 0 are reset. The collector's OTLP port stays open.
     argv = nft_argv(tmp_path / "x")
     if argv is None:
+        if os.environ.get("CI") == "true":
+            pytest.fail("nft and unshare are required in CI")
         pytest.skip("nft or unshare is not installed")
     nft, unshare = argv[2], argv[0]
     prefix = privileged()
@@ -323,19 +351,22 @@ def test_telemetry_guard_per_account_class(tmp_path: Path) -> None:
     probe.write_text(GUARD_PROBE, encoding="utf-8")
     variables = guard_vars()
     stores = [int(p) for p in evaluate("pinka_telemetry_guard_ports", variables)]
+    query = int(evaluate("pinka_internal_ports.query_proxy", variables))
     otlp = int(evaluate("pinka_ports.otlp_http", variables))
-    classes = {
-        "root (doctor, the health gate)": 0,
-        **{f"infra client {uid}": uid for uid in TELEMETRY_CLIENT_UIDS[1:]},
-        "another infra account": 990,
-        "researcher": 1000,
-        "platform service": 60578,
-        "untrusted agent": 60580,
-        "nobody (an image's default)": 65534,
-        "Loki's image default": 10001,
-        "Grafana's image default": 472,
+    accounts = {
+        "root (doctor, the health gate)": (0, 0),
+        **{f"store client {uid}": (uid, uid) for uid in TELEMETRY_CLIENT_UIDS[1:]},
+        "Grafana": (GRAFANA_UID, 0),
+        "another infra account": (990, 990),
+        "researcher": (1000, 1000),
+        "an account in group 0": (1234, 0),
+        "platform service": (60578, 60578),
+        "untrusted agent": (60580, 60580),
+        "nobody (an image's default)": (65534, 65534),
+        "Loki's image default": (10001, 10001),
+        "Grafana's image default": (472, 0),
     }
-    spec = {"ports": [*stores, otlp], "uids": classes}
+    spec = {"ports": [*stores, query, otlp], "accounts": accounts}
     done = subprocess.run(
         [
             *prefix,
@@ -356,13 +387,178 @@ def test_telemetry_guard_per_account_class(tmp_path: Path) -> None:
         pytest.skip("this container cannot load nftables rules in a namespace")
     assert done.returncode == 0, done.stderr
     results = json.loads(done.stdout)
-    allowed = {"root (doctor, the health gate)"} | {
-        f"infra client {u}" for u in TELEMETRY_CLIENT_UIDS[1:]
+    store_clients = {"root (doctor, the health gate)"} | {
+        f"store client {u}" for u in TELEMETRY_CLIENT_UIDS[1:]
     }
+    query_clients = {"root (doctor, the health gate)", "Grafana"}
     for name, reached in results.items():
         assert reached[str(otlp)] is True, f"{name}: the OTLP receiver must stay open"
-        expected = name in allowed
+        expected = name in store_clients
         assert {p: reached[str(p)] for p in stores} == dict.fromkeys(stores, expected), name
+        assert reached[str(query)] is (name in query_clients), name
+
+
+# --- the inference guard (§7.11, ADR-0016) ------------------------------------------
+
+INFERENCE_UIDS = {
+    "root": 0,
+    "pinka-otelcol": 991,
+    "pinka-prometheus": 992,
+    "pinka-inference": 997,
+    "demo-ctl": 60578,
+    "demo-brk": 60579,
+    "demo-sbx": 60580,
+    "demo-agent": 60581,
+}
+RENDERED = {"controller": "demo-ctl", "inference_clients": ["demo-brk", "demo-ctl"]}
+
+
+def inference_spec(node_role: str) -> dict[str, Any]:
+    variables = firewall_vars(node_role=node_role)
+    tasks = load_yaml(ROLES / "firewall" / "tasks" / "inference_guard.yml")
+    describe = tasks[0]["ansible.builtin.set_fact"]["firewall_inference_guard"]
+    return {
+        k: evaluate(str(v).strip("{} ").strip(), variables)
+        if isinstance(v, str)
+        else [int(evaluate(str(p).strip("{} ").strip(), variables)) for p in v]
+        for k, v in describe.items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("node_role", "clients", "control"),
+    [
+        ("full", ["root", "pinka-prometheus", "pinka-otelcol"], []),
+        ("lab", ["root"], [18710]),
+        ("inference", ["root", "pinka-otelcol", "pinka-inference"], []),
+    ],
+)
+def test_inference_guard_clients_per_node_role(
+    node_role: str, clients: list[str], control: list[int]
+) -> None:
+    spec = inference_spec(node_role)
+    assert spec == {"clients": clients, "ports": [18704], "control_ports": control}
+    # Infra's own accounts only; the platform's come from rendered.json.
+    infra = {a["name"] for a in evaluate("infra_accounts", firewall_vars())}
+    assert set(clients) - {"root"} <= infra
+
+
+def test_inference_guard_ruleset(tmp_path: Path) -> None:
+    import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
+
+    text, missing = guard.build(inference_spec("lab"), RENDERED, INFERENCE_UIDS.get)
+    lines = [line.strip() for line in text.splitlines()]
+    assert missing == []
+    assert [line for line in lines if line.startswith(("table ", "delete table"))] == [
+        "table inet pinka_inference_guard",
+        "delete table inet pinka_inference_guard",
+        "table inet pinka_inference_guard {",
+    ]
+    assert "elements = { 0, 60578, 60579 }" in lines  # root, the broker, the controller
+    assert "elements = { 0, 60578 }" in lines  # the control port: root and the controller
+    assert not any("skgid" in line for line in lines)
+    assert (
+        'oifname "lo" tcp dport { 18704 } meta skuid != @inference_clients reject with tcp reset'
+    ) in lines
+    assert (
+        'oifname "lo" tcp dport { 18710 } meta skuid != @inference_control_clients '
+        "reject with tcp reset"
+    ) in lines
+    full, _ = guard.build(inference_spec("full"), None, INFERENCE_UIDS.get)
+    assert "inference_control_clients" not in full
+    assert "elements = { 0, 991, 992 }" in [line.strip() for line in full.splitlines()]
+    _, missing = guard.build(inference_spec("full"), RENDERED, {"root": 0}.get)
+    assert missing == ["pinka-prometheus", "pinka-otelcol", "demo-brk", "demo-ctl"]
+    path = tmp_path / "inference-guard.nft"
+    path.write_text(text, encoding="utf-8")
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_inference_guard_main_prints_the_ruleset(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
+
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"clients": ["root"], "ports": [18704], "control_ports": []}))
+    argv = ["--spec", str(spec), "--rendered", str(tmp_path / "none.json"), "--print"]
+    assert guard.main(argv) == 0
+    assert "table inet pinka_inference_guard {" in capsys.readouterr().out
+    assert guard.main(["--spec", str(tmp_path / "missing.json"), "--print"]) == 1
+
+
+def test_inference_guard_per_account_class(tmp_path: Path) -> None:
+    # One connection per account class against the kernel's rules (§7.11):
+    # only the controller and the inference broker of the platform reach the
+    # inference API, besides root and infra's scrapers; only root and the
+    # controller reach the forwarder's control port of a lab node. A group,
+    # GID 0 included, admits nothing.
+    import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
+
+    argv = nft_argv(tmp_path / "x")
+    if argv is None:
+        if os.environ.get("CI") == "true":
+            pytest.fail("nft and unshare are required in CI")
+        pytest.skip("nft or unshare is not installed")
+    nft, unshare = argv[2], argv[0]
+    prefix = privileged()
+    spec = {"clients": ["root", "pinka-prometheus"], "ports": [18704], "control_ports": [18710]}
+    text, _ = guard.build(spec, RENDERED, INFERENCE_UIDS.get)
+    ruleset = tmp_path / "guard.nft"
+    ruleset.write_text(text, encoding="utf-8")
+    probe = tmp_path / "probe.py"
+    probe.write_text(GUARD_PROBE, encoding="utf-8")
+    otlp = 4318
+    accounts = {
+        "root": (0, 0),
+        "Prometheus": (992, 992),
+        "controller": (60578, 60578),
+        "inference broker": (60579, 60579),
+        "sandbox operator": (60580, 60580),
+        "untrusted agent": (60581, 60581),
+        "researcher": (1000, 1000),
+        "an account in group 0": (1234, 0),
+        "the collector (not a client on this node)": (991, 991),
+    }
+    done = subprocess.run(
+        [
+            *prefix,
+            unshare,
+            "-n",
+            sys.executable,
+            "-I",
+            str(probe),
+            nft,
+            str(ruleset),
+            json.dumps({"ports": [18704, 18710, otlp], "accounts": accounts}),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0 and "Operation not permitted" in done.stderr and not prefix:
+        pytest.skip("this container cannot load nftables rules in a namespace")
+    assert done.returncode == 0, done.stderr
+    results = json.loads(done.stdout)
+    api = {"root", "Prometheus", "controller", "inference broker"}
+    control = {"root", "controller"}
+    for name, reached in results.items():
+        assert reached[str(otlp)] is True, name
+        assert reached["18704"] is (name in api), name
+        assert reached["18710"] is (name in control), name
+
+
+def test_inference_guard_unit() -> None:
+    unit = ini(render_template("firewall", "pinka-inference-guard.service.j2", firewall_vars()))
+    assert unit["Service"]["ExecStart"] == "/usr/local/libexec/pinka/inference-guard"
+    assert unit["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_inference_guard"
+    assert unit["Unit"]["Before"] == "network-pre.target"
+    switch = load_yaml(ROLES / "platform" / "tasks" / "switch.yml")
+    reload = next(
+        t for t in switch if t["name"] == "Load the inference guard with the platform's clients"
+    )
+    assert reload["ansible.builtin.systemd_service"]["state"] == "restarted"
 
 
 def test_telemetry_guard_unit() -> None:
@@ -668,7 +864,8 @@ def test_lab_units_run_in_the_services_slice() -> None:
         lab_unit = "PartOf=pinka-lab.target" in text or path.name in {
             "backup-job.service.j2",
             "pinka-incus-events.service.j2",
-            "pinka-vllm-deploy@.service.j2",
+            "pinka-gpu-arbiter@.service.j2",
+            "pinka-gpu-job@.service.j2",
             "pinka-run-network@.service.j2",
             "pinka-window-expiry.service.j2",
         }

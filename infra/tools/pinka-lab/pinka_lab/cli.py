@@ -51,7 +51,26 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
         "--smoke", action="store_true", help="also launch a throwaway target of every golden image"
     )
 
-    sub.add_parser("status", help="units, containers, Incus instances, GPU, disk and last backup")
+    sub.add_parser(
+        "status",
+        help="units, containers, Incus instances, the GPU and its arbiter, disk and last backup",
+    )
+    gpu = sub.add_parser(
+        "gpu", help="the GPU arbiter's requests: status, serve, train, idle (root)"
+    )
+    gpu_sub = gpu.add_subparsers(dest="gpu_action", required=True, metavar="ACTION")
+    gpu_sub.add_parser("status", help="the mode, the running job and the last transitions")
+    gpu_serve = gpu_sub.add_parser("serve", help="serve a deployment (vLLM restarts if needed)")
+    gpu_serve.add_argument("deployment", metavar="ID@VERSION", help="a deployment spec")
+    gpu_train = gpu_sub.add_parser("train", help="start a training run of the active platform")
+    gpu_train.add_argument("job", help="a job of the active platform's manifest")
+    gpu_train.add_argument(
+        "--submission",
+        required=True,
+        metavar="FILE",
+        help="JSON: base_model, datasets, hyperparameters, seed, sessions_drained, restore",
+    )
+    gpu_sub.add_parser("idle", help="stop serving, or stop the running job (it checkpoints)")
     sub.add_parser(
         "start", help="start pinka-lab.target and wait for the platform's health hook (root)"
     )
@@ -306,6 +325,15 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
         return run_doctor(system, config, args.json, args.smoke)
     if args.command == "fingerprint":
         return run_fingerprint(system, config, args.json)
+    if args.command == "gpu":
+        return commands.gpu(
+            system,
+            config,
+            args.gpu_action,
+            deployment=getattr(args, "deployment", None),
+            job=getattr(args, "job", None),
+            submission=getattr(args, "submission", None),
+        )
     simple = {
         "status": lambda: commands.status(system, config),
         "start": lambda: commands.start(system, config),

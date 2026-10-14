@@ -251,11 +251,36 @@
         privileged_groups: [docker, incus-admin]
         break_glass_docker: "{{ break_glass_docker }}"
       hardening: "{{ doctor_hardening }}"
-      # The telemetry isolation (§7.9, ADR-0016): infra's clients, the guarded
-      # ports, the query socket's link with its target and directory.
+      # The GPU arbiter and training (§7.18): none on a lab node. The socket's
+      # owner is the controller from rendered.json, or the control endpoint's
+      # account on an inference node.
+      gpu_arbiter: >-
+        {{ {'socket': '/run/pinka/gpu.sock',
+            'peer': inference_control_account if node_role == 'inference' else '',
+            'state': '/var/lib/pinka/gpu/state.json',
+            'transitions': '/var/lib/pinka/gpu/transitions.jsonl',
+            'training': node_role == 'full',
+            'models': pinka_root ~ '/models',
+            'datasets': pinka_root ~ '/training/datasets',
+            'jobs': pinka_root ~ '/training/jobs',
+            'adapters': pinka_root ~ '/models/adapters'}
+           if node_role in ['full', 'inference'] else {} }}
+      # The inference guard (§7.11, ADR-0016): infra's clients for this node
+      # role; the platform's come from rendered.json at run time.
+      inference_isolation:
+        clients: >-
+          {{ pinka_inference_clients | selectattr('node_roles', 'contains', node_role)
+             | map(attribute='account') | list }}
+        ports: "{{ [pinka_ports.vllm | int] }}"
+        control_ports: "{{ [pinka_ports.inference_control | int] if node_role == 'lab' else [] }}"
+      # The telemetry isolation (§7.9, ADR-0016): infra's clients of the stores
+      # and their ports, the query port's clients (Grafana's data sources), the
+      # query socket's link with its target and directory.
       telemetry_isolation:
         clients: "{{ pinka_telemetry_clients | map(attribute='account') | list }}"
         ports: "{{ pinka_telemetry_guard_ports }}"
+        query_clients: "{{ pinka_query_port_clients | map(attribute='account') | list }}"
+        query_ports: "{{ [pinka_internal_ports.query_proxy] }}"
         query_link: "{{ '/run/pinka/query.sock' if doctor_runs_lab else '' }}"
         query_target: query/query.sock
         query_dir: /run/pinka/query

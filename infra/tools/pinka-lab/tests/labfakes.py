@@ -68,6 +68,22 @@ LAB: dict[str, Any] = {
         "current": "/etc/pinka/vllm/current.yml",
         "health_url": "http://127.0.0.1:18704/health",
     },
+    "gpu_arbiter": {
+        "socket": "/run/pinka/gpu.sock",
+        "peer": "",
+        "state": "/var/lib/pinka/gpu/state.json",
+        "transitions": "/var/lib/pinka/gpu/transitions.jsonl",
+        "training": True,
+        "models": "/srv/pinka/models",
+        "datasets": "/srv/pinka/training/datasets",
+        "jobs": "/srv/pinka/training/jobs",
+        "adapters": "/srv/pinka/models/adapters",
+    },
+    "inference_isolation": {
+        "clients": ["root", "pinka-prometheus", "pinka-otelcol"],
+        "ports": [18704],
+        "control_ports": [],
+    },
     "incus": {
         "pool": "pinka-targets",
         "backend": "btrfs",
@@ -241,6 +257,8 @@ class FakeSystem(System):
         serve_error: OSError | None = None,
         uids: dict[str, int] | None = None,
         links: dict[str, str] | None = None,
+        arbiter: Mapping[str, Any] | None = None,
+        digests: Mapping[str, str | None] | None = None,
     ) -> None:
         self.commands = dict(commands or {})
         self.files = dict(files or {})
@@ -266,6 +284,11 @@ class FakeSystem(System):
         self.http_calls: list[tuple[str, str, bytes | None]] = []
         self.unix_calls: list[tuple[str, str, bytes | None]] = []
         self.written: dict[str, tuple[str, int]] = {}
+        # The GPU arbiter's answers by request kind, and the requests it got.
+        self.arbiter_answers = dict(arbiter or {})
+        self.arbiter_requests: list[dict[str, Any]] = []
+        # Tree digests by directory (a missing key: unreadable).
+        self.digests = dict(digests or {})
 
     @staticmethod
     def _lookup(table: dict[str, Any], key: str) -> Any:
@@ -339,6 +362,18 @@ class FakeSystem(System):
         self.unix_calls.append((method, path, body))
         answer = self._lookup(self.unix_answers, f"{method} {path}")
         return HttpResponse(0, "no socket") if answer is None else _to_response(answer)
+
+    def unix_request(
+        self, socket_path: str, request: Mapping[str, Any], timeout: float = 60.0
+    ) -> dict[str, Any] | None:
+        self.arbiter_requests.append(dict(request))
+        answer = self.arbiter_answers.get(str(request.get("request")))
+        if callable(answer):
+            answer = answer(request)
+        return None if answer is None else dict(answer)
+
+    def tree_digest(self, path: str, exclude: Sequence[str] = ()) -> str | None:
+        return self.digests.get(path)
 
     def serve_static(self, directory: str, address: str, port: int) -> None:
         if self.serve_error is not None:

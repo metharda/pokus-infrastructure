@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/records/dataset-provenance.schema.json",
+  "title": "PROVENANCE.json",
+  "description": "Provenance of a published training dataset: `/srv/pinka/training/datasets/<sha256>/PROVENANCE.json`, written by the GPU arbiter when the controller publishes the dataset (`publish-dataset`, BUILD_PROMPT \u00a77.18), root:pinka-datasets 0640. The arbiter refuses to publish or mount a dataset that lists an instance of the `test` split; that the list is complete and truthful is the platform's obligation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_version",
+    "dataset_sha256",
+    "published_at",
+    "platform",
+    "instances",
+    "source_runs",
+    "files"
+  ],
+  "properties": {
+    "record_version": {
+      "const": 1,
+      "description": "Version of this record format."
+    },
+    "dataset_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The dataset hash (see files); the directory name."
+    },
+    "published_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC time of the publication."
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "commit"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Platform name."
+        },
+        "version": {
+          "type": "string",
+          "description": "SemVer of the active release."
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$",
+          "description": "Commit of the active release (DEPLOYED_FROM.json)."
+        }
+      },
+      "description": "The platform release that built the dataset (the builder's platform commit)."
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "split"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Scenario instance ID."
+          },
+          "split": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "not": {
+              "const": "test"
+            },
+            "description": "The instance's split; never `test`."
+          }
+        }
+      },
+      "description": "Every scenario instance included in the dataset, with its split."
+    },
+    "source_runs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "The runs the dataset was built from."
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "sha256",
+          "size"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Path relative to the dataset's directory, with / separators."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 of the file's content."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Size in bytes."
+          }
+        }
+      },
+      "description": "Every regular file of the dataset, sorted by path; the dataset hash is the SHA-256 of the lines `<sha256>  <path>` of this list, each ending in a newline (the output format of `sha256sum`)."
+    }
+  }
+}

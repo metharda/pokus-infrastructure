@@ -18,10 +18,11 @@ import json
 import os
 import platform
 import re
+import tarfile
 import tempfile
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
 
 import jsonschema
@@ -205,58 +206,98 @@ class FetchRefusedError(RuntimeError):
     """A pinned binary cannot be fetched (unknown, unverified, unsupported or mismatching)."""
 
 
+def _archive_member(archive: Path, member: str, where: str) -> bytes:
+    """The one regular file named ``member`` in a verified tar.gz archive."""
+    with tarfile.open(archive, "r:gz") as tar:
+        named = [m for m in tar.getmembers() if PurePosixPath(m.name).name == member]
+        files = [m for m in named if m.isfile()]
+        if len(named) != 1 or len(files) != 1:
+            kinds = ", ".join(
+                sorted({"file" if m.isfile() else "link or directory" for m in named})
+            )
+            raise FetchRefusedError(
+                f"{where}: the archive has {len(named)} member(s) named {member!r}"
+                + (f" ({kinds})" if named else "")
+                + ", not exactly one regular file"
+            )
+        handle = tar.extractfile(files[0])
+        if handle is None:  # pragma: no cover - isfile() members always have content
+            raise FetchRefusedError(f"{where}: cannot read {member!r}")
+        with handle:
+            return handle.read()
+
+
 def fetch_binary(
     doc: Mapping[str, Any],
     name: str,
     dest: Path,
     *,
+    member: str | None = None,
     machine: str | None = None,
     downloader: Downloader = net.sha256_of_url,
 ) -> str:
-    """Download a pinned single-file binary, verify its sha256 and install it.
+    """Download a pinned binary, verify its sha256 and install it.
 
-    The file is written next to ``dest`` and renamed into place only after the
-    checksum matched, so ``dest`` never holds unverified content.
+    A ``binary`` entry is the executable itself; from a ``tar.gz`` entry the
+    one regular file named ``member`` is installed (uv, for one). The
+    download is written next to ``dest`` and the executable is renamed into
+    place only after the checksum matched, so ``dest`` never holds unverified
+    content.
 
     Args:
         doc: Lock document.
-        name: Entry under ``binaries`` with ``format: binary``.
+        name: Entry under ``binaries`` with ``format: binary`` or ``tar.gz``.
         dest: Path of the executable to write.
+        member: For a ``tar.gz`` entry: the file name of the executable in the
+            archive (required).
         machine: ``platform.machine()`` value; the running machine by default.
         downloader: ``(url, file) -> sha256`` that writes the content to ``file``.
 
     Returns:
-        The verified sha256.
+        The verified sha256 (of the download).
 
     Raises:
-        FetchRefusedError: If the entry is unknown, unverified, not a single
-            binary, has no asset for the machine, or the checksum differs.
+        FetchRefusedError: If the entry is unknown, unverified, of another
+            format, has no asset for the machine, or the checksum differs; for
+            an archive, if no member is named or the archive does not hold
+            exactly one regular file of that name.
     """
     entry = doc["binaries"].get(name)
     if entry is None:
         raise FetchRefusedError(f"no binary {name!r} in the lock")
-    if entry["format"] != "binary":
-        raise FetchRefusedError(f"binaries.{name} is {entry['format']}, not a single binary")
+    if entry["format"] not in ("binary", "tar.gz"):
+        raise FetchRefusedError(
+            f"binaries.{name} is {entry['format']}, not a single binary or a tar.gz archive"
+        )
+    if entry["format"] == "tar.gz" and not member:
+        raise FetchRefusedError(f"binaries.{name} is a tar.gz archive: name its executable")
     arch = MACHINES.get(machine or platform.machine())
     asset = entry["assets"].get(arch or "")
     if asset is None:
         raise FetchRefusedError(f"binaries.{name} has no asset for {machine or platform.machine()}")
     if not _verified(asset["url"], asset["sha256"]):
         raise FetchRefusedError(f"binaries.{name}.assets.{arch} is not verified")
+    where = f"binaries.{name}.assets.{arch}"
     dest.parent.mkdir(parents=True, exist_ok=True)
     handle, temp_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.")
     temp = Path(temp_name)
+    download = temp.with_name(temp.name + ".download")
     try:
         with os.fdopen(handle, "wb") as out:
-            actual = downloader(asset["url"], out)
+            if entry["format"] == "binary":
+                actual = downloader(asset["url"], out)
+            else:
+                with download.open("wb") as archive:
+                    actual = downloader(asset["url"], archive)
         if actual != asset["sha256"]:
-            raise FetchRefusedError(
-                f"binaries.{name}.assets.{arch}: sha256 is {actual}, pinned {asset['sha256']}"
-            )
+            raise FetchRefusedError(f"{where}: sha256 is {actual}, pinned {asset['sha256']}")
+        if entry["format"] == "tar.gz":
+            temp.write_bytes(_archive_member(download, str(member), where))
         temp.chmod(0o755)
         temp.replace(dest)
     finally:
         temp.unlink(missing_ok=True)
+        download.unlink(missing_ok=True)
     return actual
 
 

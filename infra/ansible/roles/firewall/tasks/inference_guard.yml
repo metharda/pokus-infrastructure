@@ -1,0 +1,54 @@
+# Managed by pinka (ansible/roles/firewall/tasks/inference_guard.yml). Local changes will be overwritten.
+#
+# The inference guard (BUILD_PROMPT §7.11, ADR-0016) on every backend: its own
+# nftables table, loaded by its own unit, which resolves the UIDs of infra's
+# clients (pinka_inference_clients for this node role) and of the active
+# platform's accounts that reach the inference API (rendered.json) each time
+# it loads; the platform role loads it again after every deployment. Ports:
+# vLLM's, and on a lab node also the inference forwarder's control port.
+- name: Describe the inference guard
+  ansible.builtin.set_fact:
+    firewall_inference_guard:
+      clients: >-
+        {{ pinka_inference_clients | selectattr('node_roles', 'contains', node_role)
+           | map(attribute='account') | list }}
+      ports: ["{{ pinka_ports.vllm | int }}"]
+      control_ports: "{{ [pinka_ports.inference_control | int] if node_role == 'lab' else [] }}"
+
+- name: Install the inference guard's loader
+  ansible.builtin.copy:
+    src: pinka_inference_guard.py
+    dest: /usr/local/libexec/pinka/inference-guard
+    owner: root
+    group: root
+    mode: "0755"
+  register: firewall_inference_guard_program
+
+- name: Write the inference guard's settings
+  ansible.builtin.copy:
+    content: "{{ firewall_inference_guard | to_nice_json }}\n"
+    dest: /etc/pinka/nftables/inference-guard.json
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall_inference_guard_spec
+
+- name: Install the inference guard's unit
+  ansible.builtin.template:
+    src: pinka-inference-guard.service.j2
+    dest: /etc/systemd/system/pinka-inference-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall_inference_guard_unit
+
+- name: Enable and load the inference guard
+  ansible.builtin.systemd_service:
+    name: pinka-inference-guard.service
+    enabled: true
+    state: >-
+      {{ 'restarted' if (firewall_inference_guard_program is changed
+                         or firewall_inference_guard_spec is changed
+                         or firewall_inference_guard_unit is changed) else 'started' }}
+    daemon_reload: "{{ firewall_inference_guard_unit is changed }}"
+  when: not ansible_check_mode or 'pinka-inference-guard.service' in pinka_present.units

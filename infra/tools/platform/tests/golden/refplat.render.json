@@ -254,6 +254,9 @@
     }
   ],
   "incus_certificates": [],
+  "inference_clients": [
+    "refplat-ctl"
+  ],
   "opa": null,
   "platform": "refplat",
   "render_version": 1,
@@ -317,5 +320,34 @@
     "/srv/pinka/platforms/refplat/state/ctl/datasets"
   ],
   "telemetry_labels": [],
-  "tools": []
+  "tools": [],
+  "training": {
+    "dataset_sources": [
+      "/srv/pinka/platforms/refplat/state/ctl/records",
+      "/srv/pinka/platforms/refplat/state/ctl/datasets"
+    ],
+    "jobs": [
+      {
+        "account": "refplat-tune",
+        "adapter": "refplat-tune",
+        "base_model": true,
+        "command": [
+          "python3",
+          "-I",
+          "-c",
+          "print('toy training')"
+        ],
+        "cpus": 2,
+        "datasets": [
+          "train"
+        ],
+        "gpus": 1,
+        "image": "docker.io/library/python@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "memory_max": "4G",
+        "name": "tune",
+        "resumable": true,
+        "timeout_seconds": 600
+      }
+    ]
+  }
 }

@@ -69,6 +69,18 @@ Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded in 
 
 - Default: `false`
 
+### `gpu_arbiter`
+
+The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default deployment) or idle; restore_after_training brings the deployment served before a training run back when the run ends, unless the submission says otherwise.
+
+- Default: `{after_boot: serve, restore_after_training: true}`
+
+### `training_caps`
+
+Infra's caps on a training job (§7.18): the manifest's jobs must stay within them; the arbiter refuses a run whose job does not.
+
+- Default: `{timeout_seconds: 86400, memory_max: 24G, cpus: 8}`
+
 ### `grafana_tailscale_serve`
 
 Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
@@ -217,7 +229,7 @@ The platform's accounts and groups are not listed here: the platform role render
 
 ### `pinka_telemetry_clients`
 
-The only accounts that reach the telemetry stores directly (§7.9, ADR-0016 as decided with the "commit" for 3d.4): infra's own clients, each by name. The telemetry guard resets every other account's connection to the ports below on the host loopback: researchers, the platform's services and everyone else query through the read-only query proxy (Grafana for the researchers) and send through the collector's OTLP receivers.
+The only accounts that reach the telemetry stores directly (§7.9, ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b): infra's own clients, each by name. The telemetry guard resets every other account's connection to the stores' ports on the host loopback: researchers, Grafana, the platform's services and everyone else query through the read-only query proxy and send through the collector's OTLP receivers. The guard matches UIDs only, never groups.
 
 - Default:
 
@@ -227,22 +239,52 @@ The only accounts that reach the telemetry stores directly (§7.9, ADR-0016 as d
     - {account: pinka-prometheus, reason: 'Prometheus scrapes the collector, Loki, Tempo and itself'}
     - {account: pinka-loki, reason: Loki's own gRPC port}
     - {account: pinka-tempo, reason: Tempo's own gRPC and OTLP ports}
-    - {account: pinka-grafana, reason: 'Grafana''s data sources, through the query proxy''s loopback
-        port'}
     - {account: pinka-query-proxy, reason: 'the query proxy, which forwards the query endpoints'}
+    ```
+
+### `pinka_query_port_clients`
+
+The only accounts that reach the query proxy's loopback port: Grafana, whose data sources all go through the proxy (so no Grafana user, editor or admin included, reaches a push, admin or delete endpoint), and root. The platform's services that query use the proxy's socket and its group.
+
+- Default:
+
+    ```yaml
+    - {account: root, reason: doctor and administrators (sudo)}
+    - {account: pinka-grafana, reason: 'Grafana''s Prometheus, Loki and Tempo data sources'}
     ```
 
 ### `pinka_telemetry_guard_ports`
 
-Ports the telemetry guard closes to every other account (§7.9): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's metrics exporter and the query proxy's loopback port (the platform's services use its socket, which checks the group). The collector's OTLP receivers stay open.
+The stores' ports the telemetry guard closes to every other account (§7.9): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the collector's metrics exporter. The collector's OTLP receivers stay open.
 
 - Default:
 
     ```jinja
     {{ [pinka_ports.prometheus, pinka_ports.loki, pinka_ports.tempo,
         pinka_internal_ports.loki_grpc, pinka_internal_ports.tempo_grpc,
-        pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics,
-        pinka_internal_ports.query_proxy] | sort }}
+        pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics] | sort }}
+    ```
+
+### `pinka_inference_clients`
+
+Infra's own clients of the inference API on the host loopback (BUILD_PROMPT §7.11, ADR-0016), per node role: the inference guard adds the active platform's accounts whose profile reaches the API (controller, inference broker) and resets every other account's connection to vLLM, or to the inference forwarder of a lab node. UIDs only, never groups.
+
+- Default:
+
+    ```yaml
+    - account: root
+      reason: doctor, the health gate, the serving verification and the GPU arbiter; vLLM's own
+        health check
+      node_roles: [full, lab, inference]
+    - account: pinka-prometheus
+      reason: Prometheus scrapes vLLM's metrics
+      node_roles: [full]
+    - account: pinka-otelcol
+      reason: the collector scrapes vLLM's metrics
+      node_roles: [full, inference]
+    - account: pinka-inference
+      reason: the control endpoint forwards the API
+      node_roles: [inference]
     ```
 
 ### `pinka_service_home`
@@ -1069,6 +1111,52 @@ Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
 - Type: `list` of `str`
 - Default: `{{ ['pinka-build0'] + pinka_incus_personal_bridge_patterns }}`
 
+## gpu_arbiter
+
+The GPU arbiter with its socket, its start unit and the training run units; serves the chosen deployment.
+
+Entry points: `main` (The GPU arbiter with its socket, its start unit and the training run units; serves the chosen deployment). Role README: `ansible/roles/gpu_arbiter/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `gpu_arbiter` | [lab-wide](#gpu_arbiter) | after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1). |
+| `training_caps` | [lab-wide](#training_caps) | Caps on a training job's timeout_seconds, memory_max and cpus (group_vars). |
+
+### `gpu_arbiter_peer`
+
+The account allowed besides root on /run/pinka/gpu.sock (the control endpoint's account on an inference node, the active platform's controller elsewhere, root without one).
+
+- Type: `str`
+- Default:
+
+    ```jinja
+    {{ inference_control_account if node_role == 'inference'
+       else ((active_platform | default({}, true)).controller | default('root', true)) }}
+    ```
+
+### `gpu_arbiter_serve_timeout`
+
+Seconds a deployment may take to load its model and answer /health.
+
+- Type: `int`
+- Default: `1200`
+
+### `gpu_arbiter_stop_grace`
+
+Seconds a stopped training job gets to write its checkpoint.
+
+- Type: `int`
+- Default: `120`
+
+### `gpu_arbiter_pids_limit`
+
+Process limit of a training job's container.
+
+- Type: `int`
+- Default: `4096`
+
 ## images
 
 Build, test, leakage-lint, publish and export the golden images of images/.
@@ -1495,9 +1583,9 @@ Run restorecon on every play, not only when a rule changed.
 
 ## models
 
-Download the pinned models and adapters of models.lock.yml and verify every file.
+Download the pinned models of models.lock.yml and verify every file.
 
-Entry points: `main` (Download the pinned models and adapters of models.lock.yml and verify every file). Role README: `ansible/roles/models/README.md`.
+Entry points: `main` (Download the pinned models of models.lock.yml and verify every file). Role README: `ansible/roles/models/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -1508,7 +1596,7 @@ Variables the role reads from elsewhere:
 
 ### `models_root`
 
-Root of the weights and adapters (pinka_root/models).
+Root of the weights (pinka_root/models); its adapters/ belongs to the GPU arbiter.
 
 - Type: `path`
 - Default: `{{ pinka_root }}/models`
@@ -2266,9 +2354,9 @@ Shell of service accounts and locked researchers.
 
 ## vllm
 
-vLLM on 127.0.0.1 with serving profiles, deployments, the deploy helper and verification.
+vLLM on 127.0.0.1 with serving profiles, deployments and the serving verification; served through the GPU arbiter.
 
-Entry points: `main` (vLLM on 127.0.0.1 with serving profiles, deployments, the deploy helper and verification). Role README: `ansible/roles/vllm/README.md`.
+Entry points: `main` (vLLM on 127.0.0.1 with serving profiles, deployments and the serving verification; served through the GPU arbiter). Role README: `ansible/roles/vllm/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -2303,15 +2391,3 @@ Run the serving verification after start.
 
 - Type: `bool`
 - Default: `true`
-
-### `vllm_deploy_peer`
-
-The account allowed to switch deployments besides root (the control endpoint's account on an inference node, the active platform's controller elsewhere, root without one).
-
-- Type: `str`
-- Default:
-
-    ```jinja
-    {{ inference_control_account if node_role == 'inference'
-       else ((active_platform | default({}, true)).controller | default('root', true)) }}
-    ```

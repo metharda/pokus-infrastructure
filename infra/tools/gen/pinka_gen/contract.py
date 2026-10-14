@@ -32,7 +32,15 @@ CLI_PAGE = "docs/reference/cli/pinka-platform.md"
 RECORDS = "contract/records"
 RECORDS_PAGE = "docs/reference/platform-records.md"
 # The records in the order a deployment writes them.
-RECORD_FILES = ("deployed-from", "active-platform", "retired-platform", "session-record")
+RECORD_FILES = (
+    "deployed-from",
+    "active-platform",
+    "retired-platform",
+    "session-record",
+    "dataset-provenance",
+    "adapter-manifest",
+    "adapter-lineage",
+)
 GROUP_VARS = "ansible/group_vars/all/main.yml"
 
 # The reserved lists of BUILD_PROMPT §12.1, including names infra creates in
@@ -488,12 +496,16 @@ def records_page(root: Path) -> str:
             "Platform records",
             ["operator", "developer"],
             "The records a platform deployment writes (DEPLOYED_FROM.json, active.json and "
-            "retired.json) and the session records infra writes at every boot, in contract v2.",
+            "retired.json), the session records infra writes at every boot, and the training "
+            "records of the GPU arbiter (PROVENANCE.json, MANIFEST.json, LINEAGE.json), in "
+            "contract v2.",
         ),
         "# Platform records\n\n",
         "A platform deployment records where every deployed directory came from, which "
         "platform is active, and which platform it replaced; infra records every lab session, "
-        "which the platform's controller reads. The records are part of contract v2; their "
+        "which the platform's controller reads; the GPU arbiter records where every published "
+        "dataset and every registered adapter came from ([GPU arbiter requests](gpu-arbiter.md)). "
+        "The records are part of contract v2; their "
         f"JSON Schemas (draft 2020-12) are in `{RECORDS}/`, next to the schema of the "
         "environment fingerprint (see [Fingerprint](fingerprint.md)).\n\n",
     ]

@@ -138,7 +138,7 @@ through the same helper during campaigns
     id: <id>
     version: <version>
     model_id: <model-id>
-    adapters: []
+    adapter_ids: []
     profile: ada-12g
     overrides: {tool_call_parser: hermes, max_model_len: 4096}
     sampling_defaults: {temperature: 0.2}
@@ -151,21 +151,23 @@ through the same helper during campaigns
     accepts `temperature`, `top_p`, `top_k`, `min_p`, `repetition_penalty`,
     `presence_penalty`, `frequency_penalty` and `max_new_tokens`.
 
-2. Check what it renders to, then activate it (this restarts vLLM):
+2. Check what it renders to, then serve it through the GPU arbiter (this
+   restarts vLLM):
 
     <!-- qa:skip reason="restarts the inference service" -->
     ```bash
-    sudo /usr/local/libexec/pinka/vllm-deploy render <id>@<version>
-    sudo /usr/local/libexec/pinka/vllm-deploy activate <id>@<version>
+    sudo /usr/local/libexec/pinka/gpu-arbiter render <id>@<version>
+    sudo pinka gpu serve <id>@<version>
     ```
 
-    `<id>@<version>` names the file from step 1. The helper validates the
-    file, the profile and the verified model, writes
-    `/etc/pinka/vllm/current.yaml` and `current.env`, points `current.yml` at
-    the deployment and restarts `pinka-inference.service`. It prints
-    `{"ok": true, "changed": true}`; on a validation error nothing changes.
-    Bootstrap re-renders the current deployment on later runs and never
-    replaces it with the default one.
+    `<id>@<version>` names the file from step 1. The arbiter validates the
+    file, the profile, the verified model and the registered adapters of
+    `adapter_ids`, writes `/etc/pinka/vllm/current.yaml` and `current.env`,
+    points `current.yml` at the deployment, restarts
+    `pinka-inference.service` and waits until vLLM answers; on a validation
+    error nothing changes. It refuses while a training run holds the GPU.
+    Bootstrap serves the current deployment on later runs and never replaces
+    it with the default one.
 
 3. Run the serving verification for it:
 

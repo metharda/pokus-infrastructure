@@ -2,9 +2,10 @@
 #
 # Split inference (BUILD_PROMPT §19.10, contracts.md#inference): every lab and
 # inference node gets a self-signed identity certificate in
-# /etc/pinka/inference; `pinka pair` exchanges the certificates. On a lab
-# node the LLM gateway may read the client key (POSIX ACL); an inference node
-# runs pinka-inference-control, mutual TLS on its tailnet address, once paired.
+# /etc/pinka/inference; `pinka pair` exchanges the certificates. A lab node
+# runs the root-run inference forwarder, which alone uses its client key on
+# behalf of the platform (§12.8); an inference node runs
+# pinka-inference-control, mutual TLS on its tailnet address, once paired.
 - name: Check the node role
   ansible.builtin.assert:
     that:
@@ -68,3 +69,7 @@
 - name: Set up the control endpoint
   ansible.builtin.include_tasks: endpoint.yml
   when: node_role == 'inference'
+
+- name: Set up the inference forwarder
+  ansible.builtin.include_tasks: forwarder.yml
+  when: node_role == 'lab'

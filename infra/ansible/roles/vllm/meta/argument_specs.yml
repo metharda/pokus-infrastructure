@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/vllm/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: vLLM on 127.0.0.1 with serving profiles, deployments, the deploy helper and verification.
+    short_description: vLLM on 127.0.0.1 with serving profiles, deployments and the serving verification; served through the GPU arbiter.
     options:
       pinka_dir:
         type: path
@@ -24,9 +24,3 @@ argument_specs:
         type: bool
         default: true
         description: Run the serving verification after start.
-      vllm_deploy_peer:
-        type: str
-        description: >-
-          The account allowed to switch deployments besides root (the control endpoint's
-          account on an inference node, the active platform's controller elsewhere, root
-          without one).

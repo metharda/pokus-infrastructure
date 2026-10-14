@@ -16,7 +16,7 @@
       id: "{{ vllm_default_deployment.id | default('default-' ~ vllm_profile) }}"
       version: "{{ vllm_default_deployment.version | default(1) | int }}"
       model_id: "{{ vllm_default_deployment.model_id }}"
-      adapters: []
+      adapter_ids: []
       profile: "{{ vllm_profile }}"
       overrides: >-
         {{ ({'tool_call_parser': vllm_catalog_entry[0].tool_call_parser} if vllm_catalog_entry else {})

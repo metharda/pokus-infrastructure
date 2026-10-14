@@ -837,3 +837,30 @@ def test_database_plan() -> None:
         [login["role"] for login in db["logins"]]
         + ["allprof_migrator", "allprof_reader", "allprof_grafana"]
     )
+
+
+def test_the_gpu_arbiter_reads_jobs_and_dataset_sources() -> None:
+    # §7.18: the controller publishes datasets only from its own state; a
+    # job's container options are infra's, so none is rendered.
+    data = render("allprof")
+    training = data["training"]
+    controller = data["controller"].removeprefix("allprof-")
+    assert training["dataset_sources"] == [
+        layout.state_dir("allprof", controller, d)
+        for s in manifest("allprof")["services"]
+        if s["name"] == controller
+        for d in s.get("state", [])
+    ]
+    for job in training["jobs"]:
+        assert job["account"] == names.account("allprof", job["name"])
+        assert "@sha256:" in job["image"]
+        assert not {"network", "options", "mounts", "privileged"} & set(job)
+    assert render("allprof", requires=["postgres"])["training"] is None
+
+
+def test_only_the_inference_api_profiles_are_its_clients() -> None:
+    # §7.11: the inference guard admits the controller and the inference broker.
+    data = render("allprof")
+    by_name = {a["name"]: a for a in data["accounts"]}
+    profiles = {by_name[a]["profile"] for a in data["inference_clients"]}
+    assert profiles == {"controller", "inference-broker"}

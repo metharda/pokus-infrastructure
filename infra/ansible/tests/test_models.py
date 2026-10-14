@@ -9,6 +9,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import pinka_models_fetch as fetch
 import pytest
 
@@ -51,12 +52,9 @@ class FakeHub:
             (local / name).write_bytes(self.content[name])
 
 
-def run_fetch(
-    root: Path, hub: FakeHub, data: dict[str, Any], kind: str = "model", **kw: Any
-) -> dict[str, Any]:
+def run_fetch(root: Path, hub: FakeHub, data: dict[str, Any], **kw: Any) -> dict[str, Any]:
     return fetch.fetch(
         data,
-        kind,
         root,
         "/opt/pinka/models-venv/bin/hf",
         hub,
@@ -139,37 +137,41 @@ def test_paths_cannot_leave_the_entry(tmp_path: Path) -> None:
         run_fetch(tmp_path, FakeHub(), entry({"../escape": b"x"}))
 
 
-def test_adapters_and_tokens(tmp_path: Path) -> None:
-    files = {"adapter_config.json": b"{}", "adapter_model.safetensors": b"lora"}
-    adapter = entry(files, gated=True)
-    del adapter["id"], adapter["quantization"]
-    adapter.update(name="style", weights="adapter_model.safetensors", base_model_id="test-model")
-    hub = FakeHub(files)
-    result = run_fetch(tmp_path, hub, adapter, kind="adapter", token="hf_test")  # noqa: S106 - fake token
-    weights = hashlib.sha256(b"lora").hexdigest()
-    assert result["path"] == str(tmp_path / "adapters" / "style" / weights)
+def test_gated_entries_get_the_token(tmp_path: Path) -> None:
+    hub = FakeHub()
+    result = run_fetch(tmp_path, hub, entry(gated=True), token="hf_test")  # noqa: S106 - fake token
     assert hub.calls[0][1] == {"HF_TOKEN": "hf_test"}
     manifest = json.loads((Path(result["path"]) / "MANIFEST.json").read_text())
-    assert (manifest["kind"], manifest["base_model_id"]) == ("adapter", "test-model")
-    adapter["weights"] = "missing.safetensors"
-    with pytest.raises(fetch.FetchError, match="weights file"):
-        run_fetch(tmp_path, hub, adapter, kind="adapter")
+    assert (manifest["kind"], manifest["id"], manifest["gated"]) == ("model", "test-model", True)
+
+
+def test_no_model_lands_in_the_adapters_area(tmp_path: Path) -> None:
+    # models/adapters/ belongs to the GPU arbiter, which alone registers
+    # adapters (BUILD_PROMPT §7.12, §7.18).
+    with pytest.raises(fetch.FetchError, match="belongs to the GPU arbiter"):
+        run_fetch(tmp_path, FakeHub(), entry(hf_repo="adapters/style"))
+    assert not (tmp_path / "adapters").exists()
+    schema = json.loads((INFRA / "tools/lockcheck/schema/models-lock.schema.json").read_text())
+    lock = {"schema_version": 1, "models": [entry(hf_repo="adapters/style")]}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(lock, schema)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({"schema_version": 1, "models": [], "adapters": []}, schema)
+    jsonschema.validate({"schema_version": 1, "models": [entry()]}, schema)
 
 
 def test_main_requires_a_token_for_gated_entries(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("sys.stdin", __import__("io").StringIO("\n"))
-    code = fetch.main(
-        ["--kind", "model", "--entry", json.dumps(entry(gated=True)), "--token-stdin"]
-    )
+    code = fetch.main(["--entry", json.dumps(entry(gated=True)), "--token-stdin"])
     assert code == 1
     assert "no Hugging Face token" in capsys.readouterr().err
 
 
 def test_lock_and_candidates() -> None:
     lock = load_yaml(INFRA / "models.lock.yml")
-    assert lock == {"schema_version": 1, "models": [], "adapters": []}
+    assert lock == {"schema_version": 1, "models": []}
     candidates = load_yaml(INFRA / "models.catalog.yml")
     assert candidates["status"] == "proposed"  # owner answer E7: not final without approval
     permissive = {"apache-2.0", "mit"}

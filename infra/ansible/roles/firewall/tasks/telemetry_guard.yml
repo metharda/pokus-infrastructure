@@ -2,8 +2,10 @@
 #
 # The telemetry guard (BUILD_PROMPT §7.9, ADR-0016) on every backend: its own
 # nftables table, loaded by its own unit before the network comes up. Only the
-# accounts of pinka_telemetry_clients reach the stores on the loopback; the
-# users_groups role created them before this role runs.
+# accounts of pinka_telemetry_clients reach the stores on the loopback, and
+# only those of pinka_query_port_clients the query proxy's loopback port; the
+# guard holds their UIDs, never a group. The users_groups role created them
+# before this role runs.
 - name: Read the accounts of the host
   ansible.builtin.getent:
     database: passwd
@@ -14,9 +16,13 @@
       {{ pinka_telemetry_clients | map(attribute='account')
          | map('extract', ansible_facts.getent_passwd) | select('defined')
          | map(attribute=1) | map('int') | unique | sort }}
+    firewall_query_port_client_uids: >-
+      {{ pinka_query_port_clients | map(attribute='account')
+         | map('extract', ansible_facts.getent_passwd) | select('defined')
+         | map(attribute=1) | map('int') | unique | sort }}
     firewall_telemetry_clients_missing: >-
-      {{ pinka_telemetry_clients | map(attribute='account')
-         | reject('in', ansible_facts.getent_passwd) | list }}
+      {{ (pinka_telemetry_clients + pinka_query_port_clients) | map(attribute='account')
+         | reject('in', ansible_facts.getent_passwd) | unique | list }}
 
 - name: Check that every telemetry client exists
   ansible.builtin.assert:

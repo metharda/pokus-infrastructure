@@ -33,6 +33,7 @@ fsmonitor
 getenforce
 gpasswd
 huggingface
+hyperparameters
 incusbr
 incusd
 IOMMU
@@ -74,6 +75,7 @@ repodata
 Resolv
 restic
 restorecon
+seccomp
 semanage
 setype
 simplestreams

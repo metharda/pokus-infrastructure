@@ -1,16 +1,17 @@
 # Managed by pinka (ansible/roles/models/tasks/main.yml). Local changes will be overwritten.
 #
-# Models and LoRA adapters of models.lock.yml (BUILD_PROMPT §7.12,
-# contracts.md#paths): the pinned huggingface_hub CLI in an isolated uv
-# environment, then one models-fetch run per entry, which downloads only what
-# is missing, verifies every sha256, makes the files 0444 and writes
-# MANIFEST.json. Verified entries are never downloaded again. Tag: models.
+# The models of models.lock.yml (BUILD_PROMPT §7.12, contracts.md#paths): the
+# pinned huggingface_hub CLI in an isolated uv environment, then one
+# models-fetch run per entry, which downloads only what is missing, verifies
+# every sha256, makes the files 0444 and writes MANIFEST.json. Verified
+# entries are never downloaded again. Adapters are not downloaded: only the
+# GPU arbiter registers them (§7.18). Tag: models.
 - name: Read the model lock
   ansible.builtin.set_fact:
     models_lock: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.lock.yml') | from_yaml }}"
 
-- name: Fetch the pinned models and adapters
-  when: (models_lock.models + models_lock.adapters) | length > 0
+- name: Fetch the pinned models
+  when: models_lock.models | length > 0
   block:
     - name: Create the environment of the download tool
       ansible.builtin.command:
@@ -62,20 +63,18 @@
     - name: Download and verify the entries
       ansible.builtin.command:
         argv: >-
-          {{ ['/usr/local/libexec/pinka/models-fetch', '--kind', item.0.kind, '--entry', item.1 | to_json,
+          {{ ['/usr/local/libexec/pinka/models-fetch', '--entry', item | to_json,
               '--root', models_root, '--hf', models_venv ~ '/bin/hf',
               '--uid', '0',
               '--gid', ansible_facts.getent_group['pinka'][1],
               '--tool-version', pinka_versions.python.model_tools['huggingface-hub'],
-              '--token-stdin' if item.1.gated else '--no-token']
+              '--token-stdin' if item.gated else '--no-token']
              + (['--reverify'] if models_reverify | bool else []) }}
-        stdin: "{{ models_hf_token if item.1.gated else omit }}"
-      loop: >-
-        {{ [{'kind': 'model', 'entries': models_lock.models},
-            {'kind': 'adapter', 'entries': models_lock.adapters}] | subelements('entries') }}
+        stdin: "{{ models_hf_token if item.gated else omit }}"
+      loop: "{{ models_lock.models }}"
       loop_control:
-        label: "{{ item.0.kind }} {{ item.1.id | default(item.1.name) }}"
+        label: "{{ item.id }}"
       register: models_fetch
       changed_when: (models_fetch.stdout | from_json).changed
-      no_log: "{{ (models_lock.models + models_lock.adapters) | selectattr('gated') | list | length > 0 }}"
+      no_log: "{{ models_lock.models | selectattr('gated') | list | length > 0 }}"
       when: not ansible_check_mode

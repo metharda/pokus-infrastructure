@@ -15,8 +15,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
-from conftest import copy_repo
-from installer_testlib import private_key, public_key
+from installer_testlib import copy_repo, private_key, public_key
 from textual.pilot import Pilot
 from textual.widgets import (
     Checkbox,

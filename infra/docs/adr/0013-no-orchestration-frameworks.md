@@ -26,8 +26,9 @@ scheduling and upgrade cycle.
 1. The lab uses no orchestration framework or job scheduler. Services are
    systemd units and Compose projects started by `pinka-lab.target`; targets
    are Incus instances that the platform creates through the Incus API; the
-   GPU is used by one vLLM deployment at a time, switched by the root-owned
-   deploy helper.
+   GPU serves one vLLM deployment or runs one training job at a time,
+   switched by the root-owned GPU arbiter (a mode switch on one machine, not
+   a scheduler; it replaced contract v1's deploy helper).
 2. Ordering and health are expressed with systemd dependencies and the health
    gate of `pinka-lab.target`; concurrency of runs is the platform's job.
 3. A second machine joins only as an inference node, paired over the tailnet

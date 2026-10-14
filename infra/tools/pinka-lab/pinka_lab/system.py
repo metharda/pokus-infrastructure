@@ -11,6 +11,7 @@ import contextlib
 import datetime as dt
 import functools
 import grp
+import hashlib
 import http.client
 import http.server
 import json
@@ -21,7 +22,7 @@ import stat
 import subprocess
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -167,6 +168,24 @@ class System:
 
     def tcp_connect(self, host: str, port: int, timeout: float = 3.0) -> bool:
         """Whether a TCP connection succeeds."""
+        raise NotImplementedError
+
+    def unix_request(
+        self, socket_path: str, request: Mapping[str, Any], timeout: float = 60.0
+    ) -> dict[str, Any] | None:
+        """One JSON line over a Unix socket and its one-line JSON answer (the GPU arbiter).
+
+        Returns None when nothing answers or the answer is not a JSON object.
+        """
+        raise NotImplementedError
+
+    def tree_digest(self, path: str, exclude: Sequence[str] = ()) -> str | None:
+        """The GPU arbiter's hash of a dataset or adapter directory.
+
+        SHA-256 of the lines ``<sha256>  <path>`` of every regular file
+        (sorted by path, top-level names in ``exclude`` left out); None if
+        the directory holds a link or a special file, or cannot be read.
+        """
         raise NotImplementedError
 
     def euid(self) -> int:
@@ -352,6 +371,48 @@ class RealSystem(System):
         except OSError:
             return False
 
+    def unix_request(  # noqa: D102
+        self, socket_path: str, request: Mapping[str, Any], timeout: float = 60.0
+    ) -> dict[str, Any] | None:
+        data = b""
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+                sock.settimeout(timeout)
+                sock.connect(socket_path)
+                sock.sendall(json.dumps(dict(request)).encode("utf-8") + b"\n")
+                while not data.endswith(b"\n"):
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+            answer = json.loads(data)
+        except (OSError, ValueError):
+            return None
+        return answer if isinstance(answer, dict) else None
+
+    def tree_digest(self, path: str, exclude: Sequence[str] = ()) -> str | None:  # noqa: D102
+        found = []
+        try:
+            for root, dirs, names in os.walk(path, onerror=_raise):
+                for name in [*dirs, *names]:
+                    mode = os.lstat(os.path.join(root, name)).st_mode
+                    if stat.S_ISLNK(mode) or not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+                        return None
+                for name in names:
+                    full = os.path.join(root, name)
+                    relative = os.path.relpath(full, path).replace(os.sep, "/")
+                    if relative in exclude:
+                        continue
+                    digest = hashlib.sha256()
+                    with open(full, "rb") as handle:
+                        for chunk in iter(lambda: handle.read(1 << 20), b""):
+                            digest.update(chunk)
+                    found.append((relative, digest.hexdigest()))
+        except OSError:
+            return None
+        lines = "".join(f"{digest}  {relative}\n" for relative, digest in sorted(found))
+        return hashlib.sha256(lines.encode("utf-8")).hexdigest()
+
     def euid(self) -> int:  # noqa: D102
         return os.geteuid()
 
@@ -412,6 +473,10 @@ class RealSystem(System):
 
     def docs_current(self, base: str) -> str | None:  # noqa: D102
         return docs_store.current(base)
+
+
+def _raise(error: OSError) -> None:
+    raise error
 
 
 def static_server(directory: str, address: str, port: int) -> http.server.ThreadingHTTPServer:

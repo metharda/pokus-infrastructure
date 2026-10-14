@@ -81,14 +81,19 @@ Sending and querying are separate ways in (BUILD_PROMPT §7.9,
   services that query (their profiles put them in `pinka-query`) use
   `/run/pinka/query.sock`; Grafana's data sources use its loopback port.
 - Only infra's own clients reach the stores directly: root (doctor, the
-  health gate), the collector, Prometheus, Loki, Tempo, Grafana and the query
-  proxy, each running as an infra account of its own
-  (`pinka_telemetry_clients`). The telemetry guard, an nftables table of its
-  own on every firewall backend, resets every other account's connection to
-  the stores' ports, the collector's metrics exporter and the proxy's
-  loopback port on the host loopback: researchers query through Grafana,
-  the platform's services through the socket and its group. Doctor checks
-  that the guard admits exactly these accounts, the query socket's link and
+  health gate), the collector, Prometheus, Loki and Tempo where they talk to
+  each other, and the query proxy, each running as an infra account of its
+  own (`pinka_telemetry_clients`). Grafana is not among them: only root and
+  Grafana reach the proxy's loopback port (`pinka_query_port_clients`), so
+  no Grafana user, admin included, reaches a write, admin or delete
+  endpoint through a data source. The telemetry guard, an nftables table of
+  its own on every firewall backend, resets every other account's
+  connection to the stores' ports and the collector's metrics exporter, and
+  every connection to the proxy's loopback port from outside its own list,
+  on the host loopback. It matches UIDs only, never groups (Grafana's
+  container runs with group 0). Researchers query through Grafana, the
+  platform's services through the socket and its group. Doctor checks that
+  the guard admits exactly these accounts, the query socket's link and
   directory, and both sockets (`telemetry.isolation`).
 
 ## Where the data comes from

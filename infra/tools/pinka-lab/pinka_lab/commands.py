@@ -13,7 +13,7 @@ import os
 import re
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from pinka_lab import docs_store, window
@@ -412,7 +412,7 @@ def stop(system: System, config: LabConfig, timeout: float | None = None) -> int
         float(config.get("lab", "drain_timeout", default=1800)) if timeout is None else timeout
     )
     out(drain(system, config, seconds))
-    # The GPU arbiter's idle request follows with the arbiter (plan step 3d.5).
+    out(arbiter_idle(system, config))
     units = ["pinka-platform.target", "pinka-lab.target"]
     if system.info(ACTIVE_PLATFORM) is None:
         units = units[1:]
@@ -496,6 +496,7 @@ def status(system: System, config: LabConfig) -> int:
         out("incus instances:")
         for name, states in sorted(counts.items()):
             out(f"  {name:<40} " + ", ".join(f"{n} {s.lower()}" for s, n in sorted(states.items())))
+    _arbiter_status(system, config)
     if config.serves_inference:
         smi = str(config.get("gpu", "nvidia_smi", default="nvidia-smi"))
         done = system.run(
@@ -532,6 +533,162 @@ def status(system: System, config: LabConfig) -> int:
     out(
         f"last backup: {when}" + ("" if config.get("backup", "configured") else " (not configured)")
     )
+    return 0
+
+
+# --- the GPU arbiter (§7.18) ------------------------------------------------------------------
+
+# A serve request waits for the deployment, an idle request for the running job.
+GPU_REQUEST_TIMEOUT = 1800.0
+TRANSITIONS_SHOWN = 3
+
+
+def _arbiter(config: LabConfig) -> dict[str, Any] | None:
+    section = config.get("gpu_arbiter", default=None)
+    return dict(section) if isinstance(section, dict) and section.get("socket") else None
+
+
+def training_line(config: LabConfig) -> str:
+    """Whether this host trains (§19.10).
+
+    Args:
+        config: The lab description.
+
+    Returns:
+        The line for the operator.
+    """
+    if config.node_role in ("lab", "inference"):
+        return (
+            f"training: unavailable on this host (node_role {config.node_role}); training runs "
+            "only on a full node, split-node training is future work"
+        )
+    return "training: runs on this host through the GPU arbiter"
+
+
+def _describe_mode(state: Mapping[str, Any]) -> str:
+    mode = str(state.get("mode") or "idle")
+    target = state.get("deployment") if mode == "serving" else state.get("run")
+    return f"{mode} {target}" if target and mode != "idle" else mode
+
+
+def _arbiter_status(system: System, config: LabConfig) -> None:
+    arbiter = _arbiter(config)
+    if arbiter is None:
+        out("gpu arbiter: none on this host")
+    else:
+        text = system.read_text(str(arbiter.get("state", "")))
+        state = json.loads(text) if text else {}
+        since = f" since {state['since']}" if state.get("since") else ""
+        out(f"gpu arbiter: {_describe_mode(state)}{since}")
+        log = system.read_text(str(arbiter.get("transitions", ""))) or ""
+        for line in log.splitlines()[-TRANSITIONS_SHOWN:]:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            detail = f": {entry['detail']}" if entry.get("detail") else ""
+            out(
+                f"  {entry.get('time')} {entry.get('from')} -> {entry.get('to')} "
+                f"({entry.get('outcome')}, {entry.get('requester')}){detail}"
+            )
+    out(training_line(config))
+
+
+def arbiter_idle(system: System, config: LabConfig) -> str:
+    """Ask the GPU arbiter for idle (``pinka stop`` and ``update-host``, after the drain).
+
+    Args:
+        system: Host access.
+        config: The lab description.
+
+    Returns:
+        What happened. A refusal does not stop the stop: vLLM and a running
+        job stop with the lab.
+    """
+    arbiter = _arbiter(config)
+    if arbiter is None or system.info(str(arbiter["socket"])) is None:
+        return "no GPU arbiter here; nothing to idle"
+    answer = system.unix_request(str(arbiter["socket"]), {"request": "idle"}, GPU_REQUEST_TIMEOUT)
+    if answer is None:
+        return "the GPU arbiter does not answer; vLLM and a running job stop with the lab"
+    if not answer.get("ok"):
+        return (
+            f"the GPU arbiter refused idle ({answer.get('error')}); vLLM and a running job "
+            "stop with the lab"
+        )
+    stopped = f"; run {answer['run']} stopped" if answer.get("run") else ""
+    return f"the GPU is idle{stopped}"
+
+
+def gpu(
+    system: System,
+    config: LabConfig,
+    action: str,
+    *,
+    deployment: str | None = None,
+    job: str | None = None,
+    submission: str | None = None,
+) -> int:
+    """The GPU arbiter's requests for admins: status, serve, train, idle (§7.18).
+
+    Root reaches the arbiter's socket like the controller does; the arbiter
+    checks the request.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        action: ``status``, ``serve``, ``train`` or ``idle``.
+        deployment: ``<id>@<version>`` for ``serve``.
+        job: The job's name for ``train``.
+        submission: A JSON file with the submission for ``train``.
+
+    Returns:
+        0 if the arbiter did what was asked.
+
+    Raises:
+        CommandError: Without an arbiter on this host, an unreadable
+            submission, or no answer.
+    """
+    require_root(system, "gpu")
+    arbiter = _arbiter(config)
+    if arbiter is None:
+        raise CommandError(f"this host has no GPU arbiter (node_role {config.node_role})")
+    request: dict[str, Any] = {"request": action}
+    if action == "serve":
+        request["deployment"] = deployment
+    elif action == "train":
+        text = system.read_text(str(submission))
+        try:
+            content = json.loads(text) if text is not None else None
+        except ValueError:
+            content = None
+        if not isinstance(content, dict):
+            raise CommandError(f"{submission} is not a JSON object (the submission)")
+        request.update({"job": job, "submission": content})
+    answer = system.unix_request(str(arbiter["socket"]), request, GPU_REQUEST_TIMEOUT)
+    if answer is None:
+        raise CommandError(f"the GPU arbiter does not answer on {arbiter['socket']}")
+    if not answer.get("ok"):
+        sys.stderr.write(f"pinka: the GPU arbiter refused: {answer.get('error')}\n")
+        return 1
+    if action == "status":
+        out(
+            f"mode: {_describe_mode(answer)}"
+            + (f" since {answer['since']}" if answer.get("since") else "")
+        )
+        if answer.get("job"):
+            record = answer["job"]
+            out(f"job: {record.get('job')} {record.get('status')} since {record.get('started_at')}")
+        for entry in answer.get("transitions", [])[-TRANSITIONS_SHOWN:]:
+            out(
+                f"  {entry.get('time')} {entry.get('from')} -> {entry.get('to')} "
+                f"({entry.get('outcome')}, {entry.get('requester')})"
+            )
+        out(training_line(config))
+    elif action == "train":
+        out(f"training run {answer.get('run')} started (job-spec hash {answer.get('spec_sha256')})")
+    else:
+        out(f"the GPU is {_describe_mode(answer)}")
     return 0
 
 

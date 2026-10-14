@@ -14,10 +14,3 @@ vllm_default_deployment: null
 vllm_wait_timeout: 1200
 # Run the serving verification (health, models, chat, tool call) after start.
 vllm_verify: true
-# The account allowed to switch deployments besides root (until the GPU
-# arbiter replaces the deploy helper, plan step 3d.5): the control endpoint's
-# account on an inference node, the active platform's controller elsewhere,
-# root without one.
-vllm_deploy_peer: >-
-  {{ inference_control_account if node_role == 'inference'
-     else ((active_platform | default({}, true)).controller | default('root', true)) }}

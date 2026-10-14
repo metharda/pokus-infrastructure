@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/models/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Download the pinned models and adapters of models.lock.yml and verify every file.
+    short_description: Download the pinned models of models.lock.yml and verify every file.
     options:
       pinka_dir:
         type: path
@@ -13,7 +13,7 @@ argument_specs:
         description: The pinned CPython the environment is created with.
       models_root:
         type: path
-        description: Root of the weights and adapters (pinka_root/models).
+        description: Root of the weights (pinka_root/models); its adapters/ belongs to the GPU arbiter.
       models_venv:
         type: path
         default: /opt/pinka/models-venv

@@ -16,8 +16,18 @@ then trusts exactly the other's certificate. The role checks that
 `peer.json`.
 
 No platform account reads the key: platform services never hold the
-inference node's keys (BUILD_PROMPT §12.8). On a lab node infra's inference
-forwarder will use it (plan step 3d.5).
+inference node's keys (BUILD_PROMPT §12.8).
+
+On a lab node the role installs `pinka-inference-forwarder.service`
+(`/usr/local/libexec/pinka/inference-forwarder`, root, hardened, reaching
+only the loopback and the tailnet): it listens on `127.0.0.1:18704` (the
+vLLM API) and `127.0.0.1:18710` (the control API), the addresses vLLM and
+the control API have on a full node, and passes every connection through to
+the paired inference node (`inference_remote_node`) with TLS 1.3, this
+node's certificate as client certificate and only the paired node's
+certificate accepted. Platform services handle no TLS and no keys; the
+inference guard (firewall role, ADR-0016) lets only the controller and the
+inference broker reach the API, and only the controller the control port.
 
 On an inference node the role installs `pinka-inference-control.service`
 (infra account `pinka-inference`, hardened), which listens on the node's
@@ -27,7 +37,7 @@ accepts only the paired lab node's certificate:
 
 - port 18704 forwards the connection to vLLM on 127.0.0.1;
 - port 18710 answers `GET /health`, `GET /model`, `GET /metrics`,
-  `POST /activate` (through the vLLM deploy helper) and `POST /verify`
+  `POST /activate` (`serve <id>@<version>` through the GPU arbiter) and `POST /verify`
   (the serving verification); nothing else.
 
 The unit starts only once `peer.crt` exists. The firewall opens both ports on

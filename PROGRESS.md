@@ -1021,7 +1021,7 @@ refuses anything below it; support matrix and docs updated (3d.4b). The
 query socket link is approved, provided doctor checks the link's target and
 the owner of the target directory. All other choices of 3d.4 approved.
 
-**3d, step 4b: the owner's 3d.4 decisions** (built, proposed for commit).
+**3d, step 4b: the owner's 3d.4 decisions** (`9c152a3`).
 V6: the agent's own package (`package`), its own environment
 `.agent-venvs/<service>/` with only that package and its index
 dependencies, the agent binding nothing else of the release, the refusal of
@@ -1033,6 +1033,38 @@ class. Restore pins the recorded commits and trees and checks them before it
 stops anything. V7: compute capability 7.5. Doctor checks the query socket's
 link and directory. Choices, interpretations and findings:
 `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b".
+
+**Owner decisions with the "commit" for 3d.4b.** Grafana comes off the
+telemetry allowlist, as the first item of 3d.5: its data sources point at
+the read-only query proxy, not at the stores, so no Grafana user (editor or
+admin included) reaches a push, admin or delete API through Grafana's data
+source proxy or a new data source; the allowlist is then the collector, the
+stores where they talk to each other, the query proxy and root; the kernel
+test, doctor's check and ADR-0016 follow. The firewall rule matches by UID
+only, never by GID, so Grafana's group 0 admits nothing; a test shows that
+an account with GID 0 outside the allowlist is reset. Approved: strict
+dependency sources, `package` as a directory, restore through signed tags,
+a GPU below 7.5 as degraded, and the two stricter checks (no shipped
+`.venv`/`.agent-venvs`; the `build` group for members with a build system).
+`make setup` installs the pinned uv locally so the V6 uv tests run instead
+of skipping; in CI a skipped uv test fails the job. Every approved deviation
+the platform must follow is listed under
+[Platform spec changes pending](#platform-spec-changes-pending); the owner
+folds them into the platform spec.
+
+**3d, step 5: the GPU arbiter and training** (awaiting the "commit"). First
+the 3d.4b decisions: Grafana off the store allowlist (its own set
+`query_port_clients` admits it to the query proxy's port only), the guard
+matching by UID only with a GID-0 kernel test, `make setup` installing uv
+0.12.23 into `infra/build/tools/uv`, and a skipped uv test failing CI. Then
+infra §16 step 19: the root-owned GPU arbiter replacing the deploy helper
+(modes, transition log, boot handling, `pinka gpu`), vLLM started only
+through it, training runs in fixed containers, published datasets with the
+split guard, registered adapters with lineage and `adapter_ids`, the
+control API's `POST /activate` through the arbiter, the lab node's inference
+forwarder, the inference API's reachability as a UID allowlist (ADR-0016,
+decision 6), and six doctor checks. Choices, interpretations and findings:
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 5".
 
 ### Privacy clean-up (owner instruction)
 
@@ -1093,6 +1125,45 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
 | V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
+
+## Platform spec changes pending
+
+Approved deviations after the 3b2 spec edit that the platform must follow;
+the owner folds them into the platform spec
+(`specs/pokus-platform-claude-code-prompt.md`). Each names what changes for
+the platform.
+
+| ID | What the platform must follow |
+| --- | --- |
+| V1 | The release path and every content package of one repository are disjoint subtrees: no content package may lie inside the release or inside another content package (`source-overlap`). The `platform/` and `catalog/` layout already complies. |
+| V2 | The manifest's `requires` names every infra facility the platform uses: `incus` for `sandbox-operator` and `restricted-operator`, `inference` for `inference-broker`, `gpu` for `gpu-trainer` jobs, `opa` for `policy`, `telemetry` for `dashboards` and `telemetry`, `postgres` for `backup.database: true`; anything else is refused (`facility-undeclared`). |
+| V3 | Wheels only: every locked dependency is available as a wheel; nothing is built from an sdist. A release with a `[build-system]` at its root, or a workspace member with one, locks its build backend in a `[dependency-groups] build` group of the root `pyproject.toml`; the build installs the locked wheels with network first, then builds the release offline without build isolation. |
+| V4 | Services take their sockets from systemd (socket activation, `LISTEN_FDS`/`LISTEN_FDNAMES`) and never create sockets themselves; a service's own runtime directory is `/run/pinka/platform-runtime/<service>/` and holds no sockets. |
+| V5 | No platform impact (infra's neutrality lint and its installer). |
+| V6 | The `agent` service names its own package in the manifest (`package: packages/potka-agent/`). `potka-agent` may not depend, directly or through other packages, on `potka-core` or any other package of the release, nor on a path, Git or URL source: only on packages from an `https://` index. What the agent needs from shared code moves into `potka-agent`. The build installs it alone into `.agent-venvs/agent/`, where `.venv/bin/potka-agent-runner` resolves; the agent sees nothing else of the release (prompts, agent configs and tool schemas reach it over its sockets). A release ships neither `.venv` nor `.agent-venvs`. |
+| V7 | GPU inference needs an NVIDIA GPU with compute capability 7.5 or newer (the pinned vLLM image's kernels); the platform's hardware requirements and docs state 7.5. |
+| (restore) | A restore deploys exactly the recorded commit and tree, through the recorded tag only with signed tags required (owner decision with the "commit" for 3d.4): the platform's release process never moves or deletes a release tag and never rewrites history a deployed release came from. |
+
+Built in 3d.5 and awaiting the owner's decision; if approved, the platform
+must follow them too:
+
+- The controller switches deployments with the GPU arbiter's `serve`
+  request on `/run/pinka/gpu.sock`, not the deploy helper's socket; a
+  deployment spec names adapters in `adapter_ids` (`<name>@<sha256>`), and
+  `adapters` is refused.
+- It starts a run with `train` and a submission (`base_model`, `datasets`
+  mapped to published hashes, `hyperparameters`, `seed`,
+  `sessions_drained`, optional `restore`) after draining its sessions, and
+  publishes datasets with `publish-dataset` from its own state directory,
+  every file its own, with `provenance` (`instances` with their split,
+  `source_runs`).
+- A training job reads `/model`, `/datasets/<kind>`, `PINKA_JOB_RUN`,
+  `PINKA_JOB_SEED`, `PINKA_JOB_HYPERPARAMETERS`, `PINKA_JOB_RESUME`, writes
+  its checkpoints to `/checkpoints` and its adapter to `/output/adapter/`,
+  and runs with a read-only root file system and a writable `/tmp` only.
+- The inference API is reachable only by the accounts of profiles with
+  `inference_api` (the controller and the inference broker); on a lab node
+  only the controller reaches the control port.
 
 ## Contract changes
 
@@ -1206,7 +1277,7 @@ Proposed after infra step 13 (approved as P3a; details in
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-4 done, 4b built and proposed for commit | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-4 and 4b done, 5 built and awaiting the "commit" | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -1360,7 +1431,8 @@ under the final commit rule in [Process rules](#process-rules-in-force):
 3a (`836cfce`), 3b (`d99d2ed`), 3b2 (`169266e`) and 3c (`63b7e56`) are
 committed, and 3c2 (`502f15c`) and 3c3 (`3ce8d43`) under the scoped commit
 exception; 3d steps 1 (`912b240`), 2 (`9ece578`), 3 (`212121c`) and 4
-(`9b932f6`) are committed; step 4b is built and waits for the owner's
-"commit", then steps 5-8 one at a time. Still open: the remaining
+(`9b932f6`) and 4b (`9c152a3`) are committed; step 5 is built and waits
+for the owner's "commit" and decisions, then steps 6-8 one at a time (6:
+the reference platform and the isolation probe per profile, §16 step 20). Still open: the remaining
 `TODO(verify)` items (112), which need network access or reference
 hardware.

@@ -105,6 +105,9 @@ ignore_missing_imports = true  # ansible-core ships no type information
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "uv: needs the uv of versions.lock.yml; in CI a skip fails (tools/platform/tests/conftest.py)",
+]
 testpaths = [
   "tools/repo-checks/tests",
   "preflight/tests",
@@ -134,6 +137,8 @@ pythonpath = [
   "ansible/roles/backup/files",
   "ansible/roles/platform/files",
   "ansible/roles/inference_control/files",
+  "ansible/roles/gpu_arbiter/files",
+  "ansible/roles/firewall/files",
   "ansible/tests",
   "tools/pinka-lab",
   "tools/pinka-lab/tests",

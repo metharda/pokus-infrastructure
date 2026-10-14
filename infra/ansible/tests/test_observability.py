@@ -414,16 +414,20 @@ def test_stores_by_node_role() -> None:
 
 
 def test_the_stores_run_as_infra_accounts() -> None:
-    # ADR-0016 as decided with the "commit" for 3d.4: the telemetry guard
-    # names exactly infra's accounts, so no container that reaches the stores
-    # runs as its image's default user (nobody, 10001, 472).
+    # ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b: the telemetry
+    # guard names exactly infra's accounts, so no container that reaches the
+    # stores or the query port runs as its image's default user (nobody,
+    # 10001, 472); Grafana is a client of the query port only.
     compose = load_yaml(INFRA / "compose/observability/compose.yml")["services"]
     variables = obs_vars()
     accounts = evaluate("observability_container_accounts", variables)
     infra = {a["name"] for a in evaluate("infra_accounts", variables)}
     clients = {c["account"] for c in evaluate("pinka_telemetry_clients", variables)}
+    query = {c["account"] for c in evaluate("pinka_query_port_clients", variables)}
     assert set(accounts.values()) <= infra
-    assert set(accounts.values()) == clients - {"root"}
+    assert set(accounts.values()) == (clients | query) - {"root"}
+    assert accounts["grafana"] == "pinka-grafana"
+    assert "pinka-grafana" not in clients
     for service, account in accounts.items():
         user = compose[service]["user"]
         assert re.match(r"^\$\{[A-Z_]+_UID:\?\}:", user), service

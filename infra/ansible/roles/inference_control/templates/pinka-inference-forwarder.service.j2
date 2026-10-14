@@ -1,0 +1,45 @@
+# Managed by pinka (ansible/roles/inference_control/templates/pinka-inference-forwarder.service.j2). Local changes will be overwritten.
+#
+# The inference forwarder of a lab node (BUILD_PROMPT §12.8, §19.10): the
+# vLLM API on 127.0.0.1:{{ pinka_ports.vllm }} and the control API on
+# 127.0.0.1:{{ pinka_ports.inference_control }}, passed through to the paired
+# inference node with mutual TLS over the tailnet. Root, because it alone
+# holds the client key. Skipped until the node is paired.
+[Unit]
+Description=pinka inference forwarder (loopback to the paired inference node)
+Wants=network-online.target
+After=network-online.target tailscaled.service pinka-inference-guard.service
+ConditionPathExists={{ inference_control_peer_cert }}
+PartOf=pinka-lab.target
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=simple
+ExecStart={{ inference_control_forwarder_program }} --config {{ inference_control_forwarder_config }}
+# The tailnet may come up after the unit starts at boot.
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# The loopback, where it listens, and the tailnet (Tailscale's address
+# ranges), where the paired node is; nothing else.
+IPAddressAllow=localhost 100.64.0.0/10 fd7a:115c:a1e0::/48
+IPAddressDeny=any
+InaccessiblePaths={{ inference_control_denied_paths | map('regex_replace', '^', '-') | join(' ') }}
+
+[Install]
+WantedBy=pinka-lab.target

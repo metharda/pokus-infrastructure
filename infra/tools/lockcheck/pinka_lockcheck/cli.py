@@ -7,9 +7,10 @@
   repository key fingerprint over the network.
 * ``todos``: list every ``TODO(verify)`` marker in the repository
   (``make verify-todos``).
-* ``fetch NAME --dest PATH``: download a pinned single-file binary of the
-  lock for this machine and install it only if its sha256 matches
-  (development tools such as OPA for ``make test``).
+* ``fetch NAME --dest PATH [--member FILE]``: download a pinned binary of
+  the lock for this machine and install it only if its sha256 matches; from
+  a tar.gz archive, the one regular file named ``FILE`` (development tools
+  such as OPA and uv for ``make test``).
 """
 
 from __future__ import annotations
@@ -112,9 +113,9 @@ def _todos(excludes: Sequence[str]) -> int:
     return 1 if count else 0
 
 
-def _fetch(lock: Path, name: str, dest: Path) -> int:
+def _fetch(lock: Path, name: str, dest: Path, member: str | None) -> int:
     try:
-        digest = checks.fetch_binary(checks.load(lock), name, dest)
+        digest = checks.fetch_binary(checks.load(lock), name, dest, member=member)
     except (checks.FetchRefusedError, net.FetchError) as exc:
         sys.stderr.write(f"fetch: {exc}\n")
         return 1
@@ -145,13 +146,14 @@ def main(argv: Sequence[str]) -> int:
     )
     todos = sub.add_parser("todos", help="list TODO(verify) markers in the repository")
     todos.add_argument("--exclude", action="append", default=list(TODO_EXCLUDES))
-    fetch = sub.add_parser("fetch", help="install a pinned single-file binary after checking it")
+    fetch = sub.add_parser("fetch", help="install a pinned binary after checking it")
     fetch.add_argument("name", help="entry under binaries")
     fetch.add_argument("--dest", type=Path, required=True, help="path of the executable")
+    fetch.add_argument("--member", help="file name of the executable in a tar.gz archive")
     fetch.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
     args = parser.parse_args(list(argv))
     if args.command == "fetch":
-        return _fetch(args.lock, args.name, args.dest)
+        return _fetch(args.lock, args.name, args.dest, args.member)
     if args.command == "validate":
         return _validate(args.pairs)
     if args.command == "check":

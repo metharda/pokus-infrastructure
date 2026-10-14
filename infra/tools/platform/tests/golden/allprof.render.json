@@ -630,6 +630,10 @@
       "short": "allprof-rop"
     }
   ],
+  "inference_clients": [
+    "allprof-brk",
+    "allprof-ctl"
+  ],
   "opa": {
     "bundle": "/srv/pinka/platforms/allprof/releases/allprof-v1/policy",
     "decision_path": "allprof/decide"
@@ -800,5 +804,33 @@
   ],
   "tools": [
     "quarto"
-  ]
+  ],
+  "training": {
+    "dataset_sources": [
+      "/srv/pinka/platforms/allprof/state/ctl/records"
+    ],
+    "jobs": [
+      {
+        "account": "allprof-trn",
+        "adapter": "allprof-trn",
+        "base_model": false,
+        "command": [
+          "python3",
+          "-I",
+          "train.py"
+        ],
+        "cpus": 1,
+        "datasets": [
+          "train",
+          "validation"
+        ],
+        "gpus": 0,
+        "image": "registry.example.com:5000/train/toy:1.0@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "memory_max": "2G",
+        "name": "trn",
+        "resumable": false,
+        "timeout_seconds": 300
+      }
+    ]
+  }
 }

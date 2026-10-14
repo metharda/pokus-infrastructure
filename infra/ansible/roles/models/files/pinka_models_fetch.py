@@ -1,6 +1,6 @@
 #!/opt/pinka/models-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/models/files/pinka_models_fetch.py). Local changes will be overwritten.
-"""Download one pinned model or LoRA adapter of models.lock.yml and verify it.
+"""Download one pinned model of models.lock.yml and verify it.
 
 Installed as ``/usr/local/libexec/pinka/models-fetch`` by the models role
 (BUILD_PROMPT §7.12, contracts.md#paths). Files come from the pinned
@@ -37,27 +37,25 @@ class FetchError(RuntimeError):
     """The entry cannot be downloaded or does not match the lock."""
 
 
-def target_dir(root: Path, kind: str, entry: Mapping[str, Any]) -> Path:
+def target_dir(root: Path, entry: Mapping[str, Any]) -> Path:
     """Directory of an entry (contracts.md#paths).
+
+    ``<root>/adapters/`` belongs to the GPU arbiter, which alone registers
+    adapters (BUILD_PROMPT §7.12, §7.18); no model may land there.
 
     Args:
         root: Models root (``/srv/pinka/models``).
-        kind: ``model`` or ``adapter``.
         entry: Lock entry.
 
     Returns:
-        ``<root>/<hf_repo>/<revision>`` for a model,
-        ``<root>/adapters/<name>/<sha256 of the weights file>`` for an adapter.
+        ``<root>/<hf_repo>/<revision>``.
 
     Raises:
-        FetchError: If an adapter's weights file is not among its files.
+        FetchError: If the repository's owner is ``adapters``.
     """
-    if kind == "model":
-        return root / str(entry["hf_repo"]) / str(entry["revision"])
-    weights = [f["sha256"] for f in entry["files"] if f["path"] == entry["weights"]]
-    if not weights:
-        raise FetchError(f"adapter {entry['name']}: weights file {entry['weights']} is not listed")
-    return root / "adapters" / str(entry["name"]) / str(weights[0])
+    if str(entry["hf_repo"]).split("/", 1)[0] == "adapters":
+        raise FetchError(f"{entry['hf_repo']}: models/adapters/ belongs to the GPU arbiter")
+    return root / str(entry["hf_repo"]) / str(entry["revision"])
 
 
 def sha256_file(path: Path) -> str:
@@ -138,7 +136,6 @@ def _make_writable(dest: Path) -> None:
 
 def fetch(
     entry: Mapping[str, Any],
-    kind: str,
     root: Path,
     hf: str,
     run: Runner,
@@ -152,8 +149,7 @@ def fetch(
     """Download what is missing, verify every file and write the manifest.
 
     Args:
-        entry: Lock entry (model or adapter).
-        kind: ``model`` or ``adapter``.
+        entry: Lock entry.
         root: Models root.
         hf: Path of the ``hf`` CLI.
         run: Runs a command with extra environment variables and raises on failure.
@@ -169,7 +165,7 @@ def fetch(
     Raises:
         FetchError: On a hash mismatch or a file outside the entry directory.
     """
-    dest = target_dir(root, kind, entry)
+    dest = target_dir(root, entry)
     if manifest_matches(dest, entry) and (not reverify or hashes_match(dest, entry)):
         return {"changed": False, "path": str(dest)}
     dest.mkdir(parents=True, exist_ok=True)
@@ -196,13 +192,13 @@ def fetch(
     shutil.rmtree(dest / ".cache", ignore_errors=True)  # hf download's own metadata
     manifest = {
         "schema_version": 1,
-        "kind": kind,
-        **{k: entry[k] for k in ("id", "name", "base_model_id", "weights") if k in entry},
+        "kind": "model",
+        "id": entry["id"],
         "hf_repo": entry["hf_repo"],
         "revision": entry["revision"],
         "license": entry["license"],
         "gated": entry["gated"],
-        **({"quantization": entry["quantization"]} if kind == "model" else {}),
+        "quantization": entry["quantization"],
         "files": records,
         "downloaded_at": now().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "tool": {"name": "huggingface_hub", "version": tool_version},
@@ -233,7 +229,6 @@ def main(argv: Sequence[str]) -> int:
         0 on success, 1 on a verification or download failure.
     """
     parser = argparse.ArgumentParser(prog="models-fetch", description=__doc__.splitlines()[0])
-    parser.add_argument("--kind", choices=["model", "adapter"], required=True)
     parser.add_argument("--entry", required=True, help="the lock entry as JSON")
     parser.add_argument("--root", type=Path, default=Path("/srv/pinka/models"))
     parser.add_argument("--hf", default="/opt/pinka/models-venv/bin/hf")
@@ -253,7 +248,6 @@ def main(argv: Sequence[str]) -> int:
     try:
         result = fetch(
             json.loads(args.entry),
-            args.kind,
             args.root,
             args.hf,
             _run,

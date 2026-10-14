@@ -945,47 +945,85 @@ AGENT_SOCKET_MODE = 0o666
 
 
 GUARD_TABLE = "pinka_telemetry_guard"
-GUARD_SET = "telemetry_clients"
+# The guard's sets (ADR-0016) with the keys of their accounts and ports in the
+# specification: infra's clients of the stores, and the query port's clients.
+GUARD_SETS = (
+    ("telemetry_clients", "clients", "ports"),
+    ("query_port_clients", "query_clients", "query_ports"),
+)
 
 
-def _guard_problems(ctx: Context, spec: Mapping[str, Any]) -> list[str]:
-    """The loaded telemetry guard against its specification (ADR-0016)."""
-    done = ctx.system.run(["nft", "-j", "list", "table", "inet", GUARD_TABLE])
-    try:
-        items = [i for i in json.loads(done.stdout)["nftables"] if isinstance(i, dict)]
-    except (ValueError, KeyError, TypeError):
-        items = []
-    if not done.ok or not items:
-        return [f"the nftables table inet {GUARD_TABLE} is not loaded"]
+def _guard_set_problems(
+    ctx: Context,
+    items: list[dict[str, Any]],
+    guard: str,
+    *,
+    name: str,
+    accounts: list[Any],
+    ports: list[Any],
+) -> list[str]:
+    """One set of a loaded guard: exactly these accounts' UIDs, its rule over these ports."""
     problems = []
     elements = next(
-        (i["set"].get("elem", []) for i in items if i.get("set", {}).get("name") == GUARD_SET),
+        (i["set"].get("elem", []) for i in items if i.get("set", {}).get("name") == name),
         None,
     )
     expected = {}
-    for account in spec.get("clients", []):
+    for account in accounts:
         uid = ctx.system.uid_of(str(account))
         if uid is None:
-            problems.append(f"the telemetry client {account} does not exist")
+            problems.append(f"the {guard} client {account} does not exist")
         else:
             expected[uid] = str(account)
     if elements is None:
-        problems.append(f"the telemetry guard has no set {GUARD_SET}")
+        problems.append(f"the {guard} guard has no set {name}")
     else:
         loaded = {e for e in elements if isinstance(e, int)}
         extra = sorted(loaded - set(expected))
         missing = sorted(set(expected) - loaded)
         if extra:
-            problems.append("the telemetry guard also admits UIDs " + ", ".join(map(str, extra)))
+            problems.append(f"{name} also admits UIDs " + ", ".join(map(str, extra)))
         if missing:
             names = ", ".join(expected[u] for u in missing)
-            problems.append(f"the telemetry guard does not admit {names}")
-    rule = json.dumps([i["rule"] for i in items if "rule" in i])
-    if f'"right": "@{GUARD_SET}"' not in rule or '"op": "!="' not in rule:
-        problems.append("the telemetry guard has no rule for the accounts outside its set")
-    missing_ports = [str(p) for p in spec.get("ports", []) if str(p) not in rule]
-    if missing_ports:
-        problems.append(f"the telemetry guard leaves ports open: {', '.join(missing_ports)}")
+            problems.append(f"{name} does not admit {names}")
+    # The set's own rule: a reject for the UIDs outside it, over its ports.
+    rules = [json.dumps(i["rule"]) for i in items if "rule" in i]
+    rule = next((r for r in rules if f'"right": "@{name}"' in r and '"op": "!="' in r), None)
+    if rule is None:
+        problems.append(f"the {guard} guard has no rule for the accounts outside {name}")
+        return problems
+    open_ports = [str(p) for p in ports if str(p) not in rule]
+    if open_ports:
+        problems.append(f"{name} leaves ports open: {', '.join(open_ports)}")
+    return problems
+
+
+def _loaded_table(ctx: Context, table: str) -> list[dict[str, Any]] | None:
+    """The items of a loaded nftables table (``nft -j``), or None if it is not loaded."""
+    done = ctx.system.run(["nft", "-j", "list", "table", "inet", table])
+    try:
+        items = [i for i in json.loads(done.stdout)["nftables"] if isinstance(i, dict)]
+    except (ValueError, KeyError, TypeError):
+        items = []
+    return items if done.ok and items else None
+
+
+def _guard_problems(ctx: Context, spec: Mapping[str, Any]) -> list[str]:
+    """The loaded telemetry guard against its specification (ADR-0016)."""
+    items = _loaded_table(ctx, GUARD_TABLE)
+    if items is None:
+        return [f"the nftables table inet {GUARD_TABLE} is not loaded"]
+    problems = []
+    for name, accounts, ports in GUARD_SETS:
+        if spec.get(ports):
+            problems += _guard_set_problems(
+                ctx,
+                items,
+                "telemetry",
+                name=name,
+                accounts=list(spec.get(accounts, [])),
+                ports=list(spec[ports]),
+            )
     return problems
 
 
@@ -1044,6 +1082,267 @@ def check_telemetry_isolation(ctx: Context) -> Outcome:
         "the telemetry guard admits only infra's clients; the query link and the query and "
         "agent sockets are in place"
     )
+
+
+# --- the GPU arbiter, training and the inference guard (§7.11, §7.18) --------------------------
+
+INFERENCE_GUARD_TABLE = "pinka_inference_guard"
+GPU_MODES = ("idle", "serving", "training")
+GPU_SOCKET_MODE = 0o600
+REGISTERED_DIR_MODE = 0o555
+DATASET_DIR_MODE = 0o750
+DATASETS_GROUP = "pinka-datasets"
+FORBIDDEN_SPLIT = "test"
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _arbiter(ctx: Context) -> dict[str, Any]:
+    section = ctx.config.get("gpu_arbiter", default={}) or {}
+    return dict(section) if isinstance(section, dict) else {}
+
+
+def _rendered(ctx: Context) -> dict[str, Any]:
+    if "rendered" not in ctx.memo:
+        text = ctx.system.read_text(RENDERED_PLATFORM)
+        try:
+            data = json.loads(text) if text else {}
+        except ValueError:
+            data = {}
+        ctx.memo["rendered"] = data if isinstance(data, dict) else {}
+    rendered: dict[str, Any] = ctx.memo["rendered"]
+    return rendered
+
+
+def _json_file(ctx: Context, path: str) -> Any:  # noqa: ANN401 - parsed JSON
+    text = ctx.system.read_text(path)
+    try:
+        return json.loads(text) if text else None
+    except ValueError:
+        return None
+
+
+def check_gpu_arbiter(ctx: Context) -> Outcome:
+    """The arbiter's socket belongs to the allowed account; its mode and log are sound."""
+    arbiter = _arbiter(ctx)
+    if not arbiter:
+        return skipped(f"a {ctx.config.node_role} node has no GPU arbiter")
+    problems = []
+    peer = str(arbiter.get("peer") or _rendered(ctx).get("controller") or "root")
+    socket = str(arbiter["socket"])
+    info = ctx.system.info(socket)
+    if info is None:
+        problems.append(f"{socket} is missing (pinka-gpu-arbiter.socket)")
+    elif info.owner != peer or info.mode & 0o777 != GPU_SOCKET_MODE:
+        problems.append(f"{socket} is {info.owner} {info.mode & 0o777:04o}, not {peer} 0600")
+    text = ctx.system.read_text(str(arbiter["state"]))
+    state = _json_file(ctx, str(arbiter["state"])) if text else {"mode": "idle"}
+    mode = state.get("mode") if isinstance(state, dict) else None
+    if mode not in GPU_MODES:
+        problems.append(f"{arbiter['state']} holds no valid mode")
+        mode = "unknown"
+    elif mode == "training":
+        unit = f"pinka-gpu-job@{state.get('run')}.service"
+        active = ctx.system.run(["systemctl", "is-active", unit]).stdout.strip() or "unknown"
+        if active not in ("active", "activating"):
+            problems.append(f"the GPU is training run {state.get('run')}, but {unit} is {active}")
+    log = ctx.system.read_text(str(arbiter["transitions"])) or ""
+    entries = []
+    for number, line in enumerate(log.splitlines(), start=1):
+        try:
+            entries.append(json.loads(line))
+        except ValueError:
+            problems.append(f"{arbiter['transitions']} line {number} is not JSON")
+            break
+    if problems:
+        return failed("; ".join(problems))
+    target = state.get("deployment") if mode == "serving" else state.get("run")
+    now = f"{mode} {target}" if target and mode != "idle" else str(mode)
+    last = entries[-1] if entries else None
+    if last:
+        now += f"; last transition {last.get('from')} -> {last.get('to')} ({last.get('outcome')})"
+    return passed(now)
+
+
+def _expected_mounts(arbiter: Mapping[str, Any], run: str) -> tuple[list[str], list[str]]:
+    jobs = str(arbiter.get("jobs", ""))
+    read_only = [str(arbiter.get("models", "")) + "/", str(arbiter.get("datasets", "")) + "/"]
+    read_write = [f"{jobs}/{run}/output", f"{jobs}/{run}/checkpoints"]
+    return read_only, read_write
+
+
+def _container_problems(
+    arbiter: Mapping[str, Any], name: str, inspect: Mapping[str, Any]
+) -> list[str]:
+    """A running job container's options against infra's fixed ones (§7.18)."""
+    host = inspect.get("HostConfig") or {}
+    problems = []
+    if host.get("NetworkMode") != "none":
+        problems.append(f"network {host.get('NetworkMode')}")
+    if not host.get("ReadonlyRootfs"):
+        problems.append("a writable root file system")
+    if "ALL" not in (host.get("CapDrop") or []) or host.get("CapAdd"):
+        problems.append("capabilities")
+    options = host.get("SecurityOpt") or []
+    if not any(str(o).startswith("no-new-privileges") for o in options):
+        problems.append("no no-new-privileges")
+    if any("unconfined" in str(o) for o in options):
+        problems.append("an unconfined profile")
+    if host.get("Privileged"):
+        problems.append("privileged")
+    for key in ("PidMode", "IpcMode", "UsernsMode", "UTSMode"):
+        if str(host.get(key) or "") == "host":
+            problems.append(f"the host's {key[:-4].lower()} namespace")
+    user = str((inspect.get("Config") or {}).get("User") or "")
+    if user.split(":", maxsplit=1)[0] in ("", "0", "root"):
+        problems.append("runs as root")
+    read_only, read_write = _expected_mounts(arbiter, name.removeprefix("pinka-job-"))
+    for mount in inspect.get("Mounts") or []:
+        source, writable = str(mount.get("Source", "")), bool(mount.get("RW"))
+        if source in read_write and writable:
+            continue
+        if any(source.startswith(r) for r in read_only) and not writable:
+            continue
+        problems.append(f"the mount {source}" + (" (read-write)" if writable else ""))
+    return [f"{name}: {p}" for p in problems]
+
+
+def check_training_containers(ctx: Context) -> Outcome:
+    """A running training job's container has exactly infra's options and mounts (§7.18)."""
+    arbiter = _arbiter(ctx)
+    if not arbiter or not arbiter.get("training"):
+        return skipped("this host does not train")
+    names = ctx.system.run(
+        ["docker", "ps", "--filter", "name=^pinka-job-", "--format", "{{.Names}}"]
+    ).stdout.split()
+    if not names:
+        return skipped("no training run is running")
+    problems = []
+    for name in names:
+        inspected = ctx.system.run(["docker", "inspect", name]).json()
+        if not isinstance(inspected, list) or not inspected:
+            problems.append(f"{name}: docker inspect gave nothing")
+            continue
+        problems += _container_problems(arbiter, name, inspected[0])
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"{len(names)} running job container(s) with infra's options")
+
+
+def _registered(ctx: Context, root: str, depth: int) -> list[str]:
+    """Directories at ``depth`` below ``root``, without the arbiter's temporary ones."""
+    found = [root]
+    for _ in range(depth):
+        found = [f"{d}/{n}" for d in found for n in ctx.system.listdir(d) if not n.startswith(".")]
+    return found
+
+
+def check_training_adapters(ctx: Context) -> Outcome:
+    """Every registered adapter is read-only and its files match its hash and manifest."""
+    arbiter = _arbiter(ctx)
+    if not arbiter:
+        return skipped(f"a {ctx.config.node_role} node has no GPU arbiter")
+    directories = _registered(ctx, str(arbiter["adapters"]), 2)
+    if not directories:
+        return skipped("no adapter is registered")
+    problems = []
+    for directory in directories:
+        digest = directory.rsplit("/", 1)[1]
+        manifest = _json_file(ctx, f"{directory}/MANIFEST.json")
+        if not SHA256_RE.fullmatch(digest) or not isinstance(manifest, dict):
+            problems.append(f"{directory} is not a registered adapter")
+            continue
+        if manifest.get("sha256") != digest or ctx.system.info(f"{directory}/LINEAGE.json") is None:
+            problems.append(f"{directory}: MANIFEST.json and LINEAGE.json do not match")
+        actual = ctx.system.tree_digest(directory, ("MANIFEST.json", "LINEAGE.json"))
+        if actual != digest:
+            problems.append(f"{directory}: its files do not match its hash")
+        info = ctx.system.info(directory)
+        if info is None or info.owner != "root" or info.mode & 0o777 != REGISTERED_DIR_MODE:
+            problems.append(f"{directory} is not root's and read-only")
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"{len(directories)} adapter(s) registered with matching hashes")
+
+
+def check_training_datasets(ctx: Context) -> Outcome:
+    """Every published dataset matches its hash; none lists an instance of the test split."""
+    arbiter = _arbiter(ctx)
+    if not arbiter or not arbiter.get("training"):
+        return skipped("this host does not train")
+    directories = _registered(ctx, str(arbiter["datasets"]), 1)
+    if not directories:
+        return skipped("no dataset is published")
+    problems = []
+    for directory in directories:
+        digest = directory.rsplit("/", 1)[1]
+        provenance = _json_file(ctx, f"{directory}/PROVENANCE.json")
+        if not SHA256_RE.fullmatch(digest) or not isinstance(provenance, dict):
+            problems.append(f"{directory} has no PROVENANCE.json")
+            continue
+        if provenance.get("dataset_sha256") != digest:
+            problems.append(f"{directory}: PROVENANCE.json names another dataset")
+        tested = [
+            str(i.get("id"))
+            for i in provenance.get("instances") or []
+            if isinstance(i, dict) and i.get("split") == FORBIDDEN_SPLIT
+        ]
+        if tested:
+            problems.append(f"{directory} lists instances of the test split: {', '.join(tested)}")
+        if ctx.system.tree_digest(directory, ("PROVENANCE.json",)) != digest:
+            problems.append(f"{directory}: its files do not match its hash")
+        info = ctx.system.info(directory)
+        if (
+            info is None
+            or (info.owner, info.group) != ("root", DATASETS_GROUP)
+            or info.mode & 0o777 != DATASET_DIR_MODE
+        ):
+            problems.append(f"{directory} is not root:{DATASETS_GROUP} 0750")
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"{len(directories)} dataset(s) with provenance, none from the test split")
+
+
+def check_training_availability(ctx: Context) -> Outcome:
+    """Whether this host trains: only a full node does (§19.10)."""
+    if ctx.config.node_role in ("lab", "inference"):
+        return passed(
+            f"training is unavailable on this host (node_role {ctx.config.node_role}); it runs "
+            "only on a full node, split-node training is future work"
+        )
+    return passed("training runs on this host through the GPU arbiter")
+
+
+def check_inference_isolation(ctx: Context) -> Outcome:
+    """Only the inference API's clients reach vLLM or the forwarder on the loopback (§7.11)."""
+    spec = ctx.config.get("inference_isolation", default={}) or {}
+    if not spec.get("ports"):
+        return skipped("this host has no inference guard to check")
+    items = _loaded_table(ctx, INFERENCE_GUARD_TABLE)
+    if items is None:
+        return failed(f"the nftables table inet {INFERENCE_GUARD_TABLE} is not loaded")
+    rendered = _rendered(ctx)
+    clients = [*spec.get("clients", []), *rendered.get("inference_clients", [])]
+    problems = _guard_set_problems(
+        ctx,
+        items,
+        "inference",
+        name="inference_clients",
+        accounts=list(dict.fromkeys(clients)),
+        ports=list(spec["ports"]),
+    )
+    if spec.get("control_ports"):
+        control = ["root", *([rendered["controller"]] if rendered.get("controller") else [])]
+        problems += _guard_set_problems(
+            ctx,
+            items,
+            "inference",
+            name="inference_control_clients",
+            accounts=control,
+            ports=list(spec["control_ports"]),
+        )
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"the inference guard admits only {', '.join(dict.fromkeys(clients))}")
 
 
 # --- database and policy -------------------------------------------------------------------
@@ -1541,6 +1840,51 @@ CHECKS: tuple[Check, ...] = (
         "error",
         "`journalctl -u pinka-inference.service`; reactivate the deployment.",
         check_vllm,
+    ),
+    Check(
+        "gpu.arbiter",
+        "The GPU arbiter's socket belongs to the controller (or the control endpoint); its mode "
+        "and transition log are sound.",
+        "error",
+        "Run bootstrap with --tags gpu_arbiter; `journalctl -u 'pinka-gpu-*'` shows the arbiter.",
+        check_gpu_arbiter,
+    ),
+    Check(
+        "training.containers",
+        "A running training job's container has infra's fixed options and only its mounts.",
+        "error",
+        "Stop the run (`sudo pinka gpu idle`) and run bootstrap with --tags gpu_arbiter.",
+        check_training_containers,
+    ),
+    Check(
+        "training.adapters",
+        "Registered adapters are read-only and match their hash, MANIFEST.json and LINEAGE.json.",
+        "error",
+        "Remove the damaged adapter directory and train it again; never edit a registered one.",
+        check_training_adapters,
+    ),
+    Check(
+        "training.datasets",
+        "Published datasets match their hash and list no instance of the test split.",
+        "error",
+        "Remove the dataset directory and publish it again from the platform.",
+        check_training_datasets,
+    ),
+    Check(
+        "training.availability",
+        "Whether this host trains: only a full node does.",
+        "warning",
+        "Training needs a full node; split-node training is future work.",
+        check_training_availability,
+    ),
+    Check(
+        "inference.isolation",
+        "Only root, infra's scrapers and the platform's controller and inference broker reach "
+        "the inference API on the loopback; only the controller the forwarder's control port.",
+        "error",
+        "Run bootstrap with --tags firewall,platform (`systemctl restart "
+        "pinka-inference-guard.service` reloads it).",
+        check_inference_isolation,
     ),
     Check(
         "lab.window",

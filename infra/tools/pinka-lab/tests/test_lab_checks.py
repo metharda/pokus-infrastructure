@@ -8,7 +8,7 @@ import unittest
 from collections.abc import Sequence
 from typing import Any
 
-from labfakes import DIGEST, LAB, NOW, PROFILE, FakeSystem, context, info
+from labfakes import DIGEST, LAB, NOW, PROFILE, FakeSystem, context, info, lab_data
 
 from pinka_lab import checks, fingerprint
 from pinka_lab.checks import CHECKS
@@ -776,38 +776,50 @@ class SocketAclFallbackTest(Base):
         self.assertOutcome(run(checks.check_socket_acl_fallback, broken), "fail", "not JSON")
 
 
-def guard_json(elements: list[int], ports: list[int], negated: bool = True) -> str:
-    """``nft -j list table`` output of a telemetry guard."""
-    rule = {
+def guard_rule(name: str, ports: list[int], negated: bool = True) -> dict[str, Any]:
+    """One rule of a telemetry guard in ``nft -j`` output."""
+    return {
         "expr": [
             {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": "lo"}},
             {
                 "match": {
                     "op": "==",
                     "left": {"payload": {"protocol": "tcp", "field": "dport"}},
-                    "right": {"set": ports},
+                    "right": {"set": ports} if len(ports) > 1 else ports[0],
                 }
             },
             {
                 "match": {
                     "op": "!=" if negated else "==",
                     "left": {"meta": {"key": "skuid"}},
-                    "right": "@telemetry_clients",
+                    "right": f"@{name}",
                 }
             },
             {"reject": {"type": "tcp reset"}},
         ]
     }
-    return json.dumps(
-        {
-            "nftables": [
-                {"metainfo": {"version": "1.0.9"}},
-                {"table": {"family": "inet", "name": "pinka_telemetry_guard"}},
-                {"set": {"name": "telemetry_clients", "type": "uid", "elem": elements}},
-                {"rule": rule},
-            ]
-        }
-    )
+
+
+def guard_json(
+    elements: list[int],
+    ports: list[int],
+    negated: bool = True,
+    query: list[int] | None = None,
+    query_ports: list[int] | None = None,
+) -> str:
+    """``nft -j list table`` output of a telemetry guard: the stores' set and the query port's."""
+    query = [0, 995] if query is None else query
+    query_ports = [18733] if query_ports is None else query_ports
+    items: list[dict[str, Any]] = [
+        {"metainfo": {"version": "1.0.9"}},
+        {"table": {"family": "inet", "name": "pinka_telemetry_guard"}},
+        {"set": {"name": "telemetry_clients", "type": "uid", "elem": elements}},
+        {"set": {"name": "query_port_clients", "type": "uid", "elem": query}},
+        {"rule": guard_rule("telemetry_clients", ports, negated)},
+    ]
+    if query_ports:
+        items.append({"rule": guard_rule("query_port_clients", query_ports)})
+    return json.dumps({"nftables": items})
 
 
 class TelemetryIsolationTest(Base):
@@ -816,10 +828,12 @@ class TelemetryIsolationTest(Base):
     DIR = "/run/pinka/query"
     AGENT = "/run/pinka/otlp/agent.sock"
     NFT = "nft -j list table inet pinka_telemetry_guard"
-    CLIENTS = {"root": 0, "pinka-otelcol": 991, "pinka-query-proxy": 992}
+    CLIENTS = {"root": 0, "pinka-otelcol": 991, "pinka-query-proxy": 992, "pinka-grafana": 995}
     SPEC: dict[str, Any] = {
         "clients": ["root", "pinka-otelcol", "pinka-query-proxy"],
-        "ports": [18701, 18702, 18733],
+        "ports": [18701, 18702, 18703],
+        "query_clients": ["root", "pinka-grafana"],
+        "query_ports": [18733],
         "query_link": "/run/pinka/query.sock",
         "query_target": "query/query.sock",
         "query_dir": "/run/pinka/query",
@@ -836,7 +850,7 @@ class TelemetryIsolationTest(Base):
         target: str = "query/query.sock",
         owner: str = "pinka-query-proxy",
     ) -> FakeSystem:
-        loaded = guard if guard is not None else guard_json([0, 991, 992], [18701, 18702, 18733])
+        loaded = guard if guard is not None else guard_json([0, 991, 992], [18701, 18702, 18703])
         return FakeSystem(
             {self.NFT: (0, loaded)},
             infos={
@@ -860,12 +874,16 @@ class TelemetryIsolationTest(Base):
 
     def test_the_guard_admits_exactly_infras_clients(self) -> None:
         # ADR-0016 as decided with the "commit" for 3d.4: an allowlist, no more.
-        wider = self.system(guard=guard_json([0, 991, 992, 1000], [18701, 18702, 18733]))
-        self.assertOutcome(self.check(wider), "fail", "also admits UIDs 1000")
-        narrower = self.system(guard=guard_json([0, 991], [18701, 18702, 18733]))
-        self.assertOutcome(self.check(narrower), "fail", "does not admit pinka-query-proxy")
-        inverted = self.system(guard=guard_json([0, 991, 992], [18701, 18702, 18733], False))
-        self.assertOutcome(self.check(inverted), "fail", "no rule for the accounts outside")
+        wider = self.system(guard=guard_json([0, 991, 992, 1000], [18701, 18702, 18703]))
+        self.assertOutcome(self.check(wider), "fail", "telemetry_clients also admits UIDs 1000")
+        narrower = self.system(guard=guard_json([0, 991], [18701, 18702, 18703]))
+        self.assertOutcome(
+            self.check(narrower), "fail", "telemetry_clients does not admit pinka-query-proxy"
+        )
+        inverted = self.system(guard=guard_json([0, 991, 992], [18701, 18702, 18703], False))
+        self.assertOutcome(
+            self.check(inverted), "fail", "no rule for the accounts outside telemetry_clients"
+        )
         system = self.system()
         del system.uids["pinka-otelcol"]
         self.assertOutcome(self.check(system), "fail", "client pinka-otelcol does not exist")
@@ -876,9 +894,38 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(outcome, "fail", "is not loaded")
         self.assertIn("/run/pinka/query/query.sock is missing", outcome.detail)
         narrow = self.system(guard=guard_json([0, 991, 992], [18701]))
-        self.assertOutcome(self.check(narrow), "fail", "leaves ports open: 18702, 18733")
+        self.assertOutcome(
+            self.check(narrow), "fail", "telemetry_clients leaves ports open: 18702, 18703"
+        )
         loose = self.system(query=0o666, group="pinka")
         self.assertOutcome(self.check(loose), "fail", "query.sock is pinka 0666")
+
+    def test_grafana_reaches_only_the_query_port(self) -> None:
+        # ADR-0016 as decided with the "commit" for 3d.4b: Grafana's data
+        # sources go through the query proxy, so Grafana is not a store client.
+        on_the_stores = self.system(guard=guard_json([0, 991, 992, 995], [18701, 18702, 18703]))
+        self.assertOutcome(
+            self.check(on_the_stores), "fail", "telemetry_clients also admits UIDs 995"
+        )
+        wider = self.system(
+            guard=guard_json([0, 991, 992], [18701, 18702, 18703], query=[0, 995, 1000])
+        )
+        self.assertOutcome(self.check(wider), "fail", "query_port_clients also admits UIDs 1000")
+        without = self.system(guard=guard_json([0, 991, 992], [18701, 18702, 18703], query=[0]))
+        self.assertOutcome(
+            self.check(without), "fail", "query_port_clients does not admit pinka-grafana"
+        )
+        unguarded = self.system(
+            guard=guard_json([0, 991, 992], [18701, 18702, 18703], query_ports=[])
+        )
+        self.assertOutcome(
+            self.check(unguarded), "fail", "no rule for the accounts outside query_port_clients"
+        )
+        # The query port inside the stores' rule does not count for its own set.
+        moved = self.system(
+            guard=guard_json([0, 991, 992], [18701, 18702, 18703, 18733], query_ports=[18799])
+        )
+        self.assertOutcome(self.check(moved), "fail", "query_port_clients leaves ports open: 18733")
 
     def test_the_query_link_and_its_directory(self) -> None:
         # The owner's condition for the link (with the "commit" for 3d.4).
@@ -1212,3 +1259,277 @@ class CpusetTest(Base):
         stopped = {"/sys/devices/system/cpu/online": "0-23\n"}
         outcome = run(checks.check_cpusets, FakeSystem(files=stopped), **sets)
         self.assertOutcome(outcome, "fail", "has no cgroup")
+
+
+# --- the GPU arbiter, training and the inference guard (§7.11, §7.18) ---------------------
+
+STATE = "/var/lib/pinka/gpu/state.json"
+TRANSITIONS = "/var/lib/pinka/gpu/transitions.jsonl"
+GPU_SOCKET = "/run/pinka/gpu.sock"
+ADAPTERS = "/srv/pinka/models/adapters"
+DATASETS = "/srv/pinka/training/datasets"
+RENDERED = "/etc/pinka/platform/rendered.json"
+
+
+def arbiter_section() -> dict[str, Any]:
+    section = lab_data()["gpu_arbiter"]
+    assert isinstance(section, dict)
+    return section
+
+
+class GpuArbiterTest(Base):
+    def system(self, state: dict[str, Any] | None, **kwargs: Any) -> FakeSystem:
+        files = {RENDERED: json.dumps({"controller": "demo-ctl"})}
+        if state is not None:
+            files[STATE] = json.dumps(state)
+        files[TRANSITIONS] = kwargs.pop(
+            "log",
+            json.dumps({"from": "idle", "to": "serving", "outcome": "ok"}) + "\n",
+        )
+        return FakeSystem(
+            kwargs.pop("commands", {}),
+            files=files,
+            infos={GPU_SOCKET: kwargs.pop("socket", info("demo-ctl", "root", 0o600))},
+        )
+
+    def test_skipped_without_an_arbiter(self) -> None:
+        outcome = run(checks.check_gpu_arbiter, FakeSystem(), node_role="lab", gpu_arbiter={})
+        self.assertOutcome(outcome, "skip", "a lab node has no GPU arbiter")
+
+    def test_serving(self) -> None:
+        system = self.system({"mode": "serving", "deployment": "dep@1"})
+        outcome = run(checks.check_gpu_arbiter, system)
+        self.assertOutcome(outcome, "pass", "serving dep@1; last transition idle -> serving (ok)")
+        # A fresh arbiter has no state yet: idle.
+        self.assertOutcome(run(checks.check_gpu_arbiter, self.system(None)), "pass", "idle")
+
+    def test_the_socket_belongs_to_the_controller(self) -> None:
+        wrong = self.system({"mode": "idle"}, socket=info("demo-agent", "root", 0o600))
+        self.assertOutcome(
+            run(checks.check_gpu_arbiter, wrong), "fail", "is demo-agent 0600, not demo-ctl 0600"
+        )
+        loose = self.system({"mode": "idle"}, socket=info("demo-ctl", "root", 0o666))
+        self.assertOutcome(run(checks.check_gpu_arbiter, loose), "fail", "0666")
+        inference = self.system({"mode": "idle"}, socket=info("pinka-inference", "root", 0o600))
+        outcome = run(
+            checks.check_gpu_arbiter,
+            inference,
+            gpu_arbiter={**arbiter_section(), "peer": "pinka-inference"},
+        )
+        self.assertOutcome(outcome, "pass")
+
+    def test_a_training_run_needs_its_unit(self) -> None:
+        run_id = "tune-20261012t080000-0123abcd"
+        unit = f"systemctl is-active pinka-gpu-job@{run_id}.service"
+        state = {"mode": "training", "run": run_id}
+        running = self.system(state, commands={unit: (0, "active\n")})
+        self.assertOutcome(run(checks.check_gpu_arbiter, running), "pass", f"training {run_id}")
+        gone = self.system(state, commands={unit: (3, "inactive\n")})
+        self.assertOutcome(run(checks.check_gpu_arbiter, gone), "fail", "is inactive")
+
+    def test_broken_state_and_log(self) -> None:
+        self.assertOutcome(
+            run(checks.check_gpu_arbiter, self.system({"mode": "busy"})), "fail", "no valid mode"
+        )
+        broken = self.system({"mode": "idle"}, log="{}\nnot json\n")
+        self.assertOutcome(run(checks.check_gpu_arbiter, broken), "fail", "line 2 is not JSON")
+
+
+def job_container(**changes: Any) -> dict[str, Any]:
+    run_id = "tune-20261012t080000-0123abcd"
+    host = {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": True,
+        "CapDrop": ["ALL"],
+        "CapAdd": None,
+        "SecurityOpt": ["no-new-privileges"],
+        "Privileged": False,
+        "PidMode": "",
+        "IpcMode": "private",
+        "UsernsMode": "",
+    }
+    host.update(changes.pop("host", {}))
+    mounts = [
+        {"Source": "/srv/pinka/models/example-org/m/" + "0" * 40, "RW": False},
+        {"Source": f"{DATASETS}/" + "a" * 64, "RW": False},
+        {"Source": f"/srv/pinka/training/jobs/{run_id}/output", "RW": True},
+        {"Source": f"/srv/pinka/training/jobs/{run_id}/checkpoints", "RW": True},
+    ]
+    return {
+        "HostConfig": host,
+        "Config": {"User": changes.pop("user", "60590:60590")},
+        "Mounts": changes.pop("mounts", mounts),
+    }
+
+
+class TrainingContainersTest(Base):
+    NAME = "pinka-job-tune-20261012t080000-0123abcd"
+
+    def system(self, container: dict[str, Any]) -> FakeSystem:
+        return FakeSystem(
+            {
+                "docker ps --filter name=^pinka-job- --format {{.Names}}": (0, self.NAME + "\n"),
+                f"docker inspect {self.NAME}": (0, [container]),
+            }
+        )
+
+    def test_fixed_options_pass(self) -> None:
+        self.assertOutcome(
+            run(checks.check_training_containers, self.system(job_container())), "pass", "1 running"
+        )
+
+    def test_widened_options_fail(self) -> None:
+        cases: list[tuple[dict[str, Any], str]] = [
+            ({"host": {"NetworkMode": "bridge"}}, "network bridge"),
+            ({"host": {"ReadonlyRootfs": False}}, "writable root file system"),
+            ({"host": {"CapAdd": ["SYS_ADMIN"]}}, "capabilities"),
+            ({"host": {"SecurityOpt": ["seccomp=unconfined", "no-new-privileges"]}}, "unconfined"),
+            ({"host": {"SecurityOpt": []}}, "no no-new-privileges"),
+            ({"host": {"Privileged": True}}, "privileged"),
+            ({"host": {"PidMode": "host"}}, "the host's pid namespace"),
+            ({"user": ""}, "runs as root"),
+            ({"user": "0:0"}, "runs as root"),
+            ({"mounts": [{"Source": "/etc/pinka/secrets", "RW": False}]}, "the mount /etc"),
+            (
+                {"mounts": [{"Source": f"{DATASETS}/" + "a" * 64, "RW": True}]},
+                "(read-write)",
+            ),
+        ]
+        for changes, detail in cases:
+            outcome = run(checks.check_training_containers, self.system(job_container(**changes)))
+            self.assertOutcome(outcome, "fail", detail)
+
+    def test_skipped(self) -> None:
+        idle = FakeSystem({"docker ps *": (0, "")})
+        self.assertOutcome(run(checks.check_training_containers, idle), "skip", "no training run")
+        outcome = run(
+            checks.check_training_containers,
+            idle,
+            gpu_arbiter={**arbiter_section(), "training": False},
+        )
+        self.assertOutcome(outcome, "skip", "does not train")
+
+
+class TrainingRecordsTest(Base):
+    DIGEST = "b" * 64
+    ADAPTER = f"{ADAPTERS}/refplat-tune/{'b' * 64}"
+    DATASET = f"{DATASETS}/{'c' * 64}"
+
+    def adapters(self, **changes: Any) -> FakeSystem:
+        manifest = {"sha256": self.DIGEST, **changes.pop("manifest", {})}
+        return FakeSystem(
+            files={
+                f"{self.ADAPTER}/MANIFEST.json": json.dumps(manifest),
+                f"{self.ADAPTER}/LINEAGE.json": "{}",
+            },
+            infos={self.ADAPTER: changes.pop("dir", info("root", "root", 0o555, is_dir=True))},
+            dirs={ADAPTERS: ["refplat-tune", ".tmp"], f"{ADAPTERS}/refplat-tune": ["b" * 64]},
+            digests={self.ADAPTER: changes.pop("digest", self.DIGEST)},
+        )
+
+    def test_adapters(self) -> None:
+        self.assertOutcome(
+            run(checks.check_training_adapters, self.adapters()), "pass", "1 adapter"
+        )
+        self.assertOutcome(
+            run(checks.check_training_adapters, self.adapters(digest="d" * 64)),
+            "fail",
+            "files do not match its hash",
+        )
+        self.assertOutcome(
+            run(checks.check_training_adapters, self.adapters(manifest={"sha256": "e" * 64})),
+            "fail",
+            "MANIFEST.json and LINEAGE.json do not match",
+        )
+        writable = self.adapters(dir=info("root", "root", 0o755, is_dir=True))
+        self.assertOutcome(run(checks.check_training_adapters, writable), "fail", "read-only")
+        self.assertOutcome(run(checks.check_training_adapters, FakeSystem()), "skip", "no adapter")
+
+    def datasets(self, instances: list[dict[str, str]], **changes: Any) -> FakeSystem:
+        digest = "c" * 64
+        provenance = {"dataset_sha256": digest, "instances": instances}
+        return FakeSystem(
+            files={f"{self.DATASET}/PROVENANCE.json": json.dumps(provenance)},
+            infos={
+                self.DATASET: changes.pop("dir", info("root", "pinka-datasets", 0o750, is_dir=True))
+            },
+            dirs={DATASETS: ["c" * 64, ".publish-x"]},
+            digests={self.DATASET: changes.pop("digest", digest)},
+        )
+
+    def test_datasets_and_the_split_guard(self) -> None:
+        train = [{"id": "case-1", "split": "train"}]
+        self.assertOutcome(run(checks.check_training_datasets, self.datasets(train)), "pass")
+        tested = self.datasets([*train, {"id": "case-9", "split": "test"}])
+        self.assertOutcome(
+            run(checks.check_training_datasets, tested), "fail", "test split: case-9"
+        )
+        changed = self.datasets(train, digest="0" * 64)
+        self.assertOutcome(run(checks.check_training_datasets, changed), "fail", "do not match")
+        open_dir = self.datasets(train, dir=info("root", "root", 0o755, is_dir=True))
+        self.assertOutcome(run(checks.check_training_datasets, open_dir), "fail", "0750")
+
+    def test_training_availability(self) -> None:
+        self.assertOutcome(
+            run(checks.check_training_availability, FakeSystem()), "pass", "runs on this host"
+        )
+        for role in ("lab", "inference"):
+            outcome = run(checks.check_training_availability, FakeSystem(), node_role=role)
+            self.assertOutcome(outcome, "pass", f"unavailable on this host (node_role {role})")
+
+
+class InferenceIsolationTest(Base):
+    NFT = "nft -j list table inet pinka_inference_guard"
+    UIDS = {
+        "root": 0,
+        "pinka-prometheus": 992,
+        "pinka-otelcol": 991,
+        "demo-ctl": 60578,
+        "demo-brk": 60579,
+    }
+
+    def guard(self, api: list[int], control: list[int] | None = None) -> str:
+        items: list[dict[str, Any]] = [
+            {"set": {"name": "inference_clients", "type": "uid", "elem": api}},
+            {"rule": guard_rule("inference_clients", [18704])},
+        ]
+        if control is not None:
+            items += [
+                {"set": {"name": "inference_control_clients", "type": "uid", "elem": control}},
+                {"rule": guard_rule("inference_control_clients", [18710])},
+            ]
+        return json.dumps({"nftables": items})
+
+    def system(self, loaded: str) -> FakeSystem:
+        rendered = {"controller": "demo-ctl", "inference_clients": ["demo-brk", "demo-ctl"]}
+        return FakeSystem(
+            {self.NFT: (0, loaded)}, files={RENDERED: json.dumps(rendered)}, uids=dict(self.UIDS)
+        )
+
+    def test_the_platforms_clients_and_infras(self) -> None:
+        ok = self.system(self.guard([0, 991, 992, 60578, 60579]))
+        self.assertOutcome(run(checks.check_inference_isolation, ok), "pass", "demo-brk, demo-ctl")
+        wider = self.system(self.guard([0, 991, 992, 60578, 60579, 60580]))
+        self.assertOutcome(
+            run(checks.check_inference_isolation, wider), "fail", "also admits UIDs 60580"
+        )
+        stale = self.system(self.guard([0, 991, 992]))
+        self.assertOutcome(
+            run(checks.check_inference_isolation, stale),
+            "fail",
+            "does not admit demo-ctl, demo-brk",
+        )
+        missing = FakeSystem({self.NFT: (1, "")})
+        self.assertOutcome(run(checks.check_inference_isolation, missing), "fail", "not loaded")
+
+    def test_the_control_port_of_a_lab_node(self) -> None:
+        spec = {"clients": ["root"], "ports": [18704], "control_ports": [18710]}
+        ok = self.system(self.guard([0, 60578, 60579], [0, 60578]))
+        outcome = run(checks.check_inference_isolation, ok, inference_isolation=spec)
+        self.assertOutcome(outcome, "pass")
+        broker = self.system(self.guard([0, 60578, 60579], [0, 60578, 60579]))
+        outcome = run(checks.check_inference_isolation, broker, inference_isolation=spec)
+        self.assertOutcome(outcome, "fail", "inference_control_clients also admits UIDs 60579")
+        unguarded = self.system(self.guard([0, 60578, 60579]))
+        outcome = run(checks.check_inference_isolation, unguarded, inference_isolation=spec)
+        self.assertOutcome(outcome, "fail", "no set inference_control_clients")

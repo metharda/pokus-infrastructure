@@ -8,6 +8,7 @@ environment holds and what it cannot import.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,7 +23,6 @@ from agent_testlib import (
     SHARED,
     lock,
     make_workspace,
-    uv_binary,
     uv_environment,
 )
 
@@ -221,17 +221,19 @@ def test_start_paths() -> None:
 # --- the environment, built with uv ----------------------------------------------------
 
 
-def build_with_uv(release: Path, cache: Path) -> dict[str, subprocess.CompletedProcess[str]]:
+def build_with_uv(
+    uv: str, release: Path, cache: Path
+) -> dict[str, subprocess.CompletedProcess[str]]:
     """Run the build's uv commands (from :func:`deploy.sandbox_commands`) in the release.
 
     Args:
+        uv: The pinned uv.
         release: The workspace.
         cache: The uv cache.
 
     Returns:
         The finished phases by name.
     """
-    uv = uv_binary()
     plan = {"run": "run-test", "run_dir": str(release.parent), "release": {"target": str(release)}}
     commands = deploy.sandbox_commands(
         plan,
@@ -276,13 +278,12 @@ def python_of(env: Path, code: str, cwd: Path) -> subprocess.CompletedProcess[st
 
 
 @pytest.fixture(scope="module")
-def built(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    uv = uv_binary()
+def built(uv: str, tmp_path_factory: pytest.TempPathFactory) -> Path:
     base = tmp_path_factory.mktemp("agent-env")
     release = make_workspace(base / "release")
     cache = base / "cache"
     lock(release, uv, sys.executable, cache)
-    build_with_uv(release, cache)
+    build_with_uv(uv, release, cache)
     return release
 
 
@@ -315,10 +316,9 @@ def test_the_forbidden_modules_cannot_be_imported_by_the_agent(built: Path, tmp_
     assert script.read_text(encoding="utf-8").startswith(f"#!{env}/bin/python")
 
 
-def test_uv_refuses_nothing_that_validation_must_refuse(tmp_path: Path) -> None:
+def test_uv_refuses_nothing_that_validation_must_refuse(uv: str, tmp_path: Path) -> None:
     # An agent package depending on the release's core: uv locks it happily,
     # so the refusal must come from the validation (owner decision on V6).
-    uv = uv_binary()
     release = make_workspace(tmp_path / "release", agent_members=["demo-core"])
     lock(release, uv, sys.executable, tmp_path / "cache")
     messages = [p.message for p in agentpkg.dependency_problems(release, AGENT_DIR, "x")]
@@ -327,3 +327,70 @@ def test_uv_refuses_nothing_that_validation_must_refuse(tmp_path: Path) -> None:
     # The local wheels of the test's own index are refused too: only an
     # https:// package index counts.
     assert any(m.startswith("demo-agent -> sockio: ") for m in messages), messages
+
+
+# --- the CI rule for these tests (owner decision with the "commit" for 3d.4b) -----------
+
+CI_PROBE = """
+import pytest
+
+@pytest.fixture(scope="session")
+def uv():
+    pytest.skip("no uv here")
+
+@pytest.fixture
+def built(uv):
+    return uv
+
+def test_direct(uv):
+    pass
+
+def test_through_a_fixture(built):
+    pass
+
+def test_without_uv():
+    pytest.skip("unrelated")
+"""
+
+
+@pytest.mark.parametrize(("ci", "failed"), [("true", 2), ("", 0)])
+def test_a_skipped_uv_test_fails_in_ci(tmp_path: Path, ci: str, failed: int) -> None:
+    # The conftest's hooks with a uv fixture that always skips.
+    conftest = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
+    hooks = conftest[conftest.index("def pytest_collection_modifyitems") :]
+    imports = "import os\nfrom collections.abc import Generator\nimport pytest\n"
+    (tmp_path / "conftest.py").write_text(imports + hooks, encoding="utf-8")
+    (tmp_path / "test_probe.py").write_text(CI_PROBE, encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k not in ("CI", "PYTEST_ADDOPTS")}
+    env["CI"] = ci
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--rootdir",
+            str(tmp_path),
+            "-c",
+            os.devnull,
+            "-o",
+            "markers=uv: test",
+            "-rA",
+            str(tmp_path),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    summary = done.stdout.strip().splitlines()[-1]
+    if failed:
+        assert done.returncode != 0, done.stdout
+        assert "2 errors" in summary and "1 skipped" in summary, done.stdout
+        assert done.stdout.count("a test that needs uv was skipped in CI: ") == 2, done.stdout
+    else:
+        assert done.returncode == 0, done.stdout
+        assert "3 skipped" in summary, done.stdout

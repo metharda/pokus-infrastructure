@@ -1,0 +1,27 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/vars/main.yml). Local changes will be overwritten.
+
+gpu_arbiter_program: /usr/local/libexec/pinka/gpu-arbiter
+gpu_arbiter_config: /etc/pinka/gpu/arbiter.json
+gpu_arbiter_state_dir: /var/lib/pinka/gpu
+gpu_arbiter_socket: /run/pinka/gpu.sock
+# vLLM runs here (gpu_inference on a full or inference node); elsewhere the
+# arbiter serves nothing and a full node trains CPU-only jobs (§7.18).
+gpu_arbiter_serves: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
+# The units of the arbiter; the socket is enabled, the start unit is wanted
+# by pinka-lab.target.
+gpu_arbiter_units:
+  - pinka-gpu-arbiter.socket
+  - pinka-gpu-arbiter@.service
+  - pinka-gpu-arbiter.service
+  - pinka-gpu-job@.service
+# Paths the arbiter writes (ReadWritePaths of its units).
+gpu_arbiter_writes:
+  - /etc/pinka/vllm
+  - "{{ gpu_arbiter_state_dir }}"
+  - "{{ pinka_root }}/training"
+  - "{{ pinka_root }}/models/adapters"
+# Contract v1's deploy helper, which the arbiter replaces.
+gpu_arbiter_retired_files:
+  - /etc/systemd/system/pinka-vllm-deploy.socket
+  - /etc/systemd/system/pinka-vllm-deploy@.service
+  - /usr/local/libexec/pinka/vllm-deploy

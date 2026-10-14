@@ -193,8 +193,30 @@ the prompt text where they differ.
   environment of its own (`.agent-venvs/<service>/`) and the agent binds
   nothing else of the release (V6). The tests that run uv
   (`tools/platform/tests/test_agent_package.py`) need the uv that
-  `versions.lock.yml` pins (`PINKA_UV=<path>` when another is on the PATH);
-  CI installs it.
+  `versions.lock.yml` pins: `make setup` installs it into `build/tools/uv`
+  (`PINKA_UV=<path>` names another). They take the `uv` fixture of
+  `tools/platform/tests/conftest.py`, which marks them; in CI any skip of a
+  marked test is a failure.
+- The telemetry stores and the inference API are reachable only by a UID
+  allowlist in nftables (`pinka_telemetry_guard`, `pinka_inference_guard`,
+  ADR-0016): rules match the socket's UID, never its GID, and a new client
+  needs an entry in `group_vars/all/main.yml` with its reason, or in the
+  rendering for platform accounts.
+
+## GPU arbiter and training (BUILD_PROMPT §7.18)
+
+- vLLM starts only through the GPU arbiter
+  (`ansible/roles/gpu_arbiter/files/pinka_gpu_arbiter.py`): no role enables,
+  starts or restarts `pinka-inference.service`. The arbiter alone writes its
+  state, its transition log, run records, published datasets and registered
+  adapters; the record formats are in `contract/records/`.
+- A job container's options are fixed in the arbiter; no manifest field
+  adds a mount, a capability, a network or a namespace. The split guard
+  (no `test` instance at publication or mount) and the hash checks are never
+  relaxed.
+- The arbiter runs with the Ansible venv's Python (standard library and
+  PyYAML) and reaches the host only through its `System` class; `ansible/tests/test_gpu_arbiter.py` replaces it, so no test
+  touches Docker, systemd or the GPU.
 
 ## Installer (BUILD_PROMPT §18)
 

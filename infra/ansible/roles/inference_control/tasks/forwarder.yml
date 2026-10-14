@@ -1,0 +1,47 @@
+# Managed by pinka (ansible/roles/inference_control/tasks/forwarder.yml). Local changes will be overwritten.
+#
+# pinka-inference-forwarder on a lab node (BUILD_PROMPT §12.8, §19.10): the
+# program, its settings with the paired inference node's tailnet name, and
+# the unit. It starts only once peer.crt exists; the inference guard decides
+# which accounts reach its loopback ports.
+- name: Install the inference forwarder
+  ansible.builtin.copy:
+    src: pinka_inference_forwarder.py
+    dest: "{{ inference_control_forwarder_program }}"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart the inference forwarder
+
+- name: Write the forwarder's settings
+  ansible.builtin.copy:
+    content: "{{ inference_control_forwarder_settings | to_nice_json }}\n"
+    dest: "{{ inference_control_forwarder_config }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart the inference forwarder
+
+- name: Install the forwarder's unit
+  ansible.builtin.template:
+    src: pinka-inference-forwarder.service.j2
+    dest: "/etc/systemd/system/{{ inference_control_forwarder_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart the inference forwarder
+
+- name: Enable the inference forwarder
+  ansible.builtin.systemd_service:
+    name: "{{ inference_control_forwarder_unit }}"
+    enabled: true
+    daemon_reload: true
+  when: not ansible_check_mode or inference_control_forwarder_unit in pinka_present.units
+
+- name: Start the inference forwarder (skipped by systemd until paired)
+  ansible.builtin.systemd_service:
+    name: "{{ inference_control_forwarder_unit }}"
+    state: started
+  when:
+    - not ansible_check_mode
+    - inference_control_expected_peer | length > 0

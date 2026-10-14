@@ -290,6 +290,9 @@ EXISTS_WHEN_RUN = {
         "only files the find in the published release returned"
     ),
     ("pkg", "Install the verified key of {{ pkg_repo_name }}"): "downloaded in check mode too",
+    ("gpu_arbiter", "Stop and disable contract v1's deploy helper"): (
+        "only when its unit file exists"
+    ),
 }
 
 

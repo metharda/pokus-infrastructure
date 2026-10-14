@@ -4,7 +4,7 @@
 # on 127.0.0.1 only (host network; vLLM binds the address of the rendered
 # configuration), models read-only from /srv/pinka/models, no Hub access.
 # /etc/pinka/vllm/current.yaml (the `vllm serve --config` file) and
-# current.env are rendered by /usr/local/libexec/pinka/vllm-deploy; current.env
+# current.env are rendered by the GPU arbiter (pinka-gpu-arbiter); current.env
 # carries the configuration's hash, so a new deployment recreates the
 # container. One service per GPU method (Compose profile from .env).
 name: pinka-inference

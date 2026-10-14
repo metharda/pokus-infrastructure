@@ -3,7 +3,7 @@
 The endpoint runs here for real: mutual TLS 1.3 with certificates shaped like
 the role's (P-256, the tailnet name as subject alternative name, server and
 client authentication, critical CA:FALSE), a fake vLLM and GPU exporter on
-127.0.0.1, a fake deploy helper socket and a fake verification command. The
+127.0.0.1, a fake GPU arbiter socket and a fake verification command. The
 endpoint listens on 127.0.0.2, standing in for the tailnet address.
 """
 
@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pinka_inference_control as control
+import pinka_inference_forwarder as forwarder
 import pytest
 
 import pinka
@@ -65,8 +66,14 @@ def test_settings_fit_the_endpoint(tmp_path: Path) -> None:
     )
     assert config.gpu_metrics == "http://127.0.0.1:18726/metrics"
     assert config.models == Path("/srv/pinka/models")
-    socket_unit = render_template("vllm", "pinka-vllm-deploy.socket.j2", {"vllm_deploy_peer": "x"})
-    assert f"ListenStream={config.deploy_socket}\n" in socket_unit
+    socket_unit = render_template(
+        "gpu_arbiter",
+        "pinka-gpu-arbiter.socket.j2",
+        {"gpu_arbiter_peer": "x", "gpu_arbiter_socket": "/run/pinka/gpu.sock"},
+    )
+    assert f"ListenStream={config.gpu_socket}\n" in socket_unit
+    # The endpoint waits longer than the arbiter waits for a deployment.
+    assert config.activate_timeout > 1200
     verify_task = load_yaml(ROLES / "vllm" / "tasks" / "verify.yml")[1]
     assert verify_task["ansible.builtin.command"]["argv"][0] == config.verify[0]
     # Before the tailnet is up (check mode only) the address falls back to loopback.
@@ -202,7 +209,7 @@ class Endpoint:
     lab: tuple[Path, Path]
     inference_cert: Path
     mallory: tuple[Path, Path]
-    deploy_requests: list[dict[str, Any]] = field(default_factory=list)
+    arbiter_requests: list[dict[str, Any]] = field(default_factory=list)
 
     def context(self, identity: tuple[Path, Path] | None) -> ssl.SSLContext:
         context = ssl.create_default_context(cafile=str(self.inference_cert))
@@ -253,7 +260,7 @@ class Endpoint:
 
 
 def serve_unix(path: Path, requests: list[dict[str, Any]]) -> socket.socket:
-    """The vLLM deploy helper's socket: records each request, answers ok."""
+    """The GPU arbiter's socket: records each request, answers ok."""
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(str(path))
     server.listen()
@@ -312,7 +319,7 @@ def endpoint(tmp_path: Path) -> Iterator[Endpoint]:
         cert=inference[0],
         key=inference[1],
         peer=peer,
-        deploy_socket=tmp_path / "deploy.sock",
+        gpu_socket=tmp_path / "gpu.sock",
         gpu_metrics=f"http://127.0.0.1:{gpu.server_address[1]}/gpu",
         current=tmp_path / "current.yml",
         verify=(sys.executable, str(verify)),
@@ -321,7 +328,7 @@ def endpoint(tmp_path: Path) -> Iterator[Endpoint]:
         fingerprint=tmp_path / "fingerprint.json",
     )
     result = Endpoint(config, lab, inference[0], mallory)
-    helper = serve_unix(config.deploy_socket, result.deploy_requests)
+    helper = serve_unix(config.gpu_socket, result.arbiter_requests)
     loop = asyncio.new_event_loop()
     task = loop.create_task(control.serve(config))
 
@@ -374,13 +381,13 @@ def test_control_api(endpoint: Endpoint) -> None:
 
 
 @needs_openssl
-def test_activate_goes_through_the_deploy_helper(endpoint: Endpoint) -> None:
+def test_activate_goes_through_the_gpu_arbiter(endpoint: Endpoint) -> None:
     for bad in (b'{"deployment": "../x@1"}', b'{"deployment": "dep-a"}', b"[]", b"not json"):
         assert endpoint.json("POST", "/activate", bad)[0] == 400, bad
-    assert endpoint.deploy_requests == []
+    assert endpoint.arbiter_requests == []
     status, answer = endpoint.json("POST", "/activate", b'{"deployment": "dep-b@3"}')
     assert (status, answer) == (200, {"ok": True})
-    assert endpoint.deploy_requests == [{"deployment": "dep-b@3"}]
+    assert endpoint.arbiter_requests == [{"request": "serve", "deployment": "dep-b@3"}]
 
 
 @needs_openssl
@@ -429,3 +436,114 @@ def test_units_carry_what_doctor_checks() -> None:
         lines = set(text.splitlines())
         for key, value in pinka.UNIT_HARDENING.items():
             assert f"{key}={value}" in lines, (key, text.splitlines()[2])
+
+
+# --- the inference forwarder of a lab node (§12.8) ---------------------------------------
+
+FORWARDER_HOST = "127.0.0.3"
+
+
+@contextlib.contextmanager
+def running_forwarder(config: forwarder.Config) -> Iterator[None]:
+    loop = asyncio.new_event_loop()
+    task = loop.create_task(forwarder.serve(config))
+
+    def run() -> None:
+        with contextlib.suppress(asyncio.CancelledError):
+            loop.run_until_complete(task)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    for _ in range(100):
+        with (
+            contextlib.suppress(OSError),
+            socket.create_connection((FORWARDER_HOST, config.control_port), 0.1),
+        ):
+            break
+        threading.Event().wait(0.05)
+    try:
+        yield
+    finally:
+        loop.call_soon_threadsafe(task.cancel)
+        thread.join(10)
+        loop.close()
+
+
+def plain_http(port: int, method: str, path: str, body: bytes = b"") -> tuple[int, bytes]:
+    """One plain HTTP request on the forwarder's loopback port; 0 if nothing answers."""
+    request = (
+        f"{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {len(body)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode() + body
+    data = b""
+    try:
+        with socket.create_connection((FORWARDER_HOST, port), 10) as conn:
+            conn.sendall(request)
+            while chunk := conn.recv(65536):
+                data += chunk
+    except OSError:
+        return 0, b""
+    if not data:
+        return 0, b""
+    head, _, payload = data.partition(b"\r\n\r\n")
+    return int(head.split(b" ")[1]), payload
+
+
+def forwarder_config(
+    endpoint: Endpoint, tmp_path: Path, peer: Path | None = None
+) -> forwarder.Config:
+    trusted = tmp_path / "forwarder-peer.crt"
+    shutil.copy(peer or endpoint.inference_cert, trusted)
+    return forwarder.Config(
+        remote=HOST,
+        listen=FORWARDER_HOST,
+        api_port=endpoint.config.api_port,
+        control_port=endpoint.config.control_port,
+        cert=endpoint.lab[0],
+        key=endpoint.lab[1],
+        peer=trusted,
+    )
+
+
+@needs_openssl
+def test_the_forwarder_passes_both_apis_through(endpoint: Endpoint, tmp_path: Path) -> None:
+    # Platform services speak plain HTTP on the loopback; the forwarder adds
+    # this node's client certificate and accepts only the paired node.
+    with running_forwarder(forwarder_config(endpoint, tmp_path)):
+        status, body = plain_http(endpoint.config.api_port, "GET", "/v1/models")
+        assert (status, json.loads(body)) == (200, {"data": [{"id": "model-a"}]})
+        status, body = plain_http(endpoint.config.control_port, "GET", "/health")
+        assert status == 200 and json.loads(body)["ok"] is True
+        status, body = plain_http(
+            endpoint.config.control_port, "POST", "/activate", b'{"deployment": "dep-c@1"}'
+        )
+        assert (status, json.loads(body)) == (200, {"ok": True})
+        assert endpoint.arbiter_requests == [{"request": "serve", "deployment": "dep-c@1"}]
+        # The endpoint's own rules still hold behind the forwarder.
+        assert plain_http(endpoint.config.control_port, "POST", "/train")[0] == 404
+
+
+@needs_openssl
+def test_the_forwarder_trusts_only_the_paired_node(endpoint: Endpoint, tmp_path: Path) -> None:
+    # Paired with another certificate: the real node's is refused, nothing passes.
+    config = forwarder_config(endpoint, tmp_path, peer=endpoint.mallory[0])
+    with running_forwarder(config):
+        for port in (endpoint.config.api_port, endpoint.config.control_port):
+            assert plain_http(port, "GET", "/health") == (0, b"")
+    assert endpoint.arbiter_requests == []
+
+
+def test_forwarder_settings_fit_the_program(tmp_path: Path) -> None:
+    variables = scope(node_role="lab", inference_remote_node="pinka-gpu")
+    settings = evaluate("inference_control_forwarder_settings", variables)
+    path = tmp_path / "forwarder.json"
+    path.write_text(json.dumps(settings))
+    config = forwarder.Config.load(path)
+    assert (config.remote, config.listen) == ("pinka-gpu", "127.0.0.1")
+    assert (config.api_port, config.control_port) == (18704, 18710)
+    assert config.key == Path("/etc/pinka/inference/self.key")
+    unit = render_template("inference_control", "pinka-inference-forwarder.service.j2", variables)
+    assert "ExecStart=/usr/local/libexec/pinka/inference-forwarder --config " in unit
+    assert "\nUser=" not in unit  # root: it alone reads the client key
+    assert "IPAddressDeny=any" in unit
+    assert evaluate("inference_control_forwarder_config", variables).endswith("forwarder.json")

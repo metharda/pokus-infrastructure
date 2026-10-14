@@ -85,6 +85,38 @@ def _controller(manifest: Mapping[str, Any]) -> str:
     return str(next(s["name"] for s in manifest["services"] if s["profile"] == "controller"))
 
 
+def _training(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """What the GPU arbiter reads (§7.18): the dataset sources and the jobs.
+
+    The controller publishes datasets only from its own state directories;
+    a job's container options are infra's own and not rendered here, only
+    the manifest's values the arbiter fills in.
+    """
+    p = manifest["name"]
+    controller = _controller(manifest)
+    service = next(s for s in manifest["services"] if s["name"] == controller)
+    return {
+        "dataset_sources": [layout.state_dir(p, controller, d) for d in service.get("state", [])],
+        "jobs": [
+            {
+                "name": job["name"],
+                "account": names.account(p, job["name"]),
+                "image": job["image"],
+                "command": list(job["command"]),
+                "base_model": bool(job["inputs"].get("base_model", False)),
+                "datasets": list(job["inputs"].get("datasets", [])),
+                "adapter": job["outputs"]["adapter"],
+                "gpus": job["resources"]["gpus"],
+                "memory_max": job["resources"]["memory_max"],
+                "cpus": job["resources"]["cpus"],
+                "timeout_seconds": job["timeout_seconds"],
+                "resumable": job["resumable"],
+            }
+            for job in manifest.get("jobs", [])
+        ],
+    }
+
+
 def _socket(platform: str, socket: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
     # What doctor compares the bound socket with (§12.3). Without ACL support
     # on /run the helper makes it 0666 and records that in rendered.json
@@ -287,6 +319,14 @@ def render(
         },
         "cli": cli,
         "tools": list(manifest.get("tools", [])),
+        "training": _training(manifest) if "gpu" in requires else None,
+        # The accounts the inference guard lets reach the inference API
+        # (§7.11): the profiles with inference_api (controller, inference-broker).
+        "inference_clients": sorted(
+            names.account(p, s["name"])
+            for s in manifest["services"]
+            if contract.profile(s["profile"]).flag("inference_api")
+        ),
     }
 
 

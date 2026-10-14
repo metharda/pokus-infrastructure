@@ -37,9 +37,12 @@ and most of its commands need `sudo`.
 
 - Pin a model, create a deployment and make it the served one:
   [How to add a model and activate a deployment](how-to/add-a-model.md).
-  For debugging, the deploy helper switches the served deployment by hand
-  (`/usr/local/libexec/pinka/vllm-deploy activate <id>@<version>`, as root);
-  the orchestrator's next deployment replaces that choice.
+  The GPU arbiter switches the served deployment
+  (`sudo pinka gpu serve <id>@<version>`); the platform's next request
+  replaces that choice.
+- Train an adapter and serve it, or stop a run:
+  [How to run a training job and serve its adapter](how-to/run-training-job.md)
+  and [The GPU arbiter](explanation/gpu-arbiter.md).
 - Build, test and export the golden images of the benchmark targets:
   [How to build, test and export golden images](how-to/build-golden-images.md).
 

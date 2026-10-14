@@ -10,7 +10,7 @@ import unittest
 from collections.abc import Callable
 from typing import Any
 
-from labfakes import PROFILE, FakeSystem, lab
+from labfakes import PROFILE, FakeSystem, info, lab
 
 from pinka_lab import commands, docs_store
 from pinka_lab.commands import CommandError
@@ -123,7 +123,11 @@ class LabTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(
             out.splitlines(),
-            ["no active platform; nothing to drain", "pinka-lab.target stopped"],
+            [
+                "no active platform; nothing to drain",
+                "no GPU arbiter here; nothing to idle",
+                "pinka-lab.target stopped",
+            ],
         )
 
     def test_stop_drains_the_platform_then_stops_its_target(self) -> None:
@@ -145,6 +149,119 @@ class LabTest(unittest.TestCase):
             ],
         )
         self.assertEqual(out.splitlines()[0], "platform demo drained")
+
+    def test_stop_asks_the_gpu_arbiter_for_idle_after_the_drain(self) -> None:
+        # §7.18: after the drain hook, before the targets stop.
+        answers = [
+            ({"ok": True, "mode": "idle"}, "the GPU is idle"),
+            ({"ok": True, "mode": "idle", "run": "tune-1"}, "the GPU is idle; run tune-1 stopped"),
+            (
+                {"ok": False, "error": "busy"},
+                "the GPU arbiter refused idle (busy); vLLM and a running job stop with the lab",
+            ),
+            (None, "the GPU arbiter does not answer; vLLM and a running job stop with the lab"),
+        ]
+        for answer, line in answers:
+            system = FakeSystem(
+                {"systemctl stop pinka-lab.target": (0, "")},
+                infos={"/run/pinka/gpu.sock": info("demo-ctl", "root", 0o600)},
+                arbiter={"idle": answer} if answer else {},
+            )
+            code, out, _ = captured(functools.partial(commands.stop, system, lab(), 5))
+            self.assertEqual(code, 0)
+            self.assertEqual(out.splitlines()[1], line)
+            self.assertEqual(system.arbiter_requests, [{"request": "idle"}])
+
+    def test_pinka_gpu(self) -> None:
+        status = {
+            "ok": True,
+            "mode": "training",
+            "run": "tune-20261012t080000-0123abcd",
+            "since": "2026-10-12T08:00:00Z",
+            "job": {"job": "tune", "status": "running", "started_at": "2026-10-12T08:00:01Z"},
+            "transitions": [
+                {
+                    "time": "2026-10-12T08:00:00Z",
+                    "from": "serving",
+                    "to": "training",
+                    "outcome": "ok",
+                    "requester": "demo-ctl",
+                }
+            ],
+        }
+        system = FakeSystem(
+            files={"/root/sub.json": json.dumps({"seed": 1})},
+            arbiter={
+                "status": status,
+                "serve": {"ok": True, "mode": "serving", "deployment": "dep@2"},
+                "idle": {"ok": True, "mode": "idle"},
+                "train": lambda r: {"ok": True, "run": "tune-x", "spec_sha256": "a" * 64},
+            },
+        )
+        _, out, _ = captured(lambda: commands.gpu(system, lab(), "status"))
+        self.assertIn(
+            "mode: training tune-20261012t080000-0123abcd since 2026-10-12T08:00:00Z", out
+        )
+        self.assertIn("job: tune running since 2026-10-12T08:00:01Z", out)
+        self.assertIn("serving -> training (ok, demo-ctl)", out)
+        self.assertIn("training: runs on this host", out)
+        _, out, _ = captured(lambda: commands.gpu(system, lab(), "serve", deployment="dep@2"))
+        self.assertEqual(out.strip(), "the GPU is serving dep@2")
+        code, out, _ = captured(
+            lambda: commands.gpu(system, lab(), "train", job="tune", submission="/root/sub.json")
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("training run tune-x started", out)
+        self.assertEqual(
+            system.arbiter_requests[1:],
+            [
+                {"request": "serve", "deployment": "dep@2"},
+                {"request": "train", "job": "tune", "submission": {"seed": 1}},
+            ],
+        )
+        with self.assertRaisesRegex(commands.CommandError, "not a JSON object"):
+            commands.gpu(system, lab(), "train", job="tune", submission="/root/missing.json")
+        refused = FakeSystem(arbiter={"idle": {"ok": False, "error": "no"}})
+        code, _, err = captured(lambda: commands.gpu(refused, lab(), "idle"))
+        self.assertEqual((code, err.strip()), (1, "pinka: the GPU arbiter refused: no"))
+        with self.assertRaisesRegex(commands.CommandError, "does not answer"):
+            commands.gpu(FakeSystem(), lab(), "status")
+        with self.assertRaisesRegex(commands.CommandError, "no GPU arbiter .node_role lab."):
+            commands.gpu(FakeSystem(), lab(node_role="lab", gpu_arbiter={}), "status")
+        with self.assertRaisesRegex(commands.CommandError, "root"):
+            commands.gpu(FakeSystem(euid=1000), lab(), "status")
+
+    def test_status_shows_the_gpu_arbiter(self) -> None:
+        transitions = "\n".join(
+            json.dumps(
+                {
+                    "time": f"T{n}",
+                    "from": "idle",
+                    "to": "serving",
+                    "outcome": "ok",
+                    "requester": "root",
+                }
+            )
+            for n in range(5)
+        )
+        system = FakeSystem(
+            {"systemctl is-active *": (0, "active\n")},
+            files={
+                "/var/lib/pinka/gpu/state.json": json.dumps(
+                    {"mode": "serving", "deployment": "dep@1", "since": "T4"}
+                ),
+                "/var/lib/pinka/gpu/transitions.jsonl": transitions,
+            },
+        )
+        _, out, _ = captured(lambda: commands.status(system, lab()))
+        self.assertIn("gpu arbiter: serving dep@1 since T4", out)
+        self.assertEqual(out.count("idle -> serving (ok, root)"), 3)
+        self.assertNotIn("  T1 ", out)
+        _, out, _ = captured(
+            lambda: commands.status(system, lab(node_role="inference", gpu_arbiter={}))
+        )
+        self.assertIn("gpu arbiter: none on this host", out)
+        self.assertIn("training: unavailable on this host (node_role inference)", out)
 
     def test_status(self) -> None:
         system = FakeSystem(

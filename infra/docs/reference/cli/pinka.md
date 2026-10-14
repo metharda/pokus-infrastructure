@@ -35,7 +35,12 @@ Every command also accepts `-h`, `--help`.
 | --- | --- |
 | `pinka preflight` | run preflight read-only |
 | `pinka doctor` | run the health and security checks (root) |
-| `pinka status` | units, containers, Incus instances, GPU, disk and last backup |
+| `pinka status` | units, containers, Incus instances, the GPU and its arbiter, disk and last backup |
+| `pinka gpu` | the GPU arbiter's requests: status, serve, train, idle (root) |
+| `pinka gpu status` | the mode, the running job and the last transitions |
+| `pinka gpu serve` | serve a deployment (vLLM restarts if needed) |
+| `pinka gpu train` | start a training run of the active platform |
+| `pinka gpu idle` | stop serving, or stop the running job (it checkpoints) |
 | `pinka start` | start pinka-lab.target and wait for the platform's health hook (root) |
 | `pinka stop` | drain the platform, then stop its target and pinka-lab.target (root) |
 | `pinka fingerprint` | print the environment fingerprint and its hash |
@@ -92,10 +97,59 @@ pinka doctor [-h] [--json] [--smoke]
 
 ### pinka status
 
-Units, containers, Incus instances, GPU, disk and last backup.
+Units, containers, Incus instances, the GPU and its arbiter, disk and last backup.
 
 ```text
 pinka status [-h]
+```
+
+### pinka gpu
+
+The GPU arbiter's requests: status, serve, train, idle (root).
+
+```text
+pinka gpu [-h] ACTION ...
+```
+
+### pinka gpu status
+
+The mode, the running job and the last transitions.
+
+```text
+pinka gpu status [-h]
+```
+
+### pinka gpu serve
+
+Serve a deployment (vLLM restarts if needed).
+
+```text
+pinka gpu serve [-h] ID@VERSION
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `ID@VERSION` | — | — | a deployment spec |
+
+### pinka gpu train
+
+Start a training run of the active platform.
+
+```text
+pinka gpu train [-h] --submission FILE job
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `job` | — | — | a job of the active platform's manifest |
+| `--submission` | `FILE` | — | JSON: base_model, datasets, hyperparameters, seed, sessions_drained, restore |
+
+### pinka gpu idle
+
+Stop serving, or stop the running job (it checkpoints).
+
+```text
+pinka gpu idle [-h]
 ```
 
 ### pinka start

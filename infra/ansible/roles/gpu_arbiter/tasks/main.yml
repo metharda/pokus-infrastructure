@@ -1,0 +1,136 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/tasks/main.yml). Local changes will be overwritten.
+#
+# The GPU arbiter (BUILD_PROMPT §7.18): /usr/local/libexec/pinka/gpu-arbiter
+# behind pinka-gpu-arbiter.socket (/run/pinka/gpu.sock, 0600, owned by the
+# controller; on an inference node by the control endpoint's account), its
+# start unit in pinka-lab.target and the training run units. It replaces
+# contract v1's deploy helper and is the only way vLLM starts. Applied on full
+# and inference nodes; bootstrap ends with the chosen deployment served
+# (§7.11) unless a training run holds the GPU.
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+- name: Read the Docker daemon configuration
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: gpu_arbiter_daemon_json
+  failed_when: false
+
+# The same method as vLLM's (Compose profile gpu-cdi or gpu-runtime); none:
+# only CPU-only jobs (resources.gpus 0) run here.
+- name: Decide how a training job reaches the GPU
+  ansible.builtin.set_fact:
+    gpu_arbiter_gpu_args: >-
+      {{ ['--device', 'nvidia.com/gpu=all'] if (gpu_arbiter_docker.features | default({})).cdi | default(false)
+         else (['--runtime', 'nvidia', '--gpus', 'all'] if 'nvidia' in (gpu_arbiter_docker.runtimes | default({}))
+               else []) }}
+  vars:
+    gpu_arbiter_docker: "{{ (gpu_arbiter_daemon_json.content | default('e30=')) | b64decode | from_json }}"
+
+- name: Create the arbiter's directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/pinka/gpu, mode: "0755"}
+    - {path: "{{ gpu_arbiter_state_dir }}", mode: "0755"}
+    - {path: "{{ gpu_arbiter_state_dir }}/runs", mode: "0700"}
+    - {path: /usr/local/libexec/pinka, mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the GPU arbiter
+  ansible.builtin.copy:
+    src: pinka_gpu_arbiter.py
+    dest: "{{ gpu_arbiter_program }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the arbiter's settings
+  ansible.builtin.template:
+    src: arbiter.json.j2
+    dest: "{{ gpu_arbiter_config }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the arbiter's units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ gpu_arbiter_units }}"
+  register: gpu_arbiter_unit_files
+
+- name: Stop and disable contract v1's deploy helper
+  ansible.builtin.systemd_service:
+    name: pinka-vllm-deploy.socket
+    state: stopped
+    enabled: false
+  when: "'pinka-vllm-deploy.socket' in pinka_present.units"
+
+- name: Remove contract v1's deploy helper
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ gpu_arbiter_retired_files }}"
+
+- name: Enable the arbiter's socket and its start with the lab
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    daemon_reload: true
+  loop: [pinka-gpu-arbiter.socket, pinka-gpu-arbiter.service]
+  when: not ansible_check_mode or item in pinka_present.units
+
+# A changed socket (another controller) takes effect at once.
+- name: Start the arbiter's socket
+  ansible.builtin.systemd_service:
+    name: pinka-gpu-arbiter.socket
+    state: "{{ 'restarted' if gpu_arbiter_unit_files.changed else 'started' }}"
+  when: not ansible_check_mode or 'pinka-gpu-arbiter.socket' in pinka_present.units
+
+# Bootstrap ends with vLLM serving the chosen deployment (§7.11): the
+# platform's current one, else the default, through the arbiter; a training
+# run is never interrupted by a bootstrap run.
+- name: Serve the chosen deployment
+  ansible.builtin.command:
+    argv: [/usr/local/libexec/pinka/gpu-arbiter, serve, "{{ vllm_target }}", --unless-training]
+  register: gpu_arbiter_serve
+  changed_when: (gpu_arbiter_serve.stdout | from_json).changed | default(false)
+  when:
+    - not ansible_check_mode
+    - gpu_arbiter_serves | bool
+    - vllm_target | default('') | length > 0
+    - vllm_start | default(false) | bool
+
+- name: Render the chosen deployment without serving it
+  ansible.builtin.command:
+    argv: [/usr/local/libexec/pinka/gpu-arbiter, prepare, "{{ vllm_target }}"]
+  register: gpu_arbiter_prepare
+  changed_when: (gpu_arbiter_prepare.stdout | from_json).changed
+  failed_when: >-
+    gpu_arbiter_prepare.rc != 0
+    and 'training' not in (gpu_arbiter_prepare.stdout | from_json).error | default('')
+  when:
+    - not ansible_check_mode
+    - gpu_arbiter_serves | bool
+    - vllm_target | default('') | length > 0
+    - not (vllm_start | default(false) | bool)
+
+- name: Verify the served deployment
+  ansible.builtin.include_role:
+    name: vllm
+    tasks_from: verify
+  when:
+    - not ansible_check_mode
+    - gpu_arbiter_serve is not skipped
+    - not ((gpu_arbiter_serve.stdout | default('{}') | from_json).skipped | default(false))
+    - vllm_verify | default(true) | bool

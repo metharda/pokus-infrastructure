@@ -148,12 +148,17 @@ Requirements: [uv](https://docs.astral.sh/uv/) at the version pinned in
 Chrome binary for Mermaid validation (`PUPPETEER_EXECUTABLE_PATH`).
 
 ```bash
-make setup      # install pinned tools into .venv and node_modules (user space)
+make setup      # install pinned tools into .venv, node_modules and build/tools (user space)
 make lint       # linters, docs lint, Mermaid validation, privacy scan
 make test       # unit tests
 make docs       # drift check, docs coverage check and strict documentation build
 make generate   # rewrite generated files after changing their sources
 ```
+
+`make setup` also downloads the OPA and uv releases of `versions.lock.yml`
+into `build/tools/` after checking their sha256: the policy tests need that
+OPA and the agent environment tests that uv. Outside CI these tests are
+skipped without them; in CI a skipped uv test fails the job.
 
 To check whether a machine can host the lab without changing anything on it,
 run `./preflight/pinka-preflight --no-write` (see

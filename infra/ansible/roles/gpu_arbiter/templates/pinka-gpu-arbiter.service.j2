@@ -1,0 +1,41 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/templates/pinka-gpu-arbiter.service.j2). Local changes will be overwritten.
+#
+# The GPU arbiter when the lab starts (BUILD_PROMPT §7.18): after a reboot a
+# run left in training resumes from its checkpoints (resumable jobs) or ends
+# interrupted; otherwise, and when pinka start brings the lab back after
+# pinka stop, the default deployment is served or the GPU stays idle
+# (gpu_arbiter.after_boot). vLLM starts only through the arbiter.
+[Unit]
+Description=pinka GPU arbiter: settle the GPU when the lab starts
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+PartOf=pinka-lab.target
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ gpu_arbiter_program }} boot
+TimeoutStartSec={{ gpu_arbiter_serve_timeout | int + 300 }}
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# vLLM's /health and /metrics on the loopback, nothing else.
+IPAddressAllow=localhost
+IPAddressDeny=any
+# The Docker CLI's configuration directory.
+Environment=HOME={{ gpu_arbiter_state_dir }}
+ReadWritePaths={{ gpu_arbiter_writes | map('regex_replace', '^', '-') | join(' ') }}
+
+[Install]
+WantedBy=pinka-lab.target

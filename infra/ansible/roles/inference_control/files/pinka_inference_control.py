@@ -16,8 +16,8 @@ inference``. It listens on the node's tailnet address only, with mutual TLS
   served model, its deployment and the ``MANIFEST.json`` whose hashes the
   models role verified on this node),
   ``GET /metrics`` (vLLM's and the GPU exporter's Prometheus text),
-  ``POST /activate`` with ``{"deployment": "<id>@<version>"}`` (through the
-  vLLM deploy helper's socket) and ``POST /verify`` (the serving verification).
+  ``POST /activate`` with ``{"deployment": "<id>@<version>"}`` (a ``serve``
+  request to the GPU arbiter's socket) and ``POST /verify`` (the serving verification).
   Everything else is 404. Standard library only.
 """
 
@@ -59,7 +59,8 @@ class Config:
         cert: This node's certificate.
         key: This node's private key.
         peer: The paired lab node's certificate (the only accepted client).
-        deploy_socket: The vLLM deploy helper's socket.
+        gpu_socket: The GPU arbiter's socket (§7.18).
+        activate_timeout: Seconds ``POST /activate`` waits for the arbiter.
         gpu_metrics: URL of the GPU exporter's metrics.
         current: The current deployment spec (``current.yml``).
         verify: Command of the serving verification, before its arguments.
@@ -75,7 +76,8 @@ class Config:
     cert: Path = Path("/etc/pinka/inference/self.crt")
     key: Path = Path("/etc/pinka/inference/self.key")
     peer: Path = Path("/etc/pinka/inference/peer.crt")
-    deploy_socket: Path = Path("/run/pinka/vllm-deploy.sock")
+    gpu_socket: Path = Path("/run/pinka/gpu.sock")
+    activate_timeout: int = 1500
     gpu_metrics: str = "http://127.0.0.1:18726/metrics"
     current: Path = Path("/etc/pinka/vllm/current.yml")
     verify: tuple[str, ...] = ("/usr/local/libexec/pinka/vllm-verify",)
@@ -99,7 +101,7 @@ class Config:
             "cert",
             "key",
             "peer",
-            "deploy_socket",
+            "gpu_socket",
             "current",
             "state_dir",
             "models",
@@ -308,20 +310,23 @@ def fingerprint_summary(config: Config) -> dict[str, Any] | None:
     return {"hash": cached["hash"], "computed_at": cached.get("computed_at")}
 
 
-def ask_deploy_helper(config: Config, deployment: str) -> dict[str, Any]:
-    """Switch the deployment through the vLLM deploy helper (C3).
+def ask_arbiter(config: Config, deployment: str) -> dict[str, Any]:
+    """Serve a deployment through the GPU arbiter (§7.18, §19.10).
+
+    The arbiter answers when the deployment answers on /health or failed.
 
     Args:
         config: Settings.
         deployment: ``<id>@<version>``.
 
     Returns:
-        The helper's JSON answer.
+        The arbiter's JSON answer.
     """
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(150)
-        client.connect(str(config.deploy_socket))
-        client.sendall(json.dumps({"deployment": deployment}).encode() + b"\n")
+        client.settimeout(config.activate_timeout)
+        client.connect(str(config.gpu_socket))
+        request = {"request": "serve", "deployment": deployment}
+        client.sendall(json.dumps(request).encode() + b"\n")
         data = b""
         while not data.endswith(b"\n"):
             chunk = client.recv(4096)
@@ -448,14 +453,14 @@ async def metrics(config: Config, _request: Request) -> tuple[int, str, bytes]:
 
 
 async def activate(config: Config, request: Request) -> tuple[int, str, bytes]:
-    """``POST /activate``: switch the deployment through the deploy helper.
+    """``POST /activate``: ``serve <id>@<version>`` through the GPU arbiter.
 
     Args:
         config: Settings.
         request: The request, body ``{"deployment": "<id>@<version>"}``.
 
     Returns:
-        Status, content type and the helper's answer.
+        Status, content type and the arbiter's answer.
     """
     try:
         deployment = str(json.loads(request.body or b"{}").get("deployment", ""))
@@ -464,9 +469,9 @@ async def activate(config: Config, request: Request) -> tuple[int, str, bytes]:
     if not DEPLOYMENT_RE.match(deployment):
         return _json(400, {"ok": False, "error": "deployment must be <id>@<version>"})
     try:
-        answer = await _in_thread(ask_deploy_helper, config, deployment)
+        answer = await _in_thread(ask_arbiter, config, deployment)
     except (OSError, ValueError) as exc:
-        return _json(502, {"ok": False, "error": f"deploy helper: {exc}"})
+        return _json(502, {"ok": False, "error": f"GPU arbiter: {exc}"})
     return _json(HTTP_OK if answer.get("ok") else 409, answer)
 
 

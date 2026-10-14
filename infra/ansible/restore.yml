@@ -273,10 +273,9 @@
         - name: Render the restored vLLM deployment
           ansible.builtin.command:
             argv:
-              - /usr/local/libexec/pinka/vllm-deploy
-              - activate
+              - /usr/local/libexec/pinka/gpu-arbiter
+              - prepare
               - "{{ restore_vllm_current.stat.lnk_target | basename | regex_replace('\\.yml$', '') }}"
-              - --no-restart
           changed_when: true
           when:
             - restore_vllm_current.stat.islnk | default(false)

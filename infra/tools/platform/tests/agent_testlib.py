@@ -190,7 +190,10 @@ def make_workspace(root: Path, *, agent_members: Sequence[str] = ()) -> Path:
 
 
 # versions.lock.yml pins the uv the build runs; the tests use exactly that one.
-VERSIONS_LOCK = Path(__file__).resolve().parents[3] / "versions.lock.yml"
+INFRA = Path(__file__).resolve().parents[3]
+VERSIONS_LOCK = INFRA / "versions.lock.yml"
+# Where `make setup` installs it (binaries.uv, checked against its sha256).
+SETUP_UV = INFRA / "build" / "tools" / "uv"
 
 
 def pinned_uv() -> str:
@@ -199,26 +202,41 @@ def pinned_uv() -> str:
     return str(data["binaries"]["uv"]["version"])
 
 
+def find_uv() -> str | None:
+    """``PINKA_UV``, else the uv ``make setup`` installed, else the one on the PATH."""
+    if os.environ.get("PINKA_UV"):
+        return os.environ["PINKA_UV"]
+    if SETUP_UV.is_file():
+        return str(SETUP_UV)
+    return shutil.which("uv")
+
+
 def uv_binary() -> str:
-    """The pinned uv (``PINKA_UV`` or the one on the PATH); in CI (``CI=true``) it must be there.
+    """The pinned uv; in CI (``CI=true``) it must be there.
 
     The build's commands depend on uv's behavior (a single selected package
     inherits the workspace root's dependency groups), so only the uv that
-    ``versions.lock.yml`` pins counts.
+    ``versions.lock.yml`` pins counts. Outside CI a test without it is
+    skipped; in CI the conftest turns any skip of a test that needs uv into
+    a failure as well.
 
     Returns:
         Its path.
     """
-    found = os.environ.get("PINKA_UV") or shutil.which("uv")
+    found = find_uv()
     version = ""
     if found:
-        done = subprocess.run([found, "--version"], capture_output=True, text=True, check=False)
-        version = done.stdout.split()[1] if done.returncode == 0 and done.stdout else ""
+        try:
+            done = subprocess.run([found, "--version"], capture_output=True, text=True, check=False)
+        except OSError:
+            done = None
+        if done is not None and done.returncode == 0 and len(done.stdout.split()) > 1:
+            version = done.stdout.split()[1]
     if version != pinned_uv():
         reason = f"needs uv {pinned_uv()} (found {version or 'none'})"
         if os.environ.get("CI") == "true":
-            pytest.fail(f"{reason}; CI installs the pinned uv")
-        pytest.skip(f"{reason}; allowed to skip only outside CI (set PINKA_UV)")
+            pytest.fail(f"{reason}; CI installs the pinned uv with make setup")
+        pytest.skip(f"{reason}; allowed to skip only outside CI (run make setup)")
     assert found is not None
     return found
 

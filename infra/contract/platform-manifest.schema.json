@@ -547,6 +547,7 @@
         "pinka-docker-incus-compat",
         "pinka-docs",
         "pinka-gpu-arbiter",
+        "pinka-gpu-arbiter@",
         "pinka-gpu-job@",
         "pinka-health-gate",
         "pinka-hook@",
@@ -554,6 +555,7 @@
         "pinka-inference",
         "pinka-inference-control",
         "pinka-inference-forwarder",
+        "pinka-inference-guard",
         "pinka-lab.target",
         "pinka-nftables",
         "pinka-observability",
@@ -567,8 +569,6 @@
         "pinka-session-start",
         "pinka-sleep-inhibit",
         "pinka-telemetry-guard",
-        "pinka-vllm-deploy",
-        "pinka-vllm-deploy@",
         "pinka-vm-otlp-address",
         "pinka-window-expiry"
       ]

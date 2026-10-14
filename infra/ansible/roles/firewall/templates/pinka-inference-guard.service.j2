@@ -1,0 +1,21 @@
+# Managed by pinka (ansible/roles/firewall/templates/pinka-inference-guard.service.j2). Local changes will be overwritten.
+#
+# The inference guard (BUILD_PROMPT §7.11, ADR-0016): the nftables table inet
+# pinka_inference_guard, built from /etc/pinka/nftables/inference-guard.json
+# and the active platform's rendered.json each time it loads.
+[Unit]
+Description=pinka inference guard (nftables table inet pinka_inference_guard)
+Wants=network-pre.target
+Before=network-pre.target
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/pinka/inference-guard
+ExecReload=/usr/local/libexec/pinka/inference-guard
+ExecStop=/usr/sbin/nft delete table inet pinka_inference_guard
+
+[Install]
+WantedBy=multi-user.target

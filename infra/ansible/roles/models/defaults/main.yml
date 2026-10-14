@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/models/defaults/main.yml). Local changes will be overwritten.
 
-# Root of the model weights and adapters (contracts.md#paths).
+# Root of the model weights (contracts.md#paths); adapters/ below it belongs to the GPU arbiter.
 models_root: "{{ pinka_root }}/models"
 # Isolated environment of the pinned huggingface_hub CLI.
 models_venv: /opt/pinka/models-venv

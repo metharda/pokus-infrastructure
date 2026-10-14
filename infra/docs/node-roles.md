@@ -69,8 +69,9 @@ on `tailscale0` only:
   /health` (including the node's fingerprint hash), `GET /model` (the served
   model and the `MANIFEST.json` whose hashes the models role verified on the
   inference node), `GET /metrics` (vLLM and GPU), `POST /activate` (a
-  deployment by `<id>@<version>`, through the vLLM deploy helper) and `POST
-  /verify` (the serving verification). Everything else is 404.
+  deployment by `<id>@<version>`, as a `serve` request to the node's GPU
+  arbiter) and `POST /verify` (the serving verification). Everything else is
+  404.
 - **4317** on the lab node: the inference node's collector sends logs,
   metrics and traces with OTLP over gRPC; the lab node's collector accepts
   only the paired certificate and labels everything with the inference node's

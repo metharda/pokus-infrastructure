@@ -371,3 +371,47 @@ def test_firewall_check_knows_the_zones_of_the_firewall_role() -> None:
     tasks = load_yaml(ROLES / "firewall" / "tasks" / "firewalld.yml")
     created = next(t for t in tasks if t["name"] == "Create the pinka zones")["loop"]
     assert tuple(created) == checks.FIREWALLD_ZONES
+
+
+def test_the_telemetry_guard_check_knows_both_sets() -> None:
+    # ADR-0016 as decided with the "commit" for 3d.4b: Grafana reaches only the
+    # query proxy's loopback port, never the stores.
+    from pinka_lab import checks  # noqa: PLC0415 - next to the role data it is compared with
+
+    spec = render()["telemetry_isolation"]
+    assert "pinka-grafana" not in spec["clients"]
+    assert spec["query_clients"] == ["root", "pinka-grafana"]
+    assert spec["query_ports"] == [18733]
+    assert 18733 not in spec["ports"]
+    template = (ROLES / "firewall" / "templates" / "pinka-telemetry-guard.nft.j2").read_text(
+        encoding="utf-8"
+    )
+    for name, accounts, ports in checks.GUARD_SETS:
+        assert f"set {name} {{" in template and f"@{name} " in template
+        assert accounts in spec and ports in spec
+
+
+@pytest.mark.parametrize(
+    ("node_role", "arbiter", "clients", "control"),
+    [
+        ("full", True, ["root", "pinka-prometheus", "pinka-otelcol"], []),
+        ("lab", False, ["root"], [18710]),
+        ("inference", True, ["root", "pinka-otelcol", "pinka-inference"], []),
+    ],
+)
+def test_the_gpu_arbiter_and_the_inference_guard(
+    node_role: str, arbiter: bool, clients: list[str], control: list[int]
+) -> None:
+    data = render(node_role=node_role, pinka_features={"gpu_inference": True, "vm_targets": True})
+    section = data["gpu_arbiter"]
+    assert bool(section) is arbiter
+    if arbiter:
+        assert section["socket"] == "/run/pinka/gpu.sock"
+        assert section["training"] is (node_role == "full")
+        assert section["peer"] == ("pinka-inference" if node_role == "inference" else "")
+        assert section["adapters"] == "/srv/pinka/models/adapters"
+    assert data["inference_isolation"] == {
+        "clients": clients,
+        "ports": [18704],
+        "control_ports": control,
+    }

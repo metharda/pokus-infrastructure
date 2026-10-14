@@ -48,3 +48,13 @@
   loop: "{{ active_platform.units }}"
   loop_control:
     label: "{{ item.name }}"
+
+# The new release's controller and inference broker reach the inference API
+# from now on (§7.11, ADR-0016); the guard resolves their UIDs when it loads.
+- name: Load the inference guard with the platform's clients
+  ansible.builtin.systemd_service:
+    name: pinka-inference-guard.service
+    state: restarted
+  when:
+    - platform_activate is changed
+    - "'pinka-inference-guard.service' in pinka_present.units or not ansible_check_mode"

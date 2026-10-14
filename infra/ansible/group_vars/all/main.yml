@@ -35,6 +35,16 @@ install_nvidia_driver: auto
 # Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded
 # in the fingerprint. bootstrap.sh --allow-community-repos does the same.
 allow_community_repos: false
+# The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default
+# deployment) or idle; restore_after_training brings the deployment served
+# before a training run back when the run ends, unless the submission says
+# otherwise.
+gpu_arbiter:
+  after_boot: serve
+  restore_after_training: true
+# Infra's caps on a training job (§7.18): the manifest's jobs must stay within
+# them; the arbiter refuses a run whose job does not.
+training_caps: {timeout_seconds: 86400, memory_max: 24G, cpus: 8}
 # Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
 grafana_tailscale_serve: false
 # The documentation release the docs service serves (BUILD_PROMPT §7.19):
@@ -110,29 +120,45 @@ inference_control_account: pinka-inference
 # UID that is already in use.
 pinka_platform_uids: {min: 60578, max: 61183}
 # The only accounts that reach the telemetry stores directly (§7.9, ADR-0016
-# as decided with the "commit" for 3d.4): infra's own clients, each by name.
-# The telemetry guard resets every other account's connection to the ports
-# below on the host loopback: researchers, the platform's services and
-# everyone else query through the read-only query proxy (Grafana for the
-# researchers) and send through the collector's OTLP receivers.
+# as decided with the "commit" for 3d.4 and 3d.4b): infra's own clients, each
+# by name. The telemetry guard resets every other account's connection to the
+# stores' ports on the host loopback: researchers, Grafana, the platform's
+# services and everyone else query through the read-only query proxy and send
+# through the collector's OTLP receivers. The guard matches UIDs only, never
+# groups.
 pinka_telemetry_clients:
   - {account: root, reason: "doctor, the health gate and administrators (sudo)"}
   - {account: pinka-otelcol, reason: the gateway collector writes to Loki and Tempo}
   - {account: pinka-prometheus, reason: "Prometheus scrapes the collector, Loki, Tempo and itself"}
   - {account: pinka-loki, reason: Loki's own gRPC port}
   - {account: pinka-tempo, reason: "Tempo's own gRPC and OTLP ports"}
-  - {account: pinka-grafana, reason: "Grafana's data sources, through the query proxy's loopback port"}
   - {account: pinka-query-proxy, reason: "the query proxy, which forwards the query endpoints"}
-# Ports the telemetry guard closes to every other account (§7.9): Prometheus,
-# Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver), the collector's
-# metrics exporter and the query proxy's loopback port (the platform's
-# services use its socket, which checks the group). The collector's OTLP
-# receivers stay open.
+# The only accounts that reach the query proxy's loopback port: Grafana, whose
+# data sources all go through the proxy (so no Grafana user, editor or admin
+# included, reaches a push, admin or delete endpoint), and root. The
+# platform's services that query use the proxy's socket and its group.
+pinka_query_port_clients:
+  - {account: root, reason: doctor and administrators (sudo)}
+  - {account: pinka-grafana, reason: "Grafana's Prometheus, Loki and Tempo data sources"}
+# The stores' ports the telemetry guard closes to every other account (§7.9):
+# Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the
+# collector's metrics exporter. The collector's OTLP receivers stay open.
 pinka_telemetry_guard_ports: >-
   {{ [pinka_ports.prometheus, pinka_ports.loki, pinka_ports.tempo,
       pinka_internal_ports.loki_grpc, pinka_internal_ports.tempo_grpc,
-      pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics,
-      pinka_internal_ports.query_proxy] | sort }}
+      pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics] | sort }}
+# Infra's own clients of the inference API on the host loopback (BUILD_PROMPT
+# §7.11, ADR-0016), per node role: the inference guard adds the active
+# platform's accounts whose profile reaches the API (controller, inference
+# broker) and resets every other account's connection to vLLM, or to the
+# inference forwarder of a lab node. UIDs only, never groups.
+pinka_inference_clients:
+  - account: root
+    reason: "doctor, the health gate, the serving verification and the GPU arbiter; vLLM's own health check"
+    node_roles: [full, lab, inference]
+  - {account: pinka-prometheus, reason: "Prometheus scrapes vLLM's metrics", node_roles: [full]}
+  - {account: pinka-otelcol, reason: "the collector scrapes vLLM's metrics", node_roles: [full, inference]}
+  - {account: pinka-inference, reason: the control endpoint forwards the API, node_roles: [inference]}
 
 # Parent of the infra and platform account homes (/var/lib/pinka/<account>).
 pinka_service_home: /var/lib/pinka

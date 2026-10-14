@@ -2,18 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/pinka/schema/models-lock.schema.json",
   "title": "models.lock.yml",
-  "description": "Models and LoRA adapters selected for a lab, pinned to a commit with a sha256 per file (BUILD_PROMPT §7.12, contracts.md#inference). Never contains unverified values.",
+  "description": "Models selected for a lab, pinned to a commit with a sha256 per file (BUILD_PROMPT §7.12, contracts.md#inference). Never contains unverified values. Adapters are not pinned here: only the GPU arbiter registers them (§7.18).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "models", "adapters"],
+  "required": ["schema_version", "models"],
   "properties": {
     "schema_version": {"const": 1},
-    "models": {"type": "array", "items": {"$ref": "#/$defs/model"}},
-    "adapters": {"type": "array", "items": {"$ref": "#/$defs/adapter"}}
+    "models": {"type": "array", "items": {"$ref": "#/$defs/model"}}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"},
-    "hf_repo": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "hf_repo": {"type": "string", "pattern": "^(?!adapters/)[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$", "description": "Hugging Face repository; never adapters/..., the GPU arbiter's area."},
     "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "file": {
@@ -38,22 +37,6 @@
         "license": {"type": "string", "minLength": 1},
         "gated": {"type": "boolean"},
         "quantization": {"type": ["string", "null"]},
-        "notes": {"type": "string"}
-      }
-    },
-    "adapter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "hf_repo", "revision", "files", "weights", "base_model_id", "license", "gated", "notes"],
-      "properties": {
-        "name": {"$ref": "#/$defs/id"},
-        "hf_repo": {"$ref": "#/$defs/hf_repo"},
-        "revision": {"$ref": "#/$defs/revision"},
-        "files": {"$ref": "#/$defs/files"},
-        "weights": {"type": "string", "description": "Path of the weights file among files; its sha256 names the adapter directory."},
-        "base_model_id": {"$ref": "#/$defs/id"},
-        "license": {"type": "string", "minLength": 1},
-        "gated": {"type": "boolean"},
         "notes": {"type": "string"}
       }
     }

@@ -609,6 +609,10 @@
       "short": "potka-verify"
     }
   ],
+  "inference_clients": [
+    "potka-gw",
+    "potka-orch"
+  ],
   "opa": {
     "bundle": "/srv/pinka/platforms/potka/releases/potka-v1/policy",
     "decision_path": "potka/action/decision"
@@ -752,5 +756,33 @@
   ],
   "tools": [
     "quarto"
-  ]
+  ],
+  "training": {
+    "dataset_sources": [
+      "/srv/pinka/platforms/potka/state/orch/artifacts"
+    ],
+    "jobs": [
+      {
+        "account": "potka-lora",
+        "adapter": "potka-lora",
+        "base_model": true,
+        "command": [
+          "python3",
+          "-I",
+          "-m",
+          "potka_training.lora"
+        ],
+        "cpus": 8,
+        "datasets": [
+          "train"
+        ],
+        "gpus": 1,
+        "image": "ghcr.io/example-org/pokus-platform-training@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "memory_max": "32G",
+        "name": "lora",
+        "resumable": true,
+        "timeout_seconds": 43200
+      }
+    ]
+  }
 }

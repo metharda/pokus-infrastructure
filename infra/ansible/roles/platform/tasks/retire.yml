@@ -118,3 +118,10 @@
   changed_when: platform_trust_removed.rc == 0
   failed_when: platform_trust_removed.rc != 0 and 'not found' not in (platform_trust_removed.stderr | lower)
   when: platform_retire.incus_certificates | length > 0
+
+# The replaced platform's accounts no longer reach the inference API.
+- name: Load the inference guard without the replaced platform's clients
+  ansible.builtin.systemd_service:
+    name: pinka-inference-guard.service
+    state: restarted
+  when: "'pinka-inference-guard.service' in pinka_present.units or not ansible_check_mode"

@@ -2991,3 +2991,233 @@ ground-truth blindness:
   `systemd-run` sandbox, the store containers under their new accounts
   (Grafana above all), the guard with the real accounts, a restore end to
   end.
+
+### Owner decisions on 3d.4b (with the "commit")
+
+- Grafana comes off the telemetry allowlist (first item of 3d.5): only the
+  collector, the stores where they talk to each other, the query proxy and
+  root reach the stores; Grafana's data sources go through the query proxy.
+- The guard matches by UID only; a test shows that an account with GID 0
+  outside the allowlist is reset.
+- Approved: strict dependency sources, `package` as a directory, restore
+  through signed tags, a GPU below 7.5 as degraded, and the two stricter
+  checks.
+- `make setup` installs the pinned uv; a skipped uv test fails CI.
+- Every approved deviation the platform must follow is listed in
+  `../PROGRESS.md`, "Platform spec changes pending".
+
+## Contract v2, step 5: the GPU arbiter and training (plan step 3d.5)
+
+### Built in 3d.5: the owner's 3d.4b decisions
+
+- The telemetry guard has two sets: `telemetry_clients` (root, the
+  collector, Prometheus, Loki, Tempo, the query proxy) for the stores' ports
+  and the collector's metrics exporter, and `query_port_clients` (root,
+  Grafana) for the query proxy's loopback port. Both are `type uid` and the
+  rules match `meta skuid`; nothing in the guard names a group. The kernel
+  test connects as Grafana (its UID with group 0), as Grafana's image default
+  (472 with group 0) and as an account with GID 0 that is on neither list:
+  the last two are reset everywhere except the OTLP receivers, Grafana
+  everywhere except the query port and the OTLP receivers.
+- Doctor compares each set with its accounts and checks that the set's own
+  rule (a reject for the UIDs outside it) covers its ports; a port that is
+  only in the other set's rule counts as open.
+- `make setup` installs the uv of `versions.lock.yml` into `build/tools/uv`
+  with `pinka_lockcheck fetch uv --member uv`: the archive's sha256 is
+  checked first, then the one regular file named `uv` is installed (an
+  archive with none, several, or a link of that name is refused). The
+  Makefile exports `PINKA_UV`, and the tests find `build/tools/uv` without
+  it, so a plain `pytest` runs them too.
+- In CI a skipped uv test fails: every test that uses the `uv` fixture,
+  directly or through another fixture, carries the `uv` marker, and
+  `conftest.py` reports a skip of a marked test as a failure when `CI=true`,
+  whatever the skip's reason. A test runs the hooks in a child pytest with a
+  uv fixture that always skips.
+- That `conftest.py` is the second one of the tree (after
+  `installer/tests/`): mypy checks `tools/platform/tests` in a run of its
+  own (two `conftest` modules cannot share one), and the installer's flow
+  tests take `copy_repo` from `installer_testlib.py` instead of importing
+  `conftest` by name, which resolved to the other file in a full run.
+
+### Built in 3d.5: GPU arbiter and training (BUILD_PROMPT §16 step 19)
+
+- **The arbiter** (`ansible/roles/gpu_arbiter/`,
+  `/usr/local/libexec/pinka/gpu-arbiter`, root, the Ansible venv's Python)
+  replaces the deploy helper. `pinka-gpu-arbiter.socket`
+  (`/run/pinka/gpu.sock`, 0600, `SocketUser` the active platform's
+  controller, `pinka-inference` on an inference node, `root` before a
+  platform is deployed) with `Accept=yes` starts one
+  `pinka-gpu-arbiter@.service` per connection; the peer is checked with
+  `SO_PEERCRED` before the request is read. Requests `status`, `serve`,
+  `idle`, `train`, `publish-dataset` (one JSON line each way, at most 1 MiB,
+  unknown keys refused); the control endpoint of an inference node may only
+  ask for `status` and `serve`. A lock file serializes transitions; the mode
+  is in `/var/lib/pinka/gpu/state.json`, every transition in
+  `transitions.jsonl` and the journal, every run in `runs/<run>.json`.
+- **vLLM** (`pinka-inference.service`) is installed but not enabled; the
+  arbiter renders `current.yaml` and `current.env` from the deployment spec
+  (the rendering moved from the deploy helper unchanged), starts the unit,
+  waits for `/health` and only then reports `serving`; a deployment that
+  does not come up leaves the GPU idle. The vllm role no longer starts
+  anything: bootstrap ends with `gpu-arbiter serve <target> --unless-training`
+  (or `prepare` when vLLM is not to start), then the serving verification.
+  The gpu_arbiter role stops and removes the deploy helper's units and
+  program from a host that has them.
+- **Deployment specs** name adapters in `adapter_ids` as `<name>@<sha256>`;
+  the arbiter refuses one that is not registered, whose files no longer
+  match its hash, or whose lineage names another base model. A v1 spec with
+  `adapters` is refused (unknown key).
+- **Boot.** `pinka-gpu-arbiter.service` (oneshot, `WantedBy` and `PartOf`
+  `pinka-lab.target`) settles the state once per lab start. After a new
+  boot a run left `training` is interrupted: it resumes (`PINKA_JOB_RESUME=1`,
+  same checkpoints, attempt counted) if its job is `resumable`, otherwise it
+  ends `interrupted` and the deployment served before the run comes back
+  (or the GPU stays idle, per the run's `restore`). Without such a run the
+  default deployment is served (`gpu_arbiter.after_boot: serve`) or the GPU
+  stays idle (`idle`). Within the same boot (`pinka start` after
+  `pinka stop`) an idle GPU follows `after_boot` and a `serving` state whose
+  vLLM stopped is brought back.
+- **Training runs.** `train` checks that the host trains (`full` node), the
+  job exists in the active manifest, the submission (exactly the job's
+  dataset kinds, each a published hash; `base_model` a verified model of
+  `models.lock.yml` when the job mounts one; `seed` an integer;
+  `hyperparameters` an object), the caps (`training_caps`:
+  `timeout_seconds`, `memory_max`, `cpus`), every dataset's hash and split
+  guard, the base model's file hashes, and, while serving, that vLLM has no
+  running or waiting request (`vllm:num_requests_running` and
+  `vllm:num_requests_waiting` from its `/metrics`) and the controller set
+  `sessions_drained`. The job-spec hash is the SHA-256 of the canonical JSON
+  of `job`, `base_model`, `datasets`, `hyperparameters` and `seed`; the run
+  ID is `<job>-<YYYYmmddtHHMMSS>-<hash[:8]>`. The arbiter stops vLLM, writes
+  the run record and starts `pinka-gpu-job@<run>.service` (`Type=exec`,
+  `KillMode=mixed`, `PartOf=pinka-lab.target`), whose `run-job` runs the
+  container with the fixed options of
+  [GPU arbiter requests](reference/gpu-arbiter.md#the-jobs-container); after
+  the job's `timeout_seconds` it stops the container (`docker stop` with
+  `stop_grace`) and the run fails. `idle` and a stopped unit
+  (SIGTERM: `docker stop` with `stop_grace`) end the run `interrupted`
+  (resumable job) or `failed`.
+- **Datasets** (`publish-dataset`): `source` is below one of the
+  controller's state directories; the copy walks directory file descriptors
+  with `O_NOFOLLOW`, accepts only regular files and directories owned by the
+  controller, and lands in a temporary directory that is renamed to
+  `/srv/pinka/training/datasets/<sha256>/` (root:`pinka-datasets` 0750,
+  files 0640) with `PROVENANCE.json` (instances with their split, source
+  runs, the platform's commit, the hash). An instance of the `test` split is
+  refused at publication and at mount; the hash is checked at mount.
+  `pinka-datasets` is a new system group; the job's account is added to it
+  only inside the container (`--group-add`).
+- **Adapters.** A successful run's `output/adapter/` is copied the same way
+  (owner: the job's account), hashed and registered read-only under
+  `/srv/pinka/models/adapters/<name>/<sha256>/` (root, 0555, files 0444) with
+  `MANIFEST.json` and `LINEAGE.json` (base model and its file hashes,
+  dataset hashes, image digest, job-spec hash, hyperparameters, seed, the
+  platform's and infra's commits, start and end). An existing registration
+  is kept. The tree hash is the SHA-256 of `sha256sum`-style lines sorted
+  by path, without the record files; doctor computes it the same way (a
+  test cross-checks both). Adapters left `models.lock.yml` and its schema,
+  and the models role refuses a repository below `adapters/`.
+- **Schemas** `contract/records/dataset-provenance.schema.json`,
+  `adapter-manifest.schema.json` and `adapter-lineage.schema.json`, in the
+  generated [Platform records](reference/platform-records.md).
+- **Rendering** adds `training` (each job's unit, container, account, image
+  digest, inputs, outputs and resources) and `inference_clients` (the
+  accounts of profiles with `inference_api`) to `rendered.json`.
+- **Control API.** `POST /activate` on the inference node sends `serve` to
+  the arbiter and answers when it does (`activate_timeout`, 1500 s).
+- **Inference forwarder** (lab node, `pinka-inference-forwarder.service`,
+  root): listens on `127.0.0.1` on vLLM's and the control API's ports and
+  passes every connection to the paired node over TLS 1.3 with this node's
+  certificate, accepting only the paired certificate (pinned by SHA-256,
+  the name not checked). Hardened unit; `IPAddressAllow` the loopback and
+  Tailscale's ranges.
+- **Inference guard** (firewall role, `pinka-inference-guard.service`,
+  table `inet pinka_inference_guard`): sets `inference_clients` (root,
+  infra's scrapers for the node role, the platform's `inference_clients`)
+  on vLLM's port and `inference_control_clients` (root, the controller) on
+  the forwarder's control port, on a lab node; a `type uid` set and
+  `meta skuid` like the telemetry guard (ADR-0016, decision 6). The loader
+  resolves the accounts from `/etc/pinka/nftables/inference-guard.json` and
+  `rendered.json` each time; the platform role restarts it after every
+  switch and retirement. A kernel test connects as one account per class.
+- **`pinka gpu`** (`status`, `serve`, `idle`, `train --submission`,
+  `publish-dataset`) talks to the socket as root; `pinka status` shows the
+  mode, the last transitions and whether the host trains; `pinka stop` and
+  `pinka update-host` ask for `idle` after the platform's drain.
+- **Doctor:** `gpu.arbiter`, `training.containers`, `training.adapters`,
+  `training.datasets`, `training.availability`, `inference.isolation`.
+- `site.yml` applies the role after vLLM (tags `gpu_arbiter`, `vllm`); the
+  installer's progress screen lists it: the recorded successful run
+  (`installer/tests/data/events-success.jsonl`) was recorded again with
+  `record_events.py` (the role's events added, timestamps new), and the
+  progress screen's four snapshots (80x24 and 120x40, dark and light)
+  changed by that row and the totals (ok 31, changed 26) only.
+
+### Verified in 3d.5
+
+- vLLM v0.31.0 (`vllm/entrypoints/launchers/cli_args.py`, `launcher.py`,
+  read on 2026-10-12): `--api-key` guards only `/v1`, `/v2` and
+  `/inference`; `/invocations` stays open; `--uds` exists. Recorded in
+  ADR-0016, decision 6.
+- Tailscale v1.104.0 `net/tsaddr/tsaddr.go`: `CGNATRange` is
+  `100.64.0.0/10` and `TailscaleULARange` `fd7a:115c:a1e0::/48` (the
+  forwarder's `IPAddressAllow`).
+- The unit files pass `systemd-analyze verify` here (with stub binaries);
+  the inference guard's ruleset passes `nft -c` and its kernel test ran in a
+  private network namespace.
+
+### Interpretations awaiting owner confirmation (3d.5)
+
+- The inference API's mechanism is the UID allowlist (option (b)), not
+  `--uds` with a group directory (option (a)), for the reasons in ADR-0016,
+  decision 6.
+- One arbiter process per connection (`Accept=yes`) with a lock file,
+  rather than a long-running daemon: nothing stays in memory between
+  requests, and a crash loses no state.
+- A run's unit is `PartOf=pinka-lab.target`: stopping the lab interrupts a
+  run (resumable jobs resume at the next start only after a reboot; within
+  the same boot the run stays `interrupted`).
+- The job container gets a `/tmp` tmpfs (`rw,nosuid,nodev`), a process limit
+  of 4096 (`gpu_arbiter_pids_limit`) and the environment
+  `PINKA_JOB_RUN`, `PINKA_JOB_SEED`, `PINKA_JOB_HYPERPARAMETERS`,
+  `PINKA_JOB_RESUME`; mounts `/model`, `/datasets/<kind>`, `/output`,
+  `/checkpoints`; the adapter is `/output/adapter/`. §7.18 names the mounts
+  but not their paths or the job's interface.
+- The tree hash (`sha256sum` lines sorted by path) and the run ID format are
+  infra's choice; the spec asks only for a hash and a run.
+- Every file of a published dataset or adapter must belong to the
+  controller (the job's account for an adapter); there is no size cap
+  besides the disk.
+- Adapters left `models.lock.yml`: §7.18 says only the arbiter registers
+  adapters. No lab has pinned one.
+- `training_caps` is checked when a run is submitted, not when the platform
+  is deployed: a manifest whose job exceeds the caps deploys, and every run
+  of that job is refused.
+- A `lab` node has no arbiter; a `full` node without a GPU has one, for
+  CPU-only jobs (`resources.gpus: 0`) and so that `pinka gpu status` works.
+- Infra's inference clients depend on the node role: `pinka-inference` only
+  on an inference node, Prometheus only on a full node, the collector on
+  full and inference nodes.
+- The node's private key stays `root:pinka-inference` 0640 on both node
+  roles: the control endpoint (an inference node) serves TLS with it. On a
+  lab node only the forwarder (root) uses it.
+- `pinka platform purge` does not reload the inference guard; the next
+  deployment or boot does (the purged accounts no longer resolve, so the set
+  shrinks).
+
+### Findings to report (3d.5)
+
+- vLLM's `--api-key` would have left `/invocations` open: an API key alone
+  never protected the inference API.
+- The platform must use the arbiter's protocol: `serve` instead of the
+  deploy helper's socket, `train` with a submission and `publish-dataset`
+  for its datasets, and the job interface above (a platform spec change,
+  listed in `../PROGRESS.md`).
+- Not verified on a real host: vLLM started by the arbiter, a training
+  container with the GPU (CDI or the NVIDIA runtime), the boot paths after a
+  real reboot, the forwarder with a paired node, the inference guard with
+  the platform's real accounts.
+
+### Open `TODO(verify)` items after 3d.5
+
+None new.
