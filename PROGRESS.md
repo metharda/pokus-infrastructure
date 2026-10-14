@@ -146,6 +146,10 @@ repository at 3f (section J).
   host, Incus, Docker or a GPU (what and where, never provisioning this
   machine); or when a failing check could only be fixed by weakening a test
   or relaxing a spec limit.
+- **Quiet gate decisions (owner, with the "commit" for the quiet gate):**
+  CI runs with `VERBOSE=1`; the success line gives counts and the log
+  directory; a warning is counted at least once (twice is possible, fewer
+  never); the hash format and the `training_caps` warning belong to 3d.6.
 - **Token efficiency (owner, with the "commit" for 3d.5, verbatim):**
 
   > Token efficiency — never weaken a check, never hide a failure, a skip or a warning:
@@ -173,7 +177,8 @@ repository at 3f (section J).
 ## Current state
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
-  owner merges to `main`. Last step commit: `3da2671` (3d.5).
+  owner merges to `main`. Last step commit: `3da2671` (3d.5); then the
+  quiet gate and the split of this file into it and the archive: `21f5ba5`.
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
   1-5 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
@@ -256,7 +261,16 @@ proposal, and waits for the owner's "commit".
     sets; installer and doctor), and interpretation 11.13 as changed by the
     owner (once paired, the split-inference ports accept only the paired
     peer's tailnet address; the pairing port is open only while pairing).
-    They belong to 3d.6 unless the owner places them elsewhere.
+    Both approved for 3d.6 (owner, with the "commit" for the quiet gate).
+    11.13 is security-relevant and gets its own tests, among them one that
+    proves an unpaired tailnet address is refused after pairing.
+  - The `SyntaxWarning: invalid decimal literal` that ansible-lint printed
+    once (`<unknown>:1`, a compiled string, not a file) did not recur in
+    three further runs (warm cache, cold cache, `make lint-ansible`). When
+    it recurs (the quiet gate counts it), trace it with a
+    `warnings.showwarning` hook that prints the stack: if it is in this
+    repository's code, fix it in 3d.6; if it is third-party, name the file
+    and leave it (owner decision).
 - **3d.7** (infra §16 step 21): the installer (release inspection, the
   Platform review screen, the GPU screen, sources, secrets, answers schema,
   snapshots), and the removal of the V5 exclusion (see 3d above).
@@ -543,6 +557,26 @@ step 4" through "after step 13"):
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
   SSH-signed tag deployments is skipped here (CI asserts `ssh-keygen` and
   runs it), and the socket ACL helper is tested with a fake `setfacl` only.
+
+- A fresh session needs, outside the repository: uv 0.12.23 on `PATH`
+  before `make setup` (`pyproject.toml` requires exactly that version; the
+  image's uv is 0.8.17; download it from its GitHub release and check the
+  sha256 of `versions.lock.yml`, then put its directory first on `PATH`);
+  the Ansible collections, because Galaxy is not reachable from this
+  environment (`make setup` verifies `infra/.ansible-collections/` against
+  the lock and otherwise installs from Galaxy, which fails here; this
+  session installed them from their release tags on GitHub into the
+  git-ignored directory); Chromium for the Mermaid check (the image's
+  `/opt/pw-browsers`); and a local PostgreSQL server for the SQL tests,
+  which use the newest `/usr/lib/postgresql/<major>/bin` (16 in this
+  image; PGDG is not reachable from here, CI installs 18 from PGDG).
+  Reachable here: PyPI, npm, GitHub releases (uv, OPA, CPython builds).
+- The preflight test that compares reports with the reference
+  `jsonschema` validator skips in the Python 3.9 run (`make test-py39`,
+  standard library only): `jsonschema` 4.26.0, the pinned version, needs
+  Python 3.10. The same test runs and passes in the pytest step of every
+  `make test` (Python 3.12) and in CI; the skip has existed since step 2
+  and is now counted by the quiet gate.
 
 ## Next step
 
