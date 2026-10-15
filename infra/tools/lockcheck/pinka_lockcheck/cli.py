@@ -67,6 +67,7 @@ def _check(lock: Path, *, offline: bool, only: Sequence[str]) -> int:
     doc = checks.load(lock)
     findings = checks.schema_findings(doc)
     findings += checks.marker_findings(lock.read_text(encoding="utf-8"))
+    findings += checks.collection_findings(doc)
     if not offline and not any(f.where == "(root)" for f in findings):
         if "containers" in only:
             findings += checks.container_findings(doc)

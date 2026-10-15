@@ -14,7 +14,16 @@ ANSWERS_PAGE = "docs/reference/answers.md"
 ANSWERS_SCHEMA = "installer/schema/answers.schema.json"
 SNAPSHOTS = "installer/tests/__snapshots__/test_tui_snapshots"
 # Screens shown in the how-to guides, as the snapshot tests render them (120x40, dark).
-SCREENSHOTS = ("welcome", "preflight", "storage", "researchers", "review", "progress", "doctor")
+SCREENSHOTS = (
+    "welcome",
+    "preflight",
+    "storage",
+    "researchers",
+    "platform_review",
+    "review",
+    "progress",
+    "doctor",
+)
 CLI_INTRO = (
     "`python -m pinka_installer` is the installer behind `bootstrap.sh`: bootstrap runs it "
     "from the installer environment (`/opt/pinka/installer-venv`) to replay an answers file "

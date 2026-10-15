@@ -25,16 +25,19 @@
   "dashboards": null,
   "database": {
     "all_roles": [
+      "refplat_broker",
       "refplat_controller",
       "refplat_ctl",
       "refplat_grafana",
+      "refplat_inference_broker",
       "refplat_migrator",
       "refplat_reader"
     ],
     "database": "refplat",
     "grafana": "refplat_grafana",
     "group_roles": [
-      "refplat_controller"
+      "refplat_controller",
+      "refplat_inference_broker"
     ],
     "logins": [
       {
@@ -42,6 +45,12 @@
         "group_role": "refplat_controller",
         "profile": "controller",
         "role": "refplat_ctl"
+      },
+      {
+        "account": "refplat-broker",
+        "group_role": "refplat_inference_broker",
+        "profile": "inference-broker",
+        "role": "refplat_broker"
       }
     ],
     "migrator": "refplat_migrator",
@@ -52,6 +61,12 @@
         "mode": "0640",
         "owner": "root",
         "role": "refplat_ctl"
+      },
+      {
+        "group": "refplat-broker",
+        "mode": "0640",
+        "owner": "root",
+        "role": "refplat_broker"
       },
       {
         "group": "refplat-migrate",
@@ -71,6 +86,7 @@
     "socket_group": "refplat-db",
     "stale_roles": [],
     "vault_roles": [
+      "refplat_broker",
       "refplat_ctl",
       "refplat_grafana",
       "refplat_migrator",
@@ -251,10 +267,59 @@
         "User": "refplat-agent"
       },
       "unit": "refplat-agent.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "inference-broker",
+      "properties": {
+        "Group": "refplat-broker",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "refplat-broker"
+      },
+      "unit": "refplat-broker.service"
     }
   ],
   "incus_certificates": [],
   "inference_clients": [
+    "refplat-broker",
     "refplat-ctl"
   ],
   "opa": null,
@@ -262,6 +327,7 @@
   "render_version": 1,
   "requires": [
     "gpu",
+    "inference",
     "postgres",
     "telemetry"
   ],
@@ -278,7 +344,8 @@
   ],
   "service_units": [
     "refplat-ctl.service",
-    "refplat-agent.service"
+    "refplat-agent.service",
+    "refplat-broker.service"
   ],
   "signing": {
     "dir": "/etc/pinka/signing/refplat",
@@ -290,7 +357,8 @@
   },
   "socket_units": [
     "refplat-ctl-api.socket",
-    "refplat-ctl-session.socket"
+    "refplat-ctl-session.socket",
+    "refplat-broker-infer.socket"
   ],
   "sockets": [
     {
@@ -312,6 +380,17 @@
       "path": "/run/pinka/platform/ctl/session.sock",
       "unit": "refplat-ctl-session.socket",
       "untrusted_clients": true
+    },
+    {
+      "acl": [
+        "group:pinka:rw-"
+      ],
+      "group": "refplat-broker-infer",
+      "mode": "0660",
+      "owner": "refplat-broker",
+      "path": "/run/pinka/platform/broker/infer.sock",
+      "unit": "refplat-broker-infer.socket",
+      "untrusted_clients": false
     }
   ],
   "stale_units": [],

@@ -18,10 +18,11 @@ from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
 from pinka_installer import groupvars, hostvars, keys, validators, vault
+from pinka_installer import release as release_mod
 from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
 
-# The wizard's screens (BUILD_PROMPT §18.4, screens 1-15); 16-18 follow the install.
+# The wizard's screens (BUILD_PROMPT §18.4, screens 1-16); 17-19 follow the install.
 STEPS = (
     ("welcome", "Welcome"),
     ("preflight", "Preflight"),
@@ -34,7 +35,8 @@ STEPS = (
     ("gpu", "GPU & inference"),
     ("backups", "Data & backups"),
     ("restore", "Restore"),
-    ("platform", "Platform & catalog"),
+    ("platform", "Platform"),
+    ("platform_review", "Platform review"),
     ("images", "Golden images"),
     ("secrets", "Secrets & vault"),
     ("review", "Review"),
@@ -70,6 +72,12 @@ class Wizard:
         build_images_now: Build the chosen golden images during the install.
         installed: A lab is installed on this host (modify mode is offered).
         extra_files: Files the screens prepared besides the plan (models.lock.yml).
+        release: The platform release inspected alone (screen 12), for
+            ``release_source``.
+        release_source: The release source the inspection was made for.
+        review: The deployment's own checks of every platform answer (screen 13).
+        review_key: The platform answers the review was made for.
+        platform_approved: The operator approved the reviewed platform.
     """
 
     answers: Answers = field(default_factory=Answers)
@@ -85,6 +93,18 @@ class Wizard:
     build_images_now: bool = True
     installed: bool = False
     extra_files: dict[str, str] = field(default_factory=dict)
+    release: release_mod.Inspection | None = None
+    release_source: tuple[str, ...] = ()
+    review: release_mod.Inspection | None = None
+    review_key: str = ""
+    platform_approved: bool = False
+
+    @property
+    def platform_needs(self) -> release_mod.Needs:
+        """The vault keys the reviewed platform release needs (none without one)."""
+        if not self.answers.has_platform or self.review is None or not self.review.ok:
+            return release_mod.Needs()
+        return self.review.needs
 
     # --- host facts ------------------------------------------------------------------
 
@@ -356,13 +376,13 @@ class ModelChoice:
     """A model the GPU screen offers.
 
     Attributes:
-        id: Catalog or lock id.
+        id: Id in the model list or in models.lock.yml.
         hf_repo: Repository.
         license: License.
         gated: Needs a token.
         fits: Why it does not fit the profile, or empty if it fits.
         pinned: Already in models.lock.yml.
-        entry: The catalog entry.
+        entry: The model list's entry.
     """
 
     id: str
@@ -375,15 +395,15 @@ class ModelChoice:
 
 
 def model_choices(
-    catalog: Mapping[str, Any],
+    known: Mapping[str, Any],
     lock_ids: Iterable[str],
     profile: str,
     vram_gib: float | None,
 ) -> list[ModelChoice]:
-    """The catalog's models with whether they fit the profile and the GPU.
+    """The models of models.catalog.yml with whether they fit the profile and the GPU.
 
     Args:
-        catalog: ``models.catalog.yml``.
+        known: ``models.catalog.yml`` (the models the GPU screen offers).
         lock_ids: Ids already in ``models.lock.yml``.
         profile: The chosen serving profile.
         vram_gib: GPU memory.
@@ -393,7 +413,7 @@ def model_choices(
     """
     pinned = set(lock_ids)
     choices = []
-    for entry in catalog.get("models") or []:
+    for entry in known.get("models") or []:
         fit = (entry.get("profiles") or {}).get(profile)
         if fit is None:
             reason = f"no settings for profile {profile}"

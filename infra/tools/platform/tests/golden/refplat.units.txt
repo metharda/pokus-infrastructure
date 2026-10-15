@@ -16,7 +16,7 @@ WantedBy=pinka-lab.target
 Description=Platform refplat: service agent (untrusted-agent)
 PartOf=pinka-platform.target refplat-ctl-session.socket
 Requires=pinka-health-gate.service refplat-reconcile.service refplat-ctl-session.socket
-After=pinka-health-gate.service pinka-core.service pinka-observability.service refplat-reconcile.service refplat-ctl-session.socket refplat-ctl.service
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service refplat-reconcile.service refplat-ctl-session.socket refplat-ctl.service
 Wants=pinka-otlp-agent.socket
 After=pinka-otlp-agent.socket
 
@@ -69,6 +69,82 @@ InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/
 
 [Install]
 WantedBy=pinka-platform.target
+===== refplat-broker-infer.socket
+# Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform refplat: socket infer of broker
+PartOf=pinka-platform.target
+
+[Socket]
+ListenStream=/run/pinka/platform/broker/infer.sock
+SocketUser=refplat-broker
+SocketGroup=refplat-broker-infer
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+FileDescriptorName=infer
+Service=refplat-broker.service
+ExecStartPost=/usr/local/libexec/pinka/socket-acl /run/pinka/platform/broker/infer.sock pinka
+
+[Install]
+WantedBy=pinka-platform.target
+===== refplat-broker.service
+# Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.
+
+[Unit]
+Description=Platform refplat: service broker (inference-broker)
+PartOf=pinka-platform.target
+Requires=pinka-health-gate.service refplat-reconcile.service refplat-broker-infer.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service refplat-reconcile.service refplat-broker-infer.socket
+
+[Service]
+Type=simple
+ExecStart=/srv/pinka/platforms/refplat/releases/current/.venv/bin/refplat-broker
+WorkingDirectory=/srv/pinka/platforms/refplat/releases/current
+Restart=on-failure
+RestartSec=5
+User=refplat-broker
+Group=refplat-broker
+SupplementaryGroups=refplat-db
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+Slice=pinka-services.slice
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+IPAddressDeny=any
+IPAddressAllow=localhost
+SocketBindDeny=any
+SocketBindAllow=tcp:18705
+MemoryMax=2G
+TasksMax=512
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RuntimeDirectory=pinka/platform-runtime/broker
+RuntimeDirectoryMode=0700
+ReadOnlyPaths=/srv/pinka/platforms/refplat/releases/current
+InaccessiblePaths=-/var/lib/pinka/git -/var/lib/pinka/staging -/var/lib/incus -/var/lib/docker -/run/docker.sock -/var/run/docker.sock -/etc/pinka/secrets/containers -/etc/pinka/secrets/backup -/etc/pinka/inference -/srv/pinka/backups -/run/pinka/gpu.sock -/run/pinka/run-network.sock -/srv/pinka/restricted -/etc/pinka/incus -/etc/pinka/signing
+
+[Install]
+WantedBy=pinka-platform.target
 ===== refplat-ctl-api.socket
 # Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.
 
@@ -115,7 +191,7 @@ WantedBy=pinka-platform.target
 Description=Platform refplat: service ctl (controller)
 PartOf=pinka-platform.target
 Requires=pinka-health-gate.service refplat-reconcile.service refplat-ctl-api.socket refplat-ctl-session.socket
-After=pinka-health-gate.service pinka-core.service pinka-observability.service refplat-reconcile.service refplat-ctl-api.socket refplat-ctl-session.socket
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service refplat-reconcile.service refplat-ctl-api.socket refplat-ctl-session.socket
 
 [Service]
 Type=simple
@@ -171,8 +247,8 @@ WantedBy=pinka-platform.target
 Description=Platform refplat: the reconcile hook before the services
 PartOf=pinka-platform.target
 Requires=pinka-health-gate.service
-After=pinka-health-gate.service pinka-core.service pinka-observability.service
-Before=refplat-ctl.service refplat-agent.service
+After=pinka-health-gate.service pinka-core.service pinka-inference.service pinka-observability.service
+Before=refplat-ctl.service refplat-agent.service refplat-broker.service
 
 [Service]
 Type=oneshot

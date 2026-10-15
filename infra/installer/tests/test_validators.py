@@ -77,30 +77,39 @@ def test_urls_and_sources() -> None:
     assert validators.https_url("https://example.com/x") is None
     assert validators.https_url("http://example.com")
     assert "credentials" in (validators.https_url("https://user:pw@example.com") or "")
-    for ok in (
-        "git@github.com:example-org/pokus-platform.git",
-        "ssh://git@git.example.com:2222/example-org/pokus-platform.git",
-        "https://git.example.com/example-org/pokus-platform.git",
+
+
+def test_platform_sources_are_the_platform_tool_s() -> None:
+    release = {"repo": "git@github.com:example-org/example-platform.git", "ref": "example-v1"}
+    for repo in (
+        "git@github.com:example-org/example-platform.git",
+        "ssh://git@git.example.com:2222/example-org/example-platform.git",
+        "https://git.example.com/example-org/example-platform.git",
+        "file:///srv/git/example-platform.git",
     ):
-        assert validators.source_repo(ok) is None, ok
-    for bad in (
-        "github.com/example-org/pokus-platform",
+        assert validators.platform_sources({**release, "repo": repo}, {}) == [], repo
+    for repo in (
+        "github.com/example-org/example-platform",
         "ftp://example.com/x",
         "https://u:p@example.com/x",
+        "http://git.example.com/x.git",
     ):
-        assert validators.source_repo(bad), bad
+        found = validators.platform_sources({**release, "repo": repo}, {})
+        assert found and found[0].startswith("platform/repo:"), repo
+    assert validators.platform_sources({**release, "ref": "a..b"}, {})[0].startswith("platform/ref")
+    bad_path = {"cases": {**release, "path": "../x"}}
+    assert validators.platform_sources(release, bad_path)[0].startswith("content/cases/path")
+    assert validators.platform_sources(release, {"Bad": release})[0].startswith("content:")
 
 
-@pytest.mark.parametrize("value", ["platform-v1.0.0", "main", "release/1.x", "a" * 40, "0" * 40])
-def test_git_ref_ok(value: str) -> None:
-    assert validators.git_ref(value) is None
-
-
-@pytest.mark.parametrize(
-    "value", ["", "@", "-x", "a..b", "a b", "a~1", "x.lock", "a/", "a@{1}", "a\x01"]
-)
-def test_git_ref_bad(value: str) -> None:
-    assert validators.git_ref(value)
+def test_cap_sizes_and_secret_keys() -> None:
+    for ok in ("24G", "512M", "1K"):
+        assert validators.cap_size(ok) is None, ok
+    for bad in ("24GiB", "0G", "1.5G", "G", "24"):
+        assert validators.cap_size(bad), bad
+    assert validators.platform_secret_key("ctl.api-token") is None
+    for bad in ("ctl", "Ctl.x", "ctl.X", "verylongname1.x"):
+        assert validators.platform_secret_key(bad), bad
 
 
 def test_tags_models_times_snapshots() -> None:

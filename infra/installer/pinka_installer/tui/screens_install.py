@@ -200,17 +200,40 @@ class SecretsScreen(StepScreen):
         return problems
 
 
-def summary(answers: answers_mod.Answers) -> list[tuple[str, str, str]]:
+def platform_text(answers: answers_mod.Answers) -> str:
+    """The Platform section of the Review screen.
+
+    Args:
+        answers: Normalized answers.
+
+    Returns:
+        Lines.
+    """
+    if not answers.has_platform:
+        return "none: a standalone lab"
+    p = answers.platform
+    lines = [f"{p.repo} at {p.ref}" + (f", path {p.path}" if p.path else "")]
+    lines += [f"content {n}: {s.repo} at {s.ref}" for n, s in sorted(answers.content.items())]
+    signed = "required" if answers.source_trust.require_signed_tags else "not required"
+    settings = ", ".join(sorted(answers.platform_settings)) or "no service"
+    secrets = ", ".join(f"{k} {v}" for k, v in sorted(answers.secrets.platform.items()))
+    lines.append(f"signed tags {signed} · settings for {settings} · secrets: {secrets or 'none'}")
+    return "\n".join(lines)
+
+
+def summary(answers: answers_mod.Answers, *, approved: bool = False) -> list[tuple[str, str, str]]:
     """The settings by section: (screen, title, text) for the Review screen.
 
     Args:
         answers: The answers.
+        approved: The operator approved the reviewed platform.
 
     Returns:
         Sections.
     """
     a = answers.normalized()
     m, r, s, g, b = a.machine, a.resources, a.storage, a.gpu, a.backups
+    caps = a.training_caps
     pool = f"loop file of {s.loop_size_gib} GiB" if s.source == "loop" else f"disk {s.device}"
     return [
         ("mode", "Install mode", a.mode),
@@ -247,7 +270,12 @@ def summary(answers: answers_mod.Answers) -> list[tuple[str, str, str]]:
             "gpu",
             "GPU & inference",
             f"driver {g.install_driver} · profile {g.vllm_profile or '-'} · "
-            f"model {g.default_model}",
+            f"model {g.default_model}\n"
+            f"arbiter after boot {a.gpu_arbiter.after_boot}, serving again after training "
+            f"{'on' if a.gpu_arbiter.restore_after_training else 'off'} · training caps "
+            f"{caps.timeout_seconds} s, {caps.cpus} CPUs, memory {caps.memory_max}, "
+            f"datasets {caps.dataset_max}, run storage {caps.run_storage_max}, "
+            f"tmpfs {caps.tmp_max}",
         ),
         (
             "backups",
@@ -256,11 +284,11 @@ def summary(answers: answers_mod.Answers) -> list[tuple[str, str, str]]:
             f"keep {b.retention.daily}/{b.retention.weekly}/{b.retention.monthly}",
         ),
         ("restore", "Restore", a.restore_snapshot if a.mode == "restore" else "-"),
+        ("platform", "Platform", platform_text(a)),
         (
-            "platform",
-            "Platform & catalog",
-            f"platform {a.platform.ref or 'off'} · catalog {a.catalog.ref or 'off'}"
-            + (f"\nfrom {a.source.repo}" if a.needs_source else ""),
+            "platform_review",
+            "Platform review",
+            ("approved" if approved else "not approved yet") if a.has_platform else "-",
         ),
         ("images", "Golden images", ", ".join(a.images_build) or "none"),
         (
@@ -321,7 +349,7 @@ class ReviewScreen(StepScreen):
             )
         for warning in destructive(self.answers):
             yield Static(f"⚠ {warning}", classes="banner bad")
-        for step, title, text in summary(self.answers):
+        for step, title, text in summary(self.answers, approved=self.wizard.platform_approved):
             with Horizontal(classes="review-row"):
                 yield Card(title, text)
                 yield Button("Edit", id=f"edit-{step}", classes="edit")
@@ -371,6 +399,7 @@ class ReviewScreen(StepScreen):
                 self.wizard.vault_password,
                 self.wizard.public_keys,
                 smt_cores=self.ctx.host.smt_cores(),
+                needs=self.wizard.platform_needs,
             )
         except (OSError, vault.VaultError) as exc:
             return [str(exc)], None
@@ -909,7 +938,11 @@ class FinishScreen(StepScreen):
                     self.answers.split_inference_peer = text.split()[4]
         try:
             plan = apply.plan(
-                self.answers, self.ctx.paths, self.wizard.provided, self.wizard.vault_password
+                self.answers,
+                self.ctx.paths,
+                self.wizard.provided,
+                self.wizard.vault_password,
+                needs=self.wizard.platform_needs,
             )
         except (OSError, vault.VaultError) as exc:
             self.notify(str(exc), severity="error")

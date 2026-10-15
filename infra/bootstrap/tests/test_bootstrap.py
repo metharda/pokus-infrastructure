@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+import yaml
 from bashlib import BOOTSTRAP, INFRA, bash, q
 
 FIXTURES = INFRA / "preflight" / "tests" / "fixtures"
@@ -121,6 +122,8 @@ def test_help_lists_every_option() -> None:
         (["--machine", "lab1", "--replace-platform"], "needs a value"),
         (["--machine", "lab1", "--replace-platform", "Old-One"], "invalid platform name"),
         (["--machine", "lab1", "--replace-platform", "x"], "invalid platform name"),
+        (["--machine", "lab1", "--restore=yes"], "option --restore takes no value"),
+        (["--machine", "lab1", "--skip-tags=images,"], "invalid tag list"),
         (["--machine", "lab1", "--inspect-platform", "--check"], "--inspect-platform excludes"),
         (["--machine", "lab1", "--inspect-platform", "--restore"], "--inspect-platform excludes"),
         (
@@ -133,6 +136,42 @@ def test_usage_errors_exit_64(args: list[str], message: str) -> None:
     res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), *args])
     assert res.returncode == 64
     assert message in res.stderr
+
+
+def test_an_option_value_may_follow_an_equals_sign() -> None:
+    res = bash(
+        """
+        parse_args --machine=lab1 --skip-tags=images,models --tags=base \\
+          --replace-platform=refplat --ref=v1=x
+        echo "$OPT_MACHINE|$OPT_SKIP_TAGS|$OPT_TAGS|$OPT_REPLACE_PLATFORM|$OPT_REF"
+        """
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "lab1|images,models|base|refplat|v1=x"
+
+
+def test_bootstrap_accepts_every_option_the_tui_passes_on() -> None:
+    # The TUI runs bootstrap with the operator's overrides and its own options.
+    from pinka_installer.tui.model import Wizard  # noqa: PLC0415 - the installer's package
+
+    wizard = Wizard()
+    wizard.consents = {"accept_degraded", "accept_mok_enrollment"}
+    wizard.answers.mode = "restore"
+    wizard.answers.images_build = ["example-image"]
+    wizard.build_images_now = False
+    wizard.mok_password = "x"  # noqa: S105 - a test value
+    passthrough = ["--allow-dirty", "--tags=base,images", "--replace-platform=refplat"]
+    options = wizard.bootstrap_options(passthrough)
+    assert "--skip-tags=images" in options
+    res = bash(
+        f"""
+        validate_args() {{ :; }}
+        parse_args --machine lab1 --non-interactive {" ".join(q(o) for o in options)}
+        echo "$OPT_SKIP_TAGS|$OPT_TAGS|$OPT_REPLACE_PLATFORM|$OPT_RESTORE|$OPT_MOK_PASSWORD_STDIN"
+        """
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "images|base,images|refplat|true|true"
 
 
 def test_requires_root() -> None:
@@ -685,6 +724,16 @@ def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
     assert "installer apply --answers" in calls and "--machine lab1" in calls
 
 
+def test_answers_get_the_replace_option(tmp_path: Path) -> None:
+    code, out, calls = frontend(tmp_path, "OPT_REPLACE_PLATFORM=refplat")
+    assert code == 0, out
+    assert "--replace-platform refplat" in calls
+    (tmp_path / "x").mkdir()
+    code, out, calls = frontend(tmp_path / "x", "")
+    assert code == 0, out
+    assert "--replace-platform" not in calls
+
+
 def test_answers_carry_the_mok_consent(tmp_path: Path) -> None:
     code, out, _ = frontend(tmp_path, "", {"ANSWERS_MOK": "true"})
     assert code == 0, out
@@ -722,7 +771,7 @@ def test_tui_gets_the_operator_overrides() -> None:
     res = bash(
         """
         OPT_ACCEPT_DEGRADED=true; OPT_ALLOW_DIRTY=true; OPT_SKIP_TAGS=images,models
-        OPT_ACCEPT_MOK_ENROLLMENT=true
+        OPT_ACCEPT_MOK_ENROLLMENT=true; OPT_REPLACE_PLATFORM=refplat
         tui_bootstrap_args
         """
     )
@@ -731,6 +780,7 @@ def test_tui_gets_the_operator_overrides() -> None:
         "--allow-dirty",
         "--accept-mok-enrollment",
         "--skip-tags=images,models",
+        "--replace-platform=refplat",
     ]
 
 
@@ -819,6 +869,104 @@ download() {{ cp {q(archive)} "$2"; }}
     assert bad.stdout.strip() == "refused"
     assert "checksum mismatch" in bad.stderr
     assert not other.exists()
+
+
+def collection_setup(tmp_path: Path, *, verified: bool = False) -> tuple[str, Path, Path]:
+    """Two pinned collection artifacts, a fake download and a fake ansible-galaxy."""
+    store = tmp_path / "store"
+    store.mkdir()
+    pins = []
+    for name, version in (("ansible.posix", "2.2.2"), ("community.library_x", "1.1.5")):
+        artifact = store / f"{name.replace('.', '-')}-{version}.tar.gz"
+        artifact.write_bytes(f"{name} {version}".encode())
+        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        pins.append(f"{name} {version} https://galaxy.example.com/{artifact.name} {digest}")
+    calls = tmp_path / "galaxy-calls"
+    installed = tmp_path / "installed"
+    if verified:
+        installed.write_text("yes")
+    stubs = f"""
+collection_pins() {{ printf '%s\\n' {" ".join(q(p) for p in pins)}; }}
+download() {{ cp {q(store)}/"${{1##*/}}" "$2"; }}
+ansible_galaxy() {{
+  printf '%s\\n' "$*" >>{q(calls)}
+  case "$2" in
+    verify) test -e {q(installed)} ;;
+    install) echo yes >{q(installed)} ;;
+  esac
+}}
+"""
+    return stubs, calls, installed
+
+
+def test_install_collections_installs_the_pinned_artifacts_offline(tmp_path: Path) -> None:
+    stubs, calls, _ = collection_setup(tmp_path)
+    dest = tmp_path / "collections"
+    res = bash(stubs + f"install_collections {q(dest)} && echo ok")
+    assert res.stdout.strip().endswith("ok"), res.stderr
+    lines = calls.read_text().splitlines()
+    assert (
+        lines[0]
+        == f"collection verify --offline -p {dest} ansible.posix:2.2.2 community.library_x:1.1.5"
+    )
+    install = lines[1].split()
+    assert install[:6] == ["collection", "install", "--offline", "--no-deps", "--force", "-p"]
+    assert [Path(f).name for f in install[7:]] == [
+        "ansible-posix-2.2.2.tar.gz",
+        "community-library_x-1.1.5.tar.gz",
+    ]
+    assert lines[2] == lines[0]  # verified again after the install
+    assert not any(Path(f).exists() for f in install[7:])  # the downloads are removed
+
+
+def test_installed_collections_that_verify_are_kept(tmp_path: Path) -> None:
+    stubs, calls, _ = collection_setup(tmp_path, verified=True)
+    res = bash(
+        stubs + "download() { exit 9; }\n" + f"install_collections {q(tmp_path / 'c')} && echo kept"
+    )
+    assert res.stdout.strip().endswith("kept")
+    assert len(calls.read_text().splitlines()) == 1  # one verify, no download, no install
+
+
+def test_no_ansible_command_writes_bytecode_into_the_collections() -> None:
+    # collection verify reports a __pycache__ directory as modified content;
+    # bytecode from the play would reinstall every collection on each run.
+    res = bash("declare -f ansible_galaxy run_playbook")
+    assert res.returncode == 0, res.stderr
+    galaxy, playbook = res.stdout.split("\nrun_playbook ()", 1)
+    assert 'PYTHONDONTWRITEBYTECODE=1 "$ANSIBLE_VENV/bin/ansible-galaxy" "$@"' in galaxy
+    assert 'PYTHONDONTWRITEBYTECODE=1 "${cmd[@]}"' in playbook
+
+
+@pytest.mark.parametrize(
+    ("pin", "message"),
+    [
+        ("{name} 1.0.0 https://galaxy.example.com/{file} " + "0" * 64, "checksum mismatch"),
+        ("{name} 1.0.0 TODO(verify) TODO(verify)", "cannot download collection"),
+        ("{name} 1.0.0 https://galaxy.example.com/{file} TODO(verify)", "no verified sha256"),
+    ],
+)
+def test_an_unverified_artifact_installs_nothing(tmp_path: Path, pin: str, message: str) -> None:
+    stubs, calls, installed = collection_setup(tmp_path)
+    bad = pin.format(name="ansible.posix", file="ansible-posix-2.2.2.tar.gz")
+    stubs += f"collection_pins() {{ printf '%s\\n' {q(bad)}; }}\n"
+    res = bash(stubs + f"install_collections {q(tmp_path / 'c')} || echo refused $?")
+    assert res.stdout.strip().endswith("refused 50"), res.stdout + res.stderr
+    assert message in res.stderr
+    assert not installed.exists()
+    assert not any(" install " in f" {line} " for line in calls.read_text().splitlines())
+
+
+def test_the_pins_are_generated_from_the_lock() -> None:
+    res = bash("collection_pins")
+    lock = yaml.safe_load((INFRA / "versions.lock.yml").read_text())
+    section = lock["ansible_collections"]
+    artifacts = section["artifacts"]
+    assert res.stdout.splitlines() == [
+        f"{name} {version} {artifacts[name]['url']} {artifacts[name]['sha256']}"
+        for name, version in sorted(section["collections"].items())
+    ]
+    assert "community.library_inventory_filtering_v1" in res.stdout
 
 
 def test_check_versions_sync(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
 # Managed by pinka (tests/answers/ci.yml). Local changes will be overwritten.
 #
 # Installer answers for the distribution tests (BUILD_PROMPT §19.9, §18.6):
-# a staging lab without GPU, platform, catalog or golden images, with a loop
-# file pool and a local backup repository, so that one VM runs the whole
+# a staging lab without GPU, platform or golden images, with a loop file pool
+# and a local backup repository, so that one VM runs the whole
 # bootstrap. The harness copies it to installer-answers/<vm>.yml with the VM's
 # name as machine name. Secrets are generated, except the Tailscale auth key,
 # which comes from PINKA_SECRET_TAILSCALE_AUTHKEY (an ephemeral key of the test
@@ -33,8 +33,7 @@ backups:
   password: generate
   include_models: false
   include_secrets: false
-platform: {enabled: false}
-catalog: {enabled: false}
+platform: null
 images: {build: []}
 secrets:
   generate: all

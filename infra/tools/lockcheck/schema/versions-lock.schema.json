@@ -295,7 +295,8 @@
     "ansible_collections": {
       "$ref": "#/$defs/section",
       "required": [
-        "collections"
+        "collections",
+        "artifacts"
       ],
       "properties": {
         "collections": {
@@ -306,6 +307,43 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/version"
+          }
+        },
+        "artifacts": {
+          "description": "Per collection: Galaxy's artifact (download URL) and its sha256, from make lock-collections; bootstrap installs exactly these, offline and without resolving dependencies.",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "url",
+              "sha256"
+            ],
+            "properties": {
+              "url": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/https_url"
+                  },
+                  {
+                    "$ref": "#/$defs/todo"
+                  }
+                ]
+              },
+              "sha256": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/sha256"
+                  },
+                  {
+                    "$ref": "#/$defs/todo"
+                  }
+                ]
+              }
+            }
           }
         },
         "fallback": {

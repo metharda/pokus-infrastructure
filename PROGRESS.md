@@ -177,14 +177,12 @@ repository at 3f (section J).
 ## Current state
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
-  owner merges to `main`. Last step commit: `3da2671` (3d.5); then the
-  quiet gate and the split of this file into it and the archive: `21f5ba5`.
+  owner merges to `main`. Last step commit: `a686e28` (3d.6).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
-  1-5 (with 3d.4b). The commit of each is in the table below and, for the
+  1-6 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
-- 3d.6 is built and waits for the owner's "commit" (its items below,
-  Remaining plan; the details in `infra/docs/IMPLEMENTATION_NOTES.md`,
-  "Contract v2, step 6").
+- 3d.7 is built and waits for the owner's "commit" (summary and commit
+  proposal given with it); then 3d.8.
 
 ### Status of the plan of section J
 
@@ -196,7 +194,7 @@ repository at 3f (section J).
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-5 and 4b done; 6 built, waiting for "commit"; 7-8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-6 and 4b done; 7 built, waiting for "commit"; 8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -233,79 +231,42 @@ proposal, and waits for the owner's "commit".
   reachable only by an allowlist of infra UIDs (the alternative of
   ADR-0016), restore of exactly the recorded commit and tree hash, V7 (GPU
   compute capability 7.5) and doctor's check of the query socket link.
-- **3d.6** (infra §16 step 20), first the owner's decisions with the
-  "commit" for 3d.5, each with tests:
-  - **Size caps (first item):** `training_caps` gains a maximum dataset
-    size and a maximum combined size of `/output` and `/checkpoints` per
-    run, with conservative defaults. The arbiter checks free disk space
-    before it starts a run, and stops the run and records it as failed
-    when a cap is exceeded. `/tmp` in the job container is a tmpfs with a
-    size limit counted against the job's memory.
-  - **Resume:** `pinka start` and a reboot behave the same way: a
-    resumable interrupted run resumes in both cases, and the resume is
-    logged as a transition.
-  - **Lab node private key:** 0600 root on a lab node; `root:pinka-inference`
-    0640 only where `pinka-inference` needs it.
-  - **Purge:** `pinka platform purge` reloads the inference guard, so no
-    purged platform UID stays on the allowlist.
-  - **Hash format:** specify and test that paths are sorted bytewise (C
-    locale), with the exact line format, so the same tree gives the same
-    hash on every machine.
-  - **`training_caps` at submission** stays (approved), but validation and
-    doctor warn when a deployed job's resources exceed the host's
-    `training_caps`.
-  - Then step 20: the reference platform `refplat` with its training job
-    and CPU-only variant, the isolation probe per loopback-capable profile,
-    the extended check-mode job, the `make test-distros` additions.
-  - Planned for earlier steps and not built yet (found when this file was
-    split): the SMT warning of P3a (siblings of one core in different CPU
-    sets; installer and doctor), and interpretation 11.13 as changed by the
-    owner (once paired, the split-inference ports accept only the paired
-    peer's tailnet address; the pairing port is open only while pairing).
-    Both approved for 3d.6 (owner, with the "commit" for the quiet gate).
-    11.13 is security-relevant and gets its own tests, among them one that
-    proves an unpaired tailnet address is refused after pairing.
-  - The `SyntaxWarning: invalid decimal literal` that ansible-lint printed
-    once (`<unknown>:1`, a compiled string, not a file) did not recur in
-    three further runs (warm cache, cold cache, `make lint-ansible`). When
-    it recurs (the quiet gate counts it), trace it with a
-    `warnings.showwarning` hook that prints the stack: if it is in this
-    repository's code, fix it in 3d.6; if it is third-party, name the file
-    and leave it (owner decision).
-  - **Setup tooling (owner, with the "commit" for `8d4e290`; one small
-    item, no new check that duplicates an existing one):** a Galaxy
-    fallback in `make setup`: the lock records, for every collection, its
-    pinned GitHub release tarball URL and that tarball's sha256; when
-    Galaxy is unreachable, setup downloads those tarballs, checks each
-    sha256, installs them and then runs the existing `FILES.json` check
-    unchanged; no unpinned source, no "latest", and a failed download or
-    checksum stops setup with a clear message. A uv bootstrap: when the uv
-    on `PATH` is not the pinned version, setup downloads the pinned uv into
-    `build/tools/` with the existing sha256 check and continues with it.
-    Tests: Galaxy unreachable (the fallback installs and verifies the
-    collections), a wrong tarball checksum stops setup, the uv bootstrap.
-    Docs: what setup downloads, from where, and how each download is
-    verified. Then the known issue on fresh sessions reads: a machine that
-    reaches PyPI, npm and GitHub runs `make setup` and the full gate from
-    the repository alone; only the PostgreSQL 18 SQL tests run in CI only.
-  - **Built (waiting for "commit"):** every item above. The size caps
-    (`dataset_max`, `run_storage_max`, `tmp_max`), resume after `pinka
-    start` as after a reboot, the lab node's key, the guard reload on purge,
-    the hash format, the `training_caps` warnings, the SMT warning, 11.13
-    (the split guard, with the test that an unpaired tailnet address is
-    refused after pairing) and the setup tooling. Step 20: `refplat` in
-    `infra/tests/reference-platform/` with `tune` and `tunecpu`, its
-    content package and its tests; the isolation probe of its agent and per
-    loopback-capable profile; the extended check-mode job with `refplat`
-    enabled; the `make test-distros` stages `platform`, `isolation`,
-    `training`, `resume`, `redeploy`, `replace` and `restore`. Fixed on the
-    way: the arbiter read the platform's name from `active.json` under the
-    wrong key. The `SyntaxWarning` did not recur. Choices made within 3d
-    and open for the owner are listed in the notes ("Interpretations
-    awaiting owner confirmation (3d.6)").
 - **3d.7** (infra §16 step 21): the installer (release inspection, the
   Platform review screen, the GPU screen, sources, secrets, answers schema,
-  snapshots), and the removal of the V5 exclusion (see 3d above).
+  snapshots), and the removal of the V5 exclusion (see 3d above). With the
+  owner's decisions with the "commit" for 3d.6 (recorded in the
+  [archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
+  each with tests:
+  - **Bootstrap collections:** every collection, transitive dependencies
+    such as `community.library_inventory_filtering_v1` included, pinned by
+    version and sha256 (shared with the fallback entries), downloaded with
+    the existing verified downloader, installed with `--offline --no-deps`,
+    then `ansible-galaxy collection verify --offline`.
+  - **`make lock-collections`:** maintainer tooling that only reads public
+    URLs and prints every locked collection's artifact URL and sha256 in the
+    lock's format; documented as run only by a maintainer when pinning or
+    upgrading, its output reviewed before it is committed, an upgrade
+    landing only after the full gate and CI pass. The owner runs it and
+    pastes the output; the assistant records it and removes those
+    `TODO(verify)` markers.
+  - **Fallback:** nothing is built for it until the owner decides on the
+    answer given with this step's start (the GitHub file is not Galaxy's
+    artifact; the alternative proposed there).
+  - **Bundled collections:** a proposal only (size, license files, fit with
+    the release and the distribution tests); the owner decides.
+  - **Golden images:** each image's full package list (name, version,
+    architecture) in its fingerprint record, with a test. No snapshot
+    repositories for now.
+  - **refplat:** a minimal `inference-broker` service, so the broker's
+    access to the inference API is proven positive in the VMs.
+  - Built (waiting for "commit"): all of the above but the fallback and the
+    bundling (owner decisions) and the artifact pins (owner's
+    `make lock-collections` output); the V5 exclusion is removed; the
+    test-distros harness enables, replaces and restores the platform
+    through the installer's answers (the interim host_vars and vault
+    writes approved until 3d.7 are gone); `--replace-platform` reaches the
+    installer's inspection; the CI failures of `a686e28` are fixed (see
+    Known issues).
 - **3d.8** (infra §16 step 22): documentation (contract v2 with
   `docs/contracts.md` rewritten for v2, generated references, new pages,
   ADR-0014 and ADR-0015, security).
@@ -400,7 +361,7 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | V2 | infra §12.1 (`requires`) | the health gate checks exactly the declared facilities | a manifest that uses a facility it does not declare is refused (`facility-undeclared`): profiles `sandbox-operator` and `restricted-operator` need `incus`, `inference-broker` needs `inference`, `gpu-trainer` jobs need `gpu`; the fields `policy` need `opa`, `dashboards` and `telemetry` need `telemetry`, `backup.database: true` needs `postgres` (`contract/profiles.yml`, `facilities`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
 | V3 | infra §7.14 step 5, §12.1 (`runtime: python-uv`); platform spec (release layout) | `uv sync --frozen` builds the release | two build phases: locked wheels with network, nothing built or compiled; then the release built offline with the backend from a `build` dependency group. A release with a `[build-system]` locks its backend in that group, and every dependency is a wheel. Approved with the "commit" for 3d.3; to be carried into the platform spec too |
 | V4 | infra §7.14 (hardening baseline), §6.2 | `RuntimeDirectory=pinka/platform/<service>` | no `RuntimeDirectory=` on the socket directories: socket units create `/run/pinka/platform/<service>/` (root, 0755). Approved with the "commit" for 3d.3 on condition that a service that needs its own runtime directory gets one at a separate path that contains no sockets; done in 3d.4 (`/run/pinka/platform-runtime/<service>`) |
-| V5 | infra §11 (neutrality lint) | the lint excludes test fixtures, docs and the reserved list | the installer and its answers files are excluded too, as an explicit named exclusion in the lint configuration with a comment pointing to 3d.7. Approved with the "commit" for 3d.3; 3d.7 must remove it |
+| V5 | infra §11 (neutrality lint) | the lint excludes test fixtures, docs and the reserved list | the installer and its answers files are excluded too, as an explicit named exclusion in the lint configuration with a comment pointing to 3d.7. Approved with the "commit" for 3d.3; removed in 3d.7 (the installer and `tests/answers/` are scanned, a test keeps it so) |
 | V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
 | V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
@@ -455,7 +416,7 @@ read-only; the owner keeps its master for `pokus-platform`):
   locks its build backend in a `[dependency-groups] build` group and every
   dependency is available as a wheel; infra builds it in two phases (locked
   wheels with network, then the release built offline).
-- Found in 3d.6, proposed (owner decision pending): infra's database
+- Found in 3d.6, approved with the "commit" for 3d.6: infra's database
   bootstrap gives a platform's service roles no privilege on the schemas
   `public` and `restricted`; the platform's `migrate` hook grants its own
   services what they use (usage on the schemas, rights on the tables), and
@@ -496,7 +457,8 @@ project files at the monorepo root (3f).
 ## TODO(verify)
 
 `make verify-todos` lists every marker in the tree (110 after step 13, 117
-after 3d.6 with the Galaxy fallback pins; details
+after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
+collection artifacts; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
 step 4" through "after step 13"):
 
@@ -546,6 +508,11 @@ step 4" through "after step 13"):
   enrollment with `mokutil` (`infra/installer/pokus_installer/tui/screens_install.py`).
 - 3d.6: the release tarball URL and sha256 of each pinned Ansible
   collection (`ansible_collections.fallback` in `infra/versions.lock.yml`).
+- 3d.7: the Galaxy artifact URL and sha256 of each of the five pinned
+  collections (`ansible_collections.artifacts` in `infra/versions.lock.yml`,
+  10 lines) and their copy in the generated `infra/bootstrap/lib/pins.sh`
+  (5 lines); `make lock-collections` prints them on a machine that reaches
+  Galaxy.
 
 ## Known issues
 
@@ -577,6 +544,38 @@ step 4" through "after step 13"):
   verified, setup without Galaxy stops and says so; this session's
   collections were installed earlier from the release tags into the
   git-ignored `infra/.ansible-collections/`, which setup verifies and keeps.
+  Since 3d.7 the lock also holds `community.library_inventory_filtering_v1`
+  1.1.5 (a dependency of `community.docker`); it has no fallback entry
+  until the owner decides on the fallback (3d.7 finding: the GitHub
+  releases carry no Galaxy artifact), so setup without Galaxy names it as
+  missing. In this session it was installed into the same git-ignored
+  directory from its release tag 1.1.5 (commit
+  `5f70dd8678885157cb186e8b64382a30cab3e12f`), which setup verifies.
+- Since 3d.7 bootstrap installs the collections only from the artifacts of
+  `ansible_collections.artifacts` in the lock, each after its sha256
+  matched. Their URLs and sha256s are `TODO(verify)` until the owner's
+  `make lock-collections` output is recorded (Galaxy is unreachable here);
+  until then bootstrap on a host ends with exit code 50 at the Ansible
+  environment and names the unverified pin.
+- CI's `infra` workflow was red on `a686e28` (3d.6), found in 3d.7 from
+  the run's logs (the build environment cannot run the check-mode lanes:
+  no Docker daemon): every `check-mode` and `check-mode-extended` job
+  stopped at `users_groups`, whose argument spec still required
+  `service_accounts`, which 3d.3 (`212121c`) had removed from group_vars;
+  the uv tests failed because 3d.6's Makefile installed uv to a doubled
+  path in CI (`infra//home/runner/...`); the drift check failed because the
+  generated `pinka-platform` reference held this checkout's path as the
+  `--contract` default (since 3d.1). All three are fixed in 3d.7, each with
+  a test (every required role option has a source; no generated file names
+  the checkout's path; the uv install path). The check-mode lanes have not
+  run past `users_groups` since 3d.3; their result after the fix is known
+  only from CI. `lock-check` stays red while `TODO(verify)` markers remain.
+- The installer TUI passed `--skip-tags=images` (images chosen, built
+  later) and `--tags=...` to bootstrap, whose parser accepted only the
+  space-separated form, so such an install stopped with a usage error
+  (since step 13). Fixed in 3d.7: options with a value also take
+  `--option=value`, with a test that bootstrap accepts every option the
+  TUI builds.
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
   for MkDocs team announces that MkDocs 2.0 removes plugins. Builds work with
   the pin; the replacement decision belongs to the docs-site plugin review
@@ -637,9 +636,8 @@ step 4" through "after step 13"):
 
 ## Next step
 
-The owner's "commit" for 3d.6 (the commit proposal ends the summary of
-3d.6); then 3d.7 (infra §16 step 21, the installer and the removal of the
-V5 exclusion), see [Remaining plan](#remaining-plan). Each 3d step waits for
-the owner's "commit" under the [Process rules](#process-rules-in-force).
-Still open: the remaining `TODO(verify)` items (117), which need network
-access or reference hardware.
+The owner's "commit" for 3d.7 (infra §16 step 21), then 3d.8, under the
+[Process rules](#process-rules-in-force). Owner input pending: the output of
+`make lock-collections`, the decision on the fallback, and the decision on
+bundling the collections. Still open: the remaining `TODO(verify)` items
+(129), which need network access or reference hardware.

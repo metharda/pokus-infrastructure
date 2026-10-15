@@ -5,14 +5,17 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shlex
+import socket
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
-from typing import Any
 
 import pytest
 import yaml
-from ansible.parsing.vault import VaultLib, VaultSecret
 from pinka_test_distros import guest, isolation, refplat
 
 from pinka_platform import contract as contract_mod
@@ -23,7 +26,6 @@ INFRA = Path(__file__).resolve().parents[3]
 PORTS = yaml.safe_load((INFRA / "ansible" / "group_vars" / "all" / "main.yml").read_text())[
     "pinka_default_ports"
 ]
-PASSWORD = "vault-test-password"  # noqa: S105 - a test vault
 
 
 # --- the per-profile probe ------------------------------------------------------------------
@@ -142,7 +144,13 @@ def test_compare_names_every_difference() -> None:
 
 
 def test_the_temporary_account_comes_from_the_platform_range() -> None:
-    probe = isolation.plan(refplat.manifest(), CONTRACT, PORTS)[1]
+    probes = isolation.plan(refplat.manifest(), CONTRACT, PORTS)
+    # The platform's own services are probed as their accounts.
+    assert {p.profile: p.account for p in probes if not p.temporary} == {
+        "controller": "refplat-ctl",
+        "inference-broker": "refplat-broker",
+    }
+    probe = next(p for p in probes if p.temporary)
     create, remove = isolation.account_script(probe)
     assert "seq 60578 61183" in create
     assert "useradd --uid" in create and create.endswith("refplat-probe")
@@ -179,24 +187,72 @@ def test_the_renamed_copy_is_a_valid_release(
     assert (tmp_path / "renamed" / "cases" / "cases.jsonl").is_file()
 
 
-def test_enable_passes_names_never_values() -> None:
-    argv = refplat.enable(
-        "/hv.yml",
-        "/vault.yml",
-        "/pass",
-        platform=refplat.source("file:///root/pinka", "0" * 40, refplat.RELEASE_PATH),
-        content={},
-        data=refplat.manifest(),
-        contract=CONTRACT,
+def test_the_platform_answers() -> None:
+    answers = refplat.platform_answers(
+        refplat.source("file:///root/pinka", "0" * 40, refplat.RELEASE_PATH),
+        {"cases": refplat.source("file:///root/pinka", "0" * 40, refplat.CASES_PATH)},
     )
-    assert argv[:4] == [refplat.GUEST_PYTHON, "-I", refplat.GUEST_HELPER, "enable-platform"]
-    assert argv.count("--postgres-role") == 4
-    assert argv[argv.index("--secret") + 1] == "ctl/api-token"
+    assert answers == {
+        "platform": {
+            "repo": "file:///root/pinka",
+            "ref": "0" * 40,
+            "path": "infra/tests/reference-platform",
+        },
+        "content": {
+            "cases": {
+                "repo": "file:///root/pinka",
+                "ref": "0" * 40,
+                "path": "infra/tests/reference-platform-cases",
+            }
+        },
+        "platform_settings": {"ctl": {"job": "tunecpu"}},
+    }
 
 
-def test_standin_and_transitions() -> None:
+def test_the_standin_is_an_enabled_unit_on_the_vllm_port() -> None:
     script = refplat.standin_script(18704)
-    assert "sport = :18704" in script and f"--unit={refplat.STANDIN_UNIT}" in script
+    assert "sport = :18704" in script
+    assert f"systemctl enable --now --quiet {refplat.STANDIN_UNIT}" in script
+    assert f"/etc/systemd/system/{refplat.STANDIN_UNIT}.service" in script
+    assert "WantedBy=multi-user.target" in script  # it outlives the resume stage's reboot
+    command = refplat.standin_command(18704)
+    assert "%" not in command and "$" not in command  # nothing for systemd to expand
+    assert command.endswith(f" 18704 {refplat.STANDIN_MODEL}")
+    lab = {"vllm": {"health_url": "http://127.0.0.1:18704/health"}}
+    assert refplat.vllm_port(lab) == 18704
+    with pytest.raises(ValueError, match="no vLLM port"):
+        refplat.vllm_port({})
+
+
+def test_the_standin_answers_like_vllm(tmp_path: Path) -> None:
+    # The unit's own command, with this interpreter: /health and /v1/models.
+    with socket.socket() as free:
+        free.bind(("127.0.0.1", 0))
+        port = free.getsockname()[1]
+    argv = shlex.split(refplat.standin_command(port, sys.executable))
+    server = subprocess.Popen(argv, cwd=tmp_path, stderr=subprocess.PIPE)
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        base = f"http://127.0.0.1:{port}"
+        for _ in range(100):
+            try:
+                health = opener.open(f"{base}/health", timeout=5)
+                break
+            except OSError:
+                time.sleep(0.05)
+        else:
+            raise AssertionError("the stand-in does not answer")
+        assert health.status == 200
+        models = json.loads(opener.open(f"{base}/v1/models", timeout=5).read())
+        assert [m["id"] for m in models["data"]] == [refplat.STANDIN_MODEL]
+        with pytest.raises(urllib.error.HTTPError, match="404"):
+            opener.open(f"{base}/v1/completions", timeout=5)
+    finally:
+        server.terminate()
+        server.communicate(timeout=10)
+
+
+def test_transitions_and_answers() -> None:
     log = "\n".join(
         json.dumps(x)
         for x in (
@@ -214,79 +270,9 @@ def test_standin_and_transitions() -> None:
 # --- the guest helper -----------------------------------------------------------------------
 
 
-def write_vault(path: Path, data: dict[str, Any]) -> VaultLib:
-    lib = VaultLib([("default", VaultSecret(PASSWORD.encode()))])
-    path.write_bytes(lib.encrypt(yaml.safe_dump(data).encode()))
-    return lib
-
-
-def test_enable_platform_keeps_existing_secrets(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    host_vars = tmp_path / "hv.yml"
-    host_vars.write_text("machine_name: lab\nplatform: {}\n")
-    vault = tmp_path / "vault.yml"
-    lib = write_vault(vault, {"vault_postgres_passwords": {"refplat_ctl": "kept"}, "other": 1})
-    (tmp_path / "pass").write_text(PASSWORD + "\n")
-    platform = {"repo": "file:///root/pinka", "ref": "0" * 40, "path": "x"}
-    argv = [
-        "enable-platform",
-        "--host-vars",
-        str(host_vars),
-        "--vault",
-        str(vault),
-        "--vault-password-file",
-        str(tmp_path / "pass"),
-        "--platform",
-        json.dumps(platform),
-        "--settings",
-        json.dumps({"ctl": {"job": "tunecpu"}}),
-        "--postgres-role",
-        "refplat_ctl",
-        "--postgres-role",
-        "refplat_migrator",
-        "--secret",
-        "ctl/api-token",
-    ]
-    assert guest.main(argv) == 0
-    out = json.loads(capsys.readouterr().out)
-    assert out == {
-        "added": [
-            "vault_postgres_passwords.refplat_migrator",
-            "vault_platform_secrets.ctl.api-token",
-        ],
-        "ok": True,
-    }
-    hv = yaml.safe_load(host_vars.read_text())
-    assert hv == {
-        "machine_name": "lab",
-        "platform": platform,
-        "content": {},
-        "platform_settings": {"ctl": {"job": "tunecpu"}},
-    }
-    stored = yaml.safe_load(lib.decrypt(vault.read_bytes()))
-    assert stored["vault_postgres_passwords"]["refplat_ctl"] == "kept"
-    new = stored["vault_postgres_passwords"]["refplat_migrator"]
-    assert len(new) >= 32 and new not in json.dumps(out)
-    assert stored["vault_platform_secrets"]["ctl"]["api-token"]
-    assert stored["other"] == 1
-    assert vault.stat().st_mode & 0o777 == 0o600
-    # A second run adds nothing and leaves the vault as it is.
-    before = vault.read_bytes()
-    assert guest.main(argv) == 0
-    assert json.loads(capsys.readouterr().out)["added"] == []
-    assert vault.read_bytes() == before
-
-
-def test_set_host_vars_and_the_waits(
+def test_the_waits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    host_vars = tmp_path / "hv.yml"
-    host_vars.write_text("a: 1\n")
-    values = json.dumps({"restore_snapshot": "latest"})
-    assert guest.main(["set-host-vars", "--host-vars", str(host_vars), "--values", values]) == 0
-    assert yaml.safe_load(host_vars.read_text()) == {"a": 1, "restore_snapshot": "latest"}
-    capsys.readouterr()
     jobs = tmp_path / "jobs"
     assert guest.checkpoint("r1", 3, jobs) is None
     (jobs / "r1" / "checkpoints").mkdir(parents=True)

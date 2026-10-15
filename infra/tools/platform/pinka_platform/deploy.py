@@ -541,6 +541,119 @@ def vault_keys(
     return {"needed": needed, "missing": [k for k in needed if k not in have]}
 
 
+def inspect_release(
+    settings: Settings,
+    paths: Paths,
+    contract: Contract,
+    *,
+    git: mirror.Git = mirror.run_git,
+    host: Callable[[str], names.HostFacts | None] = names.host_facts,
+    owner_uid: int | None = None,
+) -> dict[str, Any]:
+    """Inspect the release alone, before its content and settings are known (§18.4 screen 12).
+
+    The installer asks for the source of every content package, the secrets
+    and each service's settings only after it knows the manifest: this fetches
+    and validates the release source exactly as :func:`prepare` does (the same
+    mirrors, pins, signed tags and release checks) and reports what the
+    release needs. The staged copy is deleted again; nothing else changes.
+
+    Args:
+        settings: Host settings (``content`` and ``platform_settings`` are not read).
+        paths: Host paths.
+        contract: The contract.
+        git: Command runner.
+        host: Host facts for a platform name (None skips the host checks).
+        owner_uid: Accepted owner of ``file://`` repositories besides root.
+
+    Returns:
+        The release, its summary, its content packages, secrets and config
+        schemas per service, and the vault keys it needs.
+
+    Raises:
+        Refused: Every reason to refuse.
+        mirror.FetchError: The repository could not be fetched.
+    """
+    release_source, _, problems = sources.parse(settings.platform, {})
+    if release_source is None and not problems:
+        problems.append(Problem("source-setting", sources.RELEASE, "no platform source is set"))
+    uid = sources.owner_uid() if owner_uid is None else owner_uid
+    if (
+        release_source is not None
+        and release_source.transport == "file"
+        and (why := sources.file_repo_problem(release_source.repo, uid))
+    ):
+        problems.append(Problem("source-transport", f"{release_source.label}.repo", why))
+    if problems or release_source is None:
+        raise Refused(problems)
+    mirrors = _fetch_all(git, paths, [release_source], settings)
+    paths.staging.mkdir(mode=0o700, parents=True, exist_ok=True)
+    run = Path(tempfile.mkdtemp(prefix="inspect-", dir=paths.staging))
+    try:
+        mirror_dir = mirrors[sources.repo_key(release_source.repo)]
+        release_dir = run / "release"
+        try:
+            resolved = mirror.resolve(
+                git, mirror_dir, release_source.ref, release_source.path, release_source.tag_prefix
+            )
+            _check_pins(release_source, resolved)
+            signed = _signature(git, mirror_dir, release_source, resolved, settings)
+            release_dir.mkdir(parents=True)
+            mirror.extract(mirror_dir, resolved.commit, release_source.path, release_dir)
+        except mirror.SourceError as exc:
+            raise Refused([Problem(exc.code, release_source.label, str(exc))]) from None
+        try:
+            platform = str(
+                load_file(release_dir / MANIFEST_NAME, int(contract.caps["manifest_bytes"])).get(
+                    "name", ""
+                )
+            )
+        except ManifestError:
+            platform = ""
+        facts = host(platform) if PLATFORM_NAME_RE.match(platform) else None
+        result = validate.validate_release(release_dir, contract, facts)
+        manifest = result.manifest
+        if manifest is None or result.problems:
+            raise Refused(result.problems)
+        schemas: dict[str, Any] = {}
+        for service in manifest["services"]:
+            if "config" in service:
+                try:
+                    schemas[service["name"]] = config.load_schema(release_dir / service["config"])
+                except (OSError, ValueError) as exc:
+                    problem = Problem("config-schema", service["config"], f"cannot be read: {exc}")
+                    raise Refused([problem]) from None
+        return {
+            "platform": {
+                "name": platform,
+                "version": manifest["version"],
+                "runtime": manifest["runtime"],
+                "manifest_sha256": sha256_file(release_dir / MANIFEST_NAME),
+            },
+            "release": {
+                "source": release_source.as_dict(),
+                "commit": resolved.commit,
+                "tree": resolved.tree,
+                "tag": resolved.tag,
+                "name": resolved.name,
+                "signed_tag": signed,
+            },
+            "summary": validate.summary(manifest, contract),
+            "content": [
+                {"name": c["name"], "restricted": c["restricted"], "required": c["required"]}
+                for c in manifest.get("content", [])
+            ],
+            "secrets": {
+                s["name"]: list(s["secrets"]) for s in manifest["services"] if s.get("secrets")
+            },
+            "config": schemas,
+            "vault_keys": vault_keys(manifest, contract, settings.vault_keys),
+            "warnings": validate.caps_warnings(manifest, settings.lab.get("training_caps") or {}),
+        }
+    finally:
+        shutil.rmtree(run, ignore_errors=True)
+
+
 def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
     settings: Settings,
     paths: Paths,

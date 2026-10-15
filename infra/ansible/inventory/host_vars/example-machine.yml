@@ -70,6 +70,37 @@ vllm_default_deployment:           # null = install vLLM but serve nothing
 
 postgres_shared_buffers: 2GB
 
+# The GPU arbiter: after boot, serve the default deployment or stay idle; and
+# bring the deployment served before a training run back when the run ends.
+gpu_arbiter:
+  after_boot: serve
+  restore_after_training: true
+# Caps on training jobs; the GPU arbiter refuses every run of a job over them.
+training_caps:
+  timeout_seconds: 86400
+  memory_max: 24G
+  cpus: 8
+  dataset_max: 8G
+  run_storage_max: 16G
+  tmp_max: 1G
+
+# The platform release to deploy (contract v2): {repo, ref, path, tag_prefix};
+# {} for a lab without a platform. repo: an SSH URL (read with the deploy key
+# this host generates), an anonymous https:// URL or a root-owned file:///
+# repository; ref: a tag (recommended), branch or full commit; path: the
+# release's subdirectory ("" for the root); tag_prefix: its release tags.
+# For example: {repo: "git@github.com:example-org/example-platform.git",
+# ref: "example-v0.1.0", path: "release/", tag_prefix: "example-v"}.
+platform: {}
+# One source per content package the platform's manifest declares, such as
+# {cases: {repo: "<as above>", ref: "cases-v1", path: "cases/", tag_prefix: "cases-v"}}.
+content: {}
+# Deploy only tags with a valid SSH signature of an allowed signer
+# (pinka_allowed_signers in group_vars/all/main.yml).
+require_signed_tags: false
+# Non-secret settings per service, checked against the service's config schema.
+platform_settings: {}
+
 # Publish Grafana on the tailnet with `tailscale serve` (never Funnel).
 grafana_tailscale_serve: false
 

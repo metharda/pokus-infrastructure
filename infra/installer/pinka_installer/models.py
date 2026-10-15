@@ -1,6 +1,6 @@
 """Pinning a model in ``models.lock.yml`` (BUILD_PROMPT §18.4 screen 9, docs/how-to/add-a-model.md).
 
-The TUI resolves a catalog entry or a custom repository to a full commit and
+The TUI resolves an entry of models.catalog.yml or a custom repository to a full commit and
 the sha256 of every file vLLM needs, from the Hugging Face Hub's API: the tree
 of the commit gives the sha256 of files stored in Git LFS (the weights); the
 small files are downloaded at the pinned commit and hashed. Nothing is pinned
@@ -201,7 +201,8 @@ def lock_entry(
         repo: ``<owner>/<name>``.
         revision: The 40-hex commit.
         files: The pinned files.
-        meta: license, gated, quantization and notes (catalog entry or the operator's input).
+        meta: license, gated, quantization and notes (the listed model's entry or the
+            operator's input).
 
     Returns:
         The entry.

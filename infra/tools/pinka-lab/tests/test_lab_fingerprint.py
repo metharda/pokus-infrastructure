@@ -24,8 +24,24 @@ CACHE = "/var/lib/pinka/fingerprint/current.json"
 PROFILE_PATH = "/etc/pinka/host-profile.json"
 
 
+PACKAGES = [
+    {"name": "libc6", "version": "2.0-1", "architecture": "amd64"},
+    {"name": "tzdata", "version": "3.0-1", "architecture": "all"},
+]
+RECORD_PATH = "/srv/pinka/images/_base/1.0.0/build.json"
+
+
+def record(**changes: Any) -> str:
+    # The export record of _base/1.0.0, written by the images role.
+    data = {"schema_version": 1, "alias": "_base/1.0.0", "fingerprint": "f" * 64}
+    data["packages"] = list(reversed(PACKAGES))
+    data.update(changes)
+    return json.dumps(data)
+
+
 def host(**extra_files: str) -> FakeSystem:
     files = {
+        RECORD_PATH: record(),
         PROFILE_PATH: json.dumps(PROFILE),
         "/etc/pinka/bootstrap-state.json": json.dumps(
             {"repo_commit": "c" * 40, "infra_tree": "d" * 40, "infra_dirty": False}
@@ -76,6 +92,53 @@ def host(**extra_files: str) -> FakeSystem:
     )
 
 
+class GoldenImagePackagesTest(unittest.TestCase):
+    # Every result can be traced to the exact package versions of its targets:
+    # the packages of each golden image are part of the hashed fingerprint.
+
+    def images(self, **files: str) -> dict[str, Any]:
+        fp = fingerprint.compute(host(**files), lab())["fingerprint"]
+        images: dict[str, Any] = fp["software"]["golden_images"]
+        return images
+
+    def test_a_changed_package_changes_the_hash(self) -> None:
+        changed = [dict(PACKAGES[0], version="2.0-2"), PACKAGES[1]]
+        a = fingerprint.compute(host(), lab())["hash"]
+        b = fingerprint.compute(host(**{RECORD_PATH: record(packages=changed)}), lab())["hash"]
+        self.assertNotEqual(a, b)
+
+    def test_unproven_lists_are_null(self) -> None:
+        cases = {
+            "missing record": "",
+            "not JSON": "{",
+            "record of another image": record(fingerprint="e" * 64),
+            "no list": record(packages=None),
+            "a field missing": record(packages=[{"name": "libc6", "version": "2.0-1"}]),
+            "an extra field": record(packages=[dict(PACKAGES[0], status="installed")]),
+            "an empty version": record(packages=[dict(PACKAGES[0], version="")]),
+        }
+        for case, text in cases.items():
+            with self.subTest(case):
+                entry = self.images(**{RECORD_PATH: text})["_base/1.0.0"]
+                self.assertEqual(entry, {"fingerprint": "f" * 64, "packages": None})
+
+    def test_only_a_golden_image_alias_names_an_export(self) -> None:
+        # A valid record where a path-escaping alias would point is not read.
+        system = host(**{"/srv/pinka/images/../x/build.json": record()})
+        system.commands["incus image list --format json"] = (
+            0,
+            [{"fingerprint": "f" * 64, "aliases": [{"name": "../x"}, {"name": "x"}]}],
+        )
+        images = fingerprint.compute(system, lab())["fingerprint"]["software"]["golden_images"]
+        self.assertEqual(
+            images,
+            {
+                "../x": {"fingerprint": "f" * 64, "packages": None},
+                "x": {"fingerprint": "f" * 64, "packages": None},
+            },
+        )
+
+
 class CanonicalTest(unittest.TestCase):
     def test_canonical_and_hash(self) -> None:
         self.assertEqual(fingerprint.canonical({"b": 1, "a": "ü"}), '{"a":"ü","b":1}')
@@ -106,7 +169,10 @@ class ComputeTest(unittest.TestCase):
         self.assertEqual(
             software["containers"]["pinka-postgres"], "docker.io/library/postgres@" + DIGEST
         )
-        self.assertEqual(software["golden_images"], {"_base/1.0.0": "f" * 64})
+        self.assertEqual(
+            software["golden_images"],
+            {"_base/1.0.0": {"fingerprint": "f" * 64, "packages": PACKAGES}},  # sorted
+        )
         config = fp["config"]
         self.assertEqual(config["infra_commit"], "c" * 40)
         self.assertEqual(config["versions_lock_sha256"], "0" * 64)

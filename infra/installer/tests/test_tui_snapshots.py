@@ -1,9 +1,11 @@
 """Snapshots of every installer screen at 80x24 and 120x40, dark and light (BUILD_PROMPT §18.9).
 
 The screens show a WSL2 host with a GPU (preflight's own fixture) and a
-filled-in wizard. Update the snapshots after a deliberate change with
-``pytest installer/tests/test_tui_snapshots.py --snapshot-update`` and review
-every changed SVG.
+filled-in wizard; the Platform and Platform review screens the reference
+platform's release (its real manifest, through the platform tool). Update
+the snapshots after a deliberate change with ``pytest
+installer/tests/test_tui_snapshots.py --snapshot-update`` and review every
+changed SVG.
 """
 
 from __future__ import annotations
@@ -13,9 +15,10 @@ from typing import Any
 
 import pytest
 from textual.pilot import Pilot
-from tui_fakes import FakeHost, FakeRunner, app, context, preflight
+from tui_fakes import FakeHost, FakeRunner, app, context, preflight, refplat_inspection
 
 from pinka_installer import answers as answers_mod
+from pinka_installer import release
 from pinka_installer.paths import Paths
 from pinka_installer.tui.app import SCREENS, InstallerApp
 from pinka_installer.tui.screens_install import SignalScreen
@@ -49,6 +52,18 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     )
     if screen == "restore":
         answers.mode = "restore"
+    if screen in ("platform", "platform_review"):
+        # The reference platform, inspected (screen 12) and reviewed (screen 13).
+        url = "file:///srv/git/refplat.git"
+        answers.platform = answers_mod.Source(url, "refplat-v0.1.0", "release", "refplat-v")
+        answers.content = {
+            "cases": answers_mod.Source(url, "cases-v1", "cases", "cases-v"),
+        }
+        answers.platform_settings = {"ctl": {"job": "tunecpu"}}
+        wizard.release = refplat_inspection(answers, full=False)
+        wizard.release_source = (url, "refplat-v0.1.0", "release", "refplat-v")
+        wizard.review = refplat_inspection(answers, full=True)
+        wizard.review_key = release.review_key(answers)
     first = "welcome" if screen == "signal" else screen
     return app(ctx, first=first, theme=theme)
 

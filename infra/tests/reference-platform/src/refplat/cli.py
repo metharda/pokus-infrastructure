@@ -1,8 +1,9 @@
 """``refplat``, the researchers' CLI: it talks to the controller over ``api``.
 
 ``refplat status | dataset | train [--job J] [--seed N] [--steps N]
-[--step-seconds S] [--wait] | runs | lineage RUN | probe-report``; every
-answer is printed as JSON.
+[--step-seconds S] [--wait] | runs | lineage RUN | probe-report``, and
+``refplat infer``, which asks the broker over ``infer`` for the models of the
+inference API; every answer is printed as JSON.
 """
 
 from __future__ import annotations
@@ -14,14 +15,14 @@ import time
 from collections.abc import Sequence
 from typing import Any
 
-from refplat.common import API_SOCKET, RefplatError, request
+from refplat.common import API_SOCKET, BROKER_SOCKET, RefplatError, request
 from refplat.training import FINAL
 
 WAIT_SECONDS = 5.0
 
 
-def _call(value: dict[str, Any]) -> dict[str, Any]:
-    answer = request(API_SOCKET, value, timeout=3600)
+def _call(value: dict[str, Any], *, broker: bool = False) -> dict[str, Any]:
+    answer = request(BROKER_SOCKET if broker else API_SOCKET, value, timeout=3600)
     if not answer.get("ok"):
         raise RefplatError(str(answer.get("error")))
     return answer
@@ -41,7 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run a command."""
     parser = argparse.ArgumentParser(prog="refplat", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("status", "dataset", "runs", "probe-report"):
+    for name in ("status", "dataset", "runs", "probe-report", "infer"):
         sub.add_parser(name)
     train = sub.add_parser("train")
     train.add_argument("--job", choices=("tune", "tunecpu"))
@@ -66,6 +67,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 answer = wait(str(answer["run"]), args.wait)
         elif args.command == "lineage":
             answer = _call({"command": "lineage", "run": args.run})
+        elif args.command == "infer":
+            answer = _call({"command": "models"}, broker=True)
         else:
             answer = _call({"command": args.command})
     except RefplatError as exc:

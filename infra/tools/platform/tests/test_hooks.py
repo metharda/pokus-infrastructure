@@ -18,6 +18,9 @@ from platform_testlib import CONTRACT, manifest
 
 from pinka_platform import accounts, cli, hooks, layout, names, units
 
+# The one port refplat's units read: the broker's researcher endpoint.
+PORTS = {"gateway_adhoc": 18705}
+
 PACKAGE = Path(hooks.__file__).resolve().parents[1]
 
 
@@ -369,7 +372,7 @@ def test_wait_healthy_gives_up_at_the_deadline() -> None:
 
 def test_reconcile_runs_before_the_services_through_the_wrapper() -> None:
     data = manifest("refplat")
-    texts = units.render(data, CONTRACT, rendered_accounts("refplat"), {})
+    texts = units.render(data, CONTRACT, rendered_accounts("refplat"), PORTS)
     text = texts[units.reconcile_unit("refplat")]
     current = layout.release_current("refplat")
     assert "Type=oneshot\n" in text
@@ -381,8 +384,8 @@ def test_reconcile_runs_before_the_services_through_the_wrapper() -> None:
     ) in text
     assert f"User={names.account('refplat', 'ctl')}\n" in text
     assert "RuntimeDirectory=" not in text
-    assert "Before=refplat-ctl.service refplat-agent.service\n" in text
-    for service in ("ctl", "agent"):
+    assert "Before=refplat-ctl.service refplat-agent.service refplat-broker.service\n" in text
+    for service in ("ctl", "broker", "agent"):
         unit = texts[units.service_unit("refplat", service)]
         assert "refplat-reconcile.service" in unit.split("Requires=", 1)[1].split("\n", 1)[0]
         assert "refplat-reconcile.service" in unit.split("After=", 1)[1].split("\n", 1)[0]
@@ -391,6 +394,6 @@ def test_reconcile_runs_before_the_services_through_the_wrapper() -> None:
 def test_without_a_reconcile_hook_there_is_no_reconcile_unit() -> None:
     data = manifest("refplat")
     del data["hooks"]["reconcile"]
-    texts = units.render(data, CONTRACT, rendered_accounts("refplat"), {})
+    texts = units.render(data, CONTRACT, rendered_accounts("refplat"), PORTS)
     assert units.reconcile_unit("refplat") not in texts
     assert all("reconcile" not in text for text in texts.values())

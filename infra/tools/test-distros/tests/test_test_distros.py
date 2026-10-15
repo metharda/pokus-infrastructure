@@ -125,14 +125,15 @@ class FakeIncus:
             "doctor": 0,
             "agent_reached": [],
             "leak": None,
+            "models": [refplat.STANDIN_MODEL],
             "transitions": ["suspended", "resumed", "ok"],
             "replaced": True,
             **behaviour,
         }
         self.runs = 0
         self.platform = "refplat"
-        self.enabled: list[tuple[str, ...]] = []
         self.restarts = 0
+        self.standins = 0
 
     def __call__(self, argv: Sequence[str], *, timeout: float | None = None) -> Result:
         args = tuple(argv)
@@ -177,6 +178,9 @@ class FakeIncus:
             local.write_text(json.dumps({"name": self.platform}))
         elif remote == refplat.ENDPOINTS[1:]:
             local.write_text(endpoints_text(self.platform))
+        elif remote == refplat.LAB[1:]:
+            health = f"http://127.0.0.1:{PORTS['vllm']}/health"
+            local.write_text(json.dumps({"vllm": {"health_url": health}}))
         elif remote == refplat.TRANSITIONS[1:]:
             lines = [
                 json.dumps({"run": "run-resume", "outcome": o})
@@ -198,8 +202,9 @@ class FakeIncus:
         b = self.behaviour
         if "git rev-parse HEAD" in script:
             return 0, f"{RENAMED_COMMIT}\n"
-        if refplat.STANDIN_UNIT in script and "systemd-run" in script:
-            return 0, "started\n"
+        if refplat.STANDIN_UNIT in script and "enable --now" in script:
+            self.standins += 1
+            return 0, "started\n" if self.standins == 1 else "running\n"
         if "--replace-platform" in script and b["replaced"]:
             self.platform = refplat.RENAMED_NAME
         if script == "getenforce":
@@ -219,6 +224,8 @@ class FakeIncus:
             "dataset": {"ok": True, "dataset": "a" * 64},
             "lineage": {"ok": True, "lineage": {"adapter": {"sha256": ADAPTER}}},
         }
+        if args[0] == "infer":
+            return 0, json.dumps({"ok": True, "models": self.behaviour["models"]}) + "\n"
         if args[0] == "train":
             if "--wait" in args:
                 answer = {"ok": True, "run": "run-train", "status": "succeeded", "adapter": ADAPTER}
@@ -228,9 +235,6 @@ class FakeIncus:
         return 0, json.dumps(answers[args[0]]) + "\n"
 
     def guest(self, args: tuple[str, ...]) -> tuple[int, str]:
-        if args[0] == "enable-platform":
-            self.enabled.append(args)
-            return 0, json.dumps({"ok": True, "added": []}) + "\n"
         if args[0] == "wait-report":
             outcomes = [
                 {"name": n, "reached": n in self.behaviour["agent_reached"], "detail": "x"}
@@ -242,7 +246,7 @@ class FakeIncus:
     def probe(self, command: tuple[str, ...]) -> tuple[int, str]:
         profile = command[command.index("--profile") + 1]
         user = next(a for a in command if a.startswith("User="))
-        expected = isolation.expectations(CONTRACT, profile, rendered=user == "User=refplat-ctl")
+        expected = isolation.expectations(CONTRACT, profile, rendered=user != "User=refplat-probe")
         outcomes = [
             {
                 "name": n,
@@ -304,11 +308,13 @@ def test_a_passing_test(tmp_path: Path) -> None:
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
     first, second, deploy, redeploy, replace, restore = [s for s in scripts if "bootstrap.sh" in s]
-    assert "--answers /root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml" in first
+    answers_option = "--answers /root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml"
+    assert answers_option in first
     assert "--accept-degraded" in first and "--answers" not in second
-    assert second.endswith("--machine ptd-debian-13-abcdef") and deploy == redeploy == second
-    assert replace.endswith("--machine ptd-debian-13-abcdef --replace-platform refplat")
-    assert restore.endswith("--machine ptd-debian-13-abcdef --restore")
+    assert second.endswith("--machine ptd-debian-13-abcdef") and redeploy == second
+    # The platform is enabled, replaced and restored through the answers.
+    assert deploy.endswith(answers_option) and restore.endswith(answers_option)
+    assert replace.endswith(f"{answers_option} --replace-platform refplat")
     assert any(s == "pinka backup now" for s in scripts)
     # Secrets travel in 0600 files, never on a command line.
     assert all(AUTHKEY not in " ".join(c) for c in fake.calls)
@@ -325,52 +331,58 @@ def test_a_passing_test(tmp_path: Path) -> None:
     assert (tmp_path / "out" / "debian-13" / "host-profile.json").exists()
 
 
-def option(args: Sequence[str], name: str) -> list[str]:
-    """Every value of an option in a command."""
-    return [args[i + 1] for i, a in enumerate(args) if a == name]
-
-
 def test_the_reference_platform_stages(tmp_path: Path) -> None:
     test, fake = make_test(tmp_path, "debian-13")
     assert test.run()["error"] is None
-    first, second = fake.enabled
-    assert json.loads(option(first, "--platform")[0]) == {
+    out = tmp_path / "out" / "debian-13"
+    first, second, restored = (
+        yaml.safe_load((out / f"{stage}-answers.yml").read_text())
+        for stage in ("platform", "replace", "restore")
+    )
+    assert first["mode"] == second["mode"] == "modify"
+    assert first["machine"]["name"] == "ptd-debian-13-abcdef"
+    assert first["platform"] == {
         "path": "infra/tests/reference-platform",
         "ref": "0" * 40,
         "repo": "file:///root/pinka",
     }
-    assert json.loads(option(first, "--content")[0])["cases"]["path"] == (
-        "infra/tests/reference-platform-cases"
-    )
-    assert json.loads(option(first, "--settings")[0]) == {"ctl": {"job": "tunecpu"}}
-    assert option(first, "--postgres-role") == [
-        "refplat_ctl",
-        "refplat_grafana",
-        "refplat_migrator",
-        "refplat_reader",
-    ]
-    assert option(first, "--secret") == option(second, "--secret") == ["ctl/api-token"]
-    assert json.loads(option(second, "--platform")[0]) == {
+    assert first["content"]["cases"]["path"] == "infra/tests/reference-platform-cases"
+    assert first["platform_settings"] == {"ctl": {"job": "tunecpu"}}
+    # The installer generates the platform's secrets: none in the answers.
+    assert "platform" not in first["secrets"]
+    assert second["platform"] == {
         "path": "release",
         "ref": RENAMED_COMMIT,
         "repo": "file:///root/refplat-renamed",
     }
-    assert all(r.startswith("refplatb_") for r in option(second, "--postgres-role"))
-    # One probe unit per loopback-capable profile; the controller as its own account.
+    # The restore keeps the replaced platform and restores the latest snapshot.
+    assert restored["mode"] == "restore" and restored["restore"] == {"snapshot": "latest"}
+    assert restored["platform"] == second["platform"]
+    # One probe unit per loopback-capable profile; the controller and the
+    # broker as their own accounts, the others as a temporary one.
     probes = [c for c in fake.calls if c[1] == "exec" and "systemd-run" in c]
     users = [next(a for a in c if a.startswith("User=")) for c in probes]
-    assert users == ["User=refplat-ctl"] + ["User=refplat-probe"] * 5
+    own = {"controller": "User=refplat-ctl", "inference-broker": "User=refplat-broker"}
+    assert users == [
+        own.get(profile, "User=refplat-probe") for profile in isolation.loopback_profiles(CONTRACT)
+    ]
     scripts = fake.scripts()
-    assert sum("useradd" in x for x in scripts) == sum("userdel" in x for x in scripts) == 5
-    assert f"systemctl stop {refplat.STANDIN_UNIT}" in scripts
+    assert sum("useradd" in x for x in scripts) == sum("userdel" in x for x in scripts) == 4
+    # The stand-in serves the inference API before the platform is deployed,
+    # as an enabled unit that outlives the reboot; it is never stopped.
+    standin = next(i for i, x in enumerate(scripts) if refplat.STANDIN_UNIT in x)
+    platform_bootstrap = [i for i, x in enumerate(scripts) if "bootstrap.sh" in x][2]
+    assert standin < platform_bootstrap
+    assert not any(f"systemctl stop {refplat.STANDIN_UNIT}" in x for x in scripts)
+    assert fake.standins == 2  # the platform stage, then the isolation stage finds it running
+    assert any(c[-2:] == (refplat.CLI, "infer") for c in fake.calls)
     reports = json.loads((tmp_path / "out" / "debian-13" / "isolation.json").read_text())
     assert [r["profile"] for r in reports] == isolation.loopback_profiles(CONTRACT)
     assert fake.restarts == 1
     assert any("--step-seconds" in c for c in fake.calls)
     record = "/srv/pinka/platforms/refplatb/state/ctl/records/datasets.json"
     assert scripts.index(f"rm -f {record}") < scripts.index(f"test -s {record}")
-    restore = next(c for c in fake.calls if "set-host-vars" in c)
-    assert json.loads(option(restore, "--values")[0]) == {"restore_snapshot": "latest"}
+    assert not any("set-host-vars" in c or "enable-platform" in c for c in fake.calls)
 
 
 @pytest.mark.parametrize(
@@ -379,6 +391,12 @@ def test_the_reference_platform_stages(tmp_path: Path) -> None:
         ({"agent_reached": ["outside tcp"]}, "isolation", "untrusted-agent reached outside tcp"),
         ({"leak": ("observer", "prometheus direct")}, "isolation", "observer reached prometheus"),
         ({"leak": ("controller", "inference api")}, "isolation", "controller must reach inference"),
+        (
+            {"leak": ("inference-broker", "inference api")},
+            "isolation",
+            "inference-broker must reach inference",
+        ),
+        ({"models": []}, "platform", "the broker did not get the inference API's models"),
         ({"transitions": ["ok"]}, "resume", "was not suspended and resumed"),
         ({"replaced": False}, "replace", "the active platform is refplat, expected refplatb"),
     ],

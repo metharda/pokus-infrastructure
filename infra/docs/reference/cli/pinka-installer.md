@@ -66,6 +66,7 @@ Write the files of an answers file (non-interactive).
 ```text
 pinka-installer apply [-h] --answers ANSWERS [--machine MACHINE]
                              --vault-password-file VAULT_PASSWORD_FILE
+                             [--replace-platform NAME]
 ```
 
 | Argument | Value | Default | Description |
@@ -73,6 +74,7 @@ pinka-installer apply [-h] --answers ANSWERS [--machine MACHINE]
 | `--answers` | `ANSWERS` | — | the answers file |
 | `--machine` | `MACHINE` | — | must match the answers (from --machine) |
 | `--vault-password-file` | `VAULT_PASSWORD_FILE` | — | file with the vault password (0600): encrypts a new vault or opens the existing one |
+| `--replace-platform` | `NAME` | — | the active platform the answers' platform may replace (from --replace-platform) |
 
 ### pinka-installer tui
 

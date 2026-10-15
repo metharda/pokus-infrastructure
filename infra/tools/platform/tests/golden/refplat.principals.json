@@ -28,6 +28,15 @@
       "config": null,
       "secrets_dir": null,
       "state": {}
+    },
+    {
+      "name": "broker",
+      "profile": "inference-broker",
+      "account": "refplat-broker",
+      "uid": 2003,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
     }
   ],
   "jobs": [
@@ -35,13 +44,13 @@
       "name": "tune",
       "profile": "gpu-trainer",
       "account": "refplat-tune",
-      "uid": 2003
+      "uid": 2004
     },
     {
       "name": "tunecpu",
       "profile": "gpu-trainer",
       "account": "refplat-tunecpu",
-      "uid": 2004
+      "uid": 2005
     }
   ],
   "sockets": [
@@ -85,6 +94,27 @@
         "humans": [],
         "human_groups": [],
         "root": false
+      }
+    },
+    {
+      "service": "broker",
+      "name": "infer",
+      "path": "/run/pinka/platform/broker/infer.sock",
+      "owner": "refplat-broker",
+      "group": "refplat-broker-infer",
+      "mode": "0660",
+      "fd_name": "infer",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [],
+        "accounts": [],
+        "humans": [
+          "researchers"
+        ],
+        "human_groups": [
+          "pinka"
+        ],
+        "root": true
       }
     }
   ]

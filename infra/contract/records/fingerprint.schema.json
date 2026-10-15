@@ -23,6 +23,29 @@
   },
   "$defs": {
     "nullable_string": {"type": ["string", "null"]},
+    "golden_image": {
+      "description": "One golden image.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fingerprint", "packages"],
+      "properties": {
+        "fingerprint": {"description": "Incus image fingerprint, null if missing.", "type": ["string", "null"]},
+        "packages": {
+          "description": "Every package installed in the image (from the `packages` of its export record `build.json`), sorted by name and architecture; null when the record is missing, is of another image or has no valid list.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version", "architecture"],
+            "properties": {
+              "name": {"description": "Package name.", "type": "string", "minLength": 1},
+              "version": {"description": "Installed version.", "type": "string", "minLength": 1},
+              "architecture": {"description": "Package architecture (such as `amd64` or `all`).", "type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
     "source": {
       "description": "Where a deployed release or content package came from.",
       "type": "object",
@@ -158,9 +181,9 @@
               "additionalProperties": {"type": ["string", "null"]}
             },
             "golden_images": {
-              "description": "Golden image alias (`<blueprint>/<version>`) to Incus image fingerprint.",
+              "description": "Golden image alias (`<blueprint>/<version>`) to its Incus image fingerprint and the packages its build installed.",
               "type": "object",
-              "additionalProperties": {"type": ["string", "null"]}
+              "additionalProperties": {"$ref": "#/$defs/golden_image"}
             }
           }
         },

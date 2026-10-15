@@ -26,6 +26,9 @@ from pinka_lab.system import System
 SCHEMA_VERSION = 1
 DEFAULT_CACHE = "/var/lib/pinka/fingerprint/current.json"
 VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:[-+~.][0-9A-Za-z.]+)?)")
+# A golden image alias names its export directory: <blueprint>/<version>.
+ALIAS_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*/[A-Za-z0-9_][A-Za-z0-9_.+~-]*$")
+PACKAGE_KEYS = ("name", "version", "architecture")
 
 
 class FingerprintError(RuntimeError):
@@ -136,15 +139,50 @@ def _software(system: System, config: LabConfig) -> dict[str, Any]:
         done = system.run(["docker", "inspect", "--format", "{{.Config.Image}}", name], timeout=30)
         containers[name] = done.stdout.strip() if done.ok else None
     images = {}
+    export_root = str(config.get("images", "export_root", default=f"{config.pinka_root}/images"))
     listing = system.run(["incus", "image", "list", "--format", "json"], timeout=60).json() or []
     for image in listing:
         for alias in image.get("aliases") or []:
-            images[alias["name"]] = image.get("fingerprint")
+            images[alias["name"]] = {
+                "fingerprint": image.get("fingerprint"),
+                "packages": _image_packages(
+                    system, export_root, str(alias["name"]), image.get("fingerprint")
+                ),
+            }
     return {
         "versions": versions,
         "containers": containers,
         "golden_images": dict(sorted(images.items())),
     }
+
+
+def _image_packages(
+    system: System,
+    export_root: str,
+    alias: str,
+    image_fingerprint: Any,  # noqa: ANN401
+) -> list[dict[str, str]] | None:
+    # The packages a golden image's build recorded (name, version and
+    # architecture of every installed package), from its export record
+    # <export_root>/<blueprint>/<version>/build.json. Null when the alias is
+    # not a golden image's, the record is missing or of another image, or its
+    # list is missing or malformed: nothing unproven is reported.
+    if not ALIAS_RE.match(alias):
+        return None
+    record = _json_file(system, f"{export_root}/{alias}/build.json")
+    if not image_fingerprint or record.get("fingerprint") != image_fingerprint:
+        return None
+    packages = record.get("packages")
+    if not isinstance(packages, list):
+        return None
+    listed: list[dict[str, str]] = []
+    for entry in packages:
+        if not isinstance(entry, dict) or sorted(entry) != sorted(PACKAGE_KEYS):
+            return None
+        if not all(isinstance(entry[key], str) and entry[key] for key in PACKAGE_KEYS):
+            return None
+        listed.append({key: entry[key] for key in PACKAGE_KEYS})
+    return sorted(listed, key=lambda e: (e["name"], e["architecture"], e["version"]))
 
 
 def _platform(system: System, path: str) -> dict[str, Any] | None:

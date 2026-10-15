@@ -101,6 +101,7 @@ nav:
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
+      - Pin the Ansible collections: how-to/pin-ansible-collections.md
       - Validate a platform release: how-to/validate-a-platform-release.md
   - Reference:
       - Support matrix: support-matrix.md

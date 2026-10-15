@@ -19,12 +19,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ruamel.yaml import YAML
+
+from pinka_installer import release
+from pinka_installer.answers import Answers
 from pinka_installer.paths import INFRA, Paths
 from pinka_installer.tui.app import InstallerApp, build_context
 from pinka_installer.tui.base import Context
 from pinka_installer.tui.events import read_new
 from pinka_installer.tui.host import CommandResult, Disk, GitInfo, Preflight
 from pinka_installer.tui.runner import RunRequest
+from pinka_platform import config as config_mod
+from pinka_platform import contract as contract_mod
+from pinka_platform import deploy, validate
 
 DATA = Path(__file__).resolve().parent / "data"
 FIXTURES = INFRA / "preflight" / "tests" / "fixtures"
@@ -116,6 +123,68 @@ def doctor_report(warnings: int = 1, failures: int = 0) -> str:
     return render_json(findings, "pinka-lab", "2026-01-01T00:00:00Z")
 
 
+REFPLAT = INFRA / "tests" / "reference-platform"
+
+
+def refplat_inspection(answers: Answers, *, full: bool) -> release.Inspection:
+    """The reference platform's release, inspected as the platform tool would.
+
+    The manifest, its summary, its secrets, config schemas and vault keys are
+    the real ones; the settings are checked against the real schema when
+    ``full``.
+
+    Args:
+        answers: The answers (their release source and settings).
+        full: Check the settings too.
+
+    Returns:
+        The inspection.
+    """
+    manifest = YAML(typ="safe").load((REFPLAT / "platform-manifest.yaml").read_text())
+    contract = contract_mod.load()
+    if full:
+        problems = config_mod.check(manifest, REFPLAT, answers.platform_settings)
+        if problems:
+            return release.Inspection(ok=False, problems=[str(p) for p in problems])
+    summary = validate.summary(manifest, contract)
+    source = answers.platform
+    found = {
+        "platform": {
+            "name": manifest["name"],
+            "version": manifest["version"],
+            "runtime": manifest["runtime"],
+        },
+        "release": {
+            "source": {"repo": source.repo, "ref": source.ref, "path": source.path},
+            "commit": COMMIT,
+            "tree": COMMIT,
+            "tag": source.ref,
+            "name": source.ref,
+            "signed_tag": answers.source_trust.require_signed_tags,
+        },
+        "summary": summary,
+        "content": summary["content"],
+        "secrets": {
+            s["name"]: list(s["secrets"]) for s in manifest["services"] if s.get("secrets")
+        },
+        "config": {
+            s["name"]: json.loads((REFPLAT / s["config"]).read_text())
+            for s in manifest["services"]
+            if "config" in s
+        },
+        "vault_keys": deploy.vault_keys(manifest, contract, ()),
+        "warnings": validate.caps_warnings(
+            manifest,
+            {
+                "memory_max": answers.training_caps.memory_max,
+                "cpus": answers.training_caps.cpus,
+                "timeout_seconds": answers.training_caps.timeout_seconds,
+            },
+        ),
+    }
+    return release.Inspection(ok=True, found=found)
+
+
 @dataclass
 class FakeHost:
     """The host, as the TUI sees it."""
@@ -132,6 +201,8 @@ class FakeHost:
     preflight_calls: int = 0
     fixture: str = ""  # set: preflight runs on this fixture with the TUI's options
     preflight_args: list[list[str]] = field(default_factory=list)
+    refused: list[str] = field(default_factory=list)  # set: the release is refused
+    inspections: list[tuple[bool, Answers]] = field(default_factory=list)
 
     def preflight(self, args: Sequence[str]) -> Preflight:
         self.preflight_calls += 1
@@ -180,6 +251,12 @@ class FakeHost:
 
     def invoking_user(self) -> str:
         return self.user
+
+    def inspect_platform(self, answers: Answers, *, full: bool) -> release.Inspection:
+        self.inspections.append((full, copy.deepcopy(answers)))
+        if self.refused:
+            return release.Inspection(ok=False, problems=list(self.refused))
+        return refplat_inspection(answers, full=full)
 
 
 @dataclass

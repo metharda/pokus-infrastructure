@@ -7,11 +7,13 @@
   "groups": [
     "refplat-ctl",
     "refplat-agent",
+    "refplat-broker",
     "refplat-tune",
     "refplat-tunecpu",
     "refplat-migrate",
     "refplat-ctl-api",
     "refplat-ctl-session",
+    "refplat-broker-infer",
     "refplat-db"
   ],
   "accounts": [
@@ -40,6 +42,18 @@
       "kind": "service",
       "member": "agent",
       "profile": "untrusted-agent"
+    },
+    {
+      "name": "refplat-broker",
+      "group": "refplat-broker",
+      "groups": [
+        "refplat-db"
+      ],
+      "home": "/var/lib/pinka/refplat-broker",
+      "comment": "service broker (inference-broker)",
+      "kind": "service",
+      "member": "broker",
+      "profile": "inference-broker"
     },
     {
       "name": "refplat-tune",

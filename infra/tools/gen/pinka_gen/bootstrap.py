@@ -155,6 +155,16 @@ def pins_sh(root: Path) -> str:
         "",
     ]
     lines += [f"readonly {name}={shlex.quote(str(value))}" for name, value in values.items()]
+    # Every collection bootstrap installs: "<name> <version> <url> <sha256>".
+    section = lock["ansible_collections"]
+    artifacts = section["artifacts"]
+    pins = [
+        " ".join([name, str(version), artifacts[name]["url"], artifacts[name]["sha256"]])
+        for name, version in sorted(section["collections"].items())
+    ]
+    lines.append("readonly -a PINKA_COLLECTIONS=(")
+    lines += [f"  {shlex.quote(pin)}" for pin in pins]
+    lines.append(")")
     return "\n".join(lines) + "\n"
 
 

@@ -500,7 +500,7 @@ stage_tooling() {
 
 # installer ARGS...: the installer package with its hash-locked environment.
 installer() {
-  PYTHONPATH="$INFRA_DIR/installer" "$INSTALLER_VENV/bin/python" -m pinka_installer \
+  PYTHONPATH="$INFRA_DIR/installer:$INFRA_DIR/tools/platform" "$INSTALLER_VENV/bin/python" -m pinka_installer \
     --infra "$INFRA_DIR" "$@"
 }
 
@@ -529,8 +529,10 @@ apply_answers() {
   fi
   [[ -n $password ]] || fail "$EXIT_OPERATOR" \
     "--answers needs --vault-password-file: the vault is written with that password"
+  local replace=()
+  [[ -n $OPT_REPLACE_PLATFORM ]] && replace=(--replace-platform "$OPT_REPLACE_PLATFORM")
   installer apply --answers "$OPT_ANSWERS" --machine "$machine" --vault-password-file "$password" \
-    || fail "$EXIT_OPERATOR" "the answers could not be applied (reason above)"
+    "${replace[@]}" || fail "$EXIT_OPERATOR" "the answers could not be applied (reason above)"
   log_info "applied the answers for $machine (mode $mode)"
 }
 
@@ -550,6 +552,7 @@ tui_bootstrap_args() {
   done
   [[ -n $OPT_TAGS ]] && printf '%s\n' "--tags=$OPT_TAGS"
   [[ -n $OPT_SKIP_TAGS ]] && printf '%s\n' "--skip-tags=$OPT_SKIP_TAGS"
+  [[ -n $OPT_REPLACE_PLATFORM ]] && printf '%s\n' "--replace-platform=$OPT_REPLACE_PLATFORM"
   return 0
 }
 
@@ -571,7 +574,7 @@ run_tui() {
   trap - ERR EXIT
   flock -u 9
   exec 9>&- </dev/tty >/dev/tty 2>&1
-  exec env PYTHONPATH="$INFRA_DIR/installer" PINKA_BOOTSTRAP_LOG="$LOG_FILE" \
+  exec env PYTHONPATH="$INFRA_DIR/installer:$INFRA_DIR/tools/platform" PINKA_BOOTSTRAP_LOG="$LOG_FILE" \
     "$INSTALLER_VENV/bin/python" -m pinka_installer \
     --infra "$INFRA_DIR" tui "${args[@]}"
 }
@@ -755,7 +758,7 @@ stage_preflight() {
 stage_ansible_env() {
   enter_stage ansible-env
   setup_venv "$ANSIBLE_VENV" "$BOOTSTRAP_DIR/requirements.lock"
-  install_collections "$INFRA_DIR/ansible/requirements.yml"
+  install_collections "$ANSIBLE_COLLECTIONS" || fail "$EXIT_TOOLING" "the pinned Ansible collections could not be installed"
   check_versions_sync "$INFRA_DIR/versions.lock.yml" "$INFRA_DIR/ansible/group_vars/all/versions.yml" \
     || fail "$EXIT_OPERATOR" "ansible/group_vars/all/versions.yml does not match versions.lock.yml"
   leave_stage
@@ -795,7 +798,8 @@ run_playbook() {
   rm -f -- "$SIGNAL_FILE"
   log_info "running: ${cmd[*]}"
   (cd -- "$INFRA_DIR/ansible" \
-    && ANSIBLE_CONFIG=$INFRA_DIR/ansible/ansible.cfg LC_ALL=C.UTF-8 LANG=C.UTF-8 "${cmd[@]}") || rc=$?
+    && ANSIBLE_CONFIG=$INFRA_DIR/ansible/ansible.cfg LC_ALL=C.UTF-8 LANG=C.UTF-8 \
+      PYTHONDONTWRITEBYTECODE=1 "${cmd[@]}") || rc=$?
   playbook_result "$rc" "$SIGNAL_FILE" || exit "$?"
 }
 

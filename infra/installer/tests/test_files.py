@@ -39,9 +39,24 @@ def test_host_vars_from_the_example(repo: Paths) -> None:
     assert "inference_remote_node" not in values  # a full node has no peer
     assert values["vllm_default_deployment"] is None
     assert values["backup_schedule"] == "*-*-* 03:00:00"
-    assert values["pinka_source_repo"] == "git@github.com:example-org/pokus-platform.git"
-    assert values["platform_ref"] == "platform-v0.1.0"
+    url = "git@github.com:example-org/example-platform.git"
+    assert values["platform"] == {
+        "repo": url,
+        "ref": "example-v0.1.0",
+        "path": "release",
+        "tag_prefix": "example-v",
+    }
+    assert values["content"] == {
+        "cases": {"repo": url, "ref": "cases-v1", "path": "cases", "tag_prefix": "cases-v"}
+    }
+    assert values["require_signed_tags"] is True
+    assert values["pinka_allowed_signers"] == ["researcher1@example.com ssh-ed25519 AAAAexample"]
+    assert values["pinka_source_known_hosts"] == ["git.example.com ssh-ed25519 AAAAexample"]
+    assert values["platform_settings"] == {"ctl": {"job": "tunecpu"}}
+    assert values["gpu_arbiter"] == {"after_boot": "idle", "restore_after_training": False}
+    assert values["training_caps"]["memory_max"] == "8G"
     assert values["images_blueprints"] == ["_base", "web-nginx-flask"]
+    assert "# The platform release to deploy (contract v2)" in text  # the example's comment
     assert values["expected"] == {"memory_gib": 22, "cpu_threads": 20}
     assert "tailscale_tag" not in values  # the lab mode's default applies
 
@@ -50,15 +65,28 @@ def test_host_vars_round_trip(repo: Paths) -> None:
     answers = full_answers().normalized()
     text = hostvars.render(answers, None, repo.example_host_vars.read_text(encoding="utf-8"))
     back = hostvars.to_answers(hostvars.load(text), Answers(researchers=answers.researchers))
-    for section in ("machine", "resources", "storage", "gpu", "remote_access", "source"):
+    for section in (
+        "machine",
+        "resources",
+        "storage",
+        "gpu",
+        "remote_access",
+        "platform",
+        "content",
+        "source_trust",
+        "platform_settings",
+        "gpu_arbiter",
+        "training_caps",
+        "images_build",
+    ):
         assert getattr(back, section) == getattr(answers, section), section
     assert back.backups.schedule == answers.backups.schedule
     assert back.backups.retention == answers.backups.retention
-    assert (back.platform, back.catalog, back.images_build) == (
-        answers.platform,
-        answers.catalog,
-        answers.images_build,
-    )
+    # Without a platform, host_vars say so ({}), and nothing of one is read back.
+    answers.platform = answers_mod.Source()
+    text = hostvars.render(answers, text, "")
+    assert hostvars.load(text)["platform"] == {}
+    assert not hostvars.to_answers(hostvars.load(text), Answers()).has_platform
 
 
 def test_host_vars_modify_keeps_comments_and_drops_unanswered(repo: Paths) -> None:
@@ -92,7 +120,7 @@ def test_group_vars_round_trip_keeps_everything_else(repo: Paths) -> None:
 def test_postgres_roles_come_from_the_release(repo: Paths) -> None:
     # The platform's roles are known only from its release (§12.5): the vault
     # example shows their shape with placeholders, and the installer generates
-    # none of them before a release is inspected (plan step 3d.7).
+    # them only from the release's inspection (release.Needs).
     example = YAML(typ="safe").load(repo.vault_example.read_text(encoding="utf-8"))
     assert list(example["vault_postgres_passwords"]) == [
         "<platform>_<service>",
@@ -106,9 +134,12 @@ def test_postgres_roles_come_from_the_release(repo: Paths) -> None:
 def test_vault_build_generates_once_and_keeps_existing(repo: Paths) -> None:
     roles = vault.postgres_roles(repo.postgres_defaults)
     answers = full_answers()
-    first = vault.build(answers, None, vault.Provided(), roles, counter())
+    first = vault.build(
+        answers, None, vault.Provided(), roles, counter(), platform_secrets=("ctl.api-token",)
+    )
     data = first.data
     assert list(data) == list(vault.ORDER)
+    assert data["vault_platform_secrets"] == {"ctl": {"api-token": "generated-0"}}
     assert set(data["vault_postgres_passwords"]) == set(roles)
     assert set(data["vault_grafana_user_passwords"]) == {"researcher1"}  # researcher2: no Grafana
     assert data["vault_restic_repository"] == "sftp:backup@backup.example.com:/srv/restic/pinka-lab"
@@ -124,6 +155,30 @@ def test_vault_build_generates_once_and_keeps_existing(repo: Paths) -> None:
         "vault_restic_password",
     ):
         assert second.data[key] == data[key]
+
+
+def test_vault_platform_secrets_from_the_release(repo: Paths) -> None:
+    # One secret per name the manifest gives: provided (TUI or environment),
+    # kept, or generated unless the answers call it provided.
+    answers = full_answers()  # ctl.api-token: generate, ctl.webhook: provided
+    keys = ("ctl.api-token", "ctl.webhook")
+    roles = ["example_ctl", "example_migrator"]
+    with pytest.raises(vault.VaultError, match="PINKA_SECRET_PLATFORM_CTL_WEBHOOK"):
+        vault.build(answers, None, vault.Provided(), roles, counter(), platform_secrets=keys)
+    environ = {"PINKA_SECRET_PLATFORM_CTL_WEBHOOK": "hook-secret", "PINKA_SECRET_X": "y"}
+    provided = vault.Provided.from_environment(environ, keys)
+    assert provided.platform == {"ctl.webhook": "hook-secret"}
+    built = vault.build(answers, None, provided, roles, counter(), platform_secrets=keys)
+    assert built.data["vault_platform_secrets"] == {
+        "ctl": {"api-token": "generated-2", "webhook": "hook-secret"}
+    }
+    assert set(built.data["vault_postgres_passwords"]) == set(roles)
+    assert "vault_platform_secrets.ctl.api-token" in built.generated
+    assert "hook-secret" not in repr(provided)  # never shown
+    again = vault.build(
+        answers, built.data, vault.Provided(), roles, counter(), platform_secrets=keys
+    )
+    assert again.data == built.data and again.generated == []
 
 
 def test_vault_provided_secrets(repo: Paths) -> None:

@@ -27,6 +27,16 @@ Output of `pinka fingerprint --json` and the `fingerprint` field of every sessio
 
 string or null
 
+### golden_image
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `golden_image.fingerprint` | string or null | yes | Incus image fingerprint, null if missing. |
+| `golden_image.packages` | array or null | yes | Every package installed in the image (from the `packages` of its export record `build.json`), sorted by name and architecture; null when the record is missing, is of another image or has no valid list. |
+| `golden_image.packages[].name` | string | yes | Package name. |
+| `golden_image.packages[].version` | string | yes | Installed version. |
+| `golden_image.packages[].architecture` | string | yes | Package architecture (such as `amd64` or `all`). |
+
 ### source
 
 | Field | Type | Required | Description |
@@ -87,8 +97,8 @@ string or null
 | `fingerprint.software.versions.ansible_core` | see `nullable_string` | yes | — |
 | `fingerprint.software.containers` | object | yes | Lab container name to the image reference it runs (`&lt;image&gt;@&lt;digest&gt;`), null if missing. |
 | `fingerprint.software.containers.*` | string or null | no | any key; value as described |
-| `fingerprint.software.golden_images` | object | yes | Golden image alias (`&lt;blueprint&gt;/&lt;version&gt;`) to Incus image fingerprint. |
-| `fingerprint.software.golden_images.*` | string or null | no | any key; value as described |
+| `fingerprint.software.golden_images` | object | yes | Golden image alias (`&lt;blueprint&gt;/&lt;version&gt;`) to its Incus image fingerprint and the packages its build installed. |
+| `fingerprint.software.golden_images.*` | see `golden_image` | no | any key; value as described |
 | `fingerprint.config` | object | yes | The configuration the lab was built from. |
 | `fingerprint.config.infra_commit` | string or null | yes | Repository commit bootstrap ran from. |
 | `fingerprint.config.infra_tree` | string or null | yes | Tree hash of `infra/`. |

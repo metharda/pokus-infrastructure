@@ -383,6 +383,46 @@ def image_by_alias(images: Iterable[Mapping[str, Any]] | None, alias: str) -> di
     return {}
 
 
+# The --showformat of dpkg-query in the images role's package record
+# (roles/images/tasks/build.yml; the tests keep the two identical).
+DPKG_FORMAT = "${Status}\\t${Package}\\t${Version}\\t${Architecture}\\n"
+DPKG_FIELDS = 4
+
+
+def dpkg_packages(text: str | None) -> list[dict[str, str]]:
+    """The installed packages of a golden image, from dpkg-query.
+
+    Args:
+        text: Output of ``dpkg-query --show`` with the format ``DPKG_FORMAT``
+            (the status, the package name, its version and its architecture,
+            tab-separated, one package per line).
+
+    Returns:
+        ``{"name", "version", "architecture"}`` of every installed package
+        (status ``installed``; removed packages that left their configuration
+        files are not installed), sorted by name and architecture.
+
+    Raises:
+        PinkaFilterError: If a line does not have the four fields, a field is
+            empty, or a package appears twice.
+    """
+    packages: dict[tuple[str, str], dict[str, str]] = {}
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) != DPKG_FIELDS or not all(field.strip() for field in fields):
+            raise PinkaFilterError(f"not a dpkg-query line of four fields: {line!r}")
+        status, name, version, architecture = (field.strip() for field in fields)
+        if status.split()[-1] != "installed":
+            continue
+        key = (name, architecture)
+        if key in packages:
+            raise PinkaFilterError(f"package {name}:{architecture} listed twice")
+        packages[key] = {"name": name, "version": version, "architecture": architecture}
+    return [packages[key] for key in sorted(packages)]
+
+
 TOML_BARE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -601,6 +641,7 @@ class FilterModule:
             "pinka_scram_matches": scram_matches,
             "pinka_config_hashes": config_hashes,
             "pinka_image_by_alias": image_by_alias,
+            "pinka_dpkg_packages": dpkg_packages,
             "pinka_to_toml": to_toml,
             "pinka_socket_specs": socket_specs,
             "pinka_unit_hardening": unit_hardening,

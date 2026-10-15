@@ -253,8 +253,10 @@ containers:
       # §7.18): Python's official image through the ECR Public mirror of
       # Docker's official images, because Docker Hub answered 429 on
       # 2026-10-14. Verified that day with the registry API (index digest of
-      # the tag; the index lists linux/amd64 and linux/arm64). Platform job
-      # images are pinned in their manifests, not here.
+      # the tag; the index lists linux/amd64 and linux/arm64); on 2026-10-15
+      # Docker Hub's library/python served the same digest, and its tag
+      # 3.12-slim-trixie pointed to it (owner condition with the "commit" for
+      # 3d.6). Platform job images are pinned in their manifests, not here.
       image: public.ecr.aws/docker/library/python
       tag: "3.12-slim-trixie"
       digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
@@ -467,19 +469,36 @@ packages:
     opensuse-leap-16.0: "TODO(verify)"
 
 ansible_collections:
-  # Installed by bootstrap from ansible/requirements.yml (generated from this
-  # section). The set is the one bundled in the community package ansible
-  # 14.4.0, which is built on ansible-core 2.21.4.
-  verified_on: 2026-10-05
+  # Bootstrap installs exactly these artifacts (artifacts below: Galaxy's
+  # tarball of each version, checked against its sha256) with --offline
+  # --no-deps, transitive dependencies included, then checks them with
+  # ansible-galaxy collection verify --offline; make setup installs the same
+  # versions (ansible/requirements.yml). The set is the one bundled in the
+  # community package ansible 14.4.0, which is built on ansible-core 2.21.4.
+  # The artifacts' URLs and sha256 come from make lock-collections, which a
+  # maintainer runs where Galaxy is reachable (docs/how-to/pin-ansible-collections.md).
+  verified_on: 2026-10-15
   source: >-
     ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each
     collection's git tag and its meta/runtime.yml requires_ansible (all allow
-    ansible-core 2.21)
+    ansible-core 2.21). community.library_inventory_filtering_v1, required
+    (>=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5,
+    the version in ansible 14.4.0 (its MANIFEST.json in
+    ansible-14.4.0-py3-none-any.whl from PyPI, sha256
+    7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read
+    2026-10-15)
   collections:
     ansible.posix: "2.2.2"
     community.crypto: "3.4.0"
     community.docker: "5.3.0"
     community.general: "13.4.0"
+    community.library_inventory_filtering_v1: "1.1.5"
+  artifacts:
+    ansible.posix: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.crypto: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.docker: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.general: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.library_inventory_filtering_v1: {url: "TODO(verify)", sha256: "TODO(verify)"}
   # make setup only (never bootstrap): when Galaxy is unreachable, each
   # collection's GitHub release tarball, installed only after its sha256
   # matched; then the same FILES.json check as after a Galaxy install. The

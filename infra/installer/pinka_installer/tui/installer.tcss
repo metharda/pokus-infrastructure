@@ -122,6 +122,10 @@ Screen {
     height: auto;
 }
 
+TextArea.lines {
+    height: 5;
+}
+
 .bar {
     height: auto;
 }

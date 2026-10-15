@@ -108,16 +108,40 @@ shown greyed out with the reason.
    one-time MOK password, entered twice: the installation imports the key
    with it, and you type it again in MOK Manager after the reboot. It is
    never stored. `manual` is refused there until the driver is installed.
+   Under *GPU arbiter*, choose whether the default deployment is served after
+   boot or the GPU stays idle, whether the deployment served before a
+   training run comes back when the run ends, and, on a full node, the caps
+   on training jobs (run time, CPUs, memory, dataset, run storage and job
+   tmpfs sizes). The arbiter refuses every run of a job over them.
 8. **Data & backups**: the restic repository and schedule. A generated restic
    password is shown once: store it outside the host and tick
    *I stored this safely*.
 9. **Restore** (restore mode only): pick the snapshot.
-10. **Platform & catalog**: the versions to deploy and the repository. For an
-    SSH URL, **Deploy key** creates the read-only key to add to the Git host,
-    and **Test access** checks it.
-11. **Golden images**: which images to build, now or later.
-12. **Secrets & vault**: every service password is generated. Enter the vault
-    password twice, or the path of a file that contains it.
+10. **Platform**: *No platform* for a standalone lab, or *Deploy a platform
+    release*: its repository, release (a tag is recommended), path and tag
+    prefix. For an SSH URL, **Deploy key** creates this host's read-only key
+    to add to the Git host, and **Test access** checks it; GitHub's host keys
+    are pinned, another SSH host needs its `known_hosts` lines here. Tick
+    *Deploy only signed tags* and paste the `allowed_signers` lines to accept
+    only signed releases. **Inspect release** fetches and checks the release
+    alone (its code never runs) and then lists what it needs: a source for
+    each content package it declares, its secrets (leave a field empty to
+    have it generated) and the settings of each service with a config schema,
+    as YAML.
+11. **Platform review**: the release, its content and its settings pass the
+    deployment's own checks, or the screen lists why not. Read what the
+    platform will be on this host (its accounts and privilege profiles, the
+    sockets dedicated to its untrusted agent, its training jobs with their
+    images and resources, its restricted content, the state that is backed
+    up, what it requires) and tick the approval. Any later change on the
+    Platform screen asks for a new review.
+
+    ![The Platform review screen](../assets/installer/platform_review.svg)
+
+12. **Golden images**: which images to build, now or later.
+13. **Secrets & vault**: every service password and every platform secret you
+    left empty is generated. Enter the vault password twice, or the path of a
+    file that contains it.
 
 ## Review and install
 

@@ -82,7 +82,16 @@ flowchart TD
    synchronized into `/opt/pinka/ansible-venv`, the pinned collections are
    installed into `/opt/pinka/ansible-collections`, and
    `ansible/group_vars/all/versions.yml` must carry the sha256 of
-   `versions.lock.yml` (77 if it is out of date).
+   `versions.lock.yml` (77 if it is out of date). Every collection,
+   dependencies included, is pinned in `ansible_collections.artifacts` of the
+   lock with the URL and sha256 of its artifact. When
+   `ansible-galaxy collection verify --offline` finds the installed
+   collections intact, nothing is downloaded; otherwise each artifact is
+   downloaded, its sha256 checked, all are installed with
+   `ansible-galaxy collection install --offline --no-deps`, and the result
+   is verified again: every file against the collection's `FILES.json`. An
+   artifact that cannot be downloaded, whose sha256 differs or is not
+   verified yet, ends bootstrap with 50 before anything is installed.
 9. **The play.** `ansible-playbook` runs `site.yml` with `-e machine=<name>`
    and the host profile and bootstrap options as variables, followed by
    `restore.yml` with `--restore`.

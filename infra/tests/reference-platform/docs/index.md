@@ -11,6 +11,10 @@ that infra deploys through the same code as any platform.
   the run and imports the adapter's lineage. Its tables are
   `public.refplat_runs`, `public.refplat_datasets` and
   `restricted.refplat_cases`.
+- `broker` (inference broker) answers on the socket `infer` for researchers
+  and root (`refplat infer`) with the models the inference API of
+  `endpoints.toml` serves: the inference guard lets the broker's account
+  reach that API.
 - `agent` (untrusted agent) says hello on `session`, runs the isolation
   probe and reports what it could reach (nothing, when the isolation
   holds), and probes again every hour.
@@ -27,5 +31,5 @@ deployed under another name runs unchanged.
 
 Researchers use `refplat status`, `refplat dataset`, `refplat train [--job
 tune|tunecpu] [--seed N] [--steps N] [--step-seconds S] [--wait SECONDS]`,
-`refplat runs`, `refplat lineage <run>` and `refplat probe-report`; every
-answer is JSON.
+`refplat runs`, `refplat lineage <run>`, `refplat probe-report` and
+`refplat infer`; every answer is JSON.

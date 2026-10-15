@@ -18,7 +18,14 @@ from typing import Any
 import yaml
 
 from pinka_gen.bootstrap import _IndentedDumper
-from pinka_gen.pages import _option_rows, front_matter, schema_rows, table, usage
+from pinka_gen.pages import (
+    _option_rows,
+    front_matter,
+    relative_defaults,
+    schema_rows,
+    table,
+    usage,
+)
 from pinka_gen.sources import load_yaml
 from pinka_platform import cli as platform_cli
 from pinka_platform import contract as platform_contract
@@ -527,13 +534,16 @@ def _subcommands(parser: argparse.ArgumentParser) -> dict[str, argparse.Argument
     return {}
 
 
-def cli_page() -> str:
+def cli_page(root: Path) -> str:
     """Render the pinka-platform reference page.
+
+    Args:
+        root: Component root (defaults inside it are shown relative to it).
 
     Returns:
         Page text.
     """
-    parser = platform_cli.build_parser()
+    parser = relative_defaults(platform_cli.build_parser(), root)
     out = [
         front_matter(
             "pinka-platform command",

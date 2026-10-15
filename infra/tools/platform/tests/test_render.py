@@ -110,6 +110,7 @@ def test_endpoints_carry_only_the_required_facilities() -> None:
         "lab",
         "postgres",
         "telemetry",
+        "inference",
         "gpu",
         "signing",
         "attestations",
@@ -117,6 +118,9 @@ def test_endpoints_carry_only_the_required_facilities() -> None:
         "ports",
     }
     assert "refplat_agent" not in document["postgres"]["roles"].values()
+    data = manifest("refplat")
+    data["requires"].remove("inference")
+    assert "inference" not in render.endpoints(data, FACTS)
     assert document["signing"]["key_file"] == "/etc/pinka/signing/refplat/signing.key"
 
 

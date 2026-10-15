@@ -17,7 +17,7 @@ from pathlib import Path
 from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import groupvars, hostvars, keys, validators, vault
+from pinka_installer import groupvars, hostvars, keys, release, validators, vault
 from pinka_installer.answers import Answers, Context
 from pinka_installer.paths import Paths, write_file
 
@@ -171,6 +171,7 @@ def plan(
     public_keys: Mapping[str, keys.KeyCheck] | None = None,
     *,
     smt_cores: Sequence[Iterable[int]] = (),
+    needs: release.Needs = release.Needs(),  # noqa: B008 - a frozen dataclass
 ) -> Plan:
     """Plan the files of the answers.
 
@@ -183,6 +184,7 @@ def plan(
             existing ``users/<name>.pub`` files are used).
         smt_cores: The host's cores with more than one thread
             (:func:`read_smt_cores`): a warning when the CPU sets split one.
+        needs: The platform release's database roles and secrets (its inspection).
 
     Returns:
         The plan.
@@ -220,7 +222,9 @@ def plan(
             warnings.append(
                 f"no SSH key file users/{researcher.name}.pub: {researcher.name} gets no SSH access"
             )
-    vault_file, shown_once = _vault_change(answers, paths, provided, vault_password, warnings)
+    vault_file, shown_once = _vault_change(
+        answers, paths, provided, vault_password, warnings, needs=needs
+    )
     changes.append(vault_file)
     answers_path = paths.answers(machine)
     changes.append(Change(answers_path, _read(answers_path), answers_mod.dumps(answers)))
@@ -238,11 +242,13 @@ def _vault_change(
     provided: vault.Provided,
     password: str,
     warnings: list[str],
+    *,
+    needs: release.Needs,
 ) -> tuple[Change, list[tuple[str, str]]]:
     current = _read(paths.vault)
     existing = vault.decrypt(current, password) if current is not None else None
-    roles = vault.postgres_roles(paths.postgres_defaults)
-    built = vault.build(answers, existing, provided, roles)
+    roles = [*vault.postgres_roles(paths.postgres_defaults), *needs.roles]
+    built = vault.build(answers, existing, provided, roles, platform_secrets=needs.secrets)
     if existing is not None and existing == built.data:
         text = current or ""
     else:
@@ -280,10 +286,14 @@ def read_password_file(path: Path) -> str:
     return password
 
 
-def environment_secrets() -> vault.Provided:
+def environment_secrets(platform_secrets: Sequence[str] = ()) -> vault.Provided:
     """The provided secrets of a non-interactive run.
+
+    Args:
+        platform_secrets: ``<service>.<name>`` of the secrets the platform's
+            manifest names.
 
     Returns:
         ``PINKA_SECRET_<NAME>`` values.
     """
-    return vault.Provided.from_environment(os.environ)
+    return vault.Provided.from_environment(os.environ, platform_secrets)

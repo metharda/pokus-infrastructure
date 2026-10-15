@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "e9dd255254632d8ee1dc434bc98232c93e262ec93b849988065819394bb802d7"
+pinka_versions_lock_sha256: "c79fc7c4d25f5bc7193c8b1469444433ede62ef2702d0590c79c012aa8df98cc"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -418,14 +418,34 @@ pinka_versions:
       opensuse-leap-15.6: TODO(verify)
       opensuse-leap-16.0: TODO(verify)
   ansible_collections:
-    verified_on: '2026-10-05'
-    source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and
-      its meta/runtime.yml requires_ansible (all allow ansible-core 2.21)
+    verified_on: '2026-10-15'
+    source: 'ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection''s git tag and
+      its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1,
+      required (>=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in
+      ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4,
+      read 2026-10-15)'
     collections:
       ansible.posix: 2.2.2
       community.crypto: 3.4.0
       community.docker: 5.3.0
       community.general: 13.4.0
+      community.library_inventory_filtering_v1: 1.1.5
+    artifacts:
+      ansible.posix:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.crypto:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.docker:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.general:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.library_inventory_filtering_v1:
+        url: TODO(verify)
+        sha256: TODO(verify)
     fallback:
       ansible.posix:
         url: TODO(verify)

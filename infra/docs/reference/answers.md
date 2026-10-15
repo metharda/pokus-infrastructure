@@ -11,7 +11,7 @@ description: Every field of installer-answers/<machine>.yml, written by the TUI 
 
 # Installer answers file
 
-Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin) are checked by pinka_installer.answers. Schema file: `installer/schema/answers.schema.json` (JSON Schema draft 2020-12).
+Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin, the platform tool's source rules) are checked by pinka_installer.answers. Schema file: `installer/schema/answers.schema.json` (JSON Schema draft 2020-12).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -71,13 +71,25 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `backups.include_secrets` | boolean | no | Back up /etc/pinka/secrets inside restic's encryption. |
 | `restore` | object | no | Restore mode only. |
 | `restore.snapshot` | string | yes | latest, or a snapshot id. |
-| `source` | object | no | The pokus-platform repository that platform and catalog are deployed from (owner answer E3). |
-| `source.repo` | string | yes | An SSH URL (read with a deploy key generated on the host) or an anonymous https URL. |
-| `source.known_hosts` | array | no | Host key lines of an SSH source other than GitHub. |
-| `source.require_signed_tags` | boolean | no | Deploy only tags signed by an allowed signer. |
-| `source.allowed_signers` | array | no | allowed_signers lines (ssh-keygen -Y) of the tag signers. |
-| `platform` | see `component` | yes | The platform component. |
-| `catalog` | see `component` | yes | The scenario catalog component. |
+| `platform` | any | yes | The platform release to deploy (BUILD_PROMPT §7.14, §8.1), or null for a standalone lab without a platform. |
+| `content` | object | no | One source per content package the platform's manifest declares, by package name (lower-case letters, digits and '-'). A package from the release's repository must not overlap the release path or another package. |
+| `content.*` | see `source` | no | any key; value as described |
+| `source_trust` | object | no | How the platform's Git sources are trusted. |
+| `source_trust.known_hosts` | array | no | Host key lines of an SSH source other than GitHub (GitHub's come from versions.lock.yml). |
+| `source_trust.require_signed_tags` | boolean | no | Deploy only tags carrying a valid SSH signature of an allowed signer. |
+| `source_trust.allowed_signers` | array | no | allowed_signers lines (ssh-keygen -Y) of the tag signers. |
+| `platform_settings` | object | no | Non-secret settings per service of the platform, checked against the service's config schema when the release is inspected and deployed. |
+| `platform_settings.*` | object | no | any key; value as described |
+| `gpu_arbiter` | object | no | The GPU arbiter (BUILD_PROMPT §7.18). |
+| `gpu_arbiter.after_boot` | one of `serve`, `idle` | no | serve: the default deployment after boot; idle: nothing until asked. |
+| `gpu_arbiter.restore_after_training` | boolean | no | Bring the deployment served before a training run back when the run ends. |
+| `training_caps` | object | no | This host's caps on training jobs (BUILD_PROMPT §7.18); the GPU arbiter refuses a run of a job over them. |
+| `training_caps.timeout_seconds` | integer | no | A run's longest run time. |
+| `training_caps.memory_max` | see `cap_size` | no | A job's memory. |
+| `training_caps.cpus` | integer | no | A job's CPUs. |
+| `training_caps.dataset_max` | see `cap_size` | no | The size of a published dataset. |
+| `training_caps.run_storage_max` | see `cap_size` | no | A run's output and checkpoints together. |
+| `training_caps.tmp_max` | see `cap_size` | no | A job's /tmp (a tmpfs counted against its memory). |
 | `images` | object | yes | Golden images. |
 | `images.build` | array | yes | Golden image blueprints to build (images/&lt;name&gt;/). |
 | `secrets` | object | yes | Which secrets are generated and which are provided (never their values). |
@@ -85,6 +97,8 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `secrets.grafana_admin` | one of `generate`, `provided` | yes | generate, or provided (PINKA_SECRET_GRAFANA_ADMIN_PASSWORD). |
 | `secrets.hf_token` | one of `none`, `provided` | no | provided (PINKA_SECRET_HF_TOKEN) for gated models, else none. |
 | `secrets.store_vault_password` | boolean | no | Keep the vault password root-only in /etc/pinka/secrets/vault-pass. |
+| `secrets.platform` | object | no | Per secret the platform's manifest names (&lt;service&gt;.&lt;secret&gt;): generate, or provided (PINKA_SECRET_PLATFORM_&lt;SERVICE&gt;_&lt;SECRET&gt;, upper case, other characters as '_'). |
+| `secrets.platform.*` | one of `generate`, `provided` | no | any key; value as described |
 
 ## Definitions
 
@@ -108,9 +122,15 @@ string
 
 string
 
-### component
+### source
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `component.enabled` | boolean | yes | Deploy this component. |
-| `component.ref` | string | no | Tag (recommended: platform-v*/catalog-v*), branch or full commit to deploy. |
+| `source.repo` | string | yes | Repository URL. |
+| `source.ref` | string | yes | Tag, branch or full commit. |
+| `source.path` | string | no | Subdirectory in the repository ("" for the root). |
+| `source.tag_prefix` | string | no | Prefix of the release tags. |
+
+### cap_size
+
+string

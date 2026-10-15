@@ -134,27 +134,71 @@ setup_venv() {
   fi
 }
 
-# install_collections REQUIREMENTS: install pinned Ansible collections, if any are listed.
+# collection_pins: print "<name> <version> <url> <sha256>" of every pinned
+# collection (ansible_collections of versions.lock.yml, through pins.sh).
+collection_pins() {
+  local pin
+  for pin in "${PINKA_COLLECTIONS[@]}"; do
+    printf '%s\n' "$pin"
+  done
+}
+
+# ansible_galaxy ARGS...: the Ansible environment's ansible-galaxy. No
+# Ansible command of bootstrap writes bytecode: a __pycache__ directory inside
+# a collection fails its verify, which would reinstall it on every run.
+ansible_galaxy() {
+  PYTHONDONTWRITEBYTECODE=1 "$ANSIBLE_VENV/bin/ansible-galaxy" "$@"
+}
+
+# install_collections DEST: the pinned Ansible collections in DEST, exactly
+# the artifacts of versions.lock.yml. Nothing happens when the installed ones
+# already verify (ansible-galaxy collection verify --offline: every file
+# against its FILES.json). Otherwise every artifact is downloaded and checked
+# against its pinned sha256 before anything is installed, then installed
+# without contacting Galaxy and without resolving dependencies (transitive
+# dependencies are pinned too), and verified again.
 install_collections() {
-  local requirements=$1 count
-  if ! count=$("$ANSIBLE_VENV/bin/python" -c '
-import sys, yaml
-with open(sys.argv[1], encoding="utf-8") as handle:
-    data = yaml.safe_load(handle) or {}
-print(len(data.get("collections") or []))
-' "$requirements"); then
-    log_error "cannot read $requirements"
-    return "$EXIT_TOOLING"
-  fi
-  if [[ $count == 0 ]]; then
+  local dest=$1 work pin name version url sha256 file rc=0
+  local -a pins=() names=() files=()
+  mapfile -t pins < <(collection_pins)
+  if ((${#pins[@]} == 0)); then
     log_info "no Ansible collections are pinned yet"
     return 0
   fi
-  install -d -m 0755 "$ANSIBLE_COLLECTIONS"
-  if ! "$ANSIBLE_VENV/bin/ansible-galaxy" collection install -r "$requirements" -p "$ANSIBLE_COLLECTIONS"; then
-    log_error "ansible-galaxy could not install the collections in $requirements"
-    return "$EXIT_TOOLING"
+  for pin in "${pins[@]}"; do
+    read -r name version url sha256 <<<"$pin"
+    names+=("$name:$version")
+  done
+  install -d -m 0755 "$dest" || return "$EXIT_TOOLING"
+  if ansible_galaxy collection verify --offline -p "$dest" "${names[@]}" >/dev/null 2>&1 </dev/null; then
+    log_info "the pinned Ansible collections are installed and verify"
+    return 0
   fi
+  work=$(mktemp -d) || return "$EXIT_TOOLING"
+  for pin in "${pins[@]}"; do
+    read -r name version url sha256 <<<"$pin"
+    file="$work/${name/./-}-$version.tar.gz"
+    if ! download "$url" "$file"; then
+      log_error "cannot download collection $name $version from '$url' (ansible_collections.artifacts in versions.lock.yml)"
+      rc=$EXIT_TOOLING
+      break
+    fi
+    if ! verify_sha256 "$file" "$sha256"; then
+      rc=$EXIT_TOOLING
+      break
+    fi
+    files+=("$file")
+  done
+  if ((rc == 0)) && ! ansible_galaxy collection install --offline --no-deps --force -p "$dest" "${files[@]}" </dev/null; then
+    log_error "ansible-galaxy could not install the pinned collections"
+    rc=$EXIT_TOOLING
+  fi
+  rm -rf -- "$work"
+  if ((rc == 0)) && ! ansible_galaxy collection verify --offline -p "$dest" "${names[@]}" </dev/null; then
+    log_error "the installed collections do not match their FILES.json"
+    rc=$EXIT_TOOLING
+  fi
+  return "$rc"
 }
 
 # lock_digest FILE: print the sha256 of FILE.

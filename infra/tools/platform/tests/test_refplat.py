@@ -15,6 +15,7 @@ database of the platform.
 
 from __future__ import annotations
 
+import http.server
 import json
 import os
 import pwd
@@ -39,7 +40,7 @@ from postgres_testlib import BINDIRS
 
 from pinka_lockcheck import net
 from pinka_platform import agentpkg, database, deploy, layout, names, render, validate
-from refplat import admin, cli, common, ctl, pg, training
+from refplat import admin, broker, cli, common, ctl, pg, training
 from refplat_agent import main as agent_main
 from refplat_agent import probe
 
@@ -188,7 +189,7 @@ def built(uv: str, tmp_path_factory: pytest.TempPathFactory) -> Path:
 def test_the_built_release_passes_validation(built: Path) -> None:
     result = validate.validate_release(built, CONTRACT, built=True)
     assert [p.message for p in result.problems] == []
-    for name in ("refplat-ctl", "refplat-admin", "refplat"):
+    for name in ("refplat-ctl", "refplat-admin", "refplat-broker", "refplat"):
         assert (built / ".venv" / "bin" / name).is_file(), name
 
 
@@ -751,6 +752,107 @@ def test_the_cli_prints_the_controller_s_answer(
     assert request["submission"]["hyperparameters"] == {"steps": 2, "step_seconds": 0.5}
 
 
+# --- the inference broker -------------------------------------------------------------
+
+
+class InferenceAPI:
+    """An HTTP server on loopback that answers ``/v1/models`` like vLLM's OpenAI API."""
+
+    def __init__(self, body: bytes) -> None:
+        self.body = body
+        self.paths: list[str] = []
+        api = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                api.paths.append(self.path)
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(api.body)))
+                self.end_headers()
+                self.wfile.write(api.body)
+
+            def log_message(self, *args: object) -> None:
+                del args
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+MODELS = json.dumps(
+    {"object": "list", "data": [{"id": "model-b", "object": "model"}, {"id": "model-a"}]}
+).encode()
+
+
+def test_the_broker_asks_the_inference_api_of_endpoints_toml(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A proxy in the environment is never used: the API is on loopback.
+    monkeypatch.setenv("http_proxy", "http://192.0.2.1:9")
+    api = InferenceAPI(MODELS)
+    try:
+        answer = broker.Broker({"inference": {"api_url": api.url + "/"}}).handle(
+            {"command": "models"}
+        )
+    finally:
+        api.close()
+    assert answer == {"ok": True, "api_url": api.url, "models": ["model-a", "model-b"]}
+    assert api.paths == ["/v1/models"]
+    assert ENDPOINTS["inference"]["api_url"] == f"http://127.0.0.1:{DEFAULT_PORTS['vllm']}"
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (b"not json", "not JSON"),
+        (b'{"object": "list"}', "no model list"),
+        (b"x" * (broker.MAX_ANSWER + 1), "too long"),
+    ],
+)
+def test_the_broker_refuses_an_answer_that_is_no_model_list(body: bytes, message: str) -> None:
+    api = InferenceAPI(body)
+    try:
+        with pytest.raises(common.RefplatError, match=message):
+            broker.Broker({"inference": {"api_url": api.url}}).models()
+    finally:
+        api.close()
+
+
+def test_the_broker_without_an_inference_api(sockets: Path) -> None:
+    with pytest.raises(common.RefplatError, match="names no inference API"):
+        broker.Broker({}).models()
+    with pytest.raises(common.RefplatError, match="names no inference API"):
+        broker.Broker({"inference": {"api_url": "file:///etc/passwd"}}).models()
+    with socket.socket() as unused:
+        unused.bind(("127.0.0.1", 0))
+        port = unused.getsockname()[1]
+    with pytest.raises(common.RefplatError, match="does not answer"):
+        broker.Broker({"inference": {"api_url": f"http://127.0.0.1:{port}"}}).models()
+    with pytest.raises(common.RefplatError, match="unknown command"):
+        broker.Broker({}).handle({"command": "status"})
+    assert common.listen_sockets({}) == {}
+    assert broker.main() == 1  # no socket handed over
+
+
+def test_refplat_infer_asks_the_broker(
+    sockets: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api = InferenceAPI(MODELS)
+    try:
+        serve(sockets / "infer.sock", broker.Broker({"inference": {"api_url": api.url}}).handle)
+        monkeypatch.setattr(cli, "BROKER_SOCKET", sockets / "infer.sock")
+        assert cli.main(["infer"]) == 0
+        assert json.loads(capsys.readouterr().out)["models"] == ["model-a", "model-b"]
+    finally:
+        api.close()
+    assert cli.main(["infer"]) == 1  # the API is gone: the broker says so
+    assert "does not answer" in one_line(capsys)["error"]
+
+
 # --- the isolation probe ----------------------------------------------------------------
 
 
@@ -782,6 +884,7 @@ def test_the_probe_knows_infra_s_paths_and_the_rendered_ones() -> None:
         assert str(common.cases_dir(name)).startswith(f"{probe.RESTRICTED}/{name}/content/")
     assert str(common.API_SOCKET) == sockets["api"]["path"]
     assert agent_main.SESSION == sockets["session"]["path"] == str(common.SESSION_SOCKET)
+    assert str(common.BROKER_SOCKET) == sockets["infer"]["path"]
 
 
 def test_the_probe_tries_every_target_infra_renders() -> None:
@@ -804,6 +907,7 @@ def test_the_probe_tries_every_target_infra_renders() -> None:
         "outside tcp",
         "socket ctl/api",
         "socket ctl/session",
+        "socket broker/infer",
         "write state ctl/datasets",
         "write state ctl/records",
         "write own environment",

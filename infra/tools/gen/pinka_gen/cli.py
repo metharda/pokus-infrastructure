@@ -82,7 +82,7 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         contract.SCHEMA: lambda: contract.schema_json(root),
         contract.MANIFEST_PAGE: lambda: contract.manifest_page(root),
         contract.PROFILES_PAGE: lambda: contract.profiles_page(root),
-        contract.CLI_PAGE: contract.cli_page,
+        contract.CLI_PAGE: lambda: contract.cli_page(root),
         contract.RECORDS_PAGE: lambda: contract.records_page(root),
     }
     for name in installer.SCREENSHOTS:

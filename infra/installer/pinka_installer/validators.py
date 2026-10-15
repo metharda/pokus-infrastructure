@@ -17,8 +17,11 @@ import re
 import shutil
 import subprocess
 import urllib.parse
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
+
+from pinka_platform import sources
 
 HOSTNAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 LABEL_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -30,9 +33,8 @@ SIZE_RE = re.compile(r"^([1-9][0-9]*)(B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)$")
 TIME_RE = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 INTERFACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$")
 SNAPSHOT_RE = re.compile(r"^(latest|[0-9a-f]{8,64})$")
-SSH_SOURCE_RE = re.compile(
-    r"^(?:ssh://[^@\s/]+@[^\s/:]+(?::[0-9]+)?/\S+|[a-z0-9_.-]+@[^\s:/]+:\S+)$"
-)
+CAP_SIZE_RE = re.compile(r"^[1-9][0-9]*[KMG]$")
+SERVICE_SECRET_RE = re.compile(r"^[a-z][a-z0-9]{0,9}\.[a-z][a-z0-9_-]{0,63}$")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 SFTP_RE = re.compile(r"^sftp:(?P<user>[a-z_][a-z0-9_.-]*)@(?P<host>[^\s:/]+):(?P<path>/\S*)$")
 
@@ -333,47 +335,50 @@ def https_url(value: str) -> str | None:
     return None
 
 
-def source_repo(value: str) -> str | None:
-    """The Git URL of the pokus-platform repository (owner answer E3).
+def platform_sources(platform: Mapping[str, Any], content: Mapping[str, Any]) -> list[str]:
+    """The sources of the platform release and its content packages (BUILD_PROMPT §8.1).
+
+    The rules are the platform tool's own (``pinka_platform.sources``), so the
+    installer refuses exactly what a deployment would: SSH, anonymous HTTPS
+    or ``file://`` URLs without credentials, valid refs, tag prefixes and
+    package names, paths inside the repository, and no package overlapping
+    the release or another package in one repository.
 
     Args:
-        value: An SSH URL (``git@host:path``, ``ssh://user@host/path``) or an
-            anonymous ``https://`` URL.
+        platform: ``{repo, ref, path, tag_prefix}`` of the release.
+        content: Package name to its source.
+
+    Returns:
+        One ``where: message`` per problem (``platform/ref``, ``content/<name>/repo``).
+    """
+    _, _, problems = sources.parse(platform, content)
+    return [f"{p.where.replace('.', '/')}: {p.message}" for p in problems]
+
+
+def cap_size(value: str) -> str | None:
+    """A size of the training caps, as the contract writes them (``24G``, ``512M``).
+
+    Args:
+        value: The size.
 
     Returns:
         The error, or None.
     """
-    if value.startswith("https://"):
-        return https_url(value)
-    if SSH_SOURCE_RE.fullmatch(value):
-        return None
-    return "an SSH URL (git@host:path or ssh://user@host/path) or an anonymous https:// URL"
+    return None if CAP_SIZE_RE.fullmatch(value) else "a whole number of K, M or G, such as 24G"
 
 
-def git_ref(value: str) -> str | None:
-    """A Git ref name or a full commit (``git check-ref-format`` rules).
+def platform_secret_key(value: str) -> str | None:
+    """A secret of the platform's manifest: ``<service>.<name>``.
 
     Args:
-        value: A tag, branch or 40-hex commit.
+        value: The key.
 
     Returns:
         The error, or None.
     """
-    if REVISION_RE.fullmatch(value):
+    if SERVICE_SECRET_RE.fullmatch(value):
         return None
-    bad = (
-        not value
-        or value == "@"
-        or value.startswith(("/", "-", "."))
-        or value.endswith(("/", ".", ".lock"))
-        or ".." in value
-        or "//" in value
-        or "@{" in value
-        or "/." in value
-        or any(c in value for c in " ~^:?*[\\")
-        or not value.isprintable()
-    )
-    return "not a valid Git ref (see git check-ref-format)" if bad else None
+    return "<service>.<secret> as the manifest names them"
 
 
 def tailscale_tag(value: str) -> str | None:

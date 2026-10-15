@@ -7,7 +7,9 @@ Bootstrap runs these commands with the installer environment
   snapshot to restore and the consent to MOK enrollment of an answers file as
   ``key=value`` lines;
 - ``apply --answers FILE --vault-password-file FILE`` writes host_vars, the
-  researchers, the vault and the answers file (BUILD_PROMPT §18.6);
+  researchers, the vault and the answers file (BUILD_PROMPT §18.6); with a
+  platform it first inspects the release with the platform tool (its checks,
+  and the database roles and secrets it needs in the vault);
 - ``tui`` starts the installer TUI on the terminal (BUILD_PROMPT §18).
 
 Exit status: 0 done, 1 operator action needed (the reason is printed), 2 usage.
@@ -21,7 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import apply, vault
+from pinka_installer import apply, release, vault
 from pinka_installer.paths import Paths
 
 EXIT_OK = 0
@@ -54,6 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="file with the vault password (0600): encrypts a new vault or opens the existing one",
+    )
+    replay.add_argument(
+        "--replace-platform",
+        default="",
+        metavar="NAME",
+        help="the active platform the answers' platform may replace (from --replace-platform)",
     )
     tui = sub.add_parser("tui", help="start the installer TUI")
     tui.add_argument("--machine", default="", help="machine name given to bootstrap")
@@ -137,14 +145,28 @@ def cmd_apply(args: argparse.Namespace, paths: Paths) -> int:
             f"{loaded.machine.name}\n"
         )
         return EXIT_ACTION
+    needs = release.Needs()
+    if loaded.has_platform:
+        # The release's database roles and secrets (and its own checks) before any file.
+        inspected = release.inspect(
+            loaded, paths.versions_lock, full=True, replace=args.replace_platform
+        )
+        for line in inspected.problems or ([inspected.error] if inspected.error else []):
+            sys.stderr.write(f"pinka-installer: the platform release: {line}\n")
+        if not inspected.ok:
+            return EXIT_ACTION
+        needs = inspected.needs
+        for warning in inspected.found.get("warnings", []):
+            print(f"warning: {warning}")
     try:
         password = apply.read_password_file(args.vault_password_file)
         result = apply.plan(
             loaded,
             paths,
-            apply.environment_secrets(),
+            apply.environment_secrets(needs.secrets),
             password,
             smt_cores=apply.read_smt_cores(),
+            needs=needs,
         )
     except (OSError, vault.VaultError) as exc:
         sys.stderr.write(f"pinka-installer: {exc}\n")

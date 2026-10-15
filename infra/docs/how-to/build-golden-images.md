@@ -134,5 +134,17 @@ sudo sha256sum -c SHA256SUMS
 `<blueprint>` and `<version>` name the export. The helper prints
 `"ok": true`, and `sha256sum` prints `OK` for every file.
 
+List the packages the build installed, which the environment fingerprint
+reports for the image:
+
+<!-- qa:run env=E2 -->
+```bash
+cd /srv/pinka/images/<blueprint>/<version>
+sudo jq -r '.packages[] | [.name, .version, .architecture] | @tsv' build.json | head
+```
+
+`<blueprint>` and `<version>` name the export, as above. Each line names a
+package, its version and its architecture.
+
 Related: [How golden images are built](../explanation/golden-images.md),
 [ADR-0012](../adr/0012-leakage-lint.md).

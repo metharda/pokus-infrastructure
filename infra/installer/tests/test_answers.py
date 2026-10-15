@@ -38,9 +38,18 @@ def full_answers() -> Answers:
     answers.backups.repository = answers_mod.Repository(
         "sftp", "backup.example.com", "backup", "/srv/restic/pinka-lab"
     )
-    answers.source.repo = "git@github.com:example-org/pokus-platform.git"
-    answers.platform = answers_mod.Component(True, "platform-v0.1.0")
-    answers.catalog = answers_mod.Component(True, "catalog-v0.1.0")
+    repo = "git@github.com:example-org/example-platform.git"
+    answers.platform = answers_mod.Source(repo, "example-v0.1.0", "release", "example-v")
+    answers.content = {"cases": answers_mod.Source(repo, "cases-v1", "cases", "cases-v")}
+    answers.source_trust = answers_mod.SourceTrust(
+        known_hosts=["git.example.com ssh-ed25519 AAAAexample"],
+        require_signed_tags=True,
+        allowed_signers=["researcher1@example.com ssh-ed25519 AAAAexample"],
+    )
+    answers.platform_settings = {"ctl": {"job": "tunecpu"}}
+    answers.secrets.platform = {"ctl.api-token": "generate", "ctl.webhook": "provided"}
+    answers.gpu_arbiter = answers_mod.GpuArbiter("idle", restore_after_training=False)
+    answers.training_caps = answers_mod.TrainingCaps(3600, "8G", 4, "2G", "4G", "512M")
     answers.images_build = ["_base", "web-nginx-flask"]
     return answers
 
@@ -74,6 +83,11 @@ def test_schema_rejects_bad_structure() -> None:
         (lambda d: d["secrets"].update(generate="some"), "secrets/generate"),
         (lambda d: d.update(mode="restore"), "(top)"),
         (lambda d: d["platform"].pop("ref"), "platform"),
+        (lambda d: d["content"]["cases"].update(branch="main"), "content/cases"),
+        (lambda d: d["content"].update(Bad={"repo": "r", "ref": "x"}), "content"),
+        (lambda d: d["secrets"]["platform"].update({"ctl.x": "typed"}), "secrets/platform"),
+        (lambda d: d["gpu_arbiter"].update(after_boot="sleep"), "gpu_arbiter/after_boot"),
+        (lambda d: d["training_caps"].update(memory_max="8GiB"), "training_caps/memory_max"),
         (lambda d: d.update(extra=1), "(top)"),
     ]
     for mutate, where in cases:
@@ -95,7 +109,11 @@ def test_cross_field_problems(repo: Paths) -> None:
     answers.images_build = ["no-such-blueprint"]
     answers.split_inference_peer = "Not_A_Host"
     answers.machine.node_role = "lab"
-    answers.source.repo = "not a url"
+    answers.platform.repo = "http://git.example.com/example-org/example-platform.git"
+    answers.source_trust.allowed_signers = []
+    answers.platform_settings["ctl"] = "fast"  # a value that is no mapping
+    answers.secrets.platform["ctl"] = "generate"
+    answers.training_caps.tmp_max = "1GiB"
     answers.gpu.install_driver = "manual"
     answers.gpu.accept_mok_enrollment = True
     found = "\n".join(answers_mod.problems(answers, context))
@@ -107,11 +125,25 @@ def test_cross_field_problems(repo: Paths) -> None:
         "not in models.lock.yml",
         "no profile 'no-such-profile'",
         "no blueprint 'no-such-blueprint'",
-        "source/repo",
+        "platform/repo: use an SSH URL",
+        "source_trust/allowed_signers",
+        "platform_settings/ctl: must be a mapping",
+        "secrets/platform/ctl",
+        "training_caps/tmp_max",
         "split_inference/peer",
         "gpu/accept_mok_enrollment",
     ):
         assert expected in found, expected
+
+
+def test_sources_follow_the_platform_tool_s_rules(repo: Paths) -> None:
+    # A package overlapping another in one repository (§12.1), a bad ref.
+    answers = full_answers()
+    answers.content["guides"] = answers_mod.Source(answers.content["cases"].repo, "main", "cases")
+    answers.content["more"] = answers_mod.Source(answers.platform.repo, "a..b", "more")
+    found = "\n".join(answers_mod.problems(answers, apply.context(repo)))
+    assert "overlaps the path 'cases' of content package 'guides'" in found
+    assert "content/more/ref: not a valid ref" in found
 
 
 def test_split_inference_rules(repo: Paths) -> None:
@@ -121,8 +153,11 @@ def test_split_inference_rules(repo: Paths) -> None:
     answers.split_inference_peer = "pinka-lab"
     found = "\n".join(answers_mod.problems(answers, context))
     assert "the other node, not this machine" in found
-    assert "an inference node runs neither platform nor catalog" in found
-    answers.platform.enabled = answers.catalog.enabled = False
+    assert "platform: an inference node runs no platform" in found
+    answers.platform = answers_mod.Source()
+    answers.content = {}
+    answers.platform_settings = {}
+    answers.secrets.platform = {}
     answers.split_inference_peer = "pinka-lab-main"
     assert answers_mod.problems(answers, context) == []
 
@@ -146,7 +181,9 @@ def test_unknown_interfaces_and_cpus(repo: Paths) -> None:
 
 def test_secret_names() -> None:
     answers = full_answers()
+    answers.secrets.platform = {"ctl.api-token": "generate"}
     assert answers_mod.secret_names(answers) == []
+    answers.secrets.platform["ctl.webhook"] = "provided"
     answers.remote_access.tailscale_login = "auth_key"
     answers.backups.password = "provided"  # noqa: S105 - the choice
     answers.secrets.grafana_admin = "provided"
@@ -156,7 +193,22 @@ def test_secret_names() -> None:
         "RESTIC_PASSWORD",
         "GRAFANA_ADMIN_PASSWORD",
         "HF_TOKEN",
+        "PLATFORM_CTL_WEBHOOK",
     ]
+    assert answers_mod.platform_secret_variable("ctl.api-token") == (
+        "PINKA_SECRET_PLATFORM_CTL_API_TOKEN"
+    )
+
+
+def test_without_a_platform_nothing_of_it_is_kept() -> None:
+    answers = full_answers()
+    answers.platform = answers_mod.Source()
+    data = answers.to_dict()
+    assert data["platform"] is None
+    assert not {"content", "source_trust", "platform_settings"} & set(data)
+    assert "platform" not in data["secrets"]
+    assert data["gpu_arbiter"] == {"after_boot": "idle", "restore_after_training": False}
+    assert answers_mod.schema_problems(data) == []
 
 
 def test_load_reports_every_problem(tmp_path: Path) -> None:

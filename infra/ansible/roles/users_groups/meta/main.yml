@@ -3,7 +3,7 @@ galaxy_info:
   role_name: users_groups
   namespace: pinka
   author: Pokus project
-  description: Groups, researcher and service accounts, sudo for admins, SSH keys
+  description: Groups, researcher and infra accounts, sudo for admins, SSH keys
   license: Apache-2.0
   min_ansible_version: "2.21"
   platforms:

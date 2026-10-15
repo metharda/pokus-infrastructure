@@ -136,6 +136,46 @@ def test_defaults_are_prefixed_and_documented(role: str) -> None:
             assert "type" in option, (role, entry_point, name)
 
 
+# Required options that no vars file defines, and where each one comes from.
+RUNTIME_VARIABLES = {
+    "host_profile": "bootstrap's extra vars",
+    "pinka_bootstrap": "bootstrap's extra vars",
+    "machine": "bootstrap's -e machine=",
+    "pinka_dir": "the plays' vars",
+    "pinka_features": "set by preflight_gate",
+    "pinka_provider": "set by platform_facts",
+    "active_platform": "set by the active_platform helper role",
+    "bootstrap_signal_code": "the including task's vars",
+    "bootstrap_signal_message": "the including task's vars",
+    "vault_grafana_admin_password": "the vault",
+    "vault_postgres_passwords": "the vault",
+}
+
+
+def static_variables() -> set[str]:
+    found: set[str] = set()
+    sources = [*sorted((ANSIBLE / "group_vars" / "all").glob("*.yml"))]
+    sources.append(ANSIBLE / "inventory" / "host_vars" / "example-machine.yml")
+    for path in sources:
+        found |= set(load_yaml(path) or {})
+    return found
+
+
+@pytest.mark.parametrize("role", ROLE_NAMES)
+def test_every_required_option_is_defined_somewhere(role: str) -> None:
+    # A required option without a default must come from a vars file, the
+    # role's own defaults or vars, or a known runtime source; otherwise the
+    # role's argument validation fails on every host (check mode included).
+    known = static_variables() | set(RUNTIME_VARIABLES)
+    for path in (ROLES / role / "defaults" / "main.yml", ROLES / role / "vars" / "main.yml"):
+        if path.is_file():
+            known |= set(load_yaml(path) or {})
+    for entry_point, entry in argument_specs(role).items():
+        for name, option in (entry.get("options") or {}).items():
+            if option.get("required") and "default" not in option:
+                assert name in known, (role, entry_point, name)
+
+
 @pytest.mark.parametrize("role", ROLE_NAMES)
 def test_entry_points_exist(role: str) -> None:
     for entry_point in argument_specs(role):

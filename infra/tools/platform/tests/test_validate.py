@@ -671,7 +671,7 @@ def test_an_undeclared_facility_names_its_users() -> None:
 
 def test_facilities_declared_but_unused_are_fine() -> None:
     data = manifest("refplat")
-    data["requires"] = [*data["requires"], "opa", "incus", "inference"]
+    data["requires"] = [*data["requires"], "opa", "incus"]
     assert codes(data) == set()
     data = manifest("refplat")
     data["requires"].remove("postgres")

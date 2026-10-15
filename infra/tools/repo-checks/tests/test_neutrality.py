@@ -128,12 +128,8 @@ def test_the_repository_is_neutral() -> None:
     assert neutrality.scan(root) == []
 
 
-def test_the_temporary_exclusion_is_exactly_v5() -> None:
-    # Owner decision with the "commit" for 3d.3: named apart, removed by 3d.7.
-    # Plan step 3d.7 deletes TEMPORARY_EXCLUSIONS_UNTIL_3D7 and this test.
-    patterns = [pattern for pattern, _ in neutrality.TEMPORARY_EXCLUSIONS_UNTIL_3D7]
-    assert patterns == ["installer/*", "tests/answers/*"]
-    assert all("installer" not in pattern for pattern, _ in neutrality.EXCLUDED)
-    reason = neutrality.excluded("installer/pinka_installer/app.py")
-    assert reason is not None
-    assert reason.startswith("until plan step 3d.7")
+def test_the_installer_and_its_answers_are_scanned() -> None:
+    # V5: the temporary exclusion of the installer ended with plan step 3d.7.
+    assert not hasattr(neutrality, "TEMPORARY_EXCLUSIONS_UNTIL_3D7")
+    for path in ("installer/pinka_installer/app.py", "tests/answers/ci.yml"):
+        assert neutrality.excluded(path) is None, path

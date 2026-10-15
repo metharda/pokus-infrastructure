@@ -1,12 +1,13 @@
 # The reference platform (BUILD_PROMPT §7.18, the example of §12.1): the
-# controller ctl, the agent with its own package, the toy training job tune and
-# its CPU-only variant tunecpu (the same script, jobs/tune.py, which the tests
-# keep identical; the image is the lock's containers.images.refplat_job).
+# controller ctl, the inference broker broker, the agent with its own package,
+# the toy training job tune and its CPU-only variant tunecpu (the same script,
+# jobs/tune.py, which the tests keep identical; the image is the lock's
+# containers.images.refplat_job).
 contract_version: 2
 name: refplat
 version: 0.1.0
 runtime: python-uv
-requires: [postgres, telemetry, gpu]
+requires: [postgres, telemetry, inference, gpu]
 services:
   - name: ctl
     profile: controller
@@ -19,6 +20,9 @@ services:
     package: packages/refplat-agent/
     start: [.venv/bin/refplat-agent]
     after: [ctl]
+  - name: broker
+    profile: inference-broker
+    start: [.venv/bin/refplat-broker]
 jobs:
   - name: tune
     profile: gpu-trainer
@@ -137,6 +141,7 @@ jobs:
 sockets:
   - {name: api, service: ctl, clients: [researchers, root]}
   - {name: session, service: ctl, clients: [untrusted-agent], untrusted_clients: true}
+  - {name: infer, service: broker, clients: [researchers, root]}
 hooks:
   migrate: {run: [.venv/bin/refplat-admin, migrate], timeout_seconds: 300}
   reconcile: {run: [.venv/bin/refplat-admin, reconcile], timeout_seconds: 120}

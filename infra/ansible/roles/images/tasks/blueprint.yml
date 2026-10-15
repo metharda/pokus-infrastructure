@@ -9,7 +9,7 @@
     images_spec: "{{ images_specs[images_name] }}"
     images_alias: "{{ images_name }}/{{ images_specs[images_name].version }}"
     images_export_dir: "{{ images_export_root }}/{{ images_name }}/{{ images_specs[images_name].version }}"
-    images_packages_text: ""
+    images_package_list: null
 
 - name: List the images of the image store
   ansible.builtin.command:

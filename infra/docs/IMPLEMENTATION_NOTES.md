@@ -3408,3 +3408,158 @@ None new.
 - `ansible_collections.fallback` of `versions.lock.yml`: the release
   tarball URL and sha256 of each collection (GitHub answers 403 here for
   that organization).
+
+### Owner decisions on 3d.6 (with the "commit")
+
+- Approved: the job image from the ECR Public mirror, pinned by digest,
+  provided the digest is the official image's. Checked on 2026-10-15 with
+  Docker Hub's registry API: `library/python` serves
+  `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1`,
+  the pinned digest, and its tag `3.12-slim-trixie` points to it.
+- Approved: the vLLM stand-in, the renamed copy from its own repository,
+  the harness writing host_vars and the vault until 3d.7, the root-only
+  `resume` key, and the platform spec change on the `migrate` hook's grants.
+- For 3d.7: pinned collection artifacts with sha256 for bootstrap,
+  transitive dependencies included (`--offline --no-deps`, then
+  `verify --offline`); the maintainer script `make lock-collections`; each
+  golden image's package list in its fingerprint record; a minimal
+  `inference-broker` service in `refplat`. The fallback waits for the
+  owner's decision on its artifact; bundling the collections with infra is
+  a proposal for the owner. No snapshot repositories for golden images.
+
+## Contract v2, step 7: the installer (plan step 3d.7)
+
+### Built in 3d.7: the owner's 3d.6 decisions
+
+- Bootstrap's Ansible collections: `ansible_collections.artifacts` in
+  `versions.lock.yml` pins Galaxy's artifact (URL and sha256) of every
+  collection, the transitive dependency
+  `community.library_inventory_filtering_v1` 1.1.5 included (it is a
+  dependency of `community.docker`). Bootstrap downloads each with the
+  verified downloader, checks its sha256, installs them with
+  `ansible-galaxy collection install --offline --no-deps`, then runs
+  `ansible-galaxy collection verify --offline`; installed collections that
+  already verify are kept. Bootstrap's Ansible commands run with
+  `PYTHONDONTWRITEBYTECODE=1`, because `verify` counts a `__pycache__`
+  directory as a file that `FILES.json` does not list. The pins are
+  generated into `bootstrap/lib/pins.sh`; an unverified pin ends bootstrap
+  with exit 50 and names it.
+- `make lock-collections` (`pinka_lockcheck.lockcollections`): maintainer
+  tooling that asks Galaxy for each locked version as `ansible-galaxy`
+  does, downloads the artifact, computes its sha256 (which must equal
+  Galaxy's), checks `MANIFEST.json` and `FILES.json` as `verify` does and
+  that every declared dependency is locked at a satisfying version, and
+  prints the pins in the lock's format with each artifact's size and
+  license files. It installs and changes nothing; documented in
+  [How to pin the Ansible collections](how-to/pin-ansible-collections.md).
+- The fallback: nothing built (owner decision pending). The GitHub
+  releases of these collections carry no Galaxy artifact; GitHub's source
+  archives are different files without `MANIFEST.json` and `FILES.json`, so
+  `verify` cannot check them and a sha256 of them would only check the
+  archive against itself.
+- Golden images: each image's build records its full package list (name,
+  version, architecture, from `dpkg-query` with only installed packages
+  kept) in its export record `build.json`; `pinka` adds it to the
+  fingerprint as `software.golden_images.<alias>` = `{fingerprint,
+  packages}`, only when the record's fingerprint is the image's.
+- `refplat`'s `broker` (profile `inference-broker`, socket `infer` for
+  researchers and root): it asks the inference API of `endpoints.toml` for
+  its model list; `refplat infer` prints it. In the VMs the stand-in on
+  the vLLM port is now an enabled unit that answers `/health` and
+  `/v1/models` and outlives the `resume` reboot, so the `platform` stage
+  proves that the inference API answers the broker.
+
+### Built in 3d.7: the installer (BUILD_PROMPT §16 step 21)
+
+- `pinka-platform deploy inspect-release`: fetches and validates the
+  release alone and reports what it needs (content packages, the secrets
+  its services name, each service's config schema, the vault keys); the
+  summary also names the state that is backed up, the backed-up database
+  and the job caps.
+- Answers (schema v1, extended): `platform` and `content` (sources as in
+  host_vars §8.1), `source_trust` (`known_hosts`, `require_signed_tags`,
+  `allowed_signers`), `platform_settings`, `gpu_arbiter` (`after_boot`,
+  `restore_after_training`), `training_caps` and `secrets.platform`
+  (`<service>.<name>`: `generate` or `provided` through
+  `PINKA_SECRET_PLATFORM_<SERVICE>_<NAME>`). The vault gets
+  `vault_platform_secrets` and the platform's database roles from the
+  inspection's `vault_keys`.
+- `pinka_installer.release`: the inspection with the platform tool's own
+  code and the settings the platform role would write (the host's deploy
+  key, GitHub's pinned host keys and the answers' own lines, the allowed
+  signers, all in a root-only temporary directory); `full` runs `deploy
+  prepare --inspect`. The release's code never runs.
+- Screens: Platform (12: no platform, or the release's source, host keys,
+  signed tags, **Deploy key**, **Test access**, **Inspect release**, then
+  the content sources, secrets and settings the release needs), Platform
+  review (13: the deployment's checks and what the platform will be, with
+  an approval that any later change of the platform answers withdraws),
+  the GPU screen's arbiter and caps, and the platform and GPU lines of the
+  Review screen. The answers replay inspects the release before it writes
+  anything.
+- `--replace-platform` reaches the inspection: `pinka-installer apply`
+  takes it (bootstrap passes its own), and the TUI takes it from the
+  options bootstrap passes on; without it, a release of another platform
+  than the active one is refused, as the deployment refuses it.
+- V5: the temporary exclusion of the installer and `tests/answers/` from
+  the neutrality lint is gone; both are scanned, and a test keeps it so.
+- `make test-distros` enables, replaces and restores the platform through
+  the answers (`mode: modify`, then `mode: restore` with
+  `restore.snapshot: latest`), with `--replace-platform` for the
+  replacement; the guest helper's host_vars and vault commands, approved
+  until 3d.7, are removed. Each stage's answers are kept in the results.
+- Docs: the TUI and answers how-tos (Platform, Platform review, GPU
+  arbiter, the deploy key without the TUI, platform secrets), the answers
+  and CLI references, and the Platform review screenshot.
+
+### Fixed in 3d.7
+
+- CI's `infra` workflow was red on `a686e28`: (1) every check-mode lane
+  stopped at `users_groups`, whose argument spec still required
+  `service_accounts`, removed from group_vars in 3d.3; the option is gone,
+  and a test checks that every required role option without a default has
+  a source (vars files, the role's defaults or vars, or a listed runtime
+  source); (2) the uv tests failed because the Makefile installed uv to
+  `infra//home/runner/...` in CI; (3) the drift check failed because the
+  generated `pinka-platform` reference showed this checkout's path as the
+  `--contract` default; subcommand defaults are now shown relative to the
+  checkout, and a test checks that no generated file names the checkout's
+  path.
+- Bootstrap's options with a value also take `--option=value`; the TUI
+  passed `--skip-tags=images` and `--tags=...` that way, which bootstrap
+  refused as unknown options (since step 13). A test runs the TUI's own
+  options through bootstrap's parser.
+
+### Interpretations awaiting owner confirmation (3d.7)
+
+- The installer imports the platform tool (`infra/tools/platform` on its
+  `PYTHONPATH`) instead of running its CLI, so the inspection and the
+  deployment share one code path.
+- The inspection uses the platform role's root-only mirrors and staging
+  directory and deletes what it staged.
+- The deploy key is created by the installer (**Deploy key**) or, without
+  the TUI, by the operator with `ssh-keygen` at the platform role's path
+  (`/var/lib/pinka/git/deploy_key`), which the role keeps; no answer names
+  an existing key file (the roles do not read `vault_git_deploy_keys`).
+- The GPU arbiter and the caps are answered on the GPU screen; without a
+  GPU they keep their defaults (serve after boot, restore after training,
+  86400 s, 8 CPUs, 24G memory, 8G dataset, 16G run storage, 1G tmpfs).
+- The TUI does not offer replacing an active platform by itself; the
+  operator starts bootstrap with `--replace-platform`, which the TUI then
+  uses.
+- Platform secrets without a choice in the answers are generated.
+
+### Findings to report (3d.7)
+
+- The check-mode lanes have not run past `users_groups` since 3d.3; the
+  roles after it are checked again only by the next CI run.
+- Not run here: `make test-distros` (no Incus), the check-mode lanes (no
+  Docker daemon), the PostgreSQL 18 SQL tests (CI only), and a run of the
+  tests as an unprivileged user (the venv's interpreter lives below root's
+  home); CI runs them unprivileged.
+
+### Open `TODO(verify)` items after 3d.7
+
+- `ansible_collections.artifacts`: the Galaxy artifact URL and sha256 of
+  each of the five collections (10 lock lines, 5 generated lines in
+  `bootstrap/lib/pins.sh`), from the owner's `make lock-collections` run.

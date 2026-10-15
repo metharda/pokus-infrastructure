@@ -150,7 +150,9 @@
 
     - name: Record the installed packages
       ansible.builtin.command:
-        argv: "{{ images_incus_exec + ['dpkg-query', '--show', '--showformat', '${Package}=${Version}\\n'] }}"
+        argv: >-
+          {{ images_incus_exec + ['dpkg-query', '--show', '--showformat',
+             '${Status}\t${Package}\t${Version}\t${Architecture}\n'] }}
       register: images_packages
       changed_when: false
 
@@ -217,4 +219,4 @@
 - name: Use the published image
   ansible.builtin.set_fact:
     images_image: "{{ images_list.stdout | from_json | pinka_image_by_alias(images_alias) }}"
-    images_packages_text: "{{ images_packages.stdout }}\n"
+    images_package_list: "{{ images_packages.stdout | pinka_dpkg_packages }}"

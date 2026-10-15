@@ -1,8 +1,11 @@
 # Managed by pinka (ansible/roles/images/tasks/export.yml). Local changes will be overwritten.
 #
 # Export of a blueprint's image (images_image) to
-# <images_export_root>/<blueprint>/<version>/ with SHA256SUMS, the installed
-# packages (after a build) and build.json, written last.
+# <images_export_root>/<blueprint>/<version>/ with SHA256SUMS and build.json,
+# written last. build.json holds the installed packages (name, version,
+# architecture) that the build recorded, which the environment fingerprint
+# reports; an image exported without a build in this run keeps the list of
+# its record only when the record is of the same image, otherwise it is null.
 
 - name: Create the export directories
   ansible.builtin.file:
@@ -34,15 +37,6 @@
   changed_when: (images_written.stdout | from_json).changed | default(false)
   failed_when: images_written.rc != 0 or not (images_written.stdout | from_json).ok
 
-- name: Record the installed packages
-  ansible.builtin.copy:
-    dest: "{{ images_export_dir }}/packages.txt"
-    content: "{{ images_packages_text }}"
-    owner: root
-    group: pinka-admin
-    mode: "0640"
-  when: images_packages_text | length > 0
-
 - name: Restrict the export to the lab's admins
   ansible.builtin.file:
     path: "{{ images_export_dir }}"
@@ -63,6 +57,11 @@
           'properties': images_image.properties | default({}) | dict2items
                         | selectattr('key', 'match', '^pinka[.]') | items2dict,
           'files': (images_written.stdout | from_json).files,
+          'packages': images_package_list
+                      if images_package_list is not none
+                      else (images_record.packages | default(none)
+                            if images_record.fingerprint | default('') == images_image.fingerprint
+                            else none),
           'exported_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ')} | to_nice_json }}
     owner: root
     group: pinka-admin

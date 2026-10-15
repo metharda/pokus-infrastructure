@@ -7,7 +7,7 @@ DO $roles$
 DECLARE
   r text;
 BEGIN
-  FOREACH r IN ARRAY ARRAY['refplat_ctl', 'refplat_migrator', 'refplat_reader', 'refplat_grafana']::text[] LOOP
+  FOREACH r IN ARRAY ARRAY['refplat_ctl', 'refplat_broker', 'refplat_migrator', 'refplat_reader', 'refplat_grafana']::text[] LOOP
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format('CREATE ROLE %I LOGIN', r);
       RAISE NOTICE 'pinka-changed: created role %', r;
@@ -16,7 +16,7 @@ BEGIN
       RAISE NOTICE 'pinka-changed: role % may log in again', r;
     END IF;
   END LOOP;
-  FOREACH r IN ARRAY ARRAY['refplat_controller']::text[] LOOP
+  FOREACH r IN ARRAY ARRAY['refplat_controller', 'refplat_inference_broker']::text[] LOOP
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = r) THEN
       EXECUTE format('CREATE ROLE %I NOLOGIN', r);
       RAISE NOTICE 'pinka-changed: created group role %', r;
@@ -64,7 +64,7 @@ BEGIN
     RAISE NOTICE 'pinka-changed: owner of schema restricted';
   END IF;
 
-  FOR m, g IN SELECT * FROM (VALUES ('refplat_ctl', 'refplat_controller')) AS t(m, g) LOOP
+  FOR m, g IN SELECT * FROM (VALUES ('refplat_ctl', 'refplat_controller'), ('refplat_broker', 'refplat_inference_broker')) AS t(m, g) LOOP
     IF NOT pg_has_role(m, g, 'MEMBER') THEN
       EXECUTE format('GRANT %I TO %I', g, m);
       RAISE NOTICE 'pinka-changed: % joined %', m, g;
@@ -76,7 +76,7 @@ BEGIN
     EXECUTE format('REVOKE ALL ON DATABASE %I FROM PUBLIC', current_database());
     RAISE NOTICE 'pinka-changed: revoked the database from PUBLIC';
   END IF;
-  FOREACH r IN ARRAY ARRAY['refplat_ctl', 'refplat_migrator', 'refplat_reader', 'refplat_grafana']::text[] LOOP
+  FOREACH r IN ARRAY ARRAY['refplat_ctl', 'refplat_broker', 'refplat_migrator', 'refplat_reader', 'refplat_grafana']::text[] LOOP
     IF NOT has_database_privilege(r, current_database(), 'CONNECT') THEN
       EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), r);
       RAISE NOTICE 'pinka-changed: connect for %', r;

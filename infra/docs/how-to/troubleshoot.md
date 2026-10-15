@@ -151,6 +151,15 @@ collections failed. The lines above the exit line name the step.
 - A checksum did not match: do not work around it. The download is not the
   file that `versions.lock.yml` pins; check for a proxy that rewrites
   downloads, and report it if the problem stays.
+- An Ansible collection cannot be downloaded: the line names the collection
+  and its URL from `ansible_collections.artifacts` of `versions.lock.yml`;
+  check that the host reaches `galaxy.ansible.com`. A pin that is still
+  `TODO(verify)` is never downloaded: this release has not pinned that
+  artifact yet, so report it.
+- The installed collections do not match their `FILES.json`: bootstrap
+  found a changed file below `/opt/pinka/ansible-collections`, installed the
+  pinned artifacts again, and the check still failed right after. Something
+  on the host changes the files as they are written; report it.
 
 ## Exit code 60: play failed {#exit-code-60}
 

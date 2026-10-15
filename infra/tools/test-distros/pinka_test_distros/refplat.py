@@ -5,22 +5,25 @@ The platform is deployed from the VM's clone of the repository
 ``cases`` from the same clone. The renamed copy that replaces it lives in a
 repository of its own in the VM, so the tested clone never changes. Every
 command here runs as root in the VM; the guest helper (``guest.py``) runs
-with the Ansible venv's Python.
+with the Ansible venv's Python. The platform is enabled, replaced and
+restored through the installer's answers (``bootstrap.sh --answers``), as an
+operator does it.
 """
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import shlex
+import urllib.parse
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from pinka_platform import database, deploy, loader
-from pinka_platform.contract import Contract
+from pinka_platform import deploy, loader
 
 INFRA = Path(__file__).resolve().parents[3]
 RELEASE = INFRA / "tests" / "reference-platform"
@@ -33,6 +36,7 @@ GUEST_PYTHON = "/opt/pinka/ansible-venv/bin/python"
 GUEST_HELPER = f"{GUEST_REPO}/infra/tools/test-distros/pinka_test_distros/guest.py"
 CLI = "/usr/local/bin/refplat"
 ENDPOINTS = "/etc/pinka/platform/endpoints.toml"
+LAB = "/etc/pinka/lab.json"
 ACTIVE = "/etc/pinka/platform/active.json"
 TRANSITIONS = "/var/lib/pinka/gpu/transitions.jsonl"
 # The job of hosts without a GPU (the test VMs have none).
@@ -42,6 +46,33 @@ RESUME_STEPS = 30
 RESUME_STEP_SECONDS = 4
 RESUME_AFTER_STEP = 3
 STANDIN_UNIT = "pinka-test-inference-standin"
+STANDIN_MODEL = "standin-model"
+# The inference API's stand-in: /health and /v1/models of vLLM's OpenAI API.
+STANDIN_CODE = """import http.server
+import json
+import sys
+
+MODELS = json.dumps({"object": "list", "data": [{"id": sys.argv[2], "object": "model"}]}).encode()
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = {"/health": b"", "/v1/models": MODELS}.get(self.path)
+        if body is None:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"""
 # A Git identity for the renamed copy's commit (test data, never pushed).
 GIT_IDENTITY = "-c user.name=researcher1 -c user.email=researcher1@example.com"
 
@@ -62,7 +93,7 @@ def renamed(data: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def source(repo: str, ref: str, path: str) -> dict[str, str]:
-    """A ``platform`` or ``content`` entry of the host_vars."""
+    """A ``platform`` or ``content`` source of the answers."""
     return {"repo": repo, "ref": ref, "path": path}
 
 
@@ -71,52 +102,26 @@ def guest(*args: str) -> list[str]:
     return [GUEST_PYTHON, "-I", GUEST_HELPER, *args]
 
 
-def enable(
-    host_vars: str,
-    vault: str,
-    vault_password_file: str,
-    *,
-    platform: Mapping[str, str],
-    content: Mapping[str, Mapping[str, str]],
-    data: Mapping[str, Any],
-    contract: Contract,
-) -> list[str]:
-    """The guest helper's ``enable-platform`` for a manifest.
+def platform_answers(
+    platform: Mapping[str, str], content: Mapping[str, Mapping[str, str]]
+) -> dict[str, Any]:
+    """The answers' platform sections for a release and its content packages.
+
+    The installer's answers replay inspects the release and adds its database
+    roles and secrets to the vault (generated, never printed), as for any lab.
 
     Args:
-        host_vars: The machine's host_vars file in the VM.
-        vault: The vault in the VM.
-        vault_password_file: Its password file in the VM.
-        platform: The ``platform`` entry.
-        content: The ``content`` entries.
-        data: The platform's manifest (its database roles and secrets).
-        contract: The contract.
+        platform: The release's source.
+        content: The content packages' sources.
 
     Returns:
-        The command.
+        ``platform``, ``content`` and ``platform_settings``.
     """
-    roles = database.plan(data, contract, [])["vault_roles"]
-    argv = guest(
-        "enable-platform",
-        "--host-vars",
-        host_vars,
-        "--vault",
-        vault,
-        "--vault-password-file",
-        vault_password_file,
-        "--platform",
-        json.dumps(platform, sort_keys=True),
-        "--content",
-        json.dumps(content, sort_keys=True),
-        "--settings",
-        json.dumps({"ctl": SETTINGS}, sort_keys=True),
-    )
-    for role in roles:
-        argv += ["--postgres-role", role]
-    for service in data["services"]:
-        for name in service.get("secrets", []):
-            argv += ["--secret", f"{service['name']}/{name}"]
-    return argv
+    return {
+        "platform": dict(platform),
+        "content": {name: dict(entry) for name, entry in content.items()},
+        "platform_settings": {"ctl": dict(SETTINGS)},
+    }
 
 
 def renamed_copy_script(name: str = RENAMED_NAME) -> str:
@@ -134,20 +139,52 @@ def renamed_copy_script(name: str = RENAMED_NAME) -> str:
     )
 
 
-def standin_script(port: int, python: str = deploy.PYTHON) -> str:
-    """Bash: a root listener on the vLLM port while nothing serves there (no GPU).
+def vllm_port(lab: Mapping[str, Any]) -> int:
+    """The inference API's port from ``/etc/pinka/lab.json`` (its vLLM health URL).
 
-    The inference guard decides who reaches it, as it decides who reaches
-    vLLM. Prints ``started`` or ``busy``.
+    Raises:
+        ValueError: If the file names no port.
     """
-    code = (
-        f'import socket\ns = socket.create_server(("127.0.0.1", {port}))\n'
-        "while True:\n    s.accept()[0].close()"
+    port = urllib.parse.urlsplit(str((lab.get("vllm") or {}).get("health_url", ""))).port
+    if port is None:
+        raise ValueError("lab.json names no vLLM port")
+    return port
+
+
+def standin_command(port: int, python: str = deploy.PYTHON) -> str:
+    """The stand-in's ``ExecStart``: its code travels base64-encoded (no unit escaping)."""
+    encoded = base64.b64encode(STANDIN_CODE.encode("utf-8")).decode("ascii")
+    code = f"import base64, sys; exec(base64.b64decode('{encoded}'))"
+    return f'{python} -I -c "{code}" {port} {STANDIN_MODEL}'
+
+
+def standin_script(port: int, python: str = deploy.PYTHON) -> str:
+    """Bash: a root HTTP server on the vLLM port while nothing serves there (no GPU).
+
+    It answers ``/health`` and ``/v1/models`` like vLLM, so the health gate
+    passes for a platform that requires ``inference`` and the broker gets a
+    model list. It is an enabled unit, so it survives the reboot of the
+    ``resume`` stage. The inference guard decides who reaches it, as it
+    decides who reaches vLLM. Prints ``running``, ``started`` or ``busy``.
+    """
+    unit = f"/etc/systemd/system/{STANDIN_UNIT}.service"
+    text = (
+        "[Unit]\n"
+        "Description=Stand-in for the inference API (the test VM has no GPU)\n"
+        "After=network.target\n\n"
+        "[Service]\n"
+        f"ExecStart={standin_command(port, python)}\n"
+        "Restart=on-failure\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n"
     )
     return (
-        f"if ss -Hltn 'sport = :{port}' | grep -q .; then echo busy;"
-        f" else systemd-run --quiet --unit={STANDIN_UNIT} {python} -c {shlex.quote(code)}"
-        " && echo started; fi"
+        f"if systemctl is-active --quiet {STANDIN_UNIT}; then echo running;"
+        f" elif ss -Hltn 'sport = :{port}' | grep -q .; then echo busy;"
+        f" else printf %s {shlex.quote(text)} >{unit}"
+        f" && systemctl daemon-reload && systemctl enable --now --quiet {STANDIN_UNIT}"
+        f" && for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/{port}) 2>/dev/null && break;"
+        " sleep 0.2; done && echo started; fi"
     )
 
 

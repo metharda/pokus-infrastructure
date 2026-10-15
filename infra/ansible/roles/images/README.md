@@ -35,7 +35,10 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
   7. delete the instance. A failed build keeps it for inspection; the next
      run replaces it.
 - The image is exported to `/srv/pinka/images/<blueprint>/<version>/`: the
-  image files, `SHA256SUMS`, `packages.txt` and `build.json` (written last).
+  image files, `SHA256SUMS` and `build.json` (written last), which lists
+  every package the build installed (name, version, architecture) for the
+  environment fingerprint; an export without a build in the same run keeps
+  the list only from a record of the same image, otherwise it is null.
   The upstream base is exported once to
   `/srv/pinka/images/_upstream/<base>/<fingerprint>/` with `SHA256SUMS` and
   `source.json`, because public image servers rotate their images.

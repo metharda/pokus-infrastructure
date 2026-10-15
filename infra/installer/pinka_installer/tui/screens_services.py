@@ -1,4 +1,4 @@
-"""Screens 9-13: GPU & inference, Data & backups, Restore, Platform & catalog, Golden images."""
+"""Screens 9-11 and 14: GPU & inference, Data & backups, Restore, Golden images."""
 
 from __future__ import annotations
 
@@ -21,11 +21,10 @@ from textual.widgets import (
     Select,
     SelectionList,
     Static,
-    TextArea,
 )
 
 from pinka_installer import models, validators, vault
-from pinka_installer.answers import GENERATE, PROVIDED, Component, Repository, Retention
+from pinka_installer.answers import GENERATE, PROVIDED, Repository, Retention
 from pinka_installer.tui.base import Problems, StepScreen
 from pinka_installer.tui.model import (
     ModelChoice,
@@ -35,7 +34,6 @@ from pinka_installer.tui.model import (
 )
 from pinka_installer.tui.widgets import Field, NavBar, ShownOnce
 
-DEPLOY_KEY = Path("/var/lib/pinka/git/deploy_key")
 SAFE = YAML(typ="safe")
 
 
@@ -145,6 +143,75 @@ class GpuScreen(StepScreen):
             Input(self.wizard.provided.hf_token, password=True, id="hf"),
         )
         yield Checkbox("Start serving after the install", gpu.start_serving, id="serve")
+        yield from self._arbiter()
+
+    def _arbiter(self) -> ComposeResult:
+        arbiter, caps = self.answers.gpu_arbiter, self.answers.training_caps
+        yield Static("GPU arbiter: vLLM and training jobs share the GPU", classes="info")
+        with RadioSet(id="after-boot"):
+            yield RadioButton(
+                "After boot: serve the default deployment",
+                value=arbiter.after_boot == "serve",
+                id="boot-serve",
+            )
+            yield RadioButton(
+                "After boot: stay idle until asked",
+                value=arbiter.after_boot == "idle",
+                id="boot-idle",
+            )
+        yield Checkbox(
+            "Serve the deployment again when a training run ends",
+            arbiter.restore_after_training,
+            id="restore-serving",
+        )
+        if self.answers.machine.node_role != "full":
+            yield Static(
+                f"Training is unavailable on a {self.answers.machine.node_role} node: "
+                "only a full node runs training jobs.",
+                classes="hint",
+            )
+            return
+        yield Static(
+            "Training caps: the GPU arbiter refuses every run of a job over them",
+            classes="info",
+        )
+        with Horizontal(classes="inline"):
+            yield Field("Run time (s)", Input(str(caps.timeout_seconds), id="cap-timeout"))
+            yield Field("CPUs", Input(str(caps.cpus), id="cap-cpus"))
+            yield Field("Memory", Input(caps.memory_max, id="cap-memory"))
+        with Horizontal(classes="inline"):
+            yield Field("Dataset", Input(caps.dataset_max, id="cap-dataset"))
+            yield Field("Output and checkpoints", Input(caps.run_storage_max, id="cap-storage"))
+            yield Field("Job tmpfs", Input(caps.tmp_max, id="cap-tmp"))
+
+    def _save_arbiter(self) -> Problems:
+        arbiter, caps = self.answers.gpu_arbiter, self.answers.training_caps
+        arbiter.after_boot = "idle" if self.query_one("#boot-idle", RadioButton).value else "serve"
+        arbiter.restore_after_training = self.query_one("#restore-serving", Checkbox).value
+        if self.answers.machine.node_role != "full":
+            return []
+        problems: Problems = []
+        for field_id, name, minimum in (
+            ("cap-timeout", "timeout_seconds", 60),
+            ("cap-cpus", "cpus", 1),
+        ):
+            text = _input(self, f"#{field_id}")
+            if not text.isdigit() or int(text) < minimum:
+                problems.append((field_id, f"a whole number of at least {minimum}"))
+            else:
+                setattr(caps, name, int(text))
+        for field_id, name in (
+            ("cap-memory", "memory_max"),
+            ("cap-dataset", "dataset_max"),
+            ("cap-storage", "run_storage_max"),
+            ("cap-tmp", "tmp_max"),
+        ):
+            value = _input(self, f"#{field_id}")
+            if error := validators.cap_size(value):
+                problems.append((field_id, error))
+            else:
+                setattr(caps, name, value)
+        return problems
 
     def on_mount(self) -> None:  # noqa: D102
         if self.not_applicable():
@@ -160,10 +227,10 @@ class GpuScreen(StepScreen):
         return {str(m.get("id")) for m in (SAFE.load(text) or {}).get("models") or []}
 
     def _fill_models(self) -> None:
-        catalog = SAFE.load(self.ctx.paths.models_catalog.read_text(encoding="utf-8")) or {}
+        known = SAFE.load(self.ctx.paths.models_catalog.read_text(encoding="utf-8")) or {}
         profile = self.query_one("#profile", Select).value
         self.choices = model_choices(
-            catalog, self._lock_ids(), str(profile), self.wizard.gpu.get("vram_gib")
+            known, self._lock_ids(), str(profile), self.wizard.gpu.get("vram_gib")
         )
         table = self.query_one("#models", DataTable)
         table.clear()
@@ -224,7 +291,7 @@ class GpuScreen(StepScreen):
             repo, model_id, meta = chosen.hf_repo, chosen.id, dict(chosen.entry)
         else:
             self.app.call_from_thread(
-                self.notify, "choose a catalog model or enter a repository", severity="error"
+                self.notify, "choose a listed model or enter a repository", severity="error"
             )
             return
         try:
@@ -267,7 +334,7 @@ class GpuScreen(StepScreen):
         if chosen is not None and chosen.gated and not token:
             problems.append(("hf", "this model is gated: enter a Hugging Face token"))
         gpu.start_serving = self.query_one("#serve", Checkbox).value
-        return problems
+        return problems + self._save_arbiter()
 
     def _secure_boot_problems(self) -> Problems:
         # Secure Boot without a driver (approved deviation I1): auto needs the consent
@@ -562,131 +629,6 @@ class RestoreScreen(StepScreen):
         return []
 
 
-class PlatformScreen(StepScreen):
-    """Screen 12: platform and catalog from the pokus-platform repository (owner answer E3)."""
-
-    STEP = "platform"
-    HELP = (
-        "Platform and catalog are deployed from a root-only mirror of the pokus-platform "
-        "repository. An SSH URL uses a read-only deploy key generated on this host: add its "
-        "public key to the Git host, then Test access. An anonymous https:// URL needs no key. "
-        "With signed tags, only tags signed by the allowed signers are deployed."
-    )
-
-    def not_applicable(self) -> str | None:  # noqa: D102
-        if self.answers.machine.node_role == "inference":
-            return "an inference node runs neither platform nor catalog"
-        return None
-
-    def nav(self) -> NavBar:  # noqa: D102
-        return NavBar(extra=(Button("Deploy key", id="key"), Button("Test access", id="test")))
-
-    def body(self) -> ComposeResult:  # noqa: D102
-        source = self.answers.source
-        yield Checkbox("Deploy the platform", self.answers.platform.enabled, id="platform")
-        yield Field(
-            "Platform version (tag, branch or commit)",
-            Input(self.answers.platform.ref, id="platform-ref", placeholder="platform-v0.1.0"),
-        )
-        yield Checkbox("Deploy the scenario catalog", self.answers.catalog.enabled, id="catalog")
-        yield Field(
-            "Catalog version (tag, branch or commit)",
-            Input(self.answers.catalog.ref, id="catalog-ref", placeholder="catalog-v0.1.0"),
-        )
-        yield Field(
-            "Repository",
-            Input(
-                source.repo, id="repo", placeholder="git@github.com:example-org/pokus-platform.git"
-            ),
-        )
-        yield Field(
-            "Host keys of a non-GitHub SSH host (known_hosts lines)",
-            TextArea("\n".join(source.known_hosts), id="known"),
-        )
-        yield Checkbox("Require signed tags", source.require_signed_tags, id="signed")
-        yield Field(
-            "Allowed signers (allowed_signers lines)",
-            TextArea("\n".join(source.allowed_signers), id="signers"),
-        )
-        yield Static("", id="key-text", classes="code", markup=False)
-
-    def on_extra_button(self, event: Button.Pressed) -> None:  # noqa: D102
-        if event.button.id == "key":
-            self.deploy_key()
-        elif event.button.id == "test":
-            self.test_access(_input(self, "#repo"))
-
-    @work(thread=True, exclusive=True)
-    def deploy_key(self) -> None:
-        """Create the read-only deploy key the deploy_source role uses, and show it."""
-        public = DEPLOY_KEY.with_suffix(".pub")
-        if not public.exists():
-            DEPLOY_KEY.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            done = self.ctx.host.run(
-                [
-                    "ssh-keygen", "-q", "-t", "ed25519", "-N", "",
-                    "-C", f"pinka-deploy@{self.answers.machine.name}", "-f", str(DEPLOY_KEY),
-                ]
-            )  # fmt: skip
-            if done.returncode != 0:
-                self.app.call_from_thread(
-                    self.notify, f"ssh-keygen failed: {done.stderr}", severity="error"
-                )
-                return
-        text = public.read_text(encoding="utf-8").strip()
-        self.app.call_from_thread(
-            self.query_one("#key-text", Static).update,
-            f"Add this read-only deploy key to the Git host:\n{text}",
-        )
-
-    @work(thread=True, exclusive=True)
-    def test_access(self, repo: str) -> None:
-        """``git ls-remote`` the repository (with the deploy key for SSH URLs).
-
-        Args:
-            repo: The repository URL.
-        """
-        if error := validators.source_repo(repo):
-            self.app.call_from_thread(self.notify, error, severity="error")
-            return
-        env = {"GIT_TERMINAL_PROMPT": "0"}
-        if not repo.startswith("https://"):
-            env["GIT_SSH_COMMAND"] = f"ssh -i {DEPLOY_KEY} -o IdentitiesOnly=yes -o BatchMode=yes"
-        done = self.ctx.host.run(["git", "ls-remote", "--tags", repo], env=env)
-        if done.returncode == 0:
-            tags = [
-                line.rsplit("/", 1)[-1] for line in done.stdout.splitlines() if "refs/tags/" in line
-            ]
-            self.app.call_from_thread(self.notify, f"access works; {len(tags)} tags")
-        else:
-            self.app.call_from_thread(
-                self.notify, f"no access: {done.stderr.strip()[-200:]}", severity="error"
-            )
-
-    def save(self) -> Problems:  # noqa: D102
-        problems: Problems = []
-        for name in ("platform", "catalog"):
-            enabled = self.query_one(f"#{name}", Checkbox).value
-            ref = _input(self, f"#{name}-ref")
-            setattr(self.answers, name, Component(enabled, ref))
-            if enabled and (error := validators.git_ref(ref)):
-                problems.append((f"{name}-ref", error))
-        source = self.answers.source
-        source.repo = _input(self, "#repo")
-        source.known_hosts = [
-            line for line in self.query_one("#known", TextArea).text.splitlines() if line.strip()
-        ]
-        source.require_signed_tags = self.query_one("#signed", Checkbox).value
-        source.allowed_signers = [
-            line for line in self.query_one("#signers", TextArea).text.splitlines() if line.strip()
-        ]
-        if self.answers.needs_source and (error := validators.source_repo(source.repo)):
-            problems.append(("repo", error))
-        if source.require_signed_tags and not source.allowed_signers and self.answers.needs_source:
-            problems.append(("signers", "signed tags need at least one allowed signer"))
-        return problems
-
-
 def blueprints(images_dir: Path) -> list[dict[str, Any]]:
     """The golden image blueprints.
 
@@ -702,7 +644,7 @@ def blueprints(images_dir: Path) -> list[dict[str, Any]]:
 
 
 class ImagesScreen(StepScreen):
-    """Screen 13: golden images to build, now or later."""
+    """Screen 14: golden images to build, now or later."""
 
     STEP = "images"
     HELP = (

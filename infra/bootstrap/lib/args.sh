@@ -91,8 +91,21 @@ need_value() {
 }
 
 # parse_args "$@": set the OPT_* variables; returns EXIT_USAGE on errors.
+# An option with a value may also be given as --option=value (the installer
+# TUI passes --tags=, --skip-tags= and --replace-platform= on that way).
 parse_args() {
   while (($# > 0)); do
+    if [[ $1 == --*=* ]]; then
+      case ${1%%=*} in
+        --machine | --ref | --tags | --skip-tags | --vault-password-file | --answers | --replace-platform)
+          set -- "${1%%=*}" "${1#*=}" "${@:2}"
+          ;;
+        *)
+          usage_error "option ${1%%=*} takes no value"
+          return
+          ;;
+      esac
+    fi
     case $1 in
       --machine)
         need_value "$1" $# || return

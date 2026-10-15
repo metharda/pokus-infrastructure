@@ -122,6 +122,8 @@ def summary(manifest: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
     """
     p = manifest["name"]
     sockets = manifest.get("sockets", [])
+    backup = manifest.get("backup", {})
+    backed_up = set(backup.get("paths", []))
     return {
         "name": p,
         "version": manifest["version"],
@@ -135,13 +137,26 @@ def summary(manifest: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
                 "relaxations": list(s.get("relaxations", [])),
                 "incus_projects": list(contract.profile(s["profile"]).data["incus_projects"]),
                 "restricted_data": contract.profile(s["profile"]).data["restricted_data"] == "read",
+                "state": [
+                    {"name": d, "backed_up": f"{s['name']}/{d}" in backed_up}
+                    for d in s.get("state", [])
+                ],
             }
             for s in manifest["services"]
         ],
         "jobs": [
-            {"name": j["name"], "image": j["image"], "gpus": j["resources"]["gpus"]}
+            {
+                "name": j["name"],
+                "image": j["image"],
+                "gpus": j["resources"]["gpus"],
+                "memory_max": j["resources"]["memory_max"],
+                "cpus": j["resources"]["cpus"],
+                "timeout_seconds": j["timeout_seconds"],
+                "resumable": bool(j.get("resumable", False)),
+            }
             for j in manifest.get("jobs", [])
         ],
+        "backup_database": bool(backup.get("database", False)),
         "sockets": [
             {
                 "service": s["service"],
@@ -215,8 +230,17 @@ def summary_text(data: Mapping[str, Any]) -> str:
             extras.append("relaxation " + ", ".join(s["relaxations"]))
         tail = f" ({'; '.join(extras)})" if extras else ""
         lines.append(f"  {s['name']}: {s['profile']} as {s['account']}{tail}")
+        for d in s["state"]:
+            kept = "backed up" if d["backed_up"] else "not backed up"
+            lines.append(f"    state {d['name']}: {kept}")
+    if data["backup_database"]:
+        lines.append("database: backed up")
     for j in data["jobs"]:
-        lines.append(f"job {j['name']}: {j['image']} ({j['gpus']} GPU)")
+        lines.append(
+            f"job {j['name']}: {j['image']} ({j['gpus']} GPU, {j['cpus']} CPUs, "
+            f"memory {j['memory_max']}, {j['timeout_seconds']} s"
+            f"{', resumable' if j['resumable'] else ''})"
+        )
     for s in data["sockets"]:
         mark = "  [dedicated to the agent]" if s["agent_dedicated"] else ""
         lines.append(f"socket {s['service']}/{s['name']}: {', '.join(s['clients'])}{mark}")

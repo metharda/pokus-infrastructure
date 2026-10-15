@@ -193,6 +193,7 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
         assert at(pilot) == "restore"
         assert pilot.app.screen.query(".greyed")  # not in restore mode
         await forward(pilot, "platform")
+        await forward(pilot, "platform_review")
         await forward(pilot, "images")
         await forward(pilot, "secrets")
         await secrets_to_progress(pilot)
@@ -285,6 +286,7 @@ def test_bare_metal_with_a_dedicated_pool_disk(repo: Paths) -> None:
         await forward(pilot, "backups")
         await forward(pilot, "restore")
         await forward(pilot, "platform")
+        await forward(pilot, "platform_review")
         await forward(pilot, "images")
         await forward(pilot, "secrets")
         fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
@@ -347,7 +349,7 @@ def test_degraded_host_without_gpu(repo: Paths) -> None:
         for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
             await forward(pilot, step)
         assert "no GPU detected" in str(pilot.app.screen.query_one(".greyed", Static).content)
-        for step in ("backups", "restore", "platform", "images", "secrets"):
+        for step in ("backups", "restore", "platform", "platform_review", "images", "secrets"):
             await forward(pilot, step)
         await secrets_to_progress(pilot)
 
@@ -397,7 +399,7 @@ def test_secure_boot_mok_consent(repo: Paths) -> None:
         await forward(pilot, "gpu")
         assert "✖ enter the same one-time password twice" in shown_errors(pilot)
         fill(pilot, mok=mok, mok2=mok)
-        for step in ("backups", "restore", "platform", "images", "secrets"):
+        for step in ("backups", "restore", "platform", "platform_review", "images", "secrets"):
             await forward(pilot, step)
         fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
         await forward(pilot, "review")
@@ -503,7 +505,7 @@ def test_restore_mode(repo: Paths) -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert pilot.app.screen.query_one("#snapshot", Input).value == "0a1b2c3d"
-        for step in ("platform", "images", "secrets"):
+        for step in ("platform", "platform_review", "images", "secrets"):
             await forward(pilot, step)
         fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
         await forward(pilot, "review")
@@ -549,7 +551,7 @@ def test_modify_mode(repo: Paths) -> None:
             await forward(pilot, step)
         await forward(pilot, "backups")
         fill(pilot, schedule="04:30")
-        for step in ("restore", "platform", "images", "secrets"):
+        for step in ("restore", "platform", "platform_review", "images", "secrets"):
             await forward(pilot, step)
         fill(pilot, vault1=PASSWORD)  # the existing vault's password
         await forward(pilot, "review")
@@ -866,6 +868,13 @@ def test_the_terminal_must_fit() -> None:
     assert terminal_problem("xterm-256color", True, terminal_size((80, 24))) == ""
 
 
+def test_the_platform_to_replace_comes_from_the_bootstrap_options() -> None:
+    from pinka_installer.tui.app import replaced_platform  # noqa: PLC0415
+
+    assert replaced_platform(["--allow-dirty"]) == ""
+    assert replaced_platform(["--replace-platform=refplat", "--tags=base"]) == "refplat"
+
+
 def test_run_refuses_an_unsuitable_terminal(repo: Paths, capsys: Any, monkeypatch: Any) -> None:
     from pinka_installer.tui import app as app_mod  # noqa: PLC0415
 
@@ -910,3 +919,183 @@ def test_review_shows_a_password_the_vault_generates(repo: Paths) -> None:
     drive(installer, flow)
     after = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
     assert after["vault_restic_password"] == shown[0] != ""
+
+
+REFPLAT_REPO = "file:///srv/git/refplat.git"
+
+
+def test_a_platform_release_is_inspected_reviewed_and_approved(repo: Paths) -> None:
+    # The reference platform's manifest (§18.9): the Platform screen inspects the
+    # release alone, the review runs the deployment's checks and needs approval.
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    installer = app(context(repo, host, runner, machine="pinka-lab"), first="mode")
+    installer.ctx.wizard.consents.add("accept_degraded")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+            await forward(pilot, step)
+        for step in ("backups", "restore", "platform"):
+            await forward(pilot, step)
+        pick(pilot, "deploy-platform")
+        await pilot.pause()
+        fill(
+            pilot,
+            repo=REFPLAT_REPO,
+            ref="refplat-v0.1.0",
+            path="infra/tests/reference-platform",
+            tag_prefix="refplat-v",
+        )
+        await forward(pilot, "platform")  # not inspected yet
+        assert "✖ press Inspect release: the installer reads it first" in shown_errors(pilot)
+        await click(pilot, "#inspect")
+        await settle(pilot)
+        screen = pilot.app.screen
+        needs = str(screen.query_one("#needs", Static).content)
+        assert needs.startswith("Release refplat 0.1.0 (python-uv)")
+        assert screen.query_one("#secret-ctl-api-token", Input).password  # masked
+        await forward(pilot, "platform")  # the required package has no source
+        assert "✖ a required package: name its source" in shown_errors(pilot)
+        fill(
+            pilot,
+            content_cases_repo=REFPLAT_REPO,
+            content_cases_ref="cases-v1",
+            content_cases_path="infra/tests/reference-platform-cases",
+            content_cases_tag_prefix="cases-v",
+        )
+        pilot.app.screen.query_one("#settings-ctl", TextArea).text = "job: nope\n"
+        await forward(pilot, "platform_review")
+        refused = [str(s.content) for s in pilot.app.screen.query(".banner.bad").results(Static)]
+        assert any("platform_settings.ctl" in text for text in refused), refused
+        await forward(pilot, "platform_review")  # a refused platform cannot be approved
+        assert "✖ the platform is refused: correct it on the Platform screen" in shown_errors(pilot)
+        await pilot.press("ctrl+b")
+        await settle(pilot)
+        assert at(pilot) == "platform"
+        pilot.app.screen.query_one("#settings-ctl", TextArea).text = "job: tunecpu\n"
+        await forward(pilot, "platform_review")
+        screen = pilot.app.screen
+        text = "\n".join(str(s.content) for s in screen.query(Static).results(Static))
+        assert "broker: inference-broker as refplat-broker" in text
+        assert "tunecpu: 0 GPU, 2 CPUs, memory 4G, 600 s, resumable" in text
+        dedicated = [str(s.content) for s in screen.query(".banner.warn").results(Static)]
+        assert any("ctl/session" in d for d in dedicated)  # the agent's socket stands out
+        await forward(pilot, "platform_review")
+        assert "✖ approve the platform to continue" in shown_errors(pilot)
+        tick(pilot, "approve")
+        for step in ("images", "secrets"):
+            await forward(pilot, step)
+        fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
+        await forward(pilot, "review")
+        await forward(pilot, "progress")
+
+    drive(installer, flow)
+    assert [full for full, _ in host.inspections] == [False, True, True]
+    values = hostvars.load(repo.host_vars("pinka-lab").read_text(encoding="utf-8"))
+    assert values["platform"] == {
+        "repo": REFPLAT_REPO,
+        "ref": "refplat-v0.1.0",
+        "path": "infra/tests/reference-platform",
+        "tag_prefix": "refplat-v",
+    }
+    assert values["content"]["cases"]["ref"] == "cases-v1"
+    assert values["platform_settings"] == {"ctl": {"job": "tunecpu"}}
+    saved = answers_mod.load(repo.answers("pinka-lab"), apply.context(repo))
+    assert saved.secrets.platform == {"ctl.api-token": "generate"}
+    stored = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
+    assert set(stored["vault_platform_secrets"]["ctl"]) == {"api-token"}
+    assert {"refplat_ctl", "refplat_broker", "refplat_migrator"} <= set(
+        stored["vault_postgres_passwords"]
+    )
+    assert installer.ctx.wizard.platform_approved
+
+
+def test_a_changed_platform_answer_asks_for_a_new_review(repo: Paths) -> None:
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
+    ctx = context(repo, host, machine="pinka-lab")
+    answers = ctx.wizard.answers
+    answers.platform = answers_mod.Source(REFPLAT_REPO, "refplat-v0.1.0", "rp", "refplat-v")
+    answers.content = {"cases": answers_mod.Source(REFPLAT_REPO, "cases-v1", "cases", "cases-v")}
+    installer = app(ctx, first="platform_review")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        tick(pilot, "approve")
+        await forward(pilot, "images")
+        assert ctx.wizard.platform_approved
+        answers.platform_settings = {"ctl": {"steps": 3}}  # changed elsewhere
+        await pilot.press("ctrl+b")
+        await settle(pilot)
+        assert at(pilot) == "platform_review"
+        assert not pilot.app.screen.query_one("#approve", Checkbox).value  # reviewed again
+
+    drive(installer, flow)
+    assert [full for full, _ in host.inspections] == [True, True]
+
+
+def test_the_answers_replay_inspects_the_release_first(repo: Paths, tmp_path: Path) -> None:
+    # bootstrap.sh --answers with a platform: the release's checks and vault keys
+    # come from the platform tool before any file is written.
+    from pinka_installer import release  # noqa: PLC0415
+
+    loaded = answers_mod.load(repo.infra / "tests" / "answers" / "ci.yml", apply.context(repo))
+    loaded.machine.name = "pinka-lab"
+    loaded.platform = answers_mod.Source(REFPLAT_REPO, "refplat-v0.1.0", "rp", "refplat-v")
+    loaded.content = {"cases": answers_mod.Source(REFPLAT_REPO, "cases-v1", "cases", "cases-v")}
+    loaded.secrets.platform = {"ctl.api-token": "provided"}
+    path = tmp_path / "answers.yml"
+    path.write_text(answers_mod.dumps(loaded), encoding="utf-8")
+    password_file = tmp_path / "vault-pass"
+    password_file.write_text(PASSWORD + "\n", encoding="utf-8")
+    password_file.chmod(0o600)
+    calls: list[tuple[bool, str]] = []
+
+    def fake_inspect(
+        answers: answers_mod.Answers, _lock: Path, *, full: bool, replace: str = ""
+    ) -> Any:
+        calls.append((full, replace))
+        from tui_fakes import refplat_inspection  # noqa: PLC0415
+
+        return refplat_inspection(answers, full=full)
+
+    argv = ["--infra", str(repo.infra), "apply", "--answers", str(path)]
+    argv += ["--vault-password-file", str(password_file)]
+    original = release.inspect
+    release.inspect = fake_inspect  # type: ignore[assignment]
+    try:
+        environ = {
+            "PINKA_SECRET_TAILSCALE_AUTHKEY": "authkey-placeholder",
+            "PINKA_SECRET_PLATFORM_CTL_API_TOKEN": "token-from-the-environment",
+        }
+        with patched_environ(environ):
+            assert cli.main(argv) == 0
+        with patched_environ({"PINKA_SECRET_TAILSCALE_AUTHKEY": "authkey-placeholder"}):
+            repo.vault.unlink()
+            # The provided secret is missing; bootstrap's --replace-platform reaches the inspection.
+            assert cli.main([*argv, "--replace-platform", "other"]) == cli.EXIT_ACTION
+    finally:
+        release.inspect = original
+    assert calls == [(True, ""), (True, "other")]
+
+
+class patched_environ:  # noqa: N801 - used like a function
+    """Set environment variables for a block."""
+
+    def __init__(self, values: dict[str, str]) -> None:
+        self.values = values
+        self.saved: dict[str, str | None] = {}
+
+    def __enter__(self) -> None:
+        import os  # noqa: PLC0415
+
+        for key, value in self.values.items():
+            self.saved[key] = os.environ.get(key)
+            os.environ[key] = value
+
+    def __exit__(self, *_: object) -> None:
+        import os  # noqa: PLC0415
+
+        for key, value in self.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value

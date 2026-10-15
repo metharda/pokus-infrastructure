@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/pinka/schema/answers.schema.json",
   "title": "pinka installer answers",
-  "description": "Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin) are checked by pinka_installer.answers.",
+  "description": "Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin, the platform tool's source rules) are checked by pinka_installer.answers.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,7 +15,6 @@
     "gpu",
     "backups",
     "platform",
-    "catalog",
     "images",
     "secrets"
   ],
@@ -464,22 +463,34 @@
         }
       }
     },
-    "source": {
-      "description": "The pokus-platform repository that platform and catalog are deployed from (owner answer E3).",
+    "platform": {
+      "description": "The platform release to deploy (BUILD_PROMPT §7.14, §8.1), or null for a standalone lab without a platform.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/source"
+        }
+      ]
+    },
+    "content": {
+      "description": "One source per content package the platform's manifest declares, by package name (lower-case letters, digits and '-'). A package from the release's repository must not overlap the release path or another package.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/source"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      }
+    },
+    "source_trust": {
+      "description": "How the platform's Git sources are trusted.",
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "repo"
-      ],
       "properties": {
-        "repo": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^(https://\\S+|ssh://\\S+|[a-z0-9_.-]+@[^\\s:/]+:\\S+)$",
-          "description": "An SSH URL (read with a deploy key generated on the host) or an anonymous https URL."
-        },
         "known_hosts": {
-          "description": "Host key lines of an SSH source other than GitHub.",
+          "description": "Host key lines of an SSH source other than GitHub (GitHub's come from versions.lock.yml).",
           "type": "array",
           "items": {
             "type": "string",
@@ -488,25 +499,78 @@
         },
         "require_signed_tags": {
           "type": "boolean",
-          "description": "Deploy only tags signed by an allowed signer."
+          "description": "Deploy only tags carrying a valid SSH signature of an allowed signer."
         },
         "allowed_signers": {
+          "description": "allowed_signers lines (ssh-keygen -Y) of the tag signers.",
           "type": "array",
           "items": {
             "type": "string",
             "minLength": 1
-          },
-          "description": "allowed_signers lines (ssh-keygen -Y) of the tag signers."
+          }
         }
       }
     },
-    "platform": {
-      "$ref": "#/$defs/component",
-      "description": "The platform component."
+    "platform_settings": {
+      "description": "Non-secret settings per service of the platform, checked against the service's config schema when the release is inspected and deployed.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]{0,9}$"
+      }
     },
-    "catalog": {
-      "$ref": "#/$defs/component",
-      "description": "The scenario catalog component."
+    "gpu_arbiter": {
+      "description": "The GPU arbiter (BUILD_PROMPT §7.18).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "after_boot": {
+          "description": "serve: the default deployment after boot; idle: nothing until asked.",
+          "enum": [
+            "serve",
+            "idle"
+          ]
+        },
+        "restore_after_training": {
+          "type": "boolean",
+          "description": "Bring the deployment served before a training run back when the run ends."
+        }
+      }
+    },
+    "training_caps": {
+      "description": "This host's caps on training jobs (BUILD_PROMPT §7.18); the GPU arbiter refuses a run of a job over them.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "A run's longest run time."
+        },
+        "memory_max": {
+          "$ref": "#/$defs/cap_size",
+          "description": "A job's memory."
+        },
+        "cpus": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "A job's CPUs."
+        },
+        "dataset_max": {
+          "$ref": "#/$defs/cap_size",
+          "description": "The size of a published dataset."
+        },
+        "run_storage_max": {
+          "$ref": "#/$defs/cap_size",
+          "description": "A run's output and checkpoints together."
+        },
+        "tmp_max": {
+          "$ref": "#/$defs/cap_size",
+          "description": "A job's /tmp (a tmpfs counted against its memory)."
+        }
+      }
     },
     "images": {
       "type": "object",
@@ -556,6 +620,19 @@
         "store_vault_password": {
           "description": "Keep the vault password root-only in /etc/pinka/secrets/vault-pass.",
           "type": "boolean"
+        },
+        "platform": {
+          "description": "Per secret the platform's manifest names (<service>.<secret>): generate, or provided (PINKA_SECRET_PLATFORM_<SERVICE>_<SECRET>, upper case, other characters as '_').",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9]{0,9}\\.[a-z][a-z0-9_-]{0,63}$"
+          },
+          "additionalProperties": {
+            "enum": [
+              "generate",
+              "provided"
+            ]
+          }
         }
       },
       "description": "Which secrets are generated and which are provided (never their values)."
@@ -573,39 +650,6 @@
       "then": {
         "required": [
           "restore"
-        ]
-      }
-    },
-    {
-      "if": {
-        "anyOf": [
-          {
-            "properties": {
-              "platform": {
-                "properties": {
-                  "enabled": {
-                    "const": true
-                  }
-                }
-              }
-            }
-          },
-          {
-            "properties": {
-              "catalog": {
-                "properties": {
-                  "enabled": {
-                    "const": true
-                  }
-                }
-              }
-            }
-          }
-        ]
-      },
-      "then": {
-        "required": [
-          "source"
         ]
       }
     }
@@ -636,35 +680,39 @@
       "pattern": "^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$",
       "description": "A Linux cpuset list, such as 0-5,8."
     },
-    "component": {
+    "source": {
+      "description": "A Git source (BUILD_PROMPT §8.1): repo is an SSH URL (read with the deploy key generated on the host), an anonymous https:// URL or a root-owned file:/// repository, never a URL with credentials; ref a tag (recommended), branch or full commit; path the subdirectory (\"\" for the root); tag_prefix the prefix of its release tags.",
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "enabled"
+        "repo",
+        "ref"
       ],
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Deploy this component."
+        "repo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repository URL."
         },
         "ref": {
-          "description": "Tag (recommended: platform-v*/catalog-v*), branch or full commit to deploy.",
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Tag, branch or full commit."
+        },
+        "path": {
+          "type": "string",
+          "description": "Subdirectory in the repository (\"\" for the root)."
+        },
+        "tag_prefix": {
+          "type": "string",
+          "description": "Prefix of the release tags."
         }
-      },
-      "if": {
-        "properties": {
-          "enabled": {
-            "const": true
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "ref"
-        ]
       }
+    },
+    "cap_size": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*[KMG]$",
+      "description": "A size in K, M or G, such as 24G."
     }
   }
 }

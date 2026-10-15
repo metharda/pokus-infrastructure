@@ -198,11 +198,10 @@ def platform_vars(commit: str) -> dict[str, Any]:
         ``platform``, ``content`` and ``platform_settings``.
     """
     repo = f"file://{refplat.GUEST_REPO}"
-    return {
-        "platform": refplat.source(repo, commit, refplat.RELEASE_PATH),
-        "content": {"cases": refplat.source(repo, commit, refplat.CASES_PATH)},
-        "platform_settings": {"ctl": dict(refplat.SETTINGS)},
-    }
+    return refplat.platform_answers(
+        refplat.source(repo, commit, refplat.RELEASE_PATH),
+        {"cases": refplat.source(repo, commit, refplat.CASES_PATH)},
+    )
 
 
 def _filters() -> ModuleType:

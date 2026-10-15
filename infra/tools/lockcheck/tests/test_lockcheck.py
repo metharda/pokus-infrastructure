@@ -548,11 +548,36 @@ def test_galaxy_reachable_installs_from_galaxy(tmp_path: Path, demo: dict[str, A
     ]
 
 
-def test_the_fallback_tarballs_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
-    # make lock-check downloads them like the binaries once they are verified.
+def test_the_collection_artifacts_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
+    # make lock-check downloads them like the binaries once they are verified:
+    # every locked collection's artifact, and every fallback tarball pinned.
+    # The fallback has no entry for a collection added since 3d.6 until the
+    # owner decides on its source; it refuses such a collection by name.
     wheres = [where for where, _, _ in checks._binary_assets(lock)]
-    for name in lock["ansible_collections"]["collections"]:
+    section = lock["ansible_collections"]
+    for name in section["collections"]:
+        assert f"ansible_collections.artifacts.{name}" in wheres
+    for name in section.get("fallback", {}):
         assert f"ansible_collections.fallback.{name}" in wheres
+
+
+def test_every_locked_collection_has_exactly_one_artifact(lock: dict[str, Any]) -> None:
+    assert checks.collection_findings(lock) == []
+    section = lock["ansible_collections"]
+    broken = {
+        "ansible_collections": {
+            "collections": {**section["collections"], "community.extra": "1.0.0"},
+            "artifacts": {
+                **section["artifacts"],
+                "community.stray": section["artifacts"]["ansible.posix"],
+            },
+        }
+    }
+    found = [(f.where, f.message) for f in checks.collection_findings(broken)]
+    assert found == [
+        ("ansible_collections.artifacts.community.extra", "a locked collection has no artifact"),
+        ("ansible_collections.artifacts.community.stray", "an artifact of a collection not locked"),
+    ]
 
 
 def test_fetch_command_reports_refusals(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

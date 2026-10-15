@@ -120,7 +120,9 @@ def test_setup_bootstraps_the_pinned_uv(tmp_path: Path, version: str | None, pin
     )
     lines = done.stdout.splitlines()
     if pinned:
-        assert any('install_uv "$1"' in line for line in lines), lines
+        install = [line for line in lines if 'install_uv "$1"' in line]
+        assert install, lines
+        assert install[0].endswith(f" install-uv {ROOT}/build/tools"), install  # one absolute dir
         assert f"{ROOT}/build/tools/uv sync --frozen" in lines
     else:
         assert not any("install_uv" in line for line in lines), lines

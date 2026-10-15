@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/users_groups/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Groups, researcher and service accounts, sudo for admins, SSH keys.
+    short_description: Groups, researcher and infra accounts, sudo for admins, SSH keys.
     options:
       pinka_groups:
         type: list
@@ -23,11 +23,6 @@ argument_specs:
         elements: dict
         required: true
         description: Infra's own accounts ({name, groups}), such as pinka-build; system users without login.
-      service_accounts:
-        type: list
-        elements: dict
-        required: true
-        description: Service accounts ({name, groups}); system users without login.
       break_glass_docker:
         type: list
         elements: str
@@ -40,4 +35,4 @@ argument_specs:
       users_groups_nologin_shell:
         type: path
         default: /usr/sbin/nologin
-        description: Shell of service accounts and locked researchers.
+        description: Shell of infra accounts and locked researchers.

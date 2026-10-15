@@ -17,8 +17,7 @@ of ``neutrality.json``:
 
 Test fixtures, the documentation and the reserved-name list are excluded
 (§11), and each further exclusion in :data:`EXCLUDED` carries its reason; the
-one temporary exclusion, :data:`TEMPORARY_EXCLUSIONS_UNTIL_3D7`, is named apart
-and must be gone after plan step 3d.7. The
+installer and its answers files are scanned like all other code. The
 allowed forms apply to this lint over repository code only: target images, the
 platform's trace-cleanup scan and its ticket lint allow none of these names.
 
@@ -73,14 +72,6 @@ EXCLUDED: tuple[tuple[str, str], ...] = (
 # V5, the one temporary exclusion (owner decision with the "commit" for 3d.3):
 # plan step 3d.7 rewrites the installer's sources screen and answers schema for
 # contract v2 and must delete this tuple; 3d.7 is not done while it exists.
-TEMPORARY_EXCLUSIONS_UNTIL_3D7: tuple[tuple[str, str], ...] = (
-    (
-        "installer/*",
-        "the installer's sources screen and answers schema still have contract v1's "
-        "components of the release and its content (BUILD_PROMPT §16 step 21)",
-    ),
-    ("tests/answers/*", "answers files of the installer's contract v1 schema"),
-)
 # Lines that may name the project or the platform, by file: a line that is
 # exactly one of the listed quoted words (``"word",``); the reasons are in
 # neutrality.json.
@@ -125,9 +116,6 @@ def excluded(relative: str) -> str | None:
     for pattern, reason in EXCLUDED:
         if fnmatch.fnmatch(relative, pattern) or fnmatch.fnmatch(f"./{relative}", pattern):
             return reason
-    for pattern, reason in TEMPORARY_EXCLUSIONS_UNTIL_3D7:
-        if fnmatch.fnmatch(relative, pattern):
-            return f"until plan step 3d.7: {reason}"
     return None
 
 
@@ -273,14 +261,9 @@ def run(root: Path) -> int:
         print(f"neutrality: {len(findings)} finding(s)", file=sys.stderr)
         return 1
     print("neutrality: no platform-specific names in infra's code")
-    for pattern, _ in TEMPORARY_EXCLUSIONS_UNTIL_3D7:
-        print(f"neutrality: {pattern} is excluded until plan step 3d.7 removes it (V5)")
     return 0
 
 
 def exclusions() -> Sequence[tuple[str, str]]:
     """The excluded paths with their reasons (for the documentation)."""
-    return (
-        *EXCLUDED,
-        *((p, f"until plan step 3d.7: {r}") for p, r in TEMPORARY_EXCLUSIONS_UNTIL_3D7),
-    )
+    return EXCLUDED

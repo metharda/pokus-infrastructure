@@ -37,6 +37,7 @@ EXIT_CODES = {
     EXIT_REFUSED: ("refused", "the release breaks contract v2; every reason is printed"),
 }
 DEPLOY_STEPS = (
+    "inspect-release",
     "prepare",
     "build",
     "pull",
@@ -98,12 +99,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="one step of a deployment on the lab host (run by the platform role, as root)",
         description=(
             "One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one "
-            "JSON object. prepare fetches, stages and validates and writes a run directory "
-            "below the staging directory; the other steps work on that run directory."
+            "JSON object. inspect-release fetches and validates the release alone and reports "
+            "what it needs (content packages, secrets, settings; the installer asks for them); "
+            "prepare fetches, stages and validates and writes a run directory below the staging "
+            "directory; the other steps work on that run directory."
         ),
     )
     dep.add_argument("step", choices=DEPLOY_STEPS, help="the step")
-    dep.add_argument("--settings", type=Path, help="prepare: the settings file the role writes")
+    dep.add_argument(
+        "--settings",
+        type=Path,
+        help="inspect-release, prepare: the settings file the role (or the installer) writes",
+    )
     dep.add_argument("--run", type=Path, help="the run directory prepare created")
     dep.add_argument(
         "--inspect",
@@ -238,19 +245,21 @@ def vault_text(keys: dict[str, list[str]]) -> str:
 
 def _deploy(args: argparse.Namespace, paths: deploy.Paths) -> dict[str, Any]:
     contract = contract_mod.load(args.contract)
-    if args.step == "prepare":
-        if args.settings is None:
-            raise deploy.DeployError("prepare needs --settings")
+    host = (
+        (lambda _: None)
+        if args.no_host_check
+        else (lambda name: names.host_facts(name, paths.etc_platform))
+    )
+    if args.step in ("inspect-release", "prepare") and args.settings is None:
+        raise deploy.DeployError(f"{args.step} needs --settings")
+    if args.step == "inspect-release":
         settings = deploy.Settings.from_json(json.loads(args.settings.read_text(encoding="utf-8")))
-        plan = deploy.prepare(
-            settings,
-            paths,
-            contract,
-            host=(lambda _: None)
-            if args.no_host_check
-            else (lambda name: names.host_facts(name, paths.etc_platform)),
-            inspect=args.inspect,
-        )
+        found = deploy.inspect_release(settings, paths, contract, host=host)
+        text = validate.summary_text(found["summary"]) + vault_text(found["vault_keys"])
+        return {"changed": False, **found, "summary_text": text}
+    if args.step == "prepare":
+        settings = deploy.Settings.from_json(json.loads(args.settings.read_text(encoding="utf-8")))
+        plan = deploy.prepare(settings, paths, contract, host=host, inspect=args.inspect)
         return {
             "changed": not args.inspect,
             "run_dir": plan["run_dir"],

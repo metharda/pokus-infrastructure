@@ -184,7 +184,10 @@ Setup verifies the installed collections every time and installs them again
 when anything differs. A failed download or a checksum mismatch stops setup
 with the name of the artifact; nothing unverified is installed. A fallback
 tarball whose URL or sha256 is still `TODO(verify)` in the lock is never
-downloaded: without Galaxy, setup then stops and says so.
+downloaded, and neither is a collection without a fallback entry: without
+Galaxy, setup then stops and names it. Bootstrap does not use Galaxy or the
+fallback: it installs the artifacts pinned in `ansible_collections.artifacts`
+(see [How bootstrap works](docs/explanation/bootstrap.md)).
 
 The policy tests need that OPA and the agent environment tests that uv.
 Outside CI these tests are skipped without them; in CI a skipped uv test fails

@@ -23,7 +23,19 @@ from pinka_platform.problems import Problem
 MAX_SCHEMA_BYTES = 1024 * 1024
 
 
-def _load(path: Path) -> Any:  # noqa: ANN401 - a JSON value
+def load_schema(path: Path) -> Any:  # noqa: ANN401 - a JSON value
+    """Read a service's config schema (at most ``MAX_SCHEMA_BYTES``).
+
+    Args:
+        path: The schema file in a staged release.
+
+    Returns:
+        The parsed JSON.
+
+    Raises:
+        OSError: If it cannot be read.
+        ValueError: If it is too large or not JSON.
+    """
     with path.open("rb") as handle:
         data = handle.read(MAX_SCHEMA_BYTES + 1)
     if len(data) > MAX_SCHEMA_BYTES:
@@ -64,7 +76,7 @@ def check(manifest: Mapping[str, Any], release: Path, settings: object) -> list[
         value = {} if value is None else value
         schema_path = release / service["config"]
         try:
-            doc = _load(schema_path)
+            doc = load_schema(schema_path)
         except (OSError, ValueError) as exc:
             problems.append(Problem("config-schema", service["config"], f"cannot be read: {exc}"))
             continue

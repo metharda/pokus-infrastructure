@@ -2334,9 +2334,9 @@ HTTPS port of the docs service's serve.
 
 ## users_groups
 
-Groups, researcher and service accounts, sudo for admins, SSH keys.
+Groups, researcher and infra accounts, sudo for admins, SSH keys.
 
-Entry points: `main` (Groups, researcher and service accounts, sudo for admins, SSH keys). Role README: `ansible/roles/users_groups/README.md`.
+Entry points: `main` (Groups, researcher and infra accounts, sudo for admins, SSH keys). Role README: `ansible/roles/users_groups/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -2348,11 +2348,10 @@ Variables the role reads from elsewhere:
 | `pinka_service_home` | [lab-wide](#pinka_service_home) | Parent of the service account homes. |
 | `researchers` | [lab-wide](#researchers) | Researchers ({name, admin, shell, keys_file}); keys_file is relative to the infra directory. |
 | `researchers_removed` | [lab-wide](#researchers_removed) | Researchers that are locked (password, shell nologin, expired), never deleted. |
-| `service_accounts` | host_vars | Service accounts ({name, groups}); system users without login. |
 
 ### `users_groups_nologin_shell`
 
-Shell of service accounts and locked researchers.
+Shell of infra accounts and locked researchers.
 
 - Type: `path`
 - Default: `/usr/sbin/nologin`

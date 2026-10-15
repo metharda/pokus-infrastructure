@@ -259,13 +259,13 @@ def test_serving_profile_and_models_fit_the_gpu() -> None:
     name = model.suggest_profile(gpu, profiles)
     assert name == "ada-12g"
     assert model.suggest_profile({"vram_gib": 2}, profiles) == ""
-    catalog = YAML(typ="safe").load((INFRA / "models.catalog.yml").read_text(encoding="utf-8"))
-    choices = model.model_choices(catalog, {"qwen3-8b-awq"}, name, gpu["vram_gib"])
+    known = YAML(typ="safe").load((INFRA / "models.catalog.yml").read_text(encoding="utf-8"))
+    choices = model.model_choices(known, {"qwen3-8b-awq"}, name, gpu["vram_gib"])
     assert choices and all(not c.fits for c in choices)
     assert [c.id for c in choices if c.pinned] == ["qwen3-8b-awq"]
-    small = model.model_choices(catalog, set(), name, 2.0)
+    small = model.model_choices(known, set(), name, 2.0)
     assert all(c.fits.startswith("needs ") for c in small)
-    assert all(c.fits for c in model.model_choices(catalog, set(), "no-such-profile", 12.0))
+    assert all(c.fits for c in model.model_choices(known, set(), "no-such-profile", 12.0))
 
 
 def test_vault_password_rules() -> None:

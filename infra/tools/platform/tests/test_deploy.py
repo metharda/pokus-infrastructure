@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from collections.abc import Sequence
 from pathlib import Path
@@ -142,6 +143,79 @@ def test_inspect_changes_nothing_but_the_mirror(repo: Path, paths: deploy.Paths)
     assert not list(paths.staging.glob("run-*"))
     assert not paths.srv.exists()
     assert not paths.active.exists()
+
+
+def inspected(paths: deploy.Paths, s: deploy.Settings) -> dict[str, Any]:
+    """inspect_release with an empty host, like :func:`prepare`."""
+    return deploy.inspect_release(
+        s, paths, CONTRACT, host=lambda _: names.HostFacts(), owner_uid=os.getuid()
+    )
+
+
+def test_the_release_alone_tells_what_it_needs(repo: Path, paths: deploy.Paths) -> None:
+    # The installer knows nothing but the release source yet (§18.4 screen 12).
+    found = inspected(paths, settings(repo, content={}, platform_settings={"nope": {}}))
+    data = manifest("allprof")
+    assert found["platform"]["name"] == "allprof"
+    assert found["release"]["name"] == "allprof-v1.2.3"
+    assert found["release"]["commit"] == git(repo, "rev-parse", "HEAD")
+    assert found["content"] == [
+        {"name": c["name"], "restricted": c["restricted"], "required": c["required"]}
+        for c in data["content"]
+    ]
+    assert found["secrets"] == {
+        s["name"]: s["secrets"] for s in data["services"] if s.get("secrets")
+    }
+    assert set(found["config"]) == {s["name"] for s in data["services"] if "config" in s}
+    assert found["config"]["ctl"]["type"] == "object"
+    needed = found["vault_keys"]["needed"]
+    assert "vault_platform_secrets.ctl.token" in needed
+    assert "vault_postgres_passwords.allprof_ctl" in needed
+    assert found["summary"]["name"] == "allprof"
+    assert not list(paths.staging.iterdir())  # the staged copy is gone
+    assert not paths.srv.exists()
+
+
+def test_the_release_alone_is_checked_like_a_deployment(repo: Path, paths: deploy.Paths) -> None:
+    with pytest.raises(deploy.Refused) as exc:
+        inspected(paths, settings(repo, platform={}))
+    assert set(codes(exc)) == {"source-setting"}
+    with pytest.raises(deploy.Refused) as exc:
+        inspected(paths, settings(repo, platform={"repo": f"file://{repo}", "ref": "nope-v9"}))
+    assert codes(exc) == ["source-ref"]
+    broken = manifest("allprof")
+    broken["services"][0]["profile"] = "root"
+    add_release(repo, broken)
+    git(repo, "commit", "--quiet", "-am", "broken")
+    git(repo, "tag", "-a", "allprof-v1.2.4", "-m", "broken")
+    with pytest.raises(deploy.Refused) as exc:
+        inspected(
+            paths, settings(repo, platform={**settings(repo).platform, "ref": "allprof-v1.2.4"})
+        )
+    assert exc.value.problems
+    assert not list(paths.staging.iterdir())
+
+
+def test_the_summary_names_state_backups_and_job_caps(repo: Path, paths: deploy.Paths) -> None:
+    summary = inspected(paths, settings(repo, content={}))["summary"]
+    data = manifest("allprof")
+    job = data["jobs"][0]
+    assert summary["jobs"][0] == {
+        "name": job["name"],
+        "image": job["image"],
+        "gpus": job["resources"]["gpus"],
+        "memory_max": job["resources"]["memory_max"],
+        "cpus": job["resources"]["cpus"],
+        "timeout_seconds": job["timeout_seconds"],
+        "resumable": bool(job.get("resumable", False)),
+    }
+    backed = set(data["backup"]["paths"])
+    for service, entry in zip(data["services"], summary["services"], strict=True):
+        assert entry["state"] == [
+            {"name": d, "backed_up": f"{service['name']}/{d}" in backed}
+            for d in service.get("state", [])
+        ]
+    assert summary["backup_database"] is bool(data["backup"].get("database", False))
 
 
 def test_jobs_over_the_hosts_training_caps_are_warnings(repo: Path, paths: deploy.Paths) -> None:
@@ -826,6 +900,28 @@ def test_cli_deploy_steps(repo: Path, tmp_path: Path, capsys: pytest.CaptureFixt
     assert json.loads(capsys.readouterr().out)["name"] == "allprof"
     assert cli.main(["purge", "allprof", "--confirm", "x", *common]) == cli.EXIT_FAILED
     assert "type the platform name" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_cli_inspect_release(
+    repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings_file = tmp_path / "settings.json"
+    settings_file.write_text(json.dumps({"platform": dict(settings(repo).platform)}))
+    root = tmp_path / "host"
+    argv = ["deploy", "inspect-release", "--settings", str(settings_file), "--root", str(root)]
+    assert cli.main([*argv, "--no-host-check"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["changed"] is False
+    assert [c["name"] for c in out["content"]] == [
+        c["name"] for c in manifest("allprof")["content"]
+    ]
+    assert out["summary_text"].startswith("platform allprof 1.2.3-rc.1 (static)")
+    assert "Vault keys:" in out["summary_text"]
+    settings_file.write_text(json.dumps({"platform": {}}))
+    assert cli.main([*argv, "--no-host-check"]) == cli.EXIT_REFUSED
+    assert json.loads(capsys.readouterr().out)["problems"][0]["code"] == "source-setting"
+    assert cli.main(["deploy", "inspect-release", "--root", str(root)]) == cli.EXIT_FAILED
+    assert "needs --settings" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_cli_refusal_exits_65(

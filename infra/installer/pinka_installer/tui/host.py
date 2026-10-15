@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from pinka_installer import release
+from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
 
 COMMAND_TIMEOUT = 60
@@ -174,17 +176,29 @@ class Host(Protocol):
         """The user who ran sudo."""
         ...
 
+    def inspect_platform(self, answers: Answers, *, full: bool) -> release.Inspection:
+        """Inspect the answers' platform release with the platform tool.
+
+        Args:
+            answers: The answers (a platform source set).
+            full: Also the content packages and the settings; otherwise the
+                release alone.
+        """
+        ...
+
 
 class RealHost:
     """The host the installer runs on."""
 
-    def __init__(self, paths: Paths) -> None:
+    def __init__(self, paths: Paths, *, replace: str = "") -> None:
         """Bind to the checkout.
 
         Args:
             paths: Installer paths.
+            replace: The active platform bootstrap may replace (``--replace-platform``).
         """
         self.paths = paths
+        self.replace = replace
 
     def run(  # noqa: D102
         self,
@@ -275,6 +289,9 @@ class RealHost:
 
     def invoking_user(self) -> str:  # noqa: D102
         return os.environ.get("SUDO_USER", "")
+
+    def inspect_platform(self, answers: Answers, *, full: bool) -> release.Inspection:  # noqa: D102
+        return release.inspect(answers, self.paths.versions_lock, full=full, replace=self.replace)
 
 
 def _by_id_names() -> dict[str, str]:

@@ -35,11 +35,11 @@ from pinka_installer.tui.screens_install import (
     SecretsScreen,
 )
 from pinka_installer.tui.screens_people import RemoteScreen, ResearchersScreen
+from pinka_installer.tui.screens_platform import PlatformReviewScreen, PlatformScreen
 from pinka_installer.tui.screens_services import (
     BackupsScreen,
     GpuScreen,
     ImagesScreen,
-    PlatformScreen,
     RestoreScreen,
 )
 from pinka_installer.tui.screens_start import ModeScreen, PreflightScreen, WelcomeScreen
@@ -69,6 +69,7 @@ SCREENS: dict[str, type[StepScreen]] = {
     "backups": BackupsScreen,
     "restore": RestoreScreen,
     "platform": PlatformScreen,
+    "platform_review": PlatformReviewScreen,
     "images": ImagesScreen,
     "secrets": SecretsScreen,
     "review": ReviewScreen,
@@ -360,6 +361,20 @@ def build_context(
     )
 
 
+def replaced_platform(bootstrap_args: Sequence[str]) -> str:
+    """The platform bootstrap may replace (``--replace-platform=NAME``), or "".
+
+    Args:
+        bootstrap_args: Options for the bootstrap the installer runs.
+
+    Returns:
+        The name.
+    """
+    prefix = "--replace-platform="
+    found = [a[len(prefix) :] for a in bootstrap_args if a.startswith(prefix)]
+    return found[-1] if found else ""
+
+
 def run(
     paths: Paths,
     *,
@@ -393,7 +408,7 @@ def run(
     try:
         ctx = build_context(
             paths,
-            RealHost(paths),
+            RealHost(paths, replace=replaced_platform(bootstrap_args)),
             BootstrapRunner(paths),
             machine=machine,
             answers=answers,

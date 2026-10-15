@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
@@ -166,29 +167,55 @@ class Backups:
 
 @dataclass
 class Source:
-    """Screen 12: the pokus-platform repository that platform and catalog come from."""
+    """Screen 12: a Git source of the platform release or of a content package (§8.1)."""
 
     repo: str = ""
+    ref: str = ""
+    path: str = ""
+    tag_prefix: str = ""
+
+
+@dataclass
+class SourceTrust:
+    """Screen 12: how the platform's Git sources are trusted."""
+
     known_hosts: list[str] = field(default_factory=list)
     require_signed_tags: bool = False
     allowed_signers: list[str] = field(default_factory=list)
 
 
 @dataclass
-class Component:
-    """Screen 12: platform or catalog."""
+class GpuArbiter:
+    """Screen 9: the GPU arbiter (§7.18, §8.1)."""
 
-    enabled: bool = False
-    ref: str = ""
+    after_boot: str = "serve"
+    restore_after_training: bool = True
+
+
+@dataclass
+class TrainingCaps:
+    """Screen 9: this host's caps on training jobs (§7.18, §8.1)."""
+
+    timeout_seconds: int = 86400
+    memory_max: str = "24G"
+    cpus: int = 8
+    dataset_max: str = "8G"
+    run_storage_max: str = "16G"
+    tmp_max: str = "1G"
 
 
 @dataclass
 class Secrets:
-    """Screen 14: which secrets are generated and which are provided (never values)."""
+    """Screen 15: which secrets are generated and which are provided (never values).
+
+    ``platform`` holds the choice for each secret the platform's manifest
+    names, by ``<service>.<name>``.
+    """
 
     grafana_admin: str = "generate"
     hf_token: str = "none"  # noqa: S105 - none or provided, not a token
     store_vault_password: bool = False
+    platform: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -206,9 +233,12 @@ class Answers:
     gpu: Gpu = field(default_factory=Gpu)
     backups: Backups = field(default_factory=Backups)
     restore_snapshot: str = "latest"
-    source: Source = field(default_factory=Source)
-    platform: Component = field(default_factory=Component)
-    catalog: Component = field(default_factory=Component)
+    platform: Source = field(default_factory=Source)
+    content: dict[str, Source] = field(default_factory=dict)
+    source_trust: SourceTrust = field(default_factory=SourceTrust)
+    platform_settings: dict[str, Any] = field(default_factory=dict)
+    gpu_arbiter: GpuArbiter = field(default_factory=GpuArbiter)
+    training_caps: TrainingCaps = field(default_factory=TrainingCaps)
     images_build: list[str] = field(default_factory=list)
     secrets: Secrets = field(default_factory=Secrets)
 
@@ -219,9 +249,9 @@ class Answers:
         return self.remote_access.tailscale_tag or default
 
     @property
-    def needs_source(self) -> bool:
-        """Whether platform or catalog is deployed (and needs the repository)."""
-        return self.platform.enabled or self.catalog.enabled
+    def has_platform(self) -> bool:
+        """Whether a platform is deployed (a standalone lab has none)."""
+        return bool(self.platform.repo)
 
     def normalized(self) -> Answers:
         """A copy without the values of choices that do not apply.
@@ -248,11 +278,12 @@ class Answers:
         for name in ("host", "user", "path", "url"):
             if name not in kept:
                 setattr(repository, name, "")
-        if not clean.needs_source:
-            clean.source = Source()
-        for component in (clean.platform, clean.catalog):
-            if not component.enabled:
-                component.ref = ""
+        if not clean.has_platform:
+            clean.platform = Source()
+            clean.content = {}
+            clean.source_trust = SourceTrust()
+            clean.platform_settings = {}
+            clean.secrets.platform = {}
         if clean.gpu.install_driver != "auto":
             clean.gpu.accept_mok_enrollment = False
         return clean
@@ -297,12 +328,20 @@ class Answers:
         data["backups"] = backups
         if clean.mode == "restore":
             data["restore"] = {"snapshot": clean.restore_snapshot}
-        if clean.needs_source:
-            data["source"] = asdict(clean.source)
-        data["platform"] = _component_dict(clean.platform)
-        data["catalog"] = _component_dict(clean.catalog)
+        data["platform"] = asdict(clean.platform) if clean.has_platform else None
+        if clean.has_platform:
+            data["content"] = {name: asdict(s) for name, s in sorted(clean.content.items())}
+            data["source_trust"] = asdict(clean.source_trust)
+            data["platform_settings"] = copy.deepcopy(clean.platform_settings)
+        data["gpu_arbiter"] = asdict(clean.gpu_arbiter)
+        data["training_caps"] = asdict(clean.training_caps)
         data["images"] = {"build": list(clean.images_build)}
-        data["secrets"] = {"generate": "all", **asdict(clean.secrets)}
+        secrets = asdict(clean.secrets)
+        if not secrets["platform"]:
+            del secrets["platform"]
+        else:
+            secrets["platform"] = dict(sorted(secrets["platform"].items()))
+        data["secrets"] = {"generate": "all", **secrets}
         return data
 
     @classmethod
@@ -331,9 +370,14 @@ class Answers:
         answers.backups.repository = repository
         answers.backups.retention = retention
         answers.restore_snapshot = str((data.get("restore") or {}).get("snapshot", "latest"))
-        answers.source = _build(Source, data.get("source", {}))
-        answers.platform = _build(Component, data.get("platform", {}))
-        answers.catalog = _build(Component, data.get("catalog", {}))
+        answers.platform = _build(Source, data.get("platform") or {})
+        answers.content = {
+            str(name): _build(Source, value) for name, value in (data.get("content") or {}).items()
+        }
+        answers.source_trust = _build(SourceTrust, data.get("source_trust") or {})
+        answers.platform_settings = copy.deepcopy(dict(data.get("platform_settings") or {}))
+        answers.gpu_arbiter = _build(GpuArbiter, data.get("gpu_arbiter") or {})
+        answers.training_caps = _build(TrainingCaps, data.get("training_caps") or {})
         answers.images_build = list((data.get("images") or {}).get("build", []))
         secrets = {k: v for k, v in (data.get("secrets") or {}).items() if k != "generate"}
         answers.secrets = _build(Secrets, secrets)
@@ -365,13 +409,6 @@ _REPOSITORY_FIELDS = {
 def _repository_dict(repository: Repository) -> dict[str, Any]:
     keys = _REPOSITORY_FIELDS[repository.type]
     return {"type": repository.type, **{k: getattr(repository, k) for k in keys}}
-
-
-def _component_dict(component: Component) -> dict[str, Any]:
-    data: dict[str, Any] = {"enabled": component.enabled}
-    if component.ref:
-        data["ref"] = component.ref
-    return data
 
 
 def schema() -> dict[str, Any]:
@@ -541,14 +578,28 @@ def _backup_problems(found: list[str], answers: Answers) -> None:
 
 
 def _source_problems(found: list[str], answers: Answers) -> None:
-    if answers.needs_source:
-        _check(found, "source/repo", validators.source_repo(answers.source.repo))
-    for name, component in (("platform", answers.platform), ("catalog", answers.catalog)):
-        if not component.enabled:
-            continue
-        _check(found, f"{name}/ref", validators.git_ref(component.ref))
-        if answers.machine.node_role == "inference":
-            found.append(f"{name}/enabled: an inference node runs neither platform nor catalog")
+    caps = answers.training_caps
+    for name in ("memory_max", "dataset_max", "run_storage_max", "tmp_max"):
+        _check(found, f"training_caps/{name}", validators.cap_size(getattr(caps, name)))
+    if not answers.has_platform:
+        if answers.content or answers.platform_settings or answers.secrets.platform:
+            found.append("content: there is no platform (platform: null) to use it")
+        return
+    if answers.machine.node_role == "inference":
+        found.append("platform: an inference node runs no platform")
+    found.extend(
+        validators.platform_sources(
+            asdict(answers.platform), {n: asdict(s) for n, s in answers.content.items()}
+        )
+    )
+    trust = answers.source_trust
+    if trust.require_signed_tags and not trust.allowed_signers:
+        found.append("source_trust/allowed_signers: signed tags need at least one allowed signer")
+    for service, value in answers.platform_settings.items():
+        if not isinstance(value, Mapping):
+            found.append(f"platform_settings/{service}: must be a mapping of settings")
+    for key in answers.secrets.platform:
+        _check(found, f"secrets/platform/{key}", validators.platform_secret_key(key))
 
 
 def _yaml() -> YAML:
@@ -616,4 +667,20 @@ def secret_names(answers: Answers) -> list[str]:
         names.append("GRAFANA_ADMIN_PASSWORD")
     if answers.secrets.hf_token == "provided":  # noqa: S105 - the choice, not a token
         names.append("HF_TOKEN")
+    for key, choice in sorted(answers.secrets.platform.items()):
+        if choice == PROVIDED:
+            names.append(platform_secret_variable(key)[len("PINKA_SECRET_") :])
     return names
+
+
+def platform_secret_variable(key: str) -> str:
+    """The environment variable of a platform secret in a non-interactive replay.
+
+    Args:
+        key: ``<service>.<name>`` of a secret the manifest names.
+
+    Returns:
+        ``PINKA_SECRET_PLATFORM_<SERVICE>_<NAME>``, upper case, every other
+        character than a letter or a digit replaced by ``_``.
+    """
+    return "PINKA_SECRET_PLATFORM_" + re.sub(r"[^A-Z0-9]", "_", key.upper())

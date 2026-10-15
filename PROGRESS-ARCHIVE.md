@@ -911,6 +911,50 @@ only the relevant tests while building a step, this archive, `CLAUDE.md`
 with rules only, the specs read by section; as one small commit after the
 3d.5 commit, under the normal rule.
 
+**3d.6** (infra §16 step 20 and the owner's 3d.5 decisions), committed
+`a686e28`: size caps in `training_caps` (`dataset_max`, `run_storage_max`,
+`tmp_max`) with a disk check before each run; resume after `pinka start` as
+after a reboot, logged as a transition; the lab node's key 0600 root; the
+inference guard reloaded on purge; the tree hash format (paths sorted
+bytewise); validation and doctor warning on jobs above `training_caps`; the
+SMT warning of P3a; 11.13 (the split guard: only the paired peer's address
+after pairing, the pairing port only during the pairing window, with the
+test that an unpaired tailnet address is refused); the setup tooling (uv
+bootstrap, Galaxy fallback with `TODO(verify)` pins). Step 20: the reference
+platform `refplat` (`infra/tests/reference-platform/`) with `tune` and the
+CPU-only `tunecpu`, its content package and tests; the isolation probe of
+its agent and per loopback-capable profile; the extended check-mode job with
+`refplat` enabled; the `make test-distros` stages `platform`, `isolation`,
+`training`, `resume`, `redeploy`, `replace` and `restore`. Fixed: the
+arbiter's platform name in lineage records. Choices and findings:
+`infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 6".
+
+**Owner decisions with the "commit" for 3d.6.** Approved: the job image
+from the ECR Public mirror, pinned by digest, provided the digest is the
+official image's (checked on 2026-10-15: Docker Hub's `library/python`
+serves the same digest, and its tag `3.12-slim-trixie` points to it); the
+vLLM stand-in during the isolation stage; the renamed copy from a
+repository of its own; the harness writing host_vars and the vault until
+3d.7; the root-only `resume` key of `idle`; the platform spec change that a
+platform's `migrate` hook grants its own services what they use. For 3d.7:
+bootstrap installs every Ansible collection, transitive dependencies such as
+`community.library_inventory_filtering_v1` included, pinned by version and
+sha256 (shared with the fallback entries), downloaded with the verified
+downloader, installed with `--offline --no-deps` and checked with
+`ansible-galaxy collection verify --offline`; a maintainer script
+(`make lock-collections`) that only reads public URLs and prints every
+locked collection's artifact URL and sha256 in the lock's format, kept as
+maintainer tooling and documented (run only by a maintainer when pinning or
+upgrading, its output reviewed before it is committed, an upgrade landing
+only after the full gate and CI pass); each golden image's full package list
+(name, version, architecture) in its fingerprint record, with a test; a
+minimal `inference-broker` service in `refplat`, so the broker's access to
+the inference API is proven positive in the VMs. Before anything is built
+for the fallback: whether its GitHub file is Galaxy's artifact, and an
+alternative if it cannot verify as strictly. To decide on a proposal: the
+pinned collection artifacts bundled with infra for an offline bootstrap.
+No snapshot repositories for golden images for now.
+
 ### Privacy clean-up (owner instruction)
 
 Scan everything already written for personal or installation-specific data,

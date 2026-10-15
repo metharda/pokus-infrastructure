@@ -18,6 +18,7 @@ grafana_role = "refplat_grafana"
 
 [postgres.roles]
 ctl = "refplat_ctl"
+broker = "refplat_broker"
 
 [telemetry]
 otlp_grpc = "127.0.0.1:4317"
@@ -26,6 +27,11 @@ vm_collector_grpc = "198.18.0.1:4317"
 vm_collector_http = "198.18.0.1:4318"
 agent_otlp_socket = "/run/pinka/otlp/agent.sock"
 query_socket = "/run/pinka/query.sock"
+
+[inference]
+mode = "local"
+researcher_endpoint = "127.0.0.1:18705"
+api_url = "http://127.0.0.1:18704"
 
 [gpu]
 arbiter_socket = "/run/pinka/gpu.sock"

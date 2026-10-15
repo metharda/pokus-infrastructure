@@ -33,7 +33,7 @@ Validate a staged release directory and print every problem, or a summary.
 | --- | --- | --- | --- |
 | `release` | — | — | release directory with platform-manifest.yaml at its root |
 | `-h`, `--help` | — | — | show the help and exit |
-| `--contract` | `CONTRACT` | `/home/user/pokus/infra/contract` | contract directory (default: contract/ of this infra checkout) |
+| `--contract` | `CONTRACT` | `infra/contract` | contract directory (default: contract/ of this infra checkout) |
 | `--no-host-check` | — | — | skip the checks against the accounts, groups and commands of this host |
 | `--built` | — | — | the build has run: commands below .venv/ must exist too |
 | `--json` | — | — | print the result as JSON |
@@ -44,19 +44,19 @@ Validate a staged release directory and print every problem, or a summary.
 pinka-platform deploy [-h] [--settings SETTINGS] [--run RUN]
                              [--inspect] [--contract CONTRACT] [--root ROOT]
                              [--no-host-check]
-                             {prepare,build,pull,publish,retire-plan,render,principals,migrate,activate,clean}
+                             {inspect-release,prepare,build,pull,publish,retire-plan,render,principals,migrate,activate,clean}
 ```
 
-One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one JSON object. prepare fetches, stages and validates and writes a run directory below the staging directory; the other steps work on that run directory.
+One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one JSON object. inspect-release fetches and validates the release alone and reports what it needs (content packages, secrets, settings; the installer asks for them); prepare fetches, stages and validates and writes a run directory below the staging directory; the other steps work on that run directory.
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `step` | — | — | the step |
 | `-h`, `--help` | — | — | show the help and exit |
-| `--settings` | `SETTINGS` | — | prepare: the settings file the role writes |
+| `--settings` | `SETTINGS` | — | inspect-release, prepare: the settings file the role (or the installer) writes |
 | `--run` | `RUN` | — | the run directory prepare created |
 | `--inspect` | — | — | prepare: stop after the validation and delete the run directory again |
-| `--contract` | `CONTRACT` | `/home/user/pokus/infra/contract` | contract directory (default: the installed contract) |
+| `--contract` | `CONTRACT` | `infra/contract` | contract directory (default: the installed contract) |
 | `--root` | `ROOT` | — | prefix for every host path (tests and fixtures; default: /) |
 | `--no-host-check` | — | — | skip the checks against the accounts, groups and commands of this host |
 
@@ -77,7 +77,7 @@ Remove a replaced platform's releases, content, state, restricted area and datab
 | `-h`, `--help` | — | — | show the help and exit |
 | `--confirm` | `CONFIRM` | — | the platform name again, typed |
 | `--remove-secrets` | — | — | also remove its secrets directories, database password files and private signing key (kept by default) |
-| `--contract` | `CONTRACT` | `/home/user/pokus/infra/contract` | contract directory (default: the installed contract) |
+| `--contract` | `CONTRACT` | `infra/contract` | contract directory (default: the installed contract) |
 | `--root` | `ROOT` | — | prefix for every host path (tests and fixtures; default: /) |
 | `--no-host-check` | — | — | skip the checks against the accounts, groups and commands of this host |
 
@@ -97,7 +97,7 @@ Run the active platform's drain or health hook in its own transient unit (an ins
 | `-h`, `--help` | — | — | show the help and exit |
 | `--timeout` | `SECONDS` | — | the hook's timeout (default: the manifest's timeout_seconds); drain also gets it as --timeout |
 | `--until-healthy` | `SECONDS` | — | health: run the hook every few seconds until it answers ok or SECONDS pass |
-| `--contract` | `CONTRACT` | `/home/user/pokus/infra/contract` | contract directory (default: the installed contract) |
+| `--contract` | `CONTRACT` | `infra/contract` | contract directory (default: the installed contract) |
 | `--root` | `ROOT` | — | prefix for every host path (tests; default: /) |
 
 ## pinka-platform hook-exec

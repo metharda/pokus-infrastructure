@@ -2,10 +2,14 @@
 
 * ``schema_findings``: structure (``tools/lockcheck/schema/versions-lock.schema.json``).
 * ``marker_findings``: every remaining ``TODO(verify)`` or ``<verify>`` marker.
+* ``collection_findings``: every locked collection has exactly one pinned
+  artifact (``ansible_collections.artifacts``), transitive dependencies
+  included, and no artifact pins a collection that is not locked.
 * ``container_findings``: every image digest resolves in its registry; a tag
   that has moved to another digest is a warning (only the digest is used).
-* ``binary_findings``: every binary asset, and every collection's release
-  tarball of the Galaxy fallback, downloads and has the pinned sha256.
+* ``binary_findings``: every binary asset, every collection's artifact and
+  every release tarball of the Galaxy fallback downloads and has the pinned
+  sha256.
 * ``key_findings``: every repository key URL serves a key whose primary
   fingerprint is the pinned one.
 
@@ -126,6 +130,32 @@ def marker_findings(text: str) -> list[Finding]:
     ]
 
 
+def collection_findings(doc: Mapping[str, Any]) -> list[Finding]:
+    """Every locked collection has one pinned artifact, and every artifact a locked version.
+
+    Args:
+        doc: Lock document.
+
+    Returns:
+        One error per collection without an artifact and per artifact without
+        a locked collection.
+    """
+    section = doc.get("ansible_collections") or {}
+    locked = set(section.get("collections") or {})
+    pinned = set(section.get("artifacts") or {})
+    return [
+        Finding(
+            ERROR, f"ansible_collections.artifacts.{name}", "a locked collection has no artifact"
+        )
+        for name in sorted(locked - pinned)
+    ] + [
+        Finding(
+            ERROR, f"ansible_collections.artifacts.{name}", "an artifact of a collection not locked"
+        )
+        for name in sorted(pinned - locked)
+    ]
+
+
 def _verified(*values: Any) -> bool:  # noqa: ANN401 - YAML values
     return all(isinstance(v, str) and not MARKER_RE.search(v) for v in values)
 
@@ -177,6 +207,9 @@ def _binary_assets(doc: Mapping[str, Any]) -> Iterator[tuple[str, str, str]]:
     for name, entry in doc["binaries"].items():
         for arch, asset in entry["assets"].items():
             yield f"binaries.{name}.assets.{arch}", asset["url"], asset["sha256"]
+    # Galaxy's artifact of every collection, which bootstrap installs.
+    for name, asset in doc["ansible_collections"].get("artifacts", {}).items():
+        yield f"ansible_collections.artifacts.{name}", asset["url"], asset["sha256"]
     # The collections' release tarballs of make setup's Galaxy fallback.
     for name, asset in doc["ansible_collections"].get("fallback", {}).items():
         yield f"ansible_collections.fallback.{name}", asset["url"], asset["sha256"]

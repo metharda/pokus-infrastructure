@@ -355,7 +355,7 @@ def relative_defaults(parser: argparse.ArgumentParser, root: Path) -> argparse.A
     """Show defaults inside the checkout relative to it, not as this machine's paths.
 
     Args:
-        parser: The parser; its defaults are changed in place.
+        parser: The parser and its subcommands; their defaults are changed in place.
         root: Component root (``infra/``).
 
     Returns:
@@ -363,8 +363,12 @@ def relative_defaults(parser: argparse.ArgumentParser, root: Path) -> argparse.A
     """
     prefix = str(root.resolve()) + "/"
     for action in parser._actions:
-        if isinstance(action.default, str) and action.default.startswith(prefix):
-            action.default = "infra/" + action.default[len(prefix) :]
+        default = str(action.default) if isinstance(action.default, Path) else action.default
+        if isinstance(default, str) and default.startswith(prefix):
+            action.default = "infra/" + default[len(prefix) :]
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                relative_defaults(child, root)
     return parser
 
 

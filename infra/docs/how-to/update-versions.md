@@ -44,7 +44,7 @@ current pins are listed in [Pinned versions](../reference/versions.md).
     | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. |
     | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. |
     | Python package | PyPI; then run `make bootstrap-lock` to recompute the hashes. |
-    | Ansible collection | The collection's release tag and its `requires_ansible` in `meta/runtime.yml`; for `ansible_collections.fallback`, the built collection tarball attached to that GitHub release: download it and hash it with `sha256sum`. |
+    | Ansible collection | The collection's release tag and its `requires_ansible` in `meta/runtime.yml`; then its artifact with `make lock-collections` ([How to pin the Ansible collections](pin-ansible-collections.md)). |
 
 3. Edit `versions.lock.yml`: change the value, and update `verified_on` and
    `source` of the entry or section so that someone else can repeat the

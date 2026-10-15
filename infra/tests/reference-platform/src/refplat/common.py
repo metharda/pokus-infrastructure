@@ -29,6 +29,7 @@ ADAPTERS = Path("/srv/pinka/models/adapters")
 SOCKETS = Path("/run/pinka/platform/ctl")
 API_SOCKET = SOCKETS / "api.sock"
 SESSION_SOCKET = SOCKETS / "session.sock"
+BROKER_SOCKET = Path("/run/pinka/platform/broker/infer.sock")
 MAX_LINE = 1 << 20
 TIMEOUT = 30.0
 

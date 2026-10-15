@@ -193,6 +193,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_scram_matches",
         "pinka_config_hashes",
         "pinka_image_by_alias",
+        "pinka_dpkg_packages",
         "pinka_to_toml",
         "pinka_socket_specs",
         "pinka_unit_hardening",

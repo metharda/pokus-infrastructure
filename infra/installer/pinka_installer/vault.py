@@ -12,20 +12,21 @@ from __future__ import annotations
 
 import io
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ruamel.yaml import YAML
 
-from pinka_installer.answers import Answers
+from pinka_installer.answers import PROVIDED, Answers, platform_secret_variable
 
 TOKEN_BYTES = 32
 MIN_GRAFANA_ADMIN = 8
 # Order of the keys in the vault (vault.yml.example).
 ORDER = (
     "vault_postgres_passwords",
+    "vault_platform_secrets",
     "vault_grafana_admin_password",
     "vault_grafana_user_passwords",
     "vault_restic_repository",
@@ -48,19 +49,25 @@ class Provided:
         restic_password: restic repository password.
         grafana_admin_password: Grafana admin password.
         hf_token: Hugging Face token for gated models.
+        platform: Secrets of the platform's manifest, by ``<service>.<name>``.
     """
 
     tailscale_authkey: str = field(default="", repr=False)
     restic_password: str = field(default="", repr=False)
     grafana_admin_password: str = field(default="", repr=False)
     hf_token: str = field(default="", repr=False)
+    platform: dict[str, str] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def from_environment(cls, environ: Mapping[str, str]) -> Provided:
+    def from_environment(
+        cls, environ: Mapping[str, str], platform_secrets: Sequence[str] = ()
+    ) -> Provided:
         """Read the ``PINKA_SECRET_<NAME>`` variables (BUILD_PROMPT §18.6).
 
         Args:
             environ: The environment.
+            platform_secrets: The ``<service>.<name>`` of the secrets the
+                platform's manifest names (``PINKA_SECRET_PLATFORM_<SERVICE>_<NAME>``).
 
         Returns:
             The provided secrets.
@@ -70,6 +77,11 @@ class Provided:
             restic_password=environ.get("PINKA_SECRET_RESTIC_PASSWORD", ""),
             grafana_admin_password=environ.get("PINKA_SECRET_GRAFANA_ADMIN_PASSWORD", ""),
             hf_token=environ.get("PINKA_SECRET_HF_TOKEN", ""),
+            platform={
+                key: environ[platform_secret_variable(key)]
+                for key in platform_secrets
+                if environ.get(platform_secret_variable(key))
+            },
         )
 
     def values(self) -> list[str]:
@@ -99,10 +111,9 @@ class Result:
 def postgres_roles(defaults: Path) -> list[str]:
     """The database roles that get a password before any release is known.
 
-    The platform's roles come from its release (``bootstrap.sh
-    --inspect-platform`` lists the vault keys it needs; the installer's
-    Platform review screen follows with plan step 3d.7). Infra's own roles
-    get passwords generated on the host, so none is listed here unless the
+    The platform's roles come from its release (:mod:`pinka_installer.release`
+    inspects it and lists the vault keys it needs). Infra's own roles get
+    passwords generated on the host, so none is listed here unless the
     postgres role's defaults name some (``postgres_vault_roles``).
 
     Args:
@@ -125,6 +136,8 @@ def build(
     provided: Provided,
     roles: list[str],
     generate: Callable[[], str] = _token,
+    *,
+    platform_secrets: Sequence[str] = (),
 ) -> Result:
     """The vault content for the answers.
 
@@ -132,8 +145,12 @@ def build(
         answers: The answers.
         existing: The decrypted current vault (modify mode), or None.
         provided: Secrets entered or passed in the environment.
-        roles: Database roles (:func:`postgres_roles`).
+        roles: Database roles (:func:`postgres_roles`, and the platform's, which
+            its release inspection lists).
         generate: Secret generator (tests replace it).
+        platform_secrets: The ``<service>.<name>`` of the secrets the platform's
+            manifest names: provided, kept, or generated when the answers do
+            not call them provided.
 
     Returns:
         The content, the generated names and the shown-once secrets.
@@ -154,6 +171,7 @@ def build(
     for role in roles:
         ensure(passwords, role, f"vault_postgres_passwords.{role}")
     data["vault_postgres_passwords"] = passwords
+    _platform_secrets(answers, provided, data, ensure, platform_secrets)
     _grafana_admin(answers, provided, data, ensure)
     users = dict(data.get("vault_grafana_user_passwords") or {})
     for researcher in answers.researchers:
@@ -170,6 +188,33 @@ def build(
     ordered = {k: data[k] for k in ORDER if k in data}
     ordered.update({k: v for k, v in data.items() if k not in ordered})
     return Result(ordered, generated, shown_once)
+
+
+def _platform_secrets(
+    answers: Answers,
+    provided: Provided,
+    data: dict[str, Any],
+    ensure: Callable[[dict[str, Any], str, str], None],
+    keys: Sequence[str],
+) -> None:
+    stored = {
+        str(service): dict(values or {})
+        for service, values in (data.get("vault_platform_secrets") or {}).items()
+    }
+    for key in keys:
+        service, name = key.split(".", 1)
+        values = stored.setdefault(service, {})
+        if provided.platform.get(key):
+            values[name] = provided.platform[key]
+        elif answers.secrets.platform.get(key) == PROVIDED and not values.get(name):
+            raise VaultError(
+                f"the answers provide the platform secret {key}: "
+                f"set {platform_secret_variable(key)}"
+            )
+        else:
+            ensure(values, name, f"vault_platform_secrets.{key}")
+    if stored:
+        data["vault_platform_secrets"] = stored
 
 
 def _grafana_admin(

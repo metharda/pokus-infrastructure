@@ -31,6 +31,14 @@ def test_committed_files_are_current() -> None:
     assert cli.check(ROOT) == 0
 
 
+def test_no_generated_file_names_this_checkouts_path() -> None:
+    # The drift check runs in other checkouts (CI): a default inside the
+    # checkout is shown relative to it, for subcommands too.
+    here = str(ROOT.resolve())
+    for rel, produce in cli.targets(ROOT).items():
+        assert here not in produce(), rel
+
+
 def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
     for rel in (
         "preflight",

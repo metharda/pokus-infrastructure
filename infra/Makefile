@@ -135,7 +135,7 @@ $(OPA): versions.lock.yml $(VENV)/.synced
 
 $(UV_PINNED): bootstrap/lib/pins.sh bootstrap/lib/tooling.sh
 	bash -c 'set -Eeuo pipefail; for lib in exitcodes log pins tooling; do \
-	  source "bootstrap/lib/$$lib.sh"; done; install_uv "$$1"' install-uv $(CURDIR)/$(@D)
+	  source "bootstrap/lib/$$lib.sh"; done; install_uv "$$1"' install-uv $(@D)
 	@touch $@
 
 node_modules/.installed: package.json package-lock.json
@@ -278,6 +278,10 @@ lock-check: setup ## Verify versions.lock.yml: schema, no unverified markers, di
 .PHONY: verify-todos
 verify-todos: setup ## List every unverified marker in the repository; fails while any remains
 	$(LOCKCHECK) todos
+
+.PHONY: lock-collections
+lock-collections: $(VENV)/.synced ## Maintainers only: print Galaxy's checked artifact pins of the locked collections (reads public URLs, changes nothing)
+	@$(LOCKCHECK).lockcollections --lock versions.lock.yml $(LOCK_COLLECTIONS_ARGS)
 
 .PHONY: lock-update
 lock-update: ## Print the manual procedure for changing versions.lock.yml (nothing is bumped automatically)

@@ -19,6 +19,7 @@ import pinka_leakage_lint as lint
 import pytest
 import yaml
 
+import pinka
 from ansible_testlib import (
     GROUP_VARS,
     HEADER,
@@ -532,6 +533,84 @@ def test_image_by_alias_filter() -> None:
     images = [{"fingerprint": "a", "aliases": None}, IMAGE]
     assert evaluate("images | pinka_image_by_alias('_base/1.0.0')", {"images": images}) == IMAGE
     assert evaluate("images | pinka_image_by_alias('x/1')", {"images": images}) == {}
+
+
+# dpkg-query output of a build instance (synthetic versions).
+DPKG_OUTPUT = (
+    "install ok installed\tzlib1g\t1:1.0-1\tamd64\n"
+    "install ok installed\tlibc6\t2.0-1\tamd64\n"
+    "install ok installed\tlibc6\t2.0-1\ti386\n"
+    "deinstall ok config-files\told-tool\t0.9-1\tamd64\n"
+    "hold ok installed\ttzdata\t3.0-1\tall\n"
+)
+PACKAGES = [
+    {"name": "libc6", "version": "2.0-1", "architecture": "amd64"},
+    {"name": "libc6", "version": "2.0-1", "architecture": "i386"},
+    {"name": "tzdata", "version": "3.0-1", "architecture": "all"},
+    {"name": "zlib1g", "version": "1:1.0-1", "architecture": "amd64"},
+]
+
+
+def test_the_build_records_every_installed_package() -> None:
+    # Name, version and architecture of every installed package, so every
+    # result can be traced to the exact package versions of its targets.
+    argv = task("build.yml", "Record the installed packages")["ansible.builtin.command"]["argv"]
+    exec_prefix = ["incus", "exec", "build-base", "--"]
+    assert evaluate(expression(argv), {"images_incus_exec": exec_prefix}) == [
+        *exec_prefix,
+        "dpkg-query",
+        "--show",
+        "--showformat",
+        pinka.DPKG_FORMAT,
+    ]
+    facts = task("build.yml", "Use the published image")["ansible.builtin.set_fact"]
+    listed = evaluate(
+        expression(facts["images_package_list"]),
+        {"images_packages": {"stdout": DPKG_OUTPUT}},
+    )
+    assert listed == PACKAGES  # removed packages left out, sorted by name and architecture
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("install ok installed\tlibc6\t2.0-1\n", "four fields"),
+        ("install ok installed\tlibc6\t\tamd64\n", "four fields"),
+        ("install ok installed\tlibc6\t2.0-1\tamd64\n" * 2, "listed twice"),
+    ],
+)
+def test_a_malformed_package_list_is_refused(text: str, message: str) -> None:
+    with pytest.raises(pinka.PinkaFilterError, match=message):
+        pinka.dpkg_packages(text)
+
+
+@pytest.mark.parametrize(
+    ("built", "record", "expected"),
+    [
+        (PACKAGES, {}, PACKAGES),
+        (None, {"fingerprint": "f" * 64, "packages": PACKAGES}, PACKAGES),
+        (None, {"fingerprint": "e" * 64, "packages": PACKAGES}, None),
+        (None, {}, None),
+    ],
+)
+def test_the_export_record_carries_the_package_list(
+    built: list[dict[str, str]] | None, record: dict[str, Any], expected: Any
+) -> None:
+    # A record keeps a package list only for the image the build listed it for.
+    content = task("export.yml", "Write the export record")["ansible.builtin.copy"]["content"]
+    text = evaluate(
+        expression(content),
+        {
+            "images_name": "_base",
+            "images_spec": {"version": "1.0.0", "type": "container", "nesting": False, "base": {}},
+            "images_alias": "_base/1.0.0",
+            "images_image": {**IMAGE, "architecture": "x86_64", "properties": {}},
+            "images_written": {"stdout": json.dumps({"files": ["f.tar.gz"]})},
+            "images_package_list": built,
+            "images_record": record,
+        },
+    )
+    assert json.loads(text)["packages"] == expected
 
 
 def test_provisioning_variables() -> None:

@@ -47,8 +47,13 @@ The other blueprints start from `_base`.
 
 Distribution packages are not pinned to versions: Ubuntu's archive keeps only
 the current version of each package, so a pin would break every rebuild. The
-versions a build installed are recorded in the export's `packages.txt`, and
-the pinned base fingerprint fixes everything the build did not change.
+build records every installed package (name, version and architecture) in
+the export record `build.json`, and the pinned base fingerprint fixes
+everything the build did not change. The environment fingerprint reports
+each golden image with its package list, so every result can be traced to
+the exact package versions of its targets: a rebuilt image with one changed
+package gives another fingerprint hash. An image whose export record is
+missing or belongs to another image is reported with `packages: null`.
 
 ## The build flow
 
@@ -115,8 +120,8 @@ the lint.
 ## Exports
 
 Each image is exported to `/srv/pinka/images/<blueprint>/<version>/` with
-`SHA256SUMS`, `packages.txt` and `build.json` (fingerprint, base, properties,
-files). Public image servers rotate their images and delete old ones, so the
+`SHA256SUMS` and `build.json` (fingerprint, base, properties, files,
+installed packages). Public image servers rotate their images and delete old ones, so the
 pinned upstream base is exported too, to
 `/srv/pinka/images/_upstream/<base>/<fingerprint>/`: a lab can rebuild a
 blueprint years later from the same base. When an alias is missing but its
