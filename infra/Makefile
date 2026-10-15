@@ -111,11 +111,13 @@ $(VENV)/.synced: pyproject.toml uv.lock $(filter $(UV_PINNED),$(UV))
 
 # Every setup verifies the pinned collections and installs them again when
 # anything differs: a missing or changed file, an extra file, a version that is
-# not the locked one. They come from Galaxy; when Galaxy is unreachable, from
-# the GitHub release tarballs pinned in versions.lock.yml
-# (ansible_collections.fallback), each installed only after its sha256
-# matched; a failed download or checksum stops setup. The same verification
-# runs afterwards. No formatter or linter may touch them
+# not the locked one. They are downloaded from Galaxy (ansible-galaxy
+# collection download); when Galaxy is unreachable, from the tarballs pinned in
+# versions.lock.yml (ansible_collections.fallback), each kept only after its
+# sha256 matched. Every artifact passes the check make lock-collections and
+# bootstrap apply (pinka_lockcheck/artifact.py) before an offline install; a
+# failed download, checksum or check stops setup. The same verification runs
+# afterwards. No formatter or linter may touch them
 # (tools/repo-checks/tests/test_dev_tools.py).
 .PHONY: dev-collections
 dev-collections: $(VENV)/.synced

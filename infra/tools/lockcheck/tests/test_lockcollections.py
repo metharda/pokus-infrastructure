@@ -4,75 +4,21 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import io
 import json
-import tarfile
+import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from collection_testlib import artifact
 
 from pinka_lockcheck import lockcollections as lc
 from pinka_lockcheck import net
 
 SERVER = "https://galaxy.example.com"
 NOW = dt.datetime(2026, 10, 15, 12, 0, tzinfo=dt.UTC)
-
-
-def artifact(
-    name: str,
-    version: str,
-    files: Mapping[str, bytes],
-    *,
-    deps: Mapping[str, str] | None = None,
-    licenses: tuple[str, ...] = ("GPL-3.0-or-later",),
-    tamper: Callable[[dict[str, bytes]], None] | None = None,
-) -> bytes:
-    """A collection tarball as ansible-galaxy builds it."""
-    namespace, collection = name.split(".")
-    listing = {
-        "files": [{"name": ".", "ftype": "dir", "chksum_type": None, "chksum_sha256": None}]
-        + [
-            {
-                "name": path,
-                "ftype": "file",
-                "chksum_type": "sha256",
-                "chksum_sha256": hashlib.sha256(data).hexdigest(),
-            }
-            for path, data in sorted(files.items())
-        ],
-        "format": 1,
-    }
-    files_json = json.dumps(listing).encode()
-    manifest = {
-        "collection_info": {
-            "namespace": namespace,
-            "name": collection,
-            "version": version,
-            "license": list(licenses),
-            "dependencies": dict(deps or {}),
-        },
-        "file_manifest_file": {
-            "name": "FILES.json",
-            "ftype": "file",
-            "chksum_type": "sha256",
-            "chksum_sha256": hashlib.sha256(files_json).hexdigest(),
-            "format": 1,
-        },
-        "format": 1,
-    }
-    members = {"MANIFEST.json": json.dumps(manifest).encode(), "FILES.json": files_json, **files}
-    if tamper:
-        tamper(members)
-    out = io.BytesIO()
-    with tarfile.open(fileobj=out, mode="w:gz") as tar:
-        for path, data in members.items():
-            info = tarfile.TarInfo(path)
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-    return out.getvalue()
 
 
 class FakeGalaxy:
@@ -135,6 +81,47 @@ def galaxy() -> FakeGalaxy:
 
 def run(fake: FakeGalaxy, extra: Mapping[str, str] | None = None) -> str:
     return lc.run(LOCK, extra or {}, server=SERVER, fetch=fake, now=lambda: NOW)
+
+
+def test_an_artifact_with_an_internal_link_is_pinned() -> None:
+    # community.general links tests/utils/shippable/aix.sh to remote.sh; the
+    # owner's first run stopped there ("not a regular file or directory").
+    fake = galaxy()
+    fake.add(
+        "ansible.posix",
+        "2.2.2",
+        artifact(
+            "ansible.posix",
+            "2.2.2",
+            {"COPYING": b"gpl", "tests/utils/shippable/remote.sh": b"#!/bin/sh\n"},
+            links={"tests/utils/shippable/aix.sh": "remote.sh"},
+        ),
+    )
+    data: dict[str, Any] = yaml.safe_load(run(fake, {DEP: "1.1.5"}))
+    assert data["collections"]["ansible.posix"] == "2.2.2"
+
+
+@pytest.mark.parametrize(
+    ("linkname", "message"),
+    [
+        ("/etc/passwd", "member tests/x is a link to the absolute path /etc/passwd"),
+        (
+            "../../../outside",
+            "member tests/x is a link to ../../../outside, outside the collection",
+        ),
+    ],
+)
+def test_an_artifact_with_an_absolute_or_escaping_link_is_refused(
+    linkname: str, message: str
+) -> None:
+    fake = galaxy()
+    fake.add(
+        "ansible.posix",
+        "2.2.2",
+        artifact("ansible.posix", "2.2.2", {"COPYING": b"gpl"}, links={"tests/x": linkname}),
+    )
+    with pytest.raises(lc.PinError, match=re.escape(message)):
+        run(fake, {DEP: "1.1.5"})
 
 
 def test_the_pins_are_printed_in_the_lock_s_format() -> None:

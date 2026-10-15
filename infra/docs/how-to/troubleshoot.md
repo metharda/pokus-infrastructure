@@ -156,6 +156,10 @@ collections failed. The lines above the exit line name the step.
   check that the host reaches `galaxy.ansible.com`. A pin that is still
   `TODO(verify)` is never downloaded: this release has not pinned that
   artifact yet, so report it.
+- The artifact of a collection is refused (the line before names the
+  member and why): it carries an absolute or escaping symbolic link, a hard
+  link, a device or a FIFO, or its `MANIFEST.json` or `FILES.json` does not
+  match its files. The pinned artifact is not what Galaxy built; report it.
 - The installed collections do not match their `FILES.json`: bootstrap
   found a changed file below `/opt/pinka/ansible-collections`, installed the
   pinned artifacts again, and the check still failed right after. Something

@@ -8,12 +8,12 @@ yet) it asks Galaxy for that version, the way ``ansible-galaxy`` does
 (``<server>/api/`` names the v3 API; ``collections/<namespace>/<name>/
 versions/<version>/`` gives ``download_url`` and ``artifact.sha256``),
 downloads the artifact and computes its sha256 itself, which must equal
-Galaxy's. Then it checks the artifact as ``ansible-galaxy collection
-verify`` checks an installed collection: ``MANIFEST.json`` names this
-collection and version, ``FILES.json`` matches its checksum there, every
-file is listed with its checksum and nothing unlisted is in the tarball.
-Every dependency an artifact declares must be locked at a version that
-satisfies it. It prints the pins in the lock's format, with each artifact's
+Galaxy's. Then it checks the artifact with :mod:`pinka_lockcheck.artifact`,
+the rule ``make setup`` and bootstrap apply too (``FILES.json`` and
+``MANIFEST.json`` as ``ansible-galaxy collection verify`` checks them, and
+only relative symbolic links that stay inside the collection). Every
+dependency an artifact declares must be locked at a version that satisfies
+it. It prints the pins in the lock's format, with each artifact's
 size and license files, and installs or changes nothing; the output is
 reviewed before it is committed, and an upgrade lands only after the full
 gate and CI pass with the new versions.
@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
-import io
 import json
 import re
 import sys
@@ -35,14 +34,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pinka_lockcheck import checks, net
+from pinka_lockcheck import artifact, checks, net
 
 GALAXY = "https://galaxy.ansible.com"
 NAME_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 CONSTRAINT_RE = re.compile(r"^(==|!=|>=|<=|>|<)?\s*(\S+)$")
-SPECIAL = ("MANIFEST.json", "FILES.json")
-LICENSE_RE = re.compile(r"(^|/)(COPYING|LICENSE[^/]*|LICENSES/[^/]+)$")
 
 Fetch = Callable[[str], bytes]
 
@@ -150,67 +147,6 @@ def _field(data: Mapping[str, Any], path: str, url: str) -> Any:  # noqa: ANN401
     return value
 
 
-def _members(artifact: bytes) -> dict[str, bytes]:
-    """The regular files of a collection artifact by path; anything else is refused."""
-    files: dict[str, bytes] = {}
-    with tarfile.open(fileobj=io.BytesIO(artifact), mode="r:gz") as tar:
-        for member in tar.getmembers():
-            name = member.name.removeprefix("./")
-            if member.isdir():
-                continue
-            if not member.isfile():
-                raise PinError(f"member {name} is not a regular file or directory")
-            if name.startswith("/") or ".." in name.split("/"):
-                raise PinError(f"member {name} lies outside the collection")
-            extracted = tar.extractfile(member)
-            if extracted is None:
-                raise PinError(f"member {name} cannot be read")
-            files[name] = extracted.read()
-    return files
-
-
-def check_artifact(name: str, version: str, artifact: bytes) -> dict[str, Any]:
-    """Check an artifact like ``ansible-galaxy collection verify``; returns its collection_info.
-
-    Raises:
-        PinError: On any difference.
-    """
-    files = _members(artifact)
-    for special in SPECIAL:
-        if special not in files:
-            raise PinError(f"{name} {version}: the artifact has no {special}")
-    manifest = json.loads(files["MANIFEST.json"])
-    info = manifest.get("collection_info") or {}
-    found = f"{info.get('namespace')}.{info.get('name')}"
-    if found != name or info.get("version") != version:
-        raise PinError(f"{name} {version}: MANIFEST.json names {found} {info.get('version')}")
-    listing = manifest.get("file_manifest_file") or {}
-    if listing.get("chksum_type") != "sha256" or listing.get("chksum_sha256") != (
-        hashlib.sha256(files["FILES.json"]).hexdigest()
-    ):
-        raise PinError(f"{name} {version}: FILES.json does not match MANIFEST.json")
-    listed: dict[str, str] = {}
-    for entry in json.loads(files["FILES.json"]).get("files", []):
-        if entry.get("ftype") == "file":
-            if entry.get("chksum_type") != "sha256":
-                raise PinError(f"{name} {version}: {entry.get('name')} has no sha256 in FILES.json")
-            listed[str(entry["name"])] = str(entry["chksum_sha256"])
-    present = {path for path in files if path not in SPECIAL}
-    if missing := sorted(set(listed) - present):
-        raise PinError(f"{name} {version}: listed but missing: {', '.join(missing[:5])}")
-    if extra := sorted(present - set(listed)):
-        raise PinError(f"{name} {version}: in the tarball but not listed: {', '.join(extra[:5])}")
-    if wrong := sorted(
-        p for p, digest in listed.items() if hashlib.sha256(files[p]).hexdigest() != digest
-    ):
-        raise PinError(
-            f"{name} {version}: checksum differs from FILES.json: {', '.join(wrong[:5])}"
-        )
-    info = dict(info)
-    info["license_files"] = sorted(p for p in present if LICENSE_RE.search(p))
-    return info
-
-
 def pin(fetch: Fetch, v3: str, name: str, version: str) -> Pin:
     """Pin one collection version from Galaxy.
 
@@ -224,17 +160,20 @@ def pin(fetch: Fetch, v3: str, name: str, version: str) -> Pin:
     answer = _json(fetch, url)
     download = urllib.parse.urljoin(url, str(_field(answer, "download_url", url)))
     expected = str(_field(answer, "artifact.sha256", url))
-    artifact = fetch(download)
-    digest = hashlib.sha256(artifact).hexdigest()
+    data = fetch(download)
+    digest = hashlib.sha256(data).hexdigest()
     if digest != expected:
         raise PinError(f"{name} {version}: {download} has sha256 {digest}, Galaxy says {expected}")
-    info = check_artifact(name, version, artifact)
+    try:
+        info = artifact.check(name, version, data)
+    except artifact.ArtifactError as exc:
+        raise PinError(str(exc)) from exc
     return Pin(
         name=name,
         version=version,
         url=download,
         sha256=digest,
-        size=len(artifact),
+        size=len(data),
         licenses=[str(x) for x in info.get("license") or []],
         license_files=list(info["license_files"]),
         dependencies={str(k): str(v) for k, v in (info.get("dependencies") or {}).items()},

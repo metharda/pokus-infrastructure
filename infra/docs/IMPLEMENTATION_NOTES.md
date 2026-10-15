@@ -3582,3 +3582,31 @@ None new.
   `lock-check` counts on every line, so `lock-check` could not have turned
   green after every pin was verified (since step 4). Reworded; a test keeps
   markers off comment lines.
+
+### Fixed after the 3d.7 commit: symbolic links in collection artifacts
+
+- The owner's `make lock-collections` stopped at
+  `community.general`'s `tests/utils/shippable/aix.sh`, a symbolic link:
+  the artifact check accepted only regular files and directories. The check
+  is now `tools/lockcheck/pinka_lockcheck/artifact.py`, standard library
+  only, and the one rule for every path: `make lock-collections` imports
+  it, `make setup` runs it on every artifact (from Galaxy it now downloads
+  with `ansible-galaxy collection download --no-deps`, checks, then installs
+  offline without dependencies; the fallback's tarballs get the same check),
+  and bootstrap runs it as a script with the Ansible environment's Python
+  (`python -I artifact.py NAME VERSION FILE`) after the sha256 and before
+  anything is installed.
+- A symbolic link passes only when its target is relative and, resolved
+  from the link's own directory, stays inside the collection (the condition
+  under which `ansible-galaxy` extracts a link) and names another member or
+  a directory of the artifact; a link to a file counts with its target's
+  content, as `FILES.json` lists it. Refused: absolute and escaping links,
+  dangling links and loops, hard links, devices, FIFOs, members outside the
+  collection.
+- Tests: the rule itself (`tools/lockcheck/tests/test_artifact.py`, the
+  script as bootstrap runs it included), `make lock-collections` with a
+  `community.general`-shaped link, `make setup` with a collection really
+  built by `ansible-galaxy collection build` with an internal link (checked,
+  installed and verified by `ansible-galaxy`), and bootstrap's install with
+  an internal link and with an absolute and an escaping one. The artifact
+  builder of these tests is shared (`tools/lockcheck/tests/collection_testlib.py`).

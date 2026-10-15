@@ -17,6 +17,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import collection_testlib
 import pytest
 import yaml
 from bashlib import BOOTSTRAP, INFRA, bash, q
@@ -871,14 +872,24 @@ download() {{ cp {q(archive)} "$2"; }}
     assert not other.exists()
 
 
-def collection_setup(tmp_path: Path, *, verified: bool = False) -> tuple[str, Path, Path]:
-    """Two pinned collection artifacts, a fake download and a fake ansible-galaxy."""
+ARTIFACT_SCRIPT = INFRA / "tools" / "lockcheck" / "pinka_lockcheck" / "artifact.py"
+
+
+def collection_setup(
+    tmp_path: Path, *, verified: bool = False, links: dict[str, str] | None = None
+) -> tuple[str, Path, Path]:
+    """Two pinned collection artifacts, a fake download and a fake ansible-galaxy.
+
+    The artifacts are checked by the real artifact.py (with this interpreter
+    instead of the Ansible environment's).
+    """
     store = tmp_path / "store"
     store.mkdir()
     pins = []
     for name, version in (("ansible.posix", "2.2.2"), ("community.library_x", "1.1.5")):
         artifact = store / f"{name.replace('.', '-')}-{version}.tar.gz"
-        artifact.write_bytes(f"{name} {version}".encode())
+        files = {"COPYING": b"gpl", "tests/utils/shippable/remote.sh": b"#!/bin/sh\n"}
+        artifact.write_bytes(collection_testlib.artifact(name, version, files, links=links))
         digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
         pins.append(f"{name} {version} https://galaxy.example.com/{artifact.name} {digest}")
     calls = tmp_path / "galaxy-calls"
@@ -887,6 +898,7 @@ def collection_setup(tmp_path: Path, *, verified: bool = False) -> tuple[str, Pa
         installed.write_text("yes")
     stubs = f"""
 collection_pins() {{ printf '%s\\n' {" ".join(q(p) for p in pins)}; }}
+check_collection_artifact() {{ {q(sys.executable)} -I {q(ARTIFACT_SCRIPT)} "$@" </dev/null; }}
 download() {{ cp {q(store)}/"${{1##*/}}" "$2"; }}
 ansible_galaxy() {{
   printf '%s\\n' "$*" >>{q(calls)}
@@ -917,6 +929,43 @@ def test_install_collections_installs_the_pinned_artifacts_offline(tmp_path: Pat
     ]
     assert lines[2] == lines[0]  # verified again after the install
     assert not any(Path(f).exists() for f in install[7:])  # the downloads are removed
+
+
+def test_an_artifact_with_an_internal_link_is_installed(tmp_path: Path) -> None:
+    stubs, _, installed = collection_setup(
+        tmp_path, links={"tests/utils/shippable/aix.sh": "remote.sh"}
+    )
+    res = bash(stubs + f"install_collections {q(tmp_path / 'c')} && echo ok")
+    assert res.stdout.strip().endswith("ok"), res.stderr
+    assert installed.exists()
+
+
+@pytest.mark.parametrize(
+    ("linkname", "message"),
+    [("/etc/passwd", "absolute path /etc/passwd"), ("../../x", "outside the collection")],
+)
+def test_an_artifact_with_an_absolute_or_escaping_link_installs_nothing(
+    tmp_path: Path, linkname: str, message: str
+) -> None:
+    stubs, calls, installed = collection_setup(tmp_path, links={"tests/aix.sh": linkname})
+    res = bash(stubs + f"install_collections {q(tmp_path / 'c')} || echo refused $?")
+    assert res.stdout.strip().endswith("refused 50"), res.stdout + res.stderr
+    assert message in res.stderr
+    assert "is refused (reason above); nothing is installed" in res.stderr
+    assert not installed.exists()
+    assert not any(" install " in f" {line} " for line in calls.read_text().splitlines())
+
+
+def test_bootstrap_checks_artifacts_with_the_shared_script() -> None:
+    # The same rule as make lock-collections and make setup, with the Ansible
+    # environment's Python, isolated (the script uses the standard library only).
+    res = bash("declare -f check_collection_artifact")
+    assert res.returncode == 0, res.stderr
+    assert (
+        '"$ANSIBLE_VENV/bin/python" -I "$INFRA_DIR/tools/lockcheck/pinka_lockcheck/artifact.py"'
+        in res.stdout
+    )
+    assert ARTIFACT_SCRIPT.is_file()
 
 
 def test_installed_collections_that_verify_are_kept(tmp_path: Path) -> None:

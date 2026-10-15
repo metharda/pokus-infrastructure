@@ -23,6 +23,12 @@ For each collection it checks that:
   `FILES.json` matches the checksum in `MANIFEST.json`, every file is listed
   there with its checksum, and the tarball holds no unlisted file (the
   checks of `ansible-galaxy collection verify`);
+- its members are directories, regular files and symbolic links whose
+  target is relative and stays inside the collection, as `ansible-galaxy`
+  extracts them (`community.general` links some test scripts this way); an
+  absolute or escaping link, a hard link, a device or a FIFO is refused.
+  `make setup` and bootstrap check every artifact with the same code before
+  they install it, so a pin this target prints installs everywhere;
 - every dependency the artifact declares is locked at a version that
   satisfies it.
 

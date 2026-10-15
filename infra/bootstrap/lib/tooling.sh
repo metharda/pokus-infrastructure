@@ -150,13 +150,22 @@ ansible_galaxy() {
   PYTHONDONTWRITEBYTECODE=1 "$ANSIBLE_VENV/bin/ansible-galaxy" "$@"
 }
 
+# check_collection_artifact NAME VERSION FILE: the artifact passes the check
+# make lock-collections and make setup apply (MANIFEST.json and FILES.json,
+# and only relative symbolic links that stay inside the collection), run with
+# the Ansible environment's Python, isolated and standard library only.
+check_collection_artifact() {
+  "$ANSIBLE_VENV/bin/python" -I "$INFRA_DIR/tools/lockcheck/pinka_lockcheck/artifact.py" "$@" </dev/null
+}
+
 # install_collections DEST: the pinned Ansible collections in DEST, exactly
 # the artifacts of versions.lock.yml. Nothing happens when the installed ones
 # already verify (ansible-galaxy collection verify --offline: every file
-# against its FILES.json). Otherwise every artifact is downloaded and checked
-# against its pinned sha256 before anything is installed, then installed
-# without contacting Galaxy and without resolving dependencies (transitive
-# dependencies are pinned too), and verified again.
+# against its FILES.json). Otherwise every artifact is downloaded, checked
+# against its pinned sha256 and with check_collection_artifact before
+# anything is installed, then installed without contacting Galaxy and without
+# resolving dependencies (transitive dependencies are pinned too), and
+# verified again.
 install_collections() {
   local dest=$1 work pin name version url sha256 file rc=0
   local -a pins=() names=() files=()
@@ -184,6 +193,11 @@ install_collections() {
       break
     fi
     if ! verify_sha256 "$file" "$sha256"; then
+      rc=$EXIT_TOOLING
+      break
+    fi
+    if ! check_collection_artifact "$name" "$version" "$file"; then
+      log_error "the artifact of collection $name $version is refused (reason above); nothing is installed"
       rc=$EXIT_TOOLING
       break
     fi

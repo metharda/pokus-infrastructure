@@ -177,8 +177,8 @@ verified; it changes nothing outside the checkout (no `sudo`).
 | The Python development tools (`.venv`) | PyPI | `uv sync --frozen`: every package's hash in `uv.lock` |
 | The Node.js tools (`node_modules`) | the npm registry | `npm ci`: every package's integrity hash in `package-lock.json` |
 | OPA | GitHub release (`binaries.opa`) into `build/tools/` | its sha256 from the lock |
-| The Ansible collections for linting (`.ansible-collections`) | Ansible Galaxy, at the versions of `ansible/requirements.yml` | `ansible-galaxy collection verify --offline`: every file against the collection's `FILES.json`, whose checksum is in its `MANIFEST.json`, and the locked version |
-| The same collections when Galaxy is unreachable | their GitHub release tarballs (`ansible_collections.fallback` of the lock) | each tarball's sha256 from the lock before it is installed, then the same `verify --offline` |
+| The Ansible collections for linting (`.ansible-collections`) | Ansible Galaxy, at the versions of `ansible/requirements.yml` (`ansible-galaxy collection download`) | every artifact checked like bootstrap's (`tools/lockcheck/pinka_lockcheck/artifact.py`: `MANIFEST.json`, `FILES.json`, only relative symbolic links inside the collection) before an offline install, then `ansible-galaxy collection verify --offline`: every file against the collection's `FILES.json`, and the locked version |
+| The same collections when Galaxy is unreachable | their GitHub release tarballs (`ansible_collections.fallback` of the lock) | each tarball's sha256 from the lock and the same artifact check before it is installed, then the same `verify --offline` |
 
 Setup verifies the installed collections every time and installs them again
 when anything differs. A failed download or a checksum mismatch stops setup

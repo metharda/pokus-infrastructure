@@ -87,11 +87,16 @@ flowchart TD
    lock with the URL and sha256 of its artifact. When
    `ansible-galaxy collection verify --offline` finds the installed
    collections intact, nothing is downloaded; otherwise each artifact is
-   downloaded, its sha256 checked, all are installed with
-   `ansible-galaxy collection install --offline --no-deps`, and the result
-   is verified again: every file against the collection's `FILES.json`. An
-   artifact that cannot be downloaded, whose sha256 differs or is not
-   verified yet, ends bootstrap with 50 before anything is installed.
+   downloaded, its sha256 checked, and the artifact itself checked with
+   `tools/lockcheck/pinka_lockcheck/artifact.py`, the rule
+   `make lock-collections` and `make setup` apply too (`MANIFEST.json` and
+   `FILES.json`; a symbolic link only when its target is relative and stays
+   inside the collection; no hard links, devices or FIFOs). Then all are
+   installed with `ansible-galaxy collection install --offline --no-deps`,
+   and the result is verified again: every file against the collection's
+   `FILES.json`. An artifact that cannot be downloaded, whose sha256 differs
+   or is not verified yet, or that the check refuses, ends bootstrap with 50
+   before anything is installed.
 9. **The play.** `ansible-playbook` runs `site.yml` with `-e machine=<name>`
    and the host profile and bootstrap options as variables, followed by
    `restore.yml` with `--restore`.

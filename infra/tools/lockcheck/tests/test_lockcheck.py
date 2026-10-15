@@ -16,9 +16,10 @@ from email.message import Message
 from pathlib import Path
 from typing import Any
 
+import collection_testlib
 import pytest
 
-from pinka_lockcheck import checks, cli, devsetup, net, openpgp
+from pinka_lockcheck import artifact, checks, cli, devsetup, net, openpgp
 
 INFRA = Path(__file__).resolve().parents[3]
 KEYS = Path(__file__).resolve().parent / "test-keys"
@@ -404,6 +405,11 @@ def demo(tmp_path: Path) -> dict[str, Any]:
         capture_output=True,
         env=env,
     )
+    # An internal relative link, as community.general links its test scripts.
+    shippable = source / "pinkatest" / "demo" / "tests" / "utils" / "shippable"
+    shippable.mkdir(parents=True)
+    (shippable / "remote.sh").write_text("#!/bin/sh\necho remote\n", encoding="utf-8")
+    (shippable / "aix.sh").symlink_to("remote.sh")
     dist = tmp_path / "dist"
     subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
         [
@@ -532,31 +538,74 @@ def test_a_wrong_tarball_checksum_stops_setup(tmp_path: Path, demo: dict[str, An
         checks.fetch_collections(doc, downloads, downloader=github)
 
 
-def test_galaxy_reachable_installs_from_galaxy(tmp_path: Path, demo: dict[str, Any]) -> None:
+def galaxy_download(calls: list[list[str]], content: bytes) -> devsetup.Runner:
+    """ansible-galaxy whose ``collection download`` writes the demo artifact."""
+
+    def run(argv: Any) -> int:
+        args = [str(a) for a in argv]
+        calls.append(args)
+        if args[1:3] == ["collection", "download"]:
+            target = Path(args[args.index("-p") + 1])
+            (target / "pinkatest-demo-1.0.0.tar.gz").write_bytes(content)
+        return 0
+
+    return run
+
+
+def test_the_demo_artifact_carries_an_internal_link(demo: dict[str, Any]) -> None:
+    # What the tests below check: ansible-galaxy kept the link as a link.
+    with tarfile.open(fileobj=io.BytesIO(demo["content"]), mode="r:gz") as tar:
+        link = tar.getmember("tests/utils/shippable/aix.sh")
+    assert link.issym() and link.linkname == "remote.sh"
+    assert artifact.check(DEMO, "1.0.0", demo["content"])["name"] == "demo"
+
+
+def test_galaxy_reachable_downloads_checks_and_installs_offline(
+    tmp_path: Path, demo: dict[str, Any]
+) -> None:
     calls: list[list[str]] = []
+    downloads = tmp_path / "downloads"
     source = devsetup.install_collections(
         demo["doc"],
         demo["requirements"],
         tmp_path / "collections",
-        tmp_path / "downloads",
+        downloads,
         galaxy="ansible-galaxy",
         reachable=lambda url: url == "https://galaxy.ansible.com/api/",
-        downloader=lambda url, out: pytest.fail("no download when Galaxy answers"),
-        run=recorder(calls),
+        downloader=lambda url, out: pytest.fail("no fallback download when Galaxy answers"),
+        run=galaxy_download(calls, demo["content"]),
     )
     assert source == "galaxy"
+    target = downloads / "galaxy"
+    download = ["collection", "download", "--no-deps", "-r", str(demo["requirements"])]
+    install = ["collection", "install", "--force", "--offline", "--no-deps"]
+    tarball = str(target / "pinkatest-demo-1.0.0.tar.gz")
     assert calls == [
-        [
-            "ansible-galaxy",
-            "collection",
-            "install",
-            "--force",
-            "-r",
-            str(demo["requirements"]),
-            "-p",
-            str(tmp_path / "collections"),
-        ]
+        ["ansible-galaxy", *download, "-p", str(target)],
+        ["ansible-galaxy", *install, "-p", str(tmp_path / "collections"), tarball],
     ]
+
+
+@pytest.mark.parametrize("how", ["absolute", "escaping"])
+def test_a_refused_artifact_from_galaxy_installs_nothing(
+    tmp_path: Path, demo: dict[str, Any], how: str
+) -> None:
+    linkname = "/etc/passwd" if how == "absolute" else "../../outside.sh"
+    bad = collection_testlib.artifact(
+        DEMO, "1.0.0", {"README.md": b"demo"}, links={"tests/link.sh": linkname}
+    )
+    calls: list[list[str]] = []
+    with pytest.raises(checks.FetchRefusedError, match="the artifact is refused"):
+        devsetup.install_collections(
+            demo["doc"],
+            demo["requirements"],
+            tmp_path / "collections",
+            tmp_path / "downloads",
+            galaxy="ansible-galaxy",
+            reachable=lambda url: True,
+            run=galaxy_download(calls, bad),
+        )
+    assert [c[2] for c in calls] == ["download"]  # nothing was installed
 
 
 def test_the_collection_artifacts_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
