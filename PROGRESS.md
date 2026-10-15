@@ -47,6 +47,13 @@ repository at 3f (section J).
 
 ## Process rules in force
 
+- **CI after every push (owner, with the "commit" for 3d.7 and for its CI
+  fix):** verbatim in `CLAUDE.md` ("CI after every push"). After every push
+  the CI run of the pushed commit is checked and every job reported
+  separately in the next summary (passed, failed, or the known red:
+  `lock-check` while `TODO(verify)` markers remain, nothing else). A failure
+  in any other job, the non-blocking `check-mode-extended` lanes included,
+  blocks the next step.
 - **Commits: final rule (owner, after infra step 14, verbatim):**
 
   > COMMIT RULE — final, for every block of work, long runs included:
@@ -181,9 +188,11 @@ repository at 3f (section J).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
   1-6 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
-- 3d.7 is committed; the fixes for its CI run (non-boolean conditionals,
-  the lock's header comment) wait for the owner's "commit"; then 3d.8 with
-  the owner's 3d.7 decisions.
+- 3d.7 is committed (`0d72e54`), and the fix of its CI run (`d5fe24d`,
+  every job green but the known red `lock-check`). The symbolic-link fix of
+  `make lock-collections` waits for the owner's "commit", then the owner's
+  second `make lock-collections` run; then 3d.8 with the owner's 3d.7
+  decisions.
 
 ### Status of the plan of section J
 
@@ -270,7 +279,30 @@ proposal, and waits for the owner's "commit".
     Known issues).
 - **3d.8** (infra §16 step 22): documentation (contract v2 with
   `docs/contracts.md` rewritten for v2, generated references, new pages,
-  ADR-0014 and ADR-0015, security).
+  ADR-0014 and ADR-0015, security). With the owner's decisions with the
+  "commit" for 3d.7, each with tests:
+  - **Fallback:** every GitHub-archive fallback goes, `make setup`'s of 3d.6
+    included; Galaxy's artifact and its sha256 are the only pins.
+  - **Bundled collections (approved):** a CI job on each `infra-vX.Y.Z` tag
+    builds a release package with the five pinned Galaxy artifacts (same
+    bytes, same sha256) and a NOTICE file listing their licenses, and
+    attaches it to the GitHub release. Bootstrap installs from the bundled
+    artifacts when it runs from a release package, offline, verified against
+    the lock exactly as now; from a git checkout it uses Galaxy. `make setup`
+    may use a published release package as its fallback when Galaxy is
+    unreachable, with the same verification. The tarballs are never
+    committed to git. `lock-check` and `make test-distros` check the bundled
+    files.
+  - **TUI replacement:** the TUI also offers replacing the active platform,
+    behind a confirmation screen that names the active platform and asks
+    for its name to be typed, exactly like `pinka platform purge`; without
+    the typed name nothing changes. `--replace-platform` keeps working as
+    before.
+  - Approved: the five 3d.7 interpretations. Generated platform secrets
+    come from Python's `secrets.token_urlsafe(32)` (the operating system's
+    cryptographically secure generator) and are written only to the vault
+    (encrypted, root-only 0600); the platform role writes each to its
+    service's secret file (`no_log`).
 
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
@@ -439,6 +471,14 @@ project files at the monorepo root (3f).
 
 ## Owner deliverables pending
 
+- `make lock-collections` again, after the symbolic-link fix is committed
+  (the first run stopped at `community.general`'s
+  `tests/utils/shippable/aix.sh`); its output fills
+  `ansible_collections.artifacts`.
+- Decision on a CI job that runs `make lock-collections` (CI reaches Galaxy)
+  and fails when its output differs from the lock's pins (proposed with the
+  symbolic-link fix).
+
 - Approval of the model candidates in `infra/models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
   `TODO(verify)` revisions because Hugging Face is not reachable from the build
@@ -591,6 +631,19 @@ step 4" through "after step 13"):
   (since step 13). Fixed in 3d.7: options with a value also take
   `--option=value`, with a test that bootstrap accepts every option the
   TUI builds.
+- Candidate for the next maintenance update of the pins (owner decision:
+  keep the pin until then): `containers.images.postgres`, whose tag
+  `18.6-trixie` now points to
+  `sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336`;
+  the lock keeps
+  `sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`
+  (`lock-check` warns about it).
+- `make lock-collections` refused every symbolic link in an artifact, so
+  the owner's first run stopped at `community.general`'s
+  `tests/utils/shippable/aix.sh`. Fixed after `d5fe24d` (separate commit):
+  one artifact rule (`infra/tools/lockcheck/pinka_lockcheck/artifact.py`)
+  for `make lock-collections`, `make setup` and bootstrap, accepting only
+  relative links that stay inside the collection.
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
   for MkDocs team announces that MkDocs 2.0 removes plugins. Builds work with
   the pin; the replacement decision belongs to the docs-site plugin review
@@ -651,9 +704,9 @@ step 4" through "after step 13"):
 
 ## Next step
 
-The owner's "commit" for the fixes of 3d.7's CI run, then 3d.8 (infra §16
-step 22 and the owner's 3d.7 decisions), under the
-[Process rules](#process-rules-in-force). Owner input pending: the output of
+The owner's "commit" for the symbolic-link fix and the CI result of that
+push, then 3d.8 (infra §16 step 22 and the owner's 3d.7 decisions), under
+the [Process rules](#process-rules-in-force). Owner input pending: the output of
 `make lock-collections`, the decision on the fallback, and the decision on
 bundling the collections. Still open: the remaining `TODO(verify)` items
 (128), which need network access or reference hardware.

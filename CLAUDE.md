@@ -42,6 +42,24 @@ co-author or session trailers, only the owner's git identity, which is set
 in the local git configuration only. Never run git commands that change
 history.
 
+## CI after every push (owner, with the "commit" for 3d.7 and for its CI fix)
+
+Verbatim:
+
+> "CI — from now on, after every push:
+> - Check the CI run of the pushed commit and report every job separately in your
+>   next summary: passed, failed, or the known red (lock-check while TODO(verify)
+>   markers remain, nothing else). A failure in any other job is a blocker for the
+>   next step."
+
+> "Extended check-mode lanes stay non-blocking in branch protection, but in our
+> process a failure there is a blocker for the next step, exactly as you treated it
+> now."
+
+So the next step starts only when every job of the last push passed, except
+`lock-check` failing on `TODO(verify)` markers alone; a failing
+`check-mode-extended` job blocks like any other.
+
 ## Scoped commit exception (owner, after the 3c commit)
 
 Verbatim; it ends automatically when 3f is committed:
