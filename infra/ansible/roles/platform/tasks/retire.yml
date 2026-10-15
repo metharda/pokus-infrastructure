@@ -63,20 +63,20 @@
   ansible.builtin.file:
     path: "{{ platform_retire.cli_wrapper }}"
     state: absent
-  when: platform_retire.cli_wrapper
+  when: platform_retire.cli_wrapper is truthy
 
 - name: Look at the replaced platform's CLI link
   ansible.builtin.stat:
     path: "{{ platform_retire.cli_link }}"
   register: platform_retire_cli
-  when: platform_retire.cli_link
+  when: platform_retire.cli_link is truthy
 
 - name: Remove the replaced platform's CLI link
   ansible.builtin.file:
     path: "{{ platform_retire.cli_link }}"
     state: absent
   when:
-    - platform_retire.cli_link
+    - platform_retire.cli_link is truthy
     - platform_retire_cli.stat.islnk | default(false)
 
 - name: Read the accounts of the host

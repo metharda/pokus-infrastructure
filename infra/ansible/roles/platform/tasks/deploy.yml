@@ -46,7 +46,7 @@
 
     - name: Retire the platform this release replaces
       ansible.builtin.include_tasks: retire.yml
-      when: platform_plan.replace
+      when: platform_plan.replace is truthy
 
     - name: Render the platform from its profiles (§7.14 step 7)
       ansible.builtin.include_tasks: render.yml

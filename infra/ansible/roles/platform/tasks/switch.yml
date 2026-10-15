@@ -33,7 +33,7 @@
     tasks_from: restricted_check
   when:
     - platform_switch.release_changed
-    - active_platform.database
+    - active_platform.database is truthy
 
 - name: Switch current to the release and record it (§7.14 steps 8-9)
   ansible.builtin.command:

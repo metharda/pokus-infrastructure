@@ -177,12 +177,13 @@ repository at 3f (section J).
 ## Current state
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
-  owner merges to `main`. Last step commit: `a686e28` (3d.6).
+  owner merges to `main`. Last step commit: `0d72e54` (3d.7).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
   1-6 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
-- 3d.7 is built and waits for the owner's "commit" (summary and commit
-  proposal given with it); then 3d.8.
+- 3d.7 is committed; the fixes for its CI run (non-boolean conditionals,
+  the lock's header comment) wait for the owner's "commit"; then 3d.8 with
+  the owner's 3d.7 decisions.
 
 ### Status of the plan of section J
 
@@ -194,7 +195,7 @@ repository at 3f (section J).
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-6 and 4b done; 7 built, waiting for "commit"; 8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-7 and 4b done; 8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -458,7 +459,8 @@ project files at the monorepo root (3f).
 
 `make verify-todos` lists every marker in the tree (110 after step 13, 117
 after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
-collection artifacts; details
+collection artifacts, 128 after the lock's header comment stopped naming the
+marker; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
 step 4" through "after step 13"):
 
@@ -570,6 +572,19 @@ step 4" through "after step 13"):
   the checkout's path; the uv install path). The check-mode lanes have not
   run past `users_groups` since 3d.3; their result after the fix is known
   only from CI. `lock-check` stays red while `TODO(verify)` markers remain.
+- CI of `0d72e54` (3d.7): lint, test, docs and the six required
+  check-mode jobs passed; `lock-check` was red on `TODO(verify)` markers
+  only. Every `check-mode-extended` job stopped at the observability role:
+  ansible-core 2.21 refuses a conditional whose result is not a boolean,
+  and `when: observability_platform_dashboards` is a mapping (`{}` without
+  a platform), so a real provisioning run stopped there too, with or
+  without a platform. Ten more such conditionals were in the platform role
+  (`active_platform.database`, `.cli`, `.run_network`, `platform_plan.replace`,
+  `platform_retire.cli_link`, `.cli_wrapper`); they now use `is truthy`, and
+  `ansible/tests/test_conditionals.py` requires a known boolean for every
+  bare condition and runs ansible-core's own check. The lock's header
+  comment named the marker itself, so `lock-check` would have stayed red
+  after every pin was verified (since step 4); reworded, with a test.
 - The installer TUI passed `--skip-tags=images` (images chosen, built
   later) and `--tags=...` to bootstrap, whose parser accepted only the
   space-separated form, so such an install stopped with a usage error
@@ -636,8 +651,9 @@ step 4" through "after step 13"):
 
 ## Next step
 
-The owner's "commit" for 3d.7 (infra §16 step 21), then 3d.8, under the
+The owner's "commit" for the fixes of 3d.7's CI run, then 3d.8 (infra §16
+step 22 and the owner's 3d.7 decisions), under the
 [Process rules](#process-rules-in-force). Owner input pending: the output of
 `make lock-collections`, the decision on the fallback, and the decision on
 bundling the collections. Still open: the remaining `TODO(verify)` items
-(129), which need network access or reference hardware.
+(128), which need network access or reference hardware.

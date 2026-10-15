@@ -3,7 +3,8 @@
 # Single source of truth for every external artifact (BUILD_PROMPT §10.1,
 # §19.4). Every value is verified at build time and its section records
 # `verified_on` and `source`. A value that could not be verified is the
-# marker `TODO(verify)`; `make lock-check` fails while any marker remains and
+# unverified-value marker of docs/how-to/update-versions.md; `make lock-check`
+# fails while any marker remains (on any line, comments included) and
 # re-checks every digest, checksum and key fingerprint over the network.
 # Structure: tools/lockcheck/schema/versions-lock.schema.json (`make lint`).
 # Updating: docs/how-to/update-versions.md (`make lock-update` prints the

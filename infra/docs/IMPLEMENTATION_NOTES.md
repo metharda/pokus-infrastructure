@@ -3563,3 +3563,22 @@ None new.
 - `ansible_collections.artifacts`: the Galaxy artifact URL and sha256 of
   each of the five collections (10 lock lines, 5 generated lines in
   `bootstrap/lib/pins.sh`), from the owner's `make lock-collections` run.
+
+### Fixed after the 3d.7 commit (CI of `0d72e54`)
+
+- Every extended check-mode job stopped at the observability role:
+  ansible-core 2.19 and later refuse a conditional whose result is not a
+  boolean, and `when: observability_platform_dashboards` evaluates a
+  mapping (`{}` without a platform), so a real provisioning run stopped
+  there as well, with or without a platform. The platform role had ten
+  more (`active_platform.database`, `.cli`, `.run_network`,
+  `platform_plan.replace`, `platform_retire.cli_link`, `.cli_wrapper`),
+  which check mode skips. They use `is truthy` now;
+  `ansible/tests/test_conditionals.py` requires a known boolean source for
+  every bare condition (a role option of type bool, a stat or async result,
+  or a listed source with its reason) and runs ansible-core's own check on
+  the dashboards condition. The scan finds all eleven in `0d72e54`.
+- `versions.lock.yml`'s header comment named the marker itself, which
+  `lock-check` counts on every line, so `lock-check` could not have turned
+  green after every pin was verified (since step 4). Reworded; a test keeps
+  markers off comment lines.

@@ -138,13 +138,13 @@
   ansible.builtin.include_role:
     name: postgres
     tasks_from: platform
-  when: active_platform.database
+  when: active_platform.database is truthy
 
 - name: Give the run-network helper's socket to the controller
   ansible.builtin.include_role:
     name: incus
     tasks_from: run_network
-  when: active_platform.run_network
+  when: active_platform.run_network is truthy
 
 - name: Look for units that this release no longer has
   ansible.builtin.stat:
@@ -188,7 +188,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: active_platform.cli
+  when: active_platform.cli is truthy
 
 - name: Install the researchers' CLI wrapper
   ansible.builtin.copy:
@@ -197,7 +197,7 @@
     owner: root
     group: root
     mode: "0755"
-  when: active_platform.cli
+  when: active_platform.cli is truthy
 
 - name: Link the researchers' CLI into the PATH
   ansible.builtin.file:
@@ -206,7 +206,7 @@
     state: link
     owner: root
     group: root
-  when: active_platform.cli
+  when: active_platform.cli is truthy
 
 - name: Reload systemd before the switch
   ansible.builtin.meta: flush_handlers

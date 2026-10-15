@@ -136,6 +136,17 @@ def test_marker_findings() -> None:
     assert [f.where for f in checks.marker_findings(text)] == ["line 2", "line 3"]
 
 
+def test_only_unverified_values_carry_the_marker() -> None:
+    # lock-check counts a marker on any line; one in a comment would keep it red
+    # after every value is verified.
+    lines = (INFRA / "versions.lock.yml").read_text().splitlines()
+    assert [
+        n
+        for n, line in enumerate(lines, 1)
+        if line.lstrip().startswith("#") and checks.MARKER_RE.search(line)
+    ] == []
+
+
 # --- network checks with fakes -------------------------------------------------------------
 
 

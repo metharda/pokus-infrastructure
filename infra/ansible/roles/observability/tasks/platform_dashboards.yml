@@ -10,7 +10,7 @@
     patterns: ["*.json"]
     recurse: false
   register: observability_platform_sources
-  when: observability_platform_dashboards
+  when: observability_platform_dashboards is truthy
 
 - name: Find the installed platform dashboards
   ansible.builtin.find:
