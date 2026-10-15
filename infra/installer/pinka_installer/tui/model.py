@@ -250,11 +250,15 @@ def existing_answers(paths: Paths, machine: str) -> Answers:
 # --- suggestions ------------------------------------------------------------------------
 
 
-def suggest_cpusets(threads: int | None) -> tuple[str, str]:
+def suggest_cpusets(threads: int | None, cores: Iterable[Iterable[int]] = ()) -> tuple[str, str]:
     """Split the CPUs between lab services and Incus targets (about 30 % for services).
+
+    With the host's SMT siblings the split takes whole cores, lowest first, so
+    no core is shared between the two sets.
 
     Args:
         threads: CPU threads.
+        cores: The CPUs of each core with more than one thread.
 
     Returns:
         ``(cpuset_services, cpuset_targets)``; empty strings when unknown or too few CPUs.
@@ -262,8 +266,21 @@ def suggest_cpusets(threads: int | None) -> tuple[str, str]:
     minimum = 4
     if not threads or threads < minimum:
         return "", ""
-    services = max(2, round(threads * 0.3))
-    return f"0-{services - 1}", f"{services}-{threads - 1}"
+    wanted = max(2, round(threads * 0.3))
+    every = set(range(threads))
+    groups = {cpu: frozenset([cpu]) for cpu in every}
+    for core in cores:
+        group = frozenset(core) & every
+        for cpu in group:
+            groups[cpu] = group
+    services: set[int] = set()
+    for group in sorted(set(groups.values()), key=min):
+        if len(services) >= wanted:
+            break
+        services |= group
+    if len(services) >= threads:
+        return "", ""
+    return validators.format_cpuset(services), validators.format_cpuset(every - services)
 
 
 def suggest_postgres(memory_gib: float | None) -> str:

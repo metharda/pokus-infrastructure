@@ -104,6 +104,33 @@ def sha256_of_url(url: str, out: BinaryIO | None = None) -> str:
     return digest.hexdigest()
 
 
+HTTP_SERVER_ERROR = 500
+
+
+def reachable(url: str, timeout: float = 15.0) -> bool:
+    """Whether an https server answers at all (any status below 500).
+
+    Args:
+        url: https URL.
+        timeout: Seconds to wait.
+
+    Returns:
+        False when the connection fails (no route, refused, a proxy that
+        refuses the tunnel, a timeout) or the server answers with 5xx.
+    """
+    if not url.startswith("https://"):
+        return False
+    headers = {"User-Agent": USER_AGENT}
+    request = urllib.request.Request(url, method="HEAD", headers=headers)  # noqa: S310 - https
+    try:
+        with urllib.request.urlopen(request, timeout=timeout):  # noqa: S310 - https only
+            return True
+    except urllib.error.HTTPError as exc:
+        return exc.code < HTTP_SERVER_ERROR
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 @dataclass(frozen=True)
 class ImageRef:
     """A container image name split into registry and repository.

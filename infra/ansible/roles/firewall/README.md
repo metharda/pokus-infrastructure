@@ -28,6 +28,15 @@ Docker sets the FORWARD policy to DROP, which breaks Incus bridges:
 `pinka-docker-incus-compat.service` (after `docker.service` and
 `incus.service`) adds ACCEPT rules for the Incus bridges to `DOCKER-USER`.
 
+On every backend, the role also loads its guards, each an nftables table of
+its own: the telemetry guard and the inference guard (UID allowlists on the
+loopback, ADR-0016) and, on lab and inference nodes, the split guard
+(`pinka-split-guard.service`, table `inet pinka_split_guard`): the
+split-inference ports on `tailscale0` admit only the paired node's tailnet
+address from `/etc/pinka/inference/peer.json`, nobody before a pairing;
+`pinka pair show` opens the pairing port for the pairing only (a set element
+with a timeout), and `pinka pair` loads the guard again with the new peer.
+
 Pokus Infrastructure (pinka) never flushes or rewrites tables owned by Docker, Incus, firewalld or
 ufw. Doctor verifies the effective policy with connection tests, not by
 reading rules.

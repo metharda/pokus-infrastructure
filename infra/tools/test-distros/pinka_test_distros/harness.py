@@ -1,4 +1,12 @@
-"""One distribution test: a disposable VM from launch to deletion."""
+"""One distribution test: a disposable VM from launch to deletion.
+
+The lab is bootstrapped twice (the second run must change nothing) and
+checked with ``pinka doctor --smoke``; then the reference platform is
+deployed in it (BUILD_PROMPT §7.18, §19.9): its isolation probes, the
+training flow with the CPU-only job, a run interrupted by a reboot and
+resumed, a second deployment that changes nothing, the replacement by a
+renamed copy, and a backup and restore.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +15,7 @@ import json
 import re
 import secrets
 import tempfile
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,15 +23,35 @@ from typing import Any
 
 import yaml
 
+from pinka_platform import contract as contract_mod
+from pinka_test_distros import isolation, refplat
 from pinka_test_distros.incus import Incus, IncusError, Result
 from pinka_test_distros.targets import Target
 
-STAGES = ("launch", "prepare", "bootstrap", "idempotent", "smoke")
+STAGES = (
+    "launch",
+    "prepare",
+    "bootstrap",
+    "idempotent",
+    "smoke",
+    "platform",
+    "isolation",
+    "training",
+    "resume",
+    "redeploy",
+    "replace",
+    "restore",
+)
 KEEP = ("never", "failed", "always")
 GUEST_REPO = "/root/pinka"
 GUEST_INFRA = f"{GUEST_REPO}/infra"
 GUEST_VAULT_PASS = "/root/ci-vault-pass"  # noqa: S105 - a path, not a password
 GUEST_SECRETS = "/root/ci-secrets.env"
+GUEST_VAULT = f"{GUEST_INFRA}/ansible/group_vars/all/vault.yml"
+# Arguments longer than this are shortened in the stage logs (the probe's source).
+SHOWN_ARGUMENT = 200
+# Problems named in a stage's error; the stage's files hold all of them.
+SHOWN_PROBLEMS = 5
 STATE_FILE = "/etc/pinka/bootstrap-state.json"
 PROFILE_FILE = "/etc/pinka/host-profile.json"
 BOOTSTRAP_TIMEOUT = 4 * 3600.0
@@ -126,12 +155,35 @@ class Test:
         self.changed: int | None = None
         self.created = False
         self.kept = False
+        self.contract = contract_mod.load()
 
     def _sh(self, stage: str, script: str, *, timeout: float = 1800) -> Result:
         result = self.incus.exec(self.name, ["bash", "-c", script], timeout=timeout)
         with (self.dir / f"{stage}.out").open("a", encoding="utf-8") as log:
             log.write(f"$ {script}\n[exit {result.returncode}]\n{result.stdout}{result.stderr}\n")
         return result
+
+    def _run(self, stage: str, argv: list[str], *, timeout: float = 1800) -> Result:
+        """Run a command without a shell; long arguments are shortened in the log."""
+        result = self.incus.exec(self.name, argv, timeout=timeout)
+        shown = " ".join(a if len(a) <= SHOWN_ARGUMENT else a[:60] + "..." for a in argv)
+        with (self.dir / f"{stage}.out").open("a", encoding="utf-8") as log:
+            log.write(f"$ {shown}\n[exit {result.returncode}]\n{result.stdout}{result.stderr}\n")
+        return result
+
+    def _answer(
+        self, stage: str, argv: list[str], what: str, *, timeout: float = 1800
+    ) -> dict[str, Any]:
+        """A command's JSON answer, which must say ``ok``."""
+        result = self._run(stage, argv, timeout=timeout)
+        try:
+            answer = refplat.last_json(result.stdout)
+        except ValueError:
+            answer = {}
+        if not result.ok or answer.get("ok") is not True:
+            reason = answer.get("error") or (result.stderr or result.stdout).strip()[-300:]
+            raise StageError(f"{what} failed (exit {result.returncode}): {reason}")
+        return answer
 
     def _require(self, stage: str, script: str, what: str, *, timeout: float = 1800) -> Result:
         result = self._sh(stage, script, timeout=timeout)
@@ -235,14 +287,19 @@ class Test:
         if backend != self.target.firewall:
             raise StageError(f"firewall backend {backend}, expected {self.target.firewall}")
 
+    def _changed(self, stage: str) -> int:
+        """Bootstrap again with the machine's host_vars; the count of changed tasks."""
+        self._bootstrap(stage, f"--machine {self.name}")
+        log = self.dir / f"{stage}.log"
+        text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
+        changed = changed_tasks(text)
+        if changed is None:
+            raise StageError(f"the {stage} run's log has no PLAY RECAP")
+        return changed
+
     def idempotent(self) -> None:
         """A second bootstrap must change nothing."""
-        self._bootstrap("idempotent", f"--machine {self.name}")
-        log = self.dir / "idempotent.log"
-        text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
-        self.changed = changed_tasks(text)
-        if self.changed is None:
-            raise StageError("the second run's log has no PLAY RECAP")
+        self.changed = self._changed("idempotent")
         if self.changed:
             raise StageError(f"the second run changed {self.changed} task(s)")
 
@@ -250,6 +307,177 @@ class Test:
         """Back up once, then ``pinka doctor --smoke`` must exit 0."""
         self._require("smoke", "pinka backup now", "the first backup", timeout=3600)
         self._require("smoke", "pinka doctor --smoke", "pinka doctor --smoke", timeout=3600)
+
+    # --- the reference platform -------------------------------------------------------------
+
+    def _host_vars(self) -> str:
+        return f"{GUEST_INFRA}/ansible/inventory/host_vars/{self.name}.yml"
+
+    def _enable(
+        self,
+        stage: str,
+        platform: dict[str, str],
+        content: dict[str, dict[str, str]],
+        manifest: dict[str, Any],
+    ) -> None:
+        argv = refplat.enable(
+            self._host_vars(),
+            GUEST_VAULT,
+            GUEST_VAULT_PASS,
+            platform=platform,
+            content=content,
+            data=manifest,
+            contract=self.contract,
+        )
+        self._answer(stage, argv, "enabling the platform in the host_vars and the vault")
+
+    def _deployed(self, stage: str, name: str) -> None:
+        """The active platform is ``name`` and its controller answers with its database."""
+        active = self.dir / f"{stage}-active.json"
+        if not self.incus.pull(self.name, refplat.ACTIVE, active):
+            raise StageError("no active platform after the deployment")
+        found = json.loads(active.read_text(encoding="utf-8")).get("name")
+        if found != name:
+            raise StageError(f"the active platform is {found}, expected {name}")
+        status = self._answer(stage, [refplat.CLI, "status"], "refplat status")
+        if status.get("database") != "ok":
+            raise StageError(
+                f"the controller does not reach its database: {status.get('database')}"
+            )
+
+    def _agent_report(self, stage: str) -> None:
+        """The agent's own probe (untrusted-agent) must reach nothing."""
+        report = self._answer(
+            stage, refplat.guest("wait-report", "--timeout", "600"), "the agent's probe report"
+        )
+        problems = isolation.agent_problems(report)
+        if problems:
+            raise StageError("; ".join(problems))
+
+    def platform(self) -> None:
+        """Deploy the reference platform from the VM's clone; it must be healthy."""
+        repo = f"file://{refplat.GUEST_REPO}"
+        commit = self.settings.commit
+        self._enable(
+            "platform",
+            refplat.source(repo, commit, refplat.RELEASE_PATH),
+            {"cases": refplat.source(repo, commit, refplat.CASES_PATH)},
+            refplat.manifest(),
+        )
+        self._bootstrap("platform", f"--machine {self.name}")
+        self._deployed("platform", refplat.manifest()["name"])
+        self._require("platform", "pinka doctor --smoke", "pinka doctor --smoke", timeout=3600)
+
+    def isolation(self) -> None:
+        """The agent's probe reaches nothing; each loopback-capable profile reaches what it may."""
+        self._agent_report("isolation")
+        endpoints_file = self.dir / "endpoints.toml"
+        if not self.incus.pull(self.name, refplat.ENDPOINTS, endpoints_file):
+            raise StageError("no endpoints.toml after the deployment")
+        endpoints = tomllib.loads(endpoints_file.read_text(encoding="utf-8"))
+        ports = {k: int(v) for k, v in endpoints["ports"].items()}
+        standin = self._require(
+            "isolation", refplat.standin_script(ports["vllm"]), "the inference stand-in"
+        )
+        problems: list[str] = []
+        reports = []
+        try:
+            for probe in isolation.plan(refplat.manifest(), self.contract, ports):
+                create, remove = isolation.account_script(probe)
+                if probe.temporary:
+                    self._require("isolation", create, f"the account of the {probe.profile} probe")
+                try:
+                    unit = f"pinka-test-probe-{probe.profile}"
+                    argv = isolation.command(probe, str(endpoints["platform"]), unit)
+                    result = self._run("isolation", argv, timeout=600)
+                finally:
+                    if probe.temporary:
+                        self._sh("isolation", remove)
+                try:
+                    report = refplat.last_json(result.stdout)
+                except ValueError:
+                    problems.append(f"{probe.profile}: no report (exit {result.returncode})")
+                    continue
+                reports.append(report)
+                problems += isolation.compare(probe, report)
+        finally:
+            if "started" in standin.stdout:
+                self._sh("isolation", f"systemctl stop {refplat.STANDIN_UNIT}")
+        text = json.dumps(reports, indent=2, sort_keys=True)
+        (self.dir / "isolation.json").write_text(text + "\n", encoding="utf-8")
+        if problems:
+            shown = "; ".join(problems[:SHOWN_PROBLEMS])
+            extra = len(problems) - SHOWN_PROBLEMS
+            more = f" and {extra} more" if extra > 0 else ""
+            raise StageError(shown + more)
+
+    def training(self) -> None:
+        """Dataset, the CPU-only job, its adapter and lineage."""
+        self._answer("training", [refplat.CLI, "dataset"], "refplat dataset")
+        train = [refplat.CLI, "train", "--job", "tunecpu", "--seed", "1", "--wait", "1200"]
+        run = self._answer("training", train, "the training run", timeout=1800)
+        lineage = self._answer("training", [refplat.CLI, "lineage", str(run["run"])], "the lineage")
+        adapter = (lineage.get("lineage") or {}).get("adapter") or {}
+        if not run.get("adapter") or adapter.get("sha256") != run.get("adapter"):
+            raise StageError(f"run {run['run']} registered no matching adapter")
+
+    def resume(self) -> None:
+        """A run interrupted by a reboot is suspended, resumed at boot and succeeds."""
+        argv = [refplat.CLI, "train", "--job", "tunecpu", "--seed", "2"]
+        argv += ["--steps", str(refplat.RESUME_STEPS)]
+        argv += ["--step-seconds", str(refplat.RESUME_STEP_SECONDS)]
+        run = str(self._answer("resume", argv, "the training run")["run"])
+        wait = ["wait-checkpoint", run, "--step", str(refplat.RESUME_AFTER_STEP)]
+        self._answer("resume", refplat.guest(*wait), "the run's checkpoint")
+        self.incus.restart(self.name)
+        self.incus.wait_ready(self.name)
+        ended = refplat.guest("wait-run", run, "--timeout", "1800")
+        self._answer("resume", ended, f"run {run} after the reboot", timeout=2400)
+        log = self.dir / "transitions.jsonl"
+        if not self.incus.pull(self.name, refplat.TRANSITIONS, log):
+            raise StageError("no transition log")
+        outcomes = refplat.run_outcomes(log.read_text(encoding="utf-8"), run)
+        if "suspended" not in outcomes or "resumed" not in outcomes:
+            raise StageError(f"run {run} was not suspended and resumed: {outcomes}")
+
+    def redeploy(self) -> None:
+        """A second deployment of the same release must change nothing."""
+        changed = self._changed("redeploy")
+        if changed:
+            raise StageError(f"the second deployment changed {changed} task(s)")
+
+    def replace(self) -> None:
+        """A renamed copy replaces the platform; its agent's probe reaches nothing."""
+        script = refplat.renamed_copy_script()
+        commit = (
+            self._require("replace", script, "the renamed copy").stdout.strip().splitlines()[-1]
+        )
+        repo = f"file://{refplat.RENAMED_REPO}"
+        manifest = refplat.renamed(refplat.manifest())
+        self._enable(
+            "replace",
+            refplat.source(repo, commit, "release"),
+            {"cases": refplat.source(repo, commit, "cases")},
+            manifest,
+        )
+        old = refplat.manifest()["name"]
+        self._bootstrap("replace", f"--machine {self.name} --replace-platform {old}")
+        self._deployed("replace", refplat.RENAMED_NAME)
+        self._agent_report("replace")
+
+    def restore(self) -> None:
+        """Back up, lose a controller record, restore the latest snapshot."""
+        self._answer("restore", [refplat.CLI, "dataset"], "refplat dataset")
+        record = f"/srv/pinka/platforms/{refplat.RENAMED_NAME}/state/ctl/records/datasets.json"
+        self._require("restore", "pinka backup now", "the backup", timeout=3600)
+        self._require("restore", f"rm -f {record}", "removing a controller record")
+        values = json.dumps({"restore_snapshot": "latest"})
+        argv = refplat.guest("set-host-vars", "--host-vars", self._host_vars(), "--values", values)
+        self._answer("restore", argv, "choosing the latest snapshot")
+        self._bootstrap("restore", f"--machine {self.name} --restore")
+        self._require("restore", f"test -s {record}", "the restored controller record")
+        self._deployed("restore", refplat.RENAMED_NAME)
+        self._require("restore", "pinka doctor --smoke", "pinka doctor --smoke", timeout=3600)
 
     # --- the whole test -----------------------------------------------------------------------
 

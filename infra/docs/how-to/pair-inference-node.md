@@ -61,8 +61,10 @@ measurements.
 
     Use `tag:pinka-qa` for staging nodes. Ports 18704 (vLLM API) and 18710
     (control) are on the inference node, 4317 (telemetry) on the lab node.
-    The firewall of each node opens them on `tailscale0` only, and mutual
-    TLS admits only the paired node.
+    The firewall of each node opens them on `tailscale0` only; its split
+    guard (`pinka-split-guard.service`) admits only the paired node's
+    tailnet address to them, and nobody before the pairing, and mutual TLS
+    admits only the paired node's certificate.
 
 ## Pair the nodes
 
@@ -73,8 +75,12 @@ measurements.
     sudo pinka pair show
     ```
 
-    It stops the control endpoint, prints a code such as `ABCD-EFGH-JKMN`
-    and waits up to 600 seconds (`--timeout`) on the tailnet address.
+    It opens the control port to every tailnet address for the pairing
+    only, stops the control endpoint, prints a code such as
+    `ABCD-EFGH-JKMN` and waits up to 600 seconds (`--timeout`) on the
+    tailnet address. When the pairing ends, successful or not, the port
+    closes again (should the command be killed, it closes by itself a
+    minute after the timeout).
 
 2. On the lab node, enter the inference node's tailnet name and the code:
 
@@ -88,9 +94,11 @@ measurements.
     Both nodes exchange their certificates over TLS and prove the code with
     an HMAC over both certificates' fingerprints, so a certificate swapped in
     between is detected. Each node writes the other's certificate to
-    `/etc/pinka/inference/peer.crt` and a record to `peer.json`. Five wrong
-    attempts end the pairing on the inference node; start again with a new
-    code.
+    `/etc/pinka/inference/peer.crt` and a record to `peer.json` with the
+    other's tailnet address, as the pairing connection saw it, and loads
+    its split guard again: from now on only that address reaches the
+    split-inference ports. Five wrong attempts end the pairing on the
+    inference node; start again with a new code.
 
 3. Name the peers in the host_vars files: on the inference node
    `inference_lab_node: <lab-node>`, on the lab node
@@ -119,7 +127,8 @@ measurements.
 
 ## Pair again or remove the pairing
 
-- To pair with another node, or after a certificate was renewed, run both
+- To pair with another node, after a certificate was renewed, or when a
+  node's tailnet address changed (it joined the tailnet again), run both
   pairing commands again; they replace `peer.crt` and `peer.json`. Update
   the host_vars and apply them as above.
 - To remove the pairing, delete `/etc/pinka/inference/peer.crt` and `peer.json` on both

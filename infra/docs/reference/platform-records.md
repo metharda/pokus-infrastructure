@@ -117,8 +117,8 @@ Provenance of a published training dataset: `/srv/pinka/training/datasets/<sha25
 | `instances[].id` | string | yes | Scenario instance ID. |
 | `instances[].split` | string | yes | The instance's split; never `test`. |
 | `source_runs` | array | yes | The runs the dataset was built from. |
-| `files` | array | yes | Every regular file of the dataset, sorted by path; the dataset hash is the SHA-256 of the lines `&lt;sha256&gt;  &lt;path&gt;` of this list, each ending in a newline (the output format of `sha256sum`). |
-| `files[].path` | string | yes | Path relative to the dataset's directory, with / separators. |
+| `files` | array | yes | Every regular file of the dataset, sorted by the path's UTF-8 bytes (as `LC_ALL=C sort` sorts, whatever the locale); the dataset hash is the SHA-256, in lowercase hex, of the UTF-8 lines `&lt;sha256&gt;  &lt;path&gt;` of this list (lowercase hex, two spaces, the path), each ending in a newline (the output format of `sha256sum`). |
+| `files[].path` | string | yes | Path relative to the dataset's directory, with / separators and no leading ./; UTF-8 without control characters or backslashes, so its line is unambiguous. |
 | `files[].sha256` | string | yes | SHA-256 of the file's content. |
 | `files[].size` | integer | yes | Size in bytes. |
 
@@ -134,8 +134,8 @@ A registered adapter: `/srv/pinka/models/adapters/<name>/<sha256>/MANIFEST.json`
 | `base_model_id` | string or null | yes | Model id (models.lock.yml) of the base model the adapter was trained on; null for a job without a base model. vLLM serves the adapter only with this model. |
 | `run` | string | yes | The training run that produced it. |
 | `registered_at` | string | yes | UTC time of the registration. |
-| `files` | array | yes | Every regular file of the adapter, sorted by path; the adapter hash is the SHA-256 of the lines `&lt;sha256&gt;  &lt;path&gt;` of this list, each ending in a newline (the output format of `sha256sum`). |
-| `files[].path` | string | yes | Path relative to the adapter's directory, with / separators. |
+| `files` | array | yes | Every regular file of the adapter, sorted by the path's UTF-8 bytes (as `LC_ALL=C sort` sorts, whatever the locale); the adapter hash is the SHA-256, in lowercase hex, of the UTF-8 lines `&lt;sha256&gt;  &lt;path&gt;` of this list (lowercase hex, two spaces, the path), each ending in a newline (the output format of `sha256sum`). |
+| `files[].path` | string | yes | Path relative to the adapter's directory, with / separators and no leading ./; UTF-8 without control characters or backslashes, so its line is unambiguous. |
 | `files[].sha256` | string | yes | SHA-256 of the file's content. |
 | `files[].size` | integer | yes | Size in bytes. |
 

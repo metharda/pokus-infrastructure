@@ -11,7 +11,7 @@ from ruamel.yaml import YAML
 from test_answers import full_answers
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import apply, cli, groupvars, hostvars, keys, state, vault
+from pinka_installer import apply, cli, groupvars, hostvars, keys, state, validators, vault
 from pinka_installer.answers import Answers, Researcher
 from pinka_installer.paths import Paths
 
@@ -202,6 +202,19 @@ def test_stored_vault_password_is_root_only(repo: Paths) -> None:
         False,
         True,
     )
+
+
+def test_split_smt_cores_are_a_warning(repo: Paths) -> None:
+    answers = full_answers()
+    services, targets = answers.resources.cpuset_services, answers.resources.cpuset_targets
+    first = min(validators.parse_cpuset(services))
+    last = max(validators.parse_cpuset(targets))
+    split = [frozenset({first, last})]
+    plan = apply.plan(answers, repo, SECRETS, PASSWORD, smt_cores=split)
+    assert any(w.startswith("SMT siblings of one core are split") for w in plan.warnings)
+    together = [frozenset({first, first + 1})]
+    plan = apply.plan(answers, repo, SECRETS, PASSWORD, smt_cores=together)
+    assert not any("SMT" in w for w in plan.warnings)
 
 
 def test_files_go_to_the_invoking_user(repo: Paths, monkeypatch: pytest.MonkeyPatch) -> None:

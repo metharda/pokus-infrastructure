@@ -10,11 +10,14 @@ over both certificates' SHA-256 fingerprints, its node name and its
 ``lab_mode``. A certificate swapped in by anyone in between changes a
 fingerprint and breaks the HMAC; staging and production nodes never pair.
 Afterwards each node trusts exactly the other's certificate
-(``peer.crt``) for mutual TLS. Standard library only.
+(``peer.crt``) for mutual TLS, and its split guard admits only the other's
+tailnet address, as the pairing connection saw it (``peer.json``), to the
+split-inference ports. Standard library only.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import hmac
 import json
@@ -119,11 +122,14 @@ class Peer:
         node: The peer's tailnet name.
         lab_mode: Its lab mode.
         cert_pem: Its certificate.
+        address: Its tailnet address, as the pairing connection saw it; the
+            split guard admits only this address to the split-inference ports.
     """
 
     node: str
     lab_mode: str
     cert_pem: str
+    address: str = ""
 
     def record(self, paired_at: str) -> dict[str, Any]:
         """The peer.json document.
@@ -132,13 +138,14 @@ class Peer:
             paired_at: UTC time of the pairing.
 
         Returns:
-            Node, lab mode, certificate fingerprint and time.
+            Node, lab mode, certificate fingerprint, tailnet address and time.
         """
         return {
             "schema_version": 1,
             "node": self.node,
             "lab_mode": self.lab_mode,
             "cert_sha256": cert_sha256(self.cert_pem),
+            "address": self.address,
             "paired_at": paired_at,
         }
 
@@ -312,7 +319,7 @@ def serve_once(  # noqa: PLR0917 - one value per setting
                         _send(conn, {"protocol": PROTOCOL, "error": "refused"})
                         continue
                     _send(conn, answer)
-                    return peer
+                    return dataclasses.replace(peer, address=str(peer_address[0]))
             except (OSError, ssl.SSLError) as exc:
                 failures += 1
                 log(f"connection from {peer_address[0]} failed: {exc}")
@@ -351,10 +358,12 @@ def connect(code: str, lab: Identity, host: str, port: int, timeout: float = 30.
             if der is None:
                 raise PairingError("the inference node presented no certificate")
             server_sha = hashlib.sha256(der).hexdigest()
+            address = str(conn.getpeername()[0])
             _send(conn, lab_hello(code, lab, server_sha))
             answer = _receive(conn)
     except (OSError, ssl.SSLError) as exc:
         raise PairingError(f"cannot reach {host}:{port}: {exc}") from exc
     if "error" in answer:
         raise PairingError("the inference node refused the code")
-    return accept_inference(code, answer, lab, server_sha)
+    peer = accept_inference(code, answer, lab, server_sha)
+    return dataclasses.replace(peer, address=address)

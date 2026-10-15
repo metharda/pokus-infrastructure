@@ -597,24 +597,35 @@ def _arbiter_status(system: System, config: LabConfig) -> None:
 def arbiter_idle(system: System, config: LabConfig) -> str:
     """Ask the GPU arbiter for idle (``pinka stop`` and ``update-host``, after the drain).
 
+    The request carries ``resume``: the lab stops, so a resumable job is
+    checkpointed and its run suspended; it resumes when the lab starts again
+    (``pinka start`` or a reboot), as after a reboot. Any other job ends
+    failed.
+
     Args:
         system: Host access.
         config: The lab description.
 
     Returns:
         What happened. A refusal does not stop the stop: vLLM and a running
-        job stop with the lab.
+        job stop with the lab (a stopped job unit suspends a resumable run too).
     """
     arbiter = _arbiter(config)
     if arbiter is None or system.info(str(arbiter["socket"])) is None:
         return "no GPU arbiter here; nothing to idle"
-    answer = system.unix_request(str(arbiter["socket"]), {"request": "idle"}, GPU_REQUEST_TIMEOUT)
+    request = {"request": "idle", "resume": True}
+    answer = system.unix_request(str(arbiter["socket"]), request, GPU_REQUEST_TIMEOUT)
     if answer is None:
         return "the GPU arbiter does not answer; vLLM and a running job stop with the lab"
     if not answer.get("ok"):
         return (
             f"the GPU arbiter refused idle ({answer.get('error')}); vLLM and a running job "
             "stop with the lab"
+        )
+    if answer.get("suspended"):
+        return (
+            f"run {answer['run']} is suspended; it resumes from its checkpoints when the lab "
+            "starts (pinka start or a reboot)"
         )
     stopped = f"; run {answer['run']} stopped" if answer.get("run") else ""
     return f"the GPU is idle{stopped}"
@@ -1053,6 +1064,39 @@ def _identity(system: System, config: LabConfig) -> tuple[str, Any]:
     return directory, pairing.Identity(config.machine, str(config.get("lab_mode")), cert)
 
 
+# The split-inference guard (firewall role, §19.10, interpretation 11.13).
+SPLIT_GUARD_TABLE = "pinka_split_guard"
+SPLIT_GUARD_UNIT = "pinka-split-guard.service"
+# Seconds the pairing port stays open beyond the pairing's own timeout, should
+# pinka die before it closes the port: the set element expires by itself.
+PAIRING_WINDOW_SLACK = 60
+
+
+def _pairing_window(system: System, port: int, seconds: int | None) -> None:
+    """Open the pairing port to the tailnet (seconds) or close it again (None)."""
+    if seconds is None:
+        argv = ["nft", "delete", "element", "inet", SPLIT_GUARD_TABLE, "pairing", f"{{ {port} }}"]
+        system.run(argv)  # it may have expired already
+        return
+    element = f"{{ {port} timeout {seconds}s }}"
+    done = system.run(["nft", "add", "element", "inet", SPLIT_GUARD_TABLE, "pairing", element])
+    if not done.ok:
+        raise CommandError(
+            f"cannot open the pairing port ({done.stderr.strip() or 'nft failed'}); the split "
+            "guard is not loaded: run bootstrap with --tags firewall"
+        )
+
+
+def _reload_split_guard(system: System) -> None:
+    """Load the split guard again with the new pairing record."""
+    done = system.run(["systemctl", "reload-or-restart", SPLIT_GUARD_UNIT], timeout=120)
+    if not done.ok:
+        raise CommandError(
+            f"paired, but the split guard did not load ({done.stderr.strip() or 'failed'}); run: "
+            f"systemctl restart {SPLIT_GUARD_UNIT}"
+        )
+
+
 def _store_peer(system: System, directory: str, peer: Any) -> None:  # noqa: ANN401 - pairing.Peer
     system.write_text(f"{directory}/peer.crt", peer.cert_pem.strip() + "\n", 0o644)
     record = peer.record(system.now().strftime("%Y-%m-%dT%H:%M:%SZ"))
@@ -1088,26 +1132,32 @@ def pair_show(
     settings = json.loads(system.read_text(f"{directory}/control.json") or "{}")
     if not settings.get("listen"):
         raise CommandError(f"{directory}/control.json has no tailnet address; run bootstrap first")
-    system.run(["systemctl", "stop", CONTROL_UNIT])
-    code = pairing.new_code()
-    out(f"Pairing code: {code}")
-    out(f"On the lab node run: sudo pinka pair connect {config.machine} {code}")
     port = int(settings.get("control_port", 18710))
-    out(f"Waiting up to {timeout:g} s on {settings['listen']}:{port} ...")
+    # The pairing port is open to the tailnet only while this waits (11.13).
+    _pairing_window(system, port, int(timeout) + PAIRING_WINDOW_SLACK)
     try:
-        peer = (serve or pairing.serve_once)(
-            pairing.normalize(code),
-            me,
-            f"{directory}/self.crt",
-            f"{directory}/self.key",
-            str(settings["listen"]),
-            port,
-            timeout,
-            log=out,
-        )
-    except pairing.PairingError as exc:
-        raise CommandError(str(exc)) from exc
+        system.run(["systemctl", "stop", CONTROL_UNIT])
+        code = pairing.new_code()
+        out(f"Pairing code: {code}")
+        out(f"On the lab node run: sudo pinka pair connect {config.machine} {code}")
+        out(f"Waiting up to {timeout:g} s on {settings['listen']}:{port} ...")
+        try:
+            peer = (serve or pairing.serve_once)(
+                pairing.normalize(code),
+                me,
+                f"{directory}/self.crt",
+                f"{directory}/self.key",
+                str(settings["listen"]),
+                port,
+                timeout,
+                log=out,
+            )
+        except pairing.PairingError as exc:
+            raise CommandError(str(exc)) from exc
+    finally:
+        _pairing_window(system, port, None)
     _store_peer(system, directory, peer)
+    _reload_split_guard(system)
     system.run(["systemctl", "restart", CONTROL_UNIT])
     out(f"Paired with lab node {peer.node} ({pairing.cert_sha256(peer.cert_pem)[:16]}...).")
     out(f"Set inference_lab_node: {peer.node} in the host_vars file and apply it:")
@@ -1156,6 +1206,7 @@ def pair_connect(
     except pairing.PairingError as exc:
         raise CommandError(str(exc)) from exc
     _store_peer(system, directory, peer)
+    _reload_split_guard(system)
     out(f"Paired with inference node {peer.node} ({pairing.cert_sha256(peer.cert_pem)[:16]}...).")
     out(f"Set inference_remote_node: {peer.node} in the host_vars file and apply it:")
     out(
@@ -1341,6 +1392,33 @@ def docs_rollback(system: System, config: LabConfig | None) -> int:
     return 0
 
 
+# The inference guard (firewall role, §7.11, ADR-0016): loading it resolves the
+# clients that may reach the inference API from infra's list and the active
+# platform's rendering.
+INFERENCE_GUARD_UNIT = "pinka-inference-guard.service"
+INFERENCE_GUARD_UNIT_FILE = f"/etc/systemd/system/{INFERENCE_GUARD_UNIT}"
+
+
+def reload_inference_guard(system: System) -> tuple[bool, str]:
+    """Load the inference guard again, so it admits only the current clients.
+
+    Args:
+        system: Host access.
+
+    Returns:
+        Whether it loaded (or there is none here), and what happened.
+    """
+    if system.info(INFERENCE_GUARD_UNIT_FILE) is None:
+        return True, "no inference guard on this host"
+    done = system.run(["systemctl", "reload-or-restart", INFERENCE_GUARD_UNIT], timeout=120)
+    if not done.ok:
+        detail = done.stderr.strip() or f"exit status {done.returncode}"
+        return False, f"the inference guard did not load again ({detail})"
+    return True, (
+        "inference guard loaded again: it admits only infra's and the active platform's clients"
+    )
+
+
 def platform_purge(
     system: System,
     config: LabConfig,
@@ -1353,7 +1431,8 @@ def platform_purge(
     The deployment tool refuses the active platform and a platform that was
     never replaced. Its accounts stay locked and its published signing keys
     stay; its secrets stay too unless ``remove_secrets``. What remains is
-    printed.
+    printed. Then the inference guard loads again, so no account of the
+    purged platform stays on its allowlist.
 
     Args:
         system: Host access.
@@ -1364,7 +1443,8 @@ def platform_purge(
             files and private signing key.
 
     Returns:
-        0 when purged, 1 when the deployment tool failed.
+        0 when purged, 1 when the deployment tool failed or the inference
+        guard did not load again.
 
     Raises:
         CommandError: Without root, a bad name or a wrong confirmation.
@@ -1404,4 +1484,12 @@ def platform_purge(
             out(f"remains: {label} {item}")
     if remaining.get("secrets"):
         out(f"Remove the secrets too with: pinka platform purge {name} --remove-secrets")
+    loaded, detail = reload_inference_guard(system)
+    if not loaded:
+        sys.stderr.write(
+            f"pinka: {name} is purged, but {detail}; run: "
+            f"systemctl restart {INFERENCE_GUARD_UNIT}\n"
+        )
+        return 1
+    out(detail)
     return 0

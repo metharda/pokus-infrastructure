@@ -81,9 +81,50 @@ def test_setup_verifies_the_collections_against_the_lock() -> None:
     verify = makefile[makefile.index("COLLECTIONS_VERIFY =") :].split("\n\n", 1)[0]
     assert "collection verify --offline" in verify
     assert "-r ansible/requirements.yml" in verify
-    assert "collection install --force" in recipe
+    # Installed again from Galaxy or, when it is unreachable, from the pinned
+    # and checksum-verified release tarballs; then verified the same way.
+    install = recipe.index("$(LOCKCHECK) collections --requirements ansible/requirements.yml")
+    assert recipe.index("$(COLLECTIONS_VERIFY)", install) > install
     env = makefile[makefile.index("ANSIBLE_ENV :=") :].split("\n#", 1)[0]
     assert "PYTHONDONTWRITEBYTECODE=1" in env  # no bytecode inside the collections
+
+
+def fake_uv(directory: Path, version: str) -> Path:
+    directory.mkdir(parents=True)
+    uv = directory / "uv"
+    uv.write_text(f"#!/bin/sh\necho uv {version}\n")
+    uv.chmod(0o755)
+    return directory
+
+
+@pytest.mark.parametrize(("version", "pinned"), [("pinned", False), ("0.0.1", True), (None, True)])
+def test_setup_bootstraps_the_pinned_uv(tmp_path: Path, version: str | None, pinned: bool) -> None:
+    # The uv on PATH runs uv sync only when it is the pinned version; otherwise
+    # (another version, or none) setup installs the pinned uv into build/tools/
+    # with bootstrap's checksum-verified install_uv and continues with it.
+    expected = re.search(
+        r"^readonly PINKA_UV_VERSION=(\S+)$", read("bootstrap/lib/pins.sh"), re.MULTILINE
+    )
+    assert expected
+    path = "/usr/bin:/bin"
+    if version is not None:
+        bin_dir = fake_uv(tmp_path / "bin", expected.group(1) if version == "pinned" else version)
+        path = f"{bin_dir}:{path}"
+    done = subprocess.run(
+        ["make", "-n", "-B", "--no-print-directory", ".venv/.synced"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": path, "HOME": str(tmp_path)},
+    )
+    lines = done.stdout.splitlines()
+    if pinned:
+        assert any('install_uv "$1"' in line for line in lines), lines
+        assert f"{ROOT}/build/tools/uv sync --frozen" in lines
+    else:
+        assert not any("install_uv" in line for line in lines), lines
+        assert "uv sync --frozen" in lines
 
 
 def test_git_ignores_every_tree() -> None:

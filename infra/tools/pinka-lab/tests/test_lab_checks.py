@@ -1192,7 +1192,7 @@ class PairingTest(Base):
         end = (NOW + dt.timedelta(days=days)).strftime("%b %d %H:%M:%S %Y GMT")
         infos = (
             {
-                f"{self.DIR}/{n}": info("root", "demo-ctl", 0o640)
+                f"{self.DIR}/{n}": info("root", "pinka-inference", 0o640)
                 for n in ("self.crt", "self.key", "peer.crt")
             }
             if files
@@ -1202,7 +1202,38 @@ class PairingTest(Base):
         return FakeSystem({"openssl *": (0, f"notAfter={end}\n")}, files=records, infos=infos)
 
     def check(self, system: FakeSystem, peer: str = "", role: str = "inference") -> Outcome:
-        return run(checks.check_pairing, system, node_role=role, inference__peer=peer)
+        group, mode = ("pinka-inference", "0640") if role == "inference" else ("root", "0600")
+        return run(
+            checks.check_pairing,
+            system,
+            node_role=role,
+            inference__peer=peer,
+            inference__key_group=group,
+            inference__key_mode=mode,
+        )
+
+    def test_the_private_key_belongs_to_root_on_a_lab_node(self) -> None:
+        # The forwarder runs as root; only an inference node's endpoint account reads the key.
+        lab_node = self.system(peer="pinka-gpu")
+        lab_node.infos[f"{self.DIR}/self.key"] = info("root", "root", 0o600)
+        self.assertOutcome(self.check(lab_node, "pinka-gpu", role="lab"), "pass")
+        shared = self.system(peer="pinka-gpu")
+        self.assertOutcome(
+            self.check(shared, "pinka-gpu", role="lab"),
+            "fail",
+            "self.key is root:pinka-inference 0640, expected root:root 0600",
+        )
+        # Checked before the pairing too: bootstrap creates the key.
+        self.assertOutcome(
+            self.check(self.system(peer=""), role="lab"), "fail", "expected root:root 0600"
+        )
+        loose = self.system()
+        loose.infos[f"{self.DIR}/self.key"] = info("root", "pinka-inference", 0o644)
+        self.assertOutcome(
+            self.check(loose, "pinka-lab"),
+            "fail",
+            "self.key is root:pinka-inference 0644, expected root:pinka-inference 0640",
+        )
 
     def test_not_split(self) -> None:
         self.assertOutcome(self.check(self.system(), role="full"), "skip", "full node")
@@ -1259,6 +1290,31 @@ class CpusetTest(Base):
         stopped = {"/sys/devices/system/cpu/online": "0-23\n"}
         outcome = run(checks.check_cpusets, FakeSystem(files=stopped), **sets)
         self.assertOutcome(outcome, "fail", "has no cgroup")
+
+    def test_smt_siblings_in_different_sets(self) -> None:
+        # P3a: cpu<n> and cpu<n+12> are one core's two threads.
+        topology = "/sys/devices/system/cpu/cpu{}/topology/thread_siblings_list"
+        siblings = {topology.format(n): f"{n % 12},{n % 12 + 12}\n" for n in range(24)}
+        files = {"/sys/devices/system/cpu/online": "0-23\n", **siblings}
+        split = {"cpusets__services": "0-5", "cpusets__targets": "6-23"}
+        outcome = run(
+            checks.check_cpusets, FakeSystem(files={**files, self.SLICE: "0-5\n"}), **split
+        )
+        self.assertOutcome(
+            outcome,
+            "fail",
+            "SMT siblings of one core are split between cpuset_services and cpuset_targets "
+            "(0,12; 1,13; 2,14; 3,15; 4,16; 5,17)",
+        )
+        whole = {"cpusets__services": "0-2,12-14", "cpusets__targets": "3-11,15-23"}
+        slice_cpus = {self.SLICE: "0-2,12-14\n"}
+        outcome = run(checks.check_cpusets, FakeSystem(files={**files, **slice_cpus}), **whole)
+        self.assertOutcome(outcome, "pass")
+        # Without SMT (one thread per core) nothing is split.
+        single = {topology.format(n): f"{n}\n" for n in range(24)}
+        no_smt = {"/sys/devices/system/cpu/online": "0-23\n", self.SLICE: "0-5\n", **single}
+        outcome = run(checks.check_cpusets, FakeSystem(files=no_smt), **split)
+        self.assertOutcome(outcome, "pass")
 
 
 # --- the GPU arbiter, training and the inference guard (§7.11, §7.18) ---------------------
@@ -1347,6 +1403,7 @@ def job_container(**changes: Any) -> dict[str, Any]:
         "PidMode": "",
         "IpcMode": "private",
         "UsernsMode": "",
+        "Tmpfs": {"/tmp": "rw,nosuid,nodev,size=1073741824"},
     }
     host.update(changes.pop("host", {}))
     mounts = [
@@ -1387,6 +1444,12 @@ class TrainingContainersTest(Base):
             ({"host": {"SecurityOpt": []}}, "no no-new-privileges"),
             ({"host": {"Privileged": True}}, "privileged"),
             ({"host": {"PidMode": "host"}}, "the host's pid namespace"),
+            ({"host": {"Tmpfs": {"/tmp": "rw,nosuid,nodev"}}}, "no size-limited tmpfs"),
+            ({"host": {"Tmpfs": None}}, "no size-limited tmpfs"),
+            (
+                {"host": {"Tmpfs": {"/tmp": "size=1g", "/run": "size=1g"}}},
+                "no size-limited tmpfs as its only /tmp",
+            ),
             ({"user": ""}, "runs as root"),
             ({"user": "0:0"}, "runs as root"),
             ({"mounts": [{"Source": "/etc/pinka/secrets", "RW": False}]}, "the mount /etc"),
@@ -1405,6 +1468,35 @@ class TrainingContainersTest(Base):
         outcome = run(
             checks.check_training_containers,
             idle,
+            gpu_arbiter={**arbiter_section(), "training": False},
+        )
+        self.assertOutcome(outcome, "skip", "does not train")
+
+
+class TrainingCapsTest(Base):
+    JOB = {"name": "tune", "memory_max": "4G", "cpus": 2, "timeout_seconds": 600}
+
+    def system(self, *jobs: dict[str, Any]) -> FakeSystem:
+        return FakeSystem({}, files={RENDERED: json.dumps({"training": {"jobs": list(jobs)}})})
+
+    def test_jobs_within_the_caps_pass(self) -> None:
+        outcome = run(checks.check_training_caps, self.system(self.JOB))
+        self.assertOutcome(outcome, "pass", "1 job(s) within this host's training_caps")
+
+    def test_jobs_over_the_caps_warn(self) -> None:
+        big = {**self.JOB, "memory_max": "32G", "cpus": 16, "timeout_seconds": 90000}
+        outcome = run(checks.check_training_caps, self.system(big))
+        self.assertOutcome(outcome, "fail", "the GPU arbiter refuses every run of tune:")
+        for detail in ("memory_max 32G > 24G", "cpus 16 > 8", "timeout_seconds 90000 > 86400"):
+            self.assertIn(detail, outcome.detail)
+        check = next(c for c in checks.CHECKS if c.id == "training.caps")
+        self.assertEqual(check.severity, "warning")
+
+    def test_skipped(self) -> None:
+        self.assertOutcome(run(checks.check_training_caps, self.system()), "skip", "no training")
+        outcome = run(
+            checks.check_training_caps,
+            self.system(self.JOB),
             gpu_arbiter={**arbiter_section(), "training": False},
         )
         self.assertOutcome(outcome, "skip", "does not train")
@@ -1476,6 +1568,90 @@ class TrainingRecordsTest(Base):
         for role in ("lab", "inference"):
             outcome = run(checks.check_training_availability, FakeSystem(), node_role=role)
             self.assertOutcome(outcome, "pass", f"unavailable on this host (node_role {role})")
+
+
+class SplitGuardTest(Base):
+    NFT = "nft -j list table inet pinka_split_guard"
+    PEER = "/etc/pinka/inference/peer.json"
+    SPEC = {"interface": "tailscale0", "ports": [18704, 18710]}
+
+    def loaded(self, peer: list[str], pairing: list[Any] | None = None) -> str:
+        drop = {
+            "family": "inet",
+            "expr": [
+                {"match": {"left": {"meta": {"key": "iifname"}}, "right": "tailscale0"}},
+                {
+                    "match": {
+                        "left": {"payload": {"field": "dport"}},
+                        "right": {"set": [18704, 18710]},
+                    }
+                },
+                {"drop": None},
+            ],
+        }
+        return json.dumps(
+            {
+                "nftables": [
+                    {"set": {"name": "peer", "type": "ipv4_addr", "elem": peer}},
+                    {"set": {"name": "pairing", "type": "inet_service", "elem": pairing or []}},
+                    {"rule": drop},
+                ]
+            }
+        )
+
+    def check(
+        self, loaded: str | None, record: dict[str, Any] | None, role: str = "inference"
+    ) -> Outcome:
+        files = {self.PEER: json.dumps(record)} if record is not None else {}
+        commands = {self.NFT: (0, loaded) if loaded is not None else (1, "")}
+        return run(
+            checks.check_split_guard,
+            FakeSystem(commands, files=files),
+            node_role=role,
+            split_guard=self.SPEC,
+        )
+
+    def test_only_the_paired_peer(self) -> None:
+        paired = {"node": "pinka-lab", "address": "100.64.0.7"}
+        self.assertOutcome(
+            self.check(self.loaded(["100.64.0.7"]), paired), "pass", "admit only 100.64.0.7"
+        )
+        self.assertOutcome(
+            self.check(self.loaded([]), None), "pass", "admit only nobody until the nodes pair"
+        )
+        # An unpaired address on the allowlist, or the peer missing from it.
+        self.assertOutcome(
+            self.check(self.loaded(["100.64.0.7", "100.64.0.9"]), paired),
+            "fail",
+            "the guard admits 100.64.0.7, 100.64.0.9, expected 100.64.0.7",
+        )
+        self.assertOutcome(
+            self.check(self.loaded([]), paired), "fail", "admits nobody, expected 100.64.0.7"
+        )
+        self.assertOutcome(
+            self.check(self.loaded([]), {"node": "pinka-lab"}),
+            "fail",
+            "no tailnet address; pair the nodes again",
+        )
+        self.assertOutcome(self.check(None, paired), "fail", "not loaded")
+
+    def test_the_pairing_window_and_open_ports(self) -> None:
+        paired = {"node": "pinka-lab", "address": "100.64.0.7"}
+        window = [{"elem": {"val": 18710, "timeout": 90, "expires": 80}}]
+        self.assertOutcome(
+            self.check(self.loaded(["100.64.0.7"], window), paired),
+            "fail",
+            "the pairing port is open to the tailnet",
+        )
+        no_rule = json.dumps(
+            {"nftables": [{"set": {"name": "peer", "type": "ipv4_addr", "elem": ["100.64.0.7"]}}]}
+        )
+        self.assertOutcome(
+            self.check(no_rule, paired), "fail", "leaves ports open to the tailnet: 18704, 18710"
+        )
+
+    def test_a_full_node(self) -> None:
+        self.assertOutcome(self.check(None, None, role="full"), "skip", "full node")
 
 
 class InferenceIsolationTest(Base):

@@ -77,9 +77,14 @@ The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default depl
 
 ### `training_caps`
 
-Infra's caps on a training job (§7.18): the manifest's jobs must stay within them; the arbiter refuses a run whose job does not.
+Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory).
 
-- Default: `{timeout_seconds: 86400, memory_max: 24G, cpus: 8}`
+- Default:
+
+    ```yaml
+    {timeout_seconds: 86400, memory_max: 24G, cpus: 8, dataset_max: 8G, run_storage_max: 16G,
+      tmp_max: 1G}
+    ```
 
 ### `grafana_tailscale_serve`
 

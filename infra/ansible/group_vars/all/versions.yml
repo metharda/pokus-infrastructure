@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "f091afc14e4706b84db418dcd7785970312fff818351710a8ec3292463fb41aa"
+pinka_versions_lock_sha256: "e9dd255254632d8ee1dc434bc98232c93e262ec93b849988065819394bb802d7"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -207,6 +207,13 @@ pinka_versions:
         image: docker.io/nvidia/cuda
         tag: 13.0.2-base-ubuntu24.04
         digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      refplat_job:
+        image: public.ecr.aws/docker/library/python
+        tag: 3.12-slim-trixie
+        digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
         platforms:
           - linux/amd64
           - linux/arm64
@@ -419,6 +426,19 @@ pinka_versions:
       community.crypto: 3.4.0
       community.docker: 5.3.0
       community.general: 13.4.0
+    fallback:
+      ansible.posix:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.crypto:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.docker:
+        url: TODO(verify)
+        sha256: TODO(verify)
+      community.general:
+        url: TODO(verify)
+        sha256: TODO(verify)
   incus_base_images:
     verified_on: '2026-10-05'
     source: simplestreams index of images.linuxcontainers.org; not read yet

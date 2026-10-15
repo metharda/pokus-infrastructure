@@ -14,6 +14,9 @@ from pinka_platform import contract as contract_mod
 
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "manifests"
+# The reference platform (§7.18): its real release, deployed by the
+# distribution tests, is also the manifest fixture "refplat".
+REFERENCE_PLATFORM = HERE.parents[2] / "tests" / "reference-platform"
 GOLDEN = HERE / "golden"
 # The Pokus Platform's manifest, as infra's tests keep it (§12.1).
 FIRST_PLATFORM = "pokus-platform"
@@ -47,7 +50,12 @@ def manifest(name: str) -> dict[str, Any]:
     Returns:
         A fresh copy of the manifest.
     """
-    data: dict[str, Any] = yaml.safe_load((FIXTURES / f"{name}.yaml").read_text(encoding="utf-8"))
+    path = (
+        REFERENCE_PLATFORM / "platform-manifest.yaml"
+        if name == "refplat"
+        else FIXTURES / f"{name}.yaml"
+    )
+    data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
     return copy.deepcopy(data)
 
 

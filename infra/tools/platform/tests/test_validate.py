@@ -664,8 +664,8 @@ def test_an_undeclared_facility_names_its_users() -> None:
         "requires: 'incus' is not declared but used by services 'rop' (restricted-operator)"
         " [facility-undeclared]",
         "requires: 'opa' is not declared but used by field 'policy' [facility-undeclared]",
-        "requires: 'gpu' is not declared but used by jobs 'tune' (gpu-trainer)"
-        " [facility-undeclared]",
+        "requires: 'gpu' is not declared but used by jobs 'tune' (gpu-trainer), "
+        "jobs 'tunecpu' (gpu-trainer) [facility-undeclared]",
     ]
 
 

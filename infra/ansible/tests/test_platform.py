@@ -454,6 +454,7 @@ def test_tool_settings_for_https_and_bootstrap_options() -> None:
         "scripted_api_url": "",
         "vm_collector_address": "198.18.0.1",
         "cpuset_targets": "",
+        "training_caps": evaluate("training_caps", scope),
     }
     assert settings["vault_keys"] == []
     assert settings["platform_settings"] == {}

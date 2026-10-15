@@ -13,11 +13,12 @@ deploy helper and decides whether the GPU serves, trains or idles:
   `serve`, `idle`, `train` and `publish-dataset`; the control endpoint of an
   inference node may only ask for `status` and `serve`. Root uses
   `pinka gpu`;
-- `pinka-gpu-arbiter.service`, wanted by `pinka-lab.target`: after a reboot
-  a run left in training resumes (resumable jobs) or ends interrupted, and
-  the default deployment is served or the GPU stays idle
-  (`gpu_arbiter.after_boot`); vLLM (`pinka-inference.service`) starts only
-  through the arbiter;
+- `pinka-gpu-arbiter.service`, wanted by `pinka-lab.target`: whenever the
+  lab starts (after a reboot and on `pinka start`) a run the lab's stop
+  suspended or a crash left in training resumes (resumable jobs) or ends
+  interrupted; otherwise the default deployment is served or the GPU stays
+  idle (`gpu_arbiter.after_boot`); vLLM (`pinka-inference.service`) starts
+  only through the arbiter;
 - `pinka-gpu-job@<run>.service`: one training run in the container
   `pinka-job-<run>` with infra's fixed options, then the adapter's
   registration under `/srv/pinka/models/adapters/<name>/<sha256>/`;
@@ -40,5 +41,5 @@ jobs (`resources.gpus: 0`). Training runs only on `full` nodes.
 
 Files are written only when their content changes. The chosen deployment is
 served through the arbiter, which restarts vLLM only when its rendering
-changed or vLLM does not answer; a running training job is never
-interrupted (`serve --unless-training`).
+changed or vLLM does not answer; a running or suspended training run is
+never interrupted (`serve --unless-training`).

@@ -36,6 +36,12 @@
       "profile": "gpu-trainer",
       "account": "refplat-tune",
       "uid": 2003
+    },
+    {
+      "name": "tunecpu",
+      "profile": "gpu-trainer",
+      "account": "refplat-tunecpu",
+      "uid": 2004
     }
   ],
   "sockets": [

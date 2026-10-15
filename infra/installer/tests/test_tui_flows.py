@@ -624,6 +624,33 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
     assert installer.ctx.wizard.answers.researchers_removed == []  # fresh: nobody to lock
 
 
+def test_the_resources_screen_warns_about_split_smt_cores(repo: Paths) -> None:
+    # cpu<n> and cpu<n+12> are the two threads of one core (24 threads).
+    cores = [frozenset({n, n + 12}) for n in range(12)]
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), cores=cores)
+    installer = app(context(repo, host), first="resources")
+    installer.ctx.wizard.profile = {**host.result.profile, "hardware": {"cpu_threads": 24}}
+
+    def warning(pilot: Pilot[Any]) -> str:
+        shown = pilot.app.screen.query_one("#smt-warning", Static)
+        return str(shown.content) if shown.display else ""
+
+    async def flow(pilot: Pilot[int]) -> None:
+        # The suggestion keeps whole cores together: no warning.
+        assert pilot.app.screen.query_one("#cpuset_services", Input).value == "0-3,12-15"
+        assert warning(pilot) == ""
+        fill(pilot, cpuset_services="0-7", cpuset_targets="8-23")
+        await pilot.pause()
+        assert warning(pilot).startswith("SMT siblings of one core are split")
+        assert "0,12; 1,13; 2,14; 3,15 and 4 more" in warning(pilot)
+        # A warning, not an error: the operator may go on.
+        await forward(pilot, "storage")
+
+    drive(installer, flow)
+    resources = installer.ctx.wizard.answers.resources
+    assert (resources.cpuset_services, resources.cpuset_targets) == ("0-7", "8-23")
+
+
 def test_resume_after_a_wsl_restart(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
     first = FakeRunner([("events-signal75.jsonl", 75)])

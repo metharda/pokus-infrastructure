@@ -226,6 +226,7 @@ def main(argv: list[str], run: Runner = run_command) -> int:
             run,
             INFRA / "build" / "check-mode",
             extended=args.extended,
+            commit=_git("rev-parse", "HEAD"),
             summary=summary,
             keep=args.keep,
         )

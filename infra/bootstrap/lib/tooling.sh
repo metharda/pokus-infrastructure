@@ -60,11 +60,12 @@ uv_asset() {
   esac
 }
 
-# install_uv: install the pinned uv into /opt/pinka/bin (skips a matching install).
+# install_uv [DIR]: install the pinned uv into DIR, by default /opt/pinka/bin
+# (make setup: build/tools); skips a matching install.
 install_uv() {
-  local arch asset url sha tmp found current=''
-  if [[ -x $PINKA_BIN/uv ]]; then
-    current=$("$PINKA_BIN/uv" --version 2>/dev/null) || current=''
+  local dir=${1:-$PINKA_BIN} arch asset url sha tmp found current=''
+  if [[ -x $dir/uv ]]; then
+    current=$("$dir/uv" --version 2>/dev/null) || current=''
   fi
   if [[ $current == "uv $PINKA_UV_VERSION" || $current == "uv $PINKA_UV_VERSION "* ]]; then
     log_info "uv $PINKA_UV_VERSION already installed"
@@ -86,7 +87,7 @@ install_uv() {
     rm -rf -- "$tmp"
     return "$EXIT_TOOLING"
   fi
-  install -d -m 0755 "$PINKA_BIN"
+  install -d -m 0755 "$dir"
   for found in uv uvx; do
     local path
     path=$(find "$tmp" -type f -name "$found" -perm -u+x | head -n 1)
@@ -95,10 +96,10 @@ install_uv() {
       rm -rf -- "$tmp"
       return "$EXIT_TOOLING"
     fi
-    install -m 0755 "$path" "$PINKA_BIN/$found"
+    install -m 0755 "$path" "$dir/$found"
   done
   rm -rf -- "$tmp"
-  log_info "installed uv $PINKA_UV_VERSION to $PINKA_BIN"
+  log_info "installed uv $PINKA_UV_VERSION to $dir"
 }
 
 # install_python: install the pinned CPython with uv and link /opt/pinka/python/bin/python3.

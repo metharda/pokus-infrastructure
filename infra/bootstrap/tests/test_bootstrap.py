@@ -7,6 +7,7 @@ every ``stage_*`` function replaced by a stub.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -771,6 +772,53 @@ def test_uv_assets_match_the_lock() -> None:
     assert "x86_64-unknown-linux-gnu.tar.gz" in lines[0]
     assert "aarch64-unknown-linux-gnu.tar.gz" in lines[1]
     assert lines[2] == "none"
+
+
+def fake_uv_archive(tmp_path: Path, version: str) -> tuple[Path, str]:
+    """A tar.gz like uv's release: uv and uvx below a directory."""
+    tree = tmp_path / "tree" / "uv-x86_64-unknown-linux-gnu"
+    tree.mkdir(parents=True)
+    for name in ("uv", "uvx"):
+        (tree / name).write_text(f"#!/bin/sh\necho {name} {version}\n")
+        (tree / name).chmod(0o755)
+    archive = tmp_path / "uv.tar.gz"
+    subprocess.run(
+        ["tar", "-czf", str(archive), "-C", str(tmp_path / "tree"), tree.name], check=True
+    )
+    return archive, hashlib.sha256(archive.read_bytes()).hexdigest()
+
+
+def test_install_uv_into_a_directory(tmp_path: Path) -> None:
+    # make setup's uv bootstrap: the pinned uv into build/tools/, only after the
+    # archive's sha256 matched (the network and the pin are stubbed here).
+    version = bash("echo $PINKA_UV_VERSION").stdout.strip()
+    archive, digest = fake_uv_archive(tmp_path, version)
+    tools = tmp_path / "build" / "tools"
+    stubs = f"""
+uname() {{ echo x86_64; }}
+download() {{ cp {q(archive)} "$2"; }}
+"""
+    good = bash(
+        stubs + f"uv_asset() {{ echo https://example.com/uv.tar.gz {digest}; }}\n"
+        f"install_uv {q(tools)}"
+    )
+    assert good.returncode == 0, good.stderr
+    assert sorted(p.name for p in tools.iterdir()) == ["uv", "uvx"]
+    assert subprocess.run(
+        [tools / "uv"], capture_output=True, text=True, check=True
+    ).stdout.strip() == (f"uv {version}")
+    # A matching install is kept: no download.
+    again = bash("download() { exit 9; }\n" + f"install_uv {q(tools)} && echo kept")
+    assert again.stdout.strip().endswith("kept")
+    # A wrong checksum installs nothing.
+    other = tmp_path / "other"
+    bad = bash(
+        stubs + f"uv_asset() {{ echo https://example.com/uv.tar.gz {'0' * 64}; }}\n"
+        f"install_uv {q(other)} || echo refused"
+    )
+    assert bad.stdout.strip() == "refused"
+    assert "checksum mismatch" in bad.stderr
+    assert not other.exists()
 
 
 def test_check_versions_sync(tmp_path: Path) -> None:

@@ -229,6 +229,8 @@
           {{ inference_lab_node if node_role == 'inference'
              else (inference_remote_node if node_role == 'lab' else '') }}
         renew_days: "{{ doctor_certificate_renew_days | int }}"
+        key_group: "{{ inference_control_key_group }}"
+        key_mode: "{{ inference_control_key_mode }}"
       vllm:
         current: /etc/pinka/vllm/current.yml
         health_url: "http://127.0.0.1:{{ pinka_ports.vllm }}/health"
@@ -263,7 +265,8 @@
             'models': pinka_root ~ '/models',
             'datasets': pinka_root ~ '/training/datasets',
             'jobs': pinka_root ~ '/training/jobs',
-            'adapters': pinka_root ~ '/models/adapters'}
+            'adapters': pinka_root ~ '/models/adapters',
+            'caps': training_caps}
            if node_role in ['full', 'inference'] else {} }}
       # The inference guard (§7.11, ADR-0016): infra's clients for this node
       # role; the platform's come from rendered.json at run time.
@@ -273,6 +276,9 @@
              | map(attribute='account') | list }}
         ports: "{{ [pinka_ports.vllm | int] }}"
         control_ports: "{{ [pinka_ports.inference_control | int] if node_role == 'lab' else [] }}"
+      # The split-inference guard (§19.10, interpretation 11.13): the tailnet
+      # ports only the paired peer reaches (firewall role).
+      split_guard: "{{ firewall_split_guard if node_role in ['lab', 'inference'] else {} }}"
       # The telemetry isolation (§7.9, ADR-0016): infra's clients of the stores
       # and their ports, the query port's clients (Grafana's data sources), the
       # query socket's link with its target and directory.

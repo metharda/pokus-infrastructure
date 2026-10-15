@@ -51,6 +51,25 @@ def test_expected_peer_by_node_role() -> None:
     assert evaluate("inference_control_expected_peer", scope()) == ""
 
 
+def test_the_private_key_is_root_only_on_a_lab_node() -> None:
+    # Owner decision with the "commit" for 3d.5: the lab node's forwarder runs
+    # as root; only an inference node's endpoint account reads the key.
+    inference = scope(node_role="inference")
+    assert evaluate("inference_control_key_group", inference) == "pinka-inference"
+    assert evaluate("inference_control_key_mode", inference) == "0640"
+    lab = scope(node_role="lab")
+    assert evaluate("inference_control_key_group", lab) == "root"
+    assert evaluate("inference_control_key_mode", lab) == "0600"
+    tasks = load_yaml(ROLES / "inference_control" / "tasks" / "main.yml")
+    key = next(t for t in tasks if t["name"] == "Create the node's private key")
+    module = key["community.crypto.openssl_privatekey"]
+    assert (module["owner"], module["group"], module["mode"]) == (
+        "root",
+        "{{ inference_control_key_group }}",
+        "{{ inference_control_key_mode }}",
+    )
+
+
 def test_settings_fit_the_endpoint(tmp_path: Path) -> None:
     variables = scope(inference_control_tailnet={"stdout_lines": ["100.64.0.7"]})
     path = tmp_path / "control.json"

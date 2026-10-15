@@ -51,6 +51,13 @@
   ansible.builtin.debug:
     msg: "{{ platform_plan.summary_text.splitlines() }}"
 
+# A job over this host's training_caps deploys, but the GPU arbiter refuses
+# every run of it (§7.18); doctor's training.caps reports the same.
+- name: Warn about jobs over this host's training caps
+  ansible.builtin.debug:
+    msg: "{{ ['WARNING: a job exceeds training_caps'] + platform_plan.warnings }}"
+  when: platform_plan.warnings | default([]) | length > 0
+
 - name: End the inspection (--inspect-platform changes nothing else)
   ansible.builtin.meta: end_play
   when: platform_inspect | bool

@@ -124,6 +124,7 @@ class FakeHost:
     disks_found: Sequence[Disk] = DISKS
     nics: Sequence[str] = ("enp5s0", "wlp3s0")
     free: tuple[float, str] = (500.0, "ext4")
+    cores: Sequence[frozenset[int]] = ()
     installed: str = ""
     user: str = "researcher1"
     replies: dict[str, CommandResult] = field(default_factory=dict)
@@ -150,6 +151,9 @@ class FakeHost:
 
     def free_gib(self, path: str) -> tuple[float, str]:
         return self.free
+
+    def smt_cores(self) -> list[frozenset[int]]:
+        return list(self.cores)
 
     def run(
         self,

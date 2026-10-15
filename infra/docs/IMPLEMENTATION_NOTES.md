@@ -3268,3 +3268,143 @@ None new.
   each skip or warning; the logs keep them.
 - Each step runs in its own make process, so a failing step no longer stops
   the target: every failure of one run is reported.
+
+## Contract v2, step 6: the reference platform (plan step 3d.6)
+
+### Built in 3d.6: the owner's 3d.5 decisions
+
+- Size caps: `training_caps` gains `dataset_max` (a published dataset),
+  `run_storage_max` (`/output` and `/checkpoints` of one run together) and
+  `tmp_max` (the job's `/tmp`, a tmpfs never larger than the job's memory,
+  which the kernel charges to it). The arbiter checks the free disk space
+  before it starts a run and stops a run over a cap, which ends `failed`.
+- Resume: `pinka start` asks the arbiter to resume (`idle` with `resume`, a
+  key only root may send); a run that systemd stopped with the lab or the
+  host is `suspended` and resumes at the next start or boot, logged as a
+  transition with the outcome `resumed` and the requester `boot`.
+- The lab node's private key is 0600 root; `root:pinka-inference` 0640 only
+  on an inference node, whose control endpoint serves TLS with it; doctor
+  checks the owner and mode.
+- `pinka platform purge` reloads the inference guard.
+- The tree hash: one line `<sha256>  <path>\n` per file, sorted by the
+  UTF-8 bytes of the path (as `LC_ALL=C sort`); a name that is not UTF-8 or
+  holds a control character or a backslash is refused
+  ([GPU arbiter reference](reference/gpu-arbiter.md#the-tree-hash)).
+- `pinka-platform validate` and doctor (`training.caps`) warn when a job's
+  resources exceed the host's `training_caps`.
+- The SMT warning of P3a: the installer's resources screen and doctor's
+  CPU set check warn when the threads of one core are split between
+  `cpuset_services` and `cpuset_targets` (`thread_siblings_list`).
+- Interpretation 11.13 as changed by the owner: the split guard
+  (`inet pinka_split_guard`, its own table and unit on every firewall
+  backend) admits only the paired peer's tailnet address to the
+  split-inference ports once paired, and opens the pairing port only for the
+  pairing window; doctor's `inference.split_guard`. Its kernel test proves
+  that an unpaired tailnet address is refused after pairing.
+- Setup tooling: the Galaxy fallback (`ansible_collections.fallback`
+  in the lock; `pinka_lockcheck collections`) and the uv bootstrap
+  (`install_uv` into `build/tools/`); `README.md`, "What `make setup`
+  downloads".
+
+### Built in 3d.6: the reference platform (BUILD_PROMPT §16 step 20)
+
+- `tests/reference-platform/`: `refplat`, standard library only, runtime
+  `python-uv` with an empty dependency set (only the build backend
+  `uv_build` in the `build` group). The manifest is §12.1's example plus the
+  CPU-only job `tunecpu`; both jobs run `jobs/tune.py`, whose text the
+  manifest carries and the tests keep identical. The controller `ctl`
+  (sockets `api` and `session`, the four hooks, `public.refplat_runs`,
+  `public.refplat_datasets`, `restricted.refplat_cases`), the agent's own
+  package `refplat-agent` with the isolation probe, the CLI `refplat`, and
+  the restricted content package `tests/reference-platform-cases/`. The
+  code takes the platform's name from `endpoints.toml` (the agent from the
+  controller's hello), so a renamed copy runs unchanged.
+- The isolation probe tries every action §7.18 lists: the restricted area
+  and content, the database sockets, a socket not dedicated to it, TCP to
+  the telemetry stores, the inference API and an address outside the host
+  (the default gateway's DNS port), infra's secrets, the Git mirrors, the
+  datasets area, the arbiter's and the run-network helper's sockets, the
+  query proxy, and writes to the platform's state and its own environment.
+- `tools/platform/tests/test_refplat.py`: validation, the lock's image,
+  the identical job scripts, the build with the build's own uv commands
+  (the agent's environment holds only its package), the toy training's
+  determinism and resume, the dataset and the arbiter's split guard, the
+  controller through a fake arbiter speaking the arbiter's protocol and
+  submission check, the hooks' JSON lines, the probe's targets against the
+  rendered files and every kind of action, and the PostgreSQL client,
+  migration, restricted check and the controller's writes against a
+  throwaway server with infra's database of the platform. The manifest
+  fixture `refplat` is now the real release's manifest.
+- `make test-distros` deploys `refplat` after `smoke` and adds the stages
+  `platform`, `isolation`, `training`, `resume`, `redeploy`, `replace` and
+  `restore` ([How to test the distributions](how-to/test-distributions.md#what-the-reference-platform-stages-check)).
+  The per-profile probe (`pinka_test_distros/isolation.py`) runs as a
+  transient unit with the hardening and groups infra renders for a service
+  of each loopback-capable profile; the in-VM helper
+  (`pinka_test_distros/guest.py`) enables the platform in the host_vars and
+  the vault.
+- `make check-mode-extended` runs the whole play with `refplat` enabled and
+  placeholder secrets.
+
+### Verified in 3d.6
+
+- The release builds with the pinned uv 0.12.23 and `uv-build` 0.12.24 from
+  PyPI (locked with hashes in `uv.lock`) and passes `validate --built`.
+- The PostgreSQL client logs in with SCRAM-SHA-256 against PostgreSQL 16
+  here; the restricted check reports nothing after the migration.
+- The job image: `public.ecr.aws/docker/library/python:3.12-slim-trixie`,
+  index digest read with the registry API on 2026-10-14 (linux/amd64 and
+  linux/arm64), recorded in `versions.lock.yml` (`containers.images.refplat_job`).
+
+### Interpretations awaiting owner confirmation (3d.6)
+
+- The per-profile probe runs as the platform's own account where the
+  platform has a service of the profile (the controller), and otherwise as a
+  temporary account from the platform UID range with the rendered groups:
+  the inference guard, the GPU arbiter and the run-network helper admit the
+  rendered accounts, not a profile. So in the VMs the inference API's
+  positive case is proven for the controller only; for `inference-broker`
+  (no such service in `refplat`) the probe proves that an account outside
+  the rendering is refused.
+- While nothing serves on the vLLM port (no GPU in the VMs), a root
+  listener stands in for vLLM during the `isolation` stage, so the
+  inference guard is what decides.
+- The VMs run `tunecpu`; serving an adapter with vLLM is left to GPU hosts.
+- `refplat`'s job image comes from the ECR Public mirror of Docker's
+  official images (Docker Hub answered 429).
+- The renamed copy (`refplatb`) is deployed from a repository of its own in
+  the VM, so the tested clone never changes; the replacement uses
+  `--replace-platform refplat`.
+- The `restore` stage removes one controller record, restores the latest
+  snapshot (`restore_snapshot: latest`) and checks that the record is back.
+- Answers cannot enable a contract v2 platform before 3d.7, so the harness
+  writes `platform`, `content`, `platform_settings` and the vault entries
+  itself.
+- `refplat`'s `drain` waits for submitted and running runs, not for a
+  suspended one (it waits for the lab, not for the platform).
+- The `idle` request's `resume` key is root's only; the split guard is a
+  table and unit of its own, and the pairing window is the pairing's
+  timeout plus 60 seconds.
+
+### Findings to report (3d.6)
+
+- The arbiter read the platform's name from `active.json` under `platform`
+  instead of `name`, so every lineage record named no platform. Fixed, with
+  a test.
+- Infra's database bootstrap gives a platform's controller no privilege on
+  the schemas; its migrations grant it (refplat's `migrate` does). The
+  platform spec should say so.
+- The arbiter's `status` shows only its last ten transitions; a controller
+  that polls rarely must read the current run and treat a run with no trace
+  as ended (refplat does).
+- `docs/security.md` still names the first platform's former accounts
+  (`potka-agent`, `pinka-gt`) in its threat table; 3d.8 rewrites it.
+- Not run here: the new `make test-distros` stages (no Incus in this
+  environment), `make check-mode-extended` with the platform (no Docker),
+  and the PostgreSQL 18 run of the SQL tests (CI only).
+
+### Open `TODO(verify)` items after 3d.6
+
+- `ansible_collections.fallback` of `versions.lock.yml`: the release
+  tarball URL and sha256 of each collection (GitHub answers 403 here for
+  that organization).

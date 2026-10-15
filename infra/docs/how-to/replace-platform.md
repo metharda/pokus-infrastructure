@@ -61,7 +61,10 @@ database stay on disk until you purge them.
     The active platform is never purged. Its accounts stay locked, its
     secrets directories stay in `/etc/pinka/secrets/`, and its published
     signing keys stay in `/srv/pinka/shared/signing-keys/`; the command
-    lists what remains.
+    lists what remains. Then it loads the inference guard again, so no
+    account of the purged platform stays on its allowlist; if the guard does
+    not load, the command says so and exits with 1: run
+    `sudo systemctl restart pinka-inference-guard.service`.
 
 2. To remove the replaced platform's secrets directories as well, add
    `--remove-secrets`:

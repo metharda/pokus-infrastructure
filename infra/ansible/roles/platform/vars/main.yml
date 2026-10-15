@@ -70,6 +70,7 @@ platform_tool_settings:
     scripted_api_url: "{{ platform_scripted_api_url }}"
     vm_collector_address: "{{ pinka_vm_otlp.address }}"
     cpuset_targets: "{{ cpuset_targets }}"
+    training_caps: "{{ training_caps }}"
   # The keys the vault holds, never their values (the release's needs are
   # checked against them right after the validation).
   vault_keys: >-

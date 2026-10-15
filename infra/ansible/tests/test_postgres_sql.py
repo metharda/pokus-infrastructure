@@ -26,6 +26,7 @@ from typing import Any
 
 import pytest
 import yaml
+from postgres_testlib import BINDIRS, REQUIRED
 
 import pinka
 from ansible_testlib import (
@@ -55,34 +56,6 @@ PLAN["bootstrap_sql"] = database.bootstrap_sql(PLAN)
 PLAN["restricted_check_sql"] = database.restricted_check_sql(PLAN)
 DB = PLAN["database"]
 VAULT = {role: f"{role}-test-password" for role in PLAN["vault_roles"]}
-
-
-def server_major(bindir: Path) -> str:
-    """The major version of a server installation (``initdb --version``)."""
-    out = subprocess.run(
-        [str(bindir / "initdb"), "--version"], capture_output=True, text=True, check=True
-    ).stdout
-    return out.split()[-1].split(".")[0]
-
-
-def server_bindirs() -> dict[str, Path]:
-    """Every installed server major and its binaries, newest first."""
-    candidates = sorted(
-        Path("/usr/lib/postgresql").glob("*/bin"), key=lambda p: int(p.parent.name), reverse=True
-    )
-    if shutil.which("pg_ctl"):
-        candidates.insert(0, Path(str(shutil.which("pg_ctl"))).parent)
-    found: dict[str, Path] = {}
-    for bindir in candidates:
-        if (bindir / "initdb").is_file():
-            found.setdefault(server_major(bindir), bindir)
-    return found
-
-
-BINDIRS = server_bindirs()
-# The majors that must be tested: CI sets 18, the major the lab pins
-# (versions.lock.yml containers.postgres), installed from PGDG.
-REQUIRED = os.environ.get("PINKA_POSTGRES_REQUIRED", "").split()
 
 
 def test_the_required_servers_are_installed() -> None:

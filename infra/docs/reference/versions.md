@@ -69,6 +69,7 @@ Every image is used by digest; the tag is informational. Verified on 2026-10-05.
 | vllm | `docker.io/vllm/vllm-openai` | `v0.31.0` | `sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3` | linux/amd64, linux/arm64 |
 | query_proxy | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 |
 | cuda_base_test | `docker.io/nvidia/cuda` | `13.0.2-base-ubuntu24.04` | `sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701` | linux/amd64, linux/arm64 |
+| refplat_job | `public.ecr.aws/docker/library/python` | `3.12-slim-trixie` | `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1` | linux/amd64, linux/arm64 |
 
 `vllm` is built on CUDA `13.0.2`: preflight and doctor compare it with the CUDA version the NVIDIA driver supports (BUILD_PROMPT §2.2).
 

@@ -220,6 +220,14 @@ def test_split_inference_pairing() -> None:
         "control_port": 18710,
         "peer": "",
         "renew_days": 30,
+        "key_group": "pinka-inference",
+        "key_mode": "0640",
+    }
+    # The split guard's ports (interpretation 11.13), checked by doctor.
+    assert unpaired["split_guard"] == {
+        "interface": "tailscale0",
+        "ports": [18704, 18710],
+        "peer_record": "/etc/pinka/inference/peer.json",
     }
     assert "pinka-inference-control.service" not in unpaired["units"]
     paired = render(node_role="inference", inference_lab_node="pinka-lab")
@@ -227,8 +235,11 @@ def test_split_inference_pairing() -> None:
     assert paired["units"][-1] == "pinka-inference-control.service"
     lab = render(node_role="lab", inference_remote_node="pinka-gpu")
     assert lab["inference"]["peer"] == "pinka-gpu"
+    assert (lab["inference"]["key_group"], lab["inference"]["key_mode"]) == ("root", "0600")
+    assert lab["split_guard"]["ports"] == [4317]
     assert lab["listeners"]["tailnet_ports"] == [4317]
     assert render()["inference"]["peer"] == ""
+    assert render()["split_guard"] == {}
 
 
 def test_platform_checks_read_the_rendering() -> None:

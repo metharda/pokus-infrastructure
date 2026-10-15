@@ -156,6 +156,10 @@ class PairingTest(unittest.TestCase):
         thread.join(10)
         self.assertEqual(peer.cert_pem, self.inference.cert_pem)
         self.assertEqual(result["peer"].cert_pem, self.lab.cert_pem)
+        # Each side records the other's address as the connection saw it: the
+        # split guard admits only that address (interpretation 11.13).
+        self.assertEqual((peer.address, result["peer"].address), ("127.0.0.1", "127.0.0.1"))
+        self.assertEqual(peer.record("2026-10-14T00:00:00Z")["address"], "127.0.0.1")
 
     def test_server_gives_up_after_failures(self) -> None:
         port = free_port()
@@ -186,7 +190,7 @@ class PairCommandsTest(unittest.TestCase):
                     {"listen": "100.64.0.1", "control_port": 18710}
                 ),
             },
-            commands={"systemctl *": (0, "")},
+            commands={"systemctl *": (0, ""), "nft *": (0, "")},
             euid=euid,
         )
 
@@ -231,10 +235,45 @@ class PairCommandsTest(unittest.TestCase):
             system.written["/etc/pinka/inference/peer.crt"], (self.PEER_CERT + "\n", 0o644)
         )
         self.assertIn("/etc/pinka/inference/peer.json", system.written)
+        # The pairing port is open to the tailnet only while pairing (11.13),
+        # then the guard loads the new peer and the endpoint starts again.
+        window = "inet pinka_split_guard pairing"
         self.assertEqual(
-            [c[:2] for c in system.calls],
-            [["systemctl", "stop"], ["systemctl", "restart"]],
+            [" ".join(c) for c in system.calls],
+            [
+                f"nft add element {window} {{ 18710 timeout 90s }}",
+                "systemctl stop pinka-inference-control.service",
+                f"nft delete element {window} {{ 18710 }}",
+                "systemctl reload-or-restart pinka-split-guard.service",
+                "systemctl restart pinka-inference-control.service",
+            ],
         )
+
+    def test_a_failed_pairing_closes_the_window(self) -> None:
+        system = self.system()
+
+        def serve(*args: Any, log: Any) -> Any:
+            raise pairing.PairingError("no lab node connected in time")
+
+        config = lab(node_role="inference")
+        with self.assertRaisesRegex(commands.CommandError, "no lab node connected"):
+            self.run_quiet(lambda: commands.pair_show(system, config, 30, serve=serve))
+        self.assertEqual(
+            system.calls[-1],
+            ["nft", "delete", "element", "inet", "pinka_split_guard", "pairing", "{ 18710 }"],
+        )
+        self.assertNotIn("/etc/pinka/inference/peer.json", system.written)
+
+    def test_no_pairing_without_the_split_guard(self) -> None:
+        system = self.system()
+        system.commands["nft *"] = (1, "", "Error: No such file or directory")
+        config = lab(node_role="inference")
+        with self.assertRaisesRegex(commands.CommandError, "split guard is not loaded"):
+            self.run_quiet(
+                lambda: commands.pair_show(system, config, 30, serve=lambda *a, **k: None)
+            )
+        # Nothing was stopped and nothing listens.
+        self.assertEqual(len(system.calls), 1)
 
     def test_connect_on_the_lab_node(self) -> None:
         system = self.system()
@@ -255,6 +294,9 @@ class PairCommandsTest(unittest.TestCase):
         self.assertIn("inference_remote_node: pinka-lab", out)
         self.assertEqual(
             system.written["/etc/pinka/inference/peer.crt"], (self.PEER_CERT + "\n", 0o644)
+        )
+        self.assertEqual(
+            system.calls, [["systemctl", "reload-or-restart", "pinka-split-guard.service"]]
         )
 
     def test_refusals(self) -> None:

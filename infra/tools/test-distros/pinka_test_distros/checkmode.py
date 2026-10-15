@@ -13,7 +13,10 @@ Two modes (approved deviation I2):
 - required: ``ansible/check-mode.yml``, the provider-agnostic roles of
   BUILD_PROMPT §11 (base, users_groups, ssh, layout), with nothing skipped;
   the blocking CI job.
-- extended (``make check-mode-extended``): the whole ``ansible/site.yml``.
+- extended (``make check-mode-extended``): the whole ``ansible/site.yml``
+  with the reference platform enabled (BUILD_PROMPT §19.9): the platform
+  role's engine and source steps run; fetching, building and deploying the
+  release need a real host (``make test-distros``).
   Roles whose component source or pins are not verified for the container's
   release are skipped by tag, as the play would refuse them on a real host;
   the summary lists every skipped component as not tested, never as passed.
@@ -34,6 +37,9 @@ from typing import Any
 
 import yaml
 
+from pinka_platform import contract as contract_mod
+from pinka_platform import database
+from pinka_test_distros import refplat
 from pinka_test_distros.incus import Result, Runner
 
 INFRA = Path(__file__).resolve().parents[3]
@@ -65,6 +71,8 @@ FINGERPRINT_RE = re.compile(r"^([0-9A-F]{40}|[0-9A-F]{64})$")
 # The example vault, with a local backup repository (an SFTP one needs the server's host keys).
 VAULT_EXAMPLE = ANSIBLE / "group_vars" / "all" / "vault.yml.example"
 CI_RESTIC_REPOSITORY = "/var/backups/pinka-restic"
+# The vault values of the reference platform in check mode (nothing logs in).
+PLACEHOLDER = "check-mode-placeholder"
 
 
 class CheckModeError(RuntimeError):
@@ -154,15 +162,47 @@ def extra_vars(profile: dict[str, Any], interpreter: str) -> dict[str, Any]:
     }
 
 
-def vault_vars() -> dict[str, Any]:
+def vault_vars(*, platform: bool = False) -> dict[str, Any]:
     """The secrets of the run: the example vault with a local backup repository.
+
+    Args:
+        platform: Add placeholders for the reference platform's database roles
+            and secrets (the extended run enables it).
 
     Returns:
         Vault variables.
     """
     vault: dict[str, Any] = yaml.safe_load(VAULT_EXAMPLE.read_text(encoding="utf-8"))
     vault["vault_restic_repository"] = CI_RESTIC_REPOSITORY
+    if platform:
+        manifest = refplat.manifest()
+        roles = database.plan(manifest, contract_mod.load(), [])["vault_roles"]
+        passwords = dict(vault.get("vault_postgres_passwords") or {})
+        passwords.update({role: PLACEHOLDER for role in roles})
+        vault["vault_postgres_passwords"] = passwords
+        vault["vault_platform_secrets"] = {
+            s["name"]: dict.fromkeys(s["secrets"], PLACEHOLDER)
+            for s in manifest["services"]
+            if s.get("secrets")
+        }
     return vault
+
+
+def platform_vars(commit: str) -> dict[str, Any]:
+    """The host settings that enable the reference platform, as in the test VMs.
+
+    Args:
+        commit: The tested commit (check mode fetches nothing).
+
+    Returns:
+        ``platform``, ``content`` and ``platform_settings``.
+    """
+    repo = f"file://{refplat.GUEST_REPO}"
+    return {
+        "platform": refplat.source(repo, commit, refplat.RELEASE_PATH),
+        "content": {"cases": refplat.source(repo, commit, refplat.CASES_PATH)},
+        "platform_settings": {"ctl": dict(refplat.SETTINGS)},
+    }
 
 
 def _filters() -> ModuleType:
@@ -368,7 +408,13 @@ class CheckMode:
         self._check(self._docker("cp", str(local), f"{self.name}:{GUEST_PROFILE}"), "docker cp")
         return profile, interpreter
 
-    def play(self, variables: dict[str, Any], skip: list[str], playbook: Path) -> Result:
+    def play(
+        self,
+        variables: dict[str, Any],
+        skip: list[str],
+        playbook: Path,
+        vault_variables: dict[str, Any] | None = None,
+    ) -> Result:
         """Run a play in check mode through the docker connection.
 
         The container stands in for ``localhost``, the host the play provisions.
@@ -377,6 +423,7 @@ class CheckMode:
             variables: Extra variables.
             skip: Roles to skip (their tags).
             playbook: The play.
+            vault_variables: The vault's variables (default: :func:`vault_vars`).
 
         Returns:
             The ansible-playbook result.
@@ -385,7 +432,8 @@ class CheckMode:
         extra = self.out_dir / f"{self.key}-vars.json"
         extra.write_text(json.dumps(variables, indent=2), encoding="utf-8")
         vault = self.out_dir / f"{self.key}-vault.json"
-        vault.write_text(json.dumps(vault_vars(), indent=2), encoding="utf-8")
+        secrets = vault_vars() if vault_variables is None else vault_variables
+        vault.write_text(json.dumps(secrets, indent=2), encoding="utf-8")
         inventory = self.out_dir / f"{self.key}-inventory.ini"
         inventory.write_text(
             f"localhost ansible_connection=community.docker.docker ansible_host={self.name}\n",
@@ -433,6 +481,8 @@ def extended_summary(key: str, skipped: dict[str, str], returncode: int) -> str:
         "never counted as passing.",
         "",
         f"- Roles that ran: **{played}**",
+        "- The reference platform `refplat` is enabled: the platform role's engine and source "
+        "steps ran; fetching, building and deploying it are tested by `make test-distros`",
         f"- Components skipped, not tested: **{len(skipped)}**",
         "",
     ]
@@ -451,6 +501,7 @@ def main(
     out_dir: Path,
     *,
     extended: bool = False,
+    commit: str = "HEAD",
     summary: Path | None = None,
     keep: bool = False,
     write: Callable[[str], Any] = print,
@@ -462,8 +513,10 @@ def main(
         key: Key under ``containers.ci_images``.
         run: Command runner.
         out_dir: Directory for the variables, the inventory and the host profile.
-        extended: Run the whole play with unverified components skipped, instead
-            of the provider-agnostic roles with nothing skipped.
+        extended: Run the whole play with unverified components skipped and the
+            reference platform enabled, instead of the provider-agnostic roles
+            with nothing skipped.
+        commit: The tested commit (the reference platform's ref).
         summary: File the extended run appends its Markdown summary to (in CI,
             ``$GITHUB_STEP_SUMMARY``); the summary is always also written to
             ``out_dir``.
@@ -486,7 +539,10 @@ def main(
         for role, reason in sorted(skipped.items()):
             write(f"-- skipping {role}, not tested, refused on this release: {reason}")
         playbook = EXTENDED_PLAYBOOK if extended else REQUIRED_PLAYBOOK
-        result = check.play(extra_vars(profile, interpreter), sorted(skipped), playbook)
+        variables = extra_vars(profile, interpreter)
+        if extended:
+            variables.update(platform_vars(commit))
+        result = check.play(variables, sorted(skipped), playbook, vault_vars(platform=extended))
         write(result.stdout)
         if result.stderr:
             write(result.stderr)

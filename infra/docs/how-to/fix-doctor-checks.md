@@ -162,6 +162,10 @@ is wrong:
 
 - `/etc/pinka/inference/self.crt` or `self.key` is missing: run bootstrap
   with `--tags inference_control`.
+- `self.key` has the wrong owner or mode: it is `root:root 0600` on a lab
+  node (only the root-run forwarder uses it) and `root:pinka-inference 0640`
+  on an inference node (the control endpoint's account reads it). Run
+  bootstrap with `--tags inference_control`, which sets them.
 - The node is paired, but its host_vars file does not name the peer: set
   `inference_lab_node` (inference node) or `inference_remote_node` (lab node)
   to the node in `/etc/pinka/inference/peer.json` and apply it as
@@ -172,7 +176,31 @@ is wrong:
   `self.crt` on that node, run bootstrap with `--tags inference_control`
   (it issues a new certificate) and pair the nodes again.
 
-The check is skipped on a node that is neither paired nor configured.
+The check is skipped on a node that is neither paired nor configured (the
+key's owner and mode are checked even then).
+
+## `inference.split_guard`: another tailnet node can reach the split-inference ports {#check-inference-split_guard}
+
+Lab and inference nodes only. The table `inet pinka_split_guard` admits
+only the paired node's tailnet address to the split-inference ports on
+`tailscale0` (an inference node: the vLLM API and the control port; a lab
+node: OTLP gRPC); before a pairing it admits nobody. One of these is wrong:
+
+- The table is not loaded: run bootstrap with `--tags firewall`, or reload it:
+
+    <!-- qa:skip reason="changes the firewall of a split node" -->
+    ```bash
+    sudo systemctl restart pinka-split-guard.service
+    ```
+
+- The pairing record has no tailnet address (a pairing made before the
+  guard existed): pair the nodes again, as
+  [How to pair an inference node](pair-inference-node.md) describes.
+- The guard admits another address than the record's: reload it as above.
+  If the peer's tailnet address changed (the node joined the tailnet
+  again), pair the nodes again.
+- The pairing port is open: `pinka pair show` is waiting, or was stopped
+  less than a minute ago; the port closes by itself.
 
 ## `gpu.arbiter`: the GPU arbiter's socket, mode or log is wrong {#check-gpu-arbiter}
 
@@ -254,6 +282,23 @@ sudo rm -rf /srv/pinka/training/datasets/<sha256>
 
 `<sha256>` is the dataset's hash from doctor's message. Skipped while no
 dataset is published, and on hosts that do not train.
+
+## `training.caps`: a training job exceeds this host's caps {#check-training-caps}
+
+A warning: a job of the active platform asks for more memory, CPUs or run
+time than this host's `training_caps` allow, so the GPU arbiter refuses
+every run of it (bootstrap printed the same warning when the platform was
+deployed). Either raise the caps in the machine's host_vars and apply them,
+or deploy a release whose jobs ask for less:
+
+<!-- qa:skip reason="changes the lab host" -->
+```bash
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags gpu_arbiter,doctor
+```
+
+`<machine>` is the name of this host's host_vars file, in which
+`training_caps` holds the new values. Skipped on hosts that do not train and
+while the platform declares no job.
 
 ## `training.availability`: whether this host trains {#check-training-availability}
 
@@ -526,8 +571,8 @@ change, and start a new session by restarting the lab.
 ## `resources.cpusets`: lab services are not on their CPUs {#check-resources-cpusets}
 
 `cpuset_services` or `cpuset_targets` (host_vars) names CPUs that this host
-does not have, or `pinka-services.slice` runs on other CPUs than
-`cpuset_services`. On WSL the number of CPUs comes from `processors=` in
+does not have, `pinka-services.slice` runs on other CPUs than
+`cpuset_services`, or the two threads of one core are in different sets. On WSL the number of CPUs comes from `processors=` in
 `.wslconfig`. Set both lists to CPUs the host has (they must not overlap),
 run bootstrap, then restart the lab so that the services and containers start
 in the slice again:
@@ -538,7 +583,13 @@ sudo pinka stop
 sudo pinka start
 ```
 
-"No lab service is running" means the lab is stopped; start it first. See
+"No lab service is running" means the lab is stopped; start it first.
+
+"SMT siblings of one core are split" names the cores whose two threads are
+in different sets: targets on one thread share the core with lab services
+on the other. Move both threads of each named core into the same set (the
+pairs are in `/sys/devices/system/cpu/cpu<n>/topology/thread_siblings_list`),
+run bootstrap and restart the lab as above. See
 [How benchmark targets are isolated](../explanation/target-isolation.md#cpu-sets).
 
 ## `wsl.config`: WSL settings differ from the expectation {#check-wsl-config}

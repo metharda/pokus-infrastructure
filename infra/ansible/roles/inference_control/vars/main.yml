@@ -5,6 +5,11 @@ inference_control_dir: /etc/pinka/inference
 # This node's identity, created on lab and inference nodes.
 inference_control_cert: "{{ inference_control_dir }}/self.crt"
 inference_control_key: "{{ inference_control_dir }}/self.key"
+# The private key: 0640 root:<inference_control_account> on an inference node,
+# whose control endpoint runs as that account; 0600 root on a lab node, where
+# only the root-run forwarder uses it.
+inference_control_key_group: "{{ inference_control_account if node_role == 'inference' else 'root' }}"
+inference_control_key_mode: "{{ '0640' if node_role == 'inference' else '0600' }}"
 # The paired node's certificate and record, written by pinka pair.
 inference_control_peer_cert: "{{ inference_control_dir }}/peer.crt"
 inference_control_peer_record: "{{ inference_control_dir }}/peer.json"

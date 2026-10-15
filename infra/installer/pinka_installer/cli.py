@@ -139,7 +139,13 @@ def cmd_apply(args: argparse.Namespace, paths: Paths) -> int:
         return EXIT_ACTION
     try:
         password = apply.read_password_file(args.vault_password_file)
-        result = apply.plan(loaded, paths, apply.environment_secrets(), password)
+        result = apply.plan(
+            loaded,
+            paths,
+            apply.environment_secrets(),
+            password,
+            smt_cores=apply.read_smt_cores(),
+        )
     except (OSError, vault.VaultError) as exc:
         sys.stderr.write(f"pinka-installer: {exc}\n")
         return EXIT_ACTION

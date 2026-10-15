@@ -5,7 +5,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import io
+import os
+import socket
 import subprocess
+import sys
 import tarfile
 import urllib.error
 import urllib.request
@@ -15,7 +18,7 @@ from typing import Any
 
 import pytest
 
-from pinka_lockcheck import checks, cli, net, openpgp
+from pinka_lockcheck import checks, cli, devsetup, net, openpgp
 
 INFRA = Path(__file__).resolve().parents[3]
 KEYS = Path(__file__).resolve().parent / "test-keys"
@@ -342,13 +345,214 @@ def test_fetch_binary_refuses_an_archive(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["uv"]
 
 
-def test_the_pinned_uv_is_fetched_from_its_archive() -> None:
-    # make setup installs the uv of versions.lock.yml for the V6 tests.
+def test_the_pinned_uv_is_installed_like_bootstrap_does() -> None:
+    # make setup installs the uv of versions.lock.yml (for uv sync when the
+    # uv on PATH is another version, and for the V6 tests) with bootstrap's
+    # checksum-verified install_uv, which needs no Python environment.
     makefile = (INFRA / "Makefile").read_text(encoding="utf-8")
-    assert "$(LOCKCHECK) fetch uv --member uv --dest $@" in makefile
-    assert "export PINKA_UV := $(CURDIR)/$(UV_PINNED)" in makefile
+    rule = makefile[makefile.index("$(UV_PINNED): ") :].split("\n\n", 1)[0]
+    assert rule.startswith("$(UV_PINNED): bootstrap/lib/pins.sh bootstrap/lib/tooling.sh\n")
+    assert 'install_uv "$$1"' in rule
+    assert "UV_PINNED := $(CURDIR)/$(BUILD)/tools/uv" in makefile  # absolute
+    assert "export PINKA_UV := $(UV_PINNED)" in makefile
     entry = checks.load(INFRA / "versions.lock.yml")["binaries"]["uv"]
     assert entry["format"] == "tar.gz"
+
+
+# --- the collections' Galaxy fallback (make setup) -----------------------------------------
+
+
+GALAXY_BIN = Path(sys.executable).parent / "ansible-galaxy"
+DEMO = "pinkatest.demo"
+DEMO_URL = "https://github.com/example-org/demo/releases/download/1.0.0/pinkatest-demo-1.0.0.tar.gz"
+
+
+def closed_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+    return port  # closed again: nothing listens there
+
+
+def galaxy_env(tmp_path: Path) -> dict[str, str]:
+    return {
+        **os.environ,
+        "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+
+
+@pytest.fixture
+def demo(tmp_path: Path) -> dict[str, Any]:
+    """A collection built like a release tarball, its lock and its requirements."""
+    env = galaxy_env(tmp_path)
+    source = tmp_path / "source"
+    subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
+        [str(GALAXY_BIN), "collection", "init", DEMO, "--init-path", str(source)],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    dist = tmp_path / "dist"
+    subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
+        [
+            str(GALAXY_BIN),
+            "collection",
+            "build",
+            str(source / "pinkatest" / "demo"),
+            "--output-path",
+            str(dist),
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    tarball = dist / "pinkatest-demo-1.0.0.tar.gz"
+    content = tarball.read_bytes()
+    requirements = tmp_path / "requirements.yml"
+    requirements.write_text(
+        f'collections:\n  - name: {DEMO}\n    version: "1.0.0"\n', encoding="utf-8"
+    )
+    doc = {
+        "ansible_collections": {
+            "collections": {DEMO: "1.0.0"},
+            "fallback": {DEMO: {"url": DEMO_URL, "sha256": hashlib.sha256(content).hexdigest()}},
+        }
+    }
+    return {"doc": doc, "content": content, "requirements": requirements, "env": env}
+
+
+def recorder(calls: list[list[str]]) -> devsetup.Runner:
+    def run(argv: Any) -> int:
+        calls.append([str(a) for a in argv])
+        return 0
+
+    return run
+
+
+def run_galaxy(env: dict[str, str]) -> Any:
+    def run(argv: Any) -> int:
+        command = [str(GALAXY_BIN), *list(argv)[1:]]
+        done = subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
+            command, check=False, env=env, stdin=subprocess.DEVNULL
+        )
+        return done.returncode
+
+    return run
+
+
+def test_galaxy_unreachable_installs_and_verifies_the_fallback(
+    tmp_path: Path, demo: dict[str, Any]
+) -> None:
+    # Galaxy does not answer (nothing listens on its port): setup downloads the
+    # pinned release tarball, checks its sha256, installs it, and the same
+    # FILES.json check as after a Galaxy install passes.
+    asked: list[str] = []
+
+    def github(url: str, out: Any) -> str:
+        asked.append(url)
+        out.write(demo["content"])
+        return hashlib.sha256(demo["content"]).hexdigest()
+
+    dest = tmp_path / "collections"
+    source = devsetup.install_collections(
+        demo["doc"],
+        demo["requirements"],
+        dest,
+        tmp_path / "downloads",
+        galaxy="ansible-galaxy",
+        server=f"https://127.0.0.1:{closed_port()}",
+        downloader=github,
+        run=run_galaxy(demo["env"]),
+    )
+    assert source == "fallback"
+    assert asked == [DEMO_URL]
+    assert (dest / "ansible_collections" / "pinkatest" / "demo" / "FILES.json").is_file()
+    verify = subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
+        [
+            str(GALAXY_BIN),
+            "collection",
+            "verify",
+            "--offline",
+            "-r",
+            str(demo["requirements"]),
+            "-p",
+            str(dest),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=demo["env"],
+        stdin=subprocess.DEVNULL,
+    )
+    assert verify.returncode == 0, verify.stdout + verify.stderr
+
+
+def test_a_wrong_tarball_checksum_stops_setup(tmp_path: Path, demo: dict[str, Any]) -> None:
+    tampered = demo["content"] + b"x"
+
+    def github(url: str, out: Any) -> str:
+        out.write(tampered)
+        return hashlib.sha256(tampered).hexdigest()
+
+    calls: list[list[str]] = []
+    dest, downloads = tmp_path / "collections", tmp_path / "downloads"
+    with pytest.raises(checks.FetchRefusedError, match=r"sha256 is .*, pinned"):
+        devsetup.install_collections(
+            demo["doc"],
+            demo["requirements"],
+            dest,
+            downloads,
+            galaxy="ansible-galaxy",
+            server=f"https://127.0.0.1:{closed_port()}",
+            downloader=github,
+            run=recorder(calls),
+        )
+    assert calls == []  # nothing was installed
+    assert not dest.exists()
+    assert list(downloads.iterdir()) == []  # and no tarball is kept
+    # An unverified pin never downloads either.
+    doc = copy.deepcopy(demo["doc"])
+    doc["ansible_collections"]["fallback"][DEMO]["sha256"] = "TODO(verify)"
+    with pytest.raises(checks.FetchRefusedError, match=r"pinkatest\.demo is not verified yet"):
+        checks.fetch_collections(doc, downloads, downloader=github)
+    del doc["ansible_collections"]["fallback"][DEMO]
+    with pytest.raises(checks.FetchRefusedError, match="no release tarball pinned"):
+        checks.fetch_collections(doc, downloads, downloader=github)
+
+
+def test_galaxy_reachable_installs_from_galaxy(tmp_path: Path, demo: dict[str, Any]) -> None:
+    calls: list[list[str]] = []
+    source = devsetup.install_collections(
+        demo["doc"],
+        demo["requirements"],
+        tmp_path / "collections",
+        tmp_path / "downloads",
+        galaxy="ansible-galaxy",
+        reachable=lambda url: url == "https://galaxy.ansible.com/api/",
+        downloader=lambda url, out: pytest.fail("no download when Galaxy answers"),
+        run=recorder(calls),
+    )
+    assert source == "galaxy"
+    assert calls == [
+        [
+            "ansible-galaxy",
+            "collection",
+            "install",
+            "--force",
+            "-r",
+            str(demo["requirements"]),
+            "-p",
+            str(tmp_path / "collections"),
+        ]
+    ]
+
+
+def test_the_fallback_tarballs_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
+    # make lock-check downloads them like the binaries once they are verified.
+    wheres = [where for where, _, _ in checks._binary_assets(lock)]
+    for name in lock["ansible_collections"]["collections"]:
+        assert f"ansible_collections.fallback.{name}" in wheres
 
 
 def test_fetch_command_reports_refusals(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -1,0 +1,13 @@
+# Managed by pinka (ansible/roles/firewall/vars/main.yml). Local changes will be overwritten.
+
+# The split-inference guard (BUILD_PROMPT §19.10, interpretation 11.13): the
+# ports on the tailnet interface that only the paired peer's tailnet address
+# reaches (an inference node: the forwarded vLLM API and the control endpoint,
+# whose port is also the pairing port; a lab node: OTLP gRPC from the paired
+# inference node). Role vars, so no inventory widens them.
+firewall_split_guard:
+  interface: "{{ firewall_tailnet_interface }}"
+  ports: >-
+    {{ [pinka_ports.vllm | int, pinka_ports.inference_control | int] if node_role == 'inference'
+       else ([pinka_ports.otlp_grpc | int] if node_role == 'lab' else []) }}
+  peer_record: /etc/pinka/inference/peer.json

@@ -79,8 +79,10 @@ shown greyed out with the reason.
    tailnet host. A *lab* node and an *inference* node are paired after both
    are installed (see
    [How to run inference on a separate GPU node](pair-inference-node.md)).
-3. **Resources**: the CPU split between lab services and targets. On WSL,
-   enter the memory and processors you set in `.wslconfig`.
+3. **Resources**: the CPU split between lab services and targets. The
+   suggestion keeps both threads of a core in one set; a yellow warning
+   shows when your split separates them. On WSL, enter the memory and
+   processors you set in `.wslconfig`.
 4. **Storage**: a loop file, or a dedicated disk. Choosing a disk opens a red
    dialog in which you type its full `/dev/disk/by-id/` path; a disk with
    existing signatures also needs `WIPE`.

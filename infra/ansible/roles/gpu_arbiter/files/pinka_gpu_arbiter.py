@@ -14,11 +14,12 @@ deploy helper. Exactly one mode holds at a time: ``idle``, ``serving
   account or root. It sends one JSON line and gets one back: ``status``,
   ``serve``, ``idle``, ``train`` and ``publish-dataset``; on an inference
   node the control endpoint may only ask for ``status`` and ``serve``.
-* ``boot``: run once per boot by ``pinka-gpu-arbiter.service``. A run left in
-  training is interrupted; it resumes from its checkpoints if its job is
-  ``resumable``, otherwise the previous deployment comes back or the GPU
-  stays idle. Without one, the default deployment is served or the GPU stays
-  idle (``gpu_arbiter.after_boot``).
+* ``boot``: run by ``pinka-gpu-arbiter.service`` whenever the lab starts:
+  after a reboot and on ``pinka start``. A run the lab's stop or a reboot
+  interrupted resumes from its checkpoints if its job is ``resumable`` (the
+  resume is a transition of its own), otherwise the previous deployment
+  comes back or the GPU stays idle. Without one, the default deployment is
+  served or the GPU stays idle (``gpu_arbiter.after_boot``).
 * ``run-job <run>``: the job runner of ``pinka-gpu-job@<run>.service``: the
   container ``pinka-job-<run>`` with the options fixed below, then the
   adapter's registration and the way back to serving or idle.
@@ -112,6 +113,11 @@ JOB_UNIT = "pinka-gpu-job@{run}.service"
 JOB_CONTAINER = "pinka-job-{run}"
 DATASETS_GROUP = "pinka-datasets"
 TRANSITIONS_SHOWN = 10
+# A run's status: starting, resuming and running while it holds the GPU;
+# suspended when the lab stopped it (``pinka stop``, a stopped job unit, a
+# shutdown) and it resumes when the lab starts; the rest are final.
+ACTIVE = ("starting", "resuming", "running")
+SUSPENDED = "suspended"
 FINAL = ("succeeded", "failed", "interrupted")
 # Mount points inside a job's container (docs/reference/gpu-arbiter.md).
 JOB_MODEL = "/model"
@@ -120,6 +126,20 @@ JOB_OUTPUT = "/output"
 JOB_CHECKPOINTS = "/checkpoints"
 # The adapter a job leaves in its output directory.
 JOB_ADAPTER = "adapter"
+# Infra's caps on training (``training_caps``, §7.18, §8.1): the job's run time,
+# memory and CPUs (the manifest's values must stay within them), the size of a
+# published dataset, the combined size of a run's output and checkpoints, and
+# the job's /tmp (a tmpfs, counted against the job's memory).
+DEFAULT_CAPS: Mapping[str, Any] = {
+    "timeout_seconds": 86400,
+    "memory_max": "24G",
+    "cpus": 8,
+    "dataset_max": "8G",
+    "run_storage_max": "16G",
+    "tmp_max": "1G",
+}
+# How often a run's output and checkpoints are measured while it runs.
+STORAGE_CHECK_SECONDS = 30
 
 
 class ArbiterError(Exception):
@@ -167,7 +187,9 @@ class Config:
         after_boot: ``serve`` (the default deployment) or ``idle``.
         restore_after_training: Default of a submission's ``restore``.
         default_deployment: ``<id>@<version>`` served after boot, or None.
-        caps: ``training_caps``: ``timeout_seconds``, ``memory_max``, ``cpus``.
+        caps: ``training_caps``: ``timeout_seconds``, ``memory_max``, ``cpus``,
+            ``dataset_max``, ``run_storage_max``, ``tmp_max``; a key left out
+            takes its default (:data:`DEFAULT_CAPS`).
         gpu_args: Docker arguments that give a container the GPU (as for vLLM).
         vllm_port: vLLM's port on 127.0.0.1.
         otlp: OTLP gRPC endpoint of the collector.
@@ -183,9 +205,7 @@ class Config:
     after_boot: str = "serve"
     restore_after_training: bool = True
     default_deployment: str | None = None
-    caps: Mapping[str, Any] = dataclasses.field(
-        default_factory=lambda: {"timeout_seconds": 86400, "memory_max": "24G", "cpus": 8}
-    )
+    caps: Mapping[str, Any] = dataclasses.field(default_factory=lambda: dict(DEFAULT_CAPS))
     gpu_args: tuple[str, ...] = ("--device", "nvidia.com/gpu=all")
     vllm_port: int = 18704
     otlp: str = "http://127.0.0.1:4317"
@@ -198,6 +218,28 @@ class Config:
     def trains(self) -> bool:
         """Training runs only on a full node (§19.10)."""
         return self.node_role == "full"
+
+    def cap(self, name: str) -> Any:  # noqa: ANN401 - a number or a size
+        """One of ``training_caps``, its default when the settings leave it out.
+
+        Args:
+            name: The cap.
+
+        Returns:
+            Its value.
+        """
+        return self.caps.get(name, DEFAULT_CAPS[name])
+
+    def cap_bytes(self, name: str) -> int:
+        """A size cap in bytes.
+
+        Args:
+            name: ``memory_max``, ``dataset_max``, ``run_storage_max`` or ``tmp_max``.
+
+        Returns:
+            Bytes.
+        """
+        return _bytes(str(self.cap(name)))
 
 
 def load_config(path: Path) -> Config:
@@ -249,22 +291,33 @@ class System:
         self.run(["systemctl", "start", "--no-block", JOB_UNIT.format(run=run)])
 
     terminated = False
+    check_interval: float = STORAGE_CHECK_SECONDS
 
-    def docker_run(self, argv: Sequence[str], name: str, timeout: float, grace: int) -> int | None:
+    def docker_run(
+        self,
+        argv: Sequence[str],
+        name: str,
+        timeout: float,
+        grace: int,
+        watch: Callable[[], str | None],
+    ) -> tuple[int | None, str | None]:
         """Run a job's container in the foreground.
 
         A SIGTERM to the runner (its unit stopped) stops the container with
         the same grace and sets :attr:`terminated`, so the run is still
-        settled.
+        settled. Every :attr:`check_interval` seconds the runner asks
+        ``watch``; a reason stops the container.
 
         Args:
             argv: ``docker run ...``.
             name: The container's name.
             timeout: Seconds before the container is stopped.
             grace: Seconds ``docker stop`` waits before it kills.
+            watch: Returns why the run must stop, or None.
 
         Returns:
-            The container's exit status, or None when it ran out of time.
+            The container's exit status (None when it was stopped) and why it
+            was stopped (``timeout`` or the watch's reason; None otherwise).
         """
 
         def stop(signum: int, frame: object) -> None:
@@ -273,14 +326,37 @@ class System:
 
         previous = signal.signal(signal.SIGTERM, stop)
         process = subprocess.Popen(list(argv))  # noqa: S603 - argv built by container_argv
+        deadline = time.monotonic() + timeout
         try:
-            return process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
+            while True:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    reason = "timeout"
+                    break
+                try:
+                    return process.wait(timeout=min(left, self.check_interval)), None
+                except subprocess.TimeoutExpired:
+                    found = watch()
+                    if found:
+                        reason = found
+                        break
             self.stop_container(name, grace)
             process.wait()
-            return None
+            return None, reason
         finally:
             signal.signal(signal.SIGTERM, previous)
+
+    def free_bytes(self, path: Path) -> int:
+        """Free space for unprivileged writers on the file system of a path.
+
+        Args:
+            path: A path on it.
+
+        Returns:
+            Bytes.
+        """
+        info = os.statvfs(path)
+        return info.f_bavail * info.f_frsize
 
     def stop_container(self, name: str, grace: int) -> None:
         """Ask a container to stop (SIGTERM, then SIGKILL after the grace).
@@ -866,16 +942,20 @@ class Arbiter:
             changed = self._serve_locked(state, deployment, requester)
         return {"ok": True, "mode": "serving", "deployment": deployment, "changed": changed}
 
-    def idle(self, requester: str, *, wait: bool = True) -> dict[str, Any]:
+    def idle(self, requester: str, *, wait: bool = True, resume: bool = False) -> dict[str, Any]:
         """Stop serving, or stop the running job (``idle``).
 
-        A running job gets ``stop_grace`` seconds to checkpoint; it ends
+        A running job gets ``stop_grace`` seconds to checkpoint. It ends
         interrupted if its job is resumable, failed otherwise, and the GPU
-        stays idle.
+        stays idle. With ``resume`` (``pinka stop`` and ``update-host``: the
+        lab stops), a resumable job's run is suspended instead: the GPU stays
+        reserved for it and it resumes when the lab starts, as after a
+        reboot. An idle request without ``resume`` ends a suspended run.
 
         Args:
             requester: Who asked.
             wait: Wait until the job's runner has settled the run.
+            resume: The lab stops; a resumable run resumes when it starts.
 
         Returns:
             The answer.
@@ -891,7 +971,15 @@ class Arbiter:
                 return {"ok": True, "mode": "idle"}
             run = str(state["run"])
             record = self.run_record(run)
+            if record["status"] == SUSPENDED:
+                if resume:
+                    return {"ok": True, "mode": "training", "run": run, "suspended": True}
+                record["stop_requested"] = requester
+                self._settle(state, record, "interrupted", f"ended by {requester} while suspended")
+                return {"ok": True, "mode": self.state()["mode"], "run": run}
             record["stop_requested"] = requester
+            if resume:
+                record["resume_on_start"] = True
             self._save_run(record)
         self.system.stop_container(JOB_CONTAINER.format(run=run), self.config.stop_grace)
         if not wait:
@@ -899,8 +987,11 @@ class Arbiter:
         limit = self.config.stop_grace + 60
         deadline = self.system.now() + dt.timedelta(seconds=limit)
         while self.system.now() < deadline:
-            if self.state()["mode"] != "training":
-                return {"ok": True, "mode": "idle", "run": run}
+            status = self.run_record(run)["status"]
+            if status == SUSPENDED:
+                return {"ok": True, "mode": "training", "run": run, "suspended": True}
+            if status not in ACTIVE:
+                return {"ok": True, "mode": self.state()["mode"], "run": run}
             self.system.sleep(2)
         raise ArbiterError(f"run {run} did not end within {limit}s")
 
@@ -934,6 +1025,7 @@ class Arbiter:
         for digest in clean["datasets"].values():
             self.check_dataset(digest)
         self._check_caps(job)
+        self._check_disk()
         if int(job["gpus"]) > 0 and not self.config.gpu_args:
             raise ArbiterError(
                 f"job {job_name} needs the GPU, which no container gets on this host"
@@ -1035,13 +1127,35 @@ class Arbiter:
         raise ArbiterError(f"the active platform declares no job {name!r}")
 
     def _check_caps(self, job: Mapping[str, Any]) -> None:
-        caps = self.config.caps
-        if int(job["timeout_seconds"]) > int(caps["timeout_seconds"]):
-            raise ArbiterError(f"job {job['name']}: timeout over the cap {caps['timeout_seconds']}")
-        if _bytes(str(job["memory_max"])) > _bytes(str(caps["memory_max"])):
-            raise ArbiterError(f"job {job['name']}: memory over the cap {caps['memory_max']}")
-        if float(job["cpus"]) > float(caps["cpus"]):
-            raise ArbiterError(f"job {job['name']}: CPUs over the cap {caps['cpus']}")
+        cap = self.config.cap
+        if int(job["timeout_seconds"]) > int(cap("timeout_seconds")):
+            raise ArbiterError(f"job {job['name']}: timeout over the cap {cap('timeout_seconds')}")
+        if _bytes(str(job["memory_max"])) > self.config.cap_bytes("memory_max"):
+            raise ArbiterError(f"job {job['name']}: memory over the cap {cap('memory_max')}")
+        if float(job["cpus"]) > float(cap("cpus")):
+            raise ArbiterError(f"job {job['name']}: CPUs over the cap {cap('cpus')}")
+
+    def _check_disk(self) -> None:
+        """A run may start only with room for its whole output and checkpoints."""
+        jobs = self.paths.training / "jobs"
+        needed = self.config.cap_bytes("run_storage_max")
+        free = self.system.free_bytes(jobs)
+        if free < needed:
+            raise ArbiterError(
+                f"{jobs} has {_size_text(free)} free; a run needs "
+                f"{self.config.cap('run_storage_max')} (training_caps.run_storage_max)"
+            )
+
+    def _storage_over(self, run: str) -> str | None:
+        """Why a running job must stop: its output and checkpoints over the cap."""
+        directory = self.paths.training / "jobs" / run
+        used = sum(_used_bytes(directory / sub) for sub in ("output", "checkpoints"))
+        if used > self.config.cap_bytes("run_storage_max"):
+            return (
+                f"output and checkpoints use {_size_text(used)}, over the cap "
+                f"{self.config.cap('run_storage_max')} (training_caps.run_storage_max)"
+            )
+        return None
 
     # --- datasets ------------------------------------------------------------
 
@@ -1068,8 +1182,15 @@ class Arbiter:
         if not isinstance(provenance, dict) or provenance.get("dataset_sha256") != digest:
             raise ArbiterError(f"dataset {digest}: PROVENANCE.json names another dataset")
         check_instances(provenance.get("instances"))
-        if tree_hash(tree_files(directory, exclude=(PROVENANCE,))) != digest:
+        files = tree_files(directory, exclude=(PROVENANCE,))
+        if tree_hash(files) != digest:
             raise ArbiterError(f"dataset {digest}: its files do not match its hash")
+        size = sum(int(f["size"]) for f in files)
+        if size > self.config.cap_bytes("dataset_max"):
+            raise ArbiterError(
+                f"dataset {digest} holds {_size_text(size)}, over the cap "
+                f"{self.config.cap('dataset_max')} (training_caps.dataset_max)"
+            )
         return directory
 
     def publish_dataset(
@@ -1107,7 +1228,14 @@ class Arbiter:
         temp = Path(tempfile.mkdtemp(prefix=".publish-", dir=datasets))
         try:
             owner = None if requester == "root" else self.system.account(self.config.peer)[0]
-            files = copy_tree(src, temp, owner)
+            limit = self.config.cap_bytes("dataset_max")
+            try:
+                files = copy_tree(src, temp, owner, limit=limit)
+            except SizeCapError:
+                raise ArbiterError(
+                    f"{source} is larger than the cap {self.config.cap('dataset_max')} "
+                    "(training_caps.dataset_max)"
+                ) from None
             if not files:
                 raise ArbiterError(f"{source} holds no files")
             digest = tree_hash(files)
@@ -1156,9 +1284,13 @@ class Arbiter:
             active = json.loads(self.paths.active.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raise ArbiterError("no platform is active (active.json)") from None
-        release = active.get("release", {}) if isinstance(active, dict) else {}
+        if not isinstance(active, dict):
+            raise ArbiterError("active.json is not an object")
+        release = active.get("release", {})
         return {
-            "name": active.get("platform"),
+            # active.json (contract/records/active-platform.schema.json) names
+            # the platform under "name".
+            "name": active.get("name"),
             "version": active.get("version"),
             "commit": release.get("commit"),
         }
@@ -1192,6 +1324,8 @@ class Arbiter:
             "--pull",
             "never",
             *FIXED_OPTIONS,
+            "--tmpfs",
+            f"{JOB_TMP}:{TMP_OPTIONS},size={self._tmp_bytes(job)}",
             "--user",
             f"{uid}:{gid}",
             "--group-add",
@@ -1234,6 +1368,14 @@ class Arbiter:
         ]
         return argv
 
+    def _tmp_bytes(self, job: Mapping[str, Any]) -> int:
+        """The size of a job's /tmp: ``tmp_max``, never more than its memory.
+
+        A tmpfs keeps its files in memory, which the kernel charges to the
+        container's memory limit, so /tmp can never take the job past it.
+        """
+        return min(self.config.cap_bytes("tmp_max"), _bytes(str(job["memory_max"])))
+
     def run_job(self, run: str) -> int:
         """Run a job's container and settle the run (``pinka-gpu-job@<run>``).
 
@@ -1249,23 +1391,26 @@ class Arbiter:
             return 1
         record = self.run_record(run)
         started = self.system.now()
-        code = self.system.docker_run(
+        code, reason = self.system.docker_run(
             argv,
             JOB_CONTAINER.format(run=run),
             float(record["spec"]["timeout_seconds"]),
             self.config.stop_grace,
+            lambda: self._storage_over(run),
         )
         seconds = int((self.system.now() - started).total_seconds())
         with self.lock():
             record = self.run_record(run)
             state = self.state()
             if self.system.terminated and not record.get("stop_requested"):
-                record["stop_requested"] = "systemd"
+                # The unit was stopped: the lab stops or the host shuts down.
+                record.update({"stop_requested": "systemd", "resume_on_start": True})
             if record.get("stop_requested"):
-                status = "interrupted" if record["spec"]["resumable"] else "failed"
-                detail = f"stopped by {record['stop_requested']}"
-            elif code is None:
+                return self._stopped(state, record, "")
+            if reason == "timeout":
                 status, detail = "failed", f"timeout after {seconds}s"
+            elif reason:
+                status, detail = "failed", reason
             elif code != 0:
                 status, detail = "failed", f"exit status {code}"
             else:
@@ -1291,12 +1436,10 @@ class Arbiter:
             self.system.log(f"run {run} is {record['status']}; not starting it")
             return None
         if record.get("stop_requested"):
-            status = "interrupted" if record["spec"]["resumable"] else "failed"
-            self._settle(
-                state, record, status, f"stopped by {record['stop_requested']} before it ran"
-            )
+            self._stopped(state, record, " before it ran")
             return None
         try:
+            self._check_disk()
             argv = self.container_argv(record, resume=record["status"] == "resuming")
         except ArbiterError as exc:
             self._settle(state, record, "failed", str(exc))
@@ -1310,6 +1453,28 @@ class Arbiter:
         )
         self._save_run(record)
         return argv
+
+    def _stopped(self, state: dict[str, Any], record: dict[str, Any], when: str) -> int:
+        """Settle or suspend a run that was asked to stop; the lock is held."""
+        who = str(record["stop_requested"])
+        if not record["spec"]["resumable"]:
+            return self._settle(state, record, "failed", f"stopped by {who}{when}")
+        if not record.get("resume_on_start"):
+            return self._settle(state, record, "interrupted", f"stopped by {who}{when}")
+        for key in ("stop_requested", "resume_on_start"):
+            record.pop(key, None)
+        detail = f"stopped by {who}{when} as the lab stopped; resumes when the lab starts"
+        record.update({"status": SUSPENDED, "detail": detail})
+        self._save_run(record)
+        self._transition(
+            state,
+            {"mode": "training", "run": record["run"], "previous": state["previous"]},
+            requester=who,
+            outcome=SUSPENDED,
+            detail=detail,
+            job=str(record["job"]),
+        )
+        return 1
 
     def _settle(
         self, state: dict[str, Any], record: dict[str, Any], status: str, detail: str
@@ -1429,12 +1594,14 @@ class Arbiter:
     def boot(self) -> dict[str, Any]:
         """Settle the GPU when the lab starts (``pinka-gpu-arbiter.service``).
 
-        After a reboot, a run left in training resumes (resumable jobs) or
-        ends interrupted, and the default deployment is served or the GPU
-        stays idle (``after_boot``). When the lab starts again within the same
-        boot (``pinka start`` after ``pinka stop``), a running job keeps
-        running, a serving deployment is brought back if it stopped, and an
-        idle GPU follows ``after_boot`` as after a reboot.
+        A run the lab's stop suspended (``pinka stop``, a stopped job unit, a
+        shutdown) or a crash left in training resumes from its checkpoints
+        (resumable jobs; logged as a transition) or ends interrupted, the
+        same after a reboot and on ``pinka start``. Otherwise the default
+        deployment is served or the GPU stays idle (``after_boot``). When the
+        lab starts again within the same boot, a running job keeps running, a
+        serving deployment is brought back if it stopped, and an idle GPU
+        follows ``after_boot`` as after a reboot.
 
         Returns:
             The mode afterwards.
@@ -1447,9 +1614,11 @@ class Arbiter:
                 state["boot_id"] = current
                 self._save_state(state)
             if state["mode"] == "training":
-                if same_boot:
+                record = self.run_record(str(state["run"]))
+                if same_boot and record["status"] != SUSPENDED:
                     return {"ok": True, "mode": "training", "run": state["run"]}
-                return self._interrupted_by_reboot(state)
+                cause = "interrupted by a reboot" if not same_boot else "the lab started again"
+                return self._resume(state, record, cause)
             if same_boot and state["mode"] == "serving":
                 target = str(state["deployment"])
             elif self.config.after_boot == "serve" and self.config.serves:
@@ -1465,22 +1634,22 @@ class Arbiter:
                 return {"ok": False, "error": str(exc)}
             return {"ok": True, "mode": self.state()["mode"]}
 
-    def _interrupted_by_reboot(self, state: dict[str, Any]) -> dict[str, Any]:
-        record = self.run_record(str(state["run"]))
+    def _resume(self, state: dict[str, Any], record: dict[str, Any], cause: str) -> dict[str, Any]:
+        """Resume an interrupted or suspended run, or end it; the lock is held."""
         if record["spec"]["resumable"] and self.config.trains:
-            record.update({"status": "resuming", "detail": "interrupted by a reboot"})
+            record.update({"status": "resuming", "detail": cause})
             self._save_run(record)
             self._transition(
                 state,
                 {"mode": "training", "run": record["run"], "previous": state["previous"]},
                 requester="boot",
                 outcome="resumed",
-                detail="interrupted by a reboot; resuming from its checkpoints",
+                detail=f"{cause}; resuming from its checkpoints",
                 job=str(record["job"]),
             )
             self.system.start_job(str(record["run"]))
             return {"ok": True, "mode": "training", "run": record["run"]}
-        self._settle(state, record, "interrupted", "interrupted by a reboot")
+        self._settle(state, record, "interrupted", cause)
         return {"ok": True, "mode": self.state()["mode"]}
 
     # --- the socket ------------------------------------------------------------------
@@ -1517,14 +1686,17 @@ class Arbiter:
             "train": {"request", "job", "submission"},
             "publish-dataset": {"request", "source", "provenance"},
         }[kind]
-        if set(request) != expected:
+        optional = {"resume"} if kind == "idle" and uid == 0 else set()
+        if not expected <= set(request) <= expected | optional:
             raise ArbiterError(f"{kind} takes exactly {', '.join(sorted(expected))}")
         if kind == "status":
             return self.status()
         if kind == "serve":
             return self.serve(request["deployment"], requester)
         if kind == "idle":
-            return self.idle(requester)
+            if not isinstance(request.get("resume", False), bool):
+                raise ArbiterError("resume must be true or false")
+            return self.idle(requester, resume=request.get("resume", False))
         if kind == "train":
             if not isinstance(request["job"], str) or not isinstance(request["submission"], dict):
                 raise ArbiterError("train takes a job name and a submission object")
@@ -1561,15 +1733,16 @@ class Arbiter:
 
 
 # Infra's options of every job container (§7.18), never taken from the manifest:
-# no network, a read-only root file system with a private /tmp, no
-# capabilities, no new privileges, Docker's default seccomp profile (nothing
-# overrides it), and no host PID, IPC, network or user namespace.
+# no network, a read-only root file system with a private /tmp (a tmpfs of
+# ``tmp_max``, see Arbiter._tmp_bytes), no capabilities, no new privileges,
+# Docker's default seccomp profile (nothing overrides it), and no host PID,
+# IPC, network or user namespace.
+JOB_TMP = "/tmp"  # noqa: S108 - the container's own private /tmp
+TMP_OPTIONS = "rw,nosuid,nodev"
 FIXED_OPTIONS = (
     "--network",
     "none",
     "--read-only",
-    "--tmpfs",
-    "/tmp:rw,nosuid,nodev",  # noqa: S108 - the container's own private /tmp
     "--cap-drop",
     "ALL",
     "--security-opt",
@@ -1677,6 +1850,38 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+# What a path of a dataset or adapter may not hold: a control character or a
+# backslash (sha256sum escapes both, and a newline would end its line).
+HASH_PATH_FORBIDDEN = re.compile(r"[\x00-\x1f\x7f\\]")
+
+
+def hash_path(relative: str) -> str:
+    """A file's path as it enters a tree hash, refused if the line format cannot hold it.
+
+    Args:
+        relative: The path relative to the tree's root, with ``/`` separators.
+
+    Returns:
+        The path.
+
+    Raises:
+        ArbiterError: If it is not UTF-8 or holds a control character or a
+            backslash.
+    """
+    try:
+        relative.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ArbiterError(f"{relative!r}: a file name that is not UTF-8") from None
+    if HASH_PATH_FORBIDDEN.search(relative):
+        raise ArbiterError(f"{relative!r}: a file name with a control character or a backslash")
+    return relative
+
+
+def _path_order(entry: Mapping[str, Any]) -> bytes:
+    """Sort key of a tree hash: the path's UTF-8 bytes (``LC_ALL=C sort``)."""
+    return str(entry["path"]).encode("utf-8")
+
+
 def tree_files(directory: Path, exclude: Sequence[str] = ()) -> list[dict[str, Any]]:
     """Every regular file below a directory, with its hash and size, sorted by path.
 
@@ -1688,12 +1893,14 @@ def tree_files(directory: Path, exclude: Sequence[str] = ()) -> list[dict[str, A
         ``{path, sha256, size}`` per file.
 
     Raises:
-        ArbiterError: On a link, a special file or a setuid or setgid file.
+        ArbiterError: On a link, a special file, a setuid or setgid file, or a
+            name :func:`hash_path` refuses.
     """
     out = []
     for root, dirs, names in os.walk(directory):
         for name in [*dirs, *names]:
             path = Path(root) / name
+            hash_path(path.relative_to(directory).as_posix())
             info = path.lstat()
             if stat.S_ISLNK(info.st_mode) or not (
                 stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)
@@ -1709,11 +1916,19 @@ def tree_files(directory: Path, exclude: Sequence[str] = ()) -> list[dict[str, A
             out.append(
                 {"path": relative, "sha256": _sha256_file(path), "size": path.stat().st_size}
             )
-    return sorted(out, key=lambda f: f["path"])
+    return sorted(out, key=_path_order)
 
 
 def tree_hash(files: Sequence[Mapping[str, Any]]) -> str:
-    """The hash of a dataset or adapter: SHA-256 of ``sha256sum``-style lines.
+    """The hash of a dataset or adapter, the same on every machine.
+
+    One line per regular file, ``<sha256>  <path>`` and a newline: the
+    file's SHA-256 in lowercase hex, two spaces, its path relative to the
+    tree's root with ``/`` separators and no leading ``./`` (what
+    ``sha256sum`` prints). The lines are sorted by the path's UTF-8 bytes,
+    as ``LC_ALL=C sort`` sorts them, whatever the locale; the hash is the
+    SHA-256, in lowercase hex, of their UTF-8 encoding. A path that is not
+    UTF-8 or holds a control character or a backslash is refused.
 
     Args:
         files: :func:`tree_files` output.
@@ -1721,11 +1936,18 @@ def tree_hash(files: Sequence[Mapping[str, Any]]) -> str:
     Returns:
         Hex digest.
     """
-    lines = "".join(f"{f['sha256']}  {f['path']}\n" for f in sorted(files, key=lambda f: f["path"]))
+    ordered = sorted(files, key=lambda f: hash_path(str(f["path"])).encode("utf-8"))
+    lines = "".join(f"{f['sha256']}  {f['path']}\n" for f in ordered)
     return hashlib.sha256(lines.encode("utf-8")).hexdigest()
 
 
-def copy_tree(source: Path, target: Path, owner: int | None) -> list[dict[str, Any]]:
+class SizeCapError(ArbiterError):
+    """A copy grew larger than its cap."""
+
+
+def copy_tree(
+    source: Path, target: Path, owner: int | None, *, limit: int | None = None
+) -> list[dict[str, Any]]:
     """Copy regular files and directories, hashing what was copied.
 
     The walk goes through directory file descriptors and opens nothing by a
@@ -1738,15 +1960,19 @@ def copy_tree(source: Path, target: Path, owner: int | None) -> list[dict[str, A
         source: The directory to copy.
         target: An existing, empty directory.
         owner: UID every entry must belong to, or None (root's own request).
+        limit: Bytes the copy may hold at most; the copy stops as soon as it
+            would hold more.
 
     Returns:
         :func:`tree_files` of the copy.
 
     Raises:
-        ArbiterError: On a link, a special file, a setuid or setgid file, or
-            an entry of another owner.
+        ArbiterError: On a link, a special file, a setuid or setgid file, an
+            entry of another owner, or a name :func:`hash_path` refuses.
+        SizeCapError: When the files hold more than ``limit``.
     """
     out: list[dict[str, Any]] = []
+    budget = [limit]
     try:
         top = os.open(source, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:
@@ -1754,10 +1980,19 @@ def copy_tree(source: Path, target: Path, owner: int | None) -> list[dict[str, A
     try:
         if owner is not None and os.fstat(top).st_uid != owner:
             raise ArbiterError(f"{source} does not belong to the requester")
-        _copy_dir(top, source=source, target=target, relative="", owner=owner, out=out, depth=0)
+        _copy_dir(
+            top,
+            source=source,
+            target=target,
+            relative="",
+            owner=owner,
+            out=out,
+            depth=0,
+            budget=budget,
+        )
     finally:
         os.close(top)
-    return sorted(out, key=lambda f: f["path"])
+    return sorted(out, key=_path_order)
 
 
 MAX_DEPTH = 64
@@ -1772,11 +2007,12 @@ def _copy_dir(
     owner: int | None,
     out: list[dict[str, Any]],
     depth: int,
+    budget: list[int | None],
 ) -> None:
     if depth > MAX_DEPTH:
         raise ArbiterError(f"{source}: directories nested deeper than {MAX_DEPTH}")
     for name in sorted(os.listdir(fd)):
-        rel = f"{relative}/{name}" if relative else name
+        rel = hash_path(f"{relative}/{name}" if relative else name)
         info = os.stat(name, dir_fd=fd, follow_symlinks=False)
         if info.st_mode & (stat.S_ISUID | stat.S_ISGID):
             raise ArbiterError(f"{source / rel} is setuid or setgid")
@@ -1794,28 +2030,51 @@ def _copy_dir(
                     owner=owner,
                     out=out,
                     depth=depth + 1,
+                    budget=budget,
                 )
             finally:
                 os.close(child)
         elif stat.S_ISREG(info.st_mode):
-            try:
-                handle_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
-            except OSError:
-                raise ArbiterError(f"{source / rel} is not a regular file") from None
-            with os.fdopen(handle_fd, "rb") as handle:
-                opened = os.fstat(handle.fileno())
-                if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
-                    raise ArbiterError(f"{source / rel} changed while it was copied")
-                digest = hashlib.sha256()
-                size = 0
-                with (target / rel).open("xb") as copy:
-                    for chunk in iter(lambda: handle.read(1 << 20), b""):
-                        digest.update(chunk)
-                        size += len(chunk)
-                        copy.write(chunk)
-            out.append({"path": rel, "sha256": digest.hexdigest(), "size": size})
+            out.append(
+                _copy_file(
+                    fd, name, info, source=source / rel, target=target / rel, rel=rel, budget=budget
+                )
+            )
         else:
             raise ArbiterError(f"{source / rel} is not a regular file or directory")
+
+
+def _copy_file(
+    fd: int,
+    name: str,
+    info: os.stat_result,
+    *,
+    source: Path,
+    target: Path,
+    rel: str,
+    budget: list[int | None],
+) -> dict[str, Any]:
+    """Copy one regular file opened relative to its directory, hashing the copy."""
+    try:
+        handle_fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    except OSError:
+        raise ArbiterError(f"{source} is not a regular file") from None
+    with os.fdopen(handle_fd, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+            raise ArbiterError(f"{source} changed while it was copied")
+        digest = hashlib.sha256()
+        size = 0
+        with target.open("xb") as copy:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+                size += len(chunk)
+                if budget[0] is not None:
+                    budget[0] -= len(chunk)
+                    if budget[0] < 0:
+                        raise SizeCapError(f"{source} makes the copy larger than its cap")
+                copy.write(chunk)
+    return {"path": rel, "sha256": digest.hexdigest(), "size": size}
 
 
 def _model_lineage(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -1836,6 +2095,25 @@ def _bytes(size: str) -> int:
         raise ArbiterError(f"invalid size {size!r}")
     power: int = "_KMGT".index(match[2] or "_")
     return int(match[1]) * (1 << (10 * power))
+
+
+def _size_text(size: int) -> str:
+    for unit, power in (("T", 40), ("G", 30), ("M", 20), ("K", 10)):
+        if size >= 1 << power:
+            return f"{size / (1 << power):.1f}{unit}"
+    return f"{size}B"
+
+
+def _used_bytes(directory: Path) -> int:
+    """Bytes of the regular files below a directory (links not followed)."""
+    total = 0
+    for root, _dirs, names in os.walk(directory):
+        for name in names:
+            with contextlib.suppress(OSError):
+                info = (Path(root) / name).lstat()
+                if stat.S_ISREG(info.st_mode):
+                    total += info.st_size
+    return total
 
 
 def _stamp(moment: dt.datetime) -> str:

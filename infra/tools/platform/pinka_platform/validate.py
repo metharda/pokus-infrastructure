@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from pinka_platform import checks, names, release, schema
-from pinka_platform.contract import Contract
+from pinka_platform.contract import Contract, size_bytes
 from pinka_platform.loader import MANIFEST_NAME, load_file, load_text
 from pinka_platform.problems import ManifestError, Problem
 
@@ -158,6 +158,37 @@ def summary(manifest: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
         "tools": list(manifest.get("tools", [])),
         "cli": manifest.get("cli", {}).get("name"),
     }
+
+
+def caps_warnings(manifest: Mapping[str, Any], caps: Mapping[str, Any]) -> list[str]:
+    """The jobs whose resources exceed this host's ``training_caps`` (§7.18, §8.1).
+
+    The contract's own caps refuse a manifest; the host's are lower and only
+    warned about here, because the GPU arbiter refuses every run of such a
+    job.
+
+    Args:
+        manifest: A valid manifest.
+        caps: The host's ``training_caps`` (``memory_max``, ``cpus``,
+            ``timeout_seconds``); a cap left out is not compared.
+
+    Returns:
+        One line per job and resource over the host's cap.
+    """
+    out = []
+    for job in manifest.get("jobs", []):
+        res, name = job["resources"], job["name"]
+        if "memory_max" in caps and size_bytes(res["memory_max"]) > size_bytes(
+            str(caps["memory_max"])
+        ):
+            out.append(f"job {name}: memory_max {res['memory_max']} > {caps['memory_max']}")
+        if "cpus" in caps and float(res["cpus"]) > float(caps["cpus"]):
+            out.append(f"job {name}: cpus {res['cpus']} > {caps['cpus']}")
+        if "timeout_seconds" in caps and int(job["timeout_seconds"]) > int(caps["timeout_seconds"]):
+            out.append(
+                f"job {name}: timeout_seconds {job['timeout_seconds']} > {caps['timeout_seconds']}"
+            )
+    return [f"{line} (this host's training_caps; the GPU arbiter refuses its runs)" for line in out]
 
 
 def summary_text(data: Mapping[str, Any]) -> str:

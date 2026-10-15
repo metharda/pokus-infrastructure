@@ -79,6 +79,15 @@ host_vars split the CPUs: `cpuset_services` for the lab and `cpuset_targets`
 for the benchmark targets; they must not overlap, and the installer suggests
 a split (about 30 % of the CPUs for the services).
 
+With simultaneous multithreading (SMT, Hyper-Threading) two CPU numbers can
+be the two threads of one physical core; they share its execution units, so
+a target on one thread is measured together with whatever runs on the
+other. The installer's suggestion therefore gives whole cores to one set
+(the host's `thread_siblings_list`), and both the installer and doctor warn
+when a core's threads are split between `cpuset_services` and
+`cpuset_targets`. On many hosts the siblings are not neighbors: `cpu0` and
+`cpu8` can be one core of a 16-thread CPU.
+
 - Every lab service runs in the systemd slice `pinka-services.slice`, whose
   `AllowedCPUs=` is `cpuset_services`: the lab's own units (`Slice=`) and
   every Docker container, which Docker places in that slice

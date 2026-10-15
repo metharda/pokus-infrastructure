@@ -31,8 +31,8 @@
     type: ECC
     curve: secp256r1
     owner: root
-    group: "{{ inference_control_account }}"
-    mode: "0640"
+    group: "{{ inference_control_key_group }}"
+    mode: "{{ inference_control_key_mode }}"
   when: not (ansible_check_mode and inference_control_dir_state is changed)  # the directory may not exist yet
 
 # The tailnet name is the subject alternative name: the paired node's

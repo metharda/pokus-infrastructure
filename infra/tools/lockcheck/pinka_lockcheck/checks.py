@@ -4,7 +4,8 @@
 * ``marker_findings``: every remaining ``TODO(verify)`` or ``<verify>`` marker.
 * ``container_findings``: every image digest resolves in its registry; a tag
   that has moved to another digest is a warning (only the digest is used).
-* ``binary_findings``: every binary asset downloads and has the pinned sha256.
+* ``binary_findings``: every binary asset, and every collection's release
+  tarball of the Galaxy fallback, downloads and has the pinned sha256.
 * ``key_findings``: every repository key URL serves a key whose primary
   fingerprint is the pinned one.
 
@@ -176,6 +177,9 @@ def _binary_assets(doc: Mapping[str, Any]) -> Iterator[tuple[str, str, str]]:
     for name, entry in doc["binaries"].items():
         for arch, asset in entry["assets"].items():
             yield f"binaries.{name}.assets.{arch}", asset["url"], asset["sha256"]
+    # The collections' release tarballs of make setup's Galaxy fallback.
+    for name, asset in doc["ansible_collections"].get("fallback", {}).items():
+        yield f"ansible_collections.fallback.{name}", asset["url"], asset["sha256"]
 
 
 def binary_findings(doc: Mapping[str, Any], hasher: Hasher = net.sha256_of_url) -> list[Finding]:
@@ -299,6 +303,69 @@ def fetch_binary(
         temp.unlink(missing_ok=True)
         download.unlink(missing_ok=True)
     return actual
+
+
+def fetch_collections(
+    doc: Mapping[str, Any], dest: Path, *, downloader: Downloader = net.sha256_of_url
+) -> list[Path]:
+    """Download every locked collection's release tarball and verify its sha256.
+
+    ``make setup``'s fallback when Galaxy is unreachable: only the tarballs
+    of ``ansible_collections.fallback``, each kept only after its checksum
+    matched. Nothing is installed here.
+
+    Args:
+        doc: Lock document.
+        dest: Directory for the tarballs (created; earlier tarballs are replaced).
+        downloader: ``(url, file) -> sha256`` that writes the content to ``file``.
+
+    Returns:
+        The verified tarballs, in the order of ``ansible_collections.collections``.
+
+    Raises:
+        FetchRefusedError: If a collection has no fallback entry or an
+            unverified one, or a download or checksum fails; the tarballs of
+            this call are removed then.
+    """
+    section = doc["ansible_collections"]
+    fallback = section.get("fallback", {})
+    names = list(section["collections"])
+    missing = [n for n in names if n not in fallback]
+    unverified = [n for n in names if n in fallback and not _verified(*fallback[n].values())]
+    if missing or unverified:
+        parts = []
+        if missing:
+            parts.append(f"no release tarball pinned for {', '.join(missing)}")
+        if unverified:
+            parts.append(f"the release tarball of {', '.join(unverified)} is not verified yet")
+        raise FetchRefusedError(
+            "cannot install the collections without Galaxy: "
+            + "; ".join(parts)
+            + " (ansible_collections.fallback in versions.lock.yml)"
+        )
+    dest.mkdir(parents=True, exist_ok=True)
+    done: list[Path] = []
+    try:
+        for name in names:
+            where = f"ansible_collections.fallback.{name}"
+            target = dest / f"{name.replace('.', '-')}-{section['collections'][name]}.tar.gz"
+            partial = target.with_name(f".{target.name}.download")
+            try:
+                with partial.open("wb") as out:
+                    actual = downloader(fallback[name]["url"], out)
+            except net.FetchError as exc:
+                raise FetchRefusedError(f"{where}: download failed: {exc}") from exc
+            if actual != fallback[name]["sha256"]:
+                raise FetchRefusedError(
+                    f"{where}: sha256 is {actual}, pinned {fallback[name]['sha256']}"
+                )
+            partial.replace(target)
+            done.append(target)
+    except BaseException:
+        for path in [*done, *dest.glob(".*.download")]:
+            path.unlink(missing_ok=True)
+        raise
+    return done
 
 
 def key_findings(doc: Mapping[str, Any], fetch: Fetcher = net.download) -> list[Finding]:

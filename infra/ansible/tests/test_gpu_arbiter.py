@@ -137,6 +137,7 @@ class FakeSystem(arb.System):
         self.groups = {"pinka-datasets": 990}
         self.logs: list[str] = []
         self.fail_restart = False
+        self.free = 1 << 40
 
     def run(self, argv: Sequence[str]) -> None:
         self.calls.append(list(argv))
@@ -146,7 +147,14 @@ class FakeSystem(arb.System):
     def start_job(self, run: str) -> None:
         self.jobs.append(run)
 
-    def docker_run(self, argv: Sequence[str], name: str, timeout: float, grace: int) -> int | None:
+    def docker_run(
+        self,
+        argv: Sequence[str],
+        name: str,
+        timeout: float,
+        grace: int,
+        watch: Callable[[], str | None],
+    ) -> tuple[int | None, str | None]:
         self.containers.append(list(argv))
         output = next(
             Path(a.split("source=", 1)[1].split(",", 1)[0])
@@ -158,7 +166,17 @@ class FakeSystem(arb.System):
             (output / relative).write_bytes(data)
         if self.on_docker:
             self.on_docker()
-        return self.exit_code
+        # The runner's periodic check, once the job has written its output.
+        reason = watch()
+        if reason:
+            self.stop_container(name, grace)
+            return None, reason
+        if self.exit_code is None:
+            return None, "timeout"
+        return self.exit_code, None
+
+    def free_bytes(self, path: Path) -> int:
+        return self.free
 
     def stop_container(self, name: str, grace: int) -> None:
         self.stopped.append(name)
@@ -225,7 +243,7 @@ def make(tmp_path: Path, **config: Any) -> tuple[arb.Arbiter, FakeSystem]:
     )
     write(
         paths.active,
-        json.dumps({"platform": "refplat", "version": "0.1.0", "release": {"commit": "a" * 40}}),
+        json.dumps({"name": "refplat", "version": "0.1.0", "release": {"commit": "a" * 40}}),
     )
     write(paths.bootstrap_state, json.dumps({"commit": "b" * 40}))
     (paths.training / "datasets").mkdir(parents=True)
@@ -713,7 +731,8 @@ def test_container_options_are_fixed_by_infra(lab: tuple[arb.Arbiter, FakeSystem
 
     assert value("--network") == ["none"]
     assert "--read-only" in options
-    assert value("--tmpfs") == ["/tmp:rw,nosuid,nodev"]  # noqa: S108 - the container's own /tmp
+    # A private /tmp of tmp_max (1G), within the job's memory (4G) that it counts against.
+    assert value("--tmpfs") == [f"/tmp:rw,nosuid,nodev,size={1 << 30}"]  # noqa: S108 - own /tmp
     assert value("--cap-drop") == ["ALL"]
     assert value("--security-opt") == ["no-new-privileges"]
     assert value("--ipc") == ["private"]
@@ -840,6 +859,101 @@ def test_the_split_guard_and_the_hash_at_mount(lab: tuple[arb.Arbiter, FakeSyste
         arbiter.check_dataset(digest)
     with pytest.raises(arb.ArbiterError, match="invalid dataset hash"):
         arbiter.check_dataset("../x")
+
+
+def with_caps(arbiter: arb.Arbiter, **caps: Any) -> None:
+    arbiter.config = dataclasses.replace(arbiter.config, caps={**arbiter.config.caps, **caps})
+
+
+def test_missing_caps_take_their_defaults() -> None:
+    config = arb.Config(caps={"timeout_seconds": 60, "memory_max": "2G", "cpus": 1})
+    assert config.cap("timeout_seconds") == 60
+    assert config.cap("dataset_max") == arb.DEFAULT_CAPS["dataset_max"] == "8G"
+    assert config.cap_bytes("run_storage_max") == 16 << 30
+    assert config.cap_bytes("tmp_max") == 1 << 30
+
+
+def test_a_dataset_over_its_cap_is_refused_at_publication(
+    lab: tuple[arb.Arbiter, FakeSystem],
+) -> None:
+    arbiter, _ = lab
+    with_caps(arbiter, dataset_max="12")  # bytes; build_dataset writes 18
+    with pytest.raises(arb.ArbiterError, match=r"larger than the cap 12 \(training_caps"):
+        build_dataset(arbiter)
+    # Nothing was published and no partial copy is left.
+    assert list((arbiter.paths.training / "datasets").iterdir()) == []
+
+
+def test_the_copy_stops_at_the_cap(tmp_path: Path) -> None:
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "big").write_bytes(b"x" * (3 << 20))
+    target = tmp_path / "dst"
+    target.mkdir()
+    with pytest.raises(arb.SizeCapError):
+        arb.copy_tree(source, target, None, limit=1 << 20)
+    # Stopped after the first chunk over the cap, not after the whole file.
+    assert (target / "big").stat().st_size <= 1 << 20
+    unlimited = tmp_path / "unlimited"
+    unlimited.mkdir()
+    assert arb.copy_tree(source, unlimited, None)[0]["size"] == 3 << 20
+
+
+def test_a_dataset_over_its_cap_is_refused_at_mount(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    arbiter, _ = lab
+    dataset = build_dataset(arbiter)
+    with_caps(arbiter, dataset_max="12")  # lowered after the publication
+    with pytest.raises(arb.ArbiterError, match=r"holds 18B, over the cap 12"):
+        arbiter.train("tune", submission(dataset), CTL)
+
+
+def test_a_run_needs_room_for_its_output_and_checkpoints(
+    lab: tuple[arb.Arbiter, FakeSystem],
+) -> None:
+    arbiter, system = lab
+    dataset = build_dataset(arbiter)
+    system.free = (16 << 30) - 1
+    with pytest.raises(arb.ArbiterError, match=r"16.0G free; a run needs 16G"):
+        arbiter.train("tune", submission(dataset), CTL)
+    assert arbiter.state()["mode"] == "idle"
+    # The disk fills between the submission and the start: the run fails.
+    system.free = 16 << 30
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    system.free = 0
+    assert arbiter.run_job(run) == 1
+    record = arbiter.run_record(run)
+    assert record["status"] == "failed"
+    assert "a run needs 16G" in record["detail"]
+    assert system.containers == []
+
+
+def test_a_run_over_its_storage_cap_is_stopped_and_failed(
+    lab: tuple[arb.Arbiter, FakeSystem],
+) -> None:
+    arbiter, system = lab
+    dataset = build_dataset(arbiter)
+    with_caps(arbiter, run_storage_max="100")
+    system.free = 1 << 30
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    system.job_output = {
+        "adapter/adapter_model.safetensors": b"x" * 60,
+        "../checkpoints/step-1.bin": b"y" * 60,
+    }
+    assert arbiter.run_job(run) == 1
+    record = arbiter.run_record(run)
+    assert record["status"] == "failed"
+    assert record["detail"].startswith("output and checkpoints use 120B, over the cap 100")
+    assert record["adapter"] is None
+    assert system.stopped == [f"pinka-job-{run}"]
+    assert arbiter.transitions()[-1]["outcome"] == "failed"
+
+
+def test_tmp_is_a_tmpfs_within_the_jobs_memory(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    arbiter, _ = lab
+    assert arbiter._tmp_bytes({"memory_max": "4G"}) == 1 << 30
+    assert arbiter._tmp_bytes({"memory_max": "512M"}) == 512 << 20
+    with_caps(arbiter, tmp_max="2G")
+    assert arbiter._tmp_bytes({"memory_max": "4G"}) == 2 << 30
 
 
 def test_dataset_sources_are_the_controllers_own_files(
@@ -977,6 +1091,10 @@ def test_boot_ends_a_run_that_cannot_resume(lab: tuple[arb.Arbiter, FakeSystem])
         (60578, ["status"], "request must be one of"),
         (60578, {"request": "serve"}, "serve takes exactly deployment, request"),
         (60578, {"request": "idle", "now": True}, "idle takes exactly request"),
+        # Only root (pinka stop) suspends a run for the lab's next start.
+        (60578, {"request": "idle", "resume": True}, "idle takes exactly request"),
+        (0, {"request": "idle", "resume": True}, None),
+        (0, {"request": "idle", "resume": "yes"}, "resume must be true or false"),
         (60578, {"request": "train", "job": 1, "submission": {}}, "job name and a submission"),
     ],
 )
@@ -1105,7 +1223,9 @@ def test_a_host_without_vllm(tmp_path: Path) -> None:
     assert system.calls == []
 
 
-def test_a_stopped_job_unit_settles_its_run(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+def test_a_stopped_job_unit_suspends_its_run(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    # The lab target stopped without pinka stop, or the host shuts down: the
+    # run waits for the lab's next start, as after a crash.
     arbiter, system = lab
     dataset = build_dataset(arbiter)
     run = arbiter.train("tune", submission(dataset, restore=False), CTL)["run"]
@@ -1117,7 +1237,129 @@ def test_a_stopped_job_unit_settles_its_run(lab: tuple[arb.Arbiter, FakeSystem])
     system.exit_code = 143
     assert arbiter.run_job(run) == 1
     record = arbiter.run_record(run)
-    assert (record["status"], record["detail"]) == ("interrupted", "stopped by systemd")
+    assert record["status"] == "suspended"
+    assert record["detail"] == (
+        "stopped by systemd as the lab stopped; resumes when the lab starts"
+    )
+    assert "stop_requested" not in record
+    assert (arbiter.state()["mode"], arbiter.state()["run"]) == ("training", run)
+    system.terminated = False
+    system.on_docker = None
+    system.exit_code = 0
+    system.boot = NEXT_BOOT
+    assert arbiter.boot() == {"ok": True, "mode": "training", "run": run}
+    assert arbiter.transitions()[-1]["detail"] == (
+        "interrupted by a reboot; resuming from its checkpoints"
+    )
+    assert arbiter.run_job(run) == 0
+    assert arbiter.run_record(run)["status"] == "succeeded"
+
+
+def stop_the_lab(arbiter: arb.Arbiter, system: FakeSystem, run: str) -> None:
+    """pinka stop while the job's container runs: idle with resume, as root."""
+    system.on_docker = lambda: arbiter.idle("root", wait=False, resume=True)
+    system.exit_code = 143
+    arbiter.run_job(run)
+    system.on_docker = None
+    system.exit_code = 0
+
+
+@pytest.mark.parametrize("reboot", [False, True])
+def test_pinka_start_resumes_a_run_like_a_reboot(
+    lab: tuple[arb.Arbiter, FakeSystem], reboot: bool
+) -> None:
+    arbiter, system = lab
+    arbiter.boot()
+    dataset = build_dataset(arbiter)
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    stop_the_lab(arbiter, system, run)
+    record = arbiter.run_record(run)
+    assert record["status"] == "suspended"
+    assert record["detail"] == "stopped by root as the lab stopped; resumes when the lab starts"
+    suspended = arbiter.transitions()[-1]
+    assert (suspended["from"], suspended["to"], suspended["outcome"]) == (
+        "training",
+        "training",
+        "suspended",
+    )
+    assert suspended["requester"] == "root"
+    # The GPU stays reserved: a bootstrap run serves nothing meanwhile.
+    assert arbiter.state()["mode"] == "training"
+    assert arb.main(["serve", "--unless-training", "dep-test@2"], lambda: arbiter) == 0
+    assert arbiter.state()["mode"] == "training"
+    if reboot:
+        system.boot = NEXT_BOOT
+    # pinka start (the arbiter's boot unit runs again) or the next boot.
+    assert arbiter.boot() == {"ok": True, "mode": "training", "run": run}
+    assert system.jobs == [run, run]
+    assert arbiter.run_record(run)["status"] == "resuming"
+    resumed = arbiter.transitions()[-1]
+    assert (resumed["requester"], resumed["outcome"], resumed["run"]) == ("boot", "resumed", run)
+    cause = "interrupted by a reboot" if reboot else "the lab started again"
+    assert resumed["detail"] == f"{cause}; resuming from its checkpoints"
+    assert arbiter.run_job(run) == 0
+    record = arbiter.run_record(run)
+    assert (record["status"], record["attempts"]) == ("succeeded", 2)
+    assert "PINKA_JOB_RESUME=1" in system.containers[-1]
+    # Not stopped for good: the previous deployment comes back.
+    assert arbiter.state()["deployment"] == "dep-test@1"
+
+
+def test_pinka_stop_while_suspended_changes_nothing(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    arbiter, system = lab
+    dataset = build_dataset(arbiter)
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    stop_the_lab(arbiter, system, run)
+    count = len(arbiter.transitions())
+    answer = arbiter.idle("root", resume=True)
+    assert answer == {"ok": True, "mode": "training", "run": run, "suspended": True}
+    assert len(arbiter.transitions()) == count
+
+
+def test_idle_ends_a_suspended_run_for_good(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    # pinka gpu idle (or the controller) while the run waits: it never resumes.
+    arbiter, system = lab
+    dataset = build_dataset(arbiter)
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    stop_the_lab(arbiter, system, run)
+    assert arbiter.idle("root") == {"ok": True, "mode": "idle", "run": run}
+    record = arbiter.run_record(run)
+    assert (record["status"], record["detail"]) == (
+        "interrupted",
+        "ended by root while suspended",
+    )
+    arbiter.boot()
+    assert system.jobs == [run]
+
+
+def test_pinka_stop_ends_a_job_that_cannot_resume(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    arbiter, system = lab
+    job = {**JOB, "resumable": False}
+    arbiter.paths.rendered.write_text(
+        json.dumps({"training": {**arbiter._rendered_training(), "jobs": [job]}})
+    )
+    dataset = build_dataset(arbiter)
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    stop_the_lab(arbiter, system, run)
+    record = arbiter.run_record(run)
+    assert (record["status"], record["detail"]) == ("failed", "stopped by root")
+    assert arbiter.state()["mode"] == "idle"
+    arbiter.boot()
+    assert system.jobs == [run]
+
+
+def test_pinka_stop_before_the_container_starts(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    arbiter, system = lab
+    dataset = build_dataset(arbiter)
+    run = arbiter.train("tune", submission(dataset), CTL)["run"]
+    record = arbiter.run_record(run)
+    record.update({"stop_requested": "root", "resume_on_start": True})
+    arbiter._save_run(record)
+    assert arbiter.run_job(run) == 1
+    record = arbiter.run_record(run)
+    assert record["status"] == "suspended"
+    assert record["detail"].startswith("stopped by root before it ran as the lab stopped")
+    assert system.containers == []
 
 
 class StopRecorder(arb.System):
@@ -1132,13 +1374,30 @@ def test_the_runner_stops_the_container_on_sigterm_and_timeout() -> None:
     system = StopRecorder()
     timer = threading.Timer(0.3, os.kill, (os.getpid(), signal.SIGTERM))
     timer.start()
-    code = system.docker_run([sys.executable, "-c", "import time; time.sleep(1)"], "c", 30, 5)
+    sleeper = [sys.executable, "-c", "import time; time.sleep(1)"]
+    result = system.docker_run(sleeper, "c", 30, 5, lambda: None)
     timer.join()
-    assert (code, system.terminated, system.stops) == (0, True, [("c", 5)])
+    assert (result, system.terminated, system.stops) == ((0, None), True, [("c", 5)])
     assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
     system = StopRecorder()
-    code = system.docker_run([sys.executable, "-c", "import time; time.sleep(1)"], "c", 0.2, 5)
-    assert (code, system.terminated, system.stops) == (None, False, [("c", 5)])
+    result = system.docker_run(sleeper, "c", 0.2, 5, lambda: None)
+    assert (result, system.terminated, system.stops) == ((None, "timeout"), False, [("c", 5)])
+
+
+def test_the_runner_stops_the_container_when_the_watch_says_so() -> None:
+    system = StopRecorder()
+    system.check_interval = 0.05
+    checks: list[int] = []
+
+    def watch() -> str | None:
+        checks.append(1)
+        return "output over the cap" if len(checks) >= 2 else None
+
+    sleeper = [sys.executable, "-c", "import time; time.sleep(1)"]
+    result = system.docker_run(sleeper, "c", 30, 5, watch)
+    assert result == (None, "output over the cap")
+    assert system.stops == [("c", 5)]
+    assert len(checks) == 2
 
 
 def test_admin_commands(
@@ -1311,4 +1570,79 @@ def test_doctor_hashes_trees_like_the_arbiter(tmp_path: Path) -> None:
     expected = arb.tree_hash(arb.tree_files(tree, exclude=("MANIFEST.json",)))
     assert RealSystem().tree_digest(str(tree), ("MANIFEST.json",)) == expected
     (tree / "link").symlink_to(tree / "y.txt")
+    assert RealSystem().tree_digest(str(tree)) is None
+
+
+# Paths whose bytewise order differs from a directory walk's ("a" before
+# "a.txt") and from a UTF-8 locale's collation (case, "_", accents).
+HASH_TREE = {
+    "b.txt": b"1",
+    "B.txt": b"2",
+    "_c": b"3",
+    "a/z": b"4",
+    "a.txt": b"5",
+    "\u00e9": b"6",
+    "\u00e4/x": b"7",
+    "Z/y z": b"8",
+}
+HASH_ORDER = ["B.txt", "Z/y z", "_c", "a.txt", "a/z", "b.txt", "\u00e4/x", "\u00e9"]
+
+
+def test_the_tree_hash_format_is_exact(tmp_path: Path) -> None:
+    from pinka_lab.system import RealSystem  # noqa: PLC0415 - the operator CLI's host access
+
+    tree = tmp_path / "tree"
+    for name, data in HASH_TREE.items():
+        (tree / name).parent.mkdir(parents=True, exist_ok=True)
+        (tree / name).write_bytes(data)
+    # One line per file: lowercase hex, two spaces, the path, a newline;
+    # sorted by the path's UTF-8 bytes; the hash of the lines' UTF-8 bytes.
+    lines = "".join(
+        f"{hashlib.sha256(HASH_TREE[name]).hexdigest()}  {name}\n" for name in HASH_ORDER
+    )
+    expected = hashlib.sha256(lines.encode("utf-8")).hexdigest()
+    files = arb.tree_files(tree)
+    assert [f["path"] for f in files] == HASH_ORDER
+    assert arb.tree_hash(files) == expected
+    assert arb.tree_hash(list(reversed(files))) == expected
+    copied = tmp_path / "copy"
+    copied.mkdir()
+    assert [f["path"] for f in arb.copy_tree(tree, copied, None)] == HASH_ORDER
+    assert RealSystem().tree_digest(str(tree)) == expected
+    # The same as sha256sum over the paths sorted by LC_ALL=C sort.
+    script = (
+        "find . -type f -printf '%P\\n' | LC_ALL=C sort "
+        '| while IFS= read -r f; do sha256sum -- "$f"; done | sha256sum'
+    )
+    done = subprocess.run(
+        ["/bin/sh", "-c", script],
+        cwd=tree,
+        capture_output=True,
+        text=True,
+        check=True,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    assert done.stdout.split()[0] == expected
+
+
+@pytest.mark.parametrize(
+    "name",
+    [b"new\nline", b"back\\slash", b"tab\tx", b"del\x7f", b"not-utf8-\xff"],
+)
+def test_names_the_hash_format_cannot_hold_are_refused(tmp_path: Path, name: bytes) -> None:
+    from pinka_lab.system import RealSystem  # noqa: PLC0415 - the operator CLI's host access
+
+    tree = tmp_path / "tree"
+    (tree / "d").mkdir(parents=True)
+    (tree / "ok").write_bytes(b"x")
+    (tree / "d" / os.fsdecode(name)).write_bytes(b"y")
+    refused = r"not UTF-8|a control character or a backslash"
+    with pytest.raises(arb.ArbiterError, match=refused):
+        arb.tree_files(tree)
+    target = tmp_path / "copy"
+    target.mkdir()
+    with pytest.raises(arb.ArbiterError, match=refused):
+        arb.copy_tree(tree, target, None)
+    with pytest.raises(arb.ArbiterError, match=refused):
+        arb.tree_hash([{"path": "d/" + os.fsdecode(name), "sha256": "0" * 64}])
     assert RealSystem().tree_digest(str(tree)) is None

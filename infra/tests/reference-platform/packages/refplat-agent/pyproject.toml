@@ -1,0 +1,15 @@
+# The reference platform's agent (untrusted-agent): its own package and
+# environment (V6), standard library only.
+[project]
+name = "refplat-agent"
+version = "0.1.0"
+description = "The reference platform's agent: uses its session and probes its isolation."
+requires-python = "==3.12.*"
+dependencies = []
+
+[project.scripts]
+refplat-agent = "refplat_agent.main:main"
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13"]
+build-backend = "uv_build"

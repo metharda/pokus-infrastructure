@@ -10,15 +10,30 @@ from typing import Any
 
 import pytest
 import yaml
-from pinka_test_distros import checkmode, cli, harness, results, targets
+from pinka_test_distros import checkmode, cli, harness, isolation, refplat, results, targets
 from pinka_test_distros.incus import Incus, Result
 
+from pinka_platform import contract as contract_mod
+from pinka_platform import render
 from pinka_preflight.detect.os_release import OsRelease
 from pinka_preflight.matrix import load_matrix, match_os
 
 INFRA = Path(__file__).resolve().parents[3]
 AUTHKEY = "placeholder-auth-key-for-tests"
 GOOD_LOG = "PLAY RECAP *****\nlocalhost : ok=500 changed=0 unreachable=0 failed=0 skipped=9\n"
+CONTRACT = contract_mod.load()
+ADAPTER = "c" * 64
+RENAMED_COMMIT = "1" * 40
+PORTS = yaml.safe_load((INFRA / "ansible" / "group_vars" / "all" / "main.yml").read_text())[
+    "pinka_default_ports"
+]
+
+
+def endpoints_text(name: str) -> str:
+    """The endpoints.toml infra renders for the reference platform under a name."""
+    data = {**refplat.manifest(), "name": name}
+    facts = render.LabFacts(machine_name="ptd", lab_mode="staging", node_role="full", ports=PORTS)
+    return render.endpoints_toml(render.endpoints(data, facts))
 
 
 def target_file() -> targets.TargetFile:
@@ -108,9 +123,16 @@ class FakeIncus:
             "backend": "nftables",
             "second_log": GOOD_LOG,
             "doctor": 0,
+            "agent_reached": [],
+            "leak": None,
+            "transitions": ["suspended", "resumed", "ok"],
+            "replaced": True,
             **behaviour,
         }
         self.runs = 0
+        self.platform = "refplat"
+        self.enabled: list[tuple[str, ...]] = []
+        self.restarts = 0
 
     def __call__(self, argv: Sequence[str], *, timeout: float | None = None) -> Result:
         args = tuple(argv)
@@ -136,6 +158,8 @@ class FakeIncus:
             return self.pull(args[-2].split("/", 1)[1], Path(args[-1]))
         if verb == "exec":
             return self.exec(args[args.index("--") + 1 :])
+        if verb == "restart":
+            self.restarts += 1
         return 0, ""
 
     def pull(self, remote: str, local: Path) -> tuple[int, str]:
@@ -149,13 +173,35 @@ class FakeIncus:
             )
         elif remote == "etc/pinka/host-profile.json":
             local.write_text(json.dumps({"firewall": {"backend": self.behaviour["backend"]}}))
+        elif remote == refplat.ACTIVE[1:]:
+            local.write_text(json.dumps({"name": self.platform}))
+        elif remote == refplat.ENDPOINTS[1:]:
+            local.write_text(endpoints_text(self.platform))
+        elif remote == refplat.TRANSITIONS[1:]:
+            lines = [
+                json.dumps({"run": "run-resume", "outcome": o})
+                for o in self.behaviour["transitions"]
+            ]
+            local.write_text("\n".join(['{"run": "other", "outcome": "ok"}', *lines]) + "\n")
         else:
             return 1, ""
         return 0, ""
 
-    def exec(self, command: tuple[str, ...]) -> tuple[int, str]:
+    def exec(self, command: tuple[str, ...]) -> tuple[int, str]:  # noqa: PLR0911 - one answer per command
+        if command[0] == refplat.CLI:
+            return self.cli(command[1:])
+        if command[0] == refplat.GUEST_PYTHON:
+            return self.guest(command[3:])
+        if command[0] == "systemd-run":
+            return self.probe(command)
         script = command[-1]
         b = self.behaviour
+        if "git rev-parse HEAD" in script:
+            return 0, f"{RENAMED_COMMIT}\n"
+        if refplat.STANDIN_UNIT in script and "systemd-run" in script:
+            return 0, "started\n"
+        if "--replace-platform" in script and b["replaced"]:
+            self.platform = refplat.RENAMED_NAME
         if script == "getenforce":
             return 0, f"{b['getenforce']}\n"
         if script.startswith("setenforce"):
@@ -166,6 +212,47 @@ class FakeIncus:
         if "doctor --smoke" in script:
             return int(b["doctor"]), ""
         return 0, ""
+
+    def cli(self, args: tuple[str, ...]) -> tuple[int, str]:
+        answers: dict[str, dict[str, Any]] = {
+            "status": {"ok": True, "database": "ok"},
+            "dataset": {"ok": True, "dataset": "a" * 64},
+            "lineage": {"ok": True, "lineage": {"adapter": {"sha256": ADAPTER}}},
+        }
+        if args[0] == "train":
+            if "--wait" in args:
+                answer = {"ok": True, "run": "run-train", "status": "succeeded", "adapter": ADAPTER}
+            else:
+                answer = {"ok": True, "run": "run-resume"}
+            return 0, json.dumps(answer) + "\n"
+        return 0, json.dumps(answers[args[0]]) + "\n"
+
+    def guest(self, args: tuple[str, ...]) -> tuple[int, str]:
+        if args[0] == "enable-platform":
+            self.enabled.append(args)
+            return 0, json.dumps({"ok": True, "added": []}) + "\n"
+        if args[0] == "wait-report":
+            outcomes = [
+                {"name": n, "reached": n in self.behaviour["agent_reached"], "detail": "x"}
+                for n in ("restricted area", "outside tcp")
+            ]
+            return 0, json.dumps({"ok": True, "outcomes": outcomes}) + "\n"
+        return 0, json.dumps({"ok": True, "status": "succeeded", "step": 3}) + "\n"
+
+    def probe(self, command: tuple[str, ...]) -> tuple[int, str]:
+        profile = command[command.index("--profile") + 1]
+        user = next(a for a in command if a.startswith("User="))
+        expected = isolation.expectations(CONTRACT, profile, rendered=user == "User=refplat-ctl")
+        outcomes = [
+            {
+                "name": n,
+                "reached": wanted != ((profile, n) == self.behaviour["leak"]),
+                "detail": "x",
+            }
+            for n, wanted in expected.items()
+        ]
+        report = {"profile": profile, "reached": [], "outcomes": outcomes}
+        return 0, "noise\n" + json.dumps(report) + "\n"
 
     def scripts(self) -> list[str]:
         return [c[-1] for c in self.calls if c[1] == "exec"]
@@ -216,9 +303,12 @@ def test_a_passing_test(tmp_path: Path) -> None:
     assert launch[-2:] == ("--device", "root,size=60GiB")
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
-    first, second = [s for s in scripts if "bootstrap.sh" in s]
+    first, second, deploy, redeploy, replace, restore = [s for s in scripts if "bootstrap.sh" in s]
     assert "--answers /root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml" in first
     assert "--accept-degraded" in first and "--answers" not in second
+    assert second.endswith("--machine ptd-debian-13-abcdef") and deploy == redeploy == second
+    assert replace.endswith("--machine ptd-debian-13-abcdef --replace-platform refplat")
+    assert restore.endswith("--machine ptd-debian-13-abcdef --restore")
     assert any(s == "pinka backup now" for s in scripts)
     # Secrets travel in 0600 files, never on a command line.
     assert all(AUTHKEY not in " ".join(c) for c in fake.calls)
@@ -233,6 +323,73 @@ def test_a_passing_test(tmp_path: Path) -> None:
     assert names == [("exec", "--project"), ("delete", "--project")]
     assert not test.kept
     assert (tmp_path / "out" / "debian-13" / "host-profile.json").exists()
+
+
+def option(args: Sequence[str], name: str) -> list[str]:
+    """Every value of an option in a command."""
+    return [args[i + 1] for i, a in enumerate(args) if a == name]
+
+
+def test_the_reference_platform_stages(tmp_path: Path) -> None:
+    test, fake = make_test(tmp_path, "debian-13")
+    assert test.run()["error"] is None
+    first, second = fake.enabled
+    assert json.loads(option(first, "--platform")[0]) == {
+        "path": "infra/tests/reference-platform",
+        "ref": "0" * 40,
+        "repo": "file:///root/pinka",
+    }
+    assert json.loads(option(first, "--content")[0])["cases"]["path"] == (
+        "infra/tests/reference-platform-cases"
+    )
+    assert json.loads(option(first, "--settings")[0]) == {"ctl": {"job": "tunecpu"}}
+    assert option(first, "--postgres-role") == [
+        "refplat_ctl",
+        "refplat_grafana",
+        "refplat_migrator",
+        "refplat_reader",
+    ]
+    assert option(first, "--secret") == option(second, "--secret") == ["ctl/api-token"]
+    assert json.loads(option(second, "--platform")[0]) == {
+        "path": "release",
+        "ref": RENAMED_COMMIT,
+        "repo": "file:///root/refplat-renamed",
+    }
+    assert all(r.startswith("refplatb_") for r in option(second, "--postgres-role"))
+    # One probe unit per loopback-capable profile; the controller as its own account.
+    probes = [c for c in fake.calls if c[1] == "exec" and "systemd-run" in c]
+    users = [next(a for a in c if a.startswith("User=")) for c in probes]
+    assert users == ["User=refplat-ctl"] + ["User=refplat-probe"] * 5
+    scripts = fake.scripts()
+    assert sum("useradd" in x for x in scripts) == sum("userdel" in x for x in scripts) == 5
+    assert f"systemctl stop {refplat.STANDIN_UNIT}" in scripts
+    reports = json.loads((tmp_path / "out" / "debian-13" / "isolation.json").read_text())
+    assert [r["profile"] for r in reports] == isolation.loopback_profiles(CONTRACT)
+    assert fake.restarts == 1
+    assert any("--step-seconds" in c for c in fake.calls)
+    record = "/srv/pinka/platforms/refplatb/state/ctl/records/datasets.json"
+    assert scripts.index(f"rm -f {record}") < scripts.index(f"test -s {record}")
+    restore = next(c for c in fake.calls if "set-host-vars" in c)
+    assert json.loads(option(restore, "--values")[0]) == {"restore_snapshot": "latest"}
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "stage", "message"),
+    [
+        ({"agent_reached": ["outside tcp"]}, "isolation", "untrusted-agent reached outside tcp"),
+        ({"leak": ("observer", "prometheus direct")}, "isolation", "observer reached prometheus"),
+        ({"leak": ("controller", "inference api")}, "isolation", "controller must reach inference"),
+        ({"transitions": ["ok"]}, "resume", "was not suspended and resumed"),
+        ({"replaced": False}, "replace", "the active platform is refplat, expected refplatb"),
+    ],
+)
+def test_reference_platform_failures(
+    tmp_path: Path, behaviour: dict[str, Any], stage: str, message: str
+) -> None:
+    test, _ = make_test(tmp_path, "debian-13", keep="never", **behaviour)
+    record = test.run()
+    assert record["stages"][stage] == "failed"
+    assert message in record["error"], record["error"]
 
 
 def test_a_second_run_that_changes_something(tmp_path: Path) -> None:
@@ -431,6 +588,7 @@ def test_check_mode_run(tmp_path: Path) -> None:
     vault = json.loads((tmp_path / "debian_13-vault.json").read_text())
     assert vault["vault_restic_repository"] == "/var/backups/pinka-restic"
     assert set(vault) == set(yaml.safe_load(checkmode.VAULT_EXAMPLE.read_text()))
+    assert "platform" not in json.loads((tmp_path / "debian_13-vars.json").read_text())
     inventory = (tmp_path / "debian_13-inventory.ini").read_text()
     assert inventory.split() == [
         "localhost",
@@ -467,6 +625,7 @@ def test_check_mode_extended(tmp_path: Path, ansible_rc: int) -> None:
         fake,
         out,
         extended=True,
+        commit="0" * 40,
         summary=step_summary,
         write=printed.append,
         sleep=NO_SLEEP,
@@ -474,6 +633,17 @@ def test_check_mode_extended(tmp_path: Path, ansible_rc: int) -> None:
     assert rc == ansible_rc
     play = next(c for c in fake.calls if c[0] == "ansible-playbook")
     assert "--check" in play and play[-1].endswith("ansible/site.yml")
+    # The reference platform is enabled as in the test VMs, with placeholder secrets.
+    variables = json.loads((out / "debian_13-vars.json").read_text())
+    assert variables["platform"] == {
+        "path": "infra/tests/reference-platform",
+        "ref": "0" * 40,
+        "repo": "file:///root/pinka",
+    }
+    assert variables["content"]["cases"]["path"] == "infra/tests/reference-platform-cases"
+    vault = json.loads((out / "debian_13-vault.json").read_text())
+    assert {"refplat_ctl", "refplat_migrator"} <= set(vault["vault_postgres_passwords"])
+    assert vault["vault_platform_secrets"] == {"ctl": {"api-token": checkmode.PLACEHOLDER}}
     refused = checkmode.unverified_roles(PROFILE)
     assert refused  # Tailscale and Incus are not verified on any release yet
     skipped = play[play.index("--skip-tags") + 1].split(",")

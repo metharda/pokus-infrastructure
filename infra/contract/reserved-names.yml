@@ -54,6 +54,7 @@ namespaces:
       - pinka-services.slice
       - pinka-session-start
       - pinka-sleep-inhibit
+      - pinka-split-guard
       - pinka-telemetry-guard
       - pinka-vm-otlp-address
       - pinka-window-expiry

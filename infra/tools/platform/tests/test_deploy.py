@@ -144,6 +144,23 @@ def test_inspect_changes_nothing_but_the_mirror(repo: Path, paths: deploy.Paths)
     assert not paths.active.exists()
 
 
+def test_jobs_over_the_hosts_training_caps_are_warnings(repo: Path, paths: deploy.Paths) -> None:
+    # allprof's job asks for 2G, 1 CPU and 300 s; the host's caps are lower.
+    caps = {"memory_max": "1G", "cpus": 1, "timeout_seconds": 60}
+    plan = prepare(paths, settings(repo, lab={"training_caps": caps}), inspect=True)
+    assert plan["warnings"] == [
+        "job trn: memory_max 2G > 1G (this host's training_caps; the GPU arbiter refuses its runs)",
+        "job trn: timeout_seconds 300 > 60 (this host's training_caps; the GPU arbiter refuses "
+        "its runs)",
+    ]
+    roomy = {"memory_max": "24G", "cpus": 8, "timeout_seconds": 86400}
+    assert (
+        prepare(paths, settings(repo, lab={"training_caps": roomy}), inspect=True)["warnings"] == []
+    )
+    # Without caps (a host without the setting) nothing is compared.
+    assert prepare(paths, settings(repo), inspect=True)["warnings"] == []
+
+
 def test_settings_problems_refuse_before_fetching(repo: Path, paths: deploy.Paths) -> None:
     s = settings(repo, platform={"repo": "http://git.example.com/x.git", "ref": "main"})
     assert refused(paths, s) == ["source-transport"]

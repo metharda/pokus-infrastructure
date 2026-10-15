@@ -493,6 +493,20 @@ def _days_left(ctx: Context, path: str) -> int | None:
     return int((end - ctx.system.now().timestamp()) // 86400)
 
 
+def _key_problems(ctx: Context, path: str) -> list[str]:
+    """The node's private key: 0640 root:<account> on an inference node, 0600 root on a lab node."""
+    key = ctx.system.info(path)
+    if key is None:
+        return []
+    inference = ctx.config.node_role == "inference"
+    group = str(ctx.config.get("inference", "key_group", default="" if inference else "root"))
+    default_mode = "0640" if inference else "0600"
+    mode = int(str(ctx.config.get("inference", "key_mode", default=default_mode)), 8)
+    if (key.owner, key.group, key.mode) == ("root", group, mode):
+        return []
+    return [f"{path} is {key.owner}:{key.group} {key.mode:04o}, expected root:{group} {mode:04o}"]
+
+
 def check_pairing(ctx: Context) -> Outcome:
     """Split inference: the node's certificate is valid; it is paired with the configured node."""
     if ctx.config.node_role not in ("lab", "inference"):
@@ -507,6 +521,7 @@ def check_pairing(ctx: Context) -> Outcome:
         for name in ("self.crt", "self.key")
         if ctx.system.info(f"{directory}/{name}") is None
     ]
+    key = _key_problems(ctx, f"{directory}/self.key")
     try:
         record = json.loads(ctx.system.read_text(f"{directory}/peer.json") or "{}")
     except ValueError:
@@ -514,8 +529,11 @@ def check_pairing(ctx: Context) -> Outcome:
     paired = str(record.get("node", "")) if isinstance(record, dict) else ""
     if not configured and not problems:
         if paired:
-            return failed(f"paired with {paired}, but {variable} is not set in the host_vars")
+            key.insert(0, f"paired with {paired}, but {variable} is not set in the host_vars")
+        if key:
+            return failed("; ".join(key))
         return skipped("not paired yet")
+    problems += key
     if configured and paired != configured:
         problems.append(
             f"{variable} is {configured}, but the node is paired with {paired or 'none'}"
@@ -530,6 +548,55 @@ def check_pairing(ctx: Context) -> Outcome:
     if problems:
         return failed("; ".join(problems))
     return passed(f"paired with {configured}, certificates valid for {renew}+ days")
+
+
+SPLIT_GUARD_TABLE = "pinka_split_guard"
+
+
+def _set_elements(items: list[dict[str, Any]], name: str) -> list[Any] | None:
+    found = [i["set"] for i in items if i.get("set", {}).get("name") == name]
+    return list(found[0].get("elem", [])) if found else None
+
+
+def check_split_guard(ctx: Context) -> Outcome:
+    """Split inference: the tailnet ports admit only the paired peer's address (11.13)."""
+    spec = ctx.config.get("split_guard", default={}) or {}
+    ports = [int(p) for p in spec.get("ports", [])]
+    if ctx.config.node_role not in ("lab", "inference") or not ports:
+        return skipped("a full node has no split-inference ports")
+    items = _loaded_table(ctx, SPLIT_GUARD_TABLE)
+    if items is None:
+        return failed(f"the nftables table inet {SPLIT_GUARD_TABLE} is not loaded")
+    directory = str(ctx.config.get("inference", "dir", default="/etc/pinka/inference"))
+    try:
+        record = json.loads(ctx.system.read_text(f"{directory}/peer.json") or "{}")
+    except ValueError:
+        record = {}
+    record = record if isinstance(record, dict) else {}
+    address = str(record.get("address") or "")
+    problems = []
+    if record.get("node") and not address:
+        problems.append("the pairing record has no tailnet address; pair the nodes again")
+    loaded = sorted(str(e) for e in (_set_elements(items, "peer") or []))
+    if loaded != ([address] if address else []):
+        problems.append(
+            f"the guard admits {', '.join(loaded) or 'nobody'}, expected {address or 'nobody'}"
+        )
+    rules = [json.dumps(i["rule"]) for i in items if "rule" in i]
+    drop = next((r for r in rules if '"drop"' in r), None)
+    closed = [p for p in ports if drop is not None and str(p) in drop]
+    if sorted(closed) != sorted(ports):
+        open_ports = ", ".join(str(p) for p in ports if p not in closed)
+        problems.append(f"the guard leaves ports open to the tailnet: {open_ports}")
+    if _set_elements(items, "pairing"):
+        problems.append(
+            "the pairing port is open to the tailnet; it closes when pinka pair show ends "
+            "(or by itself shortly after)"
+        )
+    if problems:
+        return failed("; ".join(problems))
+    who = address or "nobody until the nodes pair"
+    return passed(f"ports {', '.join(map(str, ports))} admit only {who}")
 
 
 # --- Incus ---------------------------------------------------------------------------------
@@ -1093,6 +1160,7 @@ REGISTERED_DIR_MODE = 0o555
 DATASET_DIR_MODE = 0o750
 DATASETS_GROUP = "pinka-datasets"
 FORBIDDEN_SPLIT = "test"
+JOB_TMP = "/tmp"  # noqa: S108 - a job container's own tmpfs
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -1170,11 +1238,8 @@ def _expected_mounts(arbiter: Mapping[str, Any], run: str) -> tuple[list[str], l
     return read_only, read_write
 
 
-def _container_problems(
-    arbiter: Mapping[str, Any], name: str, inspect: Mapping[str, Any]
-) -> list[str]:
-    """A running job container's options against infra's fixed ones (§7.18)."""
-    host = inspect.get("HostConfig") or {}
+def _host_option_problems(host: Mapping[str, Any]) -> list[str]:
+    """A job container's HostConfig against infra's fixed options (§7.18)."""
     problems = []
     if host.get("NetworkMode") != "none":
         problems.append(f"network {host.get('NetworkMode')}")
@@ -1189,9 +1254,22 @@ def _container_problems(
         problems.append("an unconfined profile")
     if host.get("Privileged"):
         problems.append("privileged")
-    for key in ("PidMode", "IpcMode", "UsernsMode", "UTSMode"):
-        if str(host.get(key) or "") == "host":
-            problems.append(f"the host's {key[:-4].lower()} namespace")
+    problems += [
+        f"the host's {key[:-4].lower()} namespace"
+        for key in ("PidMode", "IpcMode", "UsernsMode", "UTSMode")
+        if str(host.get(key) or "") == "host"
+    ]
+    tmpfs = host.get("Tmpfs") or {}
+    if set(tmpfs) != {JOB_TMP} or "size=" not in str(tmpfs.get(JOB_TMP)):
+        problems.append("no size-limited tmpfs as its only /tmp")
+    return problems
+
+
+def _container_problems(
+    arbiter: Mapping[str, Any], name: str, inspect: Mapping[str, Any]
+) -> list[str]:
+    """A running job container's options against infra's fixed ones (§7.18)."""
+    problems = _host_option_problems(inspect.get("HostConfig") or {})
     user = str((inspect.get("Config") or {}).get("User") or "")
     if user.split(":", maxsplit=1)[0] in ("", "0", "root"):
         problems.append("runs as root")
@@ -1300,6 +1378,40 @@ def check_training_datasets(ctx: Context) -> Outcome:
     if problems:
         return failed("; ".join(problems))
     return passed(f"{len(directories)} dataset(s) with provenance, none from the test split")
+
+
+def _size(value: object) -> int:
+    match = re.fullmatch(r"([0-9]+)([KMGT]?)", str(value))
+    if match is None:
+        return -1
+    return int(match[1]) << (10 * "_KMGT".index(match[2] or "_"))
+
+
+def check_training_caps(ctx: Context) -> Outcome:
+    """The active platform's jobs stay within this host's training_caps (§7.18, §8.1)."""
+    arbiter = _arbiter(ctx)
+    if not arbiter or not arbiter.get("training"):
+        return skipped("this host does not train")
+    jobs = (_rendered(ctx).get("training") or {}).get("jobs") or []
+    if not jobs:
+        return skipped("the active platform declares no training job")
+    caps = arbiter.get("caps") or {}
+    over = []
+    for job in jobs:
+        name = job.get("name")
+        if "memory_max" in caps and _size(job.get("memory_max")) > _size(caps["memory_max"]):
+            over.append(f"{name}: memory_max {job.get('memory_max')} > {caps['memory_max']}")
+        if "cpus" in caps and float(job.get("cpus", 0)) > float(caps["cpus"]):
+            over.append(f"{name}: cpus {job.get('cpus')} > {caps['cpus']}")
+        if "timeout_seconds" in caps and int(job.get("timeout_seconds", 0)) > int(
+            caps["timeout_seconds"]
+        ):
+            over.append(
+                f"{name}: timeout_seconds {job.get('timeout_seconds')} > {caps['timeout_seconds']}"
+            )
+    if over:
+        return failed("the GPU arbiter refuses every run of " + "; ".join(over))
+    return passed(f"{len(jobs)} job(s) within this host's training_caps")
 
 
 def check_training_availability(ctx: Context) -> Outcome:
@@ -1705,6 +1817,26 @@ def format_cpuset(cpus: set[int]) -> str:
     return ",".join(ranges)
 
 
+def _smt_split(ctx: Context, services: set[int], targets: set[int]) -> list[str]:
+    """Cores whose SMT siblings fall into different sets (P3a): a warning."""
+    split: set[tuple[int, ...]] = set()
+    for cpu in sorted(services | targets):
+        path = f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list"
+        try:
+            core = parse_cpuset((ctx.system.read_text(path) or "").strip())
+        except ValueError:
+            continue
+        if core & services and core & targets:
+            split.add(tuple(sorted(core)))
+    if not split:
+        return []
+    cores = "; ".join(format_cpuset(set(core)) for core in sorted(split))
+    return [
+        f"SMT siblings of one core are split between cpuset_services and cpuset_targets "
+        f"({cores}): target measurements share cores with the lab services"
+    ]
+
+
 def check_cpusets(ctx: Context) -> Outcome:
     """The lab services run on cpuset_services, and both CPU sets exist on this host."""
     services = str(ctx.config.get("cpusets", "services", default="") or "")
@@ -1717,6 +1849,7 @@ def check_cpusets(ctx: Context) -> Outcome:
         missing = parse_cpuset(spec) - online
         if missing:
             problems.append(f"{name} names CPUs this host does not have: {format_cpuset(missing)}")
+    problems += _smt_split(ctx, parse_cpuset(services) & online, parse_cpuset(targets) & online)
     if services:
         slice_name = str(ctx.config.get("cpusets", "slice", default="pinka-services.slice"))
         path = f"/sys/fs/cgroup/{slice_name}/cpuset.cpus.effective"
@@ -1871,6 +2004,14 @@ CHECKS: tuple[Check, ...] = (
         check_training_datasets,
     ),
     Check(
+        "training.caps",
+        "The active platform's training jobs stay within this host's training_caps.",
+        "warning",
+        "Raise training_caps in host_vars (and run bootstrap with --tags gpu_arbiter,doctor), "
+        "or deploy a release whose jobs ask for less.",
+        check_training_caps,
+    ),
+    Check(
         "training.availability",
         "Whether this host trains: only a full node does.",
         "warning",
@@ -1904,10 +2045,20 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "inference.pairing",
-        "Lab and inference nodes: certificate valid, paired with the node the host_vars name.",
+        "Lab and inference nodes: certificate valid, private key root-only on a lab node, paired "
+        "with the node the host_vars name.",
         "error",
         "Pair the nodes and set the peer in host_vars (pair-inference-node how-to).",
         check_pairing,
+    ),
+    Check(
+        "inference.split_guard",
+        "Lab and inference nodes: the split-inference ports on the tailnet admit only the paired "
+        "peer's address, nobody before a pairing.",
+        "error",
+        "Pair the nodes again if the record has no address, then run bootstrap with --tags "
+        "firewall (`systemctl restart pinka-split-guard.service` reloads it).",
+        check_split_guard,
     ),
     Check(
         "incus.pool",
@@ -2076,7 +2227,8 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "resources.cpusets",
-        "Lab services run on cpuset_services, and both CPU sets exist on this host.",
+        "Lab services run on cpuset_services, both CPU sets exist on this host, and no core's "
+        "SMT siblings are split between them.",
         "warning",
         "Set cpuset_services and cpuset_targets in host_vars to CPUs the host has (on WSL: "
         "processors= in .wslconfig) and run bootstrap; then restart the lab "

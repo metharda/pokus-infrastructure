@@ -103,7 +103,8 @@
           "path": {
             "type": "string",
             "minLength": 1,
-            "description": "Path relative to the dataset's directory, with / separators."
+            "pattern": "^[^\\u0000-\\u001f\\u007f\\\\]+$",
+            "description": "Path relative to the dataset's directory, with / separators and no leading ./; UTF-8 without control characters or backslashes, so its line is unambiguous."
           },
           "sha256": {
             "type": "string",
@@ -117,7 +118,7 @@
           }
         }
       },
-      "description": "Every regular file of the dataset, sorted by path; the dataset hash is the SHA-256 of the lines `<sha256>  <path>` of this list, each ending in a newline (the output format of `sha256sum`)."
+      "description": "Every regular file of the dataset, sorted by the path's UTF-8 bytes (as `LC_ALL=C sort` sorts, whatever the locale); the dataset hash is the SHA-256, in lowercase hex, of the UTF-8 lines `<sha256>  <path>` of this list (lowercase hex, two spaces, the path), each ending in a newline (the output format of `sha256sum`)."
     }
   }
 }

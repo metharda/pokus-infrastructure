@@ -9,7 +9,13 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 MAKEFLAGS += --no-builtin-rules
 
-UV ?= uv
+# The uv that runs uv sync: the one on PATH when it is the pinned version
+# (bootstrap/lib/pins.sh, generated from versions.lock.yml), otherwise the
+# pinned uv, which setup downloads into build/tools/ and installs only after
+# its sha256 matched (bootstrap's install_uv). UV=<command> names another.
+UV_VERSION := $(shell sed -n "s/^readonly PINKA_UV_VERSION=//p" bootstrap/lib/pins.sh)
+UV_ON_PATH := $(word 2,$(shell uv --version 2>/dev/null))
+UV ?= $(if $(and $(UV_VERSION),$(filter $(UV_VERSION),$(UV_ON_PATH))),uv,$(UV_PINNED))
 NPM ?= npm
 VENV := .venv
 BIN := $(VENV)/bin
@@ -36,7 +42,7 @@ PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/te
   ansible/roles/incus/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/roles/gpu_arbiter/files ansible/roles/firewall/files ansible/tests tools/pinka-lab \
-  tools/test-distros installer ansible/callback_plugins tools/platform
+  tools/test-distros installer ansible/callback_plugins tools/platform tests/reference-platform
 PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
@@ -62,9 +68,11 @@ OPA := $(BUILD)/tools/opa
 export PINKA_OPA := $(CURDIR)/$(OPA)
 # The uv of versions.lock.yml (binaries.uv), which the agent environment
 # tests (V6) need: the build's commands depend on its behavior. Installed only
-# after the archive's sha256 matched; the tests find it here without PINKA_UV.
-UV_PINNED := $(BUILD)/tools/uv
-export PINKA_UV := $(CURDIR)/$(UV_PINNED)
+# after the archive's sha256 matched (bootstrap's install_uv, so it needs no
+# Python environment); the tests find it here without PINKA_UV.
+# Absolute: recipes that change directory (test-py39) run it too.
+UV_PINNED := $(CURDIR)/$(BUILD)/tools/uv
+export PINKA_UV := $(UV_PINNED)
 
 # Every file git would track (tracked plus untracked-but-not-ignored); the
 # third-party and generated trees are named as well, so no linter reaches them
@@ -97,21 +105,26 @@ else
 setup: $(VENV)/.synced node_modules/.installed dev-collections $(OPA) $(UV_PINNED) ## Install pinned development tools (user space only)
 endif
 
-$(VENV)/.synced: pyproject.toml uv.lock
+$(VENV)/.synced: pyproject.toml uv.lock $(filter $(UV_PINNED),$(UV))
 	$(UV) sync --frozen
 	@touch $@
 
-# Every setup verifies the pinned collections and installs them again (from
-# Galaxy) when anything differs: a missing or changed file, an extra file, a
-# version that is not the locked one. No formatter or linter may touch them
+# Every setup verifies the pinned collections and installs them again when
+# anything differs: a missing or changed file, an extra file, a version that is
+# not the locked one. They come from Galaxy; when Galaxy is unreachable, from
+# the GitHub release tarballs pinned in versions.lock.yml
+# (ansible_collections.fallback), each installed only after its sha256
+# matched; a failed download or checksum stops setup. The same verification
+# runs afterwards. No formatter or linter may touch them
 # (tools/repo-checks/tests/test_dev_tools.py).
 .PHONY: dev-collections
 dev-collections: $(VENV)/.synced
 	@mkdir -p $(BUILD)
 	@if ! $(COLLECTIONS_VERIFY) >$(BUILD)/collections-verify.log 2>&1; then \
 	  echo "dev-collections: the installed collections differ from the lock (see $(BUILD)/collections-verify.log); installing them again"; \
-	  $(ANSIBLE_ENV) $(BIN)/ansible-galaxy collection install --force \
-	    -r ansible/requirements.yml -p $(DEV_COLLECTIONS) </dev/null && \
+	  $(ANSIBLE_ENV) $(LOCKCHECK) collections --requirements ansible/requirements.yml \
+	    --dest $(DEV_COLLECTIONS) --downloads $(BUILD)/collections \
+	    --galaxy $(BIN)/ansible-galaxy || exit 1; \
 	  $(COLLECTIONS_VERIFY) >$(BUILD)/collections-verify.log 2>&1 || \
 	  { cat $(BUILD)/collections-verify.log; exit 1; }; \
 	fi
@@ -120,8 +133,9 @@ $(OPA): versions.lock.yml $(VENV)/.synced
 	$(LOCKCHECK) fetch opa --dest $@
 	@touch $@
 
-$(UV_PINNED): versions.lock.yml $(VENV)/.synced
-	$(LOCKCHECK) fetch uv --member uv --dest $@
+$(UV_PINNED): bootstrap/lib/pins.sh bootstrap/lib/tooling.sh
+	bash -c 'set -Eeuo pipefail; for lib in exitcodes log pins tooling; do \
+	  source "bootstrap/lib/$$lib.sh"; done; install_uv "$$1"' install-uv $(CURDIR)/$(@D)
 	@touch $@
 
 node_modules/.installed: package.json package-lock.json
@@ -148,6 +162,9 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/firewall/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
 	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform
+	@# The reference platform (BUILD_PROMPT §7.18): its two packages and its job script.
+	$(BIN)/mypy tests/reference-platform/src/refplat \
+	  tests/reference-platform/packages/refplat-agent/src/refplat_agent tests/reference-platform/jobs/tune.py
 	@# A run of its own: installer/tests has a conftest module too.
 	$(BIN)/mypy tools/platform/tests
 	@# mypy's oldest target is 3.10; 3.9 compatibility is proven by test-py39.
@@ -232,15 +249,15 @@ test-pytest: setup ## The pytest suites
 
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
-	PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
+	PYTHONPATH=tools/test-distros:tools/platform:preflight $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
 check-mode: setup ## Required CI fast lane (§11, §19.9): base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
-	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
+	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:tools/platform:preflight $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: check-mode-extended
 check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in check mode; components with unverified sources are skipped and listed as not tested; CI_IMAGE=<key>
-	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:preflight $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
+	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:tools/platform:preflight $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
 
 .PHONY: test-py39
 test-py39: ## Preflight and pinka test suites with plain unittest on CPython 3.9 (stdlib only)

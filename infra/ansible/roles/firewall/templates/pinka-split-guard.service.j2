@@ -1,0 +1,24 @@
+# Managed by pinka (ansible/roles/firewall/templates/pinka-split-guard.service.j2). Local changes will be overwritten.
+#
+# The split-inference guard (BUILD_PROMPT §19.10, interpretation 11.13): the
+# nftables table inet pinka_split_guard, built from
+# /etc/pinka/nftables/split-guard.json and the pairing record
+# /etc/pinka/inference/peer.json each time it loads. Loaded before the network,
+# so the split-inference ports never accept another tailnet node; pinka pair
+# loads it again after a pairing.
+[Unit]
+Description=pinka split-inference guard (nftables table inet pinka_split_guard)
+Wants=network-pre.target
+Before=network-pre.target
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/pinka/split-guard
+ExecReload=/usr/local/libexec/pinka/split-guard
+ExecStop=/usr/sbin/nft delete table inet pinka_split_guard
+
+[Install]
+WantedBy=multi-user.target

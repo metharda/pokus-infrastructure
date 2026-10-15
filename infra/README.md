@@ -143,9 +143,12 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 
 ## Development
 
-Requirements: [uv](https://docs.astral.sh/uv/) at the version pinned in
-`pyproject.toml`, Node.js at the version in `.node-version`, and a Chromium or
-Chrome binary for Mermaid validation (`PUPPETEER_EXECUTABLE_PATH`).
+Requirements: bash, curl or wget, `tar` and `sha256sum`; Node.js at the
+version in `.node-version`; a Chromium or Chrome binary for Mermaid
+validation (`PUPPETEER_EXECUTABLE_PATH`); and network access to PyPI, npm and
+GitHub. [uv](https://docs.astral.sh/uv/) is optional: `make setup` uses the
+one on `PATH` when it is the version pinned in `versions.lock.yml` and
+installs that version into `build/tools/` otherwise.
 
 ```bash
 make setup      # install pinned tools into .venv, node_modules and build/tools (user space)
@@ -162,10 +165,30 @@ When a step fails, its complete output comes first (pytest with
 `--tb=long`), and every other step still runs. `VERBOSE=1` prints everything
 as the steps run, as CI does.
 
-`make setup` also downloads the OPA and uv releases of `versions.lock.yml`
-into `build/tools/` after checking their sha256: the policy tests need that
-OPA and the agent environment tests that uv. Outside CI these tests are
-skipped without them; in CI a skipped uv test fails the job.
+### What `make setup` downloads
+
+Everything `make setup` fetches is pinned, and nothing is used before it is
+verified; it changes nothing outside the checkout (no `sudo`).
+
+| What | From | Verified by |
+| --- | --- | --- |
+| uv, when the one on `PATH` is not the pinned version (or there is none) | GitHub release of `astral-sh/uv` (`binaries.uv` of `versions.lock.yml`) into `build/tools/` | its sha256 from the lock, before it is unpacked (bootstrap's own `install_uv`) |
+| CPython 3.12, when the machine has none | python-build-standalone's GitHub releases, through the pinned uv | uv, against the checksum in its own download list |
+| The Python development tools (`.venv`) | PyPI | `uv sync --frozen`: every package's hash in `uv.lock` |
+| The Node.js tools (`node_modules`) | the npm registry | `npm ci`: every package's integrity hash in `package-lock.json` |
+| OPA | GitHub release (`binaries.opa`) into `build/tools/` | its sha256 from the lock |
+| The Ansible collections for linting (`.ansible-collections`) | Ansible Galaxy, at the versions of `ansible/requirements.yml` | `ansible-galaxy collection verify --offline`: every file against the collection's `FILES.json`, whose checksum is in its `MANIFEST.json`, and the locked version |
+| The same collections when Galaxy is unreachable | their GitHub release tarballs (`ansible_collections.fallback` of the lock) | each tarball's sha256 from the lock before it is installed, then the same `verify --offline` |
+
+Setup verifies the installed collections every time and installs them again
+when anything differs. A failed download or a checksum mismatch stops setup
+with the name of the artifact; nothing unverified is installed. A fallback
+tarball whose URL or sha256 is still `TODO(verify)` in the lock is never
+downloaded: without Galaxy, setup then stops and says so.
+
+The policy tests need that OPA and the agent environment tests that uv.
+Outside CI these tests are skipped without them; in CI a skipped uv test fails
+the job.
 
 To check whether a machine can host the lab without changing anything on it,
 run `./preflight/pinka-preflight --no-write` (see

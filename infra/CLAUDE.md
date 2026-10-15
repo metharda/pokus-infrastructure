@@ -211,6 +211,20 @@ the prompt text where they differ.
   needs an entry in `group_vars/all/main.yml` with its reason, or in the
   rendering for platform accounts.
 
+## Reference platform (BUILD_PROMPT §7.18)
+
+- `tests/reference-platform/` (`refplat`) is a real release, standard
+  library only, deployed by `make test-distros`; its manifest is also the
+  manifest fixture `refplat`. Both jobs' commands are the text of
+  `jobs/tune.py`; the tests keep the three identical, and the job image is
+  the lock's `containers.images.refplat_job`.
+- Its code takes the platform's name from `endpoints.toml` (the agent from
+  the controller's hello), never from a constant, so the renamed copy of
+  the `replace` stage runs unchanged.
+- The per-profile isolation probe's expectations come from the profile
+  flags in `contract/profiles.yml` (`pinka_test_distros/isolation.py`);
+  never loosen one to make a stage pass.
+
 ## GPU arbiter and training (BUILD_PROMPT §7.18)
 
 - vLLM starts only through the GPU arbiter

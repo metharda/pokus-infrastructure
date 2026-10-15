@@ -76,7 +76,8 @@ The run executes as `pinka-gpu-job@<run>.service`, which runs the container
 no network, a read-only root file system with a private `/tmp`, no
 capabilities, no new privileges, Docker's default seccomp profile, no host
 namespace, the job's own account with `pinka-datasets` as its only extra
-group, the manifest's memory and CPU limits and infra's process limit. It
+group, the manifest's memory and CPU limits and infra's process limit, and
+a `/tmp` of limited size that counts against its memory. It
 sees exactly three kinds of mounts: the base model and the datasets
 read-only, and the run's `output/` and `checkpoints/` directories
 read-write. The GPU comes in through CDI (or the NVIDIA runtime) only when
@@ -88,26 +89,36 @@ When the container exits, the arbiter settles the run. On success it hashes
 `LINEAGE.json` (base model hashes, dataset hashes, image digest, job-spec
 hash, hyperparameters, seed, the platform's and infra's commits, start and
 end). A timeout, a non-zero exit or a missing adapter ends the run as
-failed. Afterwards the arbiter serves the deployment that was served before
+failed, and so does a run whose output and checkpoints grow past
+`training_caps.run_storage_max`: the arbiter measures them while the job
+runs and stops it. A run starts only with that much free space, and a
+dataset larger than `dataset_max` is never published. Afterwards the arbiter serves the deployment that was served before
 the run, unless the submission asked otherwise
 (`gpu_arbiter.restore_after_training` is the default).
 
 `idle` during a run stops the container with `stop_grace` seconds to write
 its checkpoint; the run ends `interrupted` if its job is `resumable`,
-`failed` otherwise. Stopping the lab does the same: `pinka stop` and
-`pinka update-host` ask the arbiter for `idle` after the platform's drain
-hook.
+`failed` otherwise, and it never resumes. Stopping the lab is different:
+`pinka stop` and `pinka update-host` ask the arbiter for `idle` with
+`resume` after the platform's drain hook, and a stopped job unit (the lab
+target stopped, a shutdown) does the same. The container gets the same
+grace, but a resumable job's run is `suspended`: the GPU stays reserved for
+it, nothing is served meanwhile, and the run resumes when the lab starts
+again. Any other job ends `failed`. `pinka gpu idle` while a run is
+suspended ends it for good (`interrupted`).
 
 ## Boot
 
-`pinka-gpu-arbiter.service` runs once when the lab starts. After a reboot,
-a run that was training is interrupted; it resumes from its checkpoint
-directory if its job is `resumable`, otherwise the previous deployment comes
-back or the GPU stays idle. Without such a run the arbiter serves the
-default deployment or stays idle, per `gpu_arbiter.after_boot`. When the lab
-starts again within the same boot (`pinka start` after `pinka stop`), an
-idle GPU follows the same setting and a serving deployment that stopped is
-brought back.
+`pinka-gpu-arbiter.service` runs whenever the lab starts: after a reboot
+and on `pinka start`, which behave the same way. A run the lab's stop
+suspended, or a run a crash left in training, resumes from its checkpoint
+directory if its job is `resumable`, and the resume is a transition of its
+own in the log (`resumed`, requested by `boot`); otherwise the run ends
+`interrupted` and the previous deployment comes back or the GPU stays idle.
+Without such a run the arbiter serves the default deployment or stays idle,
+per `gpu_arbiter.after_boot`. When the lab starts again within the same
+boot, a run that is still running keeps running and a serving deployment
+that stopped is brought back.
 
 ## Datasets and the split guard
 

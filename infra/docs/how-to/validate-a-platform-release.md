@@ -43,14 +43,17 @@ Run the same check on your release before you tag it.
     services:
       ctl: controller as refplat-ctl (Incus bench/build; restricted data)
       agent: untrusted-agent as refplat-agent
-    job tune: docker.io/library/python@sha256:<digest> (1 GPU)
+    job tune: public.ecr.aws/docker/library/python@sha256:<digest> (1 GPU)
+    job tunecpu: public.ecr.aws/docker/library/python@sha256:<digest> (0 GPU)
     socket ctl/api: researchers, root
     socket ctl/session: untrusted-agent  [dedicated to the agent]
     content cases (restricted)
     cli: refplat
     ```
 
-    `<digest>` stands for the job image's pinned digest.
+    `<digest>` stands for the job image's pinned digest. This is the
+    summary of the reference platform in `tests/reference-platform/`, a
+    complete release to compare yours with.
 
     A refused release prints one line per problem and exits 65:
 

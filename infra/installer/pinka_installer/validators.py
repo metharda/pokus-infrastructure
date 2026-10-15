@@ -229,6 +229,41 @@ def cpusets_disjoint(services: str, targets: str) -> str | None:
     return None
 
 
+# Split cores named in the SMT warning; the rest are counted.
+SMT_CORES_SHOWN = 4
+
+
+def smt_split(services: str, targets: str, cores: Iterable[Iterable[int]]) -> str | None:
+    """A warning when SMT siblings of one core fall into different CPU sets.
+
+    Two threads of one core share its execution units: a target on one
+    thread is measured with the lab services running on the other.
+
+    Args:
+        services: ``cpuset_services``.
+        targets: ``cpuset_targets``.
+        cores: The CPUs of each core with more than one thread
+            (``thread_siblings_list``).
+
+    Returns:
+        The warning, or None (also None when either list is empty or malformed).
+    """
+    try:
+        s, t = parse_cpuset(services), parse_cpuset(targets)
+    except ValueError:
+        return None
+    split = sorted({tuple(sorted(core)) for core in cores if s & set(core) and t & set(core)})
+    if not split:
+        return None
+    shown = "; ".join(format_cpuset(core) for core in split[:SMT_CORES_SHOWN])
+    more = f" and {len(split) - SMT_CORES_SHOWN} more" if len(split) > SMT_CORES_SHOWN else ""
+    return (
+        f"SMT siblings of one core are split between services and targets ({shown}{more}): "
+        "target measurements would share cores with the lab services; keep both threads "
+        "of a core in the same set"
+    )
+
+
 def format_cpuset(cpus: Iterable[int]) -> str:
     """Render CPU numbers as a cpuset list.
 

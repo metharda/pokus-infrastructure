@@ -182,8 +182,9 @@ repository at 3f (section J).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
   1-5 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
-- Next: 3d.6 in a fresh session (owner), starting with the items the owner
-  set with the "commit" for 3d.5 (below, Remaining plan).
+- 3d.6 is built and waits for the owner's "commit" (its items below,
+  Remaining plan; the details in `infra/docs/IMPLEMENTATION_NOTES.md`,
+  "Contract v2, step 6").
 
 ### Status of the plan of section J
 
@@ -195,7 +196,7 @@ repository at 3f (section J).
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-5 and 4b done; 6-8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-5 and 4b done; 6 built, waiting for "commit"; 7-8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -271,6 +272,37 @@ proposal, and waits for the owner's "commit".
     `warnings.showwarning` hook that prints the stack: if it is in this
     repository's code, fix it in 3d.6; if it is third-party, name the file
     and leave it (owner decision).
+  - **Setup tooling (owner, with the "commit" for `8d4e290`; one small
+    item, no new check that duplicates an existing one):** a Galaxy
+    fallback in `make setup`: the lock records, for every collection, its
+    pinned GitHub release tarball URL and that tarball's sha256; when
+    Galaxy is unreachable, setup downloads those tarballs, checks each
+    sha256, installs them and then runs the existing `FILES.json` check
+    unchanged; no unpinned source, no "latest", and a failed download or
+    checksum stops setup with a clear message. A uv bootstrap: when the uv
+    on `PATH` is not the pinned version, setup downloads the pinned uv into
+    `build/tools/` with the existing sha256 check and continues with it.
+    Tests: Galaxy unreachable (the fallback installs and verifies the
+    collections), a wrong tarball checksum stops setup, the uv bootstrap.
+    Docs: what setup downloads, from where, and how each download is
+    verified. Then the known issue on fresh sessions reads: a machine that
+    reaches PyPI, npm and GitHub runs `make setup` and the full gate from
+    the repository alone; only the PostgreSQL 18 SQL tests run in CI only.
+  - **Built (waiting for "commit"):** every item above. The size caps
+    (`dataset_max`, `run_storage_max`, `tmp_max`), resume after `pinka
+    start` as after a reboot, the lab node's key, the guard reload on purge,
+    the hash format, the `training_caps` warnings, the SMT warning, 11.13
+    (the split guard, with the test that an unpaired tailnet address is
+    refused after pairing) and the setup tooling. Step 20: `refplat` in
+    `infra/tests/reference-platform/` with `tune` and `tunecpu`, its
+    content package and its tests; the isolation probe of its agent and per
+    loopback-capable profile; the extended check-mode job with `refplat`
+    enabled; the `make test-distros` stages `platform`, `isolation`,
+    `training`, `resume`, `redeploy`, `replace` and `restore`. Fixed on the
+    way: the arbiter read the platform's name from `active.json` under the
+    wrong key. The `SyntaxWarning` did not recur. Choices made within 3d
+    and open for the owner are listed in the notes ("Interpretations
+    awaiting owner confirmation (3d.6)").
 - **3d.7** (infra §16 step 21): the installer (release inspection, the
   Platform review screen, the GPU screen, sources, secrets, answers schema,
   snapshots), and the removal of the V5 exclusion (see 3d above).
@@ -423,6 +455,14 @@ read-only; the owner keeps its master for `pokus-platform`):
   locks its build backend in a `[dependency-groups] build` group and every
   dependency is available as a wheel; infra builds it in two phases (locked
   wheels with network, then the release built offline).
+- Found in 3d.6, proposed (owner decision pending): infra's database
+  bootstrap gives a platform's service roles no privilege on the schemas
+  `public` and `restricted`; the platform's `migrate` hook grants its own
+  services what they use (usage on the schemas, rights on the tables), and
+  the restricted check accepts only the profiles allowed there. A
+  controller that polls the GPU arbiter rarely reads the current run from
+  `status` and treats a run with no transition left in the answer (it shows
+  the last ten) as ended.
 
 ## Open questions
 
@@ -455,7 +495,8 @@ project files at the monorepo root (3f).
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (110 after step 13; details
+`make verify-todos` lists every marker in the tree (110 after step 13, 117
+after 3d.6 with the Galaxy fallback pins; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
 step 4" through "after step 13"):
 
@@ -503,6 +544,8 @@ step 4" through "after step 13"):
 - Step 13: the Hugging Face Hub API field names the installer reads when it
   pins a model (`infra/installer/pokus_installer/models.py`), and the MOK
   enrollment with `mokutil` (`infra/installer/pokus_installer/tui/screens_install.py`).
+- 3d.6: the release tarball URL and sha256 of each pinned Ansible
+  collection (`ansible_collections.fallback` in `infra/versions.lock.yml`).
 
 ## Known issues
 
@@ -524,17 +567,25 @@ step 4" through "after step 13"):
   the contract is unchanged and nothing works around it.
 - `make setup` also downloads the pinned OPA CLI (`binaries.opa`) from GitHub
   releases and checks its sha256; the OPA policy tests need it.
-- `make setup` installs the pinned Ansible collections from Galaxy, which the
-  build environment cannot reach; here they were installed from their release
-  tags on GitHub into the git-ignored `infra/.ansible-collections/`.
+- `make setup` installs the pinned Ansible collections from Galaxy and, when
+  Galaxy is unreachable (as here), from the GitHub release tarballs pinned in
+  `ansible_collections.fallback` of the lock, each only after its sha256
+  matched (3d.6). Those pins are `TODO(verify)`: GitHub's web pages and API
+  answer 403 here for the ansible-collections organization, so whether each
+  release carries the built tarball, and its URL and sha256, could not be
+  read (the release tags were confirmed with `git ls-remote`). Until they are
+  verified, setup without Galaxy stops and says so; this session's
+  collections were installed earlier from the release tags into the
+  git-ignored `infra/.ansible-collections/`, which setup verifies and keeps.
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
   for MkDocs team announces that MkDocs 2.0 removes plugins. Builds work with
   the pin; the replacement decision belongs to the docs-site plugin review
   (docs spec §B.2) and needs an ADR and owner approval.
-- The build environment's default uv is older than the pinned 0.12.23; the
-  pinned uv is installed in a user-space scratch directory and put first on
-  `PATH` for all make runs. CPython 3.9.25 and 3.12.11 are installed in user
-  space by uv.
+- The build environment's default uv (0.8.17) is older than the pinned
+  0.12.23; since 3d.6 `make setup` installs the pinned uv into
+  `infra/build/tools/` (checked against its sha256) and runs `uv sync` with
+  it, so no uv on `PATH` is needed. CPython 3.9.25 and 3.12.11 are installed
+  in user space by uv.
 - mypy 2.x cannot type-check for Python 3.9; the 3.9 compatibility of
   preflight and `pinka` is enforced by ruff (`py39` target) and by running
   their test suites on CPython 3.9 (ADR-0001).
@@ -558,19 +609,25 @@ step 4" through "after step 13"):
   SSH-signed tag deployments is skipped here (CI asserts `ssh-keygen` and
   runs it), and the socket ACL helper is tested with a fake `setfacl` only.
 
-- A fresh session needs, outside the repository: uv 0.12.23 on `PATH`
-  before `make setup` (`pyproject.toml` requires exactly that version; the
-  image's uv is 0.8.17; download it from its GitHub release and check the
-  sha256 of `versions.lock.yml`, then put its directory first on `PATH`);
-  the Ansible collections, because Galaxy is not reachable from this
-  environment (`make setup` verifies `infra/.ansible-collections/` against
-  the lock and otherwise installs from Galaxy, which fails here; this
-  session installed them from their release tags on GitHub into the
-  git-ignored directory); Chromium for the Mermaid check (the image's
-  `/opt/pw-browsers`); and a local PostgreSQL server for the SQL tests,
-  which use the newest `/usr/lib/postgresql/<major>/bin` (16 in this
-  image; PGDG is not reachable from here, CI installs 18 from PGDG).
-  Reachable here: PyPI, npm, GitHub releases (uv, OPA, CPython builds).
+- A fresh session on a machine that reaches PyPI, npm and GitHub can run
+  `make setup` and the full gate from the repository alone (3d.6: setup
+  installs the pinned uv itself and falls back to the pinned release
+  tarballs when Galaxy is unreachable); only the PostgreSQL 18 SQL tests run
+  in CI only (PGDG is not reachable from here; CI installs 18, the SQL tests
+  here use the newest local `/usr/lib/postgresql/<major>/bin`, 16 in this
+  image). Two conditions remain, stated so they are not hidden: without
+  Galaxy the fallback works only once its pins are verified (see the entry
+  above), and the machine provides a Chromium or Chrome for the Mermaid check
+  (the image's `/opt/pw-browsers`; mermaid-cli's own browser download is
+  disabled) and a local PostgreSQL server for the SQL tests. Reachable here:
+  PyPI, npm, GitHub releases of uv, OPA and the CPython builds.
+- The reference platform's `make test-distros` stages and the extended
+  check-mode run with it enabled have not run yet: this environment has
+  neither Incus nor Docker. They are covered by tests against fake `incus`
+  and `docker` commands; their first real run is the owner's (on a
+  developer machine or a stopped lab host). The VMs have no GPU, so the
+  training stages use `tunecpu`, and vLLM serving an adapter is tested only
+  on GPU hosts.
 - The preflight test that compares reports with the reference
   `jsonschema` validator skips in the Python 3.9 run (`make test-py39`,
   standard library only): `jsonschema` 4.26.0, the pinned version, needs
@@ -580,11 +637,9 @@ step 4" through "after step 13"):
 
 ## Next step
 
-3d.6, started by the owner in a fresh session: first the items the owner
-set with the "commit" for 3d.5 (size caps, resume after `pinka start`, the
-lab node's key, the guard reload on purge, the hash format, the
-`training_caps` warning), then infra §16 step 20; see
-[Remaining plan](#remaining-plan). Each 3d step waits for the owner's
-"commit" under the [Process rules](#process-rules-in-force). Still open:
-the remaining `TODO(verify)` items (112), which need network access or
-reference hardware.
+The owner's "commit" for 3d.6 (the commit proposal ends the summary of
+3d.6); then 3d.7 (infra §16 step 21, the installer and the removal of the
+V5 exclusion), see [Remaining plan](#remaining-plan). Each 3d step waits for
+the owner's "commit" under the [Process rules](#process-rules-in-force).
+Still open: the remaining `TODO(verify)` items (117), which need network
+access or reference hardware.

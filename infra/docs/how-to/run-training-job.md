@@ -80,8 +80,10 @@ checks.
 
     `<run>` is the run ID from the previous step.
 
-2. To stop the run, ask for idle. A resumable job writes its checkpoint and
-   ends `interrupted`; any other job ends `failed`:
+2. To stop the run for good, ask for idle. A resumable job writes its
+   checkpoint and ends `interrupted`; any other job ends `failed`. (`pinka
+   stop` and a reboot only suspend a resumable run: it resumes when the lab
+   starts again.)
 
     <!-- qa:skip reason="stops a training run on the lab host" -->
     ```bash

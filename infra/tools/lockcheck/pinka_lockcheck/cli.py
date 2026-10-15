@@ -10,7 +10,11 @@
 * ``fetch NAME --dest PATH [--member FILE]``: download a pinned binary of
   the lock for this machine and install it only if its sha256 matches; from
   a tar.gz archive, the one regular file named ``FILE`` (development tools
-  such as OPA and uv for ``make test``).
+  such as OPA for ``make test``).
+* ``collections --requirements FILE --dest DIR --downloads DIR --galaxy CMD``:
+  install the locked Ansible collections for ``make setup``, from Galaxy, or
+  when Galaxy is unreachable from the pinned and checksum-verified release
+  tarballs (``pinka_lockcheck.devsetup``).
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from pinka_lockcheck import checks, net
+from pinka_lockcheck import checks, devsetup, net
 
 CATEGORIES = ("containers", "binaries", "keys")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
@@ -123,6 +127,27 @@ def _fetch(lock: Path, name: str, dest: Path, member: str | None) -> int:
     return 0
 
 
+def _collections(args: argparse.Namespace) -> int:
+    try:
+        source = devsetup.install_collections(
+            checks.load(args.lock),
+            args.requirements,
+            args.dest,
+            args.downloads,
+            galaxy=args.galaxy,
+        )
+    except checks.FetchRefusedError as exc:
+        sys.stderr.write(f"collections: {exc}; nothing unverified was installed\n")
+        return 1
+    if source == "fallback":
+        print(
+            "collections: Galaxy is unreachable; installed the pinned release tarballs of "
+            "versions.lock.yml after their sha256 matched",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def main(argv: Sequence[str]) -> int:
     """Run a lock checker command.
 
@@ -151,7 +176,17 @@ def main(argv: Sequence[str]) -> int:
     fetch.add_argument("--dest", type=Path, required=True, help="path of the executable")
     fetch.add_argument("--member", help="file name of the executable in a tar.gz archive")
     fetch.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
+    collections = sub.add_parser(
+        "collections", help="install the locked Ansible collections (Galaxy or the fallback)"
+    )
+    collections.add_argument("--requirements", type=Path, required=True)
+    collections.add_argument("--dest", type=Path, required=True, help="collections path")
+    collections.add_argument("--downloads", type=Path, required=True, help="tarball directory")
+    collections.add_argument("--galaxy", required=True, help="the ansible-galaxy command")
+    collections.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
     args = parser.parse_args(list(argv))
+    if args.command == "collections":
+        return _collections(args)
     if args.command == "fetch":
         return _fetch(args.lock, args.name, args.dest, args.member)
     if args.command == "validate":

@@ -1,9 +1,9 @@
 # Managed by pinka (ansible/roles/gpu_arbiter/templates/pinka-gpu-arbiter.service.j2). Local changes will be overwritten.
 #
-# The GPU arbiter when the lab starts (BUILD_PROMPT §7.18): after a reboot a
-# run left in training resumes from its checkpoints (resumable jobs) or ends
-# interrupted; otherwise, and when pinka start brings the lab back after
-# pinka stop, the default deployment is served or the GPU stays idle
+# The GPU arbiter when the lab starts (BUILD_PROMPT §7.18), after a reboot
+# and on pinka start alike: a run the lab's stop suspended or a crash left in
+# training resumes from its checkpoints (resumable jobs) or ends interrupted;
+# otherwise the default deployment is served or the GPU stays idle
 # (gpu_arbiter.after_boot). vLLM starts only through the arbiter.
 [Unit]
 Description=pinka GPU arbiter: settle the GPU when the lab starts

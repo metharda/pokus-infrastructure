@@ -17,6 +17,7 @@ import http.server
 import json
 import os
 import pwd
+import re
 import socket
 import stat
 import subprocess
@@ -183,8 +184,11 @@ class System:
         """The GPU arbiter's hash of a dataset or adapter directory.
 
         SHA-256 of the lines ``<sha256>  <path>`` of every regular file
-        (sorted by path, top-level names in ``exclude`` left out); None if
-        the directory holds a link or a special file, or cannot be read.
+        (top-level names in ``exclude`` left out), sorted by the path's UTF-8
+        bytes whatever the locale (docs/reference/gpu-arbiter.md); None if
+        the directory holds a link, a special file or a name the format
+        cannot hold (not UTF-8, a control character, a backslash), or cannot
+        be read.
         """
         raise NotImplementedError
 
@@ -403,6 +407,8 @@ class RealSystem(System):
                     relative = os.path.relpath(full, path).replace(os.sep, "/")
                     if relative in exclude:
                         continue
+                    if not _hashable_path(relative):
+                        return None
                     digest = hashlib.sha256()
                     with open(full, "rb") as handle:
                         for chunk in iter(lambda: handle.read(1 << 20), b""):
@@ -410,7 +416,8 @@ class RealSystem(System):
                     found.append((relative, digest.hexdigest()))
         except OSError:
             return None
-        lines = "".join(f"{digest}  {relative}\n" for relative, digest in sorted(found))
+        found.sort(key=lambda entry: entry[0].encode("utf-8"))
+        lines = "".join(f"{digest}  {relative}\n" for relative, digest in found)
         return hashlib.sha256(lines.encode("utf-8")).hexdigest()
 
     def euid(self) -> int:  # noqa: D102
@@ -477,6 +484,18 @@ class RealSystem(System):
 
 def _raise(error: OSError) -> None:
     raise error
+
+
+# What a path in a dataset's or adapter's hash may not hold (as the arbiter).
+_HASH_PATH_FORBIDDEN = re.compile(r"[\x00-\x1f\x7f\\]")
+
+
+def _hashable_path(relative: str) -> bool:
+    try:
+        relative.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return not _HASH_PATH_FORBIDDEN.search(relative)
 
 
 def static_server(directory: str, address: str, port: int) -> http.server.ThreadingHTTPServer:

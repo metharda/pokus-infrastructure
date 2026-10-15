@@ -86,6 +86,7 @@ tailnet
 tailscaled
 timesyncd
 tmpfs
+tunecpu
 typst
 versionlock
 veth

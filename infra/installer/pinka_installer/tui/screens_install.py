@@ -370,6 +370,7 @@ class ReviewScreen(StepScreen):
                 self.wizard.provided,
                 self.wizard.vault_password,
                 self.wizard.public_keys,
+                smt_cores=self.ctx.host.smt_cores(),
             )
         except (OSError, vault.VaultError) as exc:
             return [str(exc)], None

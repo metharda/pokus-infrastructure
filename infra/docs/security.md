@@ -30,6 +30,7 @@ outside its task.
 | The agent reaches another run, the lab services or the internet | Every target action goes through the executor and the Incus API; run networks have no uplink and the empty ACL `pinka-run-default`, and the host firewall drops forwarding out of `r-*` bridges ([How benchmark targets are isolated](explanation/target-isolation.md)). |
 | The agent reads the ground truth | Scenario ground truth is readable only by `pinka-gt`; the catalog is deployed root:pinka-gt with mode 0640 and appears nowhere else on the host. |
 | The agent exhausts the host | Project and instance limits for CPU, memory and disk; a quota-capable pool (btrfs or LVM thin, never `dir`, [ADR-0009](adr/0009-btrfs-or-lvm-thin-pool.md)); CPU sets keep the lab services apart from the targets. |
+| The isolation regresses unnoticed | Every distribution test deploys the reference platform and runs its isolation probe: as its agent, which must reach nothing, and as a transient unit for each loopback-capable profile, which must reach exactly what the profile allows: no telemetry store directly, the query proxy only for the profiles that query, the inference API and the GPU arbiter only for the platform's own accounts that may ([How to test the distributions](how-to/test-distributions.md#what-the-reference-platform-stages-check)). |
 
 ### Buggy fault injection
 
@@ -74,6 +75,13 @@ Researchers have real accounts on the host.
 - Tailscale Funnel is never enabled; the tailscale role fails the play when
   any Funnel configuration exists. Grafana is published on the tailnet only
   when `grafana_tailscale_serve: true`.
+- With split inference, the split-inference ports on `tailscale0` (the vLLM
+  API and the control port of an inference node, OTLP gRPC of a lab node)
+  admit only the paired node's tailnet address, recorded at pairing, and
+  nobody before a pairing (`pinka_split_guard`); the pairing port is open to
+  the tailnet only while `pinka pair show` waits. Mutual TLS then admits
+  only the paired node's certificate
+  ([How to pair an inference node](how-to/pair-inference-node.md)).
 - The firewall role integrates with the backend the host already uses and
   never flushes tables owned by Docker, Incus, firewalld or ufw
   ([ADR-0006](adr/0006-firewall-backend-integration.md)).

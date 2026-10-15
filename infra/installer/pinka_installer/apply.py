@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import difflib
 import os
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import groupvars, hostvars, keys, vault
+from pinka_installer import groupvars, hostvars, keys, validators, vault
 from pinka_installer.answers import Answers, Context
 from pinka_installer.paths import Paths, write_file
 
@@ -133,6 +133,29 @@ def context(
     )
 
 
+CPU_SYSFS = Path("/sys/devices/system/cpu")
+
+
+def read_smt_cores(root: Path = CPU_SYSFS) -> list[frozenset[int]]:
+    """The cores with more than one thread, from ``topology/thread_siblings_list``.
+
+    Args:
+        root: ``/sys/devices/system/cpu`` (tests: a copy).
+
+    Returns:
+        The CPUs of each such core; empty when the topology cannot be read.
+    """
+    cores: set[frozenset[int]] = set()
+    for path in sorted(root.glob("cpu[0-9]*/topology/thread_siblings_list")):
+        try:
+            siblings = frozenset(validators.parse_cpuset(path.read_text(encoding="utf-8").strip()))
+        except (OSError, ValueError):
+            continue
+        if len(siblings) > 1:
+            cores.add(siblings)
+    return sorted(cores, key=min)
+
+
 def _read(path: Path) -> str | None:
     try:
         return path.read_text(encoding="utf-8")
@@ -146,6 +169,8 @@ def plan(
     provided: vault.Provided,
     vault_password: str,
     public_keys: Mapping[str, keys.KeyCheck] | None = None,
+    *,
+    smt_cores: Sequence[Iterable[int]] = (),
 ) -> Plan:
     """Plan the files of the answers.
 
@@ -156,6 +181,8 @@ def plan(
         vault_password: Password of the vault (new or existing).
         public_keys: Researchers' keys entered in the TUI (headless: none; the
             existing ``users/<name>.pub`` files are used).
+        smt_cores: The host's cores with more than one thread
+            (:func:`read_smt_cores`): a warning when the CPU sets split one.
 
     Returns:
         The plan.
@@ -166,6 +193,10 @@ def plan(
     machine = answers.machine.name
     changes: list[Change] = []
     warnings: list[str] = []
+    resources = answers.resources
+    split = validators.smt_split(resources.cpuset_services, resources.cpuset_targets, smt_cores)
+    if split:
+        warnings.append(split)
     host_vars_path = paths.host_vars(machine)
     current = _read(host_vars_path)
     example = paths.example_host_vars.read_text(encoding="utf-8")

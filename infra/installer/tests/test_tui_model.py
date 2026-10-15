@@ -15,7 +15,7 @@ from ruamel.yaml import YAML
 from tui_fakes import DATA, DISKS, FakeHost, context, preflight
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import apply, vault
+from pinka_installer import apply, validators, vault
 from pinka_installer.paths import INFRA, Paths
 from pinka_installer.tui import model
 from pinka_installer.tui.events import Progress, read_new, site_roles
@@ -217,9 +217,31 @@ def test_cpu_split_suggestion() -> None:
     assert model.suggest_cpusets(2) == ("", "")
     assert model.suggest_cpusets(4) == ("0-1", "2-3")
     assert model.suggest_cpusets(24) == ("0-6", "7-23")
+    # With SMT siblings (cpu<n> and cpu<n+8> share a core) whole cores go to
+    # one set, so the suggestion never splits a core.
+    cores = [frozenset({n, n + 8}) for n in range(8)]
+    services, targets = model.suggest_cpusets(16, cores)
+    assert (services, targets) == ("0-2,8-10", "3-7,11-15")
+    assert validators.smt_split(services, targets, cores) is None
+    assert validators.smt_split("0-4", "5-15", cores) is not None
+    # Siblings numbered next to each other (0,1 one core) keep the plain ranges.
+    assert model.suggest_cpusets(24, [frozenset({n, n + 1}) for n in range(0, 24, 2)]) == (
+        "0-7",
+        "8-23",
+    )
     assert cpu_bar("0-1", "2-3", 6) == "SSTT··"
     assert cpu_bar("0-2", "2-3", 4) == "SSXT"
     assert cpu_bar("x", "2-3", 4) == ""
+
+
+def test_reads_the_smt_siblings(tmp_path: Path) -> None:
+    for cpu, siblings in {0: "0,2", 1: "1,3", 2: "0,2", 3: "1,3", 4: "4", 5: "x"}.items():
+        topology = tmp_path / f"cpu{cpu}" / "topology"
+        topology.mkdir(parents=True)
+        (topology / "thread_siblings_list").write_text(siblings + "\n", encoding="utf-8")
+    (tmp_path / "cpufreq").mkdir()
+    assert apply.read_smt_cores(tmp_path) == [frozenset({0, 2}), frozenset({1, 3})]
+    assert apply.read_smt_cores(tmp_path / "missing") == []
 
 
 def test_postgres_and_loop_suggestions() -> None:

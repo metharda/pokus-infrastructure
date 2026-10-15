@@ -248,6 +248,17 @@ containers:
       tag: "13.0.2-base-ubuntu24.04"
       digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
       platforms: [linux/amd64, linux/arm64]
+    refplat_job:
+      # The reference platform's training job image (tests only; BUILD_PROMPT
+      # §7.18): Python's official image through the ECR Public mirror of
+      # Docker's official images, because Docker Hub answered 429 on
+      # 2026-10-14. Verified that day with the registry API (index digest of
+      # the tag; the index lists linux/amd64 and linux/arm64). Platform job
+      # images are pinned in their manifests, not here.
+      image: public.ecr.aws/docker/library/python
+      tag: "3.12-slim-trixie"
+      digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+      platforms: [linux/amd64, linux/arm64]
   # Images preloaded inside golden images (BUILD_PROMPT §7.13), never run by
   # the lab itself. Verified on 2026-10-06 with the registry API (index digest
   # of the tag).
@@ -469,6 +480,21 @@ ansible_collections:
     community.crypto: "3.4.0"
     community.docker: "5.3.0"
     community.general: "13.4.0"
+  # make setup only (never bootstrap): when Galaxy is unreachable, each
+  # collection's GitHub release tarball, installed only after its sha256
+  # matched; then the same FILES.json check as after a Galaxy install. The
+  # release tags exist (git ls-remote, 2026-10-14: ansible.posix 2.2.2
+  # e98d9a0756458be1ac710988498000973889075c, community.crypto 3.4.0
+  # 8c876c294b66dc4539f566bd3771460575f6c14a, community.docker 5.3.0
+  # 6badffabd63090227f554a302a3e3ab570fa2a29, community.general 13.4.0
+  # ac5fa3e21c5f8188a166ea9e12c2c04a16d4461c); whether each release carries
+  # the built collection tarball, its URL and its sha256 could not be read
+  # from this build environment (GitHub's web and API answer 403 here).
+  fallback:
+    ansible.posix: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.crypto: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.docker: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    community.general: {url: "TODO(verify)", sha256: "TODO(verify)"}
 
 incus_base_images:
   # Base images of the golden image pipeline (BUILD_PROMPT §7.13), pinned by

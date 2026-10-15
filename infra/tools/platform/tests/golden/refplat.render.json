@@ -335,16 +335,37 @@
           "python3",
           "-I",
           "-c",
-          "print('toy training')"
+          "\"\"\"refplat's toy training (the jobs tune and tunecpu): deterministic and resumable.\n\nThe arbiter runs it with ``python3 -I -c``: the manifest carries this file's\ntext in both jobs, and the tests keep the three identical. It hashes the\ntraining dataset with the seed into a state, advances the state one step at a\ntime with a checkpoint after each step, and writes the final state as its\nadapter. A resumed run (``PINKA_JOB_RESUME=1``) continues from the checkpoint\nand ends with the same adapter as an uninterrupted one.\n\"\"\"\n\nimport hashlib\nimport json\nimport os\nimport pathlib\nimport time\n\nseed = os.environ[\"PINKA_JOB_SEED\"]\nparams = json.loads(os.environ.get(\"PINKA_JOB_HYPERPARAMETERS\") or \"{}\")\nsteps, pause = int(params.get(\"steps\", 8)), float(params.get(\"step_seconds\", 0))\nroot = pathlib.Path(\"/datasets/train\")\ndata = hashlib.sha256()\nfiles = sorted(\n    (p for p in root.rglob(\"*\") if p.is_file()),\n    key=lambda p: p.relative_to(root).as_posix().encode(),\n)\nfor path in files:\n    data.update(path.relative_to(root).as_posix().encode() + b\"\\0\" + path.read_bytes())\nstate, start = data.hexdigest() + seed, 0\ncheckpoint = pathlib.Path(\"/checkpoints/state.json\")\nif os.environ.get(\"PINKA_JOB_RESUME\") == \"1\" and checkpoint.is_file():\n    saved = json.loads(checkpoint.read_text(encoding=\"utf-8\"))\n    state, start = saved[\"state\"], saved[\"step\"]\nfor step in range(start, steps):\n    state = hashlib.sha256(f\"{state}:{step}\".encode()).hexdigest()\n    temp = checkpoint.with_suffix(\".tmp\")\n    temp.write_text(json.dumps({\"step\": step + 1, \"state\": state}), encoding=\"utf-8\")\n    temp.replace(checkpoint)\n    print(f\"step {step + 1}/{steps}\", flush=True)\n    time.sleep(pause)\nout = pathlib.Path(\"/output/adapter\")\nout.mkdir(parents=True, exist_ok=True)\n(out / \"adapter_model.bin\").write_bytes(bytes.fromhex(state))\nconfig = {\"seed\": seed, \"steps\": steps, \"toy\": True}\n(out / \"adapter_config.json\").write_text(json.dumps(config, sort_keys=True), encoding=\"utf-8\")\n"
         ],
         "cpus": 2,
         "datasets": [
           "train"
         ],
         "gpus": 1,
-        "image": "docker.io/library/python@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "image": "public.ecr.aws/docker/library/python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
         "memory_max": "4G",
         "name": "tune",
+        "resumable": true,
+        "timeout_seconds": 600
+      },
+      {
+        "account": "refplat-tunecpu",
+        "adapter": "refplat-tune",
+        "base_model": false,
+        "command": [
+          "python3",
+          "-I",
+          "-c",
+          "\"\"\"refplat's toy training (the jobs tune and tunecpu): deterministic and resumable.\n\nThe arbiter runs it with ``python3 -I -c``: the manifest carries this file's\ntext in both jobs, and the tests keep the three identical. It hashes the\ntraining dataset with the seed into a state, advances the state one step at a\ntime with a checkpoint after each step, and writes the final state as its\nadapter. A resumed run (``PINKA_JOB_RESUME=1``) continues from the checkpoint\nand ends with the same adapter as an uninterrupted one.\n\"\"\"\n\nimport hashlib\nimport json\nimport os\nimport pathlib\nimport time\n\nseed = os.environ[\"PINKA_JOB_SEED\"]\nparams = json.loads(os.environ.get(\"PINKA_JOB_HYPERPARAMETERS\") or \"{}\")\nsteps, pause = int(params.get(\"steps\", 8)), float(params.get(\"step_seconds\", 0))\nroot = pathlib.Path(\"/datasets/train\")\ndata = hashlib.sha256()\nfiles = sorted(\n    (p for p in root.rglob(\"*\") if p.is_file()),\n    key=lambda p: p.relative_to(root).as_posix().encode(),\n)\nfor path in files:\n    data.update(path.relative_to(root).as_posix().encode() + b\"\\0\" + path.read_bytes())\nstate, start = data.hexdigest() + seed, 0\ncheckpoint = pathlib.Path(\"/checkpoints/state.json\")\nif os.environ.get(\"PINKA_JOB_RESUME\") == \"1\" and checkpoint.is_file():\n    saved = json.loads(checkpoint.read_text(encoding=\"utf-8\"))\n    state, start = saved[\"state\"], saved[\"step\"]\nfor step in range(start, steps):\n    state = hashlib.sha256(f\"{state}:{step}\".encode()).hexdigest()\n    temp = checkpoint.with_suffix(\".tmp\")\n    temp.write_text(json.dumps({\"step\": step + 1, \"state\": state}), encoding=\"utf-8\")\n    temp.replace(checkpoint)\n    print(f\"step {step + 1}/{steps}\", flush=True)\n    time.sleep(pause)\nout = pathlib.Path(\"/output/adapter\")\nout.mkdir(parents=True, exist_ok=True)\n(out / \"adapter_model.bin\").write_bytes(bytes.fromhex(state))\nconfig = {\"seed\": seed, \"steps\": steps, \"toy\": True}\n(out / \"adapter_config.json\").write_text(json.dumps(config, sort_keys=True), encoding=\"utf-8\")\n"
+        ],
+        "cpus": 2,
+        "datasets": [
+          "train"
+        ],
+        "gpus": 0,
+        "image": "public.ecr.aws/docker/library/python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+        "memory_max": "4G",
+        "name": "tunecpu",
         "resumable": true,
         "timeout_seconds": 600
       }

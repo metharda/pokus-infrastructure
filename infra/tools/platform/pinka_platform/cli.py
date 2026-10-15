@@ -257,6 +257,7 @@ def _deploy(args: argparse.Namespace, paths: deploy.Paths) -> dict[str, Any]:
             "platform": plan["platform"],
             "summary": plan["summary"],
             "summary_text": validate.summary_text(plan["summary"]) + vault_text(plan["vault_keys"]),
+            "warnings": plan["warnings"],
             "replace": plan["replace"],
             "tools": plan["tools"],
             "jobs": plan["jobs"],

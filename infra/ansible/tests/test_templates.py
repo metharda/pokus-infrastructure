@@ -46,6 +46,7 @@ TESTED_TEMPLATES = {
     ("firewall", "pinka-telemetry-guard.nft.j2"),
     ("firewall", "pinka-telemetry-guard.service.j2"),
     ("firewall", "pinka-inference-guard.service.j2"),
+    ("firewall", "pinka-split-guard.service.j2"),
     ("provider_baremetal", "pinka-sleep-inhibit.service.j2"),
     ("provider_wsl2", "wsl.conf.j2"),
     ("provider_wsl2", "wslconfig.recommended.j2"),
@@ -559,6 +560,206 @@ def test_inference_guard_unit() -> None:
         t for t in switch if t["name"] == "Load the inference guard with the platform's clients"
     )
     assert reload["ansible.builtin.systemd_service"]["state"] == "restarted"
+
+
+def split_guard_spec(node_role: str) -> dict[str, Any]:
+    variables = ansible_vars(
+        GROUP_VARS,
+        ROLES / "firewall" / "defaults" / "main.yml",
+        ROLES / "firewall" / "vars" / "main.yml",
+        node_role=node_role,
+    )
+    spec = evaluate("firewall_split_guard", variables)
+    assert isinstance(spec, dict)
+    return spec
+
+
+@pytest.mark.parametrize(
+    ("node_role", "ports"), [("inference", [18704, 18710]), ("lab", [4317]), ("full", [])]
+)
+def test_split_guard_ports_per_node_role(node_role: str, ports: list[int]) -> None:
+    spec = split_guard_spec(node_role)
+    assert spec == {
+        "interface": "tailscale0",
+        "ports": ports,
+        "peer_record": "/etc/pinka/inference/peer.json",
+    }
+    main = load_yaml(ROLES / "firewall" / "tasks" / "main.yml")
+    include = next(t for t in main if t.get("ansible.builtin.include_tasks") == "split_guard.yml")
+    assert include["when"] == "node_role in ['lab', 'inference']"
+
+
+def test_split_guard_ruleset(tmp_path: Path) -> None:
+    import pinka_split_guard as guard  # noqa: PLC0415 - the role's own file
+
+    spec = split_guard_spec("inference")
+    paired = guard.build(spec, {"node": "pinka-lab", "address": "100.64.0.7"})
+    lines = [line.strip() for line in paired.splitlines()]
+    assert [line for line in lines if line.startswith(("table ", "delete table"))] == [
+        "table inet pinka_split_guard",
+        "delete table inet pinka_split_guard",
+        "table inet pinka_split_guard {",
+    ]
+    assert "elements = { 100.64.0.7 }" in lines
+    assert 'iifname "tailscale0" tcp dport @pairing accept' in lines
+    assert 'iifname "tailscale0" tcp dport { 18704, 18710 } ip saddr @peer accept' in lines
+    assert lines[-3] == 'iifname "tailscale0" tcp dport { 18704, 18710 } drop'
+    # Before a pairing the set is empty: nobody reaches the ports.
+    unpaired = guard.build(spec, None)
+    assert "elements" not in unpaired
+    # A record without an address (or with something else) is refused.
+    for record in ({"node": "pinka-lab"}, {"address": "fd7a:115c:a1e0::1"}, {"address": "x"}):
+        with pytest.raises(guard.GuardError, match="pair again"):
+            guard.build(spec, record)
+    with pytest.raises(guard.GuardError, match="interface and a list of ports"):
+        guard.build({"interface": "tailscale0", "ports": ["18704"]}, None)
+    for name, text in (("paired", paired), ("unpaired", unpaired)):
+        path = tmp_path / f"{name}.nft"
+        path.write_text(text, encoding="utf-8")
+        result = nft_check(path)
+        assert result.returncode == 0, result.stderr
+
+
+def test_split_guard_fails_closed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import pinka_split_guard as guard  # noqa: PLC0415 - the role's own file
+
+    record = tmp_path / "peer.json"
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        json.dumps({"interface": "tailscale0", "ports": [18704], "peer_record": str(record)})
+    )
+    argv = ["--spec", str(spec), "--print"]
+    assert guard.main(argv) == 0  # not paired: closed, and that is fine
+    assert "elements" not in capsys.readouterr().out
+    record.write_text(json.dumps({"node": "pinka-lab"}))
+    assert guard.main(argv) == 1  # an old record: closed, and it says so
+    captured = capsys.readouterr()
+    assert "elements" not in captured.out
+    assert "pair again" in captured.err
+    record.write_text(json.dumps({"node": "pinka-lab", "address": "100.64.0.7"}))
+    assert guard.main(argv) == 0
+    assert "elements = { 100.64.0.7 }" in capsys.readouterr().out
+    assert guard.main(["--spec", str(tmp_path / "missing.json"), "--print"]) == 1
+
+
+SPLIT_PROBE = """
+import fcntl, json, socket, struct, subprocess, sys, time
+nft, unpaired, paired, spec = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+flags = struct.unpack("16sh22x", fcntl.ioctl(s, 0x8913, struct.pack("16sh22x", b"lo", 0)))[1]
+fcntl.ioctl(s, 0x8914, struct.pack("16sh22x", b"lo", flags | 1))
+listeners = []
+for port in spec["ports"]:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", port))
+    sock.listen(64)
+    listeners.append(sock)
+
+def reached():
+    out = {}
+    for source in spec["sources"]:
+        for port in spec["ports"]:
+            c = socket.socket()
+            c.settimeout(0.5)
+            c.bind((source, 0))
+            try:
+                c.connect(("127.0.0.1", port))
+                out[f"{source}:{port}"] = True
+            except OSError:
+                out[f"{source}:{port}"] = False
+            c.close()
+    return out
+
+def run(*args):
+    subprocess.run([nft, *args], check=True)
+
+window = ["inet", "pinka_split_guard", "pairing"]
+control = spec["ports"][-1]
+results = {}
+run("-f", unpaired)
+results["not paired"] = reached()
+run("add", "element", *window, "{ %d timeout 60s }" % control)
+results["pairing"] = reached()
+run("delete", "element", *window, "{ %d }" % control)
+run("-f", paired)
+results["paired"] = reached()
+run("add", "element", *window, "{ %d timeout 1s }" % control)
+time.sleep(2)
+results["window expired"] = reached()
+print(json.dumps(results))
+"""
+
+
+def test_split_guard_admits_only_the_paired_peer(tmp_path: Path) -> None:
+    # Interpretation 11.13 against the kernel's rules: before a pairing nobody
+    # reaches the split-inference ports; while pinka pair show waits, the
+    # pairing (control) port is open to every tailnet address and nothing
+    # else is; once paired, only the peer's address gets in and an unpaired
+    # tailnet address is refused on every port, also after a pairing window
+    # expired on its own. The loopback stands in for tailscale0, 127.0.0.2
+    # for the paired peer and 127.0.0.3 for another tailnet node.
+    import pinka_split_guard as guard  # noqa: PLC0415 - the role's own file
+
+    argv = nft_argv(tmp_path / "x")
+    if argv is None:
+        if os.environ.get("CI") == "true":
+            pytest.fail("nft and unshare are required in CI")
+        pytest.skip("nft or unshare is not installed")
+    nft, unshare = argv[2], argv[0]
+    prefix = privileged()
+    api, control = 18704, 18710
+    spec = {"interface": "lo", "ports": [api, control]}
+    unpaired, paired = tmp_path / "unpaired.nft", tmp_path / "paired.nft"
+    unpaired.write_text(guard.build(spec, None), encoding="utf-8")
+    paired.write_text(guard.build(spec, {"address": "127.0.0.2"}), encoding="utf-8")
+    probe = tmp_path / "probe.py"
+    probe.write_text(SPLIT_PROBE, encoding="utf-8")
+    sources = {"peer": "127.0.0.2", "other": "127.0.0.3"}
+    done = subprocess.run(
+        [
+            *prefix,
+            unshare,
+            "-n",
+            sys.executable,
+            "-I",
+            str(probe),
+            nft,
+            str(unpaired),
+            str(paired),
+            json.dumps({"ports": [api, control], "sources": list(sources.values())}),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0 and "Operation not permitted" in done.stderr and not prefix:
+        pytest.skip("this container cannot load nftables rules in a namespace")
+    assert done.returncode == 0, done.stderr
+    results = json.loads(done.stdout)
+
+    def gets_in(phase: str, who: str, port: int) -> bool:
+        return bool(results[phase][f"{sources[who]}:{port}"])
+
+    for who in sources:
+        assert not gets_in("not paired", who, api), who
+        assert not gets_in("not paired", who, control), who
+        assert gets_in("pairing", who, control), who
+        assert not gets_in("pairing", who, api), who
+    assert gets_in("paired", "peer", api) and gets_in("paired", "peer", control)
+    # The unpaired tailnet address is refused after the pairing.
+    assert not gets_in("paired", "other", api)
+    assert not gets_in("paired", "other", control)
+    assert not gets_in("window expired", "other", control)
+    assert gets_in("window expired", "peer", control)
+
+
+def test_split_guard_unit() -> None:
+    unit = ini(render_template("firewall", "pinka-split-guard.service.j2", firewall_vars()))
+    assert unit["Service"]["ExecStart"] == "/usr/local/libexec/pinka/split-guard"
+    assert unit["Service"]["ExecReload"] == "/usr/local/libexec/pinka/split-guard"
+    assert unit["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_split_guard"
+    # Loaded before the network: the ports are never open to the tailnet first.
+    assert unit["Unit"]["Before"] == "network-pre.target"
 
 
 def test_telemetry_guard_unit() -> None:

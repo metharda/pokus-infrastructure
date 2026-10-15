@@ -65,6 +65,13 @@ the journal.
     anyway; the platform records what was interrupted. Without a platform
     there is nothing to drain.
 
+    After the drain, `pinka stop` asks the GPU arbiter for idle. A training
+    run of a resumable job writes its checkpoint and is suspended: the GPU
+    stays reserved for it, and it resumes from its checkpoints when the lab
+    starts again, with `pinka start` or after a reboot (the resume is logged
+    as a transition; `sudo pinka gpu status` shows it). Any other job ends
+    failed. `sudo pinka gpu idle` ends a suspended run for good.
+
 2. To stop with the shortest drain, give a timeout of 1 second. Use it only
    when no work matters, for example on a staging host.
 
@@ -76,7 +83,9 @@ Nothing drains when the power fails. At the next boot:
   new session record with a new boot ID and a freshly computed environment
   fingerprint;
 - runs of the previous boot cannot continue; the platform records them as
-  interrupted, and their partial data stay in the database;
+  interrupted, and their partial data stay in the database; a training run
+  of a resumable job resumes from its last checkpoint, as after `pinka stop`
+  and `pinka start`;
 - PostgreSQL keeps every committed transaction (`fsync` and
   `synchronous_commit` are always on; doctor checks it);
 - backup and database dump timers that missed their time run once the host is

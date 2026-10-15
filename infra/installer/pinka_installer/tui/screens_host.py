@@ -178,18 +178,22 @@ class ResourcesScreen(StepScreen):
     """Screen 5: detected CPU and memory, expected values, the CPU split, Postgres memory."""
 
     STEP = "resources"
+    # The host's cores with more than one thread, read when the screen mounts.
+    cores: tuple[frozenset[int], ...] = ()
     HELP = (
         "Lab services and Incus targets never share CPU cores, so measurements of the "
         "targets are not disturbed by the lab itself. The suggestion gives about 30 % of "
-        "the cores to the services. On WSL the effective limits come from .wslconfig on "
-        "the Windows side; enter the values you expect there so doctor can warn when they "
-        "differ."
+        "the cores to the services and keeps both threads of a core (SMT siblings) in one "
+        "set; a warning shows when your split puts them in different sets. On WSL the "
+        "effective limits come from .wslconfig on the Windows side; enter the values you "
+        "expect there so doctor can warn when they differ."
     )
 
     def body(self) -> ComposeResult:  # noqa: D102
         threads, memory = self.wizard.cpu_threads, self.wizard.memory_gib
         resources = self.answers.resources
-        services, targets = suggest_cpusets(threads)
+        self.cores = tuple(self.ctx.host.smt_cores())
+        services, targets = suggest_cpusets(threads, self.cores)
         yield Static(
             f"Detected: {threads or '?'} CPU threads, {memory or '?'} GiB memory", classes="info"
         )
@@ -222,6 +226,9 @@ class ResourcesScreen(StepScreen):
             Input(resources.cpuset_targets or targets, id="cpuset_targets"),
         )
         yield Static("", id="cpu-bar", classes="bar")
+        smt = Static("", id="smt-warning", classes="banner warn")
+        smt.display = False
+        yield smt
         yield Field(
             "Postgres shared_buffers",
             Input(resources.postgres_shared_buffers or suggest_postgres(memory), id="postgres"),
@@ -236,13 +243,17 @@ class ResourcesScreen(StepScreen):
             self._update_bar()
 
     def _update_bar(self) -> None:
-        if not self.query("#cpu-bar") or not self.wizard.cpu_threads:
+        if not self.query("#cpu-bar"):
             return
-        bar = cpu_bar(
-            _value(self, "#cpuset_services"),
-            _value(self, "#cpuset_targets"),
-            self.wizard.cpu_threads,
-        )
+        services, targets = _value(self, "#cpuset_services"), _value(self, "#cpuset_targets")
+        # A warning only: the operator may accept shared cores.
+        split = validators.smt_split(services, targets, self.cores)
+        warning = self.query_one("#smt-warning", Static)
+        warning.update(split or "")
+        warning.display = bool(split)
+        if not self.wizard.cpu_threads:
+            return
+        bar = cpu_bar(services, targets, self.wizard.cpu_threads)
         self.query_one("#cpu-bar", Static).update(f"[{bar}]  S services · T targets · X overlap")
 
     def save(self) -> Problems:  # noqa: D102

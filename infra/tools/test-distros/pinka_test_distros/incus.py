@@ -199,6 +199,15 @@ class Incus:
         if waited.returncode not in (0, 2):
             raise IncusError(f"{name}: cloud-init failed: {waited.stdout.strip()[-400:]}")
 
+    def restart(self, name: str, timeout: float = 900) -> None:
+        """Reboot an instance cleanly (its services are stopped as on any reboot).
+
+        Args:
+            name: Instance name.
+            timeout: Seconds before the command is killed.
+        """
+        self._check(self._incus("restart", "--project", self.project, name, timeout=timeout))
+
     def push(self, name: str, local: Path, remote: str, mode: str = "0600") -> None:
         """Copy a file into an instance.
 

@@ -78,6 +78,14 @@ LAB: dict[str, Any] = {
         "datasets": "/srv/pinka/training/datasets",
         "jobs": "/srv/pinka/training/jobs",
         "adapters": "/srv/pinka/models/adapters",
+        "caps": {
+            "timeout_seconds": 86400,
+            "memory_max": "24G",
+            "cpus": 8,
+            "dataset_max": "8G",
+            "run_storage_max": "16G",
+            "tmp_max": "1G",
+        },
     },
     "inference_isolation": {
         "clients": ["root", "pinka-prometheus", "pinka-otelcol"],

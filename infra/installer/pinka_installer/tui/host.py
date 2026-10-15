@@ -135,6 +135,10 @@ class Host(Protocol):
         """
         ...
 
+    def smt_cores(self) -> list[frozenset[int]]:
+        """The CPUs of each core with more than one thread (SMT siblings)."""
+        ...
+
     def run(
         self,
         argv: Sequence[str],
@@ -241,6 +245,11 @@ class RealHost:
         except OSError:
             return []
         return [n for n in names if n not in {"lo", "tailscale0"}]
+
+    def smt_cores(self) -> list[frozenset[int]]:  # noqa: D102
+        from pinka_installer.apply import read_smt_cores  # noqa: PLC0415 - Textual-free import
+
+        return read_smt_cores()
 
     def free_gib(self, path: str) -> tuple[float, str]:  # noqa: D102
         existing = Path(path)

@@ -156,6 +156,11 @@ class LabTest(unittest.TestCase):
             ({"ok": True, "mode": "idle"}, "the GPU is idle"),
             ({"ok": True, "mode": "idle", "run": "tune-1"}, "the GPU is idle; run tune-1 stopped"),
             (
+                {"ok": True, "mode": "training", "run": "tune-1", "suspended": True},
+                "run tune-1 is suspended; it resumes from its checkpoints when the lab starts "
+                "(pinka start or a reboot)",
+            ),
+            (
                 {"ok": False, "error": "busy"},
                 "the GPU arbiter refused idle (busy); vLLM and a running job stop with the lab",
             ),
@@ -170,7 +175,8 @@ class LabTest(unittest.TestCase):
             code, out, _ = captured(functools.partial(commands.stop, system, lab(), 5))
             self.assertEqual(code, 0)
             self.assertEqual(out.splitlines()[1], line)
-            self.assertEqual(system.arbiter_requests, [{"request": "idle"}])
+            # The lab stops: a resumable run is suspended and resumes when it starts.
+            self.assertEqual(system.arbiter_requests, [{"request": "idle", "resume": True}])
 
     def test_pinka_gpu(self) -> None:
         status = {
@@ -645,6 +651,49 @@ class PlatformPurgeTest(unittest.TestCase):
         self.assertIn("remains: secret /etc/pinka/secrets/oldplat-ctl", out)
         self.assertIn("remains: published signing key", out)
         self.assertIn("--remove-secrets", out)
+
+    def test_purge_loads_the_inference_guard_again(self) -> None:
+        # Owner decision with the "commit" for 3d.5: no purged platform's UID
+        # stays on the inference guard's allowlist.
+        guard = {commands.INFERENCE_GUARD_UNIT_FILE: info("root", "root", 0o644)}
+        system = FakeSystem(
+            {
+                f"{commands.PLATFORM_TOOL} purge *": (0, PURGED),
+                f"systemctl reload-or-restart {commands.INFERENCE_GUARD_UNIT}": (0, ""),
+            },
+            infos=guard,
+        )
+        code, out, _ = captured(
+            lambda: commands.platform_purge(system, lab(), "oldplat", "oldplat")
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            system.calls[1], ["systemctl", "reload-or-restart", commands.INFERENCE_GUARD_UNIT]
+        )
+        self.assertIn("inference guard loaded again", out.splitlines()[-1])
+        failing = FakeSystem(
+            {
+                f"{commands.PLATFORM_TOOL} purge *": (0, PURGED),
+                f"systemctl reload-or-restart {commands.INFERENCE_GUARD_UNIT}": (
+                    1,
+                    "",
+                    "nft: syntax error",
+                ),
+            },
+            infos=guard,
+        )
+        code, _, err = captured(
+            lambda: commands.platform_purge(failing, lab(), "oldplat", "oldplat")
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("oldplat is purged, but the inference guard did not load again", err)
+        self.assertIn("nft: syntax error", err)
+        self.assertIn(f"systemctl restart {commands.INFERENCE_GUARD_UNIT}", err)
+        # A host without the guard has nothing to load.
+        bare = FakeSystem({f"{commands.PLATFORM_TOOL} purge *": (0, PURGED)})
+        code, out, _ = captured(lambda: commands.platform_purge(bare, lab(), "oldplat", "oldplat"))
+        self.assertEqual((code, len(bare.calls)), (0, 1))
+        self.assertIn("no inference guard on this host", out)
 
     def test_purge_can_remove_the_secrets(self) -> None:
         system = FakeSystem({f"{commands.PLATFORM_TOOL} purge *": (0, PURGED)})

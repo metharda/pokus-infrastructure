@@ -307,6 +307,43 @@
           "additionalProperties": {
             "$ref": "#/$defs/version"
           }
+        },
+        "fallback": {
+          "description": "Per collection: its pinned GitHub release tarball and that tarball's sha256, installed by make setup only when Galaxy is unreachable.",
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "url",
+              "sha256"
+            ],
+            "properties": {
+              "url": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/https_url"
+                  },
+                  {
+                    "$ref": "#/$defs/todo"
+                  }
+                ]
+              },
+              "sha256": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/sha256"
+                  },
+                  {
+                    "$ref": "#/$defs/todo"
+                  }
+                ]
+              }
+            }
+          }
         }
       },
       "unevaluatedProperties": false

@@ -8,6 +8,7 @@
     "refplat-ctl",
     "refplat-agent",
     "refplat-tune",
+    "refplat-tunecpu",
     "refplat-migrate",
     "refplat-ctl-api",
     "refplat-ctl-session",
@@ -50,6 +51,18 @@
       "comment": "job tune (gpu-trainer)",
       "kind": "job",
       "member": "tune",
+      "profile": "gpu-trainer"
+    },
+    {
+      "name": "refplat-tunecpu",
+      "group": "refplat-tunecpu",
+      "groups": [
+        "pinka-datasets"
+      ],
+      "home": "/var/lib/pinka/refplat-tunecpu",
+      "comment": "job tunecpu (gpu-trainer)",
+      "kind": "job",
+      "member": "tunecpu",
       "profile": "gpu-trainer"
     },
     {

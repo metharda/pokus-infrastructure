@@ -685,6 +685,7 @@ def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
             "replace": settings.replace or None,
             "owners": dataclasses.asdict(settings.owners),
             "summary": validate.summary(manifest, contract),
+            "warnings": validate.caps_warnings(manifest, settings.lab.get("training_caps") or {}),
             "vault_keys": vault_keys(manifest, contract, settings.vault_keys),
             "platform_settings": dict(settings.platform_settings),
             "lab": dict(settings.lab),
