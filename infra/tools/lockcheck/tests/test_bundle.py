@@ -185,6 +185,29 @@ def test_the_notice_comes_from_the_artifacts_files(tmp_path: Path) -> None:
         "  declared in its metadata but carried by no file in the artifact: BSD-2-Clause, PSF-2.0\n"
         in crypto
     )
+    # Every file is accounted for: a license text, a named license, or listed.
+    assert (
+        "  files in the artifact (FILES.json): 4\n"
+        "  files naming no license and carrying no license text:\n"
+        "    plugins/module_utils/_version.py\n"
+    ) in posix
+    assert (
+        "  files in the artifact (FILES.json): 10\n"
+        "  files naming no license and carrying no license text:\n"
+        "    REUSE.toml\n"
+    ) in crypto
+
+
+def test_a_reuse_annotation_without_a_license_line_is_listed() -> None:
+    data = artifact(
+        "ansible.posix",
+        "2.2.2",
+        {"COPYING": b"GNU GENERAL PUBLIC LICENSE\n", "a.png": b"x", "a.png.license": b"text\n"},
+        licenses=(),
+    )
+    facts = bundle.survey("ansible.posix", "2.2.2", data)
+    assert facts.files == 3
+    assert facts.unnamed == ("a.png", "a.png.license")
 
 
 def unpacked(package: Path, tmp_path: Path) -> Path:
@@ -369,6 +392,38 @@ def test_ci_builds_checks_and_attaches_the_package_of_each_release_tag(path: Pat
     assert runs[3].startswith("make release-package-check PACKAGE=")
     assert "gh release upload" in runs[4] and "--clobber" not in runs[4]
     assert all(s.get("with", {}).get("persist-credentials") is False for s in job["steps"][:1])
+
+
+@pytest.mark.parametrize(
+    ("path", "prefix"),
+    [
+        (INFRA / ".github" / "workflows" / "release-package.yml", ""),
+        (INFRA.parent / ".github" / "workflows" / "infra-release-package.yml", "infra/"),
+    ],
+)
+def test_ci_builds_the_package_twice_from_galaxy_and_uploads_nothing(
+    path: Path, prefix: str
+) -> None:
+    # Owner, with the "commit" for 3d.8: on pushes that touch the release
+    # tooling, the lock or tools/lockcheck/, and weekly.
+    workflow = yaml.safe_load(path.read_text())
+    triggers = workflow[True]  # YAML 1.1 reads the key "on" as true
+    assert set(triggers) == {"push", "schedule"}
+    assert {
+        f"{prefix}versions.lock.yml",
+        f"{prefix}tools/lockcheck/**",
+        f"{prefix}Makefile",
+    } <= set(triggers["push"]["paths"])
+    assert workflow["permissions"] == {"contents": "read"}
+    job = workflow["jobs"]["release-package"]
+    assert "permissions" not in job and "continue-on-error" not in job and "if" not in job
+    runs = [step.get("run", "") for step in job["steps"]]
+    assert runs[2] == "make release-package REF=HEAD RELEASE_OUT=build/release-a"
+    assert runs[3] == "make release-package REF=HEAD RELEASE_OUT=build/release-b"
+    assert runs[4].startswith("make release-package-check PACKAGE=")
+    assert "cmp " in runs[5] and "release/NOTICE" in runs[6]
+    uses = [step.get("uses", "") for step in job["steps"]]
+    assert not any("upload" in u for u in uses) and not any("upload" in r for r in runs)
 
 
 def test_no_tarball_and_no_release_directory_is_committed() -> None:

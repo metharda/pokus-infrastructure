@@ -123,7 +123,19 @@ Verbatim; part of the recorded 3g plan:
 >   say so now, as part of the recorded 3g plan.
 
 Until the rewritten history is in `pokus-infrastructure`, the working branch
-stays `claude/zen-albattani-qfwwps` in this repository. Whether this session
-can push to a branch that does not start with `claude/` is not known (it
-cannot be tried here without breaking the commit rule); if it cannot, the
-owner pushes to the new repository with the commands the assistant gives.
+stays `claude/zen-albattani-qfwwps` in this repository.
+
+## No pull requests, no merges (owner, with the "commit" for 3d.8)
+
+Verbatim; part of the recorded 3g plan:
+
+> - Never open a pull request and never merge anything. Finish all work on
+>   claude/zen-albattani-qfwwps. After the rewrite, I push it myself to the new
+>   repository as moving/on, and I merge moving/on into main myself. Record this in
+>   CLAUDE.md and PROGRESS.md as part of the 3g plan.
+> - In HANDOFF.md (3h), include the exact commands for that push and for merging
+>   moving/on into main, and what to check after the merge (CI on main, the weekly
+>   jobs, which only run from main).
+
+So after the owner's "rewrite", the assistant gives the push commands and
+does not push to the new repository itself.

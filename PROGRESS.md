@@ -130,6 +130,18 @@ repository at 3f (section J).
   Until the rewritten history is pushed, the working branch stays
   `claude/zen-albattani-qfwwps` here. The root `CLAUDE.md` carries the same
   wording.
+- **No pull requests, no merges (owner, with the "commit" for 3d.8,
+  verbatim; part of the 3g plan):**
+
+  > - Never open a pull request and never merge anything. Finish all work on
+  >   claude/zen-albattani-qfwwps. After the rewrite, I push it myself to the new
+  >   repository as moving/on, and I merge moving/on into main myself. Record this in
+  >   CLAUDE.md and PROGRESS.md as part of the 3g plan.
+  > - In HANDOFF.md (3h), include the exact commands for that push and for merging
+  >   moving/on into main, and what to check after the merge (CI on main, the weekly
+  >   jobs, which only run from main).
+
+  The root `CLAUDE.md` carries the same wording.
 - **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
   `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
   14, without the owner's "commit").
@@ -201,8 +213,13 @@ repository at 3f (section J).
   with the `lock-collections` CI job and the license-file fix (`4aeb35b`);
   its CI run passed every job but the known red `lock-check` (42 marker
   errors, the five artifacts' sha256 verified), and the new job printed
-  from Galaxy exactly the license files found before. 3d.8 is built and
-  waits for the owner's "commit" (see the 3d.8 item below).
+  from Galaxy exactly the license files found before. 3d.8 is committed
+  (`e525a1e`); its CI run passed `test`, `docs`, `lint`, `privacy` and
+  `lock-collections` (the same license files from Galaxy), `lock-check` is
+  the known red (38 marker errors), and every `check-mode` and
+  `check-mode-extended` job failed at start on a missing `PYTHONPATH`
+  entry. The fix, the `release-package` CI job and the owner's 3d.8
+  decisions wait for the owner's "commit"; 3e starts after that push's CI.
 
 ### Status of the plan of section J
 
@@ -214,7 +231,7 @@ repository at 3f (section J).
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-7 and 4b done; 8 built, waiting for "commit" | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done; the CI fix of step 8 and its CI job wait for "commit" | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -318,10 +335,15 @@ proposal, and waits for the owner's "commit".
     Owner, with the "commit" for `4aeb35b`: no SPDX texts are added; those
     two are listed as declared in the metadata but carried by no file in the
     artifact. Checked for that commit's report: all 66 files of
-    `community.library_inventory_filtering_v1` 1.1.5 (its release tag,
-    matched to the artifact's `FILES.json` by sha256) declare
+    `community.library_inventory_filtering_v1` 1.1.5 declare
     GPL-3.0-or-later or are its text, except the empty `py.typed` marker,
-    which carries no license statement.
+    which carries no license statement. The file list and sha256 values
+    came from the `FILES.json` of 1.1.5 as bundled in the `ansible` 14.4.0
+    wheel from PyPI, and every file was read from the release tag `1.1.5`
+    of the collection's repository, matched by sha256 (Galaxy is not
+    reachable from this environment); Galaxy's own artifact is confirmed by
+    the `release-package` CI job's NOTICE (files and unnamed files per
+    artifact), built from the real artifacts.
   - **Release package (owner's choice in 3d.8, "Full package"):** the CI job
     on an `infra-vX.Y.Z` tag builds a tarball of the repository's infra tree
     at the tag (`git archive`) plus `release/` with the five Galaxy
@@ -388,16 +410,22 @@ proposal, and waits for the owner's "commit".
   repository is never force-pushed. From then on `moving/on` is the working
   branch, and every rule that names `claude/zen-albattani-qfwwps` (the
   commit rule, the scoped commit exception, the rewrite plan) applies to
-  `moving/on` there (owner decision with the "commit" for 3d.3). If this
-  session cannot push to a branch outside `claude/`, the owner pushes with
-  the commands the assistant gives. Then the
+  `moving/on` there (owner decision with the "commit" for 3d.3). The owner
+  pushes the rewritten history to the new repository and merges `moving/on`
+  into `main` himself; the assistant never opens a pull request and never
+  merges anything, finishes all work on `claude/zen-albattani-qfwwps`, and
+  gives the push commands (owner, with the "commit" for 3d.8). Then the
   assistant gives the owner a checklist of what to recreate by hand on the
   new repository (secrets including `PINKA_PRIVACY_DENYLIST`, branch
   protection, Actions settings and the rest), and one small commit proposal
   updates every reference to the repository's name and URL (README, docs,
   the `CITATION.cff` placeholder, examples).
 - **3h** Final report: `TEST_REPORT.md` and `HANDOFF.md` for infra as the
-  master prompt describes, their commit proposal, then stop. After 3h the
+  master prompt describes, their commit proposal, then stop. `HANDOFF.md`
+  gives the exact commands for pushing the rewritten history to the new
+  repository as `moving/on` and for merging `moving/on` into `main`, and
+  what to check after the merge: CI on `main`, and the weekly jobs, which
+  run only from `main` (owner, with the "commit" for 3d.8). After 3h the
   assistant waits for the owner's explicit instruction.
 
 ## Approved deviations
@@ -468,6 +496,7 @@ the platform.
 | V6 | The `agent` service names its own package in the manifest (`package: packages/potka-agent/`). `potka-agent` may not depend, directly or through other packages, on `potka-core` or any other package of the release, nor on a path, Git or URL source: only on packages from an `https://` index. What the agent needs from shared code moves into `potka-agent`. The build installs it alone into `.agent-venvs/agent/`, where `.venv/bin/potka-agent-runner` resolves; the agent sees nothing else of the release (prompts, agent configs and tool schemas reach it over its sockets). A release ships neither `.venv` nor `.agent-venvs`. |
 | V7 | GPU inference needs an NVIDIA GPU with compute capability 7.5 or newer (the pinned vLLM image's kernels); the platform's hardware requirements and docs state 7.5. |
 | (restore) | A restore deploys exactly the recorded commit and tree, through the recorded tag only with signed tags required (owner decision with the "commit" for 3d.4): the platform's release process never moves or deletes a release tag and never rewrites history a deployed release came from. |
+| (contract copy) | A platform repository that keeps a copy of `docs/contracts.md` keeps it identical to the copy in the infra release it pins, and the platform's CI checks it (owner decision with the "commit" for 3d.8). The attestation format and the official check are the platform's, documented on its own site (infra only provides the QA directories, the trusted keys and the commits and tree hashes an attestation is checked against). |
 
 Built in 3d.5 and approved with the "commit" for 3d.5 (the arbiter's
 protocol, the job interface, the inference API's clients); the platform
@@ -752,8 +781,10 @@ step 4" through "after step 13"):
 
 ## Next step
 
-3d.8 (infra §16 step 22, the owner's 3d.7 decisions and the NOTICE rule)
-is built and waits for the owner's "commit", under the
-[Process rules](#process-rules-in-force); then 3e. Still open: the
+The CI fix of `e525a1e`, the `release-package` CI job and the records of
+the owner's 3d.8 decisions wait for the owner's "commit", under the
+[Process rules](#process-rules-in-force); after that push's CI, 3e under
+the scoped exception, stopping for every part that needs a VM, a real host,
+Incus, Docker or a GPU with exactly what to run and where. Still open: the
 remaining `TODO(verify)` items (113), which need network access or
 reference hardware.

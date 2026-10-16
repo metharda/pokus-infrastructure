@@ -18,10 +18,18 @@ Ansible collection artifacts pinned in `ansible_collections.artifacts` of
 the artifact check bootstrap runs; `NOTICE`, built from the license files
 present in each artifact, the SPDX identifiers and REUSE annotations its
 files name, and the licenses its metadata declares (a declared license that
-no file carries is listed as such; no license text is added); and
+no file carries is listed as such; no license text is added), with the
+number of files of each artifact and every file that names no license; and
 `RELEASE.json` with the tag, the commit and the tree hash of `infra/`. The
 package is reproducible: the same tag gives the same bytes. Packages are
 never committed; `release/` is ignored by Git.
+
+Between releases, the `release-package` workflow builds the package of the
+pushed commit twice from Galaxy's artifacts, checks it, compares the two
+builds byte for byte and prints the `NOTICE`, on every push that changes the
+lock, `tools/lockcheck/`, the `Makefile` or the release workflows, and
+weekly; it uploads nothing. A failure there blocks the next change like any
+CI failure.
 
 !!! note "Prerequisites"
     - A development checkout after `make setup`, with network access to

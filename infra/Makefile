@@ -33,6 +33,11 @@ SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.js
 # Oldest Python preflight must run on (BUILD_PROMPT §2.1).
 PREFLIGHT_MIN_PYTHON := 3.9
 BUILD := build
+# Where make release-package writes the package and its .sha256.
+RELEASE_OUT ?= $(BUILD)/release
+# The packages pinka_test_distros imports (its own, the platform tool, the
+# package builder, preflight), for every target that runs it.
+TEST_DISTROS_PATH := tools/test-distros:tools/platform:tools/lockcheck:preflight
 
 # Pages under docs/ that are kept verbatim or are working notes, not site pages.
 DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
@@ -252,15 +257,15 @@ test-pytest: setup ## The pytest suites
 
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
-	PYTHONPATH=tools/test-distros:tools/platform:tools/lockcheck:preflight $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
+	PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
 check-mode: setup ## Required CI fast lane (§11, §19.9): base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
-	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:tools/platform:preflight $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
+	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: check-mode-extended
 check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in check mode; components with unverified sources are skipped and listed as not tested; CI_IMAGE=<key>
-	$(ANSIBLE_ENV) PYTHONPATH=tools/test-distros:tools/platform:preflight $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
+	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
 
 .PHONY: test-py39
 test-py39: ## Preflight and pinka test suites with plain unittest on CPython 3.9 (stdlib only)
@@ -287,8 +292,8 @@ lock-collections: $(VENV)/.synced ## Maintainers only: print Galaxy's checked ar
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml $(LOCK_COLLECTIONS_ARGS)
 
 .PHONY: release-package
-release-package: $(VENV)/.synced ## Build the release package of TAG=infra-vX.Y.Z (or of REF, for tests) with its pinned collections into build/release (network: Galaxy)
-	@$(LOCKCHECK) package build $(if $(TAG),--tag $(TAG),--ref $(or $(REF),HEAD)) --out $(BUILD)/release
+release-package: $(VENV)/.synced ## Build the release package of TAG=infra-vX.Y.Z (or of REF, for tests) with its pinned collections into RELEASE_OUT (build/release; network: Galaxy)
+	@$(LOCKCHECK) package build $(if $(TAG),--tag $(TAG),--ref $(or $(REF),HEAD)) --out $(RELEASE_OUT)
 
 .PHONY: release-package-check
 release-package-check: $(VENV)/.synced ## Check a release package (PACKAGE=file or unpacked tree): its tree hash, collections and NOTICE

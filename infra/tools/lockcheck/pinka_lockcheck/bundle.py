@@ -142,12 +142,16 @@ class Survey:
             its REUSE ``.license`` file, or a ``REUSE.toml`` annotation).
         uncarried: Declared licenses that no file names and no license text
             is named after.
+        files: The number of files the artifact lists in ``FILES.json``.
+        unnamed: Its files that name no license and are no license text.
     """
 
     declared: tuple[str, ...]
     texts: tuple[tuple[str, str], ...]
     named: tuple[tuple[str, int], ...]
     uncarried: tuple[str, ...]
+    files: int
+    unnamed: tuple[str, ...]
 
 
 def survey(name: str, version: str, data: bytes) -> Survey:  # noqa: PLR0912 - one branch per kind of license fact
@@ -184,11 +188,15 @@ def survey(name: str, version: str, data: bytes) -> Survey:  # noqa: PLR0912 - o
             paths = [paths] if isinstance(paths, str) else list(paths)
             ident = str(entry.get("SPDX-License-Identifier") or "")
             annotations.append(([str(p) for p in paths], _ids(ident)))
+    unnamed: list[str] = []
     for path, content in files.items():
         if path in artifact.SPECIAL:
             continue
         if path.endswith(".license") and path.removesuffix(".license") in files:
-            continue  # a REUSE annotation, counted for the file it annotates
+            # A REUSE annotation, counted for the file it annotates.
+            if not _spdx(_text(content)):
+                unnamed.append(path)
+            continue
         ids = _spdx(_text(content))
         if not ids and f"{path}.license" in files:
             ids = _spdx(_text(files[f"{path}.license"]))
@@ -199,11 +207,14 @@ def survey(name: str, version: str, data: bytes) -> Survey:  # noqa: PLR0912 - o
                     break
         for ident in ids:
             counts.setdefault(ident, set()).add(path)
+        if not ids and path not in info["license_files"]:
+            unnamed.append(path)
     declared = tuple(str(x) for x in info.get("license") or [])
     stems = {posixpath.splitext(posixpath.basename(p))[0] for p, _ in texts}
     uncarried = tuple(d for d in declared if d not in counts and d not in stems)
     named = tuple(sorted((ident, len(paths)) for ident, paths in counts.items()))
-    return Survey(declared, tuple(texts), named, uncarried)
+    total = sum(1 for path in files if path not in artifact.SPECIAL)
+    return Survey(declared, tuple(texts), named, uncarried, total, tuple(sorted(unnamed)))
 
 
 def _text(content: bytes) -> str:
@@ -256,6 +267,9 @@ def notice(bundled: Sequence[Bundled]) -> str:
                 "  declared in its metadata but carried by no file in the artifact: "
                 + ", ".join(facts.uncarried)
             )
+        lines.append(f"  files in the artifact (FILES.json): {facts.files}")
+        lines.append("  files naming no license and carrying no license text:")
+        lines += [f"    {path}" for path in facts.unnamed] or ["    none"]
     return "\n".join(lines) + "\n"
 
 

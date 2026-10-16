@@ -3797,3 +3797,62 @@ None new.
 
 `make verify-todos`: 113 markers; `versions.lock.yml` holds 8 fewer than at
 `4aeb35b` (the fallback entries).
+
+### Owner decisions on 3d.8 (with the "commit" for `e525a1e`)
+
+- Approved: the schemas of the principals and endpoints files at the root
+  of `contract/`; the package name `pokus-infrastructure-<X.Y.Z>`; never
+  replacing a release file; `make test-distros` needing Galaxy.
+- The `contracts.md` rule: a platform repository that keeps a copy keeps
+  it identical to the copy in the infra release it pins (`infra/CLAUDE.md`);
+  the platform's CI checks it ("Platform spec changes pending").
+- Attestations: approved out of the infra contract on the condition that
+  infra only provides paths and keys. Checked: no infra code reads, parses
+  or verifies an attestation. Infra creates `/etc/pinka/qa/trusted-keys`
+  (root 0755) and `/etc/pinka/qa/attestations` (root:controller 0750,
+  `rendering.py`), installs each `qa_trusted_keys` entry's PEM text as given
+  (`platform` role, `render.yml`; no parsing), lists both directories in
+  `endpoints.toml` (`render.py`), backs up and restores `/etc/pinka/qa` as
+  files (`restore.yml`), and hides it from the build sandbox
+  (`deploy.py`, `BUILD_HIDDEN`). Doctor, the installer, `pinka`, the health
+  gate and the session records do not touch it. Nothing was restored.
+- A CI job builds the package from the real Galaxy artifacts (below).
+- Never open a pull request and never merge; the owner pushes the
+  rewritten history as `moving/on` and merges it into `main`; `HANDOFF.md`
+  carries the commands and the checks after the merge (root `CLAUDE.md`,
+  `PROGRESS.md`, 3g and 3h).
+
+### Fixed after the 3d.8 commit (CI of `e525a1e`)
+
+- Every `check-mode` and `check-mode-extended` job failed at start:
+  `pinka_test_distros.cli` imports `pinka_lockcheck.bundle`, and the two
+  targets' `PYTHONPATH` lacked `tools/lockcheck` (only `test-distros` had
+  it). One variable, `TEST_DISTROS_PATH`, now serves all three targets, and
+  a test runs each target's own command line (`make -n`) and imports the
+  CLI with exactly that path; it fails on the old `check-mode` path. The
+  local gate does not run check mode, which is why it passed.
+
+### Built after the 3d.8 commit: the release-package CI job
+
+- `release-package.yml` (and the monorepo wrapper
+  `infra-release-package.yml`) runs on every push that changes the lock,
+  `tools/lockcheck/`, the `Makefile` or the release workflows, and weekly
+  (Mondays 04:53 UTC; scheduled runs use the default branch). It builds the
+  package of the pushed commit twice (`make release-package REF=HEAD
+  RELEASE_OUT=…`, Galaxy's artifacts each time), runs
+  `make release-package-check`, compares the two builds with `cmp`, and
+  prints the `NOTICE`. It uploads nothing and has read-only permissions. A
+  test checks both files.
+- `NOTICE` now accounts for every file: per artifact the number of files
+  (`FILES.json`) and every file that names no license and carries no
+  license text (a REUSE `.license` file without an SPDX line is listed
+  too). The job's printed `NOTICE` therefore answers, from Galaxy's own
+  artifacts, which files carry which licenses; for
+  `community.library_inventory_filtering_v1` 1.1.5 the expected lines are
+  66 files, only GPL-3.0-or-later named, and `plugins/plugin_utils/py.typed`
+  as the one file naming no license.
+- The 66-file check given with the `4aeb35b` report used the `FILES.json`
+  of 1.1.5 bundled in the `ansible` 14.4.0 wheel from PyPI, with every file
+  read from the collection's tag `1.1.5` and matched by sha256; Galaxy is
+  not reachable from this environment (proxy 403). `PROGRESS.md` said "the
+  artifact's `FILES.json`"; it now names the source.

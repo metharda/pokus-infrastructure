@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
+import shlex
+import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -802,3 +806,28 @@ def test_cli_refuses_without_a_release_package(
     argv = ["run", "--target", "debian-13", "--accept-unverified-images"]
     assert run_cli(argv) == 2
     assert "refused: the release package of HEAD: ansible.posix 2.2.2" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("target", ["test-distros", "check-mode", "check-mode-extended"])
+def test_every_make_target_finds_the_packages_the_cli_imports(target: str) -> None:
+    # The CI of e525a1e: check-mode's PYTHONPATH lacked tools/lockcheck, which
+    # the CLI imports. Each target's own command line must import it.
+    dry = subprocess.run(
+        ["make", "-n", target, "CI_IMAGE=debian_13"],
+        cwd=INFRA,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    line = next(x for x in dry.splitlines() if "-m pinka_test_distros" in x)
+    path = next(w for w in shlex.split(line) if w.startswith("PYTHONPATH="))
+    env = {**os.environ, "PYTHONPATH": path.removeprefix("PYTHONPATH=")}
+    done = subprocess.run(
+        [sys.executable, "-c", "import pinka_test_distros.cli"],
+        cwd=INFRA,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr

@@ -93,4 +93,5 @@ version.
 
 2. Read the licenses of the bundled collections in `release/NOTICE`: the
    license texts each artifact carries, the SPDX identifiers its files
-   name, and the licenses its metadata declares.
+   name, the licenses its metadata declares, the number of its files and
+   every file that names no license.

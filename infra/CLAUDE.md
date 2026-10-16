@@ -132,7 +132,9 @@ the prompt text where they differ.
 - Bootstrap records the repository commit and the `infra/` tree hash; the
   dirty-tree check covers `infra/` only (B3).
 - Release tags are `infra-vX.Y.Z` (B4).
-- `docs/contracts.md` must stay byte-identical to `../platform/docs/contracts.md`.
+- A platform repository that keeps a copy of `docs/contracts.md` keeps it
+  identical to the copy in the infra release it pins (owner, with the
+  "commit" for 3d.8); the platform's CI checks it.
 
 ## Ansible portability (BUILD_PROMPT §19)
 
