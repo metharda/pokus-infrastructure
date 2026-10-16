@@ -45,6 +45,7 @@ libexec
 libnvidia
 libpq
 linuxcontainers
+lockcheck
 lockfiles
 micromamba
 miniplat

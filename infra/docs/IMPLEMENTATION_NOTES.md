@@ -3856,3 +3856,132 @@ None new.
   read from the collection's tag `1.1.5` and matched by sha256; Galaxy is
   not reachable from this environment (proxy 403). `PROGRESS.md` said "the
   artifact's `FILES.json`"; it now names the source.
+
+## Infra self-test without provisioning (plan step 3e)
+
+Run on 2026-10-16 in this development environment, a container with
+Ubuntu 24.04 that has no KVM, no Incus, no GPU and no OpenSSH client, whose
+proxy refuses Galaxy and a few other hosts. Docker was not used. Nothing
+was provisioned: no `bootstrap.sh`, no play without `--check`. The commit
+under test is `a425c7f` plus the two fixes below.
+
+### Run here
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Lint | `make lint` | 12 of 12 steps passed. The 94 warnings are all `FM100`: no page has been verified yet (`last_verified` stays null, never invented). `ansible-lint` (production profile): 0 failures, 0 warnings in 494 files. `--syntax-check` of every playbook is part of this step |
+| Tests | `make test` | 3460 passed, 0 failed, 2 skipped, 2 warnings. Skipped: the `jsonschema` comparison in the standard-library run on CPython 3.9 (the same test runs under pytest), and `tools/platform/tests/test_deploy_mirror.py:155`, which needs `ssh-keygen`; that skip is allowed only outside CI. The 2 warnings are uv's deprecation notice for the `UV_NATIVE_TLS` variable that this environment sets |
+| Documentation | `make docs` | Drift check: 41 generated files, none stale. Coverage: 1231 of 1231 reference entries (100.0 %). Strict build passed. The one warning is the theme's notice about MkDocs 2.0, not a build warning |
+| Preflight fixtures | the wrapper `preflight/pinka-preflight --root <fixture> --offline --quiet`, once per fixture | All 43 fixtures: the exit code equals the outcome's code and the report's `exit_code`. The 39 fixtures that §11 lists were also checked against §11's own text, written independently of `expected.json` (outcome, provider, tier, family, features, hypervisor, release model, conflicts, reasons, remediation texts): all 39 pass. §11's "dcgm" is the matrix feature `dcgm_metrics`. The 4 fixtures added later are checked by their `expected.json` in the tests |
+| Unverified markers | `make verify-todos` | Fails, as it must, with 113 markers: 38 in `versions.lock.yml`, 17 in `ansible/component-sources.yml`, 16 in `preflight/endpoints.yml`, 6 in `models.catalog.yml` and 36 in other files |
+| Lock check | `make lock-check` | 49 errors. 38 are the marker errors CI reports. The other 11 come from this environment: the proxy refuses Galaxy (the five collection artifacts) and `nvidia.github.io` (one key), and Docker Hub answers HTTP 429 to anonymous manifest requests (five images). CI's run is the authoritative one: 38 errors and 1 warning (the postgres tag) |
+| `qa:run env=E0` blocks | each block of the docs for a development checkout, run as written | 27 blocks on 7 pages. The tutorial "Write a minimal platform" ran end to end in a scratch home directory with the placeholder Git identity `researcher1`: the validator printed exactly the documented summary and exited 0 before and after the build, and `v0.1.0` and the bundle were created. "How to validate a platform release" on a copy of `refplat`: both blocks exit 0. `make generate`, `fixture_defs.py --write` and the snapshot update changed no file. `make lock-update` prints the procedure. The `pinka_test_distros list` block of "How to test the distributions" failed (fixed below). Not run here: the three blocks of "How to publish a release package", which need a package and so Galaxy |
+| Lock reproducibility | `uv pip compile` exactly as `make bootstrap-lock`, `make models-lock` and `make installer-lock` | With the committed pins as the output's starting point, all three locks come out byte-identical. From an empty output they do not (fixed below) |
+| TUI | part of `make test` | Pilot tests of every flow of §18.9: fresh WSL2 with a GPU, bare metal with a pool disk, a degraded host without a GPU, restore, modify, validation errors, resume after exit code 75, and the whole flow with the reference platform. Snapshots of every screen at 80×24 and 120×40, dark and light (84). The answers replay writes byte-identical files; only the vault differs |
+
+### Found and fixed by the self-test
+
+- **A documented command could not start.** The `E0` block of "How to test
+  the distributions" ran `pinka_test_distros list` with a `PYTHONPATH` that
+  lacked `tools/lockcheck`: the gap that broke CI's check-mode jobs on
+  `e525a1e`, in the docs. The page is fixed, and
+  `tools/repo-checks/tests/test_doc_commands.py` runs every documented
+  `PYTHONPATH=… python -m <package>` command line of the docs and the
+  README with `--help` and that exact path. There are six such lines; the
+  test failed on the old one.
+- **Recompiling a lock on a fresh clone moved unrelated pins.**
+  `uv pip compile` keeps the pins of the file it writes. `make models-lock`
+  and `make installer-lock` write to `build/` first, which a fresh clone
+  does not have, so they resolved from nothing. A change to one input would
+  have moved every transitive pin as well: filelock, hf-xet, platformdirs
+  and pycparser had newer releases. Both targets now seed their output
+  with the committed lock, without its two header lines, as
+  `bootstrap-lock` does by writing the committed file. In a fresh clone
+  both reproduce the committed locks byte for byte. A test checks every
+  lock target's recipe.
+
+### Ran in CI, not here
+
+On `a425c7f` (GitHub Actions; this environment has no Docker daemon to use
+and cannot reach Galaxy):
+
+- `check-mode`: the provider-agnostic roles in check mode in a systemd
+  container, on six families. All passed.
+- `check-mode-extended`: the whole play in check mode with the reference
+  platform. All six passed.
+- `release-package`: the package was built twice from Galaxy's artifacts,
+  the two builds were identical, and `make release-package-check` found no
+  problem.
+- `lock-collections`: Galaxy's artifacts equal the lock.
+
+### Not tested: needs a VM, a real host, Incus, Docker or a GPU
+
+Each of these waits for the owner, who runs it where it says.
+
+1. **Bootstrap in check mode on Ubuntu 24.04** (§17). Where: a new,
+   disposable Ubuntu 24.04 VM (4 vCPUs, 8 GiB of memory, 60 GiB of disk,
+   Internet access), never a lab host or a workstation. Even with
+   `--check`, bootstrap installs its tooling below `/opt/pinka` and writes
+   its logs. As an account with `sudo`, in the VM:
+
+    ```bash
+    git clone --branch <branch> <repository-url> ~/pinka
+    cd ~/pinka/infra
+    sed 's|^vault_restic_repository: .*|vault_restic_repository: "/var/backups/pinka-restic"|' \
+      ansible/group_vars/all/vault.yml.example > ansible/group_vars/all/vault.yml
+    printf '%s\n' check-mode-only > ~/vault-pass
+    sudo ./bootstrap/bootstrap.sh --machine example-machine --check --vault-password-file ~/vault-pass
+    echo "exit code: $?"
+    ```
+
+    `<repository-url>` is the clone URL of this repository and `<branch>`
+    the working branch named in `PROGRESS.md`. The vault is the
+    example vault, unencrypted, with a local backup repository, as in CI's
+    check-mode jobs; the password file is needed only because a vault file
+    exists. Preflight reports `degraded` in a VM without a GPU: answer `y`
+    at the prompt. Expected result: exit code 0 and a play recap with
+    `failed=0`. Send back the exit code, `git log -1 --format=%H` and the
+    newest log directory under `/var/log/pinka-bootstrap/`.
+
+2. **`make test-distros`** (§17, §19.9): every `supported` and `tested`
+   distribution (16 targets) gets a full bootstrap without a GPU, a second
+   run with `changed=0`, a backup, `pinka doctor --smoke` exit 0, and the
+   reference platform stages: platform, isolation probe, training (CPU
+   job), resume, redeploy, replace and restore. Where: a machine with Incus
+   and VM support (about 8 GiB of memory and 60 GiB of disk per test), or a
+   lab host whose lab is stopped. Steps: "How to test the distributions",
+   with an ephemeral tailnet auth key tagged `tag:pinka-qa` and
+   `--accept-unverified-images` while the image aliases are unverified.
+   Afterwards, commit `tests/distros/results.yml` with
+   `docs/support-matrix.md` after `make generate`.
+3. **A real supported host** (§17, run by the owner): a full bootstrap, a
+   second run with `changed=0` and `sudo pinka doctor --smoke` exit 0,
+   following "Install a lab on bare-metal Linux" or "Install a lab on WSL2".
+4. **The TUI on a real host** (§17): a fresh install through the TUI, then a
+   replay with `--answers` and `--non-interactive` on a second, identical
+   host or VM. The config files must be byte-identical, apart from the
+   encrypted vault, with the same Ansible result. The tests cover the
+   files, not the Ansible result.
+5. **GPU** (§17): a fresh TUI install on a GPU host must end with vLLM
+   serving the selected model and passing the tool-call verification. The
+   training flow on the GPU (dataset, the `tune` job, adapter, serving), the
+   driver and MOK flow on Secure Boot hardware, and DCGM are not tested.
+   `make test-distros` covers the CPU-only training variant.
+6. **Golden images** (§7.13): the first real build of each blueprint needs
+   Incus on a lab host, after `incus_base_images` is pinned.
+7. **Check mode locally** (optional): `make check-mode CI_IMAGE=<key>` and
+   `make check-mode-extended CI_IMAGE=<key>` need Docker. CI runs both on
+   every push, so a local run adds nothing unless CI cannot run.
+
+### Question for the owner (3e)
+
+- §11 asks for `make test-roles`: the provider-agnostic roles in a throwaway
+  Incus system container or VM, only when invoked. Step 12 built that
+  check as `make check-mode` in a Docker systemd container (blocking in CI,
+  approved deviation I2 for the CI side), and the full run in Incus VMs as
+  `make test-distros`. No target is named `test-roles`, and no deviation
+  records the change from Incus to Docker or the different name.
+  Recommendation: record it as an approved deviation ("`make check-mode` in
+  a Docker systemd container replaces `make test-roles`; Incus VMs run in
+  `make test-distros`"). The alternative is an alias `test-roles` that runs
+  `check-mode`.

@@ -321,8 +321,14 @@ bootstrap-lock: setup ## Compile bootstrap/requirements.lock from requirements.i
 	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
 	  --python-version $(BOOTSTRAP_PYTHON) bootstrap/requirements.in -o bootstrap/requirements.lock
 
+# uv pip compile keeps the pins of the file it writes: models-lock and
+# installer-lock start their output in build/ from the committed lock (without
+# its two header lines), so a change moves only the pins it needs, as
+# bootstrap-lock, which writes the committed file itself.
 .PHONY: models-lock
 models-lock: setup ## Compile the models role's hash-locked requirements.lock (needs PyPI)
+	@mkdir -p $(BUILD)
+	tail -n +3 ansible/roles/models/files/requirements.lock > $(BUILD)/models-requirements.lock
 	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
 	  --python-version $(BOOTSTRAP_PYTHON) ansible/roles/models/files/requirements.in \
 	  -o $(BUILD)/models-requirements.lock
@@ -332,6 +338,8 @@ models-lock: setup ## Compile the models role's hash-locked requirements.lock (n
 
 .PHONY: installer-lock
 installer-lock: setup ## Compile installer/requirements.lock from requirements.in (needs PyPI)
+	@mkdir -p $(BUILD)
+	tail -n +3 installer/requirements.lock > $(BUILD)/installer-requirements.lock
 	$(UV) pip compile --quiet --universal --generate-hashes --no-header \
 	  --python-version $(BOOTSTRAP_PYTHON) installer/requirements.in -o $(BUILD)/installer-requirements.lock
 	{ echo "# Managed by pinka (installer/requirements.lock). Local changes will be overwritten."; \

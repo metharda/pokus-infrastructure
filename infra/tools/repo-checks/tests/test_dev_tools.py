@@ -147,3 +147,34 @@ def test_the_scans_skip_the_tree_outside_git(tmp_path: Path, tree: str) -> None:
     names = [p.name for p in privacy.list_files([tmp_path])]
     assert names == ["kept.py"]
     assert neutrality._walk(tmp_path) == ["kept.py"]
+
+
+LOCKS = {
+    "bootstrap-lock": "bootstrap/requirements.lock",
+    "models-lock": "ansible/roles/models/files/requirements.lock",
+    "installer-lock": "installer/requirements.lock",
+}
+
+
+@pytest.mark.parametrize(("target", "lock"), LOCKS.items())
+def test_a_lock_recompile_keeps_the_committed_pins(target: str, lock: str) -> None:
+    # Found by the infra self-test (3e): uv pip compile keeps the pins of the
+    # file it writes. A lock compiled into build/ on a fresh clone started from
+    # nothing and moved every transitive pin the change did not touch. The
+    # compile's output must hold the committed lock (without its header) first.
+    dry = subprocess.run(
+        ["make", "-n", "-o", "setup", "--no-print-directory", target, "UV=uv"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    commands = dry.replace("\\\n", " ").splitlines()
+    compile_at = next(i for i, c in enumerate(commands) if "uv pip compile" in c)
+    words = commands[compile_at].split()
+    output = words[words.index("-o") + 1]
+    if output == lock:
+        return
+    header = len([x for x in read(lock).splitlines()[:2] if x.startswith("# ")])
+    assert header == 2, lock
+    assert f"tail -n +3 {lock} > {output}" in commands[:compile_at], commands

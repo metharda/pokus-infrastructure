@@ -198,11 +198,12 @@ repository at 3f (section J).
 ## Current state
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
-  owner merges to `main`. Last step commit: `0d72e54` (3d.7); last commit
-  `4aeb35b` (the collection pins, the `lock-collections` CI job and the
-  license-file fix).
+  owner merges to `main`. Last step commit: `e525a1e` (3d.8); last commit
+  `a425c7f` (the CI fix of 3d.8 and the `release-package` CI job). Before
+  them: `0d72e54` (3d.7) and `4aeb35b` (the collection pins, the
+  `lock-collections` CI job and the license-file fix).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
-  1-6 (with 3d.4b). The commit of each is in the table below and, for the
+  1-8 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
 - 3d.7 is committed (`0d72e54`), and the fix of its CI run (`d5fe24d`,
   every job green but the known red `lock-check`). The symbolic-link fix of
@@ -219,7 +220,20 @@ repository at 3f (section J).
   the known red (38 marker errors), and every `check-mode` and
   `check-mode-extended` job failed at start on a missing `PYTHONPATH`
   entry. The fix, the `release-package` CI job and the owner's 3d.8
-  decisions wait for the owner's "commit"; 3e starts after that push's CI.
+  decisions are committed (`a425c7f`). Its CI run passed every job but the
+  known red `lock-check` (38 marker errors and 1 warning, the postgres tag),
+  all six `check-mode` and all six `check-mode-extended` jobs included. The
+  first `release-package` run built two identical packages (sha256
+  `6d9463d2d1307b28e968a3a8676a76576c3ec4ac8a0554988fe11c234840cb39`),
+  `make release-package-check` found no problem, and its NOTICE confirmed
+  every license finding (see "Where the license findings came from" under
+  3d.8).
+- 3e: the self-test without provisioning is done and committed under the
+  scoped exception. It found and fixed two faults, each with a test: a
+  documented command missing `tools/lockcheck`, and lock recompiles that
+  moved unrelated pins on a fresh clone. Everything that needs a VM, a real
+  host, Incus, Docker or a GPU waits for the owner, as listed under [Owner
+  deliverables pending](#owner-deliverables-pending).
 
 ### Status of the plan of section J
 
@@ -231,8 +245,8 @@ repository at 3f (section J).
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done; the CI fix of step 8 and its CI job wait for "commit" | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8) |
-| 3e | Infra self-test without provisioning | not started | — |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8), `a425c7f` (CI fix of 8 and the `release-package` job) |
+| 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner | the 3e commit (its hash is recorded with the next commit) |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -341,9 +355,47 @@ proposal, and waits for the owner's "commit".
     came from the `FILES.json` of 1.1.5 as bundled in the `ansible` 14.4.0
     wheel from PyPI, and every file was read from the release tag `1.1.5`
     of the collection's repository, matched by sha256 (Galaxy is not
-    reachable from this environment); Galaxy's own artifact is confirmed by
-    the `release-package` CI job's NOTICE (files and unnamed files per
-    artifact), built from the real artifacts.
+    reachable from this environment).
+  - **Where the license findings came from (owner, with the "commit" for
+    `a425c7f`):** every per-file license finding recorded before
+    `a425c7f` was made from the `ansible` 14.4.0 wheel on PyPI: its
+    `MANIFEST.json` and `FILES.json` for each of the five collections,
+    with every listed file read from the collection's release tag (or the
+    wheel) and matched by sha256 (215, 579, 642, 3453 and 66 files, all
+    matched). Only the license-file names and declared licenses printed by
+    `lock-collections` came from Galaxy. The first run of the
+    `release-package` job (`a425c7f`) printed the NOTICE built from
+    Galaxy's own artifacts, and it equals the NOTICE built from the wheel
+    copies in every line it expresses: `ansible.posix` 2.2.2 carries
+    `COPYING` and `PSF-license.txt`, declares no license, has 215 files,
+    one naming GPL-3.0-or-later and 212 with no SPDX line, among them
+    `plugins/module_utils/_version.py` and `plugins/module_utils/mount.py`;
+    `community.crypto` 3.4.0 carries `COPYING` and `LICENSES/` Apache-2.0,
+    BSD-3-Clause and GPL-3.0-or-later, its files name Apache-2.0 (2),
+    BSD-3-Clause (1) and GPL-3.0-or-later (529), it declares
+    GPL-3.0-or-later, Apache-2.0, BSD-2-Clause, BSD-3-Clause and PSF-2.0,
+    and BSD-2-Clause and PSF-2.0 are carried by no file; 579 files, none
+    without a license; `community.docker` 5.3.0 carries `COPYING` and
+    `LICENSES/` Apache-2.0 and GPL-3.0-or-later, its files name Apache-2.0
+    (49) and GPL-3.0-or-later (581), 642 files, none without a license;
+    `community.general` 13.4.0 carries `COPYING` and `LICENSES/`
+    BSD-2-Clause, GPL-3.0-or-later and MIT, its files name BSD-2-Clause
+    (37), GPL-3.0-or-later (3056) and MIT (2), it declares none, 3453
+    files, 30 without an SPDX line (test fixtures and data files, two
+    `.keep` files, a test collection's `README.md` and
+    `plugins/module_utils/__init__.py`);
+    `community.library_inventory_filtering_v1` 1.1.5 carries `COPYING`
+    and `LICENSES/GPL-3.0-or-later.txt`, its files name only
+    GPL-3.0-or-later (47, the 16 REUSE `.license` files counted with the
+    files they annotate), 66 files, only `plugins/plugin_utils/py.typed`
+    without a license. No finding differs. Two findings rest on file
+    contents NOTICE does not show and so come from the wheel's file list
+    with the tagged sources only: `plugins/module_utils/mount.py` of
+    `ansible.posix` holds the PSF license text in its header and
+    `plugins/module_utils/_version.py` refers to `PSF-license.txt`; and
+    `community.crypto`'s changelog records the ACME code relicensed from
+    BSD-2-Clause to GPL-3.0-or-later, while its `_version.py` is
+    GPL-3.0-or-later and imports `LooseVersion` from ansible-core.
   - **Release package (owner's choice in 3d.8, "Full package"):** the CI job
     on an `infra-vX.Y.Z` tag builds a tarball of the repository's infra tree
     at the tag (`git archive`) plus `release/` with the five Galaxy
@@ -382,6 +434,9 @@ proposal, and waits for the owner's "commit".
   the master prompt's self-test rules (never weaken tests; "not tested"
   stated honestly). Anything that needs a VM or a real host is described
   exactly (what and where) and runs only after the owner's confirmation.
+  Results, the faults it found, what ran in CI instead, and the exact
+  commands for each untested part: `infra/docs/IMPLEMENTATION_NOTES.md`,
+  "Infra self-test without provisioning".
 - **3f** Move to root, one structural commit with no other changes:
   `git mv` everything under `infra/` to the root so history follows;
   `infra/.github/workflows/ci.yml` becomes `.github/workflows/ci.yml`, the
@@ -550,8 +605,36 @@ the QA results schema (both for `pokus-platform` and `pokus-qa`), and the
 page-ownership table (H5). Settled since: the port table (P3b) and the
 project files at the monorepo root (3f).
 
+- **`make test-roles` (raised by 3e):** infra §11 asks for `make
+  test-roles`, the provider-agnostic roles in a throwaway Incus system
+  container or VM, only when invoked. Step 12 built that check as `make
+  check-mode` in a Docker systemd container, and the full runs in Incus VMs
+  as `make test-distros`. No target is named `test-roles`, and no deviation
+  records the move from Incus to Docker or the other name (I2 covers only
+  the CI jobs). Recommendation: record it as an approved deviation ("`make
+  check-mode` in a Docker systemd container replaces `make test-roles`;
+  Incus VMs run in `make test-distros`"). Alternative: an alias
+  `test-roles` that runs `check-mode`. Details:
+  `infra/docs/IMPLEMENTATION_NOTES.md`, "Infra self-test without
+  provisioning".
+
 ## Owner deliverables pending
 
+- **The 3e runs that need a VM, a real host, Incus, Docker or a GPU**
+  (owner instruction with the "commit" for `a425c7f`: stop and say exactly
+  what to run and where). In `infra/docs/IMPLEMENTATION_NOTES.md`, "Infra
+  self-test without provisioning", "Not tested", each with its commands and
+  where to run them:
+  1. bootstrap in check mode on a disposable Ubuntu 24.04 VM;
+  2. `make test-distros` on a machine with Incus VMs;
+  3. a full bootstrap on a real supported host, with a second run at
+     `changed=0` and `pinka doctor --smoke`;
+  4. a TUI install compared with an answers replay;
+  5. the GPU checks: vLLM serving with the tool-call check, GPU training,
+     MOK, DCGM;
+  6. the first golden image builds;
+  7. optionally, the Docker check-mode runs, which CI already runs on every
+     push.
 - Approval of the model candidates in `infra/models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
   `TODO(verify)` revisions because Hugging Face is not reachable from the build
@@ -781,10 +864,16 @@ step 4" through "after step 13"):
 
 ## Next step
 
-The CI fix of `e525a1e`, the `release-package` CI job and the records of
-the owner's 3d.8 decisions wait for the owner's "commit", under the
-[Process rules](#process-rules-in-force); after that push's CI, 3e under
-the scoped exception, stopping for every part that needs a VM, a real host,
-Incus, Docker or a GPU with exactly what to run and where. Still open: the
-remaining `TODO(verify)` items (113), which need network access or
-reference hardware.
+3e is done as far as it runs without provisioning, and is committed under
+the scoped exception. The assistant reports that push's CI job by job, then
+stops, as the owner instructed with the "commit" for `a425c7f`. Waiting for
+the owner:
+
+1. The runs that need a VM, a real host, Incus, Docker or a GPU ([Owner
+   deliverables pending](#owner-deliverables-pending)), or the owner's
+   decision to start 3f before them.
+2. The `make test-roles` question ([Open questions](#open-questions)).
+
+3f then follows under the scoped exception. Still open: the remaining
+`TODO(verify)` items (113), which need network access or reference
+hardware.

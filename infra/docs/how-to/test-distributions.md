@@ -56,7 +56,7 @@ checks the whole provisioning play with the reference platform enabled.
 
     <!-- qa:run env=E0 -->
     ```bash
-    PYTHONPATH=tools/test-distros:tools/platform:preflight .venv/bin/python -m pinka_test_distros list
+    PYTHONPATH=tools/test-distros:tools/platform:tools/lockcheck:preflight .venv/bin/python -m pinka_test_distros list
     ```
 
 ## What the reference platform stages check
