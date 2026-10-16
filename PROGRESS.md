@@ -142,6 +142,26 @@ repository at 3f (section J).
   >   jobs, which only run from main).
 
   The root `CLAUDE.md` carries the same wording.
+- **Provisioning runs after 3f, and the end of the exception (owner, after
+  3e, verbatim):**
+
+  > - Start 3f now, under the scoped exception. I will do the provisioning runs after
+  >   3f, on the final layout, so the tested tree is the one that ships.
+  > - After 3f is committed and its CI is reported, give me the provisioning runs as one
+  >   checklist, updated for the new paths. For each item:
+  >   - what it tests, and which earlier step's unverified parts it covers;
+  >   - the machine it needs: a disposable VM or a real host, the distribution, CPU, RAM
+  >     and disk, whether it needs KVM or nested virtualization, a GPU, or network
+  >     access to specific hosts;
+  >   - whether it can run on a Linux machine where I am root but which is not
+  >     disposable, and what it would change on that machine;
+  >   - the exact commands, in order, from a fresh clone;
+  >   - exactly what to send back to you (exit codes, the commit hash, which log
+  >     directories or files).
+  >   Order the list so the cheapest checks come first and a failure early stops me
+  >   from running the expensive ones.
+  > - After 3f, the normal commit rule applies again: every fix that comes out of my
+  >   runs waits for my "commit".
 - **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
   `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
   14, without the owner's "commit").
@@ -229,7 +249,8 @@ repository at 3f (section J).
   every license finding (see "Where the license findings came from" under
   3d.8).
 - 3e: the self-test without provisioning is done and committed under the
-  scoped exception. It found and fixed two faults, each with a test: a
+  scoped exception (`5ea9b82`; its CI passed every job but the known red
+  `lock-check`). It found and fixed two faults, each with a test: a
   documented command missing `tools/lockcheck`, and lock recompiles that
   moved unrelated pins on a fresh clone. Everything that needs a VM, a real
   host, Incus, Docker or a GPU waits for the owner, as listed under [Owner
@@ -246,7 +267,7 @@ repository at 3f (section J).
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
 | 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8), `a425c7f` (CI fix of 8 and the `release-package` job) |
-| 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner | the 3e commit (its hash is recorded with the next commit) |
+| 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -533,6 +554,7 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
 | V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
+| St12-1 | infra §11 (Ansible) | `make test-roles`: the provider-agnostic roles in a throwaway Incus system container or VM, only when invoked | `make check-mode` (the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` in check mode in a disposable Docker systemd container per family, also CI's required job, I2) and `make test-distros` (the full bootstrap in disposable Incus VMs, §19.9) replace it; there is no `test-roles` target and no alias. Raised by the 3e self-test; approved by the owner after 3e ("record it as an approved deviation (make check-mode and make test-distros replace it). No alias."); built in step 12 |
 
 ## Platform spec changes pending
 
@@ -602,29 +624,19 @@ follow-ups after step 13 that `infra/docs/IMPLEMENTATION_NOTES.md` lists as
 the original wording and the findings of each step. Still open, from step 1
 ("Questions raised by step 1"): reference agents for scenario validation and
 the QA results schema (both for `pokus-platform` and `pokus-qa`), and the
-page-ownership table (H5). Settled since: the port table (P3b) and the
-project files at the monorepo root (3f).
-
-- **`make test-roles` (raised by 3e):** infra §11 asks for `make
-  test-roles`, the provider-agnostic roles in a throwaway Incus system
-  container or VM, only when invoked. Step 12 built that check as `make
-  check-mode` in a Docker systemd container, and the full runs in Incus VMs
-  as `make test-distros`. No target is named `test-roles`, and no deviation
-  records the move from Incus to Docker or the other name (I2 covers only
-  the CI jobs). Recommendation: record it as an approved deviation ("`make
-  check-mode` in a Docker systemd container replaces `make test-roles`;
-  Incus VMs run in `make test-distros`"). Alternative: an alias
-  `test-roles` that runs `check-mode`. Details:
-  `infra/docs/IMPLEMENTATION_NOTES.md`, "Infra self-test without
-  provisioning".
+page-ownership table (H5). Settled since: the port table (P3b), the
+project files at the monorepo root (3f) and `make test-roles` (St12-1,
+after 3e).
 
 ## Owner deliverables pending
 
 - **The 3e runs that need a VM, a real host, Incus, Docker or a GPU**
   (owner instruction with the "commit" for `a425c7f`: stop and say exactly
-  what to run and where). In `infra/docs/IMPLEMENTATION_NOTES.md`, "Infra
-  self-test without provisioning", "Not tested", each with its commands and
-  where to run them:
+  what to run and where). The owner runs them after 3f, on the final
+  layout; after 3f's commit and CI report the assistant gives them as one
+  checklist ordered cheapest first, with the paths of the root layout
+  (owner, after 3e). Listed so far in `infra/docs/IMPLEMENTATION_NOTES.md`,
+  "Infra self-test without provisioning", "Not tested":
   1. bootstrap in check mode on a disposable Ubuntu 24.04 VM;
   2. `make test-distros` on a machine with Incus VMs;
   3. a full bootstrap on a real supported host, with a second run at
@@ -864,16 +876,10 @@ step 4" through "after step 13"):
 
 ## Next step
 
-3e is done as far as it runs without provisioning, and is committed under
-the scoped exception. The assistant reports that push's CI job by job, then
-stops, as the owner instructed with the "commit" for `a425c7f`. Waiting for
-the owner:
-
-1. The runs that need a VM, a real host, Incus, Docker or a GPU ([Owner
-   deliverables pending](#owner-deliverables-pending)), or the owner's
-   decision to start 3f before them.
-2. The `make test-roles` question ([Open questions](#open-questions)).
-
-3f then follows under the scoped exception. Still open: the remaining
-`TODO(verify)` items (113), which need network access or reference
-hardware.
+3f, the move to the repository root, under the scoped exception (owner,
+after 3e). The exception ends when 3f is committed; from then on every
+commit waits for the owner's "commit". After 3f's commit and its CI
+report: the checklist of provisioning runs on the root layout (see
+[Owner deliverables pending](#owner-deliverables-pending)), then 3g. Still
+open: the remaining `TODO(verify)` items (113), which need network access
+or reference hardware.

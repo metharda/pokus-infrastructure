@@ -3985,3 +3985,8 @@ Each of these waits for the owner, who runs it where it says.
   a Docker systemd container replaces `make test-roles`; Incus VMs run in
   `make test-distros`"). The alternative is an alias `test-roles` that runs
   `check-mode`.
+
+**Owner decision (after 3e):** "record it as an approved deviation (make
+check-mode and make test-distros replace it). No alias." Recorded as St12-1
+in `PROGRESS.md`. The owner runs the provisioning checks after 3f, on the
+final layout, from a checklist given after 3f's CI report.
