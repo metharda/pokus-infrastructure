@@ -476,8 +476,11 @@ ansible_collections:
   # ansible-galaxy collection verify --offline; make setup installs the same
   # versions (ansible/requirements.yml). The set is the one bundled in the
   # community package ansible 14.4.0, which is built on ansible-core 2.21.4.
-  # The artifacts' URLs and sha256 come from make lock-collections, which a
-  # maintainer runs where Galaxy is reachable (docs/how-to/pin-ansible-collections.md).
+  # The artifacts' URLs, sha256 and sizes come from make lock-collections,
+  # which a maintainer runs where Galaxy is reachable
+  # (docs/how-to/pin-ansible-collections.md); the lock-collections CI job
+  # compares them with Galaxy on every change of this file or of
+  # tools/lockcheck/, and weekly.
   verified_on: 2026-10-15
   source: >-
     ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each
@@ -487,7 +490,11 @@ ansible_collections:
     the version in ansible 14.4.0 (its MANIFEST.json in
     ansible-14.4.0-py3-none-any.whl from PyPI, sha256
     7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read
-    2026-10-15)
+    2026-10-15). Artifacts: make lock-collections run by the owner at
+    2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256
+    computed from the download and equal to Galaxy's; MANIFEST.json,
+    FILES.json and every file checked; every dependency locked at a
+    satisfying version)
   collections:
     ansible.posix: "2.2.2"
     community.crypto: "3.4.0"
@@ -495,11 +502,26 @@ ansible_collections:
     community.general: "13.4.0"
     community.library_inventory_filtering_v1: "1.1.5"
   artifacts:
-    ansible.posix: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.crypto: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.docker: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.general: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.library_inventory_filtering_v1: {url: "TODO(verify)", sha256: "TODO(verify)"}
+    ansible.posix:
+      url: "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/ansible-posix-2.2.2.tar.gz"
+      sha256: "00a58c5d804c9adc99c3c3dc1b9f2246f4bb5f7337941440e0956f0e31c3b82b"
+      size: 166545
+    community.crypto:
+      url: "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-crypto-3.4.0.tar.gz"
+      sha256: "5025c31e448592004076da1d8e09d3060224c56cdf9252f9a740efadbbadac2e"
+      size: 601275
+    community.docker:
+      url: "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-docker-5.3.0.tar.gz"
+      sha256: "fd721d1ec3dca67a5c665ab6a43cf137f4114de18cb31afe1370efc76f9f8dfa"
+      size: 598156
+    community.general:
+      url: "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-13.4.0.tar.gz"
+      sha256: "efd1c0b5dc6f89b9667e4bd77f2426c30545861910dba188593871095ede1804"
+      size: 2866617
+    community.library_inventory_filtering_v1:
+      url: "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-library_inventory_filtering_v1-1.1.5.tar.gz"
+      sha256: "cbb9e86c5b1720df21e940cedcd2f3e1226c38262623e090a883712610733851"
+      size: 36002
   # make setup only (never bootstrap): when Galaxy is unreachable, each
   # collection's GitHub release tarball, installed only after its sha256
   # matched; then the same FILES.json check as after a Galaxy install. The

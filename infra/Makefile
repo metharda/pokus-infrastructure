@@ -285,6 +285,10 @@ verify-todos: setup ## List every unverified marker in the repository; fails whi
 lock-collections: $(VENV)/.synced ## Maintainers only: print Galaxy's checked artifact pins of the locked collections (reads public URLs, changes nothing)
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml $(LOCK_COLLECTIONS_ARGS)
 
+.PHONY: lock-collections-check
+lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing when its pins differ from the lock's artifacts (network)
+	@$(LOCKCHECK).lockcollections --lock versions.lock.yml --check
+
 .PHONY: lock-update
 lock-update: ## Print the manual procedure for changing versions.lock.yml (nothing is bumped automatically)
 	@echo "versions.lock.yml is changed by hand; nothing is bumped automatically."

@@ -1,0 +1,43 @@
+# Monorepo wrapper for infra/.github/workflows/lock-collections.yml.
+#
+# The pins of the Ansible collections against Galaxy (owner decision, with
+# the "commit" for the symbolic-link fix of make lock-collections): on every
+# change of infra/versions.lock.yml or infra/tools/lockcheck/, and weekly,
+# Galaxy's artifact of every locked collection is downloaded and checked as
+# make lock-collections checks it, and any difference from the lock's
+# artifacts (URL, sha256, size) fails the job. A failure, of the weekly run
+# too, blocks the next step like any CI failure. Keep this file in step with
+# infra/.github/workflows/lock-collections.yml.
+name: infra-lock-collections
+
+on:
+  push:
+    paths: ["infra/versions.lock.yml", "infra/tools/lockcheck/**", ".github/workflows/infra-lock-collections.yml"]
+  pull_request:
+    paths: ["infra/versions.lock.yml", "infra/tools/lockcheck/**", ".github/workflows/infra-lock-collections.yml"]
+  schedule:
+    - cron: "41 4 * * 1"  # weekly: the pins against Galaxy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  lock-collections:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.23"
+      - run: make lock-collections-check

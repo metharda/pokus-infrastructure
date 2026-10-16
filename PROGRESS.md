@@ -53,7 +53,9 @@ repository at 3f (section J).
   separately in the next summary (passed, failed, or the known red:
   `lock-check` while `TODO(verify)` markers remain, nothing else). A failure
   in any other job, the non-blocking `check-mode-extended` lanes included,
-  blocks the next step.
+  blocks the next step. So does a failure of a weekly scheduled run (owner,
+  with the "commit" for the symbolic-link fix: "a difference found by the
+  weekly run is a blocker like any other CI failure").
 - **Commits: final rule (owner, after infra step 14, verbatim):**
 
   > COMMIT RULE — final, for every block of work, long runs included:
@@ -184,14 +186,19 @@ repository at 3f (section J).
 ## Current state
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
-  owner merges to `main`. Last step commit: `0d72e54` (3d.7).
+  owner merges to `main`. Last step commit: `0d72e54` (3d.7); last commit
+  `373e693` (process records, after the symbolic-link fix `3d4bab2`).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
   1-6 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
 - 3d.7 is committed (`0d72e54`), and the fix of its CI run (`d5fe24d`,
   every job green but the known red `lock-check`). The symbolic-link fix of
-  `make lock-collections` waits for the owner's "commit", then the owner's
-  second `make lock-collections` run; then 3d.8 with the owner's 3d.7
+  `make lock-collections` is committed (`3d4bab2`), with the process
+  records (`373e693`); their CI run passed every job but the known red
+  `lock-check`, `make setup` with the real Galaxy artifacts in all 15 jobs.
+  The owner's second `make lock-collections` run passed (2026-10-15); its
+  pins, the approved `lock-collections` CI job and the license-file fix it
+  showed wait for the owner's "commit"; then 3d.8 with the owner's 3d.7
   decisions.
 
 ### Status of the plan of section J
@@ -293,6 +300,18 @@ proposal, and waits for the owner's "commit".
     unreachable, with the same verification. The tarballs are never
     committed to git. `lock-check` and `make test-distros` check the bundled
     files.
+  - **NOTICE (owner, with the pins of the second `make lock-collections`
+    run):** built from the license texts actually present in each artifact,
+    not from the declared field (`ansible.posix` and `community.general`
+    declare none). It covers every license a file of the artifact carries:
+    `ansible.posix`'s `PSF-license.txt` (for `plugins/module_utils/_version.py`
+    and `mount.py`, whose header holds the PSF license text itself), and it
+    states a declared license that no file carries, such as
+    `community.crypto` 3.4.0's BSD-2-Clause and PSF-2.0 (no file, header,
+    SPDX identifier or license text in the artifact; its changelog records
+    the ACME code relicensed from BSD-2-Clause to GPL-3.0-or-later, and its
+    `plugins/module_utils/_version.py`, which once needed `PSF-license.txt`,
+    is now GPL-3.0-or-later and imports `LooseVersion` from ansible-core).
   - **TUI replacement:** the TUI also offers replacing the active platform,
     behind a confirmation screen that names the active platform and asks
     for its name to be typed, exactly like `pinka platform purge`; without
@@ -471,13 +490,12 @@ project files at the monorepo root (3f).
 
 ## Owner deliverables pending
 
-- `make lock-collections` again, after the symbolic-link fix is committed
-  (the first run stopped at `community.general`'s
-  `tests/utils/shippable/aix.sh`); its output fills
-  `ansible_collections.artifacts`.
-- Decision on a CI job that runs `make lock-collections` (CI reaches Galaxy)
-  and fails when its output differs from the lock's pins (proposed with the
-  symbolic-link fix).
+- Delivered: the second `make lock-collections` run (2026-10-15T20:33:03Z),
+  recorded in `ansible_collections.artifacts` with the approved
+  `lock-collections` CI job (owner, with the "commit" for the symbolic-link
+  fix: on every push touching `infra/versions.lock.yml` or
+  `infra/tools/lockcheck/`, and weekly; a difference found by the weekly run
+  blocks like any CI failure); waiting for the owner's "commit".
 
 - Approval of the model candidates in `infra/models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
@@ -500,7 +518,7 @@ project files at the monorepo root (3f).
 `make verify-todos` lists every marker in the tree (110 after step 13, 117
 after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
 collection artifacts, 128 after the lock's header comment stopped naming the
-marker; details
+marker, 118 with the owner's collection pins; details
 in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
 step 4" through "after step 13"):
 
@@ -551,10 +569,11 @@ step 4" through "after step 13"):
 - 3d.6: the release tarball URL and sha256 of each pinned Ansible
   collection (`ansible_collections.fallback` in `infra/versions.lock.yml`).
 - 3d.7: the Galaxy artifact URL and sha256 of each of the five pinned
-  collections (`ansible_collections.artifacts` in `infra/versions.lock.yml`,
-  10 lines) and their copy in the generated `infra/bootstrap/lib/pins.sh`
-  (5 lines); `make lock-collections` prints them on a machine that reaches
-  Galaxy.
+  collections (`ansible_collections.artifacts` in `infra/versions.lock.yml`)
+  and their copy in the generated `infra/bootstrap/lib/pins.sh`. Resolved
+  with the owner's `make lock-collections` output (2026-10-15, waiting for
+  "commit"); the four `ansible_collections.fallback` entries go with the
+  fallback in 3d.8.
 
 ## Known issues
 
@@ -595,10 +614,16 @@ step 4" through "after step 13"):
   `5f70dd8678885157cb186e8b64382a30cab3e12f`), which setup verifies.
 - Since 3d.7 bootstrap installs the collections only from the artifacts of
   `ansible_collections.artifacts` in the lock, each after its sha256
-  matched. Their URLs and sha256s are `TODO(verify)` until the owner's
-  `make lock-collections` output is recorded (Galaxy is unreachable here);
-  until then bootstrap on a host ends with exit code 50 at the Ansible
-  environment and names the unverified pin.
+  matched. Their URLs, sha256s and sizes are the owner's
+  `make lock-collections` output of 2026-10-15 (waiting for "commit");
+  until that commit, bootstrap on a host ends with exit code 50 at the
+  Ansible environment and names the unverified pin.
+- `make lock-collections` listed only `COPYING` as `ansible.posix`'s
+  license file: its rule took only names beginning with `COPYING` or
+  `LICENSE` and missed `PSF-license.txt`. Fixed with the pins (waiting for
+  "commit"): any file in a `LICENSES` directory, or a text file whose name
+  contains `COPYING`, `LICENSE`, `LICENCE` or `NOTICE`; REUSE's `.license`
+  annotations excluded.
 - CI's `infra` workflow was red on `a686e28` (3d.6), found in 3d.7 from
   the run's logs (the build environment cannot run the check-mode lanes:
   no Docker daemon): every `check-mode` and `check-mode-extended` job
@@ -643,7 +668,7 @@ step 4" through "after step 13"):
   `tests/utils/shippable/aix.sh`. Fixed after `d5fe24d` (separate commit):
   one artifact rule (`infra/tools/lockcheck/pinka_lockcheck/artifact.py`)
   for `make lock-collections`, `make setup` and bootstrap, accepting only
-  relative links that stay inside the collection.
+  relative links that stay inside the collection (`3d4bab2`).
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
   for MkDocs team announces that MkDocs 2.0 removes plugins. Builds work with
   the pin; the replacement decision belongs to the docs-site plugin review
@@ -704,9 +729,10 @@ step 4" through "after step 13"):
 
 ## Next step
 
-The owner's "commit" for the symbolic-link fix and the CI result of that
-push, then 3d.8 (infra §16 step 22 and the owner's 3d.7 decisions), under
-the [Process rules](#process-rules-in-force). Owner input pending: the output of
-`make lock-collections`, the decision on the fallback, and the decision on
-bundling the collections. Still open: the remaining `TODO(verify)` items
-(128), which need network access or reference hardware.
+The owner's "commit" for the collection pins with the `lock-collections`
+CI job and the license-file fix, then the CI run of that push job by job
+(the new `lock-collections` job included); 3d.8 (infra §16 step 22, the
+owner's 3d.7 decisions and the NOTICE rule) starts only after that, under
+the [Process rules](#process-rules-in-force). Still open: the remaining
+`TODO(verify)` items (118), which need network access or reference
+hardware.

@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "6d08e7978227b492d46938f0a00565b767a6b29dc98cc9d1f77a8d47a3ff1259"
+pinka_versions_lock_sha256: "c9695b6eaac7675f83b507a2a89f51c0dc57c70005bf257d750c3629246a5d50"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -423,7 +423,9 @@ pinka_versions:
       its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1,
       required (>=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in
       ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4,
-      read 2026-10-15)'
+      read 2026-10-15). Artifacts: make lock-collections run by the owner at 2026-10-15T20:33:03Z against
+      galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy''s; MANIFEST.json,
+      FILES.json and every file checked; every dependency locked at a satisfying version)'
     collections:
       ansible.posix: 2.2.2
       community.crypto: 3.4.0
@@ -432,20 +434,25 @@ pinka_versions:
       community.library_inventory_filtering_v1: 1.1.5
     artifacts:
       ansible.posix:
-        url: TODO(verify)
-        sha256: TODO(verify)
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/ansible-posix-2.2.2.tar.gz
+        sha256: 00a58c5d804c9adc99c3c3dc1b9f2246f4bb5f7337941440e0956f0e31c3b82b
+        size: 166545
       community.crypto:
-        url: TODO(verify)
-        sha256: TODO(verify)
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-crypto-3.4.0.tar.gz
+        sha256: 5025c31e448592004076da1d8e09d3060224c56cdf9252f9a740efadbbadac2e
+        size: 601275
       community.docker:
-        url: TODO(verify)
-        sha256: TODO(verify)
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-docker-5.3.0.tar.gz
+        sha256: fd721d1ec3dca67a5c665ab6a43cf137f4114de18cb31afe1370efc76f9f8dfa
+        size: 598156
       community.general:
-        url: TODO(verify)
-        sha256: TODO(verify)
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-13.4.0.tar.gz
+        sha256: efd1c0b5dc6f89b9667e4bd77f2426c30545861910dba188593871095ede1804
+        size: 2866617
       community.library_inventory_filtering_v1:
-        url: TODO(verify)
-        sha256: TODO(verify)
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-library_inventory_filtering_v1-1.1.5.tar.gz
+        sha256: cbb9e86c5b1720df21e940cedcd2f3e1226c38262623e090a883712610733851
+        size: 36002
     fallback:
       ansible.posix:
         url: TODO(verify)

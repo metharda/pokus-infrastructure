@@ -56,9 +56,15 @@ Verbatim:
 > process a failure there is a blocker for the next step, exactly as you treated it
 > now."
 
+> "Keep the weekly run; a difference found by the weekly run is a blocker like
+> any other CI failure." (owner, with the "commit" for the symbolic-link fix,
+> on the approved `lock-collections` CI job)
+
 So the next step starts only when every job of the last push passed, except
 `lock-check` failing on `TODO(verify)` markers alone; a failing
-`check-mode-extended` job blocks like any other.
+`check-mode-extended` job blocks like any other. A failure of a scheduled
+(weekly) run, such as `lock-collections` finding a difference from Galaxy,
+blocks the next step in the same way and is reported when found.
 
 ## Scoped commit exception (owner, after the 3c commit)
 

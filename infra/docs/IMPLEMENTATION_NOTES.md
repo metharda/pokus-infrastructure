@@ -3610,3 +3610,49 @@ None new.
   installed and verified by `ansible-galaxy`), and bootstrap's install with
   an internal link and with an absolute and an escaping one. The artifact
   builder of these tests is shared (`tools/lockcheck/tests/collection_testlib.py`).
+
+### Fixed after the symbolic-link fix: license files of an artifact
+
+- The owner's second `make lock-collections` run printed only `COPYING` as
+  `ansible.posix`'s license file, while the artifact also carries
+  `PSF-license.txt`: the rule took only names beginning with `COPYING` or
+  `LICENSE`. Now (`artifact.license_texts`) a license file is any file in a
+  `LICENSES` directory, or a text file (no extension, `.txt`, `.md`,
+  `.rst`) whose name contains `COPYING`, `LICENSE`, `LICENCE` or `NOTICE` in
+  any case; REUSE's `.license` files (annotations of the file they are named
+  after) are not texts. On the file lists of the five pinned artifacts it
+  finds exactly their license texts: `ansible.posix` `COPYING` and
+  `PSF-license.txt`; `community.crypto` `COPYING` and `LICENSES/`
+  Apache-2.0, BSD-3-Clause, GPL-3.0-or-later; `community.docker` `COPYING`
+  and `LICENSES/` Apache-2.0, GPL-3.0-or-later; `community.general`
+  `COPYING` and `LICENSES/` BSD-2-Clause, GPL-3.0-or-later, MIT;
+  `community.library_inventory_filtering_v1` `COPYING` and `LICENSES/`
+  GPL-3.0-or-later.
+
+### The collection pins and the lock-collections CI job
+
+- The owner's second `make lock-collections` run (2026-10-15T20:33:03Z,
+  `https://galaxy.ansible.com`) is recorded in
+  `ansible_collections.artifacts`: URL, sha256 and size of the five
+  artifacts (4268595 bytes together), with `source` naming the run; the ten
+  `TODO(verify)` values there are gone, `make generate` copied the pins
+  into `bootstrap/lib/pins.sh`. The lock's schema now requires each
+  artifact's `size`. The four `ansible_collections.fallback` entries keep
+  their markers until 3d.8 removes the fallback (owner decision with the
+  "commit" for 3d.7).
+- `make lock-collections-check` (`lockcollections --check`) pins every
+  locked collection again from Galaxy with the same checks, prints the
+  output, and fails on every difference from the lock's artifacts (URL,
+  sha256, size; an artifact missing or of a collection not locked); a
+  refused artifact, an open dependency or an unreachable Galaxy fails it
+  too. `--with` does not apply there.
+- The CI job `lock-collections` runs it (owner, with the "commit" for the
+  symbolic-link fix): `infra/.github/workflows/lock-collections.yml` and the
+  monorepo wrapper `.github/workflows/infra-lock-collections.yml`, on every
+  push and pull request that changes `versions.lock.yml` or
+  `tools/lockcheck/` (native path filters, hence a workflow of its own),
+  weekly (Mondays 04:41 UTC; scheduled runs use the default branch, so the
+  weekly run starts once the workflow is on `main`) and by hand. A failure,
+  of the weekly run too, blocks the next step. Tests: the comparison, a
+  refused artifact, the real lock's URLs against the locked versions, and
+  both workflow files.

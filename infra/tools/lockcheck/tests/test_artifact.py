@@ -114,3 +114,40 @@ def test_the_script_checks_an_artifact_as_bootstrap_runs_it(tmp_path: Path) -> N
     assert "absolute path /etc/passwd" in refused.stderr
     assert run_script(NAME, "9.9.9", str(good)).returncode == 1  # MANIFEST.json names 13.4.0
     assert run_script(NAME).returncode == 2
+
+
+def test_every_license_text_is_listed_and_reuse_annotations_are_not() -> None:
+    # Names from the five pinned artifacts: ansible.posix ships PSF-license.txt
+    # (for plugins/module_utils/_version.py and mount.py); the community
+    # collections annotate files with REUSE's .license files.
+    paths = [
+        "COPYING",
+        "PSF-license.txt",
+        "LICENSES/GPL-3.0-or-later.txt",
+        "LICENSES/BSD-2-Clause.txt",
+        "docs/LICENSES/MIT.txt",
+        "LICENSE",
+        "LICENSE-MIT",
+        "NOTICE.md",
+        "CHANGELOG.md.license",
+        "tests/sanity/ignore-2.21.txt.license",
+        "plugins/modules/license_manager.py",
+        "plugins/module_utils/_version.py",
+        "README.md",
+    ]
+    assert rule.license_texts(paths) == [
+        "COPYING",
+        "LICENSE",
+        "LICENSE-MIT",
+        "LICENSES/BSD-2-Clause.txt",
+        "LICENSES/GPL-3.0-or-later.txt",
+        "NOTICE.md",
+        "PSF-license.txt",
+        "docs/LICENSES/MIT.txt",
+    ]
+
+
+def test_the_check_reports_a_license_text_not_named_license() -> None:
+    files = {**FILES, "PSF-license.txt": b"PSF", "CHANGELOG.md.license": b"GPL"}
+    info = rule.check(NAME, VERSION, artifact(NAME, VERSION, files))
+    assert info["license_files"] == ["COPYING", "PSF-license.txt"]

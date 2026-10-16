@@ -233,7 +233,7 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 
 ## Ansible collections
 
-Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1, required (&gt;=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read 2026-10-15)
+Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1, required (&gt;=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read 2026-10-15). Artifacts: make lock-collections run by the owner at 2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy's; MANIFEST.json, FILES.json and every file checked; every dependency locked at a satisfying version)
 
 | Collection | Version |
 | --- | --- |

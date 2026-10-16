@@ -33,7 +33,22 @@ For each collection it checks that:
   satisfies it.
 
 It prints each artifact's URL, sha256, size, declared licenses and license
-files.
+files. A license file is any file in a `LICENSES` directory, or a text file
+(no extension, `.txt`, `.md`, `.rst`) whose name contains `COPYING`,
+`LICENSE`, `LICENCE` or `NOTICE` in any case, such as `ansible.posix`'s
+`PSF-license.txt`; REUSE's `.license` files, which annotate the file they
+are named after, are not license texts. The declared licenses come from
+`MANIFEST.json` and can differ from the files: some collections declare
+none, and a collection can declare a license that no file in the artifact
+carries.
+
+CI repeats the run: the `lock-collections` job runs
+`make lock-collections-check` on every change of `versions.lock.yml` or
+`tools/lockcheck/`, and weekly. It pins every locked collection again from
+Galaxy with the same checks and fails when an artifact's URL, sha256 or size
+differs from the lock, when Galaxy's artifact no longer passes the checks,
+or when Galaxy cannot be reached. A failure there, of the weekly run too,
+blocks further work until it is resolved.
 
 !!! note "Prerequisites"
     - A development checkout of the repository; the target sets up its own
@@ -68,11 +83,13 @@ files.
    prints the reason and no pins.
 
 4. Replace the `verified_on`, `collections` and `artifacts` entries under
-   `ansible_collections` in `versions.lock.yml` with the output, set `source`
-   to the run (date and Galaxy), and run `make generate`.
+   `ansible_collections` in `versions.lock.yml` with the output (each
+   artifact's `url`, `sha256` and `size`; the license comments are for the
+   review), set `source` to the run (date and Galaxy), and run
+   `make generate`.
 
 5. Land the change only after `make lint test docs` and CI pass with the new
-   versions.
+   versions, the `lock-collections` job included.
 
 ## Verify the result
 
@@ -84,8 +101,12 @@ unverified collection pin:
 cd <checkout>/infra
 make lock-check
 make verify-todos
+make lock-collections-check
 ```
 
 `<checkout>` is the directory where you cloned the repository. Neither
-command reports an `ansible_collections` line; `make setup` and bootstrap
-then install the collections from the new artifacts and verify them.
+`make lock-check` nor `make verify-todos` reports an `ansible_collections`
+line, and `make lock-collections-check` ends with
+`# check: the lock's 5 artifact pins match Galaxy` (the number of locked
+collections); `make setup` and bootstrap then install the collections from
+the new artifacts and verify them.

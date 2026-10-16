@@ -310,7 +310,7 @@
           }
         },
         "artifacts": {
-          "description": "Per collection: Galaxy's artifact (download URL) and its sha256, from make lock-collections; bootstrap installs exactly these, offline and without resolving dependencies.",
+          "description": "Per collection: Galaxy's artifact (download URL), its sha256 and its size in bytes, from make lock-collections; bootstrap installs exactly these, offline and without resolving dependencies, and the lock-collections CI job compares them with Galaxy.",
           "type": "object",
           "propertyNames": {
             "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"
@@ -320,7 +320,8 @@
             "additionalProperties": false,
             "required": [
               "url",
-              "sha256"
+              "sha256",
+              "size"
             ],
             "properties": {
               "url": {
@@ -337,6 +338,17 @@
                 "oneOf": [
                   {
                     "$ref": "#/$defs/sha256"
+                  },
+                  {
+                    "$ref": "#/$defs/todo"
+                  }
+                ]
+              },
+              "size": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
                   },
                   {
                     "$ref": "#/$defs/todo"

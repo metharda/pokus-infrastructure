@@ -257,3 +257,111 @@ def test_main_prints_nothing_but_the_pins_and_changes_no_file(
     assert lock.read_bytes() == before
     assert lc.main(["--lock", str(lock), "--server", SERVER]) == 1
     assert "is not locked" in capsys.readouterr().err
+
+
+def lock_with_pins(fake: FakeGalaxy) -> dict[str, Any]:
+    """A lock whose artifacts are exactly what the fake Galaxy serves."""
+    made = yaml.safe_load(run(fake, {DEP: "1.1.5"}))
+    return {"ansible_collections": {k: made[k] for k in ("collections", "artifacts")}}
+
+
+def check(
+    lock: Mapping[str, Any],
+    fake: FakeGalaxy,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> int:
+    path = tmp_path / "versions.lock.yml"
+    path.write_text(yaml.safe_dump(dict(lock)))
+    monkeypatch.setattr(net, "download", fake)
+    return lc.main(["--lock", str(path), "--server", SERVER, "--check"])
+
+
+def test_the_check_passes_when_the_lock_holds_galaxy_s_pins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = galaxy()
+    assert check(lock_with_pins(fake), fake, tmp_path, monkeypatch) == 0
+    out = capsys.readouterr()
+    assert "# check: the lock's 3 artifact pins match Galaxy" in out.out
+    assert "# license files:" in out.out  # the whole output stays in the CI log
+    assert out.err == ""
+
+
+def test_the_check_names_every_difference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = galaxy()
+    lock = lock_with_pins(fake)
+    artifacts = lock["ansible_collections"]["artifacts"]
+    artifacts["community.docker"]["sha256"] = "0" * 64
+    artifacts["community.docker"]["size"] += 1
+    artifacts["ansible.posix"]["url"] = f"{SERVER}/download/elsewhere.tar.gz"
+    del artifacts[DEP]
+    artifacts["community.extra"] = {"url": "TODO(verify)", "sha256": "TODO(verify)", "size": 1}
+    assert check(lock, fake, tmp_path, monkeypatch) == 1
+    err = capsys.readouterr().err
+    for expected in (
+        "community.extra: the lock has an artifact of a collection that is not locked",
+        f"{DEP} 1.1.5: the lock has no artifact",
+        "community.docker 5.3.0: sha256 is",
+        "community.docker 5.3.0: size is",
+        "ansible.posix 2.2.2: url is",
+    ):
+        assert f"lock-collections: differs from the lock: {expected}" in err, expected
+    assert "match Galaxy" not in err
+
+
+def test_the_check_fails_when_galaxy_s_artifact_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = galaxy()
+    lock = lock_with_pins(fake)
+    fake.add(
+        "ansible.posix",
+        "2.2.2",
+        artifact("ansible.posix", "2.2.2", {"COPYING": b"gpl"}, links={"x": "/etc/passwd"}),
+    )
+    assert check(lock, fake, tmp_path, monkeypatch) == 1
+    assert "absolute path /etc/passwd" in capsys.readouterr().err
+
+
+def test_the_check_takes_no_extra_collection(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exc:
+        lc.main(["--lock", str(tmp_path / "x.yml"), "--check", "--with", f"{DEP}==1.1.5"])
+    assert exc.value.code == 2  # argparse's usage error
+
+
+INFRA = Path(__file__).resolve().parents[3]
+
+
+def test_the_lock_s_artifacts_are_galaxy_s_files_of_the_locked_versions() -> None:
+    section = yaml.safe_load((INFRA / "versions.lock.yml").read_text())["ansible_collections"]
+    assert set(section["artifacts"]) == set(section["collections"])
+    prefix = f"{lc.GALAXY}/api/v3/plugin/ansible/content/published/collections/artifacts/"
+    for name, version in section["collections"].items():
+        entry = section["artifacts"][name]
+        assert entry["url"] == f"{prefix}{name.replace('.', '-')}-{version}.tar.gz", name
+        assert re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]), name
+        assert isinstance(entry["size"], int) and entry["size"] > 0, name
+
+
+@pytest.mark.parametrize(
+    ("path", "prefix"),
+    [
+        (INFRA / ".github" / "workflows" / "lock-collections.yml", ""),
+        (INFRA.parent / ".github" / "workflows" / "infra-lock-collections.yml", "infra/"),
+    ],
+)
+def test_ci_compares_the_pins_on_every_change_and_weekly(path: Path, prefix: str) -> None:
+    # Owner, with the "commit" for the symbolic-link fix: approved, weekly run
+    # kept; a difference the weekly run finds blocks like any CI failure.
+    workflow = yaml.safe_load(path.read_text())
+    triggers = workflow[True]  # YAML 1.1 reads the key "on" as true
+    paths = {f"{prefix}versions.lock.yml", f"{prefix}tools/lockcheck/**"}
+    assert paths <= set(triggers["push"]["paths"])
+    assert paths <= set(triggers["pull_request"]["paths"])
+    assert triggers["schedule"] and "workflow_dispatch" in triggers
+    job = workflow["jobs"]["lock-collections"]
+    assert "continue-on-error" not in job and "if" not in job
+    assert {"run": "make lock-collections-check"} in job["steps"]

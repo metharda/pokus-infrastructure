@@ -17,6 +17,11 @@ it. It prints the pins in the lock's format, with each artifact's
 size and license files, and installs or changes nothing; the output is
 reviewed before it is committed, and an upgrade lands only after the full
 gate and CI pass with the new versions.
+
+With ``--check`` (``make lock-collections-check``, the ``lock-collections``
+CI job) it also compares the pins with the lock's ``artifacts`` (URL, sha256,
+size) and fails on any difference, so a pin that no longer matches Galaxy,
+or a check that refuses an artifact the lock pins, fails CI.
 """
 
 from __future__ import annotations
@@ -225,14 +230,41 @@ def render(pins: Sequence[Pin], server: str, now: dt.datetime) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run(
+def differences(lock: Mapping[str, Any], pins: Sequence[Pin]) -> list[str]:
+    """Every difference between the lock's artifact pins and the ones just made.
+
+    Args:
+        lock: ``versions.lock.yml``.
+        pins: The pins of the lock's collections, from Galaxy.
+
+    Returns:
+        One line per difference; empty when the lock matches.
+    """
+    locked = lock["ansible_collections"].get("artifacts") or {}
+    found = []
+    for name in sorted(set(locked) - {p.name for p in pins}):
+        found.append(f"{name}: the lock has an artifact of a collection that is not locked")
+    for p in pins:
+        entry = locked.get(p.name)
+        if entry is None:
+            found.append(f"{p.name} {p.version}: the lock has no artifact")
+            continue
+        for key, made in (("url", p.url), ("sha256", p.sha256), ("size", p.size)):
+            if entry.get(key) != made:
+                found.append(
+                    f"{p.name} {p.version}: {key} is {made!r} on Galaxy, "
+                    f"{entry.get(key)!r} in the lock"
+                )
+    return found
+
+
+def pin_all(
     lock: Mapping[str, Any],
     extra: Mapping[str, str],
     *,
     server: str = GALAXY,
     fetch: Fetch | None = None,
-    now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
-) -> str:
+) -> list[Pin]:
     """Pin every locked collection and every extra one.
 
     Args:
@@ -240,10 +272,9 @@ def run(
         extra: ``{name: version}`` from ``--with``.
         server: The Galaxy server.
         fetch: Downloads a URL (default: :func:`net.download`; tests replace it).
-        now: Clock.
 
     Returns:
-        The output for the lock.
+        The pins, sorted by name.
 
     Raises:
         PinError: If any collection cannot be pinned or a dependency is open.
@@ -259,7 +290,19 @@ def run(
     problems = dependency_problems(pins)
     if problems:
         raise PinError("; ".join(problems))
-    return render(pins, server, now())
+    return pins
+
+
+def run(
+    lock: Mapping[str, Any],
+    extra: Mapping[str, str],
+    *,
+    server: str = GALAXY,
+    fetch: Fetch | None = None,
+    now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
+) -> str:
+    """The output for the lock: :func:`pin_all`, rendered (``now`` is the clock)."""
+    return render(pin_all(lock, extra, server=server, fetch=fetch), server, now())
 
 
 def _extra(values: Sequence[str]) -> dict[str, str]:
@@ -280,13 +323,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--with", dest="extra", action="append", default=[], metavar="NAME==VERSION"
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="also fail when the pins differ from the lock's artifacts (CI)",
+    )
     args = parser.parse_args(argv)
+    if args.check and args.extra:
+        parser.error("--check compares the lock's own collections; --with does not apply")
     try:
-        text = run(checks.load(args.lock), _extra(args.extra), server=args.server)
+        lock = checks.load(args.lock)
+        pins = pin_all(lock, _extra(args.extra), server=args.server)
     except (PinError, net.FetchError, tarfile.TarError, ValueError) as exc:
         sys.stderr.write(f"lock-collections: {exc}\n")
         return 1
-    sys.stdout.write(text)
+    sys.stdout.write(render(pins, args.server, dt.datetime.now(dt.UTC)))
+    if not args.check:
+        return 0
+    found = differences(lock, pins)
+    for line in found:
+        sys.stderr.write(f"lock-collections: differs from the lock: {line}\n")
+    if found:
+        return 1
+    sys.stdout.write(f"# check: the lock's {len(pins)} artifact pins match Galaxy\n")
     return 0
 
 

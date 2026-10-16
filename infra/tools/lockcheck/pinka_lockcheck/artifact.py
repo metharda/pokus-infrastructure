@@ -31,12 +31,17 @@ import posixpath
 import re
 import sys
 import tarfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 SPECIAL = ("MANIFEST.json", "FILES.json")
-LICENSE_RE = re.compile(r"(^|/)(COPYING|LICENSE[^/]*|LICENSES/[^/]+)$")
+# A license text: any file in a LICENSES directory, or a text file (no
+# extension, .txt, .md, .rst) whose name contains one of these words, such as
+# COPYING, LICENSE.md or ansible.posix's PSF-license.txt. REUSE's ``.license``
+# files, which annotate the file they are named after, are not texts.
+LICENSE_WORDS = re.compile(r"copying|licen[cs]e|notice", re.IGNORECASE)
+TEXT_EXTENSIONS = ("", ".txt", ".md", ".rst")
 # Links followed from one member before the artifact is refused (a loop).
 MAX_LINKS = 16
 ROOT = "."
@@ -84,6 +89,24 @@ def link_target(path: str, linkname: str) -> str:
     if target == ".." or target.startswith("../"):
         raise ArtifactError(f"member {path} is a link to {linkname}, outside the collection")
     return target
+
+
+def license_texts(paths: Iterable[str]) -> list[str]:
+    """The license texts among an artifact's files.
+
+    Args:
+        paths: Its files' paths.
+
+    Returns:
+        The paths of its license texts (see ``LICENSE_WORDS``), sorted.
+    """
+    found = []
+    for path in paths:
+        stem, extension = posixpath.splitext(posixpath.basename(path))
+        in_licenses = path.startswith("LICENSES/") or "/LICENSES/" in path
+        if in_licenses or (extension.lower() in TEXT_EXTENSIONS and LICENSE_WORDS.search(stem)):
+            found.append(path)
+    return sorted(found)
 
 
 def _directories(paths: Sequence[str]) -> set[str]:
@@ -202,7 +225,7 @@ def check(name: str, version: str, artifact: bytes) -> dict[str, Any]:
             f"{name} {version}: checksum differs from FILES.json: {', '.join(wrong[:5])}"
         )
     info = dict(info)
-    info["license_files"] = sorted(p for p in present if LICENSE_RE.search(p))
+    info["license_files"] = license_texts(present)
     return info
 
 

@@ -135,7 +135,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `tools/pinka-lab/` | `pinka`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
 | `tools/test-distros/` | `make test-distros`: the distribution tests in Incus VMs and the CI fast lane. |
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
-| `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. |
+| `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. `make lock-collections` (maintainers) and `make lock-collections-check` (CI, weekly too): Galaxy's checked artifacts of the Ansible collections, and the one artifact check `make setup` and bootstrap run. |
 | `tools/repo-checks/` | Repository checks: privacy scan, docs lint, link check, Mermaid extraction. |
 | `tools/platform/` | `pinka-platform`: the contract v2 validator, the platform deployment (sources, mirrors, staging, sandboxed build, publishing, replace and purge) and the renderer of the principals and endpoints files. |
 | `versions.lock.yml` | Every pinned external artifact with its verification source (`docs/reference/versions.md`). |
