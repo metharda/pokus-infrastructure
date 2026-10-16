@@ -54,14 +54,17 @@ official check are described in the
 ## Place an attestation
 
 Copy both files into `/etc/pinka/qa/attestations/`, owned by root and
-readable by the orchestrator:
+readable by the active platform's controller:
 
 <!-- qa:run env=E2 -->
 ```bash
-sudo install -o root -g potka-orch -m 0640 <file>.json <file>.json.sig /etc/pinka/qa/attestations/
+sudo install -o root -g <controller> -m 0640 <file>.json <file>.json.sig /etc/pinka/qa/attestations/
 ```
 
-`<file>` is the attestation's file name. Attestations are never edited on the
+`<file>` is the attestation's file name and `<controller>` the controller's
+account, `<platform>-<service>` (`account` of the `controller` service in
+`/etc/pinka/platform/principals.json`), which is also the directory's
+group. Attestations are never edited on the
 host: the signature covers the canonical JSON, and any change makes it
 invalid. Old attestations may stay; the platform uses the one that matches
 the deployed commits.

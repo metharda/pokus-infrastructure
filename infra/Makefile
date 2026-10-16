@@ -112,13 +112,14 @@ $(VENV)/.synced: pyproject.toml uv.lock $(filter $(UV_PINNED),$(UV))
 # Every setup verifies the pinned collections and installs them again when
 # anything differs: a missing or changed file, an extra file, a version that is
 # not the locked one. They are downloaded from Galaxy (ansible-galaxy
-# collection download); when Galaxy is unreachable, from the tarballs pinned in
-# versions.lock.yml (ansible_collections.fallback), each kept only after its
-# sha256 matched. Every artifact passes the check make lock-collections and
-# bootstrap apply (pinka_lockcheck/artifact.py) before an offline install; a
-# failed download, checksum or check stops setup. The same verification runs
-# afterwards. No formatter or linter may touch them
-# (tools/repo-checks/tests/test_dev_tools.py).
+# collection download); when Galaxy is unreachable, they come from a release
+# package's bundled artifacts, given as COLLECTIONS_PACKAGE=<file, https URL or
+# unpacked tree>. Each artifact's sha256 and size must equal its pin in
+# versions.lock.yml (ansible_collections.artifacts), and every artifact passes
+# the check make lock-collections and bootstrap apply
+# (pinka_lockcheck/artifact.py) before an offline install; a failed download,
+# pin or check stops setup. The same verification runs afterwards. No
+# formatter or linter may touch them (tools/repo-checks/tests/test_dev_tools.py).
 .PHONY: dev-collections
 dev-collections: $(VENV)/.synced
 	@mkdir -p $(BUILD)
@@ -126,7 +127,7 @@ dev-collections: $(VENV)/.synced
 	  echo "dev-collections: the installed collections differ from the lock (see $(BUILD)/collections-verify.log); installing them again"; \
 	  $(ANSIBLE_ENV) $(LOCKCHECK) collections --requirements ansible/requirements.yml \
 	    --dest $(DEV_COLLECTIONS) --downloads $(BUILD)/collections \
-	    --galaxy $(BIN)/ansible-galaxy || exit 1; \
+	    --galaxy $(BIN)/ansible-galaxy $(if $(COLLECTIONS_PACKAGE),--package $(COLLECTIONS_PACKAGE)) || exit 1; \
 	  $(COLLECTIONS_VERIFY) >$(BUILD)/collections-verify.log 2>&1 || \
 	  { cat $(BUILD)/collections-verify.log; exit 1; }; \
 	fi
@@ -251,7 +252,7 @@ test-pytest: setup ## The pytest suites
 
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
-	PYTHONPATH=tools/test-distros:tools/platform:preflight $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
+	PYTHONPATH=tools/test-distros:tools/platform:tools/lockcheck:preflight $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
 check-mode: setup ## Required CI fast lane (§11, §19.9): base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
@@ -284,6 +285,15 @@ verify-todos: setup ## List every unverified marker in the repository; fails whi
 .PHONY: lock-collections
 lock-collections: $(VENV)/.synced ## Maintainers only: print Galaxy's checked artifact pins of the locked collections (reads public URLs, changes nothing)
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml $(LOCK_COLLECTIONS_ARGS)
+
+.PHONY: release-package
+release-package: $(VENV)/.synced ## Build the release package of TAG=infra-vX.Y.Z (or of REF, for tests) with its pinned collections into build/release (network: Galaxy)
+	@$(LOCKCHECK) package build $(if $(TAG),--tag $(TAG),--ref $(or $(REF),HEAD)) --out $(BUILD)/release
+
+.PHONY: release-package-check
+release-package-check: $(VENV)/.synced ## Check a release package (PACKAGE=file or unpacked tree): its tree hash, collections and NOTICE
+	@test -n "$(PACKAGE)" || { echo "release-package-check: set PACKAGE=<file or directory>"; exit 2; }
+	@$(LOCKCHECK) package check $(PACKAGE)
 
 .PHONY: lock-collections-check
 lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing when its pins differ from the lock's artifacts (network)

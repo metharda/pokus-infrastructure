@@ -135,7 +135,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `tools/pinka-lab/` | `pinka`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
 | `tools/test-distros/` | `make test-distros`: the distribution tests in Incus VMs and the CI fast lane. |
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
-| `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. `make lock-collections` (maintainers) and `make lock-collections-check` (CI, weekly too): Galaxy's checked artifacts of the Ansible collections, and the one artifact check `make setup` and bootstrap run. |
+| `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key. `make lock-collections` (maintainers) and `make lock-collections-check` (CI, weekly too): Galaxy's checked artifacts of the Ansible collections, and the one artifact check `make setup` and bootstrap run. `make release-package` and `make release-package-check`: the release package of an `infra-v` tag with its pinned collections and `NOTICE` ([How to publish a release package](docs/how-to/publish-a-release-package.md)). |
 | `tools/repo-checks/` | Repository checks: privacy scan, docs lint, link check, Mermaid extraction. |
 | `tools/platform/` | `pinka-platform`: the contract v2 validator, the platform deployment (sources, mirrors, staging, sandboxed build, publishing, replace and purge) and the renderer of the principals and endpoints files. |
 | `versions.lock.yml` | Every pinned external artifact with its verification source (`docs/reference/versions.md`). |
@@ -177,17 +177,19 @@ verified; it changes nothing outside the checkout (no `sudo`).
 | The Python development tools (`.venv`) | PyPI | `uv sync --frozen`: every package's hash in `uv.lock` |
 | The Node.js tools (`node_modules`) | the npm registry | `npm ci`: every package's integrity hash in `package-lock.json` |
 | OPA | GitHub release (`binaries.opa`) into `build/tools/` | its sha256 from the lock |
-| The Ansible collections for linting (`.ansible-collections`) | Ansible Galaxy, at the versions of `ansible/requirements.yml` (`ansible-galaxy collection download`) | every artifact checked like bootstrap's (`tools/lockcheck/pinka_lockcheck/artifact.py`: `MANIFEST.json`, `FILES.json`, only relative symbolic links inside the collection) before an offline install, then `ansible-galaxy collection verify --offline`: every file against the collection's `FILES.json`, and the locked version |
-| The same collections when Galaxy is unreachable | their GitHub release tarballs (`ansible_collections.fallback` of the lock) | each tarball's sha256 from the lock and the same artifact check before it is installed, then the same `verify --offline` |
+| The Ansible collections for linting (`.ansible-collections`) | Ansible Galaxy, at the versions of `ansible/requirements.yml` (`ansible-galaxy collection download`) | each artifact's sha256 and size against its pin in `ansible_collections.artifacts` of the lock (an artifact without a verified pin is reported as unpinned), then the artifact checked like bootstrap's (`tools/lockcheck/pinka_lockcheck/artifact.py`: `MANIFEST.json`, `FILES.json`, only relative symbolic links inside the collection) before an offline install, then `ansible-galaxy collection verify --offline`: every file against the collection's `FILES.json`, and the locked version |
+| The same collections when Galaxy is unreachable | a published release package (`make setup COLLECTIONS_PACKAGE=<file or https URL>`): its `release/collections/` | the same pins, which must all be verified, and the same checks |
 
 Setup verifies the installed collections every time and installs them again
 when anything differs. A failed download or a checksum mismatch stops setup
-with the name of the artifact; nothing unverified is installed. A fallback
-tarball whose URL or sha256 is still `TODO(verify)` in the lock is never
-downloaded, and neither is a collection without a fallback entry: without
-Galaxy, setup then stops and names it. Bootstrap does not use Galaxy or the
-fallback: it installs the artifacts pinned in `ansible_collections.artifacts`
-(see [How bootstrap works](docs/explanation/bootstrap.md)).
+with the name of the artifact; nothing unverified is installed. Without
+Galaxy and without `COLLECTIONS_PACKAGE`, setup stops and says so; from a
+release package, every collection needs a verified pin, and there is no
+other source. Bootstrap installs the artifacts pinned in
+`ansible_collections.artifacts`, from Galaxy or, when it runs from a release
+package, from the package
+(see [How bootstrap works](docs/explanation/bootstrap.md) and
+[How to install from a release package](docs/how-to/install-from-a-release-package.md)).
 
 The policy tests need that OPA and the agent environment tests that uv.
 Outside CI these tests are skipped without them; in CI a skipped uv test fails

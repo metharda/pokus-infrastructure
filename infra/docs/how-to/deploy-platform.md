@@ -1,5 +1,5 @@
 ---
-title: How to deploy a platform
+title: How to plug a platform into the lab
 type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
@@ -7,7 +7,7 @@ last_verified: {date: null, rc: null, by: null}
 description: Point the lab at a platform release and its content packages, check the release before it changes anything, deploy it and update it.
 ---
 
-# How to deploy a platform
+# How to plug a platform into the lab
 
 A lab runs at most one platform. Infra deploys it from its release and its
 content packages (contract v2): bootstrap fetches each source repository
@@ -159,7 +159,7 @@ on the host. The platform runs on `full` and `lab` nodes only.
    database too.
 
 A release with another platform name replaces the active platform only on
-request: [How to replace the lab's platform](replace-platform.md).
+request: [How to replace or purge a platform](replace-platform.md).
 
 ## Verify the deployment
 

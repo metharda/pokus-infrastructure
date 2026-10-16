@@ -11,10 +11,14 @@
   the lock for this machine and install it only if its sha256 matches; from
   a tar.gz archive, the one regular file named ``FILE`` (development tools
   such as OPA for ``make test``).
-* ``collections --requirements FILE --dest DIR --downloads DIR --galaxy CMD``:
-  install the locked Ansible collections for ``make setup``, from Galaxy, or
-  when Galaxy is unreachable from the pinned and checksum-verified release
-  tarballs (``pinka_lockcheck.devsetup``).
+* ``collections --requirements FILE --dest DIR --downloads DIR --galaxy CMD
+  [--package PACKAGE]``: install the locked Ansible collections for
+  ``make setup``, from Galaxy, or when Galaxy is unreachable from the
+  artifacts bundled in a release package (``pinka_lockcheck.devsetup``).
+* ``package build (--tag TAG | --ref REF) --out DIR``: build the release
+  package (``make release-package``; ``pinka_lockcheck.bundle``).
+* ``package check PACKAGE``: check a release package or an unpacked one
+  (``make release-package-check``).
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from pinka_lockcheck import checks, devsetup, net
+from pinka_lockcheck import bundle, checks, devsetup, net
 
 CATEGORIES = ("containers", "binaries", "keys")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
@@ -68,6 +72,12 @@ def _check(lock: Path, *, offline: bool, only: Sequence[str]) -> int:
     findings = checks.schema_findings(doc)
     findings += checks.marker_findings(lock.read_text(encoding="utf-8"))
     findings += checks.collection_findings(doc)
+    # Inside an unpacked release package: its tree, collections and NOTICE.
+    if (lock.parent / bundle.RELEASE_JSON).exists():
+        findings += [
+            checks.Finding(checks.ERROR, bundle.RELEASE_DIR, problem)
+            for problem in bundle.check_tree(lock.parent)
+        ]
     if not offline and not any(f.where == "(root)" for f in findings):
         if "containers" in only:
             findings += checks.container_findings(doc)
@@ -130,23 +140,48 @@ def _fetch(lock: Path, name: str, dest: Path, member: str | None) -> int:
 
 def _collections(args: argparse.Namespace) -> int:
     try:
-        source = devsetup.install_collections(
+        installed = devsetup.install_collections(
             checks.load(args.lock),
             args.requirements,
             args.dest,
             args.downloads,
             galaxy=args.galaxy,
+            package=args.package or None,
         )
     except checks.FetchRefusedError as exc:
         sys.stderr.write(f"collections: {exc}; nothing unverified was installed\n")
         return 1
-    if source == "fallback":
+    if installed.source == "package":
         print(
-            "collections: Galaxy is unreachable; installed the pinned release tarballs of "
-            "versions.lock.yml after their sha256 matched",
+            f"collections: Galaxy is unreachable; installed the artifacts of {args.package}"
+            " after their sha256 matched the lock",
+            file=sys.stderr,
+        )
+    if installed.unpinned:
+        print(
+            "collections: installed from Galaxy without a verified pin in the lock yet: "
+            + ", ".join(installed.unpinned)
+            + " (pin them with make lock-collections)",
             file=sys.stderr,
         )
     return 0
+
+
+def _package(args: argparse.Namespace) -> int:
+    if args.action == "build":
+        try:
+            package = bundle.build(Path.cwd(), args.out, tag=args.tag, ref=args.ref or "HEAD")
+        except (bundle.PackageError, checks.FetchRefusedError, ValueError) as exc:
+            sys.stderr.write(f"package: {exc}\n")
+            return 1
+        print(f"package: {package}", file=sys.stderr)
+        return 0
+    target = args.package
+    problems = bundle.check_tree(target) if target.is_dir() else bundle.check_package(target)
+    if problems:
+        print(bundle.describe(problems))
+    print(f"package check: {target}: {len(problems)} problem(s)", file=sys.stderr)
+    return 1 if problems else 0
 
 
 def main(argv: Sequence[str]) -> int:
@@ -178,16 +213,30 @@ def main(argv: Sequence[str]) -> int:
     fetch.add_argument("--member", help="file name of the executable in a tar.gz archive")
     fetch.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
     collections = sub.add_parser(
-        "collections", help="install the locked Ansible collections (Galaxy or the fallback)"
+        "collections", help="install the locked Ansible collections (Galaxy or a release package)"
     )
     collections.add_argument("--requirements", type=Path, required=True)
     collections.add_argument("--dest", type=Path, required=True, help="collections path")
     collections.add_argument("--downloads", type=Path, required=True, help="tarball directory")
     collections.add_argument("--galaxy", required=True, help="the ansible-galaxy command")
     collections.add_argument("--lock", type=Path, default=Path("versions.lock.yml"))
+    collections.add_argument(
+        "--package", default="", help="release package to use when Galaxy is unreachable"
+    )
+    package = sub.add_parser("package", help="build or check the release package")
+    actions = package.add_subparsers(dest="action", required=True)
+    build = actions.add_parser("build", help="build the release package of a tag or commit")
+    which = build.add_mutually_exclusive_group(required=True)
+    which.add_argument("--tag", help="the release tag (infra-vX.Y.Z)")
+    which.add_argument("--ref", help="a commit, for test builds (no tag)")
+    build.add_argument("--out", type=Path, required=True, help="output directory")
+    check_package = actions.add_parser("check", help="check a release package")
+    check_package.add_argument("package", type=Path, help="the package or its unpacked tree")
     args = parser.parse_args(list(argv))
     if args.command == "collections":
         return _collections(args)
+    if args.command == "package":
+        return _package(args)
     if args.command == "fetch":
         return _fetch(args.lock, args.name, args.dest, args.member)
     if args.command == "validate":

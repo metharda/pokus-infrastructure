@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/endpoints.schema.json",
+  "title": "endpoints.toml",
+  "description": "The addresses and paths infra provides to the active platform, /etc/pinka/platform/endpoints.toml (contract v2, BUILD_PROMPT \u00a712.3), with the effective ports (\u00a712.11). Written by infra at every deployment, 0644 root; the schema describes the parsed TOML document. A facility's table is present only when the manifest's `requires` names it; the platform reads names and addresses from here instead of hard-coding them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "platform",
+    "lab",
+    "signing",
+    "attestations",
+    "sessions",
+    "ports"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Version of this file's format."
+    },
+    "platform": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,11}$",
+      "description": "Platform name."
+    },
+    "lab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "machine",
+        "lab_mode",
+        "node_role"
+      ],
+      "properties": {
+        "machine": {
+          "type": "string",
+          "description": "The machine's name (`machine_name`)."
+        },
+        "lab_mode": {
+          "enum": [
+            "production",
+            "staging"
+          ],
+          "description": "`production` or `staging`."
+        },
+        "node_role": {
+          "enum": [
+            "full",
+            "lab",
+            "inference"
+          ],
+          "description": "`full`, `lab` or `inference`."
+        }
+      },
+      "description": "The lab facts."
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "socket_dir",
+        "reader_socket_dir",
+        "database",
+        "migrator_role",
+        "reader_role",
+        "grafana_role",
+        "roles"
+      ],
+      "properties": {
+        "socket_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Socket directory of the service roles (group `<platform>-db`)."
+        },
+        "reader_socket_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Socket directory of the researchers' reader role and Grafana (group `pinka`)."
+        },
+        "database": {
+          "type": "string",
+          "description": "The platform's database, named after the platform."
+        },
+        "migrator_role": {
+          "type": "string",
+          "description": "Owner of the schemas, used only by the `migrate` hook (`<platform>_migrator`)."
+        },
+        "reader_role": {
+          "type": "string",
+          "description": "The researchers' read-only role (`<platform>_reader`); never `restricted`."
+        },
+        "grafana_role": {
+          "type": "string",
+          "description": "Grafana's read-only role (`<platform>_grafana`); never `restricted`."
+        },
+        "roles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The login role of every service except `untrusted-agent`, by service name (`<platform>_<service>`); its password file is `/etc/pinka/secrets/postgres/<role>`."
+        }
+      },
+      "description": "With `requires: [postgres]`."
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "otlp_grpc",
+        "otlp_http",
+        "vm_collector_grpc",
+        "vm_collector_http",
+        "agent_otlp_socket",
+        "query_socket"
+      ],
+      "properties": {
+        "otlp_grpc": {
+          "type": "string",
+          "pattern": "^[0-9.]+:[0-9]{1,5}$",
+          "description": "OTLP gRPC for services, on loopback."
+        },
+        "otlp_http": {
+          "type": "string",
+          "pattern": "^[0-9.]+:[0-9]{1,5}$",
+          "description": "OTLP HTTP for services, on loopback."
+        },
+        "vm_collector_grpc": {
+          "type": "string",
+          "pattern": "^[0-9.]+:[0-9]{1,5}$",
+          "description": "OTLP gRPC for VM targets, on `vm_collector_address`."
+        },
+        "vm_collector_http": {
+          "type": "string",
+          "pattern": "^[0-9.]+:[0-9]{1,5}$",
+          "description": "OTLP HTTP for VM targets, on `vm_collector_address`."
+        },
+        "agent_otlp_socket": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The agent's OTLP socket; everything received there is stamped `pinka.trust=untrusted`."
+        },
+        "query_socket": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The read-only query proxy for Prometheus, Loki and Tempo."
+        }
+      },
+      "description": "With `requires: [telemetry]`."
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "researcher_endpoint",
+        "api_url"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "local",
+            "remote",
+            "scripted"
+          ],
+          "description": "`local` (vLLM on this node), `remote` (the inference forwarder to a paired inference node) or `scripted` (only with `lab_mode = \"staging\"`; never official)."
+        },
+        "researcher_endpoint": {
+          "type": "string",
+          "pattern": "^[0-9.]+:[0-9]{1,5}$",
+          "description": "The inference broker's researcher endpoint, the only TCP port a platform may listen on."
+        },
+        "api_url": {
+          "type": "string",
+          "description": "The OpenAI-compatible inference API: vLLM, the forwarder's loopback port, or the configured scripted endpoint."
+        },
+        "control_url": {
+          "type": "string",
+          "description": "With `remote`: the forwarder's control API on loopback."
+        }
+      },
+      "description": "With `requires: [inference]`."
+    },
+    "opa": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The OPA decision API on loopback."
+        },
+        "decision_path": {
+          "type": "string",
+          "description": "The decision path of the manifest's `policy`, below `/v1/data/`, when the manifest has one."
+        }
+      },
+      "description": "With `requires: [opa]`."
+    },
+    "incus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "cert_dir",
+        "projects",
+        "run_network_socket"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The Incus HTTPS API on loopback."
+        },
+        "cert_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Directory of the client certificates, `<cert_dir>/<account>/{client.crt,client.key,server.crt}`."
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The Incus projects of the platform (`bench`, `build`)."
+        },
+        "run_network_socket": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The run-network helper, for the controller only."
+        },
+        "cpuset_targets": {
+          "type": "string",
+          "description": "The CPUs of the target instances (a Linux cpuset list), when `cpuset_targets` is set; every target's `limits.cpu` is a range inside it."
+        }
+      },
+      "description": "With `requires: [incus]`."
+    },
+    "gpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "arbiter_socket"
+      ],
+      "properties": {
+        "arbiter_socket": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The GPU arbiter's socket, for the controller only."
+        }
+      },
+      "description": "With `requires: [gpu]`."
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key_file",
+        "public_key_file",
+        "published_keys_dir"
+      ],
+      "properties": {
+        "key_file": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The platform's ed25519 signing key (PEM PKCS#8), 0400 for its controller."
+        },
+        "public_key_file": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Its public key (PEM SubjectPublicKeyInfo)."
+        },
+        "published_keys_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Where the public keys are published as `<platform>-<machine>-<YYYYMMDD>.pub` and kept forever."
+        }
+      },
+      "description": "The signing key."
+    },
+    "attestations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trusted_keys_dir",
+        "attestations_dir"
+      ],
+      "properties": {
+        "trusted_keys_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Trusted public keys of external verification (PEM)."
+        },
+        "attestations_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Attestations and their detached signatures."
+        }
+      },
+      "description": "The attestation directories; the format and the official check are the platform's."
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "records_dir",
+        "fingerprint_command"
+      ],
+      "properties": {
+        "records_dir": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "The session records, one `<boot_id>.json` per boot."
+        },
+        "fingerprint_command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The command that prints the fingerprint document."
+        }
+      },
+      "description": "Session records and the fingerprint."
+    },
+    "ports": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "description": "The effective listener ports, by the names of the port table: the defaults with the machine's `ports:` overrides."
+    }
+  }
+}

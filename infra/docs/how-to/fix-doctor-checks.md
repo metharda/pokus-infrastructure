@@ -384,12 +384,15 @@ sudo gpasswd -d <user> <group>
 Docker on purpose goes into `break_glass_docker` in the host_vars file
 instead (logged loudly).
 
-## `deploy.provenance`: a deployed path has `.git` or catalog content {#check-deploy-provenance}
+## `deploy.provenance`: a deployed path has `.git` or restricted content outside the restricted area {#check-deploy-provenance}
 
-A deployment under `/srv/pinka/deploy` or `/srv/pinka/catalog` contains a
-`.git` directory, or catalog content was deployed outside the catalog
-directory (resolution B2). Remove that deployment and deploy again from the
-mirror with bootstrap.
+A release or content package under `/srv/pinka/platforms/<platform>/` or
+`/srv/pinka/restricted/<platform>/` contains a `.git` directory, or the
+provenance record (`DEPLOYED_FROM.json`) of a restricted content package
+appears outside `/srv/pinka/restricted/<platform>/` (resolution B2,
+[Restricted data](../contracts.md#restricted-data)). `<platform>` is the
+platform's name. Remove that deployment and deploy again from the mirror
+with bootstrap.
 
 ## `platform.manifest`: the active release's manifest changed or no longer validates {#check-platform-manifest}
 

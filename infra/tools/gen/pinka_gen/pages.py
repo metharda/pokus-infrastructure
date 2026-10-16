@@ -67,8 +67,17 @@ def _cell(value: Any) -> str:  # noqa: ANN401 - table cell
     if isinstance(value, dict):
         return ", ".join(f"{k}: {_cell(v)}" for k, v in value.items()) or "—"
     text = str(value).replace("|", "\\|").replace("\n", " ")
-    text = text.replace("<", "&lt;").replace(">", "&gt;")
-    return text or "—"
+    # Angle brackets become entities outside code spans only: inside one,
+    # Markdown shows an entity literally. Unpaired backticks open no span.
+    parts = text.split("`")
+    paired = len(parts) % 2 == 1
+    return (
+        "`".join(
+            p if paired and i % 2 else p.replace("<", "&lt;").replace(">", "&gt;")
+            for i, p in enumerate(parts)
+        )
+        or "—"
+    )
 
 
 def table(headers: list[str], rows: list[list[Any]]) -> str:

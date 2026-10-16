@@ -11,6 +11,7 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+from pinka_lockcheck import bundle
 from pinka_test_distros import checkmode, harness, results, targets
 from pinka_test_distros.incus import Incus, IncusError, Runner, run_command
 
@@ -142,7 +143,9 @@ def cmd_list(file: targets.TargetFile) -> int:
     return 0
 
 
-def cmd_run(args: argparse.Namespace, file: targets.TargetFile, run: Runner) -> int:
+def cmd_run(  # noqa: PLR0911 - one exit per refusal
+    args: argparse.Namespace, file: targets.TargetFile, run: Runner
+) -> int:
     """Test the selected targets.
 
     Args:
@@ -174,11 +177,20 @@ def cmd_run(args: argparse.Namespace, file: targets.TargetFile, run: Runner) -> 
     out_dir = args.out / stamp
     records = []
     with tempfile.TemporaryDirectory() as tmp:
+        try:
+            package = bundle.build(INFRA, Path(tmp, "release"), ref="HEAD")
+        except bundle.PackageError as exc:
+            sys.stderr.write(f"refused: the release package of HEAD: {exc}\n")
+            return 2
+        if problems := bundle.check_package(package):
+            sys.stderr.write(bundle.describe(problems) + "\n")
+            return 2
         secrets_env = Path(tmp, "secrets.env")
         secrets_env.touch(mode=0o600)
         secrets_env.write_text(f"PINKA_SECRET_TAILSCALE_AUTHKEY={authkey}\n", encoding="utf-8")
         settings = harness.Settings(
             repo_tar=repo_archive(Path(tmp)),
+            package=package,
             answers=ANSWERS,
             commit=commit,
             out_dir=out_dir,

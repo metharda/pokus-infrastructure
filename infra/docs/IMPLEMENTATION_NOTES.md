@@ -3656,3 +3656,144 @@ None new.
   of the weekly run too, blocks the next step. Tests: the comparison, a
   refused artifact, the real lock's URLs against the locked versions, and
   both workflow files.
+
+## Contract v2, step 8: documentation and the release package (plan step 3d.8)
+
+### Built in 3d.8: the owner's 3d.7 decisions
+
+- **No GitHub-archive fallback.** `ansible_collections.fallback` is gone
+  from the lock and its schema, and `make setup` no longer downloads
+  release tarballs; Galaxy's artifact and its sha256 and size in
+  `ansible_collections.artifacts` are the only pins. The eight markers of
+  the four fallback entries went with them.
+- **Release package (owner's choice "Full package").**
+  `tools/lockcheck/pinka_lockcheck/bundle.py` builds
+  `pokus-infrastructure-<X.Y.Z>.tar.gz` (a test build without a tag:
+  `0.0.0+<commit12>`) and its `.sha256`: `git archive` of `<commit>:infra`
+  under one top directory, plus `release/collections/` (the five artifacts,
+  each checked against its pin and by `artifact.check`), `release/NOTICE`
+  and `release/RELEASE.json` (format, tag, version, commit, infra tree,
+  the NOTICE's sha256, the collections). The tarball is reproducible:
+  sorted members, the commit's time as mtime, owner 0, gzip mtime 0, PAX.
+  `make release-package TAG=infra-vX.Y.Z` (or `REF=`) builds it into
+  `build/release/`, `make release-package-check PACKAGE=<file or tree>`
+  checks the tree hash, every artifact and the NOTICE. The workflow
+  `release.yml` (and the monorepo wrapper `infra-release.yml`) runs both on
+  every `infra-v*` tag, creates the GitHub release if needed and uploads the
+  two files without `--clobber`. `release/` is ignored by Git, and a test
+  keeps tarballs out of the repository.
+- **NOTICE** (owner, with the pins of the second `make lock-collections`
+  run and the "commit" for `4aeb35b`): per artifact, its file, sha256 and
+  source; the license texts it carries (path and first line); the SPDX
+  identifiers its files name, with the number of files naming each (a
+  strict SPDX expression parser; REUSE `.license` files and `REUSE.toml`
+  annotations included); the licenses its `MANIFEST.json` declares; and,
+  where it applies, the declared licenses no file carries (for
+  `community.crypto` 3.4.0: BSD-2-Clause and PSF-2.0). No license text is
+  added.
+- **Bootstrap from a package.** Without `.git`, `stage_git` reads
+  `release/RELEASE.json` (one key per line, read with `sed`), checks the
+  owner like a checkout's, and computes the infra tree hash of the
+  unpacked files with an isolated git (temporary git directory,
+  `/release/` excluded through `info/exclude`, `.gitignore` honoured, so
+  host_vars and the vault do not count). A difference is a dirty tree (77,
+  or `--allow-dirty`, recorded); `--ref` must name the package's tag or
+  commit; a damaged `RELEASE.json` is 77, a failing git 50. The state file
+  records `infra_source` (`git` or `package`) and `release_tag`.
+  `install_collections` reads the artifacts from `release/collections/`
+  instead of downloading them, with the same sha256 and artifact checks.
+- **`make setup` without Galaxy:** `COLLECTIONS_PACKAGE=<file or https URL>`
+  is used only when Galaxy is unreachable; every collection then needs a
+  verified pin. Without Galaxy and without a package, setup stops and says
+  how to continue.
+- **lock-check and test-distros:** `lock-check` run inside an unpacked
+  package also checks `release/` (problems are `release` findings);
+  `make test-distros` builds a package from `HEAD`, checks it, and
+  bootstraps every VM from it (`/root/pokus-infrastructure`); the guest's
+  state must record `infra_source: package`.
+- **TUI replacement:** the Platform review screen offers *Replace `<old>` …*
+  when the release is refused with `platform-active`; a dialog names the
+  active platform and what replacing it does and enables Confirm only when
+  its name is typed exactly (like `pinka platform purge`). The review runs
+  again with the replacement, and bootstrap gets `--replace-platform`.
+  Changing the platform's answers drops the confirmation. Snapshot tests
+  cover the dialog; the docs screenshot `replace.svg` is a copy.
+
+### Built in 3d.8: the documentation (BUILD_PROMPT §16 step 22)
+
+- `docs/contracts.md` is contract v2: the manifest, the eight profiles and
+  what infra renders from them, sockets and the connection rules, the
+  principals and endpoints files, restricted data, PostgreSQL, Incus,
+  telemetry, OPA, inference and the GPU, hooks, paths, provenance, the
+  external verification hooks, the ports (the table `test_group_vars.py`
+  compares with `pinka_default_ports`), the changes from v1, and the
+  resolutions with their status in v2. The anchors other pages link to
+  are kept.
+- `contract/principals.schema.json` and `contract/endpoints.schema.json`
+  describe the two files infra writes for the platform; the render tests
+  validate every fixture's files against them (remote and scripted
+  inference too) and check that the schemas describe exactly the keys the
+  rendering writes. The generated reference
+  `docs/reference/platform-files.md` shows both, with examples rendered for
+  the reference platform; the coverage check lists every field.
+- New pages: tutorial "Write a minimal platform" (every development step
+  run as written; the lab steps are `qa:skip`), explanation "Privilege
+  profiles and restricted data", ADR-0014 and ADR-0015, how-tos "Install
+  from a release package" and "Publish a release package". "Deploy a
+  platform" is retitled "Plug a platform into the lab" (file name kept);
+  "Replace or purge a platform" covers the TUI.
+- Updated for v2: security (a platform release, the agent and restricted
+  data), architecture, node roles (the forwarder holds the client key),
+  bootstrap explanation (package mode), troubleshoot (package messages),
+  backup and restore (the same infra release), WSL2 (CDI for training
+  containers), fix-doctor-checks (`deploy.provenance`), install-attestation
+  (the controller's group), operations, reproducibility, ADR-0010 (a note),
+  README (setup downloads, release targets).
+
+### Fixed in 3d.8
+
+- Generated table cells escaped `<` and `>` inside code spans too, where
+  Markdown shows the entity literally (`&lt;sha256&gt;` on the records and
+  fingerprint pages); they are now escaped only outside code spans, with a
+  test.
+- The example output in "Validate a platform release" predated the
+  reference platform's inference broker; it is now the validator's real
+  output.
+
+### Interpretations awaiting owner confirmation (3d.8)
+
+1. The schemas of `principals.json` and `endpoints.toml` are published at
+   the root of `contract/`, next to the manifest's schema, not in
+   `contract/records/` (they are files infra renders, not records); the
+   build prompt's list of `contract/` does not name them.
+2. `infra/CLAUDE.md` says `docs/contracts.md` must stay byte-identical to
+   `../platform/docs/contracts.md`, but this repository has no `platform/`
+   directory and no check for it. Contract v2 says instead that a platform
+   repository keeping a copy keeps it identical to the copy of the infra
+   release it pins. Proposal: change the `CLAUDE.md` line to that wording.
+3. The attestation format moved out of the infra contract (DOCS_SPEC:
+   reference "Attestation format" on the platform site); infra keeps the
+   directories and the commits and tree hashes an attestation is checked
+   against. Nothing for the platform site is written here.
+4. The release package's name is `pokus-infrastructure-<X.Y.Z>.tar.gz`,
+   the repository's name after 3g; the workflow never replaces an asset
+   already attached to a release.
+5. `make test-distros` builds its package from `HEAD` without a tag, so it
+   needs Galaxy like `make setup`.
+
+### Findings to report (3d.8)
+
+- `security.md`, `architecture.md`, `node-roles.md`,
+  `fix-doctor-checks.md` (`deploy.provenance`), `install-attestation.md`
+  (`potka-orch`), `operations.md` and `reproducibility.md` still described
+  contract v1 until this step.
+- A real package build cannot run in this environment: its proxy refuses
+  Galaxy (`403`), and `make release-package` stops with the collection and
+  the error. The build, the check, the NOTICE and bootstrap's package mode
+  are tested with local Git repositories and artifacts built by the tests;
+  the first real build is the `release` workflow on the first tag.
+
+### Open `TODO(verify)` items after 3d.8
+
+`make verify-todos`: 113 markers; `versions.lock.yml` holds 8 fewer than at
+`4aeb35b` (the fallback entries).

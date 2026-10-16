@@ -41,16 +41,23 @@ flowchart TD
 2. **Log and lock.** All output is copied to
    `/var/log/pinka-bootstrap/<UTC timestamp>.log` (mode 0600, root only). A
    lock in `/run/lock` makes a second, concurrent run stop with 77.
-3. **Git checkout.** Bootstrap runs from a clone of the repository. It records
+3. **Git checkout or release package.** Bootstrap runs from a clone of the
+   repository or from an unpacked release package. In a clone it records
    the commit, the tree hash of `infra/` and whether `infra/` has uncommitted
    changes; a dirty `infra/` stops the run unless `--allow-dirty` is given,
    which is recorded. Changes outside `infra/` do not count, because the
-   platform and the catalog are deployed from tags, not from the working
-   tree. Git runs as root in a checkout that usually belongs to the admin who
-   called `sudo`. The checkout must be owned by root or by that admin, so a
-   checkout prepared by another account cannot run code as root through its
-   git configuration; the fsmonitor hook is disabled in addition. `--ref`
-   must name the checked-out commit.
+   platform and its content packages are deployed from their own sources,
+   not from the working tree. In a release package, which has no `.git`,
+   it reads the tag, commit and tree hash from `release/RELEASE.json` and
+   computes the tree hash of the unpacked files with git (without
+   `release/`); a difference counts as a dirty tree
+   ([How to install from a release package](../how-to/install-from-a-release-package.md)).
+   Git runs as root in a checkout that usually belongs to the admin who
+   called `sudo`. The checkout or the unpacked package must be owned by
+   root or by that admin, so files prepared by another account cannot run
+   code as root through a git configuration; the fsmonitor hook is disabled
+   in addition. `--ref` must name the checked-out commit, or the package's
+   tag or commit.
 4. **Pre-preflight.** `bootstrap/lib/prepreflight.sh` is plain POSIX `sh`
    and checks only what is needed before anything is installed: root, systemd
    as PID 1, glibc, `x86_64` or `aarch64`, `curl` or `wget` and `tar`, and a
@@ -87,14 +94,17 @@ flowchart TD
    lock with the URL and sha256 of its artifact. When
    `ansible-galaxy collection verify --offline` finds the installed
    collections intact, nothing is downloaded; otherwise each artifact is
-   downloaded, its sha256 checked, and the artifact itself checked with
+   downloaded (from a release package: read from `release/collections/`,
+   with no download at all), its sha256 checked, and the artifact itself
+   checked with
    `tools/lockcheck/pinka_lockcheck/artifact.py`, the rule
    `make lock-collections` and `make setup` apply too (`MANIFEST.json` and
    `FILES.json`; a symbolic link only when its target is relative and stays
    inside the collection; no hard links, devices or FIFOs). Then all are
    installed with `ansible-galaxy collection install --offline --no-deps`,
    and the result is verified again: every file against the collection's
-   `FILES.json`. An artifact that cannot be downloaded, whose sha256 differs
+   `FILES.json`. An artifact that cannot be downloaded or is missing from
+   the package, whose sha256 differs
    or is not verified yet, or that the check refuses, ends bootstrap with 50
    before anything is installed.
 9. **The play.** `ansible-playbook` runs `site.yml` with `-e machine=<name>`

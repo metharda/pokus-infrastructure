@@ -1,0 +1,50 @@
+# Managed by pinka (.github/workflows/release.yml).
+#
+# The release package of every infra-vX.Y.Z tag (owner decisions of 3d.7 and
+# 3d.8): the infra tree at the tag (git archive) with release/ holding the
+# five pinned Galaxy artifacts (the same bytes, checked against the lock's
+# sha256 and size), their NOTICE and RELEASE.json. The package is checked
+# again after it is built and attached to the tag's GitHub release with its
+# .sha256; an asset that exists already is never replaced. The tarballs are
+# never committed. In the monorepo, ../.github/workflows/infra-release.yml
+# runs the same job with working-directory infra; keep both files in step.
+name: infra-release
+
+on:
+  push:
+    tags: ["infra-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # create the release and attach the package
+    env:
+      TAG: ${{ github.ref_name }}
+      # The package's name (pinka_lockcheck.bundle.PACKAGE_NAME).
+      PACKAGE_NAME: pokus-infrastructure
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.23"
+      - run: make release-package TAG="$TAG"
+      - run: make release-package-check PACKAGE="build/release/${PACKAGE_NAME}-${TAG#infra-v}.tar.gz"
+      - name: Attach the package to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          package="build/release/${PACKAGE_NAME}-${TAG#infra-v}.tar.gz"
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --title "$TAG" \
+                 --notes "Release package of $TAG with its pinned Ansible collections (release/NOTICE)."
+          gh release upload "$TAG" "$package" "$package.sha256"

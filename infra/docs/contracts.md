@@ -1,394 +1,469 @@
 ---
-title: Integration contract between infra and platform (contract_version 1)
+title: Integration contract between infra and a platform (contract_version 2)
 type: reference
 audience: [developer, operator]
-applies_to: {infra: ">=0.1", platform: ">=0.1"}
+applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
+description: The versioned interface through which a research platform plugs into the lab, with the manifest, the privilege profiles, the files infra writes for the platform and every address, path and port.
 ---
 
-# Integration contract (contract_version 1)
+# Integration contract (contract_version 2)
 
-This page is the single, resolved interface between **pokus-infrastructure** (host
-provisioning) and **pokus-platform** (research services). Infra provides every
-item below; the platform consumes exactly these items and nothing else. The
-platform contains no distribution-specific code: everything host-specific
-reaches it through this contract.
+This page is the interface between **pokus-infrastructure** (the lab host)
+and a **platform** (the research services that run on it). A platform pins
+an infra release and plugs in through one file, its manifest; infra turns
+the manifest into accounts, units, sockets, containers and grants, and
+provides every item below. No infra code names a particular platform. The
+Pokus Platform (`potka`) is the first platform; the reference platform
+`refplat` (`tests/reference-platform/`) shows that a second one fits without
+any infra change. What belongs to one platform (its services, the endpoints
+on its sockets, its agent's rules, its attestation format and its official
+check) is in that platform's own documentation.
 
-An identical copy of this file lives in `infra/docs/contracts.md` and
-`platform/docs/contracts.md`; CI fails if the two copies differ. The build
-prompts' contract tables (infra BUILD_PROMPT §12, platform BUILD_PROMPT §3) are
-the origin of this contract; where they differed or left gaps, the resolutions
-in [Resolutions](#resolutions) apply and are cited by ID (for example C2).
+**What a release publishes.** Infra publishes this page with every release,
+together with the directory `contract/`: the manifest's JSON Schema
+(`platform-manifest.schema.json`), the profile definitions (`profiles.yml`),
+the reserved names (`reserved-names.yml`), the schemas of the principals and
+endpoints files (`principals.schema.json`, `endpoints.schema.json`) and, in
+`contract/records/`, the schemas of the provenance, lineage and session
+records and of the fingerprint document. A platform repository that keeps a
+copy of this page keeps it byte-identical to the copy of the infra release
+it pins.
 
-**Changing the contract** means: bump `contract_version`, change both copies in
-the same commit, describe the change in both changelogs, and adapt both
-components. A component never works around a missing item; it requests a
-contract change instead.
+**Changing the contract** means: bump `contract_version`, change this page
+and `contract/` in the same commit, describe the change in the changelog,
+and let platforms adapt before they pin the new release. A platform never
+works around a missing item; it requests a contract change instead. The
+changes against contract v1 are listed in
+[Changes from contract v1](#changes-from-contract-v1); where the build
+prompt left gaps or was changed by an owner decision, the resolution IDs in
+[Resolutions](#resolutions) apply (for example V2).
 
-## Accounts, groups and services
+## The manifest
 
-Short names (`<svc>`) are used in every path below (resolution C7).
+Every platform release carries `platform-manifest.yaml` at its root. Infra
+validates it against `contract/platform-manifest.schema.json` (JSON Schema
+draft 2020-12; unknown fields are errors) and refuses the release before
+anything on the host changes: `pinka-platform validate` exits with 65, and
+bootstrap ends with exit code 65. Every field and every check is in the
+generated [Platform manifest](reference/platform-manifest.md) reference;
+the reserved names are listed there too.
 
-| `<svc>` | Console script | systemd unit | Account | Supplementary groups |
-| --- | --- | --- | --- | --- |
-| `orch` | `potka-orchestrator` | `potka-orchestrator.service` | `potka-orch` | `potka-svc`, `pinka-gt`, `potka-exec-clients` |
-| `orch` | `potka-reconcile` | `potka-reconcile.service` (oneshot, `Before=potka-orchestrator.service`) | `potka-orch` | as above |
-| `agent` | `potka-agent-runner` | `potka-agent-runner.service` | `potka-agent` | `potka-svc`, `potka-exec-clients`, `potka-gw-clients` |
-| `gw` | `potka-llm-gateway` | `potka-llm-gateway.service` | `potka-gw` | `potka-svc` |
-| `exec` | `potka-executor` | `potka-executor.service` | `potka-exec` | `potka-svc` |
-| `inject` | `potka-injector` | `potka-injector.service` | `potka-inject` | `potka-svc`, `pinka-gt` |
-| `verify` | `potka-verifier` | `potka-verifier.service` | `potka-verify` | `potka-svc`, `pinka-gt` |
-| `eval` | `potka-evaluator` | `potka-evaluator.service` (worker polling evaluation jobs) | `potka-eval` | `potka-svc`, `pinka-gt` |
-| — | `potka-migrate` | none; infra runs it as root at deploy time (C9f) | root | — |
-| — | `potka` (CLI) | none; researchers run it | the researcher | `pinka` |
-
-| Group | Members |
-| --- | --- |
-| `pinka` | all researchers |
-| `pinka-admin` | admin researchers; "admin only" endpoints require membership (owner answer F8) |
-| `pinka-gt` | `potka-orch`, `potka-inject`, `potka-verify`, `potka-eval` |
-| `potka-svc` | all service accounts |
-| `potka-exec-clients` | `potka-agent`, `potka-orch` |
-| `potka-gw-clients` | `potka-agent` |
-
-Infra renders all units with the hardening baseline of infra BUILD_PROMPT §7.14.
-Platform services start only after `pinka-health-gate.service` succeeds
-(platform §3; infra §7.16).
-
-`potka-agent-runner.service` reaches exactly three sockets: the gateway's
-`agent.sock`, the executor's `api.sock` and the orchestrator's `svc.sock`
-(resolution C2). Its `InaccessiblePaths=` contains `/srv/pinka/catalog`,
-`/srv/pinka/artifacts`, `/srv/pinka/services`, `/etc/pinka/secrets`,
-`/etc/pinka/incus`, `/var/lib/incus`, `/run/docker.sock`, `/var/lib/pinka/git`,
-`/run/pinka/postgres`, `/run/pinka/postgres-reader`, `/run/pinka/inject`,
-`/run/pinka/verify`, `/run/pinka/vllm-deploy.sock`,
-`/run/pinka/orch/api.sock` and `/run/pinka/gw/svc.sock`.
-
-## Deployment of platform and catalog
-
-Platform and catalog are deployed from the deployer's copy of the pokus-platform
-repository (`pinka_source_repo`, supplied at deploy time) through a root-only
-bare mirror, never from a working tree (resolutions B2, E3):
-
-| Item | Value |
-| --- | --- |
-| Bare mirror | `/var/lib/pinka/git/potka.git` (root:root, directory 0700). Tag and signature checks run here. |
-| Platform deployment | `git archive <commit> platform/` extracted without the `platform/` prefix into `/srv/pinka/deploy/platform/<ref>/` (root:root 0755); `uv sync --frozen` creates `<ref>/.venv`; `current` is an atomically replaced symlink to `<ref>`. |
-| Catalog deployment | `git archive <commit> catalog/` extracted without the `catalog/` prefix into `/srv/pinka/catalog/<ref>/` (root:pinka-gt 0750, files 0640); `current` symlink as above. |
-| `<ref>` directory name | the tag name when the ref is a component tag (`platform-v0.1.0`), otherwise the full 40-hex commit |
-| Never | a `.git` directory in any deployed path; catalog content anywhere outside `/srv/pinka/catalog` (doctor check and test) |
-| Provenance | `DEPLOYED_FROM.json` in every deployment directory (0644 root), schema below |
-| Infra provenance | `/etc/pinka/bootstrap-state.json` (0644 root) with `repo_commit` and `infra_tree` (tree hash of `infra/` at that commit) and `infra_dirty` (resolution B3) |
-
-`DEPLOYED_FROM.json`:
-
-```json
-{
-  "schema_version": 1,
-  "component": "platform",
-  "source_repo": "git@github.com:example-org/pokus-platform.git",
-  "requested_ref": "platform-v0.1.0",
-  "tag": "platform-v0.1.0",
-  "commit": "0000000000000000000000000000000000000000",
-  "subdirectory": "platform",
-  "tree": "0000000000000000000000000000000000000000",
-  "signed_tag": {"required": false, "verified": false, "signer": null},
-  "deployed_at": "2026-10-05T09:12:44Z"
-}
-```
-
-`tag` is non-null only if the commit carries a tag with the component's prefix
-(`platform-v…`, `catalog-v…`; resolution B4). "Deployed from a tag" in the
-platform's official check means exactly that. `tree` is
-`git rev-parse <commit>:<subdirectory>`.
-
-## Paths
-
-| Item | Path | Owner, mode |
+| Field | Required | Content |
 | --- | --- | --- |
-| Platform install | `/srv/pinka/deploy/platform/current` | root:root 0755 |
-| Catalog | `/srv/pinka/catalog/current` | root:pinka-gt 0750 |
-| Non-secret config | `/etc/pinka/platform/<svc>.toml`, `/etc/pinka/platform/endpoints.toml` | root:root 0644 |
-| Secrets | `/etc/pinka/secrets/<svc>/` | directory 0750 root:`<account>`, files 0640 |
-| Postgres passwords | `/etc/pinka/secrets/postgres/<role>` | directory 0750 root:potka-svc; file 0640 root:`<account of that role>`; `potka_migrator` 0600 root |
-| Researcher reader credential | `/etc/pinka/postgres-reader/pgpass` | 0640 root:pinka (resolution E13) |
-| Incus client certificates | `/etc/pinka/incus/<svc>/{client.crt,client.key,server.crt}` for `orch`, `exec`, `inject`, `verify` | 0600 owned by the service account |
-| Session records | `/var/lib/pinka/sessions/<boot_id>.json` | 0644 root |
-| Fingerprint cache | `/var/lib/pinka/fingerprint/current.json` | 0644 root (C9c) |
-| Host profile | `/etc/pinka/host-profile.json` | 0644 root |
-| Signing key | `/etc/pinka/signing/manifest-signing.key` | 0400 potka-orch (C9d) |
-| Signing public keys | `/srv/pinka/shared/signing-keys/<machine>-<YYYYMMDD>.pub` | 0644, kept forever |
-| Artifact store | `/srv/pinka/artifacts` | potka-orch:pinka 0750 |
-| Reports | `/srv/pinka/reports` | potka-eval:pinka 2775; Quarto CLI pinned by infra |
-| Model weights | `/srv/pinka/models/<hf_repo>/<revision>/` with `MANIFEST.json` | potka-orch:pinka, weights 0444 |
-| LoRA adapters | `/srv/pinka/models/adapters/<name>/<sha256>/` with `MANIFEST.json` | as model weights (C9e) |
-| vLLM deployment specs | `/etc/pinka/vllm/deployments/<id>@<version>.yml` | 0644 root |
-| Inference mTLS material | `/etc/pinka/inference/` | 0750 root:potka-orch |
-| QA trusted keys | `/etc/pinka/qa/trusted-keys/*.pem` | 0644 root |
-| QA attestations | `/etc/pinka/qa/attestations/*.json` and `*.json.sig` | root-owned, readable by potka-orch |
-| CLI on PATH | `/usr/local/bin/potka` → `/srv/pinka/deploy/platform/current/.venv/bin/potka` (C9g) | root:root 0755 |
+| `contract_version` | yes | `2`, the contract version of the installed infra |
+| `name` | yes | platform name, 2–12 lowercase letters and digits; not a reserved platform name |
+| `version` | yes | SemVer of the release |
+| `runtime` | yes | `python-uv` (needs `uv.lock` at the release root) or `static` |
+| `requires` | no | infra facilities the platform uses: `postgres`, `incus`, `telemetry`, `inference`, `opa`, `gpu`; the health gate checks exactly these, and using an undeclared one is refused (V2) |
+| `services[]` | yes | `name`, `profile` (any profile except `gpu-trainer`), `start`, and optionally `after`, `state`, `config`, `secrets`, `limits`, `relaxations`; an `untrusted-agent` service also names its own `package` (V6). Exactly one `controller`, at most one `inference-broker` |
+| `jobs[]` | no | GPU training jobs with profile `gpu-trainer`, an image pinned by `@sha256:` digest, `command`, `inputs`, `outputs` (one adapter), `resources`, `timeout_seconds`, `resumable` |
+| `sockets[]` | no | `name`, serving `service`, `clients`, `untrusted_clients` ([Sockets](#sockets)) |
+| `hooks` | `health` yes | `migrate`, `reconcile`, `drain`, `health` ([Hooks](#hooks)) |
+| `backup` | no | state directories to back up, and whether the platform database is backed up |
+| `content[]` | no | content packages deployed from their own sources: `name`, `restricted`, `required` |
+| `docs`, `policy`, `dashboards`, `tools`, `cli`, `telemetry.labels` | no | documentation directory, OPA bundle and decision path, Grafana dashboards, optional pinned tools (`quarto`), the researchers' CLI, up to four Loki labels |
 
-## Sockets
+Every path in the manifest is relative and normalized; after extraction,
+infra also refuses symbolic links that leave the release, device files,
+FIFOs, sockets and setuid or setgid bits. The only relaxation is
+`wx-memory`, never for `untrusted-agent`.
 
-HTTP over Unix domain sockets. Socket permissions are the first gate; the
-service's `SO_PEERCRED` allowlist per endpoint is the second (resolution C8).
-Where two principals need a socket, it gets a group plus a POSIX ACL entry. If
-the host's `/run` does not support POSIX ACLs, the fallback column applies and
-peercred alone separates the principals. Doctor verifies effective permissions.
+**Sources in one repository.** A content package may live in the same
+repository as the release. The release path and every content package of
+one repository are disjoint subtrees: one may not be a prefix of another by
+path segments, and an empty path (the repository root) overlaps every path
+(V1). Otherwise a restricted package could be extracted as part of the
+release.
 
-| Socket | Owner:group, mode | ACL | Fallback without ACLs | Peers (peercred) |
-| --- | --- | --- | --- | --- |
-| `/run/pinka/orch/api.sock` | potka-orch:pinka 0660 | `g:potka-svc:rw` | potka-orch:pinka 0660 | researchers (`pinka`), admin endpoints `pinka-admin` only, root (`pinka stop` drain) |
-| `/run/pinka/orch/svc.sock` | potka-orch:potka-svc 0660 | — | — | `potka-exec`, `potka-gw`, `potka-inject`, `potka-verify` per endpoint; `potka-agent` only on the agent-session endpoints (C2) |
-| `/run/pinka/exec/api.sock` | potka-exec:potka-exec-clients 0660 | — | — | `potka-agent` (tool calls with a session token), `potka-orch` (targets, evidence profile) |
-| `/run/pinka/gw/agent.sock` | potka-gw:potka-gw-clients 0660 | — | — | `potka-agent` |
-| `/run/pinka/gw/svc.sock` | potka-gw:potka-gw 0600 | `u:potka-orch:rw` | potka-gw:potka-svc 0660 | `potka-orch` |
-| `/run/pinka/inject/api.sock` | potka-inject:potka-inject 0600 | `u:potka-orch:rw` | potka-inject:pinka-gt 0660 | `potka-orch` |
-| `/run/pinka/verify/api.sock` | potka-verify:potka-verify 0600 | `u:potka-orch:rw` | potka-verify:pinka-gt 0660 | `potka-orch` |
-| `/run/pinka/vllm-deploy.sock` | potka-orch:potka-orch 0600, systemd socket unit | — | — | `potka-orch` (C3) |
-| `/run/pinka/postgres/` | Postgres socket directory for service roles, 0750 999:potka-svc | — | — | members of `potka-svc` with a password file; infra's metrics exporter (`pinka_monitor`) |
-| `/run/pinka/postgres-reader/` | Postgres socket directory, 0750 999:pinka | — | — | researchers as `potka_reader`; Grafana as `potka_grafana`. `pg_hba` cannot tell the two directories apart: the directory group decides who reaches a socket, the password files decide the role |
+**Reserved names.** The schema carries one list per namespace, generated
+from infra's own data (`contract/reserved-names.yml`), so a name infra
+starts using is reserved automatically. The validator derives every name
+the manifest would create (accounts and groups, units, PostgreSQL roles and
+databases, path segments, the CLI command) and refuses one that is reserved
+or already exists on the host and does not belong to this platform.
 
-Runtime directories `/run/pinka/<svc>/` are created by `RuntimeDirectory=` with
-mode 0755; the socket modes above do the gating.
+## Privilege profiles
 
-## Configuration
+Each service or job names exactly one of eight profiles, and its privileges
+are exactly that profile's grants. A manifest adds only its own state
+directories, secrets, limits within infra's caps and the one relaxation.
+`contract/profiles.yml` is the single source of the grants; the generated
+[Platform privilege profiles](reference/platform-profiles.md) page lists
+every flag, socket rule and cap.
 
-The platform's pydantic settings models are the source of truth for every TOML
-file; the platform exports them as JSON Schemas (`platform/schemas/config/`) and
-infra renders files that conform (resolution C9b). Secrets are read from files,
-never from command-line arguments.
+| Profile | In short |
+| --- | --- |
+| `controller` | the one service that drives the platform: own database role (the `restricted` schema allowed), Incus for `bench` and `build`, run networks through the run-network helper, telemetry send and query, the inference API, the only client of the GPU arbiter, restricted data (read), the signing key |
+| `inference-broker` | own database role, never `restricted`; telemetry send; the inference API; the only TCP listener a platform may have, the researcher endpoint on `127.0.0.1:18705` |
+| `sandbox-operator` | own database role, never `restricted`; Incus for `bench`; telemetry send and query |
+| `restricted-operator` | own database role, `restricted` allowed; Incus for `bench`; telemetry send; restricted data (read) |
+| `restricted-reader` | own database role, `restricted` allowed; telemetry send and query; restricted data (read); optional tools |
+| `observer` | own database role, never `restricted`; telemetry send and query (dashboards, report exporters) |
+| `untrusted-agent` | no database role, no Incus, no inference API; telemetry only through the agent OTLP socket; no network at all (`PrivateNetwork=yes`); sees only its own package and environment, its state, its non-secret configuration and its dedicated sockets |
+| `gpu-trainer` | jobs only: no database, Incus, telemetry or network; the GPU through CDI only while the arbiter trains this job; mounts only the base model and declared datasets (read-only) and its output and checkpoints |
 
-`/etc/pinka/platform/endpoints.toml` carries the host facts the platform needs:
+"Never" means infra refuses the manifest and also revokes the grant at run
+time; "none" means the profile has no such access to begin with. Every
+service gets the hardening baseline of the build prompt (§7.14), which a
+manifest cannot override; `untrusted-agent` gets the additions listed there,
+and a `gpu-trainer` container gets options fixed by the GPU arbiter. Why
+the profiles are cut this way is explained in
+[Privilege profiles and restricted data](explanation/privilege-profiles.md).
 
-```toml
-[lab]
-machine_name = "pinka-lab"
-lab_mode = "production"          # production | staging (D1)
-node_role = "full"               # full | lab | inference
+From the manifest, infra renders:
 
-[telemetry]
-otlp_grpc = "127.0.0.1:4317"
-otlp_http = "127.0.0.1:4318"
+| Item | Name |
+| --- | --- |
+| Account of a service or job | `<platform>-<member>`, a system account with a UID in infra's platform range (60578–61183) |
+| Account of the `migrate` hook | `<platform>-migrate` |
+| Service unit | `<platform>-<service>.service`, in `pinka-platform.target`, which requires `pinka-health-gate.service` |
+| Socket unit and its client group | `<platform>-<service>-<socket>.socket`, group `<platform>-<service>-<socket>` |
+| Reconcile unit | `<platform>-reconcile.service` (oneshot, before the services), when the manifest has a `reconcile` hook |
+| Database socket group | `<platform>-db` |
+| Runtime directory | `/run/pinka/platform-runtime/<service>/`, which holds no sockets (V4) |
 
-[query]
-prometheus_url = "http://127.0.0.1:18701"
-loki_url = "http://127.0.0.1:18702"
-tempo_url = "http://127.0.0.1:18703"
+## Sockets, principals and endpoints
 
-[opa]
-url = "http://127.0.0.1:8181"
-decision_path = "/v1/data/potka/action/decision"
+A platform's services talk over Unix sockets that infra creates and
+permissions from the manifest; the only TCP listener a platform may have is
+the inference broker's researcher endpoint. Infra refuses any manifest that
+breaks the connection rules below.
 
-[incus]
-url = "https://127.0.0.1:8443"
-cpuset_targets = "6-19"          # only when host_vars sets cpuset_targets
+### Socket rendering and connection rules {#sockets}
 
-[inference]
-mode = "local"                   # local | remote | scripted (C5, D3)
+Each socket is `/run/pinka/platform/<service>/<socket>.sock`, owned by the
+serving account, mode 0660, group its client group, which holds the client
+service accounts. Researchers and admins get POSIX ACL entries for the
+groups `pinka` and `pinka-admin`. Without ACL support on `/run`, a socket
+that humans may use becomes 0666 and the platform's peer-credential check
+alone separates the clients; the fallback is recorded and doctor warns
+(`sockets.acl_fallback`). A dedicated agent socket has no human clients and
+keeps 0660. Root can always connect, for the hooks.
+Services take their sockets from systemd (socket activation, the socket's
+name in `LISTEN_FDNAMES`) and never create sockets themselves (V4).
 
-[inference.local]
-api_url = "http://127.0.0.1:18704"
-deploy_helper_socket = "/run/pinka/vllm-deploy.sock"
+| Served by | May be used by | Never by |
+| --- | --- | --- |
+| `controller` | every service profile; researchers, admins, root; `untrusted-agent` only on a dedicated socket | — |
+| `inference-broker` | `controller`, researchers, root; `untrusted-agent` only on a dedicated socket | `restricted-*` |
+| `sandbox-operator` | `controller`, root; `untrusted-agent` only on a dedicated socket | researchers, `restricted-*` |
+| `restricted-operator` | `controller`, root | everyone else, above all `untrusted-agent` |
+| `restricted-reader` | `controller`, root | everyone else, above all `untrusted-agent` |
+| `observer` | every service profile except `untrusted-agent`; researchers, admins, root | `untrusted-agent` |
+| `untrusted-agent` | serves no sockets | — |
+| `gpu-trainer` | serves and uses no sockets | — |
 
-[inference.remote]
-api_url = "https://<inference-node>:18704"
-control_url = "https://<inference-node>:18710"
-tls_dir = "/etc/pinka/inference"
+**Dedicated agent sockets.** A socket marked `untrusted_clients: true` lists
+`untrusted-agent` as its only client, whichever profile serves it
+(`controller`, `inference-broker` or `sandbox-operator`). The validator
+refuses the flag together with any other client and refuses
+`untrusted-agent` on any socket without it. No endpoint on such a socket may
+return restricted data: the platform guarantees that and proves it with a
+test; infra makes these sockets visible in the installer's review and in
+doctor. Doctor also lists the sockets the running agent can see in its own
+mount namespace; anything beyond its allowlist fails the check.
 
-[inference.scripted]
-api_url = "http://127.0.0.1:<port>"
+### Principals and endpoints files
 
-[gateway]
-adhoc_listen = "127.0.0.1:18705"
-```
+Infra writes two files at every deployment, 0644 root, and the platform
+reads names, UIDs, paths, addresses and ports from them instead of
+hard-coding any:
 
-Only the table for the active inference mode is present. `<inference-node>` is
-the paired node's tailnet name; `<port>` is chosen by the deployer.
+- `/etc/pinka/platform/principals.json`: every service and job with its
+  account and UID, every socket with its path, owner, group, systemd name
+  and allowed clients, and the groups of the human classes. The platform
+  builds its per-endpoint peer allowlists from it.
+- `/etc/pinka/platform/endpoints.toml`: the lab facts (`machine`,
+  `lab_mode`, `node_role`) and one table per facility the manifest
+  `requires` (PostgreSQL, telemetry, inference, OPA, Incus, GPU), plus the
+  signing key, the attestation directories, the session records, the
+  fingerprint command and the effective ports.
+
+Their fields, schemas and examples are in the generated
+[Principals and endpoints files](reference/platform-files.md) reference.
+
+## Restricted data
+
+Restricted data is a generic class infra provides to every platform (the
+Pokus Platform's ground truth is one case): a filesystem area, a group and a
+database schema. `untrusted-agent` and `gpu-trainer` never reach any of
+them, whatever the manifest says.
+
+| Part | Value |
+| --- | --- |
+| Area | `/srv/pinka/restricted/<platform>/`, root:`pinka-restricted` 0750, files 0640; restricted content packages under `content/<package>/<name>/` |
+| Group | `pinka-restricted`; its members are exactly the accounts of `controller`, `restricted-operator` and `restricted-reader` services |
+| Database schema | `restricted` in the platform's database, owned by the migrator role |
+| Content | the packages the manifest declares `restricted: true` |
+
+Enforced regardless of the manifest:
+
+- An `untrusted-agent` or `gpu-trainer` account is never a member of
+  `pinka-restricted`, of the database socket group or of `pinka-query`; the
+  rendering refuses such a membership.
+- The restricted area, every restricted content directory and the database
+  socket directories are outside the agent's allowlist and are never
+  mounted into a training container.
+- No socket served by a `restricted-*` profile has a client other than the
+  controller and root.
+- After every migration, infra revokes all privileges on the schema
+  `restricted` from every role outside the three restricted-capable
+  profiles, and from the reader and Grafana roles; a grant that a migration
+  made to a forbidden role fails the deployment, and the release does not
+  start.
+- Restricted content is extracted only into the restricted area; doctor
+  fails if a restricted package's provenance record appears anywhere else.
+- Backups of the restricted area and of the database are written root-only.
+- Data derived from restricted data reaches a training job only as a
+  published dataset that passed the split guard.
+
+The platform guarantees that endpoints on a dedicated agent socket never
+return restricted data and that the dataset provenance it writes is
+complete and truthful; infra checks the provenance but cannot verify it
+against the restricted data.
 
 ## PostgreSQL
 
 | Item | Value |
 | --- | --- |
-| Listeners | Unix sockets only (`/run/pinka/postgres/`, `/run/pinka/postgres-reader/`); no TCP listener at all (the container has no network) |
-| Database | `potka` |
-| Roles | `potka_migrator`, `potka_orch`, `potka_gw`, `potka_exec`, `potka_inject`, `potka_verify`, `potka_eval`, `potka_reader`, `potka_grafana` |
-| Infra-internal role | `pinka_monitor` (member of `pg_monitor`) for infra's metrics exporter; its password is generated on the host; the platform never uses it |
-| Schemas | `public` and `gt`, both owned by `potka_migrator`; infra revokes all privileges on `gt` from `PUBLIC`, `potka_reader` and `potka_grafana` |
-| Grants | schema `USAGE` and table privileges come from platform migrations (C9f) |
-| Migrations | infra runs `potka-migrate upgrade` as root from the deployed environment at deploy time; it connects as `potka_migrator` with the password file above |
-| Reader access | `potka_reader` can never see the `gt` schema (tested by both components) |
+| Listeners | Unix sockets only; no TCP listener at all (the container has no network) |
+| Database | one per platform, named after it |
+| Login roles | `<platform>_<service>` for every service except `untrusted-agent` |
+| Group roles | `<platform>_<profile>` (for example `<platform>_controller`), so migrations can grant per profile |
+| Migrator | `<platform>_migrator`, owner of the schemas `public` and `restricted`, used only by the `migrate` hook |
+| Privileges | infra gives the service roles none on the schemas; the `migrate` hook grants its own services what they use |
+| Reader and Grafana roles | `<platform>_reader` (researchers) and `<platform>_grafana`; never `restricted` |
+| Service socket directory | `/run/pinka/postgres/`, group `<platform>-db`: only services with a role; the agent never |
+| Reader socket directory | `/run/pinka/postgres-reader/`, group `pinka`: the researchers' reader role and Grafana; the reader's password file `/etc/pinka/postgres-reader/pgpass` is 0640 root:`pinka` |
+| Password files | `/etc/pinka/secrets/postgres/<role>`; the migrator's readable only by `<platform>-migrate` |
+| Infra's own role | `pinka_monitor` (member of `pg_monitor`) for the metrics exporter; never used by a platform |
 
 ## Incus
 
 | Item | Value |
 | --- | --- |
-| API | HTTPS on `127.0.0.1:8443`, restricted TLS clients |
-| Projects | `bench` for all service certificates; `orch` also `build` |
-| Per-run networks | named `r-<short>`, where `<short>` is 12 lowercase characters derived by the platform from the run's ULID (opaque, no scenario information); no NAT, no uplink |
-| Network ACL | `pinka-run-default`: deny all egress except within the run network |
+| API | HTTPS on `127.0.0.1:8443`, restricted TLS clients and metrics only |
+| Credentials | one restricted client certificate per service whose profile has Incus access, `/etc/pinka/incus/<platform>-<service>/{client.crt,client.key,server.crt}` (0600, owned by its account): `controller` for `bench` and `build`, `sandbox-operator` and `restricted-operator` for `bench` |
+| Projects | `bench` (official runs), `build` (image builds), personal per-user projects |
+| Run networks | named `r-<short>` (12 lowercase letters and digits, opaque, no scenario information), created and deleted by the controller only through the run-network helper `/run/pinka/run-network.sock`, with fixed settings: no NAT, no uplink, ACL `pinka-run-default` |
+| Network ACL | `pinka-run-default`: deny all egress except within the run network and to the VM collector listener |
 | Firewall compatibility | infra treats bridges matching `r-*` and `pinka-build0` as Incus bridges |
-| Profiles | `target-container`, `target-vm` (only if `vm_targets`), `probe-client`, `build` |
-| CPU sets | with `cpuset_targets` in `endpoints.toml` (a Linux cpuset list), the platform sets every bench instance's `limits.cpu` to a range of CPUs inside it, never a plain count; the `bench` project's `limits.cpu` is the number of those CPUs. Lab services run on the other CPUs (`cpuset_services`) |
-| Guest API | target profiles disable it (`security.guestapi=false`, the Incus 6.0 key for `/dev/incus`) |
-| Golden images | aliases `<blueprint>/<version>` with properties `pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint`; the Incus property `requirements.nesting` is `true` for blueprints that need nesting (a container engine inside the target), which the platform then launches with `security.nesting=true` |
+| Profiles | `target-container`, `target-vm` (only with `vm_targets`), `probe-client`, `build` |
+| CPU sets | with `cpuset_targets` set, `endpoints.toml` carries `[incus] cpuset_targets` (a Linux cpuset list); the platform sets every target's `limits.cpu` to a CPU range inside it, never a plain count, and refuses measurement campaigns without it; the `bench` project's `limits.cpu` is the number of those CPUs; infra's services run on `cpuset_services` (P3a) |
+| Guest API | target profiles turn it off (`security.guestapi=false`), so instance configuration cannot be read from inside |
+| Events | `pinka-incus-events.service` ships Incus lifecycle and logging events to Loki for the platform's integrity checks |
+| Golden images | aliases `<blueprint>/<version>` with properties `pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint` and Incus's `requirements.nesting`; the platform launches an image with `security.nesting=true` exactly when it carries `requirements.nesting=true` |
+
+A restricted Incus certificate has full access inside its projects, so a
+sandbox operator can do in `bench` whatever the controller can; narrowing
+that needs Incus's fine-grained authorization, which is out of scope.
 
 ## Telemetry
 
 | Item | Value |
 | --- | --- |
-| OTLP for services | `127.0.0.1:4317` (gRPC), `127.0.0.1:4318` (HTTP) |
-| Containers | the platform adds a proxy device to each target instance: `listen=tcp:127.0.0.1:4317` (inside) → `connect=tcp:127.0.0.1:4317` (host), `bind=instance` |
-| VMs | Incus 6.0 supports proxy devices on VMs only in NAT mode, which requires `bind=host`, so a VM cannot reach the collector through a proxy device. With `vm_targets`, VMs send OTLP to the dedicated collector listener `198.18.0.1:4317` (gRPC) / `:4318` (HTTP), an address on the dummy interface `pinka-otlp0` (`pinka_vm_otlp`); the run ACL `pinka-run-default` has one egress rule for exactly that address and those ports, and the host firewall accepts nothing else from run networks (C4). The platform sets the VM's OTLP endpoint accordingly |
-| Identity | the platform sets `OTEL_RESOURCE_ATTRIBUTES=potka.run_id=<run_id>,potka.node=<node_alias>` in the instance environment at launch; the in-image agent attaches them. `run_id` is an opaque ULID. No scenario identifier ever enters an instance. |
+| OTLP for services | `127.0.0.1:4317` (gRPC) and `127.0.0.1:4318` (HTTP), for every profile that sends except `untrusted-agent` |
+| Agent OTLP | `/run/pinka/otlp/agent.sock` only; everything received there is stamped `pinka.trust=untrusted` |
+| Query | Prometheus, Loki and Tempo only through the read-only query proxy `/run/pinka/query.sock`, for the members of `pinka-query` (the profiles that query): query endpoints only; push, remote write, delete, admin and configuration requests are refused. The stores are reachable directly only by infra's UID allowlist (ADR-0016) |
+| Containers | the platform attaches a proxy device to each target container: `listen=tcp:127.0.0.1:4317` (inside) → `connect=tcp:127.0.0.1:4317` (host), `bind=instance` |
+| VMs | Incus supports proxy devices on VMs only in NAT mode, which needs `bind=host`, so VMs send OTLP to the collector listener on `vm_collector_address` (default `198.18.0.1`, on the dummy interface `pinka-otlp0`), ports 4317 and 4318; the run ACL allows egress to exactly that address and those ports, and the host firewall accepts nothing else from run networks (C4) |
+| Identity | the platform sets `OTEL_RESOURCE_ATTRIBUTES` with its own run attributes in each target's environment at launch; the in-image agent honours it. Run identifiers are opaque; no scenario identifier ever enters an instance |
+| Loki labels | at most four resource attributes from the manifest's `telemetry.labels` |
+| Dashboards | the manifest's `dashboards`, provisioned with a read-only datasource on `<platform>_grafana` through the reader socket directory and the telemetry datasources through the query proxy |
 
 ## Policy engine (OPA)
 
-`http://127.0.0.1:8181`, with the bundle loaded from
-`/srv/pinka/deploy/platform/current/policy/` (a deny-all placeholder bundle when
-the platform is disabled). OPA runs with authorization enabled and a
-`system.authz` policy that allows only decision queries (`GET`/`POST` on
-exactly `/v1/data/potka/action/decision` and
-`/v1/data/pinka/placeholder/active`) and health checks, and denies every policy and data write
-(resolution C6). Doctor and a test verify that writes are rejected.
+`http://127.0.0.1:8181`. OPA loads the policy bundle the manifest's
+`policy` names, read-only from the published release, next to infra's
+placeholder (`data.pinka.placeholder.active`, which doctor queries); a
+bundle may not declare packages or data below `system` or `pinka`. OPA runs
+with authorization enabled and a `system.authz` policy that allows only
+decision queries (`GET`/`POST`) at exactly `/v1/data/<decision_path>` of
+the manifest and at `/v1/data/pinka/placeholder/active`, and health checks;
+every policy or data write, the policy listing and every other API answer
+401 (C6). `endpoints.toml` carries the URL and the decision path.
 
-## Inference
+## Inference and the GPU {#inference}
 
-The orchestrator and the gateway use one `InferenceBackend` interface with
-three kinds (C5, D3):
+| Item | Value |
+| --- | --- |
+| Inference API | `local`: vLLM's OpenAI-compatible API on `127.0.0.1:18704`. `remote` (`node_role: lab`): infra's inference forwarder `pinka-inference-forwarder` on the lab node's loopback, which alone holds the mutual-TLS client certificate (`/etc/pinka/inference/`, root only) and dials the paired inference node; it offers the API on the same loopback port as vLLM and the control API on `127.0.0.1:18710`, so platform services handle no TLS and no keys. `scripted`: any OpenAI-compatible endpoint configured for the host, only with `lab_mode: staging`; every run using it is `official=false` (C5, D3) |
+| Who reaches it | only the accounts of profiles with the inference API (`controller`, `inference-broker`), by a UID allowlist in nftables; on a lab node only the controller reaches the control port |
+| Deployments | specs `/etc/pinka/vllm/deployments/<id>@<version>.yml` with `id` and `version` matching the file name; adapters named in `adapter_ids` as `<name>@<sha256>` |
+| Switching | only through the GPU arbiter's `serve <id>@<version>` request, never by restarting units |
+| Remote control API | through the forwarder: exactly `GET /health`, `GET /model`, `GET /metrics`, `POST /activate`, `POST /verify`; `POST /activate` reaches the inference node's arbiter as `serve <id>@<version>` |
+| GPU arbiter | `/run/pinka/gpu.sock`, for the controller only: `serve`, `train`, `idle`, `status`, `publish-dataset` ([GPU arbiter requests](reference/gpu-arbiter.md)). One mode at a time: serving, training or idle; training runs on full nodes only |
+| Training jobs | containers with options fixed by the arbiter (no network, read-only root file system, a writable `/tmp` only); a job reads `/model`, `/datasets/<kind>` and `PINKA_JOB_*`, writes checkpoints to `/checkpoints` and its adapter to `/output/adapter/` ([How to run a training job](how-to/run-training-job.md)) |
+| Datasets | published from the controller's state to `/srv/pinka/training/datasets/<sha256>/` with `PROVENANCE.json`; refused at publication and at mount when they list an instance of the `test` split |
+| Adapters | registered read-only under `/srv/pinka/models/adapters/<name>/<sha256>/` with `MANIFEST.json` and `LINEAGE.json` |
+| Models | `/srv/pinka/models/<hf_repo>/<revision>/` with `MANIFEST.json`, weights 0444; the platform imports manifests read-only |
 
-| Mode | Endpoint | Deployment switching |
+The record formats are in the generated
+[Platform records](reference/platform-records.md) reference; the design is
+in [The GPU arbiter](explanation/gpu-arbiter.md).
+
+## Hooks
+
+Infra drives the platform only through four hooks and the paths in its
+manifest; `pinka`, doctor, the health gate and backups name no platform
+service, socket or endpoint. A hook is a command inside the release. Infra
+runs it as a transient systemd unit (`pinka-hook@`) under a fixed account
+with that profile's hardening, in the release directory, with a timeout
+(SIGTERM, then SIGKILL). The hook prints one JSON line on stdout; everything
+else goes to the journal. Exit code 0 with `"ok": true` is success.
+
+| Hook | When infra runs it | Account | Output | On failure |
+| --- | --- | --- | --- | --- |
+| `migrate` | at deployment, after the build, before the new release starts | `<platform>-migrate` (only the migrator password and the database socket) | `{"ok": true}` | the deployment stops and the platform stays stopped; the restricted-schema check runs after success |
+| `reconcile` | at every start, before the services (`<platform>-reconcile.service`) | the controller's account | `{"ok": true}` | the services do not start; doctor reports it |
+| `drain` | `pinka stop`, `pinka update-host`, deployment of a new release, restore; argument `--timeout <seconds>` | the controller's account | `{"drained": true, "active": 0}` | infra stops the services after the timeout; the platform records what was interrupted |
+| `health` | after start until healthy or timeout; `pinka status`; doctor | the controller's account | `{"ok": true, "detail": {…}}` | the start reports "unhealthy"; doctor warns |
+
+## Paths
+
+| Item | Path | Owner, mode |
 | --- | --- | --- |
-| `local` | vLLM OpenAI-compatible API on `127.0.0.1:18704` | through the deploy helper below |
-| `remote` (`node_role: lab`) | API and inference control endpoint of a paired inference node over the tailnet, mutual TLS with material in `/etc/pinka/inference/` | the control endpoint's activate call |
-| `scripted` | any OpenAI-compatible endpoint configured in `endpoints.toml` | none; accepted only when `lab_mode = "staging"`; every run using it is `official=false` |
+| Release | `/srv/pinka/platforms/<platform>/releases/<name>/`, `current` a link to the active one; `<name>` is the release tag, or the full commit | root, 0755/0644 |
+| Content package | `/srv/pinka/platforms/<platform>/content/<package>/<name>/`; restricted ones only in `/srv/pinka/restricted/<platform>/content/<package>/<name>/`; `current` links | root, 0755/0644; restricted root:`pinka-restricted` 0750/0640 |
+| State | `/srv/pinka/platforms/<platform>/state/<service>/<directory>/` | the service's account, 0700 |
+| Configuration | `/etc/pinka/platform/config/<service>.json`: the service's values from `platform_settings` in host_vars, checked against the schema its `config` names | root:`<account>` 0640 |
+| Principals and endpoints | `/etc/pinka/platform/principals.json`, `/etc/pinka/platform/endpoints.toml` | root 0644 |
+| Active platform | `/etc/pinka/platform/active.json` | root 0644 |
+| Secrets | `/etc/pinka/secrets/<platform>-<service>/<secret>`, one file per secret the manifest declares, from the vault (`vault_platform_secrets`; the installer generates missing ones with `secrets.token_urlsafe`) | directory root:`<account>` 0750, files 0640 |
+| Socket directories | `/run/pinka/platform/<service>/` (created by the socket units) | root 0755 |
+| Runtime directories | `/run/pinka/platform-runtime/<service>/` | the service's account |
+| Deployment records | `/var/lib/pinka/platforms/<platform>/` (deployments, `retired.json`) | root 0700 |
+| Signing key | `/etc/pinka/signing/<platform>/signing.key` and `signing.pub` | key 0400 the controller's account |
+| Published signing keys | `/srv/pinka/shared/signing-keys/<platform>-<machine>-<YYYYMMDD>.pub`, kept forever | root 0644 |
+| Session records | `/var/lib/pinka/sessions/<boot_id>.json` | root 0644 |
+| Fingerprint cache | `/var/lib/pinka/fingerprint/current.json` | root 0644 |
+| Host profile, bootstrap state | `/etc/pinka/host-profile.json`, `/etc/pinka/bootstrap-state.json` | root 0644 |
+| QA trusted keys, attestations | `/etc/pinka/qa/trusted-keys/*.pem`, `/etc/pinka/qa/attestations/` | root-owned, readable by the active platform's controller |
+| Researchers' CLI | `/usr/local/bin/<cli>` → `/usr/local/lib/pinka/platform/cli/<cli>` | root 0755 |
 
-**Deploy helper (C3).** `pinka-vllm-deploy.socket` (systemd, `SocketUser=potka-orch`,
-`SocketMode=0600`) activates the root-owned `/usr/local/libexec/pinka/vllm-deploy`.
-The helper checks the peer is `potka-orch`, reads one JSON request line
-`{"deployment": "<id>@<version>"}`, validates that the ID matches
-`^[a-z0-9][a-z0-9-]{0,62}@[0-9]{1,6}$` and names a regular, root-owned file in
-`/etc/pinka/vllm/deployments/`, points `current.yml` at it, renders
-`/etc/pinka/vllm/current.env` (with `current.yaml`, the `vllm serve --config`
-file it renders next to it), restarts `pinka-inference.service`, and answers
-one JSON line `{"ok": true}` or `{"ok": false, "error": "<text>"}`. The
-orchestrator then waits for vLLM health itself. No sudo is used anywhere.
+The generated layout table in [Architecture](architecture.md) lists every
+directory infra creates below `/srv/pinka`, `/etc/pinka`, `/var/lib/pinka`
+and `/run/pinka`.
 
-**Deployment spec** `/etc/pinka/vllm/deployments/<id>@<version>.yml` (C9e):
-
-```yaml
-id: dep-example-awq-ada12g
-version: 2
-model_id: <model id from models.lock.yml>
-adapters: []            # optional: "<name>@<sha256>" entries under /srv/pinka/models/adapters/
-profile: ada-12g
-overrides: {}           # max_model_len, quantization, max_num_seqs, enable_lora, ...
-sampling_defaults: {}
-```
-
-The platform imports deployment specs and every model and adapter
-`MANIFEST.json` read-only; infra's models role verifies their hashes. There is
-no training or adapter-creation flow.
-
-## Session records and fingerprint
+## Provenance, records and keys
 
 | Item | Value |
 | --- | --- |
-| Session records | `/var/lib/pinka/sessions/<boot_id>.json`, written once per boot by `pinka-session-start.service`; the orchestrator imports them. JSON object: `schema_version` (1), `boot_id`, `started_at` (UTC, ISO 8601 with `Z`), `fingerprint_hash`, `fingerprint` (the output of `pinka fingerprint --json`), `preflight_outcome`, and `errors` (field name to reason; a field that could not be computed is `null`) |
-| Fingerprint | `pinka fingerprint --json`, callable by `potka-orch`. Run as root it computes the fingerprint and refreshes the cache; run as any other user it prints the cached root-computed fingerprint from `/var/lib/pinka/fingerprint/current.json` with its `computed_at` time and never escalates (C9c). |
-| Fingerprint document | JSON object `fingerprint_schema_version` (1), `hash` (`sha256:<hex>` of the canonical JSON of `fingerprint`: sorted keys, no whitespace, UTF-8), `fingerprint` (the hashed fields), `computed_at` and `boot_id` (volatile, not hashed); JSON Schema `infra/contract/records/fingerprint.schema.json` |
-| Lab drain | `pinka stop` and `pinka update-host`, as root, send `POST /lab/drain` with `{"timeout_seconds": <int>}` to `/run/pinka/orch/api.sock`; the orchestrator answers 200 or 202, starts no new runs and lets active runs continue. `GET /lab/status` answers `{"active_runs": <int>}`; `pinka` polls it until 0 or the timeout, then stops `pinka-lab.target`. Runs still active then are recorded as interrupted. |
+| Infra provenance | `/etc/pinka/bootstrap-state.json`: `repo_commit`, `infra_tree` (the tree hash of `infra/`), `ref`, `infra_dirty`, `infra_source` (`git` or `package`), `release_tag` and the `result` of the run (B3) |
+| Platform provenance | `DEPLOYED_FROM.json` in the release and in each content package: source, commit, tree, tag, platform name, version, runtime and the manifest's SHA-256 (B2) |
+| Active and retired platforms | `active.json`, and `retired.json` per replaced platform |
+| Session records | written once per boot by `pinka-session-start.service`, read by the controller |
+| Fingerprint | `pinka fingerprint --json`, callable by the controller; run by any account but root it prints the cached root-computed fingerprint with its `computed_at` time and never escalates (C9c) |
+| Signing key | one per platform, ed25519, PEM PKCS#8, generated on the host, never in a repository; the public key is PEM SubjectPublicKeyInfo; key ID: the lowercase hex SHA-256 of the DER-encoded public key (C9d) |
 
-## Run-manifest signing (C9d)
-
-| Item | Value |
-| --- | --- |
-| Private key | ed25519, PEM PKCS#8, `/etc/pinka/signing/manifest-signing.key`, 0400 potka-orch, generated on the host, never in the repository |
-| Public key | PEM SubjectPublicKeyInfo, published as `/srv/pinka/shared/signing-keys/<machine>-<YYYYMMDD>.pub` and kept forever |
-| Key ID | lowercase hex SHA-256 of the DER-encoded public key; recorded in every manifest |
+The JSON Schemas of these records are in `contract/records/` and in the
+generated [Platform records](reference/platform-records.md) and
+[Fingerprint](reference/fingerprint.md) references. A restore deploys
+exactly the recorded commit and tree; through the recorded tag only with
+signed tags required.
 
 ## External verification hooks (D1, D2)
 
-`lab_mode` is `production` or `staging`. Staging hosts use their own vault,
-`/srv/pinka`, Tailscale identity (`tag:pinka-qa`) and signing key, are never
-paired with a production host and never write to one.
+`lab_mode` is `production` or `staging`. Staging hosts have their own
+vault, `/srv/pinka`, Tailscale identity (`tag:pinka-qa`) and signing key,
+are never paired with a production host and never write to one; on
+production's hardware, staging runs only inside a maintenance window (P3d).
+`scripted` inference runs only on staging.
 
-An attestation is a JSON file in `/etc/pinka/qa/attestations/`, canonicalized
-with RFC 8785 (JCS), with a detached ed25519 signature over the canonical bytes
-in `<file>.sig` (base64). Trusted public keys are PEM files in
-`/etc/pinka/qa/trusted-keys/`. The platform owns the JSON Schema
-(`platform/schemas/`).
-
-```json
-{
-  "schema_version": 1,
-  "attestation_id": "<ULID>",
-  "rc": {"infra": "<commit>", "platform": "<commit>", "catalog": "<commit>"},
-  "tree_hashes": {"infra": "<tree>", "platform": "<tree>", "catalog": "<tree>"},
-  "verification_run_id": "<string>",
-  "verifier_commit": "<string>",
-  "suites": ["<string>"],
-  "verdict": "pass",
-  "issued_at": "2026-10-05T09:12:44Z",
-  "key_id": "<sha256 of the public key>"
-}
-```
-
-`verdict` is `pass` or `fail`. The platform's official check requires verdict
-`pass`, a trusted key whose key ID matches, a valid signature, and `rc` commits
-and `tree_hashes` equal to the platform's and catalog's `DEPLOYED_FROM.json` and
-to the infra commit and tree recorded in `/etc/pinka/bootstrap-state.json`.
+Infra provides the directories `/etc/pinka/qa/trusted-keys/` (PEM public
+keys) and `/etc/pinka/qa/attestations/` (attestations and their detached
+signatures), readable by the active platform's controller, and the
+commits and tree hashes an attestation is checked against: infra's in
+`/etc/pinka/bootstrap-state.json`, the release's and the content packages'
+in their `DEPLOYED_FROM.json`. The attestation format and the official
+check belong to the platform. For the Pokus Platform, a release candidate
+is an infra release, a platform release and its content package (the
+catalog): the same triple as with contract v1.
 
 ## Ports
 
-Every listener binds to `127.0.0.1` unless stated otherwise; nothing listens on
-a public interface except sshd (firewalled). Port numbers avoid common default
-ports (resolution C10). **Status: proposed, awaiting owner approval.**
+Every TCP listener of the lab binds to `127.0.0.1` unless this section says
+otherwise; nothing listens on a public interface except sshd (firewalled).
+Each port can be overridden per machine in host_vars (`ports:`); infra
+writes the effective values into `endpoints.toml`, and the platform reads
+them from there, never from these defaults (P3b). Preflight reports a
+configured port that a process outside the lab already uses. Exporters and
+internal health endpoints have no contract port; PostgreSQL has no TCP
+listener at all.
 
-| Port | Listener | Fixed by |
+| Default port | Listener | Bound to |
 | --- | --- | --- |
-| 4317, 4318 | OpenTelemetry Collector OTLP gRPC / HTTP | contract (spec) |
-| 8181 | OPA | contract (spec) |
-| 8443 | Incus HTTPS API | contract (spec) |
-| 18700 | Grafana (optionally exposed on the tailnet through `tailscale serve`) | C10 |
-| 18701 | Prometheus HTTP API | C10 |
-| 18702 | Loki HTTP API | C10 |
-| 18703 | Tempo HTTP API | C10 |
-| 18704 | vLLM OpenAI-compatible API (`local`); on an inference node bound to `tailscale0` with mutual TLS | C10 |
-| 18705 | LLM gateway ad-hoc endpoint (researchers, via SSH port forwarding) | C10 |
-| 18706 | `pinka docs serve` | C10, owner answer H9 |
-| 18710 | inference control endpoint, bound to `tailscale0`, mutual TLS (`node_role: inference`) | C10 |
-| 4317, 4318 on `198.18.0.1` | collector listener for VM targets (`vm_targets` only), reachable from run networks only | C4 |
+| 4317, 4318 | OpenTelemetry Collector, OTLP gRPC and HTTP | `127.0.0.1` |
+| 8181 | OPA: decision path and health only | `127.0.0.1` |
+| 8443 | Incus HTTPS API: restricted TLS clients, metrics | `127.0.0.1` |
+| 18700 | Grafana | `127.0.0.1`; optionally `tailscale serve` |
+| 18701, 18702, 18703 | Prometheus, Loki and Tempo | `127.0.0.1`, reachable only by the collector, the query proxy and infra's UID allowlist |
+| 18704 | vLLM OpenAI-compatible API | `127.0.0.1` |
+| 18705 | the inference broker's researcher endpoint | `127.0.0.1` |
+| 18706 | docs service (`pinka docs serve`, P3c) | `127.0.0.1`; optionally `tailscale serve` |
+| 18704, 18710 | lab node: the inference forwarder's API and control API | `127.0.0.1` |
 
-Exporters (node, cAdvisor, Postgres, GPU) and the collector's own metrics are
-reachable only on the internal Docker network or `127.0.0.1` without a fixed
-contract port. PostgreSQL has no TCP listener.
+**Non-loopback block.** Each of these listeners is bound to one specific
+address and firewalled; none is public.
+
+| Default port | Listener | Bound to |
+| --- | --- | --- |
+| 18704, 18710 | inference control endpoint (`node_role: inference`): mutual TLS, reachable only by the paired peer; 18704 forwards the vLLM API, 18710 is the control API; pairing uses 18710 while the endpoint is stopped | the inference node's tailnet address |
+| 4317 | OTLP gRPC for the paired inference node's telemetry, mutual TLS (`node_role: lab`) | the lab node's tailnet address |
+| 4317, 4318 | collector listener for VM targets (`vm_targets`), reachable from run networks only | `vm_collector_address` (default `198.18.0.1`) on `pinka-otlp0` |
+
+## Changes from contract v1
+
+| Contract v1 | Contract v2 |
+| --- | --- |
+| one platform's services, accounts, sockets and units listed in the contract | any platform plugs in through its manifest; infra renders accounts, units, sockets and grants from eight fixed profiles; no infra code names a platform |
+| platform and catalog deployed as fixed components | a release plus the content packages its manifest declares, from root-only bare mirrors; restricted packages only into the restricted area |
+| a fixed socket and ACL table | sockets from the manifest, with the connection rules and `principals.json` |
+| `endpoints.toml` with fixed tables | `endpoints.toml` with one table per required facility and the effective ports |
+| ground-truth group and schema of one platform | the generic restricted area, group `pinka-restricted` and schema `restricted` |
+| deployment switching through the deploy helper socket (C3) | through the GPU arbiter's `serve` request; adapters in `adapter_ids` |
+| no training | training jobs as infra-run containers, datasets with provenance, adapters with lineage |
+| telemetry query APIs on loopback | the read-only query proxy; agent OTLP socket |
+| attestation format and official check in this contract | the platform's |
+| one signing key for the lab | one signing key per platform |
 
 ## Resolutions
 
-| ID | Resolution | Reconciles |
+Resolutions of gaps and owner decisions that this contract relies on; the
+full list of approved deviations is in `PROGRESS.md` at the repository
+root.
+
+| ID | Resolution | Status in contract v2 |
 | --- | --- | --- |
-| B2 | Deploy platform and catalog with `git archive` of one subtree from a root-only bare mirror; `DEPLOYED_FROM.json`; no `.git` in deployed paths | infra §7.14, §12; platform §2.1, §4.1.2 |
-| B3 | Bootstrap records the repository commit and the `infra/` tree hash; dirty check limited to `infra/` | infra §5.2 step 1, §10.2 |
-| B4 | Component tag prefixes `infra-v`, `platform-v`, `catalog-v`, `docs-v` | platform §4.1.2, §8 |
-| C2 | Agent runner reaches gateway `agent.sock`, executor `api.sock` and orchestrator `svc.sock`; orchestrator peercred limits it to agent-session endpoints | infra §7.14; platform §4.3 |
-| C3 | vLLM deployment switching through a socket-activated root helper; no sudo | infra §7.14, §12; platform §3, §4.1 |
-| C4 | Telemetry alternative for VM targets | infra §12; platform §3 |
-| C5 | Inference modes `local`, `remote`, `scripted`; `endpoints.toml`; `/etc/pinka/inference/`; deployment specs on both nodes | platform §3; infra §19.10 |
-| C6 | OPA on `127.0.0.1:8181` with `system.authz` allowing only decision queries and health | platform §3; infra §7.10 |
-| C7 | `<svc>` short names | infra §7.7, §7.14, §12; platform §3 |
-| C8 | Socket groups, POSIX ACLs, fallback and peercred allowlists | platform §3, §4; infra §12 |
-| C9a | `lab_mode`, `node_role`, machine name in `endpoints.toml` `[lab]` | platform §4.1.2; infra §8.1 |
-| C9b | Platform settings models are the source of truth for TOML keys | platform §3, §4 |
-| C9c | Non-root `pinka fingerprint --json` prints the cached root-computed fingerprint | infra §9, §12; platform §3 |
-| C9d | Signing key format, file names and key ID | infra §8.2, §12; platform §3, §12 |
-| C9e | Deployment spec `<id>@<version>.yml` with `id`/`version`; model and adapter manifests imported read-only | infra §7.11, §7.12; platform §4.1, §6 |
-| C9f | Schemas owned by `potka_migrator`; grants from migrations; infra runs `potka-migrate upgrade` | infra §7.8, §7.14; platform §6 |
-| C9g | `/usr/local/bin/potka` link to the deployed CLI | platform §4.9 |
-| C9h | Health gate and QA paths listed in this contract | infra §7.16, §13.10; platform §3 |
-| C10 | Port table above, loopback only, no common default ports | infra §7.9, §7.11, §12; platform §4.4 |
-| D1 | `lab_mode` semantics | infra §8.1, §13.10; platform §3 |
-| D2 | Attestation format, canonicalization, signature and official check | platform §4.1.2 |
-| D3 | `scripted` backend is any configured OpenAI-compatible endpoint; never official | platform §3, §4.1.2 |
-| E3 | `pinka_source_repo` required, supplied by the deployer; SSH deploy key or anonymous HTTPS; pinned Git host keys | infra §7.14, §18.4 |
-| E13 | Separate reader socket directory and group-readable reader credential | infra §7.8 |
+| B2 | Deploy from a root-only bare mirror with `git archive` of one subtree; `DEPLOYED_FROM.json`; no `.git` in deployed paths | in force, for the release and every content package |
+| B3 | Bootstrap records the repository commit and the `infra/` tree hash; the dirty check covers `infra/` only | in force; a release package records the same from `release/RELEASE.json` |
+| B4 | Component tag prefixes (`infra-v`; a platform's prefixes are its sources' `tag_prefix`) | in force |
+| C2, C7, C8 | one platform's socket set, short names, socket groups with ACLs and peercred | replaced by the manifest's sockets, the connection rules and `principals.json` |
+| C3 | deployment switching through a socket-activated root helper | replaced by the GPU arbiter |
+| C4 | telemetry for VM targets through a dedicated collector listener | in force |
+| C5, D3 | inference modes `local`, `remote`, `scripted`; scripted never official | in force; `remote` through the inference forwarder |
+| C6 | OPA on 8181 with `system.authz` allowing only decision queries and health | in force, with the manifest's decision path |
+| C9a | lab facts in `endpoints.toml` `[lab]` | in force |
+| C9b | the platform's settings models are the source of truth for its configuration | in force: the manifest names the schema of each service's configuration |
+| C9c | non-root `pinka fingerprint --json` prints the cached fingerprint | in force |
+| C9d | signing key format and key ID | in force, one key per platform |
+| C9e | deployment specs `<id>@<version>.yml`; model and adapter manifests imported read-only | in force; adapters are registered by the GPU arbiter |
+| C9f | schemas owned by the migrator; grants from migrations | in force, run through the `migrate` hook |
+| C9g | a link to the platform's CLI in `/usr/local/bin` | replaced by the manifest's `cli` |
+| C9h | health gate and QA paths in this contract | in force; the health gate checks the manifest's `requires` |
+| C10 | the port table, loopback only, no common default ports | in force, extended by P3b |
+| D1 | `lab_mode` semantics | in force |
+| D2 | attestation format and official check | moved to the platform |
+| E3 | sources supplied by the deployer; SSH deploy key or anonymous HTTPS; pinned host keys | in force, for the release and every content package |
+| E13 | separate reader socket directory and group-readable reader credential | in force |
+| P3a | `cpuset_targets` in `endpoints.toml`; targets get CPU ranges, never counts | in force |
+| P3b | ports overridable in host_vars, effective values in `endpoints.toml`, the non-loopback block | in force |
+| P3c | the docs service on 18706 | in force |
+| P3d | maintenance windows for staging on production's hardware | in force |
+| V1 | the release and the content packages of one repository are disjoint subtrees | in force |
+| V2 | a manifest declares every facility it uses in `requires` | in force |
+| V3 | a `python-uv` release is built from locked wheels, its backend in a `build` dependency group | in force |
+| V4 | services take their sockets from systemd; runtime directories hold no sockets | in force |
+| V6 | the agent names its own package and runs from its own environment | in force |
+| V7 | GPU inference needs compute capability 7.5 or newer | in force |

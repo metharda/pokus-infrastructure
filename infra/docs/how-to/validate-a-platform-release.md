@@ -39,14 +39,19 @@ Run the same check on your release before you tag it.
     <!-- qa:skip reason="example output" -->
     ```text
     platform refplat 0.1.0 (python-uv)
-    requires: postgres, telemetry, gpu
+    requires: postgres, telemetry, inference, gpu
     services:
       ctl: controller as refplat-ctl (Incus bench/build; restricted data)
+        state records: backed up
+        state datasets: not backed up
       agent: untrusted-agent as refplat-agent
-    job tune: public.ecr.aws/docker/library/python@sha256:<digest> (1 GPU)
-    job tunecpu: public.ecr.aws/docker/library/python@sha256:<digest> (0 GPU)
+      broker: inference-broker as refplat-broker
+    database: backed up
+    job tune: public.ecr.aws/docker/library/python@sha256:<digest> (1 GPU, 2 CPUs, memory 4G, 600 s, resumable)
+    job tunecpu: public.ecr.aws/docker/library/python@sha256:<digest> (0 GPU, 2 CPUs, memory 4G, 600 s, resumable)
     socket ctl/api: researchers, root
     socket ctl/session: untrusted-agent  [dedicated to the agent]
+    socket broker/infer: researchers, root
     content cases (restricted)
     cli: refplat
     ```

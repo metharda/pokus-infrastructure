@@ -33,12 +33,13 @@ convention.
 `<short>` and `<name>` are placeholders: the run network suffix chosen by the
 platform, and a researcher's account name.
 
-The agent under test is the least trusted principal on the host. Its account,
-`potka-agent`, can call exactly two sockets (the LLM gateway and the tool
-executor, plus agent-session endpoints of the orchestrator) and has no access
-to Docker, Incus, the catalog, artifacts, secrets or the database. Everything
-the agent does to a target goes through the executor, which reaches Incus
-over its API.
+The agent under test is the least trusted principal on the host. The
+platform's agent service runs under the `untrusted-agent` profile: it has no
+network, reaches only the sockets dedicated to it, and has no access to
+Docker, Incus, restricted data, secrets, the database or the rest of the
+release. Everything the agent does to a target goes through the platform's
+own services, which reach Incus over its API
+([Privilege profiles and restricted data](explanation/privilege-profiles.md)).
 
 ## Components
 
@@ -70,7 +71,7 @@ flowchart LR
 Provisioning order follows the zones from the bottom up: preflight checks the
 host, then bootstrap applies the base system, accounts, SSH, the directory
 layout, the firewall and Tailscale, then Docker and Incus, then the lab
-services, and finally the platform and the catalog. How bootstrap runs these
+services, and finally the platform and its content packages. How bootstrap runs these
 stages is described in [How bootstrap works](explanation/bootstrap.md); how the
 same roles work on every distribution is in
 [Portability](explanation/portability.md).

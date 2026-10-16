@@ -26,7 +26,10 @@ from pinka_installer.tui.screens_install import SignalScreen
 PASSWORD = "correct horse battery staple 42"  # noqa: S105 - test fixture
 SIZES = {"80x24": (80, 24), "120x40": (120, 40)}
 THEMES = {"dark": "textual-dark", "light": "textual-light"}
-SCREEN_NAMES = [*SCREENS, "signal"]
+# "replace": the Platform review of a release that would replace the active
+# platform, with the confirmation that asks for its name (owner decision with
+# the "commit" for 3d.7).
+SCREEN_NAMES = [*SCREENS, "signal", "replace"]
 
 
 def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
@@ -52,7 +55,7 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     )
     if screen == "restore":
         answers.mode = "restore"
-    if screen in ("platform", "platform_review"):
+    if screen in ("platform", "platform_review", "replace"):
         # The reference platform, inspected (screen 12) and reviewed (screen 13).
         url = "file:///srv/git/refplat.git"
         answers.platform = answers_mod.Source(url, "refplat-v0.1.0", "release", "refplat-v")
@@ -64,7 +67,13 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
         wizard.release_source = (url, "refplat-v0.1.0", "release", "refplat-v")
         wizard.review = refplat_inspection(answers, full=True)
         wizard.review_key = release.review_key(answers)
-    first = "welcome" if screen == "signal" else screen
+    if screen == "replace":
+        problem = (
+            "platform-active: name: platform 'oldplat' is active; a release of 'refplat' "
+            "replaces it only with --replace-platform oldplat"
+        )
+        wizard.review = release.Inspection(ok=False, problems=[problem], active="oldplat")
+    first = {"signal": "welcome", "replace": "platform_review"}.get(screen, screen)
     return app(ctx, first=first, theme=theme)
 
 
@@ -82,6 +91,9 @@ def before(screen: str) -> Callable[[Pilot[Any]], Any]:
             installer = pilot.app
             assert isinstance(installer, InstallerApp)
             installer.show(SignalScreen(75, message))
+            await settle(pilot)
+        if screen == "replace":
+            await pilot.click("#replace")
             await settle(pilot)
 
     return run

@@ -352,6 +352,8 @@ state_json() {
   "repo_commit": "$(json_escape "$GIT_COMMIT")",
   "infra_tree": "$(json_escape "$GIT_INFRA_TREE")",
   "infra_dirty": $(json_bool "$GIT_INFRA_DIRTY"),
+  "infra_source": "$(json_escape "$GIT_SOURCE")",
+  "release_tag": "$(json_escape "$RELEASE_TAG")",
   "ref": "$(json_escape "${OPT_REF:-HEAD}")",
   "started_at": "$(json_escape "$STARTED_AT")",
   "finished_at": "$(json_escape "$finished")",
@@ -447,22 +449,48 @@ stage_logging() {
   log_info "bootstrap started; log: $LOG_FILE"
 }
 
-# stage_git: record the checkout (B3) and refuse a dirty infra/ tree (§5.2 step 1).
+# stage_git: record the checkout or the release package (B3; owner's choice
+# in 3d.8) and refuse a dirty infra tree (§5.2 step 1).
 stage_git() {
   local rc=0
   enter_stage git
   command -v git >/dev/null 2>&1 \
     || fail "$EXIT_NEEDS_ACTION" "git is not installed; install it with the distribution's package manager"
   git_state "$INFRA_DIR" || rc=$?
-  case $rc in
-    0) ;;
-    2) fail "$EXIT_OPERATOR" "$GIT_REPO_ROOT must be owned by root or by the user running sudo" ;;
-    *) fail "$EXIT_OPERATOR" "bootstrap must run from a git checkout of the pokus-infrastructure repository" ;;
-  esac
+  if ((rc == 1)); then
+    rc=0
+    package_state "$INFRA_DIR" || rc=$?
+    case $rc in
+      0) ;;
+      1) fail "$EXIT_OPERATOR" "bootstrap must run from a git checkout of the pokus-infrastructure repository or from an unpacked release package" ;;
+      2) fail "$EXIT_OPERATOR" "$INFRA_DIR must be owned by root or by the user running sudo" ;;
+      3) fail "$EXIT_OPERATOR" "release/RELEASE.json of this package names no commit or infra tree; unpack the release package again" ;;
+      *) fail "$EXIT_TOOLING" "git could not hash the files of this release package" ;;
+    esac
+  else
+    case $rc in
+      0) ;;
+      2) fail "$EXIT_OPERATOR" "$GIT_REPO_ROOT must be owned by root or by the user running sudo" ;;
+      *) fail "$EXIT_OPERATOR" "bootstrap must run from a git checkout of the pokus-infrastructure repository" ;;
+    esac
+  fi
   [[ -n $GIT_COMMIT && -n $GIT_INFRA_TREE ]] \
     || fail "$EXIT_OPERATOR" "cannot read the checked-out commit of $GIT_REPO_ROOT"
   STATE_ENABLED=true
   "$OPT_CHECK" && STATE_ENABLED=false
+  if [[ $GIT_SOURCE == package ]]; then
+    if [[ -n $OPT_REF ]] && ! ref_matches_package "$OPT_REF"; then
+      fail "$EXIT_OPERATOR" "--ref $OPT_REF is not this package's release (${RELEASE_TAG:-no tag}, commit $GIT_COMMIT); unpack that release's package"
+    fi
+    if "$GIT_INFRA_DIRTY"; then
+      "$OPT_ALLOW_DIRTY" || fail "$EXIT_OPERATOR" \
+        "the package's files differ from its release (tree $PACKAGE_TREE, release/RELEASE.json records $GIT_INFRA_TREE); unpack it again, or re-run with --allow-dirty (recorded)"
+      log_warn "the package's files differ from its release (--allow-dirty); this is recorded"
+    fi
+    log_info "release package ${RELEASE_TAG:-(no tag)}: repository commit $GIT_COMMIT, infra tree $GIT_INFRA_TREE"
+    leave_stage
+    return 0
+  fi
   if [[ -n $OPT_REF ]] && ! ref_matches_head "$OPT_REF"; then
     fail "$EXIT_OPERATOR" "--ref $OPT_REF is not the checked-out commit $GIT_COMMIT; check it out first"
   fi

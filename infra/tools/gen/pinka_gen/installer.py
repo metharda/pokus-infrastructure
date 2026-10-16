@@ -20,6 +20,7 @@ SCREENSHOTS = (
     "storage",
     "researchers",
     "platform_review",
+    "replace",
     "review",
     "progress",
     "doctor",

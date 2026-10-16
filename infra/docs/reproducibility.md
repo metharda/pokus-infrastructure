@@ -42,7 +42,8 @@ measurement:
   Incus fingerprint of every golden image alias;
 - **configuration**: the repository commit and `infra/` tree bootstrap ran
   from and whether it had local changes, the sha256 of `versions.lock.yml`
-  and of the host_vars file, and the deployed platform and catalog releases;
+  and of the host_vars file, and the active platform with its release and
+  content packages (name, version, manifest hash, commits and tree hashes);
 - **WSL**: the effective `wsl.conf` and the kernel string. The Windows build
   is recorded as `null`: with interop off, Linux cannot read it.
 

@@ -26,11 +26,23 @@ outside its task.
 
 | Risk | Mechanism |
 | --- | --- |
-| The agent acts on the host instead of a target | The agent runs as `potka-agent`, which can reach only the LLM gateway and the tool executor sockets; it is never in `docker`, `incus-admin` or `pinka-gt` and cannot read secrets, the catalog, artifacts or the database ([Accounts and groups](reference/accounts.md)). |
-| The agent reaches another run, the lab services or the internet | Every target action goes through the executor and the Incus API; run networks have no uplink and the empty ACL `pinka-run-default`, and the host firewall drops forwarding out of `r-*` bridges ([How benchmark targets are isolated](explanation/target-isolation.md)). |
-| The agent reads the ground truth | Scenario ground truth is readable only by `pinka-gt`; the catalog is deployed root:pinka-gt with mode 0640 and appears nowhere else on the host. |
+| The agent acts on the host instead of a target | The platform's agent runs under the `untrusted-agent` profile: no network at all (`PrivateNetwork=yes`, Unix sockets only), no database role, no Incus certificate, no inference API, no secrets; it sees only its own package and environment, its state and the sockets dedicated to it, and `/srv/pinka`, `/etc/pinka`, `/var/lib/pinka` and `/run/pinka` are otherwise empty for it. It is never in `docker`, `incus-admin`, `pinka-restricted` or the database socket group ([Privilege profiles and restricted data](explanation/privilege-profiles.md)). |
+| The agent reaches another run, the lab services or the internet | Every target action goes through the platform's own services and the Incus API; run networks have no uplink and the ACL `pinka-run-default`, and the host firewall drops forwarding out of `r-*` bridges ([How benchmark targets are isolated](explanation/target-isolation.md)). The telemetry stores and the inference API admit only a UID allowlist ([ADR-0016](adr/0016-telemetry-query-isolation.md)). |
+| The agent reads restricted data (ground truth) | Restricted data lives only in `/srv/pinka/restricted/<platform>/` (root:`pinka-restricted`, 0750/0640) and the database schema `restricted`; only the controller, `restricted-operator` and `restricted-reader` services can read them, the agent and training jobs never, whatever the manifest says; after every migration infra revokes every forbidden grant on the schema. Sockets dedicated to the agent are listed in the installer's review and by doctor; that they return no restricted data is the platform's obligation, proved by its tests. |
 | The agent exhausts the host | Project and instance limits for CPU, memory and disk; a quota-capable pool (btrfs or LVM thin, never `dir`, [ADR-0009](adr/0009-btrfs-or-lvm-thin-pool.md)); CPU sets keep the lab services apart from the targets. |
 | The isolation regresses unnoticed | Every distribution test deploys the reference platform and runs its isolation probe: as its agent, which must reach nothing, and as a transient unit for each loopback-capable profile, which must reach exactly what the profile allows: no telemetry store directly, the query proxy only for the profiles that query, the inference API and the GPU arbiter only for the platform's own accounts that may ([How to test the distributions](how-to/test-distributions.md#what-the-reference-platform-stages-check)). |
+
+### A platform release
+
+A platform is code that infra deploys but does not write.
+
+| Risk | Mechanism |
+| --- | --- |
+| A release asks for more than it needs | Its manifest names one of eight fixed profiles per service and job; infra renders exactly that profile's grants, and a manifest that asks for anything else is refused before the host changes (exit 65, [ADR-0014](adr/0014-platforms-through-manifests.md)). |
+| A release's code runs as root | Never: a release is built as `pinka-build` in a `systemd-run` sandbox, from locked wheels, with the second phase offline; its services and hooks run under their own accounts with the hardening baseline, which a manifest cannot override. |
+| A release names infra's accounts, units or paths | Every name the manifest would create is checked against the reserved names and against what already exists on the host. |
+| A moved or forged tag | Sources come from root-only bare mirrors; a moved tag is refused, and with `require_signed_tags` only tags signed by an allowed signer are deployed. |
+| A training job escapes | Jobs run as containers with options fixed by the GPU arbiter: no network, a read-only root file system, only the base model, its published datasets and its output mounted, the GPU only while it trains ([ADR-0015](adr/0015-gpu-training-container-jobs.md)). Datasets that list an instance of the `test` split are never published or mounted. |
 
 ### Buggy fault injection
 
@@ -116,8 +128,12 @@ repository keys by fingerprint ([Pinned versions](reference/versions.md));
 the play refuses sources that are not verified. Every override an operator
 grants (an unsupported host, accepted degradations, break-glass groups) is
 recorded in the host profile and in every environment fingerprint
-([Reproducibility](reproducibility.md)). Run manifests are signed with a key
-generated on the host.
+([Reproducibility](reproducibility.md)). Each platform gets its own signing
+key, generated on the host and readable only by its controller; its public
+keys are published and kept forever. Every platform release and content
+package carries `DEPLOYED_FROM.json` with its commit and tree hash, and
+bootstrap records infra's own commit and tree hash, also when it runs from
+a release package.
 
 ## Out of scope
 

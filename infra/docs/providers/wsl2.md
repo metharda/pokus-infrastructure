@@ -48,6 +48,17 @@ image has kernels for (approved deviation V7 from the build prompt's 7.0).
 Preflight refuses GPU inference on an older GPU: `gpu_inference` stays off,
 and no option turns it on.
 
+Containers reach the GPU through CDI. The NVIDIA Container Toolkit's
+`nvidia-cdi-refresh` units write `/var/run/cdi/nvidia.yaml` in WSL mode
+whenever the Windows driver or the toolkit changes, so the specification
+names `/dev/dxg` and the libraries in `/usr/lib/wsl/lib` instead of Linux
+driver devices. vLLM and training job containers get the GPU the same way:
+the GPU arbiter starts a job's container with the CDI device
+`nvidia.com/gpu=all` only while it trains that job, and with Docker's NVIDIA
+runtime only on a Docker release without CDI support. Without either, only
+CPU-only jobs (`resources.gpus: 0`) run
+([How to run a training job](../how-to/run-training-job.md)).
+
 ## Restarting the distribution
 
 When `/etc/wsl.conf` changes, or systemd is not running as PID 1, the

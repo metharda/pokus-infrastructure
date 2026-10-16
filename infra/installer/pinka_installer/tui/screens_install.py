@@ -221,12 +221,15 @@ def platform_text(answers: answers_mod.Answers) -> str:
     return "\n".join(lines)
 
 
-def summary(answers: answers_mod.Answers, *, approved: bool = False) -> list[tuple[str, str, str]]:
+def summary(
+    answers: answers_mod.Answers, *, approved: bool = False, replacing: str = ""
+) -> list[tuple[str, str, str]]:
     """The settings by section: (screen, title, text) for the Review screen.
 
     Args:
         answers: The answers.
         approved: The operator approved the reviewed platform.
+        replacing: The active platform the operator confirmed replacing.
 
     Returns:
         Sections.
@@ -288,7 +291,12 @@ def summary(answers: answers_mod.Answers, *, approved: bool = False) -> list[tup
         (
             "platform_review",
             "Platform review",
-            ("approved" if approved else "not approved yet") if a.has_platform else "-",
+            (
+                ("approved" if approved else "not approved yet")
+                + (f" · replaces the active platform {replacing}" if replacing else "")
+            )
+            if a.has_platform
+            else "-",
         ),
         ("images", "Golden images", ", ".join(a.images_build) or "none"),
         (
@@ -349,7 +357,16 @@ class ReviewScreen(StepScreen):
             )
         for warning in destructive(self.answers):
             yield Static(f"⚠ {warning}", classes="banner bad")
-        for step, title, text in summary(self.answers, approved=self.wizard.platform_approved):
+        replacing = self.wizard.replacing()
+        if replacing:
+            yield Static(
+                f"⚠ The active platform {replacing} is replaced (you typed its name); its data "
+                f"stays until pinka platform purge {replacing}",
+                classes="banner bad",
+            )
+        for step, title, text in summary(
+            self.answers, approved=self.wizard.platform_approved, replacing=replacing
+        ):
             with Horizontal(classes="review-row"):
                 yield Card(title, text)
                 yield Button("Edit", id=f"edit-{step}", classes="edit")

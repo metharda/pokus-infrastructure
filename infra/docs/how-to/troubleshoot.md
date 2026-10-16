@@ -153,9 +153,16 @@ collections failed. The lines above the exit line name the step.
   downloads, and report it if the problem stays.
 - An Ansible collection cannot be downloaded: the line names the collection
   and its URL from `ansible_collections.artifacts` of `versions.lock.yml`;
-  check that the host reaches `galaxy.ansible.com`. A pin that is still
-  `TODO(verify)` is never downloaded: this release has not pinned that
-  artifact yet, so report it.
+  check that the host reaches `galaxy.ansible.com`, or install from the
+  release package of this version, which carries the artifacts
+  ([How to install from a release package](install-from-a-release-package.md)).
+  A pin that is still `TODO(verify)` is never downloaded: this release has
+  not pinned that artifact yet, so report it.
+- The release package has no artifact of a collection: the package is
+  incomplete or was unpacked partly. Download it again, check its sha256
+  and unpack it into an empty directory.
+- Git could not hash the files of a release package: bootstrap needs `git`
+  to compute the package's tree hash; the line before names git's error.
 - The artifact of a collection is refused (the line before names the
   member and why): it carries an absolute or escaping symbolic link, a hard
   link, a device or a FIFO, or its `MANIFEST.json` or `FILES.json` does not
@@ -197,7 +204,7 @@ cause and run bootstrap again:
   every rule.
 - `platform-active`: another platform is active. A release with a new name
   replaces it only with `--replace-platform <active name>`; see
-  [How to deploy a platform](deploy-platform.md).
+  [How to plug a platform into the lab](deploy-platform.md).
 - `source-*`, `content-*`, `tag-signature`, `moved-tag`: the `platform` and
   `content` settings in the host variables, or the repository, are wrong:
   an unknown ref or path, overlapping paths, an undeclared or missing
@@ -248,10 +255,13 @@ Bootstrap stopped and printed what to do. Common messages:
 | Message | What to do |
 | --- | --- |
 | must run as root | Run it with `sudo`. |
-| must run from a git checkout | Run it from a clone of the repository, not from a copy. |
-| must be owned by root or by the user running sudo | Clone the repository as your own user or as root. |
+| must run from a git checkout ... or from an unpacked release package | Run it from a clone of the repository or from an unpacked release package, not from a copy of either. |
+| must be owned by root or by the user running sudo | Clone the repository, or unpack the package, as your own user or as root. |
 | infra/ has uncommitted changes | Commit them, or add `--allow-dirty` (recorded). |
 | --ref ... is not the checked-out commit | Check out that ref first, or leave out `--ref`. |
+| the package's files differ from its release | A file of the unpacked package was changed, added or removed (`release/` does not count). Unpack the package again into an empty directory, or add `--allow-dirty` (recorded). |
+| --ref ... is not this package's release | `--ref` names another tag or commit than `release/RELEASE.json`: unpack that release's package, or leave out `--ref`. |
+| release/RELEASE.json of this package names no commit or infra tree | The package is damaged: download it again and check its sha256. |
 | the host profile changed since the last bootstrap | Read the listed changes; if they are expected, add `--refresh-profile`. |
 | host_vars/... does not exist | Create `ansible/inventory/host_vars/<machine>.yml` for this machine. |
 | the vault needs a password | Add `--vault-password-file <file>`. |

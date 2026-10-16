@@ -26,6 +26,7 @@ docstrings
 dracut
 EPEL
 fcontext
+FDNAMES
 firewalld
 firewalled
 FQCN
@@ -46,6 +47,7 @@ libpq
 linuxcontainers
 lockfiles
 micromamba
+miniplat
 mkinitcpio
 moby
 mokutil

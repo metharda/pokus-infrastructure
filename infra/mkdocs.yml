@@ -71,18 +71,20 @@ nav:
   - Tutorials:
       - Install a lab on WSL2: tutorials/install-wsl2.md
       - Install a lab on bare-metal Linux: tutorials/install-baremetal.md
+      - Write a minimal platform: tutorials/write-a-minimal-platform.md
   - How-to guides:
       - Operating the lab: operations.md
       - Check whether a machine can host the lab: how-to/check-a-host.md
       - Install a lab with the installer TUI: how-to/install-with-the-tui.md
       - Install a lab from an answers file: how-to/install-without-the-tui.md
+      - Install from a release package: how-to/install-from-a-release-package.md
       - Start, stop and drain the lab: how-to/start-stop-drain.md
       - Update the host operating system: how-to/update-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
       - Add a model and activate a deployment: how-to/add-a-model.md
       - Run a training job and serve its adapter: how-to/run-training-job.md
-      - Deploy a platform: how-to/deploy-platform.md
-      - Replace the lab's platform: how-to/replace-platform.md
+      - Plug a platform into the lab: how-to/deploy-platform.md
+      - Replace or purge a platform: how-to/replace-platform.md
       - Run inference on a separate GPU node: how-to/pair-inference-node.md
       - Connect to the lab: how-to/connect.md
       - Reach Grafana and the lab database: how-to/reach-grafana.md
@@ -102,6 +104,7 @@ nav:
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
       - Pin the Ansible collections: how-to/pin-ansible-collections.md
+      - Publish a release package: how-to/publish-a-release-package.md
       - Validate a platform release: how-to/validate-a-platform-release.md
   - Reference:
       - Support matrix: support-matrix.md
@@ -114,6 +117,7 @@ nav:
       - Platform manifest: reference/platform-manifest.md
       - Platform privilege profiles: reference/platform-profiles.md
       - Platform records: reference/platform-records.md
+      - Principals and endpoints files: reference/platform-files.md
       - GPU arbiter requests: reference/gpu-arbiter.md
       - Installer answers file: reference/answers.md
       - Doctor checks: reference/doctor-checks.md
@@ -133,6 +137,7 @@ nav:
       - How telemetry, metrics and logs flow: explanation/telemetry.md
       - How golden images are built: explanation/golden-images.md
       - How the lab comes up: explanation/lab-session.md
+      - Privilege profiles and restricted data: explanation/privilege-profiles.md
       - The GPU arbiter: explanation/gpu-arbiter.md
       - Node roles and split inference: node-roles.md
       - Reproducibility, fingerprints and sessions: reproducibility.md
@@ -159,4 +164,6 @@ nav:
       - "ADR-0011: OpenTelemetry as the single telemetry entry point": adr/0011-otel-telemetry.md
       - "ADR-0012: Leakage lint against the base image, with benign words": adr/0012-leakage-lint.md
       - "ADR-0013: No orchestration frameworks": adr/0013-no-orchestration-frameworks.md
+      - "ADR-0014: Platforms plug in through manifests and fixed privilege profiles": adr/0014-platforms-through-manifests.md
+      - "ADR-0015: GPU training as infra-run container jobs": adr/0015-gpu-training-container-jobs.md
       - "ADR-0016: Telemetry reached only through the query proxy and the agent socket": adr/0016-telemetry-query-isolation.md

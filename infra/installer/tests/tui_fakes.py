@@ -203,6 +203,10 @@ class FakeHost:
     preflight_args: list[list[str]] = field(default_factory=list)
     refused: list[str] = field(default_factory=list)  # set: the release is refused
     inspections: list[tuple[bool, Answers]] = field(default_factory=list)
+    # set: another platform is active; a full inspection without replacing it
+    # is refused by the one-platform rule, as the platform tool does
+    active_platform: str = ""
+    replaces: list[str | None] = field(default_factory=list)
 
     def preflight(self, args: Sequence[str]) -> Preflight:
         self.preflight_calls += 1
@@ -252,10 +256,19 @@ class FakeHost:
     def invoking_user(self) -> str:
         return self.user
 
-    def inspect_platform(self, answers: Answers, *, full: bool) -> release.Inspection:
+    def inspect_platform(
+        self, answers: Answers, *, full: bool, replace: str | None = None
+    ) -> release.Inspection:
         self.inspections.append((full, copy.deepcopy(answers)))
+        self.replaces.append(replace)
         if self.refused:
             return release.Inspection(ok=False, problems=list(self.refused))
+        if full and self.active_platform and replace != self.active_platform:
+            problem = (
+                f"platform-active: name: platform {self.active_platform!r} is active; a release "
+                f"of 'refplat' replaces it only with --replace-platform {self.active_platform}"
+            )
+            return release.Inspection(ok=False, problems=[problem], active=self.active_platform)
         return refplat_inspection(answers, full=full)
 
 

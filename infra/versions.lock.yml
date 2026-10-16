@@ -470,11 +470,13 @@ packages:
     opensuse-leap-16.0: "TODO(verify)"
 
 ansible_collections:
-  # Bootstrap installs exactly these artifacts (artifacts below: Galaxy's
-  # tarball of each version, checked against its sha256) with --offline
-  # --no-deps, transitive dependencies included, then checks them with
-  # ansible-galaxy collection verify --offline; make setup installs the same
-  # versions (ansible/requirements.yml). The set is the one bundled in the
+  # Galaxy's artifact of each version and its sha256 are the only pins.
+  # Bootstrap installs exactly these artifacts (from Galaxy, or from
+  # release/collections/ when it runs from a release package; each checked
+  # against its sha256) with --offline --no-deps, transitive dependencies
+  # included, then checks them with ansible-galaxy collection verify
+  # --offline; make setup installs the same artifacts (from Galaxy, or from a
+  # release package when Galaxy is unreachable). The set is the one bundled in the
   # community package ansible 14.4.0, which is built on ansible-core 2.21.4.
   # The artifacts' URLs, sha256 and sizes come from make lock-collections,
   # which a maintainer runs where Galaxy is reachable
@@ -522,21 +524,6 @@ ansible_collections:
       url: "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-library_inventory_filtering_v1-1.1.5.tar.gz"
       sha256: "cbb9e86c5b1720df21e940cedcd2f3e1226c38262623e090a883712610733851"
       size: 36002
-  # make setup only (never bootstrap): when Galaxy is unreachable, each
-  # collection's GitHub release tarball, installed only after its sha256
-  # matched; then the same FILES.json check as after a Galaxy install. The
-  # release tags exist (git ls-remote, 2026-10-14: ansible.posix 2.2.2
-  # e98d9a0756458be1ac710988498000973889075c, community.crypto 3.4.0
-  # 8c876c294b66dc4539f566bd3771460575f6c14a, community.docker 5.3.0
-  # 6badffabd63090227f554a302a3e3ab570fa2a29, community.general 13.4.0
-  # ac5fa3e21c5f8188a166ea9e12c2c04a16d4461c); whether each release carries
-  # the built collection tarball, its URL and its sha256 could not be read
-  # from this build environment (GitHub's web and API answer 403 here).
-  fallback:
-    ansible.posix: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.crypto: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.docker: {url: "TODO(verify)", sha256: "TODO(verify)"}
-    community.general: {url: "TODO(verify)", sha256: "TODO(verify)"}
 
 incus_base_images:
   # Base images of the golden image pipeline (BUILD_PROMPT §7.13), pinned by

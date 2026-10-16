@@ -187,7 +187,8 @@ repository at 3f (section J).
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
   owner merges to `main`. Last step commit: `0d72e54` (3d.7); last commit
-  `373e693` (process records, after the symbolic-link fix `3d4bab2`).
+  `4aeb35b` (the collection pins, the `lock-collections` CI job and the
+  license-file fix).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
   1-6 (with 3d.4b). The commit of each is in the table below and, for the
   steps before section J, in the archive.
@@ -196,10 +197,12 @@ repository at 3f (section J).
   `make lock-collections` is committed (`3d4bab2`), with the process
   records (`373e693`); their CI run passed every job but the known red
   `lock-check`, `make setup` with the real Galaxy artifacts in all 15 jobs.
-  The owner's second `make lock-collections` run passed (2026-10-15); its
-  pins, the approved `lock-collections` CI job and the license-file fix it
-  showed wait for the owner's "commit"; then 3d.8 with the owner's 3d.7
-  decisions.
+  The owner's second `make lock-collections` run (2026-10-15) is committed
+  with the `lock-collections` CI job and the license-file fix (`4aeb35b`);
+  its CI run passed every job but the known red `lock-check` (42 marker
+  errors, the five artifacts' sha256 verified), and the new job printed
+  from Galaxy exactly the license files found before. 3d.8 is built and
+  waits for the owner's "commit" (see the 3d.8 item below).
 
 ### Status of the plan of section J
 
@@ -211,7 +214,7 @@ repository at 3f (section J).
 | 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
 | 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
-| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-7 and 4b done; 8 open | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7) |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | steps 1-7 and 4b done; 8 built, waiting for "commit" | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7) |
 | 3e | Infra self-test without provisioning | not started | — |
 | 3f | Move infra to the repository root | not started | — |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
@@ -312,6 +315,23 @@ proposal, and waits for the owner's "commit".
     the ACME code relicensed from BSD-2-Clause to GPL-3.0-or-later, and its
     `plugins/module_utils/_version.py`, which once needed `PSF-license.txt`,
     is now GPL-3.0-or-later and imports `LooseVersion` from ansible-core).
+    Owner, with the "commit" for `4aeb35b`: no SPDX texts are added; those
+    two are listed as declared in the metadata but carried by no file in the
+    artifact. Checked for that commit's report: all 66 files of
+    `community.library_inventory_filtering_v1` 1.1.5 (its release tag,
+    matched to the artifact's `FILES.json` by sha256) declare
+    GPL-3.0-or-later or are its text, except the empty `py.typed` marker,
+    which carries no license statement.
+  - **Release package (owner's choice in 3d.8, "Full package"):** the CI job
+    on an `infra-vX.Y.Z` tag builds a tarball of the repository's infra tree
+    at the tag (`git archive`) plus `release/` with the five Galaxy
+    artifacts, `NOTICE` and `RELEASE.json` (tag, commit, infra tree hash).
+    Bootstrap runs from it without `.git`: it recomputes the infra tree
+    hash of the unpacked files with git (a temporary index), refuses a
+    mismatch like a dirty tree (unless `--allow-dirty`, recorded), records
+    the commit and tree from `RELEASE.json`, and installs the collections
+    offline from `release/` (sha256 against the lock). A restore of a
+    package install needs that tag's package.
   - **TUI replacement:** the TUI also offers replacing the active platform,
     behind a confirmation screen that names the active platform and asks
     for its name to be typed, exactly like `pinka platform purge`; without
@@ -322,6 +342,19 @@ proposal, and waits for the owner's "commit".
     cryptographically secure generator) and are written only to the vault
     (encrypted, root-only 0600); the platform role writes each to its
     service's secret file (`no_log`).
+  - Built (waiting for "commit"): all of the above, and the documentation:
+    `docs/contracts.md` as contract v2; the schemas of the principals and
+    endpoints files in `contract/` with the generated reference
+    `docs/reference/platform-files.md`; the tutorial "Write a minimal
+    platform", the explanation "Privilege profiles and restricted data",
+    ADR-0014 and ADR-0015, the how-tos "Install from a release package" and
+    "Publish a release package"; "Deploy a platform" retitled "Plug a
+    platform into the lab"; security, architecture, node roles, bootstrap,
+    troubleshoot, backup and restore, WSL2 (CDI for training containers)
+    and the remaining contract v1 leftovers updated. A real package build
+    could not run here (the proxy refuses Galaxy); the first one is the
+    `release` workflow on the first tag. Interpretations for the owner are
+    in `infra/docs/IMPLEMENTATION_NOTES.md` ("Contract v2, step 8").
 
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
@@ -490,13 +523,6 @@ project files at the monorepo root (3f).
 
 ## Owner deliverables pending
 
-- Delivered: the second `make lock-collections` run (2026-10-15T20:33:03Z),
-  recorded in `ansible_collections.artifacts` with the approved
-  `lock-collections` CI job (owner, with the "commit" for the symbolic-link
-  fix: on every push touching `infra/versions.lock.yml` or
-  `infra/tools/lockcheck/`, and weekly; a difference found by the weekly run
-  blocks like any CI failure); waiting for the owner's "commit".
-
 - Approval of the model candidates in `infra/models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
   `TODO(verify)` revisions because Hugging Face is not reachable from the build
@@ -571,9 +597,8 @@ step 4" through "after step 13"):
 - 3d.7: the Galaxy artifact URL and sha256 of each of the five pinned
   collections (`ansible_collections.artifacts` in `infra/versions.lock.yml`)
   and their copy in the generated `infra/bootstrap/lib/pins.sh`. Resolved
-  with the owner's `make lock-collections` output (2026-10-15, waiting for
-  "commit"); the four `ansible_collections.fallback` entries go with the
-  fallback in 3d.8.
+  with the owner's `make lock-collections` output (`4aeb35b`); the four
+  `ansible_collections.fallback` entries go with the fallback in 3d.8.
 
 ## Known issues
 
@@ -615,13 +640,11 @@ step 4" through "after step 13"):
 - Since 3d.7 bootstrap installs the collections only from the artifacts of
   `ansible_collections.artifacts` in the lock, each after its sha256
   matched. Their URLs, sha256s and sizes are the owner's
-  `make lock-collections` output of 2026-10-15 (waiting for "commit");
-  until that commit, bootstrap on a host ends with exit code 50 at the
-  Ansible environment and names the unverified pin.
+  `make lock-collections` output of 2026-10-15 (`4aeb35b`).
 - `make lock-collections` listed only `COPYING` as `ansible.posix`'s
   license file: its rule took only names beginning with `COPYING` or
-  `LICENSE` and missed `PSF-license.txt`. Fixed with the pins (waiting for
-  "commit"): any file in a `LICENSES` directory, or a text file whose name
+  `LICENSE` and missed `PSF-license.txt`. Fixed with the pins (`4aeb35b`):
+  any file in a `LICENSES` directory, or a text file whose name
   contains `COPYING`, `LICENSE`, `LICENCE` or `NOTICE`; REUSE's `.license`
   annotations excluded.
 - CI's `infra` workflow was red on `a686e28` (3d.6), found in 3d.7 from
@@ -729,10 +752,8 @@ step 4" through "after step 13"):
 
 ## Next step
 
-The owner's "commit" for the collection pins with the `lock-collections`
-CI job and the license-file fix, then the CI run of that push job by job
-(the new `lock-collections` job included); 3d.8 (infra §16 step 22, the
-owner's 3d.7 decisions and the NOTICE rule) starts only after that, under
-the [Process rules](#process-rules-in-force). Still open: the remaining
-`TODO(verify)` items (118), which need network access or reference
-hardware.
+3d.8 (infra §16 step 22, the owner's 3d.7 decisions and the NOTICE rule)
+is built and waits for the owner's "commit", under the
+[Process rules](#process-rules-in-force); then 3e. Still open: the
+remaining `TODO(verify)` items (113), which need network access or
+reference hardware.

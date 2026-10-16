@@ -78,6 +78,10 @@ class Wizard:
         review: The deployment's own checks of every platform answer (screen 13).
         review_key: The platform answers the review was made for.
         platform_approved: The operator approved the reviewed platform.
+        replace_platform: The active platform the operator confirmed replacing
+            by typing its name (memory only; the TUI's ``--replace-platform``).
+        replace_key: The platform answers that confirmation was made for; a
+            change of them drops it.
     """
 
     answers: Answers = field(default_factory=Answers)
@@ -98,6 +102,14 @@ class Wizard:
     review: release_mod.Inspection | None = None
     review_key: str = ""
     platform_approved: bool = False
+    replace_platform: str = ""
+    replace_key: str = ""
+
+    def replacing(self) -> str:
+        """The confirmed replacement, while the platform answers are the confirmed ones."""
+        if self.replace_platform and self.replace_key == release_mod.review_key(self.answers):
+            return self.replace_platform
+        return ""
 
     @property
     def platform_needs(self) -> release_mod.Needs:
@@ -199,6 +211,9 @@ class Wizard:
             options.append("--restore")
         if self.mok_password and "--mok-password-stdin" not in options:
             options.append("--mok-password-stdin")
+        replacing = self.replacing()
+        if replacing and not any(o.startswith("--replace-platform") for o in options):
+            options.append(f"--replace-platform={replacing}")
         if not self.build_images_now and self.answers.images_build:
             skip = [o for o in options if o.startswith("--skip-tags=")]
             if skip:

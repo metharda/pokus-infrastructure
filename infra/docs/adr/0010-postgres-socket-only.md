@@ -30,7 +30,9 @@ over an internal Docker network.
    `/run/pinka/postgres/` (group `potka-svc`: the platform's service roles and
    the metrics exporter) and `/run/pinka/postgres-reader/` (group `pinka`: the
    researchers' `potka_reader` and Grafana's `potka_grafana`). `tmpfiles.d`
-   recreates both at boot with mode 0750.
+   recreates both at boot with mode 0750. Since contract v2 the service
+   directory's group is `<platform>-db` and the roles are named after the
+   active platform ([integration contract](../contracts.md#postgresql)).
 2. `pg_hba.conf` admits only the superuser (for maintenance inside the
    container) and the contract's roles plus `pinka_monitor`, all with
    SCRAM-SHA-256. `pg_hba` cannot tell the two directories apart: the

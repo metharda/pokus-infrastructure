@@ -30,7 +30,7 @@ from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Stat
 from pinka_installer import release, validators
 from pinka_installer.answers import GENERATE, PROVIDED, Answers, Source
 from pinka_installer.tui.base import Problems, StepScreen
-from pinka_installer.tui.widgets import Field, NavBar
+from pinka_installer.tui.widgets import Field, NavBar, TypedConfirm
 from pinka_platform import mirror
 
 SAFE = YAML(typ="safe")
@@ -407,7 +407,10 @@ class PlatformReviewScreen(StepScreen):
         "on this host: its accounts and privilege profiles, the sockets dedicated to the "
         "untrusted agent, its training jobs with their images and resources, its restricted "
         "content, which state is backed up, what it requires. Approve it to continue; any "
-        "change on the Platform screen asks for a new review."
+        "change on the Platform screen asks for a new review. A release of another platform "
+        "than the active one is refused unless you replace the active platform: Replace "
+        "asks you to type its name, exactly like pinka platform purge, and changes nothing "
+        "without it."
     )
 
     def not_applicable(self) -> str | None:  # noqa: D102
@@ -429,10 +432,20 @@ class PlatformReviewScreen(StepScreen):
 
     def on_mount(self) -> None:  # noqa: D102
         if self.not_applicable() is None and self.current is None:
-            self.check(copy.deepcopy(self.answers))
+            self.check(copy.deepcopy(self.answers), self.wizard.replacing() or None)
 
     def body(self) -> ComposeResult:  # noqa: D102
         review = self.current
+        replacing = self.wizard.replacing()
+        if replacing:
+            yield Static(
+                f"Replacing the active platform {replacing} (you typed its name). Its "
+                "services stop; its releases, content, state and database stay on disk until "
+                f"you purge them with pinka platform purge {replacing}.",
+                id="replacing",
+                classes="banner warn",
+                markup=False,
+            )
         if review is None:
             yield Static(
                 "Checking the release, its content packages and its settings …",
@@ -448,6 +461,14 @@ class PlatformReviewScreen(StepScreen):
                 classes="banner bad",
                 markup=False,
             )
+            if review.active and not replacing:
+                yield Static(
+                    f"{review.active} is the active platform. Deploying this release replaces "
+                    "it; you confirm that by typing its name.",
+                    classes="info",
+                    markup=False,
+                )
+                yield Button(f"Replace {review.active} …", id="replace", variant="error")
         else:
             yield from review_lines(review.found)
         yield Field(
@@ -462,16 +483,44 @@ class PlatformReviewScreen(StepScreen):
     def on_extra_button(self, event: Button.Pressed) -> None:  # noqa: D102
         if event.button.id == "check":
             self.wizard.review = None
-            self.check(copy.deepcopy(self.answers))
+            self.check(copy.deepcopy(self.answers), self.wizard.replacing() or None)
+        elif event.button.id == "replace":
+            review = self.current
+            active = review.active if review is not None else ""
+            if not active:
+                return
+            text = (
+                f"The active platform {active} is replaced by this release: its services "
+                "stop, the new platform's services start, and its releases, content, state, "
+                "restricted area and database stay on disk until you purge them with "
+                f"pinka platform purge {active}. Take a backup first."
+            )
+            self.app.push_screen(
+                TypedConfirm(f"Replace the active platform {active}", text, active),
+                lambda confirmed: self._replace(active, bool(confirmed)),
+            )
+
+    def _replace(self, active: str, confirmed: bool) -> None:
+        """Replace the active platform only after its name was typed."""
+        if not confirmed:
+            self.notify("Nothing changed: the active platform's name was not typed")
+            return
+        self.wizard.replace_platform = active
+        self.wizard.replace_key = release.review_key(self.answers)
+        self.wizard.review = None
+        self.call_later(self.recompose)
+        self.check(copy.deepcopy(self.answers), active)
 
     @work(thread=True, exclusive=True)
-    def check(self, answers: Answers) -> None:
+    def check(self, answers: Answers, replace: str | None = None) -> None:
         """Run the deployment's checks on every platform answer.
 
         Args:
             answers: A copy of the answers.
+            replace: The active platform the operator confirmed replacing, or
+                None (bootstrap's own ``--replace-platform``).
         """
-        result = self.ctx.host.inspect_platform(answers, full=True)
+        result = self.ctx.host.inspect_platform(answers, full=True, replace=replace)
         self.app.call_from_thread(self._checked, result, release.review_key(answers))
 
     def _checked(self, result: release.Inspection, key: str) -> None:

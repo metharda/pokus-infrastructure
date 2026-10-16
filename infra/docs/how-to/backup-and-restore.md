@@ -113,7 +113,10 @@ snapshot are kept.
 
 1. On a new machine, prepare it as for a first installation with the same
    host_vars file and vault (the vault holds the repository and its
-   password).
+   password), from the same infra release the backed-up lab ran: a clone
+   at its commit, or, for a lab installed from a release package, the
+   package of the same tag
+   ([How to install from a release package](install-from-a-release-package.md)).
 2. Run bootstrap with the restore:
 
     <!-- qa:skip reason="restores the lab host" -->

@@ -1,5 +1,5 @@
 ---
-title: How to replace the lab's platform
+title: How to replace or purge a platform
 type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
@@ -7,7 +7,7 @@ last_verified: {date: null, rc: null, by: null}
 description: Deploy a platform with another name in place of the active one, and later remove the replaced platform's data for good.
 ---
 
-# How to replace the lab's platform
+# How to replace or purge a platform
 
 A lab runs one platform at a time. A release with another name than the
 active platform is refused unless you name the platform it replaces. The
@@ -18,12 +18,37 @@ database stay on disk until you purge them.
 
 !!! note "Prerequisites"
     - A lab host with an active platform
-      ([How to deploy a platform](deploy-platform.md)).
+      ([How to plug a platform into the lab](deploy-platform.md)).
     - The new platform's sources in the host_vars file (`platform`,
       `content`).
     - A recent backup, if you mean to purge the old platform afterwards.
 
-## Replace the platform
+## Replace the platform with the installer
+
+1. Start the installer on the lab host; on an installed lab it opens in
+   modify mode, filled in from the host_vars file. Change the platform's
+   source on the Platform screen and inspect the release:
+
+    <!-- qa:skip reason="interactive installer on the lab host" -->
+    ```bash
+    sudo ./bootstrap/bootstrap.sh
+    ```
+
+2. On the Platform review screen the release is refused while another
+   platform is active, and **Replace `<old>` …** appears, where `<old>` is
+   the active platform's name. Choose it; the confirmation names the active
+   platform and what replacing it does, and asks for its name, exactly like
+   `pinka platform purge`:
+
+    ![The confirmation to replace the active platform](../assets/installer/replace.svg)
+
+    Type the active platform's name and confirm. Without the typed name
+    nothing changes. The review runs again with the replacement, and the
+    installer runs bootstrap with `--replace-platform <old>`. A change of
+    the platform's answers afterwards drops the confirmation; confirm again
+    for the new release.
+
+## Replace the platform without the installer
 
 1. Check the new release; the check also confirms which platform it replaces:
 

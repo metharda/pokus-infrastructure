@@ -371,12 +371,13 @@ def test_the_pinned_uv_is_installed_like_bootstrap_does() -> None:
     assert entry["format"] == "tar.gz"
 
 
-# --- the collections' Galaxy fallback (make setup) -----------------------------------------
+# --- the collections of make setup: Galaxy, or a release package ---------------------------
 
 
 GALAXY_BIN = Path(sys.executable).parent / "ansible-galaxy"
 DEMO = "pinkatest.demo"
-DEMO_URL = "https://github.com/example-org/demo/releases/download/1.0.0/pinkatest-demo-1.0.0.tar.gz"
+DEMO_URL = "https://galaxy.example.com/download/pinkatest-demo-1.0.0.tar.gz"
+DEMO_FILE = "pinkatest-demo-1.0.0.tar.gz"
 
 
 def closed_port() -> int:
@@ -396,7 +397,7 @@ def galaxy_env(tmp_path: Path) -> dict[str, str]:
 
 @pytest.fixture
 def demo(tmp_path: Path) -> dict[str, Any]:
-    """A collection built like a release tarball, its lock and its requirements."""
+    """A collection built by ansible-galaxy, its lock pin and its requirements."""
     env = galaxy_env(tmp_path)
     source = tmp_path / "source"
     subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
@@ -433,7 +434,13 @@ def demo(tmp_path: Path) -> dict[str, Any]:
     doc = {
         "ansible_collections": {
             "collections": {DEMO: "1.0.0"},
-            "fallback": {DEMO: {"url": DEMO_URL, "sha256": hashlib.sha256(content).hexdigest()}},
+            "artifacts": {
+                DEMO: {
+                    "url": DEMO_URL,
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "size": len(content),
+                }
+            },
         }
     }
     return {"doc": doc, "content": content, "requirements": requirements, "env": env}
@@ -458,32 +465,32 @@ def run_galaxy(env: dict[str, str]) -> Any:
     return run
 
 
-def test_galaxy_unreachable_installs_and_verifies_the_fallback(
+def package_tree(tmp_path: Path, content: bytes) -> Path:
+    """An unpacked release package holding only the demo artifact."""
+    root = tmp_path / "package"
+    (root / "release" / "collections").mkdir(parents=True)
+    (root / "release" / "collections" / DEMO_FILE).write_bytes(content)
+    return root
+
+
+def test_galaxy_unreachable_installs_from_a_release_package(
     tmp_path: Path, demo: dict[str, Any]
 ) -> None:
-    # Galaxy does not answer (nothing listens on its port): setup downloads the
-    # pinned release tarball, checks its sha256, installs it, and the same
-    # FILES.json check as after a Galaxy install passes.
-    asked: list[str] = []
-
-    def github(url: str, out: Any) -> str:
-        asked.append(url)
-        out.write(demo["content"])
-        return hashlib.sha256(demo["content"]).hexdigest()
-
+    # Galaxy does not answer (nothing listens on its port): setup takes the
+    # artifact from the release package, compares it with the lock's pin,
+    # checks it, installs it, and ansible-galaxy verifies it.
     dest = tmp_path / "collections"
-    source = devsetup.install_collections(
+    installed = devsetup.install_collections(
         demo["doc"],
         demo["requirements"],
         dest,
         tmp_path / "downloads",
         galaxy="ansible-galaxy",
+        package=str(package_tree(tmp_path, demo["content"])),
         server=f"https://127.0.0.1:{closed_port()}",
-        downloader=github,
         run=run_galaxy(demo["env"]),
     )
-    assert source == "fallback"
-    assert asked == [DEMO_URL]
+    assert installed == devsetup.Installed("package", [])
     assert (dest / "ansible_collections" / "pinkatest" / "demo" / "FILES.json").is_file()
     verify = subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
         [
@@ -505,37 +512,40 @@ def test_galaxy_unreachable_installs_and_verifies_the_fallback(
     assert verify.returncode == 0, verify.stdout + verify.stderr
 
 
-def test_a_wrong_tarball_checksum_stops_setup(tmp_path: Path, demo: dict[str, Any]) -> None:
-    tampered = demo["content"] + b"x"
-
-    def github(url: str, out: Any) -> str:
-        out.write(tampered)
-        return hashlib.sha256(tampered).hexdigest()
-
+@pytest.mark.parametrize("case", ["tampered", "unpinned", "missing", "no package"])
+def test_without_galaxy_only_a_package_matching_the_pins_installs(
+    tmp_path: Path, demo: dict[str, Any], case: str
+) -> None:
+    doc = copy.deepcopy(demo["doc"])
+    content = demo["content"]
+    message = {
+        "tampered": r"sha256 \w+ and size \d+ differ from the lock's pin",
+        "unpinned": "has no verified pin in versions.lock.yml",
+        "missing": f"no artifact of {DEMO} 1.0.0",
+        "no package": "Galaxy is unreachable .* and no release package was given",
+    }[case]
+    if case == "tampered":
+        content = content + b"x"
+    elif case == "unpinned":
+        doc["ansible_collections"]["artifacts"][DEMO]["sha256"] = "TODO(verify)"
+    package = package_tree(tmp_path, content)
+    if case == "missing":
+        (package / "release" / "collections" / DEMO_FILE).unlink()
     calls: list[list[str]] = []
-    dest, downloads = tmp_path / "collections", tmp_path / "downloads"
-    with pytest.raises(checks.FetchRefusedError, match=r"sha256 is .*, pinned"):
+    dest = tmp_path / "collections"
+    with pytest.raises(checks.FetchRefusedError, match=message):
         devsetup.install_collections(
-            demo["doc"],
+            doc,
             demo["requirements"],
             dest,
-            downloads,
+            tmp_path / "downloads",
             galaxy="ansible-galaxy",
-            server=f"https://127.0.0.1:{closed_port()}",
-            downloader=github,
+            package=None if case == "no package" else str(package),
+            reachable=lambda url: False,
             run=recorder(calls),
         )
     assert calls == []  # nothing was installed
     assert not dest.exists()
-    assert list(downloads.iterdir()) == []  # and no tarball is kept
-    # An unverified pin never downloads either.
-    doc = copy.deepcopy(demo["doc"])
-    doc["ansible_collections"]["fallback"][DEMO]["sha256"] = "TODO(verify)"
-    with pytest.raises(checks.FetchRefusedError, match=r"pinkatest\.demo is not verified yet"):
-        checks.fetch_collections(doc, downloads, downloader=github)
-    del doc["ansible_collections"]["fallback"][DEMO]
-    with pytest.raises(checks.FetchRefusedError, match="no release tarball pinned"):
-        checks.fetch_collections(doc, downloads, downloader=github)
 
 
 def galaxy_download(calls: list[list[str]], content: bytes) -> devsetup.Runner:
@@ -572,10 +582,10 @@ def test_galaxy_reachable_downloads_checks_and_installs_offline(
         downloads,
         galaxy="ansible-galaxy",
         reachable=lambda url: url == "https://galaxy.ansible.com/api/",
-        downloader=lambda url, out: pytest.fail("no fallback download when Galaxy answers"),
+        package=str(tmp_path / "unused"),  # never read while Galaxy answers
         run=galaxy_download(calls, demo["content"]),
     )
-    assert source == "galaxy"
+    assert source == devsetup.Installed("galaxy", [])
     target = downloads / "galaxy"
     download = ["collection", "download", "--no-deps", "-r", str(demo["requirements"])]
     install = ["collection", "install", "--force", "--offline", "--no-deps"]
@@ -594,10 +604,15 @@ def test_a_refused_artifact_from_galaxy_installs_nothing(
     bad = collection_testlib.artifact(
         DEMO, "1.0.0", {"README.md": b"demo"}, links={"tests/link.sh": linkname}
     )
+    # Pinned as it is, so only the artifact check can refuse it.
+    doc = copy.deepcopy(demo["doc"])
+    doc["ansible_collections"]["artifacts"][DEMO].update(
+        sha256=hashlib.sha256(bad).hexdigest(), size=len(bad)
+    )
     calls: list[list[str]] = []
     with pytest.raises(checks.FetchRefusedError, match="the artifact is refused"):
         devsetup.install_collections(
-            demo["doc"],
+            doc,
             demo["requirements"],
             tmp_path / "collections",
             tmp_path / "downloads",
@@ -609,16 +624,44 @@ def test_a_refused_artifact_from_galaxy_installs_nothing(
 
 
 def test_the_collection_artifacts_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
-    # make lock-check downloads them like the binaries once they are verified:
-    # every locked collection's artifact, and every fallback tarball pinned.
-    # The fallback has no entry for a collection added since 3d.6 until the
-    # owner decides on its source; it refuses such a collection by name.
+    # make lock-check downloads every locked collection's artifact like the
+    # binaries. Galaxy's artifact and its sha256 are the only pins: no
+    # GitHub-archive fallback is left (owner decision with the 3d.7 commit).
     wheres = [where for where, _, _ in checks._binary_assets(lock)]
     section = lock["ansible_collections"]
-    for name in section["collections"]:
-        assert f"ansible_collections.artifacts.{name}" in wheres
-    for name in section.get("fallback", {}):
-        assert f"ansible_collections.fallback.{name}" in wheres
+    assert [w for w in wheres if w.startswith("ansible_collections.")] == [
+        f"ansible_collections.artifacts.{name}" for name in section["artifacts"]
+    ]
+    assert set(section) == {"verified_on", "source", "collections", "artifacts"}
+
+
+@pytest.mark.parametrize("pinned", [True, False])
+def test_from_galaxy_the_artifact_must_match_its_pin(
+    tmp_path: Path, demo: dict[str, Any], pinned: bool
+) -> None:
+    # A pinned collection's Galaxy artifact must have the pinned sha256 and
+    # size; one not pinned yet (a maintainer pinning an upgrade) installs
+    # after its check and is named.
+    doc = copy.deepcopy(demo["doc"])
+    entry = doc["ansible_collections"]["artifacts"][DEMO]
+    if pinned:
+        entry["sha256"] = "0" * 64
+    else:
+        entry.update(url="TODO(verify)", sha256="TODO(verify)")
+    calls: list[list[str]] = []
+    kwargs: dict[str, Any] = {
+        "galaxy": "ansible-galaxy",
+        "reachable": lambda url: True,
+        "run": galaxy_download(calls, demo["content"]),
+    }
+    args = (doc, demo["requirements"], tmp_path / "collections", tmp_path / "downloads")
+    if pinned:
+        with pytest.raises(checks.FetchRefusedError, match="differ from the lock's pin"):
+            devsetup.install_collections(*args, **kwargs)
+        assert [c[2] for c in calls] == ["download"]  # nothing was installed
+    else:
+        installed = devsetup.install_collections(*args, **kwargs)
+        assert installed == devsetup.Installed("galaxy", [f"{DEMO} 1.0.0"])
 
 
 def test_every_locked_collection_has_exactly_one_artifact(lock: dict[str, Any]) -> None:

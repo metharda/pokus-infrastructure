@@ -68,9 +68,9 @@ and most of its commands need `sudo`.
 ## Platform, QA and split inference
 
 - Deploy or update the platform and its content packages:
-  [How to deploy a platform](how-to/deploy-platform.md); replace it with another
+  [How to plug a platform into the lab](how-to/deploy-platform.md); replace it with another
   platform and purge the old one:
-  [How to replace the lab's platform](how-to/replace-platform.md).
+  [How to replace or purge a platform](how-to/replace-platform.md).
 - Run a maintenance window on a staging lab:
   [How to run a QA maintenance window on staging](how-to/staging-window.md).
 - Install the QA team's trusted keys and attestations:
@@ -85,7 +85,8 @@ and most of its commands need `sudo`.
 - Doctor reports a check: every check ID has a section in
   [How to fix a failed doctor check](how-to/fix-doctor-checks.md).
 - Logs: the journal of the lab's units (`journalctl -u pinka-lab.target`,
-  `journalctl -u 'pinka-*' -u 'potka-*'`), bootstrap's logs under `/var/log/pinka-bootstrap/`, and the
-  run's own telemetry in Grafana.
+  `journalctl -u 'pinka-*' -u '<platform>-*'`, where `<platform>` is the
+  active platform's name), bootstrap's logs under
+  `/var/log/pinka-bootstrap/`, and the run's own telemetry in Grafana.
 
 The security model behind all of this is in [Security of the lab host](security.md).

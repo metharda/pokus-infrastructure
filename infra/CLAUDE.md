@@ -95,7 +95,7 @@ the prompt text where they differ.
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,
   `docs/reference/{answers,cli/pinka-installer}.md`,
-  `docs/reference/{platform-manifest,platform-profiles,platform-records,cli/pinka-platform}.md`,
+  `docs/reference/{platform-manifest,platform-profiles,platform-records,platform-files,cli/pinka-platform}.md`,
   `contract/reserved-names.yml` and the `$defs.reserved_*` of
   `contract/platform-manifest.schema.json`, the screenshots
   `docs/assets/installer/*.svg` (copies of TUI snapshots),

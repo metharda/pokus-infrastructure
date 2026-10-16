@@ -24,7 +24,7 @@ has the steps.
 | --- | --- | --- | --- |
 | Base, accounts, SSH, firewall, Tailscale, Docker | yes | yes | yes |
 | Incus, golden images, benchmark targets | yes | yes | no |
-| PostgreSQL, OPA, catalog, platform | yes | yes | no |
+| PostgreSQL, OPA, the platform and its content | yes | yes | no |
 | Prometheus, Loki, Tempo, Grafana | yes | yes | no; forwards to the lab node |
 | Collectors, node exporter, cAdvisor | yes | yes | yes |
 | GPU exporter, models, vLLM | with `gpu_inference` | no | yes (needs `gpu_inference`) |
@@ -63,8 +63,8 @@ on `tailscale0` only:
 
 - **18704** on the inference node: the inference control endpoint accepts
   the lab node's certificate and forwards the connection byte for byte to
-  vLLM, which itself listens only on 127.0.0.1. The gateway and the
-  orchestrator use the OpenAI-compatible API unchanged.
+  vLLM, which itself listens only on 127.0.0.1. The platform's services use
+  the OpenAI-compatible API unchanged.
 - **18710** on the inference node: the control API, with exactly `GET
   /health` (including the node's fingerprint hash), `GET /model` (the served
   model and the `MANIFEST.json` whose hashes the models role verified on the
@@ -77,9 +77,12 @@ on `tailscale0` only:
   only the paired certificate and labels everything with the inference node's
   name (`pinka.machine`).
 
-On the lab node the orchestrator reads the client key as a member of
-`potka-orch`, and the LLM gateway through a POSIX ACL entry; the agent
-runner cannot reach `/etc/pinka/inference` at all.
+On the lab node only the inference forwarder `pinka-inference-forwarder`,
+which runs as root, reads the client key in `/etc/pinka/inference/`; it
+offers the API and the control API on the lab node's loopback, so platform
+services handle no TLS and no keys. Only the accounts of profiles with the
+inference API reach the forwarder, and only the controller its control port
+([Integration contract](contracts.md#inference)).
 
 ## Measurement caveats
 

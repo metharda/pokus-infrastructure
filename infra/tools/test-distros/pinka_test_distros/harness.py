@@ -1,8 +1,9 @@
 """One distribution test: a disposable VM from launch to deletion.
 
 The lab is bootstrapped twice (the second run must change nothing) and
-checked with ``pinka doctor --smoke``; then the reference platform is
-deployed in it (BUILD_PROMPT §7.18, §19.9): its isolation probes, the
+checked with ``pinka doctor --smoke``, from a release package of the tested
+commit (its pinned collections bundled, owner decision of 3d.7 and 3d.8);
+then the reference platform is deployed in it (BUILD_PROMPT §7.18, §19.9): its isolation probes, the
 training flow with the CPU-only job, a run interrupted by a reboot and
 resumed, a second deployment that changes nothing, the replacement by a
 renamed copy, and a backup and restore.
@@ -44,7 +45,10 @@ STAGES = (
 )
 KEEP = ("never", "failed", "always")
 GUEST_REPO = "/root/pinka"
-GUEST_INFRA = f"{GUEST_REPO}/infra"
+# Bootstrap runs from the unpacked release package; the clone serves the
+# reference platform's sources and the guest helper.
+GUEST_INFRA = "/root/pokus-infrastructure"
+GUEST_PACKAGE = f"{GUEST_INFRA}.tar.gz"
 GUEST_VAULT_PASS = "/root/ci-vault-pass"  # noqa: S105 - a path, not a password
 GUEST_SECRETS = "/root/ci-secrets.env"
 # Arguments longer than this are shortened in the stage logs (the probe's source).
@@ -83,6 +87,7 @@ class Settings:
 
     Attributes:
         repo_tar: Tar archive of a clone of the repository at ``commit``.
+        package: The release package of ``commit`` (``make release-package``).
         answers: The CI answers template (``tests/answers/ci.yml``).
         commit: Tested commit.
         out_dir: Directory for this run's logs.
@@ -94,6 +99,7 @@ class Settings:
     """
 
     repo_tar: Path
+    package: Path
     answers: Path
     commit: str
     out_dir: Path
@@ -233,8 +239,15 @@ class Test:
         self.incus.push(self.name, self.settings.repo_tar, "/root/pinka.tar")
         self._require(
             "prepare",
-            f"tar -xf /root/pinka.tar -C /root && test -d {GUEST_INFRA}",
+            f"tar -xf /root/pinka.tar -C /root && test -d {GUEST_REPO}/infra",
             "unpacking the repository",
+        )
+        self.incus.push(self.name, self.settings.package, GUEST_PACKAGE)
+        self._require(
+            "prepare",
+            f"mkdir -p {GUEST_INFRA} && tar -xzf {GUEST_PACKAGE} -C {GUEST_INFRA}"
+            f" --strip-components=1 && test -f {GUEST_INFRA}/release/RELEASE.json",
+            "unpacking the release package",
         )
         with tempfile.TemporaryDirectory() as tmp:
             answers = Path(tmp, "answers.yml")
@@ -282,6 +295,9 @@ class Test:
             "bootstrap",
             f"--answers {self._answers_path()} --accept-degraded",
         )
+        state = json.loads((self.dir / "bootstrap-state.json").read_text(encoding="utf-8"))
+        if state.get("infra_source") != "package":
+            raise StageError(f"bootstrap ran from {state.get('infra_source')}, not the package")
         profile = self.dir / "host-profile.json"
         if not self.incus.pull(self.name, PROFILE_FILE, profile):
             raise StageError("no host profile after bootstrap")

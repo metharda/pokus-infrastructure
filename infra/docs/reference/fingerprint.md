@@ -95,9 +95,9 @@ string or null
 | `fingerprint.software.versions.tailscale` | see `nullable_string` | yes | — |
 | `fingerprint.software.versions.python` | see `nullable_string` | yes | — |
 | `fingerprint.software.versions.ansible_core` | see `nullable_string` | yes | — |
-| `fingerprint.software.containers` | object | yes | Lab container name to the image reference it runs (`&lt;image&gt;@&lt;digest&gt;`), null if missing. |
+| `fingerprint.software.containers` | object | yes | Lab container name to the image reference it runs (`<image>@<digest>`), null if missing. |
 | `fingerprint.software.containers.*` | string or null | no | any key; value as described |
-| `fingerprint.software.golden_images` | object | yes | Golden image alias (`&lt;blueprint&gt;/&lt;version&gt;`) to its Incus image fingerprint and the packages its build installed. |
+| `fingerprint.software.golden_images` | object | yes | Golden image alias (`<blueprint>/<version>`) to its Incus image fingerprint and the packages its build installed. |
 | `fingerprint.software.golden_images.*` | see `golden_image` | no | any key; value as described |
 | `fingerprint.config` | object | yes | The configuration the lab was built from. |
 | `fingerprint.config.infra_commit` | string or null | yes | Repository commit bootstrap ran from. |

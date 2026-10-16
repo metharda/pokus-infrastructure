@@ -1110,6 +1110,171 @@ def test_ref_matches_head(repo: Path) -> None:
     assert res.stdout.split() == ["tag", "head", "missing"]
 
 
+# --- running from a release package (owner's choice in 3d.8) ------------------------------
+
+
+def release_package(tmp_path: Path, repo: Path, tag: str | None = "infra-v1.0.0") -> Path:
+    """The repository's infra tree at HEAD, unpacked like a release package."""
+    (repo / "infra" / ".gitignore").write_text("/ansible/inventory/host_vars/*\n/release/\n")
+    (repo / "infra" / "README.md").write_text("infra\n")
+    git(repo, "add", ".")
+    git(repo, "-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-qm", "pkg")
+    root = tmp_path / "unpacked" / "package-1.0.0"
+    root.mkdir(parents=True)
+    archive = subprocess.run(
+        ["git", "-C", str(repo), "archive", "--format=tar", "HEAD:infra"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    subprocess.run(["tar", "-x", "-C", str(root)], input=archive, check=True)
+    (root / "release" / "collections").mkdir(parents=True)
+    record: dict[str, object] = {
+        "format": 1,
+        "tag": tag,
+        "version": "1.0.0",
+        "commit": git(repo, "rev-parse", "HEAD"),
+        "infra_tree": git(repo, "rev-parse", "HEAD:infra"),
+        "collections": [],
+    }
+    (root / "release" / "RELEASE.json").write_text(json.dumps(record, indent=2) + "\n")
+    return root
+
+
+def package_state_of(root: Path) -> dict[str, str]:
+    res = bash(
+        f"""
+        rc=0
+        package_state {q(root)} || rc=$?
+        printf 'rc=%s\\ncommit=%s\\ntree=%s\\ndirty=%s\\nsource=%s\\ntag=%s\\nfiles=%s\\n' \
+          "$rc" "$GIT_COMMIT" "$GIT_INFRA_TREE" "$GIT_INFRA_DIRTY" "$GIT_SOURCE" \
+          "$RELEASE_TAG" "$PACKAGE_TREE"
+        """,
+        env=AS_SUDO_USER,
+    )
+    return dict(line.split("=", 1) for line in res.stdout.splitlines())
+
+
+def test_a_release_package_records_its_release(tmp_path: Path, repo: Path) -> None:
+    from pinka_lockcheck import bundle  # noqa: PLC0415 - the package builder's computation
+
+    root = release_package(tmp_path, repo)
+    state = package_state_of(root)
+    assert state["rc"] == "0"
+    assert state["source"] == "package"
+    assert state["tag"] == "infra-v1.0.0"
+    assert state["commit"] == git(repo, "rev-parse", "HEAD")
+    assert state["tree"] == git(repo, "rev-parse", "HEAD:infra")
+    assert state["dirty"] == "false"
+    # Bootstrap's tree hash is the package builder's and check's.
+    assert state["files"] == bundle.tree_hash(root) == state["tree"]
+
+
+def test_a_changed_package_is_dirty_but_operator_files_are_not(tmp_path: Path, repo: Path) -> None:
+    root = release_package(tmp_path, repo)
+    host_vars = root / "ansible" / "inventory" / "host_vars"
+    host_vars.mkdir(parents=True)
+    (host_vars / "lab1.yml").write_text("machine: lab1\n")  # ignored, as in a checkout
+    (root / "release" / "collections" / "x.tar.gz").write_bytes(b"x")  # release/ is left out
+    assert package_state_of(root)["dirty"] == "false"
+    (root / "new-file").write_text("not ignored\n")
+    assert package_state_of(root)["dirty"] == "true"
+    (root / "new-file").unlink()
+    (root / "README.md").write_text("edited\n")
+    state = package_state_of(root)
+    assert state["dirty"] == "true"
+    assert state["tree"] == git(repo, "rev-parse", "HEAD:infra")  # the release is recorded
+    assert state["files"] != state["tree"]
+
+
+def test_a_directory_without_a_release_record_is_no_package(tmp_path: Path, repo: Path) -> None:
+    root = release_package(tmp_path, repo)
+    record = root / "release" / "RELEASE.json"
+    record.write_text('{\n  "format": 1,\n  "commit": "abc"\n}\n')
+    assert package_state_of(root)["rc"] == "3"
+    record.unlink()
+    assert package_state_of(root)["rc"] == "1"
+
+
+def test_a_ref_must_name_the_package_s_release(tmp_path: Path, repo: Path) -> None:
+    root = release_package(tmp_path, repo)
+    commit = git(repo, "rev-parse", "HEAD")
+    res = bash(
+        f"""
+        package_state {q(root)}
+        ref_matches_package infra-v1.0.0 && echo tag
+        ref_matches_package {commit} && echo commit
+        ref_matches_package infra-v9.9.9 || echo other
+        ref_matches_package '' || echo empty
+        """,
+        env=AS_SUDO_USER,
+    )
+    assert res.stdout.split() == ["tag", "commit", "other", "empty"]
+
+
+def stage_git_in(root: Path, options: str) -> subprocess.CompletedProcess[str]:
+    return bash(
+        f"""
+        INFRA_DIR={q(root)}
+        OPT_REF='' OPT_ALLOW_DIRTY=false OPT_CHECK=true
+        {options}
+        stage_git
+        echo "source=$GIT_SOURCE dirty=$GIT_INFRA_DIRTY"
+        """,
+        env=AS_SUDO_USER,
+    )
+
+
+def test_bootstrap_runs_from_an_unpacked_package(tmp_path: Path, repo: Path) -> None:
+    root = release_package(tmp_path, repo)
+    res = stage_git_in(root, "")
+    assert res.returncode == 0, res.stderr
+    assert "release package infra-v1.0.0: repository commit" in res.stdout + res.stderr
+    assert res.stdout.strip().endswith("source=package dirty=false")
+    res = stage_git_in(root, "OPT_REF=infra-v0.9.0")
+    assert res.returncode == 77  # EXIT_OPERATOR
+    assert "--ref infra-v0.9.0 is not this package's release (infra-v1.0.0" in res.stderr
+    (root / "README.md").write_text("edited\n")
+    res = stage_git_in(root, "")
+    assert res.returncode == 77  # EXIT_OPERATOR
+    assert "the package's files differ from its release" in res.stderr
+    res = stage_git_in(root, "OPT_ALLOW_DIRTY=true")
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip().endswith("source=package dirty=true")
+
+
+def test_without_a_checkout_or_a_package_bootstrap_stops(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    res = stage_git_in(plain, "")
+    assert res.returncode == 77  # EXIT_OPERATOR
+    assert "a git checkout of the pokus-infrastructure repository or from an unpacked" in res.stderr
+
+
+def test_from_a_package_the_bundled_artifacts_install_offline(tmp_path: Path) -> None:
+    stubs, calls, installed = collection_setup(tmp_path)
+    root = tmp_path / "package"
+    bundled = root / "release" / "collections"
+    bundled.mkdir(parents=True)
+    for artifact in (tmp_path / "store").iterdir():
+        shutil.copy(artifact, bundled / artifact.name)
+    no_download = 'download() { echo "no download from a package" >&2; return 1; }'
+    script = f"INFRA_DIR={q(root)}; GIT_SOURCE=package\n{stubs}\n{no_download}\n"
+    res = bash(script + f"install_collections {q(tmp_path / 'c')} && echo ok")
+    assert res.stdout.strip().endswith("ok"), res.stderr
+    install = calls.read_text().splitlines()[1].split()
+    assert [Path(f).parent for f in install[7:]] == [bundled, bundled]
+    assert installed.exists()
+    # A bundled artifact that differs from its pin installs nothing.
+    installed.unlink()
+    (bundled / "ansible-posix-2.2.2.tar.gz").write_bytes(b"changed")
+    res = bash(script + f"install_collections {q(tmp_path / 'c')} || echo refused $?")
+    assert res.stdout.strip().endswith("refused 50"), res.stdout + res.stderr
+    assert not installed.exists()
+    (bundled / "ansible-posix-2.2.2.tar.gz").unlink()
+    res = bash(script + f"install_collections {q(tmp_path / 'c')} || echo refused $?")
+    assert "the release package has no artifact of collection ansible.posix 2.2.2" in res.stderr
+
+
 # --- orchestration with stubbed stages ----------------------------------------------------
 
 

@@ -161,13 +161,15 @@ check_collection_artifact() {
 # install_collections DEST: the pinned Ansible collections in DEST, exactly
 # the artifacts of versions.lock.yml. Nothing happens when the installed ones
 # already verify (ansible-galaxy collection verify --offline: every file
-# against its FILES.json). Otherwise every artifact is downloaded, checked
-# against its pinned sha256 and with check_collection_artifact before
-# anything is installed, then installed without contacting Galaxy and without
-# resolving dependencies (transitive dependencies are pinned too), and
-# verified again.
+# against its FILES.json). Otherwise every artifact is taken from the release
+# package's release/collections/ when bootstrap runs from one (GIT_SOURCE
+# package), or downloaded from Galaxy, checked against its pinned sha256 and
+# with check_collection_artifact before anything is installed, then installed
+# without contacting Galaxy and without resolving dependencies (transitive
+# dependencies are pinned too), and verified again.
 install_collections() {
-  local dest=$1 work pin name version url sha256 file rc=0
+  local dest=$1 work pin name version url sha256 file rc=0 bundled=''
+  [[ ${GIT_SOURCE:-checkout} == package ]] && bundled=$INFRA_DIR/release/collections
   local -a pins=() names=() files=()
   mapfile -t pins < <(collection_pins)
   if ((${#pins[@]} == 0)); then
@@ -186,11 +188,20 @@ install_collections() {
   work=$(mktemp -d) || return "$EXIT_TOOLING"
   for pin in "${pins[@]}"; do
     read -r name version url sha256 <<<"$pin"
-    file="$work/${name/./-}-$version.tar.gz"
-    if ! download "$url" "$file"; then
-      log_error "cannot download collection $name $version from '$url' (ansible_collections.artifacts in versions.lock.yml)"
-      rc=$EXIT_TOOLING
-      break
+    if [[ -n $bundled ]]; then
+      file="$bundled/${name/./-}-$version.tar.gz"
+      if [[ ! -f $file ]]; then
+        log_error "the release package has no artifact of collection $name $version ($file)"
+        rc=$EXIT_TOOLING
+        break
+      fi
+    else
+      file="$work/${name/./-}-$version.tar.gz"
+      if ! download "$url" "$file"; then
+        log_error "cannot download collection $name $version from '$url' (ansible_collections.artifacts in versions.lock.yml)"
+        rc=$EXIT_TOOLING
+        break
+      fi
     fi
     if ! verify_sha256 "$file" "$sha256"; then
       rc=$EXIT_TOOLING

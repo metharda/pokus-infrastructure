@@ -1032,6 +1032,67 @@ def test_a_changed_platform_answer_asks_for_a_new_review(repo: Paths) -> None:
     assert [full for full, _ in host.inspections] == [True, True]
 
 
+def test_the_active_platform_is_replaced_only_after_its_name_is_typed(repo: Paths) -> None:
+    # Owner decision with the "commit" for 3d.7: the TUI offers replacing the
+    # active platform behind a confirmation that names it and asks for its
+    # name, exactly like pinka platform purge; without the name nothing changes.
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), active_platform="oldplat")
+    ctx = context(repo, host, machine="pinka-lab")
+    answers = ctx.wizard.answers
+    answers.platform = answers_mod.Source(REFPLAT_REPO, "refplat-v0.1.0", "rp", "refplat-v")
+    answers.content = {"cases": answers_mod.Source(REFPLAT_REPO, "cases-v1", "cases", "cases-v")}
+    installer = app(ctx, first="platform_review")
+    shown = notes(installer)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        refused = [str(s.content) for s in pilot.app.screen.query(".banner.bad").results(Static)]
+        assert any("platform 'oldplat' is active" in text for text in refused), refused
+        await click(pilot, "#replace")
+        dialog = pilot.app.screen
+        assert isinstance(dialog, TypedConfirm)
+        text = "\n".join(str(w.content) for w in dialog.query(Static).results(Static))
+        assert "The active platform oldplat is replaced by this release" in text
+        assert "pinka platform purge oldplat" in text
+        dialog.query_one("#typed", Input).value = "refplat"  # not the active platform's name
+        await pilot.pause()
+        assert dialog.query_one("#confirm").disabled
+        await click(pilot, "#cancel")
+        await settle(pilot)
+        assert ctx.wizard.replacing() == ""
+        assert "Nothing changed: the active platform's name was not typed" in shown
+        assert host.replaces == [None]  # no inspection replaced anything
+        await forward(pilot, "platform_review")  # still refused
+        await click(pilot, "#replace")
+        dialog = pilot.app.screen
+        dialog.query_one("#typed", Input).value = "oldplat"
+        await pilot.pause()
+        await click(pilot, "#confirm")
+        await settle(pilot)
+        assert ctx.wizard.replacing() == "oldplat"
+        assert host.replaces[-1] == "oldplat"
+        warned = [str(s.content) for s in pilot.app.screen.query(".banner.warn").results(Static)]
+        assert any("Replacing the active platform oldplat" in w for w in warned)
+        tick(pilot, "approve")
+        await forward(pilot, "images")
+        options = ctx.wizard.bootstrap_options(ctx.passthrough)
+        assert options.count("--replace-platform=oldplat") == 1
+        # A changed platform answer drops the confirmation: it was for that release.
+        answers.platform_settings = {"ctl": {"steps": 3}}
+        assert ctx.wizard.replacing() == ""
+        assert not any(o.startswith("--replace-platform") for o in ctx.wizard.bootstrap_options())
+
+    drive(installer, flow)
+
+
+def test_a_replacement_given_to_bootstrap_is_kept() -> None:
+    # --replace-platform keeps working as before: the TUI passes it through once.
+    from pinka_installer.tui.model import Wizard  # noqa: PLC0415
+
+    wizard = Wizard()
+    passthrough = ["--replace-platform=oldplat"]
+    assert wizard.bootstrap_options(passthrough).count("--replace-platform=oldplat") == 1
+
+
 def test_the_answers_replay_inspects_the_release_first(repo: Paths, tmp_path: Path) -> None:
     # bootstrap.sh --answers with a platform: the release's checks and vault keys
     # come from the platform tool before any file is written.

@@ -128,8 +128,10 @@ class FakeIncus:
             "models": [refplat.STANDIN_MODEL],
             "transitions": ["suspended", "resumed", "ok"],
             "replaced": True,
+            "infra_source": "package",
             **behaviour,
         }
+        self.infra_source = self.behaviour["infra_source"]
         self.runs = 0
         self.platform = "refplat"
         self.restarts = 0
@@ -166,7 +168,13 @@ class FakeIncus:
     def pull(self, remote: str, local: Path) -> tuple[int, str]:
         if remote == "etc/pinka/bootstrap-state.json":
             local.write_text(
-                json.dumps({"log_file": f"/var/log/run-{self.runs}.log", "result": "ok"})
+                json.dumps(
+                    {
+                        "log_file": f"/var/log/run-{self.runs}.log",
+                        "result": "ok",
+                        "infra_source": self.infra_source,
+                    }
+                )
             )
         elif remote.startswith("var/log/run-"):
             local.write_text(
@@ -269,6 +277,8 @@ def make_test(
     incus = Incus(fake, "pinka-test-distros", sleep=lambda _s: None)
     tar = tmp_path / "pinka.tar"
     tar.write_text("tar")
+    package = tmp_path / "package-0.0.0+000000000000.tar.gz"
+    package.write_text("package")
     secrets_env = tmp_path / "secrets.env"
     secrets_env.write_text(f"PINKA_SECRET_TAILSCALE_AUTHKEY={AUTHKEY}\n")
     times = iter(
@@ -276,6 +286,7 @@ def make_test(
     )
     settings = harness.Settings(
         repo_tar=tar,
+        package=package,
         answers=INFRA / "tests" / "answers" / "ci.yml",
         commit="0" * 40,
         out_dir=tmp_path / "out",
@@ -286,6 +297,27 @@ def make_test(
     )
     target = next(t for t in target_file().targets if t.id == target_id)
     return harness.Test(target, incus, settings), fake
+
+
+def test_the_vm_bootstraps_from_the_release_package(tmp_path: Path) -> None:
+    # Owner decisions of 3d.7 and 3d.8: make test-distros checks the bundled
+    # collections by bootstrapping from a release package of the commit.
+    test, fake = make_test(tmp_path, "debian-13")
+    test.run()
+    package = harness.GUEST_PACKAGE.lstrip("/")
+    assert fake.pushed[package][0] == "package"
+    unpack = next(s for s in fake.scripts() if "--strip-components=1" in s)
+    assert f"test -f {harness.GUEST_INFRA}/release/RELEASE.json" in unpack
+    assert all(
+        f"cd {harness.GUEST_INFRA} && ./bootstrap/bootstrap.sh" in s
+        for s in fake.scripts()
+        if "bootstrap.sh" in s
+    )
+    (tmp_path / "checkout").mkdir()
+    test, _ = make_test(tmp_path / "checkout", "debian-13", infra_source="checkout")
+    record = test.run()
+    assert record["stages"]["bootstrap"] == "failed"
+    assert "bootstrap ran from checkout, not the package" in record["error"]
 
 
 def test_a_passing_test(tmp_path: Path) -> None:
@@ -308,7 +340,9 @@ def test_a_passing_test(tmp_path: Path) -> None:
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
     first, second, deploy, redeploy, replace, restore = [s for s in scripts if "bootstrap.sh" in s]
-    answers_option = "--answers /root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml"
+    answers_option = (
+        "--answers /root/pokus-infrastructure/installer-answers/ptd-debian-13-abcdef.yml"
+    )
     assert answers_option in first
     assert "--accept-degraded" in first and "--answers" not in second
     assert second.endswith("--machine ptd-debian-13-abcdef") and redeploy == second
@@ -321,7 +355,7 @@ def test_a_passing_test(tmp_path: Path) -> None:
     assert fake.pushed["root/ci-secrets.env"][1] == "0600"
     assert fake.pushed["root/ci-vault-pass"][1] == "0600"
     answers = yaml.safe_load(
-        fake.pushed["root/pinka/infra/installer-answers/ptd-debian-13-abcdef.yml"][0]
+        fake.pushed["root/pokus-infrastructure/installer-answers/ptd-debian-13-abcdef.yml"][0]
     )
     assert answers["machine"]["name"] == "ptd-debian-13-abcdef"
     # Deleted after leaving the tailnet.
@@ -751,3 +785,20 @@ def test_every_family_has_a_ci_image() -> None:
     for key in images:
         assert f"image: {key}" in workflow, key
         assert f"image: {key}" in root_workflow, key
+
+
+def test_cli_refuses_without_a_release_package(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The VMs bootstrap from a release package of HEAD; no package, no test.
+    from pinka_lockcheck import bundle  # noqa: PLC0415 - the package builder
+
+    def refused(*_args: object, **_kwargs: object) -> Path:
+        raise bundle.PackageError("ansible.posix 2.2.2: download failed: HTTP 503")
+
+    monkeypatch.setenv(cli.AUTHKEY_ENV, AUTHKEY)
+    monkeypatch.setattr(cli, "lab_running", lambda run: False)
+    monkeypatch.setattr(bundle, "build", refused)
+    argv = ["run", "--target", "debian-13", "--accept-unverified-images"]
+    assert run_cli(argv) == 2
+    assert "refused: the release package of HEAD: ansible.posix 2.2.2" in capsys.readouterr().err

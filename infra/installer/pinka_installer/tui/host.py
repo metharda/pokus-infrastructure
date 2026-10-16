@@ -176,13 +176,17 @@ class Host(Protocol):
         """The user who ran sudo."""
         ...
 
-    def inspect_platform(self, answers: Answers, *, full: bool) -> release.Inspection:
+    def inspect_platform(
+        self, answers: Answers, *, full: bool, replace: str | None = None
+    ) -> release.Inspection:
         """Inspect the answers' platform release with the platform tool.
 
         Args:
             answers: The answers (a platform source set).
             full: Also the content packages and the settings; otherwise the
                 release alone.
+            replace: The active platform the release may replace; None: the
+                one bootstrap was started with (``--replace-platform``).
         """
         ...
 
@@ -290,8 +294,11 @@ class RealHost:
     def invoking_user(self) -> str:  # noqa: D102
         return os.environ.get("SUDO_USER", "")
 
-    def inspect_platform(self, answers: Answers, *, full: bool) -> release.Inspection:  # noqa: D102
-        return release.inspect(answers, self.paths.versions_lock, full=full, replace=self.replace)
+    def inspect_platform(  # noqa: D102
+        self, answers: Answers, *, full: bool, replace: str | None = None
+    ) -> release.Inspection:
+        replace = self.replace if replace is None else replace
+        return release.inspect(answers, self.paths.versions_lock, full=full, replace=replace)
 
 
 def _by_id_names() -> dict[str, str]:

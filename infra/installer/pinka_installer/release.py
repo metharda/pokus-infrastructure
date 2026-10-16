@@ -61,12 +61,16 @@ class Inspection:
             secrets, config, vault_keys, warnings).
         problems: Why it was refused, one line each.
         error: Why it could not be inspected at all (no access, no key).
+        active: The active platform the release would replace, when the
+            one-platform rule refused it (the TUI offers replacing it behind a
+            typed confirmation); empty otherwise.
     """
 
     ok: bool
     found: dict[str, Any] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)
     error: str = ""
+    active: str = ""
 
     @property
     def needs(self) -> Needs:
@@ -237,7 +241,10 @@ def inspect(
                     settings, paths, contract, git=git, host=facts, owner_uid=owner_uid
                 )
         except deploy.Refused as exc:
-            return Inspection(ok=False, problems=[str(p) for p in exc.problems])
+            active = ""
+            if any(p.code == "platform-active" for p in exc.problems):
+                active = str((deploy.read_active(paths) or {}).get("name") or "")
+            return Inspection(ok=False, problems=[str(p) for p in exc.problems], active=active)
         except (mirror.FetchError, deploy.DeployError, OSError, ValueError) as exc:
             return Inspection(ok=False, error=str(exc))
     return Inspection(ok=True, found=found)

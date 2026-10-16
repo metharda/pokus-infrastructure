@@ -29,6 +29,8 @@ from pinka_gen.pages import (
 from pinka_gen.sources import load_yaml
 from pinka_platform import cli as platform_cli
 from pinka_platform import contract as platform_contract
+from pinka_platform import layout as platform_layout
+from pinka_platform import render as platform_render
 
 RESERVED = "contract/reserved-names.yml"
 SCHEMA = "contract/platform-manifest.schema.json"
@@ -38,6 +40,11 @@ PROFILES_PAGE = "docs/reference/platform-profiles.md"
 CLI_PAGE = "docs/reference/cli/pinka-platform.md"
 RECORDS = "contract/records"
 RECORDS_PAGE = "docs/reference/platform-records.md"
+# The files infra writes for the active platform (§12.3), with their schemas.
+FILES_PAGE = "docs/reference/platform-files.md"
+FILE_SCHEMAS = ("principals", "endpoints")
+# The example on that page: the reference platform's manifest (§7.18).
+REFERENCE_MANIFEST = "tests/reference-platform/platform-manifest.yaml"
 # The records in the order a deployment writes them.
 RECORD_FILES = (
     "deployed-from",
@@ -527,6 +534,80 @@ def records_page(root: Path) -> str:
     return "".join(out).rstrip("\n") + "\n"
 
 
+def _file_examples(root: Path) -> dict[str, tuple[str, str]]:
+    """Render the two files for the reference platform on a full node.
+
+    Args:
+        root: Component root.
+
+    Returns:
+        File name to ``(code language, text)``.
+    """
+    manifest = load_yaml(root / REFERENCE_MANIFEST)
+    contract = platform_contract.load(root / "contract")
+    members = [*manifest["services"], *manifest.get("jobs", [])]
+    uids = {
+        f"{manifest['name']}-{m['name']}": platform_layout.PLATFORM_UID_MIN + i
+        for i, m in enumerate(members)
+    }
+    facts = platform_render.LabFacts(
+        machine_name="pinka-lab",
+        lab_mode="production",
+        node_role="full",
+        ports=load_yaml(root / GROUP_VARS)["pinka_default_ports"],
+    )
+    return {
+        "principals": (
+            "json",
+            platform_render.principals_json(platform_render.principals(manifest, contract, uids)),
+        ),
+        "endpoints": (
+            "toml",
+            platform_render.endpoints_toml(platform_render.endpoints(manifest, facts)),
+        ),
+    }
+
+
+def files_page(root: Path) -> str:
+    """Render the reference page of the principals and endpoints files.
+
+    Args:
+        root: Component root.
+
+    Returns:
+        Page text.
+    """
+    examples = _file_examples(root)
+    out = [
+        front_matter(
+            "Principals and endpoints files",
+            ["developer", "operator"],
+            "The two files infra writes for the active platform in contract v2, principals.json "
+            "(accounts, UIDs, sockets and their clients) and endpoints.toml (the addresses and "
+            "paths of infra's facilities, with the effective ports).",
+        ),
+        "# Principals and endpoints files\n\n",
+        "Infra writes two files for the active platform at every deployment, in "
+        "`/etc/pinka/platform/` (0644 root). A platform reads names, UIDs, socket paths, "
+        "addresses and ports from them instead of hard-coding any of them "
+        "([Integration contract](../contracts.md#sockets-principals-and-endpoints)). "
+        "Their JSON Schemas (draft 2020-12) are published with the contract, in "
+        "`contract/principals.schema.json` and `contract/endpoints.schema.json`; the schema of "
+        "`endpoints.toml` describes the parsed TOML document. Each example is rendered for the "
+        f"reference platform (`{REFERENCE_MANIFEST}`) on a full node with the default ports.\n\n",
+    ]
+    for name in FILE_SCHEMAS:
+        schema = json.loads((root / "contract" / f"{name}.schema.json").read_text(encoding="utf-8"))
+        language, text = examples[name]
+        out.append(f"## {schema['title']}\n\n")
+        out.append(f"{schema['description']} Schema file: `contract/{name}.schema.json`.\n\n")
+        out.append(
+            table(["Field", "Type", "Required", "Description"], list(schema_rows(schema, "")))
+        )
+        out.append(f"\nExample:\n\n```{language}\n{text}```\n\n")
+    return "".join(out).rstrip("\n") + "\n"
+
+
 def _subcommands(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
     for action in parser._actions:
         if isinstance(action, argparse._SubParsersAction):
@@ -615,5 +696,13 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
         entries += [
             (f"record {record['title']} field {row[0]}", RECORDS_PAGE, str(row[0]))
             for row in schema_rows(record, "")
+        ]
+    for name in FILE_SCHEMAS:
+        document = json.loads(
+            (root / "contract" / f"{name}.schema.json").read_text(encoding="utf-8")
+        )
+        entries += [
+            (f"file {document['title']} field {row[0]}", FILES_PAGE, str(row[0]))
+            for row in schema_rows(document, "")
         ]
     return entries

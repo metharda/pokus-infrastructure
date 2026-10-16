@@ -48,6 +48,7 @@ def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
         "versions.lock.yml",
         "README.md",
         "tests/distros",
+        "tests/reference-platform/platform-manifest.yaml",
         "installer/requirements.in",
         "installer/requirements.lock",
         "installer/schema",
@@ -113,6 +114,13 @@ def test_lab_pages_cover_every_command() -> None:
 
 def test_table_escapes_pipes() -> None:
     assert pages.table(["a"], [["x|y"]]).splitlines()[2] == "| x\\|y |"
+
+
+def test_table_escapes_angle_brackets_outside_code_spans() -> None:
+    # Markdown shows an entity inside a code span literally.
+    text = pages.table(["a"], [["`<sha256>  <path>` per <file>"], ["one ` <b>"]])
+    assert "| `<sha256>  <path>` per &lt;file&gt; |" in text
+    assert "| one ` &lt;b&gt; |" in text
 
 
 def test_generated_json_carries_provenance() -> None:
