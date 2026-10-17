@@ -1,0 +1,114 @@
+# Managed by pinka (ansible/roles/platform/vars/main.yml). Local changes will be overwritten.
+
+# --- Deployment (BUILD_PROMPT §7.14, contract v2) ---------------------------------
+
+# The deployment tool: the package and the contract, and its command.
+platform_tool_lib: /usr/local/lib/pinka/platform
+platform_tool: /usr/local/libexec/pinka/pinka-platform
+# Files installed below platform_tool_lib (src relative to the repository root).
+platform_tool_files:
+  - {src: tools/platform/pinka_platform, patterns: ["*.py"], dest: pinka_platform}
+  - {src: contract, patterns: ["*.json", "*.yml"], dest: contract}
+  - {src: contract/records, patterns: ["*.json"], dest: contract/records}
+# Root-only mirrors with the deploy key, the pinned host keys and the allowed signers.
+platform_git_dir: /var/lib/pinka/git
+platform_deploy_key: /var/lib/pinka/git/deploy_key
+platform_known_hosts: /var/lib/pinka/git/known_hosts
+platform_allowed_signers: /var/lib/pinka/git/allowed_signers
+# Root-only staging area and the settings file the tool reads.
+platform_staging_dir: /var/lib/pinka/staging
+platform_settings_file: /var/lib/pinka/staging/settings.json
+
+# A platform is deployed when its source is set.
+platform_deploy: "{{ ((platform | default({}, true)).repo | default('')) | length > 0 }}"
+# Every source: the release and the content packages.
+platform_sources: >-
+  {{ ([platform] if platform_deploy | bool else [])
+     + ((content | default({}, true)).values() | list) }}
+# SSH sources, and their hosts ("[host]:port" with a port, as in known_hosts).
+platform_ssh_repos: >-
+  {{ platform_sources | map(attribute='repo') | map('string')
+     | select('match', '^(ssh://[^/]+/|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^/])') | list }}
+platform_ssh_hosts: >-
+  {{ platform_ssh_repos
+     | map('regex_replace', '^ssh://([^@/]+@)?([^:/]+)(:([0-9]+))?/.*$', '[\2]:\4')
+     | map('regex_replace', '^\[([^]]+)\]:$', '\1')
+     | map('regex_replace', '^[^@/]+@([^:/]+):.*$', '\1') | unique | list }}
+# GitHub's published host keys (owner answer E3) whose values are verified.
+platform_github_keys: >-
+  {{ pinka_versions.github_ssh_host_keys['keys'] | dict2items
+     | rejectattr('value.public_key', 'search', 'TODO')
+     | map(attribute='key') | zip(pinka_versions.github_ssh_host_keys['keys'] | dict2items
+       | rejectattr('value.public_key', 'search', 'TODO') | map(attribute='value.public_key'))
+     | map('join', ' ') | map('regex_replace', '^', 'github.com ') | list }}
+platform_known_host_lines: >-
+  {{ (platform_github_keys if 'github.com' in platform_ssh_hosts else [])
+     + pinka_source_known_hosts }}
+# What the tool reads: the sources, the signature settings, the key files and
+# who owns what it writes.
+platform_tool_settings:
+  platform: "{{ platform | default({}, true) }}"
+  content: "{{ content | default({}, true) }}"
+  require_signed_tags: "{{ require_signed_tags | bool }}"
+  allowed_signers: "{{ platform_allowed_signers }}"
+  ssh_key: "{{ platform_deploy_key if platform_ssh_repos | length > 0 else '' }}"
+  known_hosts: "{{ platform_known_hosts if platform_ssh_repos | length > 0 else '' }}"
+  replace: "{{ platform_replace }}"
+  owners:
+    user: root
+    group: root
+    restricted_group: pinka-restricted
+    build_user: pinka-build
+    build_group: pinka-build
+  platform_settings: "{{ platform_settings }}"
+  lab:
+    machine_name: "{{ machine_name }}"
+    lab_mode: "{{ lab_mode }}"
+    node_role: "{{ node_role }}"
+    ports: "{{ pinka_ports }}"
+    inference_mode: "{{ platform_inference }}"
+    scripted_api_url: "{{ platform_scripted_api_url }}"
+    vm_collector_address: "{{ pinka_vm_otlp.address }}"
+    cpuset_targets: "{{ cpuset_targets }}"
+    training_caps: "{{ training_caps }}"
+  # The keys the vault holds, never their values (the release's needs are
+  # checked against them right after the validation).
+  vault_keys: >-
+    {{ vault_postgres_passwords | default({}, true)
+       | pinka_vault_keys(vault_platform_secrets | default({}, true)) }}
+# psql as the superuser inside the PostgreSQL container (replacing a platform).
+platform_psql:
+  - docker
+  - exec
+  - --user
+  - postgres
+  - pinka-postgres
+  - sh
+  - -c
+  - >-
+    PGPASSWORD="$(cat /run/secrets/postgres-superuser)"
+    exec psql --no-psqlrc --set=ON_ERROR_STOP=1 --host=/var/run/postgresql
+    --username=postgres --dbname=postgres "$@"
+  - psql
+
+# --- Rendering (§7.14 step 7) ------------------------------------------------------
+
+# The socket ACL helper the platform's socket units run (§12.3).
+platform_libexec: /usr/local/libexec/pinka
+# Where systemd units live.
+platform_systemd_dir: /etc/systemd/system
+# Published signing keys (§12.10), kept forever.
+platform_signing_published: "{{ pinka_root }}/shared/signing-keys"
+
+# Quarto CLI, an optional tool a manifest may request (pinned in versions.lock.yml).
+platform_quarto_version: "{{ pinka_versions.binaries.quarto.version }}"
+platform_quarto_asset: "{{ pinka_versions.binaries.quarto.assets[ansible_facts['architecture']] }}"
+platform_quarto_dir: "/opt/pinka/quarto/{{ pinka_versions.binaries.quarto.version }}"
+platform_quarto_link: /usr/local/bin/quarto
+
+# The inference backend of endpoints.toml: local where this node serves
+# inference, otherwise remote (through the inference forwarder, §12.8).
+platform_inference: >-
+  {{ platform_inference_mode if platform_inference_mode != 'auto'
+     else ('local' if (pinka_features.gpu_inference | default(false)) and node_role == 'full'
+           else 'remote') }}

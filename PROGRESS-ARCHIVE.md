@@ -1065,3 +1065,237 @@ Proposed after infra step 13 (approved as P3a; details in
 | 13 | Installer TUI | done | `01fc3e3` (CPU sets in `00da783`) |
 | 14 | Documentation completion | done | `a967052` |
 | I1, I2 | Secure Boot MOK consent; required and extended fast-lane jobs | done | `ea0c7bf`, `48102a3`, `009edb1` (with the records `4aec5fc`, `4915ce1`; all five committed outside the rule, kept by owner decision) |
+
+## Moved from PROGRESS.md with 3f
+
+Moved unchanged from `PROGRESS.md` when 3f, the move to the repository
+root, was committed (token efficiency rule: nothing is deleted, only
+moved). Paths in these records name the layout before 3f, with the
+infrastructure below `infra/`.
+
+### Current state before 3f
+
+- Working branch `claude/zen-albattani-qfwwps` of this repository; the
+  owner merges to `main`. Last step commit: `e525a1e` (3d.8); last commit
+  `a425c7f` (the CI fix of 3d.8 and the `release-package` CI job). Before
+  them: `0d72e54` (3d.7) and `4aeb35b` (the collection pins, the
+  `lock-collections` CI job and the license-file fix).
+- Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
+  1-8 (with 3d.4b). The commit of each is in the table below and, for the
+  steps before section J, in the archive.
+- 3d.7 is committed (`0d72e54`), and the fix of its CI run (`d5fe24d`,
+  every job green but the known red `lock-check`). The symbolic-link fix of
+  `make lock-collections` is committed (`3d4bab2`), with the process
+  records (`373e693`); their CI run passed every job but the known red
+  `lock-check`, `make setup` with the real Galaxy artifacts in all 15 jobs.
+  The owner's second `make lock-collections` run (2026-10-15) is committed
+  with the `lock-collections` CI job and the license-file fix (`4aeb35b`);
+  its CI run passed every job but the known red `lock-check` (42 marker
+  errors, the five artifacts' sha256 verified), and the new job printed
+  from Galaxy exactly the license files found before. 3d.8 is committed
+  (`e525a1e`); its CI run passed `test`, `docs`, `lint`, `privacy` and
+  `lock-collections` (the same license files from Galaxy), `lock-check` is
+  the known red (38 marker errors), and every `check-mode` and
+  `check-mode-extended` job failed at start on a missing `PYTHONPATH`
+  entry. The fix, the `release-package` CI job and the owner's 3d.8
+  decisions are committed (`a425c7f`). Its CI run passed every job but the
+  known red `lock-check` (38 marker errors and 1 warning, the postgres tag),
+  all six `check-mode` and all six `check-mode-extended` jobs included. The
+  first `release-package` run built two identical packages (sha256
+  `6d9463d2d1307b28e968a3a8676a76576c3ec4ac8a0554988fe11c234840cb39`),
+  `make release-package-check` found no problem, and its NOTICE confirmed
+  every license finding (see "Where the license findings came from" under
+  3d.8).
+- 3e: the self-test without provisioning is done and committed under the
+  scoped exception (`5ea9b82`; its CI passed every job but the known red
+  `lock-check`). It found and fixed two faults, each with a test: a
+  documented command missing `tools/lockcheck`, and lock recompiles that
+  moved unrelated pins on a fresh clone. Everything that needs a VM, a real
+  host, Incus, Docker or a GPU waits for the owner, as listed under [Owner
+  deliverables pending](PROGRESS.md#owner-deliverables-pending).
+
+### Platform, catalog, docs site
+
+Not in this repository: they live later in the separate repository
+`pokus-platform`, which the owner starts (section J).
+
+### Completed 3d records of the remaining plan
+
+- **3d** Contract v2: steps 1-8 of the proposal's "Effort and order", one
+  commit proposal per step, following the updated specs. Verification items:
+  can a certificate restricted to `bench` create networks in Incus's
+  `default` project at all (run-network helper, infra §7.7)? Required in
+  3d.7 (owner decision with the "commit" for 3d.3): remove the named
+  temporary exclusion of the installer and its answers files from the
+  neutrality lint (V5); 3d.7 is not done while it exists. Step 3d.4b
+  (owner decision with the "commit" for 3d.4) comes between 3d.4 and 3d.5
+  as its own step and waits for the owner's "commit" like every 3d step:
+  V6 (the agent's own package and environment), the telemetry stores
+  reachable only by an allowlist of infra UIDs (the alternative of
+  ADR-0016), restore of exactly the recorded commit and tree hash, V7 (GPU
+  compute capability 7.5) and doctor's check of the query socket link.
+- **3d.7** (infra §16 step 21): the installer (release inspection, the
+  Platform review screen, the GPU screen, sources, secrets, answers schema,
+  snapshots), and the removal of the V5 exclusion (see 3d above). With the
+  owner's decisions with the "commit" for 3d.6 (recorded in the
+  [archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
+  each with tests:
+  - **Bootstrap collections:** every collection, transitive dependencies
+    such as `community.library_inventory_filtering_v1` included, pinned by
+    version and sha256 (shared with the fallback entries), downloaded with
+    the existing verified downloader, installed with `--offline --no-deps`,
+    then `ansible-galaxy collection verify --offline`.
+  - **`make lock-collections`:** maintainer tooling that only reads public
+    URLs and prints every locked collection's artifact URL and sha256 in the
+    lock's format; documented as run only by a maintainer when pinning or
+    upgrading, its output reviewed before it is committed, an upgrade
+    landing only after the full gate and CI pass. The owner runs it and
+    pastes the output; the assistant records it and removes those
+    `TODO(verify)` markers.
+  - **Fallback:** nothing is built for it until the owner decides on the
+    answer given with this step's start (the GitHub file is not Galaxy's
+    artifact; the alternative proposed there).
+  - **Bundled collections:** a proposal only (size, license files, fit with
+    the release and the distribution tests); the owner decides.
+  - **Golden images:** each image's full package list (name, version,
+    architecture) in its fingerprint record, with a test. No snapshot
+    repositories for now.
+  - **refplat:** a minimal `inference-broker` service, so the broker's
+    access to the inference API is proven positive in the VMs.
+  - Built (waiting for "commit"): all of the above but the fallback and the
+    bundling (owner decisions) and the artifact pins (owner's
+    `make lock-collections` output); the V5 exclusion is removed; the
+    test-distros harness enables, replaces and restores the platform
+    through the installer's answers (the interim host_vars and vault
+    writes approved until 3d.7 are gone); `--replace-platform` reaches the
+    installer's inspection; the CI failures of `a686e28` are fixed (see
+    Known issues).
+- **3d.8** (infra §16 step 22): documentation (contract v2 with
+  `docs/contracts.md` rewritten for v2, generated references, new pages,
+  ADR-0014 and ADR-0015, security). With the owner's decisions with the
+  "commit" for 3d.7, each with tests:
+  - **Fallback:** every GitHub-archive fallback goes, `make setup`'s of 3d.6
+    included; Galaxy's artifact and its sha256 are the only pins.
+  - **Bundled collections (approved):** a CI job on each `infra-vX.Y.Z` tag
+    builds a release package with the five pinned Galaxy artifacts (same
+    bytes, same sha256) and a NOTICE file listing their licenses, and
+    attaches it to the GitHub release. Bootstrap installs from the bundled
+    artifacts when it runs from a release package, offline, verified against
+    the lock exactly as now; from a git checkout it uses Galaxy. `make setup`
+    may use a published release package as its fallback when Galaxy is
+    unreachable, with the same verification. The tarballs are never
+    committed to git. `lock-check` and `make test-distros` check the bundled
+    files.
+  - **NOTICE (owner, with the pins of the second `make lock-collections`
+    run):** built from the license texts actually present in each artifact,
+    not from the declared field (`ansible.posix` and `community.general`
+    declare none). It covers every license a file of the artifact carries:
+    `ansible.posix`'s `PSF-license.txt` (for `plugins/module_utils/_version.py`
+    and `mount.py`, whose header holds the PSF license text itself), and it
+    states a declared license that no file carries, such as
+    `community.crypto` 3.4.0's BSD-2-Clause and PSF-2.0 (no file, header,
+    SPDX identifier or license text in the artifact; its changelog records
+    the ACME code relicensed from BSD-2-Clause to GPL-3.0-or-later, and its
+    `plugins/module_utils/_version.py`, which once needed `PSF-license.txt`,
+    is now GPL-3.0-or-later and imports `LooseVersion` from ansible-core).
+    Owner, with the "commit" for `4aeb35b`: no SPDX texts are added; those
+    two are listed as declared in the metadata but carried by no file in the
+    artifact. Checked for that commit's report: all 66 files of
+    `community.library_inventory_filtering_v1` 1.1.5 declare
+    GPL-3.0-or-later or are its text, except the empty `py.typed` marker,
+    which carries no license statement. The file list and sha256 values
+    came from the `FILES.json` of 1.1.5 as bundled in the `ansible` 14.4.0
+    wheel from PyPI, and every file was read from the release tag `1.1.5`
+    of the collection's repository, matched by sha256 (Galaxy is not
+    reachable from this environment).
+  - **Where the license findings came from (owner, with the "commit" for
+    `a425c7f`):** every per-file license finding recorded before
+    `a425c7f` was made from the `ansible` 14.4.0 wheel on PyPI: its
+    `MANIFEST.json` and `FILES.json` for each of the five collections,
+    with every listed file read from the collection's release tag (or the
+    wheel) and matched by sha256 (215, 579, 642, 3453 and 66 files, all
+    matched). Only the license-file names and declared licenses printed by
+    `lock-collections` came from Galaxy. The first run of the
+    `release-package` job (`a425c7f`) printed the NOTICE built from
+    Galaxy's own artifacts, and it equals the NOTICE built from the wheel
+    copies in every line it expresses: `ansible.posix` 2.2.2 carries
+    `COPYING` and `PSF-license.txt`, declares no license, has 215 files,
+    one naming GPL-3.0-or-later and 212 with no SPDX line, among them
+    `plugins/module_utils/_version.py` and `plugins/module_utils/mount.py`;
+    `community.crypto` 3.4.0 carries `COPYING` and `LICENSES/` Apache-2.0,
+    BSD-3-Clause and GPL-3.0-or-later, its files name Apache-2.0 (2),
+    BSD-3-Clause (1) and GPL-3.0-or-later (529), it declares
+    GPL-3.0-or-later, Apache-2.0, BSD-2-Clause, BSD-3-Clause and PSF-2.0,
+    and BSD-2-Clause and PSF-2.0 are carried by no file; 579 files, none
+    without a license; `community.docker` 5.3.0 carries `COPYING` and
+    `LICENSES/` Apache-2.0 and GPL-3.0-or-later, its files name Apache-2.0
+    (49) and GPL-3.0-or-later (581), 642 files, none without a license;
+    `community.general` 13.4.0 carries `COPYING` and `LICENSES/`
+    BSD-2-Clause, GPL-3.0-or-later and MIT, its files name BSD-2-Clause
+    (37), GPL-3.0-or-later (3056) and MIT (2), it declares none, 3453
+    files, 30 without an SPDX line (test fixtures and data files, two
+    `.keep` files, a test collection's `README.md` and
+    `plugins/module_utils/__init__.py`);
+    `community.library_inventory_filtering_v1` 1.1.5 carries `COPYING`
+    and `LICENSES/GPL-3.0-or-later.txt`, its files name only
+    GPL-3.0-or-later (47, the 16 REUSE `.license` files counted with the
+    files they annotate), 66 files, only `plugins/plugin_utils/py.typed`
+    without a license. No finding differs. Two findings rest on file
+    contents NOTICE does not show and so come from the wheel's file list
+    with the tagged sources only: `plugins/module_utils/mount.py` of
+    `ansible.posix` holds the PSF license text in its header and
+    `plugins/module_utils/_version.py` refers to `PSF-license.txt`; and
+    `community.crypto`'s changelog records the ACME code relicensed from
+    BSD-2-Clause to GPL-3.0-or-later, while its `_version.py` is
+    GPL-3.0-or-later and imports `LooseVersion` from ansible-core.
+  - **Release package (owner's choice in 3d.8, "Full package"):** the CI job
+    on an `infra-vX.Y.Z` tag builds a tarball of the repository's infra tree
+    at the tag (`git archive`) plus `release/` with the five Galaxy
+    artifacts, `NOTICE` and `RELEASE.json` (tag, commit, infra tree hash).
+    Bootstrap runs from it without `.git`: it recomputes the infra tree
+    hash of the unpacked files with git (a temporary index), refuses a
+    mismatch like a dirty tree (unless `--allow-dirty`, recorded), records
+    the commit and tree from `RELEASE.json`, and installs the collections
+    offline from `release/` (sha256 against the lock). A restore of a
+    package install needs that tag's package.
+  - **TUI replacement:** the TUI also offers replacing the active platform,
+    behind a confirmation screen that names the active platform and asks
+    for its name to be typed, exactly like `pinka platform purge`; without
+    the typed name nothing changes. `--replace-platform` keeps working as
+    before.
+  - Approved: the five 3d.7 interpretations. Generated platform secrets
+    come from Python's `secrets.token_urlsafe(32)` (the operating system's
+    cryptographically secure generator) and are written only to the vault
+    (encrypted, root-only 0600); the platform role writes each to its
+    service's secret file (`no_log`).
+  - Built (waiting for "commit"): all of the above, and the documentation:
+    `docs/contracts.md` as contract v2; the schemas of the principals and
+    endpoints files in `contract/` with the generated reference
+    `docs/reference/platform-files.md`; the tutorial "Write a minimal
+    platform", the explanation "Privilege profiles and restricted data",
+    ADR-0014 and ADR-0015, the how-tos "Install from a release package" and
+    "Publish a release package"; "Deploy a platform" retitled "Plug a
+    platform into the lab"; security, architecture, node roles, bootstrap,
+    troubleshoot, backup and restore, WSL2 (CDI for training containers)
+    and the remaining contract v1 leftovers updated. A real package build
+    could not run here (the proxy refuses Galaxy); the first one is the
+    `release` workflow on the first tag. Interpretations for the owner are
+    in `infra/docs/IMPLEMENTATION_NOTES.md` ("Contract v2, step 8").
+
+### Definition of 3f
+
+- **3f** Move to root, one structural commit with no other changes:
+  `git mv` everything under `infra/` to the root so history follows;
+  `infra/.github/workflows/ci.yml` becomes `.github/workflows/ci.yml`, the
+  wrapper `infra.yml` goes, `repo-root.yml` is merged into `ci.yml` or kept,
+  whichever needs no behavior change; the one-repository rules go:
+  bootstrap's tree hash and dirty check cover the whole repository (B3),
+  tags have no prefix (`vX.Y.Z`, B4), C1 goes, and every path or link that
+  pointed into or out of `infra/` is fixed; `PROGRESS.md` and `CLAUDE.md`
+  become infra-only, and the infra-only `CLAUDE.md` keeps the commit rule's
+  wording of the root `CLAUDE.md`; the platform spec master
+  (`specs/pokus-platform-claude-code-prompt.md`) and anything else that
+  belongs only to the platform or catalog is removed (the owner keeps a
+  copy for `pokus-platform`); the infra spec master is renamed per Q13.
+  Gate: `make lint test docs` green, CI green on the branch, residue check
+  clean.

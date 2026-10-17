@@ -2,19 +2,19 @@
 
 Single source of truth for the build of Pokus in this repository: the
 current state, the remaining plan, open items, every approved deviation, the
-process rules in force (the scoped commit exception, the one-time history
-rewrite and the 3g plan among them) and the platform spec changes pending.
+process rules in force (the end of the scoped commit exception, the
+one-time history rewrite and the 3g plan among them) and the platform spec changes pending.
 Completed plan steps, the owner's earlier answers and the record of each
 step's decisions are in [PROGRESS-ARCHIVE.md](PROGRESS-ARCHIVE.md), moved
 there unchanged (owner decision with the "commit" for 3d.5; nothing was
 deleted).
 
-**After a context reset or in a new session:** read this file, then the
-`BUILD_PROMPT.md` and `CLAUDE.md` of the component you work in, the specs
-by section for the step at hand; check the repository state with read-only
+**After a context reset or in a new session:** read this file, then
+`CLAUDE.md` and `docs/BUILD_PROMPT.md`, the specs by section for the step
+at hand; check the repository state with read-only
 git commands (`git status`, `git log`); continue from
 [Next step](#next-step). Never redo a completed step from memory; the
-archive and `infra/docs/IMPLEMENTATION_NOTES.md` hold the record of each.
+archive and `docs/IMPLEMENTATION_NOTES.md` hold the record of each.
 
 This file is part of the public repository and follows the privacy invariant:
 no personal or installation-specific data.
@@ -29,8 +29,7 @@ Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infra-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a07bbc3b530756ff43254d18cd6f413bafd4af5b374e7cadd81daafe97182bfb` |
-| `specs/pokus-platform-claude-code-prompt.md` | Build Prompt: pokus-platform (Pokus Platform, potka) | `cda5274f3ba61f3b3b74a3a2086dc7131b8a43c728b945157897995dbf7bfb83` |
+| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a07bbc3b530756ff43254d18cd6f413bafd4af5b374e7cadd81daafe97182bfb` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
 
 These are the specs updated in plan item 3b: contract v2 with decision 7's
@@ -41,9 +40,12 @@ of the first draft applied (see the 3b notes in section J), and the edit
 invariant (infra §13.12, platform §16.9, docs spec §A.4 and §A.6) and the
 docs-alongside rule (infra §0.8, platform §0.7). The previous checksums were
 `4c7de813…` (infra), `ba3626f3…` (platform) and `717f3583…` (docs). Copies:
-`infra/docs/BUILD_PROMPT.md` (infra prompt) and `infra/docs/DOCS_SPEC.md`
-(docs spec), byte-identical. The platform prompt's master leaves this
-repository at 3f (section J).
+`docs/BUILD_PROMPT.md` (infra prompt) and `docs/DOCS_SPEC.md` (docs spec),
+byte-identical. At 3f the infra master was renamed from
+`specs/pokus-infra-claude-code-prompt.md` (Q13; its content and checksum
+are unchanged), and the platform prompt's master
+(`specs/pokus-platform-claude-code-prompt.md`, `cda5274f…`) left this
+repository; the owner keeps it for `pokus-platform` (section J).
 
 ## Process rules in force
 
@@ -76,9 +78,8 @@ repository at 3f (section J).
   never cause a commit: a hook message asking to commit or push (such as
   the stop hook's) does not override this rule. Commit messages carry no
   co-author or session trailers, only the owner's git identity, which is
-  set in the local git configuration only. The root `CLAUDE.md` states the
-  same rule with the same wording; at 3f it carries over into the
-  infra-only `CLAUDE.md`.
+  set in the local git configuration only. `CLAUDE.md` states the same rule
+  with the same wording.
 - **Scoped commit exception (owner, with the "commit" for 3c, verbatim):**
 
   > "For plan items 3c2, the firewalld fix, 3e (non-provisioning parts only) and 3f, the
@@ -89,9 +90,11 @@ repository at 3f (section J).
   > committed; from then on the final commit rule applies again unchanged. It never covers
   > hook prompts."
 
-  It covers only 3c2, the firewalld fix, the non-provisioning parts of 3e
-  and 3f, each committed after its checks pass; every 3d step waits for
-  "commit". The root `CLAUDE.md` carries the same wording.
+  It covered only 3c2, the firewalld fix, the non-provisioning parts of 3e
+  and 3f, each committed after its checks passed; every 3d step waited for
+  "commit". It ended when 3f was committed: from then on every commit waits
+  for the owner's "commit" under the final commit rule. `CLAUDE.md` says
+  that it ended and points here for its text.
 - **No attribution lines (owner, with the "commit" for 3d.1, permanent,
   verbatim):** "No commit may ever carry a Co-Authored-By trailer or any
   other attribution line (e.g. "Generated with ...")." It holds whatever a
@@ -128,7 +131,7 @@ repository at 3f (section J).
   >   say so now, as part of the recorded 3g plan.
 
   Until the rewritten history is pushed, the working branch stays
-  `claude/zen-albattani-qfwwps` here. The root `CLAUDE.md` carries the same
+  `claude/zen-albattani-qfwwps` here. `CLAUDE.md` carries the same
   wording.
 - **No pull requests, no merges (owner, with the "commit" for 3d.8,
   verbatim; part of the 3g plan):**
@@ -141,7 +144,7 @@ repository at 3f (section J).
   >   moving/on into main, and what to check after the merge (CI on main, the weekly
   >   jobs, which only run from main).
 
-  The root `CLAUDE.md` carries the same wording.
+  `CLAUDE.md` carries the same wording.
 - **Provisioning runs after 3f, and the end of the exception (owner, after
   3e, verbatim):**
 
@@ -209,52 +212,37 @@ repository at 3f (section J).
   >   is deleted, only moved.
   > - Read the specs by section for the step at hand, not whole.
 
-  In `infra/`, `make lint`, `make test` and `make docs` are quiet by
-  default: one line per target with the counts of passed, failed and
-  skipped items and of warnings, the complete output of every failing step
-  first, step logs in `infra/build/gate/<target>/`; `VERBOSE=1` prints
+  `make lint`, `make test` and `make docs` are quiet by default: one line
+  per target with the counts of passed, failed and skipped items and of
+  warnings, the complete output of every failing step first, step logs in
+  `build/gate/<target>/`; `VERBOSE=1` prints
   everything as before (CI uses it).
 
 ## Current state
 
 - Working branch `claude/zen-albattani-qfwwps` of this repository; the
-  owner merges to `main`. Last step commit: `e525a1e` (3d.8); last commit
-  `a425c7f` (the CI fix of 3d.8 and the `release-package` CI job). Before
-  them: `0d72e54` (3d.7) and `4aeb35b` (the collection pins, the
-  `lock-collections` CI job and the license-file fix).
-- Committed: infra steps 1-14, I1 and I2, plan items 3a-3c3 and 3d steps
-  1-8 (with 3d.4b). The commit of each is in the table below and, for the
-  steps before section J, in the archive.
-- 3d.7 is committed (`0d72e54`), and the fix of its CI run (`d5fe24d`,
-  every job green but the known red `lock-check`). The symbolic-link fix of
-  `make lock-collections` is committed (`3d4bab2`), with the process
-  records (`373e693`); their CI run passed every job but the known red
-  `lock-check`, `make setup` with the real Galaxy artifacts in all 15 jobs.
-  The owner's second `make lock-collections` run (2026-10-15) is committed
-  with the `lock-collections` CI job and the license-file fix (`4aeb35b`);
-  its CI run passed every job but the known red `lock-check` (42 marker
-  errors, the five artifacts' sha256 verified), and the new job printed
-  from Galaxy exactly the license files found before. 3d.8 is committed
-  (`e525a1e`); its CI run passed `test`, `docs`, `lint`, `privacy` and
-  `lock-collections` (the same license files from Galaxy), `lock-check` is
-  the known red (38 marker errors), and every `check-mode` and
-  `check-mode-extended` job failed at start on a missing `PYTHONPATH`
-  entry. The fix, the `release-package` CI job and the owner's 3d.8
-  decisions are committed (`a425c7f`). Its CI run passed every job but the
-  known red `lock-check` (38 marker errors and 1 warning, the postgres tag),
-  all six `check-mode` and all six `check-mode-extended` jobs included. The
-  first `release-package` run built two identical packages (sha256
-  `6d9463d2d1307b28e968a3a8676a76576c3ec4ac8a0554988fe11c234840cb39`),
-  `make release-package-check` found no problem, and its NOTICE confirmed
-  every license finding (see "Where the license findings came from" under
-  3d.8).
-- 3e: the self-test without provisioning is done and committed under the
-  scoped exception (`5ea9b82`; its CI passed every job but the known red
-  `lock-check`). It found and fixed two faults, each with a test: a
-  documented command missing `tools/lockcheck`, and lock recompiles that
-  moved unrelated pins on a fresh clone. Everything that needs a VM, a real
-  host, Incus, Docker or a GPU waits for the owner, as listed under [Owner
-  deliverables pending](#owner-deliverables-pending).
+  owner merges to `main`. The infrastructure is at the repository root
+  since 3f; the state before the move, with the records of 3d, is in the
+  [archive](PROGRESS-ARCHIVE.md#moved-from-progressmd-with-3f).
+- Committed: infra steps 1-14, I1 and I2, plan items 3a-3f (3d steps 1-8
+  with 3d.4b). The commit of each is in the table below and, for the steps
+  before section J, in the archive.
+- 3e, the self-test without provisioning, is committed (`5ea9b82`), with the
+  owner's decisions after it (`bef51af`); the CI runs of both passed every
+  job but the known red `lock-check` (38 `TODO(verify)` errors and the
+  postgres tag warning).
+- 3f moved everything below `infra/` to the repository root with `git mv`,
+  so history follows: one `CLAUDE.md`, the workflows in `.github/workflows/`
+  without wrappers (the former `repo-root.yml` check is the `privacy` job
+  of `ci.yml`), bootstrap's tree hash and dirty check over the whole
+  repository, release tags `vX.Y.Z`, the platform spec master removed and
+  the infra master renamed (Q13). Its record is in
+  `docs/IMPLEMENTATION_NOTES.md`, "Move to the repository root (plan step
+  3f)". The scoped commit exception ended with the 3f commit: every later
+  commit waits for the owner's "commit".
+- Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
+  the owner, as listed under
+  [Owner deliverables pending](#owner-deliverables-pending).
 
 ### Status of the plan of section J
 
@@ -268,211 +256,32 @@ repository at 3f (section J).
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
 | 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8), `a425c7f` (CI fix of 8 and the `release-package` job) |
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
-| 3f | Move infra to the repository root | not started | — |
+| 3f | Move infra to the repository root | done | the 3f commit (`refactor: move the infrastructure to the repository root`) |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
-
-### Platform, catalog, docs site
-
-Not in this repository: they live later in the separate repository
-`pokus-platform`, which the owner starts (section J).
 
 ## Remaining plan
 
 From section J of the owner answers; its completed items are in the
-[archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure).
+[archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure),
+the records of 3d and the definition of 3f in
+[Moved from PROGRESS.md with 3f](PROGRESS-ARCHIVE.md#moved-from-progressmd-with-3f).
 
-Owner decision, replacing the split steps that assumed `git filter-repo` and
-a new infra repository: this repository becomes `pokus-infrastructure`.
-Infra is finished here and then moved to the repository root. The platform
-lives later in the new, separate repository `pokus-platform`, which the
-owner starts; the assistant does not start the platform, the catalog or the
-Pokus docs site. Each item ends with its checks green and a commit
-proposal, and waits for the owner's "commit".
-
-- **3d** Contract v2: steps 1-8 of the proposal's "Effort and order", one
-  commit proposal per step, following the updated specs. Verification items:
-  can a certificate restricted to `bench` create networks in Incus's
-  `default` project at all (run-network helper, infra §7.7)? Required in
-  3d.7 (owner decision with the "commit" for 3d.3): remove the named
-  temporary exclusion of the installer and its answers files from the
-  neutrality lint (V5); 3d.7 is not done while it exists. Step 3d.4b
-  (owner decision with the "commit" for 3d.4) comes between 3d.4 and 3d.5
-  as its own step and waits for the owner's "commit" like every 3d step:
-  V6 (the agent's own package and environment), the telemetry stores
-  reachable only by an allowlist of infra UIDs (the alternative of
-  ADR-0016), restore of exactly the recorded commit and tree hash, V7 (GPU
-  compute capability 7.5) and doctor's check of the query socket link.
-- **3d.7** (infra §16 step 21): the installer (release inspection, the
-  Platform review screen, the GPU screen, sources, secrets, answers schema,
-  snapshots), and the removal of the V5 exclusion (see 3d above). With the
-  owner's decisions with the "commit" for 3d.6 (recorded in the
-  [archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
-  each with tests:
-  - **Bootstrap collections:** every collection, transitive dependencies
-    such as `community.library_inventory_filtering_v1` included, pinned by
-    version and sha256 (shared with the fallback entries), downloaded with
-    the existing verified downloader, installed with `--offline --no-deps`,
-    then `ansible-galaxy collection verify --offline`.
-  - **`make lock-collections`:** maintainer tooling that only reads public
-    URLs and prints every locked collection's artifact URL and sha256 in the
-    lock's format; documented as run only by a maintainer when pinning or
-    upgrading, its output reviewed before it is committed, an upgrade
-    landing only after the full gate and CI pass. The owner runs it and
-    pastes the output; the assistant records it and removes those
-    `TODO(verify)` markers.
-  - **Fallback:** nothing is built for it until the owner decides on the
-    answer given with this step's start (the GitHub file is not Galaxy's
-    artifact; the alternative proposed there).
-  - **Bundled collections:** a proposal only (size, license files, fit with
-    the release and the distribution tests); the owner decides.
-  - **Golden images:** each image's full package list (name, version,
-    architecture) in its fingerprint record, with a test. No snapshot
-    repositories for now.
-  - **refplat:** a minimal `inference-broker` service, so the broker's
-    access to the inference API is proven positive in the VMs.
-  - Built (waiting for "commit"): all of the above but the fallback and the
-    bundling (owner decisions) and the artifact pins (owner's
-    `make lock-collections` output); the V5 exclusion is removed; the
-    test-distros harness enables, replaces and restores the platform
-    through the installer's answers (the interim host_vars and vault
-    writes approved until 3d.7 are gone); `--replace-platform` reaches the
-    installer's inspection; the CI failures of `a686e28` are fixed (see
-    Known issues).
-- **3d.8** (infra §16 step 22): documentation (contract v2 with
-  `docs/contracts.md` rewritten for v2, generated references, new pages,
-  ADR-0014 and ADR-0015, security). With the owner's decisions with the
-  "commit" for 3d.7, each with tests:
-  - **Fallback:** every GitHub-archive fallback goes, `make setup`'s of 3d.6
-    included; Galaxy's artifact and its sha256 are the only pins.
-  - **Bundled collections (approved):** a CI job on each `infra-vX.Y.Z` tag
-    builds a release package with the five pinned Galaxy artifacts (same
-    bytes, same sha256) and a NOTICE file listing their licenses, and
-    attaches it to the GitHub release. Bootstrap installs from the bundled
-    artifacts when it runs from a release package, offline, verified against
-    the lock exactly as now; from a git checkout it uses Galaxy. `make setup`
-    may use a published release package as its fallback when Galaxy is
-    unreachable, with the same verification. The tarballs are never
-    committed to git. `lock-check` and `make test-distros` check the bundled
-    files.
-  - **NOTICE (owner, with the pins of the second `make lock-collections`
-    run):** built from the license texts actually present in each artifact,
-    not from the declared field (`ansible.posix` and `community.general`
-    declare none). It covers every license a file of the artifact carries:
-    `ansible.posix`'s `PSF-license.txt` (for `plugins/module_utils/_version.py`
-    and `mount.py`, whose header holds the PSF license text itself), and it
-    states a declared license that no file carries, such as
-    `community.crypto` 3.4.0's BSD-2-Clause and PSF-2.0 (no file, header,
-    SPDX identifier or license text in the artifact; its changelog records
-    the ACME code relicensed from BSD-2-Clause to GPL-3.0-or-later, and its
-    `plugins/module_utils/_version.py`, which once needed `PSF-license.txt`,
-    is now GPL-3.0-or-later and imports `LooseVersion` from ansible-core).
-    Owner, with the "commit" for `4aeb35b`: no SPDX texts are added; those
-    two are listed as declared in the metadata but carried by no file in the
-    artifact. Checked for that commit's report: all 66 files of
-    `community.library_inventory_filtering_v1` 1.1.5 declare
-    GPL-3.0-or-later or are its text, except the empty `py.typed` marker,
-    which carries no license statement. The file list and sha256 values
-    came from the `FILES.json` of 1.1.5 as bundled in the `ansible` 14.4.0
-    wheel from PyPI, and every file was read from the release tag `1.1.5`
-    of the collection's repository, matched by sha256 (Galaxy is not
-    reachable from this environment).
-  - **Where the license findings came from (owner, with the "commit" for
-    `a425c7f`):** every per-file license finding recorded before
-    `a425c7f` was made from the `ansible` 14.4.0 wheel on PyPI: its
-    `MANIFEST.json` and `FILES.json` for each of the five collections,
-    with every listed file read from the collection's release tag (or the
-    wheel) and matched by sha256 (215, 579, 642, 3453 and 66 files, all
-    matched). Only the license-file names and declared licenses printed by
-    `lock-collections` came from Galaxy. The first run of the
-    `release-package` job (`a425c7f`) printed the NOTICE built from
-    Galaxy's own artifacts, and it equals the NOTICE built from the wheel
-    copies in every line it expresses: `ansible.posix` 2.2.2 carries
-    `COPYING` and `PSF-license.txt`, declares no license, has 215 files,
-    one naming GPL-3.0-or-later and 212 with no SPDX line, among them
-    `plugins/module_utils/_version.py` and `plugins/module_utils/mount.py`;
-    `community.crypto` 3.4.0 carries `COPYING` and `LICENSES/` Apache-2.0,
-    BSD-3-Clause and GPL-3.0-or-later, its files name Apache-2.0 (2),
-    BSD-3-Clause (1) and GPL-3.0-or-later (529), it declares
-    GPL-3.0-or-later, Apache-2.0, BSD-2-Clause, BSD-3-Clause and PSF-2.0,
-    and BSD-2-Clause and PSF-2.0 are carried by no file; 579 files, none
-    without a license; `community.docker` 5.3.0 carries `COPYING` and
-    `LICENSES/` Apache-2.0 and GPL-3.0-or-later, its files name Apache-2.0
-    (49) and GPL-3.0-or-later (581), 642 files, none without a license;
-    `community.general` 13.4.0 carries `COPYING` and `LICENSES/`
-    BSD-2-Clause, GPL-3.0-or-later and MIT, its files name BSD-2-Clause
-    (37), GPL-3.0-or-later (3056) and MIT (2), it declares none, 3453
-    files, 30 without an SPDX line (test fixtures and data files, two
-    `.keep` files, a test collection's `README.md` and
-    `plugins/module_utils/__init__.py`);
-    `community.library_inventory_filtering_v1` 1.1.5 carries `COPYING`
-    and `LICENSES/GPL-3.0-or-later.txt`, its files name only
-    GPL-3.0-or-later (47, the 16 REUSE `.license` files counted with the
-    files they annotate), 66 files, only `plugins/plugin_utils/py.typed`
-    without a license. No finding differs. Two findings rest on file
-    contents NOTICE does not show and so come from the wheel's file list
-    with the tagged sources only: `plugins/module_utils/mount.py` of
-    `ansible.posix` holds the PSF license text in its header and
-    `plugins/module_utils/_version.py` refers to `PSF-license.txt`; and
-    `community.crypto`'s changelog records the ACME code relicensed from
-    BSD-2-Clause to GPL-3.0-or-later, while its `_version.py` is
-    GPL-3.0-or-later and imports `LooseVersion` from ansible-core.
-  - **Release package (owner's choice in 3d.8, "Full package"):** the CI job
-    on an `infra-vX.Y.Z` tag builds a tarball of the repository's infra tree
-    at the tag (`git archive`) plus `release/` with the five Galaxy
-    artifacts, `NOTICE` and `RELEASE.json` (tag, commit, infra tree hash).
-    Bootstrap runs from it without `.git`: it recomputes the infra tree
-    hash of the unpacked files with git (a temporary index), refuses a
-    mismatch like a dirty tree (unless `--allow-dirty`, recorded), records
-    the commit and tree from `RELEASE.json`, and installs the collections
-    offline from `release/` (sha256 against the lock). A restore of a
-    package install needs that tag's package.
-  - **TUI replacement:** the TUI also offers replacing the active platform,
-    behind a confirmation screen that names the active platform and asks
-    for its name to be typed, exactly like `pinka platform purge`; without
-    the typed name nothing changes. `--replace-platform` keeps working as
-    before.
-  - Approved: the five 3d.7 interpretations. Generated platform secrets
-    come from Python's `secrets.token_urlsafe(32)` (the operating system's
-    cryptographically secure generator) and are written only to the vault
-    (encrypted, root-only 0600); the platform role writes each to its
-    service's secret file (`no_log`).
-  - Built (waiting for "commit"): all of the above, and the documentation:
-    `docs/contracts.md` as contract v2; the schemas of the principals and
-    endpoints files in `contract/` with the generated reference
-    `docs/reference/platform-files.md`; the tutorial "Write a minimal
-    platform", the explanation "Privilege profiles and restricted data",
-    ADR-0014 and ADR-0015, the how-tos "Install from a release package" and
-    "Publish a release package"; "Deploy a platform" retitled "Plug a
-    platform into the lab"; security, architecture, node roles, bootstrap,
-    troubleshoot, backup and restore, WSL2 (CDI for training containers)
-    and the remaining contract v1 leftovers updated. A real package build
-    could not run here (the proxy refuses Galaxy); the first one is the
-    `release` workflow on the first tag. Interpretations for the owner are
-    in `infra/docs/IMPLEMENTATION_NOTES.md` ("Contract v2, step 8").
+This repository holds `pokus-infrastructure` (its fresh repository of that
+name follows in 3g): infra was finished here and moved to the repository
+root (3f). The platform, the catalog and the Pokus
+docs site live in the separate repository `pokus-platform`, which the owner
+starts; the assistant does not start them. Each remaining item ends with
+its checks green and a commit proposal, and waits for the owner's
+"commit".
 
 - **3e** Infra self-test: everything that runs without provisioning, as in
   the master prompt's self-test rules (never weaken tests; "not tested"
   stated honestly). Anything that needs a VM or a real host is described
   exactly (what and where) and runs only after the owner's confirmation.
   Results, the faults it found, what ran in CI instead, and the exact
-  commands for each untested part: `infra/docs/IMPLEMENTATION_NOTES.md`,
+  commands for each untested part: `docs/IMPLEMENTATION_NOTES.md`,
   "Infra self-test without provisioning".
-- **3f** Move to root, one structural commit with no other changes:
-  `git mv` everything under `infra/` to the root so history follows;
-  `infra/.github/workflows/ci.yml` becomes `.github/workflows/ci.yml`, the
-  wrapper `infra.yml` goes, `repo-root.yml` is merged into `ci.yml` or kept,
-  whichever needs no behavior change; the one-repository rules go:
-  bootstrap's tree hash and dirty check cover the whole repository (B3),
-  tags have no prefix (`vX.Y.Z`, B4), C1 goes, and every path or link that
-  pointed into or out of `infra/` is fixed; `PROGRESS.md` and `CLAUDE.md`
-  become infra-only, and the infra-only `CLAUDE.md` keeps the commit rule's
-  wording of the root `CLAUDE.md`; the platform spec master
-  (`specs/pokus-platform-claude-code-prompt.md`) and anything else that
-  belongs only to the platform or catalog is removed (the owner keeps a
-  copy for `pokus-platform`); the infra spec master is renamed per Q13.
-  Gate: `make lint test docs` green, CI green on the branch, residue check
-  clean.
 - **3g** Fresh repository (owner decision with the "commit" for 3d.2,
   replacing the rename): after 3f, the assistant proposes the one-time
   rewrite of the full history (`main` and `claude/zen-albattani-qfwwps`)
@@ -488,7 +297,7 @@ proposal, and waits for the owner's "commit".
   commit rule, the scoped commit exception, the rewrite plan) applies to
   `moving/on` there (owner decision with the "commit" for 3d.3). The owner
   pushes the rewritten history to the new repository and merges `moving/on`
-  into `main` himself; the assistant never opens a pull request and never
+  into `main` themselves; the assistant never opens a pull request and never
   merges anything, finishes all work on `claude/zen-albattani-qfwwps`, and
   gives the push commands (owner, with the "commit" for 3d.8). Then the
   assistant gives the owner a checklist of what to recreate by hand on the
@@ -507,7 +316,7 @@ proposal, and waits for the owner's "commit".
 ## Approved deviations
 
 Resolutions that differ from the spec text (the owner answers they come from
-are in the archive). Contract-level resolutions are also recorded with citations in `infra/docs/contracts.md#resolutions`.
+are in the archive). Contract-level resolutions are also recorded with citations in `docs/contracts.md#resolutions`.
 
 | ID | Spec section | Spec text (short) | Approved resolution |
 | --- | --- | --- | --- |
@@ -515,11 +324,11 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | A4 | platform §17 | Postgres via testcontainers or CI service | micromamba + conda-forge PostgreSQL locally; CI service container |
 | B1 | docs spec §A.4 | every Markdown page has front matter | spec copies and IMPLEMENTATION_NOTES are excluded from builds, kept verbatim |
 | B2 | infra §7.14 | clone pokus-platform / pokus-catalog at a ref | bare mirror + `git archive` of one subtree + `DEPLOYED_FROM.json` |
-| B3 | infra §5.2 step 1 | refuse a dirty tree | dirty check limited to `infra/`; commit + `infra/` tree hash recorded |
-| B4 | docs spec §B.1, platform §4.1.2 | RC triple of three repositories | three commits of one repository + tree hashes; prefixed tags |
-| B5 | infra §4, §11 | `.github/workflows/ci.yml` per repository | canonical per component + thin root wrappers; restricted job set |
-| B6 | master prompt §3 | components splittable without changes | catalog lint uses a permanent `../platform` path dependency |
-| C1 | platform §18 | layout without `docs/contracts.md` | `platform/docs/contracts.md` added, CI identity check |
+| B3 | infra §5.2 step 1 | refuse a dirty tree | dirty check limited to `infra/`; commit + `infra/` tree hash recorded. **Ended with 3f:** bootstrap records the commit and the tree hash of the whole repository, and its dirty check covers the whole repository, as §5.2 step 1 states |
+| B4 | docs spec §B.1, platform §4.1.2 | RC triple of three repositories | three commits of one repository + tree hashes; prefixed tags. **Ended with 3f:** infra, platform and catalog live in their own repositories; this repository's release tags are `vX.Y.Z` (package `pokus-infrastructure-X.Y.Z.tar.gz`) |
+| B5 | infra §4, §11 | `.github/workflows/ci.yml` per repository | canonical per component + thin root wrappers; restricted job set. **Ended with 3f:** the wrappers are gone; `.github/workflows/ci.yml` (with the `privacy` job of the former `repo-root.yml`), `lock-collections.yml`, `release-package.yml` and `release.yml` run at the repository root |
+| B6 | master prompt §3 | components splittable without changes | catalog lint uses a permanent `../platform` path dependency. **Ended with 3f:** no platform or catalog code is in this repository; they live in `pokus-platform` |
+| C1 | platform §18 | layout without `docs/contracts.md` | `platform/docs/contracts.md` added, CI identity check. **Ended with 3f:** replaced by the copy rule (owner, with the "commit" for 3d.8): a platform repository that keeps a copy of `docs/contracts.md` keeps it identical to the infra release it pins, and its own CI checks it |
 | C2 | infra §7.14 | agent reaches only gateway and executor sockets | also orchestrator `svc.sock`, agent-session endpoints only |
 | C3 | platform §3, §4.1; infra §12 | sudo rule for the deploy helper | socket-activated root helper, no sudo |
 | C4 | platform §3 | (no VM telemetry alternative) | VM alternative added |
@@ -544,14 +353,14 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | St2-3 | infra §2.3 | releases not listed fall through to the `ID_LIKE` rows or `unsupported` | an explicit `unsupported` row per implemented distribution for its unlisted releases ("release not in the support matrix"), placed before the `ID_LIKE` rows. Approved after the 3b commit; implemented in 3d.4 |
 | St7-1 | infra §7.11 | `current.yml` rendered to `current.env` | `current.yaml` (the `vllm serve --config` file) rendered next to `current.env`, which carries its hash; an infra-internal detail, not a contract item. Implemented in step 7 (deploy helper; the GPU arbiter keeps it in 3d); approved after the 3b commit |
 | P3a | infra §7.6, §7.7, §8.1, §12.6, §18.4 screen 5; platform §3, §4.1, §5, §12.1 | `cpuset_targets` with no contract field | `[incus] cpuset_targets` in `endpoints.toml`; the platform sets every target's `limits.cpu` to a CPU range inside it, never a count, records the range in the run manifest and refuses measurement campaigns on a host without it; the `bench` project's `limits.cpu` is the number of those CPUs; services run on `cpuset_services`; installer and doctor warn when SMT siblings of one core fall into different sets. Approved in the owner's review of the 3b spec update; implemented in `00da783` except the SMT warning |
-| P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; implemented in 3d.4 (preflight reads listeners from `/proc/net/tcp*`, details in `infra/docs/IMPLEMENTATION_NOTES.md`) |
+| P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; implemented in 3d.4 (preflight reads listeners from `/proc/net/tcp*`, details in `docs/IMPLEMENTATION_NOTES.md`) |
 | P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; implemented in 3d.4 (the service runs `pinka docs serve`) |
 | V1 | infra §12.1 ("Sources in one repository"), §7.14 step 4 | a content package may not overlap the release path in the same repository | content packages from one repository may not overlap each other either (`source-overlap`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
 | V2 | infra §12.1 (`requires`) | the health gate checks exactly the declared facilities | a manifest that uses a facility it does not declare is refused (`facility-undeclared`): profiles `sandbox-operator` and `restricted-operator` need `incus`, `inference-broker` needs `inference`, `gpu-trainer` jobs need `gpu`; the fields `policy` need `opa`, `dashboards` and `telemetry` need `telemetry`, `backup.database: true` needs `postgres` (`contract/profiles.yml`, `facilities`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
 | V3 | infra §7.14 step 5, §12.1 (`runtime: python-uv`); platform spec (release layout) | `uv sync --frozen` builds the release | two build phases: locked wheels with network, nothing built or compiled; then the release built offline with the backend from a `build` dependency group. A release with a `[build-system]` locks its backend in that group, and every dependency is a wheel. Approved with the "commit" for 3d.3; to be carried into the platform spec too |
 | V4 | infra §7.14 (hardening baseline), §6.2 | `RuntimeDirectory=pinka/platform/<service>` | no `RuntimeDirectory=` on the socket directories: socket units create `/run/pinka/platform/<service>/` (root, 0755). Approved with the "commit" for 3d.3 on condition that a service that needs its own runtime directory gets one at a separate path that contains no sockets; done in 3d.4 (`/run/pinka/platform-runtime/<service>`) |
 | V5 | infra §11 (neutrality lint) | the lint excludes test fixtures, docs and the reserved list | the installer and its answers files are excluded too, as an explicit named exclusion in the lint configuration with a comment pointing to 3d.7. Approved with the "commit" for 3d.3; removed in 3d.7 (the installer and `tests/answers/` are scanned, a test keeps it so) |
-| V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `infra/docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
+| V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
 | V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
 | St12-1 | infra §11 (Ansible) | `make test-roles`: the provider-agnostic roles in a throwaway Incus system container or VM, only when invoked | `make check-mode` (the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` in check mode in a disposable Docker systemd container per family, also CI's required job, I2) and `make test-distros` (the full bootstrap in disposable Incus VMs, §19.9) replace it; there is no `test-roles` target and no alias. Raised by the 3e self-test; approved by the owner after 3e ("record it as an approved deviation (make check-mode and make test-distros replace it). No alias."); built in step 12 |
@@ -560,7 +369,7 @@ are in the archive). Contract-level resolutions are also recorded with citations
 
 Approved deviations after the 3b2 spec edit that the platform must follow;
 the owner folds them into the platform spec
-(`specs/pokus-platform-claude-code-prompt.md`). Each names what changes for
+(its master, which the owner keeps for `pokus-platform`). Each names what changes for
 the platform.
 
 | ID | What the platform must follow |
@@ -619,13 +428,13 @@ read-only; the owner keeps its master for `pokus-platform`):
 ## Open questions
 
 Decided after the 3b commit: every interpretation of steps 2-14 and of the
-follow-ups after step 13 that `infra/docs/IMPLEMENTATION_NOTES.md` lists as
+follow-ups after step 13 that `docs/IMPLEMENTATION_NOTES.md` lists as
 "awaiting owner confirmation" (archive, section J, "Interpretations"); the notes keep
 the original wording and the findings of each step. Still open, from step 1
 ("Questions raised by step 1"): reference agents for scenario validation and
 the QA results schema (both for `pokus-platform` and `pokus-qa`), and the
 page-ownership table (H5). Settled since: the port table (P3b), the
-project files at the monorepo root (3f) and `make test-roles` (St12-1,
+project files at the repository root (3f) and `make test-roles` (St12-1,
 after 3e).
 
 ## Owner deliverables pending
@@ -635,7 +444,7 @@ after 3e).
   what to run and where). The owner runs them after 3f, on the final
   layout; after 3f's commit and CI report the assistant gives them as one
   checklist ordered cheapest first, with the paths of the root layout
-  (owner, after 3e). Listed so far in `infra/docs/IMPLEMENTATION_NOTES.md`,
+  (owner, after 3e). Listed so far in `docs/IMPLEMENTATION_NOTES.md`,
   "Infra self-test without provisioning", "Not tested":
   1. bootstrap in check mode on a disposable Ubuntu 24.04 VM;
   2. `make test-distros` on a machine with Incus VMs;
@@ -647,13 +456,13 @@ after 3e).
   6. the first golden image builds;
   7. optionally, the Docker check-mode runs, which CI already runs on every
      push.
-- Approval of the model candidates in `infra/models.catalog.yml` (owner answer
+- Approval of the model candidates in `models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
   `TODO(verify)` revisions because Hugging Face is not reachable from the build
   environment.
 
 - Domain allowlist for the environment (A3); the list is in
-  `infra/docs/IMPLEMENTATION_NOTES.md`. Since step 3, GitHub release
+  `docs/IMPLEMENTATION_NOTES.md`. Since step 3, GitHub release
   downloads, `api.github.com` and `security.ubuntu.com` are reachable; the
   other listed hosts and `releases.astral.sh` (CPython builds for uv) are
   still blocked.
@@ -669,39 +478,39 @@ after 3e).
 after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
 collection artifacts, 128 after the lock's header comment stopped naming the
 marker, 118 with the owner's collection pins; details
-in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
+in `docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
 step 4" through "after step 13"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
-  (`infra/preflight/support-matrix.yml`).
-- openSUSE Leap 15.6 end of support (`infra/preflight/support-matrix.yml`).
+  (`preflight/support-matrix.yml`).
+- openSUSE Leap 15.6 end of support (`preflight/support-matrix.yml`).
 - 16 endpoint URLs whose hosts are blocked from the build environment
-  (`infra/preflight/endpoints.yml`), including `releases.astral.sh`, from
+  (`preflight/endpoints.yml`), including `releases.astral.sh`, from
   which uv 0.12.23 downloads the pinned CPython.
 - Output formats of `timedatectl timesync-status` and `chronyc -n tracking`
-  (`infra/preflight/pokus_preflight/detect/timesync.py`).
+  (`preflight/pinka_preflight/detect/timesync.py`).
 - Detection of an incomplete dnf transaction
-  (`infra/preflight/pokus_preflight/detect/conflicts.py`).
-- 32 lines of `infra/versions.lock.yml`: the DCGM exporter image (nvcr.io);
+  (`preflight/pinka_preflight/detect/conflicts.py`).
+- 32 lines of `versions.lock.yml`: the DCGM exporter image (nvcr.io);
   Tailscale and Zabbly repository keys; Docker packages for openSUSE Leap;
   Incus and Tailscale packages for every pinned release; Incus base image
   fingerprints; GitHub SSH host keys (api.github.com/meta is not readable
   from this environment).
 - Step 5: 7 more lock lines (NVIDIA driver pins for the releases other than
-  Ubuntu); 17 `verify` entries of `infra/ansible/component-sources.yml`
+  Ubuntu); 17 `verify` entries of `ansible/component-sources.yml`
   (Tailscale and Zabbly repository layouts; Docker, Incus and NVIDIA package
   names and methods outside Ubuntu); 20 notes in role files (package and
   service names of the Red Hat, SUSE and Arch families, dnf5 and zypper
   behavior, Incus's firewalld/ufw/Docker guidance, the WSL library path, the
   `tailscale serve` status format, the Secure Boot MOK flow); the Windows
-  helper `infra/contrib/windows/pokus-wsl.ps1` (not run on Windows).
+  helper `contrib/windows/pinka-wsl.ps1` (not run on Windows).
 - Step 6: resolved the three firewall and Docker coexistence notes from
   Incus's documentation; added the Incus group, unit and path names of
   Zabbly's packages and of the Red Hat, SUSE and Arch families
-  (`infra/ansible/roles/incus/vars/`).
+  (`ansible/roles/incus/vars/`).
 - Step 7: the revisions of the five candidate models in
-  `infra/models.catalog.yml` (with two explanatory lines) and the field names
-  of the Hugging Face tree API in `infra/docs/how-to/add-a-model.md` (with the
+  `models.catalog.yml` (with two explanatory lines) and the field names
+  of the Hugging Face tree API in `docs/how-to/add-a-model.md` (with the
   catalog warning); Hugging Face is not reachable from the build environment.
 - Step 8: nothing added or resolved; the Incus base image fingerprints now
   block every golden image build (images.linuxcontainers.org is not reachable
@@ -711,16 +520,16 @@ step 4" through "after step 13"):
 - Step 11: nothing added or resolved; vLLM's TLS options, planned as a
   marker, were verified in vLLM's source (and are not used). GitHub's SSH
   host keys (above) now also gate SSH deployments from github.com.
-- Step 12: the VM image aliases of `infra/tests/distros/targets.yml`
+- Step 12: the VM image aliases of `tests/distros/targets.yml`
   (images.linuxcontainers.org is not reachable from the build environment).
 - Step 13: the Hugging Face Hub API field names the installer reads when it
-  pins a model (`infra/installer/pokus_installer/models.py`), and the MOK
-  enrollment with `mokutil` (`infra/installer/pokus_installer/tui/screens_install.py`).
+  pins a model (`installer/pinka_installer/models.py`), and the MOK
+  enrollment with `mokutil` (`installer/pinka_installer/tui/screens_install.py`).
 - 3d.6: the release tarball URL and sha256 of each pinned Ansible
-  collection (`ansible_collections.fallback` in `infra/versions.lock.yml`).
+  collection (`ansible_collections.fallback` in `versions.lock.yml`).
 - 3d.7: the Galaxy artifact URL and sha256 of each of the five pinned
-  collections (`ansible_collections.artifacts` in `infra/versions.lock.yml`)
-  and their copy in the generated `infra/bootstrap/lib/pins.sh`. Resolved
+  collections (`ansible_collections.artifacts` in `versions.lock.yml`)
+  and their copy in the generated `bootstrap/lib/pins.sh`. Resolved
   with the owner's `make lock-collections` output (`4aeb35b`); the four
   `ansible_collections.fallback` entries go with the fallback in 3d.8.
 
@@ -753,7 +562,7 @@ step 4" through "after step 13"):
   read (the release tags were confirmed with `git ls-remote`). Until they are
   verified, setup without Galaxy stops and says so; this session's
   collections were installed earlier from the release tags into the
-  git-ignored `infra/.ansible-collections/`, which setup verifies and keeps.
+  git-ignored `.ansible-collections/`, which setup verifies and keeps.
   Since 3d.7 the lock also holds `community.library_inventory_filtering_v1`
   1.1.5 (a dependency of `community.docker`); it has no fallback entry
   until the owner decides on the fallback (3d.7 finding: the GitHub
@@ -813,7 +622,7 @@ step 4" through "after step 13"):
 - `make lock-collections` refused every symbolic link in an artifact, so
   the owner's first run stopped at `community.general`'s
   `tests/utils/shippable/aix.sh`. Fixed after `d5fe24d` (separate commit):
-  one artifact rule (`infra/tools/lockcheck/pinka_lockcheck/artifact.py`)
+  one artifact rule (`tools/lockcheck/pinka_lockcheck/artifact.py`)
   for `make lock-collections`, `make setup` and bootstrap, accepting only
   relative links that stay inside the collection (`3d4bab2`).
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
@@ -822,7 +631,7 @@ step 4" through "after step 13"):
   (docs spec §B.2) and needs an ADR and owner approval.
 - The build environment's default uv (0.8.17) is older than the pinned
   0.12.23; since 3d.6 `make setup` installs the pinned uv into
-  `infra/build/tools/` (checked against its sha256) and runs `uv sync` with
+  `build/tools/` (checked against its sha256) and runs `uv sync` with
   it, so no uv on `PATH` is needed. CPython 3.9.25 and 3.12.11 are installed
   in user space by uv.
 - mypy 2.x cannot type-check for Python 3.9; the 3.9 compatibility of
@@ -833,7 +642,7 @@ step 4" through "after step 13"):
   filesystem; clone it inside WSL or on Linux (the lab is Linux-only anyway).
 - Several command output formats are modeled in the preflight fixtures from
   upstream knowledge and must be confirmed on real hosts in Phase 5 (list in
-  `infra/docs/IMPLEMENTATION_NOTES.md`).
+  `docs/IMPLEMENTATION_NOTES.md`).
 - CI's `test` and `docs` jobs failed from infra step 7 through step 11
   although `make test docs` passed here: this environment runs as root, CI
   does not. The bootstrap git-state tests and the deploy helper's tests
@@ -876,10 +685,11 @@ step 4" through "after step 13"):
 
 ## Next step
 
-3f, the move to the repository root, under the scoped exception (owner,
-after 3e). The exception ends when 3f is committed; from then on every
-commit waits for the owner's "commit". After 3f's commit and its CI
-report: the checklist of provisioning runs on the root layout (see
-[Owner deliverables pending](#owner-deliverables-pending)), then 3g. Still
-open: the remaining `TODO(verify)` items (113), which need network access
-or reference hardware.
+3f is committed; the scoped commit exception has ended, and every commit
+waits for the owner's "commit". After 3f's CI report: the checklist of
+provisioning runs on the root layout (see
+[Owner deliverables pending](#owner-deliverables-pending)), which the owner
+runs; every fix that comes out of those runs waits for "commit". Then 3g,
+the proposal of the one-time history rewrite. Still open: the remaining
+`TODO(verify)` items (113), which need network access or reference
+hardware.
