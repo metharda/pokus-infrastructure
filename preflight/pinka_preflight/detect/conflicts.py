@@ -3,7 +3,8 @@
 Each conflict has a severity: ``blocking`` (the host is unsupported),
 ``needs_action`` (the operator can fix it, then re-run) or ``warning``.
 Informational findings (an active firewall manager, the MAC system) are
-recorded separately and are not conflicts.
+recorded separately and are not conflicts. Components that may exist before
+pinka (Docker Engine, Tailscale, LXD, Podman) are judged in ``components``.
 """
 
 from __future__ import annotations
@@ -119,7 +120,7 @@ def _package_manager_busy(fs: FileSystem) -> str | None:
     return None
 
 
-def detect_conflicts(  # noqa: PLR0912 - one branch per documented conflict
+def detect_conflicts(
     fs: FileSystem,
     runner: Runner,
     *,
@@ -165,19 +166,6 @@ def detect_conflicts(  # noqa: PLR0912 - one branch per documented conflict
                 "Remove the snap ('snap remove docker'); the lab installs Docker Engine itself.",
             )
         )
-    if (
-        runner.run(["snap", "list", "lxd"]).ok
-        or runner.which("lxd")
-        or fs.exists("/sys/class/net/lxdbr0")
-    ):
-        add(
-            Conflict(
-                "lxd_installed",
-                "blocking",
-                "LXD is installed",
-                "Remove LXD; migrating LXD to Incus is out of scope for the lab.",
-            )
-        )
     for unit in ("firewalld", "ufw"):
         if report.firewall_manager is None and _active(runner, unit):
             report.firewall_manager = unit
@@ -217,25 +205,6 @@ def detect_conflicts(  # noqa: PLR0912 - one branch per documented conflict
                 "Remove the Linux NVIDIA driver packages from this WSL distribution; WSL uses the "
                 "Windows NVIDIA driver through /dev/dxg. Never install a Linux NVIDIA driver "
                 "in WSL.",
-            )
-        )
-    if _active(runner, "podman.socket"):
-        add(
-            Conflict(
-                "podman_socket",
-                "warning",
-                "podman.socket is active",
-                "Stop and disable podman.socket unless you need it; the lab uses Docker Engine.",
-            )
-        )
-    daemon_json = fs.read_text("/etc/docker/daemon.json")
-    if daemon_json is not None and MANAGED_MARKER not in daemon_json:
-        add(
-            Conflict(
-                "unmanaged_docker_config",
-                "warning",
-                "/etc/docker/daemon.json exists and is not managed by pinka",
-                "It will be replaced by the docker role; a backup is taken first.",
             )
         )
     if (

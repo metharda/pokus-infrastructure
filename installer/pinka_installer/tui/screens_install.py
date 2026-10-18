@@ -267,7 +267,8 @@ def summary(
             "remote",
             "Remote access",
             f"{a.tailscale_tag} · login {a.remote_access.tailscale_login} · Grafana serve "
-            f"{'on' if a.remote_access.grafana_tailscale_serve else 'off'}",
+            f"{'on' if a.remote_access.grafana_tailscale_serve else 'off'}"
+            + (" · serve consent given" if a.remote_access.tailscale_serve_consent else ""),
         ),
         (
             "gpu",
@@ -847,9 +848,12 @@ class FinishScreen(StepScreen):
         a = self.answers
         machine = a.machine.name
         ssh = "\n".join(f"  ssh {r.name}@{machine}" for r in a.researchers)
+        served = a.remote_access.grafana_tailscale_serve and (
+            not self.wizard.tailscale_adopted or a.remote_access.tailscale_serve_consent
+        )
         grafana = (
             f"https://{machine}.<tailnet>.ts.net/ (tailscale serve)"
-            if a.remote_access.grafana_tailscale_serve
+            if served
             else f"ssh -L 18700:127.0.0.1:18700 <user>@{machine}, then http://localhost:18700/"
         )
         lines = [f"Connect (over the tailnet):\n{ssh}", f"Grafana: {grafana}"]

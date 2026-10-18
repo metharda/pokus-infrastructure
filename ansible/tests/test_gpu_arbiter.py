@@ -743,6 +743,10 @@ def test_container_options_are_fixed_by_infra(lab: tuple[arb.Arbiter, FakeSystem
     assert value("--cpus") == ["2"]
     assert value("--pids-limit") == ["4096"]
     assert value("--device") == ["nvidia.com/gpu=all"]
+    # Per container, not from the Docker daemon (BUILD_PROMPT §7.6).
+    assert value("--cgroup-parent") == ["pinka-services.slice"]
+    assert value("--log-driver") == ["local"]
+    assert value("--log-opt") == ["max-size=20m", "max-file=5"]
     # Nothing that widens the container, whatever the manifest says.
     for forbidden in ("--privileged", "--cap-add", "--pid", "--userns", "--uts", "-v", "--volume"):
         assert forbidden not in options, forbidden
@@ -1177,6 +1181,8 @@ def test_load_config(tmp_path: Path) -> None:
     )
     config = arb.load_config(path)
     assert (config.node_role, config.gpu_args, config.trains) == ("lab", ("--gpus", "all"), False)
+    write(path, json.dumps({"container_args": ["--cgroup-parent", "x.slice"]}))
+    assert arb.load_config(path).container_args == ("--cgroup-parent", "x.slice")
     write(path, json.dumps({"surprise": 1}))
     with pytest.raises(arb.ArbiterError, match="unknown keys"):
         arb.load_config(path)
@@ -1458,6 +1464,16 @@ def test_the_socket_belongs_to_the_peer(overrides: dict[str, Any], peer: str) ->
     assert sock["Accept"] == "yes"
     config = json.loads(render_template("gpu_arbiter", "arbiter.json.j2", role_scope(**overrides)))
     assert config["peer"] == peer
+    assert config["container_args"] == [
+        "--cgroup-parent",
+        "pinka-services.slice",
+        "--log-driver",
+        "local",
+        "--log-opt",
+        "max-size=20m",
+        "--log-opt",
+        "max-file=5",
+    ]
 
 
 def test_the_units() -> None:

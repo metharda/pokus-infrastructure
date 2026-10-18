@@ -11,8 +11,19 @@
 # §19.10) and the GPU profile.
 name: pinka-observability
 
+# Settings every lab container gets here rather than from the Docker daemon,
+# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
+# §7.6): the local log driver with size limits and the lab services' slice.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: ${LOG_MAX_SIZE:?}
+    max-file: ${LOG_MAX_FILE:?}
+
 x-hardened: &hardened
   restart: unless-stopped
+  logging: *logging
+  cgroup_parent: ${CGROUP_PARENT:?}
   network_mode: host
   read_only: true
   security_opt: ["no-new-privileges:true"]
@@ -193,9 +204,9 @@ services:
       - ${DOCKER_DATA_ROOT:?}:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
 
-  # GPU metrics through nvidia-smi (works on WSL2), with the GPU method the
-  # docker role configured: CDI device or the NVIDIA runtime. COMPOSE_PROFILES
-  # in .env enables one of the two services when gpu_inference is on.
+  # GPU metrics through nvidia-smi (works on WSL2), with the GPU method Docker
+  # offers: CDI device or the NVIDIA runtime. COMPOSE_PROFILES in .env enables
+  # one of the two services when gpu_inference is on.
   gpu_exporter:
     <<: *gpu_exporter
     profiles: [gpu-cdi]

@@ -626,6 +626,33 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
     assert installer.ctx.wizard.answers.researchers_removed == []  # fresh: nobody to lock
 
 
+def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
+    # BUILD_PROMPT §7.4, §18.4 screen 7: name, tag and login read-only; serve needs consent.
+    host = FakeHost(preflight("ubuntu2404-baremetal-tailscale-adopted"))
+    installer = app(context(repo, host), first="remote")
+    installer.ctx.wizard.profile = host.preflight([]).profile
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        screen = pilot.app.screen
+        text = str(screen.query_one("#adopted", Static).content)
+        assert "logged in before pinka, as example-desktop" in text
+        assert "Without tag:pinka-lab" in text
+        for selector in ("#tag", "#login", "#authkey", "#dns"):
+            assert screen.query_one(selector).disabled, selector
+        tick(pilot, "serve")
+        await forward(pilot, "remote")
+        assert any("needs your consent" in e for e in shown_errors(pilot)), shown_errors(pilot)
+        tick(pilot, "consent")
+        await forward(pilot, "gpu")
+
+    drive(installer, flow)
+    remote = installer.ctx.wizard.answers.remote_access
+    assert remote.grafana_tailscale_serve and remote.tailscale_serve_consent
+    assert remote.tailscale_login == "interactive"  # pinka never logs this node in
+    assert installer.ctx.wizard.provided.tailscale_authkey == ""
+
+
 def test_the_resources_screen_warns_about_split_smt_cores(repo: Paths) -> None:
     # cpu<n> and cpu<n+12> are the two threads of one core (24 threads).
     cores = [frozenset({n, n + 12}) for n in range(12)]

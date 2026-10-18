@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import socket
 import struct
@@ -498,26 +497,26 @@ GPU_FACTS = {"lab_session_gpu_image": "docker.io/nvidia/cuda@sha256:" + "0" * 64
 
 
 @pytest.mark.parametrize(
-    ("node_role", "gpu", "daemon", "expected", "device_args"),
+    ("node_role", "gpu", "docker_args", "expected", "device_args"),
     [
         (
             "full",
             True,
-            {"features": {"cdi": True}},
+            ["--device", "nvidia.com/gpu=all"],
             ["gpu", "incus", "inference", "opa", "postgres", "telemetry", "time"],
             ["--device", "nvidia.com/gpu=all"],
         ),
         (
             "lab",
             False,
-            {},
+            [],
             ["incus", "inference", "opa", "postgres", "telemetry", "time"],
             None,
         ),
         (
             "inference",
             True,
-            {"runtimes": {"nvidia": {}}},
+            ["--runtime", "nvidia", "--gpus", "all"],
             ["gpu", "telemetry", "time"],
             ["--runtime", "nvidia", "--gpus", "all"],
         ),
@@ -526,7 +525,7 @@ GPU_FACTS = {"lab_session_gpu_image": "docker.io/nvidia/cuda@sha256:" + "0" * 64
 def test_checks_per_node_role(
     node_role: str,
     gpu: bool,
-    daemon: dict[str, Any],
+    docker_args: list[str],
     expected: list[str],
     device_args: list[str] | None,
 ) -> None:
@@ -535,7 +534,8 @@ def test_checks_per_node_role(
         node_role=node_role,
         pinka_provider="wsl2",
         lab_session_gpu=gpu,
-        lab_session_daemon_json={"content": base64.b64encode(json.dumps(daemon).encode()).decode()},
+        # What the docker role's facts.yml read from `docker info`.
+        pinka_docker_gpu_args=docker_args,
         **GPU_FACTS,
     )
     assert sorted(checks) == expected

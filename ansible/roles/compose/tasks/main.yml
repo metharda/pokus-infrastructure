@@ -31,12 +31,6 @@
     mode: "0640"
   register: compose_file
 
-- name: Read the Docker daemon configuration
-  ansible.builtin.slurp:
-    src: /etc/docker/daemon.json
-  register: compose_daemon_json
-  failed_when: false
-
 - name: Read the active platform
   ansible.builtin.include_role:
     name: active_platform
@@ -45,31 +39,30 @@
   ansible.builtin.getent:
     database: group
 
-# The docker role decided how containers get the GPU: CDI devices
-# (features.cdi) or the NVIDIA runtime; GPU services exist in one Compose
+# How containers reach the GPU and where Docker keeps its data, from the
+# running engine (docker role, facts.yml): GPU services exist in one Compose
 # profile per method.
-- name: Derive the Docker settings the project needs
+- name: Read what Docker offers
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
+
+- name: Derive the settings the project needs
   ansible.builtin.set_fact:
-    compose_docker: "{{ compose_daemon_json.content | default('e30=') | b64decode | from_json }}"
+    compose_gpu_method: "{{ pinka_docker_gpu_method }}"
     compose_pinka_gid: "{{ (ansible_facts.getent_group['pinka'] | default(none) or ['', ''])[1] }}"
     compose_db_socket_gid: >-
       {{ (ansible_facts.getent_group[compose_db_socket_group] | default(none) or ['', ''])[1] }}
     # The query proxy's socket group (§7.9).
     compose_query_gid: "{{ (ansible_facts.getent_group['pinka-query'] | default(none) or ['', ''])[1] }}"
 
-- name: Derive the GPU method
-  ansible.builtin.set_fact:
-    compose_gpu_method: >-
-      {{ 'cdi' if (compose_docker.features | default({})).cdi | default(false)
-         else ('runtime' if 'nvidia' in (compose_docker.runtimes | default({})) else 'none') }}
-
 - name: Check that the GPU method is known
   ansible.builtin.assert:
     that:
       - not compose_gpu or compose_gpu_method != 'none'
     fail_msg: >-
-      {{ compose_project }} needs the GPU, but /etc/docker/daemon.json enables
-      neither CDI nor the NVIDIA runtime (docker and nvidia_container_toolkit roles).
+      {{ compose_project }} needs the GPU, but Docker offers neither CDI nor the NVIDIA
+      runtime (`docker info`; docker and nvidia_container_toolkit roles).
     quiet: true
   when: not ansible_check_mode
 

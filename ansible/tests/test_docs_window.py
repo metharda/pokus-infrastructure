@@ -144,7 +144,7 @@ def test_docs_release_is_installed_like_pinka_docs_install() -> None:
 
 
 def test_docs_on_the_tailnet_only_on_request() -> None:
-    serve = task("tailscale", "Publish the documentation on the tailnet only", "funnel.yml")
+    serve = task("tailscale", "Publish on the tailnet only", "funnel.yml")
     assert serve["ansible.builtin.command"]["argv"][:3] == ["tailscale", "serve", "--bg"]
     assert "funnel" not in " ".join(serve["ansible.builtin.command"]["argv"])
     firewall = "firewall_tailnet_tcp_ports"
@@ -158,6 +158,37 @@ def test_docs_on_the_tailnet_only_on_request() -> None:
         docs_release=RELEASE,
     )
     assert 10000 in evaluate(firewall, on)
+
+
+def test_serve_on_an_adopted_node_needs_consent() -> None:
+    # BUILD_PROMPT §7.4: a node that existed before pinka is published only with
+    # the owner's consent; the firewall opens the serve ports only then.
+    adopted = {"components": {"tailscale": {"origin": "pre-existing"}}}
+    joined = {"components": {"tailscale": {"origin": "pinka"}}}
+    entries = task("tailscale", "Decide which services to publish on the tailnet", "funnel.yml")
+    expression = entries["ansible.builtin.set_fact"]["tailscale_serve_entries"].strip("{} \n")
+    common: dict[str, Any] = {
+        "node_role": "full",
+        "inference_remote_node": "",
+        "grafana_tailscale_serve": True,
+        "docs_tailscale_serve": True,
+        "docs_release": RELEASE,
+    }
+    for profile, consent, published in (
+        (joined, False, True),
+        (adopted, False, False),
+        (adopted, True, True),
+    ):
+        scope = role_vars(
+            "tailscale", host_profile=profile, tailscale_serve_consent=consent, **common
+        )
+        ports = [e["port"] for e in evaluate(expression, scope)]
+        assert ports == ([443, 10000] if published else []), (profile, consent)
+        firewall = role_vars(
+            "firewall", host_profile=profile, tailscale_serve_consent=consent, **common
+        )
+        tcp = evaluate("firewall_tailnet_tcp_ports", firewall)
+        assert (443 in tcp and 10000 in tcp) == published, (profile, consent)
 
 
 # --- maintenance windows ------------------------------------------------------------

@@ -77,3 +77,7 @@ argument_specs:
         type: list
         elements: str
         description: Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
+      firewall_preexisting_bridges:
+        type: list
+        elements: str
+        description: Bridges of a pre-existing LXD, on which the input policy admits DHCP and DNS for LXD's dnsmasq (derived from the host profile).

@@ -126,11 +126,18 @@ def lab_defaults_json(root: Path) -> str:
 
     Returns:
         JSON text with the default ports (``pinka_default_ports``), the VM
-        collector address and interface, the Docker address pools and the
-        tailnet range.
+        collector address and interface, the Docker address pools, the
+        tailnet range, the Tailscale tags pinka gives a node it joins and
+        the names of the Incus bridges pinka creates (exact names and
+        prefixes, for the clash check against LXD, §7.7).
     """
     group_vars = load_yaml(root / "ansible/group_vars/all/main.yml")
     docker = load_yaml(root / "ansible/roles/docker/defaults/main.yml")
+    patterns = [
+        str(p)
+        for p in group_vars["pinka_incus_bridge_patterns"]
+        + group_vars["pinka_incus_personal_bridge_patterns"]
+    ]
     data = {
         "schema_version": 1,
         "ports": jsonable(group_vars["pinka_default_ports"]),
@@ -140,6 +147,11 @@ def lab_defaults_json(root: Path) -> str:
         },
         "docker_address_pools": jsonable(docker["docker_address_pools"]),
         "tailnet": TAILNET_RANGE,
+        "tailscale_tags": sorted(str(t) for t in group_vars["pinka_tailscale_tags"].values()),
+        "incus_bridges": {
+            "names": sorted(p for p in patterns if "*" not in p),
+            "prefixes": sorted(p.removesuffix("*") for p in patterns if p.endswith("*")),
+        },
     }
     return dump_json(
         data, "ansible/group_vars/all/main.yml and ansible/roles/docker/defaults/main.yml"

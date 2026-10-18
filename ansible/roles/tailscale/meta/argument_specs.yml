@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/tailscale/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off.
+    short_description: Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off; a node logged in before pinka is adopted as it is.
     options:
       machine_name:
         type: str
@@ -16,6 +16,10 @@ argument_specs:
         type: bool
         required: true
         description: Publish Grafana on the tailnet with `tailscale serve` (never Funnel).
+      tailscale_serve_consent:
+        type: bool
+        default: false
+        description: On a node that existed before pinka, the owner's consent to tailscale serve for Grafana or docs.
       tailscale_tag:
         type: str
         default: tag:pinka-lab

@@ -1385,6 +1385,12 @@ def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
             "--port=grafana=18750\n--port=loki=18752\n"
         ),
         "vm_collector_address: 198.19.0.1\nports: {}\n": "--vm-collector-address=198.19.0.1\n",
+        # §7.7: the pool device is checked against LXD's storage, a loop file is not.
+        "incus_pool_source: device\nincus_pool_device: /dev/disk/by-id/nvme-example\n": (
+            "--pool-device=/dev/disk/by-id/nvme-example\n"
+        ),
+        "incus_pool_source: loop\nincus_pool_device: /dev/disk/by-id/nvme-example\n": "",
+        'incus_pool_source: device\nincus_pool_device: ""\n': "",
     }
     for text, expected in cases.items():
         (host_vars / "lab1.yml").write_text(text)

@@ -251,6 +251,10 @@
           "type": "boolean",
           "description": "Publish Grafana on the tailnet with tailscale serve (never Funnel)."
         },
+        "tailscale_serve_consent": {
+          "type": "boolean",
+          "description": "On a Tailscale node that was logged in before pinka (an adopted node): consent that pinka adds its tailscale serve entries to it; without it pinka publishes nothing there. Uninstall removes only the entries pinka added. Ignored on a node pinka joins."
+        },
         "ssh_extra_allowed_interfaces": {
           "type": "array",
           "items": {

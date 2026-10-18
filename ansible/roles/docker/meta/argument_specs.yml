@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/docker/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: Docker Engine with Compose and buildx, pinned and held, and its daemon configuration.
+    short_description: Docker Engine with Compose and buildx, pinned and held, and its daemon configuration; a pre-existing Docker is used as it is.
     options:
       researchers:
         type: list
@@ -22,23 +22,13 @@ argument_specs:
         elements: dict
         default: [{base: 172.30.0.0/16, size: 24}]
         description: >-
-          Address pools for Docker networks; must not overlap Incus bridges,
-          Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
-      docker_cgroup_parent:
+          pinka's address pool for the subnets of its Compose networks; must not
+          overlap Incus bridges, Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
+      docker_cdi_min_version:
         type: str
-        default: "{{ pinka_services_slice }}"
-        description: >-
-          Systemd slice of every container (daemon.json cgroup-parent), the lab
-          services' slice that AllowedCPUs pins to cpuset_services.
-      docker_log_max_size:
+        default: "25.0"
+        description: First Docker Engine version with CDI device support; an older engine pinka installs gets the NVIDIA runtime.
+      docker_cdi_default_since:
         type: str
-        default: 20m
-        description: Maximum size of one log file of the local log driver.
-      docker_log_max_file:
-        type: int
-        default: 5
-        description: Number of log files kept per container by the local log driver.
-      docker_cdi_min_major:
-        type: int
-        default: 25
-        description: First Docker Engine major version with CDI device support; older engines get the NVIDIA runtime.
+        default: "28.2"
+        description: First Docker Engine version that enables CDI by default; daemon.json sets features.cdi only below it.

@@ -50,6 +50,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `remote_access.tailscale_login` | one of `auth_key`, `interactive` | yes | auth_key: from PINKA_SECRET_TAILSCALE_AUTHKEY or the TUI; interactive: the login URL is shown during the install. |
 | `remote_access.accept_dns` | boolean | no | Accept the tailnet's DNS settings. |
 | `remote_access.grafana_tailscale_serve` | boolean | no | Publish Grafana on the tailnet with tailscale serve (never Funnel). |
+| `remote_access.tailscale_serve_consent` | boolean | no | On a Tailscale node that was logged in before pinka (an adopted node): consent that pinka adds its tailscale serve entries to it; without it pinka publishes nothing there. Uninstall removes only the entries pinka added. Ignored on a node pinka joins. |
 | `remote_access.ssh_extra_allowed_interfaces` | array | no | Network interfaces besides tailscale0 that accept SSH (not on WSL). |
 | `split_inference` | object | no | For node_role lab or inference: the machine name of the other node once paired (docs/node-roles.md); pairing can also come later (pinka pair). |
 | `split_inference.peer` | see `hostname` | yes | Machine name of the paired node. |

@@ -257,7 +257,8 @@ does not push the rewritten history itself.
     change, preflight reports `needs_action` with the exact change, before
     anything changes and with no override. The install record
     (`/var/lib/pinka/install-record.json`, `install_record` role, §7.21)
-    says what is pinka's.
+    says what is pinka's; a role notes what it creates there
+    (`pinka_install_record: state: add`) before it creates it.
 14. **Uninstall** (§13 invariant 25, §5.4) removes only what the install
     record names as pinka's (without a record, only what carries pinka's
     names), never a pre-existing component, and keeps the lab's data unless

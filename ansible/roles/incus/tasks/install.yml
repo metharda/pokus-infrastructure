@@ -31,6 +31,16 @@
     - incus_source.source == 'community'
     - not pinka_community_repos_allowed
 
+# The install record notes the component before anything is installed
+# (§7.21). An Incus adopted with --adopt-incus existed before pinka and stays
+# the host's: uninstall removes only pinka's objects in it.
+- name: Record that pinka installs Incus
+  pinka_install_record:
+    state: add
+    added:
+      components: {incus: true}
+  when: not ((host_profile.components | default({})).incus | default({})).installed | default(false)
+
 - name: Add the Incus repository
   ansible.builtin.include_role:
     name: pkg

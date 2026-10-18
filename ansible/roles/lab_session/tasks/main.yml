@@ -25,11 +25,10 @@
     - {src: pinka_health_gate.py, dest: health-gate}
     - {src: pinka_session_start.py, dest: session-start}
 
-- name: Read the Docker daemon configuration (how containers get the GPU)
-  ansible.builtin.slurp:
-    src: /etc/docker/daemon.json
-  register: lab_session_daemon_json
-  failed_when: false
+- name: Read what Docker offers (how containers reach the GPU)
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
   when: lab_session_gpu
 
 # The clock is always checked; of the facilities this node runs, the gate
@@ -49,10 +48,7 @@
          | combine({'gpu': {'image': lab_session_gpu_image, 'device_args': lab_session_gpu_args}}
                    if lab_session_gpu else {}) }}
   vars:
-    lab_session_docker: "{{ (lab_session_daemon_json.content | default('e30=')) | b64decode | from_json }}"
-    lab_session_gpu_args: >-
-      {{ ['--device', 'nvidia.com/gpu=all'] if (lab_session_docker.features | default({})).cdi | default(false)
-         else ['--runtime', 'nvidia', '--gpus', 'all'] }}
+    lab_session_gpu_args: "{{ pinka_docker_gpu_args | default([]) }}"
 
 - name: Write the health gate's configuration
   ansible.builtin.copy:

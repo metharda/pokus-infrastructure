@@ -2,15 +2,14 @@
 
 # Root of Docker's images, containers and volumes (host_vars docker_data_root).
 docker_data_root: /var/lib/docker
-# Address pools for Docker networks. They must not overlap Incus bridges,
-# Tailscale's 100.64.0.0/10 or common home LANs (192.168.0.0/16).
+# pinka's address pool for the subnets of its Compose networks (compose
+# role). It must not overlap Incus bridges, Tailscale's 100.64.0.0/10 or
+# common home LANs (192.168.0.0/16).
 docker_address_pools:
   - {base: 172.30.0.0/16, size: 24}
-# Systemd slice of every container (the lab services' slice, pinned to
-# cpuset_services); with the systemd cgroup driver it must be a .slice.
-docker_cgroup_parent: "{{ pinka_services_slice }}"
-# Size limits of the `local` log driver per container (Docker's own defaults).
-docker_log_max_size: 20m
-docker_log_max_file: 5
-# First Docker Engine major version with CDI device support (Docker 25.0).
-docker_cdi_min_major: 25
+# First Docker Engine version with CDI device support (Docker 25.0).
+docker_cdi_min_version: "25.0"
+# First Docker Engine version that enables CDI by default (Docker 28.2, moby
+# docker-v29.8.2 daemon/command/daemon.go); daemon.json sets features.cdi
+# only below it.
+docker_cdi_default_since: "28.2"

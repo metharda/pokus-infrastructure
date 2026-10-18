@@ -502,6 +502,93 @@ def routed(network: str, dev: str = "eth0") -> Layer:
     return apply
 
 
+# ----------------------------------------------- pre-existing components (§2.2)
+
+
+def docker_engine(
+    version: str = "29.8.2",
+    cdi_dirs: str = '["/etc/cdi","/var/run/cdi"]',
+    daemon: str | None = None,
+) -> Layer:
+    """A running Docker Engine that existed before pinka, with Compose and buildx."""
+
+    def apply(f: Fixture) -> None:
+        f.data.setdefault("which", {}).update(
+            {"dockerd": "/usr/bin/dockerd", "docker": "/usr/bin/docker"}
+        )
+        f.cmd("dockerd --version", f"Docker version {version}, build 0000000\n")
+        f.cmd("systemctl is-active docker.service", "active\n")
+        f.cmd("docker info --format '{{json .CDISpecDirs}}'", cdi_dirs + "\n")
+        f.cmd("docker compose version", "Docker Compose version v5.6.0\n")
+        f.cmd("docker buildx version", "github.com/docker/buildx v0.37.1 0000000\n")
+        if daemon is not None:
+            f.files["/etc/docker/daemon.json"] = daemon
+
+    return apply
+
+
+def tailscale_node(
+    tags: tuple[str, ...] = ("tag:home",), funnel: bool = False, ssh: bool = False
+) -> Layer:
+    """A Tailscale node logged in to the owner's own tailnet before pinka."""
+
+    def apply(f: Fixture) -> None:
+        f.data.setdefault("which", {})["tailscale"] = "/usr/bin/tailscale"
+        f.cmd("tailscale version", "1.104.1\n  tailscale commit: 0000000\n")
+        f.cmd("systemctl is-active tailscaled.service", "active\n")
+        status = {
+            "BackendState": "Running",
+            "Self": {
+                "HostName": "example-desktop",
+                "Tags": list(tags),
+                "KeyExpiry": "2027-04-01T00:00:00Z",
+            },
+        }
+        f.cmd("tailscale status --json", json.dumps(status) + "\n")
+        serve = {"AllowFunnel": {"example-desktop.example.com:443": True}} if funnel else {}
+        f.cmd("tailscale serve status --json", json.dumps(serve) + "\n")
+        f.cmd("tailscale debug prefs", json.dumps({"RunSSH": ssh}) + "\n")
+
+    return apply
+
+
+def lxd_snap(*networks: tuple[str, str]) -> Layer:
+    """LXD from its snap with managed networks (name, IPv4 address)."""
+
+    def apply(f: Fixture) -> None:
+        f.cmd(
+            "snap list lxd",
+            "Name  Version  Rev    Tracking     Publisher   Notes\n"
+            "lxd   5.21.3   33110  5.21/stable  canonical*  -\n",
+        )
+        nets = [{"name": n, "managed": True, "config": {"ipv4.address": a}} for n, a in networks]
+        f.cmd("lxc network list --format json", json.dumps(nets) + "\n")
+        pools = [
+            {"name": "default", "config": {"source": "/var/snap/lxd/common/lxd/disks/default.img"}}
+        ]
+        f.cmd("lxc storage list --format json", json.dumps(pools) + "\n")
+
+    return apply
+
+
+def podman(docker_command: bool = False) -> Layer:
+    """Podman, optionally with podman-docker providing the docker command."""
+
+    def apply(f: Fixture) -> None:
+        which = f.data.setdefault("which", {})
+        which["podman"] = "/usr/bin/podman"
+        f.cmd("podman --version", "podman version 5.4.2\n")
+        f.cmd("systemctl is-active podman.socket", "active\n")
+        if docker_command:
+            which["docker"] = "/usr/bin/docker"
+            f.cmd(
+                "docker --version",
+                "Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg.\npodman version 5.4.2\n",
+            )
+
+    return apply
+
+
 def secure_boot_enabled(f: Fixture) -> None:
     """Secure Boot on (mokutil and the EFI variable agree)."""
     f.cmd("mokutil --sb-state", "SecureBoot enabled\n")
@@ -1076,6 +1163,78 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         kvm(),
         nvidia_pci("loaded"),
         expected={"outcome": "unsupported", "unsupported_contains": ["memory_gib"]},
+    )
+    # BUILD_PROMPT §2.2, §7.4, §7.6, §7.7: components that existed before pinka
+    # are used as they are; preflight stops where the lab could not run with
+    # them unchanged.
+    host = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("loaded")]
+    fx["ubuntu2404-baremetal-docker-preexisting"] = build(
+        *host,
+        docker_engine(),
+        expected={
+            "outcome": "supported",
+            "conflicts": [],
+            "needs_action": [],
+            "components": {"docker": "pre-existing"},
+            "notes_contain": ["Docker Engine 29.8.2 is installed already"],
+        },
+    )
+    fx["ubuntu2404-baremetal-docker-cdi-off"] = build(
+        *host,
+        docker_engine(cdi_dirs="[]", daemon='{"features": {"cdi": false}}\n'),
+        expected={"outcome": "needs_action", "needs_action": ["docker_cdi_off"]},
+    )
+    fx["ubuntu2404-baremetal-tailscale-adopted"] = build(
+        *host,
+        tailscale_node(),
+        expected={
+            "outcome": "supported",
+            "needs_action": [],
+            "components": {"tailscale": "pre-existing"},
+            "notes_contain": ["pinka uses the node as it is"],
+        },
+    )
+    fx["ubuntu2404-baremetal-tailscale-funnel"] = build(
+        *host,
+        tailscale_node(funnel=True),
+        expected={"outcome": "needs_action", "needs_action": ["tailscale_funnel_on"]},
+    )
+    fx["ubuntu2404-baremetal-tailscale-ssh"] = build(
+        *host,
+        tailscale_node(ssh=True),
+        expected={"outcome": "needs_action", "needs_action": ["tailscale_ssh_on"]},
+    )
+    fx["ubuntu2404-baremetal-lxd"] = build(
+        *host,
+        docker_engine(),
+        lxd_snap(("lxdbr0", "10.150.12.1/24")),
+        expected={
+            "outcome": "supported",
+            "conflicts": [],
+            "needs_action": [],
+            "components": {"lxd": "pre-existing", "docker": "pre-existing"},
+            "notes_contain": ["LXD 5.21.3 is installed: pinka leaves it as it is"],
+        },
+    )
+    fx["ubuntu2404-baremetal-lxd-clash"] = build(
+        *host,
+        lxd_snap(("lxdbr0", "172.30.8.1/24")),
+        expected={"outcome": "needs_action", "needs_action": ["lxd_incus_clash"]},
+    )
+    fx["ubuntu2404-baremetal-podman"] = build(
+        *host,
+        podman(),
+        expected={
+            "outcome": "supported",
+            "needs_action": [],
+            "components": {"podman": "pre-existing"},
+            "notes_contain": ["Podman 5.4.2 is installed: pinka leaves it as it is"],
+        },
+    )
+    fx["ubuntu2404-baremetal-podman-docker"] = build(
+        *host,
+        podman(docker_command=True),
+        expected={"outcome": "needs_action", "needs_action": ["podman_docker"]},
     )
     conflicting = build(
         *base_ubuntu,

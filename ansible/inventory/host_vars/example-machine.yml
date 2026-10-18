@@ -104,6 +104,10 @@ platform_settings: {}
 # Publish Grafana on the tailnet with `tailscale serve` (never Funnel).
 grafana_tailscale_serve: false
 
+# On a Tailscale node that was logged in before pinka (adopted): the owner's
+# consent that pinka adds its serve entries to it; without it nothing is served.
+tailscale_serve_consent: false
+
 # Extra interfaces on which sshd is reachable besides tailscale0, e.g. [enp5s0].
 ssh_extra_allowed_interfaces: []
 

@@ -22,6 +22,7 @@ from ansible_testlib import (
     evaluate,
     fixture_profile,
     init_plugins,
+    load_yaml,
     render_file,
     render_template,
     role_vars,
@@ -249,35 +250,27 @@ def test_events_unit() -> None:
 
 
 @pytest.mark.parametrize(
-    ("method", "mac", "extra"),
+    ("setting", "mac", "extra"),
     [
         ("cdi", "apparmor", {"features"}),
         ("runtime", "selinux", {"runtimes", "selinux-enabled"}),
         ("none", "none", set()),
     ],
 )
-def test_docker_daemon_json(method: str, mac: str, extra: set[str]) -> None:
-    variables = role_vars("docker", docker_gpu_method=method, pinka_mac=mac)
+def test_docker_daemon_json(setting: str, mac: str, extra: set[str]) -> None:
+    # BUILD_PROMPT §7.6: only for a Docker pinka installed, and only what it
+    # needs; the log driver, cgroup parent and networks are in the Compose
+    # projects, and CDI is Docker's default from 28.2 (setting "none").
+    variables = role_vars("docker", docker_gpu_setting=setting, pinka_mac=mac)
     data = json.loads(render_template("docker", "daemon.json.j2", variables))
-    base = {
-        "labels",
-        "data-root",
-        "log-driver",
-        "log-opts",
-        "live-restore",
-        "default-address-pools",
-        "cgroup-parent",
-    }
-    assert set(data) == base | extra
-    assert data["cgroup-parent"] == "pinka-services.slice"  # pinned to cpuset_services
+    assert set(data) == {"labels", "data-root", "live-restore"} | extra
     assert any(MANAGED_MARKER in label for label in data["labels"])  # preflight recognizes the file
     assert all("=" in label for label in data["labels"])
-    assert data["log-driver"] == "local"
-    assert data["log-opts"] == {"max-size": "20m", "max-file": "5"}
     assert data["live-restore"] is True
-    if method == "cdi":
+    assert data["data-root"] == "/var/lib/docker"
+    if setting == "cdi":
         assert data["features"] == {"cdi": True}
-    if method == "runtime":
+    if setting == "runtime":
         assert data["runtimes"] == {
             "nvidia": {"path": "/usr/bin/nvidia-container-runtime", "args": []}
         }
@@ -316,3 +309,80 @@ def test_run_acl_admits_only_the_vm_listener(vm_targets: bool) -> None:
             "description": "OTLP to the collector listener for VM targets",
         }
     ]
+
+
+def docker_task(name: str, tasks: str) -> dict[str, Any]:
+    found: dict[str, Any] = next(
+        t for t in load_yaml(ROLES / "docker" / "tasks" / tasks) if t["name"] == name
+    )
+    return found
+
+
+def inner(value: str) -> str:
+    """The expression of a task value that is exactly one ``{{ ... }}``."""
+    text = value.strip()
+    assert text.startswith("{{") and text.endswith("}}"), text
+    return text[2:-2]
+
+
+@pytest.mark.parametrize(
+    ("version", "gpu", "setting"),
+    [
+        ("Docker version 29.8.2, build 0000000", True, "none"),  # CDI is Docker's default
+        ("Docker version 28.2.0, build 0000000", True, "none"),
+        ("Docker version 27.5.1, build 0000000", True, "cdi"),  # an older distribution package
+        ("Docker version 24.0.9, build 0000000", True, "runtime"),  # no CDI support
+        ("Docker version 27.5.1, build 0000000", False, "none"),  # no GPU feature
+    ],
+)
+def test_daemon_json_sets_the_gpu_only_below_cdis_default(
+    version: str, gpu: bool, setting: str
+) -> None:
+    # BUILD_PROMPT §7.6: Docker 28.2 and later enable CDI unless features.cdi is false.
+    spec = docker_task("Decide what the daemon configuration needs for the GPU", "install.yml")
+    variables = role_vars(
+        "docker",
+        docker_dockerd_version={"stdout": version},
+        pinka_features={"gpu_inference": gpu, "gpu_training": False},
+    )
+    variables["docker_engine_version"] = evaluate(
+        inner(spec["vars"]["docker_engine_version"]), variables
+    )
+    result = evaluate(inner(spec["ansible.builtin.set_fact"]["docker_gpu_setting"]), variables)
+    assert result == setting
+
+
+@pytest.mark.parametrize(
+    ("stdout", "rc", "method", "args", "root"),
+    [
+        (
+            '["/etc/cdi","/var/run/cdi"]\n{"runc":{"path":"runc"}}\n"/var/lib/docker"\n',
+            0,
+            "cdi",
+            ["--device", "nvidia.com/gpu=all"],
+            "/var/lib/docker",
+        ),
+        (
+            'null\n{"nvidia":{"path":"/usr/bin/nvidia-container-runtime"}}\n"/srv/docker"\n',
+            0,
+            "runtime",
+            ["--runtime", "nvidia", "--gpus", "all"],
+            "/srv/docker",
+        ),
+        ('[]\n{"runc":{}}\n"/var/lib/docker"\n', 0, "none", [], "/var/lib/docker"),
+        ("", 1, "none", [], "/var/lib/docker"),  # no running engine
+    ],
+)
+def test_docker_facts_come_from_docker_info(
+    stdout: str, rc: int, method: str, args: list[str], root: str
+) -> None:
+    # Whoever installed Docker, the lab reads the GPU method and the data root
+    # from the running engine (docker role, facts.yml).
+    spec = docker_task("Record what Docker offers", "facts.yml")
+    scope = role_vars("docker", docker_info_facts={"stdout": stdout, "rc": rc})
+    for name in ("docker_facts_parts", "docker_facts_method"):
+        scope[name] = evaluate(inner(spec["vars"][name]), scope)
+    facts = spec["ansible.builtin.set_fact"]
+    assert evaluate(inner(facts["pinka_docker_gpu_method"]), scope) == method
+    assert evaluate(inner(facts["pinka_docker_gpu_args"]), scope) == args
+    assert evaluate(inner(facts["pinka_docker_data_root"]), scope) == root

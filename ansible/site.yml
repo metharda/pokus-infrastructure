@@ -34,6 +34,12 @@
         name: preflight_gate
       tags: [preflight_gate, always]
 
+    # Before any change to the host: what existed before pinka (§7.21).
+    - name: Record what existed before pinka
+      ansible.builtin.import_role:
+        name: install_record
+      tags: [install_record, always]
+
     - name: Apply the provider
       ansible.builtin.include_role:
         name: "provider_{{ pinka_provider }}"

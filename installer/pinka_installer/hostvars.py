@@ -140,6 +140,7 @@ def _remote(answers: Answers) -> dict[str, Any]:
     remote = answers.remote_access
     values: dict[str, Any] = {
         "grafana_tailscale_serve": remote.grafana_tailscale_serve,
+        "tailscale_serve_consent": remote.tailscale_serve_consent,
         "ssh_extra_allowed_interfaces": list(remote.ssh_extra_allowed_interfaces),
     }
     if remote.tailscale_tag:
@@ -383,6 +384,7 @@ def _gpu_from(values: Mapping[str, Any], answers: Answers) -> None:
 def _remote_from(values: Mapping[str, Any], answers: Answers) -> None:
     remote = answers.remote_access
     remote.grafana_tailscale_serve = bool(values.get("grafana_tailscale_serve", False))
+    remote.tailscale_serve_consent = bool(values.get("tailscale_serve_consent", False))
     remote.ssh_extra_allowed_interfaces = list(values.get("ssh_extra_allowed_interfaces", []))
     remote.tailscale_tag = str(values.get("tailscale_tag", ""))
     remote.accept_dns = bool(values.get("tailscale_accept_dns", False))

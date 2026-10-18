@@ -34,7 +34,8 @@ from producing results that look valid but are not.
 | Hardware | CPU threads (also under cgroup CPU limits), memory, free disk space for `/var/lib` and the research space |
 | Kernel capabilities | cgroup v2 and its controllers, `overlay`, `br_netfilter`, `nf_tables`, `veth`, `/dev/net/tun`, KVM and nested virtualization, btrfs and LVM thin provisioning, Secure Boot, the MAC system |
 | GPU | NVIDIA GPU, driver state, VRAM and compute capability; on WSL2 through the Windows driver |
-| Conflicts | Docker Desktop integration, snap Docker, LXD, image-based or non-systemd systems, musl, a busy package manager, a Linux NVIDIA driver inside WSL, an unmanaged Incus |
+| Conflicts | Docker Desktop integration, snap Docker, image-based or non-systemd systems, musl, a busy package manager, a Linux NVIDIA driver inside WSL, an unmanaged Incus |
+| Pre-existing components | Docker Engine, Tailscale, LXD, Podman, Incus and the NVIDIA driver, each with its version and origin (`pinka` or `pre-existing`, from the install record); what pinka would need changed in one of them is `needs_action` ([Components that existed before pinka](pre-existing-components.md)) |
 | Network | DNS and HTTPS reachability of the package mirrors, repositories and registries the install needs |
 
 Every file read and every command run goes through two small interfaces, so

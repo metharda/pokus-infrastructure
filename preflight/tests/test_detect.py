@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import unittest
 
@@ -417,7 +418,8 @@ class ConflictsTest(TempRootCase):
         )
         self.assertEqual(self.detect(r), [("docker_desktop_wsl", "blocking")])
 
-    def test_snaps_lxd_podman_and_firewall(self) -> None:
+    def test_snap_docker_and_firewall(self) -> None:
+        # LXD and Podman are pre-existing components, judged in components.py.
         r = runner(
             {
                 "snap list docker": "docker\n",
@@ -436,14 +438,7 @@ class ConflictsTest(TempRootCase):
             adopt_incus=False,
         )
         ids = [(c.id, c.severity) for c in report.conflicts]
-        self.assertEqual(
-            ids,
-            [
-                ("snap_docker", "blocking"),
-                ("lxd_installed", "blocking"),
-                ("podman_socket", "warning"),
-            ],
-        )
+        self.assertEqual(ids, [("snap_docker", "blocking")])
         self.assertEqual(report.firewall_backend, "ufw")
         self.assertTrue(report.infos)
 
@@ -478,10 +473,9 @@ class ConflictsTest(TempRootCase):
         self.put("/var/lib/pacman/db.lck")
         self.assertEqual(self.detect(), [("package_manager_busy", "needs_action")])
 
-    def test_unmanaged_docker_config(self) -> None:
+    def test_a_docker_configuration_is_no_conflict(self) -> None:
+        # A Docker Engine that existed before pinka is used as it is (components.py).
         self.put("/etc/docker/daemon.json", "{}\n")
-        self.assertEqual(self.detect(), [("unmanaged_docker_config", "warning")])
-        self.put("/etc/docker/daemon.json", "# Managed by pinka (x)\n{}\n")
         self.assertEqual(self.detect(), [])
 
     def test_unmanaged_incus_and_adoption(self) -> None:
@@ -602,6 +596,18 @@ class LabPortTest(TempRootCase):
         self.assertEqual(len(lab.port_conflicts(self.fs(), self.PORTS)), 1)
         self.put("/etc/pinka/managed-incus", "")
         self.assertEqual(lab.port_conflicts(self.fs(), self.PORTS), [])
+
+    def test_a_docker_proxy_to_the_labs_pool_is_the_labs(self) -> None:
+        # A Docker that existed before pinka has no managed daemon.json; the
+        # proxy of a lab port forwards to a container in the lab's own pool.
+        pool = [ipaddress.IPv4Network("172.30.0.0/16")]
+        self.listen(4317, "99", "/system.slice/docker.service", comm="docker-proxy")
+        argv = ["/usr/bin/docker-proxy", "-proto", "tcp", "-host-ip", "127.0.0.1"]
+        for ip, outside in (("172.30.0.5", 0), ("172.17.0.2", 1)):
+            cmdline = [*argv, "-host-port", "4317", "-container-ip", ip, "-container-port", "4317"]
+            self.put("/proc/99/cmdline", "\0".join(cmdline).encode() + b"\0")
+            self.assertEqual(len(lab.port_conflicts(self.fs(), self.PORTS, pool)), outside, ip)
+        self.assertEqual(len(lab.port_conflicts(self.fs(), self.PORTS)), 1)
 
     def test_an_invisible_owner_is_a_warning(self) -> None:
         self.put("/proc/net/tcp6", TCP_HEADER + tcp_line("0" * 32, 18700, 5))

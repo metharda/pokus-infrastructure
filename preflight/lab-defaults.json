@@ -25,5 +25,18 @@
       "size": 24
     }
   ],
-  "tailnet": "100.64.0.0/10"
+  "tailnet": "100.64.0.0/10",
+  "tailscale_tags": [
+    "tag:pinka-lab",
+    "tag:pinka-qa"
+  ],
+  "incus_bridges": {
+    "names": [
+      "pinka-build0"
+    ],
+    "prefixes": [
+      "incusbr-",
+      "r-"
+    ]
+  }
 }

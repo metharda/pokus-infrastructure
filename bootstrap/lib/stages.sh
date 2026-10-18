@@ -708,10 +708,12 @@ port_overrides() {
   ' "$1"
 }
 
-# lab_preflight_args: the preflight options of the machine's port overrides
-# and VM collector address in host_vars, one per line (§2.2, §12.11).
+# lab_preflight_args: the preflight options of the machine's port overrides,
+# VM collector address and pool device in host_vars, one per line (§2.2,
+# §7.7, §12.11).
 lab_preflight_args() {
   local host_vars="$INFRA_DIR/ansible/inventory/host_vars/$OPT_MACHINE.yml" overrides entry address
+  local source device
   overrides=$(port_overrides "$host_vars") || {
     log_error "ports: in $host_vars must map port names to numbers, as indented lines or as {name: number}"
     return "$EXIT_OPERATOR"
@@ -721,6 +723,9 @@ lab_preflight_args() {
   done <<<"$overrides"
   address=$(yaml_scalar "$host_vars" vm_collector_address)
   [[ -z $address ]] || printf -- '--vm-collector-address=%s\n' "$address"
+  source=$(yaml_scalar "$host_vars" incus_pool_source)
+  device=$(yaml_scalar "$host_vars" incus_pool_device)
+  [[ $source != device || -z $device ]] || printf -- '--pool-device=%s\n' "$device"
 }
 
 # stage_preflight: run preflight, apply the gate, check for a changed host

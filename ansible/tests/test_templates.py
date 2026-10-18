@@ -11,6 +11,7 @@ BUILD_PROMPT §3.1 (wsl.conf), §7.2 (updates), §7.3 (sshd) and §7.5 (firewall
 from __future__ import annotations
 
 import configparser
+import fnmatch
 import json
 import os
 import shutil
@@ -143,8 +144,9 @@ def nft_check(path: Path) -> subprocess.CompletedProcess[str]:
         {},
         {"ssh_extra_allowed_interfaces": ["eth1", "enp3s0"], "grafana_tailscale_serve": True},
         {"pinka_features": {"vm_targets": True}},
+        {"host_profile": {"components": {"lxd": {"networks": [{"name": "lxdbr0"}]}}}},
     ],
-    ids=["default", "extra-interfaces-grafana", "vm-targets"],
+    ids=["default", "extra-interfaces-grafana", "vm-targets", "lxd"],
 )
 def test_nft_ruleset_is_valid(tmp_path: Path, extra: dict[str, Any]) -> None:
     text = render_template("firewall", "pinka.nft.j2", firewall_vars(**extra))
@@ -181,6 +183,27 @@ def test_nft_vm_listener_rule() -> None:
     assert rules(pinka_features={"vm_targets": True}) == [
         'iifname "r-*" ip daddr 198.18.0.1 tcp dport { 4317, 4318 } accept'
     ]
+
+
+def test_nft_ruleset_leaves_lxds_guests_their_dhcp_and_dns() -> None:
+    # BUILD_PROMPT §7.7: pinka's rules must not break an LXD that existed before
+    # pinka; its guests keep DHCP and DNS from LXD's dnsmasq, and pinka's
+    # forward chain filters only run networks.
+    def rules(networks: list[dict[str, Any]]) -> list[str]:
+        profile = {"components": {"lxd": {"installed": True, "networks": networks}}}
+        text = render_template("firewall", "pinka.nft.j2", firewall_vars(host_profile=profile))
+        return [line.strip() for line in text.splitlines() if "lxd" in line]
+
+    assert rules([]) == []
+    networks: list[dict[str, Any]] = [
+        {"name": "lxdbr0", "ipv4": "10.0.3.1/24"},
+        {"name": "lxd-lab", "ipv4": None},
+    ]
+    assert rules(networks) == [
+        'iifname { "lxdbr0", "lxd-lab" } udp dport { 53, 67, 547 } accept',
+        'iifname { "lxdbr0", "lxd-lab" } tcp dport 53 accept',
+    ]
+    assert rules([{"name": 'bad"name', "ipv4": None}]) == []
 
 
 def test_nft_ruleset_options() -> None:
@@ -785,6 +808,23 @@ def test_docker_incus_compat_script(tmp_path: Path) -> None:
     for bridge in ("r-+", "pinka-build0", "incusbr-+"):
         assert f'-I DOCKER-USER -i "{bridge}" -j ACCEPT' in text
     assert "*" not in text.split("set -eu", 1)[1]
+
+
+def test_docker_user_rules_touch_only_incus_bridges() -> None:
+    # Owner decision 3 on 3f-1 (real-machine test 4.4): the rules pinka adds to
+    # DOCKER-USER must not change the networking of containers that were there
+    # before; every rule matches an Incus bridge, none matches Docker's or LXD's.
+    variables = firewall_vars()
+    text = render_template("firewall", "docker-incus-compat.sh.j2", variables)
+    patterns = evaluate("firewall_incus_bridge_patterns", variables)
+    bridges = {p.replace("*", "+") for p in patterns}
+    rules = [line.split() for line in text.splitlines() if "-I DOCKER-USER" in line]
+    assert len(rules) == 2 * len(bridges)
+    for rule in rules:
+        interface = next(rule[i + 1] for i, word in enumerate(rule) if word in ("-i", "-o"))
+        assert interface.strip('"') in bridges, rule
+    for other in ("docker0", "br-0123456789ab", "lxdbr0", "podman0"):
+        assert not any(fnmatch.fnmatchcase(other, b.replace("+", "*")) for b in bridges), other
 
 
 def test_firewall_units() -> None:

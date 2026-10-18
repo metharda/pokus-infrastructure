@@ -112,6 +112,14 @@ def test_cap_sizes_and_secret_keys() -> None:
         assert validators.platform_secret_key(bad), bad
 
 
+def test_serve_on_an_adopted_node_needs_consent() -> None:
+    # BUILD_PROMPT §7.4: off by default on a node logged in before pinka.
+    assert validators.serve_consent(adopted=True, serve=True, consent=False)
+    assert validators.serve_consent(adopted=True, serve=True, consent=True) is None
+    assert validators.serve_consent(adopted=True, serve=False, consent=False) is None
+    assert validators.serve_consent(adopted=False, serve=True, consent=False) is None
+
+
 def test_tags_models_times_snapshots() -> None:
     assert validators.tailscale_tag("tag:pinka-lab") is None
     for bad in ("pinka-lab", "tag:Pinka", "tag:1x", "tag:"):

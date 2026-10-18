@@ -24,7 +24,7 @@ from textual.widgets import (
 from pinka_installer import groupvars, keys, validators
 from pinka_installer.answers import Researcher
 from pinka_installer.tui.base import Problems, StepScreen
-from pinka_installer.tui.model import acl_snippet
+from pinka_installer.tui.model import acl_snippet, adopted_text
 from pinka_installer.tui.widgets import Field, NavBar
 
 
@@ -266,11 +266,20 @@ class RemoteScreen(StepScreen):
     def body(self) -> ComposeResult:  # noqa: D102
         remote = self.answers.remote_access
         tag = self.answers.tailscale_tag
-        yield Static(
-            f"Tailscale host name: {self.answers.machine.name} (the machine name)", classes="info"
+        adopted = self.wizard.tailscale_adopted
+        if adopted:
+            yield Static(adopted_text(adopted, tag), id="adopted", classes="info", markup=False)
+        else:
+            yield Static(
+                f"Tailscale host name: {self.answers.machine.name} (the machine name)",
+                classes="info",
+            )
+        yield Field(
+            "Tailscale tag",
+            Input(tag, id="tag", disabled=bool(adopted)),
+            hint="the tag the tailnet ACL and doctor expect" if adopted else "",
         )
-        yield Field("Tailscale tag", Input(tag, id="tag"))
-        with RadioSet(id="login"):
+        with RadioSet(id="login", disabled=bool(adopted)):
             yield RadioButton(
                 "Auth key", value=remote.tailscale_login == "auth_key", id="login-key"
             )
@@ -282,13 +291,30 @@ class RemoteScreen(StepScreen):
         keep = " (empty: keep the key in the vault)" if self.ctx.paths.vault.exists() else ""
         yield Field(
             "Auth key",
-            Input(self.wizard.provided.tailscale_authkey, password=True, id="authkey"),
+            Input(
+                self.wizard.provided.tailscale_authkey,
+                password=True,
+                id="authkey",
+                disabled=bool(adopted),
+            ),
             hint=f"pre-approved, tagged with the tag above; stored only in the vault{keep}",
         )
-        yield Checkbox("Accept the tailnet's DNS settings", remote.accept_dns, id="dns")
+        dns = Checkbox("Accept the tailnet's DNS settings", remote.accept_dns, id="dns")
+        dns.disabled = bool(adopted)
+        yield dns
         yield Checkbox(
             "Publish Grafana with tailscale serve", remote.grafana_tailscale_serve, id="serve"
         )
+        if adopted:
+            yield Field(
+                "Consent",
+                Checkbox(
+                    "pinka may add its tailscale serve entries to this node",
+                    remote.tailscale_serve_consent,
+                    id="consent",
+                ),
+                hint="uninstall removes only the entries pinka added",
+            )
         interfaces = self.ctx.host.interfaces()
         chosen = set(remote.ssh_extra_allowed_interfaces)
         selection: SelectionList[str] = SelectionList(
@@ -320,8 +346,11 @@ class RemoteScreen(StepScreen):
         remote.tailscale_tag = "" if tag == default else tag
         if error := validators.tailscale_tag(tag):
             problems.append(("tag", error))
+        adopted = bool(self.wizard.tailscale_adopted)
         remote.tailscale_login = (
-            "auth_key" if self.query_one("#login-key", RadioButton).value else "interactive"
+            "auth_key"
+            if self.query_one("#login-key", RadioButton).value and not adopted
+            else "interactive"  # an adopted node is never logged in by pinka
         )
         key = self.query_one("#authkey", Input).value.strip()
         self.wizard.provided.tailscale_authkey = key if remote.tailscale_login == "auth_key" else ""
@@ -329,6 +358,11 @@ class RemoteScreen(StepScreen):
             problems.append(("authkey", "paste the auth key, or choose the interactive login"))
         remote.accept_dns = self.query_one("#dns", Checkbox).value
         remote.grafana_tailscale_serve = self.query_one("#serve", Checkbox).value
+        remote.tailscale_serve_consent = adopted and self.query_one("#consent", Checkbox).value
+        if error := validators.serve_consent(
+            adopted, remote.grafana_tailscale_serve, remote.tailscale_serve_consent
+        ):
+            problems.append(("consent", error))
         remote.ssh_extra_allowed_interfaces = (
             [] if self.wizard.is_wsl else list(self.query_one("#ifaces", SelectionList).selected)
         )

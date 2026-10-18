@@ -199,6 +199,9 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_unit_hardening",
         "pinka_cpuset_cpus",
         "pinka_vault_keys",
+        "pinka_researcher_memberships",
+        "pinka_key_entries",
+        "pinka_subnet",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pinka_release_identity(c)", {"p": profile, "c": debian_codenames()})
@@ -315,3 +318,37 @@ def test_cpuset_cpus() -> None:
     for bad in ("a-b", "5-3", "1,,2", "-1", "1-"):
         with pytest.raises(pinka.PinkaFilterError):
             pinka.cpuset_cpus(bad)
+
+
+def test_memberships_and_keys_of_pre_existing_accounts() -> None:
+    # BUILD_PROMPT §6.1, §7.21: pinka records what it adds to an account it did not create.
+    researchers: list[dict[str, Any]] = [
+        {"name": "researcher1", "admin": True},
+        {"name": "researcher2", "admin": False},
+        {"name": "researcher3"},
+    ]
+    assert pinka.researcher_memberships(researchers, ["researcher1", "researcher3"]) == [
+        {"user": "researcher1", "group": "pinka"},
+        {"user": "researcher1", "group": "pinka-admin"},
+        {"user": "researcher3", "group": "pinka"},
+    ]
+    assert pinka.researcher_memberships(researchers, []) == []
+    lines = [
+        "# a comment",
+        "ssh-ed25519 AAAAC3Nz example-key-1",
+        "",
+        "  ssh-ed25519 AAAAC3Nz example-key-2  ",
+    ]
+    text = "\n".join(lines) + "\n"
+    assert pinka.key_entries(text, "researcher1") == [
+        {"user": "researcher1", "key": "ssh-ed25519 AAAAC3Nz example-key-1"},
+        {"user": "researcher1", "key": "ssh-ed25519 AAAAC3Nz example-key-2"},
+    ]
+
+
+def test_subnets_of_the_docker_pool() -> None:
+    pools = [{"base": "172.30.0.0/16", "size": 24}]
+    assert pinka.subnet(pools, 0) == "172.30.0.0/24"
+    assert pinka.subnet(pools, 3) == "172.30.3.0/24"
+    with pytest.raises(ValueError, match="no subnet 256"):
+        pinka.subnet(pools, 256)

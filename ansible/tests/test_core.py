@@ -8,6 +8,7 @@ compose role (the Docker CLI works without a daemon for this).
 from __future__ import annotations
 
 import configparser
+import ipaddress
 import shutil
 import subprocess
 from pathlib import Path
@@ -61,7 +62,7 @@ def compose_vars(project: str, **extra: Any) -> dict[str, Any]:
         "pinka_versions": LOCK,
         "compose_project": project,
         "compose_config_hashes": {},
-        "compose_docker": {"data-root": "/var/lib/docker"},
+        "pinka_docker_data_root": "/var/lib/docker",
         "compose_gpu_method": "none",
         "compose_pinka_gid": "1000",
         "compose_db_socket_gid": "999",
@@ -110,6 +111,12 @@ def test_env_pins_every_image_by_digest() -> None:
         assert env[f"{name.upper()}_IMAGE"] == f"{image['image']}@{image['digest']}"
     assert env["OPA_PORT"] == "8181"
     assert env["GRAFANA_PORT"] == "18700"
+    # BUILD_PROMPT §7.6: per service, not from the Docker daemon.
+    assert env["LOG_MAX_SIZE"] == "20m"
+    assert env["LOG_MAX_FILE"] == "5"
+    assert env["CGROUP_PARENT"] == "pinka-services.slice"
+    assert env["CORE_SUBNET"] == "172.30.0.0/24"
+    assert env["DOCKER_DATA_ROOT"] == "/var/lib/docker"
 
 
 def test_compose_unit() -> None:
@@ -194,6 +201,17 @@ def test_compose_config_is_valid(project: str, gpu_method: str, tmp_path: Path) 
     for name, service in config["services"].items():
         assert "@sha256:" in service["image"], name
         assert service.get("network_mode") in ("host", "none") or "ports" in service, name
+        # BUILD_PROMPT §7.6: the same on a Docker that existed before pinka.
+        assert service["cgroup_parent"] == "pinka-services.slice", name
+        logging = service["logging"]
+        if logging["driver"] != "journald":  # OPA's decision logs go to the collector
+            assert logging == {"driver": "local", "options": {"max-size": "20m", "max-file": "5"}}
+    networks = config.get("networks", {})
+    for network in networks.values():
+        # Explicit subnets from pinka's own pool, never Docker's default pools.
+        (subnet,) = [c["subnet"] for c in network["ipam"]["config"]]
+        assert ipaddress.IPv4Network(subnet).subnet_of(ipaddress.IPv4Network("172.30.0.0/16"))
+    assert ("default" in networks) == (project == "core")
 
 
 def test_postgres_configuration() -> None:

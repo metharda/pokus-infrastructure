@@ -14,6 +14,7 @@ Exit codes: 0 supported, 10 degraded, 20 unsupported, 30 needs_action,
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
@@ -22,6 +23,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from pinka_preflight import __version__, render, schema_check
+from pinka_preflight.detect.components import component_conflicts, detect_components
 from pinka_preflight.detect.conflicts import Conflict, detect_conflicts
 from pinka_preflight.detect.environment import detect_environment
 from pinka_preflight.detect.gpu import detect_gpu
@@ -152,6 +154,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="the host's vm_collector_address (default: the lab's default)",
     )
     parser.add_argument(
+        "--pool-device",
+        metavar="PATH",
+        help="the host's incus_pool_device when incus_pool_source is device; checked against "
+        "LXD's storage",
+    )
+    parser.add_argument(
         "--allow-dirty",
         action="store_true",
         help="record that bootstrap runs from a repository with uncommitted changes",
@@ -196,8 +204,19 @@ def _port_override(text: str) -> tuple[str, int]:
     return name, int(value)
 
 
+def _pools(defaults: dict[str, Any]) -> list[ipaddress.IPv4Network]:
+    """The lab's own Docker address pools."""
+    pools = [ipaddress.ip_network(str(p["base"])) for p in defaults["docker_address_pools"]]
+    return [p for p in pools if isinstance(p, ipaddress.IPv4Network)]
+
+
 def lab_conflicts(
-    args: argparse.Namespace, fs: FileSystem, runner: Runner, *, kvm_usable: bool
+    args: argparse.Namespace,
+    fs: FileSystem,
+    runner: Runner,
+    defaults: dict[str, Any],
+    *,
+    kvm_usable: bool,
 ) -> list[Conflict]:
     """Ports in use and VM collector address conflicts (§2.2, §12.11).
 
@@ -205,14 +224,14 @@ def lab_conflicts(
         args: Parsed arguments.
         fs: Filesystem view.
         runner: Command runner.
+        defaults: The lab's defaults (``lab-defaults.json``).
         kvm_usable: KVM is usable, so VM targets are possible.
 
     Returns:
         The conflicts.
     """
-    defaults = load_lab_defaults(args.lab_defaults)
     ports = {**defaults["ports"], **dict(args.port)}
-    found = port_conflicts(fs, ports)
+    found = port_conflicts(fs, ports, _pools(defaults))
     if kvm_usable:
         address = args.vm_collector_address or str(defaults["vm_collector"]["address"])
         found += vm_address_conflicts(fs, runner, address, defaults)
@@ -265,7 +284,28 @@ def run_preflight(
         gpu_linux_driver_in_wsl=gpu.linux_driver_in_wsl,
         adopt_incus=args.adopt_incus,
     )
-    conflicts.conflicts += lab_conflicts(args, fs, runner, kvm_usable=kernel.kvm_usable)
+    defaults = load_lab_defaults(args.lab_defaults)
+    conflicts.conflicts += lab_conflicts(args, fs, runner, defaults, kvm_usable=kernel.kvm_usable)
+    components = detect_components(
+        fs,
+        runner,
+        pinka_tags=defaults["tailscale_tags"],
+        nvidia_installed=gpu.driver_installed,
+        nvidia_version=gpu.driver,
+    )
+    found, notes = component_conflicts(
+        fs,
+        components,
+        gpu_usable=gpu.usable,
+        lxd_clash_args={
+            "bridge_prefixes": defaults["incus_bridges"]["prefixes"],
+            "bridge_names": defaults["incus_bridges"]["names"],
+            "networks": _pools(defaults),
+            "pool_device": args.pool_device,
+        },
+    )
+    conflicts.conflicts += found
+    conflicts.infos += notes
     timesync = detect_timesync(runner)
     matrix = load_matrix(args.matrix)
     family = match_os(matrix, osr).get("family")
@@ -277,7 +317,17 @@ def run_preflight(
     )
     machine = runner.machine()
     det = Detection(
-        osr, machine, env, kernel, hw, gpu, conflicts, timesync, endpoints, args.offline
+        osr,
+        machine,
+        env,
+        kernel,
+        hw,
+        gpu,
+        conflicts,
+        timesync,
+        endpoints,
+        args.offline,
+        components,
     )
     decision = evaluate(
         matrix,

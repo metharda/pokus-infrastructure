@@ -196,3 +196,15 @@ def test_vm_collector_address_is_checked() -> None:
     assert _holds(that, vm_collector_address="198.19.255.1")
     for bad in ("127.0.0.2", "0.1.2.3", "198.18.0", "300.1.1.1", "2001:db8::1"):
         assert not _holds(that, vm_collector_address=bad), bad
+
+
+def test_the_preflight_arguments_carry_the_pool_device() -> None:
+    # BUILD_PROMPT §7.7: a dedicated pool device is checked against LXD's storage;
+    # bootstrap passes the same options (bootstrap/lib/stages.sh).
+    device = "/dev/disk/by-id/nvme-example"
+    args = evaluate("pinka_preflight_args", ansible_vars(GROUP_VARS, ports={"grafana": 18750}))
+    assert args == ["--port=grafana=18750", "--vm-collector-address", "198.18.0.1"]
+    on_device = ansible_vars(GROUP_VARS, incus_pool_source="device", incus_pool_device=device)
+    assert evaluate("pinka_preflight_args", on_device)[-2:] == ["--pool-device", device]
+    loop = ansible_vars(GROUP_VARS, incus_pool_source="loop", incus_pool_device=device)
+    assert "--pool-device" not in evaluate("pinka_preflight_args", loop)

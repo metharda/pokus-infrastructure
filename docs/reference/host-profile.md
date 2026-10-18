@@ -135,6 +135,44 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `disabled_features[].unmet` | string | yes | — |
 | `disabled_features[].remediation` | string | no | What makes the feature available, when the matrix names it (for example the driver update of gpu_inference). |
 | `storage_backend` | one of `btrfs`, `lvm`, `null` | yes | Backend for the Incus pool; null means no quota-capable storage. |
+| `components` | object | yes | Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks (BUILD_PROMPT §2.2, §7.21). |
+| `components.install_record` | boolean | yes | The host has an install record. |
+| `components.docker` | object | yes | — |
+| `components.docker.installed` | boolean | yes | The component is on the host. |
+| `components.docker.version` | string or null | yes | Its version, if it could be read. |
+| `components.docker.running` | boolean | yes | Its daemon is active. |
+| `components.docker.origin` | one of `pinka`, `pre-existing`, `null` | yes | pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed. |
+| `components.docker.cdi` | boolean | no | CDI is on (docker info lists CDI spec directories; without a running daemon: daemon.json and the version). |
+| `components.docker.compose` | boolean | no | The Compose v2 plugin answers. |
+| `components.docker.buildx` | boolean | no | The buildx plugin answers. |
+| `components.tailscale` | object | yes | — |
+| `components.tailscale.installed` | boolean | yes | The component is on the host. |
+| `components.tailscale.version` | string or null | yes | Its version, if it could be read. |
+| `components.tailscale.running` | boolean | yes | Its daemon is active. |
+| `components.tailscale.origin` | one of `pinka`, `pre-existing`, `null` | yes | pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed. |
+| `components.tailscale.logged_in` | boolean | no | The node is logged in (BackendState Running). |
+| `components.tailscale.hostname` | string or null | no | The node's host name on the tailnet. |
+| `components.tailscale.tags` | array | no | The node's tags. |
+| `components.tailscale.key_expiry` | string or null | no | When the node's key expires; null when key expiry is off. |
+| `components.tailscale.funnel` | boolean | no | Funnel is on. |
+| `components.tailscale.ssh` | boolean | no | Tailscale SSH is on. |
+| `components.lxd` | object | yes | — |
+| `components.lxd.installed` | boolean | yes | The component is on the host. |
+| `components.lxd.version` | string or null | yes | Its version, if it could be read. |
+| `components.lxd.running` | boolean | yes | Its daemon is active. |
+| `components.lxd.origin` | one of `pinka`, `pre-existing`, `null` | yes | pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed. |
+| `components.lxd.networks` | array | no | LXD's managed networks. |
+| `components.lxd.networks[].name` | string | yes | — |
+| `components.lxd.networks[].ipv4` | string or null | yes | Its ipv4.address. |
+| `components.lxd.storage_sources` | array | no | Sources of LXD's storage pools. |
+| `components.podman` | object | yes | — |
+| `components.podman.installed` | boolean | yes | The component is on the host. |
+| `components.podman.version` | string or null | yes | Its version, if it could be read. |
+| `components.podman.running` | boolean | yes | Its daemon is active. |
+| `components.podman.origin` | one of `pinka`, `pre-existing`, `null` | yes | pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed. |
+| `components.podman.docker_compat` | string or null | no | How Podman provides Docker's command or socket, if it does. |
+| `components.incus` | see `component` | yes | — |
+| `components.nvidia_driver` | see `component` | yes | — |
 | `conflicts` | array | yes | — |
 | `unsupported_reasons` | array | yes | — |
 | `needs_action` | array | yes | — |
@@ -208,3 +246,12 @@ one of `supported`, `tested`, `experimental`, `unsupported`
 | `conflict.severity` | one of `blocking`, `needs_action`, `warning` | yes | — |
 | `conflict.message` | string | yes | — |
 | `conflict.remediation` | string | yes | — |
+
+### component
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `component.installed` | boolean | yes | The component is on the host. |
+| `component.version` | string or null | yes | Its version, if it could be read. |
+| `component.running` | boolean | yes | Its daemon is active. |
+| `component.origin` | one of `pinka`, `pre-existing`, `null` | yes | pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed. |

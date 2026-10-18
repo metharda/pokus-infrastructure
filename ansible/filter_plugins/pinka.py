@@ -11,10 +11,11 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import json
 import re
 import secrets
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 MARKER = "TODO(verify)"
@@ -620,6 +621,66 @@ def cpuset_cpus(spec: str | None) -> list[int]:
     return sorted(cpus)
 
 
+def researcher_memberships(
+    researchers: Sequence[Mapping[str, Any]], existing: Sequence[str]
+) -> list[dict[str, str]]:
+    """The lab groups pinka adds to researcher accounts that existed before it (§6.1, §7.21).
+
+    Args:
+        researchers: The ``researchers`` list (``name``, ``admin``).
+        existing: Names of the accounts that existed before pinka.
+
+    Returns:
+        ``{user, group}`` for ``pinka`` and, for admins, ``pinka-admin``.
+    """
+    found: list[dict[str, str]] = []
+    for researcher in researchers:
+        name = str(researcher["name"])
+        if name not in existing:
+            continue
+        groups = ["pinka", "pinka-admin"] if researcher.get("admin") else ["pinka"]
+        found.extend({"user": name, "group": group} for group in groups)
+    return found
+
+
+def key_entries(text: str, user: str) -> list[dict[str, str]]:
+    """The keys of a ``users/<name>.pub`` file as install record entries (§7.21).
+
+    Args:
+        text: The file's content.
+        user: The account.
+
+    Returns:
+        ``{user, key}`` for every non-empty line that is not a comment.
+    """
+    lines = (line.strip() for line in text.splitlines())
+    return [{"user": user, "key": line} for line in lines if line and not line.startswith("#")]
+
+
+def subnet(pools: Sequence[Mapping[str, Any]], index: int) -> str:
+    """The ``index``-th subnet of the first Docker address pool (§7.6).
+
+    pinka's Compose networks take explicit subnets from its own pool, the
+    same on every install, instead of Docker's ``default-address-pools``.
+
+    Args:
+        pools: ``docker_address_pools`` (``base``, ``size``).
+        index: Which subnet of the pool.
+
+    Returns:
+        The subnet, for example ``172.30.0.0/24``.
+
+    Raises:
+        ValueError: If the pool has no such subnet.
+    """
+    pool = pools[0]
+    network = ipaddress.ip_network(str(pool["base"]))
+    for number, candidate in enumerate(network.subnets(new_prefix=int(pool["size"]))):
+        if number == index:
+            return str(candidate)
+    raise ValueError(f"{network} has no subnet {index} of size /{pool['size']}")
+
+
 class FilterModule:
     """Ansible filter plugin entry point."""
 
@@ -647,4 +708,7 @@ class FilterModule:
             "pinka_unit_hardening": unit_hardening,
             "pinka_cpuset_cpus": cpuset_cpus,
             "pinka_vault_keys": vault_keys,
+            "pinka_researcher_memberships": researcher_memberships,
+            "pinka_key_entries": key_entries,
+            "pinka_subnet": subnet,
         }

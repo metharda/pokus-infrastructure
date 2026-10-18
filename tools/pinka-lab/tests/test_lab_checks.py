@@ -22,6 +22,22 @@ BOOT_ID = "00000000-0000-0000-0000-000000000000"
 NOW_TS = NOW.timestamp()
 
 RENDERED = "/etc/pinka/platform/rendered.json"
+RECORD = "/var/lib/pinka/install-record.json"
+CDI_INFO = "docker info --format {{json .CDISpecDirs}}"
+
+
+def install_record(*, legacy: bool = False, joined: bool = False, **tailscale: Any) -> str:
+    """An install record noting a Tailscale node that was logged in before pinka."""
+    before = {"origin": "pre-existing", "hostname": "workstation", "tags": [], **tailscale}
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "created_at": "2026-10-01T00:00:00Z",
+            "legacy": legacy,
+            "preexisting": {"components": {"tailscale": before}},
+            "added": {"components": {"tailscale": True} if joined else {}},
+        }
+    )
 
 
 def run(check: Any, system: FakeSystem, **changes: Any) -> Outcome:
@@ -284,6 +300,69 @@ class NetworkTest(Base):
         self.assertOutcome(
             run(checks.check_tailscale, FakeSystem(), tailscale__enabled=False), "skip"
         )
+        system = self.tailscale(good, {})
+        system.commands["tailscale debug prefs"] = (0, {"RunSSH": True})
+        self.assertOutcome(run(checks.check_tailscale, system), "fail", "Tailscale SSH is on")
+
+    def test_an_adopted_node_is_compared_with_the_install_record(self) -> None:
+        # BUILD_PROMPT §7.4: a node logged in before pinka keeps its own name and tags.
+        mine = {
+            "BackendState": "Running",
+            "Self": {"HostName": "workstation", "Tags": [], "KeyExpiry": "2027-04-01T00:00:00Z"},
+        }
+        system = self.tailscale(mine, {})
+        system.files[RECORD] = install_record()
+        self.assertOutcome(run(checks.check_tailscale, system), "pass", "as recorded")
+        identity = run(checks.check_tailscale_identity, system)
+        self.assertOutcome(identity, "fail", "no tag:pinka-lab")
+        self.assertIn("expires at 2027-04-01T00:00:00Z", identity.detail)
+        check = next(c for c in CHECKS if c.id == "network.tailscale_identity")
+        self.assertEqual(check.severity, "warning")
+        renamed = dict(mine, Self={"HostName": "other", "Tags": ["tag:x"]})
+        system = self.tailscale(renamed, {})
+        system.files[RECORD] = install_record()
+        outcome = run(checks.check_tailscale, system)
+        self.assertOutcome(outcome, "fail", "tags ['tag:x'], recorded []")
+        self.assertIn("expected 'workstation'", outcome.detail)
+        tagged = {"BackendState": "Running", "Self": {"HostName": "w", "Tags": ["tag:pinka-lab"]}}
+        system = self.tailscale(tagged, {})
+        system.files[RECORD] = install_record(hostname="w", tags=["tag:pinka-lab"])
+        self.assertOutcome(run(checks.check_tailscale_identity, system), "pass")
+
+    def test_a_node_pinka_joined_uses_the_configured_name(self) -> None:
+        good = {
+            "BackendState": "Running",
+            "Self": {"HostName": "pinka-lab", "Tags": ["tag:pinka-lab"]},
+        }
+        for record in (install_record(joined=True), install_record(legacy=True), None):
+            system = self.tailscale(good, {})
+            if record:
+                system.files[RECORD] = record
+            self.assertOutcome(run(checks.check_tailscale, system), "pass", "pinka-lab with")
+            self.assertOutcome(run(checks.check_tailscale_identity, system), "skip")
+
+
+class InstallRecordTest(Base):
+    def test_install_record(self) -> None:
+        # BUILD_PROMPT §7.21: present, readable, and only root can change it.
+        good = FakeSystem(files={RECORD: install_record()})
+        self.assertOutcome(run(checks.check_install_record, good), "pass", "first install")
+        legacy = FakeSystem(files={RECORD: install_record(legacy=True)})
+        self.assertOutcome(run(checks.check_install_record, legacy), "pass", "legacy")
+        self.assertOutcome(run(checks.check_install_record, FakeSystem()), "fail", "missing")
+        broken = FakeSystem(files={RECORD: "[]"})
+        self.assertOutcome(run(checks.check_install_record, broken), "fail", "not a JSON object")
+        partial = FakeSystem(files={RECORD: '{"legacy": false}'})
+        self.assertOutcome(
+            run(checks.check_install_record, partial), "fail", "lacks created_at, preexisting"
+        )
+        writable = FakeSystem(
+            files={RECORD: install_record()},
+            infos={RECORD: info("root", "pinka", 0o664)},
+        )
+        self.assertOutcome(
+            run(checks.check_install_record, writable), "fail", "root 0664; only root"
+        )
 
 
 class GpuTest(Base):
@@ -297,6 +376,23 @@ class GpuTest(Base):
             run(checks.check_gpu, FakeSystem({"docker run *": (0, "")})), "fail", "no GPU"
         )
         self.assertOutcome(run(checks.check_gpu, FakeSystem(), node_role="lab"), "skip")
+
+    def test_docker_cdi(self) -> None:
+        # BUILD_PROMPT §7.6: CDI, Docker's default from 28.2.
+        on = FakeSystem({CDI_INFO: (0, '["/etc/cdi","/var/run/cdi"]\n')})
+        self.assertOutcome(run(checks.check_docker_cdi, on), "pass", "/etc/cdi, /var/run/cdi")
+        for answer in ("null\n", "[]\n"):
+            off = FakeSystem({CDI_INFO: (0, answer)})
+            self.assertOutcome(run(checks.check_docker_cdi, off), "fail", "CDI is off")
+            self.assertOutcome(
+                run(checks.check_docker_cdi, off, gpu__method="runtime"), "pass", "NVIDIA runtime"
+            )
+        self.assertOutcome(run(checks.check_docker_cdi, FakeSystem()), "fail", "docker info")
+        self.assertOutcome(run(checks.check_docker_cdi, on, node_role="lab"), "skip")
+        self.assertOutcome(
+            run(checks.check_docker_cdi, on, features={"gpu_training": True}), "pass"
+        )
+        self.assertOutcome(run(checks.check_docker_cdi, on, features={}), "skip")
 
     def test_driver_cuda(self) -> None:
         version = "DRIVER version      : 580.82.07\nCUDA Version        : 13.1\n"

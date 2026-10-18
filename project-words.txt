@@ -81,6 +81,7 @@ pids
 pinka
 pokus
 potka
+prefs
 prepreflight
 preseed
 procps
@@ -118,3 +119,4 @@ vllm
 wslconfig
 Zabbly
 Zorin
+zypp

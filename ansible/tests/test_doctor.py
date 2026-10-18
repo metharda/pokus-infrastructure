@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import re
 from collections.abc import Mapping
@@ -15,6 +14,7 @@ from ansible_testlib import GROUP_VARS, INFRA, ROLES, _templar, ansible_vars, ev
 
 ROLE = ROLES / "doctor"
 IMPORTED_ROLES = (
+    "install_record",
     "incus",
     "postgres",
     "backup",
@@ -63,9 +63,9 @@ def variables(**facts: Any) -> dict[str, Any]:
         "doctor_config_files": {
             "results": [{"stat": {"checksum": "0" * 64}}, {"stat": {"checksum": "1" * 64}}]
         },
-        "doctor_daemon_json": {
-            "content": base64.b64encode(json.dumps({"features": {"cdi": True}}).encode()).decode()
-        },
+        # What the docker role's facts.yml read from `docker info`.
+        "pinka_docker_gpu_args": ["--device", "nvidia.com/gpu=all"],
+        "pinka_docker_gpu_method": "cdi",
     }
     base.update(facts)
     return ansible_vars(*paths, **base)
@@ -140,6 +140,8 @@ def test_full_node_description() -> None:
         "pinka-sleep-inhibit.service",
     ]
     assert data["gpu"]["device_args"] == ["--device", "nvidia.com/gpu=all"]
+    assert data["gpu"]["method"] == "cdi"
+    assert data["paths"]["install_record"] == "/var/lib/pinka/install-record.json"
     assert re.fullmatch(r"[a-z0-9./-]+@sha256:[0-9a-f]{64}", data["gpu"]["image"])
     assert data["tailscale"] == {"enabled": True, "hostname": "pinka-lab", "tag": "tag:pinka-lab"}
     assert data["firewall"]["incus_bridge_patterns"][:2] == ["r-*", "pinka-build0"]
@@ -333,11 +335,13 @@ def test_wsl_and_runtime_gpu() -> None:
     data = render(
         pinka_provider="wsl2",
         expected={"memory_gib": 22, "cpu_threads": 20},
-        doctor_daemon_json={"content": base64.b64encode(b"{}").decode()},
+        pinka_docker_gpu_args=["--runtime", "nvidia", "--gpus", "all"],
+        pinka_docker_gpu_method="runtime",
     )
     assert data["wsl"] == {"memory_gib": 22, "cpus": 20, "kvm_expected": False}
     assert data["gpu"]["nvidia_smi"] == "/usr/lib/wsl/lib/nvidia-smi"
     assert data["gpu"]["device_args"] == ["--runtime", "nvidia", "--gpus", "all"]
+    assert data["gpu"]["method"] == "runtime"
     assert "pinka-sleep-inhibit.service" not in data["units"]
 
 

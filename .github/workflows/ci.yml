@@ -132,7 +132,7 @@ jobs:
 
   check-mode:
     # Required CI fast lane (BUILD_PROMPT §11, §19.9): the provider-agnostic
-    # roles (base, users_groups, ssh, layout) with --check in a disposable
+    # roles (install_record, base, users_groups, ssh, layout) with --check in a disposable
     # systemd container per family, nothing skipped; never a host. Blocking.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04

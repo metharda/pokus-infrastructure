@@ -46,6 +46,26 @@ doctor.
     `<machine>` is the host_vars file name, `<role>` the role named in the
     section below. Without `--tags` bootstrap converges everything.
 
+## `install.record`: the install record is missing or damaged {#check-install-record}
+
+`/var/lib/pinka/install-record.json` says what existed on the host before
+pinka and what pinka added since; uninstall and every role that must leave a
+pre-existing component alone read it (see
+[Components that existed before pinka](../explanation/pre-existing-components.md)).
+Doctor fails when it is missing, is not a JSON object, lacks one of its parts
+(`created_at`, `legacy`, `preexisting`, `added`), or is not owned by root or
+writable by anyone else.
+
+- **Missing:** run bootstrap. On a host pinka provisioned before the record
+  existed it writes a *legacy* record, which decides nothing: pinka's marks
+  (its names, the managed `daemon.json` label, the `tag:pinka-*` tags) then
+  say what is pinka's.
+- **Damaged:** restore the file from the last backup of `/var/lib/pinka`.
+  Never edit it by hand and never delete it: a new record would list
+  everything pinka added as pre-existing, and uninstall would then keep it.
+- **Wrong owner or mode:** `sudo chown root:root` and `sudo chmod 0600` the
+  file.
+
 ## `preflight.outcome`: preflight no longer allows the lab {#check-preflight-outcome}
 
 A fresh, read-only preflight decided `unsupported`, `needs_action` or failed.
@@ -103,14 +123,38 @@ and see [How to configure the firewall backend](firewall-and-selinux.md).
 
 ## `network.tailscale`: Tailscale is not as expected {#check-network-tailscale}
 
-Tailscale is not logged in, the host name or tag differs from the host_vars
-file, or Funnel is enabled. Log in again with bootstrap's Tailscale step
-(`--tags tailscale`). Funnel must never be on; remove it:
+Tailscale is not logged in, the host name or tags differ from what is
+expected, or Funnel or Tailscale SSH is on. What is expected depends on who
+logged the node in:
+
+- **pinka joined the node:** the host name and tag of the host_vars file.
+  Log in again with bootstrap's Tailscale step (`--tags tailscale`).
+- **The node was logged in before pinka** (an adopted node): the host name
+  and tags the install record noted at the first install. pinka never logs
+  such a node in or out and never changes its name or tags; restore them in
+  the Tailscale admin console or with `tailscale set` yourself.
+
+Funnel and Tailscale SSH must never be on. Remove them:
 
 <!-- qa:skip reason="changes the Tailscale configuration" -->
 ```bash
 sudo tailscale funnel reset
+sudo tailscale set --ssh=false
 ```
+
+## `network.tailscale_identity`: an adopted node lacks the lab's tag or its key expires {#check-network-tailscale_identity}
+
+A warning, only on an adopted node. The node does not carry the lab's tag
+(`tag:pinka-lab` by default), or its node key expires, as it does for a
+node logged in with a personal account. Neither stops the lab, but:
+
+- without the tag, the tailnet ACL has to name the node another way (its
+  host name or address) to let researchers reach SSH and nothing else;
+- when the key expires, the lab leaves the tailnet until the owner signs in
+  again.
+
+Tag the node or disable its key expiry in the Tailscale admin console, or
+accept the warning. [Security model](../security.md) explains the trade-off.
 
 ## `gpu.docker`: no GPU visible in a container {#check-gpu-docker}
 
@@ -118,6 +162,28 @@ A container of the pinned CUDA image does not see the GPU. Check the driver
 with `nvidia-smi` (on WSL `/usr/lib/wsl/lib/nvidia-smi`), then run bootstrap
 with `--tags nvidia_container_toolkit`. After a driver update on bare metal a
 reboot is often needed.
+
+## `gpu.cdi`: Docker does not give containers the GPU through CDI {#check-gpu-cdi}
+
+A GPU feature is on, and `docker info` lists no CDI spec directories. Docker
+Engine 28.2 and later enable CDI unless `daemon.json` turns it off.
+
+- **A Docker pinka installed:** run bootstrap with `--tags docker`. On a
+  Docker without CDI support bootstrap records the NVIDIA runtime instead,
+  and this check passes with that method.
+- **A Docker that existed before pinka:** pinka never changes it. Remove
+  `"features": {"cdi": false}` from `/etc/docker/daemon.json` (on Docker
+  older than 28.2 add `"features": {"cdi": true}`), then restart Docker
+  yourself at a time that suits its other containers.
+
+Check the result:
+
+<!-- qa:run env=E2 -->
+```bash
+docker info --format '{{json .CDISpecDirs}}'
+```
+
+It prints a list of directories, not `null` or `[]`.
 
 ## `gpu.driver_cuda`: the driver is too old for the vLLM image {#check-gpu-driver_cuda}
 

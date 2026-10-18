@@ -116,6 +116,16 @@ class FixtureTreeTest(unittest.TestCase):
             "ubuntu2404-cgroup-v1",
             "ubuntu2404-low-memory",
             "conflicting-signals",
+            # Pre-existing components (BUILD_PROMPT §2.2, §11).
+            "ubuntu2404-baremetal-docker-preexisting",
+            "ubuntu2404-baremetal-docker-cdi-off",
+            "ubuntu2404-baremetal-tailscale-adopted",
+            "ubuntu2404-baremetal-tailscale-funnel",
+            "ubuntu2404-baremetal-tailscale-ssh",
+            "ubuntu2404-baremetal-lxd",
+            "ubuntu2404-baremetal-lxd-clash",
+            "ubuntu2404-baremetal-podman",
+            "ubuntu2404-baremetal-podman-docker",
         }
         self.assertLessEqual(required, set(os.listdir(FIXTURES_DIR)))
 
@@ -175,6 +185,16 @@ class FixtureDecisionTest(unittest.TestCase):
                     )
             elif key == "mac":
                 self.assertEqual([doc["mac"]["system"], doc["mac"]["mode"]], value, name)
+            elif key == "components":
+                for component, origin in value.items():
+                    self.assertEqual(
+                        doc["components"][component]["origin"], origin, f"{name}: {component}"
+                    )
+            elif key == "notes_contain":
+                for needle in value:
+                    self.assertTrue(
+                        any(needle in n for n in doc["notes"]), f"{name}: note {needle!r}"
+                    )
             else:
                 self.fail(f"{name}: unknown expectation {key}")
         self.assertEqual(

@@ -6,6 +6,19 @@
 - name: Look up the NVIDIA driver source
   ansible.builtin.set_fact:
     provider_baremetal_driver: "{{ pinka_component_sources | pinka_component_source('nvidia_driver', pinka_source_group) }}"
+    # A driver that existed before pinka is never replaced or removed (§7.21);
+    # preflight has judged it (a driver too old for the vLLM image leaves the
+    # GPU unused, with the remediation).
+    provider_baremetal_driver_preexisting: >-
+      {{ ((host_profile.components | default({})).nvidia_driver | default({})).origin | default(none)
+         == 'pre-existing' }}
+
+- name: Leave a driver that existed before pinka as it is
+  ansible.builtin.debug:
+    msg: >-
+      The NVIDIA driver {{ host_profile.gpu.driver | default('') }} existed before pinka; pinka does
+      not replace it{{ '' if host_profile.gpu.usable else ', and the GPU stays unused until it is updated' }}.
+  when: provider_baremetal_driver_preexisting
 
 - name: Stop when the driver must be installed by hand
   ansible.builtin.include_role:
@@ -18,6 +31,7 @@
       following your distribution's documentation, then re-run bootstrap (or set install_nvidia_driver: skip).
   when:
     - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
     - >-
       install_nvidia_driver == 'manual' or provider_baremetal_driver.packages | length == 0
       or provider_baremetal_driver.verify is defined
@@ -33,12 +47,21 @@
       --allow-community-repos (recorded in the fingerprint) or use install_nvidia_driver: manual.
   when:
     - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
     - provider_baremetal_driver.source == 'community'
     - not pinka_community_repos_allowed
 
 - name: Install the NVIDIA driver
-  when: not host_profile.gpu.usable
+  when:
+    - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
   block:
+    - name: Record that pinka installs the NVIDIA driver
+      pinka_install_record:
+        state: add
+        added:
+          components: {nvidia_driver: true}
+
     - name: Blacklist nouveau
       ansible.builtin.copy:
         dest: /etc/modprobe.d/pinka-blacklist-nouveau.conf

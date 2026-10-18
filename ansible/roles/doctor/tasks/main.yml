@@ -154,11 +154,10 @@
   loop_control:
     label: "{{ item.path }}"
 
-- name: Read the Docker daemon configuration (how containers get the GPU)
-  ansible.builtin.slurp:
-    src: /etc/docker/daemon.json
-  register: doctor_daemon_json
-  failed_when: false
+- name: Read what Docker offers (how containers reach the GPU)
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
   when: doctor_serves_inference
 
 - name: Write the lab description
@@ -169,7 +168,6 @@
     group: root
     mode: "0644"
   vars:
-    doctor_docker: "{{ (doctor_daemon_json.content | default('e30=')) | b64decode | from_json }}"
     doctor_lab:
       schema_version: 1
       machine: "{{ machine_name }}"
@@ -187,6 +185,7 @@
         preflight: "{{ doctor_lib }}/preflight/pinka-preflight"
         host_profile: "{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}"
         bootstrap_state: /etc/pinka/bootstrap-state.json
+        install_record: "{{ install_record_path }}"
         health_gate_status: "{{ lab_session_gate_status }}"
         sessions: "{{ lab_session_sessions_dir }}"
         python: "{{ pinka_python }}"
@@ -216,9 +215,8 @@
         tag: "{{ tailscale_tag }}"
       gpu:
         image: "{{ doctor_gpu_image }}"
-        device_args: >-
-          {{ ['--device', 'nvidia.com/gpu=all'] if (doctor_docker.features | default({})).cdi | default(false)
-             else ['--runtime', 'nvidia', '--gpus', 'all'] }}
+        device_args: "{{ pinka_docker_gpu_args | default([]) }}"
+        method: "{{ pinka_docker_gpu_method | default('none') }}"
         nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pinka_provider == 'wsl2' else 'nvidia-smi' }}"
         # The CUDA version the pinned vLLM image is built on (BUILD_PROMPT §2.2).
         vllm_cuda: "{{ pinka_versions.containers.images.vllm.cuda | string }}"

@@ -39,6 +39,21 @@ the lab's Linux host.
 - On WSL2 the GPU comes from the Windows driver through CDI in WSL mode, not
   through Docker Desktop.
 
+## Amendment (plan item 3f-1)
+
+A Docker Engine that was on the machine before pinka is used as it is (owner
+decision on 3f-1; BUILD_PROMPT §7.6): pinka never writes its `daemon.json`,
+never restarts it and never pins, holds or replaces its packages. The docker
+role writes `daemon.json` only on a Docker it installed, with only
+`live-restore`, `data-root`, `selinux-enabled` on SELinux hosts and, on a
+distribution Docker older than 28.2 with a GPU feature, `features.cdi`
+(Docker enables CDI by default from 28.2). The log limits, the cgroup parent
+and the subnets of the lab's containers are set in its Compose projects and
+in the GPU arbiter's container options, the same on every install. The
+NVIDIA runtime fallback is configured only on a Docker pinka installed.
+[Components that existed before pinka](../explanation/pre-existing-components.md)
+explains the reasons.
+
 ## Alternatives considered
 
 - **Docker Desktop**: not part of the Linux host,

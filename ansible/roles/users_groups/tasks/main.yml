@@ -18,6 +18,29 @@
       groups of infra or of the active platform; choose other names
     quiet: true
 
+# An account or group with a reserved name that pinka did not create would
+# make it pinka's; refuse before anything changes (§6.1, §12.1).
+- name: Refuse accounts and groups of the lab's names that existed before pinka
+  ansible.builtin.assert:
+    that: users_groups_reserved_existing | length == 0
+    fail_msg: >-
+      {{ users_groups_reserved_existing | join(', ') }} existed before pinka with the name of an
+      account or group of the lab; rename or remove it, then re-run bootstrap
+    quiet: true
+
+# The install record (§7.21) notes what pinka creates before it creates it.
+- name: Record the accounts and groups pinka creates
+  pinka_install_record:
+    state: add
+    added:
+      groups: >-
+        {{ ((pinka_groups + infra_accounts) | map(attribute='name') | list)
+           | reject('in', users_groups_before_groups) | list }}
+      accounts: >-
+        {{ ((infra_accounts + researchers) | map(attribute='name') | list)
+           | reject('in', users_groups_before_users) | list }}
+      memberships: "{{ researchers | pinka_researcher_memberships(users_groups_existing_researchers) }}"
+
 - name: Create the pinka groups
   ansible.builtin.group:
     name: "{{ item.name }}"
@@ -57,7 +80,16 @@
     append: true
     create_home: true
     state: present
-  loop: "{{ researchers }}"
+  loop: "{{ researchers | rejectattr('name', 'in', users_groups_existing_researchers) | list }}"
+
+# An account that existed before pinka keeps its shell and home; pinka only
+# adds its groups (recorded above, removed by uninstall).
+- name: Add pre-existing researcher accounts to the lab's groups
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: "{{ ['pinka'] + (['pinka-admin'] if item.admin | default(false) else []) }}"
+    append: true
+  loop: "{{ researchers | selectattr('name', 'in', users_groups_existing_researchers) | list }}"
 
 - name: Read the members of pinka-admin
   ansible.builtin.getent:

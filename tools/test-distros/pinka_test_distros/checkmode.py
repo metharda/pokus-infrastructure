@@ -49,7 +49,7 @@ CONTAINERS = INFRA / "tests" / "distros" / "containers"
 REQUIRED_PLAYBOOK = ANSIBLE / "check-mode.yml"
 EXTENDED_PLAYBOOK = ANSIBLE / "site.yml"
 # The roles of the required job, in play order (BUILD_PROMPT §11).
-REQUIRED_ROLES = ("base", "users_groups", "ssh", "layout")
+REQUIRED_ROLES = ("install_record", "base", "users_groups", "ssh", "layout")
 MACHINE = "example-machine"
 # Read on the target by preflight_gate and doctor: copied into the container at
 # the same absolute paths, because the play resolves them on the controller.

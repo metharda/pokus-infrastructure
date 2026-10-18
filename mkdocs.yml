@@ -79,6 +79,7 @@ nav:
       - Install a lab with the installer TUI: how-to/install-with-the-tui.md
       - Install a lab from an answers file: how-to/install-without-the-tui.md
       - Install from a release package: how-to/install-from-a-release-package.md
+      - Install next to existing Docker, Tailscale, LXD or Podman: how-to/install-next-to-existing-components.md
       - Start, stop and drain the lab: how-to/start-stop-drain.md
       - Update the host operating system: how-to/update-host.md
       - Add, remove or lock a researcher: how-to/manage-researchers.md
@@ -134,6 +135,7 @@ nav:
       - Lab host architecture: architecture.md
       - How the preflight gate decides: explanation/preflight-gate.md
       - How bootstrap works: explanation/bootstrap.md
+      - Components that existed before pinka: explanation/pre-existing-components.md
       - Portability: explanation/portability.md
       - How benchmark targets are isolated: explanation/target-isolation.md
       - How telemetry, metrics and logs flow: explanation/telemetry.md

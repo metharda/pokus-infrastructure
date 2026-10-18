@@ -10,3 +10,13 @@ users_groups_taken: >-
      + ((active_platform | default({}, true)).infra_groups | default([], true)) }}
 users_groups_clashes: >-
   {{ researchers | map(attribute='name') | select('in', users_groups_taken) | list }}
+# What existed before pinka (install record, §7.21; empty for a legacy record):
+# infra's accounts and groups of those names are refused, pre-existing
+# researcher accounts are kept as they are.
+users_groups_before_users: "{{ (pinka_preexisting | default({})).users | default([]) }}"
+users_groups_before_groups: "{{ (pinka_preexisting | default({})).groups | default({}) }}"
+users_groups_reserved_existing: >-
+  {{ ((infra_accounts | map(attribute='name') | list) | select('in', users_groups_before_users) | list)
+     + ((pinka_groups | map(attribute='name') | list) | select('in', users_groups_before_groups) | list) }}
+users_groups_existing_researchers: >-
+  {{ researchers | map(attribute='name') | select('in', users_groups_before_users) | list }}

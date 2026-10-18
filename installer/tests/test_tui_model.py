@@ -46,14 +46,19 @@ def replay(name: str, provider: str = "wsl2") -> Progress:
 
 def test_site_roles_follow_site_yml() -> None:
     roles = site_roles(SITE)
-    assert roles[:3] == ["platform_facts", "preflight_gate", "provider_{{ pinka_provider }}"]
+    assert roles[:4] == [
+        "platform_facts",
+        "preflight_gate",
+        "install_record",
+        "provider_{{ pinka_provider }}",
+    ]
     assert roles[-1] == "lab_session"
 
 
 def test_planned_tree_resolves_the_provider_once() -> None:
     names = list(Progress.planned(site_roles(SITE), provider="wsl2").phases)
     assert names.count("provider_wsl2") == 1
-    assert names.index("provider_wsl2") == names.index("preflight_gate") + 1
+    assert names.index("provider_wsl2") == names.index("install_record") + 1
     assert not any("{{" in n for n in names)
     assert "restore" not in names
     assert "restore" in Progress.planned(site_roles(SITE), restore=True).phases

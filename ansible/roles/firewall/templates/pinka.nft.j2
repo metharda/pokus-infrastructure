@@ -34,6 +34,11 @@ table inet pinka_filter {
 		# DHCP and DNS from Incus instances to Incus's dnsmasq on the host.
 		iifname @incus_bridges udp dport { 53, 67, 547 } accept
 		iifname @incus_bridges tcp dport 53 accept
+{% if firewall_preexisting_bridges | length > 0 %}
+		# LXD existed before pinka: its guests keep DHCP and DNS from LXD's dnsmasq.
+		iifname { {{ firewall_preexisting_bridges | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} } udp dport { 53, 67, 547 } accept
+		iifname { {{ firewall_preexisting_bridges | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} } tcp dport 53 accept
+{% endif %}
 {% if firewall_vm_otlp_ports | length > 0 %}
 		# OTLP from VM targets to the collector's dedicated listener (C4).
 		iifname "{{ firewall_run_bridge_pattern }}" ip daddr {{ pinka_vm_otlp.address }} tcp dport { {{ firewall_vm_otlp_ports | join(', ') }} } accept

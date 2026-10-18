@@ -1,0 +1,6 @@
+{
+  "needs_action": [
+    "docker_cdi_off"
+  ],
+  "outcome": "needs_action"
+}

@@ -59,6 +59,11 @@ BOOLEAN_SOURCES = {
     "images_upstream_present": "set_fact: a membership test",
     "pinka_community_repos_allowed": "set_fact: | bool or | bool",
     "tailscale_joined": "set_fact: comparisons and a membership test",
+    "tailscale_adopted": "set_fact: a comparison",
+    "tailscale_package_preexisting": "set_fact: comparisons joined by or",
+    "docker_preexisting": "set_fact: a comparison",
+    "nvidia_container_toolkit_preexisting": "set_fact: a membership test",
+    "provider_baremetal_driver_preexisting": "set_fact: a comparison",
     "platform_switch.release_changed": "pinka-platform deploy switch-plan: JSON boolean",
     "platform_switch.content_changed": "pinka-platform deploy switch-plan: JSON boolean",
 }

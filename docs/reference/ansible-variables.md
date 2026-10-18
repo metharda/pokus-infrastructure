@@ -104,6 +104,23 @@ Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
 
 - Default: `false`
 
+### `tailscale_serve_consent`
+
+On a Tailscale node that existed before pinka (adopted, BUILD_PROMPT §7.4): the owner's consent to publish Grafana or the docs with tailscale serve.
+
+- Default: `false`
+
+### `pinka_tailscale_serve_allowed`
+
+Whether pinka may publish with tailscale serve at all: always on a node it joined, only with tailscale_serve_consent on an adopted node (§7.4).
+
+- Default:
+
+    ```jinja
+    {{ (host_profile.components.tailscale | default({})).origin | default(none) != 'pre-existing'
+       or tailscale_serve_consent | bool }}
+    ```
+
 ### `ssh_extra_allowed_interfaces`
 
 Interfaces besides tailscale0 on which sshd accepts connections.
@@ -133,6 +150,18 @@ CPUs of the Incus benchmark targets; empty: no pinning. The platform pins target
 Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
 
 - Default: `pinka-services.slice`
+
+### `pinka_container_log_max_size`
+
+Size limit of one log file of the `local` log driver of every lab container (Docker's own default), set per container by the Compose projects and the GPU arbiter rather than in the Docker daemon (BUILD_PROMPT §7.6).
+
+- Default: `20m`
+
+### `pinka_container_log_max_file`
+
+Number of log files the `local` log driver keeps per lab container (Docker's own default), set like pinka_container_log_max_size.
+
+- Default: `5`
 
 ### `allow_kernel_updates`
 
@@ -405,13 +434,16 @@ The effective listener ports: the defaults with the machine's overrides.
 
 ### `pinka_preflight_args`
 
-The preflight options of the machine's port overrides and VM collector address (bootstrap passes the same; the preflight gate and doctor re-run preflight with them).
+The preflight options of the machine's port overrides, VM collector address and pool device (bootstrap passes the same; the preflight gate and doctor re-run preflight with them).
 
 - Default:
 
     ```jinja
     {{ (ports.items() | map('join', '=') | map('regex_replace', '^', '--port=') | list)
-       + ['--vm-collector-address', vm_collector_address] }}
+       + ['--vm-collector-address', vm_collector_address]
+       + (['--pool-device', incus_pool_device]
+          if incus_pool_source | default('loop') == 'device' and incus_pool_device | default('') | length > 0
+          else []) }}
     ```
 
 ### `pinka_internal_ports`
@@ -792,10 +824,38 @@ Compose profiles to enable besides the GPU profile (observability uses stores).
 
 ### `compose_gpu`
 
-Run the project's GPU services (profile gpu-cdi or gpu-runtime after /etc/docker/daemon.json).
+Run the project's GPU services (profile gpu-cdi or gpu-runtime after the method Docker offers).
 
 - Type: `bool`
 - Default: `false`
+
+### `compose_log_max_size`
+
+Maximum size of one log file of the local log driver, per lab container.
+
+- Type: `str`
+- Default: `{{ pinka_container_log_max_size }}`
+
+### `compose_log_max_file`
+
+Number of log files kept per lab container.
+
+- Type: `int`
+- Default: `{{ pinka_container_log_max_file }}`
+
+### `compose_cgroup_parent`
+
+Systemd slice of every lab container (pinned to cpuset_services).
+
+- Type: `str`
+- Default: `{{ pinka_services_slice }}`
+
+### `compose_core_subnet`
+
+Subnet of the core project's network (OPA), the first of docker_address_pools.
+
+- Type: `str`
+- Default: `{{ docker_address_pools | default([{'base': '172.30.0.0/16', 'size': 24}]) | pinka_subnet(0) }}`
 
 ### `compose_start`
 
@@ -846,9 +906,9 @@ Group of the database socket directory, which the exporter joins (the active pla
 
 ## docker
 
-Docker Engine with Compose and buildx, pinned and held, and its daemon configuration.
+Docker Engine with Compose and buildx, pinned and held, and its daemon configuration; a pre-existing Docker is used as it is.
 
-Entry points: `main` (Docker Engine with Compose and buildx, pinned and held, and its daemon configuration). Role README: `ansible/roles/docker/README.md`.
+Entry points: `main` (Docker Engine with Compose and buildx, pinned and held, and its daemon configuration; a pre-existing Docker is used as it is). Role README: `ansible/roles/docker/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -866,38 +926,24 @@ Root of Docker's images, containers and volumes.
 
 ### `docker_address_pools`
 
-Address pools for Docker networks; must not overlap Incus bridges, Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
+pinka's address pool for the subnets of its Compose networks; must not overlap Incus bridges, Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
 
 - Type: `list` of `dict`
 - Default: `- {base: 172.30.0.0/16, size: 24}`
 
-### `docker_cgroup_parent`
+### `docker_cdi_min_version`
 
-Systemd slice of every container (daemon.json cgroup-parent), the lab services' slice that AllowedCPUs pins to cpuset_services.
-
-- Type: `str`
-- Default: `{{ pinka_services_slice }}`
-
-### `docker_log_max_size`
-
-Maximum size of one log file of the local log driver.
+First Docker Engine version with CDI device support; an older engine pinka installs gets the NVIDIA runtime.
 
 - Type: `str`
-- Default: `20m`
+- Default: `25.0`
 
-### `docker_log_max_file`
+### `docker_cdi_default_since`
 
-Number of log files kept per container by the local log driver.
+First Docker Engine version that enables CDI by default; daemon.json sets features.cdi only below it.
 
-- Type: `int`
-- Default: `5`
-
-### `docker_cdi_min_major`
-
-First Docker Engine major version with CDI device support; older engines get the NVIDIA runtime.
-
-- Type: `int`
-- Default: `25`
+- Type: `str`
+- Default: `28.2`
 
 ## docs
 
@@ -1070,8 +1116,9 @@ TCP ports open on the tailnet interface (derived: 22, the serve port if enabled,
 
     ```jinja
     {{ [22]
-       + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool else [])
-       + ([firewall_docs_serve_port] if docs_tailscale_serve | bool and docs_release is not none else [])
+       + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool and pinka_tailscale_serve_allowed | bool else [])
+       + ([firewall_docs_serve_port]
+          if docs_tailscale_serve | bool and docs_release is not none and pinka_tailscale_serve_allowed | bool else [])
        + ([pinka_ports.vllm, pinka_ports.inference_control] if node_role == 'inference' else [])
        + ([pinka_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
     ```
@@ -1115,6 +1162,18 @@ Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
 
 - Type: `list` of `str`
 - Default: `{{ ['pinka-build0'] + pinka_incus_personal_bridge_patterns }}`
+
+### `firewall_preexisting_bridges`
+
+Bridges of a pre-existing LXD, on which the input policy admits DHCP and DNS for LXD's dnsmasq (derived from the host profile).
+
+- Type: `list` of `str`
+- Default:
+
+    ```jinja
+    {{ (((host_profile | default({})).components | default({})).lxd | default({})).networks | default([])
+       | map(attribute='name') | select('match', '^[A-Za-z0-9_.-]{1,15}$') | list }}
+    ```
 
 ## gpu_arbiter
 
@@ -1487,6 +1546,40 @@ Seconds the verification call waits for vLLM's health.
 
 - Type: `int`
 - Default: `60`
+
+## install_record
+
+Record what existed before pinka and what pinka added.
+
+Entry points: `main` (Record what existed before pinka and what pinka added). Role README: `ansible/roles/install_record/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `host_profile` | bootstrap.sh | Host profile validated by bootstrap.sh for this run; its components are recorded. |
+
+### `install_record_path`
+
+The install record.
+
+- Type: `path`
+- Default: `/var/lib/pinka/install-record.json`
+
+### `install_record_managed_files`
+
+Files roles write or edit; the record keeps the content of each that existed before pinka.
+
+- Type: `list` of `path`
+- Default:
+
+    ```yaml
+    [/etc/apt/apt.conf.d/20auto-upgrades, /etc/apt/apt.conf.d/52pinka-unattended-upgrades, /etc/apt/preferences.d/pinka-pins,
+      /etc/dnf/automatic.conf, /etc/dnf/plugins/versionlock.list, /etc/zypp/locks, /etc/pacman.conf,
+      /etc/ssh/sshd_config, /etc/ssh/sshd_config.d/10-pinka.conf, /etc/sysctl.d/60-pinka.conf,
+      /etc/systemd/journald.conf.d/60-pinka.conf, /etc/modprobe.d/pinka-blacklist-nouveau.conf,
+      /etc/sudoers.d/90-pinka-admin, /etc/docker/daemon.json, /etc/wsl.conf, /etc/ld.so.conf.d/pinka-wsl.conf]
+    ```
 
 ## lab_session
 
@@ -2273,9 +2366,9 @@ OpenSSH server package per family.
 
 ## tailscale
 
-Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off.
+Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off; a node logged in before pinka is adopted as it is.
 
-Entry points: `main` (Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off). Role README: `ansible/roles/tailscale/README.md`.
+Entry points: `main` (Install Tailscale, join the tailnet with the lab's tag, check that Funnel is off; a node logged in before pinka is adopted as it is). Role README: `ansible/roles/tailscale/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -2284,6 +2377,12 @@ Variables the role reads from elsewhere:
 | `grafana_tailscale_serve` | [lab-wide](#grafana_tailscale_serve) | Publish Grafana on the tailnet with `tailscale serve` (never Funnel). |
 | `lab_mode` | [lab-wide](#lab_mode) | Selects the tag (tag:pinka-lab or tag:pinka-qa). |
 | `machine_name` | [lab-wide](#machine_name) | Host name on the tailnet. |
+
+### `tailscale_serve_consent`
+
+On a node that existed before pinka, the owner's consent to tailscale serve for Grafana or docs.
+
+- Type: `bool`
 
 ### `tailscale_tag`
 

@@ -86,7 +86,9 @@ Researchers have real accounts on the host.
   forwarding ([How to connect to the lab](how-to/connect.md)).
 - Tailscale Funnel is never enabled; the tailscale role fails the play when
   any Funnel configuration exists. Grafana is published on the tailnet only
-  when `grafana_tailscale_serve: true`.
+  when `grafana_tailscale_serve: true`, and on a node that was logged in
+  before pinka only with `tailscale_serve_consent: true` as well. Preflight
+  refuses a node with Funnel or Tailscale SSH on.
 - With split inference, the split-inference ports on `tailscale0` (the vLLM
   API and the control port of an inference node, OTLP gRPC of a lab node)
   admit only the paired node's tailnet address, recorded at pairing, and
@@ -94,8 +96,13 @@ Researchers have real accounts on the host.
   the tailnet only while `pinka pair show` waits. Mutual TLS then admits
   only the paired node's certificate
   ([How to pair an inference node](how-to/pair-inference-node.md)).
+- On a host where LXD existed before pinka, the nftables input policy admits
+  DHCP and DNS on LXD's bridges, so LXD's guests keep the service of LXD's
+  dnsmasq; their other traffic to the host meets the same input policy as
+  every other interface, and pinka filters no forwarding but that of its run
+  networks.
 - The firewall role integrates with the backend the host already uses and
-  never flushes tables owned by Docker, Incus, firewalld or ufw
+  never flushes tables owned by Docker, Incus, LXD, Podman, firewalld or ufw
   ([ADR-0006](adr/0006-firewall-backend-integration.md)).
 - On WSL2, interop and the automount of Windows drives are off, and nothing
   in the lab calls Windows programs.
@@ -120,6 +127,26 @@ For split inference the lab node and the inference node also need each other
 (see [How to run inference on a separate GPU node](how-to/pair-inference-node.md)).
 Narrow `src` to a group of researchers if not every member of the tailnet
 should reach the lab.
+
+### A node that was logged in before pinka
+
+When Tailscale was logged in before pinka, pinka uses the node as it is
+(an adopted node, see
+[Components that existed before pinka](explanation/pre-existing-components.md)):
+it keeps its owner's host name, tags and key. That is a trade-off, and
+doctor warns about both of its consequences (`network.tailscale_identity`):
+
+- **Without `tag:pinka-lab`** the lines above do not select the node. Name
+  it in `dst` by its host name or tailnet address instead, still only on
+  port 22 (and 443 when Grafana is served), so that researchers reach SSH
+  and nothing else of the owner's machine.
+- **A key that expires** with a personal login takes the lab off the tailnet
+  when it expires, until the owner signs in again. Researchers then cannot
+  connect; the lab itself keeps running and nothing is exposed.
+
+Tagging the node and disabling its key expiry in the admin console removes
+both. The node's own `tailscale serve` entries stay its owner's: pinka adds
+its entries only with consent and removes only those.
 
 ## Integrity and reproducibility
 

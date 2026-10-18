@@ -3,10 +3,20 @@
 # Tailscale (BUILD_PROMPT §7.4): pinned and held packages from the component
 # source matrix, a tailnet join with the lab's tag, and a hard check that
 # Funnel is off. Lab services are never published to the internet.
+#
+# A node logged in before pinka (preflight's components, §2.2) is adopted as
+# it is: no repository, package, pin, hold, login, name, tag or setting
+# changes. A Tailscale that is installed but not logged in is not in use:
+# pinka joins it and leaves its package as it is. The install record notes
+# a join and every serve entry before pinka makes it (§7.21).
 - name: Look up the Tailscale source
   ansible.builtin.set_fact:
     tailscale_source: "{{ pinka_component_sources | pinka_component_source('tailscale', pinka_source_group) }}"
     tailscale_versions: "{{ pinka_versions.packages | pinka_lock_packages('tailscale', pinka_release_key) }}"
+    tailscale_adopted: "{{ (host_profile.components.tailscale | default({})).origin | default(none) == 'pre-existing' }}"
+    tailscale_package_preexisting: >-
+      {{ (host_profile.components.tailscale | default({})).origin | default(none) == 'pre-existing'
+         or ((pinka_preexisting | default({})).components.tailscale | default({})).installed | default(false) }}
 
 - name: Refuse an unverified Tailscale source
   ansible.builtin.assert:
@@ -17,48 +27,24 @@
       as unverified ({{ tailscale_source.verify | default('') }}); verify it first
       (docs/how-to/update-versions.md).
     quiet: true
+  when: not tailscale_package_preexisting
 
-- name: Add the Tailscale repository
-  ansible.builtin.include_role:
-    name: pkg
-    tasks_from: repo
-  vars:
-    pkg_repo_name: "{{ tailscale_source.repo }}"
-  when: tailscale_source.source == 'vendor_repo'
-
-# The repository is not really added in check mode, so its packages cannot be
-# resolved; everything below needs Tailscale installed.
-- name: Skip the rest in check mode before Tailscale is installed
-  ansible.builtin.meta: end_role
-  when:
-    - ansible_check_mode
-    - "'tailscale' not in pinka_present.commands"
-
-- name: Install Tailscale
-  ansible.builtin.include_role:
-    name: pkg
-  vars:
-    pkg_packages: "{{ tailscale_source.packages }}"
-    pkg_versions: "{{ tailscale_versions }}"
-
-- name: Hold the Tailscale packages
-  ansible.builtin.include_role:
-    name: pkg
-    tasks_from: hold
-  vars:
-    pkg_hold_name: tailscale
-    pkg_hold_packages: "{{ tailscale_source.packages }}"
-    pkg_versions: "{{ tailscale_versions }}"
+- name: Install Tailscale from its pinned source
+  ansible.builtin.include_tasks: install.yml
+  when: not tailscale_package_preexisting
 
 - name: Enable tailscaled
   ansible.builtin.systemd_service:
     name: tailscaled
     enabled: true
     state: started
+  when: not tailscale_adopted
 
 - name: Join the tailnet
   ansible.builtin.include_tasks: join.yml
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - not tailscale_adopted
 
 - name: Check that Funnel is off
   ansible.builtin.include_tasks: funnel.yml

@@ -29,7 +29,23 @@ argument_specs:
       compose_gpu:
         type: bool
         default: false
-        description: Run the project's GPU services (profile gpu-cdi or gpu-runtime after /etc/docker/daemon.json).
+        description: Run the project's GPU services (profile gpu-cdi or gpu-runtime after the method Docker offers).
+      compose_log_max_size:
+        type: str
+        default: "{{ pinka_container_log_max_size }}"
+        description: Maximum size of one log file of the local log driver, per lab container.
+      compose_log_max_file:
+        type: int
+        default: "{{ pinka_container_log_max_file }}"
+        description: Number of log files kept per lab container.
+      compose_cgroup_parent:
+        type: str
+        default: "{{ pinka_services_slice }}"
+        description: Systemd slice of every lab container (pinned to cpuset_services).
+      compose_core_subnet:
+        type: str
+        default: 172.30.0.0/24
+        description: Subnet of the core project's network (OPA), the first of docker_address_pools.
       compose_start:
         type: bool
         default: true

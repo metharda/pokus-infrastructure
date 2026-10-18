@@ -1,0 +1,20 @@
+# Managed by pinka (ansible/roles/install_record/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Record what existed before pinka and what pinka added.
+    description:
+      - Writes /var/lib/pinka/install-record.json once, before any change to the host, and sets pinka_preexisting.
+    options:
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile validated by bootstrap.sh for this run; its components are recorded.
+      install_record_path:
+        type: path
+        default: /var/lib/pinka/install-record.json
+        description: The install record.
+      install_record_managed_files:
+        type: list
+        elements: path
+        default: []
+        description: Files roles write or edit; the record keeps the content of each that existed before pinka.

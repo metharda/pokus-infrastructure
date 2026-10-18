@@ -395,6 +395,22 @@ def tailscale_tag(value: str) -> str | None:
     return None
 
 
+def serve_consent(adopted: bool, serve: bool, consent: bool) -> str | None:
+    """Publishing with tailscale serve on a node logged in before pinka (BUILD_PROMPT §7.4).
+
+    Args:
+        adopted: The node was logged in before pinka (pinka uses it as it is).
+        serve: Grafana is to be published with tailscale serve.
+        consent: The owner consents that pinka adds serve entries to the node.
+
+    Returns:
+        The error, or None.
+    """
+    if adopted and serve and not consent:
+        return "this node was logged in before pinka: publishing needs your consent below"
+    return None
+
+
 def hf_repo(value: str) -> str | None:
     """A Hugging Face model repository id (``<owner>/<name>``).
 

@@ -4,15 +4,23 @@
 # gpu_inference feature. Containers reach the GPU through CDI where Docker
 # supports it: the toolkit's own nvidia-cdi-refresh units (toolkit 1.18 and
 # later) write /var/run/cdi/nvidia.yaml whenever the driver or the toolkit
-# changes, in WSL mode on WSL2. Docker releases without CDI get the NVIDIA
-# runtime instead; the docker role writes either into daemon.json. A pinned
-# CUDA image, run by digest, proves that a container sees the GPU.
+# changes, in WSL mode on WSL2. Docker 28.2 and later enable CDI by default;
+# an older Docker pinka installed gets features.cdi or the NVIDIA runtime from
+# the docker role, and a Docker that existed before pinka is never changed
+# (preflight stops when its CDI is off). A pinned CUDA image, run by digest,
+# proves that a container sees the GPU. A toolkit that existed before pinka
+# (install record, §7.21) is used as it is: no repository, pin or hold.
 - name: Look up the NVIDIA Container Toolkit source
   ansible.builtin.set_fact:
     nvidia_container_toolkit_source: >-
       {{ pinka_component_sources | pinka_component_source('nvidia_container_toolkit', pinka_source_group) }}
     nvidia_container_toolkit_versions: >-
       {{ pinka_versions.packages | pinka_lock_packages('nvidia_container_toolkit', pinka_release_key) }}
+
+- name: Decide whether the toolkit existed before pinka
+  ansible.builtin.set_fact:
+    nvidia_container_toolkit_preexisting: >-
+      {{ 'nvidia-container-toolkit' in ((pinka_preexisting | default({})).packages | default({})) }}
 
 - name: Refuse an unverified NVIDIA Container Toolkit source
   ansible.builtin.assert:
@@ -22,6 +30,7 @@
       ansible/component-sources.yml marks the NVIDIA Container Toolkit source for
       {{ pinka_source_group }} as unverified ({{ nvidia_container_toolkit_source.verify | default('') }}).
     quiet: true
+  when: not nvidia_container_toolkit_preexisting
 
 - name: Add the NVIDIA Container Toolkit repository
   ansible.builtin.include_role:
@@ -29,7 +38,9 @@
     tasks_from: repo
   vars:
     pkg_repo_name: "{{ nvidia_container_toolkit_source.repo }}"
-  when: nvidia_container_toolkit_source.source == 'vendor_repo'
+  when:
+    - nvidia_container_toolkit_source.source == 'vendor_repo'
+    - not nvidia_container_toolkit_preexisting
 
 # The repository is not really added in check mode, so its packages cannot be
 # resolved; everything below needs the toolkit installed.
@@ -45,6 +56,7 @@
   vars:
     pkg_packages: "{{ nvidia_container_toolkit_source.packages }}"
     pkg_versions: "{{ nvidia_container_toolkit_versions }}"
+  when: not nvidia_container_toolkit_preexisting
 
 - name: Hold the NVIDIA Container Toolkit packages
   ansible.builtin.include_role:
@@ -54,6 +66,7 @@
     pkg_hold_name: nvidia_container_toolkit
     pkg_hold_packages: "{{ nvidia_container_toolkit_source.packages }}"
     pkg_versions: "{{ nvidia_container_toolkit_versions }}"
+  when: not nvidia_container_toolkit_preexisting
 
 - name: Create the drop-in directory of nvidia-cdi-refresh.service
   ansible.builtin.file:
@@ -89,29 +102,26 @@
 - name: Apply a changed CDI configuration now
   ansible.builtin.meta: flush_handlers
 
-- name: Read the Docker daemon configuration
-  ansible.builtin.slurp:
-    src: /etc/docker/daemon.json
-  register: nvidia_container_toolkit_daemon_json
+- name: Read what Docker offers (how containers reach the GPU)
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
   when: not ansible_check_mode
 
-- name: Read how Docker gives containers the GPU (written by the docker role)
+- name: Read how Docker gives containers the GPU
   ansible.builtin.set_fact:
-    nvidia_container_toolkit_method: >-
-      {{ 'cdi' if (nvidia_container_toolkit_daemon.features | default({})).cdi | default(false)
-         else ('runtime' if 'nvidia' in (nvidia_container_toolkit_daemon.runtimes | default({})) else 'none') }}
-  vars:
-    nvidia_container_toolkit_daemon: "{{ nvidia_container_toolkit_daemon_json.content | b64decode | from_json }}"
+    nvidia_container_toolkit_method: "{{ pinka_docker_gpu_method }}"
   when: not ansible_check_mode
 
-- name: Check that Docker is configured for the GPU
+- name: Check that Docker offers the GPU
   when: not ansible_check_mode
   ansible.builtin.assert:
     that:
       - nvidia_container_toolkit_method in ['cdi', 'runtime']
     fail_msg: >-
-      /etc/docker/daemon.json enables neither CDI nor the NVIDIA runtime; apply the docker
-      role first (it configures GPU access on hosts with the gpu_inference feature).
+      Docker offers neither CDI nor the NVIDIA runtime (`docker info`). Docker 28.2 and later
+      enable CDI unless daemon.json sets "features": {"cdi": false}; on an older Docker pinka
+      installed, apply the docker role first.
     quiet: true
 
 - name: List the CDI devices

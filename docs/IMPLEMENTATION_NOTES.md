@@ -4628,3 +4628,169 @@ Not changed, with the reason:
   for the owner (`PROGRESS.md`, open questions).
 - §16 (implementation order): unchanged; the 3f-1 steps are in
   `PROGRESS.md`.
+
+## 3f-1.D1 Pre-existing components and the install record
+
+The first feature step of 3f-1 (owner: "Then build D1 and wait"), built on
+the edited spec: §2.2, §6.1, §7.4-§7.7, §7.21, §9, §13 invariants 9 and 24,
+§18.4 screen 7 and the owner's decisions 2-4 and the addition on LXD and
+Podman. Uninstall itself is D2.
+
+### Preflight
+
+- `detect/components.py` (new) detects Docker Engine, Tailscale, LXD,
+  Podman, Incus and the NVIDIA driver: installed, version, running and
+  origin, plus per-component details (Docker: CDI, Compose, buildx;
+  Tailscale: login, host name, tags, key expiry, Funnel, Tailscale SSH; LXD:
+  managed networks and storage sources; Podman: Docker compatibility). The
+  host profile carries them as `components` (schema: required, with
+  `install_record`).
+- **Origin.** With a non-legacy install record, `added.components[name]`
+  means pinka and anything else is pre-existing; without a record, or with a
+  legacy one, pinka's marks decide (the `org.pinka.managed` label of
+  `daemon.json`, a `tag:pinka-*` tag, `/etc/pinka/managed-incus`).
+- **New `needs_action` ids:** `docker_not_running`,
+  `docker_plugins_missing`, `docker_cdi_off` (GPU usable and `docker info`
+  without CDI spec directories; the remediation names removing
+  `features.cdi: false` from 28.2, adding `features.cdi: true` below),
+  `tailscale_funnel_on`, `tailscale_ssh_on`, `podman_docker` and
+  `lxd_incus_clash`. They replace the former blocking LXD, Podman and
+  `daemon.json` rules of `conflicts.py`.
+- **LXD clash checks** (§7.7): LXD network names against `pinka-build0` and
+  the `r-` prefix (from `lab-defaults.json` `incus_bridges`, generated);
+  LXD subnets against pinka's Docker address pool (pinka's Incus bridges use
+  `ipv4.address: auto`, so the pool is the only fixed subnet); a DNS or DHCP
+  server bound to UDP 53 or 67 of every address; the pool device
+  (`--pool-device`, which bootstrap and the doctor's preflight now pass)
+  against LXD's storage sources; and, when pinka would install Docker
+  itself, Docker's `FORWARD` policy, which would stop LXD's forwarding. The
+  listener port of §7.7 needs no check of its own: LXD's
+  `core.https_address` on the Incus API port (8443) is a listener on a lab
+  port that is not the lab's, which `lab_port_in_use` already reports.
+- Nine fixtures (`ubuntu2404-baremetal-docker-preexisting`, `-docker-cdi-off`,
+  `-tailscale-adopted`, `-tailscale-funnel`, `-tailscale-ssh`, `-lxd`,
+  `-lxd-clash`, `-podman`, `-podman-docker`) with their snapshots.
+- `TODO(verify)` (2 new markers): the JSON of `tailscale serve status
+  --json` (`AllowFunnel`) and `tailscale debug prefs` (`RunSSH`) of the
+  pinned Tailscale, and of `lxc network list` and `lxc storage list` of the
+  LXD releases in use.
+
+### The install record (§7.21)
+
+- Role `install_record`, the first role after `preflight_gate` in
+  `site.yml` and `check-mode.yml`, with the module
+  `roles/install_record/library/pinka_install_record.py` (on the library
+  path of `ansible.cfg`; standard library only; typed and tested like the
+  other modules). `state: init` writes `/var/lib/pinka/install-record.json`
+  (0600) once: the host profile's components, the installed packages
+  (`dpkg-query`, `rpm` or `pacman`), the enabled and masked units, the
+  accounts and groups, and the content of the files pinka shares with the
+  system (`install_record_managed_files`; at most 64 KiB each, UTF-8 only).
+  A second `init` changes nothing. A host pinka provisioned before the
+  record existed (`/etc/pinka/bootstrap-state.json` present) gets
+  `legacy: true`; such a record decides nothing (`pinka_preexisting` is
+  empty there).
+- `state: add` merges what a role is about to create, keeping only what did
+  not exist before: components, packages, holds, accounts, groups,
+  memberships, keys and `tailscale serve` entries. The pkg role records
+  packages and holds, users_groups accounts, groups, memberships and keys,
+  docker, tailscale, incus and provider_baremetal their component (and
+  docker the break-glass memberships). Each records **before** it acts, so a
+  run that stops halfway leaves nothing unrecorded. Repository files, units,
+  firewall objects and drop-ins carry pinka's names; D2 reads them by name
+  and the record's file contents restore the shared files.
+- Check mode writes nothing and prints what a real run would record.
+
+### Roles
+
+- **docker:** the install steps moved to `tasks/install.yml`, included only
+  when the host profile does not name Docker pre-existing. `daemon.json`
+  holds `live-restore`, `data-root`, `selinux-enabled` on SELinux hosts and
+  the GPU setting `docker_gpu_setting`: none from Docker 28.2
+  (`docker_cdi_default_since`), `features.cdi` from 25.0
+  (`docker_cdi_min_version`), the NVIDIA runtime below. The log options,
+  `default-address-pools` and `cgroup-parent` left the daemon.
+  `tasks/facts.yml` reads `docker info` (CDI spec directories, runtimes,
+  data root) and sets `pinka_docker_gpu_method`, `pinka_docker_gpu_args` and
+  `pinka_docker_data_root`, whoever installed Docker; compose, gpu_arbiter,
+  lab_session, doctor and nvidia_container_toolkit use them.
+- **compose:** every lab container gets the `local` log driver with
+  `pinka_container_log_max_size` and `pinka_container_log_max_file` and
+  `cgroup_parent: pinka-services.slice` through `x-logging`/`x-lab` anchors
+  (OPA keeps its journald driver and sets only the slice); the core network
+  has an explicit subnet from pinka's pool (`pinka_subnet` filter, first /24
+  of `docker_address_pools`). The GPU arbiter's training containers get the
+  same options (`container_args`).
+- **tailscale:** `tailscale_adopted` (host profile origin pre-existing) skips
+  the source check, the install, `systemctl enable` and the join; a logged
+  out Tailscale whose package existed is joined without touching its
+  package. Serve entries are published only when `pinka_tailscale_serve_allowed`
+  (always on a joined node, with `tailscale_serve_consent` on an adopted
+  one), recorded first; the firewall's serve ports follow the same rule.
+- **nvidia_container_toolkit, incus, provider_baremetal:** a toolkit or an
+  NVIDIA driver that existed before pinka is left as it is (the driver
+  install, nouveau blacklist and holds are skipped, with a message); the
+  components pinka installs are recorded first.
+- **users_groups:** a reserved account or group name that existed before
+  pinka stops the play before any account is created; a researcher account
+  that existed is kept: pinka adds groups and its keys non-exclusively, and
+  records both (`researcher_memberships`, `key_entries` filters).
+- **firewall:** the `DOCKER-USER` rules match only pinka's Incus bridges (a
+  new render test also checks that none matches `docker0`, `br-*`,
+  `lxdbr0` or `podman0`). On a host with LXD, the nftables input chain
+  admits DHCP and DNS on LXD's bridges (`firewall_preexisting_bridges`, from
+  the host profile), so LXD's guests keep the service of LXD's dnsmasq
+  under pinka's drop policy; their other traffic to the host meets the same
+  input policy as any interface. Accepting all of LXD's traffic would have
+  exposed the split-inference ports bound on the tailnet address, whose
+  guard filters only `tailscale0`. firewalld and ufw already leave LXD's
+  interfaces alone.
+
+### Doctor
+
+- `install.record` (error): present, a JSON object with `created_at`,
+  `legacy`, `preexisting` and `added`, owned by root and not writable by
+  others.
+- `network.tailscale` (error) now also fails on Tailscale SSH, and compares
+  an adopted node with the host name and tags the install record noted; a
+  node pinka joined (or a host with a missing or legacy record) keeps the
+  configured name and tag.
+- `network.tailscale_identity` (warning, owner decision 2): on an adopted
+  node, a missing lab tag and a key that expires.
+- `gpu.cdi` (error): with a GPU feature on a full or inference node,
+  `docker info` lists CDI spec directories, or the NVIDIA runtime is the
+  recorded method (`gpu.method` in `lab.json`).
+- `lab.json` gains `paths.install_record` and `gpu.method`.
+
+### Installer
+
+- Answers field `remote_access.tailscale_serve_consent` (schema
+  description, host_vars `tailscale_serve_consent`, round trip, example
+  host_vars). On an adopted node the Remote access screen explains the
+  trade-off with the recorded name and tags, shows the tag, login, auth key
+  and DNS read-only, and asks for consent when Grafana is to be served
+  (`validators.serve_consent`); the login stays `interactive` and no auth
+  key is asked for, since pinka never logs such a node in.
+- `site.yml` gained a role, so the recorded event streams were re-recorded
+  (`record_events.py`) and the four Progress snapshots updated: the only
+  change is the `install_record` row and one more task in the totals.
+
+### Docs
+
+- New: the explanation "Components that existed before pinka" and the
+  how-to "Install next to existing Docker, Tailscale, LXD or Podman".
+- Updated: `security.md` (the adopted node's trade-off, LXD's bridges,
+  serve consent), `explanation/preflight-gate.md` (the components row),
+  `explanation/target-isolation.md` (the slice from the Compose projects),
+  `how-to/fix-doctor-checks.md` (four sections), ADR-0008 (an amendment for
+  the pre-existing Docker), the generated references.
+
+### Not in D1
+
+- Uninstall, `--remove-component` and the uninstall lanes: D2.
+- Computer B's Kepler GPU: with `install_nvidia_driver: auto` and no
+  usable driver, bootstrap would blacklist nouveau and install the pinned
+  open driver branch, which does not support Kepler. A driver that existed
+  before pinka is now never replaced, but a host without one still gets
+  the pinned branch. Recommended: `install_nvidia_driver: skip` on B, or a
+  supported-device guard (a decision for the owner, `PROGRESS.md`).

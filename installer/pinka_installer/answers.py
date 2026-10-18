@@ -105,6 +105,7 @@ class RemoteAccess:
     tailscale_tag: str = ""
     accept_dns: bool = False
     grafana_tailscale_serve: bool = False
+    tailscale_serve_consent: bool = False
     ssh_extra_allowed_interfaces: list[str] = field(default_factory=list)
 
 

@@ -39,6 +39,9 @@ RENDERED_PLATFORM = "/etc/pinka/platform/rendered.json"
 # The key the socket-ACL helper keeps in it (owner decision with the "commit" for 3d.3).
 SOCKET_ACL_FALLBACK = "socket_acl_fallback"
 FALLBACK_MODE = 0o666
+# The install record (BUILD_PROMPT §7.21), written by the install_record role.
+INSTALL_RECORD = "/var/lib/pinka/install-record.json"
+WRITABLE_BY_OTHERS = 0o022
 
 
 # --- helpers ---------------------------------------------------------------------------
@@ -51,6 +54,43 @@ def _profile(ctx: Context) -> dict[str, Any]:
         ctx.memo["profile"] = json.loads(text) if text else {}
     profile: dict[str, Any] = ctx.memo["profile"]
     return profile
+
+
+def _install_record(ctx: Context) -> dict[str, Any] | None:
+    """Read the install record once; None when it is missing or not a JSON object."""
+    if "install_record" not in ctx.memo:
+        path = str(ctx.config.get("paths", "install_record", default=INSTALL_RECORD))
+        text = ctx.system.read_text(path)
+        try:
+            data = json.loads(text) if text else None
+        except ValueError:
+            data = None
+        ctx.memo["install_record"] = data if isinstance(data, dict) else None
+    record: dict[str, Any] | None = ctx.memo["install_record"]
+    return record
+
+
+def _adopted_tailscale(ctx: Context) -> dict[str, Any] | None:
+    """What the install record noted of a Tailscale node logged in before pinka.
+
+    None when pinka joined the node, and where the record is missing or legacy
+    (pinka provisioned the host before the record existed and joined the node).
+    """
+    record = _install_record(ctx)
+    if record is None or record.get("legacy"):
+        return None
+    if ((record.get("added") or {}).get("components") or {}).get("tailscale"):
+        return None
+    before = ((record.get("preexisting") or {}).get("components") or {}).get("tailscale") or {}
+    return dict(before) if before.get("origin") == "pre-existing" else None
+
+
+def _tailscale_status(ctx: Context) -> dict[str, Any]:
+    if "tailscale_status" not in ctx.memo:
+        status = ctx.system.run(["tailscale", "status", "--json"]).json()
+        ctx.memo["tailscale_status"] = status if isinstance(status, dict) else {}
+    found: dict[str, Any] = ctx.memo["tailscale_status"]
+    return found
 
 
 def _preflight(ctx: Context) -> dict[str, Any] | None:
@@ -341,26 +381,73 @@ def _docker_user_rules(ctx: Context) -> list[str]:
 
 
 def check_tailscale(ctx: Context) -> Outcome:
-    """Tailscale is logged in with the expected host name and tag, and Funnel is off."""
+    """Tailscale is logged in with the expected name and tags; Funnel and Tailscale SSH are off.
+
+    On a node pinka joined, the expected name and tag are the configured ones;
+    on a node adopted as it was (BUILD_PROMPT §7.4), the ones the install record
+    noted. Tailscale SSH is read from ``tailscale debug prefs`` (``RunSSH``),
+    the query of preflight's components detector, whose output format is
+    still to be verified there.
+    """
     if not ctx.config.get("tailscale", "enabled", default=True):
         return skipped("Tailscale is disabled in this lab")
-    status = ctx.system.run(["tailscale", "status", "--json"]).json() or {}
+    status = _tailscale_status(ctx)
     problems = []
     if status.get("BackendState") != "Running":
         problems.append(f"backend state {status.get('BackendState', 'unknown')}")
     me = status.get("Self") or {}
-    hostname = ctx.config.get("tailscale", "hostname", default=ctx.config.machine)
+    tags = sorted(str(t) for t in me.get("Tags") or [])
+    adopted = _adopted_tailscale(ctx)
+    if adopted is None:
+        hostname = ctx.config.get("tailscale", "hostname", default=ctx.config.machine)
+        tag = ctx.config.get("tailscale", "tag")
+        if tag and tag not in tags:
+            problems.append(f"tag {tag} missing")
+        expected = f"{hostname} with {tag}"
+    else:
+        hostname = adopted.get("hostname")
+        recorded = sorted(str(t) for t in adopted.get("tags") or [])
+        if tags != recorded:
+            problems.append(f"tags {tags}, recorded {recorded}")
+        expected = f"{hostname} as recorded (adopted node)"
     if me.get("HostName") != hostname:
         problems.append(f"host name {me.get('HostName')!r}, expected {hostname!r}")
-    tag = ctx.config.get("tailscale", "tag")
-    if tag and tag not in (me.get("Tags") or []):
-        problems.append(f"tag {tag} missing")
     serve = ctx.system.run(["tailscale", "serve", "status", "--json"]).json() or {}
     if isinstance(serve, dict) and serve.get("AllowFunnel"):
         problems.append("Funnel is enabled")
+    prefs = ctx.system.run(["tailscale", "debug", "prefs"]).json() or {}
+    if isinstance(prefs, dict) and prefs.get("RunSSH"):
+        problems.append("Tailscale SSH is on")
     if problems:
         return failed("; ".join(problems))
-    return passed(f"logged in as {hostname} with {tag}, Funnel off")
+    return passed(f"logged in as {expected}, Funnel and Tailscale SSH off")
+
+
+def check_tailscale_identity(ctx: Context) -> Outcome:
+    """A node adopted as it was carries the lab's tag and a key that does not expire.
+
+    Both are warnings (owner decision on 3f-1): the tailnet ACL can name the
+    node another way, and an expired key only takes the lab off the tailnet
+    until the owner signs in again (docs/security.md).
+    """
+    if not ctx.config.get("tailscale", "enabled", default=True):
+        return skipped("Tailscale is disabled in this lab")
+    if _adopted_tailscale(ctx) is None:
+        return skipped("pinka joined this node with the lab's tag")
+    me = _tailscale_status(ctx).get("Self") or {}
+    problems = []
+    tag = ctx.config.get("tailscale", "tag")
+    if tag and tag not in (me.get("Tags") or []):
+        problems.append(f"no {tag}, so the tailnet ACL must name this node another way")
+    expiry = me.get("KeyExpiry")
+    if expiry:
+        problems.append(
+            f"its key expires at {expiry}; the lab then leaves the tailnet until the owner "
+            "signs in again"
+        )
+    if problems:
+        return failed("; ".join(problems))
+    return passed(f"adopted node with {tag} and no key expiry")
 
 
 # --- GPU and inference ---------------------------------------------------------------------
@@ -388,6 +475,26 @@ def check_gpu(ctx: Context) -> Outcome:
     if not done.ok or not gpus:
         return failed(done.stderr.strip() or "no GPU visible in a container")
     return passed(f"{len(gpus)} GPU(s) visible in a container")
+
+
+def check_docker_cdi(ctx: Context) -> Outcome:
+    """Docker gives containers the GPU through CDI (BUILD_PROMPT §7.6).
+
+    The NVIDIA runtime passes only where bootstrap recorded it as the method,
+    on a Docker pinka installed that has no CDI support.
+    """
+    gpu_feature = ctx.config.feature("gpu_inference") or ctx.config.feature("gpu_training")
+    if not gpu_feature or ctx.config.node_role not in ("full", "inference"):
+        return skipped("this node runs no GPU containers")
+    done = ctx.system.run(["docker", "info", "--format", "{{json .CDISpecDirs}}"])
+    if not done.ok:
+        return failed(f"docker info failed: {done.stderr.strip() or done.returncode}")
+    dirs = done.json()
+    if isinstance(dirs, list) and dirs:
+        return passed(f"CDI is on ({', '.join(str(d) for d in dirs)})")
+    if ctx.config.get("gpu", "method", default="cdi") == "runtime":
+        return passed("the NVIDIA runtime, recorded at bootstrap: this Docker has no CDI support")
+    return failed("CDI is off in Docker (docker info lists no CDI spec directories)")
 
 
 def check_driver_cuda(ctx: Context) -> Outcome:
@@ -1900,9 +2007,41 @@ def check_wsl(ctx: Context) -> Outcome:
     return passed(f"wsl.conf as managed, {memory_gib:.1f} GiB, {cpus} CPUs")
 
 
+# --- install record ------------------------------------------------------------------------
+
+
+def check_install_record(ctx: Context) -> Outcome:
+    """The install record is present, readable and only root can change it (§7.21)."""
+    path = str(ctx.config.get("paths", "install_record", default=INSTALL_RECORD))
+    if ctx.system.read_text(path) is None:
+        return failed(f"{path} is missing")
+    record = _install_record(ctx)
+    if record is None:
+        return failed(f"{path} is not a JSON object")
+    missing = [k for k in ("created_at", "legacy", "preexisting", "added") if k not in record]
+    if missing:
+        return failed(f"{path} lacks {', '.join(missing)}")
+    found = ctx.system.info(path)
+    if found is None or found.owner != "root" or found.mode & WRITABLE_BY_OTHERS:
+        shown = "unknown" if found is None else f"{found.owner} {found.mode:04o}"
+        return failed(f"{path} is {shown}; only root may change it")
+    kind = "first install"
+    if record["legacy"]:
+        kind = "legacy (pinka provisioned this host before the record existed)"
+    return passed(f"{path} from {record['created_at']}, {kind}")
+
+
 # --- registry ----------------------------------------------------------------------------------
 
 CHECKS: tuple[Check, ...] = (
+    Check(
+        "install.record",
+        "The install record is present, readable and only root can change it.",
+        "error",
+        "Run bootstrap: it writes a missing record (a legacy one on a host pinka provisioned "
+        "before); never edit the record by hand.",
+        check_install_record,
+    ),
     Check(
         "preflight.outcome",
         "A fresh read-only preflight still allows the lab on this host.",
@@ -1947,10 +2086,20 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "network.tailscale",
-        "Tailscale is logged in with the expected name and tag, Funnel off.",
+        "Tailscale is logged in with the expected name and tags; Funnel and Tailscale SSH off.",
         "error",
-        "`tailscale up` per the Tailscale how-to; `tailscale funnel reset` removes Funnel.",
+        "`tailscale up` per the Tailscale how-to (on an adopted node the owner restores the "
+        "recorded name and tags); `tailscale funnel reset` removes Funnel, "
+        "`tailscale set --ssh=false` Tailscale SSH.",
         check_tailscale,
+    ),
+    Check(
+        "network.tailscale_identity",
+        "An adopted Tailscale node carries the lab's tag and a key that does not expire.",
+        "warning",
+        "Tag the node in the admin console or disable its key expiry; otherwise name it in the "
+        "tailnet ACL another way and sign in again when the key expires.",
+        check_tailscale_identity,
     ),
     Check(
         "gpu.docker",
@@ -1958,6 +2107,15 @@ CHECKS: tuple[Check, ...] = (
         "error",
         "Check the driver (`nvidia-smi`) and run bootstrap with --tags nvidia_container_toolkit.",
         check_gpu,
+    ),
+    Check(
+        "gpu.cdi",
+        "Docker gives containers the GPU through CDI.",
+        "error",
+        'Remove `"features": {"cdi": false}` from /etc/docker/daemon.json (on Docker older than '
+        '28.2 add `"features": {"cdi": true}`) and restart Docker; on a Docker pinka installed, '
+        "run bootstrap with --tags docker.",
+        check_docker_cdi,
     ),
     Check(
         "gpu.driver_cuda",

@@ -1,0 +1,10 @@
+{
+  "components": {
+    "tailscale": "pre-existing"
+  },
+  "needs_action": [],
+  "notes_contain": [
+    "pinka uses the node as it is"
+  ],
+  "outcome": "supported"
+}

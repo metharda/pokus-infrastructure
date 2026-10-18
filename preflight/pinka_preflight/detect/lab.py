@@ -6,9 +6,10 @@
   the remediation names the process and the override. Listening sockets come
   from ``/proc/net/tcp`` and ``/proc/net/tcp6``, their processes from the
   socket links in ``/proc/<pid>/fd``. A process belongs to the lab when its
-  cgroup is the lab services' slice or a ``pinka-`` unit, or it is the Docker
-  or Incus daemon the lab manages (``docker-proxy`` runs in
-  ``docker.service``). A listener whose process preflight cannot see (it
+  cgroup is the lab services' slice or a ``pinka-`` unit, when it is a
+  ``docker-proxy`` (it runs in ``docker.service``) forwarding to a container
+  in the lab's own Docker address pool, or when it is the Docker or Incus
+  daemon the lab manages. A listener whose process preflight cannot see (it
   does not run as root) is a warning.
 * **VM collector address conflict.** When VM targets are possible (KVM is
   usable), ``vm_collector_address`` must not be assigned to or routed by
@@ -113,12 +114,30 @@ def _cgroup_units(fs: FileSystem, pid: str) -> list[str]:
     return units
 
 
-def lab_process(fs: FileSystem, pid: str) -> bool:
+def _container_ip(fs: FileSystem, pid: str) -> ipaddress.IPv4Address | None:
+    """The ``-container-ip`` of a ``docker-proxy`` process, if it has one."""
+    raw = fs.read_bytes(f"/proc/{pid}/cmdline") or b""
+    args = [a.decode("utf-8", "replace") for a in raw.split(b"\0")]
+    for flag, value in zip(args, args[1:]):
+        if flag == "-container-ip":
+            try:
+                return ipaddress.IPv4Address(value)
+            except ValueError:
+                return None
+    return None
+
+
+def lab_process(
+    fs: FileSystem, pid: str, docker_pools: Iterable[ipaddress.IPv4Network] = ()
+) -> bool:
     """Tell whether a process belongs to the lab.
 
     Args:
         fs: Filesystem view.
         pid: Process ID.
+        docker_pools: The lab's own Docker address pools: a ``docker-proxy``
+            forwarding to a container in them serves a lab port, also on a
+            Docker that existed before pinka.
 
     Returns:
         True for the lab's services and containers, and for the Docker and
@@ -128,6 +147,9 @@ def lab_process(fs: FileSystem, pid: str) -> bool:
     if LAB_SLICE in units or any(u.startswith(LAB_UNIT_PREFIX) for u in units):
         return True
     if "docker.service" in units:
+        ip = _container_ip(fs, pid)
+        if ip is not None and any(ip in pool for pool in docker_pools):
+            return True
         return MANAGED_MARKER in (fs.read_text(DOCKER_DAEMON_JSON) or "")
     if "incus.service" in units:
         return fs.exists(MANAGED_INCUS)
@@ -138,12 +160,17 @@ def _process_name(fs: FileSystem, pid: str) -> str:
     return (fs.read_first_line(f"/proc/{pid}/comm") or "unknown").strip() or "unknown"
 
 
-def port_conflicts(fs: FileSystem, ports: Mapping[str, int]) -> list[Conflict]:
+def port_conflicts(
+    fs: FileSystem,
+    ports: Mapping[str, int],
+    docker_pools: Iterable[ipaddress.IPv4Network] = (),
+) -> list[Conflict]:
     """Report configured lab ports that a process outside the lab listens on.
 
     Args:
         fs: Filesystem view.
         ports: Effective lab ports by name.
+        docker_pools: The lab's own Docker address pools (see ``lab_process``).
 
     Returns:
         One conflict per port in use (``needs_action``; ``warning`` when the
@@ -182,7 +209,7 @@ def port_conflicts(fs: FileSystem, ports: Mapping[str, int]) -> list[Conflict]:
                 )
             )
             continue
-        outside = [pid for pid in pids if not lab_process(fs, pid)]
+        outside = [pid for pid in pids if not lab_process(fs, pid, docker_pools)]
         if not outside:
             continue
         reported.add(port)

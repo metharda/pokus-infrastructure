@@ -1,0 +1,36 @@
+# Managed by pinka (ansible/roles/install_record/tasks/main.yml). Local changes will be overwritten.
+#
+# The install record (BUILD_PROMPT §7.21): written once, at the first install
+# and before any change to the host, with what existed before pinka; the
+# roles add what they create (pinka_install_record state=add) and read the
+# record through pinka_preexisting. Check mode writes nothing and shows the
+# record a real run would write.
+- name: Write the install record at the first install
+  pinka_install_record:
+    path: "{{ install_record_path }}"
+    state: init
+    components: "{{ host_profile.components | default({}) }}"
+    pkg_manager: "{{ pinka_pkg_manager }}"
+    managed_files: "{{ install_record_managed_files }}"
+  register: install_record_init
+
+# A legacy record (the host was provisioned before the record existed) lists
+# pinka's own items as pre-existing, so it decides nothing; components then
+# follow preflight's marks (host_profile.components).
+- name: Expose what existed before pinka
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - shared fact like the pinka_* facts
+    pinka_preexisting: >-
+      {{ {} if install_record_init.record.legacy | default(false)
+         else install_record_init.record.preexisting | default({}) }}
+
+- name: Show what a real run would record (check mode)
+  ansible.builtin.debug:
+    msg: >-
+      {{ install_record_path }} would record {{ install_record_init.record.preexisting.packages | length }}
+      packages, {{ install_record_init.record.preexisting.users | length }} accounts and these components as
+      existing before pinka: {{ install_record_init.record.preexisting.components | dict2items
+      | selectattr('value.installed', 'defined') | selectattr('value.installed') | map(attribute='key')
+      | list | join(', ') or 'none' }}.
+  when:
+    - ansible_check_mode
+    - install_record_init.changed

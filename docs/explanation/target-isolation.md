@@ -90,8 +90,9 @@ when a core's threads are split between `cpuset_services` and
 
 - Every lab service runs in the systemd slice `pinka-services.slice`, whose
   `AllowedCPUs=` is `cpuset_services`: the lab's own units (`Slice=`) and
-  every Docker container, which Docker places in that slice
-  (`cgroup-parent` in `daemon.json`).
+  every lab container, which pinka's Compose projects and the GPU arbiter
+  place in that slice (`cgroup_parent`, `--cgroup-parent`). Docker's other
+  containers on the machine keep their own settings.
 - The platform pins targets: it sets each instance's `limits.cpu` to CPUs
   inside `cpuset_targets`, which `endpoints.toml` passes to it. A plain CPU
   count would let Incus place the instance on any CPU. The `bench` project's

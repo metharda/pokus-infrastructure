@@ -1,9 +1,9 @@
 # Managed by pinka (ansible/check-mode.yml). Local changes will be overwritten.
 #
 # Required CI fast lane (BUILD_PROMPT §11, §19.9; approved deviation I2): the
-# provider-agnostic roles base, users_groups, ssh and layout in check mode,
-# against a systemd container of one distribution family, with the host
-# profile that preflight wrote inside the container. Nothing is skipped.
+# provider-agnostic roles install_record, base, users_groups, ssh and layout
+# in check mode, against a systemd container of one distribution family, with
+# the host profile that preflight wrote inside the container. Nothing is skipped.
 # platform_facts only derives the facts these roles read. Run by
 # `make check-mode` (tools/test-distros); it refuses to run without --check.
 # The whole play runs in the separate, non-blocking `make check-mode-extended`.
@@ -32,6 +32,11 @@
       ansible.builtin.import_role:
         name: platform_facts
       tags: [platform_facts, always]
+
+    - name: Record what existed before pinka (check mode shows the record)
+      ansible.builtin.import_role:
+        name: install_record
+      tags: [install_record, always]
 
     - name: Base system
       ansible.builtin.import_role:

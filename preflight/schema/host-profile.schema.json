@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pokus host profile",
-  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT §2). generated_at is the only volatile field.",
+  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT \u00a72). generated_at is the only volatile field.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,6 +34,7 @@
     "features",
     "disabled_features",
     "storage_backend",
+    "components",
     "conflicts",
     "unsupported_reasons",
     "needs_action",
@@ -65,7 +66,7 @@
       ]
     },
     "outcome": {
-      "description": "Decision (BUILD_PROMPT §2.4).",
+      "description": "Decision (BUILD_PROMPT \u00a72.4).",
       "enum": [
         "supported",
         "degraded",
@@ -847,6 +848,255 @@
         null
       ]
     },
+    "components": {
+      "description": "Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks (BUILD_PROMPT \u00a72.2, \u00a77.21).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "install_record",
+        "docker",
+        "tailscale",
+        "lxd",
+        "podman",
+        "incus",
+        "nvidia_driver"
+      ],
+      "properties": {
+        "install_record": {
+          "type": "boolean",
+          "description": "The host has an install record."
+        },
+        "docker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "cdi": {
+              "type": "boolean",
+              "description": "CDI is on (docker info lists CDI spec directories; without a running daemon: daemon.json and the version)."
+            },
+            "compose": {
+              "type": "boolean",
+              "description": "The Compose v2 plugin answers."
+            },
+            "buildx": {
+              "type": "boolean",
+              "description": "The buildx plugin answers."
+            }
+          }
+        },
+        "tailscale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "logged_in": {
+              "type": "boolean",
+              "description": "The node is logged in (BackendState Running)."
+            },
+            "hostname": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The node's host name on the tailnet."
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The node's tags."
+            },
+            "key_expiry": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When the node's key expires; null when key expiry is off."
+            },
+            "funnel": {
+              "type": "boolean",
+              "description": "Funnel is on."
+            },
+            "ssh": {
+              "type": "boolean",
+              "description": "Tailscale SSH is on."
+            }
+          }
+        },
+        "lxd": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "networks": {
+              "type": "array",
+              "description": "LXD's managed networks.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "ipv4"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "ipv4": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Its ipv4.address."
+                  }
+                }
+              }
+            },
+            "storage_sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Sources of LXD's storage pools."
+            }
+          }
+        },
+        "podman": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "docker_compat": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "How Podman provides Docker's command or socket, if it does."
+            }
+          }
+        },
+        "incus": {
+          "$ref": "#/$defs/component"
+        },
+        "nvidia_driver": {
+          "$ref": "#/$defs/component"
+        }
+      }
+    },
     "conflicts": {
       "type": "array",
       "items": {
@@ -1132,6 +1382,41 @@
         },
         "remediation": {
           "type": "string"
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed",
+        "version",
+        "running",
+        "origin"
+      ],
+      "properties": {
+        "installed": {
+          "type": "boolean",
+          "description": "The component is on the host."
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its version, if it could be read."
+        },
+        "running": {
+          "type": "boolean",
+          "description": "Its daemon is active."
+        },
+        "origin": {
+          "enum": [
+            "pinka",
+            "pre-existing",
+            null
+          ],
+          "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
         }
       }
     }

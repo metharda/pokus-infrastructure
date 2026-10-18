@@ -131,6 +131,16 @@ class Wizard:
         return self.provider == "wsl2"
 
     @property
+    def tailscale_adopted(self) -> dict[str, Any]:
+        """A Tailscale node logged in before pinka, as preflight saw it; empty otherwise.
+
+        pinka uses such a node as it is (BUILD_PROMPT §7.4): no login, no new
+        host name, tags or settings, and tailscale serve only with consent.
+        """
+        node = (self.profile.get("components") or {}).get("tailscale") or {}
+        return dict(node) if node.get("origin") == "pre-existing" else {}
+
+    @property
     def gpu(self) -> dict[str, Any]:
         """The profile's GPU section."""
         return dict(self.profile.get("gpu") or {})
@@ -504,6 +514,27 @@ def acl_snippet(tag: str) -> str:
         '"acls": [\n'
         f'  {{"action": "accept", "src": ["autogroup:member"], "dst": ["{tag}:22", "{tag}:443"]}}\n'
         "]"
+    )
+
+
+def adopted_text(node: Mapping[str, Any], tag: str) -> str:
+    """What screen 8 says about a Tailscale node logged in before pinka (BUILD_PROMPT §7.4).
+
+    Args:
+        node: The node as preflight saw it (``components.tailscale``).
+        tag: The lab's tag.
+
+    Returns:
+        The explanation, with the node's recorded name and tags.
+    """
+    tags = ", ".join(str(t) for t in node.get("tags") or []) or "none"
+    return (
+        f"Tailscale was logged in before pinka, as {node.get('hostname') or 'unknown'} "
+        f"(tags: {tags}). pinka uses the node as it is: no login, no new host name, tags "
+        "or settings, and uninstall never logs it out.\n"
+        f"Without {tag} the tailnet ACL has to name the node another way, and when its key "
+        "expires (a personal account's key does) the lab leaves the tailnet until you sign "
+        "in again; doctor warns about both."
     )
 
 

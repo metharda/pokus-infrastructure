@@ -9,8 +9,15 @@ compose_services: []
 # Compose profiles to enable besides the GPU profile (observability: stores).
 compose_profiles: []
 # Whether the project's GPU services run (Compose profile gpu-cdi or
-# gpu-runtime, after the method in /etc/docker/daemon.json).
+# gpu-runtime, after the method Docker offers, docker role facts.yml).
 compose_gpu: false
+# Log limits and cgroup parent of every lab container, set per service rather
+# than in the Docker daemon (BUILD_PROMPT §7.6).
+compose_log_max_size: "{{ pinka_container_log_max_size }}"
+compose_log_max_file: "{{ pinka_container_log_max_file }}"
+compose_cgroup_parent: "{{ pinka_services_slice }}"
+# Subnet of the core project's network (OPA), the first of pinka's pool.
+compose_core_subnet: "{{ docker_address_pools | default([{'base': '172.30.0.0/16', 'size': 24}]) | pinka_subnet(0) }}"
 # Start the services and enable the unit; false installs the unit disabled
 # (vLLM without a deployment).
 compose_start: true

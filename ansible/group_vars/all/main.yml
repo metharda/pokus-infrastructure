@@ -63,6 +63,14 @@ grafana_tailscale_serve: false
 docs_release: null
 # Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
 docs_tailscale_serve: false
+# On a Tailscale node that existed before pinka (adopted, BUILD_PROMPT §7.4):
+# the owner's consent to publish Grafana or the docs with tailscale serve.
+tailscale_serve_consent: false
+# Whether pinka may publish with tailscale serve at all: always on a node it
+# joined, only with tailscale_serve_consent on an adopted node (§7.4).
+pinka_tailscale_serve_allowed: >-
+  {{ (host_profile.components.tailscale | default({})).origin | default(none) != 'pre-existing'
+     or tailscale_serve_consent | bool }}
 # Interfaces besides tailscale0 on which sshd accepts connections.
 ssh_extra_allowed_interfaces: []
 # Root of the research space (BUILD_PROMPT §6.2).
@@ -75,6 +83,13 @@ cpuset_services: ""
 cpuset_targets: ""
 # Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
 pinka_services_slice: pinka-services.slice
+# Size limit of one log file of the `local` log driver of every lab container
+# (Docker's own default), set per container by the Compose projects and the
+# GPU arbiter rather than in the Docker daemon (BUILD_PROMPT §7.6).
+pinka_container_log_max_size: 20m
+# Number of log files the `local` log driver keeps per lab container (Docker's
+# own default), set like pinka_container_log_max_size.
+pinka_container_log_max_file: 5
 # Let automatic security updates update the kernel on bare metal (held by default).
 allow_kernel_updates: false
 # Tailscale tag of the host per lab_mode (owner answer E2).
@@ -237,12 +252,15 @@ pinka_default_ports:
 ports: {}
 # The effective listener ports: the defaults with the machine's overrides.
 pinka_ports: "{{ pinka_default_ports | combine(ports) }}"
-# The preflight options of the machine's port overrides and VM collector
-# address (bootstrap passes the same; the preflight gate and doctor re-run
-# preflight with them).
+# The preflight options of the machine's port overrides, VM collector address
+# and pool device (bootstrap passes the same; the preflight gate and doctor
+# re-run preflight with them).
 pinka_preflight_args: >-
   {{ (ports.items() | map('join', '=') | map('regex_replace', '^', '--port=') | list)
-     + ['--vm-collector-address', vm_collector_address] }}
+     + ['--vm-collector-address', vm_collector_address]
+     + (['--pool-device', incus_pool_device]
+        if incus_pool_source | default('loop') == 'device' and incus_pool_device | default('') | length > 0
+        else []) }}
 
 # Loopback ports of lab-internal listeners: exporters, the collectors' own
 # metrics and health checks, Loki's and Tempo's internal servers. Not part of

@@ -8,8 +8,22 @@
 # configuration recreates its service.
 name: pinka-core
 
+# Settings every lab container gets here rather than from the Docker daemon,
+# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
+# §7.6): the local log driver with size limits and the lab services' slice.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: ${LOG_MAX_SIZE:?}
+    max-file: ${LOG_MAX_FILE:?}
+
+x-lab: &lab
+  logging: *logging
+  cgroup_parent: ${CGROUP_PARENT:?}
+
 services:
   postgres:
+    <<: *lab
     image: ${POSTGRES_IMAGE:?pinned image missing}
     container_name: pinka-postgres
     restart: unless-stopped
@@ -39,6 +53,7 @@ services:
   # Host network on 127.0.0.1 for Prometheus; the database through the
   # service socket directory (its group: the platform's <platform>-db, or root).
   postgres_exporter:
+    <<: *lab
     image: ${POSTGRES_EXPORTER_IMAGE:?pinned image missing}
     container_name: pinka-postgres-exporter
     restart: unless-stopped
@@ -60,6 +75,8 @@ services:
     cap_drop: [ALL]
 
   opa:
+    # Its own log driver (below), so only the lab services' slice from x-lab.
+    cgroup_parent: ${CGROUP_PARENT:?}
     image: ${OPA_IMAGE:?pinned image missing}
     container_name: pinka-opa
     restart: unless-stopped
@@ -91,3 +108,11 @@ services:
     logging:
       driver: journald
       options: {tag: pinka-opa}
+
+# OPA's network: an explicit subnet from pinka's own pool, not from the
+# Docker daemon's address pools (BUILD_PROMPT §7.6).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CORE_SUBNET:?}

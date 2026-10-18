@@ -321,8 +321,11 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
   the postgres and `ubuntu:24.04` tag warnings). The owner decided the
   proposal (verbatim under 3f-1 in the remaining plan) and authorized one
   spec edit, limited to D1, D2, A, B, C, E and F; it is made (the
-  specifications table below has its checksums) and waits for "commit",
-  and so does D1, the first feature step.
+  specifications table below has its checksums) and waits for "commit".
+  D1, the first feature step (the install record and the components that
+  existed before pinka), is built and waits for "commit" too; its record
+  is in `docs/IMPLEMENTATION_NOTES.md`, "3f-1.D1 Pre-existing components
+  and the install record".
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -341,7 +344,7 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | recorded; proposal decided; spec edit made, waits for "commit"; then D1, D2, A, B, C, E, F, G | `eb02d37` (records) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | recorded; proposal decided; spec edit made and D1 built, both wait for "commit"; then D2, A, B, C, E, F, G | `eb02d37` (records) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -811,6 +814,31 @@ Raised by the 3f-1 spec edit, for the owner:
   exist, unless the owner consents. Recommendation: (b), with sshd still
   reachable only on `tailscale0` and the allowed interfaces.
 
+Raised by D1 of 3f-1, for the owner:
+
+- **Computer B's Kepler GPU.** With `install_nvidia_driver: auto` and no usable
+  driver, bootstrap blacklists nouveau and installs the pinned open driver
+  branch, which does not support Kepler GPUs such as the GT 730. D1 leaves a
+  driver that existed before pinka alone, but a host without one still gets
+  the pinned branch. Options: (a) `install_nvidia_driver: skip` on B (the
+  GPU features stay off; the installer offers it); (b) a supported-device
+  guard: preflight compares the GPU's PCI ID with the pinned branch's
+  supported list and reports the GPU unusable instead of installing.
+  Recommendation: (a) now for the real-machine tests; (b) as a later item
+  if hosts with old GPUs are expected.
+- **LXD's guests and pinka's input policy** (§7.7: "pinka's rules must not
+  change LXD's traffic"). On the nftables backend pinka's input chain drops
+  by default, which would also drop the DHCP and DNS requests of LXD's
+  guests to LXD's dnsmasq. D1 admits DHCP and DNS on LXD's bridges (as for
+  Incus's), and pinka's forward chain filters only its run networks, so
+  LXD's guests keep their addresses, names and outbound traffic. Their other
+  traffic to the host itself (a service of the host on the bridge address)
+  meets pinka's input policy like any interface. Accepting all of it would
+  also let LXD's guests reach the split-inference ports, whose guard filters
+  only `tailscale0`. Interpretation built: (a) DHCP and DNS only; the
+  alternative (b) accepts all traffic from LXD's bridges and extends the
+  split guard to every interface. Recommendation: (a).
+
 ## Owner deliverables pending
 
 - **`make lock-pins` on the owner's machine** (owner decision on item 0,
@@ -861,7 +889,7 @@ Raised by the 3f-1 spec edit, for the owner:
 after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
 collection artifacts, 128 after the lock's header comment stopped naming the
 marker, 118 with the owner's collection pins, 113 after 3e, 96 with the
-pins of `make lock-pins` after 3f; details in
+pins of `make lock-pins` after 3f, 98 with D1 of 3f-1; details in
 `docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after step 4"
 through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
@@ -920,6 +948,10 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
   and their copy in the generated `bootstrap/lib/pins.sh`. Resolved
   with the owner's `make lock-collections` output (`4aeb35b`); the four
   `ansible_collections.fallback` entries go with the fallback in 3d.8.
+- 3f-1.D1: the JSON of `tailscale serve status --json` and `tailscale
+  debug prefs` of the pinned Tailscale, and of `lxc network list` and `lxc
+  storage list` of the LXD releases in use
+  (`preflight/pinka_preflight/detect/components.py`).
 
 ## Known issues
 
@@ -1080,11 +1112,11 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
 and 3f-1 is recorded (`eb02d37`). The owner decided the 3f-1 proposal; the
-authorized spec edit is made and waits for "commit", and D1 (the install
-record and the pre-existing components) is built next and waits too. Then
-D2, A, B, C, E, F and G, each as its own step waiting for "commit". Then
+authorized spec edit is made and D1 (the install record and the
+pre-existing components) is built; both wait for "commit", as two commits.
+Then D2, A, B, C, E, F and G, each as its own step waiting for "commit". Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still
-open: the remaining `TODO(verify)` items (96), which need network access or
+open: the remaining `TODO(verify)` items (98), which need network access or
 reference hardware.

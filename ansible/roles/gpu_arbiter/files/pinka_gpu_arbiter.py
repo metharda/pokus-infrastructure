@@ -191,6 +191,9 @@ class Config:
             ``dataset_max``, ``run_storage_max``, ``tmp_max``; a key left out
             takes its default (:data:`DEFAULT_CAPS`).
         gpu_args: Docker arguments that give a container the GPU (as for vLLM).
+        container_args: Docker arguments every lab container gets per container
+            rather than from the Docker daemon (§7.6): the lab services' slice
+            as cgroup parent and the local log driver with size limits.
         vllm_port: vLLM's port on 127.0.0.1.
         otlp: OTLP gRPC endpoint of the collector.
         vllm_unit: The unit of the inference Compose project.
@@ -207,6 +210,16 @@ class Config:
     default_deployment: str | None = None
     caps: Mapping[str, Any] = dataclasses.field(default_factory=lambda: dict(DEFAULT_CAPS))
     gpu_args: tuple[str, ...] = ("--device", "nvidia.com/gpu=all")
+    container_args: tuple[str, ...] = (
+        "--cgroup-parent",
+        "pinka-services.slice",
+        "--log-driver",
+        "local",
+        "--log-opt",
+        "max-size=20m",
+        "--log-opt",
+        "max-file=5",
+    )
     vllm_port: int = 18704
     otlp: str = "http://127.0.0.1:4317"
     vllm_unit: str = "pinka-inference.service"
@@ -263,8 +276,9 @@ def load_config(path: Path) -> Config:
     fields = {f.name for f in dataclasses.fields(Config)}
     if not isinstance(data, dict) or set(data) - fields:
         raise ArbiterError(f"{path}: unknown keys {sorted(set(data) - fields)}")
-    if "gpu_args" in data:
-        data["gpu_args"] = tuple(data["gpu_args"])
+    for key in ("gpu_args", "container_args"):
+        if key in data:
+            data[key] = tuple(data[key])
     return Config(**data)
 
 
@@ -1324,6 +1338,7 @@ class Arbiter:
             "--pull",
             "never",
             *FIXED_OPTIONS,
+            *self.config.container_args,
             "--tmpfs",
             f"{JOB_TMP}:{TMP_OPTIONS},size={self._tmp_bytes(job)}",
             "--user",

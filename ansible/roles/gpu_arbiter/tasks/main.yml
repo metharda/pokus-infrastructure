@@ -11,22 +11,16 @@
   ansible.builtin.include_role:
     name: active_platform
 
-- name: Read the Docker daemon configuration
-  ansible.builtin.slurp:
-    src: /etc/docker/daemon.json
-  register: gpu_arbiter_daemon_json
-  failed_when: false
+- name: Read what Docker offers (how containers reach the GPU)
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
 
 # The same method as vLLM's (Compose profile gpu-cdi or gpu-runtime); none:
 # only CPU-only jobs (resources.gpus 0) run here.
 - name: Decide how a training job reaches the GPU
   ansible.builtin.set_fact:
-    gpu_arbiter_gpu_args: >-
-      {{ ['--device', 'nvidia.com/gpu=all'] if (gpu_arbiter_docker.features | default({})).cdi | default(false)
-         else (['--runtime', 'nvidia', '--gpus', 'all'] if 'nvidia' in (gpu_arbiter_docker.runtimes | default({}))
-               else []) }}
-  vars:
-    gpu_arbiter_docker: "{{ (gpu_arbiter_daemon_json.content | default('e30=')) | b64decode | from_json }}"
+    gpu_arbiter_gpu_args: "{{ pinka_docker_gpu_args }}"
 
 - name: Create the arbiter's directories
   ansible.builtin.file:
