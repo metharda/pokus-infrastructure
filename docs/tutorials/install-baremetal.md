@@ -17,9 +17,10 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
 !!! note "Prerequisites"
     - A machine with Ubuntu 24.04 installed (any other `supported` or
       `tested` release of the [support matrix](../support-matrix.md) works the
-      same way), at least 16 GiB of memory and 8 CPU threads (24 GiB and 16
-      threads recommended), 150 GiB free for `/var/lib` and 100 GiB for
-      `/srv/pinka`.
+      same way), at least 16 GiB of memory as the system reports it
+      (`MemTotal`; a machine with 16 GiB installed reports less, so plan for
+      more) and 8 CPU threads (24 GiB and 16 threads recommended), 150 GiB
+      free for `/var/lib` and 100 GiB for `/srv/pinka`.
     - An NVIDIA GPU with at least 8 GiB of memory for local inference. No
       driver needs to be installed: the lab installs a pinned one.
     - A second, empty disk for the storage pool (without one, choose a loop

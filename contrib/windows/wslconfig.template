@@ -7,8 +7,10 @@
 # its own hardware into /srv/pinka/services/contrib/wslconfig.recommended.
 [wsl2]
 # Memory of the WSL virtual machine. vLLM and the targets need most of it;
-# leave a few GB for Windows. Match host_vars expected.memory_gib.
-memory=16GB
+# leave a few GB for Windows. Match host_vars expected.memory_gib. Preflight
+# needs 16 GiB of MemTotal inside WSL, which is below this value by what the
+# kernel reserves: give WSL 18GB or more.
+memory=18GB
 # Logical CPUs of the virtual machine. Match host_vars expected.cpu_threads.
 processors=8
 # A small swap keeps memory pressure from killing lab services.

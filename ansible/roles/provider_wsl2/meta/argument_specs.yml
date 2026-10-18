@@ -56,7 +56,7 @@ argument_specs:
         description: host_vars `expected` (memory_gib, cpu_threads).
       provider_wsl2_default_memory_gib:
         type: int
-        default: 16
+        default: 18
         description: Memory in the recommendation when `expected.memory_gib` is not set.
       provider_wsl2_default_cpu_threads:
         type: int

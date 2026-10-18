@@ -238,8 +238,18 @@ repository; the owner keeps it for `pokus-platform` (section J).
   repository, release tags `vX.Y.Z`, the platform spec master removed and
   the infra master renamed (Q13). Its record is in
   `docs/IMPLEMENTATION_NOTES.md`, "Move to the repository root (plan step
-  3f)". The scoped commit exception ended with the 3f commit: every later
-  commit waits for the owner's "commit".
+  3f)". It is `68967e9`; its CI passed every job but the known red
+  `lock-check` (38 marker errors, and 2 warnings: the postgres tag and the
+  moved `ubuntu:24.04` tag of `ci_images.ubuntu_2404`), the new `privacy`
+  job, all six `check-mode` and all six `check-mode-extended` jobs,
+  `release-package` and `lock-collections` included. The scoped commit
+  exception ended with the 3f commit: every later commit waits for the
+  owner's "commit".
+- After 3f (owner decisions): `make lock-pins` pinned the vendor sources of
+  provisioning item 0 that this environment reaches (GitHub's SSH host keys
+  wait for the owner's run), and every test VM recipe meets preflight's
+  minimums (`docs/IMPLEMENTATION_NOTES.md`, "Pins of the vendor sources
+  (make lock-pins)" and "Sizes of the test VMs (after 3f)").
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -256,7 +266,7 @@ repository; the owner keeps it for `pokus-platform` (section J).
 | 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
 | 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8), `a425c7f` (CI fix of 8 and the `release-package` job) |
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
-| 3f | Move infra to the repository root | done | the 3f commit (`refactor: move the infrastructure to the repository root`) |
+| 3f | Move infra to the repository root | done | `68967e9` |
 | 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
@@ -659,7 +669,12 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
   `sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336`;
   the lock keeps
   `sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`
-  (`lock-check` warns about it).
+  (`lock-check` warns about it). The same for `containers.ci_images.ubuntu_2404`
+  (owner decision after 3f: keep the pin, update it with the postgres tag):
+  its tag `24.04` now points to
+  `sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac`;
+  the lock keeps
+  `sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55`.
 - `make lock-collections` refused every symbolic link in an artifact, so
   the owner's first run stopped at `community.general`'s
   `tests/utils/shippable/aix.sh`. Fixed after `d5fe24d` (separate commit):
@@ -726,11 +741,15 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 ## Next step
 
-3f is committed; the scoped commit exception has ended, and every commit
-waits for the owner's "commit". After 3f's CI report: the checklist of
-provisioning runs on the root layout (see
-[Owner deliverables pending](#owner-deliverables-pending)), which the owner
-runs; every fix that comes out of those runs waits for "commit". Then 3g,
-the proposal of the one-time history rewrite. Still open: the remaining
-`TODO(verify)` items (113), which need network access or reference
-hardware.
+Owner's order after 3f: (1) the commit of the vendor-source pins (`make
+lock-pins`) and the commit of the test VM sizes, each waiting for
+"commit"; the owner runs `make lock-pins` on a fresh Ubuntu 24.04 machine
+for GitHub's SSH host keys; (2) the one-time history rewrite and 3g as
+recorded (the owner creates `PINKA_PRIVACY_DENYLIST` and runs the history
+scan with it before replying "rewrite"); (3) only after 3g, the
+provisioning checklist again, for `pokus-infrastructure` and its branch
+`moving/on`, with the corrected sizes; the owner plans items 1, 3 and 5 in
+fresh WSL2 distributions (32 GiB, 24 threads, an RTX 4070 with compute
+capability 8.9) and item 2 only if `/dev/kvm` is available inside WSL2.
+Every commit waits for the owner's "commit". Still open: the remaining
+`TODO(verify)` items (96), which need network access or reference hardware.

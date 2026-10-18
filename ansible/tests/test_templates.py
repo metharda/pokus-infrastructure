@@ -887,7 +887,7 @@ def test_wsl_conf() -> None:
 
 @pytest.mark.parametrize(
     ("expected", "memory", "processors"),
-    [(None, "16GB", "8"), ({"memory_gib": 48, "cpu_threads": 20}, "48GB", "20")],
+    [(None, "18GB", "8"), ({"memory_gib": 48, "cpu_threads": 20}, "48GB", "20")],
 )
 def test_wslconfig_recommendation(
     expected: dict[str, int] | None, memory: str, processors: str

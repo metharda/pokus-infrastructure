@@ -275,7 +275,11 @@ class FakeIncus:
 
 
 def make_test(
-    tmp_path: Path, target_id: str, keep: str = "failed", **behaviour: Any
+    tmp_path: Path,
+    target_id: str,
+    keep: str = "failed",
+    keep_running: bool = False,
+    **behaviour: Any,
 ) -> tuple[harness.Test, FakeIncus]:
     fake = FakeIncus(tmp_path, **behaviour)
     incus = Incus(fake, "pinka-test-distros", sleep=lambda _s: None)
@@ -296,6 +300,7 @@ def make_test(
         out_dir=tmp_path / "out",
         secrets_env=secrets_env,
         keep=keep,
+        keep_running=keep_running,
         now=lambda: next(times),
         token=lambda: "abcdef",
     )
@@ -340,7 +345,8 @@ def test_a_passing_test(tmp_path: Path) -> None:
     }
     launch = next(c for c in fake.calls if c[1] == "launch")
     assert launch[2:5] == ("images:debian/13/cloud", "ptd-debian-13-abcdef", "--vm")
-    assert launch[-2:] == ("--device", "root,size=60GiB")
+    assert launch[-2:] == ("--device", "root,size=300GiB")
+    assert "limits.cpu=8" in launch and "limits.memory=18GiB" in launch
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
     first, second, deploy, redeploy, replace, restore = [s for s in scripts if "bootstrap.sh" in s]
@@ -458,7 +464,17 @@ def test_a_second_run_that_changes_something(tmp_path: Path) -> None:
     assert "changed 2 task(s)" in record["error"]
     assert test.kept  # kept for inspection after a failure
     assert not any(c[1] == "delete" for c in fake.calls)
+    # Stopped, so that the next target's VM is the only one running.
+    assert fake.calls[-1][1:2] == ("stop",) and "--force" in fake.calls[-1]
     assert results.status(record) == "failed: idempotent"
+
+
+def test_a_kept_vm_stays_running_only_when_asked(tmp_path: Path) -> None:
+    changed = "PLAY RECAP\nlocalhost : ok=500 changed=2 unreachable=0 failed=0\n"
+    test, fake = make_test(tmp_path, "debian-13", keep_running=True, second_log=changed)
+    test.run()
+    assert test.kept
+    assert not any(c[1] in ("stop", "delete") for c in fake.calls)
 
 
 @pytest.mark.parametrize(
@@ -843,3 +859,31 @@ def test_every_make_target_finds_the_packages_the_cli_imports(target: str) -> No
         check=False,
     )
     assert done.returncode == 0, done.stderr
+
+
+# Sizes as Incus writes them (``18GiB``), in GiB.
+SIZE_UNITS = {"GiB": 1.0, "TiB": 1024.0, "MiB": 1 / 1024}
+# The guest's MemTotal is below the assigned memory by what the kernel reserves
+# (its own image, page tables, a crash kernel); preflight compares MemTotal.
+KERNEL_RESERVE_GIB = 2
+# The system's own files on the root disk besides /var/lib and /srv/pinka.
+SYSTEM_GIB = 20
+
+
+def _gib(size: str) -> float:
+    number, unit = size[:-3], size[-3:]
+    return float(number) * SIZE_UNITS[unit]
+
+
+def test_every_target_meets_the_minimums_preflight_enforces() -> None:
+    # The VMs must pass preflight as a real host does; preflight's minimums are
+    # never lowered for tests (owner decision after 3f).
+    matrix = yaml.safe_load((INFRA / "preflight" / "support-matrix.yml").read_text())
+    minimums = matrix["minimums"]
+    memory = minimums["memory_gib"]["required"]
+    threads = minimums["cpu_threads"]["required"]
+    disk = sum(d["required"] for d in minimums["free_disk_gib"].values())
+    for target in targets.load(cli.TARGETS).targets:
+        assert target.cpus >= threads, target.id
+        assert _gib(target.memory) >= memory + KERNEL_RESERVE_GIB, target.id
+        assert _gib(target.disk) >= disk + SYSTEM_GIB, target.id

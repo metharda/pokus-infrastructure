@@ -49,7 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--keep",
         choices=harness.KEEP,
         default="failed",
-        help="keep VMs never, after a failed test (default) or always",
+        help="keep VMs never, after a failed test (default) or always; kept VMs are stopped",
+    )
+    run.add_argument(
+        "--keep-running",
+        action="store_true",
+        help="leave kept VMs running (then more than one test VM can run at a time)",
     )
     run.add_argument(
         "--accept-unverified-images",
@@ -197,6 +202,7 @@ def cmd_run(  # noqa: PLR0911 - one exit per refusal
             secrets_env=secrets_env,
             profile=args.profile,
             keep=args.keep,
+            keep_running=args.keep_running,
         )
         try:
             incus.ensure_project()

@@ -12,11 +12,19 @@
 # for one is verified.
 schema_version: 1
 verify: "TODO(verify): VM image aliases on images.linuxcontainers.org (not reachable from the build environment)"
+# Every VM meets preflight's minimums (preflight/support-matrix.yml
+# `minimums`; a test keeps them in step): 8 CPU threads; 18 GiB of memory,
+# because preflight compares the guest's MemTotal, which the kernel's own
+# reservations keep below the assigned size, with 16 GiB; a 300 GiB root disk
+# for /var/lib (150 GiB free) and /srv/pinka (100 GiB free) on one file system,
+# with room for the system. The pool must allocate disks thinly (dir, btrfs,
+# zfs or LVM thin), so a VM takes only the space it writes. The harness runs
+# one VM at a time.
 defaults:
   remote: images
-  cpus: 4
-  memory: 8GiB
-  disk: 60GiB
+  cpus: 8
+  memory: 18GiB
+  disk: 300GiB
 targets:
   - {id: ubuntu-24.04, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables}
   - {id: ubuntu-24.04-ufw, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: ufw}

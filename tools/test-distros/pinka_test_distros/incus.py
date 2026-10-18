@@ -247,6 +247,14 @@ class Incus:
             "file", "pull", "--project", self.project, f"{name}{remote}", str(local)
         ).ok
 
+    def stop(self, name: str) -> None:
+        """Stop an instance and keep it (a VM kept for inspection).
+
+        Args:
+            name: Instance name.
+        """
+        self._incus("stop", "--project", self.project, "--force", name)
+
     def delete(self, name: str) -> None:
         """Delete an instance, stopping it first.
 

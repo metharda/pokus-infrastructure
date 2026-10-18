@@ -3924,14 +3924,20 @@ and cannot reach Galaxy):
 Each of these waits for the owner, who runs it where it says.
 
 1. **Bootstrap in check mode on Ubuntu 24.04** (§17). Where: a new,
-   disposable Ubuntu 24.04 VM (4 vCPUs, 8 GiB of memory, 60 GiB of disk,
-   Internet access), never a lab host or a workstation. Even with
+   disposable Ubuntu 24.04 VM (8 vCPUs, 18 GiB of memory, a 300 GiB thin
+   disk, Internet access), never a lab host or a workstation. (Corrected
+   after 3f: the sizes first given here, 4 vCPUs, 8 GiB and 60 GiB, are
+   below preflight's minimums, so preflight would have reported the VM
+   unsupported, exit 20; and since 3f the checkout's root is `~/pinka`, no
+   longer `~/pinka/infra`. Preflight compares the guest's `MemTotal`, which
+   the kernel's reservations keep below the assigned memory, with 16 GiB,
+   and wants 150 GiB free for `/var/lib` and 100 GiB for `/srv/pinka`.) Even with
    `--check`, bootstrap installs its tooling below `/opt/pinka` and writes
    its logs. As an account with `sudo`, in the VM:
 
     ```bash
     git clone --branch <branch> <repository-url> ~/pinka
-    cd ~/pinka/infra
+    cd ~/pinka
     sed 's|^vault_restic_repository: .*|vault_restic_repository: "/var/backups/pinka-restic"|' \
       ansible/group_vars/all/vault.yml.example > ansible/group_vars/all/vault.yml
     printf '%s\n' check-mode-only > ~/vault-pass
@@ -3953,8 +3959,10 @@ Each of these waits for the owner, who runs it where it says.
    run with `changed=0`, a backup, `pinka doctor --smoke` exit 0, and the
    reference platform stages: platform, isolation probe, training (CPU
    job), resume, redeploy, replace and restore. Where: a machine with Incus
-   and VM support (about 8 GiB of memory and 60 GiB of disk per test), or a
-   lab host whose lab is stopped. Steps: "How to test the distributions",
+   and VM support, one test VM at a time with 8 vCPUs, 18 GiB of memory and
+   a 300 GiB thin disk, or a lab host whose lab is stopped. (Corrected after
+   3f: the targets had 4 vCPUs, 8 GiB and 60 GiB, below preflight's
+   minimums; see "Sizes of the test VMs" below.) Steps: "How to test the distributions",
    with an ephemeral tailnet auth key tagged `tag:pinka-qa` and
    `--accept-unverified-images` while the image aliases are unverified.
    Afterwards, commit `tests/distros/results.yml` with
@@ -4214,3 +4222,55 @@ all `FM100`, one more for the new page), `make test` 3489 passed, 0 failed,
 2 skipped (the CPython 3.9 `jsonschema` comparison and the `ssh-keygen`
 test, as before), 2 warnings (uv's `UV_NATIVE_TLS` notice), `make docs` 3 of
 3 (the theme's MkDocs 2.0 notice).
+
+## Sizes of the test VMs (after 3f)
+
+Owner decision after 3f: preflight's minimums are never lowered for tests;
+every VM recipe meets them.
+
+- `tests/distros/targets.yml`: every target gets 8 vCPUs, 18 GiB of memory
+  and a 300 GiB root disk (they had 4, 8 GiB and 60 GiB, so preflight would
+  have reported every VM unsupported, exit 20, and `make test-distros` would
+  have stopped at the first bootstrap). Preflight compares the guest's
+  `MemTotal` (rounded to 0.1 GiB) with its 16 GiB minimum, and the kernel's
+  reservations (its image, a crash kernel on Ubuntu) keep `MemTotal` below
+  the assigned size, so a VM with exactly 16 GiB fails; 18 GiB leaves 2 GiB
+  for them. `/var/lib` (150 GiB free) and `/srv/pinka` (100 GiB free) share
+  the root file system, so the disk holds both and the system. The pool
+  allocates disks thinly (`dir`, `btrfs`, `zfs`, LVM thin), which the how-to
+  now names.
+- `tools/test-distros/tests/test_test_distros.py` reads the minimums from
+  `preflight/support-matrix.yml` and fails if a target is below them: CPU
+  threads, memory with the 2 GiB the kernel keeps, and the two free-space
+  minimums together plus 20 GiB for the system.
+- One VM at a time: the harness already tested the targets one after
+  another, but a failed test's VM stayed running (`--keep failed`, the
+  default) while the next one started. It is now stopped once its logs are
+  collected (`incus start` it to inspect it); `--keep-running` leaves it
+  running. Tests cover both.
+- "How to test the distributions" and the 3e recipe above give the new
+  sizes.
+- WSL2 is a VM as well: `contrib/windows/wslconfig.template` and the
+  recommendation the `provider_wsl2` role renders without host_vars
+  `expected` (`provider_wsl2_default_memory_gib`) gave WSL 16 GB, which
+  leaves `MemTotal` below preflight's 16 GiB; both now give 18 GB (doctor's
+  check of the WSL memory accepts 5 % below `expected`, so 18 GB passes it).
+  The WSL2 tutorial asks for 18 GiB to give to WSL; the bare-metal tutorial
+  says that the 16 GiB are `MemTotal`, which a machine with 16 GiB installed
+  does not reach.
+
+The same holds for any host: a machine sold with 16 GiB shows less than
+16 GiB of `MemTotal` and is refused. The bare-metal and WSL2 tutorials ask
+for "at least 16 GiB of memory"; for WSL2 the memory given in `.wslconfig`
+must leave `MemTotal` at 16 GiB or more (18 GiB or more in practice).
+
+### CI of the 3f commit
+
+`68967e9`, every job reported to the owner: `lint`, `privacy` (the new job),
+`test`, `docs`, all six `check-mode` and all six `check-mode-extended` jobs
+passed; `lock-check` failed on the 38 unverified markers alone (confirmed
+from its log), with 2 warnings: the postgres tag and, new, the tag `24.04` of
+`ubuntu` behind `ci_images.ubuntu_2404`, which moved upstream (the owner
+keeps the pin until the next maintenance update); `links` was skipped (it
+runs on the schedule only); `release-package` (two identical packages, the
+check passed) and `lock-collections` passed.

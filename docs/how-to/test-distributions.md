@@ -22,10 +22,16 @@ check mode, and `make check-mode-extended`, a separate non-blocking job,
 checks the whole provisioning play with the reference platform enabled.
 
 !!! note "Prerequisites"
-    - A developer machine with Incus (VM support, about 8 GiB of memory and
-      60 GiB of disk per test), or a lab host whose lab is stopped
-      (`sudo pinka stop`); the harness refuses to run while
-      `pinka-lab.target` is active.
+    - A developer machine with Incus and VM support (KVM), or a lab host whose
+      lab is stopped (`sudo pinka stop`); the harness refuses to run while
+      `pinka-lab.target` is active. The tests run one VM at a time, and each
+      VM gets what preflight requires of a lab host: 8 vCPUs, 18 GiB of
+      memory (preflight compares the guest's `MemTotal`, which the kernel's
+      reservations keep below the assigned size, with 16 GiB) and a 300 GiB
+      root disk (150 GiB free for `/var/lib` and 100 GiB for `/srv/pinka`).
+      The machine needs those 8 threads and 18 GiB besides its own, and an
+      Incus storage pool that allocates disks thinly (`dir`, `btrfs`, `zfs`
+      or LVM thin), so a VM takes only the space it writes.
     - A checkout of the repository with the development tools (`make setup`).
     - An ephemeral, pre-approved auth key of the tailnet for tests, tagged
       `tag:pinka-qa`: the test VMs are staging labs and join it.
@@ -48,7 +54,9 @@ checks the whole provisioning play with the reference platform enabled.
     aliases in `tests/distros/targets.yml` carry an unverified marker, the
     harness runs only with `--accept-unverified-images`. A full run takes
     two to three hours per target. Each VM is deleted when its test passes and
-    kept for inspection when it fails (`--keep never|failed|always`); logs,
+    kept for inspection when it fails (`--keep never|failed|always`); a kept
+    VM is stopped, so that the next target's VM is the only one running
+    (`incus start` it to inspect it, or pass `--keep-running`); logs,
     the bootstrap state files and the host profile are in
     `build/test-distros/<UTC time>/<target>/`.
 

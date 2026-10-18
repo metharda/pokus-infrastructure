@@ -2221,7 +2221,7 @@ Distribution name in the restart instruction (from WSL_DISTRO_NAME when availabl
 Memory in the recommendation when `expected.memory_gib` is not set.
 
 - Type: `int`
-- Default: `16`
+- Default: `18`
 - Entry points: `post_layout`
 
 ### `provider_wsl2_default_cpu_threads`

@@ -94,6 +94,8 @@ class Settings:
         secrets_env: Local 0600 file with ``PINKA_SECRET_*`` lines for the VM.
         profile: Incus profile with network and root disk.
         keep: Keep VMs ``never``, on ``failed`` tests, or ``always``.
+        keep_running: Leave kept VMs running; by default they are stopped, so
+            that only one test VM runs at a time.
         now: Clock (UTC).
         token: Short random suffix of VM names.
     """
@@ -106,6 +108,7 @@ class Settings:
     secrets_env: Path
     profile: str = "default"
     keep: str = "failed"
+    keep_running: bool = False
     now: Callable[[], dt.datetime] = field(default=lambda: dt.datetime.now(dt.UTC))
     token: Callable[[], str] = field(default=lambda: secrets.token_hex(3))
 
@@ -512,6 +515,9 @@ class Test:
         """
         keep = self.settings.keep == "always" or (self.settings.keep == "failed" and not passed)
         if keep:
+            # One test VM at a time: the next target starts only after this one stopped.
+            if not self.settings.keep_running:
+                self.incus.stop(self.name)
             return True
         # Leave the test tailnet at once (the auth key is ephemeral anyway).
         self.incus.exec(self.name, ["tailscale", "logout"], timeout=60)

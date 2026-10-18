@@ -84,7 +84,7 @@ yourself and restart WSL with `wsl --shutdown`. It contains:
 
 | Setting | Value | Why |
 | --- | --- | --- |
-| `memory` | `expected.memory_gib` from host_vars, else 16 GB | vLLM and the targets need most of the host's memory |
+| `memory` | `expected.memory_gib` from host_vars, else 18 GB | vLLM and the targets need most of the host's memory; preflight needs 16 GiB of `MemTotal`, which the kernel's reservations keep below this value |
 | `processors` | `expected.cpu_threads` from host_vars, else 8 | `cpuset_services` and `cpuset_targets` assume these CPUs |
 | `swap` | 8 GB | a small swap keeps memory pressure from killing services |
 | `nestedVirtualization` | `true` | VM targets need `/dev/kvm` inside WSL |

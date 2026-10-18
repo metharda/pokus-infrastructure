@@ -19,8 +19,10 @@ Bootstrap never changes anything on the Windows side: every Windows step in
 this tutorial is one you run yourself.
 
 !!! note "Prerequisites"
-    - A Windows workstation with WSL2, at least 16 GiB of memory and 8 CPU
-      threads to give to WSL (24 GiB and 16 threads recommended), and room
+    - A Windows workstation with WSL2, at least 18 GiB of memory and 8 CPU
+      threads to give to WSL (24 GiB and 16 threads recommended): preflight
+      needs 16 GiB of memory as WSL sees it (`MemTotal`), which is below
+      what `.wslconfig` gives by what the kernel reserves. Room
       for the WSL virtual disk: preflight wants 150 GiB free for `/var/lib`
       and 100 GiB for `/srv/pinka` (400 GiB and 500 GiB recommended).
     - For local inference: an NVIDIA GPU with at least 8 GiB of memory and the
