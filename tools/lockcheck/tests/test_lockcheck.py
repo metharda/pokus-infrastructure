@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import io
+import json
 import os
 import socket
 import subprocess
@@ -845,3 +846,37 @@ def test_todos_scans_tracked_files(
     assert out.out.splitlines() == ['a.yml:1: x: "TODO(verify)"']
     (tmp_path / "a.yml").write_text("x: 1\n")
     assert cli.main(["todos", "--exclude", "skip/"]) == 0
+
+
+def test_a_pinned_base_image_that_left_its_server_is_a_warning() -> None:
+    lock = {
+        "incus_base_images": {
+            "images": {
+                "ubuntu-24.04": {
+                    "remote": "images",
+                    "alias": "ubuntu/24.04/cloud",
+                    "type": "container",
+                    "fingerprints": {"x86_64": "a" * 64, "aarch64": "TODO(verify)"},
+                }
+            }
+        }
+    }
+    url = checks.IMAGE_SERVERS["images"]
+
+    def index(fingerprint: str) -> bytes:
+        item = {"incus.tar.xz": {"combined_squashfs_sha256": fingerprint}}
+        product = {"versions": {"20261016_07:42": {"items": item}}}
+        return json.dumps({"products": {"ubuntu:noble:amd64:cloud": product}}).encode()
+
+    assert checks.base_image_findings(lock, fetch={url: index("a" * 64)}.__getitem__) == []
+    found = checks.base_image_findings(lock, fetch={url: index("b" * 64)}.__getitem__)
+    assert [(f.severity, f.where) for f in found] == [
+        (checks.WARNING, "incus_base_images.images.ubuntu-24.04")
+    ]
+    assert "renew it with make lock-pins" in found[0].message
+
+    def unreachable(_url: str) -> bytes:
+        raise net.FetchError("no route")
+
+    found = checks.base_image_findings(lock, fetch=unreachable)
+    assert [f.severity for f in found] == [checks.ERROR]

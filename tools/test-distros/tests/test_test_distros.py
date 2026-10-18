@@ -668,16 +668,30 @@ def test_required_play_is_the_provider_agnostic_roles() -> None:
     assert not set(checkmode.REQUIRED_ROLES) & set(checkmode.SOURCED_ROLES)
 
 
+FEDORA_PROFILE = {
+    **PROFILE,
+    "family": "redhat",
+    "os": {"id": "fedora", "version_id": "44", "codename": "", "parent_release": ""},
+}
+
+
+def test_check_mode_extended_skips_nothing_where_every_source_is_verified() -> None:
+    # make lock-pins after 3f verified Tailscale and Incus on the apt releases.
+    assert checkmode.unverified_roles(PROFILE) == {}
+    ubuntu = {**PROFILE, "os": {"id": "ubuntu", "version_id": "24.04", "codename": "noble"}}
+    assert checkmode.unverified_roles(ubuntu) == {}
+
+
 @pytest.mark.parametrize("ansible_rc", [0, 2])
 def test_check_mode_extended(tmp_path: Path, ansible_rc: int) -> None:
     """The extended run: the whole play; skipped components are listed as not tested."""
-    fake = FakeDocker(ansible_rc=ansible_rc)
+    fake = FakeDocker(profile=FEDORA_PROFILE, ansible_rc=ansible_rc)
     printed: list[str] = []
     step_summary = tmp_path / "step-summary.md"
     step_summary.write_text("earlier step\n")
     out = tmp_path / "out"
     rc = checkmode.main(
-        "debian_13",
+        "fedora_44",
         fake,
         out,
         extended=True,
@@ -690,25 +704,25 @@ def test_check_mode_extended(tmp_path: Path, ansible_rc: int) -> None:
     play = next(c for c in fake.calls if c[0] == "ansible-playbook")
     assert "--check" in play and play[-1].endswith("ansible/site.yml")
     # The reference platform is enabled as in the test VMs, with placeholder secrets.
-    variables = json.loads((out / "debian_13-vars.json").read_text())
+    variables = json.loads((out / "fedora_44-vars.json").read_text())
     assert variables["platform"] == {
         "path": "tests/reference-platform",
         "ref": "0" * 40,
         "repo": "file:///root/pinka",
     }
     assert variables["content"]["cases"]["path"] == "tests/reference-platform-cases"
-    vault = json.loads((out / "debian_13-vault.json").read_text())
+    vault = json.loads((out / "fedora_44-vault.json").read_text())
     assert {"refplat_ctl", "refplat_migrator"} <= set(vault["vault_postgres_passwords"])
     assert vault["vault_platform_secrets"] == {"ctl": {"api-token": checkmode.PLACEHOLDER}}
-    refused = checkmode.unverified_roles(PROFILE)
-    assert refused  # Tailscale and Incus are not verified on any release yet
+    refused = checkmode.unverified_roles(FEDORA_PROFILE)
+    assert set(refused) == {"tailscale", "incus"}  # not verified on Fedora yet
     skipped = play[play.index("--skip-tags") + 1].split(",")
     assert skipped == sorted(refused)
-    assert printed[0].startswith("== debian_13 (extended): ")
+    assert printed[0].startswith("== fedora_44 (extended): ")
     assert [line.split()[2] for line in printed if line.startswith("-- skipping")] == [
         f"{role}," for role in skipped
     ]
-    text = (out / "debian_13-extended-summary.md").read_text()
+    text = (out / "fedora_44-extended-summary.md").read_text()
     assert step_summary.read_text() == "earlier step\n" + text + "\n"  # appended
     assert printed[-1] == text
     assert "non-blocking" in text

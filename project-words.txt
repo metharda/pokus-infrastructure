@@ -16,12 +16,14 @@ cadvisor
 checksummed
 chrony
 chronyd
+codenames
 COPR
 cpuset
 cpusets
 cuda
 dbname
 DCGM
+distroless
 distros
 DKMS
 dnsmasq
@@ -36,6 +38,7 @@ FQCN
 fsmonitor
 getenforce
 gpasswd
+gpgv
 huggingface
 hyperparameters
 incusbr
@@ -44,6 +47,7 @@ IOMMU
 iotop
 journalctl
 kaplan
+keyserver
 libdnf
 libexec
 libnvidia
@@ -89,6 +93,7 @@ repodata
 Resolv
 restic
 restorecon
+rootfs
 seccomp
 semanage
 setype
@@ -102,6 +107,7 @@ tailnet
 tailscaled
 timesyncd
 tmpfs
+trixie
 tunecpu
 typst
 versionlock

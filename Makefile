@@ -304,6 +304,10 @@ release-package-check: $(VENV)/.synced ## Check a release package (PACKAGE=file 
 lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing when its pins differ from the lock's artifacts (network)
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml --check
 
+.PHONY: lock-pins
+lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the Incus base images and GitHub's SSH host keys (reads public URLs, changes nothing)
+	@$(LOCKCHECK).lockpins --lock versions.lock.yml
+
 .PHONY: lock-update
 lock-update: ## Print the manual procedure for changing versions.lock.yml (nothing is bumped automatically)
 	@echo "versions.lock.yml is changed by hand; nothing is bumped automatically."

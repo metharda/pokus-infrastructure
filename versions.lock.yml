@@ -158,7 +158,8 @@ containers:
   verified_on: 2026-10-05
   source: >-
     Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and
-    the Docker Hub tag API); latest stable releases on 2026-10-05
+    the Docker Hub tag API); latest stable releases on 2026-10-05. The DCGM
+    exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z
   images:
     postgres:
       # PostgreSQL 18 is the newest stable major (19 is in beta).
@@ -214,11 +215,13 @@ containers:
       digest: sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087
       platforms: [linux/amd64, linux/arm64]
     dcgm_exporter:
-      # nvcr.io is not reachable from the build environment.
+      # make lock-pins on 2026-10-17: the newest release tag on nvcr.io, the
+      # digest of its image index; the release's hack/versions.env on GitHub
+      # names EXPORTER_VERSION=4.8.4 and DCGM_VERSION=4.6.1.
       image: nvcr.io/nvidia/k8s/dcgm-exporter
-      tag: "TODO(verify)"
-      digest: "TODO(verify)"
-      platforms: [linux/amd64]
+      tag: "4.8.4"
+      digest: sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
+      platforms: [linux/amd64, linux/arm64]
     opa:
       image: docker.io/openpolicyagent/opa
       tag: "1.21.1-static"
@@ -317,7 +320,9 @@ repository_keys:
   verified_on: 2026-10-05
   source: >-
     Keys downloaded from the listed URLs and fingerprinted with gpg and with
-    the lock checker's own OpenPGP parser
+    the lock checker's own OpenPGP parser; the Zabbly and Tailscale keys with
+    make lock-pins at 2026-10-17T22:47:21Z (their comments name the
+    cross-checks)
   keys:
     docker-deb:
       # The Ubuntu and Debian key files are byte-identical.
@@ -339,16 +344,23 @@ repository_keys:
         - https://nvidia.github.io/libnvidia-container/gpgkey
       fingerprint: C95B321B61E88C1809C4F759DDCAE044F796ECB0
     tailscale:
-      # pkgs.tailscale.com is not reachable from the build environment. Key URL
-      # patterns per Tailscale's installer (scripts/installer.sh):
-      # stable/<os>/<codename>.noarmor.gpg (apt), stable/<os>/<version>/repo.gpg (rpm).
-      urls: ["TODO(verify)"]
-      fingerprint: "TODO(verify)"
+      # make lock-pins on 2026-10-17: every URL (the armored keys of the apt
+      # releases and the rpm key; key URL patterns per Tailscale's installer,
+      # scripts/installer.sh) carries this one key, "Tailscale Inc. (Package
+      # repository signing key)"; keyserver.ubuntu.com holds the same key.
+      # Tailscale publishes the fingerprint nowhere apart from the key files.
+      urls:
+        - https://pkgs.tailscale.com/stable/ubuntu/noble.asc
+        - https://pkgs.tailscale.com/stable/ubuntu/jammy.asc
+        - https://pkgs.tailscale.com/stable/debian/trixie.asc
+        - https://pkgs.tailscale.com/stable/fedora/repo.gpg
+      fingerprint: 2596A99EAAB33821893C0A79458CA832957F5868
     zabbly:
-      # Incus LTS packages for Debian and Ubuntu; pkgs.zabbly.com is not
-      # reachable from the build environment.
-      urls: ["TODO(verify)"]
-      fingerprint: "TODO(verify)"
+      # Incus LTS packages for Debian and Ubuntu. make lock-pins on
+      # 2026-10-17: Zabbly's README (github.com/zabbly/incus, branch daily)
+      # publishes this fingerprint; keyserver.ubuntu.com holds the same key.
+      urls: ["https://pkgs.zabbly.com/key.asc"]
+      fingerprint: 4EFC590696CB15B87C73A3AD82CC8797C838DCFD
 
 packages:
   # Package versions per component and distribution release
@@ -361,7 +373,9 @@ packages:
     Repository indexes read on 2026-10-05: download.docker.com (apt Packages
     and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container
     toolkit repository (gh-pages branch of NVIDIA/libnvidia-container),
-    archive.ubuntu.com; the newest version in each index
+    archive.ubuntu.com; the newest version in each index. Incus (Zabbly) and
+    Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z
+    (signed InRelease and index sha256 checked)
   docker:
     ubuntu-24.04:
       docker-ce: "5:29.8.2-1~ubuntu.24.04~noble"
@@ -431,11 +445,17 @@ packages:
   incus:
     # Incus 6.0 LTS (BUILD_PROMPT §7.7). Ubuntu's own packages are 6.0.0
     # (24.04: 6.0.0-1ubuntu0.3) or missing (22.04), so Debian and Ubuntu use the
-    # Zabbly LTS repository; its index, Fedora, EPEL/COPR and openSUSE
-    # repositories are not reachable from the build environment.
-    ubuntu-24.04: "TODO(verify)"
-    ubuntu-22.04: "TODO(verify)"
-    debian-13: "TODO(verify)"
+    # Zabbly LTS repository (lts-6.0). Its versions: make lock-pins on
+    # 2026-10-17, the newest in each release's index, whose InRelease carries
+    # a valid signature of the pinned key and states the index's sha256.
+    # Zabbly builds each architecture separately and the version names the
+    # build: these are the x86_64 builds; aarch64 (experimental) has
+    # 1:6.0.6-ubuntu24.04-202603272249, 1:6.0.6-ubuntu22.04-202603272047 and
+    # 1:6.0.6-debian13-202603272045, which one version per release cannot pin.
+    # Fedora, EPEL/COPR and openSUSE repositories are not verified yet.
+    ubuntu-24.04: {incus: "1:6.0.6-ubuntu24.04-202603272003"}
+    ubuntu-22.04: {incus: "1:6.0.6-ubuntu22.04-202603271957"}
+    debian-13: {incus: "1:6.0.6-debian13-202603272000"}
     fedora-43: "TODO(verify)"
     fedora-44: "TODO(verify)"
     el-9: "TODO(verify)"
@@ -457,11 +477,14 @@ packages:
     opensuse-leap-15.6: "TODO(verify)"
     opensuse-leap-16.0: "TODO(verify)"
   tailscale:
-    # Latest stable upstream release is v1.104.0 (git tag); the package indexes
-    # of pkgs.tailscale.com are not reachable from the build environment.
-    ubuntu-24.04: "TODO(verify)"
-    ubuntu-22.04: "TODO(verify)"
-    debian-13: "TODO(verify)"
+    # make lock-pins on 2026-10-17: the newest version in the signed index of
+    # each apt release, the same on x86_64 and aarch64 (the upstream release
+    # tag v1.104.1 exists). The rpm repositories' layout is not verified yet
+    # (ansible/component-sources.yml, tailscale-rpm), so their releases stay
+    # unpinned.
+    ubuntu-24.04: {tailscale: "1.104.1"}
+    ubuntu-22.04: {tailscale: "1.104.1"}
+    debian-13: {tailscale: "1.104.1"}
     fedora-43: "TODO(verify)"
     fedora-44: "TODO(verify)"
     el-9: "TODO(verify)"
@@ -527,23 +550,30 @@ ansible_collections:
 
 incus_base_images:
   # Base images of the golden image pipeline (BUILD_PROMPT §7.13), pinned by
-  # fingerprint per architecture. images.linuxcontainers.org is not reachable
-  # from the build environment.
-  verified_on: 2026-10-05
-  source: simplestreams index of images.linuxcontainers.org; not read yet
+  # fingerprint per architecture. The server keeps only its newest builds (a
+  # few days): renew the pins with make lock-pins right before a new lab's
+  # first golden image build; a lab that exported the base imports it from
+  # there. make lock-check warns when a pinned build has left the server.
+  verified_on: 2026-10-17
+  source: >-
+    make lock-pins at 2026-10-17T22:47:21Z: build 20261016_07:42 of
+    ubuntu/24.04/cloud in the simplestreams index of
+    images.linuxcontainers.org; each fingerprint computed from the downloaded
+    incus.tar.xz and rootfs.squashfs and equal to the index
   images:
     ubuntu-24.04:
       remote: images
       alias: ubuntu/24.04/cloud
       type: container
       fingerprints:
-        x86_64: "TODO(verify)"
-        aarch64: "TODO(verify)"
+        x86_64: "ddbc871ce856d7fc978e1c3aba7f8a7e058d128b42585cbb7caf6ebdcb1a791f"
+        aarch64: "f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a"
 
 github_ssh_host_keys:
   # Pinned in the managed known_hosts for SSH deploy keys (owner answer E3).
-  # GitHub publishes them at api.github.com/meta, which this build
-  # environment cannot read.
+  # make lock-pins needs two agreeing sources (GitHub's meta API, its
+  # documentation, ssh-keyscan); this build environment reaches only the
+  # documentation, so the owner's run pins them.
   verified_on: 2026-10-05
   source: GitHub meta API, api.github.com/meta (ssh_keys, ssh_key_fingerprints); not read yet
   keys:

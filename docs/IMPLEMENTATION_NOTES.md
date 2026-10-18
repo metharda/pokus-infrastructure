@@ -4128,3 +4128,89 @@ historical records or test data, kept on purpose:
 unchanged. The only edit to the archive is the new section moved from
 `PROGRESS.md`, with its link to `#owner-deliverables-pending` pointed at
 `PROGRESS.md`.
+
+## Pins of the vendor sources (make lock-pins)
+
+After 3f, the owner added `pkgs.zabbly.com`, `pkgs.tailscale.com`,
+`images.linuxcontainers.org`, `nvcr.io` and `galaxy.ansible.com` to the
+environment's network policy and asked for the pins of provisioning item 0:
+verified here where the hosts are reachable, and a maintainer tool like
+`make lock-collections` for the rest. All five hosts answered in this session
+(and `raw.githubusercontent.com` and `keyserver.ubuntu.com`, used as second
+sources); `api.github.com/meta` (this session's GitHub API is limited to its
+repositories), `docs.github.com`, `layers.nvcr.io` and `github.com` on port
+22 did not.
+
+### The tool
+
+`make lock-pins` (`tools/lockcheck/pinka_lockcheck/lockpins.py`, documented
+in "How to pin the vendor sources") reads public URLs, prints the pins in the
+lock's format with their sources, and installs or changes nothing; a section
+that cannot be pinned prints `NOT PINNED` and the run exits 1. It takes the
+apt repository layouts from `ansible/component-sources.yml` and the release
+codenames from `platform_facts`, so it checks exactly what the play uses.
+The pins in the lock are its output of 2026-10-17T22:47:21Z, run here:
+
+| Pin | Value | How it was checked |
+| --- | --- | --- |
+| Zabbly key | `4EFC590696CB15B87C73A3AD82CC8797C838DCFD` from `https://pkgs.zabbly.com/key.asc` | primary key computed with the lock checker's parser and with gpg; Zabbly's README (github.com/zabbly/incus, branch daily) publishes the same fingerprint; keyserver.ubuntu.com holds the same key |
+| Tailscale key | `2596A99EAAB33821893C0A79458CA832957F5868` | the armored keys of noble, jammy and trixie and the Fedora rpm key are one key; keyserver.ubuntu.com holds it. Tailscale publishes the fingerprint nowhere apart from the key files (tailscale.com is not reachable from here either) |
+| Incus (Zabbly lts-6.0) | `1:6.0.6-ubuntu24.04-202603272003`, `1:6.0.6-ubuntu22.04-202603271957`, `1:6.0.6-debian13-202603272000` | each release's InRelease has a valid signature of the pinned key (gpgv with that key alone) and names `main`; each Packages.gz matches the sha256 InRelease states; the newest `incus`; it depends on `incus-base` and that on `incus-client` at its exact version. These are the x86_64 builds: aarch64 builds have other versions (open question in `PROGRESS.md`) |
+| Tailscale (apt) | `1.104.1` on ubuntu-24.04, ubuntu-22.04 and debian-13 | the same checks; the same version on x86_64 and aarch64; the release tag v1.104.1 exists upstream |
+| DCGM exporter | `nvcr.io/nvidia/k8s/dcgm-exporter:4.8.4`, `sha256:148b0c02…`, linux/amd64 and linux/arm64 | the newest release tag on nvcr.io (since 4.8.4 the plain tag is the exporter version and the distroless image); the release's `hack/versions.env` names EXPORTER_VERSION=4.8.4 and DCGM_VERSION=4.6.1 |
+| Incus base image `ubuntu/24.04/cloud` | x86_64 `ddbc871c…`, aarch64 `f6bdcce5…` (build 20261016_07:42) | the sha256 of the downloaded `incus.tar.xz` and `rootfs.squashfs` together equals the index's `combined_squashfs_sha256` |
+
+GitHub's SSH host keys are not pinned: the tool needs two agreeing sources
+(the meta API, GitHub's documentation, `ssh-keyscan`), and only the
+documentation (`github/docs`, `data/reusables/ssh`) was reachable. Its keys
+and the fingerprints published next to them agree, which is one publisher's
+word; the owner's run supplies the others.
+
+`ansible/component-sources.yml`: the layouts of `tailscale-deb` and
+`zabbly-incus-lts` and the Incus package names of the Ubuntu and Debian
+groups lost their markers. `tailscale-rpm` keeps its marker, now naming what
+was found: Tailscale's `.repo` files use one layout per distribution, which
+one template cannot express.
+
+`make lock-check` gained a network check (`images`): a pinned base image that
+has left its server is a warning, because a lab that exported the base keeps
+working and a new lab renews the pin before its first golden image build. The
+images.linuxcontainers.org index held three daily builds (14 to 16 October).
+
+### Findings
+
+- The DCGM option is not wired: `observability_gpu_exporter: dcgm` passes
+  the role's check, but the compose project always runs the nvidia-smi
+  exporter, and nothing reads `DCGM_EXPORTER_IMAGE`. The image's
+  configuration (its CUDA requirement against driver 580) could not be read
+  here: its blobs are served from `layers.nvcr.io`.
+- Zabbly's versions differ per architecture, which one version per release
+  cannot pin (open question in `PROGRESS.md`).
+- With these pins the extended check-mode lanes of `ubuntu_2404` and
+  `debian_13` no longer skip the `tailscale` and `incus` roles: CI runs them
+  in check mode for the first time (the Fedora, EL and openSUSE lanes still
+  skip both). `tools/test-distros/tests/test_test_distros.py` now takes the
+  skip path on Fedora 44 and asserts that nothing is skipped on Debian 13 and
+  Ubuntu 24.04.
+- `make lock-check` here: no error for any pin recorded above; the remaining
+  errors are the 24 unverified markers, Docker Hub's HTTP 429 and
+  `nvidia.github.io`, which this environment still cannot reach. CI's run is
+  the authoritative one.
+
+### Tests
+
+`tools/lockcheck/tests/test_lockpins.py` runs the tool against a fake network
+(keys, signed indexes, the registry, the image server, GitHub's sources): the
+dpkg version order, every refusal (key files that differ, a published
+fingerprint or a keyserver key that differs, a bad signature, an index whose
+sha256 differs, a missing component or package, a DCGM release whose source
+names another version, a base image whose sum differs, GitHub sources that
+disagree or are too few), and the output parsed back as YAML. One test runs
+the real `gpgv` with a key generated for it. `test_lockcheck.py` covers the
+base image check.
+
+Gate before the commit proposal: `make lint` 12 of 12 steps (95 warnings,
+all `FM100`, one more for the new page), `make test` 3489 passed, 0 failed,
+2 skipped (the CPython 3.9 `jsonschema` comparison and the `ssh-keygen`
+test, as before), 2 warnings (uv's `UV_NATIVE_TLS` notice), `make docs` 3 of
+3 (the theme's MkDocs 2.0 notice).

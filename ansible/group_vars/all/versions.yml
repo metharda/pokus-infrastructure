@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "56695acf941b7ccd8b3c943d0ac7774eeecb3d35756913c859010147bfb9874c"
+pinka_versions_lock_sha256: "2a26d0b1e02046454b373c90f452f76fb204ba6291883e6bebbd0f9665ccf36d"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -102,8 +102,9 @@ pinka_versions:
       --only-downloads` of uv 0.12.23 for the CPython build
   containers:
     verified_on: '2026-10-05'
-    source: Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub tag
-      API); latest stable releases on 2026-10-05
+    source: 'Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub
+      tag API); latest stable releases on 2026-10-05. The DCGM exporter: nvcr.io with make lock-pins at
+      2026-10-17T22:47:21Z'
     images:
       postgres:
         image: docker.io/library/postgres
@@ -177,10 +178,11 @@ pinka_versions:
           - linux/arm64
       dcgm_exporter:
         image: nvcr.io/nvidia/k8s/dcgm-exporter
-        tag: TODO(verify)
-        digest: TODO(verify)
+        tag: 4.8.4
+        digest: sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
         platforms:
           - linux/amd64
+          - linux/arm64
       opa:
         image: docker.io/openpolicyagent/opa
         tag: 1.21.1-static
@@ -265,7 +267,8 @@ pinka_versions:
   repository_keys:
     verified_on: '2026-10-05'
     source: Keys downloaded from the listed URLs and fingerprinted with gpg and with the lock checker's
-      own OpenPGP parser
+      own OpenPGP parser; the Zabbly and Tailscale keys with make lock-pins at 2026-10-17T22:47:21Z (their
+      comments name the cross-checks)
     keys:
       docker-deb:
         urls:
@@ -283,17 +286,22 @@ pinka_versions:
         fingerprint: C95B321B61E88C1809C4F759DDCAE044F796ECB0
       tailscale:
         urls:
-          - TODO(verify)
-        fingerprint: TODO(verify)
+          - https://pkgs.tailscale.com/stable/ubuntu/noble.asc
+          - https://pkgs.tailscale.com/stable/ubuntu/jammy.asc
+          - https://pkgs.tailscale.com/stable/debian/trixie.asc
+          - https://pkgs.tailscale.com/stable/fedora/repo.gpg
+        fingerprint: 2596A99EAAB33821893C0A79458CA832957F5868
       zabbly:
         urls:
-          - TODO(verify)
-        fingerprint: TODO(verify)
+          - https://pkgs.zabbly.com/key.asc
+        fingerprint: 4EFC590696CB15B87C73A3AD82CC8797C838DCFD
   packages:
     verified_on: '2026-10-05'
     source: 'Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata
       for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of
-      NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index'
+      NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Incus (Zabbly)
+      and Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z (signed InRelease and
+      index sha256 checked)'
     docker:
       ubuntu-24.04:
         docker-ce: 5:29.8.2-1~ubuntu.24.04~noble
@@ -386,9 +394,12 @@ pinka_versions:
         libnvidia-container-tools: 1.20.1-1
         libnvidia-container1: 1.20.1-1
     incus:
-      ubuntu-24.04: TODO(verify)
-      ubuntu-22.04: TODO(verify)
-      debian-13: TODO(verify)
+      ubuntu-24.04:
+        incus: 1:6.0.6-ubuntu24.04-202603272003
+      ubuntu-22.04:
+        incus: 1:6.0.6-ubuntu22.04-202603271957
+      debian-13:
+        incus: 1:6.0.6-debian13-202603272000
       fedora-43: TODO(verify)
       fedora-44: TODO(verify)
       el-9: TODO(verify)
@@ -408,9 +419,12 @@ pinka_versions:
       opensuse-leap-15.6: TODO(verify)
       opensuse-leap-16.0: TODO(verify)
     tailscale:
-      ubuntu-24.04: TODO(verify)
-      ubuntu-22.04: TODO(verify)
-      debian-13: TODO(verify)
+      ubuntu-24.04:
+        tailscale: 1.104.1
+      ubuntu-22.04:
+        tailscale: 1.104.1
+      debian-13:
+        tailscale: 1.104.1
       fedora-43: TODO(verify)
       fedora-44: TODO(verify)
       el-9: TODO(verify)
@@ -454,16 +468,18 @@ pinka_versions:
         sha256: cbb9e86c5b1720df21e940cedcd2f3e1226c38262623e090a883712610733851
         size: 36002
   incus_base_images:
-    verified_on: '2026-10-05'
-    source: simplestreams index of images.linuxcontainers.org; not read yet
+    verified_on: '2026-10-17'
+    source: 'make lock-pins at 2026-10-17T22:47:21Z: build 20261016_07:42 of ubuntu/24.04/cloud in the
+      simplestreams index of images.linuxcontainers.org; each fingerprint computed from the downloaded
+      incus.tar.xz and rootfs.squashfs and equal to the index'
     images:
       ubuntu-24.04:
         remote: images
         alias: ubuntu/24.04/cloud
         type: container
         fingerprints:
-          x86_64: TODO(verify)
-          aarch64: TODO(verify)
+          x86_64: ddbc871ce856d7fc978e1c3aba7f8a7e058d128b42585cbb7caf6ebdcb1a791f
+          aarch64: f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a
   github_ssh_host_keys:
     verified_on: '2026-10-05'
     source: GitHub meta API, api.github.com/meta (ssh_keys, ssh_key_fingerprints); not read yet

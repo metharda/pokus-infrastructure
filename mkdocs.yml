@@ -105,6 +105,7 @@ nav:
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
       - Pin the Ansible collections: how-to/pin-ansible-collections.md
+      - Pin the vendor sources: how-to/pin-vendor-sources.md
       - Publish a release package: how-to/publish-a-release-package.md
       - Validate a platform release: how-to/validate-a-platform-release.md
   - Reference:

@@ -437,8 +437,44 @@ page-ownership table (H5). Settled since: the port table (P3b), the
 project files at the repository root (3f) and `make test-roles` (St12-1,
 after 3e).
 
+Raised by the pins of `make lock-pins` (after 3f), for the owner:
+
+- **Zabbly's per-architecture versions.** Zabbly builds Incus for each
+  architecture separately, and the version names the build
+  (`1:6.0.6-ubuntu24.04-202603272003` on x86_64, `…-202603272249` on
+  aarch64). The lock holds one version per release (infra §19.4), so the
+  pins are the x86_64 builds and an aarch64 host (experimental) cannot
+  install them. Recommendation: allow a per-architecture mapping for such a
+  package (`incus: {x86_64: ..., aarch64: ...}`) in the lock, its schema and
+  `pinka_lock_packages`, as a spec deviation; the alternative is to leave
+  aarch64 hosts without Incus from Zabbly.
+- **DCGM is not wired.** `observability_gpu_exporter: dcgm` passes the
+  role's check once the image is pinned, but `compose/observability` always
+  runs the nvidia-smi exporter (`GPU_EXPORTER_IMAGE`, with that exporter's
+  flags); nothing uses `DCGM_EXPORTER_IMAGE`. Recommendation: wire the DCGM
+  exporter as its own compose service with its own flags and capabilities,
+  with a render test, or refuse `dcgm` until it is; either way its image's
+  CUDA requirement must be checked against driver 580 on a GPU host (its
+  configuration is behind `layers.nvcr.io`, which this environment cannot
+  reach).
+- **Tailscale on the rpm releases.** Tailscale's repositories use one layout
+  per distribution (`stable/fedora/$basearch` with no release, also for
+  AlmaLinux and Rocky Linux per its installer; `stable/centos/<major>/`,
+  `stable/rhel/<major>/`; `stable/opensuse/leap/<version>/`), which the one
+  template of `tailscale-rpm` cannot express. Recommendation: one
+  repository entry per source group, with a `{version}` placeholder for
+  openSUSE Leap, then their pins with `make lock-pins`.
+
 ## Owner deliverables pending
 
+- **`make lock-pins` on the owner's machine** (owner decision on item 0,
+  after 3f): this environment reaches every source but GitHub's meta API
+  and SSH port, so GitHub's SSH host keys need the owner's run on a fresh
+  Ubuntu 24.04 machine (prerequisites and commands in
+  `docs/how-to/pin-vendor-sources.md`); the output, pasted back, is
+  recorded and its commit proposed. The run also cross-checks every pin
+  recorded from here. The Incus base image pins age out within days: renew
+  them with `make lock-pins` right before the first golden image build.
 - **The 3e runs that need a VM, a real host, Incus, Docker or a GPU**
   (owner instruction with the "commit" for `a425c7f`: stop and say exactly
   what to run and where). The owner runs them after 3f, on the final
@@ -477,9 +513,10 @@ after 3e).
 `make verify-todos` lists every marker in the tree (110 after step 13, 117
 after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
 collection artifacts, 128 after the lock's header comment stopped naming the
-marker, 118 with the owner's collection pins; details
-in `docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 13"):
+marker, 118 with the owner's collection pins, 113 after 3e, 96 with the
+pins of `make lock-pins` after 3f; details in
+`docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after step 4"
+through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`preflight/support-matrix.yml`).
@@ -495,7 +532,11 @@ step 4" through "after step 13"):
   Tailscale and Zabbly repository keys; Docker packages for openSUSE Leap;
   Incus and Tailscale packages for every pinned release; Incus base image
   fingerprints; GitHub SSH host keys (api.github.com/meta is not readable
-  from this environment).
+  from this environment). After 3f, `make lock-pins` pinned the DCGM image,
+  the Tailscale and Zabbly keys, Incus (Zabbly) and Tailscale on the apt
+  releases and the Incus base images; still open: GitHub's SSH host keys
+  (the owner's run of `make lock-pins`), Docker on openSUSE Leap, Incus on
+  the Fedora, EL and openSUSE releases, and Tailscale on the rpm releases.
 - Step 5: 7 more lock lines (NVIDIA driver pins for the releases other than
   Ubuntu); 17 `verify` entries of `ansible/component-sources.yml`
   (Tailscale and Zabbly repository layouts; Docker, Incus and NVIDIA package

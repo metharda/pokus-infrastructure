@@ -50,7 +50,7 @@ CPython installed by uv into `/opt/pinka/python` and the packages of its environ
 
 ## Container images
 
-Every image is used by digest; the tag is informational. Verified on 2026-10-05. Source: Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub tag API); latest stable releases on 2026-10-05
+Every image is used by digest; the tag is informational. Verified on 2026-10-05. Source: Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub tag API); latest stable releases on 2026-10-05. The DCGM exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z
 
 | Name | Image | Tag | Digest | Platforms |
 | --- | --- | --- | --- | --- |
@@ -64,7 +64,7 @@ Every image is used by digest; the tag is informational. Verified on 2026-10-05.
 | cadvisor | `ghcr.io/google/cadvisor` | `v0.60.6` | `sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a` | linux/amd64, linux/arm64 |
 | postgres_exporter | `docker.io/prometheuscommunity/postgres-exporter` | `v0.20.1` | `sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e` | linux/amd64, linux/arm64 |
 | gpu_exporter | `docker.io/utkuozdemir/nvidia_gpu_exporter` | `1.15.1` | `sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087` | linux/amd64, linux/arm64 |
-| dcgm_exporter | `nvcr.io/nvidia/k8s/dcgm-exporter` | TODO(verify) | TODO(verify) | linux/amd64 |
+| dcgm_exporter | `nvcr.io/nvidia/k8s/dcgm-exporter` | `4.8.4` | `sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003` | linux/amd64, linux/arm64 |
 | opa | `docker.io/openpolicyagent/opa` | `1.21.1-static` | `sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e` | linux/amd64, linux/arm64 |
 | vllm | `docker.io/vllm/vllm-openai` | `v0.31.0` | `sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3` | linux/amd64, linux/arm64 |
 | query_proxy | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 |
@@ -92,19 +92,19 @@ Base images of the CI fast lane's systemd containers (the provisioning play in c
 
 ## Repository keys
 
-Verified on 2026-10-05. Source: Keys downloaded from the listed URLs and fingerprinted with gpg and with the lock checker's own OpenPGP parser
+Verified on 2026-10-05. Source: Keys downloaded from the listed URLs and fingerprinted with gpg and with the lock checker's own OpenPGP parser; the Zabbly and Tailscale keys with make lock-pins at 2026-10-17T22:47:21Z (their comments name the cross-checks)
 
 | Name | URLs | Primary key fingerprint |
 | --- | --- | --- |
 | docker-deb | `https://download.docker.com/linux/ubuntu/gpg`, `https://download.docker.com/linux/debian/gpg` | `9DC858229FC7DD38854AE2D88D81803C0EBFCD88` |
 | docker-rpm | `https://download.docker.com/linux/fedora/gpg`, `https://download.docker.com/linux/centos/gpg` | `060A61C51B558A7F742B77AAC52FEB6B621E9F35` |
 | nvidia-container-toolkit | `https://nvidia.github.io/libnvidia-container/gpgkey` | `C95B321B61E88C1809C4F759DDCAE044F796ECB0` |
-| tailscale | TODO(verify) | TODO(verify) |
-| zabbly | TODO(verify) | TODO(verify) |
+| tailscale | `https://pkgs.tailscale.com/stable/ubuntu/noble.asc`, `https://pkgs.tailscale.com/stable/ubuntu/jammy.asc`, `https://pkgs.tailscale.com/stable/debian/trixie.asc`, `https://pkgs.tailscale.com/stable/fedora/repo.gpg` | `2596A99EAAB33821893C0A79458CA832957F5868` |
+| zabbly | `https://pkgs.zabbly.com/key.asc` | `4EFC590696CB15B87C73A3AD82CC8797C838DCFD` |
 
 ## Packages
 
-Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index
+Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Incus (Zabbly) and Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z (signed InRelease and index sha256 checked)
 
 ### docker
 
@@ -193,9 +193,9 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 
 | Release | Package | Version |
 | --- | --- | --- |
-| ubuntu-24.04 | — | TODO(verify) |
-| ubuntu-22.04 | — | TODO(verify) |
-| debian-13 | — | TODO(verify) |
+| ubuntu-24.04 | incus | `1:6.0.6-ubuntu24.04-202603272003` |
+| ubuntu-22.04 | incus | `1:6.0.6-ubuntu22.04-202603271957` |
+| debian-13 | incus | `1:6.0.6-debian13-202603272000` |
 | fedora-43 | — | TODO(verify) |
 | fedora-44 | — | TODO(verify) |
 | el-9 | — | TODO(verify) |
@@ -221,9 +221,9 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 
 | Release | Package | Version |
 | --- | --- | --- |
-| ubuntu-24.04 | — | TODO(verify) |
-| ubuntu-22.04 | — | TODO(verify) |
-| debian-13 | — | TODO(verify) |
+| ubuntu-24.04 | tailscale | `1.104.1` |
+| ubuntu-22.04 | tailscale | `1.104.1` |
+| debian-13 | tailscale | `1.104.1` |
 | fedora-43 | — | TODO(verify) |
 | fedora-44 | — | TODO(verify) |
 | el-9 | — | TODO(verify) |
@@ -245,12 +245,12 @@ Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-
 
 ## Incus base images
 
-Verified on 2026-10-05. Source: simplestreams index of images.linuxcontainers.org; not read yet
+Verified on 2026-10-17. Source: make lock-pins at 2026-10-17T22:47:21Z: build 20261016_07:42 of ubuntu/24.04/cloud in the simplestreams index of images.linuxcontainers.org; each fingerprint computed from the downloaded incus.tar.xz and rootfs.squashfs and equal to the index
 
 | Name | Image | Type | Architecture | Fingerprint |
 | --- | --- | --- | --- | --- |
-| ubuntu-24.04 | `images:ubuntu/24.04/cloud` | container | x86_64 | TODO(verify) |
-| ubuntu-24.04 | `images:ubuntu/24.04/cloud` | container | aarch64 | TODO(verify) |
+| ubuntu-24.04 | `images:ubuntu/24.04/cloud` | container | x86_64 | `ddbc871ce856d7fc978e1c3aba7f8a7e058d128b42585cbb7caf6ebdcb1a791f` |
+| ubuntu-24.04 | `images:ubuntu/24.04/cloud` | container | aarch64 | `f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a` |
 
 ## GitHub SSH host keys
 

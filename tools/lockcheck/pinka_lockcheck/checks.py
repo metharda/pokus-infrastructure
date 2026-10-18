@@ -377,3 +377,66 @@ def key_findings(doc: Mapping[str, Any], fetch: Fetcher = net.download) -> list[
                     )
                 )
     return findings
+
+
+# The image servers of incus_base_images and the fingerprint field of each image type.
+IMAGE_SERVERS = {"images": "https://images.linuxcontainers.org/streams/v1/images.json"}
+IMAGE_FINGERPRINT_FIELDS = {
+    "container": "combined_squashfs_sha256",
+    "virtual-machine": "combined_disk-kvm-img_sha256",
+}
+
+
+def base_image_findings(doc: Mapping[str, Any], fetch: Fetcher = net.download) -> list[Finding]:
+    """Check that every pinned Incus base image is still on its image server.
+
+    Public image servers keep only their newest builds, so a pin ages out
+    within days. That is a warning, not an error: a lab that exported the base
+    keeps importing it from there, and a new lab renews the pin with
+    ``make lock-pins`` before its first golden image build.
+
+    Args:
+        doc: Lock document.
+        fetch: ``url -> content``.
+
+    Returns:
+        Errors for an unknown remote or an unreadable index, warnings for
+        fingerprints the server no longer has.
+    """
+    findings: list[Finding] = []
+    indexes: dict[str, set[str]] = {}
+    for name, entry in doc["incus_base_images"]["images"].items():
+        where = f"incus_base_images.images.{name}"
+        pinned = {a: f for a, f in entry["fingerprints"].items() if _verified(f)}
+        if not pinned:
+            continue
+        url = IMAGE_SERVERS.get(str(entry["remote"]))
+        if url is None:
+            findings.append(Finding(ERROR, where, f"unknown remote {entry['remote']!r}"))
+            continue
+        if url not in indexes:
+            try:
+                products = json.loads(fetch(url)).get("products", {})
+            except (net.FetchError, ValueError) as exc:
+                findings.append(Finding(ERROR, where, f"{url}: {exc}"))
+                continue
+            field = IMAGE_FINGERPRINT_FIELDS[str(entry["type"])]
+            indexes[url] = {
+                str(item[field])
+                for product in products.values()
+                for build in (product.get("versions") or {}).values()
+                for item in (build.get("items") or {}).values()
+                if item.get(field)
+            }
+        for arch, fingerprint in pinned.items():
+            if fingerprint not in indexes[url]:
+                findings.append(
+                    Finding(
+                        WARNING,
+                        where,
+                        f"{arch} fingerprint {fingerprint} is no longer on "
+                        f"{url.split('/streams')[0]}; renew it with make lock-pins before "
+                        "a new lab's first golden image build",
+                    )
+                )
+    return findings

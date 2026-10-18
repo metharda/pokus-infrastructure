@@ -58,24 +58,31 @@ repositories:
     baseurl: "https://nvidia.github.io/libnvidia-container/stable/rpm/$basearch"
     repo_gpgcheck: true
   tailscale-deb:
+    # Checked with make lock-pins on 2026-10-17: the signed InRelease of each
+    # apt release names the component main (as Tailscale's own
+    # <codename>.tailscale-keyring.list does).
     type: apt
     key: tailscale
     uri: "https://pkgs.tailscale.com/stable/{distro}"
     suite: "{codename}"
     components: [main]
-    verify: "TODO(verify): suite and component at pkgs.tailscale.com (not reachable from the build environment)"
   tailscale-rpm:
+    # Tailscale's .repo files (read on 2026-10-17) use stable/fedora/$basearch
+    # with no release (also for AlmaLinux and Rocky Linux, per Tailscale's
+    # installer), stable/centos/<major>/ and stable/rhel/<major>/, and
+    # stable/opensuse/leap/<version>/: one template cannot express them.
     type: rpm
     key: tailscale
     baseurl: "https://pkgs.tailscale.com/stable/{distro}/{major}/$basearch"
-    verify: "TODO(verify): base URL layout per distribution at pkgs.tailscale.com"
+    verify: "TODO(verify): one base URL per source group (fedora, rhel_like, opensuse), see the comment above"
   zabbly-incus-lts:
+    # Checked with make lock-pins on 2026-10-17, as Zabbly's README documents
+    # it: the signed InRelease of each release names the component main.
     type: apt
     key: zabbly
     uri: "https://pkgs.zabbly.com/incus/lts-6.0"
     suite: "{codename}"
     components: [main]
-    verify: "TODO(verify): repository layout at pkgs.zabbly.com (not reachable from the build environment)"
 
 components:
   docker:
@@ -119,11 +126,12 @@ components:
     # in the host profile facts and the fingerprint.
     default: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): package name"}
     ubuntu: &incus_zabbly
+      # incus depends on incus-base and incus-client at its exact version, so
+      # the one pin holds the whole build (Zabbly's index, 2026-10-17).
       source: vendor_repo
       repo: zabbly-incus-lts
       packages: [incus]
       channel: lts
-      verify: "TODO(verify): package names"
     debian: *incus_zabbly
     fedora: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): package name"}
     rhel_like: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): EPEL or COPR"}

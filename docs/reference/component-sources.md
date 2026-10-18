@@ -39,8 +39,8 @@ Generated from `ansible/component-sources.yml` (BUILD_PROMPT §19.4). A source g
 | Group | Source | Repository | Packages | Details | Status |
 | --- | --- | --- | --- | --- | --- |
 | `default` | distro | — | incus | channel: non_lts | unverified: package name |
-| `ubuntu` | vendor_repo | `zabbly-incus-lts` | incus | channel: lts | unverified: package names |
-| `debian` | vendor_repo | `zabbly-incus-lts` | incus | channel: lts | unverified: package names |
+| `ubuntu` | vendor_repo | `zabbly-incus-lts` | incus | channel: lts | verified |
+| `debian` | vendor_repo | `zabbly-incus-lts` | incus | channel: lts | verified |
 | `fedora` | distro | — | incus | channel: non_lts | unverified: package name |
 | `rhel_like` | distro | — | incus | channel: non_lts | unverified: EPEL or COPR |
 | `opensuse` | distro | — | incus | channel: non_lts | unverified: distribution or OBS |
@@ -76,8 +76,8 @@ Generated from `ansible/component-sources.yml` (BUILD_PROMPT §19.4). A source g
 | `docker-rpm-centos` | rpm | `https://download.docker.com/linux/centos/{major}/$basearch/stable` | `docker-rpm` | verified |
 | `nvidia-container-toolkit-deb` | apt | `https://nvidia.github.io/libnvidia-container/stable/deb/{deb_arch}` suite `/` | `nvidia-container-toolkit` | verified |
 | `nvidia-container-toolkit-rpm` | rpm | `https://nvidia.github.io/libnvidia-container/stable/rpm/$basearch` | `nvidia-container-toolkit` | verified |
-| `tailscale-deb` | apt | `https://pkgs.tailscale.com/stable/{distro}` suite `{codename}` components `main` | `tailscale` | unverified: suite and component at pkgs.tailscale.com (not reachable from the build environment) |
-| `tailscale-rpm` | rpm | `https://pkgs.tailscale.com/stable/{distro}/{major}/$basearch` | `tailscale` | unverified: base URL layout per distribution at pkgs.tailscale.com |
-| `zabbly-incus-lts` | apt | `https://pkgs.zabbly.com/incus/lts-6.0` suite `{codename}` components `main` | `zabbly` | unverified: repository layout at pkgs.zabbly.com (not reachable from the build environment) |
+| `tailscale-deb` | apt | `https://pkgs.tailscale.com/stable/{distro}` suite `{codename}` components `main` | `tailscale` | verified |
+| `tailscale-rpm` | rpm | `https://pkgs.tailscale.com/stable/{distro}/{major}/$basearch` | `tailscale` | unverified: one base URL per source group (fedora, rhel_like, opensuse), see the comment above |
+| `zabbly-incus-lts` | apt | `https://pkgs.zabbly.com/incus/lts-6.0` suite `{codename}` components `main` | `zabbly` | verified |
 
 Placeholders: `{distro}` is the distribution ID (the parent's for derivatives), `{codename}` the parent release codename, `{major}` the major release, `{deb_arch}` `amd64` or `arm64`; `$basearch` is expanded by dnf and zypper.

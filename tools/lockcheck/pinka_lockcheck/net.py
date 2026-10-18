@@ -17,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 TIMEOUT = 120
 CHUNK = 1 << 20
@@ -230,6 +230,38 @@ def manifest_digest(image: str, reference: str) -> str | None:
             if exc.code == HTTP_NOT_FOUND:
                 return None
             raise FetchError(f"{url}: HTTP {exc.code}") from exc
+
+
+def registry_json(image: str, path: str) -> tuple[dict[str, str], Any]:
+    """GET a JSON document of a registry's v2 API (a tag list, a manifest).
+
+    Args:
+        image: Fully qualified image name.
+        path: Path below the repository (``tags/list``, ``manifests/<tag>``).
+
+    Returns:
+        The response headers (names in lower case) and the decoded JSON.
+
+    Raises:
+        FetchError: On network, authentication or decoding errors.
+    """
+    ref = ImageRef.parse(image)
+    url = f"https://{ref.api_host}/v2/{ref.repository}/{path}"
+    headers = {"Accept": MANIFEST_TYPES}
+    while True:
+        request = urllib.request.Request(url, headers=headers)
+        try:
+            with _open(request) as response:
+                headers_found = {k.lower(): v for k, v in response.headers.items()}
+                return headers_found, json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            if exc.code == HTTP_UNAUTHORIZED and "Authorization" not in headers:
+                challenge = parse_challenge(exc.headers.get("WWW-Authenticate", ""))
+                headers["Authorization"] = f"Bearer {_token(challenge, ref)}"
+                continue
+            raise FetchError(f"{url}: HTTP {exc.code}") from exc
+        except ValueError as exc:
+            raise FetchError(f"{url}: not JSON") from exc
 
 
 def retry_after(header: str | None, attempt: int) -> float:

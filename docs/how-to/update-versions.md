@@ -39,10 +39,12 @@ current pins are listed in [Pinned versions](../reference/versions.md).
 
     | Artifact | Where to verify |
     | --- | --- |
-    | Container image | The registry: the digest of the image index for the tag, and that it contains `linux/amd64` (and `linux/arm64`). |
+    | Container image | The registry: the digest of the image index for the tag, and that it contains `linux/amd64` (and `linux/arm64`). The DCGM exporter: `make lock-pins` ([How to pin the vendor sources](pin-vendor-sources.md)). |
     | Binary | The release page: download each archive, hash it with `sha256sum`, and compare with the checksum file of the release. |
-    | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. |
-    | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. |
+    | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. Incus from Zabbly and Tailscale on the apt releases: `make lock-pins`. |
+    | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. The Zabbly and Tailscale keys: `make lock-pins`. |
+    | Incus base image | `make lock-pins`, right before a lab's first golden image build: the image server keeps only its newest builds, a few days. |
+    | GitHub's SSH host keys | `make lock-pins`, which needs two agreeing sources (GitHub's meta API, its documentation, `ssh-keyscan`). |
     | Python package | PyPI; then run `make bootstrap-lock` to recompute the hashes. |
     | Ansible collection | The collection's release tag and its `requires_ansible` in `meta/runtime.yml`; then its artifact with `make lock-collections` ([How to pin the Ansible collections](pin-ansible-collections.md)). |
 

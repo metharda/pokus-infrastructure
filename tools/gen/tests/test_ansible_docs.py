@@ -111,5 +111,5 @@ def test_coverage_includes_ansible_and_layout_entries() -> None:
 def test_component_sources_page_marks_unverified() -> None:
     page = ansible_docs.component_sources_page(ROOT)
     assert "| `tailscale-deb` | apt |" in page
-    assert "unverified: suite and component" in page
+    assert "unverified: one base URL per source group" in page  # tailscale-rpm
     assert "TODO(verify)" not in page
