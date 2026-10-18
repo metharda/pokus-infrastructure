@@ -4794,3 +4794,22 @@ Podman. Uninstall itself is D2.
   before pinka is now never replaced, but a host without one still gets
   the pinned branch. Recommended: `install_nvidia_driver: skip` on B, or a
   supported-device guard (a decision for the owner, `PROGRESS.md`).
+
+### CI of `8558bee` and its fix
+
+- Every job passed but the known red `lock-check` (24 marker errors, the
+  postgres and `ubuntu:24.04` tag warnings) and the two `almalinux_9`
+  check-mode lanes. In all ten other check-mode and extended lanes the four
+  tasks of `install_record` ran (the record would be written; check mode
+  wrote nothing), every recap had `failed=0`, and the check-mode message
+  named the packages and accounts the record would hold (119 to 185
+  packages; 18 to 21 accounts, 2 in openSUSE's minimal `leap` image) and no
+  pre-existing component.
+- Cause of the `almalinux_9` failures: a custom module runs on the target's
+  Python, which in the check-mode containers is the distribution's own, 3.9
+  on EL 9; `datetime.UTC` needs 3.11. Fix: `datetime.timezone.utc`. The
+  module's tests are now unittest-style and run on CPython 3.9 in
+  `make test-py39` (they failed there before the fix, 6 of 7, and pass
+  after it); CLAUDE.md states the rule for every custom module. The incus
+  module's tests also pass on CPython 3.9 (run once with `cryptography`,
+  outside the gate), so it needed no change.

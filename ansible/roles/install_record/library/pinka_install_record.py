@@ -94,8 +94,12 @@ RunCommand = Callable[[Sequence[str]], tuple[int, str, str]]
 
 
 def utc_now() -> str:
-    """The current time, UTC ISO 8601 with Z."""
-    return dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """The current time, UTC ISO 8601 with Z.
+
+    The module runs on the target's Python, which is 3.9 in the check-mode
+    containers of the Red Hat family: ``datetime.UTC`` needs 3.11.
+    """
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: UP017
 
 
 def parse_packages(text: str) -> dict[str, str]:

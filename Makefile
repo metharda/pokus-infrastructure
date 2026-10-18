@@ -268,11 +268,14 @@ check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in chec
 	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
 
 .PHONY: test-py39
-test-py39: ## Preflight and pinka test suites with plain unittest on CPython 3.9 (stdlib only)
+test-py39: ## Preflight, pinka and install record module tests with plain unittest on CPython 3.9 (stdlib only)
 	cd preflight && PYTHONPATH=.:tests $(UV) run --no-project --python $(PREFLIGHT_MIN_PYTHON) \
 	  python -m unittest discover -s tests -t tests
 	cd tools/pinka-lab && PYTHONPATH=.:tests:../../preflight $(UV) run --no-project \
 	  --python $(PREFLIGHT_MIN_PYTHON) python -m unittest discover -s tests -t tests
+	@# The module runs on the target's Python: 3.9 in the Red Hat family's check-mode containers.
+	cd ansible/tests && PYTHONPATH=../roles/install_record/library $(UV) run --no-project \
+	  --python $(PREFLIGHT_MIN_PYTHON) python -m unittest test_install_record_module
 
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)

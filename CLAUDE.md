@@ -321,6 +321,11 @@ does not push the rewritten history itself.
 - Only `platform_facts` interprets the distribution; every other role uses the
   `pinka_*` facts. `make lint-portability` fails on `ansible_distribution*`,
   `ansible_os_family`, `ansible_pkg_mgr` or `ansible_lsb` anywhere else.
+- Custom modules (`roles/*/library/`) run on the target's Python: the pinned
+  CPython of the Ansible venv on a host, the distribution's own in the
+  check-mode containers (3.9 on EL 9). Keep them compatible with Python 3.9
+  at run time, not only in syntax; the install record module's tests also
+  run on CPython 3.9 (`make test-py39`).
 - Distribution differences live only in the support matrix,
   `ansible/component-sources.yml`, `roles/<role>/vars/<family>.yml` and
   `roles/<role>/tasks/<name>_<family>.yml`, for all four families at once.

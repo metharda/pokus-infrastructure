@@ -320,12 +320,16 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
   its CI passed every job but the known red `lock-check` (24 marker errors,
   the postgres and `ubuntu:24.04` tag warnings). The owner decided the
   proposal (verbatim under 3f-1 in the remaining plan) and authorized one
-  spec edit, limited to D1, D2, A, B, C, E and F; it is made (the
-  specifications table below has its checksums) and waits for "commit".
-  D1, the first feature step (the install record and the components that
-  existed before pinka), is built and waits for "commit" too; its record
-  is in `docs/IMPLEMENTATION_NOTES.md`, "3f-1.D1 Pre-existing components
-  and the install record".
+  spec edit, limited to D1, D2, A, B, C, E and F: it is `4591db9`. D1, the
+  first feature step (the install record and the components that existed
+  before pinka), is `8558bee`; its record is in
+  `docs/IMPLEMENTATION_NOTES.md`, "3f-1.D1 Pre-existing components and the
+  install record". CI of `8558bee`: every job passed but the known red
+  `lock-check` (24 marker errors, the postgres and `ubuntu:24.04` tag
+  warnings) and both `almalinux_9` check-mode lanes, which failed in the
+  install record module: `datetime.UTC` does not exist on the container's
+  Python 3.9. The fix (`timezone.utc`, and the module's tests on CPython 3.9
+  in `make test-py39`) waits for "commit"; it blocks the next step.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -344,7 +348,7 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | recorded; proposal decided; spec edit made and D1 built, both wait for "commit"; then D2, A, B, C, E, F, G | `eb02d37` (records) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit and D1 done; the CI fix of D1 waits for "commit"; then the owner's decisions after D1 (GPU guard, pre-existing listeners, SSH), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -567,6 +571,36 @@ its checks green and a commit proposal, and waits for the owner's
   - Item C: Ubuntu 26.04 (`resolute`) ships `python3` 3.14.3-0ubuntu2 in
     main (the signed `InRelease` checked with the Ubuntu archive key, the
     index's sha256 matching it).
+
+  Decisions with the "commit" for the spec edit and D1 (`4591db9`,
+  `8558bee`) (owner, verbatim):
+
+  > commit both: commit 1 (spec edit) first, then commit 2 (D1), then push and report
+  > CI job by job, including whether install_record passes in every check-mode lane.
+  >
+  > Decisions:
+  > 1. GPU driver: skip on computer B is right, but fix the general case in D2's step
+  >    or as its own small commit: with install_nvidia_driver: auto, bootstrap never
+  >    installs a driver for a GPU below the minimum compute capability or one the
+  >    pinned driver branch does not support; preflight marks it as no usable GPU and
+  >    the install continues without GPU features. Fixtures for Kepler and Pascal
+  >    cards. A user must not need to set skip by hand.
+  > 2. LXD guests: DHCP and DNS only on LXD bridges, approved. Confirm that pinka's
+  >    rules leave LXD guests' and Docker containers' forwarded traffic (their own
+  >    outbound access) as it was, and make real-machine test 4.4 check it.
+  > 3. SSH on hosts with other accounts: option (b), a Match Group pinka block,
+  >    approved.
+  > 4. Pre-existing listeners: on a host with existing accounts or services, pinka's
+  >    default-drop input policy must not cut off access that existed before the
+  >    install (for example SSH from the LAN, or another service already listening on
+  >    a non-loopback address). Preflight records the non-loopback listeners and how
+  >    they were reachable; pinka keeps them reachable as found, or asks for explicit
+  >    consent to close each one; the install record lists them and uninstall restores
+  >    the firewall as it was. On a fresh dedicated host the strict default stays.
+  >    Propose where this fits (D1 follow-up or D2) and the spec sections it touches;
+  >    it needs a small spec edit, which I authorize together with point 1.
+  >
+  > Then continue with D2.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -693,6 +727,7 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
 | St12-1 | infra §11 (Ansible) | `make test-roles`: the provider-agnostic roles in a throwaway Incus system container or VM, only when invoked | `make check-mode` (the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` in check mode in a disposable Docker systemd container per family, also CI's required job, I2) and `make test-distros` (the full bootstrap in disposable Incus VMs, §19.9) replace it; there is no `test-roles` target and no alias. Raised by the 3e self-test; approved by the owner after 3e ("record it as an approved deviation (make check-mode and make test-distros replace it). No alias."); built in step 12 |
+| SSH1 | infra §7.3 | the drop-in sets `AllowGroups pinka`, `PasswordAuthentication no` and the other settings for the whole host | pinka's sshd settings apply in a `Match Group pinka` block, so accounts outside `pinka` keep the host's own policy (owner, decision 3 after D1, approving option (b) of the open question raised with the 3f-1 spec edit); built with the D1 follow-up |
 
 ## Platform spec changes pending
 
@@ -799,7 +834,7 @@ raised:
   repository entry per source group, with a `{version}` placeholder for
   openSUSE Leap, then their pins with `make lock-pins`.
 
-Raised by the 3f-1 spec edit, for the owner:
+Raised by the 3f-1 spec edit, for the owner (decided after D1: option (b), approved deviation SSH1):
 
 - **SSH policy on a host with other accounts.** The `ssh` role's drop-in
   (§7.3) sets `AllowGroups pinka` and `PasswordAuthentication no` for the
@@ -814,7 +849,7 @@ Raised by the 3f-1 spec edit, for the owner:
   exist, unless the owner consents. Recommendation: (b), with sshd still
   reachable only on `tailscale0` and the allowed interfaces.
 
-Raised by D1 of 3f-1, for the owner:
+Raised by D1 of 3f-1, for the owner (decided after D1: the GPU guard in its own commit; LXD guests: DHCP and DNS only, approved):
 
 - **Computer B's Kepler GPU.** With `install_nvidia_driver: auto` and no usable
   driver, bootstrap blacklists nouveau and installs the pinned open driver
@@ -1111,10 +1146,12 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 ## Next step
 
 Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
-and 3f-1 is recorded (`eb02d37`). The owner decided the 3f-1 proposal; the
-authorized spec edit is made and D1 (the install record and the
-pre-existing components) is built; both wait for "commit", as two commits.
-Then D2, A, B, C, E, F and G, each as its own step waiting for "commit". Then
+and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`) and D1
+(`8558bee`) are committed; D1's CI fix waits for "commit" and blocks the
+next step. Then, per the owner's decisions after D1: a small spec edit
+(decisions 1 and 4), the GPU support guard as its own commit, the
+pre-existing listeners with the SSH `Match` block as a D1 follow-up, then
+D2, A, B, C, E, F and G, each as its own step waiting for "commit". Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still
