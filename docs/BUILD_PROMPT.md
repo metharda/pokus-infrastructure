@@ -102,8 +102,8 @@ For `vm`, also determine `hypervisor`: one of `kvm`, `qemu`, `microsoft` (Hyper-
 | Capability | How to detect |
 |---|---|
 | CPU | model name, logical CPUs (`os.cpu_count()` and `/sys/fs/cgroup/cpu.max` if constrained), `vmx`/`svm` flags |
-| Memory | `MemTotal`, `SwapTotal` from `/proc/meminfo` |
-| Disk | free space and filesystem type for `/var/lib` (Incus/Docker) and for the configured `/srv/pinka` parent; block devices from `/sys/block` (for informational listing only) |
+| Memory | `MemTotal`, `SwapTotal` from `/proc/meminfo`. The firmware and the kernel keep part of the installed memory, so every memory threshold (§2.3) compares `MemTotal` with 0.94 × its nominal value: a nominal 16 GiB machine, which reports about 15.1–15.6 GiB, passes 16 GiB |
+| Disk | free space and filesystem type for `/var/lib` (Incus/Docker), the configured `/srv/pinka` parent and every other mount point that holds an item of the requirements computation (§2.3: the Incus pool's loop file, `docker_data_root`, `/opt/pinka`); block devices from `/sys/block` (for informational listing only) |
 | cgroup v2 | `/sys/fs/cgroup/cgroup.controllers` exists and `stat -f` type is `cgroup2fs`; record available controllers (cpu, cpuset, memory, io, pids must be present) |
 | Kernel features | `/proc/filesystems` (`btrfs`, `overlay`), `/proc/modules` or `/sys/module/<name>` and `modprobe -n` dry-run for: `br_netfilter`, `overlay`, `nf_tables`, `veth`, `tun`, `vhost_net`, `vhost_vsock`, `kvm`, `kvm_intel`/`kvm_amd`, `btrfs`, `dm_thin_pool`. On WSL many are built in, so check `/sys/module/<name>` as well as `/proc/modules` and treat built-in as present. |
 | `/dev/net/tun` | exists and is a character device (Tailscale) |
@@ -128,18 +128,21 @@ For `vm`, also determine `hypervisor`: one of `kvm`, `qemu`, `microsoft` (Hyper-
 |---|---|---|
 | Docker Desktop WSL integration | `/mnt/wsl/docker-desktop*` exists, or `docker` on PATH resolves into `/mnt/wsl/` or `docker context ls` shows `desktop-linux`, or `/var/run/docker.sock` is a symlink into `/mnt/wsl` | blocking |
 | Snap Docker | `snap list docker` succeeds | blocking |
-| LXD installed | `snap list lxd` or `lxd` binary/`lxdbr0` | blocking (Incus migration is out of scope) |
+| LXD installed | `snap list lxd` or `lxd` binary/`lxdbr0` | info: a pre-existing component (below), left as it is; needs_action when Incus next to it would clash (§7.7). Migrating LXD to Incus is out of scope |
 | Host firewall manager active (ufw, firewalld) | `systemctl is-active ufw/firewalld` | info — the firewall role integrates with it instead of replacing it (§19.6); report which backend will be used |
 | Image-based / immutable OS | `/run/ostree-booted` (Fedora Atomic, CoreOS), `/etc/NIXOS`, transactional-update with read-only root (openSUSE MicroOS/Aeon), Ubuntu Core (`/writable` + snapd-only) | blocking — remediation: run a supported distro in a VM on this host (`vm` provider) |
 | Non-systemd init or musl libc | PID 1 not systemd (Alpine/OpenRC, Devuan, Void, Gentoo OpenRC), musl via `ldd --version` / `/lib/ld-musl-*` | blocking — same VM remediation |
 | SELinux / AppArmor state | `getenforce` or `/sys/fs/selinux/enforce`; `/sys/kernel/security/apparmor` | info — recorded; the `mac` role adapts (§19.7). SELinux in enforcing mode is supported and must never be disabled by the repo |
 | Package manager lock / unfinished transaction | apt/dpkg locks, `dnf` history incomplete, zypper lock, pacman `db.lck` | needs_action |
 | Linux NVIDIA driver inside WSL | see above | blocking |
-| Podman socket active | `systemctl is-active podman.socket` | warning |
-| Existing non-managed Docker daemon config | `/etc/docker/daemon.json` exists without the repo's managed header comment | warning (will be replaced; backup taken) |
+| Podman installed | `podman` binary, `podman.socket` or `podman.service` | info: a pre-existing component (below), left as it is; needs_action when Podman provides Docker's command or socket (`podman-docker`, or `/var/run/docker.sock` served by Podman), which Docker Engine needs |
+| Docker Engine installed before pinka | Docker Engine present and the install record (§7.21) does not name pinka as its origin | info: a pre-existing component, used as it is (§7.6); needs_action when a GPU feature is on and CDI is off in it (`docker info` reports no CDI spec directories), or when it lacks the Compose v2 plugin or buildx; the remediation names the exact change for the owner to make |
+| Tailscale logged in before pinka | `tailscale status --json` reports the node running and the install record does not name pinka as the one that joined it | info: an adopted node, used as it is (§7.4); needs_action when Funnel is on (`tailscale funnel status`) or Tailscale SSH is on (the node's `RunSSH` preference; verify the query) |
 | Existing Incus with non-managed config | `incus` installed and `/var/lib/incus` not empty and no `/etc/pinka/managed-incus` marker | blocking unless `--adopt-incus` |
 | Lab port in use | a configured lab port (§12.11: the defaults plus the `ports:` overrides) is bound by a process outside the lab (`/proc/net/tcp*`, `ss -ltnp`) | needs_action — remediation names the process and the `ports:` override |
 | VM collector address conflict (with `vm_targets`) | `vm_collector_address` is already assigned or routed on the host (`ip -j addr`, `ip -j route`), or overlaps the Docker address pools, an Incus network or the tailnet range `100.64.0.0/10` | needs_action — remediation: choose another address in host_vars |
+
+**Pre-existing components.** Docker Engine, Tailscale, LXD, Podman, Incus, an NVIDIA driver and user accounts may exist before pinka is installed. Preflight lists each in the host profile (`components`: installed, version, running, and its origin from the install record of §7.21: `pinka` or `pre-existing`); the rules for each are in §7.4 (Tailscale), §7.6 (Docker), §7.7 (Incus and LXD), §6.1 (accounts) and §7.21. Pinka never changes, stops, restarts or reconfigures a component it did not install (a Tailscale that is installed but not logged in is not in use and is joined, §7.4). Where the lab cannot run without such a change, preflight reports `needs_action` with the exact change for the owner to make, so nothing on the host changes and no override continues past it.
 
 ### 2.3 The decision: `support-matrix.yml`
 
@@ -159,6 +162,9 @@ families:                       # implementation units; every distro-specific ro
 os:                              # first match wins; versions in quotes are examples to verify at build time
   # supported: full provisioning tested in VMs on every release AND on the reference GPU hardware
   - {match: {id: ubuntu, version_id: "24.04"}, family: debian, tier: supported, release_model: fixed}
+  # pending_verification: shown as "pending verification" until make test-distros records a passing result (§19.9)
+  - {match: {id: ubuntu, version_id: "26.04"}, family: debian, tier: supported, release_model: fixed, pending_verification: true,
+     note: "Incus comes from Ubuntu's universe component, which has no guaranteed security updates (§7.7)"}
   - {match: {id: debian, version_id: "13"},    family: debian, tier: supported, release_model: fixed}
   # tested: full provisioning + doctor --smoke tested in VMs in CI (§19.9); GPU paths not hardware-tested
   - {match: {id: ubuntu, version_id: "22.04"}, family: debian, tier: tested, release_model: fixed}
@@ -201,12 +207,10 @@ environment:
   container: {tier: unsupported, reason: "The lab needs its own kernel features, systemd as PID 1, and nested container/VM capabilities"}
   unknown:   {tier: unsupported, reason: "Could not determine the environment reliably"}
 
-minimums:
-  memory_gib:  {required: 16, recommended: 24}
+minimums:                     # nominal values; MemTotal is compared with 0.94 × the nominal value (§2.2)
+  memory_gib:  {floor: 8}       # the core stack; below it → unsupported. Required and recommended memory and
+                                # the free disk per mount point are computed from the choices (below the YAML)
   cpu_threads: {required: 8,  recommended: 16}
-  free_disk_gib:
-    var_lib:   {required: 150, recommended: 400}
-    srv_pinka: {required: 100, recommended: 500}
 
 core_requirements:            # failing any of these → unsupported (or needs_action)
   - systemd_pid1
@@ -264,19 +268,30 @@ provider_rules:
 
 Note: storage must end up as either `btrfs_pool` or `lvm_thin_pool`. If neither is available, the result is `unsupported`, because a `dir` storage backend cannot enforce disk quotas and disk-exhaustion scenarios would fill the host disk.
 
+**Requirements computed from the choices.** Memory above the floor and free disk are not fixed numbers: they follow what the operator chooses.
+
+- The data lives in `preflight/requirements.yml` (compiled to committed, drift-checked JSON like the matrix): per component (base system, PostgreSQL, observability, OPA, Incus and each running target, vLLM with the selected model, a training job, the installer, bootstrap itself) its memory, CPU and disk need, the source of each number, and whether it is `measured` or `estimated`. Every number is an estimate until real-machine test 4.15 of the test specification measures it.
+- Preflight takes the choices as `--plan <choices.json>` (features, `node_role`, the selected model, the Incus pool source and size, the number of concurrent targets, the golden images to build, the retention settings), as bootstrap and the installer write them; without `--plan` it uses the configured defaults. It prints the breakdown, and the host profile records it (`requirements`). Bootstrap, the installer and doctor use this one computation, so they show the same numbers.
+- **Memory:** below the floor (8 GiB nominal: the core stack with no target running) the outcome is `unsupported`. Above it, the required and recommended values are computed from `gpu_inference`, `gpu_training`, `node_role`, the number of concurrent targets and the selected model's size: below required → `unsupported`, with the breakdown and the choices that would fit; between required and recommended → `degraded` (consent as for any degraded outcome).
+- **Disk, checked at install:** per mount point, the sum of the selected models' files (sizes in `models.lock.yml`, §7.12), the container images of the enabled features (each image's compressed size from `versions.lock.yml` × 2.5 as an estimate; once an image is pulled on a host, preflight and doctor use its real size there), the Incus pool (a loop file counts fully on its mount point, a dedicated device on none), the golden images to build (each blueprint's estimated size in its `image.yaml`, §7.13) and 5 GiB for pinka itself. A shortfall is refused and listed item by item (for example `model qwen3-8b-awq: 5.7 GiB, missing 2.1 GiB on /srv`).
+- **Disk, growth:** the pool size and every retention setting are configurable (Prometheus by time and size, Loki, Tempo, backups, artifacts); the installer shows the expected growth per day and week, and doctor warns before a disk fills (§9).
+- The Incus `bench` project's `limits.memory` follows the chosen number of concurrent targets (§7.7).
+
 ### 2.4 Outcomes and exit codes
 
 | Exit code | Outcome | Meaning | Bootstrap behavior |
 |---|---|---|---|
 | 0 | `supported` | All core requirements met; features computed | continue |
-| 10 | `degraded` | Core OK, one or more optional features unavailable | continue only with `--accept-degraded` or interactive confirmation listing exactly which features are disabled and what that means for research (e.g. "no GPU: vLLM will not be installed; inference campaigns cannot run on this host") |
-| 20 | `unsupported` | Core requirement failed, unsupported OS/arch/environment, or blocking conflict | abort; `--force-unsupported` continues but marks the host profile `override.force_unsupported=true`, which is carried into every environment fingerprint |
-| 30 | `needs_action` | Fixable by operator action (reboot, `wsl --terminate`, enroll MOK, remove conflict) | print exact remediation steps and abort; re-run after action |
+| 10 | `degraded` | Core OK, and one or more optional features unavailable or memory between the computed required and recommended values (§2.3) | continue only with `--accept-degraded` or interactive confirmation listing exactly which features are disabled and what that means for research (e.g. "no GPU: vLLM will not be installed; inference campaigns cannot run on this host") |
+| 20 | `unsupported` | Core requirement failed, unsupported OS/arch/environment, blocking conflict, or memory below the floor or the computed requirement (§2.3) | abort; `--force-unsupported` continues but marks the host profile `override.force_unsupported=true`, which is carried into every environment fingerprint |
+| 30 | `needs_action` | Fixable by operator action (reboot, `wsl --terminate`, enroll MOK, remove conflict, change a pre-existing component as named, §2.2) | print exact remediation steps and abort; re-run after action |
 | 40 | `preflight_error` | Detection itself failed unexpectedly | abort with traceback in log |
 
 Also report `tier` separately (`supported` / `tested` / `experimental`) and `release_model` (`fixed` / `fast` / `rolling`). `supported` and `tested` continue without extra consent (`tested` prints a note that GPU paths are not hardware-tested on this distro). `experimental` requires `--accept-experimental` (or interactive confirmation). `rolling` prints a reproducibility warning (§19.5). All of it is recorded in the profile.
 
 A `needs_action` rule may name a **planned action** that bootstrap performs itself once the operator consents (today only `secure_boot_mok`, §3.2). With the consent, preflight records it as a warning under `planned_actions` in the host profile instead of `needs_action`, and the outcome is computed without it. Preflight takes the inputs these rules need as options (`--nvidia-driver auto|manual|skip`, `--accept-mok-enrollment`), which bootstrap and the installer pass.
+
+Bootstrap's own exit codes are listed in §5.2 (step 8) and, for uninstall, in §5.4.
 
 ### 2.5 Host profile JSON (abbreviated example)
 
@@ -303,6 +318,11 @@ A `needs_action` rule may name a **planned action** that bootstrap performs itse
   "capabilities": {"cgroup2": true, "kvm_usable": false, "btrfs": true, "dm_thin_pool": false, "tun": true},
   "features": {"gpu_inference": true, "gpu_training": true, "vm_targets": false, "btrfs_pool": true, "lvm_thin_pool": false, "dcgm_metrics": false},
   "storage_backend": "btrfs",
+  "components": {"docker": {"installed": true, "version": "...", "running": true, "origin": "pre-existing", "cdi": true},
+                 "tailscale": {"installed": true, "logged_in": true, "origin": "pre-existing", "funnel": false, "ssh": false},
+                 "lxd": {"installed": false}, "podman": {"installed": false}, "incus": {"installed": false}},
+  "requirements": {"plan": "defaults", "memory_gib": {"floor": 8, "required": 16, "recommended": 24, "tolerance": 0.94},
+                   "disk": [{"mount": "/", "required_gib": 120.5, "free_gib": 640.2, "items": ["..."]}]},
   "conflicts": [],
   "warnings": ["vm_targets disabled: /dev/kvm not available (enable nestedVirtualization on the Windows side)"],
   "needs_action": [],
@@ -404,6 +424,7 @@ pokus-infrastructure/
 │   │   └── render.py                 # human summary
 │   ├── support-matrix.yml
 │   ├── endpoints.yml
+│   ├── requirements.yml              # what each component needs, for the requirements (§2.3)
 │   ├── schema/host-profile.schema.json
 │   └── tests/
 │       ├── fixtures/                 # fake roots: see §11
@@ -426,6 +447,7 @@ pokus-infrastructure/
 │   ├── site.yml
 │   ├── restore.yml
 │   ├── rotate.yml                    # secret/cert rotation
+│   ├── uninstall.yml                 # removal of what pinka installed (§5.4)
 │   ├── inventory/
 │   │   ├── hosts.yml                 # localhost, connection: local
 │   │   └── host_vars/
@@ -440,6 +462,7 @@ pokus-infrastructure/
 │       ├── platform_facts/           # family/distro facts; the only place that inspects the distro (§19.1)
 │       ├── pkg/                      # package-manager abstraction if module respawn is unreliable (§19.3)
 │       ├── preflight_gate/
+│       ├── install_record/           # what existed before pinka, what it added (§7.21)
 │       ├── provider_wsl2/
 │       ├── provider_baremetal/
 │       ├── provider_vm/
@@ -519,7 +542,7 @@ POSIX-compatible bash, `set -Eeuo pipefail`, ShellCheck-clean, `trap` for errors
 sudo ./bootstrap/bootstrap.sh --machine <name> [options]
 
 Options:
-  --machine NAME           Required. Selects ansible/inventory/host_vars/NAME.yml
+  --machine NAME           Required (except with --uninstall). Selects ansible/inventory/host_vars/NAME.yml
   --ref REF                Git ref of pokus-infrastructure being applied (recorded; default: current HEAD)
   --restore                After provisioning, run restore.yml (prompts for snapshot)
   --tags T1,T2             Pass through to ansible-playbook
@@ -533,6 +556,14 @@ Options:
   --accept-mok-enrollment  Consent to Secure Boot MOK enrollment for the automatic NVIDIA driver install (§3.2)
   --mok-password-stdin     Read the one-time MOK password from stdin; it is never stored (§3.2)
   --adopt-incus            Adopt an existing Incus installation (see §2.2)
+  --uninstall              Remove what pinka installed and keep the lab's data (§5.4)
+  --dry-run                With --uninstall: print the removal plan and change nothing
+  --purge-data             With --uninstall: also remove the lab's data (typed machine name required)
+  --confirm-machine NAME   With --uninstall --non-interactive: the typed machine name
+  --skip-backup            With --uninstall: do not offer a backup first
+  --remove-component C     With --uninstall on a host without an install record: also remove
+                           docker|incus|tailscale|nvidia (repeatable)
+  --json                   With --uninstall: print the plan and the report as JSON
   --inspect-platform       Fetch, stage and validate the platform release, print its summary, change nothing else (§7.14)
   --replace-platform NAME  Allow a platform with another name to replace the active platform NAME (§7.14)
   --allow-community-repos  Permit non-vendor, non-distro repositories (COPR, OBS, RPM Fusion) (§19.4)
@@ -552,7 +583,7 @@ Options:
 4. Create `/opt/pinka/ansible-venv` with the pinned Python version via uv and install the pinned `ansible-core` plus Python deps (`jmespath`, etc.) from a lockfile (`bootstrap/requirements.lock`, generated with `uv pip compile --generate-hashes`).
 5. Install pinned Ansible collections from `ansible/requirements.yml` into `/opt/pinka/ansible-collections`.
 6. Generate `ansible/group_vars/all/versions.yml` from `versions.lock.yml` (or verify it is in sync; fail if drifted).
-7. Run `ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml -e machine=<name> -e @/etc/pinka/host-profile.json` (pass the profile as structured vars under `host_profile`), with vault password handling.
+7. Run `ansible-playbook -i ansible/inventory/hosts.yml ansible/site.yml -e machine=<name> -e @/etc/pinka/host-profile.json` (pass the profile as structured vars under `host_profile`), with vault password handling. The play's first role after `preflight_gate` writes the install record before anything on the host changes (§7.21).
 8. Map Ansible-signaled conditions to bootstrap exit codes:
    - `75` — WSL restart required (`wsl --terminate <distro>` on Windows side, then re-run)
    - `76` — reboot required (bare metal/VM), or MOK enrollment pending
@@ -567,9 +598,20 @@ Re-running bootstrap after any exit (including 75/76/77) must resume cleanly.
 
 ### 5.3 Interactive front-end
 
-When bootstrap runs on a TTY without `--no-tui`/`--non-interactive`, it performs only the minimal sanity checks of `prepreflight.sh` (step 2 of §5.2), installs the pinned `uv`, the pinned CPython and the hash-locked installer environment under `/opt/pinka/`, and hands control to the installer TUI (§18). The TUI runs the full preflight, collects every input, writes the configuration files, and then drives the steps of §5.2 by invoking exactly the same commands. If preflight ends in an abort, the TUI offers to remove `/opt/pinka/` again so the host is left untouched.
+When bootstrap runs on a TTY without `--no-tui`/`--non-interactive`, it performs only the minimal sanity checks of `prepreflight.sh` (step 2 of §5.2), installs the pinned `uv`, the pinned CPython and the hash-locked installer environment under `/opt/pinka/`, and hands control to the installer TUI (§18). The TUI runs the full preflight, collects every input, writes the configuration files, and then drives the steps of §5.2 by invoking exactly the same commands. If preflight ends in an abort, the TUI offers to remove `/opt/pinka/` again so the host is left untouched. On a host with an install, the TUI also offers uninstall (§5.4, §18.4), running the same command.
 
 There must be **exactly one provisioning code path**: the TUI contains no provisioning logic, and a non-interactive run with the exported answers file must produce an identical result.
+
+### 5.4 Uninstall
+
+`sudo ./bootstrap/bootstrap.sh --uninstall [--dry-run] [--purge-data] [--skip-backup] [--json]` removes what pinka installed; `pinka uninstall` runs the same command from the checkout recorded in `/etc/pinka/bootstrap-state.json`. It works on a partial or failed install and without the `pinka` CLI: if the pinned tooling under `/opt/pinka` is missing, bootstrap installs it first, as a normal run does, and removes it last. The removal runs as an Ansible play (`ansible/uninstall.yml`).
+
+- **Plan.** Computed from the install record (§7.21) and the host's current state, and shown in full before anything is removed; `--dry-run` prints the same list and changes nothing. Items are removed in reverse dependency order: the platform (its `drain` hook, then its units); pinka's units, timers, sockets and slices; the Compose projects with their containers, networks, volumes and images; the Incus objects pinka created (instances in its projects, the projects, profiles, networks, the ACL, trust entries, the pool last; on an adopted Incus only those); the firewall objects pinka added (`inet pinka_filter` and `pinka-nftables.service`, the firewalld zone and ufw rules it added, the `DOCKER-USER` rules for Incus bridges); Tailscale (the serve entries pinka added; a logout only when pinka joined the node); the packages pinka added (holds, repositories and keys first, then the packages, then only those dependencies that were absent at the first install and are no longer needed); the accounts and groups pinka created, and the groups and keys it added to pre-existing accounts; its drop-in files; then pinka's paths, `/opt/pinka` last.
+- **What stays.** Everything the record lists as pre-existing stays as it is. The lab's data (`/srv/pinka`, the database files, backups, models) stays unless `--purge-data` is given and the machine name is typed (`--confirm-machine NAME` when non-interactive); a backup (`pinka backup now`) is offered first when a restic repository is configured, unless `--skip-backup`. An NVIDIA driver pinka installed is removed; an enrolled MOK stays in the firmware and is listed as kept, with the `mokutil --delete` steps. Uninstall never reboots; the report says when a reboot is needed.
+- **Hosts without an install record** (installed before the record existed): only what carries pinka's names is removed (`pinka-*` units, the reserved accounts with pinka's markers, pinka's paths, Incus objects with pinka's names, `inet pinka_filter`, `pinka-*` repository and key files). Docker, Incus, Tailscale and the NVIDIA packages are kept as "kept: origin unknown (no install record)" unless the owner names them with `--remove-component docker|incus|tailscale|nvidia` after the dry run.
+- **Idempotent and resumable.** An item already gone is reported as such; an interrupted uninstall continues when run again.
+- **Report.** `/var/log/pinka-uninstall/<UTC-timestamp>.json` (outside the removed paths) lists what was removed, what was kept and why; `--json` prints it.
+- **Exit codes** (each with a troubleshooting section): 0 done; 80 uninstall refused or not confirmed, nothing changed; 81 finished with items kept because they could not be removed (named in the report).
 
 ---
 
@@ -601,6 +643,7 @@ Rules:
 - Infra and platform accounts: system users, `/usr/sbin/nologin`, home under `/var/lib/pinka/<name>`, no SSH keys, no password.
 - `authorized_keys` managed exclusively from `users/*.pub` (`exclusive: true`). Removing a key from the repo removes it from the host.
 - Removed researchers (listed under `researchers_removed`) are locked (`usermod -L`, shell `nologin`), not deleted; their data is preserved.
+- Pre-existing accounts (§7.21): an account or group with a reserved name that pinka did not create is refused (§12.1). A researcher account that exists before pinka is kept as it is: pinka adds only its groups and its keys from `users/<name>.pub`, never removes a key it did not add (its `authorized_keys` is not managed exclusively), and uninstall removes only what pinka added.
 
 ### 6.2 `/srv/pinka` layout (`layout` role)
 
@@ -651,27 +694,33 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
 
 ### 7.4 `tailscale`
 - Source per family from the component source matrix (§19.4): Tailscale's official deb/rpm repositories, or the distro package where Tailscale recommends it (e.g. Arch). Pinned and held.
-- Join with `tailscale up --hostname=<machine_name> --advertise-tags=<tag> --accept-dns=false --ssh=false` using an auth key from vault if present; otherwise print the interactive login URL and wait (or fail in `--non-interactive`). Skip if already logged in with the same hostname and tags.
+- Join, when the node is not logged in: `tailscale up --hostname=<machine_name> --advertise-tags=<tag> --accept-dns=false --ssh=false` using an auth key from vault if present; otherwise print the interactive login URL and wait (or fail in `--non-interactive`). The install record notes that pinka joined the node. Skip if already logged in with the same hostname and tags after pinka joined it. A Tailscale that is installed but not logged in is not in use: pinka joins it as above, leaves its package as it is (no repository, pin, hold or replacement), and uninstall logs it out.
+- **Adopted node.** A node already logged in before pinka (§2.2, §7.21) is used as it is: no `tailscale up`, no change of hostname, tags or preferences, no repository added and no package pinned, held or replaced. Its hostname, tags, version and preferences are recorded in the install record, and doctor compares with that record instead of the configured hostname and tag. It is refused (preflight `needs_action`, before anything changes) when Funnel is on (invariant 3) or Tailscale SSH is on (it would bypass sshd and the researchers' keys); the remediation names the setting for the owner to change. An adopted node may lack `tag:pinka-lab`, and its key may expire with a personal account: doctor reports both as warnings, not failures, and `docs/security.md` explains the trade-off (the tailnet ACL has to name the node another way, and an expired key takes the lab off the tailnet until the owner signs in again).
 - `--accept-dns=false` by default (do not let MagicDNS alter host resolution); configurable.
-- Assert Funnel is **off** (`tailscale funnel status`) and fail the play if any funnel config exists. `tailscale serve` for Grafana and for the docs service is optional (`grafana_tailscale_serve`, `docs_tailscale_serve`), tailnet-only.
+- Assert Funnel is **off** (`tailscale funnel status`) and fail the play if any funnel config exists. `tailscale serve` for Grafana and for the docs service is optional (`grafana_tailscale_serve`, `docs_tailscale_serve`), tailnet-only. On an adopted node, serve is off by default and needs the owner's explicit consent as well (`tailscale_serve_consent: true`, a checkbox in the installer); pinka records the serve entries it adds, and uninstall removes only those.
 - Document required tailnet ACL snippet in `docs/security.md` (only the researchers' identities may reach `tag:pinka-lab:22` and the Grafana and docs serve ports).
 
 ### 7.5 `firewall`
 - Firewall **backend** is selected per host (§19.6): `nftables` (own table, loaded by a dedicated `pinka-nftables.service` from `/etc/pinka/nftables/pinka.nft`, so no distro nftables config file is edited), `firewalld` (zones), or `ufw` (rules). All three must produce the same effective policy below, verified by doctor. Never flush tables owned by Docker, Incus, firewalld or ufw.
 - Input policy: drop by default; allow established/related, loopback, ICMP essentials, `tailscale0` → tcp/22 (+ Grafana serve port if enabled), DHCP/DNS on Incus bridges from instances to the host **only** where needed for Incus's dnsmasq.
-- Docker coexistence: Docker sets FORWARD to DROP and loads `br_netfilter`, which breaks Incus bridge traffic. Add a systemd-managed hook (`pinka-docker-incus-compat.service`, `After=docker.service incus.service`) that inserts `DOCKER-USER` ACCEPT rules for Incus bridge interfaces (pattern from `incus_bridge_prefix`). Verify the current recommended approach in Incus docs and implement exactly that.
+- Docker coexistence: Docker sets FORWARD to DROP and loads `br_netfilter`, which breaks Incus bridge traffic. Add a systemd-managed hook (`pinka-docker-incus-compat.service`, `After=docker.service incus.service`) that inserts `DOCKER-USER` ACCEPT rules for Incus bridge interfaces (pattern from `incus_bridge_prefix`). Verify the current recommended approach in Incus docs and implement exactly that. The rules match only the Incus bridges pinka created: they must not change how the traffic of containers that existed before pinka is handled (real-machine test 4.4), and uninstall removes exactly the rules pinka added. Firewall tables and rules of LXD, Podman and the owner's own configuration are never touched.
 - Doctor check: list all listening sockets and fail if anything listens on `0.0.0.0`/`::` other than sshd (which is firewalled) — every lab service binds to `127.0.0.1`, a Unix socket, an internal Docker network, or one address of the non-loopback block (§12.11).
 
 ### 7.6 `docker` and `nvidia_container_toolkit`
 - Docker Engine from the source the component matrix selects (§19.4): Docker's official repositories where Docker publishes them for the distro (Ubuntu, Debian, Fedora, RHEL-compatible), otherwise the distribution's own package (openSUSE, Arch). Required: Engine with Compose v2 plugin and buildx; versions pinned and held where the source allows; the actually installed versions always recorded in the fingerprint.
-- `/etc/docker/daemon.json` (managed header): `log-driver: local` with size limits, `live-restore: true`, `default-address-pools` that **do not overlap** with Incus bridges, Tailscale CGNAT `100.64.0.0/10`, or common home LANs (`192.168.0.0/16`) — use e.g. `172.30.0.0/16` split into /24s; configurable. `data-root` configurable.
-- NVIDIA Container Toolkit (only if `features.gpu_inference` or `features.gpu_training`): from NVIDIA's deb/rpm/zypper repositories or the distro package (Arch), pinned. Prefer **CDI** for GPU access (`nvidia-ctk cdi generate`, using `--mode=wsl` on WSL2; Docker with CDI enabled; services request `nvidia.com/gpu=all`) because it works the same on every distro; fall back to `nvidia-ctk runtime configure --runtime=docker` only where CDI is not usable, and record which method is active. Restart Docker only if its config changed.
+- **A Docker Engine that existed before pinka** (§2.2, §7.21) is used as it is: pinka never writes its `daemon.json`, never restarts it and never pins, holds or replaces its packages (their versions are still recorded in the fingerprint). It must provide the Compose v2 plugin and buildx; otherwise preflight reports `needs_action` with the packages to install.
+- `/etc/docker/daemon.json` (managed header) is written only for a Docker Engine pinka installed itself, and holds only what such an install needs: `live-restore: true`, `data-root` (configurable), `selinux-enabled` on SELinux hosts (§19.7), and `features.cdi: true` only on a GPU host whose Docker, a distribution's own package, is older than 28.2 (below).
+- Every other setting the lab needs lives in its own Compose projects, the same on every install: the log driver and size limits per service, the cgroup parent per service (`pinka-services.slice`), and networks with explicit subnets from pinka's pool, which **does not overlap** with Incus bridges, Tailscale CGNAT `100.64.0.0/10`, or common home LANs (`192.168.0.0/16`) — e.g. `172.30.0.0/16` split into /24s; configurable.
+- GPU access needs CDI. Docker Engine 28.2 and later enable CDI unless `features.cdi` is `false` (verified in the source of the pinned release), so pinka writes no CDI setting on a Docker of 28.2 or later. When a GPU feature is on and a Docker that existed before pinka has CDI off (`docker info` reports no CDI spec directories), preflight reports `needs_action` with the exact `daemon.json` change for the owner to make (remove `"features": {"cdi": false}`, or on a Docker older than 28.2 add `"features": {"cdi": true}`) and the restart that applies it.
+- NVIDIA Container Toolkit (only if `features.gpu_inference` or `features.gpu_training`): from NVIDIA's deb/rpm/zypper repositories or the distro package (Arch), pinned. Use **CDI** for GPU access (`nvidia-ctk cdi generate`, using `--mode=wsl` on WSL2; services request `nvidia.com/gpu=all`) because it works the same on every distro; fall back to `nvidia-ctk runtime configure --runtime=docker` only where CDI is not usable and only on a Docker pinka installed (the fallback writes `daemon.json`), and record which method is active. Restart Docker only if its config changed, and only a Docker pinka installed.
 - Verification task: run a pinned CUDA base image **by digest** with `--gpus all` and `nvidia-smi`; record output into `/var/lib/pinka/verify/gpu-docker.txt`.
 - Lab services run as Compose projects managed by systemd units: `pinka-core.service`, `pinka-observability.service`, `pinka-inference.service` (`Type=oneshot` + `RemainAfterExit=yes` calling `docker compose up -d --wait` / `down`, or a better pattern if you find one — document it). All images referenced **by digest**. Their containers and the platform's units run in `pinka-services.slice`, pinned to `cpuset_services` when it is set (§12.6).
 - Infra's Docker also runs the GPU training containers of §7.18 (names with the prefix `pinka-job-`): the GPU through CDI as for vLLM, and only the fixed options of §7.18, never options from a manifest. The agent never reaches Docker.
 
 ### 7.7 `incus`
 - Install Incus LTS (6.0.x) from the source the component matrix selects per distro (§19.4): distro package, Zabbly repository (Debian/Ubuntu), EPEL/COPR (RHEL-compatible), OBS (openSUSE Leap), or the Arch package. Verify availability per distro at build time; where only a non-LTS version exists (rolling distros), record it and mark the host `incus_channel: non_lts` in the profile. Group names (`incus`, `incus-admin`) and the `incus-user` daemon availability must be verified per distro and mapped in family vars.
+- On Ubuntu 26.04 Incus comes from Ubuntu's own `incus` package in universe (the 6.0 LTS series; Zabbly's `lts-6.0` repository has no 26.04 suite), through a per-release source override (§19.4). Universe has no guaranteed security updates, which the support matrix states; `make lock-pins` reports when Zabbly's `lts-6.0` publishes a 26.04 suite, so the choice is revisited.
+- **LXD next to Incus.** LXD (snap or package) is a pre-existing component: detected, never changed, stopped or reconfigured. Before anything is installed, preflight checks that Incus next to it does not clash: bridge names (LXD's networks against `pinka-build0` and the `r-` prefix), their subnets (against pinka's networks and the Docker pool), dnsmasq (a DNS/DHCP server of LXD or the host bound to every address would take the port Incus's dnsmasq needs on its bridges; verify), the firewall (LXD's own tables stay untouched, and pinka's rules must not change LXD's traffic), storage (the pool device or loop path is not LXD's) and the Incus listener's port (LXD's `core.https_address`). On a clash it reports `needs_action` naming the clash, instead of installing.
 - Initialize from `incus/preseed.yaml.j2`:
   - storage pool `pinka-targets`: `btrfs` (loop with `incus_pool_size`, or `device`) or `lvm` thin (fallback);
   - **no** default `incusbr0` with NAT for targets; create:
@@ -679,7 +728,7 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
     - per-run networks are created and deleted at runtime only through infra's **run-network helper** (below); infra creates the network **template conventions** (prefix `r-`, no NAT, no upstream) and Incus network ACL `pinka-run-default` (deny all egress except intra-network);
   - projects:
     - `build` — image builds, internet allowed;
-    - `bench` — official benchmark runs; `restricted=true` with explicit allowances (nesting allowed, VMs allowed only if `features.vm_targets`, limits enforced; `limits.cpu` is the number of CPUs in `cpuset_targets` when it is set, §12.6);
+    - `bench` — official benchmark runs; `restricted=true` with explicit allowances (nesting allowed, VMs allowed only if `features.vm_targets`, limits enforced; `limits.cpu` is the number of CPUs in `cpuset_targets` when it is set, §12.6; `limits.memory` follows the chosen number of concurrent targets, §2.3);
     - personal per-user projects via Incus's `incus` group / `incus-user` daemon (verify mechanism and limits; set conservative per-user limits via `restricted.*` and `limits.*`).
   - profiles: `target-container` (limits template, `security.nesting` per blueprint, root disk size, guest API disabled), `target-vm` (only if `vm_targets`), `build`, `probe-client`.
 - Trust and certificates: generate one client certificate per platform service whose profile has Incus access (§12.2), stored in `/etc/pinka/incus/<platform>-<service>/` (0600, owned by the service's account) and added to Incus trust as **restricted**: `controller` to projects `bench` and `build`, `sandbox-operator` and `restricted-operator` to `bench`. Replacing a platform (§7.14) and `rotate.yml` remove the old certificates from the trust store. Prometheus gets a metrics-only certificate (`type: metrics`).
@@ -701,10 +750,12 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
   - logs: `otlp`, `journald` (host) → `memory_limiter` → `resource` → `batch` → Loki (OTLP endpoint, verify Loki version supports native OTLP ingestion) ;
   - metrics: `otlp` → Prometheus (remote-write or Prometheus exporter scraped — choose and document);
   - traces: `otlp` → Tempo.
-- **Prometheus**: scrape node_exporter, cAdvisor, Incus metrics (TLS metrics cert), Postgres exporter, OTel collector self-metrics, vLLM `/metrics` (if inference), GPU exporter (DCGM or nvidia-smi exporter per feature flag). Retention configurable (default 90d). No listener that a platform profile can reach (query proxy below).
+- **Prometheus**: scrape node_exporter, cAdvisor, Incus metrics (TLS metrics cert), Postgres exporter, OTel collector self-metrics, vLLM `/metrics` (if inference), GPU exporter (DCGM or nvidia-smi exporter, below). Retention configurable by time (default 90d) and size. No listener that a platform profile can reach (query proxy below).
 - **Loki** and **Tempo**: single-binary, filesystem storage under `/srv/pinka/state`, retention configured, no listener that a platform profile can reach (query proxy below).
 - **Grafana**: provisioned datasources (Prometheus, Loki, Tempo) and dashboards from `config/grafana/dashboards/`: host overview, GPU & vLLM, Incus targets, lab services health. Admin password from vault; researcher Grafana accounts provisioned from `researchers`; anonymous access off; bind `127.0.0.1:18700`; optional `tailscale serve`. Its Prometheus, Loki and Tempo datasources go through the query proxy too, so no Grafana user reaches a write or admin endpoint.
 - Exporters: node_exporter and cAdvisor bound to 127.0.0.1 or internal network only.
+- **GPU exporter.** `observability_gpu_exporter: dcgm` (where `dcgm_metrics` is available) runs the DCGM exporter as a Compose service of its own: the pinned digest, bound to `127.0.0.1`, the default counters, GPU access through CDI as for vLLM, and no added capabilities, so no profiling metrics. The nvidia-smi exporter then does not start; with `nvidia_smi` the reverse. A render test fails if the choice and the running exporter differ; doctor checks the exporter's endpoint.
+- The retention settings of Prometheus, Loki and Tempo enter the expected growth of the requirements computation (§2.3).
 - **Platform dashboards**: the dashboards directory the manifest names (JSON files only) is provisioned into a Grafana folder named after the platform, with a read-only PostgreSQL datasource on the platform's Grafana role through the reader socket directory (§7.8). Run dashboards, such as the Pokus Platform's run explorer, ship with the platform, never with infra. The collector turns the manifest's `telemetry.labels` (at most four resource attributes) into Loki labels.
 - **Agent OTLP socket** `/run/pinka/otlp/agent.sock`: `pinka-otlp-agent.socket` activates a small proxy to the collector for `untrusted-agent` services, which have no network. The collector stamps everything received through it with `pinka.trust=untrusted`, so the agent cannot pass its telemetry off as another component's.
 - **Query proxy** `pinka-query-proxy` (a container in the observability project) is the only way to query telemetry. It listens on `/run/pinka/query.sock` (0660, group `pinka-query`, whose members are exactly the accounts of the profiles that query, §12.2; root can always connect) and forwards to Prometheus, Loki and Tempo only their query endpoints: an allowlist of methods and paths (instant and range queries, series, labels and label values, trace lookup and search), verified against the pinned releases. Everything else is refused with 403, above all push and remote write, deletion, admin, configuration, flush, rules and alerting endpoints. It adds no credentials and does not rewrite queries. Only the collector and the proxy reach Prometheus, Loki and Tempo directly; no platform service reaches their query or push endpoints except through the proxy. The mechanism is decided at implementation and recorded in an ADR, in this order of preference:
@@ -727,9 +778,10 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
 - Models mounted read-only from `/srv/pinka/models`; `HF_HUB_OFFLINE=1`; bound to an internal Docker network plus `127.0.0.1:18704` (§12.11) for the inference broker; never public (on an inference node the control endpoint forwards it to the tailnet with mutual TLS, §19.10).
 - **Who reaches the inference API.** Only the accounts of `inference-broker` and `controller` and infra's own checks (doctor, the serving verification, the health gate, Prometheus' scrape) reach vLLM's API, so no other platform service can bypass the inference broker. The mechanism follows §7.9's order of preference and is recorded in the same ADR: (a) vLLM on a Unix socket (if the pinned release supports it; verify) or behind client authentication, an API key that only those accounts and infra's checks hold; (b) otherwise the UID-range nftables output rule of §7.9, which lets only those accounts through. The same holds for the inference forwarder on a lab node (§12.8). The isolation probe proves it (§7.18).
 - Health check and `/metrics` scraped by Prometheus.
+- The selected model's memory and disk need (its files plus the serving runtime) enters the requirements computation (§2.3).
 
 ### 7.12 `models`
-- Input: `models.lock.yml` entries `{id, hf_repo, revision (full commit hash), files: [{path, sha256}], license, gated: bool, quantization, notes}`.
+- Input: `models.lock.yml` entries `{id, hf_repo, revision (full commit hash), files: [{path, sha256, size}], license, gated: bool, quantization, notes}`; `size` (bytes, from Hugging Face's file metadata when the model is pinned) feeds the requirements computation (§2.3).
 - Download with a pinned `huggingface_hub` CLI in an isolated uv environment into `/srv/pinka/models/<hf_repo>/<revision>/`, verify every sha256, set 0444, write `MANIFEST.json` (id, revision, files, hashes, download time, tool version). HF token for gated models from vault.
 - Tag: `models`. Skippable. Never re-download verified files.
 - `models/` belongs to root (§6.2). **Adapters** live in `models/adapters/<name>/<sha256>/` with `MANIFEST.json` and `LINEAGE.json`, are registered only by the GPU arbiter (§7.18) and are read-only; base models are mounted read-only into training jobs.
@@ -737,7 +789,7 @@ Re-run preflight, compare with `/etc/pinka/host-profile.json` (§2.6), expose `h
 - The TUI offers the catalog entries that fit the detected profile, plus "custom (HF repo + revision)" and "none". A selection is added to `models.lock.yml` with per-file sha256 resolved from Hugging Face file metadata (LFS sha256) *before* download, then verified after download.
 
 ### 7.13 `images` (golden image pipeline)
-- Each blueprint directory: `image.yaml` (base image: remote, alias, **pinned fingerprint**; instance type container/vm; packages with pinned versions where it matters; preloaded Docker images **by digest** for Docker-in-target blueprints; services to enable; telemetry agent config), `cloud-init.yaml`, `provision.yml` (Ansible run inside the build instance), `files/`, `tests/` (post-build assertions).
+- Each blueprint directory: `image.yaml` (base image: remote, alias, **pinned fingerprint**; instance type container/vm; estimated size in GiB, for the requirements computation (§2.3) until a build measures it; packages with pinned versions where it matters; preloaded Docker images **by digest** for Docker-in-target blueprints; services to enable; telemetry agent config), `cloud-init.yaml`, `provision.yml` (Ansible run inside the build instance), `files/`, `tests/` (post-build assertions).
 - Build flow (in project `build`, network `pinka-build0`): launch from pinned base → provision → run tests → **leakage lint** → clean (apt caches, shell histories, logs, cloud-init artifacts, machine-id, SSH host keys regenerated on first boot) → stop → `incus publish` with alias `<blueprint>/<version>` and properties (`pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint`, and Incus's own `requirements.nesting`, `true` for blueprints that need nesting, so Incus refuses to start such an image without `security.nesting=true`) → `incus image export` to `/srv/pinka/images/<blueprint>/<version>/` with `sha256sum` file.
 - Base images from public image servers rotate and old builds disappear: export and keep the **base** image tarball too, so rebuilds stay possible.
 - Leakage lint (must fail the build): no files or strings matching scenario ID patterns (`[A-Z]+-[0-9]{3}`), no `fault`, `inject`, `ground_truth`, `scenario`, `pokus`, `pinka` or `potka` strings, with no exceptions (the allowlist of the neutrality lint, §11, does not apply to images), and none of the Pokus Platform's service and unit names, in `/etc`, `/opt`, `/srv`, `/usr/local`, unit names, hostnames, or environment files; no checkouts of the project's repositories inside the image. Make the pattern list configurable.
@@ -873,6 +925,16 @@ A QA maintenance window lets a staging lab use the production lab's hardware for
 - **Staging** with `staging_shared_hardware: true`: `pinka start` refuses unless its own record is open now, the GPU is idle (no process uses it) and every configured port (§12.11) is free. When the end passes, `pinka-window-expiry.timer` stops the staging lab, and `start` refuses again.
 - Staging on separate hardware needs no window.
 
+### 7.21 `install_record` (pre-existing components)
+
+Runs right after `preflight_gate`, before any change to the host.
+
+- Writes `/var/lib/pinka/install-record.json` (0600 root; its schema ships with the role): for every item pinka manages — the packages of the component source matrix and of every role, repository files, keys, holds, accounts and groups (and the groups and keys pinka adds to pre-existing accounts), units, firewall objects, drop-in files, and the state of Docker, Incus, LXD, Podman, Tailscale (joined or not, preferences, serve entries) and the NVIDIA driver — whether it existed before pinka.
+- The `preexisting` part is written once, at the first install, and never rewritten, so a later run never mistakes pinka's own items for the host's. Every run adds what it created to the `added` part (new platform accounts, new packages, serve entries). At the first install the record also keeps the full package list with versions and the enabled units, for uninstall's dependency cleanup and the snapshot lane (§19.9).
+- Roles read the record through the facts it exposes and never change what it lists as pre-existing (invariant 24); preflight has already stopped on a host where the lab could not run without such a change (§2.2).
+- An NVIDIA driver installed before pinka is never replaced or removed; one pinka installed is removed by uninstall (§5.4).
+- Check mode writes nothing and prints the record a real run would write.
+
 ---
 
 ## 8. Configuration model
@@ -897,6 +959,7 @@ incus_pool_source: loop            # loop | device
 incus_pool_size: 300GiB            # for loop
 incus_pool_device: ""              # /dev/disk/by-id/... for device
 incus_pool_device_confirm: ""      # must equal incus_pool_device exactly, or nothing is formatted
+incus_concurrent_targets: 2        # targets that run at once: sizes the bench project's limits.memory and the memory requirement (§2.3)
 
 pinka_root: /srv/pinka
 docker_data_root: /var/lib/docker
@@ -928,6 +991,11 @@ training_caps: {timeout_seconds: 86400, memory_max: 24G, cpus: 8}   # jobs' limi
 grafana_tailscale_serve: false
 docs_release: null                 # {url: "<docs release tarball URL or path>", sha256: "<hex>"}; null = no docs service (§7.19)
 docs_tailscale_serve: false        # expose the docs service through tailscale serve (tailnet only)
+tailscale_serve_consent: false     # adopted Tailscale node only: consent to tailscale serve for Grafana or docs (§7.4)
+observability_prometheus_retention: 90d      # retention settings enter the expected growth (§2.3)
+observability_prometheus_retention_size: 0   # 0 = by time only
+observability_loki_retention: 2160h
+observability_tempo_retention: 720h
 ports: {}                          # overrides of the default ports (§12.11); the effective values go to endpoints.toml
 vm_collector_address: 198.18.0.1   # VM targets' collector address (§12.6); must not overlap any host address or route
 ssh_extra_allowed_interfaces: []   # e.g. [enp5s0] to allow LAN SSH on bare metal
@@ -950,13 +1018,14 @@ Python (stdlib-only preferred so it works even when uv/venv is broken), installe
 
 | Command | Purpose |
 |---|---|
-| `pinka preflight [--json]` | Run preflight (read-only) |
+| `pinka preflight [--json] [--plan FILE]` | Run preflight (read-only); with `--plan`, the requirements of those choices (§2.3) |
 | `pinka doctor [--json] [--smoke]` | Full health and security check (below) |
 | `pinka status` | Units, containers, Incus projects/instances summary, GPU and the arbiter's mode with its last transitions, disk, last backup; the platform's name, version and `health` answer; the served docs version; an open maintenance window; on a `lab` or `inference` node, that training is unavailable on this host |
 | `pinka start` / `stop` | Start/stop `pinka-lab.target`. `start` waits for the platform's `health` hook and refuses while a maintenance window is open on production, or outside one on shared-hardware staging (§7.20). `stop` first runs the platform's `drain` hook (if a platform is active) with `--timeout`, then asks the GPU arbiter for `idle`, then stops `pinka-platform.target` and the remaining units in reverse dependency order |
 | `pinka fingerprint [--json]` | Print the current environment fingerprint and its hash. As root it computes and caches the fingerprint; as any other user it prints the cached root-computed fingerprint with its `computed_at` time and never escalates |
 | `pinka backup now` / `backup list` | Trigger backup / list snapshots |
 | `pinka restore` | Wrapper around `restore.yml` |
+| `pinka uninstall [--dry-run] [--purge-data] [--skip-backup] [--json]` | Run `bootstrap.sh --uninstall` from the recorded checkout (§5.4) |
 | `pinka images list`, `images build <blueprint>`, `images export` | Golden image helpers |
 | `pinka user add`, `user remove`, `user keys` | Thin wrappers that edit repo files and remind to commit + re-run bootstrap (never mutate the host directly) |
 | `pinka wsl-helpers` | Print paths and instructions for `contrib/windows/` (wsl2 provider only) |
@@ -971,8 +1040,8 @@ Python (stdlib-only preferred so it works even when uv/venv is broken), installe
 - Units in `pinka-lab.target` active; containers healthy; images running match pinned digests.
 - No unexpected listening sockets (non-loopback: only sshd, reachable via the allowed interfaces only, and the non-loopback block of §12.11); every configured port is held by its lab listener.
 - nftables `inet pinka_filter` present; DOCKER-USER compat rules present.
-- Tailscale: logged in, hostname and tags as expected, **Funnel off**.
-- Docker GPU test (if `gpu_inference` or `gpu_training`); the driver supports the CUDA version of the pinned vLLM image (§2.2), with the remediation; vLLM health (if a deployment is active).
+- Tailscale: logged in, **Funnel off**, Tailscale SSH off; hostname and tags as configured on a node pinka joined, as recorded on an adopted node (§7.4), where a missing `tag:pinka-lab` and an expiring key are warnings, not failures.
+- Docker GPU test (if `gpu_inference` or `gpu_training`) and CDI enabled in Docker (§7.6); the driver supports the CUDA version of the pinned vLLM image (§2.2), with the remediation; vLLM health (if a deployment is active).
 - Incus: pool backend and free space, projects, profiles, restricted certs present with correct ownership, metrics endpoint scrapeable, events unit active.
 - `/srv/pinka` tree ownership/modes/ACLs match the layout spec exactly.
 - Researchers not in `docker`/`incus-admin` (except break-glass list); service accounts not in `docker`.
@@ -983,6 +1052,9 @@ Python (stdlib-only preferred so it works even when uv/venv is broken), installe
 - CPU sets: `cpuset_services` and `cpuset_targets` valid and disjoint, applied to `pinka-services.slice` and the `bench` project; a warning when SMT siblings of one core fall into different sets.
 - Docs service: the served version. Maintenance window: open or not, with its end.
 - Time sync state and clock offset.
+- Free space per mount point, recorded on every run, with its trend over the last runs: a warning at 15 % free, or when the trend reaches full within 7 days; the requirements of the configured choices (§2.3) still met.
+- The install record present and readable (§7.21).
+- The GPU exporter the configuration chose answers on its endpoint (§7.9).
 - Backup: last successful backup age within threshold; restic repository reachable.
 - WSL provider: `wsl.conf` values; effective memory/CPU vs `expected`; `/dev/kvm` presence; warn if interop/automount enabled.
 - `--smoke`: launch a throwaway instance from each golden image in project `bench` with a fresh no-NAT network and proxy device; assert systemd running, blueprint services healthy, telemetry arrives at the gateway tagged with the throwaway run ID, no egress to the internet, no route to lab services; destroy everything; leave no trace.
@@ -1041,6 +1113,9 @@ incus_base_images:
 
 - `make lock-check`: schema validation, no `TODO(verify)`/`<verify>`, every container digest resolvable (`docker buildx imagetools inspect` or registry API), every binary URL+sha256 consistent (download to temp and hash), every apt key fingerprint matches.
 - `make lock-update`: documented manual procedure (do not auto-bump).
+- A package version may differ per architecture: `packages.<component>.<release>.<package>` is a version or `{x86_64: <version>, aarch64: <version>}` (Zabbly builds each architecture separately); the play picks the host's.
+- Each container image records its compressed size per platform from its manifest (`size`), re-verified by `make lock-check`; the requirements computation (§2.3) estimates the unpacked size as 2.5 × that until the image is pulled on a host.
+- `make lock-pins` (maintainer tooling) fetches and prints the vendor pins the lock cannot verify from its own data, and reports when Zabbly's `lts-6.0` repository publishes a suite for a release that takes Incus from elsewhere (Ubuntu 26.04, §7.7).
 
 ### 10.2 Environment fingerprint
 
@@ -1099,6 +1174,12 @@ Document in `docs/reproducibility.md` that latency/resource comparisons are vali
   - `ubuntu2404-cgroup-v1` → unsupported
   - `ubuntu2404-low-memory` → unsupported (below required minimum)
   - conflicting-signal fixture → confidence `low` + warning
+  - `ubuntu2604-baremetal` → supported, pending verification noted
+  - `ubuntu2404-baremetal-lxd` → Incus next to LXD without a clash: info; `ubuntu2404-baremetal-lxd-clash` → needs_action naming the clash
+  - `ubuntu2404-baremetal-podman` → info; `ubuntu2404-baremetal-podman-docker` → needs_action
+  - `ubuntu2404-baremetal-tailscale-adopted` → info, the node in `components`; `ubuntu2404-baremetal-tailscale-funnel` and `ubuntu2404-baremetal-tailscale-ssh` → needs_action
+  - `ubuntu2404-baremetal-docker-preexisting` → info; with a GPU and CDI off → needs_action with the `daemon.json` change
+  - memory just above and just below the floor and the computed required and recommended values (with the 0.94 tolerance), and a disk shortfall listed item by item
 - Snapshot tests for the human-readable summary.
 - Schema validation tests for every generated host profile.
 - **Lint**: `shellcheck`, `shfmt -d`, `ruff`, `ruff format --check`, `mypy --strict` for preflight and CLI, `yamllint`, `ansible-lint` (production profile), JSON Schema validation of `support-matrix.yml` and `versions.lock.yml`.
@@ -1111,6 +1192,9 @@ Document in `docs/reproducibility.md` that latency/resource comparisons are vali
 - **Records**: the session record and the fingerprint document validate against their schemas in `contract/records/`, including records with `null` fields and their reasons.
 - **Ports, docs service and maintenance windows**: port overrides reach `endpoints.toml`; preflight fixtures for a lab port in use and a conflicting VM collector address; `pinka docs install` and `rollback` (checksum, unsafe archive members, three versions kept) and `pinka window` (open, close, expiry on both sides, the shared-hardware checks) against a fake host.
 - **Check mode in CI**: the required job runs the provider-agnostic roles (§19.9); a separate, non-blocking extended job runs the whole play in check mode with the reference platform enabled and lists every skipped component.
+- **Install record and uninstall**: the record's first-install and later-run parts; every role's refusal to change a pre-existing component; the uninstall plan from recorded fixtures (order, kept items, a host without a record, `--remove-component`), its report and exit codes; the `make test-distros` uninstall lane and its pre-existing variant (§19.9).
+- **Requirements**: the computation from `preflight/requirements.yml` for every combination of choices the installer offers; preflight, the installer and doctor give the same numbers for the same choices.
+- **Python versions**: preflight's suite also runs on the Python of the newest supported distribution (Ubuntu 26.04: 3.14), besides 3.9 and the pinned CPython.
 - **CI** (GitHub Actions): all of the above except role tests that need privileged virtualization.
 
 ---
@@ -1356,7 +1440,7 @@ For the Pokus Platform, a release candidate is an infra release, a platform rele
 
 ### 12.11 Ports
 
-Every TCP listener of the lab binds to `127.0.0.1` unless the table says otherwise or it is in the non-loopback block below. `docs/contracts.md` carries the same table with its defaults. Each port can be overridden in host_vars (`ports:`); infra writes the effective values into `endpoints.toml`, and the platform reads them from there, never from the defaults. Preflight reports a configured port that a process outside the lab already uses (§2.2). Exporters and internal health endpoints have no contract port; PostgreSQL has no TCP listener at all.
+Every TCP listener of the lab binds to `127.0.0.1` unless the table says otherwise or it is in the non-loopback block below. `docs/contracts.md` carries the same table with its defaults. Each port can be overridden in host_vars (`ports:`); infra writes the effective values into `endpoints.toml`, and the platform reads them from there, never from the defaults. Preflight reports a configured port that a process outside the lab already uses (§2.2). Exporters (the GPU exporter included, nvidia-smi or DCGM, §7.9) and internal health endpoints have no contract port and bind to `127.0.0.1` or an internal network; PostgreSQL has no TCP listener at all.
 
 | Default port | Listener | Bound to |
 |---|---|---|
@@ -1390,7 +1474,7 @@ Every TCP listener of the lab binds to `127.0.0.1` unless the table says otherwi
 6. Every external artifact pinned and verified (§10). No `latest` tags. No `curl | bash`.
 7. No automatic reboots without `--allow-reboot`. No automatic kernel or driver upgrades.
 8. Idempotent: second run reports `changed=0`.
-9. Do not flush or rewrite firewall tables owned by Docker or Incus.
+9. Do not flush or rewrite firewall tables owned by Docker, Incus, LXD, Podman, firewalld or ufw.
 10. Hosts with `lab_mode: staging` use their own vault, `/srv/pinka`, Tailscale identity (QA tag) and signing key, and are never paired with or allowed to write to a production host. Infra installs QA trusted public keys into `/etc/pinka/qa/trusted-keys/` from `qa_trusted_keys` in group_vars, and provides `/etc/pinka/qa/attestations/` (root-owned, readable by the active platform's controller) where a human places published QA attestations. On shared hardware (`staging_shared_hardware: true`), staging runs only inside an open maintenance window with the GPU idle and its ports free, and production stays stopped while its own window record exists (§7.20).
 11. Every override (`--force-unsupported`, `--accept-degraded`, `--accept-experimental`, `--allow-dirty`, break-glass groups) is recorded in the host profile and environment fingerprint.
 12. **No personal or installation-specific data in the repository.** No real names, usernames, e-mail addresses, organization or institution names, hostnames, domains, IP or MAC addresses, hardware serials/UUIDs, SSH keys, Tailscale identities, or anything else that identifies a person or a specific installation — in code, configuration, examples, fixtures, tests, documentation, screenshots or generated files. Use neutral placeholders: `researcher1`, `researcher2`, …; `example-org`; `example.com` / `example.org` / `example.net` (RFC 2606); documentation IP ranges `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, `2001:db8::/32` (private RFC 1918 and CGNAT ranges are allowed only as technical defaults such as address pools); MACs from `00:00:5e:00:53:00/24` (RFC 7042); zeroed serials and UUIDs. Real deployment data (host_vars of real machines, `users/*.pub`, installer answers, vaults) belongs only in the deploying lab's own private fork or configuration repository: `.gitignore` excludes it from the public project, the installer's commit offer warns when the target remote is the public upstream, and fixtures captured from real hosts pass a documented sanitizer first. A CI **privacy scan** enforces this (e-mail addresses outside RFC 2606 domains, public IP addresses, MAC addresses outside the documentation range, SSH/PGP key material outside clearly marked test fixtures, and an optional maintainer-supplied denylist provided as a CI secret, never committed). This rule is about data tied to a **person or a specific installation**; it does **not** restrict references to public services, vendors and projects (GitHub, GitHub Actions, Docker Hub, Hugging Face, Tailscale, distribution mirrors, upstream documentation, model names) or to the Pokus project's own public repository and organization once it is published. Pokus is an open-source project meant to be deployed and customized by anyone, so every person- or installation-specific value is supplied by the deployer at deploy time and never baked into the project.
@@ -1405,6 +1489,8 @@ Every TCP listener of the lab binds to `127.0.0.1` unless the table says otherwi
 21. Platform services query telemetry only through the read-only query proxy (§7.9); none reaches Prometheus, Loki or Tempo directly, to query, push, delete or administer. The reference platform's isolation probe proves it, and doctor checks it on every host.
 22. Only the inference broker, the controller and infra's own checks reach the inference API (vLLM, or the inference forwarder on a lab node); platform services never hold the inference node's keys (§7.11, §12.8).
 23. Run networks are created and deleted only through the run-network helper, with its fixed settings; every operation is recorded (§7.7).
+24. Pre-existing components (Docker Engine, Tailscale, LXD, Podman, an Incus not adopted with `--adopt-incus`, an NVIDIA driver, user accounts) are never changed, stopped, restarted or reconfigured (a Tailscale that is installed but not logged in is not in use, §7.4); where the lab cannot run without such a change, preflight stops before anything changes and names the change for the owner to make (§2.2, §7.21).
+25. Uninstall removes only what the install record names as pinka's (on a host without a record, only what carries pinka's names), never a pre-existing component, and keeps the lab's data unless `--purge-data` is given with the typed machine name (§5.4).
 
 ## 14. Code style and conventions
 
@@ -1429,6 +1515,7 @@ Follow `docs/DOCS_SPEC.md`. The list below is the infra-specific minimum; the sp
 - `docs/providers/vm.md`: GPU passthrough requirements per hypervisor, nested virtualization, measurement caveats.
 - ADRs: Incus for targets (vs Docker/VMs only), native Docker Engine (vs Docker Desktop), provider model, family-based portability with a data-driven component source matrix, uv-managed Python instead of distro Python, firewall backend integration instead of replacement, stdlib-only preflight, Postgres socket-only access, OTel-based telemetry, btrfs/LVM-thin requirement (no `dir` backend), no orchestration frameworks.
 - Contract v2: `docs/contracts.md` rewritten as contract v2 (profiles, manifest, reserved names, paths, sockets, principals and endpoints files, database, Incus, telemetry, inference, the GPU arbiter and jobs, hooks, provenance and lineage); drift-checked generated references for the manifest (from the schema's descriptions), the profile grants (from `contract/profiles.yml`), the reserved names, the principals and endpoints files and the provenance and lineage records; how-tos "Plug a platform into the lab", "Replace or purge a platform" and "Run a training job and serve its adapter"; the tutorial "Write a minimal platform" (the reference platform); explanations "Privilege profiles and restricted data" and "The GPU arbiter" (split-node training recorded as future work); updated `security.md`, `operations.md`, backup and restore guides, `docs/providers/wsl2.md` (CDI for training containers) and exit-code reference (65); ADR-0014 "Platforms plug in through manifests and fixed privilege profiles" and ADR-0015 "GPU training as infra-run container jobs".
+- Plan item 3f-1: the how-tos "Uninstall the lab" and "Install next to existing Docker, Tailscale, LXD or Podman"; the explanations "Pre-existing components" (what pinka uses as it is, what it refuses, the trade-off of an adopted Tailscale node) and "Capacity planning" (the requirements computation, estimated versus measured numbers, growth); troubleshooting sections for exit codes 80 and 81; the support matrix and `docs/distros/debian.md` for Ubuntu 26.04 (Incus from universe).
 
 ## 16. Implementation order (within this single build)
 
@@ -1466,6 +1553,8 @@ After each numbered step: write or update the documentation for what the step bu
 - All preflight fixtures produce the expected outcome, provider, and features.
 - `sudo ./bootstrap/bootstrap.sh --machine example-machine --check` runs end-to-end in check mode on an Ubuntu 24.04 test host without errors.
 - `make test-distros` (§19.9) passes on every `supported` and `tested` distribution: full bootstrap without GPU, a second run with `changed=0`, and `pinka doctor --smoke` exit 0.
+- The `make test-distros` uninstall lane passes on every `supported` and `tested` distribution, and so does its pre-existing variant (§19.9): after uninstall the host's snapshot equals the one before install, apart from the items listed as kept on purpose.
+- Preflight, the installer and doctor show the same requirements for the same choices (§2.3).
 - On a real supported host (run by me): a full bootstrap completes, a second run reports `changed=0`, and `pinka doctor --smoke` exits 0.
 - Every role has a README and `meta/argument_specs.yml`; every variable is documented; generated docs are in sync.
 - `make docs` builds in strict mode with zero warnings; the docs coverage check reports 100 %; every infra page required by `docs/DOCS_SPEC.md` §A.3 exists, and every tutorial and how-to has `qa:run` markers on its executable blocks.
@@ -1509,7 +1598,7 @@ At the end, offer to create a git commit of these files on branch `machine/<name
 
 ### 18.4 Screen flow
 
-Every screen has Back / Next, inline validation messages next to the field, contextual help (F1), and a progress indicator ("step 6/16 · Storage"). Sections not applicable to the host (e.g. NVIDIA driver on WSL) are shown greyed out with a one-line explanation, not hidden silently.
+Every screen has Back / Next, inline validation messages next to the field, contextual help (F1), and a progress indicator ("step 5/17 · Capacity plan"). Sections not applicable to the host (e.g. NVIDIA driver on WSL) are shown greyed out with a one-line explanation, not hidden silently.
 
 1. **Welcome** — repo commit, ref, dirty flag, log file path, keyboard help. If `state.json` exists: "Resume previous install (step X, started at …)" or "Start over".
 2. **Preflight** — runs the detector with a live spinner, then shows cards: Environment (class, hypervisor, confidence, expandable signals), OS & kernel, CPU/RAM/disk, GPU, Virtualization (KVM, nested), Storage backends, Network endpoints, Conflicts. An outcome banner on top. Actions: Re-check, Raw JSON, Continue / Abort.
@@ -1517,33 +1606,28 @@ Every screen has Back / Next, inline validation messages next to the field, cont
    - experimental tier → consent screen.
    - `needs_action` → step-by-step remediation and a Re-check button; for the Secure Boot rule with `install_nvidia_driver: auto`, a consent to MOK enrollment that turns it into a planned action (§3.2).
    - `unsupported` → Abort, or "Force (recorded in every fingerprint)", which requires typing `FORCE UNSUPPORTED`.
-3. **Install mode** — Fresh install / Restore from backup / Modify existing (offered only when an existing install is detected).
+3. **Install mode** — Fresh install / Restore from backup / Modify existing / Uninstall (the last two offered only when an existing install is detected). Uninstall shows the dry run (§5.4), offers a backup when a restic repository is configured, asks for the typed machine name and, to remove the lab's data too, a second typed confirmation, then runs the same command as `bootstrap.sh --uninstall` and shows its report.
 4. **Machine** — machine name (hostname rules, must be unique among host_vars), provider (read-only from preflight; override only if detection confidence is low), power policy (bare metal/VM only), `/srv/pinka` location (checks filesystem type and free space), Docker data root.
-5. **Resources** — detected CPU/RAM. On WSL, explain that effective limits come from the Windows-side `.wslconfig` and capture the expected values. Suggest a cpuset split between lab services and targets with a visual bar; validate ranges and no overlap; warn when SMT siblings of one core fall into different sets (target measurements would then share cores with the lab services). Suggest Postgres memory.
-6. **Storage** — backend from features (btrfs, or LVM-thin fallback). Source: *loop file* (size input with free-space check and a reserve) or *dedicated disk*: a device table (name, by-id path, model, size, serial, existing signatures, mount points). Mounted or system disks are disabled. Selecting a disk opens a red danger dialog that requires typing the full by-id path; if signatures exist, an extra `WIPE` confirmation. Writes `incus_pool_device` and `incus_pool_device_confirm`.
-7. **Researchers** — table with add/edit/remove. Fields: username (Linux username rules, not reserved, no clash with service accounts), display name (Grafana), admin flag (at least one admin required), SSH public keys (paste multi-line or file path; validated with `ssh-keygen -lf`; private keys rejected explicitly; fingerprints shown), Grafana account toggle. Removed users go to `researchers_removed`. Warn if the invoking user is not in the list.
-8. **Remote access** — Tailscale hostname (default: machine name), tag (default `tag:pinka-lab`), login method (masked auth key, or interactive login whose URL and QR code are shown during install), accept-DNS toggle (default off), Grafana and docs via `tailscale serve` toggles, the docs release to serve (tarball and sha256, optional, §7.19). Extra SSH interfaces: multi-select of detected NICs (disabled on WSL with an explanation). Show the required tailnet ACL snippet with a copy action.
-9. **GPU & inference** (only if a GPU is present)
-   - Bare metal/VM: install NVIDIA driver? Branch selection (options from `versions.lock.yml`). If Secure Boot is on, explain the MOK flow and ask for consent to MOK enrollment (§3.2; the answers file records it as `gpu.accept_mok_enrollment`); with consent, ask for a one-time MOK password (masked, entered twice), passed to bootstrap and from there to `mokutil --import` via stdin only, never stored.
-   - vLLM serving profile, auto-selected from GPU name and VRAM, overridable.
-   - Default model: table from `models.catalog.yml` filtered by profile fit (VRAM, license, gated, tool-call support), plus "custom (HF repo + 40-hex revision)" and "none".
-   - Hugging Face token if a gated model is chosen (masked; validated with the HF `whoami` API when the network is available).
-   - Toggle: start serving after install (default on).
-   - GPU arbiter: the mode after boot (serve the default deployment, or stay idle) and the caps for training jobs (timeout, memory, CPUs). On a `lab` or `inference` node the screen states that training is unavailable there.
-10. **Data & backups** — restic repository type: SFTP (host on the tailnet, user, path), REST server (URL), local path (warned: not a real backup), or "configure later" (doctor will warn). A *Test connection* action. restic password: generate (shown once; the operator must tick "I stored this safely") or enter. Schedule time, retention (daily/weekly/monthly), include model weights toggle, include secrets toggle (with warning).
-11. **Restore** (restore mode only) — list snapshots from the configured repository (time, host, size), pick one, preview what will be restored.
-12. **Platform** — no platform (standalone lab), or the platform source: repository URL (SSH, anonymous HTTPS or `file://`), ref (tag), path in the repository, tag prefix; authentication: generate a read-only deploy key (show the public key to add to the Git host), use an existing key path, or anonymous HTTPS for a public repository (no personal access tokens); the Git host's keys are pinned; require signed tags toggle; *Test access* action (`git ls-remote`). The installer then inspects the release (`bootstrap.sh --inspect-platform`) and asks for the source of every content package the manifest declares, one masked field per secret the manifest names (into the vault), and the settings per service (checked against its config schema).
-13. **Platform review** — name, version, runtime; services with their profiles; dedicated agent sockets, highlighted; training jobs with their image digests and caps; restricted content packages; state directories and which are backed up; required facilities, optional tools, relaxations. Continue only after explicit approval.
-14. **Golden images** — checklist of blueprints with estimated build time and disk usage; build now or later; VM variants offered only if `vm_targets`.
-15. **Secrets & vault** — all service passwords generated automatically by default (listed by name, values not shown); Grafana admin password generate/enter; vault password entered twice with a strength meter, or a path to an existing vault password file (must be 0600). Optional root-only storage of the vault password in `/etc/pinka/secrets/vault-pass`, with the trade-off explained.
-16. **Review** — every setting grouped by section, each with a jump-back link; a diff view for modified files; the list of files to be written; estimates for downloads (container images, model GB), disk usage and duration; destructive actions highlighted in red. Buttons: Back, Export answers only, Install.
-17. **Install progress** — a phase tree (preflight gate → provider → base → … → doctor) with per-role status icons, current task, elapsed time, and ok/changed/failed counts; a collapsible live log pane (filtered; full log path shown); the Tailscale login URL and QR code when needed.
+5. **Capacity plan** — one screen for everything that sizes the lab (it replaces the separate Resources, Storage and GPU & inference screens). It shows the detected machine and the choices: features, node role, the vLLM serving profile (auto-selected from GPU name and VRAM, overridable), the default model from `models.catalog.yml` filtered by profile fit (VRAM, license, gated, tool-call support) with its size, plus "custom (HF repo + 40-hex revision)" and "none", the storage backend from features (btrfs, or LVM-thin fallback) and its source (*loop file* with its size, or *dedicated disk*), the number of concurrent targets, the retention settings, the cpuset split between lab services and targets (a visual bar; ranges validated, no overlap; a warning when SMT siblings of one core fall into different sets, since target measurements would then share cores with the lab services) and Postgres memory. On WSL it explains that effective limits come from the Windows-side `.wslconfig` and captures the expected values. Budget bars for RAM, disk per mount point and VRAM, each expandable to its items, are green (fits), yellow (degraded, needs consent) or red (shows the shortfall and blocks Next); below them the expected growth per day and week and the date the disk fills at that rate. Every number is marked measured or estimated. The screen only renders preflight's `--plan` output (§2.3); a non-interactive install runs the same computation and writes the same breakdown to the log. Its sub-steps:
+   - **Storage device** (dedicated disk only): a device table (name, by-id path, model, size, serial, existing signatures, mount points). Mounted or system disks are disabled. Selecting a disk opens a red danger dialog that requires typing the full by-id path; if signatures exist, an extra `WIPE` confirmation. Writes `incus_pool_device` and `incus_pool_device_confirm`.
+   - **NVIDIA driver** (bare metal/VM with a GPU): install the NVIDIA driver? Branch selection (options from `versions.lock.yml`). If Secure Boot is on, explain the MOK flow and ask for consent to MOK enrollment (§3.2; the answers file records it as `gpu.accept_mok_enrollment`); with consent, ask for a one-time MOK password (masked, entered twice), passed to bootstrap and from there to `mokutil --import` via stdin only, never stored.
+   - **Serving** (with a GPU): the Hugging Face token if a gated model is chosen (masked; validated with the HF `whoami` API when the network is available); start serving after install (default on); the GPU arbiter's mode after boot (serve the default deployment, or stay idle) and the caps for training jobs (timeout, memory, CPUs). On a `lab` or `inference` node the step states that training is unavailable there.
+6. **Researchers** — table with add/edit/remove. Fields: username (Linux username rules, not reserved, no clash with service accounts), display name (Grafana), admin flag (at least one admin required), SSH public keys (paste multi-line or file path; validated with `ssh-keygen -lf`; private keys rejected explicitly; fingerprints shown), Grafana account toggle. Removed users go to `researchers_removed`. Warn if the invoking user is not in the list.
+7. **Remote access** — Tailscale hostname (default: machine name), tag (default `tag:pinka-lab`), login method (masked auth key, or interactive login whose URL and QR code are shown during install), accept-DNS toggle (default off), Grafana and docs via `tailscale serve` toggles, the docs release to serve (tarball and sha256, optional, §7.19). Extra SSH interfaces: multi-select of detected NICs (disabled on WSL with an explanation). Show the required tailnet ACL snippet with a copy action. On an adopted Tailscale node (§7.4) the hostname, tag and login are shown as recorded and read-only, with the trade-off explained, and the serve toggles need an explicit consent checkbox (`tailscale_serve_consent`).
+8. **Data & backups** — restic repository type: SFTP (host on the tailnet, user, path), REST server (URL), local path (warned: not a real backup), or "configure later" (doctor will warn). A *Test connection* action. restic password: generate (shown once; the operator must tick "I stored this safely") or enter. Schedule time, retention (daily/weekly/monthly), include model weights toggle, include secrets toggle (with warning).
+9. **Restore** (restore mode only) — list snapshots from the configured repository (time, host, size), pick one, preview what will be restored.
+10. **Platform** — no platform (standalone lab), or the platform source: repository URL (SSH, anonymous HTTPS or `file://`), ref (tag), path in the repository, tag prefix; authentication: generate a read-only deploy key (show the public key to add to the Git host), use an existing key path, or anonymous HTTPS for a public repository (no personal access tokens); the Git host's keys are pinned; require signed tags toggle; *Test access* action (`git ls-remote`). The installer then inspects the release (`bootstrap.sh --inspect-platform`) and asks for the source of every content package the manifest declares, one masked field per secret the manifest names (into the vault), and the settings per service (checked against its config schema).
+11. **Platform review** — name, version, runtime; services with their profiles; dedicated agent sockets, highlighted; training jobs with their image digests and caps; restricted content packages; state directories and which are backed up; required facilities, optional tools, relaxations. Continue only after explicit approval.
+12. **Golden images** — checklist of blueprints with estimated build time and disk usage; build now or later; VM variants offered only if `vm_targets`.
+13. **Secrets & vault** — all service passwords generated automatically by default (listed by name, values not shown); Grafana admin password generate/enter; vault password entered twice with a strength meter, or a path to an existing vault password file (must be 0600). Optional root-only storage of the vault password in `/etc/pinka/secrets/vault-pass`, with the trade-off explained.
+14. **Review** — every setting grouped by section, each with a jump-back link; a diff view for modified files; the list of files to be written; the capacity plan's totals and estimates for downloads (container images, model GB) and duration; destructive actions highlighted in red. Buttons: Back, Export answers only, Install.
+15. **Install progress** — a phase tree (preflight gate → provider → base → … → doctor) with per-role status icons, current task, elapsed time, and ok/changed/failed counts; a collapsible live log pane (filtered; full log path shown); the Tailscale login URL and QR code when needed.
     - On failure: failing task, stderr excerpt, remediation hint, buttons Retry phase / Open log / Abort.
     - On signal 75 (WSL restart): a full-screen instruction — "In Windows PowerShell run `wsl --terminate <distro>`, then open WSL and run `sudo ./bootstrap/bootstrap.sh` again; the installer resumes here."
     - On signal 76 (reboot / MOK): reboot instructions including the MOK Manager steps.
     - State is saved *before* these screens are shown.
-18. **Doctor** — results grouped by category with pass/warn/fail and remediation; an optional *Run smoke test* action.
-19. **Finish** — connection info per researcher (`ssh <user>@<tailscale-hostname>`), how to reach Grafana, the vLLM endpoint and the model being served, files to commit (with the commit offer), log locations, how to start/stop the lab.
+16. **Doctor** — results grouped by category with pass/warn/fail and remediation; an optional *Run smoke test* action.
+17. **Finish** — connection info per researcher (`ssh <user>@<tailscale-hostname>`), how to reach Grafana, the vLLM endpoint and the model being served, files to commit (with the commit offer), log locations, how to start/stop the lab.
 
 ### 18.5 Ansible progress integration
 
@@ -1554,7 +1638,7 @@ Every screen has Back / Next, inline validation messages next to the field, cont
 
 ### 18.6 Answers file
 
-- Schema: `installer/schema/answers.schema.json`. Contains every non-secret choice, including *which* secrets are generated versus provided, but never their values. Platform choices are the `platform` and `content` source blocks, `platform_settings`, `gpu_arbiter` and `training_caps` of §8.1. `gpu.accept_mok_enrollment` records the consent of §3.2; the MOK password is never in the file.
+- Schema: `installer/schema/answers.schema.json`. Contains every non-secret choice, including *which* secrets are generated versus provided, but never their values. Platform choices are the `platform` and `content` source blocks, `platform_settings`, `gpu_arbiter` and `training_caps` of §8.1. `gpu.accept_mok_enrollment` records the consent of §3.2; the MOK password is never in the file. The capacity choices (concurrent targets, retention settings, pool source and size) and `tailscale_serve_consent` are answers fields; uninstall is never replayed from an answers file.
 - Replay: `sudo ./bootstrap/bootstrap.sh --answers installer-answers/<machine>.yml --non-interactive --vault-password-file <file>` reproduces the install.
 - For a first non-interactive install with no vault yet, secrets come from environment variables `PINKA_SECRET_<NAME>` or are generated and written into a new vault whose password comes from `--vault-password-file`.
 
@@ -1568,7 +1652,7 @@ Every screen has Back / Next, inline validation messages next to the field, cont
 
 ### 18.8 Validation
 
-All rules live in `validators.py` and are unit-tested: hostname, Linux username, absolute paths, cpusets, sizes, URLs, SSH public keys, HF repo IDs and 40-hex revisions, git refs, restic repository URLs, Tailscale tags.
+All rules live in `validators.py` and are unit-tested: hostname, Linux username, absolute paths, cpusets, sizes, URLs, SSH public keys, HF repo IDs and 40-hex revisions, git refs, restic repository URLs, Tailscale tags, the concurrent targets and retention values of the capacity plan, and uninstall's typed confirmations.
 
 ### 18.9 Tests
 
@@ -1576,12 +1660,13 @@ All rules live in `validators.py` and are unit-tested: hostname, Linux username,
 - Snapshot tests (pytest-textual-snapshot) for every screen at 80×24 and 120×40, dark and light themes.
 - Runner tests using fake preflight JSON and a recorded `events.jsonl` replay.
 - Answers round-trip: answers → files → reload → identical answers.
-- Snapshots of the new and changed screens (Platform, Platform review, GPU & inference) and a pilot run of the whole flow with the reference platform's manifest.
+- Snapshots of the new and changed screens (Platform, Platform review, the GPU choices of the capacity plan) and a pilot run of the whole flow with the reference platform's manifest.
+- Snapshots of the capacity plan for fits, degraded and does not fit; pilot runs of the uninstall flow (dry run, backup offer, typed confirmations) and of the Remote access screen on an adopted Tailscale node.
 
 ### 18.10 Look and feel (guidance, not a pixel spec)
 
 ```
-┌ Pokus Infrastructure Installer ─────────────── step 6/16 · Storage ┐
+┌ Pokus Infrastructure Installer ──────── step 5/17 · Storage device ┐
 │ Target sandbox storage pool        backend: btrfs (quota-capable ✔) │
 │                                                                      │
 │  ( ) Loop file inside this system     size: [ 300 ] GiB  free: 812   │
@@ -1624,7 +1709,7 @@ Everything else is distro-independent by construction:
 
 | Tier | Distributions | Meaning |
 |---|---|---|
-| supported | Ubuntu 24.04 LTS, Debian 13 | Full CI VM tests + reference GPU hardware |
+| supported | Ubuntu 24.04 LTS, Debian 13, Ubuntu 26.04 LTS (pending verification until its first passing `make test-distros` result; its Incus comes from universe, which has no guaranteed security updates) | Full CI VM tests + reference GPU hardware |
 | tested | Ubuntu 22.04, Debian 12, Fedora (current and previous), RHEL / AlmaLinux / Rocky / CentOS Stream 9 and 10, openSUSE Leap 15.6 / 16, openSUSE Tumbleweed, Arch Linux | Full CI VM tests (`make test-distros`); GPU paths not hardware-tested |
 | experimental | Derivatives via `ID_LIKE` (Linux Mint, Pop!_OS, Zorin, elementary, Kali, Oracle Linux, Manjaro, EndeavourOS, …), SLES, `aarch64` hosts | Uses the parent family; consent required |
 | unsupported | RHEL-compatible 8 (no unified cgroup v2 by default), non-systemd (Alpine, Devuan, Void, Gentoo/OpenRC, Slackware), musl, image-based/immutable (Fedora Atomic/CoreOS, openSUSE MicroOS/Aeon, Ubuntu Core, NixOS), containers, WSL1, other architectures | Clear message + the **VM escape hatch**: run a supported distro in a VM on that host (`vm` provider; GPU via passthrough if available) |
@@ -1661,6 +1746,8 @@ Rules:
 - Keys are fetched, fingerprint-checked, then installed the family's way: `signed-by` keyrings (apt), `rpm --import` + `gpgkey=`/`gpgcheck=1`/`repo_gpgcheck` where supported (dnf), explicit `rpm --import` before `zypper addrepo` (zypper). Arch uses the distro keyring only; AUR is **never** used.
 - Third-party repos that are not from the upstream vendor or the distro itself (COPR, OBS home projects, RPM Fusion) require explicit operator consent in the TUI / `--allow-community-repos`, and are recorded in the fingerprint.
 - `versions.lock.yml` pins package versions **per distro release** (`packages.<component>.<distro>-<release>`). For `rolling` distros, pinning is replaced by a hold after install plus mandatory recording of actual versions (§19.5).
+- A component's source may be overridden for one release when its family default does not serve it: `incus` on Ubuntu 26.04 is the distribution's own package from universe (§7.7).
+- A pinned version may differ per architecture (§10.1).
 
 ### 19.5 Updates, holds and rolling releases
 
@@ -1710,6 +1797,9 @@ Backend specifics:
 - Results are written to `docs/support-matrix.md` (generated) with the test date, distro release, and pass/fail per stage. A distro whose last test failed or is older than 90 days is shown as such.
 - Variants: one VM per firewall backend (nftables, firewalld, ufw), one SELinux-enforcing run (Fedora + Alma), one derivative (if an image is available).
 - The reference platform (§7.18) is deployed in each VM: isolation probe (every forbidden action must fail), the training flow (dataset, job, adapter, vLLM serving it on GPU hosts; the CPU-only variant elsewhere), an interrupted job resumed after reboot, doctor, a second deployment with `changed=0`, a replacement by a renamed copy, backup and restore.
+- Every VM is sized to the computed requirement of the configuration it installs (§2.3), never below preflight's minimums, and the VMs run one at a time.
+- Lane `uninstall`, per target: a snapshot before install (packages and versions, holds, repositories and keys, users and groups, enabled units, `nft list ruleset`, listening ports, files below pinka's paths, Tailscale status and preferences, Docker containers, networks and volumes), install, uninstall, the same snapshot, and a failure on any difference not listed as kept on purpose. Variant `ubuntu-24.04-preexisting`: the harness installs Docker and Tailscale first (logged in with the test tailnet's key and its own tags) and runs a workload container; the node's identity and the workload's connectivity must be unchanged after install and after uninstall.
+- Ubuntu 26.04 is a target; its first passing result clears the support matrix's `pending_verification` (the generator reads `tests/distros/results.yml`, never a hand edit).
 - Fast lane for CI without nested virtualization: `ansible-playbook --check` against systemd-enabled containers per family for the provider-agnostic roles, plus all preflight fixtures. This is the required job; a separate, non-blocking extended job runs the whole play in check mode with the reference platform enabled (§11).
 
 ### 19.10 Hardware portability: split inference (`node_role`)

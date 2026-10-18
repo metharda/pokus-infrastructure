@@ -23,13 +23,16 @@ no personal or installation-specific data.
 
 `specs/` holds the master copies, read-only for the assistant. The
 exceptions are plan item 3b ([section J](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
-the spec update for contract v2 (`d99d2ed`), and one further edit before 3c
-(3b2 in section J); after its commit the specs are read-only again.
-Component copies are byte-identical.
+the spec update for contract v2 (`d99d2ed`), one further edit before 3c
+(3b2 in section J), and the 3f-1 spec edit (owner, with the decisions on
+the 3f-1 proposal: "I authorize one spec edit now, limited to 3f-1 D1, D2,
+A, B, C, E and F with these decisions. [...] Specs are read-only for you
+again after that commit."). After the commit of each, the specs are
+read-only again. Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a07bbc3b530756ff43254d18cd6f413bafd4af5b374e7cadd81daafe97182bfb` |
+| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a661077cfffb763012f0fa78d99ca72626c77114eabb0373824cf20145d4cb3e` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
 | `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `65e2ac3804c32214383ede460c4c06ef17076c40d4c579a9635cb1ddedb8c5c1` |
 
@@ -46,7 +49,10 @@ byte-identical. At 3f the infra master was renamed from
 `specs/pokus-infra-claude-code-prompt.md` (Q13; its content and checksum
 are unchanged), and the platform prompt's master
 (`specs/pokus-platform-claude-code-prompt.md`, `cda5274f…`) left this
-repository; the owner keeps it for `pokus-platform` (section J).
+repository; the owner keeps it for `pokus-platform` (section J). The 3f-1
+spec edit changed the infra prompt from `a07bbc3b…` to the checksum above
+(sections listed in `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"); its
+copy `docs/BUILD_PROMPT.md` has the same checksum.
 
 The real-machine test specification (`specs/pokus-infrastructure-qa-spec.md`)
 was written outside this session and added verbatim with the records of
@@ -310,8 +316,13 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
   `debian_13` passed with the `tailscale` and `incus` roles, which they no
   longer skip; `release-package` and `lock-collections` ran for `1a46f64`
   and passed.
-- 3f-1 (owner, after 3f): the proposal is given and waits for the owner's
-  decision and one spec edit; nothing of 3f-1 is built before it.
+- 3f-1 (owner, after 3f): recorded with the QA specification in `eb02d37`;
+  its CI passed every job but the known red `lock-check` (24 marker errors,
+  the postgres and `ubuntu:24.04` tag warnings). The owner decided the
+  proposal (verbatim under 3f-1 in the remaining plan) and authorized one
+  spec edit, limited to D1, D2, A, B, C, E and F; it is made (the
+  specifications table below has its checksums) and waits for "commit",
+  and so does D1, the first feature step.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -330,7 +341,7 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | proposal given; waits for the owner's decision and the spec edit | — |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | recorded; proposal decided; spec edit made, waits for "commit"; then D1, D2, A, B, C, E, F, G | `eb02d37` (records) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -492,6 +503,67 @@ its checks green and a commit proposal, and waits for the owner's
   unverified for now; it must be closed before any rpm-family target is
   claimed as tested." "Base image pins: approved, including the lock-check
   warning."
+
+  Decisions on the 3f-1 proposal (owner, with the "commit" for `eb02d37`,
+  verbatim):
+
+  > 1. D in two steps (D1, D2): approved.
+  > 2. Adopting an existing Tailscale node: approved, including the refusal when
+  >    Funnel or Tailscale SSH is on. Additions:
+  >    - an adopted node may not carry tag:pinka-lab and its key may expire with a
+  >      personal account: doctor reports that as a warning, not a failure, and the
+  >      docs explain the trade-off;
+  >    - on an adopted node, tailscale serve for Grafana or docs is off by default and
+  >      needs explicit consent; uninstall removes only the serve entries pinka added.
+  > 3. Existing Docker: approved: pinka never writes daemon.json and never restarts
+  >    a Docker it did not install. Verify whether the pinned Docker version enables
+  >    CDI by default. If it does, keep the rule the same everywhere. If it does not,
+  >    pinka may configure CDI only on a Docker it installed itself (per the install
+  >    record); on a pre-existing Docker it refuses with the exact change, as
+  >    proposed. The DOCKER-USER rules pinka adds for Incus bridges must not affect
+  >    existing containers' networking (real-machine test 4.4) and are removed by
+  >    uninstall.
+  > 4. Hosts without an install record: approved.
+  > 5. Exit codes 80 and 81: approved.
+  > 6. Memory floor 8 GiB nominal and the 0.94 tolerance: approved.
+  > 7. Image sizes as compressed size x 2.5: approved as an estimate; once an image
+  >    is pulled on a host, preflight and doctor use its real size there.
+  > 8. Incus on Ubuntu 26.04: option (a), Ubuntu's incus from universe. State in the
+  >    support matrix that universe has no guaranteed security updates; make
+  >    lock-pins report when Zabbly's lts-6.0 publishes a 26.04 suite, so the choice
+  >    is revisited.
+  > 9. "Pending verification" cleared only by a passing test-distros result: approved.
+  > 10. DCGM without profiling metrics and without added capabilities: approved.
+  >
+  > Addition to D1: LXD and Podman are pre-existing components too. Detect them;
+  > never change, stop or reconfigure them; check that Incus next to LXD does not
+  > clash (bridge names, dnsmasq, firewall, storage); if it would, refuse with a
+  > clear message instead of installing.
+  >
+  > Spec edit: I authorize one spec edit now, limited to 3f-1 D1, D2, A, B, C, E and F
+  > with these decisions. Edit the spec master and docs/BUILD_PROMPT.md together, keep
+  > them byte-identical, record the checksums, and show me a section-by-section
+  > summary of the diff with the commit proposal. Specs are read-only for you again
+  > after that commit. Then build D1 and wait.
+
+  Checked for these decisions (2026-10-18, details in
+  `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"):
+  - Decision 3: the pinned Docker Engine 29.8.2 enables CDI by default. In
+    the moby source at tag `docker-v29.8.2` (`daemon/command/daemon.go`,
+    sha256 `39f0b29b…d712b`), `cdiEnabled` returns true on Linux unless
+    `features.cdi` is set, and false only when it is set to `false`; the
+    default changed in 28.2.0 (28.1.1 registered CDI only with
+    `features.cdi: true`). `docker info` reports no CDI spec directories
+    when CDI is off. So the rule is the same everywhere: pinka writes no
+    CDI setting on a Docker of 28.2 or later, and a pre-existing Docker
+    with CDI off is refused with the exact change when a GPU feature is
+    on. The one exception follows the decision's other branch: a GPU
+    host whose Docker pinka installs from a distribution package older
+    than 28.2 (possible only on openSUSE, whose Docker pin is still
+    unverified) gets `features.cdi: true` in pinka's own `daemon.json`.
+  - Item C: Ubuntu 26.04 (`resolute`) ships `python3` 3.14.3-0ubuntu2 in
+    main (the signed `InRelease` checked with the Ubuntu archive key, the
+    index's sha256 matching it).
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -723,6 +795,21 @@ raised:
   template of `tailscale-rpm` cannot express. Recommendation: one
   repository entry per source group, with a `{version}` placeholder for
   openSUSE Leap, then their pins with `make lock-pins`.
+
+Raised by the 3f-1 spec edit, for the owner:
+
+- **SSH policy on a host with other accounts.** The `ssh` role's drop-in
+  (§7.3) sets `AllowGroups pinka` and `PasswordAuthentication no` for the
+  whole host, so every account outside `pinka` loses SSH access and
+  password logins end, also for accounts that existed before pinka
+  (computer B). Under the new pre-existing rule this changes how existing
+  accounts are used, but §7.3 was outside the authorized edit, so it is
+  unchanged. Options: (a) keep it and say so in the pre-existing
+  components how-to and in the dry run; (b) put pinka's settings in a
+  `Match Group pinka` block, so other accounts keep the host's own policy;
+  (c) refuse with `needs_action` when SSH-capable accounts outside `pinka`
+  exist, unless the owner consents. Recommendation: (b), with sshd still
+  reachable only on `tailscale0` and the allowed interfaces.
 
 ## Owner deliverables pending
 
@@ -991,11 +1078,12 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 ## Next step
 
-Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`);
-now 3f-1. Its proposal (every feature, the spec sections each changes,
-the effort) waits for the owner's decision; then one authorized spec edit;
-then each feature as its own step in the order D, A, B, C, E, F, G, each
-waiting for "commit". Then the real-machine tests on the owner's computers
+Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
+and 3f-1 is recorded (`eb02d37`). The owner decided the 3f-1 proposal; the
+authorized spec edit is made and waits for "commit", and D1 (the install
+record and the pre-existing components) is built next and waits too. Then
+D2, A, B, C, E, F and G, each as its own step waiting for "commit". Then
+the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still
 open: the remaining `TODO(verify)` items (96), which need network access or

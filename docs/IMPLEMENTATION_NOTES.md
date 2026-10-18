@@ -4547,3 +4547,84 @@ file unchanged.
 9. "Pending verification" as a flag on a `supported` row, cleared by the
    generator from a passing result?
 10. DCGM without profiling metrics (no added capabilities)?
+
+The owner decided all ten (verbatim in `PROGRESS.md`, under 3f-1 in the
+remaining plan), added LXD and Podman as pre-existing components to D1, and
+authorized one spec edit (below).
+
+## 3f-1 spec edit
+
+The one spec edit the owner authorized with the decisions on the 3f-1
+proposal, "limited to 3f-1 D1, D2, A, B, C, E and F with these decisions".
+The master `specs/pokus-infrastructure-claude-code-prompt.md` and its copy
+`docs/BUILD_PROMPT.md` are byte-identical: sha256 `a661077c…cb3e`
+(before: `a07bbc3b…7182bfb`). After its commit the specs are read-only
+again.
+
+### Checks behind the edit
+
+- **CDI in the pinned Docker (decision 3).** Docker Engine 29.8.2 enables
+  CDI by default. In the moby source at tag `docker-v29.8.2`
+  (`daemon/command/daemon.go`, sha256 `39f0b29b…d712b`, read from
+  raw.githubusercontent.com on 2026-10-18), `cdiEnabled` returns true on
+  Linux when `features.cdi` is absent, and false only when it is `false`;
+  `loadDaemonCliConfig` clears `CDISpecDirs` only when `features.cdi` is
+  explicitly false. At `v28.1.1` CDI was registered only with
+  `features.cdi: true`; `v28.2.0` has today's default. `daemon/info.go`
+  reports `CDISpecDirs`, which is empty when CDI is off, so `docker info`
+  is the runtime check. Following the decision ("If it does, keep the rule
+  the same everywhere"), pinka writes no CDI setting on a Docker of 28.2 or
+  later, and a pre-existing Docker with CDI off (or older than 28.2 without
+  `features.cdi: true`) is refused with the exact change when a GPU feature
+  is on. A GPU host whose Docker pinka installs from a distribution package
+  older than 28.2 (possible only on openSUSE, whose Docker pin is still
+  unverified) gets `features.cdi: true` in pinka's own `daemon.json`, the
+  decision's other branch ("pinka may configure CDI only on a Docker it
+  installed itself").
+- **Ubuntu 26.04's Python (item C).** `resolute` main ships `python3`
+  3.14.3-0ubuntu2 (`InRelease` dated 2026-04-23, its signature checked with
+  `gpgv` and the Ubuntu archive keyring, the sha256 of
+  `main/binary-amd64/Packages.xz` matching it).
+
+### Changes by section
+
+| Section | Change | Feature |
+| --- | --- | --- |
+| §2.2 | Memory: every threshold compares `MemTotal` with 0.94 × nominal. Disk: free space of every mount point that holds a planned item. Conflicts: LXD is info, `needs_action` only on a clash with Incus; Podman is info, `needs_action` when it provides Docker's command or socket; a Docker Engine installed before pinka is info, `needs_action` when CDI is off with a GPU feature or Compose v2 or buildx is missing; new row for a Tailscale node logged in before pinka, `needs_action` when Funnel or Tailscale SSH is on. New paragraph "Pre-existing components": `needs_action`, so no override continues past a refusal | D1, A |
+| §2.3 | Ubuntu 26.04 row: `supported`, `pending_verification: true`, with the note that universe has no guaranteed security updates. `minimums`: a memory floor of 8 GiB nominal; the fixed free-disk minimums go. New "Requirements computed from the choices": `preflight/requirements.yml`, `--plan`, memory required and recommended, disk per mount point at install (images at 2.5 × compressed until pulled, then the real size), growth, the `bench` project's `limits.memory` | A, C |
+| §2.4 | Degraded and unsupported cover the computed memory requirement; `needs_action` covers a pre-existing component's change; a pointer to bootstrap's codes | A, D1 |
+| §2.5 | The host profile example gains `components` and `requirements` | D1, A |
+| §4 | `preflight/requirements.yml`, `ansible/uninstall.yml`, the `install_record` role | A, D1, D2 |
+| §5.1-§5.3 | `--uninstall` with `--dry-run`, `--purge-data`, `--confirm-machine`, `--skip-backup`, `--remove-component`, `--json`; step 7 writes the install record first; the TUI offers uninstall | D1, D2 |
+| §5.4 (new) | Uninstall: plan and order, what stays, hosts without a record, idempotency, report, exit codes 80 and 81 | D2 |
+| §6.1 | Pre-existing accounts: a reserved name is refused; a pre-existing researcher account is kept, its keys are added, never managed exclusively, and uninstall removes only pinka's | D1 |
+| §7.4 | Join only a node that is not logged in (a pre-existing Tailscale that is logged out is not in use: joined, its package left as it is); an adopted node is used as it is and recorded; refusal for Funnel or Tailscale SSH; warnings for a missing `tag:pinka-lab` and an expiring key; serve on an adopted node needs `tailscale_serve_consent` | D1 |
+| §7.5 | The `DOCKER-USER` rules match only pinka's Incus bridges, must not change existing containers' traffic (test 4.4) and are removed by uninstall; LXD's and Podman's rules are never touched | D1 |
+| §7.6 | A pre-existing Docker is used as it is (no `daemon.json`, no restart, no pin or hold); `daemon.json` only on pinka's Docker with `live-restore`, `data-root`, `selinux-enabled` on SELinux hosts and `features.cdi: true` only for a distribution Docker older than 28.2; log limits, cgroup parent and subnets move to pinka's Compose projects; CDI as checked above; the runtime fallback only on pinka's Docker | D1 |
+| §7.7 | Ubuntu 26.04 Incus from universe, with `make lock-pins` watching Zabbly; LXD next to Incus: the clash checks (bridge names and subnets, dnsmasq, firewall, storage, the listener's port); `bench` `limits.memory` from the concurrent targets | C, D1, A |
+| §7.9 | The DCGM exporter as its own Compose service (loopback, default counters, CDI, no added capabilities, no profiling metrics) with a render test and doctor's endpoint check; retention by time and size; growth | E, A |
+| §7.11-§7.13 | The model's need, the files' `size` in `models.lock.yml`, a blueprint's estimated size in `image.yaml` | A |
+| §7.21 (new) | `install_record`: what existed before pinka and what it added; the pre-existing part written once; the package list and units at first install; the NVIDIA driver rule; check mode writes nothing | D1 |
+| §8.1 | `incus_concurrent_targets`, `tailscale_serve_consent`, the retention settings | A, D1 |
+| §9 | `pinka preflight --plan`, `pinka uninstall`; doctor: Tailscale on an adopted node, CDI, free space with its trend, the install record, the GPU exporter's endpoint | A, D1, D2, E |
+| §10.1 | A version per architecture; image sizes in the lock; `make lock-pins` reports a Zabbly `lts-6.0` suite for 26.04 | F, A, C |
+| §11 | Fixtures for 26.04, LXD, Podman, an adopted Tailscale node, a pre-existing Docker, the memory and disk thresholds; tests of the install record, uninstall and the requirements; preflight on Python 3.14 | all |
+| §12.11 | The GPU exporter has no contract port and binds to loopback | E |
+| §13 | Invariant 9 names LXD, Podman, firewalld and ufw; new invariants 24 (pre-existing components) and 25 (uninstall) | D1, D2 |
+| §15, §17 | The new pages and troubleshooting sections; the uninstall lane and the same requirements everywhere in the definition of done | all |
+| §18.4, §18.6, §18.8-§18.10 | Screens renumbered 1-17: Install mode gains Uninstall; the Capacity plan (5) replaces Resources, Storage and GPU & inference, with the sub-steps Storage device, NVIDIA driver and Serving; Remote access on an adopted node; Review takes the plan's totals; answers fields, validators, tests; the look-and-feel header | B, D1, D2 |
+| §19.2, §19.4, §19.9 | Ubuntu 26.04 supported, pending verification; a per-release source override and a per-architecture version; VMs sized to the computed requirement; the uninstall lane and its pre-existing variant; 26.04 as a target | C, F, A, D2 |
+
+Not changed, with the reason:
+
+- §10.2 (fingerprint): recording the origin of Docker and Tailscale there
+  would change `contract/records/fingerprint.schema.json`, which needs a
+  contract version bump the decisions did not include; the host profile
+  (`components`) and the install record hold it.
+- §7.3 (`ssh`): the drop-in's `AllowGroups pinka` and
+  `PasswordAuthentication no` apply to the whole host, so on a host with
+  accounts outside `pinka` (computer B) they change how those accounts
+  reach SSH. That is outside the authorized scope; it is an open question
+  for the owner (`PROGRESS.md`, open questions).
+- §16 (implementation order): unchanged; the 3f-1 steps are in
+  `PROGRESS.md`.

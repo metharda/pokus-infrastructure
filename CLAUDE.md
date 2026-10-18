@@ -234,7 +234,8 @@ does not push the rewritten history itself.
 7. No automatic reboots without `--allow-reboot`; no automatic kernel or
    driver upgrades.
 8. Idempotent: the second run reports `changed=0`.
-9. Never flush or rewrite firewall tables owned by Docker, Incus, firewalld or ufw.
+9. Never flush or rewrite firewall tables owned by Docker, Incus, LXD, Podman,
+   firewalld or ufw.
 10. `lab_mode: staging` hosts have their own vault, `/srv/pinka`, Tailscale
     identity (`tag:pinka-qa`) and signing key, and never pair with or write to
     a production host. QA trusted keys go to `/etc/pinka/qa/trusted-keys/`;
@@ -249,6 +250,18 @@ does not push the rewritten history itself.
     documentation IP ranges, `00:00:5e:00:53:00/24` MACs and zeroed serials.
     Real deployment data lives only in the deployer's private fork and is
     excluded by `.gitignore`. `make privacy` (part of `make lint`) enforces it.
+13. **Pre-existing components** (§13 invariant 24): Docker Engine, Tailscale,
+    LXD, Podman, an Incus not adopted with `--adopt-incus`, an NVIDIA driver
+    and user accounts that existed before pinka are never changed, stopped,
+    restarted or reconfigured. Where the lab cannot run without such a
+    change, preflight reports `needs_action` with the exact change, before
+    anything changes and with no override. The install record
+    (`/var/lib/pinka/install-record.json`, `install_record` role, §7.21)
+    says what is pinka's.
+14. **Uninstall** (§13 invariant 25, §5.4) removes only what the install
+    record names as pinka's (without a record, only what carries pinka's
+    names), never a pre-existing component, and keeps the lab's data unless
+    `--purge-data` with the typed machine name.
 
 ## Generated files and fixtures
 
@@ -321,7 +334,12 @@ does not push the rewritten history itself.
   networks are created once and never rewritten. The one deletion is
   `rotate.yml` removing the trust entries of replaced client certificates;
   build instances and images of the images role are not such objects. Only
-  the docker role writes `/etc/docker/daemon.json`.
+  the docker role writes `/etc/docker/daemon.json`, and only on a Docker
+  Engine pinka installed (`live-restore`, `data-root`, `selinux-enabled` on
+  SELinux hosts); every other Docker setting lives in pinka's Compose
+  projects. Docker 28.2 and later enable CDI by default, so pinka writes
+  `features.cdi: true` only for a distribution Docker older than 28.2 that
+  it installed itself.
 
 ## pinka (BUILD_PROMPT §9, §10.2)
 
