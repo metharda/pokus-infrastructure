@@ -4274,3 +4274,276 @@ from its log), with 2 warnings: the postgres tag and, new, the tag `24.04` of
 keeps the pin until the next maintenance update); `links` was skipped (it
 runs on the schedule only); `release-package` (two identical packages, the
 check passed) and `lock-collections` passed.
+
+## 3f-1 proposal (awaiting the owner's decision)
+
+Owner, after 3f: one proposal for all features of 3f-1 with the spec
+sections each changes and the effort; the owner decides, then authorizes one
+spec edit; then D, A, B, C, E, F, G are built one step each. Nothing below is
+built. Spec sections are those of the infra build prompt
+(`specs/pokus-infrastructure-claude-code-prompt.md`, copy
+`docs/BUILD_PROMPT.md`); the docs specification needs no change, and the
+real-machine test specification is the owner's.
+
+### Effort and order
+
+| Step | Feature | Spec sections | Effort |
+| --- | --- | --- | --- |
+| D1 | Install record and the rule for pre-existing components (at install) | §2.2 (conflicts table), §5.2, §6.1, §7.4, §7.5, §7.6, §7.7, §9 (doctor), §10.2, §13 | large: a new first role, changes to the Tailscale, Docker, firewall and user roles, compose settings per project, doctor; tests for every refusal |
+| D2 | Uninstall: CLI, dry run, data purge, report, TUI, test-distros lane | §5.1, §5.3, §9, §2.4 (exit codes), §11, §13, §15, §17, §18.4, §19.9 | large: a playbook, the plan computation, a TUI flow, the snapshot lane and its pre-existing variant |
+| A | Requirements computed from the choices | §2.2, §2.3 (`minimums`), §2.4, §2.5, §7.7, §7.9, §7.11, §7.12, §7.13, §8.1, §9, §10.1, §11, §19.9 | large: requirement data and its computation in preflight, sizes in the locks, fixtures at every threshold, doctor's free-space trend |
+| B | Capacity plan screen | §18.4 (screens 5, 6 and 9 merged), §18.6, §18.8, §18.9 | medium: one screen that shows A's computation, the answers fields, snapshots for fits, degraded and does not fit |
+| C | Ubuntu 26.04 LTS | §2.3 (matrix), §19.2, §19.4, §10.1, §11, §19.9 | medium: pins through `make lock-pins`, a per-release source override, CI image, target, fixtures, a Python 3.14 run of preflight |
+| E | DCGM wiring | §7.9, §12.11, §9 (doctor) | small: a compose service of its own, its render test, doctor's endpoint check |
+| F | Zabbly version per architecture | §10.1, §19.4 | small: lock schema, filter, `make lock-pins` output, tests |
+| G | Review of the real-machine test specification | none (review only) | small: a list for the owner, no code |
+
+D is split in two steps because each half is large and D1 already
+protects the owner's computers on install, before uninstall exists. The spec
+edit covers every section above at once.
+
+### D. Uninstallation
+
+**What bootstrap installs or creates today** (the inventory uninstall
+reverses): packages through the `pkg` role with their repository files
+(`/etc/apt/sources.list.d/pinka-*`, `/etc/yum.repos.d`, zypper), keys
+(`/etc/apt/keyrings/pinka-*`, `/etc/pki/rpm-gpg/pinka-*`) and holds
+(`/etc/apt/preferences.d/pinka-pins`, versionlock, zypper locks); service
+accounts, researcher accounts and groups; `/etc/sudoers.d/90-pinka-admin`,
+`/etc/ssh/sshd_config.d/10-pinka.conf`, `/etc/sysctl.d/60-pinka.conf`,
+`/etc/systemd/journald.conf.d/60-pinka.conf`,
+`/etc/modprobe.d/pinka-blacklist-nouveau.conf` (with an initramfs rebuild),
+`/etc/apt/apt.conf.d/52pinka-unattended-upgrades`, tmpfiles drop-ins, masked
+sleep targets (power policy); every `pinka-*` unit, timer, socket and slice;
+the Compose projects and their containers, networks and images; Incus's pool
+`pinka-targets`, the networks `pinka-build0` and `r-*`, the ACL
+`pinka-run-default`, the projects `build` and `bench`, the profiles and the
+trust entries; the firewall (the `inet pinka_filter` table and
+`pinka-nftables.service`, or the firewalld zone and ufw rules it adds, and
+the `DOCKER-USER` compat rules); `/etc/docker/daemon.json`; the NVIDIA driver
+and Container Toolkit where it installed them; Tailscale's join; and
+`/etc/pinka`, `/opt/pinka`, `/run/pinka`, `/var/lib/pinka`, `/srv/pinka`,
+`/usr/local/bin/pinka`, `/usr/local/lib/pinka` and `/usr/local/libexec/pinka`.
+
+**D1: the install record and pre-existing components.**
+
+- A first role (after the preflight gate, before any change) writes
+  `/var/lib/pinka/install-record.json`: for every item pinka manages (the
+  packages of the component source matrix and of every role, repository
+  files, keys, holds, accounts and groups, units, firewall objects, the
+  Docker, Incus, LXD and Tailscale state, drop-in files), whether it existed
+  before. The "pre-existing" part is written once, at the first install, and
+  never rewritten, so a later run never mistakes pinka's own items for the
+  host's. Each run adds what it created (new platform accounts, new packages)
+  to the "added" part. It also records the full package list and the
+  enabled units at first install, for the dependency cleanup and the
+  snapshot lane.
+- **Tailscale already installed and logged in:** bootstrap does not run
+  `tailscale up`, does not change hostname, tags or preferences, does not add
+  its repository and does not pin, hold or replace its package; it adopts
+  the node as it is, records hostname, tags, version and preferences, and
+  doctor compares with that record instead of the configured hostname and
+  tag. It refuses with a clear message when the node cannot be used without
+  a change: Funnel enabled (invariant 3), or Tailscale SSH enabled (it would
+  bypass sshd and the researchers' keys); the remediation names the setting
+  for the owner to change. `grafana_tailscale_serve` and
+  `docs_tailscale_serve` are off on an adopted node unless set explicitly.
+  Installed but logged out: not in use, so bootstrap joins it, and uninstall
+  logs out what pinka joined.
+- **Docker already installed and in use:** bootstrap never writes
+  `/etc/docker/daemon.json`, never replaces its package or repository and
+  never restarts it. The settings pinka needs move from the daemon to its
+  own Compose projects (log driver and size limits per service, the cgroup
+  parent per service, networks with explicit subnets from pinka's pool
+  instead of `default-address-pools`), the same for every install, so there
+  is one code path; `daemon.json` keeps only what a Docker pinka installed
+  itself needs (`live-restore`, `data-root`). GPU access needs CDI enabled
+  in the daemon: when it is not, bootstrap refuses with the exact change for
+  the owner to make (whether recent Docker releases enable CDI by default is
+  to be verified). Snap Docker and Docker Desktop stay blocking.
+- **Incus:** unchanged rule (blocking unless `--adopt-incus`); an adopted
+  Incus keeps everything it had, and pinka's objects carry pinka's names.
+  **LXD** stays blocking (§2.2): the owner's computer A, which runs LXD, is
+  used only through VMs.
+- **Users and groups:** a pre-existing account with a reserved service name
+  is refused (as today); a pre-existing researcher account is kept, and only
+  the groups and keys pinka adds are recorded and later removed.
+- **NVIDIA driver:** a pre-existing driver is never replaced; a driver pinka
+  installed is removed by uninstall, and an enrolled MOK stays in the
+  firmware (listed as kept, with the `mokutil --delete` steps).
+
+**D2: uninstall.**
+
+- Entry points: `sudo ./bootstrap/bootstrap.sh --uninstall` from the
+  checkout (works when the `pinka` CLI or `/opt/pinka` is missing, on a
+  partial or failed install) and `pinka uninstall`, which runs it. Options:
+  `--dry-run`, `--skip-backup`, `--purge-data` with the typed machine name
+  (`--confirm-machine NAME` when non-interactive), `--json`.
+- The plan is computed from the install record and the current state, shown
+  in full before anything is removed (the same list the dry run prints), and
+  removed in reverse dependency order: platform, units and timers,
+  containers and Compose projects, Incus objects (pool last), firewall
+  objects, Tailscale (logout only if pinka joined it), packages pinka added
+  (holds and repositories first, then the packages, then only those
+  dependencies that were absent at first install and are no longer needed),
+  accounts and groups, drop-ins, then pinka's paths; `/opt/pinka` last.
+- Data (`/srv/pinka`, the database files, backups, models) is kept unless
+  `--purge-data` and the typed machine name; a backup (`pinka backup now`)
+  is offered first when a restic repository is configured.
+- Idempotent: an item already gone is reported as such. A report
+  (`/var/log/pinka-uninstall/<UTC>.json`, outside the removed paths) lists
+  what was removed, what was kept and why.
+- New exit codes (with sections in troubleshoot): 80 uninstall refused or
+  not confirmed (nothing changed), 81 finished with items kept because they
+  could not be removed (named in the report).
+- TUI: "Uninstall" on the install mode screen when an install is detected,
+  then the dry run, the backup offer and the typed confirmation, running the
+  same command.
+- **Hosts without a record** (installed before D1): uninstall removes only
+  what is pinka's by name (`pinka-*` units, the reserved accounts with
+  pinka's markers, pinka's paths, Incus objects with pinka's names, the
+  `inet pinka_filter` table, `pinka-*` repository and key files) and keeps
+  the shared components (Docker, Incus, Tailscale, NVIDIA packages) as
+  "kept: origin unknown (no install record)", unless the owner names them
+  with `--remove-component docker|incus|tailscale|nvidia` after the dry run.
+- Test-distros lane `uninstall`: a snapshot before install (packages and
+  versions, holds, repositories and keys, users and groups, enabled units,
+  `nft list ruleset`, listening ports, files below pinka's paths, Tailscale
+  status and preferences, Docker containers, networks and volumes), install,
+  uninstall, the same snapshot, and a failure on any difference not listed as
+  kept on purpose. Variant `ubuntu-24.04-preexisting`: the harness installs
+  Docker and Tailscale first (logged in with the test tailnet's key and its
+  own tags) and runs a workload container; the node's identity and the
+  workload's connectivity must be unchanged after install and after
+  uninstall.
+
+### A. Requirements computed from the choices
+
+Estimates (provisional until 4.15 measures them; every number is an
+estimate, none was measured):
+
+| Component | RAM | CPU | Disk | Source of the number |
+| --- | --- | --- | --- | --- |
+| Base: sshd, tailscaled, dockerd, incusd, pinka's units | 0.8-1.2 GiB | < 0.5 core idle | 2-3 GiB (`/opt/pinka`: CPython, the Ansible, installer and model-tool environments, collections; `/usr/local/lib/pinka`) | estimate from the environments the locks install |
+| PostgreSQL | shared_buffers (1/16 of RAM, 128 MiB-4 GiB, pinka's setting) + ~10 MiB per connection | 0.1-1 core | image ~0.4 GiB; data grows | pinka's `postgres_shared_buffers` formula; per-connection memory is an estimate |
+| Observability (Prometheus, Loki, Tempo, Grafana, two collectors, cAdvisor, exporters) | 2-4 GiB | 0.5-1 core | images ~2 GiB; Prometheus ~0.05 GiB per day for ~5,000 series at 15 s; Loki and Tempo depend on the platform | estimate; Prometheus at ~1.5 bytes per sample |
+| OPA | 0.1-0.2 GiB | small | image ~0.1 GiB | estimate |
+| Incus targets | each target's limits (container 1 GiB, VM 2 GiB by default) × concurrent targets | 1-2 per target | the pool size (default 300 GiB, a thin loop file) | `incus_target_container`, `incus_target_vm`, `incus_pool_size` |
+| vLLM | host RAM while loading: the model's file size + ~3 GiB (Python, PyTorch, CUDA libraries) | 2-4 cores while loading | image ~10-20 GiB; the model files | estimate; the model size comes from the model lock |
+| Training job | its caps (`job_memory_max`, CPUs) | its caps | dataset + checkpoints + adapter | the profile caps in `contract/profiles.yml` |
+| Installer | 0.1-0.2 GiB | small | ~0.1 GiB | estimate |
+| Bootstrap (Ansible) | 0.3-0.6 GiB peak | 1 core | the downloads (images, models) | estimate |
+
+- **Memory:** an absolute floor for the core stack (base, PostgreSQL,
+  observability, OPA, Incus with no target running), proposed at 8 GiB
+  nominal; below it preflight refuses. Above it, the required and the
+  recommended values are computed from `gpu_inference`, `gpu_training`,
+  `node_role`, the number of concurrent targets and the selected model's
+  size; between required and recommended the outcome is degraded and needs
+  consent. Every threshold compares `MemTotal` with 0.94 × the nominal value,
+  so a nominal machine passes (16 GiB → 15.04 GiB, which computer B
+  passes; 8 GiB → 7.52 GiB). Fixtures just above and just below every
+  threshold. The Incus `bench` project's `limits.memory` (today 60 % of the
+  host's memory, the lab deciding the scale) follows the chosen concurrent
+  targets instead.
+- **Disk (a), checked at install:** the selected models' files (sizes added
+  to `models.lock.yml`, read from the Hugging Face tree API when a model is
+  pinned), the container images of the enabled features (each image's
+  compressed size from its manifest added to `versions.lock.yml` and
+  re-verified by `make lock-check`; the unpacked size estimated at 2.5 ×
+  until measured), the configured Incus pool size, the golden images to
+  build (an estimated size per blueprint in its `image.yaml`), and a fixed
+  floor of 5 GiB for pinka itself, each summed per mount point. A shortfall
+  is refused and listed item by item ("model qwen3-8b-awq: 5.7 GiB, missing
+  2.1 GiB on /srv").
+- **Disk (b), growth:** pool size and every retention setting configurable
+  (Prometheus by time and size, Loki, Tempo, backups, artifacts); the
+  installer shows the expected growth; doctor records free space per mount
+  point, computes the trend from its last runs and warns before the disk
+  fills (at 15 % free, or when the trend reaches full within 7 days).
+- The computation lives in preflight (standard library, data-driven: a
+  requirements file compiled to committed JSON like the support matrix), so
+  bootstrap, the installer and doctor show the same numbers; preflight takes
+  the choices as input (`--plan <choices.json>`) and prints the breakdown.
+- Test VM sizes and the drift test follow the computed minimum for the
+  configuration each target installs (the CI answers).
+
+### B. Capacity plan screen
+
+Screens 5 (Resources), 6 (Storage) and 9 (GPU & inference) of §18.4 become
+one capacity plan screen; the storage device table and the NVIDIA driver and
+MOK choices stay as their own sub-steps. It shows the detected machine, the
+choices (features, node role, models that fit the GPU with their sizes, pool
+size, concurrent targets, retention) and budget bars for RAM, disk per mount
+point and VRAM, each expandable to its items, green, yellow (needs consent)
+or red (shows the shortfall and blocks Next); the expected growth per day and
+week and the date the disk fills at that rate; and every number marked as
+measured or estimated. The screen only renders preflight's `--plan` output.
+A non-interactive install runs the same computation and writes the same
+breakdown to the log. Snapshots at 80x24 and 120x40, dark and light, for
+fits, degraded and does not fit.
+
+### C. Ubuntu 26.04 LTS
+
+There is no reason it cannot be supported, but one decision and one check
+come first:
+
+- **Incus:** Zabbly's `lts-6.0` repository has no 26.04 suite (only `lts-7.0`
+  and `stable` do, read on 2026-10-18); Ubuntu 26.04 itself ships `incus`
+  6.0.5-8 in universe. Options: (a) Ubuntu's own `incus` on 26.04 (the 6.0
+  LTS series the spec names, maintained in universe), which needs a
+  per-release source override in `component-sources.yml`; (b) Zabbly's
+  `lts-7.0` on 26.04 only (a newer LTS than §7.7 names, two Incus majors to
+  test); (c) wait for Zabbly. Recommendation: (a).
+- **Python 3.14:** preflight runs on the distribution's Python (3.9 or
+  newer); 26.04's Python is newer than any version CI runs preflight on.
+  A CI run of preflight's suite on 3.14 comes with C.
+- Verified here on 2026-10-18: Docker and Tailscale publish 26.04
+  repositories, Ubuntu's archive has `nvidia-driver-580-open`
+  580.178.04-0ubuntu0.26.04.1, and images.linuxcontainers.org has
+  `ubuntu/26.04` images. The NVIDIA Container Toolkit's repository is
+  generic.
+- Pending verification: a matrix row with tier `supported` and a
+  `pending_verification` flag, which preflight prints as a note and the
+  generated support matrix shows as "pending verification" until a passing
+  test-distros result for 26.04 exists; the generator clears it from
+  `tests/distros/results.yml`, never by hand.
+
+### E. DCGM wiring
+
+`observability_gpu_exporter: dcgm` gets its own Compose service (the pinned
+digest, `-a 127.0.0.1:<gpu_exporter port>`, the default counters, GPU access
+through the same method as vLLM, no added capabilities, so no profiling
+metrics) and the nvidia-smi exporter does not start; a render test fails if
+the choice and the running exporter differ. Doctor checks the endpoint. The
+driver and CUDA compatibility of the 4.8.4 image with driver 580 is an open
+check for the GPU host (its configuration is behind `layers.nvcr.io`, which
+this environment cannot reach).
+
+### F. Zabbly version per architecture
+
+`packages.<component>.<release>.<package>` may be a version or
+`{x86_64: <version>, aarch64: <version>}`; the schema, `pinka_lock_packages`
+(given the architecture) and `make lock-pins` (prints both when they differ)
+follow, with tests. Approved as a spec deviation (owner, after 3f).
+
+### G. Review of the real-machine test specification
+
+Last step: a list of differences, gaps and CI candidates for the owner, the
+file unchanged.
+
+### Decisions needed
+
+1. D in two steps (D1 at install, D2 uninstall)?
+2. Tailscale adopted as it is; refusal when Funnel or Tailscale SSH is on?
+3. Docker: pinka's settings per Compose project for every install, and a
+   refusal with the exact change when CDI is off on a pre-existing Docker?
+4. Hosts without an install record: removal by name only, shared components
+   kept unless named with `--remove-component`?
+5. Exit codes 80 and 81 for uninstall?
+6. Memory: the core floor of 8 GiB nominal and the 0.94 tolerance?
+7. Image sizes: compressed size from the registry × 2.5 until measured?
+8. Ubuntu 26.04's Incus source: (a), (b) or (c)?
+9. "Pending verification" as a flag on a `supported` row, cleared by the
+   generator from a passing result?
+10. DCGM without profiling metrics (no added capabilities)?

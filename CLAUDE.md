@@ -92,25 +92,47 @@ fails on a commit message in the history with a `Co-Authored-By`,
 `Claude-Session` or `Generated with` line. Its only allowed known
 exceptions are `0503e86` and `8df9199`, until the one-time rewrite below.
 
-## One-time history rewrite and a fresh repository (owner, after the 3d.2 commit)
+## One-time history rewrite and the renamed repository (owner, after 3f)
 
-Verbatim; it replaces the rewrite decision given after the 3d.1 commit:
+Verbatim; it replaces the fresh repository of the decision after the 3d.2
+commit, whose text stays in PROGRESS.md:
 
-> "I choose a fresh repository. 3g changes: instead of renaming, I will
-> create a new empty repository pokus-infrastructure. After 3f, propose the
-> one-time rewrite of the full history (main and
-> claude/zen-albattani-qfwwps) that removes the two Co-Authored-By trailers
-> and nothing else, with the before/after hash mapping and every hash in
-> PROGRESS.md and the docs updated. After my "rewrite", push the rewritten
-> main and branch to the new repository only; never force-push the old one.
-> Then give me a checklist of what I must recreate by hand on the new
-> repository (secrets including PINKA_PRIVACY_DENYLIST, branch protection,
-> Actions settings, anything else you know of)."
+> Change to the 3g plan: no fresh repository. There were never any pull requests,
+> so I will rename this repository to pokus-infrastructure on GitHub myself. After
+> the rewrite and my "rewrite":
+>
+> - give me the exact commands to force-push the rewritten main and to push the
+>   rewritten working branch as moving/on, then delete claude/zen-albattani-qfwwps
+>   on the remote; I run them myself, you never force-push main;
+> - list what to check afterwards (secrets, branch protection, Actions, the default
+>   branch, that no remote ref still reaches the old commits), and how to update any
+>   other clone I have (re-clone, or fetch and reset --hard to moving/on) so the old
+>   history does not come back through a merge;
+> - update CLAUDE.md, PROGRESS.md and the docs: the repository is renamed, not
+>   recreated, and moving/on is the working branch.
 
-The rewrite also removes the two known exceptions from the privacy scan's
-history check. It is the only exception to the no-history-rewrite rule, it
-needs the owner's explicit "rewrite", and the old repository is never
-force-pushed.
+And, for the same rewrite:
+
+> - Before the rewrite, list every distinct author and committer identity
+>   (name and email) in the whole history of main and the working branch, with how
+>   many commits each has and their hashes if fewer than ten.
+> - The rewrite sets both author and committer of every commit to my identity (the
+>   one on bef51af), keeping each commit's original author and committer dates,
+>   content and message, except the trailer removal already planned. No commit is
+>   dropped or reordered.
+> - Show me the before/after mapping with the old and new identity per commit, and
+>   after the rewrite run the same identity listing again; it must show only my
+>   identity.
+> - Also confirm no commit message contains any other attribution line
+>   ("Generated with", "Co-Authored-By", or similar).
+> - The rewrite waits for my explicit "rewrite".
+
+The rewrite removes the two `Co-Authored-By` trailers, sets every author
+and committer to the owner's identity, and removes the two known exceptions
+from the privacy scan's history check; every hash in PROGRESS.md and the
+docs is updated. It is the only exception to the no-history-rewrite rule,
+it needs the owner's explicit "rewrite", and the assistant never
+force-pushes: the owner runs every push of the rewritten history.
 
 ## Branches in the new repository (owner, with the "commit" for 3d.3)
 
@@ -124,8 +146,9 @@ Verbatim; part of the recorded 3g plan:
 >   applies to moving/on in the new repository. Update CLAUDE.md, PROGRESS.md and the docs to
 >   say so now, as part of the recorded 3g plan.
 
-Until the rewritten history is in `pokus-infrastructure`, the working branch
-stays `claude/zen-albattani-qfwwps` in this repository.
+"The new repository" is this repository, renamed to `pokus-infrastructure`
+(owner, after 3f). Until the rewritten history is pushed, the working branch
+stays `claude/zen-albattani-qfwwps`.
 
 ## No pull requests, no merges (owner, with the "commit" for 3d.8)
 
@@ -140,7 +163,7 @@ Verbatim; part of the recorded 3g plan:
 >   jobs, which only run from main).
 
 So after the owner's "rewrite", the assistant gives the push commands and
-does not push to the new repository itself.
+does not push the rewritten history itself.
 
 ## Working rules (BUILD_PROMPT §0)
 
@@ -169,6 +192,10 @@ does not push to the new repository itself.
   weaken a check, never hide a failure, a skip or a warning.
 - Read `docs/BUILD_PROMPT.md` and `docs/DOCS_SPEC.md` by section for the
   step at hand, not whole.
+- `specs/` is read-only, the real-machine test specification
+  (`specs/pokus-infrastructure-qa-spec.md`) included: never edit it, and it
+  is not part of the gate; the owner edits it. Real-machine tests are named
+  by its numbers (4.1, 4.2, ...).
 - Never commit, push or tag on your own; the commit rule above applies.
 
 ## Preflight gate (BUILD_PROMPT §2)

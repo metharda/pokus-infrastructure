@@ -106,6 +106,7 @@ sysstat
 tailnet
 tailscaled
 timesyncd
+tmpfiles
 tmpfs
 trixie
 tunecpu

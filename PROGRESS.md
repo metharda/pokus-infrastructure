@@ -31,6 +31,7 @@ Component copies are byte-identical.
 | --- | --- | --- |
 | `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a07bbc3b530756ff43254d18cd6f413bafd4af5b374e7cadd81daafe97182bfb` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
+| `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `65e2ac3804c32214383ede460c4c06ef17076c40d4c579a9635cb1ddedb8c5c1` |
 
 These are the specs updated in plan item 3b: contract v2 with decision 7's
 GPU training, N2-N4, the pinka/potka naming and the rename decisions (section
@@ -46,6 +47,16 @@ byte-identical. At 3f the infra master was renamed from
 are unchanged), and the platform prompt's master
 (`specs/pokus-platform-claude-code-prompt.md`, `cda5274f…`) left this
 repository; the owner keeps it for `pokus-platform` (section J).
+
+The real-machine test specification (`specs/pokus-infrastructure-qa-spec.md`)
+was written outside this session and added verbatim with the records of
+3f-1 (owner, after 3f): "Add the file verbatim to specs/ in the commit that
+records 3f-1, record its sha256 in PROGRESS.md, and treat it as read-only
+like the other spec masters: never edit it, and it is not part of your
+gate." It instructs a test agent on the owner's test computers; the owner
+edits it. Real-machine tests are named by its numbers (4.1, 4.2, ...): "From
+then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
+...), so the agent and I use the same numbers." It is reviewed in 3f-1.G.
 
 ## Process rules in force
 
@@ -105,7 +116,8 @@ repository; the owner keeps it for `pokus-platform` (section J).
   exceptions until the rewrite below.
 - **One-time history rewrite and a fresh repository (owner, with the
   "commit" for 3d.2, verbatim; replaces the rewrite decision given with the
-  "commit" for 3d.1):** "I choose a fresh repository. 3g changes: instead of
+  "commit" for 3d.1; its fresh repository is replaced after 3f by the
+  rename below):** "I choose a fresh repository. 3g changes: instead of
   renaming, I will create a new empty repository pokus-infrastructure.
   After 3f, propose the one-time rewrite of the full history (main and
   claude/zen-albattani-qfwwps) that removes the two Co-Authored-By
@@ -145,6 +157,48 @@ repository; the owner keeps it for `pokus-platform` (section J).
   >   jobs, which only run from main).
 
   `CLAUDE.md` carries the same wording.
+- **Change to the 3g plan: the repository is renamed (owner, after 3f,
+  verbatim; replaces the fresh repository of the decision with the
+  "commit" for 3d.2):**
+
+  > Change to the 3g plan: no fresh repository. There were never any pull requests,
+  > so I will rename this repository to pokus-infrastructure on GitHub myself. After
+  > the rewrite and my "rewrite":
+  > - give me the exact commands to force-push the rewritten main and to push the
+  >   rewritten working branch as moving/on, then delete claude/zen-albattani-qfwwps
+  >   on the remote; I run them myself, you never force-push main;
+  > - list what to check afterwards (secrets, branch protection, Actions, the default
+  >   branch, that no remote ref still reaches the old commits), and how to update any
+  >   other clone I have (re-clone, or fetch and reset --hard to moving/on) so the old
+  >   history does not come back through a merge;
+  > - update CLAUDE.md, PROGRESS.md and the docs: the repository is renamed, not
+  >   recreated, and moving/on is the working branch.
+  > Record this change to the 3g plan with the next commit I approve.
+
+  So the rewrite plan stands (the two `Co-Authored-By` trailers removed,
+  the privacy scan's two known exceptions removed, every hash updated), but
+  the rewritten history goes to this repository, renamed, with the
+  branches of the decision with the "commit" for 3d.3 (`main` and
+  `moving/on` only); the owner runs every push, the force-push of `main`
+  included, and the assistant never force-pushes.
+- **Commit identities in the same rewrite (owner, after 3f, verbatim):**
+
+  > - Before the rewrite, list every distinct author and committer identity
+  >   (name and email) in the whole history of main and the working branch, with how
+  >   many commits each has and their hashes if fewer than ten.
+  > - The rewrite sets both author and committer of every commit to my identity (the
+  >   one on bef51af), keeping each commit's original author and committer dates,
+  >   content and message, except the trailer removal already planned. No commit is
+  >   dropped or reordered.
+  > - Show me the before/after mapping with the old and new identity per commit, and
+  >   after the rewrite run the same identity listing again; it must show only my
+  >   identity.
+  > - Also confirm no commit message contains any other attribution line
+  >   ("Generated with", "Co-Authored-By", or similar).
+  > - The rewrite waits for my explicit "rewrite".
+- **Order of work after 3f (owner, verbatim):** "Order from here: commits 1
+  and 2, then 3f-1, then the real-machine tests on my computers, then the
+  history rewrite, 3g and 3h."
 - **Provisioning runs after 3f, and the end of the exception (owner, after
   3e, verbatim):**
 
@@ -246,10 +300,18 @@ repository; the owner keeps it for `pokus-platform` (section J).
   exception ended with the 3f commit: every later commit waits for the
   owner's "commit".
 - After 3f (owner decisions): `make lock-pins` pinned the vendor sources of
-  provisioning item 0 that this environment reaches (GitHub's SSH host keys
-  wait for the owner's run), and every test VM recipe meets preflight's
-  minimums (`docs/IMPLEMENTATION_NOTES.md`, "Pins of the vendor sources
-  (make lock-pins)" and "Sizes of the test VMs (after 3f)").
+  provisioning item 0 that this environment reaches (`1a46f64`; GitHub's
+  SSH host keys wait for the owner's run), and every test VM recipe meets
+  preflight's minimums (`b7be7ff`) (`docs/IMPLEMENTATION_NOTES.md`, "Pins
+  of the vendor sources (make lock-pins)" and "Sizes of the test VMs (after
+  3f)"). CI of both passed every job but the known red `lock-check` (24
+  marker errors, the postgres and `ubuntu:24.04` tag warnings, no error for
+  any new pin); the extended check-mode lanes of `ubuntu_2404` and
+  `debian_13` passed with the `tailscale` and `incus` roles, which they no
+  longer skip; `release-package` and `lock-collections` ran for `1a46f64`
+  and passed.
+- 3f-1 (owner, after 3f): the proposal is given and waits for the owner's
+  decision and one spec edit; nothing of 3f-1 is built before it.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -267,7 +329,10 @@ repository; the owner keeps it for `pokus-platform` (section J).
 | 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8), `a425c7f` (CI fix of 8 and the `release-package` job) |
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
-| 3g | Fresh repository `pokus-infrastructure`, history rewrite | not started | — |
+| After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | proposal given; waits for the owner's decision and the spec edit | — |
+| Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
+| 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
 ## Remaining plan
@@ -292,32 +357,211 @@ its checks green and a commit proposal, and waits for the owner's
   Results, the faults it found, what ran in CI instead, and the exact
   commands for each untested part: `docs/IMPLEMENTATION_NOTES.md`,
   "Infra self-test without provisioning".
-- **3g** Fresh repository (owner decision with the "commit" for 3d.2,
-  replacing the rename): after 3f, the assistant proposes the one-time
-  rewrite of the full history (`main` and `claude/zen-albattani-qfwwps`)
-  that removes the two `Co-Authored-By` trailers and nothing else, with the
-  before/after hash mapping, every hash in `PROGRESS.md` and the docs
-  updated, and the two known exceptions removed from the privacy scan. The
-  owner creates a new empty repository `pokus-infrastructure`. After the
-  owner's "rewrite", the rewritten `main` is pushed there as `main` and the
-  rewritten `claude/zen-albattani-qfwwps` as `moving/on`, the only two
-  branches (no `claude/...` branch in the new repository); the old
-  repository is never force-pushed. From then on `moving/on` is the working
-  branch, and every rule that names `claude/zen-albattani-qfwwps` (the
-  commit rule, the scoped commit exception, the rewrite plan) applies to
-  `moving/on` there (owner decision with the "commit" for 3d.3). The owner
-  pushes the rewritten history to the new repository and merges `moving/on`
-  into `main` themselves; the assistant never opens a pull request and never
-  merges anything, finishes all work on `claude/zen-albattani-qfwwps`, and
-  gives the push commands (owner, with the "commit" for 3d.8). Then the
-  assistant gives the owner a checklist of what to recreate by hand on the
-  new repository (secrets including `PINKA_PRIVACY_DENYLIST`, branch
-  protection, Actions settings and the rest), and one small commit proposal
-  updates every reference to the repository's name and URL (README, docs,
-  the `CITATION.cff` placeholder, examples).
+- **3f-1** Features before 3g (owner, after 3f, verbatim; recorded with
+  the first commit approved after it):
+
+  > NEW PLAN ITEM 3f-1 — features before 3g. Record it in PROGRESS.md with the next
+  > commit I approve. Order from here: commits 1 and 2, then 3f-1, then the
+  > real-machine tests on my computers, then the history rewrite, 3g and 3h.
+  >
+  > 3f-1 works like 3d: first one proposal covering all features below, with the
+  > exact list of spec sections each changes and the effort. I decide, then authorize
+  > one spec edit. Then each feature is built as its own step, in the order
+  > D, A, B, C, E, F, G, each step with the gate green, docs alongside, PROGRESS.md
+  > updated, CI reported job by job after the push, and waiting for my "commit".
+  > Do not build anything before my decision.
+  >
+  > 3f-1.D Uninstallation (first, because my test computers are not disposable).
+  > A full uninstall of the lab (for example pinka uninstall). It must:
+  > - remove only what pinka itself installed or created. Bootstrap records at install
+  >   time what was already present (packages, repositories, users, groups, services,
+  >   firewall configuration, Docker, Incus, Tailscale) and what it added; uninstall
+  >   removes only the added part and leaves the rest as it found it. Say how existing
+  >   hosts without that record are handled.
+  > - reverse everything else bootstrap does: stop and remove units, timers, sockets
+  >   and containers; Incus projects, profiles, networks, images and the storage pool
+  >   it created; firewall rules; vendor repositories, keys and package holds;
+  >   accounts and groups; sudoers and other drop-ins; /etc/pinka, /opt/pinka,
+  >   /run/pinka, /var/lib/pinka, /usr/local paths.
+  > - Tailscale: both my computers already run Tailscale on my own tailnet. If
+  >   Tailscale is already installed and logged in, bootstrap must not log it out,
+  >   re-authenticate it, change its tags, hostname or settings, or replace its
+  >   package; it uses the existing node, or refuses with a clear message if the
+  >   existing node cannot be used. Uninstall logs out or removes Tailscale only if
+  >   pinka installed or joined it. The same rule for Docker and any other component
+  >   that was already present and in use.
+  > - treat data separately: /srv/pinka, the database, backups and models are kept
+  >   by default. Before deleting anything, offer a backup. Deleting data needs a
+  >   separate flag and typing the machine name, like pinka platform purge.
+  > - show a dry-run of everything it will remove before it removes anything;
+  >   work on partial or failed installs; be idempotent; have its own exit codes.
+  > - leave a report of what was removed and what was kept.
+  > - be reachable from the installer TUI as well, behind the same typed confirmation.
+  > - be testable: test-distros gets a lane that installs, uninstalls and checks the
+  >   host against a snapshot taken before install (packages, users and groups,
+  >   enabled units, firewall rules, listening ports, files under the pinka paths,
+  >   Tailscale and Docker state), failing on any difference not listed as kept on
+  >   purpose. Include a variant where Tailscale and Docker were present before the
+  >   install.
+  >
+  > 3f-1.A Requirements computed from the user's choices.
+  > The infrastructure must also serve small-scale use, independent of any platform.
+  > The lab must not decide the user's scale; it only checks that the user's own
+  > choices fit.
+  > - For each component (PostgreSQL, the observability stack, OPA, Incus and each
+  >   target, vLLM including host RAM while loading a model, a training job, the
+  >   installer and bootstrap itself) give your estimate of RAM, CPU and disk, and
+  >   where each number comes from.
+  > - Memory: an absolute floor for the core stack below which preflight refuses;
+  >   everything above it is computed from the enabled features and choices
+  >   (gpu_inference, gpu_training, node_role, concurrent targets, and vLLM's host RAM
+  >   computed from the selected model's size). Between the floor and the recommended
+  >   value preflight reports degraded and asks for consent. Every threshold tolerates
+  >   the kernel's reservation, so a machine with the nominal amount passes (16 GiB of
+  >   RAM shows about 15.1-15.6 GiB in MemTotal). Fixtures just above and just below
+  >   each threshold.
+  > - Disk: drop the fixed 150 + 100 GiB. Split it in two:
+  >   (a) What is known at install time, preflight computes and checks: the selected
+  >       models' sizes (from the model lock), the container images of the enabled
+  >       features, the configured Incus pool size, the golden images to build, and a
+  >       small fixed floor for pinka itself. If it does not fit, refuse and show the
+  >       shortfall item by item (for example "model X: 10 GiB, missing 8 GiB").
+  >   (b) What grows with use (telemetry, artifacts, datasets, adapters, backups) is
+  >       not a reason to refuse. Pool size and every retention setting are
+  >       configurable; the installer shows the expected growth for the chosen
+  >       settings; doctor monitors free space and warns before it runs out.
+  > - These values are provisional until the first real installs; the real-machine
+  >   tests measure the real footprint at idle and during a run, so the final values
+  >   come from measurement.
+  > - Test VM sizes and the drift test then follow the computed minimum for the
+  >   configuration each target installs.
+  >
+  > 3f-1.B Capacity plan screen in the installer.
+  > Merge the resource, storage and GPU/model choices into one capacity plan screen:
+  > - the detected machine: RAM, CPU, free disk per mount point, GPU with VRAM,
+  >   compute capability and driver state;
+  > - the choices: features, node role, model (only models that fit the GPU, each
+  >   with its size), Incus pool size, concurrent targets, retention settings;
+  > - live budget bars for RAM, disk and VRAM, each expandable to its items; green
+  >   fits, yellow degraded (needs consent), red does not fit (shows the shortfall
+  >   and blocks going on);
+  > - the expected disk growth per day and week for the chosen retention, and roughly
+  >   when the disk fills at that rate;
+  > - every number marked as measured or estimated.
+  > The decision logic stays in preflight; the screen only shows it. A
+  > non-interactive install with an answers file runs the same computation and writes
+  > the same breakdown to the log. Snapshot tests for fits, degraded and does-not-fit.
+  >
+  > 3f-1.C Ubuntu 26.04 LTS as a supported distribution.
+  > It is the current Ubuntu LTS. Is there any reason it cannot be supported? If not,
+  > add it as supported next to 24.04: Docker, Zabbly Incus, Tailscale, NVIDIA driver
+  > and Container Toolkit packages verified and pinned through make lock-pins, a CI
+  > check-mode image, a test-distros target, preflight fixtures. It is claimed as
+  > supported only after its test-distros run passes; until then mark it as pending
+  > verification.
+  >
+  > 3f-1.E DCGM wiring. A setting that silently does something else is not
+  > acceptable: when dcgm is chosen, compose runs the DCGM exporter at the pinned
+  > digest instead of the nvidia-smi exporter, with a test. Its driver and CUDA
+  > compatibility is checked on the GPU host; record that as an open check.
+  >
+  > 3f-1.F Zabbly version per architecture. Approved as a spec deviation; fold it
+  > into the same spec edit.
+  >
+  > 3f-1.G Real-machine test specification — review only, last step of 3f-1.
+  > I attach specs/pokus-infrastructure-qa-spec.md, written outside this session. It
+  > instructs a test agent that runs on my own test computers and does, one test at a
+  > time, the tests you cannot do because they need real machines, VMs, KVM, Incus,
+  > Docker or a GPU. There is no separate QA repository; the agent only reads a
+  > checkout and writes reports, which I pass to you.
+  > Add the file verbatim to specs/ in the commit that records 3f-1, record its sha256
+  > in PROGRESS.md, and treat it as read-only like the other spec masters: never edit
+  > it, and it is not part of your gate. As the last step of 3f-1, review it against
+  > the spec masters, the approved deviations and what was built, without changing
+  > it, and give me a list of:
+  > - names, paths, commands, flags or behaviors it states that differ from the specs
+  >   or from what was built;
+  > - real-machine checks the specs or the 3f-1 features need that it does not cover;
+  > - anything it asks for that the specs do not define, or that could be done
+  >   without a real machine and therefore belongs to CI instead.
+  > I decide each point and edit the file myself. From then on, give me the
+  > real-machine tests as the file numbers them (4.1, 4.2, ...), so the agent and I
+  > use the same numbers.
+
+  Other decisions given with it (owner, verbatim): "Tailscale rpm: stays
+  unverified for now; it must be closed before any rpm-family target is
+  claimed as tested." "Base image pins: approved, including the lock-check
+  warning."
+- **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
+  the rewrite):
+
+  > Real-machine tests, after 3f-1 and before the rewrite, on two Linux computers
+  > (not WSL2). Neither is disposable.
+  >
+  > Computer A: [a VM host: x86_64 bare metal with systemd and KVM, enough
+  > memory for a 16 GiB VM, a GPU below compute capability 7.5 without an NVIDIA
+  > driver, no Secure Boot; Docker, LXD and Tailscale already installed and in
+  > use.]
+  > Every test on A runs inside a VM; nothing on the host may change except what a
+  > test VM needs. LXD is already there; use LXD VMs unless you have a reason to
+  > prefer another tool, and say how to create and delete each VM.
+  >
+  > Computer B: [bare metal: x86_64 with systemd and KVM, a nominal 16 GiB
+  > machine, a Kepler GPU without an NVIDIA driver, no Secure Boot; Tailscale
+  > already installed and in use.]
+  > It cannot host a 16 GiB VM, so on B tests run directly on the host. Nothing is
+  > installed on B until the uninstall tests (including the variant with Tailscale
+  > already present) have passed in VMs on A. Before the first install on B, give me
+  > the steps to take a full backup of B and to restore it. Then B is for: a real
+  > bare-metal install of the smallest configuration on a supported distribution,
+  > the memory tolerance on a real 16 GiB machine, a GPU whose driver current NVIDIA
+  > releases no longer support (it must be treated as no usable GPU, without breaking
+  > the install), the disk check with a small model and pool, and install plus
+  > uninstall with the host snapshot comparison.
+  >
+  > When 3f-1 is done, give me the real-machine tests one at a time, starting with
+  > 4.1 (read-only preflight on both computers) and 4.2 (bootstrap in check mode in
+  > an Ubuntu 24.04 LXD VM on A): the exact steps from a clean start to cleanup, the
+  > VM size, and what to send back. With the first test, also tell me:
+  > - which tests run on A, which on B, and which need different hardware (GPU
+  >   inference and training need compute capability >= 7.5; Secure Boot enrollment
+  >   needs Secure Boot);
+  > - how to run make test-distros (4.14) on A without breaking LXD or Docker on the
+  >   host: Incus next to LXD, Incus inside a large VM with nested KVM, or something
+  >   else, with the risks of each;
+  > - whether preflight with --no-write writes or installs anything.
+  >
+  > I will run make lock-pins on my machine and paste the output separately.
+- **3g** History rewrite and the renamed repository (owner, after 3f,
+  replacing the fresh repository of the decision with the "commit" for
+  3d.2; see "Process rules in force"): after the real-machine tests, the
+  assistant lists every author and committer identity of `main` and the
+  working branch, then proposes the one-time rewrite of the full history
+  that removes the two `Co-Authored-By` trailers, sets author and committer
+  of every commit to the owner's identity (the one on `bef51af`) with the
+  original dates, content and messages, drops and reorders nothing, and
+  removes the privacy scan's two known exceptions; with the before/after
+  hash and identity mapping and every hash in `PROGRESS.md` and the docs
+  updated. It waits for the owner's "rewrite". The owner renames this
+  repository to `pokus-infrastructure` on GitHub. After "rewrite" the
+  assistant gives the exact commands to force-push the rewritten `main`,
+  push the rewritten working branch as `moving/on` and delete
+  `claude/zen-albattani-qfwwps` on the remote; the owner runs them, and the
+  assistant never force-pushes. Then: the list of what to check afterwards
+  (secrets including `PINKA_PRIVACY_DENYLIST`, branch protection, Actions,
+  the default branch, no remote ref still reaching the old commits), how to
+  update any other clone (re-clone, or fetch and `reset --hard` to
+  `moving/on`), and `CLAUDE.md`, `PROGRESS.md` and the docs updated: the
+  repository is renamed, not recreated, and `moving/on` is the working
+  branch, to which every rule that names `claude/zen-albattani-qfwwps`
+  applies (owner decision with the "commit" for 3d.3). The owner merges
+  `moving/on` into `main` themselves; the assistant never opens a pull
+  request and never merges anything (owner, with the "commit" for 3d.8). A
+  small commit proposal updates every reference to the repository's name
+  and URL (README, docs, the `CITATION.cff` placeholder, examples).
 - **3h** Final report: `TEST_REPORT.md` and `HANDOFF.md` for infra as the
   master prompt describes, their commit proposal, then stop. `HANDOFF.md`
-  gives the exact commands for pushing the rewritten history to the new
+  gives the exact commands for pushing the rewritten history to the renamed
   repository as `moving/on` and for merging `moving/on` into `main`, and
   what to check after the merge: CI on `main`, and the weekly jobs, which
   run only from `main` (owner, with the "commit" for 3d.8). After 3h the
@@ -447,7 +691,12 @@ page-ownership table (H5). Settled since: the port table (P3b), the
 project files at the repository root (3f) and `make test-roles` (St12-1,
 after 3e).
 
-Raised by the pins of `make lock-pins` (after 3f), for the owner:
+Raised by the pins of `make lock-pins` (after 3f), for the owner; decided
+with the plan of 3f-1 (owner, after 3f): Zabbly's per-architecture version
+is approved as a spec deviation (3f-1.F), DCGM is wired in 3f-1.E, and
+Tailscale on the rpm releases stays unverified until it is closed before
+any rpm-family target is claimed as tested. The records as they were
+raised:
 
 - **Zabbly's per-architecture versions.** Zabbly builds Incus for each
   architecture separately, and the version names the build
@@ -485,13 +734,14 @@ Raised by the pins of `make lock-pins` (after 3f), for the owner:
   recorded and its commit proposed. The run also cross-checks every pin
   recorded from here. The Incus base image pins age out within days: renew
   them with `make lock-pins` right before the first golden image build.
-- **The 3e runs that need a VM, a real host, Incus, Docker or a GPU**
+- **The real-machine tests** (owner, after 3f): after 3f-1, on the owner's
+  computers A and B, one at a time, named by the numbers of
+  `specs/pokus-infrastructure-qa-spec.md` and starting with 4.1 and 4.2;
+  the plan is under "Real-machine tests" in the remaining plan. They
+  replace the checklist of the 3e runs, which the owner asked for after 3e
   (owner instruction with the "commit" for `a425c7f`: stop and say exactly
-  what to run and where). The owner runs them after 3f, on the final
-  layout; after 3f's commit and CI report the assistant gives them as one
-  checklist ordered cheapest first, with the paths of the root layout
-  (owner, after 3e). Listed so far in `docs/IMPLEMENTATION_NOTES.md`,
-  "Infra self-test without provisioning", "Not tested":
+  what to run and where), listed in `docs/IMPLEMENTATION_NOTES.md`, "Infra
+  self-test without provisioning", "Not tested":
   1. bootstrap in check mode on a disposable Ubuntu 24.04 VM;
   2. `make test-distros` on a machine with Incus VMs;
   3. a full bootstrap on a real supported host, with a second run at
@@ -741,15 +991,12 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 ## Next step
 
-Owner's order after 3f: (1) the commit of the vendor-source pins (`make
-lock-pins`) and the commit of the test VM sizes, each waiting for
-"commit"; the owner runs `make lock-pins` on a fresh Ubuntu 24.04 machine
-for GitHub's SSH host keys; (2) the one-time history rewrite and 3g as
-recorded (the owner creates `PINKA_PRIVACY_DENYLIST` and runs the history
-scan with it before replying "rewrite"); (3) only after 3g, the
-provisioning checklist again, for `pokus-infrastructure` and its branch
-`moving/on`, with the corrected sizes; the owner plans items 1, 3 and 5 in
-fresh WSL2 distributions (32 GiB, 24 threads, an RTX 4070 with compute
-capability 8.9) and item 2 only if `/dev/kvm` is available inside WSL2.
-Every commit waits for the owner's "commit". Still open: the remaining
-`TODO(verify)` items (96), which need network access or reference hardware.
+Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`);
+now 3f-1. Its proposal (every feature, the spec sections each changes,
+the effort) waits for the owner's decision; then one authorized spec edit;
+then each feature as its own step in the order D, A, B, C, E, F, G, each
+waiting for "commit". Then the real-machine tests on the owner's computers
+(4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
+`make lock-pins` on their machine and pastes the output separately. Still
+open: the remaining `TODO(verify)` items (96), which need network access or
+reference hardware.
