@@ -1096,11 +1096,27 @@ def test_git_state_below_the_root_of_a_checkout_is_no_checkout(repo: Path) -> No
     assert git_state_of(repo / "bootstrap")["rc"] == "1"
 
 
-@pytest.mark.skipif(os.geteuid() != 0, reason="changing a file owner needs root")
+def chown(path: Path, uid: int, gid: int) -> None:
+    """Change a file's owner as root: directly, or with sudo -n (CI); skip otherwise."""
+    if os.geteuid() == 0:
+        os.chown(path, uid, gid)
+        return
+    sudo = shutil.which("sudo")
+    if sudo is None or subprocess.run([sudo, "-n", "true"], check=False).returncode != 0:
+        if os.environ.get("CI") == "true":
+            pytest.fail("changing a file owner needs root or sudo -n in CI")
+        pytest.skip("changing a file owner needs root or sudo -n; allowed to skip only outside CI")
+    subprocess.run([sudo, "-n", "chown", f"{uid}:{gid}", str(path)], check=True)
+
+
 def test_git_state_refuses_a_foreign_checkout(repo: Path) -> None:
-    os.chown(repo, 4242, 4242)
-    assert git_state_of(repo, env={"SUDO_UID": "1000"})["rc"] == "2"
-    assert git_state_of(repo, env={"SUDO_UID": "4242"})["rc"] == "0"
+    owner = repo.stat()
+    chown(repo, 4242, 4242)
+    try:
+        assert git_state_of(repo, env={"SUDO_UID": "1000"})["rc"] == "2"
+        assert git_state_of(repo, env={"SUDO_UID": "4242"})["rc"] == "0"
+    finally:
+        chown(repo, owner.st_uid, owner.st_gid)  # so the test's directory can be removed
 
 
 def test_ref_matches_head(repo: Path) -> None:

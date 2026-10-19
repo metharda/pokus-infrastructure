@@ -107,9 +107,11 @@ module = ["ansible", "ansible.*"]
 ignore_missing_imports = true  # ansible-core ships no type information
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers --strict-config"
+# skip_policy names every skipped test; in CI a skip the CI skip list does not
+# name fails (tools/repo-checks/pinka_repo_checks/ci_skips.json).
+addopts = "-ra --strict-markers --strict-config -p pinka_repo_checks.skip_policy"
 markers = [
-  "uv: needs the uv of versions.lock.yml; in CI a skip fails (tools/platform/tests/conftest.py)",
+  "uv: needs the uv of versions.lock.yml (tools/platform/tests/conftest.py); in CI a skip fails",
 ]
 testpaths = [
   "tools/repo-checks/tests",

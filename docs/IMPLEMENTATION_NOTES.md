@@ -5030,3 +5030,72 @@ gets a driver automatically, and nobody has to set `skip` by hand.
   Fedora and a rolling release.
 - Installer: `Wizard.gpu_unsupported`; `mok_enrollment_needed` is false for
   such a GPU; the GPU screen shows it as not usable with the reason.
+
+## CI skip list (after `37c062e`)
+
+Owner decision 1 after the CI report of `37c062e`: CI keeps a list of the
+tests that may skip there, each with its reason; any other skip in CI fails
+the job, and every gate and CI report names each skipped test.
+
+### What runs where
+
+- `tools/repo-checks/pinka_repo_checks/ci_skips.json`: the list, one entry
+  per test (`test` in pytest's id form, `run`: `pytest` or `py39`,
+  `reason`). It holds one entry: the reference-validator test of
+  `preflight/tests/test_fixtures.py`, which the standard-library-only
+  Python 3.9 run cannot do (no `jsonschema`) and the pytest run of the same
+  test does.
+- pytest: `pinka_repo_checks.skip_policy`, loaded for every run by
+  `pyproject.toml`'s `addopts` (the gate's, `make test-random-order`, a
+  developer's own `pytest`). After a run it prints one line per skipped
+  test, `skipped test: <id> (reason: <reason>)`; in CI (`CI=true`) a skip the
+  list does not name is reported as failed, and a module skipped as a whole
+  is a collection error. It replaces the uv tests' own CI rule of
+  `tools/platform/tests/conftest.py`: the list names no uv test.
+- The Python 3.9 runs of `make test-py39`: `python -m
+  pinka_repo_checks.unittest_run` instead of `python -m unittest`, the same
+  output (the gate's counts are unchanged), the same skip lines with
+  pytest-style ids, and the same rule for the `py39` run.
+- The gate prints the skip lines of its steps under its line.
+- The 7 `nft -c` checks of `ansible/tests/test_templates.py` skipped in CI:
+  GitHub's Ubuntu 24.04 runners refuse an unprivileged user namespace, which
+  `unshare -rn` needs. Unprivileged, `nft_check` now falls back to `sudo -n
+  unshare -n` through `privileged()`, the helper the kernel-level guard
+  tests already use, and fails in CI without `sudo -n`.
+- `test_git_state_refuses_a_foreign_checkout` (bootstrap) needed root to
+  change the checkout's owner; it now changes it with `sudo -n chown` when
+  unprivileged and restores it afterwards, so the test directory can be
+  removed. Both paths are proven only on CI's unprivileged runner: this
+  environment runs as root, and making a sudo user here would change the
+  machine's `/etc`.
+
+### Test counts (owner decision 2)
+
+The gate's test line adds its two steps. On `37c062e` here: the Python 3.9
+unittest runs, 373 tests (preflight 143, pinka 223, the install record module
+7; 1 skipped), and pytest, 3253 collected (3252 passed, 1 skipped:
+`tools/platform/tests/test_deploy_mirror.py`, no `ssh-keygen` here): 3624
+passed, 2 skipped. CI's test job runs the same two steps; the line quoted in
+the report was pytest's alone. CI's pytest collected 3281: the database
+tests run once per installed PostgreSQL major, and CI has 16 and 18, this
+environment 16 (`ansible/tests/test_postgres_sql.py` 48 against 25,
+`tools/platform/tests/test_refplat.py` 46 against 41); every other file
+collects the same number. In all, CI ran 3645 tests and skipped 9.
+
+Never run in CI: the 8 skips above, which now run there; the golden images'
+own tests (`images/*/tests/*.sh`), which run inside a built image on a host
+with Incus (the images role) and are only checked with ShellCheck in CI; and `make
+test-distros`, which needs Incus VMs. CI never provisions anything, so these
+two stay with the owner's hosts. Every Python test file is in pytest's
+`testpaths`, nothing is excluded from collection, and the Rego policy tests
+run through `ansible/tests/test_opa.py`.
+
+### Gating worktrees (owner decision 4)
+
+A commit's tree gated in a separate worktree gets its own tool folders
+(`make setup` in it, or real copies), never symlinks into the main tree: in
+the gate of `32b2c95`'s tree, npm replaced the worktree's symlinked
+`node_modules` and so emptied the main tree's (restored with `make setup`),
+and git refused `check-ignore` below a symlinked `.venv`. The worktree also
+sits where `nobody` can enter it, because bootstrap's tests run as
+`nobody`. Recorded in CLAUDE.md.

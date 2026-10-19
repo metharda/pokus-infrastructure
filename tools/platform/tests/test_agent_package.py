@@ -353,16 +353,17 @@ def test_without_uv():
 """
 
 
-@pytest.mark.parametrize(("ci", "failed"), [("true", 2), ("", 0)])
-def test_a_skipped_uv_test_fails_in_ci(tmp_path: Path, ci: str, failed: int) -> None:
-    # The conftest's hooks with a uv fixture that always skips.
+@pytest.mark.parametrize("ci", ["true", ""])
+def test_a_skipped_uv_test_fails_in_ci(tmp_path: Path, ci: str) -> None:
+    # The conftest's marker and the CI skip list (skip_policy), which names no
+    # uv test, with a uv fixture that always skips.
     conftest = (Path(__file__).parent / "conftest.py").read_text(encoding="utf-8")
     hooks = conftest[conftest.index("def pytest_collection_modifyitems") :]
-    imports = "import os\nfrom collections.abc import Generator\nimport pytest\n"
-    (tmp_path / "conftest.py").write_text(imports + hooks, encoding="utf-8")
+    (tmp_path / "conftest.py").write_text("import pytest\n" + hooks, encoding="utf-8")
     (tmp_path / "test_probe.py").write_text(CI_PROBE, encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if k not in ("CI", "PYTEST_ADDOPTS")}
     env["CI"] = ci
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2] / "repo-checks")
     done = subprocess.run(
         [
             sys.executable,
@@ -371,6 +372,8 @@ def test_a_skipped_uv_test_fails_in_ci(tmp_path: Path, ci: str, failed: int) -> 
             "-q",
             "-p",
             "no:cacheprovider",
+            "-p",
+            "pinka_repo_checks.skip_policy",
             "--rootdir",
             str(tmp_path),
             "-c",
@@ -387,10 +390,13 @@ def test_a_skipped_uv_test_fails_in_ci(tmp_path: Path, ci: str, failed: int) -> 
         check=False,
     )
     summary = done.stdout.strip().splitlines()[-1]
-    if failed:
+    if ci:
         assert done.returncode != 0, done.stdout
-        assert "2 errors" in summary and "1 skipped" in summary, done.stdout
-        assert done.stdout.count("a test that needs uv was skipped in CI: ") == 2, done.stdout
+        # Every skip fails in CI, the uv tests' included (the unrelated one too).
+        assert "1 failed" in summary and "2 errors" in summary, done.stdout
+        for test in ("test_direct", "test_through_a_fixture", "test_without_uv"):
+            assert f"test_probe.py::{test} skipped in CI, and the CI skip list" in done.stdout
     else:
         assert done.returncode == 0, done.stdout
-        assert "3 skipped" in summary, done.stdout
+        assert "3 skipped" in done.stdout, done.stdout
+        assert "skipped test: test_probe.py::test_direct (reason: no uv here)" in done.stdout

@@ -276,13 +276,17 @@ check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in chec
 
 .PHONY: test-py39
 test-py39: ## Preflight, pinka and install record module tests with plain unittest on CPython 3.9 (stdlib only)
-	cd preflight && PYTHONPATH=.:tests $(UV) run --no-project --python $(PREFLIGHT_MIN_PYTHON) \
-	  python -m unittest discover -s tests -t tests
-	cd tools/pinka-lab && PYTHONPATH=.:tests:../../preflight $(UV) run --no-project \
-	  --python $(PREFLIGHT_MIN_PYTHON) python -m unittest discover -s tests -t tests
+	@# unittest_run: python -m unittest plus the CI skip list (it names every skipped test).
+	cd preflight && PYTHONPATH=.:tests:../tools/repo-checks $(UV) run --no-project \
+	  --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --prefix preflight/tests discover -s tests -t tests
+	cd tools/pinka-lab && PYTHONPATH=.:tests:../../preflight:../repo-checks $(UV) run --no-project \
+	  --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --prefix tools/pinka-lab/tests discover -s tests -t tests
 	@# The module runs on the target's Python: 3.9 in the Red Hat family's check-mode containers.
-	cd ansible/tests && PYTHONPATH=../roles/install_record/library $(UV) run --no-project \
-	  --python $(PREFLIGHT_MIN_PYTHON) python -m unittest test_install_record_module
+	cd ansible/tests && PYTHONPATH=../roles/install_record/library:../../tools/repo-checks $(UV) run \
+	  --no-project --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --prefix ansible/tests test_install_record_module
 
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)

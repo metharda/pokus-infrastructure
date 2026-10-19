@@ -193,6 +193,22 @@ does not push the rewritten history itself.
 - The pytest suites also run in a random order with the Makefile's fixed,
   printed seed (`make test-random-order`, CI job `test-random-order`): a
   test never relies on what another test left in the process.
+- Skips in CI (owner, after `37c062e`): CI keeps a list of the tests that may
+  skip there, each with its run and reason
+  (`tools/repo-checks/pinka_repo_checks/ci_skips.json`, empty or nearly so);
+  in CI any other skip fails the job (pytest: the `skip_policy` plugin that
+  `pyproject.toml` loads; the Python 3.9 runs: `unittest_run`). A test that
+  needs root runs in CI through the runner's `sudo -n`. Every run names each
+  skipped test with its reason (`skipped test: <id> (reason: ...)`), the
+  gate lists them under its line, and every gate and CI report names each
+  skipped test, not only the count.
+- Gating a commit's tree in a separate worktree: give the worktree its own
+  tool folders (`make setup` in it, or real copies of `.venv`,
+  `node_modules`, `.ansible-collections` and `build/tools`), never symlinks
+  into the main tree. npm replaced a symlinked `node_modules` and emptied
+  the main tree's, and git refuses `check-ignore` below a symlink. Put the
+  worktree where `nobody` can enter it (next to the checkout, not in a
+  private temporary directory): bootstrap's tests run as `nobody`.
 - Read `docs/BUILD_PROMPT.md` and `docs/DOCS_SPEC.md` by section for the
   step at hand, not whole.
 - `specs/` is read-only, the real-machine test specification
@@ -402,7 +418,7 @@ does not push the rewritten history itself.
   `versions.lock.yml` pins: `make setup` installs it into `build/tools/uv`
   (`PINKA_UV=<path>` names another). They take the `uv` fixture of
   `tools/platform/tests/conftest.py`, which marks them; in CI any skip of a
-  marked test is a failure.
+  marked test is a failure (the CI skip list names none).
 - The telemetry stores and the inference API are reachable only by a UID
   allowlist in nftables (`pinka_telemetry_guard`, `pinka_inference_guard`,
   ADR-0016): rules match the socket's UID, never its GID, and a new client

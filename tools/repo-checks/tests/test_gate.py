@@ -35,6 +35,7 @@ elif step == "lint-bad":
 elif step == "test-ok":
     print("..s.")
     print("======== 3 passed, 1 skipped, 2 warnings in 1.20s ========")
+    print("skipped test: t/test_a.py::test_c (reason: needs a GPU)")
 elif step == "test-bad":
     print("Traceback (most recent call last):")
     print('  File "t.py", line 3, in test_x')
@@ -168,13 +169,13 @@ def run_gate(
     return status, out.getvalue()
 
 
-def test_success_prints_one_line_with_every_count(tmp_path: Path) -> None:
+def test_success_prints_one_line_with_every_count_and_names_the_skips(tmp_path: Path) -> None:
     status, text = run_gate(tmp_path, ["lint-ok", "lint-warn", "test-ok"])
     assert status == 0
-    assert text.count("\n") == 1
     assert text == (
         f"lint: 5 passed, 0 failed, 1 skipped, 4 warnings "
         f"(3 steps; logs: {tmp_path / 'gate' / 'lint'})\n"
+        "  skipped test: t/test_a.py::test_c (reason: needs a GPU)\n"
     )
     logs = tmp_path / "gate" / "lint"
     assert sorted(p.name for p in logs.iterdir()) == [
@@ -203,10 +204,11 @@ def test_failure_prints_every_failing_step_in_full(tmp_path: Path) -> None:
     assert "all fine" not in text  # passing steps stay in their logs
     # Every step ran, also after the first failure.
     assert (logs / "test-ok.log").exists()
-    assert text.splitlines()[-1] == (
+    assert text.splitlines()[-2:] == [
         f"lint: FAILED: 8 passed, 2 failed, 1 skipped, 2 warnings "
-        f"(4 steps; failing: lint-bad, test-bad; logs: {logs})"
-    )
+        f"(4 steps; failing: lint-bad, test-bad; logs: {logs})",
+        "  skipped test: t/test_a.py::test_c (reason: needs a GPU)",
+    ]
 
 
 def test_a_failed_setup_stops_the_gate(tmp_path: Path) -> None:

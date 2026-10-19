@@ -1,0 +1,10 @@
+{
+  "_comment": "The tests that may skip in CI, each with the run it skips in and its reason (owner, after 37c062e; CLAUDE.md). In CI (CI=true) every other skip fails the job: in pytest runs through pinka_repo_checks.skip_policy, in the Python 3.9 unittest runs of make test-py39 through pinka_repo_checks.unittest_run. Keep it empty or nearly so: a test that can run in CI runs there.",
+  "skips": [
+    {
+      "test": "preflight/tests/test_fixtures.py::FixtureDecisionTest::test_reports_validate_with_reference_validator",
+      "run": "py39",
+      "reason": "the Python 3.9 run is standard library only, so the reference jsonschema validator is not there; the pytest run of the same test compares with it"
+    }
+  ]
+}

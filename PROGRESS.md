@@ -351,8 +351,23 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   a GPU the pinned release's open kernel module supports, from NVIDIA's
   `supported-gpus.json` pinned in `versions.lock.yml`) is the commit after
   it, recorded in `docs/IMPLEMENTATION_NOTES.md`, "GPU support guard
-  (decision 1 after D1)". The three are pushed together; their CI is
-  reported job by job before the next step.
+  (decision 1 after D1)"; the three were pushed together. CI of `37c062e`
+  (run 39217765497): every job passed (privacy, lint, test, the new
+  test-random-order, docs, all six check-mode and all six
+  check-mode-extended lanes, release-package, lock-collections) but the
+  known red `lock-check` (24 marker errors, the postgres and `ubuntu:24.04`
+  tag warnings; its new `gpus` check recomputed both lists). The test job
+  skipped 8 tests, as on every earlier run that was reported as green
+  without naming them: the 7 `nft -c` checks of
+  `ansible/tests/test_templates.py` (`test_nft_ruleset_is_valid` with
+  `default`, `extra-interfaces-grafana`, `vm-targets` and `lxd`,
+  `test_telemetry_guard_is_valid`, `test_inference_guard_ruleset`,
+  `test_split_guard_ruleset`: GitHub's runner refuses the unprivileged
+  network namespace) and
+  `bootstrap/tests/test_bootstrap.py::test_git_state_refuses_a_foreign_checkout`
+  (needs root). The CI skip list (owner, after `37c062e`) makes them run in
+  CI through `sudo -n` and fails any skip it does not name; it waits for
+  "commit", then the per-file process run.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -371,7 +386,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files and the GPU guard done; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), the GPU guard after it |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files and the GPU guard done; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -721,6 +736,47 @@ its checks green and a commit proposal, and waits for the owner's
   the old code it did not expose this one either in six seeds, and in about
   6% of 10,000 simulated seeds, while each test file in its own process
   exposes it every time.
+
+  Decisions after the CI report of `37c062e` (owner, verbatim):
+
+  > CI result noted, and thank you for the correction on the skips.
+  >
+  > Decisions:
+  > 1. The nftables check commit: approved as proposed, before the pre-existing
+  >    access follow-up. Widen it into a general rule:
+  >    - CI keeps an allowlist of tests that may skip there, each with its reason;
+  >      any skip in CI that is not on the list fails the job;
+  >    - the root-only bootstrap test also runs in CI through the runner's sudo, so
+  >      the list should be empty or nearly so;
+  >    - every gate and CI report from now on names each skipped test, not only the
+  >      count. Record the rule in CLAUDE.md.
+  > 2. Test counts: the local gate reports 3624 passed, CI's test job 3273 passed
+  >    plus 8 skipped. Explain the difference of about 340 tests (for example the
+  >    Python 3.9 run or tests outside CI's selection). If any test file or group
+  >    never runs in CI, list it and make CI run it, or tell me why it cannot.
+  > 3. Per-file process run: yes, as its own small commit after the nftables one.
+  >    Each test file runs in a process of its own (make test-isolated and a CI job).
+  >    Tell me its CI duration: under about ten minutes, on every push; otherwise
+  >    nightly and on demand, required before any release. List any failures it
+  >    exposes before fixing them.
+  > 4. Gating in a separate worktree: symlinked tool folders must not be able to
+  >    change the main tree again (npm emptying node_modules). Use real copies in
+  >    gating worktrees, or record the caveat in CLAUDE.md.
+  >
+  > Order: the nftables/skip commit, the per-file run, then the pre-existing access
+  > follow-up and D2, each waiting for my "commit".
+
+  Answer to 2 (details in `docs/IMPLEMENTATION_NOTES.md`, "CI skip list
+  (after `37c062e`)"): the gate's test line adds two steps, the Python 3.9
+  unittest runs (373 tests: preflight 143, pinka 223, the install record
+  module 7; 1 skipped) and pytest (3253 collected here); CI's test job runs
+  the same two steps, and the line quoted was pytest's alone. CI's pytest
+  collects 28 more (3281): the database tests run once per installed
+  PostgreSQL major, 16 and 18 in CI, 16 here (`test_postgres_sql.py` 48
+  against 25, `test_refplat.py` 46 against 41). Never run in CI: the 8 skips
+  (now run there), the golden images' own tests (`images/*/tests/*.sh`, run
+  inside built images on an Incus host; CI only runs ShellCheck on them) and
+  `make test-distros` (VMs); CI never provisions anything.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -1279,9 +1335,11 @@ Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
 and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
 (`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
 edit after D1 (`0378425`), the installer fix of the written files
-(`32b2c95`) and the GPU support guard, pushed together. Then the
-pre-existing access with the SSH `Match` block as a D1 follow-up, then D2,
-A, B, C, E, F and G, each as its own step waiting for "commit". Then
+(`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
+green but the known red. Then, each waiting for "commit" (owner, after
+`37c062e`): the CI skip list with the nft checks and the root test in CI,
+the per-file process run, the pre-existing access with the SSH `Match`
+block as a D1 follow-up, then D2, A, B, C, E, F and G. Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

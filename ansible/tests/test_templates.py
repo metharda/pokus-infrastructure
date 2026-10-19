@@ -126,15 +126,26 @@ def nft_argv(path: Path) -> list[str] | None:
 
 
 def nft_check(path: Path) -> subprocess.CompletedProcess[str]:
+    """``nft -c`` on a ruleset in a private network namespace.
+
+    Unprivileged, the namespace needs a user namespace too, which some hosts
+    refuse (GitHub's Ubuntu 24.04 runners); then the check runs with
+    ``sudo -n`` (:func:`privileged`), which CI has.
+    """
     probe = path.parent / "probe.nft"
     probe.write_text("table inet pinka_probe {\n}\n", encoding="utf-8")
     argv = nft_argv(probe)
     if argv is None:
         pytest.skip("nft or unshare is not installed")
+    prefix: list[str] = []
     if subprocess.run(argv, capture_output=True, text=True, check=False).returncode != 0:
-        pytest.skip("nft cannot check rulesets in a private network namespace here")
+        if os.geteuid() == 0:
+            pytest.skip("nft cannot check rulesets in a private network namespace here")
+        prefix = [*privileged(), argv[0], "-n"]
     argv = nft_argv(path)
     assert argv is not None
+    if prefix:
+        argv = [*prefix, *argv[2:]]
     return subprocess.run(argv, capture_output=True, text=True, check=False)
 
 
@@ -350,7 +361,7 @@ def privileged() -> list[str]:
     if sudo and subprocess.run([sudo, "-n", "true"], check=False).returncode == 0:
         return [sudo, "-n"]
     if os.environ.get("CI") == "true":
-        pytest.fail("the telemetry guard test needs root or sudo -n in CI")
+        pytest.fail("the nftables checks need root or sudo -n in CI")
     pytest.skip("needs root or sudo -n; allowed to skip only outside CI")
 
 

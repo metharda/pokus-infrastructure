@@ -7,7 +7,10 @@ output to ``<log-dir>/<gate>/<step>.log``. Every step runs, even after one
 failed, so one run reports every failure.
 
 * On success it prints one line: the counts of passed, failed and skipped
-  items and of warnings, the number of steps and where the logs are.
+  items and of warnings, the number of steps and where the logs are. Below
+  it, one line per skipped test, as the test runs name them
+  (``skipped test: <id> (reason: <reason>)``, :mod:`pinka_repo_checks.ci_skips`):
+  every gate report names each skipped test, not only their count.
 * On failure it prints the complete output of every failing step, then the
   same line, marked ``FAILED``, and exits with 1. pytest runs with
   ``--tb=long`` (``PYTEST_ADDOPTS``), so every traceback is complete.
@@ -37,7 +40,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
 
@@ -51,6 +54,7 @@ UNITTEST_RAN_RE = re.compile(r"^Ran (?P<n>\d+) tests? in ")
 UNITTEST_RESULT_RE = re.compile(r"^(?P<status>OK|FAILED)(?: \((?P<detail>[^)]*)\))?$")
 UNITTEST_PART_RE = re.compile(r"(?P<kind>[a-z ]+)=(?P<n>\d+)")
 ANSIBLE_LINT_RE = re.compile(r"\b(?P<n>\d+) warning\(s\)")
+SKIPPED_TEST_PREFIX = "skipped test: "  # pinka_repo_checks.ci_skips.line
 WARNING_LINE_RE = re.compile(
     r"^[\s│|]*(?:⚠\s*)?warning\b"  # warning: ..., WARNING - ..., │ ⚠ Warning ...
     r"|^\S+?:\d+(?::\d+)?: warning\b"  # <file>:<line>[:<col>]: warning ...
@@ -70,6 +74,7 @@ class Counts:
         skipped: Tests that did not run (skipped, deselected, expected failures).
         warnings: Warnings, as counted in the module docstring.
         tests: Whether the numbers count tests rather than the step itself.
+        skipped_tests: The lines that name a skipped test, in order.
     """
 
     passed: int = 0
@@ -77,6 +82,7 @@ class Counts:
     skipped: int = 0
     warnings: int = 0
     tests: bool = False
+    skipped_tests: list[str] = field(default_factory=list)
 
     def add(self, other: Counts) -> None:
         """Add another step's counts to these.
@@ -89,6 +95,7 @@ class Counts:
         self.skipped += other.skipped
         self.warnings += other.warnings
         self.tests = self.tests or other.tests
+        self.skipped_tests += other.skipped_tests
 
 
 def _pytest(line: str, counts: Counts) -> bool:
@@ -139,6 +146,9 @@ def parse(output: str) -> Counts:
     for raw in output.splitlines():
         line = ANSI_RE.sub("", raw).rstrip()
         if _pytest(line, counts):
+            continue
+        if line.startswith(SKIPPED_TEST_PREFIX):
+            counts.skipped_tests.append(line)
             continue
         if match := UNITTEST_RAN_RE.match(line):
             ran = int(match.group("n"))
@@ -274,4 +284,6 @@ def run(
             failing.append(step)
             _show(out, f"{gate}/{step}", status, log, output)
     out.write(summary(gate, total, len(names), logs, failing) + "\n")
+    for line in total.skipped_tests:
+        out.write(f"  {line}\n")
     return 1 if failing else 0

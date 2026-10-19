@@ -116,6 +116,7 @@ versionlock
 veth
 VFIO
 vllm
+worktrees
 wslconfig
 Zabbly
 Zorin
