@@ -10,7 +10,8 @@ Generated files:
 * ``preflight/support-matrix.json`` and ``preflight/endpoints.json`` (the
   preflight evaluator reads only JSON; owner answer E10), and
   ``preflight/lab-defaults.json`` (the default ports and addresses preflight
-  checks, from group_vars);
+  checks, from group_vars), and ``preflight/nvidia-gpus.json`` (the GPU lists
+  of the pinned NVIDIA driver releases, from versions.lock.yml);
 * ``docs/support-matrix.md``;
 * ``docs/reference/cli/pinka-preflight.md``;
 * ``docs/reference/exit-codes.md``;

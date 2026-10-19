@@ -311,6 +311,10 @@ def build_facts(
         "secure_boot": kernel.secure_boot,
         "nvidia_gpu_present": nvidia and gpu.present,
         "nvidia_gpu_usable": nvidia and gpu.usable,
+        "nvidia_gpu_open_module_supported": nvidia and bool(gpu.open_module_drivers),
+        "nvidia_gpu_proprietary_only": (
+            nvidia and not gpu.open_module_drivers and bool(gpu.proprietary_only_drivers)
+        ),
         "nvidia_driver_installed": gpu.driver_installed,
         "nvidia_driver_loaded": gpu.driver_loaded,
         "gpu_vram_gib": gpu.vram_gib,
@@ -559,6 +563,13 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     facts = build_facts(env, kernel, hw, gpu, conflicts)
     facts.update(DEFAULT_CHOICES)
     facts.update(choices or {})
+    # Who would install a missing driver: bootstrap only for a GPU the pinned
+    # release's open kernel module supports (§2.2), the operator with manual.
+    mode = facts["nvidia_driver_mode"]
+    supported = facts["nvidia_gpu_open_module_supported"]
+    facts["nvidia_driver_planned"] = (
+        "manual" if mode == "manual" else "auto" if mode == "auto" and supported else "none"
+    )
     os_rule = match_os(matrix, osr)
     arch_rule = match_arch(matrix, machine)
     env_rule = matrix["environment"].get(env.env_class, matrix["environment"]["unknown"])

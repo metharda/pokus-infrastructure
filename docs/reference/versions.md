@@ -252,6 +252,16 @@ Verified on 2026-10-17. Source: make lock-pins at 2026-10-17T22:47:21Z: build 20
 | ubuntu-24.04 | `images:ubuntu/24.04/cloud` | container | x86_64 | `ddbc871ce856d7fc978e1c3aba7f8a7e058d128b42585cbb7caf6ebdcb1a791f` |
 | ubuntu-24.04 | `images:ubuntu/24.04/cloud` | container | aarch64 | `f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a` |
 
+## NVIDIA driver GPU lists
+
+Verified on 2026-10-18. Source: make lock-pins at 2026-10-18T19:18:58Z (the signed index, the package's and the list's sha256 and the cross-checks of each entry's comment)
+
+A driver is installed automatically only for a GPU whose PCI device ID is in the open-module list of the pinned release ([Bare-metal hosts](../providers/baremetal.md#which-gpus-get-a-driver)).
+
+| Driver release | File | sha256 | Open-module IDs | Proprietary-only IDs |
+| --- | --- | --- | --- | --- |
+| `580.178.04` | `usr/share/doc/nvidia-kernel-common-580/supported-gpus.json` | `2fd600dd713ad843006aec6d3c2abf6787d45a2cbf55053b0c07b26e693d1c05` | 289 | 160 |
+
 ## GitHub SSH host keys
 
 Verified on 2026-10-05. Source: GitHub meta API, api.github.com/meta (ssh_keys, ssh_key_fingerprints); not read yet

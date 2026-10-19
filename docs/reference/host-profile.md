@@ -90,6 +90,9 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `gpu.unsupported_devices` | array | yes | — |
 | `gpu.notes` | array | yes | — |
 | `gpu.install_driver` | one of `auto`, `manual`, `skip` | yes | The host's install_nvidia_driver setting given to preflight (--nvidia-driver): auto, manual or skip. |
+| `gpu.pci_device` | string or null | yes | PCI vendor and device ID of the first NVIDIA GPU on the PCI bus (bare metal, VM passthrough); null elsewhere. |
+| `gpu.open_module_drivers` | array | yes | The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them (BUILD_PROMPT §2.2, §10.1). |
+| `gpu.proprietary_only_drivers` | array | yes | The pinned NVIDIA driver releases that support this GPU only with their proprietary kernel module (Maxwell, Pascal, Volta: below compute capability 7.5), so no driver is installed for it; empty for a GPU only a legacy branch supports or the list does not name. |
 | `capabilities` | object | yes | — |
 | `capabilities.cgroup2` | boolean | yes | — |
 | `capabilities.cgroup_fs_type` | string or null | yes | — |

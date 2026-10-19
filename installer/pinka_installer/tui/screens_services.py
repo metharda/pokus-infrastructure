@@ -99,6 +99,23 @@ class GpuScreen(StepScreen):
             classes="info",
         )
         release = (self.wizard.profile.get("os") or {}).get("release") or ""
+        if self.wizard.gpu_unsupported:
+            pci = info.get("pci_device") or "?"
+            reason = (
+                f"the pinned driver supports this GPU (PCI {pci}) only with its proprietary "
+                "kernel module (Maxwell, Pascal, Volta: below compute capability 7.5), and a "
+                "driver is installed only for a GPU its open kernel module supports (Turing or "
+                "later)"
+                if info.get("proprietary_only_drivers")
+                else f"the pinned driver does not support this GPU (PCI {pci}): only an older "
+                "legacy branch does, or NVIDIA's list does not name it"
+            )
+            yield Static(
+                f"Not usable: {reason}. No driver is installed for it automatically and the lab "
+                "installs without the GPU features.",
+                classes="banner warn",
+                id="gpu-unsupported",
+            )
         if self.wizard.is_wsl:
             yield Static(
                 "WSL: the Windows driver provides the GPU; no Linux driver is installed.",

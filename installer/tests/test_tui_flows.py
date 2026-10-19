@@ -475,6 +475,38 @@ def test_secure_boot_without_the_driver(repo: Paths) -> None:
     assert "accept_mok_enrollment" not in installer.ctx.wizard.consents
 
 
+KEPLER = "ubuntu2404-baremetal-nvidia-kepler-secureboot"
+
+
+def test_a_gpu_no_driver_is_installed_for(repo: Paths) -> None:
+    # BUILD_PROMPT §2.2: no MOK consent and no driver for a GPU the pinned driver's
+    # open kernel module does not support, even with "Install the pinned driver".
+    host = FakeHost(preflight(KEPLER), fixture=KEPLER)
+    installer = app(context(repo, host, machine="pinka-lab"))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        screen = pilot.app.screen
+        assert "Outcome: degraded" in str(screen.query_one("#outcome", Static).content)
+        assert not screen.query("#consent-mok") and not screen.query("#skip-driver")
+        for box in screen.query(".consent-feature").results(Checkbox):
+            box.value = True
+        await forward(pilot, "mode")
+        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+            await forward(pilot, step)
+        screen = pilot.app.screen
+        banner = str(screen.query_one("#gpu-unsupported", Static).content)
+        assert "Not usable: the pinned driver does not support this GPU (PCI 10de:1287)" in banner
+        assert not screen.query("#mok")
+        pick(pilot, "driver-auto")  # installs nothing for this GPU, and asks for no MOK
+        await pilot.pause()
+        await forward(pilot, "backups")
+
+    drive(installer, flow)
+    assert installer.ctx.wizard.answers.gpu.install_driver == "auto"
+    assert "accept_mok_enrollment" not in installer.ctx.wizard.consents
+
+
 def test_unsupported_host_can_only_be_forced_by_typing(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))
     installer = app(context(repo, host), first="preflight")

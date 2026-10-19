@@ -422,17 +422,30 @@ def nvsmi_version(driver: str, cuda: str) -> str:
     )
 
 
+# PCI device IDs from NVIDIA's supported-gpus.json of driver 580.178.04 (the
+# GPU list of versions.lock.yml): the RTX 4070 and the RTX 2080 Ti (Turing) are
+# supported by the open kernel module, the GeForce 1030 (Pascal) only by the
+# proprietary module, the GeForce 730 (Kepler) only by the 470 legacy branch.
+RTX_4070_DEVID = "0x2786"
+RTX_2080_TI_DEVID = "0x1e04"
+PASCAL_1030_DEVID = "0x1d01"
+KEPLER_730_DEVID = "0x1287"
+OPEN_DRIVERS = ["580.178.04"]
+
+
 def nvidia_pci(
     driver: str = "loaded",
     device: str = "0000:01:00.0",
     version: tuple[str, str] = CURRENT_DRIVER,
     gpu: tuple[str, str, str] = RTX_4070,
+    devid: str = RTX_4070_DEVID,
 ) -> Layer:
-    """An NVIDIA GPU on the PCI bus with the given driver state and version."""
+    """An NVIDIA GPU on the PCI bus with the given driver state, version and device ID."""
 
     def apply(f: Fixture) -> None:
         f.files[f"/sys/bus/pci/devices/{device}/vendor"] = "0x10de\n"
         f.files[f"/sys/bus/pci/devices/{device}/class"] = "0x030000\n"
+        f.files[f"/sys/bus/pci/devices/{device}/device"] = f"{devid}\n"
         if driver == "loaded":
             f.files["/proc/driver/nvidia/version"] = (
                 f"NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  {version[0]}\n"
@@ -714,6 +727,81 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "install_driver": "auto",
         },
     )
+    # Decision 1 after D1: with install_nvidia_driver auto, a driver is installed
+    # only for a GPU the pinned release's open kernel module supports.
+    no_driver = [*base_ubuntu, baremetal(), kvm()]
+    unsupported_gpu = {
+        "outcome": "degraded",
+        "provider": "baremetal",
+        "needs_action": [],
+        "disabled": ["gpu_inference"],
+        "open_module_drivers": [],
+        "install_driver": "auto",
+    }
+    # Kepler: only the legacy 470 branch supports the GeForce 730.
+    kepler = {
+        **unsupported_gpu,
+        "pci_device": "10de:1287",
+        "proprietary_only_drivers": [],
+        "warnings_contain": ["No usable GPU: the pinned NVIDIA driver does not support this GPU"],
+    }
+    fx["ubuntu2404-baremetal-nvidia-kepler"] = build(
+        *no_driver, nvidia_pci("none", devid=KEPLER_730_DEVID), expected=kepler
+    )
+    fx["ubuntu2404-baremetal-nvidia-kepler-secureboot"] = build(
+        *no_driver,
+        nvidia_pci("none", devid=KEPLER_730_DEVID),
+        secure_boot_enabled,
+        expected={**kepler, "secure_boot": "enabled"},
+    )
+    # Pascal: the pinned release supports the GeForce 1030 only with its proprietary module.
+    fx["ubuntu2404-baremetal-nvidia-pascal"] = build(
+        *no_driver,
+        nvidia_pci("none", devid=PASCAL_1030_DEVID),
+        expected={
+            **unsupported_gpu,
+            "pci_device": "10de:1d01",
+            "proprietary_only_drivers": OPEN_DRIVERS,
+            "warnings_contain": ["only with its proprietary kernel module (Maxwell, Pascal"],
+        },
+    )
+    supported_gpu = {
+        "outcome": "degraded",
+        "needs_action": [],
+        "disabled": ["gpu_inference"],
+        "pci_device": "10de:1e04",
+        "open_module_drivers": OPEN_DRIVERS,
+        "proprietary_only_drivers": [],
+        "install_driver": "auto",
+    }
+    fx["ubuntu2404-baremetal-nvidia-turing"] = build(
+        *no_driver,
+        nvidia_pci("none", devid=RTX_2080_TI_DEVID),
+        expected={**supported_gpu, "provider": "baremetal", "family": "debian"},
+    )
+    # One per family: the list belongs to the driver release, not the distribution.
+    for name, layers, family in (
+        ("debian13", [DEBIAN_13, system(kernel="6.12.48+deb13-amd64"), apparmor], "debian"),
+        (
+            "fedora",
+            [FEDORA_44, system(kernel="6.16.9-200.fc44.x86_64"), selinux_enforcing],
+            "redhat",
+        ),
+        (
+            "almalinux9",
+            [ALMA_9, system(kernel="5.14.0-570.el9.x86_64"), selinux_enforcing],
+            "redhat",
+        ),
+        ("opensuse-tumbleweed", [TUMBLEWEED, system(kernel="6.16.8-1-default"), apparmor], "suse"),
+        ("arch", [ARCH, system(kernel="6.16.10-arch1-1")], "archlinux"),
+    ):
+        fx[f"{name}-baremetal-nvidia-turing"] = build(
+            *layers,
+            baremetal(),
+            kvm(),
+            nvidia_pci("none", devid=RTX_2080_TI_DEVID),
+            expected={**supported_gpu, "provider": "baremetal", "family": family},
+        )
     # Approved deviation I1: the same host with the operator's choices.
     secureboot = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("none"), secure_boot_enabled]
     fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent"] = build(

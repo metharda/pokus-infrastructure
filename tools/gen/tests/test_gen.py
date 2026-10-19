@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -127,6 +128,23 @@ def test_generated_json_carries_provenance() -> None:
     text = sources.support_matrix_json(ROOT)
     assert '"_generated_from": "preflight/support-matrix.yml' in text
     assert '"@versions.lock' not in text
+
+
+def test_preflight_gets_the_gpu_lists_of_the_lock() -> None:
+    lock = sources.load_yaml(ROOT / "versions.lock.yml")
+    data = json.loads(sources.nvidia_gpus_json(ROOT))
+    assert data["_generated_from"].startswith("versions.lock.yml")
+    releases = lock["nvidia_driver_gpus"]["releases"]
+    assert data["drivers"] == {
+        str(v): {"open_module": e["open_module"], "proprietary_only": e["proprietary_only"]}
+        for v, e in releases.items()
+    }
+    # The Turing control and the Ada card of the fixtures have the open module; the
+    # Pascal card only the proprietary one; the Kepler card neither (legacy branch).
+    (lists,) = data["drivers"].values()
+    assert {"1E04", "2786"} <= set(lists["open_module"])
+    assert "1D01" in lists["proprietary_only"]
+    assert "1287" not in lists["open_module"] + lists["proprietary_only"]
 
 
 def test_bootstrap_pins_come_from_the_lock() -> None:

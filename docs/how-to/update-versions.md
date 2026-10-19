@@ -45,6 +45,7 @@ current pins are listed in [Pinned versions](../reference/versions.md).
     | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. The Zabbly and Tailscale keys: `make lock-pins`. |
     | Incus base image | `make lock-pins`, right before a lab's first golden image build: the image server keeps only its newest builds, a few days. |
     | GitHub's SSH host keys | `make lock-pins`, which needs two agreeing sources (GitHub's meta API, its documentation, `ssh-keyscan`). |
+    | NVIDIA driver | The package index of each pinned release; then `make lock-pins` for the GPU list of the new driver release (`nvidia_driver_gpus`), which `make lock-check` requires for every verified driver pin. |
     | Python package | PyPI; then run `make bootstrap-lock` to recompute the hashes. |
     | Ansible collection | The collection's release tag and its `requires_ansible` in `meta/runtime.yml`; then its artifact with `make lock-collections` ([How to pin the Ansible collections](pin-ansible-collections.md)). |
 

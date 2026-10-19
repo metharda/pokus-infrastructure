@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 import yaml
 
-from pinka_lockcheck import lockpins, net, openpgp
+from pinka_lockcheck import lockpins, net, nvidia_gpus, openpgp
 
 ROOT = Path(__file__).resolve().parents[3]
 ARMOR = "-----BEGIN PGP PUBLIC" + " KEY BLOCK-----"
@@ -42,6 +42,7 @@ def armored(packet: bytes) -> bytes:
 
 ZABBLY = public_key_packet(b"zabbly")
 TAILSCALE = public_key_packet(b"tailscale")
+UBUNTU = public_key_packet(b"ubuntu archive")
 ZABBLY_FP = openpgp.primary_fingerprints(ZABBLY)[0]
 TAILSCALE_FP = openpgp.primary_fingerprints(TAILSCALE)[0]
 
@@ -89,6 +90,63 @@ FACTS: dict[str, Any] = yaml.safe_load(
 )
 LOCK: dict[str, Any] = yaml.safe_load((ROOT / "versions.lock.yml").read_text())
 
+# The NVIDIA driver release the lock pins for Ubuntu, and a small GPU list for it:
+# Turing and Ada with the open module, Pascal with the proprietary one only,
+# Kepler only in the legacy branch.
+DRIVER = {r: p for r, p in LOCK["packages"]["nvidia_driver"].items() if r.startswith("ubuntu-")}
+DRIVER_VERSION = nvidia_gpus.upstream_version(next(iter(DRIVER["ubuntu-24.04"].values())))
+SUPPORTED_GPUS = json.dumps(
+    {
+        "chips": [
+            {"devid": "0x1E04", "name": "RTX 2080 Ti", "features": ["kernelopen"]},
+            {"devid": "0x2786", "name": "RTX 4070", "features": ["kernelopen", "vdpaufeatureset"]},
+            {"devid": "0x1D01", "name": "GeForce 1030", "features": []},
+            {"devid": "0x1287", "name": "GeForce 730", "features": [], "legacybranch": "470.xx"},
+        ]
+    }
+).encode()
+README = (
+    "The open kernel modules can be used on any Turing or later GPU.\n\n"
+    "| Product Name | PCI ID |\n| --- | --- |\n"
+    "| NVIDIA GeForce RTX 2080 Ti | 1E04 |\n| NVIDIA GeForce RTX 4070 | 2786 10DE 1234 |\n"
+)
+
+
+def modaliases(*ids: str) -> str:
+    return "nvidia(" + ", ".join(f"pci:v000010DEd0000{i}sv*sd*bc03sc*i*" for i in ids) + ")"
+
+
+def ubuntu_restricted(
+    release: str, codename: str, *, open_ids: tuple[str, ...] = ("1E04", "2786")
+) -> dict[str, bytes]:
+    """The signed restricted index of ``<codename>-updates`` and the common package it names."""
+    (version,) = DRIVER[release].values()
+    deb = f"deb of nvidia-kernel-common-580 {version}".encode()
+    pool = f"pool/restricted/n/nvidia-graphics-drivers-580/nvidia-kernel-common-580_{version}.deb"
+    stanzas = [
+        f"Package: nvidia-kernel-common-580\nVersion: {version}\nFilename: {pool}\n"
+        f"SHA256: {hashlib.sha256(deb).hexdigest()}\n",
+        f"Package: nvidia-driver-580-open\nVersion: {version}\n"
+        f"Modaliases: {modaliases(*open_ids)}\n",
+        f"Package: nvidia-driver-580\nVersion: {version}\n"
+        f"Modaliases: {modaliases('1D01', '1E04', '2786')}\n",
+    ]
+    index = gzip.compress("\n".join(stanzas).encode(), mtime=0)
+    base = f"{lockpins.UBUNTU_ARCHIVE}/dists/{codename}-updates"
+    files = {"restricted/binary-amd64/Packages.gz": index}
+    return {
+        f"{base}/restricted/binary-amd64/Packages.gz": index,
+        f"{base}/InRelease": in_release(files, components="main restricted"),
+        f"{lockpins.UBUNTU_ARCHIVE}/{pool}": deb,
+    }
+
+
+def extract(deb: bytes, member: str) -> bytes:
+    """The fake packages hold only supported-gpus.json."""
+    assert member == nvidia_gpus.JSON_PATH.format(branch="580"), member
+    assert deb.startswith(b"deb of nvidia-kernel-common-580")
+    return SUPPORTED_GPUS
+
 
 class World:
     """A fake internet with every source of the tool."""
@@ -127,6 +185,9 @@ class World:
                     {arch: {"tailscale": ["1.104.0", "1.104.1"]} for arch in ("amd64", "arm64")},
                 )
             )
+        for release, codename in (("ubuntu-24.04", "noble"), ("ubuntu-22.04", "jammy")):
+            self.files.update(ubuntu_restricted(release, codename))
+        self.files[nvidia_gpus.README_URL.format(version=DRIVER_VERSION)] = README.encode()
         self.registry["tags/list"] = (
             {},
             {"tags": ["4.8.3-distroless", "4.8.4", "4.8.10", "4.9.0-rc1"]},
@@ -214,11 +275,15 @@ class World:
         return self.registry[path]
 
     def network(self) -> lockpins.Network:
-        trusted = {ZABBLY, TAILSCALE}
+        trusted = {ZABBLY, TAILSCALE, UBUNTU}
 
         def gpgv(keyring: bytes, signed: bytes) -> None:
             if keyring not in trusted or b"tampered" in signed:
                 raise lockpins.PinError("BAD signature")
+
+        def read_file(path: str) -> bytes:
+            assert path == lockpins.UBUNTU_KEYRING
+            return UBUNTU
 
         return lockpins.Network(
             download=self.download,
@@ -226,6 +291,8 @@ class World:
             registry_json=self.registry_json,
             keyscan=lambda _host: self.keyscan_output,
             gpgv=gpgv,
+            read_file=read_file,
+            extract=extract,
         )
 
 
@@ -408,6 +475,84 @@ def test_github_keys_whose_published_fingerprint_differs_are_refused() -> None:
         lockpins.pin_github_keys(world.network())
 
 
+# --- the GPU list of the NVIDIA driver ---------------------------------------------------------
+
+UBUNTU_CODENAMES = {"ubuntu-24.04": "noble", "ubuntu-22.04": "jammy"}
+
+
+def test_the_gpu_list_is_pinned_from_the_signed_index_and_cross_checked() -> None:
+    (pin,) = lockpins.pin_nvidia_gpus(World().network(), LOCK, UBUNTU_CODENAMES)
+    assert pin.version == DRIVER_VERSION
+    assert pin.gpus.open_module == ("1E04", "2786")  # neither Pascal nor Kepler
+    assert pin.gpus.current == ("1D01", "1E04", "2786")  # Kepler needs the legacy branch
+    assert pin.sha256 == hashlib.sha256(SUPPORTED_GPUS).hexdigest()
+    assert pin.source.startswith(f"{lockpins.UBUNTU_ARCHIVE}/pool/restricted/")
+    assert "noble-updates restricted: InRelease signed" in pin.notes[0]
+    assert "equal NVIDIA's open-gpu-kernel-modules README" in pin.notes[1]
+    assert pin.notes[2].startswith("the same file in ubuntu-22.04")
+    entry = yaml.safe_load("\n".join(lockpins.render_gpu_pins([pin])))[DRIVER_VERSION]
+    assert entry["open_module"] == ["1E04", "2786"]
+    assert nvidia_gpus.verify_entry(DRIVER_VERSION, entry, World().download, extract) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("open-modaliases", "the Modaliases of the open driver package differs: missing 2786"),
+        ("readme", "NVIDIA's README table differs: missing 2786"),
+        ("readme-turing", "no longer states which GPUs"),
+        ("package", "the index says otherwise"),
+        ("signature", "BAD signature"),
+    ],
+)
+def test_a_gpu_list_that_does_not_check_out_is_refused(change: str, message: str) -> None:
+    world = World()
+    readme = nvidia_gpus.README_URL.format(version=DRIVER_VERSION)
+    noble = f"{lockpins.UBUNTU_ARCHIVE}/dists/noble-updates/InRelease"
+    if change == "open-modaliases":
+        world.files.update(ubuntu_restricted("ubuntu-24.04", "noble", open_ids=("1E04",)))
+    elif change == "readme":
+        world.files[readme] = README.replace("| NVIDIA GeForce RTX 4070 |", "|").encode()
+    elif change == "readme-turing":
+        world.files[readme] = README.replace("Turing", "Volta").encode()
+    elif change == "package":
+        deb = next(u for u in world.files if u.endswith(".deb") and "24.04" in u)
+        world.files[deb] += b"tampered"
+    else:
+        world.files[noble] += b"tampered"
+    with pytest.raises(lockpins.PinError, match=message):
+        lockpins.pin_nvidia_gpus(world.network(), LOCK, UBUNTU_CODENAMES)
+
+
+def test_the_gpu_list_is_read_as_nvidia_documents_it() -> None:
+    mixed = {"chips": [{"devid": "0x1E04", "features": ["kernelopen"]}, {"devid": "0x1E04"}]}
+    with pytest.raises(nvidia_gpus.GpuListError, match="open-module and other entries: 1E04"):
+        nvidia_gpus.parse_supported_gpus(json.dumps(mixed).encode())
+    with pytest.raises(nvidia_gpus.GpuListError, match="bad devid"):
+        nvidia_gpus.parse_supported_gpus(b'{"chips": [{"devid": "1E04"}]}')
+    with pytest.raises(nvidia_gpus.GpuListError, match=r"not a supported-gpus\.json"):
+        nvidia_gpus.parse_supported_gpus(b"[]")
+    assert nvidia_gpus.upstream_version("1:580.178.04-0ubuntu0.24.04.1") == "580.178.04"
+    assert nvidia_gpus.branch_of("nvidia-driver-580-open") == "580"
+    assert nvidia_gpus.branch_of("nvidia-driver-580") is None
+
+
+def test_lock_check_recomputes_the_pinned_list() -> None:
+    (pin,) = lockpins.pin_nvidia_gpus(World().network(), LOCK, UBUNTU_CODENAMES)
+    entry = yaml.safe_load("\n".join(lockpins.render_gpu_pins([pin])))[DRIVER_VERSION]
+    files = World().files
+    assert nvidia_gpus.verify_entry(DRIVER_VERSION, entry, files.__getitem__, extract) == []
+    assert entry["proprietary_only"] == ["1D01"]
+    changed = {**entry, "open_module": ["1E04"], "proprietary_only": []}
+    assert nvidia_gpus.verify_entry(DRIVER_VERSION, changed, files.__getitem__, extract) == [
+        f"the open_module list of {DRIVER_VERSION} differs from the pinned list",
+        f"the proprietary_only list of {DRIVER_VERSION} differs from the pinned list",
+    ]
+    files[entry["source"]] += b"tampered"
+    (problem,) = nvidia_gpus.verify_entry(DRIVER_VERSION, entry, files.__getitem__, extract)
+    assert "has sha256" in problem
+
+
 # --- the whole run ------------------------------------------------------------------------------
 
 
@@ -434,6 +579,7 @@ def test_the_run_prints_every_section_in_the_lock_format() -> None:
         "aarch64",
     }
     assert set(blocks["github_ssh_host_keys.keys"]) == set(lockpins.SSH_KEY_TYPES)
+    assert blocks["nvidia_driver_gpus.releases"][DRIVER_VERSION]["open_module"] == ["1E04", "2786"]
     assert "aarch64 hosts cannot install it" in text  # Zabbly's builds differ per architecture
     assert text.startswith("# make lock-pins 2026-10-17T12:00:00Z")
 

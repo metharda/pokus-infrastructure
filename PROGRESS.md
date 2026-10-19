@@ -345,9 +345,14 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   Found while building the GPU guard: the installer wrote `null` in two
   forms depending on what the same process had written before; the fix
   (every written file the same bytes, the equivalence test with the replay
-  in its own process, and the CI job `test-random-order`) is its own commit,
+  in its own process, and the CI job `test-random-order`) is `32b2c95`,
   recorded in `docs/IMPLEMENTATION_NOTES.md`, "Installer: the same bytes in
-  every written file". The GPU support guard is the commit after it.
+  every written file". The GPU support guard (decision 1: a driver only for
+  a GPU the pinned release's open kernel module supports, from NVIDIA's
+  `supported-gpus.json` pinned in `versions.lock.yml`) is the commit after
+  it, recorded in `docs/IMPLEMENTATION_NOTES.md`, "GPU support guard
+  (decision 1 after D1)". The three are pushed together; their CI is
+  reported job by job before the next step.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -366,7 +371,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1 and the installer fix of the written files done; then the GPU guard, the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files and the GPU guard done; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), the GPU guard after it |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -1105,6 +1110,16 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 ## Known issues
 
+- **NVIDIA driver pins outside Ubuntu** (open item, owner, with the
+  "commit" for the GPU guard). The driver packages of Debian 13, Fedora 43
+  and 44, EL 9 and 10 and openSUSE Leap 15.6 and 16.0 are still unverified
+  (`packages.nvidia_driver` is `TODO(verify)`, and the `verify` entries of
+  `nvidia_driver` in `ansible/component-sources.yml`), so the play stops
+  for a manual install there instead of installing; Arch, a rolling
+  release, installs its current `nvidia-open` without a pin, judged by the
+  pinned release's GPU list. They must be verified (with the GPU list of
+  their release, which `make lock-check` then requires) before a GPU
+  install on those families is claimed to work.
 - Network access from the build environment is limited (A3); most
   verification hosts are blocked until the owner allows them. The GitHub REST
   API is limited to this session's repositories, so upstream releases are read
@@ -1263,8 +1278,8 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
 and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
 (`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
-edit after D1 (`0378425`) and the installer fix of the written files;
-the GPU support guard is the next commit, pushed with them. Then the
+edit after D1 (`0378425`), the installer fix of the written files
+(`32b2c95`) and the GPU support guard, pushed together. Then the
 pre-existing access with the SSH `Match` block as a D1 follow-up, then D2,
 A, B, C, E, F and G, each as its own step waiting for "commit". Then
 the real-machine tests on the owner's computers

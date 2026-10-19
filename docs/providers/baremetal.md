@@ -21,7 +21,7 @@ GPU without a working driver:
 
 | Value | Behavior |
 | --- | --- |
-| `auto` | Install the driver with the family's method, pinned and held. |
+| `auto` | Install the driver with the family's method, pinned and held, for a GPU the pinned driver supports ([which GPUs](#which-gpus-get-a-driver)). |
 | `manual` | Stop with exit code 77; you install the driver as your distribution documents it, and preflight must then find it loaded. |
 | `skip` | Do nothing; the lab runs without local inference. |
 
@@ -47,14 +47,51 @@ image has kernels for (approved deviation V7 from the build prompt's 7.0).
 Preflight refuses GPU inference on an older GPU: `gpu_inference` stays off,
 and no option turns it on.
 
+### Which GPUs get a driver
+
+With `auto`, a driver is installed only for a GPU that the open kernel module
+of the pinned driver release supports. NVIDIA states that the open modules
+support "any Turing or later GPU" (compute capability 7.5 and up), so no GPU
+below the minimum ever gets a driver automatically. The list comes from
+NVIDIA's own `supported-gpus.json` of the pinned release, pinned in
+`versions.lock.yml` (`nvidia_driver_gpus`, see
+[Pin the vendor sources](../how-to/pin-vendor-sources.md)); every
+distribution family uses this one list.
+
+Preflight reads the GPU's PCI device ID from
+`/sys/bus/pci/devices/<device>/device`, whether or not a driver is installed,
+and shows it on the GPU line with the pinned releases that support it:
+
+```text
+GPU
+  -, - GiB, driver - (CUDA -), compute -, path native, usable no
+  PCI 10de:1d01, supported by the open kernel module of the pinned driver: none (only by the proprietary module of 580.178.04)
+```
+
+A GPU outside the open-module list is no usable GPU, and preflight's warning
+says why: the pinned release supports it only with its proprietary module
+(Maxwell, Pascal and Volta, such as the GeForce GT 1030 above), or not at all
+(a Kepler card such as the GeForce GT 730, which only the legacy 470 branch
+supports, or a GPU NVIDIA's list does not name). Bootstrap installs no driver
+for it and asks for no Machine Owner Key, and the lab installs without the
+GPU features. You do not need to set
+`install_nvidia_driver: skip`. The installer's GPU screen shows such a GPU as
+not usable, with the reason.
+
+A driver that is already loaded is judged by `nvidia-smi` as before, whatever
+the list says. With `manual` the play still stops for you to install a
+driver; its message notes when the pinned release does not support the GPU,
+because the lab uses the GPU only with compute capability 7.5 or more.
+
 ## Secure Boot and reboots
 
 Pokus Infrastructure (pinka) never disables Secure Boot. A driver module built with DKMS on a host
 with Secure Boot is signed with a key that must be enrolled as a Machine
 Owner Key (MOK) before the module loads, and the enrollment needs someone at
 the console during the next boot. So on a host with Secure Boot on and no
-NVIDIA driver installed, preflight reports the action `secure_boot_mok`, and
-what happens depends on `install_nvidia_driver` and on your consent:
+NVIDIA driver installed, preflight reports the action `secure_boot_mok` (with
+`auto`, only for a GPU a driver would be installed for), and what happens
+depends on `install_nvidia_driver` and on your consent:
 
 | `install_nvidia_driver` | Consent to the MOK enrollment | Preflight | Bootstrap |
 | --- | --- | --- | --- |

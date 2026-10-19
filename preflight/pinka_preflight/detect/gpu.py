@@ -8,13 +8,20 @@ NVIDIA is implemented behind a ``gpu_backend`` value (``nvidia`` or
   conflict; installing one is never suggested.
 * ``baremetal`` / ``vm``: NVIDIA display or 3D controllers are found on the PCI
   bus; the driver state is not installed, installed but not loaded, or loaded.
-  In a VM a GPU exists only with PCI passthrough; its absence is normal.
+  In a VM a GPU exists only with PCI passthrough; its absence is normal. The
+  GPU's PCI device ID is looked up in the GPU lists of the pinned driver
+  releases (``nvidia-gpus.json``, generated from versions.lock.yml): with
+  ``install_nvidia_driver: auto`` a driver is installed only for a GPU the
+  release's open kernel module supports (§2.2, §10.1).
 * other classes: the GPU is not probed.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from pinka_preflight.fs import FileSystem
@@ -35,6 +42,11 @@ CUDA_VERSION_RE = re.compile(
     r"\bCUDA( UMD)? Version\s*:\s*([0-9]+\.[0-9]+)(?:\.[0-9]+)?(?![0-9.])", re.IGNORECASE
 )
 WSL_NVIDIA_SMI = "/usr/lib/wsl/lib/nvidia-smi"
+# The GPU lists of the pinned driver releases (tools/gen from versions.lock.yml).
+NVIDIA_GPUS_JSON = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "nvidia-gpus.json",
+)
 MIB_PER_GIB = 1024
 QUERY_FIELDS = 4
 
@@ -64,6 +76,14 @@ class GpuInfo:
         linux_driver_in_wsl: A Linux NVIDIA kernel driver exists inside WSL.
         unsupported_devices: GPUs found but not supported (for example AMD).
         notes: Human-readable remarks.
+        pci_device: The PCI vendor and device ID of the first NVIDIA GPU
+            (``10de:2786``); None when not read from the PCI bus.
+        open_module_drivers: The pinned driver releases whose open kernel
+            module supports that GPU; a driver is installed automatically only
+            for one of them.
+        proprietary_only_drivers: The pinned driver releases that support that
+            GPU only with their proprietary module (Maxwell, Pascal, Volta),
+            which is why such a GPU gets no driver.
     """
 
     probed: bool = False
@@ -84,6 +104,43 @@ class GpuInfo:
     linux_driver_in_wsl: bool = False
     unsupported_devices: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    pci_device: str | None = None
+    open_module_drivers: list[str] = field(default_factory=list)
+    proprietary_only_drivers: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class DriverGpus:
+    """The GPU list of one pinned driver release.
+
+    Attributes:
+        open_module: PCI device IDs (four upper-case hex digits) its open
+            kernel module supports.
+        proprietary_only: Device IDs it supports only with its proprietary module.
+    """
+
+    open_module: frozenset[str]
+    proprietary_only: frozenset[str] = frozenset()
+
+
+def load_gpu_lists(path: str = NVIDIA_GPUS_JSON) -> dict[str, DriverGpus]:
+    """Load the GPU lists of the pinned driver releases.
+
+    Args:
+        path: ``nvidia-gpus.json``.
+
+    Returns:
+        Driver release to its GPU list.
+    """
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    return {
+        str(version): DriverGpus(
+            frozenset(str(i) for i in lists["open_module"]),
+            frozenset(str(i) for i in lists["proprietary_only"]),
+        )
+        for version, lists in data["drivers"].items()
+    }
 
 
 def parse_nvidia_smi(stdout: str) -> list[tuple[str, float | None, str, str]]:
@@ -199,13 +256,20 @@ def _pci_gpus(fs: FileSystem) -> list[tuple[str, str]]:
     return found
 
 
-def detect_pci(fs: FileSystem, runner: Runner, env_class: str) -> GpuInfo:
+def detect_pci(
+    fs: FileSystem,
+    runner: Runner,
+    env_class: str,
+    gpu_lists: Mapping[str, DriverGpus] | None = None,
+) -> GpuInfo:
     """Detect a GPU on the PCI bus (bare metal or passthrough).
 
     Args:
         fs: Filesystem view.
         runner: Command runner.
         env_class: ``baremetal`` or ``vm``.
+        gpu_lists: The GPU lists of the pinned driver releases
+            (:func:`load_gpu_lists` when None).
 
     Returns:
         GPU facts.
@@ -222,6 +286,15 @@ def detect_pci(fs: FileSystem, runner: Runner, env_class: str) -> GpuInfo:
         return info
     info.present, info.vendor, info.backend = True, "nvidia", "nvidia"
     info.path = "passthrough" if env_class == "vm" else "native"
+    device = (fs.read_first_line(f"/sys/bus/pci/devices/{nvidia[0]}/device") or "").strip()
+    if re.fullmatch(r"0x[0-9a-fA-F]{4}", device):
+        devid = device[2:].upper()
+        info.pci_device = f"10de:{devid.lower()}"
+        lists = load_gpu_lists() if gpu_lists is None else gpu_lists
+        info.open_module_drivers = sorted(v for v, g in lists.items() if devid in g.open_module)
+        info.proprietary_only_drivers = sorted(
+            v for v, g in lists.items() if devid in g.proprietary_only
+        )
     info.driver_loaded = fs.exists("/proc/driver/nvidia/version")
     info.driver_installed = info.driver_loaded or runner.run(["modinfo", "nvidia"]).ok
     if info.driver_loaded:
@@ -234,13 +307,19 @@ def detect_pci(fs: FileSystem, runner: Runner, env_class: str) -> GpuInfo:
     return info
 
 
-def detect_gpu(fs: FileSystem, runner: Runner, env_class: str) -> GpuInfo:
+def detect_gpu(
+    fs: FileSystem,
+    runner: Runner,
+    env_class: str,
+    gpu_lists: Mapping[str, DriverGpus] | None = None,
+) -> GpuInfo:
     """Detect GPUs according to the environment class.
 
     Args:
         fs: Filesystem view.
         runner: Command runner.
         env_class: Environment class.
+        gpu_lists: The GPU lists of the pinned driver releases (see :func:`detect_pci`).
 
     Returns:
         GPU facts (not probed for container, wsl1 and unknown).
@@ -248,5 +327,5 @@ def detect_gpu(fs: FileSystem, runner: Runner, env_class: str) -> GpuInfo:
     if env_class == "wsl2":
         return detect_wsl2(fs, runner)
     if env_class in ("baremetal", "vm"):
-        return detect_pci(fs, runner, env_class)
+        return detect_pci(fs, runner, env_class, gpu_lists)
     return GpuInfo(notes=[f"GPU not probed in environment class {env_class}"])

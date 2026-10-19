@@ -97,6 +97,19 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
             f" path {_fmt(gpu['path'])},"
             f" usable {_fmt(gpu['usable'])}"
         )
+        if gpu.get("pci_device"):
+            drivers = ", ".join(gpu.get("open_module_drivers") or [])
+            if not drivers:
+                proprietary = ", ".join(gpu.get("proprietary_only_drivers") or [])
+                drivers = (
+                    f"none (only by the proprietary module of {proprietary})"
+                    if proprietary
+                    else "none (not in the pinned driver's list)"
+                )
+            lines.append(
+                f"  PCI {gpu['pci_device']}, supported by the open kernel module of the pinned "
+                f"driver: {drivers}"
+            )
     else:
         lines.append("  none")
     for note in gpu["notes"]:

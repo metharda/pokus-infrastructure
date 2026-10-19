@@ -64,6 +64,7 @@ BOOLEAN_SOURCES = {
     "docker_preexisting": "set_fact: a comparison",
     "nvidia_container_toolkit_preexisting": "set_fact: a membership test",
     "provider_baremetal_driver_preexisting": "set_fact: a comparison",
+    "provider_baremetal_gpu_supported": "set_fact: the pinka_driver_supports_gpu filter (bool)",
     "platform_switch.release_changed": "pinka-platform deploy switch-plan: JSON boolean",
     "platform_switch.content_changed": "pinka-platform deploy switch-plan: JSON boolean",
 }

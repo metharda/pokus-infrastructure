@@ -185,6 +185,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_release_identity",
         "pinka_component_source",
         "pinka_lock_packages",
+        "pinka_driver_supports_gpu",
         "pinka_package_specs",
         "pinka_repo_url",
         "pinka_apt_pin_block",
@@ -352,3 +353,23 @@ def test_subnets_of_the_docker_pool() -> None:
     assert pinka.subnet(pools, 3) == "172.30.3.0/24"
     with pytest.raises(ValueError, match="no subnet 256"):
         pinka.subnet(pools, 256)
+
+
+def test_the_driver_is_installed_only_for_a_supported_gpu() -> None:
+    # Decision 1 after D1 (BUILD_PROMPT §2.2): the release's pinned driver must
+    # support the GPU with its open kernel module.
+    packages = {
+        "nvidia_driver": {
+            "ubuntu-24.04": {"nvidia-driver-580-open": "580.178.04-0ubuntu0.24.04.1"},
+            "debian-13": "TODO(verify)",
+        }
+    }
+    supports = pinka.driver_supports_gpu
+    assert supports(packages, "ubuntu-24.04", ["580.178.04"])
+    assert not supports(packages, "ubuntu-24.04", [])  # Kepler, Pascal
+    assert not supports(packages, "ubuntu-24.04", ["590.1.2"])  # another release's list
+    # No verified pin (or a rolling release): any pinned release's list counts.
+    assert supports(packages, "debian-13", ["580.178.04"])
+    assert not supports(packages, "debian-13", [])
+    assert supports(packages, "", ["580.178.04"])
+    assert not supports(packages, "", [])

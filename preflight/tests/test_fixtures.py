@@ -150,6 +150,9 @@ class FixtureDecisionTest(unittest.TestCase):
             "storage_backend": doc["storage_backend"],
             "secure_boot": doc["capabilities"]["secure_boot"],
             "install_driver": doc["gpu"]["install_driver"],
+            "pci_device": doc["gpu"]["pci_device"],
+            "open_module_drivers": doc["gpu"]["open_module_drivers"],
+            "proprietary_only_drivers": doc["gpu"]["proprietary_only_drivers"],
         }
         for key, value in exp.items():
             if key in simple:

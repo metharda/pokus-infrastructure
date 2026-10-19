@@ -158,6 +158,32 @@ def lock_packages(packages: Mapping[str, Any], component: str, release_key: str)
     return {str(k): str(v) for k, v in entry.items()}
 
 
+def driver_supports_gpu(
+    packages: Mapping[str, Any], release_key: str, open_module_drivers: Iterable[str]
+) -> bool:
+    """Whether bootstrap may install the NVIDIA driver automatically for this host's GPU.
+
+    Only for a GPU the open kernel module of the release's pinned driver
+    supports (BUILD_PROMPT §2.2, §10.1): preflight lists the pinned driver
+    releases that support the GPU (``host_profile.gpu.open_module_drivers``).
+    Where the release has no verified driver pin, any of them counts; the play
+    then stops for a manual install as before.
+
+    Args:
+        packages: ``packages`` section of versions.lock.yml.
+        release_key: Release key from ``release_identity``.
+        open_module_drivers: Driver releases whose open module supports the GPU.
+
+    Returns:
+        True when a driver may be installed automatically.
+    """
+    drivers = {str(d) for d in open_module_drivers or []}
+    entry = (packages.get("nvidia_driver") or {}).get(release_key) if release_key else None
+    if not isinstance(entry, Mapping) or any(MARKER in str(v) for v in entry.values()):
+        return bool(drivers)
+    return any(_strip_epoch(str(v)).split("-", 1)[0] in drivers for v in entry.values())
+
+
 def _strip_epoch(version: str) -> str:
     return version.split(":", 1)[1] if ":" in version else version
 
@@ -694,6 +720,7 @@ class FilterModule:
             "pinka_release_identity": release_identity,
             "pinka_component_source": component_source,
             "pinka_lock_packages": lock_packages,
+            "pinka_driver_supports_gpu": driver_supports_gpu,
             "pinka_package_specs": package_specs,
             "pinka_repo_url": repo_url,
             "pinka_apt_pin_block": apt_pin_block,

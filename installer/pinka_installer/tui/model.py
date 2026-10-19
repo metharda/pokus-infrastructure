@@ -169,11 +169,30 @@ class Wizard:
         return (self.profile.get("capabilities") or {}).get("secure_boot") == "enabled"
 
     @property
+    def gpu_unsupported(self) -> bool:
+        """Whether no driver would be installed for the NVIDIA GPU (BUILD_PROMPT §2.2).
+
+        A GPU without a loaded driver that the open kernel module of the pinned
+        driver does not support (preflight's ``open_module_drivers`` is empty)
+        is no usable GPU: bootstrap installs no driver for it and the lab
+        installs without the GPU features.
+        """
+        gpu = self.gpu
+        return (
+            not self.is_wsl
+            and gpu.get("vendor") == "nvidia"
+            and bool(gpu.get("present"))
+            and gpu.get("driver_state") != "loaded"
+            and not gpu.get("open_module_drivers")
+        )
+
+    @property
     def mok_enrollment_needed(self) -> bool:
         """Whether Secure Boot is on and the NVIDIA driver is missing (approved deviation I1).
 
         The driver can then only be installed with a Machine Owner Key enrolled
-        at the next boot, which needs the operator's consent.
+        at the next boot, which needs the operator's consent; never for a GPU
+        no driver would be installed for.
         """
         gpu = self.gpu
         return (
@@ -182,6 +201,7 @@ class Wizard:
             and gpu.get("vendor") == "nvidia"
             and bool(gpu.get("present"))
             and gpu.get("driver_state") == "not_installed"
+            and not self.gpu_unsupported
         )
 
     @property

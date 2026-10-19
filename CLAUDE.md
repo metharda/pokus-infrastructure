@@ -272,7 +272,8 @@ does not push the rewritten history itself.
 ## Generated files and fixtures
 
 - Never edit generated files by hand: `preflight/support-matrix.json`,
-  `preflight/endpoints.json`, `preflight/lab-defaults.json`, `docs/support-matrix.md`,
+  `preflight/endpoints.json`, `preflight/lab-defaults.json`,
+  `preflight/nvidia-gpus.json`, `docs/support-matrix.md`,
   `docs/reference/{cli/pinka-preflight,cli/bootstrap,cli/pinka,exit-codes,host-profile}.md`,
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,

@@ -97,6 +97,7 @@
     - {name: support-matrix.json, mode: "0644"}
     - {name: endpoints.json, mode: "0644"}
     - {name: lab-defaults.json, mode: "0644"}
+    - {name: nvidia-gpus.json, mode: "0644"}
     - {name: schema/host-profile.schema.json, mode: "0644"}
     - {name: schema/support-matrix.schema.json, mode: "0644"}
   loop_control:

@@ -118,6 +118,31 @@ def endpoints_json(root: Path) -> str:
 TAILNET_RANGE = "100.64.0.0/10"
 
 
+def nvidia_gpus_json(root: Path) -> str:
+    """Compile the GPU lists of the pinned NVIDIA driver releases for preflight (§2.2, §10.1).
+
+    Args:
+        root: Component root.
+
+    Returns:
+        JSON text: per driver release, the PCI device IDs its open kernel
+        module supports and those it supports only with its proprietary
+        module (``nvidia_driver_gpus.releases.<version>`` of versions.lock.yml).
+    """
+    lock = load_yaml(root / "versions.lock.yml")
+    data = {
+        "schema_version": 1,
+        "drivers": {
+            str(version): {
+                name: sorted(str(i) for i in entry[name])
+                for name in ("open_module", "proprietary_only")
+            }
+            for version, entry in sorted(lock["nvidia_driver_gpus"]["releases"].items())
+        },
+    }
+    return dump_json(data, "versions.lock.yml (nvidia_driver_gpus)")
+
+
 def lab_defaults_json(root: Path) -> str:
     """Compile the lab's default ports and addresses for preflight (§2.2, §12.11).
 

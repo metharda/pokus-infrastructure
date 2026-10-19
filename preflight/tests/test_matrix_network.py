@@ -150,6 +150,20 @@ class MatchTest(unittest.TestCase):
         self.assertIn("did not report the GPU's compute capability", unknown)
         self.assertEqual(matrix._remediation(spec, {**facts, "gpu_compute_capability": "7.5"}), "")
 
+    def test_the_open_module_list_keeps_the_minimum(self) -> None:
+        # Decision 1 after D1: automatic driver installs go only to GPUs of the
+        # pinned release's open kernel module, which NVIDIA states is Turing or
+        # later (compute capability 7.5). No GPU below the minimum gets a driver
+        # automatically only while the minimum is at most 7.5; a higher minimum
+        # needs a compute capability per device ID first.
+        for spec in self.m["features"].values():
+            for requirement in spec.get("requires", []):
+                if isinstance(requirement, dict) and "gpu_compute_capability_min" in requirement:
+                    minimum = tuple(
+                        int(x) for x in requirement["gpu_compute_capability_min"].split(".")
+                    )
+                    self.assertLessEqual(minimum, (7, 5))
+
     def test_arch(self) -> None:
         self.assertEqual(matrix.match_arch(self.m, "x86_64")["tier"], "supported")
         self.assertEqual(matrix.match_arch(self.m, "aarch64")["tier"], "experimental")

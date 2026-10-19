@@ -11,6 +11,12 @@
   downloads and has the pinned sha256.
 * ``key_findings``: every repository key URL serves a key whose primary
   fingerprint is the pinned one.
+* ``gpu_coverage_findings``: every verified open NVIDIA driver pin has its
+  release's GPU list (``nvidia_driver_gpus``), without which no driver would
+  be installed automatically.
+* ``gpu_list_findings``: every pinned GPU list's package downloads with its
+  sha256, and the list recomputed from it equals the pinned one; a package
+  that has left the archive is a warning (the pin stays valid by its sha256).
 
 Network functions are parameters, so the tests run without a network.
 """
@@ -32,7 +38,7 @@ from typing import Any, BinaryIO
 import jsonschema
 import yaml
 
-from pinka_lockcheck import net, openpgp
+from pinka_lockcheck import net, nvidia_gpus, openpgp
 
 MARKER = "TODO(verify)"
 MARKER_RE = re.compile(r"TODO\(verify\)|<verify>")
@@ -439,4 +445,72 @@ def base_image_findings(doc: Mapping[str, Any], fetch: Fetcher = net.download) -
                         "a new lab's first golden image build",
                     )
                 )
+    return findings
+
+
+def gpu_coverage_findings(doc: Mapping[str, Any]) -> list[Finding]:
+    """Every verified NVIDIA driver pin has the GPU list of its release.
+
+    The play installs a driver automatically only when the upstream version of
+    one of the release's pinned packages has a GPU list and that list names
+    the GPU (``pinka_driver_supports_gpu``); a verified pin without a list
+    would never install anything, whatever the package names.
+
+    Args:
+        doc: Lock document.
+
+    Returns:
+        One error per verified driver pin none of whose versions has a list.
+    """
+    releases = (doc.get("nvidia_driver_gpus") or {}).get("releases") or {}
+    pins = (doc.get("packages") or {}).get("nvidia_driver") or {}
+    findings: list[Finding] = []
+    for release, packages in pins.items():
+        if not isinstance(packages, Mapping) or not _verified(*packages.values()):
+            continue
+        upstream = sorted({nvidia_gpus.upstream_version(str(v)) for v in packages.values()})
+        if not any(version in releases for version in upstream):
+            findings.append(
+                Finding(
+                    ERROR,
+                    f"packages.nvidia_driver.{release}",
+                    f"no GPU list for {', '.join(upstream)} in nvidia_driver_gpus.releases;"
+                    " pin it with make lock-pins",
+                )
+            )
+    return findings
+
+
+def gpu_list_findings(
+    doc: Mapping[str, Any],
+    fetch: Fetcher = net.download,
+    extract: Callable[[bytes, str], bytes] = nvidia_gpus.extract_member,
+) -> list[Finding]:
+    """Download every pinned GPU list's package again and recompute the list.
+
+    Args:
+        doc: Lock document.
+        fetch: ``url -> content``.
+        extract: Reads a file out of a Debian package.
+
+    Returns:
+        Errors for a changed package or list, warnings for a package that has
+        left the archive.
+    """
+    findings: list[Finding] = []
+    for version, entry in doc["nvidia_driver_gpus"]["releases"].items():
+        where = f"nvidia_driver_gpus.releases.{version}"
+        try:
+            problems = nvidia_gpus.verify_entry(str(version), entry, fetch, extract)
+        except net.FetchError as exc:
+            findings.append(
+                Finding(
+                    WARNING,
+                    where,
+                    f"{entry['source']} cannot be read ({exc}); the pin stays valid by its "
+                    "sha256, renew it with make lock-pins when the driver pin changes",
+                )
+            )
+            continue
+        findings += [Finding(ERROR, where, problem) for problem in problems]
     return findings

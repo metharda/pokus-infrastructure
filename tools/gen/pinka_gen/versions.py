@@ -192,6 +192,30 @@ def _base_images(lock: dict[str, Any]) -> list[str]:
     ]
 
 
+def _gpu_lists(lock: dict[str, Any]) -> list[str]:
+    section = lock["nvidia_driver_gpus"]
+    rows = [
+        [
+            _code(version),
+            _code(e["path"]),
+            _code(e["sha256"]),
+            str(len(e["open_module"])),
+            str(len(e["proprietary_only"])),
+        ]
+        for version, e in section["releases"].items()
+    ]
+    return [
+        "\n## NVIDIA driver GPU lists\n\n",
+        _section_note(section),
+        "A driver is installed automatically only for a GPU whose PCI device ID is in "
+        "the open-module list of the pinned release "
+        "([Bare-metal hosts](../providers/baremetal.md#which-gpus-get-a-driver)).\n\n",
+        pages.table(
+            ["Driver release", "File", "sha256", "Open-module IDs", "Proprietary-only IDs"], rows
+        ),
+    ]
+
+
 def _ssh_keys(lock: dict[str, Any]) -> list[str]:
     section = lock["github_ssh_host_keys"]
     rows = [[kind, _code(e["fingerprint"])] for kind, e in section["keys"].items()]
@@ -227,5 +251,5 @@ def versions_page(root: Path) -> str:
     ]
     for build in (_binaries, _python, _containers, _keys, _packages, _collections):
         parts += build(lock)
-    parts += _base_images(lock) + _ssh_keys(lock)
+    parts += _base_images(lock) + _gpu_lists(lock) + _ssh_keys(lock)
     return "".join(parts)

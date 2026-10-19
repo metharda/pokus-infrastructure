@@ -1,9 +1,11 @@
-"""Secure Boot MOK flow of the Ansible side (approved deviation I1).
+"""Secure Boot MOK flow and the GPU guard of the Ansible side (approved deviation I1, §2.2).
 
 The expressions are taken from the task files themselves and evaluated with
 Ansible's templating, so the tests follow the code: the signal file names the
 key bootstrap imports, the module signing key is picked from the candidates
-that exist, and preflight_gate runs preflight with bootstrap's choices.
+that exist, preflight_gate runs preflight with bootstrap's choices, and a
+driver is installed only for a GPU the pinned driver's open kernel module
+supports.
 """
 
 from __future__ import annotations
@@ -11,9 +13,15 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ansible_testlib import ROLES, evaluate, fixture_profile, load_yaml
+from ansible_testlib import ANSIBLE, ROLES, evaluate, fixture_profile, load_yaml
 
 CONSENT = "ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent"
+UBUNTU_SOURCE = {"packages": ["nvidia-driver-580-open"], "source": "distribution"}
+UNVERIFIED_SOURCE = {
+    "packages": ["nvidia-open"],
+    "source": "vendor",
+    "verify": "TODO(verify): the repository",
+}
 
 
 def task(role: str, name: str, file: str = "main.yml") -> dict[str, Any]:
@@ -116,3 +124,78 @@ def test_the_gate_stops_when_the_driver_setting_differs() -> None:
     assert not evaluate(stop["when"], {"install_nvidia_driver": "auto", "host_profile": profile})
     del profile["gpu"]["install_driver"]  # a profile from before the setting was recorded
     assert not evaluate(stop["when"], {"install_nvidia_driver": "skip", "host_profile": profile})
+
+
+def driver_variables(
+    fixture: str, release_key: str | None, mode: str = "auto", source: Any = None
+) -> dict[str, Any]:
+    """The variables of the NVIDIA tasks for a fixture's host profile."""
+    versions = load_yaml(ANSIBLE / "group_vars" / "all" / "versions.yml")["pinka_versions"]
+    variables: dict[str, Any] = {
+        "host_profile": fixture_profile(fixture),
+        "pinka_versions": versions,
+        "pinka_release_key": release_key,
+        "install_nvidia_driver": mode,
+        "pinka_community_repos_allowed": False,
+        "provider_baremetal_driver": UBUNTU_SOURCE if source is None else source,
+    }
+    facts = task("provider_baremetal", "Look up the NVIDIA driver source", "nvidia.yml")
+    for name in ("provider_baremetal_driver_preexisting", "provider_baremetal_gpu_supported"):
+        text = facts["ansible.builtin.set_fact"][name]
+        variables[name] = evaluate(expression(text), variables)
+    return variables
+
+
+def runs(name: str, variables: dict[str, Any]) -> bool:
+    """Whether every condition of an NVIDIA task holds."""
+    conditions = task("provider_baremetal", name, "nvidia.yml")["when"]
+    return all(evaluate(c, variables) for c in conditions)
+
+
+INSTALL = "Install the NVIDIA driver"
+STOP = "Stop when the driver must be installed by hand"
+UNSUPPORTED = "Install no driver for a GPU the pinned driver does not support"
+MOK = "Check the Machine Owner Key enrollment"
+
+
+def test_a_driver_is_installed_only_for_a_gpu_the_open_module_supports() -> None:
+    for fixture, supported in (
+        ("ubuntu2404-baremetal-nvidia-kepler", False),  # Kepler 10de:1287: legacy branch 470
+        ("ubuntu2404-baremetal-nvidia-pascal", False),  # Pascal 10de:1d01: proprietary module only
+        ("ubuntu2404-baremetal-nvidia-turing", True),  # RTX 2080 Ti
+        (CONSENT, True),  # RTX 4070
+    ):
+        variables = driver_variables(fixture, "ubuntu-24.04")
+        assert variables["provider_baremetal_gpu_supported"] is supported, fixture
+        assert runs(INSTALL, variables) is supported, fixture
+        assert runs(UNSUPPORTED, variables) is not supported, fixture
+        # auto with a verified source never stops for a manual install.
+        assert not runs(STOP, variables), fixture
+
+
+def test_an_unsupported_gpu_needs_nothing_by_hand_on_any_family() -> None:
+    # Without a verified pin the play stops for a manual install, but only for
+    # a GPU a driver would be installed for (the rolling families included).
+    for release_key in ("debian-13", "fedora-44", None):
+        kepler = driver_variables(
+            "ubuntu2404-baremetal-nvidia-kepler", release_key, source=UNVERIFIED_SOURCE
+        )
+        assert not runs(STOP, kepler) and runs(UNSUPPORTED, kepler), release_key
+        assert not runs(INSTALL, kepler), release_key
+        turing = driver_variables(
+            "ubuntu2404-baremetal-nvidia-turing", release_key, source=UNVERIFIED_SOURCE
+        )
+        assert runs(STOP, turing) and not runs(UNSUPPORTED, turing), release_key
+    # manual is the operator's choice: the play stops and says why the GPU may stay unused.
+    manual = driver_variables("ubuntu2404-baremetal-nvidia-pascal", "ubuntu-24.04", "manual")
+    assert runs(STOP, manual) and not runs(UNSUPPORTED, manual)
+    message = task("provider_baremetal", STOP, "nvidia.yml")["vars"]["bootstrap_signal_message"]
+    assert "compute capability is 7.5" in evaluate(
+        expression(message[message.index("{{ '' if") :]), manual
+    )
+
+
+def test_no_machine_owner_key_for_a_gpu_without_a_driver() -> None:
+    kepler = driver_variables("ubuntu2404-baremetal-nvidia-kepler-secureboot", "ubuntu-24.04")
+    assert not runs(MOK, kepler)
+    assert runs(MOK, driver_variables(CONSENT, "ubuntu-24.04"))

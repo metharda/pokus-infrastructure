@@ -1,0 +1,33 @@
+pinka preflight: DEGRADED (exit 10)
+  tier tested (os tested, arch supported) · release model rolling · provider baremetal
+
+Environment
+  class baremetal, confidence high
+OS and kernel
+  openSUSE Tumbleweed [opensuse-tumbleweed 20261001, family suse, parent release 20261001]
+  arch x86_64, kernel 6.16.8-1-default
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  -, - GiB, driver - (CUDA -), compute -, path native, usable no
+  PCI 10de:1e04, supported by the open kernel module of the pinned driver: 580.178.04
+Capabilities
+  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
+  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+Network: skipped (--offline)
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+
+Warnings
+  - Rolling release: installed versions drift over time. Results are comparable only within the same environment fingerprint; update the host only with 'pinka update-host'.
+
+Notes
+  - Tested tier: full provisioning is tested in VMs; GPU paths are not hardware-tested on this distribution.
+  - dcgm_metrics disabled (unmet: nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

@@ -205,6 +205,9 @@ def build_report(
             "unsupported_devices": list(gpu.unsupported_devices),
             "notes": list(gpu.notes),
             "install_driver": nvidia_driver_mode,
+            "pci_device": gpu.pci_device,
+            "open_module_drivers": list(gpu.open_module_drivers),
+            "proprietary_only_drivers": list(gpu.proprietary_only_drivers),
         },
         "capabilities": {
             "cgroup2": k.cgroup2,

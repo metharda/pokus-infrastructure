@@ -880,3 +880,37 @@ def test_a_pinned_base_image_that_left_its_server_is_a_warning() -> None:
 
     found = checks.base_image_findings(lock, fetch=unreachable)
     assert [f.severity for f in found] == [checks.ERROR]
+
+
+def test_every_verified_driver_pin_has_the_gpu_list_of_its_release(lock: dict[str, Any]) -> None:
+    assert checks.gpu_coverage_findings(lock) == []
+    broken = copy.deepcopy(lock)
+    broken["nvidia_driver_gpus"]["releases"] = {}
+    # A verified pin with another package name, and one still marked: only the first counts.
+    broken["packages"]["nvidia_driver"]["debian-13"] = {"nvidia-open-kernel-dkms": "1:575.64-1"}
+    found = [(f.severity, f.where, f.message) for f in checks.gpu_coverage_findings(broken)]
+    assert [w for _, w, _ in found] == [
+        "packages.nvidia_driver.ubuntu-24.04",
+        "packages.nvidia_driver.ubuntu-22.04",
+        "packages.nvidia_driver.debian-13",
+    ]
+    assert {s for s, _, _ in found} == {checks.ERROR}
+    assert "no GPU list for 575.64 in nvidia_driver_gpus.releases" in found[2][2]
+
+
+def test_a_pinned_gpu_list_is_recomputed_and_a_package_gone_is_a_warning(
+    lock: dict[str, Any],
+) -> None:
+    (version, entry), *_ = lock["nvidia_driver_gpus"]["releases"].items()
+    doc = {"nvidia_driver_gpus": {"releases": {version: entry}}}
+
+    def unreachable(_url: str) -> bytes:
+        raise net.FetchError("HTTP 404")
+
+    found = checks.gpu_list_findings(doc, fetch=unreachable)
+    assert [(f.severity, f.where) for f in found] == [
+        (checks.WARNING, f"nvidia_driver_gpus.releases.{version}")
+    ]
+    found = checks.gpu_list_findings(doc, fetch=lambda _url: b"another package")
+    assert [f.severity for f in found] == [checks.ERROR]
+    assert "has sha256" in found[0].message

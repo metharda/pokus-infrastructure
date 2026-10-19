@@ -4,7 +4,7 @@
   (``make lint``; no network).
 * ``check``: the lock check (``make lock-check``): schema, remaining markers,
   and, unless ``--offline``, every container digest, binary checksum,
-  repository key fingerprint and base image over the network.
+  repository key fingerprint, base image and NVIDIA GPU list over the network.
 * ``todos``: list every ``TODO(verify)`` marker in the repository
   (``make verify-todos``).
 * ``fetch NAME --dest PATH [--member FILE]``: download a pinned binary of
@@ -31,7 +31,7 @@ from pathlib import Path
 
 from pinka_lockcheck import bundle, checks, devsetup, net
 
-CATEGORIES = ("containers", "binaries", "keys", "images")
+CATEGORIES = ("containers", "binaries", "keys", "images", "gpus")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
 TODO_EXCLUDES = (
     "CLAUDE.md",
@@ -75,6 +75,7 @@ def _check(lock: Path, *, offline: bool, only: Sequence[str]) -> int:
     findings = checks.schema_findings(doc)
     findings += checks.marker_findings(lock.read_text(encoding="utf-8"))
     findings += checks.collection_findings(doc)
+    findings += checks.gpu_coverage_findings(doc)
     # Inside an unpacked release package: its tree, collections and NOTICE.
     if (lock.parent / bundle.RELEASE_JSON).exists():
         findings += [
@@ -90,6 +91,8 @@ def _check(lock: Path, *, offline: bool, only: Sequence[str]) -> int:
             findings += checks.key_findings(doc)
         if "images" in only:
             findings += checks.base_image_findings(doc)
+        if "gpus" in only:
+            findings += checks.gpu_list_findings(doc)
     for finding in findings:
         print(finding)
     errors = sum(f.severity == checks.ERROR for f in findings)

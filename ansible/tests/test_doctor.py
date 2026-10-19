@@ -380,6 +380,15 @@ def test_module_lists() -> None:
     assert removed == ["/usr/local/lib/pinka/pinka-lab/pinka_lab/old.py"]
 
 
+def test_every_data_file_of_preflight_is_installed() -> None:
+    # The installed preflight (pinka doctor) reads the same generated files as the checkout's.
+    loop = task("Install the data files of preflight")["loop"]
+    installed = {str(item["name"]) for item in loop}
+    generated = {path.name for path in (INFRA / "preflight").glob("*.json")}
+    assert "nvidia-gpus.json" in generated
+    assert generated <= installed
+
+
 def test_firewall_check_knows_the_zones_of_the_firewall_role() -> None:
     from pinka_lab import checks  # noqa: PLC0415 - next to the role data it is compared with
 

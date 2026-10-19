@@ -12,6 +12,25 @@
     provider_baremetal_driver_preexisting: >-
       {{ ((host_profile.components | default({})).nvidia_driver | default({})).origin | default(none)
          == 'pre-existing' }}
+    # A driver is installed automatically only for a GPU the open kernel
+    # module of the release's pinned driver supports (§2.2, §10.1): preflight
+    # names the pinned driver versions whose list has the GPU, and a GPU below
+    # compute capability 7.5 is in none of them.
+    provider_baremetal_gpu_supported: >-
+      {{ pinka_versions.packages
+         | pinka_driver_supports_gpu(pinka_release_key, host_profile.gpu.open_module_drivers | default([])) }}
+
+- name: Install no driver for a GPU the pinned driver does not support
+  ansible.builtin.debug:
+    msg: >-
+      The NVIDIA GPU {{ host_profile.gpu.pci_device | default('') }} is not supported by the open kernel
+      module of the pinned driver (Turing or later, compute capability 7.5 and up): no driver is installed
+      for it automatically and the lab installs without GPU features.
+  when:
+    - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
+    - not provider_baremetal_gpu_supported
+    - install_nvidia_driver == 'auto'
 
 - name: Leave a driver that existed before pinka as it is
   ansible.builtin.debug:
@@ -29,12 +48,14 @@
       No usable NVIDIA driver is loaded. {{ 'install_nvidia_driver is manual: install' if install_nvidia_driver == 'manual'
       else 'pinka has no verified installation method for this distribution; install' }} the driver
       following your distribution's documentation, then re-run bootstrap (or set install_nvidia_driver: skip).
+      {{ '' if provider_baremetal_gpu_supported else 'The open kernel module of the pinned driver does not
+      support this GPU: the lab uses it only with a driver whose compute capability is 7.5 or more.' }}
   when:
     - not host_profile.gpu.usable
     - not provider_baremetal_driver_preexisting
     - >-
-      install_nvidia_driver == 'manual' or provider_baremetal_driver.packages | length == 0
-      or provider_baremetal_driver.verify is defined
+      install_nvidia_driver == 'manual' or provider_baremetal_gpu_supported
+      and (provider_baremetal_driver.packages | length == 0 or provider_baremetal_driver.verify is defined)
 
 - name: Stop when the driver source needs consent to a community repository
   ansible.builtin.include_role:
@@ -48,6 +69,7 @@
   when:
     - not host_profile.gpu.usable
     - not provider_baremetal_driver_preexisting
+    - provider_baremetal_gpu_supported
     - provider_baremetal_driver.source == 'community'
     - not pinka_community_repos_allowed
 
@@ -55,6 +77,7 @@
   when:
     - not host_profile.gpu.usable
     - not provider_baremetal_driver_preexisting
+    - provider_baremetal_gpu_supported
   block:
     - name: Record that pinka installs the NVIDIA driver
       pinka_install_record:
@@ -103,7 +126,9 @@
 # `mokutil --test-key`, and whether Ubuntu's signed prebuilt modules make the
 # MOK step unnecessary.
 - name: Check the Machine Owner Key enrollment
-  when: host_profile.capabilities.secure_boot == 'enabled'
+  when:
+    - host_profile.capabilities.secure_boot == 'enabled'
+    - host_profile.gpu.usable or provider_baremetal_gpu_supported
   block:
     - name: Check for a pending Machine Owner Key enrollment
       ansible.builtin.command:

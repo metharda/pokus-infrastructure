@@ -264,9 +264,11 @@ provider_rules:
       # Approved deviation I1: with install_nvidia_driver auto and the operator's
       # consent (--accept-mok-enrollment, the installer, or the answers file),
       # the rule becomes a planned action and bootstrap does the work. manual
-      # stays needs_action; skip leaves the GPU unused (degraded).
+      # stays needs_action; skip leaves the GPU unused (degraded), and so does
+      # auto for a GPU the pinned driver's open kernel module does not support
+      # (nvidia_driver_planned none, §2.2).
       - id: secure_boot_mok
-        when: {secure_boot: enabled, nvidia_driver_installed: false, nvidia_gpu_present: true, nvidia_driver_mode_in: [auto, manual]}
+        when: {secure_boot: enabled, nvidia_driver_installed: false, nvidia_gpu_present: true, nvidia_driver_planned_in: [auto, manual]}
         action: >-
           Secure Boot is on: the NVIDIA DKMS module must be signed and a MOK enrolled at next boot.
           With install_nvidia_driver: auto, consent with --accept-mok-enrollment (or in the installer)
@@ -277,7 +279,50 @@ provider_rules:
           Secure Boot is on: bootstrap installs the NVIDIA driver, imports a Machine Owner Key with your
           one-time password and stops with 76; reboot, enroll the key at the blue MOK Manager screen,
           then re-run bootstrap
+    warnings:
+      - when:
+          nvidia_gpu_present: true
+          nvidia_driver_loaded: false
+          nvidia_gpu_open_module_supported: false
+          nvidia_gpu_proprietary_only: true
+          nvidia_driver_mode: auto
+        message: >-
+          No usable GPU: the pinned NVIDIA driver supports this GPU only with its proprietary kernel
+          module (Maxwell, Pascal and Volta, below compute capability 7.5), and a driver is installed
+          automatically only for a GPU its open kernel module supports (Turing or later), so the lab
+          installs without GPU features. See docs/providers/baremetal.md
+      - when:
+          nvidia_gpu_present: true
+          nvidia_driver_loaded: false
+          nvidia_gpu_open_module_supported: false
+          nvidia_gpu_proprietary_only: false
+          nvidia_driver_mode: auto
+        message: >-
+          No usable GPU: the pinned NVIDIA driver does not support this GPU (only an older legacy
+          branch does, or NVIDIA's list does not name it), so no driver is installed for it
+          automatically and the lab installs without GPU features. See docs/providers/baremetal.md
   vm:
     warnings:
       - when: {hypervisor_in: [microsoft, vmware, oracle], kvm_usable: false}
         message: "Nested virtualization unavailable in this hypervisor; VM-class targets disabled"
+      - when:
+          nvidia_gpu_present: true
+          nvidia_driver_loaded: false
+          nvidia_gpu_open_module_supported: false
+          nvidia_gpu_proprietary_only: true
+          nvidia_driver_mode: auto
+        message: >-
+          No usable GPU: the pinned NVIDIA driver supports this GPU only with its proprietary kernel
+          module (Maxwell, Pascal and Volta, below compute capability 7.5), and a driver is installed
+          automatically only for a GPU its open kernel module supports (Turing or later), so the lab
+          installs without GPU features. See docs/providers/baremetal.md
+      - when:
+          nvidia_gpu_present: true
+          nvidia_driver_loaded: false
+          nvidia_gpu_open_module_supported: false
+          nvidia_gpu_proprietary_only: false
+          nvidia_driver_mode: auto
+        message: >-
+          No usable GPU: the pinned NVIDIA driver does not support this GPU (only an older legacy
+          branch does, or NVIDIA's list does not name it), so no driver is installed for it
+          automatically and the lab installs without GPU features. See docs/providers/baremetal.md

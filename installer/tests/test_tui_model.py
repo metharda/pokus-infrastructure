@@ -346,6 +346,26 @@ def test_mok_enrollment_is_needed_only_with_secure_boot_and_no_driver() -> None:
         assert not wizard.mok_enrollment_needed, fixture
 
 
+def test_no_driver_is_installed_for_a_gpu_below_turing() -> None:
+    wizard = model.Wizard()
+    for fixture in (
+        "ubuntu2404-baremetal-nvidia-kepler-secureboot",
+        "ubuntu2404-baremetal-nvidia-kepler",
+        "ubuntu2404-baremetal-nvidia-pascal",
+    ):
+        wizard.profile = preflight(fixture).profile
+        assert wizard.gpu_unsupported and not wizard.mok_enrollment_needed, fixture
+    for fixture in (
+        "ubuntu2404-baremetal-nvidia-turing",
+        "ubuntu2404-baremetal-nvidia-no-driver-secureboot",
+        "ubuntu2404-baremetal-nvidia-driver-loaded",
+        "ubuntu2404-baremetal-no-gpu",
+        "ubuntu2404-wsl2-gpu-kvm",
+    ):
+        wizard.profile = preflight(fixture).profile
+        assert not wizard.gpu_unsupported, fixture
+
+
 def test_existing_answers_prefer_the_files(repo: Paths) -> None:
     loaded = answers_mod.load(repo.infra / "tests" / "answers" / "ci.yml", apply.context(repo))
     loaded.machine.name = "pinka-lab"

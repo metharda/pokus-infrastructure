@@ -362,6 +362,34 @@ class GpuTest(TempRootCase):
         self.assertTrue(info.usable)
         self.assertIn("nvidia-smi did not report the CUDA version the driver supports", info.notes)
 
+    def test_the_device_is_looked_up_in_the_pinned_driver_lists(self) -> None:
+        # Decision 1 after D1: auto installs a driver only for a GPU the pinned
+        # release's open kernel module supports (versions.lock.yml nvidia_driver_gpus).
+        self.put("/sys/bus/pci/devices/0000:01:00.0/vendor", "0x10de\n")
+        self.put("/sys/bus/pci/devices/0000:01:00.0/class", "0x030000\n")
+        self.put("/sys/bus/pci/devices/0000:01:00.0/device", "0x1287\n")
+        lists = {
+            "580.1.2": gpu.DriverGpus(frozenset({"1E04"}), frozenset({"1287"})),
+            "590.3.4": gpu.DriverGpus(frozenset({"1E04", "1287"})),
+        }
+        info = gpu.detect_gpu(self.fs(), runner(), "baremetal", lists)
+        self.assertEqual((info.pci_device, info.open_module_drivers), ("10de:1287", ["590.3.4"]))
+        self.assertEqual(info.proprietary_only_drivers, ["580.1.2"])
+        self.put("/sys/bus/pci/devices/0000:01:00.0/device", "0x1e04\n")
+        info = gpu.detect_gpu(self.fs(), runner(), "baremetal", lists)
+        self.assertEqual(info.open_module_drivers, ["580.1.2", "590.3.4"])
+        self.assertEqual(info.proprietary_only_drivers, [])
+        self.put("/sys/bus/pci/devices/0000:01:00.0/device", "unreadable\n")
+        info = gpu.detect_gpu(self.fs(), runner(), "baremetal", lists)
+        self.assertEqual((info.pci_device, info.open_module_drivers), (None, []))
+        # The generated lists: the owner's Kepler and Pascal cards get no driver, Turing does;
+        # the release supports Pascal only with its proprietary module, Kepler not at all.
+        pinned = gpu.load_gpu_lists()["580.178.04"]
+        self.assertIn("1E04", pinned.open_module)
+        self.assertNotIn("1287", pinned.open_module | pinned.proprietary_only)
+        self.assertNotIn("1D01", pinned.open_module)
+        self.assertIn("1D01", pinned.proprietary_only)
+
     def test_amd_is_reported_unsupported_and_vm_without_passthrough(self) -> None:
         self.put("/sys/bus/pci/devices/0000:03:00.0/vendor", "0x1002\n")
         self.put("/sys/bus/pci/devices/0000:03:00.0/class", "0x030000\n")

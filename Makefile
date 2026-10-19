@@ -315,7 +315,7 @@ lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing wh
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml --check
 
 .PHONY: lock-pins
-lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the Incus base images and GitHub's SSH host keys (reads public URLs, changes nothing)
+lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
 	@$(LOCKCHECK).lockpins --lock versions.lock.yml
 
 .PHONY: lock-update

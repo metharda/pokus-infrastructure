@@ -29,6 +29,15 @@ before it is committed. It covers:
 * GitHub's SSH host keys: from GitHub's meta API, GitHub's documentation and
   the server itself (``ssh-keyscan``); every reachable source must agree, at
   least two must be reachable, and each fingerprint is computed from its key.
+* the GPU list of every NVIDIA driver release the lock pins for Ubuntu
+  (``nvidia_driver_gpus``): NVIDIA's ``supported-gpus.json`` from Ubuntu's
+  ``nvidia-kernel-common-<branch>`` package of that version, read through the
+  signed ``-updates`` index (``InRelease`` checked with ``gpgv`` and the Ubuntu
+  archive keyring of the machine, ``/usr/share/keyrings``), the index's and the
+  package's sha256 checked; its open-module device IDs must equal NVIDIA's
+  open-gpu-kernel-modules README at the release tag and the ``Modaliases`` of
+  ``nvidia-driver-<branch>-open``, and its current IDs those of
+  ``nvidia-driver-<branch>`` (:mod:`pinka_lockcheck.nvidia_gpus`).
 
 A section that cannot be pinned prints why and no pins, and the run exits 1.
 """
@@ -47,6 +56,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,7 +64,7 @@ from typing import Any
 
 import yaml
 
-from pinka_lockcheck import checks, net, openpgp
+from pinka_lockcheck import checks, net, nvidia_gpus, openpgp
 
 # The components and repository keys this tool pins (plan item 0 after 3f).
 COMPONENTS = ("incus", "tailscale")
@@ -145,6 +155,10 @@ def _gpgv(keyring: bytes, signed: bytes) -> None:
         raise PinError(f"the signature does not verify with the key: {' / '.join(detail)}")
 
 
+def _read_file(path: str) -> bytes:
+    return Path(path).read_bytes()
+
+
 @dataclass
 class Network:
     """Everything the tool reads from outside; the tests replace it.
@@ -156,6 +170,8 @@ class Network:
             (header names in lower case).
         keyscan: ``host -> ssh-keyscan output``, or None when it cannot run.
         gpgv: ``(keyring, signed) -> None``; raises :class:`PinError` on a bad signature.
+        read_file: ``path -> content`` of a local file (the Ubuntu archive keyring).
+        extract: ``(deb, path) -> content`` of a file inside a Debian package.
     """
 
     download: Callable[[str], bytes] = net.download
@@ -163,6 +179,8 @@ class Network:
     registry_json: Callable[[str, str], tuple[Mapping[str, str], Any]] = net.registry_json
     keyscan: Callable[[str], str | None] = _keyscan
     gpgv: Callable[[bytes, bytes], None] = _gpgv
+    read_file: Callable[[str], bytes] = _read_file
+    extract: Callable[[bytes, str], bytes] = nvidia_gpus.extract_member
 
 
 # --- Debian versions ----------------------------------------------------------------------------
@@ -698,8 +716,182 @@ def pin_github_keys(network: Network) -> tuple[dict[str, str], list[str]]:
 # --- the run ------------------------------------------------------------------------------------
 
 
+# --- NVIDIA driver GPU lists -----------------------------------------------------------------
+
+UBUNTU_ARCHIVE = "https://archive.ubuntu.com/ubuntu"
+UBUNTU_KEYRING = "/usr/share/keyrings/ubuntu-archive-keyring.gpg"
+
+
+@dataclass
+class GpuPin:
+    """The pinned GPU list of one driver release.
+
+    Attributes:
+        version: The driver release (``580.178.04``).
+        source: The package the list was read from.
+        package_sha256: Its sha256.
+        path: The list's path inside the package.
+        sha256: The list's sha256.
+        gpus: The device IDs.
+        notes: Where everything came from and what it was checked against.
+    """
+
+    version: str
+    source: str
+    package_sha256: str
+    path: str
+    sha256: str
+    gpus: nvidia_gpus.GpuList
+    notes: list[str] = field(default_factory=list)
+
+
+def _ubuntu_restricted(network: Network, codename: str) -> tuple[str, list[dict[str, str]]]:
+    """The restricted amd64 index of ``<codename>-updates``, its signature and sha256 checked."""
+    base = f"{UBUNTU_ARCHIVE}/dists/{codename}-updates"
+    signed = network.download(f"{base}/InRelease")
+    try:
+        keyring = network.read_file(UBUNTU_KEYRING)
+    except OSError as exc:
+        raise PinError(f"the Ubuntu archive keyring is missing ({exc}); run on Ubuntu") from exc
+    try:
+        network.gpgv(keyring, signed)
+    except PinError as exc:
+        raise PinError(f"{base}/InRelease: {exc}") from exc
+    release_text = _signed_text(signed)
+    for name, opener in (("Packages.xz", lzma.decompress), ("Packages.gz", gzip.decompress)):
+        path = f"restricted/binary-amd64/{name}"
+        expected = _release_sha256(release_text, path)
+        if not expected:
+            continue
+        data = network.download(f"{base}/{path}")
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != expected:
+            raise PinError(f"{base}/{path} has sha256 {actual}, InRelease says {expected}")
+        note = (
+            f"{codename}-updates restricted: InRelease signed by the Ubuntu archive keyring; "
+            f"{name} sha256 {actual}"
+        )
+        return note, list(_paragraphs(opener(data).decode("utf-8")))
+    raise PinError(f"{base}/InRelease lists no restricted amd64 index")
+
+
+def _package(paragraphs: Iterable[Mapping[str, str]], name: str, version: str) -> Mapping[str, str]:
+    for paragraph in paragraphs:
+        if paragraph.get("Package") == name and paragraph.get("Version") == version:
+            return paragraph
+    raise PinError(f"the index has no {name} {version}")
+
+
+def pin_nvidia_gpus(
+    network: Network, lock: Mapping[str, Any], codenames: Mapping[str, str]
+) -> list[GpuPin]:
+    """Pin the GPU list of every NVIDIA driver release the lock pins for an Ubuntu release.
+
+    Raises:
+        PinError: If an index, a package, the list or a cross-check does not check out.
+    """
+    pins: dict[str, GpuPin] = {}
+    readmes: dict[str, set[str]] = {}
+    for release, packages in lock["packages"]["nvidia_driver"].items():
+        if not release.startswith("ubuntu-") or not isinstance(packages, Mapping):
+            continue
+        for package, package_version in packages.items():
+            branch = nvidia_gpus.branch_of(str(package))
+            if branch is None or checks.MARKER_RE.search(str(package_version)):
+                continue
+            version = nvidia_gpus.upstream_version(str(package_version))
+            if release not in codenames:
+                raise PinError(f"no codename for {release} in platform_facts")
+            note, paragraphs = _ubuntu_restricted(network, codenames[release])
+            common = _package(
+                paragraphs, nvidia_gpus.COMMON_PACKAGE.format(branch=branch), str(package_version)
+            )
+            source = f"{UBUNTU_ARCHIVE}/{common['Filename']}"
+            deb = network.download(source)
+            package_sha256 = hashlib.sha256(deb).hexdigest()
+            if package_sha256 != common.get("SHA256"):
+                raise PinError(f"{source} has sha256 {package_sha256}, the index says otherwise")
+            path = nvidia_gpus.JSON_PATH.format(branch=branch)
+            try:
+                data = network.extract(deb, path)
+                gpus = nvidia_gpus.parse_supported_gpus(data)
+                if version not in readmes:
+                    readme = network.download(nvidia_gpus.README_URL.format(version=version))
+                    readmes[version] = nvidia_gpus.parse_readme(readme.decode("utf-8"))
+            except nvidia_gpus.GpuListError as exc:
+                raise PinError(f"{source}: {exc}") from exc
+            open_pkg = _package(
+                paragraphs, nvidia_gpus.OPEN_PACKAGE.format(branch=branch), str(package_version)
+            )
+            proprietary = _package(
+                paragraphs,
+                nvidia_gpus.PROPRIETARY_PACKAGE.format(branch=branch),
+                str(package_version),
+            )
+            problems = nvidia_gpus.cross_check(
+                gpus,
+                readme=readmes[version],
+                open_aliases=nvidia_gpus.parse_modaliases(open_pkg.get("Modaliases", "")),
+                aliases=nvidia_gpus.parse_modaliases(proprietary.get("Modaliases", "")),
+            )
+            if problems:
+                raise PinError(f"{release} {version}: " + "; ".join(problems))
+            sha256 = hashlib.sha256(data).hexdigest()
+            if version in pins:
+                if pins[version].sha256 != sha256:
+                    raise PinError(f"{release}: another supported-gpus.json for {version}")
+                pins[version].notes.append(f"the same file in {release} ({package_version})")
+                continue
+            pins[version] = GpuPin(
+                version,
+                source,
+                package_sha256,
+                path,
+                sha256,
+                gpus,
+                [
+                    f"supported-gpus.json of NVIDIA driver {version}, from Ubuntu's "
+                    f"{common['Package']} {package_version} ({note})",
+                    f"cross-checked: the {len(gpus.open_module)} open-module IDs equal NVIDIA's "
+                    f"open-gpu-kernel-modules README at tag {version} and the Modaliases of "
+                    f"{open_pkg['Package']}; the {len(gpus.current)} current IDs equal the "
+                    f"Modaliases of {proprietary['Package']}",
+                ],
+            )
+    return list(pins.values())
+
+
+def _id_lines(ids: Sequence[str], indent: str, per_line: int = 12) -> list[str]:
+    quoted = [f'"{i}"' for i in ids]
+    rows = [", ".join(quoted[n : n + per_line]) for n in range(0, len(quoted), per_line)]
+    return [f"{indent}{row}," for row in rows[:-1]] + [f"{indent}{rows[-1]}"] if rows else []
+
+
 def _comment(lines: Iterable[str], indent: str = "") -> list[str]:
     return [f"{indent}# {line}" for line in lines]
+
+
+def render_gpu_pins(pins: Iterable[GpuPin], indent: str = "") -> list[str]:
+    """The entries of ``nvidia_driver_gpus.releases`` in the lock's format."""
+    out: list[str] = []
+    for pin in pins:
+        notes = [
+            part for note in pin.notes for part in textwrap.wrap(note, 80, break_on_hyphens=False)
+        ]
+        out += [f'{indent}"{pin.version}":', *_comment(notes, indent + "  ")]
+        out += [
+            f"{indent}  source: {pin.source}",
+            f"{indent}  package_sha256: {pin.package_sha256}",
+            f"{indent}  path: {pin.path}",
+            f"{indent}  sha256: {pin.sha256}",
+            f"{indent}  open_module: [",
+            *_id_lines(pin.gpus.open_module, indent + "    "),
+            f"{indent}  ]",
+            f"{indent}  proprietary_only: [",
+            *_id_lines(pin.gpus.proprietary_only, indent + "    "),
+            f"{indent}  ]",
+        ]
+    return out
 
 
 def run(  # noqa: PLR0912, PLR0915 - one block per section
@@ -799,6 +991,14 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
             continue
         out += [f"{name}:", *_comment(base.notes, "  "), "  fingerprints:"]
         out += [f'    {arch}: "{fp}"' for arch, fp in base.fingerprints.items()]
+    out.append("# --- nvidia_driver_gpus.releases")
+    try:
+        gpu_pins = pin_nvidia_gpus(network, lock, codenames)
+    except (PinError, net.FetchError, OSError, ValueError) as exc:
+        failed.append(f"nvidia_driver_gpus: {exc}")
+        out.append(f"# NOT PINNED: {exc}")
+    else:
+        out += render_gpu_pins(gpu_pins)
     out.append("# --- github_ssh_host_keys.keys")
     try:
         ssh_keys, ssh_sources = pin_github_keys(network)

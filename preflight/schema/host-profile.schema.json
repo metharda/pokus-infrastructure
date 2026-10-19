@@ -463,7 +463,10 @@
         "driver_state",
         "unsupported_devices",
         "notes",
-        "install_driver"
+        "install_driver",
+        "pci_device",
+        "open_module_drivers",
+        "proprietary_only_drivers"
       ],
       "properties": {
         "probed": {
@@ -561,6 +564,28 @@
             "manual",
             "skip"
           ]
+        },
+        "pci_device": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^10de:[0-9a-f]{4}$",
+          "description": "PCI vendor and device ID of the first NVIDIA GPU on the PCI bus (bare metal, VM passthrough); null elsewhere."
+        },
+        "open_module_drivers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them (BUILD_PROMPT \u00a72.2, \u00a710.1)."
+        },
+        "proprietary_only_drivers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The pinned NVIDIA driver releases that support this GPU only with their proprietary kernel module (Maxwell, Pascal, Volta: below compute capability 7.5), so no driver is installed for it; empty for a GPU only a legacy branch supports or the list does not name."
         }
       }
     },

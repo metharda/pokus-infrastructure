@@ -4,7 +4,7 @@ type: how-to
 audience: [developer]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: As a maintainer, pin the Zabbly and Tailscale repository keys and packages, the DCGM exporter image, the Incus base images and GitHub's SSH host keys with make lock-pins, review its output and land the change only after the full gate and CI pass.
+description: As a maintainer, pin the Zabbly and Tailscale repository keys and packages, the DCGM exporter image, the Incus base images, the GPU list of the NVIDIA driver and GitHub's SSH host keys with make lock-pins, review its output and land the change only after the full gate and CI pass.
 ---
 
 # How to pin the vendor sources
@@ -43,6 +43,20 @@ and changes no file. It covers:
   its newest builds, a few days, so pin them right before a lab's first
   golden image build; the lab then exports the base and imports it from
   there ([How golden images are built](../explanation/golden-images.md)).
+- **The GPU list of the NVIDIA driver** (`nvidia_driver_gpus`). For every
+  driver release the lock pins for an Ubuntu release, NVIDIA's
+  `supported-gpus.json` of that release is read from Ubuntu's
+  `nvidia-kernel-common-<branch>` package: the `restricted` index of
+  `<codename>-updates` must carry a valid signature of the Ubuntu archive
+  keyring (`/usr/share/keyrings/ubuntu-archive-keyring.gpg`, checked with
+  `gpgv`), the package's sha256 must match the index, and `dpkg-deb` reads
+  the file out of it. The device IDs the open kernel module supports (the
+  `kernelopen` feature, without a `legacybranch`) must equal NVIDIA's table
+  in the open-gpu-kernel-modules README at the release tag and the
+  `Modaliases` of `nvidia-driver-<branch>-open`; the IDs the release supports
+  with either module must equal the `Modaliases` of `nvidia-driver-<branch>`.
+  Any difference refuses the section. Automatic driver installs use only the
+  open-module list ([Bare-metal hosts](../providers/baremetal.md#which-gpus-get-a-driver)).
 - **GitHub's SSH host keys.** From GitHub's meta API, GitHub's documentation
   and the server itself (`ssh-keyscan`): at least two must be reachable,
   every reachable source must agree, and each fingerprint is computed from
@@ -54,10 +68,13 @@ pins; the run then exits 1, and the other sections are still printed.
 !!! note "Prerequisites"
     - A development checkout of the repository; the target sets up its own
       Python environment.
-    - `gpgv` (Debian and Ubuntu install it by default) and, for GitHub's
-      keys, `ssh-keyscan` (package `openssh-client`).
+    - `gpgv` (Debian and Ubuntu install it by default), and for GitHub's
+      keys `ssh-keyscan` (package `openssh-client`).
+    - For the GPU list: an Ubuntu machine, for the Ubuntu archive keyring
+      (package `ubuntu-keyring`), and `dpkg-deb` (package `dpkg`), which
+      reads the zstd-compressed packages.
     - Network access to `pkgs.zabbly.com`, `pkgs.tailscale.com`, `nvcr.io`,
-      `images.linuxcontainers.org`, `keyserver.ubuntu.com`,
+      `images.linuxcontainers.org`, `archive.ubuntu.com`, `keyserver.ubuntu.com`,
       `raw.githubusercontent.com`, `api.github.com` and `github.com` on SSH
       port 22.
 
@@ -77,11 +94,13 @@ pins; the run then exits 1, and the other sections are still printed.
     `NOT PINNED`.
 
 2. Review the output: every fingerprint's sources, that the signed indexes
-   and the image downloads checked out, the versions, and the DCGM version.
+   and the image downloads checked out, the versions, the DCGM version, and
+   the GPU list's cross-checks and its number of open-module device IDs.
 
 3. Paste each block under the key its header names in `versions.lock.yml`
    (`repository_keys.keys`, `packages.incus`, `packages.tailscale`,
-   `containers.images`, `incus_base_images.images`, `github_ssh_host_keys`),
+   `containers.images`, `incus_base_images.images`,
+   `nvidia_driver_gpus.releases`, `github_ssh_host_keys`),
    set `verified_on` and `source` to the run, and remove the matching
    `verify` entries of `ansible/component-sources.yml` whose layout the run
    checked. Then run `make generate`.
@@ -92,7 +111,8 @@ pins; the run then exits 1, and the other sections are still printed.
 ## Verify the result
 
 The lock check accepts the new pins and re-verifies the keys, the image
-digest and that every pinned base image is still on its server:
+digest, that every pinned base image is still on its server, and the GPU
+list (it downloads the pinned package again and recomputes the list):
 
 <!-- qa:skip reason="needs network access to the vendor sources and the registries" -->
 ```bash
@@ -106,3 +126,9 @@ target reports a line of the sections you pinned. A base image that is no
 longer on its server is a warning: a lab that exported it keeps working, and
 a new lab needs the pin renewed with `make lock-pins` before its first
 golden image build.
+
+The GPU list is checked offline too: every verified NVIDIA driver pin needs
+the list of its release, so changing the driver pin without running
+`make lock-pins` fails `make lock-check`. A pinned package that has left the
+archive is a warning: the pin stays valid by its sha256, and you renew it
+with `make lock-pins` when the driver pin changes.

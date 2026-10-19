@@ -4955,3 +4955,78 @@ affected tests in 6% of the seeds (9% with every test shuffled freely),
 while each test file in a process of its own, in file order, exposes
 `test_fresh_wsl2_with_gpu` every time. Random order finds a dependency only
 when its order happens to break it.
+
+## GPU support guard (decision 1 after D1)
+
+With `install_nvidia_driver: auto` a driver is installed only for a GPU the
+open kernel module of the pinned driver release supports (§2.2, §10.1 of the
+spec edit after D1). NVIDIA states that the open modules support "any Turing
+or later GPU", compute capability 7.5, the matrix minimum, so no GPU below it
+gets a driver automatically, and nobody has to set `skip` by hand.
+
+### The pinned list
+
+- `versions.lock.yml` gains `nvidia_driver_gpus.releases.<version>`: the
+  package that carries NVIDIA's `supported-gpus.json` (Ubuntu's
+  `nvidia-kernel-common-580`, its URL and sha256), the file's path and
+  sha256, `open_module` (289 device IDs) and `proprietary_only` (160: the
+  IDs the release supports only with its proprietary module, Maxwell, Pascal
+  and Volta). Pinned by `make lock-pins` at 2026-10-18T19:18:58Z through the
+  signed noble-updates and jammy-updates `restricted` indexes (the same file
+  in both); the three cross-checks of the spec edit's notes hold and are in
+  the entry's comment.
+- `make lock-pins` (`nvidia_gpus.py`, `pin_nvidia_gpus`): for every verified
+  open driver pin of an Ubuntu release, the index's signature (Ubuntu
+  archive keyring, `gpgv`), the package's sha256 against the index, the file
+  read with `dpkg-deb` (the packages are zstd-compressed), and the
+  cross-checks against NVIDIA's open-gpu-kernel-modules README at the
+  release tag and the `Modaliases` of `nvidia-driver-<branch>-open` and
+  `nvidia-driver-<branch>`; any difference refuses the section. A device ID
+  with open-module and other entries (subsystem IDs that would decide)
+  refuses the list too: 580.178.04 has none, so the device ID decides.
+- `make lock-check`: offline, every verified `packages.nvidia_driver` pin,
+  whatever its package names, needs the list of its upstream version
+  (`gpu_coverage_findings`); with the network (`--only gpus`, part of the
+  default) the package is downloaded again and both lists are recomputed
+  (`gpu_list_findings`); a package that has left the archive is a warning.
+  The network run of 2026-10-18 found only the 24 known markers.
+- `make generate` compiles both lists to `preflight/nvidia-gpus.json` and
+  adds a section to `docs/reference/versions.md`; the doctor role installs
+  the file with preflight's other data files.
+
+### Preflight
+
+- `detect_pci` reads `/sys/bus/pci/devices/<device>/device` whatever the
+  driver state; the host profile's `gpu` gains `pci_device`,
+  `open_module_drivers` and `proprietary_only_drivers`, and the summary a
+  `PCI` line.
+- Matrix facts `nvidia_gpu_open_module_supported`,
+  `nvidia_gpu_proprietary_only` and the derived `nvidia_driver_planned`
+  (`auto` only for a supported GPU, `manual`, or `none`); `secure_boot_mok`
+  fires on `nvidia_driver_planned_in: [auto, manual]`, so a Kepler or Pascal
+  card with Secure Boot needs no MOK. Two warnings on bare metal and in VMs
+  name the reason: proprietary module only, or not supported (legacy branch
+  or not in NVIDIA's list).
+- Fixtures: `ubuntu2404-baremetal-nvidia-kepler` (GT 730, `10de:1287`),
+  `-kepler-secureboot`, `-pascal` (GT 1030, `10de:1d01`), `-turing` (RTX
+  2080 Ti, `10de:1e04`, the control), and a Turing fixture per family
+  (Debian 13, Fedora 44, AlmaLinux 9, openSUSE Tumbleweed, Arch). Every
+  earlier GPU fixture carries the RTX 4070's device ID (`10de:2786`); their
+  summaries gained only the `PCI` line. A test keeps every
+  `gpu_compute_capability_min` at or below 7.5.
+
+### Ansible, installer
+
+- Filter `pinka_driver_supports_gpu`: with a verified driver pin for the
+  host's release, the pin's upstream version must be one of the profile's
+  `open_module_drivers`; without one (`TODO(verify)` or a rolling release)
+  any pinned list counts, and the play stops for a manual install as before,
+  but only for a supported GPU. `provider_baremetal/tasks/nvidia.yml` sets
+  `provider_baremetal_gpu_supported` and installs, asks for community
+  repository consent or for a MOK only when it holds; an unsupported GPU gets
+  a message and the run goes on. `manual` still stops, and its message says
+  when the pinned release does not support the GPU. Tests evaluate the task
+  conditions with the Kepler, Pascal and Turing fixtures for Ubuntu, Debian,
+  Fedora and a rolling release.
+- Installer: `Wizard.gpu_unsupported`; `mok_enrollment_needed` is false for
+  such a GPU; the GPU screen shows it as not usable with the reason.
