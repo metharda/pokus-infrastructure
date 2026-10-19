@@ -84,6 +84,12 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   blocks the next step. So does a failure of a weekly scheduled run (owner,
   with the "commit" for the symbolic-link fix: "a difference found by the
   weekly run is a blocker like any other CI failure").
+- **Test results by name (owner, with the "commit" for the per-file run;
+  verbatim under "JUnit XML and end-to-end verification" in the remaining
+  plan):** every test job (`test` with the Python 3.9 runs,
+  `test-random-order`, `test-isolated`) writes JUnit XML and CI keeps it as
+  the artifact `junit-<job>-attempt-<n>`; a report of a specific test's
+  result cites that artifact.
 - **Commits: final rule (owner, after infra step 14, verbatim):**
 
   > COMMIT RULE — final, for every block of work, long runs included:
@@ -377,7 +383,19 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   passed, none skipped); the Python 3.9 runs passed 143 with the one listed
   skip (the reference validator test of `preflight/tests/test_fixtures.py`,
   named in the log), 223 and 7. The per-file process run (owner decision 3
-  after `37c062e`) follows; it waits for "commit".
+  after `37c062e`) is `2f27132`. CI of `2f27132` (run 39235137608): every
+  job passed but the known red `lock-check` (24 marker errors, the postgres
+  and `ubuntu:24.04` tag warnings), after one re-run of two jobs:
+  `check-mode (ubuntu_2404)` and `check-mode-extended (fedora_44)` failed in
+  `make setup` on the first attempt, both at 10:08 UTC with the same Galaxy
+  answer (the version listing of `community.crypto` without `results`;
+  "nothing unverified was installed"), while the 18 other jobs downloaded
+  the same collections; both passed on the re-run. `test-isolated`: 88
+  files, 3290 passed, none skipped, 308 s of tests, 6 min 39 s for the job,
+  so on every push; `test`: pytest 3290 passed; `test-random-order` (seed
+  20261019): 3290 passed; release-package (run 39235137319) passed. JUnit
+  XML of every test job (owner, with the "commit" for the per-file run)
+  follows; it waits for "commit".
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -396,8 +414,8 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard and the CI skip list done; the per-file process run built; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list) |
-| Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list and the per-file process run done; JUnit XML built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run) |
+| Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
@@ -787,6 +805,25 @@ its checks green and a commit proposal, and waits for the owner's
   (now run there), the golden images' own tests (`images/*/tests/*.sh`, run
   inside built images on an Incus host; CI only runs ShellCheck on them) and
   `make test-distros` (VMs); CI never provisions anything.
+- **JUnit XML and end-to-end verification** (owner, with the "commit" for
+  the per-file run, after the CI report of `006c40d`, verbatim):
+
+  > Instead of a separate -v step for the 8 tests: every test job (test,
+  > test-random-order, test-isolated, and the Python 3.9 runs if their runner can
+  > emit it) writes JUnit XML and uploads it as a CI artifact, so each test's name
+  > and result is kept for every run. Fold that into the next commit, and from then
+  > on cite the artifact when you report a specific test's result.
+  >
+  > Record in PROGRESS.md, under the real-machine tests: the firewall, privilege
+  > profiles, isolation and the install record are verified end to end only by
+  > make test-distros and real-machine tests 4.4, 4.7, 4.8 and 4.14; 3f-1 is not
+  > considered verified until those have passed.
+  >
+  > Then the pre-existing access follow-up and D2, each waiting for my "commit".
+
+  The JUnit XML is the commit after `2f27132` (`docs/IMPLEMENTATION_NOTES.md`,
+  "JUnit XML of every test (after `2f27132`)"); the record is under the
+  real-machine tests below.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -827,6 +864,15 @@ its checks green and a commit proposal, and waits for the owner's
   > - whether preflight with --no-write writes or installs anything.
   >
   > I will run make lock-pins on my machine and paste the output separately.
+
+  End-to-end verification (owner, with the "commit" for the per-file run,
+  verbatim above): the firewall, privilege profiles, isolation and the
+  install record are verified end to end only by `make test-distros` and
+  real-machine tests 4.4, 4.7, 4.8 and 4.14; 3f-1 is not considered verified
+  until those have passed. CI checks their parts without a host: the
+  rendered nft rulesets with `nft -c`, the guards in a network namespace,
+  the isolation probe's expectations per profile, the install record module
+  on Python 3.12 and 3.9, and every role in check mode.
 - **3g** History rewrite and the renamed repository (owner, after 3f,
   replacing the fresh repository of the decision with the "commit" for
   3d.2; see "Process rules in force"): after the real-machine tests, the
@@ -1347,10 +1393,10 @@ and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
 edit after D1 (`0378425`), the installer fix of the written files
 (`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
 green but the known red. Then (owner, after `37c062e`): the CI skip list
-with the nft checks and the root test in CI (`006c40d`, green but the
-known red), then, each waiting for "commit", the per-file process run, the
-pre-existing access with the SSH `Match` block as a D1 follow-up, then D2,
-A, B, C, E, F and G. Then
+with the nft checks and the root test in CI (`006c40d`) and the per-file
+process run (`2f27132`), both green but the known red; then, each waiting
+for "commit", JUnit XML of every test job, the pre-existing access with
+the SSH `Match` block as a D1 follow-up, then D2, A, B, C, E, F and G. Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

@@ -15,7 +15,8 @@ whole collection (a parametrization that depends on another file).
 Quiet by default: the complete output of every failing file, one line per
 skipped test (``skipped test: <id> (reason: <reason>)``), then one line with
 the counts; ``--verbose`` prints every file's output. Each file's output is
-written to ``<log-dir>/<path>.log``.
+written to ``<log-dir>/<path>.log``, and with ``--junit-dir`` its JUnit XML to
+``<junit-dir>/<path>.xml``.
 """
 
 from __future__ import annotations
@@ -93,19 +94,21 @@ def collect(paths: Sequence[str]) -> tuple[dict[str, int], gate.Counts, str]:
     return files, skips, output if done.returncode != 0 else ""
 
 
-def run_file(path: str, expected: int, logs: Path) -> FileRun:
+def run_file(path: str, expected: int, logs: Path, junit: Path | None = None) -> FileRun:
     """Run one test file in a pytest process of its own.
 
     Args:
         path: The file.
         expected: How many of its tests the whole collection holds.
         logs: The directory of the logs.
+        junit: The directory of the JUnit XML files, or None for none.
 
     Returns:
         The run; its output is also in ``<logs>/<path>.log``.
     """
+    report = [] if junit is None else [f"--junitxml={junit / path}.xml"]
     done = subprocess.run(  # noqa: S603 - pytest with fixed arguments
-        [*PYTEST, "--tb=long", path],
+        [*PYTEST, "--tb=long", *report, path],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -150,7 +153,8 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     """Run every collected test file in a process of its own.
 
     Args:
-        argv: ``--log-dir DIR``, ``--verbose`` and what to collect.
+        argv: ``--log-dir DIR``, ``--junit-dir DIR``, ``--verbose`` and what
+            to collect.
         out: Where to write the report.
 
     Returns:
@@ -158,6 +162,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     """
     parser = argparse.ArgumentParser(prog="isolated")
     parser.add_argument("--log-dir", type=Path, default=Path("build/isolated"))
+    parser.add_argument("--junit-dir", type=Path, help="write each file's JUnit XML here")
     parser.add_argument("--verbose", action="store_true", help="print every file's output")
     parser.add_argument("paths", nargs="*", help="what to collect (default: pytest's testpaths)")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
@@ -170,7 +175,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
         return 1
     failing: list[str] = []
     for path, expected in files.items():
-        file_run = run_file(path, expected, args.log_dir)
+        file_run = run_file(path, expected, args.log_dir, args.junit_dir)
         problem = file_run.problem
         if problem is not None:
             failing.append(path)

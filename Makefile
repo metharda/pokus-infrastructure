@@ -243,6 +243,10 @@ privacy: ## Privacy scan: no personal or installation-specific data (stdlib only
 links: ## Check external links in Markdown files (network; weekly in CI)
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks links .
 
+# JUnit XML of every test run: each test's name and result (CI keeps it as an
+# artifact of every test job).
+JUNIT := $(BUILD)/junit
+
 .PHONY: test test-pytest
 test: ## Unit tests (pytest) and the preflight suite on the oldest supported Python (quiet; VERBOSE=1 prints everything)
 ifeq ($(VERBOSE),1)
@@ -253,19 +257,20 @@ test:
 endif
 
 test-pytest: setup ## The pytest suites
-	$(BIN)/pytest
+	$(BIN)/pytest --junitxml=$(JUNIT)/pytest.xml
 
 # The seed of make test-random-order; CI uses this one, so a failure repeats.
 SEED ?= 20261019
 
 .PHONY: test-random-order
 test-random-order: setup ## The pytest suites in a random order (SEED, printed; CI runs it too), so a test that depends on an earlier one fails
-	PYTHONPATH=tools/repo-checks $(BIN)/pytest -p pinka_repo_checks.random_order --order-seed=$(SEED)
+	PYTHONPATH=tools/repo-checks $(BIN)/pytest -p pinka_repo_checks.random_order --order-seed=$(SEED) \
+	  --junitxml=$(JUNIT)/random-order.xml
 
 .PHONY: test-isolated
 test-isolated: setup ## Each pytest file in a process of its own (CI runs it too), so a test that depends on what another file left in the process fails
 	PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks.isolated --log-dir $(BUILD)/isolated \
-	  $(if $(filter 1,$(VERBOSE)),--verbose)
+	  --junit-dir $(JUNIT)/isolated $(if $(filter 1,$(VERBOSE)),--verbose)
 
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
@@ -284,14 +289,16 @@ test-py39: ## Preflight, pinka and install record module tests with plain unitte
 	@# unittest_run: python -m unittest plus the CI skip list (it names every skipped test).
 	cd preflight && PYTHONPATH=.:tests:../tools/repo-checks $(UV) run --no-project \
 	  --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
-	  --prefix preflight/tests discover -s tests -t tests
+	  --prefix preflight/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-preflight.xml discover -s tests -t tests
 	cd tools/pinka-lab && PYTHONPATH=.:tests:../../preflight:../repo-checks $(UV) run --no-project \
 	  --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
-	  --prefix tools/pinka-lab/tests discover -s tests -t tests
+	  --prefix tools/pinka-lab/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-pinka-lab.xml \
+	  discover -s tests -t tests
 	@# The module runs on the target's Python: 3.9 in the Red Hat family's check-mode containers.
 	cd ansible/tests && PYTHONPATH=../roles/install_record/library:../../tools/repo-checks $(UV) run \
 	  --no-project --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
-	  --prefix ansible/tests test_install_record_module
+	  --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-install-record.xml \
+	  test_install_record_module
 
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)

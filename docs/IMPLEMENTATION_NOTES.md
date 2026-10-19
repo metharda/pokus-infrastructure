@@ -5137,3 +5137,42 @@ fixed.
   s, so the job is expected at about five minutes of tests and one of
   setup: on every push while it stays under about ten minutes. The measured
   duration is in the CI report of this commit.
+- In CI (`2f27132`, run 39235137608): 88 files, 3290 passed, none skipped,
+  in 308 s; the job took 6 min 39 s, so it runs on every push.
+
+## JUnit XML of every test (after `2f27132`)
+
+Owner, with the "commit" for the per-file run: every test job writes JUnit
+XML and CI keeps it as an artifact, so each test's name and result is kept
+for every run; a report of a specific test's result cites the artifact.
+
+- `make test-pytest` writes `build/junit/pytest.xml`, `make
+  test-random-order` `build/junit/random-order.xml`, and `make
+  test-isolated` one file per test file below `build/junit/isolated/`
+  (`<path>.xml`, pytest's `--junitxml` in each process).
+- The Python 3.9 runs (`make test-py39`) write
+  `build/junit/py39-{preflight,pinka-lab,install-record}.xml` through
+  `unittest_run --junit-xml`, standard library only (`xml.etree`). The
+  class names and test names are pytest's for the same test
+  (`preflight.tests.test_fixtures.FixtureDecisionTest`,
+  `test_reports_validate_with_reference_validator`), and so are the
+  outcomes: an exception in a test is a `failure`, one in a class or module
+  fixture an `error`, a skipped test or an expected failure `skipped`. A
+  failed fixture is a test case of its own, and a test that never started
+  because of it is an `error` ("not run"), never a pass.
+  `tools/repo-checks/tests/test_junit.py` runs the same file through both
+  and compares.
+- CI: the last step of `test`, `test-random-order` and `test-isolated`
+  uploads `build/junit/` with `actions/upload-artifact` v7.0.2 (commit
+  `cf430e030ddbb5b0abf93d22962f4752f3646cd9`, resolved with `git
+  ls-remote` on 2026-10-19; the tag's commit is of 2026-10-07) as
+  `junit-<job>-attempt-<run attempt>`, unless the run was cancelled, so a
+  failed run keeps its XML and a re-run does not replace the first
+  attempt's. A missing file fails the step. The artifacts are kept for the
+  repository's retention period.
+- Found while building it: the skip-list test of the unittest runner and
+  the new JUnit test both had unittest discover a module named `test_b`;
+  the one imported first stayed in `sys.modules`, and discovery refused the
+  second (an order dependence in one process, which the gate's file order
+  would have shown). Each now uses a module name of its own and removes it
+  afterwards.

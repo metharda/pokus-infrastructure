@@ -204,6 +204,12 @@ does not push the rewritten history itself.
   skipped test with its reason (`skipped test: <id> (reason: ...)`), the
   gate lists them under its line, and every gate and CI report names each
   skipped test, not only the count.
+- Test results by name (owner, with the "commit" for the per-file run): every
+  test job (`test` with the Python 3.9 runs, `test-random-order`,
+  `test-isolated`) writes JUnit XML to `build/junit/`, and CI keeps it as the
+  artifact `junit-<job>-attempt-<n>` of every run, failed ones included. A
+  report of a specific test's result cites that artifact (run, artifact,
+  file, class name and test name).
 - Gating a commit's tree in a separate worktree: give the worktree its own
   tool folders (`make setup` in it, or real copies of `.venv`,
   `node_modules`, `.ansible-collections` and `build/tools`), never symlinks

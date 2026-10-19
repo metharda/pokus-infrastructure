@@ -103,7 +103,9 @@ def test_ci_runs_it_with_the_test_jobs_setup() -> None:
     test = jobs["test"]["steps"]
     for name in ("test-random-order", "test-isolated"):
         steps = jobs[name]["steps"]
-        # The same tools, PostgreSQL 18 and nftables: nothing skips there either.
-        assert steps[:-1] == test[:-1], name
-        assert steps[-1] == {"run": f"make {name}", "env": test[-1]["env"]}, name
+        # The same tools, PostgreSQL 18 and nftables: nothing skips there either;
+        # the last step keeps the JUnit XML (test_junit.py).
+        assert steps[:-2] == test[:-2], name
+        assert steps[-2] == {"run": f"make {name}", "env": test[-2]["env"]}, name
+        assert steps[-1] == test[-1], name
         assert jobs[name]["if"] == jobs["test"]["if"], name

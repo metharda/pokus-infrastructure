@@ -95,6 +95,15 @@ jobs:
       - run: make test VERBOSE=1
         env:
           PINKA_POSTGRES_REQUIRED: "18"
+      # Every test's name and result (JUnit XML of pytest and of the Python 3.9
+      # runs), kept for each run and each attempt, failed ones included.
+      - name: JUnit XML of every test
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: junit-${{ github.job }}-attempt-${{ github.run_attempt }}
+          path: build/junit/
+          if-no-files-found: error
 
   test-random-order:
     # The pytest suites in a random order with the seed of the Makefile (printed
@@ -140,6 +149,15 @@ jobs:
       - run: make test-random-order
         env:
           PINKA_POSTGRES_REQUIRED: "18"
+      # Every test's name and result (JUnit XML of pytest and of the Python 3.9
+      # runs), kept for each run and each attempt, failed ones included.
+      - name: JUnit XML of every test
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: junit-${{ github.job }}-attempt-${{ github.run_attempt }}
+          path: build/junit/
+          if-no-files-found: error
 
   test-isolated:
     # Each pytest file in a process of its own (make test-isolated), so a test
@@ -185,6 +203,15 @@ jobs:
       - run: make test-isolated
         env:
           PINKA_POSTGRES_REQUIRED: "18"
+      # Every test's name and result (JUnit XML of pytest and of the Python 3.9
+      # runs), kept for each run and each attempt, failed ones included.
+      - name: JUnit XML of every test
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: junit-${{ github.job }}-attempt-${{ github.run_attempt }}
+          path: build/junit/
+          if-no-files-found: error
 
   docs:
     if: github.event_name != 'schedule'

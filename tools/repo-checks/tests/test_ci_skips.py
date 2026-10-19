@@ -98,9 +98,14 @@ def test_in_ci_only_the_listed_skip_passes(tmp_path: Path) -> None:
 
 
 def test_the_unittest_runs_name_their_skips_and_obey_the_list(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    request: pytest.FixtureRequest,
 ) -> None:
-    (tmp_path / "test_b.py").write_text(
+    # A module name no other test uses, removed afterwards: unittest's discovery
+    # refuses a module of the same name that an earlier test left imported.
+    (tmp_path / "test_skips_case.py").write_text(
         "import unittest\n\n"
         "class Case(unittest.TestCase):\n"
         "    def test_runs(self):\n        pass\n"
@@ -109,16 +114,20 @@ def test_the_unittest_runs_name_their_skips_and_obey_the_list(
         encoding="utf-8",
     )
     monkeypatch.syspath_prepend(str(tmp_path))
-    listed = skip_list(tmp_path / "skips.json", ("x/tests/test_b.py::Case::test_listed", "py39"))
+    request.addfinalizer(lambda: sys.modules.pop("test_skips_case", None))
+    listed = skip_list(
+        tmp_path / "skips.json", ("x/tests/test_skips_case.py::Case::test_listed", "py39")
+    )
     argv = ["--prefix", "x/tests", "--skip-list", str(listed), "discover", "-s", str(tmp_path)]
     monkeypatch.delenv("CI", raising=False)
     assert unittest_run.main(argv) == 0
     out = capsys.readouterr().out
-    assert "skipped test: x/tests/test_b.py::Case::test_unlisted (reason: needs a GPU)" in out
+    unlisted = "x/tests/test_skips_case.py::Case::test_unlisted"
+    assert f"skipped test: {unlisted} (reason: needs a GPU)" in out
     monkeypatch.setenv("CI", "true")
     assert unittest_run.main(argv) == 1
     out = capsys.readouterr().out
-    assert ci_skips.refusal("x/tests/test_b.py::Case::test_unlisted", "needs a GPU") in out
+    assert ci_skips.refusal(unlisted, "needs a GPU") in out
     assert "test_listed (reason" in out and "refusal" not in out
 
 
