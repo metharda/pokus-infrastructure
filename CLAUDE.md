@@ -253,7 +253,9 @@ does not push the rewritten history itself.
 13. **Pre-existing components** (§13 invariant 24): Docker Engine, Tailscale,
     LXD, Podman, an Incus not adopted with `--adopt-incus`, an NVIDIA driver
     and user accounts that existed before pinka are never changed, stopped,
-    restarted or reconfigured. Where the lab cannot run without such a
+    restarted or reconfigured, and access that existed before (a listener
+    reachable from the network, the install's access path) is never closed
+    without the owner's consent (§7.5). Where the lab cannot run without such a
     change, preflight reports `needs_action` with the exact change, before
     anything changes and with no override. The install record
     (`/var/lib/pinka/install-record.json`, `install_record` role, §7.21)

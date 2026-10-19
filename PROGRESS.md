@@ -24,17 +24,20 @@ no personal or installation-specific data.
 `specs/` holds the master copies, read-only for the assistant. The
 exceptions are plan item 3b ([section J](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
 the spec update for contract v2 (`d99d2ed`), one further edit before 3c
-(3b2 in section J), and the 3f-1 spec edit (owner, with the decisions on
+(3b2 in section J), the 3f-1 spec edit (owner, with the decisions on
 the 3f-1 proposal: "I authorize one spec edit now, limited to 3f-1 D1, D2,
 A, B, C, E and F with these decisions. [...] Specs are read-only for you
-again after that commit."). After the commit of each, the specs are
-read-only again. Component copies are byte-identical.
+again after that commit."), and the small spec edit after D1 (owner, with
+the "commit" for `74377ec`: "Decisions on points 1 and 4, for the small
+spec edit I authorized", limited to the GPU guard and the pre-existing
+access). After the commit of each, the specs are read-only again.
+Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `a661077cfffb763012f0fa78d99ca72626c77114eabb0373824cf20145d4cb3e` |
+| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `e01ad3d75a8b3d2792d6ee56c2e4c7cda281cf817d4ac178b5e356b82e732492` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
-| `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `65e2ac3804c32214383ede460c4c06ef17076c40d4c579a9635cb1ddedb8c5c1` |
+| `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `79bcb4fc75343b736a1f5e728cbee12d12574a2d2524530a4efff79bfaf936cc` |
 
 These are the specs updated in plan item 3b: contract v2 with decision 7's
 GPU training, N2-N4, the pinka/potka naming and the rename decisions (section
@@ -50,9 +53,11 @@ byte-identical. At 3f the infra master was renamed from
 are unchanged), and the platform prompt's master
 (`specs/pokus-platform-claude-code-prompt.md`, `cda5274f…`) left this
 repository; the owner keeps it for `pokus-platform` (section J). The 3f-1
-spec edit changed the infra prompt from `a07bbc3b…` to the checksum above
-(sections listed in `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"); its
-copy `docs/BUILD_PROMPT.md` has the same checksum.
+spec edit changed the infra prompt from `a07bbc3b…` to `a661077c…`
+(sections listed in `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"), and
+the small spec edit after D1 from `a661077c…` to the checksum above
+(`docs/IMPLEMENTATION_NOTES.md`, "Spec edit after D1"); its copy
+`docs/BUILD_PROMPT.md` has the same checksum.
 
 The real-machine test specification (`specs/pokus-infrastructure-qa-spec.md`)
 was written outside this session and added verbatim with the records of
@@ -63,6 +68,10 @@ gate." It instructs a test agent on the owner's test computers; the owner
 edits it. Real-machine tests are named by its numbers (4.1, 4.2, ...): "From
 then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
 ...), so the agent and I use the same numbers." It is reviewed in 3f-1.G.
+The owner replaced it with a version that changes only tests 4.1 and 4.4
+(owner, with the "commit" for `74377ec`: "Replace the file verbatim in the
+same commit as the small spec edit, record the new sha256 in PROGRESS.md,
+and keep it read-only."); the previous checksum was `65e2ac38…`.
 
 ## Process rules in force
 
@@ -329,7 +338,11 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
   warnings) and both `almalinux_9` check-mode lanes, which failed in the
   install record module: `datetime.UTC` does not exist on the container's
   Python 3.9. The fix (`timezone.utc`, and the module's tests on CPython 3.9
-  in `make test-py39`) waits for "commit"; it blocks the next step.
+  in `make test-py39`) is `74377ec`; its CI passed every job but the known
+  red `lock-check` (24 marker errors, the same two tag warnings), all twelve
+  check-mode lanes included. The small spec edit after D1 (the owner's
+  decisions 1 and 4, with the owner's new QA specification) waits for
+  "commit".
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -348,7 +361,7 @@ then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit and D1 done; the CI fix of D1 waits for "commit"; then the owner's decisions after D1 (GPU guard, pre-existing listeners, SSH), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix done; the small spec edit after D1 waits for "commit"; then the GPU guard, the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -601,6 +614,59 @@ its checks green and a commit proposal, and waits for the owner's
   >    it needs a small spec edit, which I authorize together with point 1.
   >
   > Then continue with D2.
+
+  Decisions with the "commit" for `74377ec` (owner, verbatim; the
+  attachment is the new `specs/pokus-infrastructure-qa-spec.md`):
+
+  > commit
+  >
+  > Decisions on points 1 and 4, for the small spec edit I authorized:
+  >
+  > Point 1, GPU guard: approved in principle, but a Ubuntu-only list would stop
+  > automatic driver installs on every other supported distribution, Debian 13
+  > included, even for supported cards. Check first whether the pinned NVIDIA driver
+  > release ships a machine-readable list of supported GPUs with PCI IDs and open
+  > kernel module support (for example supported-gpus.json in the driver package or
+  > its documentation), usable for every distribution. If it does, pin that list
+  > through make lock-pins and use it everywhere, with the Ubuntu index as a
+  > cross-check. If it does not, use the Ubuntu list as proposed and tell me which
+  > families lose automatic installs. In every case, a GPU below the minimum compute
+  > capability never gets a driver installed automatically. Fixtures: Kepler, Pascal,
+  > a Turing control, and one per family.
+  >
+  > Point 4, existing listeners: a D1 follow-up built before D2, as proposed, with the
+  > spec sections you listed. Your rule for a dedicated host (no non-loopback
+  > listener besides sshd and no login account that is not a researcher) is
+  > approved, with one safeguard that applies to every host, dedicated or not: the
+  > access path used for the install (for example SSH from the LAN) is never closed
+  > until SSH over the tailnet has been verified to work for at least one researcher
+  > in that same run, and closing it needs explicit consent on the Remote access
+  > screen or an answers-file key. Without both, it stays open and doctor reports it
+  > as a warning. Uninstall restores the firewall as it was.
+  >
+  > Point 2: thanks, and I added your suggested probe to real-machine test 4.4.
+  >
+  > QA spec update: I attach a new version of specs/pokus-infrastructure-qa-spec.md
+  > (sha256 79bcb4fc75343b736a1f5e728cbee12d12574a2d2524530a4efff79bfaf936cc). It
+  > changes only tests 4.1 and 4.4. Replace the file verbatim in the same commit as
+  > the small spec edit, record the new sha256 in PROGRESS.md, and keep it read-only.
+  >
+  > Then the small spec edit, the GPU guard, the listeners follow-up and D2, each
+  > waiting for my "commit", with CI reported job by job after each push.
+
+  Checked for point 1 (2026-10-18, details in `docs/IMPLEMENTATION_NOTES.md`,
+  "Spec edit after D1"): the pinned release 580.178.04 ships NVIDIA's
+  `supported-gpus.json` (in Ubuntu's `nvidia-kernel-common-580`, from the
+  signed index), with a `legacybranch` per GPU the release no longer
+  supports and the `kernelopen` feature per GPU its open kernel module
+  supports. Its 449 current device IDs equal the `Modaliases` of Ubuntu's
+  `nvidia-driver-580`, its 289 `kernelopen` IDs equal those of the pinned
+  `nvidia-driver-580-open` and the table of NVIDIA's open-gpu-kernel-modules
+  README at tag 580.178.04, which states that the open modules "can be used
+  on any Turing or later GPU". The GT 730 (`10de:1287`) carries
+  `legacybranch: 470.xx`; the GT 1030 (`10de:1d01`) is current but without
+  `kernelopen`. No family loses automatic installs through the list; they
+  are limited only by their own driver pins, still unverified outside Ubuntu.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -1146,12 +1212,12 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 ## Next step
 
 Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
-and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`) and D1
-(`8558bee`) are committed; D1's CI fix waits for "commit" and blocks the
-next step. Then, per the owner's decisions after D1: a small spec edit
-(decisions 1 and 4), the GPU support guard as its own commit, the
-pre-existing listeners with the SSH `Match` block as a D1 follow-up, then
-D2, A, B, C, E, F and G, each as its own step waiting for "commit". Then
+and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
+(`8558bee`) and its CI fix (`74377ec`) are committed. The small spec edit
+after D1 (decisions 1 and 4, with the new QA specification) waits for
+"commit"; then the GPU support guard as its own commit, the pre-existing
+access with the SSH `Match` block as a D1 follow-up, then D2, A, B, C, E,
+F and G, each as its own step waiting for "commit". Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

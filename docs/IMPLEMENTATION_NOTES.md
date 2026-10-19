@@ -4813,3 +4813,64 @@ Podman. Uninstall itself is D2.
   after it); CLAUDE.md states the rule for every custom module. The incus
   module's tests also pass on CPython 3.9 (run once with `cryptography`,
   outside the gate), so it needed no change.
+
+## Spec edit after D1
+
+The small spec edit the owner authorized with the decisions on points 1 and
+4 after D1 (with the "commit" for `74377ec`): the GPU guard and the
+pre-existing access. The master and `docs/BUILD_PROMPT.md` stay
+byte-identical: sha256 `e01ad3d7…2492` (before: `a661077c…cb3e`). The same
+commit replaces `specs/pokus-infrastructure-qa-spec.md` verbatim with the
+owner's new version (`79bcb4fc…6cc`, before `65e2ac38…c5c1`), which changes
+only tests 4.1 and 4.4. The specs are read-only again after this commit.
+
+### Checks behind point 1
+
+- The pinned driver release 580.178.04 ships NVIDIA's machine-readable GPU
+  list, `supported-gpus.json` (`{"chips": [...]}`, 2312 entries: `devid`,
+  optional `subdevid` and `subvendorid`, `name`, `features`, and
+  `legacybranch` for a GPU only an older branch supports). It is in
+  Ubuntu's `nvidia-kernel-common-580` 580.178.04-0ubuntu0.24.04.1
+  (`/usr/share/doc/nvidia-kernel-common-580/supported-gpus.json`, sha256
+  `2fd600dd…1c05`), read through the signed noble-updates index on
+  2026-10-18. NVIDIA's own download server, which serves the same file in
+  the driver package, is not reachable from this environment; the owner's
+  `make lock-pins` run can read it there.
+- Three sources agree exactly: the 289 device IDs with `kernelopen` and no
+  `legacybranch` equal the table of NVIDIA's open-gpu-kernel-modules README
+  at tag 580.178.04 (825 rows, read from raw.githubusercontent.com, sha256
+  `939ed56e…e33a`) and the `Modaliases` of Ubuntu's `nvidia-driver-580-open`;
+  the 449 current device IDs equal the `Modaliases` of Ubuntu's
+  `nvidia-driver-580`. The README states that the open kernel modules "can
+  be used on any Turing or later GPU", Turing being compute capability 7.5,
+  the minimum of the support matrix.
+- Two older cards: the GT 730 (`10de:1287`, Kepler) has
+  `legacybranch: 470.xx`; the GT 1030 (`10de:1d01`, Pascal) is current without
+  `kernelopen`. Neither gets a driver automatically; a Turing card
+  (`10de:1e04`) does.
+- Families: the list belongs to the driver release, not to a distribution,
+  so no family loses automatic installs through it. Outside Ubuntu, the
+  automatic install stays limited by the family's own driver pin, which is
+  still `TODO(verify)` (Debian 13 included); once a family pins a release,
+  `make lock-pins` pins that release's list too.
+
+### Changes by section
+
+| Section | Change | Point |
+| --- | --- | --- |
+| §2.2 | GPU detection on bare metal looks the PCI IDs up in the pinned release's GPU list; `auto` installs a driver only for a GPU the open kernel module supports (Turing or later, compute capability 7.5 and up); any other GPU without a usable driver is no usable GPU, with the reason, and the install continues without the GPU features. New paragraph "Pre-existing access": the non-loopback listeners outside the lab, the firewall manager, the login accounts that are not pinka's, the session's access path; dedicated or shared host | 1, 4 |
+| §2.5 | The host profile example gains `access` | 4 |
+| §5.4 | Uninstall restores the firewall as it was and reopens what was closed with consent | 4 |
+| §7.3 | sshd on a shared host stays reachable as found; the install's access path closes only under the safeguard | 4 |
+| §7.5 | The strict default is the dedicated host's policy; on a shared host every listener stays reachable as found unless the owner consents per listener; on every host the install's access path closes only after SSH over the tailnet was verified for a researcher in the same run and with consent, otherwise doctor warns | 4 |
+| §7.21 | The record keeps the pre-existing access and what was closed with consent | 4 |
+| §8.1 | `firewall_close_listeners`, `firewall_close_install_path` | 4 |
+| §9 | Doctor expects the recorded pre-existing listeners and warns while the install's access path is open | 4 |
+| §10.1 | `nvidia_driver_gpus.<driver version>` from NVIDIA's `supported-gpus.json`, cross-checked by `make lock-pins`; one list for every family; the compute-capability minimum stays at or below what the list implies | 1 |
+| §11 | Fixtures: Kepler, Pascal, a Turing control and one per family; dedicated host, shared host, console install; the safeguard | 1, 4 |
+| §13 | Invariant 24 covers the access that existed before pinka | 4 |
+| §18.4 | Screen 5 (NVIDIA driver) shows a GPU without a driver as not usable with the reason; screen 7 (Remote access) lists the pre-existing listeners with a close checkbox each and the install's access path with its consent checkbox | 1, 4 |
+| §19.6, §19.8 | The effective SSH policy keeps pre-existing access; every family's `auto` uses the one list | 1, 4 |
+
+Not changed: §7.3's `Match Group pinka` block (decision 3) is approved
+deviation SSH1, not part of this edit.

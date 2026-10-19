@@ -156,8 +156,12 @@ counts as passing.
   Check against the specification: a nominal 16 GiB machine passes the memory
   check despite the kernel's reservation; a GPU below the minimum compute
   capability is degraded; a GPU without a supported current driver counts as no
-  usable GPU; a distribution not in the support matrix is refused or marked as
-  documented, with an actionable message.
+  usable GPU, and with the driver setting on automatic no driver would be
+  installed for it; a distribution not in the support matrix is refused or marked
+  as documented, with an actionable message.
+- Record the non-loopback listeners and accounts preflight finds, and whether it
+  classifies the computer as a dedicated host or one with pre-existing access to
+  keep.
 - **Pass:** no change on the host; every result matches the specification.
 
 ### 4.2 Bootstrap in check mode (VM)
@@ -184,7 +188,12 @@ Pokus:
 - install does not log out, re-authenticate, retag, rename or reconfigure the
   Tailscale node and does not replace its package; it uses it or refuses clearly;
 - Docker, LXD and Incus state is unchanged and their workloads keep network
-  connectivity;
+  connectivity: an LXD guest and a Docker container that ran before the install
+  keep DHCP, DNS and HTTPS to an external host; run the same probe in each before
+  and after the install, and again after uninstall;
+- every non-loopback listener that existed before the install (for example SSH
+  from the LAN) is reachable as before, unless the maintainer consented to close
+  it; the SSH session used during the install is never cut off;
 - compare snapshots.
 - **Pass:** no difference outside documented additions.
 
