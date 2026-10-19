@@ -190,6 +190,9 @@ does not push the rewritten history itself.
   building, run only the tests relevant to the change; run the full gate
   once before the summary and always before proposing a commit. Never
   weaken a check, never hide a failure, a skip or a warning.
+- The pytest suites also run in a random order with the Makefile's fixed,
+  printed seed (`make test-random-order`, CI job `test-random-order`): a
+  test never relies on what another test left in the process.
 - Read `docs/BUILD_PROMPT.md` and `docs/DOCS_SPEC.md` by section for the
   step at hand, not whole.
 - `specs/` is read-only, the real-machine test specification
@@ -440,6 +443,12 @@ does not push the rewritten history itself.
   the hash-locked `installer/requirements.lock` (`/opt/pinka/installer-venv`).
   It is a front-end only: it writes files and runs `bootstrap.sh
   --non-interactive --no-tui`; it never provisions anything itself.
+- Every file the installer writes with ruamel.yaml's round-trip mode comes
+  from `yamlio.round_trip()`, which writes `null` out. Never register a
+  representer on a ruamel class: `add_representer` is a class method and
+  changes every later dump in the process. An answers replay writes the
+  TUI's files byte for byte (`test_fresh_wsl2_with_gpu` replays in a
+  process of its own after visiting the review screen twice).
 - Every rule of a field lives in `validators.py`; the answers file is checked
   by `installer/schema/answers.schema.json` and `answers.problems()`. A new
   answers field needs a schema `description` (it becomes the reference text).

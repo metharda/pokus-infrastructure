@@ -16,6 +16,7 @@ from typing import Any
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
+from pinka_installer import yamlio
 from pinka_installer.answers import Answers, GpuArbiter, Retention, Source, TrainingCaps
 
 HEADER = (
@@ -210,7 +211,7 @@ def _source(source: Source) -> dict[str, str]:
 
 
 def _yaml() -> YAML:
-    yaml = YAML(typ="rt")
+    yaml = yamlio.round_trip()
     yaml.preserve_quotes = True
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.width = 4096  # never re-wrap the operator's lines

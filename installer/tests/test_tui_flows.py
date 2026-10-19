@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import shutil
+import subprocess
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
@@ -18,6 +21,7 @@ from typing import Any, cast
 from installer_testlib import copy_repo, private_key, public_key
 from textual.pilot import Pilot
 from textual.widgets import (
+    Button,
     Checkbox,
     Collapsible,
     DataTable,
@@ -196,6 +200,13 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
         await forward(pilot, "platform_review")
         await forward(pilot, "images")
         await forward(pilot, "secrets")
+        fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
+        await forward(pilot, "review")
+        # Edit a step and come back: the review plans the files a second time in this
+        # process, as it does whenever an operator changes something there.
+        pilot.app.screen.query_one("#edit-secrets", Button).press()
+        await settle(pilot)
+        assert at(pilot) == "secrets"
         await secrets_to_progress(pilot)
         progress = pilot.app.screen
         assert "ok" in str(progress.query_one("#status", Static).content)
@@ -228,15 +239,30 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
     assert "vault_restic_password" in secrets
     assert not repo.state_file.exists()  # finished: no resume state
 
-    # The answers replay (bootstrap.sh --answers) writes byte-identical files; only the
-    # vault differs (its encryption is salted, and the replay generates its own secrets).
+    # The answers replay (bootstrap.sh --answers, a process of its own) writes
+    # byte-identical files; only the vault differs (its encryption is salted, and the
+    # replay generates its own secrets).
     replay = copy_repo(tmp_path / "replay")
     shutil.copytree(repo.users_dir, replay.users_dir, dirs_exist_ok=True)
     password_file = tmp_path / "vault-pass"
     password_file.write_text(PASSWORD + "\n", encoding="utf-8")
     password_file.chmod(0o600)
     argv = ["--infra", str(replay.infra), "apply", "--answers", str(repo.answers("pinka-lab"))]
-    assert cli.main([*argv, "--vault-password-file", str(password_file)]) == 0
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pinka_installer",
+            *argv,
+            "--vault-password-file",
+            str(password_file),
+        ],
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
     for name in ("host_vars", "group_vars_main", "answers", "models_lock"):
         mine, theirs = getattr(repo, name), getattr(replay, name)
         if callable(mine):

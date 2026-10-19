@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from installer_testlib import public_key
 from ruamel.yaml import YAML
+from ruamel.yaml.representer import RoundTripRepresenter
 from test_answers import full_answers
 
 from pinka_installer import answers as answers_mod
@@ -237,6 +238,25 @@ def test_plan_writes_everything_and_is_idempotent(repo: Paths) -> None:
     again = apply.plan(answers, repo, SECRETS, PASSWORD, {"researcher1": key})
     assert [c.path for c in again.changes if c.changed] == []
     assert again.changes[3].summary == ["no secret changes"]
+
+
+def test_written_files_do_not_depend_on_what_the_process_wrote_before(repo: Paths) -> None:
+    # Every round-trip writer writes null out with its own representer. Before, the
+    # group_vars writer registered it on ruamel's RoundTripRepresenter class, so host_vars
+    # (and the answers file) came out differently once group vars had been written: a TUI
+    # that planned the files twice and a replay in a fresh process disagreed.
+    assert RoundTripRepresenter.yaml_representers[type(None)] is RoundTripRepresenter.represent_none
+    answers = full_answers()
+    example = repo.example_host_vars.read_text(encoding="utf-8")
+    first = hostvars.render(answers, None, example), answers_mod.dumps(answers)
+    assert "\nvllm_default_deployment: null " in first[0]
+    groupvars.render(
+        repo.group_vars_main.read_text(encoding="utf-8"),
+        answers.researchers,
+        answers.researchers_removed,
+    )
+    assert (hostvars.render(answers, None, example), answers_mod.dumps(answers)) == first
+    assert RoundTripRepresenter.yaml_representers[type(None)] is RoundTripRepresenter.represent_none
 
 
 def test_plan_needs_the_right_vault_password(repo: Paths) -> None:

@@ -4874,3 +4874,84 @@ only tests 4.1 and 4.4. The specs are read-only again after this commit.
 
 Not changed: §7.3's `Match Group pinka` block (decision 3) is approved
 deviation SSH1, not part of this edit.
+
+## Installer: the same bytes in every written file (found with the GPU guard)
+
+`test_fresh_wsl2_with_gpu` failed when run alone, also on `74377ec`, and
+passed in the full suite and in CI. The cause: `groupvars._yaml()`
+registered its `null` representer with `add_representer`, a class method,
+on ruamel's `RoundTripRepresenter` itself. From the first group_vars write
+on, every round-trip dump in the process wrote `null` where it had written
+an empty value before.
+
+### What it did to a real install
+
+- One plan (`apply.plan`) writes host_vars, then group_vars, the users' key
+  files, the vault and the answers file. Only YAML values that are null are
+  affected: in host_vars `vllm_default_deployment` when no default model is
+  set (every machine without a GPU), in the answers file `platform` when no
+  platform is set. `models.lock.yml` entries hold no null; the key files and
+  the vault are not written with round-trip mode.
+- The answers file was always written after group_vars, so it always read
+  `platform: null`.
+- host_vars read `vllm_default_deployment:` when it came from the first
+  plan of a process: a TUI install that passed the review screen once, and
+  every answers replay (`bootstrap.sh --answers`, a process of its own). It
+  read `vllm_default_deployment: null` from every later plan in the same
+  process: the TUI plans again each time the review screen is shown after an
+  "Edit", and once more in the split-inference pairing step after the
+  install.
+- No value was wrong: YAML reads both forms as null, and Ansible saw the
+  same variables. The bytes differed, and the environment fingerprint holds
+  `host_vars_sha256`, whose change makes results before and after count as
+  not comparable. A TUI install that went through an "Edit" and a replay of
+  its answers file had different fingerprints for the same configuration,
+  and a modify run that changed nothing showed host_vars as changed,
+  rewrote it and changed the fingerprint.
+
+### Why the equivalence test missed it
+
+`test_fresh_wsl2_with_gpu` compares the files of a TUI install with those
+of the replay of its answers file. It ran the replay in the test's own
+process and passed through the review screen once. In the suite, earlier
+test files had written group vars before it, so both sides wrote `null`;
+alone, the replay inherited the TUI's change and failed, an artifact of the
+shared process rather than the real difference. It now goes back from the
+review screen once (the plan is built twice, as after an operator's "Edit")
+and runs the replay as `python -m pinka_installer` in a process of its own,
+like bootstrap. On the old code this version fails in every order (the TUI
+writes `null`, the replay an empty value); with the fix it passes.
+
+### The fix
+
+`installer/pinka_installer/yamlio.py`: one round-trip writer for host_vars,
+group_vars, the answers file and `models.lock.yml`, with the `null`
+representer on its own subclass, so it writes `null` out and changes no
+ruamel class. `null` rather than an empty value because group_vars and the
+answers file always used it and the example host_vars' comment says
+"null = ..."; a host_vars written with the empty form is rewritten once by
+its next modify run (no lab has been installed yet). A test checks that
+host_vars and the answers file come out the same before and after group
+vars are written and that ruamel's class is unchanged.
+`test_plan_writes_everything_and_is_idempotent` (two plans in one process)
+would have failed on the old code whenever it ran before every other
+group_vars write.
+
+### Random order
+
+`make test-random-order` (CI job `test-random-order`, the `test` job's
+setup) runs the pytest suites with `-p pinka_repo_checks.random_order`: the
+modules in a random order, and within each module its classes and their
+tests, with the seed `SEED ?= 20261019` of the Makefile, printed in the
+header and the summary (`make test-random-order SEED=<seed>` repeats an
+order). The plugin is ours (standard library and pytest's hooks), so no new
+dependency needed a verified pin; its tests check the permutation and a real
+run. With the fix, seeds 20261019, 1, 2 and 3 pass the whole suite.
+
+Measured on the old code: the installer tests passed in random order with
+seeds 20261019 and 1 to 5. 23 of its 222 tests write group vars; over
+10,000 simulated seeds, a random order in one process exposes the two
+affected tests in 6% of the seeds (9% with every test shuffled freely),
+while each test file in a process of its own, in file order, exposes
+`test_fresh_wsl2_with_gpu` every time. Random order finds a dependency only
+when its order happens to break it.

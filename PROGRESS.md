@@ -341,8 +341,13 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   in `make test-py39`) is `74377ec`; its CI passed every job but the known
   red `lock-check` (24 marker errors, the same two tag warnings), all twelve
   check-mode lanes included. The small spec edit after D1 (the owner's
-  decisions 1 and 4, with the owner's new QA specification) waits for
-  "commit".
+  decisions 1 and 4, with the owner's new QA specification) is `0378425`.
+  Found while building the GPU guard: the installer wrote `null` in two
+  forms depending on what the same process had written before; the fix
+  (every written file the same bytes, the equivalence test with the replay
+  in its own process, and the CI job `test-random-order`) is its own commit,
+  recorded in `docs/IMPLEMENTATION_NOTES.md`, "Installer: the same bytes in
+  every written file". The GPU support guard is the commit after it.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -361,7 +366,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix done; the small spec edit after D1 waits for "commit"; then the GPU guard, the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1 and the installer fix of the written files done; then the GPU guard, the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -667,6 +672,50 @@ its checks green and a commit proposal, and waits for the owner's
   `legacybranch: 470.xx`; the GT 1030 (`10de:1d01`) is current but without
   `kernelopen`. No family loses automatic installs through the list; they
   are limited only by their own driver pins, still unverified outside Ubuntu.
+
+  Decisions with the "commit" for the spec edit after D1 (`0378425`) (owner,
+  verbatim):
+
+  > commit, in three commits instead of two: proposal 1 (spec edit) first, then the
+  > group-vars writer fix on its own, then the GPU guard. Push and report CI job by
+  > job.
+  >
+  > The group-vars writer fix is not unrelated: if one write changes how null is
+  > written for every later YAML write in the same process, a real TUI install may
+  > write later config files differently from an answers-file replay. Before the
+  > commit, tell me:
+  > - which files a real install writes after the group-vars writer runs, and whether
+  >   any of them were written wrongly before the fix;
+  > - whether the answers-equivalence test would have caught it, and if not, why not.
+  > Its commit message says what it fixes for a real install, not only for the test.
+  >
+  > Add, in the same fix commit or as a small follow-up: the Python test suite also
+  > runs in random order with a fixed, logged seed (one CI job), so order-dependent
+  > tests show up in CI instead of by chance. If random order exposes more failures,
+  > list them before fixing.
+  >
+  > Record as an open item: the driver package pins outside Ubuntu are still
+  > unverified; they must be verified before a GPU install on those families is
+  > claimed to work.
+  >
+  > Then the pre-existing access follow-up and D2, each waiting for my "commit".
+
+  Answered before the commits (details in `docs/IMPLEMENTATION_NOTES.md`,
+  "Installer: the same bytes in every written file"): after the group_vars
+  write of a plan come the users' key files, the vault and the answers file,
+  and in the same process every later plan (the TUI plans again after an
+  "Edit" on the review screen and in the pairing step). No value was wrong,
+  but host_vars of a machine without a default model read
+  `vllm_default_deployment:` from a first plan and an answers replay, and
+  `vllm_default_deployment: null` from a later plan, so the same
+  configuration gave different `host_vars_sha256` and fingerprints, and a
+  modify run that changed nothing rewrote host_vars. The equivalence test ran
+  the replay in its own process and passed the review screen once: in the
+  suite both sides inherited the change and matched. Random order exposed
+  no further failure (the whole suite with seeds 20261019, 1, 2 and 3); on
+  the old code it did not expose this one either in six seeds, and in about
+  6% of 10,000 simulated seeds, while each test file in its own process
+  exposes it every time.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -1213,11 +1262,11 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
 and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
-(`8558bee`) and its CI fix (`74377ec`) are committed. The small spec edit
-after D1 (decisions 1 and 4, with the new QA specification) waits for
-"commit"; then the GPU support guard as its own commit, the pre-existing
-access with the SSH `Match` block as a D1 follow-up, then D2, A, B, C, E,
-F and G, each as its own step waiting for "commit". Then
+(`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
+edit after D1 (`0378425`) and the installer fix of the written files;
+the GPU support guard is the next commit, pushed with them. Then the
+pre-existing access with the SSH `Match` block as a D1 follow-up, then D2,
+A, B, C, E, F and G, each as its own step waiting for "commit". Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

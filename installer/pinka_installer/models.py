@@ -19,10 +19,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
-from pinka_installer import validators
+from pinka_installer import validators, yamlio
 
 HUB = "https://huggingface.co"
 TIMEOUT = 30
@@ -232,7 +231,7 @@ def add_to_lock(text: str, entry: Mapping[str, Any]) -> str:
     Returns:
         The new lock.
     """
-    yaml = YAML(typ="rt")
+    yaml = yamlio.round_trip()
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.width = 4096
     doc = yaml.load(text)

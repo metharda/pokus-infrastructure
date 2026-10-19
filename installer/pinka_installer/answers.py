@@ -22,7 +22,7 @@ from typing import Any
 import jsonschema
 from ruamel.yaml import YAML
 
-from pinka_installer import validators
+from pinka_installer import validators, yamlio
 
 SCHEMA_VERSION = 1
 # How a secret comes to the vault (the answers record the choice, never the value).
@@ -604,7 +604,7 @@ def _source_problems(found: list[str], answers: Answers) -> None:
 
 
 def _yaml() -> YAML:
-    yaml = YAML(typ="rt")
+    yaml = yamlio.round_trip()
     yaml.default_flow_style = False
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.width = 100

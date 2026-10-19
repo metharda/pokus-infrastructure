@@ -255,6 +255,13 @@ endif
 test-pytest: setup ## The pytest suites
 	$(BIN)/pytest
 
+# The seed of make test-random-order; CI uses this one, so a failure repeats.
+SEED ?= 20261019
+
+.PHONY: test-random-order
+test-random-order: setup ## The pytest suites in a random order (SEED, printed; CI runs it too), so a test that depends on an earlier one fails
+	PYTHONPATH=tools/repo-checks $(BIN)/pytest -p pinka_repo_checks.random_order --order-seed=$(SEED)
+
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
 	PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
