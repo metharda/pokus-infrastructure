@@ -12,6 +12,7 @@ binfmt
 browsable
 btrfs
 bytewise
+cacheprovider
 cadvisor
 checksummed
 chrony

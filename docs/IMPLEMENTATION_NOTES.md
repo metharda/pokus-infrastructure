@@ -5099,3 +5099,41 @@ the gate of `32b2c95`'s tree, npm replaced the worktree's symlinked
 and git refused `check-ignore` below a symlinked `.venv`. The worktree also
 sits where `nobody` can enter it, because bootstrap's tests run as
 `nobody`. Recorded in CLAUDE.md.
+
+## Each test file in a process of its own (after `006c40d`)
+
+Owner decision 3 after the CI report of `37c062e`: each test file runs in a
+process of its own (`make test-isolated` and a CI job); under about ten
+minutes in CI it runs on every push, otherwise nightly and on demand and
+before any release; the failures it exposes are listed before they are
+fixed.
+
+- `tools/repo-checks/pinka_repo_checks/isolated.py` collects the suites once
+  (`pytest --collect-only`), then runs each collected file with `python -m
+  pytest -p no:cacheprovider --tb=long <file>`, one after the other in
+  collection order. Not in parallel: files would then disturb each other
+  (the root-only bootstrap test changes the checkout's owner, the database
+  tests start clusters of their own), which is another question than the
+  one this run answers. Every process reads `pyproject.toml`, so the CI skip
+  list applies to each, and no cache passes between them.
+- A file fails when its process fails, or when it runs a different number of
+  tests alone than the whole collection holds for it (a parametrization
+  that depends on another file).
+- Quiet like the gate: the complete output of each failing file, then one
+  line (`test-isolated: <n> passed, <n> failed, <n> skipped, <n> warnings
+  (<n> files, each in a process of its own, in <s>s; logs: build/isolated)`)
+  and one line per skipped test; `VERBOSE=1` prints every file's output.
+  Each file's output is in `build/isolated/<path>.log`.
+- CI job `test-isolated`: the `test` job's setup (PostgreSQL 18, nftables,
+  `sudo -n`), so nothing skips there either;
+  `tools/repo-checks/tests/test_isolated.py` checks that `test`,
+  `test-random-order` and `test-isolated` share their setup.
+- Here, before the commit: 88 files, 3261 passed, 1 skipped (the signed-tag
+  test of `tools/platform/tests/test_deploy_mirror.py`, no `ssh-keygen`
+  here), no failure, in 413 s (the one-process pytest run of the gate: 322
+  s). Nothing new to list: the one failure of this kind so far,
+  `test_fresh_wsl2_with_gpu` before `32b2c95`, failed in every per-file
+  run of the simulation made for that fix. CI's one-process run takes 241
+  s, so the job is expected at about five minutes of tests and one of
+  setup: on every push while it stays under about ten minutes. The measured
+  duration is in the CI report of this commit.

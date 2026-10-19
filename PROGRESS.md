@@ -366,8 +366,18 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   network namespace) and
   `bootstrap/tests/test_bootstrap.py::test_git_state_refuses_a_foreign_checkout`
   (needs root). The CI skip list (owner, after `37c062e`) makes them run in
-  CI through `sudo -n` and fails any skip it does not name; it waits for
-  "commit", then the per-file process run.
+  CI through `sudo -n` and fails any skip it does not name: `006c40d`. CI of
+  `006c40d` (run 39225936248): every job passed (privacy, lint, test,
+  test-random-order, docs, all six check-mode and all six
+  check-mode-extended lanes; release-package in run 39225936214) but the
+  known red `lock-check` (24 marker errors, the postgres and `ubuntu:24.04`
+  tag warnings); `lock-collections` did not run (the lock is unchanged) and
+  `links` runs weekly. The test job ran the 8 tests by name: the 7 `nft -c`
+  checks and `test_git_state_refuses_a_foreign_checkout` passed (pytest 3286
+  passed, none skipped); the Python 3.9 runs passed 143 with the one listed
+  skip (the reference validator test of `preflight/tests/test_fixtures.py`,
+  named in the log), 223 and 7. The per-file process run (owner decision 3
+  after `37c062e`) follows; it waits for "commit".
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -386,7 +396,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files and the GPU guard done; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard and the CI skip list done; the per-file process run built; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list) |
 | Real-machine tests | The specification's tests on the owner's computers A and B | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -1336,10 +1346,11 @@ and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
 (`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
 edit after D1 (`0378425`), the installer fix of the written files
 (`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
-green but the known red. Then, each waiting for "commit" (owner, after
-`37c062e`): the CI skip list with the nft checks and the root test in CI,
-the per-file process run, the pre-existing access with the SSH `Match`
-block as a D1 follow-up, then D2, A, B, C, E, F and G. Then
+green but the known red. Then (owner, after `37c062e`): the CI skip list
+with the nft checks and the root test in CI (`006c40d`, green but the
+known red), then, each waiting for "commit", the per-file process run, the
+pre-existing access with the SSH `Match` block as a D1 follow-up, then D2,
+A, B, C, E, F and G. Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

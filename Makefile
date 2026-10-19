@@ -262,6 +262,11 @@ SEED ?= 20261019
 test-random-order: setup ## The pytest suites in a random order (SEED, printed; CI runs it too), so a test that depends on an earlier one fails
 	PYTHONPATH=tools/repo-checks $(BIN)/pytest -p pinka_repo_checks.random_order --order-seed=$(SEED)
 
+.PHONY: test-isolated
+test-isolated: setup ## Each pytest file in a process of its own (CI runs it too), so a test that depends on what another file left in the process fails
+	PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks.isolated --log-dir $(BUILD)/isolated \
+	  $(if $(filter 1,$(VERBOSE)),--verbose)
+
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
 	PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)

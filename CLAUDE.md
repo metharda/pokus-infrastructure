@@ -191,8 +191,10 @@ does not push the rewritten history itself.
   once before the summary and always before proposing a commit. Never
   weaken a check, never hide a failure, a skip or a warning.
 - The pytest suites also run in a random order with the Makefile's fixed,
-  printed seed (`make test-random-order`, CI job `test-random-order`): a
-  test never relies on what another test left in the process.
+  printed seed (`make test-random-order`, CI job `test-random-order`), and
+  each test file in a pytest process of its own (`make test-isolated`, CI
+  job `test-isolated`, on every push): a test never relies on what another
+  test or another file left in the process.
 - Skips in CI (owner, after `37c062e`): CI keeps a list of the tests that may
   skip there, each with its run and reason
   (`tools/repo-checks/pinka_repo_checks/ci_skips.json`, empty or nearly so);
