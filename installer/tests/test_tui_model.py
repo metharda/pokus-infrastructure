@@ -290,6 +290,43 @@ def test_acl_and_interfaces() -> None:
     assert model.interface_problems(["bad name"])
 
 
+def test_what_screen_8_offers_to_close() -> None:
+    # The shared host of preflight's fixture, installed over SSH from the LAN.
+    access = preflight("ubuntu2404-access-shared", ["--researcher", "researcher1"]).profile[
+        "access"
+    ]
+    assert model.closable_listeners(access) == [
+        ("tcp/22", "tcp/22 on every address (sshd): only with the install session"),
+        ("tcp/8080", "tcp/8080 on every address (example-web)"),
+    ]
+    assert model.install_path(access) == {
+        "via": "ssh",
+        "address": "192.0.2.10",
+        "port": 22,
+        "user": "owner1",
+        "tailnet": False,
+    }
+    # What the strict policy admits and what Docker publishes are not offered.
+    listeners = [
+        {"proto": "udp", "address": "0.0.0.0", "port": 68, "admitted": True},  # noqa: S104
+        {"proto": "tcp", "address": "0.0.0.0", "port": 9000, "process": "docker-proxy"},  # noqa: S104
+        {"proto": "tcp", "address": "::", "port": 9000, "process": "docker-proxy"},
+        {"proto": "tcp", "address": "192.0.2.10", "port": 631, "process": None},
+    ]
+    shared = {"host": "shared", "session": {"via": "console"}, "listeners": listeners}
+    assert model.closable_listeners(shared) == [
+        ("tcp/631", "tcp/631 on 192.0.2.10 (unknown process)")
+    ]
+    assert model.published_ports(shared) == ["tcp/9000"]
+    assert model.install_path(shared) is None
+    # A dedicated host offers nothing; its strict policy is the default.
+    dedicated = {**shared, "host": "dedicated"}
+    assert model.closable_listeners(dedicated) == []
+    assert model.published_ports(dedicated) == []
+    tailnet = {"session": {"via": "ssh", "address": "100.101.2.3", "port": 22, "tailnet": True}}
+    assert model.install_path(tailnet) is None
+
+
 def test_bootstrap_options_and_resume_data() -> None:
     wizard = model.Wizard()
     wizard.consents = {"force_unsupported", "accept_degraded"}

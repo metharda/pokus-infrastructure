@@ -36,6 +36,8 @@ SNAPSHOT_RE = re.compile(r"^(latest|[0-9a-f]{8,64})$")
 CAP_SIZE_RE = re.compile(r"^[1-9][0-9]*[KMG]$")
 SERVICE_SECRET_RE = re.compile(r"^[a-z][a-z0-9]{0,9}\.[a-z][a-z0-9_-]{0,63}$")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
+LISTENER_RE = re.compile(r"^(tcp|udp)/([1-9][0-9]{0,4})$")
+MAX_PORT = 65535
 SFTP_RE = re.compile(r"^sftp:(?P<user>[a-z_][a-z0-9_.-]*)@(?P<host>[^\s:/]+):(?P<path>/\S*)$")
 
 # Accounts that exist on every Linux host or belong to the lab itself.
@@ -392,6 +394,24 @@ def tailscale_tag(value: str) -> str | None:
     """
     if not TAG_RE.fullmatch(value):
         return "tag:<name> with lower-case letters, digits and '-', starting with a letter"
+    return None
+
+
+def listener_name(value: str) -> str | None:
+    """A pre-existing listener to close: ``tcp/<port>`` or ``udp/<port>`` (BUILD_PROMPT §7.5).
+
+    Whether preflight recorded it, and whether the firewall can close it, is
+    checked against the host's install record when bootstrap runs.
+
+    Args:
+        value: The entry.
+
+    Returns:
+        The error, or None.
+    """
+    match = LISTENER_RE.fullmatch(value)
+    if match is None or not 1 <= int(match.group(2)) <= MAX_PORT:
+        return "tcp/PORT or udp/PORT with a port from 1 to 65535"
     return None
 
 

@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/firewall/templates/pinka-nftables.service.j2). Local changes will be overwritten.
 [Unit]
-Description=pinka firewall policy (nftables table inet pinka_filter)
+Description=pinka firewall tables (nftables{{ ' inet pinka_filter and' if pinka_firewall_backend == 'nftables' else '' }} inet pinka_access_guard)
 Wants=network-pre.target
 Before=network-pre.target
 DefaultDependencies=no
@@ -9,9 +9,18 @@ After=local-fs.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+{% if pinka_firewall_backend == 'nftables' %}
 ExecStart=/usr/sbin/nft -f /etc/pinka/nftables/pinka.nft
+{% endif %}
+ExecStart=/usr/sbin/nft -f /etc/pinka/nftables/access-guard.nft
+{% if pinka_firewall_backend == 'nftables' %}
 ExecReload=/usr/sbin/nft -f /etc/pinka/nftables/pinka.nft
+{% endif %}
+ExecReload=/usr/sbin/nft -f /etc/pinka/nftables/access-guard.nft
+{% if pinka_firewall_backend == 'nftables' %}
 ExecStop=/usr/sbin/nft delete table inet pinka_filter
+{% endif %}
+ExecStop=/usr/sbin/nft delete table inet pinka_access_guard
 
 [Install]
 WantedBy=multi-user.target

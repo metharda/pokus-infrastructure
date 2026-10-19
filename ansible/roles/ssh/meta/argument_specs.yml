@@ -16,3 +16,18 @@ argument_specs:
         type: dict
         default: {}
         description: OpenSSH server package per family.
+      researchers:
+        type: list
+        elements: dict
+        required: true
+        description: The researchers; an install session of another account keeps the host's policy until the safeguard closes its path.
+      ssh_access:
+        type: dict
+        description: The access to the host before pinka's first install, from the install record (derived).
+      ssh_install_path:
+        type: raw
+        description: The install's access path while it is pinka's to keep, or none (derived, pinka_install_path).
+      ssh_policy_scope:
+        type: str
+        choices: [host, group]
+        description: Where pinka's sshd settings apply, host or a Match Group block (shared host, or the install's path open for a non-researcher; derived).

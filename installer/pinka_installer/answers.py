@@ -97,6 +97,10 @@ class Researcher:
     grafana: bool = True
 
 
+# Remote access answers written only when set (an empty tag means the default).
+REMOTE_OPTIONAL = ("tailscale_tag", "close_listeners", "close_install_path")
+
+
 @dataclass
 class RemoteAccess:
     """Screen 8: Tailscale and SSH."""
@@ -107,6 +111,10 @@ class RemoteAccess:
     grafana_tailscale_serve: bool = False
     tailscale_serve_consent: bool = False
     ssh_extra_allowed_interfaces: list[str] = field(default_factory=list)
+    # Pre-existing access (BUILD_PROMPT §7.5): listeners to close with consent,
+    # and consent to close the install's access path under the safeguard.
+    close_listeners: list[str] = field(default_factory=list)
+    close_install_path: bool = False
 
 
 @dataclass
@@ -312,10 +320,11 @@ class Answers:
         data["researchers"] = [_researcher_dict(r) for r in clean.researchers]
         if clean.researchers_removed:
             data["researchers_removed"] = list(clean.researchers_removed)
-        remote = asdict(clean.remote_access)
-        if not remote["tailscale_tag"]:
-            del remote["tailscale_tag"]
-        data["remote_access"] = remote
+        data["remote_access"] = {
+            key: value
+            for key, value in asdict(clean.remote_access).items()
+            if value or key not in REMOTE_OPTIONAL
+        }
         if clean.machine.node_role in ("lab", "inference") and clean.split_inference_peer:
             data["split_inference"] = {"peer": clean.split_inference_peer}
         gpu = asdict(clean.gpu)
@@ -490,6 +499,8 @@ def problems(answers: Answers, context: Context) -> list[str]:
         _check(found, where, validators.interface(name))
         if context.interfaces is not None and name not in context.interfaces:
             found.append(f"{where}: this host has no interface {name!r}")
+    for name in remote.close_listeners:
+        _check(found, "remote_access/close_listeners", validators.listener_name(name))
     if machine.node_role in ("lab", "inference") and answers.split_inference_peer:
         _check(found, "split_inference/peer", validators.hostname(answers.split_inference_peer))
         if answers.split_inference_peer == machine.name:

@@ -24,7 +24,13 @@ from textual.widgets import (
 from pinka_installer import groupvars, keys, validators
 from pinka_installer.answers import Researcher
 from pinka_installer.tui.base import Problems, StepScreen
-from pinka_installer.tui.model import acl_snippet, adopted_text
+from pinka_installer.tui.model import (
+    acl_snippet,
+    adopted_text,
+    closable_listeners,
+    install_path,
+    published_ports,
+)
 from pinka_installer.tui.widgets import Field, NavBar
 
 
@@ -252,15 +258,18 @@ class ResearchersScreen(StepScreen):
 
 
 class RemoteScreen(StepScreen):
-    """Screen 8: Tailscale, Grafana via tailscale serve, extra SSH interfaces."""
+    """Screen 8: Tailscale, Grafana serve, extra SSH interfaces, access from before pinka."""
 
     STEP = "remote"
     HELP = (
         "The lab is reachable only over your tailnet. Log in with an auth key (masked, "
         "stored in the vault) or interactively: the login URL and a QR code appear during "
         "the install. Grafana can be published on the tailnet with tailscale serve (never "
-        "Funnel). Extra interfaces open SSH on a local network as well. Add the ACL lines "
-        "shown here to your tailnet policy file."
+        "Funnel). Extra interfaces open SSH on a local network as well. On a shared host what "
+        "was reachable before pinka stays reachable unless you tick it to close; the SSH "
+        "session of this install closes only with your consent and after a researcher logged "
+        "in over the tailnet during the run. Add the ACL lines shown here to your tailnet "
+        "policy file."
     )
 
     def body(self) -> ComposeResult:  # noqa: D102
@@ -328,7 +337,45 @@ class RemoteScreen(StepScreen):
             if self.wizard.is_wsl
             else "besides tailscale0",
         )
+        yield from self.access_fields()
         yield Static(acl_snippet(tag), id="acl", classes="code", markup=False)
+
+    def access_fields(self) -> ComposeResult:
+        """What existed before pinka and may close with consent (BUILD_PROMPT §7.5)."""
+        remote = self.answers.remote_access
+        access = self.wizard.access
+        closable = closable_listeners(access)
+        if closable:
+            chosen = set(remote.close_listeners)
+            listeners: SelectionList[str] = SelectionList(
+                *[(label, name, name in chosen) for name, label in closable], id="close"
+            )
+            published = published_ports(access)
+            yield Field(
+                "Close with consent",
+                listeners,
+                hint="this host is shared: what you do not tick stays reachable as it was; "
+                "the services keep running"
+                + (
+                    f"; Docker publishes {', '.join(published)} for containers, which the "
+                    "firewall cannot close"
+                    if published
+                    else ""
+                ),
+            )
+        path = install_path(access)
+        if path is not None:
+            yield Field(
+                "Install session",
+                Checkbox(
+                    f"Close SSH to {path.get('address')}:{path.get('port')} after a tailnet login",
+                    remote.close_install_path,
+                    id="close-path",
+                ),
+                hint="it closes at the end of a bootstrap run in which a researcher logged in "
+                "with a key over the tailnet; without that login, or without this consent, it "
+                "stays open and doctor warns",
+            )
 
     def nav(self) -> NavBar:  # noqa: D102
         return NavBar(extra=(Button("Copy ACL", id="copy"),))
@@ -366,4 +413,9 @@ class RemoteScreen(StepScreen):
         remote.ssh_extra_allowed_interfaces = (
             [] if self.wizard.is_wsl else list(self.query_one("#ifaces", SelectionList).selected)
         )
+        # Shown only where they apply; otherwise the answers stand as they are.
+        if self.query("#close"):
+            remote.close_listeners = list(self.query_one("#close", SelectionList).selected)
+        if self.query("#close-path"):
+            remote.close_install_path = self.query_one("#close-path", Checkbox).value
         return problems

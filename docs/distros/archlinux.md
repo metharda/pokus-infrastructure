@@ -35,7 +35,8 @@ package names are still being verified; see
 
 - **Firewall:** Arch enables no firewall manager by default, so Pokus Infrastructure (pinka) uses
   its own nftables table (`pinka-nftables.service`). If you enabled firewalld
-  or ufw, Pokus Infrastructure uses that instead.
+  or ufw, Pokus Infrastructure uses that instead; the same unit then loads
+  only the access guard (`inet pinka_access_guard`).
 - **MAC:** none by default. Hosts that added SELinux or AppArmor manage it
   themselves.
 

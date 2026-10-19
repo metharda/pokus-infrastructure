@@ -72,6 +72,12 @@ Each backend shows pinka's part with its own tool:
 | firewalld | `sudo firewall-cmd --zone=pinka-tailnet --list-all` and `--zone=pinka-run` | interface `tailscale0`, port `22/tcp`; interface `r-+` with the services `dhcp`, `dhcpv6`, `dns` |
 | ufw | `sudo ufw status verbose` | `22/tcp on tailscale0 ALLOW IN` and DHCP/DNS rules on `r-+`, all with comment `pinka` |
 
+On every backend, `sudo nft list table inet pinka_access_guard` shows the
+access guard: empty unless something that was reachable before pinka was
+closed with the owner's consent, then one `drop` rule per closed listener
+and for the install's access path once it closed
+([Access to the host](install-next-to-existing-components.md#access-to-the-host)).
+
 Run networks (`r-*`) only get DHCP and DNS from the host; the build bridge
 and the researchers' bridges (`incusbr-*`) are trusted as Incus documents.
 On every backend `pinka-docker-incus-compat.service` keeps Incus bridges
@@ -120,4 +126,6 @@ ssh -o ConnectTimeout=5 <user>@<lan-address>
 
 `<user>` is your account, `<machine>` the host's tailnet name and
 `<lan-address>` its address on the local network. The first command logs you
-in; the second times out.
+in; the second times out. On a shared host, or while the install's access
+path is still open, the second may still log you in: what was reachable
+before pinka stays reachable until it is closed with consent.

@@ -73,6 +73,14 @@ pinka_tailscale_serve_allowed: >-
      or tailscale_serve_consent | bool }}
 # Interfaces besides tailscale0 on which sshd accepts connections.
 ssh_extra_allowed_interfaces: []
+# Shared host: pre-existing listeners to close, as protocol/port such as
+# [tcp/8080] (BUILD_PROMPT §2.2, §7.5); every other one stays reachable as
+# preflight found it. The installer's Remote access screen sets it.
+firewall_close_listeners: []
+# Close the install's access path (for example SSH from the LAN) once SSH over
+# the tailnet was verified for a researcher in the same run (§7.5); without
+# both it stays open and doctor warns.
+firewall_close_install_path: false
 # Root of the research space (BUILD_PROMPT §6.2).
 pinka_root: /srv/pinka
 # CPUs of the lab services (Linux cpuset list such as "0-5"); empty: no pinning.

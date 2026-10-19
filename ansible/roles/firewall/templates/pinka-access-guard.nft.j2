@@ -1,0 +1,38 @@
+#!/usr/sbin/nft -f
+# Managed by pinka (ansible/roles/firewall/templates/pinka-access-guard.nft.j2). Local changes will be overwritten.
+#
+# The access guard (BUILD_PROMPT §7.5), the same on every firewall backend:
+# what was reachable before pinka and the owner consented to close, and the
+# install's access path once the safeguard held, are dropped here. The
+# owner's own tables, zones and rules stay as they are, so removing this
+# table makes everything reachable again as it was. A drop in any base chain
+# is final; the accepts below only end this chain, the other tables still
+# decide. Connections already open stay open (the install's own session
+# included); only new ones are dropped. pinka's own access over the tailnet
+# and the extra SSH interfaces are never closed here.
+table inet pinka_access_guard
+delete table inet pinka_access_guard
+
+table inet pinka_access_guard {
+{% set guard_path = firewall_install_path if firewall_install_path is not none and firewall_install_path.closed else none %}
+{% if firewall_listener_rules.closed | length > 0 or guard_path is not none %}
+	chain input {
+		type filter hook input priority filter - 5; policy accept;
+		ct state established,related accept
+		iifname "lo" accept
+		iifname "{{ firewall_tailnet_interface }}" tcp dport { {{ firewall_tailnet_tcp_ports | join(', ') }} } accept
+{% if ssh_extra_allowed_interfaces | length > 0 %}
+		iifname { {{ ssh_extra_allowed_interfaces | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} } tcp dport 22 accept
+{% endif %}
+{% for rule in firewall_listener_rules.closed %}
+		# {{ rule.name }}: closed with the owner's consent (firewall_close_listeners).
+		{{ (rule.family ~ ' daddr ' ~ rule.address ~ ' ') if rule.family else '' }}{{ rule.proto }} dport {{ rule.port }} drop
+{% endfor %}
+{% if guard_path is not none %}
+		# The install's access path: closed after a researcher logged in over the
+		# tailnet, with the owner's consent (firewall_close_install_path).
+		{{ guard_path.family }} daddr {{ guard_path.address }} tcp dport {{ guard_path.port }} drop
+{% endif %}
+	}
+{% endif %}
+}

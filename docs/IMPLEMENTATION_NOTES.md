@@ -5259,3 +5259,151 @@ tag (`git ls-remote`, 2026-10-19): `actions/checkout` v7.0.1
 (`cf430e03…`). None needed pinning;
 `tools/repo-checks/tests/test_workflows.py` now fails on a `uses:` without a
 full SHA or without its version comment.
+
+## Pre-existing access (D1 follow-up, decisions 3 and 4 after D1)
+
+Owner, with the "commit" for the spec edit after D1 (verbatim in
+`PROGRESS.md`, 3f-1): the dedicated-host rule (no listener outside loopback
+but sshd, no login account that is not a researcher) is approved, with the
+safeguard that the install's access path never closes before SSH over the
+tailnet was verified for a researcher in the same run, and only with
+explicit consent; otherwise it stays open and doctor warns. Decision 3
+approved option (b) of the SSH question, the approved deviation SSH1:
+pinka's sshd settings in a `Match Group pinka` block.
+
+### Preflight
+
+- `preflight/pinka_preflight/detect/access.py` reads `/proc/net/{tcp,tcp6,udp,udp6}`
+  (TCP in `LISTEN`, UDP unconnected), maps each socket inode to its process
+  through `/proc/<pid>/fd` and to its unit through the cgroup, and names a
+  socket-activated listener (held by PID 1) with `systemctl list-sockets`.
+  It leaves out loopback, the lab's own processes and the daemons of
+  components the install record names as pinka's. A socket whose process it
+  cannot see is listed and counts.
+- Login accounts: `/etc/passwd` entries in the `UID_MIN`-`UID_MAX` range of
+  `/etc/login.defs` with a login shell, without the accounts the record
+  names as pinka's.
+- The session: `SSH_CONNECTION` from the environment of the nearest
+  ancestor process that has it (through `sudo`); the server side's address
+  and port, the account of that process, and whether the client came from
+  the tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`). Without it, the
+  console.
+- `dedicated` when only sshd and the listeners the strict policy admits
+  anyway (DHCP clients on UDP 68 and 546, Tailscale's UDP port, from
+  `lab-defaults.json`) listen and every login account is a researcher
+  (`--researcher`, which bootstrap passes from the machine's host_vars or
+  group_vars); `shared` otherwise, with the reasons. The host profile's
+  `access` (schema, generated reference) records it; the summary has an
+  `Access` section, and a shared host gets a note.
+- Fixtures `ubuntu2404-access-{dedicated,shared,console}`; the other 61
+  summary snapshots gained their `Access` lines (reviewed).
+
+### The install record
+
+`init` records `preexisting.access` once, so later runs keep the first
+install's view. `added.closed_access` lists what is closed with consent
+(`tcp/8080`, `install_path`). `state: remove` (new) takes a listener out of
+it when the owner no longer wants it closed; it refuses any other kind of
+item and `install_path`, which stays closed once closed.
+
+### The firewall
+
+- On a shared host, `pinka_filter` (nftables backend) accepts each
+  recorded listener as it was: its protocol and port, on its address, or
+  on every address for a socket on `0.0.0.0` or `::`. With firewalld or
+  ufw the owner's zones and rules stay as they are.
+- What the owner consents to close is dropped by a table of pinka's own,
+  `inet pinka_access_guard`, on every backend. Closing with ufw deny rules
+  and firewalld rich rules was built first and dropped before this commit:
+  a ufw deny on every interface, inserted first, would also have blocked
+  SSH over the tailnet for `tcp/22`, clearing a listener's checkbox would
+  not have reopened it, and both would have changed the owner's rule lists. The
+  guard accepts established connections, loopback, pinka's tailnet ports on
+  `tailscale0` and SSH on the extra interfaces, and then drops new
+  connections to what was closed; it is re-rendered on every run, so
+  clearing a checkbox reopens, and removing it (uninstall, D2) restores everything.
+- `pinka-nftables.service` loads it on every backend (with `pinka_filter`
+  on the nftables backend). A unit of its own would have added a name to
+  `contract/reserved-names.yml`, which changes only with a contract version
+  bump; nft table names are not reserved.
+- A listener that serves the install's access path (TCP, the session's
+  port, on its address or every address) stays open while the path is
+  open, even when ticked (`held`); it closes with the path.
+- A port Docker publishes for a container (`docker-proxy`) is refused:
+  its traffic is redirected to the container by Docker's NAT rules and never meets the host's input
+  policy, and a pre-existing Docker is never changed.
+- `firewall_close_listeners` is checked against the record in the
+  install_record role, before anything changes.
+
+### The safeguard
+
+`pinka_run_started` is noted at the start of the play, in seconds since
+the epoch (`now().timestamp()`: `now(utc=true)` is a naive UTC time, whose
+`%s` would be off by the host's time zone offset; tested in three zones).
+`roles/firewall/tasks/install_path.yml`, the play's last task, reads sshd's
+journal since then (`ssh`, `sshd` and their per-connection units) and
+closes the path only with `firewall_close_install_path: true` and an
+`Accepted publickey` line for a researcher from a tailnet address: it
+records `install_path`, applies the ssh role again (the `Match` block for a
+non-researcher session ends), removes the path's rule from `pinka_filter`
+and adds it to the guard. Whether it closes is decided once, before the
+block: a block's condition is evaluated for each of its tasks, and the path
+counts as closed after the first. A login from before the run does not count, so
+the operator logs in from another terminal while bootstrap runs; the debug
+message, doctor's remediation and the docs say so.
+
+### SSH (SSH1)
+
+`ssh_policy_scope` is `group` on a shared host, and on a dedicated host
+while the install's path is open for an account that is not a researcher
+(so that account is not locked out before the safeguard closes the path);
+`host` otherwise. The `group` form puts the directives in a
+`Match Group pinka` block without `AllowGroups`. OpenSSH restores the
+`Match` state after an `Include` ("Don't let included files clobber the
+containing file's Match state", `servconf.c` of 8.7p1 and 9.6p1, read for
+this step), and every directive the drop-in sets is allowed in `Match`.
+
+### Doctor
+
+- `network.listeners` accepts a listener the install record notes as the
+  host's before pinka (same protocol and port, same address unless it was
+  every address; an IPv4-mapped IPv6 address counts as the IPv4 one) and
+  names them, `kept` or `closed by the firewall`. A legacy record decides
+  nothing.
+- `network.install_path` (warning): the install came over SSH from outside
+  the tailnet and `install_path` is not in `closed_access`. Skipped for a
+  console or tailnet install and without a usable record.
+- `network.firewall` also checks the table `inet pinka_access_guard`.
+
+### Installer
+
+`remote_access.close_listeners` and `remote_access.close_install_path` in
+the answers (schema with descriptions, `validators.listener_name`), written
+to host_vars only when set. Screen 8 shows *Close with consent* (one
+checkbox per listener on a shared host, without the admitted ones and the
+ports Docker publishes) and *Install session* (only when the current
+session came from outside the tailnet); a field that is not shown leaves
+its answer as it was. New snapshot case `shared` (all four sizes and
+themes, reviewed), the existing Remote access snapshots unchanged.
+
+### Interpretations for the owner
+
+1. The dedicated rule ignores the listeners the strict policy admits anyway
+   (DHCP clients, Tailscale's UDP port).
+2. The TUI runs preflight before the researchers are entered, so it may see
+   a shared host where bootstrap (with `--researcher`) sees a dedicated one;
+   on a dedicated host the firewall keeps and closes nothing, so a tick on
+   the screen then has no effect.
+3. Closing never stops a service and leaves open connections open.
+4. Doctor's listener check accepts the recorded pre-existing listeners;
+   the build prompt's §7.5 doctor bullet (fail on anything on `0.0.0.0`/`::`
+   but sshd) predates the pre-existing access and would fail every shared
+   host.
+5. Uninstall's part (removing the guard, the drop-in's restore) is D2.
+
+### Not verified here
+
+Real sshd, ufw, firewalld and nftables behavior on a host, and the end-to-end
+run: `make test-distros` and real-machine tests 4.4 (pre-existing
+components: every listener reachable as before unless closed with consent,
+the install's SSH session never cut off) and 4.14 (distribution matrix).

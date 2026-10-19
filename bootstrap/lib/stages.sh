@@ -708,12 +708,42 @@ port_overrides() {
   ' "$1"
 }
 
+# researcher_names FILE: print the name of every item of the top-level
+# `researchers:` list of FILE, written as flow mappings (`- {name: x, ...}`)
+# or block mappings (`- name: x`); nothing if FILE or the key is missing.
+researcher_names() {
+  [[ -f $1 ]] || return 0
+  awk '
+    function clean(value) {
+      sub(/[ \t]+#.*$/, "", value)
+      gsub(/["\047 \t]/, "", value)
+      if (value != "") print value
+    }
+    /^researchers:/ { block = 1; next }
+    block && /^[^ \t#]/ { block = 0 }
+    block && /^[ \t]*-[ \t]*[{]/ {
+      if (match($0, /[{,][ \t]*name:[ \t]*[^,} \t]+/)) {
+        value = substr($0, RSTART, RLENGTH)
+        sub(/^[{,][ \t]*name:[ \t]*/, "", value)
+        clean(value)
+      }
+      next
+    }
+    block && /^[ \t]*(-[ \t]+)?name:/ {
+      value = $0
+      sub(/^[ \t]*(-[ \t]+)?name:[ \t]*/, "", value)
+      clean(value)
+    }
+  ' "$1"
+}
+
 # lab_preflight_args: the preflight options of the machine's port overrides,
-# VM collector address and pool device in host_vars, one per line (§2.2,
-# §7.7, §12.11).
+# VM collector address and pool device in host_vars, and of the configured
+# researchers (host_vars when it lists them, else group_vars), one per line
+# (§2.2, §7.7, §12.11).
 lab_preflight_args() {
   local host_vars="$INFRA_DIR/ansible/inventory/host_vars/$OPT_MACHINE.yml" overrides entry address
-  local source device
+  local source device names
   overrides=$(port_overrides "$host_vars") || {
     log_error "ports: in $host_vars must map port names to numbers, as indented lines or as {name: number}"
     return "$EXIT_OPERATOR"
@@ -726,6 +756,14 @@ lab_preflight_args() {
   source=$(yaml_scalar "$host_vars" incus_pool_source)
   device=$(yaml_scalar "$host_vars" incus_pool_device)
   [[ $source != device || -z $device ]] || printf -- '--pool-device=%s\n' "$device"
+  if [[ -f $host_vars ]] && grep -q '^researchers:' "$host_vars"; then
+    names=$(researcher_names "$host_vars")
+  else
+    names=$(researcher_names "$INFRA_DIR/ansible/group_vars/all/main.yml")
+  fi
+  while IFS= read -r entry; do
+    [[ -z $entry ]] || printf -- '--researcher=%s\n' "$entry"
+  done <<<"$names"
 }
 
 # stage_preflight: run preflight, apply the gate, check for a changed host

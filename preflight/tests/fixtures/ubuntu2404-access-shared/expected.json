@@ -1,0 +1,42 @@
+{
+  "access": {
+    "accounts": [
+      "owner1",
+      "researcher1"
+    ],
+    "host": "shared",
+    "listeners": [
+      {
+        "address": "0.0.0.0",
+        "admitted": false,
+        "port": 22,
+        "process": "sshd",
+        "proto": "tcp",
+        "unit": "ssh.service"
+      },
+      {
+        "address": "0.0.0.0",
+        "admitted": false,
+        "port": 8080,
+        "process": "example-web",
+        "proto": "tcp",
+        "unit": "example-web.service"
+      }
+    ],
+    "reasons": [
+      "tcp/8080 on 0.0.0.0 (example-web)",
+      "login account owner1 is not a researcher"
+    ],
+    "session": {
+      "address": "192.0.2.10",
+      "port": 22,
+      "tailnet": false,
+      "user": "owner1",
+      "via": "ssh"
+    }
+  },
+  "notes_contain": [
+    "shared host (tcp/8080 on 0.0.0.0 (example-web);"
+  ],
+  "outcome": "supported"
+}

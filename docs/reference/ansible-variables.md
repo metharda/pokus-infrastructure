@@ -127,6 +127,18 @@ Interfaces besides tailscale0 on which sshd accepts connections.
 
 - Default: `[]`
 
+### `firewall_close_listeners`
+
+Shared host: pre-existing listeners to close, as protocol/port such as [tcp/8080] (BUILD_PROMPT §2.2, §7.5); every other one stays reachable as preflight found it. The installer's Remote access screen sets it.
+
+- Default: `[]`
+
+### `firewall_close_install_path`
+
+Close the install's access path (for example SSH from the LAN) once SSH over the tailnet was verified for a researcher in the same run (§7.5); without both it stays open and doctor warns.
+
+- Default: `false`
+
 ### `pinka_root`
 
 Root of the research space (BUILD_PROMPT §6.2).
@@ -1086,6 +1098,20 @@ Variables the role reads from elsewhere:
 | `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
 | `ssh_extra_allowed_interfaces` | [lab-wide](#ssh_extra_allowed_interfaces) | Interfaces besides tailscale0 on which SSH is reachable. |
 
+### `firewall_close_listeners`
+
+Shared host, pre-existing listeners to close with the owner's consent (tcp/8080 and the like).
+
+- Type: `list` of `str`
+- Required, no default
+
+### `firewall_close_install_path`
+
+Close the install's access path once SSH over the tailnet is verified in the same run.
+
+- Type: `bool`
+- Required, no default
+
 ### `firewall_tailnet_interface`
 
 Tailnet interface.
@@ -1174,6 +1200,27 @@ Bridges of a pre-existing LXD, on which the input policy admits DHCP and DNS for
     {{ (((host_profile | default({})).components | default({})).lxd | default({})).networks | default([])
        | map(attribute='name') | select('match', '^[A-Za-z0-9_.-]{1,15}$') | list }}
     ```
+
+### `firewall_access`
+
+The access to the host before pinka's first install, from the install record (derived; empty for a legacy record).
+
+- Type: `dict`
+- Default: `{{ (pinka_preexisting | default({})).access | default({}) }}`
+
+### `firewall_listener_rules`
+
+The pre-existing listeners kept and closed, and those held open for the install's access path (derived, pinka_listener_rules).
+
+- Type: `dict`
+- Default: `{{ firewall_access | pinka_listener_rules(firewall_close_listeners, pinka_closed_access | default([])) }}`
+
+### `firewall_install_path`
+
+The install's access path while it is pinka's to keep (address, port, family, user, closed), or none (derived, pinka_install_path).
+
+- Type: `raw`
+- Default: `{{ firewall_access | pinka_install_path(pinka_closed_access | default([])) }}`
 
 ## gpu_arbiter
 
@@ -2339,6 +2386,12 @@ sshd drop-in with key-only login for the pinka group.
 
 Entry points: `main` (sshd drop-in with key-only login for the pinka group). Role README: `ansible/roles/ssh/README.md`.
 
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `researchers` | [lab-wide](#researchers) | The researchers; an install session of another account keeps the host's policy until the safeguard closes its path. |
+
 ### `ssh_allow_groups`
 
 Groups allowed to log in (AllowGroups).
@@ -2362,6 +2415,35 @@ OpenSSH server package per family.
 
     ```yaml
     {debian: openssh-server, redhat: openssh-server, suse: openssh-server, archlinux: openssh}
+    ```
+
+### `ssh_access`
+
+The access to the host before pinka's first install, from the install record (derived).
+
+- Type: `dict`
+- Default: `{{ (pinka_preexisting | default({})).access | default({}) }}`
+
+### `ssh_install_path`
+
+The install's access path while it is pinka's to keep, or none (derived, pinka_install_path).
+
+- Type: `raw`
+- Default: `{{ ssh_access | pinka_install_path(pinka_closed_access | default([])) }}`
+
+### `ssh_policy_scope`
+
+Where pinka's sshd settings apply, host or a Match Group block (shared host, or the install's path open for a non-researcher; derived).
+
+- Type: `str`
+- Choices: `host`, `group`
+- Default:
+
+    ```jinja
+    {{ 'group' if ssh_access.host | default('dedicated') == 'shared'
+       or (ssh_install_path is not none and not ssh_install_path.closed
+           and ssh_install_path.user not in (researchers | map(attribute='name') | list))
+       else 'host' }}
     ```
 
 ## tailscale

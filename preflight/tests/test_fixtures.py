@@ -193,6 +193,9 @@ class FixtureDecisionTest(unittest.TestCase):
                     self.assertEqual(
                         doc["components"][component]["origin"], origin, f"{name}: {component}"
                     )
+            elif key == "access":
+                found = {field: doc["access"][field] for field in value}
+                self.assertEqual(found, value, f"{name}: access")
             elif key == "notes_contain":
                 for needle in value:
                     self.assertTrue(

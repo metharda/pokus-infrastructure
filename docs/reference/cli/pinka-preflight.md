@@ -20,7 +20,7 @@ pinka-preflight [-h] [--root PATH] [--output FILE] [--offline]
                        [--adopt-incus] [--nvidia-driver {auto,manual,skip}]
                        [--accept-mok-enrollment] [--port NAME=PORT]
                        [--vm-collector-address ADDRESS] [--pool-device PATH]
-                       [--allow-dirty] [--no-write]
+                       [--researcher NAME] [--allow-dirty] [--no-write]
                        [--color {auto,always,never}] [--quiet]
                        [--repo-commit SHA] [--matrix FILE] [--endpoints FILE]
                        [--lab-defaults FILE] [--version]
@@ -46,6 +46,7 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--port` | `NAME=PORT` | `[]` | a lab port overridden in host_vars (ports:), checked instead of its default; repeat for each override |
 | `--vm-collector-address` | `ADDRESS` | — | the host's vm_collector_address (default: the lab's default) |
 | `--pool-device` | `PATH` | — | the host's incus_pool_device when incus_pool_source is device; checked against LXD's storage |
+| `--researcher` | `NAME` | `[]` | a configured researcher; a host whose login accounts are all researchers and that has no listener besides sshd is dedicated (§2.2); repeat for each |
 | `--allow-dirty` | — | — | record that bootstrap runs from a repository with uncommitted changes |
 | `--no-write` | — | — | never store the profile in /etc/pinka or /var/lib/pinka |
 | `--color` | `auto`, `always`, `never` | `auto` | color the summary (auto: only on a terminal and without NO_COLOR) |

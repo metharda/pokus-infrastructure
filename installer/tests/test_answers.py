@@ -35,6 +35,8 @@ def full_answers() -> Answers:
     answers.researchers_removed = ["researcher3"]
     answers.remote_access.tailscale_login = "interactive"
     answers.remote_access.ssh_extra_allowed_interfaces = ["enp5s0"]
+    answers.remote_access.close_listeners = ["tcp/8080", "udp/5353"]
+    answers.remote_access.close_install_path = True
     answers.backups.repository = answers_mod.Repository(
         "sftp", "backup.example.com", "backup", "/srv/restic/pinka-lab"
     )
@@ -89,6 +91,14 @@ def test_schema_rejects_bad_structure() -> None:
         (lambda d: d["gpu_arbiter"].update(after_boot="sleep"), "gpu_arbiter/after_boot"),
         (lambda d: d["training_caps"].update(memory_max="8GiB"), "training_caps/memory_max"),
         (lambda d: d.update(extra=1), "(top)"),
+        (
+            lambda d: d["remote_access"].update(close_listeners=["8080"]),
+            "remote_access/close_listeners",
+        ),
+        (
+            lambda d: d["remote_access"].update(close_install_path="yes"),
+            "remote_access/close_install_path",
+        ),
     ]
     for mutate, where in cases:
         broken = copy.deepcopy(data)
@@ -116,6 +126,7 @@ def test_cross_field_problems(repo: Paths) -> None:
     answers.training_caps.tmp_max = "1GiB"
     answers.gpu.install_driver = "manual"
     answers.gpu.accept_mok_enrollment = True
+    answers.remote_access.close_listeners = ["tcp/70000"]
     found = "\n".join(answers_mod.problems(answers, context))
     for expected in (
         "storage/device_confirm",
@@ -132,6 +143,7 @@ def test_cross_field_problems(repo: Paths) -> None:
         "training_caps/tmp_max",
         "split_inference/peer",
         "gpu/accept_mok_enrollment",
+        "remote_access/close_listeners: tcp/PORT or udp/PORT",
     ):
         assert expected in found, expected
 

@@ -1,7 +1,8 @@
 """Snapshots of every installer screen at 80x24 and 120x40, dark and light (BUILD_PROMPT §18.9).
 
 The screens show a WSL2 host with a GPU (preflight's own fixture) and a
-filled-in wizard; the Platform and Platform review screens the reference
+filled-in wizard, the Remote access screen also a shared host installed over
+SSH from the LAN; the Platform and Platform review screens the reference
 platform's release (its real manifest, through the platform tool). Update
 the snapshots after a deliberate change with ``pytest
 installer/tests/test_tui_snapshots.py --snapshot-update`` and review every
@@ -29,12 +30,17 @@ THEMES = {"dark": "textual-dark", "light": "textual-light"}
 # "replace": the Platform review of a release that would replace the active
 # platform, with the confirmation that asks for its name (owner decision with
 # the "commit" for 3d.7).
-SCREEN_NAMES = [*SCREENS, "signal", "replace"]
+# "shared": the Remote access screen on a shared host installed over SSH from
+# the LAN (preflight's fixture), with what may close with consent (§7.5).
+SCREEN_NAMES = [*SCREENS, "signal", "replace", "shared"]
 
 
 def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     """The application on one screen, with the wizard filled in."""
-    host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
+    if screen == "shared":
+        host = FakeHost(preflight("ubuntu2404-access-shared", ["--researcher", "researcher1"]))
+    else:
+        host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
     ctx = context(repo, host, FakeRunner([("events-success.jsonl", 1)]), machine="pinka-lab")
     wizard = ctx.wizard
     result = host.preflight([])
@@ -55,6 +61,8 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     )
     if screen == "restore":
         answers.mode = "restore"
+    if screen == "shared":
+        answers.remote_access.close_listeners = ["tcp/8080"]
     if screen in ("platform", "platform_review", "replace"):
         # The reference platform, inspected (screen 12) and reviewed (screen 13).
         url = "file:///srv/git/refplat.git"
@@ -73,7 +81,9 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
             "replaces it only with --replace-platform oldplat"
         )
         wizard.review = release.Inspection(ok=False, problems=[problem], active="oldplat")
-    first = {"signal": "welcome", "replace": "platform_review"}.get(screen, screen)
+    first = {"signal": "welcome", "replace": "platform_review", "shared": "remote"}.get(
+        screen, screen
+    )
     return app(ctx, first=first, theme=theme)
 
 
@@ -94,6 +104,9 @@ def before(screen: str) -> Callable[[Pilot[Any]], Any]:
             await settle(pilot)
         if screen == "replace":
             await pilot.click("#replace")
+            await settle(pilot)
+        if screen == "shared":
+            pilot.app.screen.query_one("#close").scroll_visible(animate=False, top=True)
             await settle(pilot)
 
     return run

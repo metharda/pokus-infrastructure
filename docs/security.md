@@ -77,10 +77,21 @@ Researchers have real accounts on the host.
 
 ## Network exposure
 
-- Nothing listens on a public interface except sshd, and the firewall admits
-  SSH only on `tailscale0` and the interfaces listed in
-  `ssh_extra_allowed_interfaces`. sshd accepts keys only, no root login, and
-  only members of `pinka`.
+- On a dedicated host nothing listens on a public interface except sshd,
+  and the firewall admits SSH only on `tailscale0` and the interfaces listed
+  in `ssh_extra_allowed_interfaces`. sshd accepts keys only, no root login,
+  and only members of `pinka`.
+- On a shared host (one with other listeners or login accounts that are not
+  researchers, as preflight recorded them) what was reachable before pinka
+  stays reachable unless the owner consents to close it; pinka's table
+  `inet pinka_access_guard` drops what was closed on every firewall backend,
+  without touching the owner's own rules. pinka's sshd settings apply to the
+  members of `pinka` (a `Match Group pinka` block); the other accounts keep
+  the machine's own SSH policy, which is the owner's responsibility
+  ([Components that existed before pinka](explanation/pre-existing-components.md#access-that-existed-before-pinka)).
+- The SSH path the install came in on from outside the tailnet closes only
+  with the owner's consent and after a researcher logged in over the tailnet
+  in the same run; until then doctor warns (`network.install_path`).
 - Every lab service binds `127.0.0.1`, a Unix socket or an internal Docker
   network ([port table](contracts.md#ports)); researchers use SSH port
   forwarding ([How to connect to the lab](how-to/connect.md)).

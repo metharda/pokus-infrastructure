@@ -707,6 +707,162 @@ def subnet(pools: Sequence[Mapping[str, Any]], index: int) -> str:
     raise ValueError(f"{network} has no subnet {index} of size /{pool['size']}")
 
 
+LISTENER_RE = re.compile(r"^(?P<proto>tcp|udp)/(?P<port>[0-9]{1,5})$")
+WILDCARDS = ("0.0.0.0", "::")  # noqa: S104 - addresses read from the host profile
+DOCKER_PROXY = "docker-proxy"
+ACCEPTED_LOGIN_RE = re.compile(
+    r"Accepted publickey for (?P<user>[a-z_][a-z0-9_-]*) from (?P<address>[0-9a-fA-F:.]+) port"
+)
+
+
+def _family(address: str) -> str:
+    """``ip`` or ``ip6``: the nftables address family of an address."""
+    return "ip6" if ":" in address else "ip"
+
+
+def listener_rules(
+    access: Mapping[str, Any], close: Sequence[str], closed: Sequence[str] = ()
+) -> dict[str, list[Any]]:
+    """The pre-existing listeners the firewall keeps and closes (BUILD_PROMPT §7.5).
+
+    On a shared host every listener preflight found stays reachable as it was,
+    unless the owner consented to close it; the strict policy already admits
+    the listeners marked ``admitted``. A dedicated host keeps and closes none:
+    its strict policy is the default. A listener that serves the install's
+    access path stays open while that path is open, whatever ``close`` says:
+    it closes with the path, once the safeguard held (:func:`install_path`).
+
+    Args:
+        access: The install record's (or the host profile's) ``access``.
+        close: ``firewall_close_listeners``: ``tcp/8080`` and the like.
+        closed: The pre-existing access already closed (``pinka_closed_access``).
+
+    Returns:
+        ``kept`` and ``closed``: ``{name, proto, port, address, family}`` per
+        listener (``name``: ``tcp/8080``); ``address`` and ``family`` are None
+        for a listener on every address, which a dual-stack socket also serves
+        over IPv4. ``held``: the names in ``close`` kept open for the install's
+        access path.
+
+    Raises:
+        PinkaFilterError: If an entry of ``close`` is not ``tcp/<port>`` or
+            ``udp/<port>``, names no recorded listener, or names a port Docker
+            publishes for a container (forwarded to the container, so the
+            host's input policy cannot close it, and a pre-existing Docker is
+            never changed).
+    """
+    listeners = list(access.get("listeners") or [])
+    names = {f"{item['proto']}/{item['port']}" for item in listeners}
+    for entry in close:
+        if not LISTENER_RE.match(str(entry)):
+            raise PinkaFilterError(
+                f"firewall_close_listeners: {entry!r} is not tcp/PORT or udp/PORT"
+            )
+        if str(entry) not in names:
+            raise PinkaFilterError(
+                f"firewall_close_listeners: {entry} is not a listener preflight recorded"
+                f" ({', '.join(sorted(names)) or 'none'})"
+            )
+        if any(
+            f"{item['proto']}/{item['port']}" == entry and item.get("process") == DOCKER_PROXY
+            for item in listeners
+        ):
+            raise PinkaFilterError(
+                f"firewall_close_listeners: {entry} is a port Docker publishes for a container;"
+                " its traffic is forwarded to the container, so pinka's firewall cannot close it"
+                " (pinka never changes a Docker Engine that existed before it)"
+            )
+    rules: dict[str, list[Any]] = {"kept": [], "closed": [], "held": []}
+    if access.get("host") != "shared":
+        return rules
+    path = install_path(access, closed)
+    for item in listeners:
+        if item.get("admitted"):
+            continue
+        address = str(item["address"])
+        wildcard = address in WILDCARDS
+        name = f"{item['proto']}/{item['port']}"
+        rule = {
+            "name": name,
+            "proto": str(item["proto"]),
+            "port": int(item["port"]),
+            "address": None if wildcard else address,
+            "family": None if wildcard else _family(address),
+        }
+        serves_path = (
+            path is not None
+            and not path["closed"]
+            and rule["proto"] == "tcp"
+            and rule["port"] == path["port"]
+            and (wildcard or address == path["address"])
+        )
+        if name in close and serves_path and name not in rules["held"]:
+            rules["held"].append(name)
+        side = rules["closed" if name in close and not serves_path else "kept"]
+        if rule not in side:
+            side.append(rule)
+    return rules
+
+
+def install_path(access: Mapping[str, Any], closed: Sequence[str]) -> dict[str, Any] | None:
+    """The access path of the install, while it is pinka's to keep (§7.5).
+
+    Args:
+        access: The install record's (or the host profile's) ``access``.
+        closed: The pre-existing access already closed with consent
+            (``pinka_closed_access``).
+
+    Returns:
+        ``{address, port, family, user, closed}`` for an SSH session that did
+        not come over the tailnet; None for a console install or one over the
+        tailnet, which pinka's policy keeps anyway.
+    """
+    session = access.get("session") or {}
+    if session.get("via") != "ssh" or session.get("tailnet"):
+        return None
+    address = str(session["address"])
+    return {
+        "address": address,
+        "port": int(session["port"]),
+        "family": _family(address),
+        "user": session.get("user"),
+        "closed": "install_path" in closed,
+    }
+
+
+def tailnet_logins(
+    journal: str, researchers: Iterable[str], tailnet: str = "100.64.0.0/10"
+) -> list[dict[str, str]]:
+    """The researchers' SSH key logins over the tailnet, from sshd's journal.
+
+    The safeguard of §7.5: the install's access path closes only after a
+    successful key login of a researcher from a tailnet address in the same
+    run.
+
+    Args:
+        journal: sshd's messages since the run began.
+        researchers: The researchers' names.
+        tailnet: The tailnet's IPv4 range (its IPv6 range is fd7a:115c:a1e0::/48).
+
+    Returns:
+        ``{user, address}`` per such login, in order.
+    """
+    names = set(researchers)
+    networks = [ipaddress.ip_network(tailnet), ipaddress.ip_network("fd7a:115c:a1e0::/48")]
+    found = []
+    for line in journal.splitlines():
+        match = ACCEPTED_LOGIN_RE.search(line)
+        if match is None or match.group("user") not in names:
+            continue
+        try:
+            address = ipaddress.ip_address(match.group("address"))
+        except ValueError:
+            continue
+        if any(address.version == n.version and address in n for n in networks):
+            found.append({"user": match.group("user"), "address": str(address)})
+    return found
+
+
 class FilterModule:
     """Ansible filter plugin entry point."""
 
@@ -738,4 +894,7 @@ class FilterModule:
             "pinka_researcher_memberships": researcher_memberships,
             "pinka_key_entries": key_entries,
             "pinka_subnet": subnet,
+            "pinka_listener_rules": listener_rules,
+            "pinka_install_path": install_path,
+            "pinka_tailnet_logins": tailnet_logins,
         }

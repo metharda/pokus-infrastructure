@@ -39,3 +39,17 @@ firewall_preexisting_bridges: >-
 firewall_vm_otlp_ports: >-
   {{ [pinka_ports.otlp_grpc, pinka_ports.otlp_http]
      if (pinka_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}
+# The access that existed before pinka's first install, from the install record
+# (BUILD_PROMPT §2.2, §7.5, §7.21). A record without it (a legacy one) keeps
+# nothing: pinka's strict policy was already in place.
+firewall_access: "{{ (pinka_preexisting | default({})).access | default({}) }}"
+# Shared host: the pre-existing listeners kept reachable as found and those
+# closed with the owner's consent (firewall_close_listeners), and those held
+# open for the install's access path until it closes; a dedicated host
+# keeps and closes none.
+firewall_listener_rules: >-
+  {{ firewall_access | pinka_listener_rules(firewall_close_listeners, pinka_closed_access | default([])) }}
+# The install's access path (an SSH session from outside the tailnet), kept
+# open until closed under the safeguard of §7.5 (install_path.yml); none for an
+# install from the console or over the tailnet.
+firewall_install_path: "{{ firewall_access | pinka_install_path(pinka_closed_access | default([])) }}"

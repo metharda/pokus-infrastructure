@@ -176,6 +176,24 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `components.podman.docker_compat` | string or null | no | How Podman provides Docker's command or socket, if it does. |
 | `components.incus` | see `component` | yes | — |
 | `components.nvidia_driver` | see `component` | yes | — |
+| `access` | object | yes | The access to the host that existed before the install (BUILD_PROMPT §2.2 "Pre-existing access", §7.5): the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found. |
+| `access.host` | one of `dedicated`, `shared` | yes | dedicated: no listener besides sshd and the admitted ones, and every login account is a configured researcher; shared otherwise. |
+| `access.firewall_manager` | one of `firewalld`, `ufw`, `none` | yes | The active firewall manager. |
+| `access.session` | object | yes | The access path of the install: SSH (the server address and port of SSH_CONNECTION of the nearest process up the tree that has it, its login account, and whether the address is on the tailnet) or the console. |
+| `access.session.via` | one of `ssh`, `console` | yes | ssh or console. |
+| `access.session.address` | string | no | The server address the session reached. |
+| `access.session.port` | integer | no | The server port the session reached. |
+| `access.session.user` | string or null | no | The session's login account, or null when it is not in /etc/passwd. |
+| `access.session.tailnet` | boolean | no | The server address is on the tailnet. |
+| `access.listeners` | array | yes | Every non-loopback TCP and UDP listener that is not the lab's. |
+| `access.listeners[].proto` | one of `tcp`, `udp` | yes | tcp or udp. |
+| `access.listeners[].address` | string | yes | The local address; 0.0.0.0 and :: listen on every address. |
+| `access.listeners[].port` | integer | yes | The local port. |
+| `access.listeners[].process` | string or null | yes | The process name, or null when preflight cannot see it (it does not run as root); sshd for a socket that activates the SSH server. |
+| `access.listeners[].unit` | string or null | yes | The process's systemd unit, or the socket unit of a socket systemd holds. |
+| `access.listeners[].admitted` | boolean | yes | pinka's strict input policy accepts this traffic anyway on every interface (the DHCP and DHCPv6 clients, Tailscale's WireGuard port). |
+| `access.accounts` | array | yes | The login accounts that are not pinka's: a UID in the login range of /etc/login.defs and a login shell. |
+| `access.reasons` | array | yes | What makes the host shared; empty on a dedicated host. |
 | `conflicts` | array | yes | — |
 | `unsupported_reasons` | array | yes | — |
 | `needs_action` | array | yes | — |

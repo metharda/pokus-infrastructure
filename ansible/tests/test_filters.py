@@ -203,6 +203,9 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_researcher_memberships",
         "pinka_key_entries",
         "pinka_subnet",
+        "pinka_listener_rules",
+        "pinka_install_path",
+        "pinka_tailnet_logins",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pinka_release_identity(c)", {"p": profile, "c": debian_codenames()})
@@ -373,3 +376,107 @@ def test_the_driver_is_installed_only_for_a_supported_gpu() -> None:
     assert not supports(packages, "debian-13", [])
     assert supports(packages, "", ["580.178.04"])
     assert not supports(packages, "", [])
+
+
+# --- pre-existing access (BUILD_PROMPT §2.2, §7.5) ----------------------------
+
+ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
+ACCESS = {
+    "host": "shared",
+    "session": {"via": "ssh", "address": "192.0.2.10", "port": 22, "user": "owner1"},
+    "listeners": [
+        {"proto": "tcp", "address": ANY_V4, "port": 22, "process": "sshd", "admitted": False},
+        {"proto": "tcp", "address": "::", "port": 22, "process": "sshd", "admitted": False},
+        {"proto": "tcp", "address": "192.0.2.10", "port": 8080, "admitted": False},
+        {"proto": "udp", "address": "2001:db8::10", "port": 5353, "admitted": False},
+        {"proto": "udp", "address": ANY_V4, "port": 68, "admitted": True},
+        {"proto": "tcp", "address": ANY_V4, "port": 9000, "process": "docker-proxy"},
+    ],
+}
+
+
+def test_a_shared_host_keeps_what_was_reachable_unless_closed() -> None:
+    rules = pinka.listener_rules(ACCESS, [])
+    assert rules["closed"] == rules["held"] == []
+    assert rules["kept"] == [
+        {"name": "tcp/22", "proto": "tcp", "port": 22, "address": None, "family": None},
+        {"name": "tcp/8080", "proto": "tcp", "port": 8080, "address": "192.0.2.10", "family": "ip"},
+        {
+            "name": "udp/5353",
+            "proto": "udp",
+            "port": 5353,
+            "address": "2001:db8::10",
+            "family": "ip6",
+        },
+        {"name": "tcp/9000", "proto": "tcp", "port": 9000, "address": None, "family": None},
+    ]
+    closed = pinka.listener_rules(ACCESS, ["tcp/8080", "udp/5353"])
+    assert [r["name"] for r in closed["kept"]] == ["tcp/22", "tcp/9000"]
+    assert [r["name"] for r in closed["closed"]] == ["tcp/8080", "udp/5353"]
+
+
+def test_the_listener_of_the_install_path_closes_only_with_the_path() -> None:
+    # SSH on every address serves the install's path to 192.0.2.10:22: held
+    # open while the path is open, closed with it once the safeguard held.
+    held = pinka.listener_rules(ACCESS, ["tcp/22"])
+    assert [r["name"] for r in held["kept"]] == ["tcp/22", "tcp/8080", "udp/5353", "tcp/9000"]
+    assert (held["closed"], held["held"]) == ([], ["tcp/22"])
+    after = pinka.listener_rules(ACCESS, ["tcp/22"], ["install_path"])
+    assert [r["name"] for r in after["closed"]] == ["tcp/22"]
+    assert after["held"] == []
+    # A listener on another address does not serve the path.
+    other = {**ACCESS, "listeners": [{"proto": "tcp", "address": "192.0.2.11", "port": 22}]}
+    assert [r["name"] for r in pinka.listener_rules(other, ["tcp/22"])["closed"]] == ["tcp/22"]
+
+
+def test_a_dedicated_host_keeps_and_closes_nothing() -> None:
+    empty: dict[str, list[Any]] = {"kept": [], "closed": [], "held": []}
+    assert pinka.listener_rules({**ACCESS, "host": "dedicated"}, ["tcp/8080"]) == empty
+    assert pinka.listener_rules({}, []) == empty
+
+
+@pytest.mark.parametrize(
+    ("close", "message"),
+    [
+        (["8080"], "is not tcp/PORT"),
+        (["tcp/9999"], "is not a listener preflight recorded"),
+        (["tcp/9000"], "a port Docker publishes for a container"),
+    ],
+)
+def test_a_close_entry_must_name_a_recorded_listener(close: list[str], message: str) -> None:
+    with pytest.raises(pinka.PinkaFilterError, match=message):
+        pinka.listener_rules(ACCESS, close)
+
+
+def test_the_install_path_is_an_ssh_session_from_outside_the_tailnet() -> None:
+    assert pinka.install_path(ACCESS, []) == {
+        "address": "192.0.2.10",
+        "port": 22,
+        "family": "ip",
+        "user": "owner1",
+        "closed": False,
+    }
+    assert pinka.install_path(ACCESS, ["install_path"])["closed"] is True  # type: ignore[index]
+    tailnet = {"session": {"via": "ssh", "address": "100.101.2.3", "port": 22, "tailnet": True}}
+    assert pinka.install_path(tailnet, []) is None
+    assert pinka.install_path({"session": {"via": "console"}}, []) is None
+    assert pinka.install_path({}, []) is None
+
+
+def test_only_researchers_key_logins_over_the_tailnet_count() -> None:
+    journal = "\n".join(
+        [
+            "Accepted publickey for researcher1 from 100.101.2.3 port 51234 ssh2: ED25519 SHA256:x",
+            "Accepted publickey for researcher2 from 192.0.2.50 port 1 ssh2: ED25519 SHA256:x",
+            "Accepted password for researcher1 from 100.101.2.3 port 2 ssh2",
+            "Accepted publickey for owner1 from 100.101.2.4 port 3 ssh2: RSA SHA256:x",
+            "Accepted publickey for researcher3 from fd7a:115c:a1e0::5 port 4 ssh2: ED25519",
+            "Failed publickey for researcher1 from 100.101.2.3 port 5 ssh2",
+        ]
+    )
+    names = ["researcher1", "researcher2", "researcher3"]
+    assert pinka.tailnet_logins(journal, names) == [
+        {"user": "researcher1", "address": "100.101.2.3"},
+        {"user": "researcher3", "address": "fd7a:115c:a1e0::5"},
+    ]
+    assert pinka.tailnet_logins("", names) == []

@@ -38,6 +38,8 @@ OPTIONAL_KEYS = (
     "pinka_source_known_hosts",
     "pinka_allowed_signers",
     "restore_snapshot",
+    "firewall_close_listeners",
+    "firewall_close_install_path",
 )
 # Comments for keys that example-machine.yml does not have.
 COMMENTS = {
@@ -61,6 +63,8 @@ COMMENTS = {
     "training_caps": "Caps on training jobs (the GPU arbiter refuses runs over them).",
     "images_blueprints": "Golden image blueprints to build (images/<name>/).",
     "restore_snapshot": "restic snapshot that restore.yml restores (an ID or latest).",
+    "firewall_close_listeners": "Pre-existing listeners closed with the owner's consent.",
+    "firewall_close_install_path": "Close the install's access path once tailnet SSH works.",
 }
 ONCALENDAR_RE = re.compile(r"^\*-\*-\* ([0-2][0-9]):([0-5][0-9]):00$")
 
@@ -144,6 +148,12 @@ def _remote(answers: Answers) -> dict[str, Any]:
         "tailscale_serve_consent": remote.tailscale_serve_consent,
         "ssh_extra_allowed_interfaces": list(remote.ssh_extra_allowed_interfaces),
     }
+    # Pre-existing access (BUILD_PROMPT §7.5): written only when consented, so
+    # group_vars' defaults (nothing closed) stand otherwise.
+    if remote.close_listeners:
+        values["firewall_close_listeners"] = list(remote.close_listeners)
+    if remote.close_install_path:
+        values["firewall_close_install_path"] = True
     if remote.tailscale_tag:
         values["tailscale_tag"] = remote.tailscale_tag
     values["tailscale_accept_dns"] = remote.accept_dns
@@ -387,6 +397,8 @@ def _remote_from(values: Mapping[str, Any], answers: Answers) -> None:
     remote.grafana_tailscale_serve = bool(values.get("grafana_tailscale_serve", False))
     remote.tailscale_serve_consent = bool(values.get("tailscale_serve_consent", False))
     remote.ssh_extra_allowed_interfaces = list(values.get("ssh_extra_allowed_interfaces", []))
+    remote.close_listeners = [str(n) for n in values.get("firewall_close_listeners") or []]
+    remote.close_install_path = bool(values.get("firewall_close_install_path", False))
     remote.tailscale_tag = str(values.get("tailscale_tag", ""))
     remote.accept_dns = bool(values.get("tailscale_accept_dns", False))
     answers.split_inference_peer = str(

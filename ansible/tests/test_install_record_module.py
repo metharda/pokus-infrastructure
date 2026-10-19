@@ -20,6 +20,13 @@ import pinka_install_record as mod
 DPKG = "bash\t5.2.21-2ubuntu4\ncurl\t8.5.0-2ubuntu10.6\n"
 ENABLED = "ssh.service enabled enabled\ndocker.service enabled enabled\n"
 MASKED = "sleep.target masked enabled\n"
+# The host profile's access (BUILD_PROMPT §2.2, §7.5).
+ACCESS = {
+    "host": "shared",
+    "firewall_manager": "none",
+    "session": {"via": "ssh", "address": "192.0.2.10", "port": 22, "user": "owner1"},
+    "listeners": [{"proto": "tcp", "address": "192.0.2.10", "port": 8080, "process": "web"}],
+}
 
 
 def fake_run(*, packages: str = DPKG, rc: int = 0) -> Any:
@@ -42,6 +49,7 @@ def params(path: Path, **overrides: Any) -> dict[str, Any]:
         "path": str(path),
         "state": "init",
         "components": {"docker": {"installed": True, "origin": "pre-existing"}},
+        "access": ACCESS,
         "pkg_manager": "apt",
         "managed_files": [],
         "bootstrap_state": str(path.parent / "bootstrap-state.json"),
@@ -73,6 +81,7 @@ class InstallRecordTest(unittest.TestCase):
         self.assertIs(record["legacy"], False)
         self.assertTrue(record["created_at"].endswith("Z"))
         self.assertEqual(before["components"]["docker"]["origin"], "pre-existing")
+        self.assertEqual(before["access"], ACCESS)
         self.assertEqual(
             before["packages"], {"bash": "5.2.21-2ubuntu4", "curl": "8.5.0-2ubuntu10.6"}
         )
@@ -116,6 +125,7 @@ class InstallRecordTest(unittest.TestCase):
             "memberships": [{"user": "researcher1", "group": "pinka"}],
             "keys": [{"user": "researcher1", "key": "ssh-ed25519 AAAAC3Nz example-key-1"}],
             "tailscale_serve": ["https:443"],
+            "closed_access": ["tcp/8080", "install_path"],
         }
         first = mod.run_module(
             params(record_path, state="add", added=items), check_mode=False, run=fake_run()
@@ -126,6 +136,7 @@ class InstallRecordTest(unittest.TestCase):
         # curl existed before pinka: not pinka's.
         self.assertEqual(added["packages"], ["containerd.io", "docker-ce"])
         self.assertEqual(added["memberships"], [{"user": "researcher1", "group": "pinka"}])
+        self.assertEqual(added["closed_access"], ["install_path", "tcp/8080"])
         # The same items again: nothing new, nothing written.
         second = mod.run_module(
             params(record_path, state="add", added=items), check_mode=False, run=fake_run()
@@ -133,6 +144,37 @@ class InstallRecordTest(unittest.TestCase):
         self.assertFalse(second["changed"])
         read = mod.run_module(params(record_path, state="read"), check_mode=False, run=fake_run())
         self.assertEqual(read["record"]["added"], added)
+
+    def test_remove_takes_only_listeners_reachable_again(self) -> None:
+        record_path = self.tmp / "r.json"
+        mod.run_module(params(record_path), check_mode=False, run=fake_run())
+        closed = {"closed_access": ["tcp/8080", "udp/5353", "install_path"], "accounts": ["x"]}
+        mod.run_module(
+            params(record_path, state="add", added=closed), check_mode=False, run=fake_run()
+        )
+        again = {"closed_access": ["udp/5353", "tcp/9999"]}
+        first = mod.run_module(
+            params(record_path, state="remove", added=again), check_mode=False, run=fake_run()
+        )
+        self.assertTrue(first["changed"])
+        added = json.loads(record_path.read_text())["added"]
+        self.assertEqual(added["closed_access"], ["install_path", "tcp/8080"])
+        self.assertEqual(added["accounts"], ["x"])
+        second = mod.run_module(
+            params(record_path, state="remove", added=again), check_mode=False, run=fake_run()
+        )
+        self.assertFalse(second["changed"])
+        for items, message in (
+            ({"accounts": ["x"]}, "takes only closed_access"),
+            ({"closed_access": ["install_path"]}, "stays closed"),
+        ):
+            with self.assertRaisesRegex(ValueError, message):
+                mod.run_module(
+                    params(record_path, state="remove", added=items),
+                    check_mode=False,
+                    run=fake_run(),
+                )
+        self.assertEqual(json.loads(record_path.read_text())["added"], added)
 
     def test_errors(self) -> None:
         record_path = self.tmp / "r.json"

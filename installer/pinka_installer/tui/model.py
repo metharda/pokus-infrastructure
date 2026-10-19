@@ -131,6 +131,11 @@ class Wizard:
         return self.provider == "wsl2"
 
     @property
+    def access(self) -> dict[str, Any]:
+        """The access to the host before pinka, as preflight saw it (BUILD_PROMPT §7.5)."""
+        return dict(self.profile.get("access") or {})
+
+    @property
     def tailscale_adopted(self) -> dict[str, Any]:
         """A Tailscale node logged in before pinka, as preflight saw it; empty otherwise.
 
@@ -568,3 +573,90 @@ def interface_problems(names: Iterable[str]) -> list[str]:
         One message per bad name.
     """
     return [f"{n}: {e}" for n in names if (e := validators.interface(n))]
+
+
+WILDCARD_ADDRESSES = ("0.0.0.0", "::")  # noqa: S104 - addresses read from the host profile
+DOCKER_PROXY = "docker-proxy"
+
+
+def install_path(access: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The install's access path: an SSH session from outside the tailnet (BUILD_PROMPT §7.5).
+
+    Args:
+        access: The host profile's ``access``.
+
+    Returns:
+        The session (``address``, ``port``, ``user``), or None for an install on
+        the console or over the tailnet.
+    """
+    session = access.get("session") or {}
+    if session.get("via") != "ssh" or session.get("tailnet"):
+        return None
+    return dict(session)
+
+
+def closable_listeners(access: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """The pre-existing listeners screen 8 offers to close, on a shared host (§7.5).
+
+    The ones the strict policy admits anyway (DHCP clients, Tailscale's port)
+    and the ports Docker publishes for containers (forwarded to the container,
+    so the firewall cannot close them) are not offered.
+
+    Args:
+        access: The host profile's ``access``.
+
+    Returns:
+        ``(name, label)`` per listener name (``tcp/8080``), in the profile's order.
+    """
+    if access.get("host") != "shared":
+        return []
+    path = install_path(access)
+    found: dict[str, list[str]] = {}
+    serves_path: set[str] = set()
+    published = {
+        f"{item['proto']}/{item['port']}"
+        for item in access.get("listeners") or []
+        if item.get("process") == DOCKER_PROXY
+    }
+    for item in access.get("listeners") or []:
+        name = f"{item['proto']}/{item['port']}"
+        if item.get("admitted") or name in published:
+            continue
+        address = str(item["address"])
+        where = "every address" if address in WILDCARD_ADDRESSES else address
+        process = item.get("process") or "unknown process"
+        shown = f"{where} ({process})"
+        if shown not in found.setdefault(name, []):
+            found[name].append(shown)
+        if (
+            path is not None
+            and name == f"tcp/{path.get('port')}"
+            and (address in WILDCARD_ADDRESSES or address == path.get("address"))
+        ):
+            serves_path.add(name)
+    return [
+        (
+            name,
+            f"{name} on {', '.join(places)}"
+            + (": only with the install session" if name in serves_path else ""),
+        )
+        for name, places in found.items()
+    ]
+
+
+def published_ports(access: Mapping[str, Any]) -> list[str]:
+    """The ports Docker publishes for containers, which pinka's firewall cannot close (§7.5).
+
+    Args:
+        access: The host profile's ``access``.
+
+    Returns:
+        Their names (``tcp/9000``), sorted.
+    """
+    return sorted(
+        {
+            f"{item['proto']}/{item['port']}"
+            for item in access.get("listeners") or []
+            if item.get("process") == DOCKER_PROXY and access.get("host") == "shared"
+        }
+    )

@@ -24,6 +24,15 @@ argument_specs:
         elements: str
         required: true
         description: Interfaces besides tailscale0 on which SSH is reachable.
+      firewall_close_listeners:
+        type: list
+        elements: str
+        required: true
+        description: Shared host, pre-existing listeners to close with the owner's consent (tcp/8080 and the like).
+      firewall_close_install_path:
+        type: bool
+        required: true
+        description: Close the install's access path once SSH over the tailnet is verified in the same run.
       pinka_incus_bridge_patterns:
         type: list
         elements: str
@@ -81,3 +90,12 @@ argument_specs:
         type: list
         elements: str
         description: Bridges of a pre-existing LXD, on which the input policy admits DHCP and DNS for LXD's dnsmasq (derived from the host profile).
+      firewall_access:
+        type: dict
+        description: The access to the host before pinka's first install, from the install record (derived; empty for a legacy record).
+      firewall_listener_rules:
+        type: dict
+        description: The pre-existing listeners kept and closed, and those held open for the install's access path (derived, pinka_listener_rules).
+      firewall_install_path:
+        type: raw
+        description: The install's access path while it is pinka's to keep (address, port, family, user, closed), or none (derived, pinka_install_path).

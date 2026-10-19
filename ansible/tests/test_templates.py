@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,7 @@ TESTED_TEMPLATES = {
     ("firewall", "pinka-docker-incus-compat.service.j2"),
     ("firewall", "pinka-nftables.service.j2"),
     ("firewall", "pinka.nft.j2"),
+    ("firewall", "pinka-access-guard.nft.j2"),
     ("firewall", "pinka-telemetry-guard.nft.j2"),
     ("firewall", "pinka-telemetry-guard.service.j2"),
     ("firewall", "pinka-inference-guard.service.j2"),
@@ -156,10 +158,14 @@ def nft_check(path: Path) -> subprocess.CompletedProcess[str]:
         {"ssh_extra_allowed_interfaces": ["eth1", "enp3s0"], "grafana_tailscale_serve": True},
         {"pinka_features": {"vm_targets": True}},
         {"host_profile": {"components": {"lxd": {"networks": [{"name": "lxdbr0"}]}}}},
+        {"pinka_preexisting": {"access": None}},
+        {"pinka_preexisting": {"access": None}, "firewall_close_listeners": ["tcp/8080"]},
     ],
-    ids=["default", "extra-interfaces-grafana", "vm-targets", "lxd"],
+    ids=["default", "extra-interfaces-grafana", "vm-targets", "lxd", "shared", "shared-closed"],
 )
 def test_nft_ruleset_is_valid(tmp_path: Path, extra: dict[str, Any]) -> None:
+    if "pinka_preexisting" in extra:
+        extra = {**extra, "pinka_preexisting": {"access": SHARED_ACCESS}}
     text = render_template("firewall", "pinka.nft.j2", firewall_vars(**extra))
     path = tmp_path / "pinka.nft"
     path.write_text(text, encoding="utf-8")
@@ -224,6 +230,220 @@ def test_nft_ruleset_options() -> None:
     ]
     assert 'iifname "tailscale0" tcp dport { 22, 443 } accept' in lines
     assert 'iifname { "eth1" } tcp dport 22 accept' in lines
+
+
+ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
+# A shared host (BUILD_PROMPT §2.2): sshd and a web server reachable from the LAN,
+# a DHCP client the strict policy admits anyway, installed over SSH from the LAN.
+SHARED_ACCESS = {
+    "host": "shared",
+    "session": {"via": "ssh", "address": "192.0.2.10", "port": 22, "user": "owner1"},
+    "listeners": [
+        {"proto": "tcp", "address": ANY_V4, "port": 22, "admitted": False},
+        {"proto": "tcp", "address": "::", "port": 22, "admitted": False},
+        {"proto": "tcp", "address": "192.0.2.10", "port": 8080, "admitted": False},
+        {"proto": "udp", "address": "2001:db8::10", "port": 5353, "admitted": False},
+        {"proto": "udp", "address": ANY_V4, "port": 68, "admitted": True},
+    ],
+}
+
+
+def access_rules(access: dict[str, Any], **extra: Any) -> list[str]:
+    """The input rules of pinka's ruleset that keep pre-existing access."""
+    variables = firewall_vars(pinka_preexisting={"access": access}, **extra)
+    text = render_template("firewall", "pinka.nft.j2", variables)
+    lines = [line.strip() for line in text.splitlines()]
+    return [
+        line
+        for line in lines
+        if line.endswith("accept")
+        and ("dport 22 accept" in line or "8080" in line or "5353" in line)
+        and "iifname" not in line
+    ]
+
+
+def test_a_shared_host_keeps_its_listeners_and_the_install_path() -> None:
+    # §7.5: every listener stays reachable as it was; the install's access path
+    # stays open until the safeguard closes it.
+    assert access_rules(SHARED_ACCESS) == [
+        "tcp dport 22 accept",
+        "ip daddr 192.0.2.10 tcp dport 8080 accept",
+        "ip6 daddr 2001:db8::10 udp dport 5353 accept",
+        "ip daddr 192.0.2.10 tcp dport 22 accept",
+    ]
+    # Closed with consent: only what the owner named, and the path once closed.
+    assert access_rules(
+        SHARED_ACCESS, firewall_close_listeners=["tcp/8080"], pinka_closed_access=["install_path"]
+    ) == ["tcp dport 22 accept", "ip6 daddr 2001:db8::10 udp dport 5353 accept"]
+
+
+def test_a_dedicated_host_keeps_only_the_install_path() -> None:
+    dedicated = {**SHARED_ACCESS, "host": "dedicated"}
+    assert access_rules(dedicated) == ["ip daddr 192.0.2.10 tcp dport 22 accept"]
+    assert access_rules(dedicated, pinka_closed_access=["install_path"]) == []
+    console = {**dedicated, "session": {"via": "console"}}
+    assert access_rules(console) == []
+    # A record without the access (a legacy one) keeps nothing.
+    assert access_rules({}) == []
+
+
+def access_guard(**extra: Any) -> list[str]:
+    """The rules of the access guard (BUILD_PROMPT §7.5)."""
+    variables = firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}, **extra)
+    text = render_template("firewall", "pinka-access-guard.nft.j2", variables)
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().endswith(("accept", "drop")) and not line.strip().startswith("#")
+    ]
+
+
+GUARD_VARIANTS = {
+    "nothing-closed": {},
+    "closed": {
+        "firewall_close_listeners": ["tcp/8080", "udp/5353", "tcp/22"],
+        "pinka_closed_access": ["install_path"],
+        "ssh_extra_allowed_interfaces": ["eth1"],
+        "grafana_tailscale_serve": True,
+    },
+}
+
+
+@pytest.mark.parametrize("variant", sorted(GUARD_VARIANTS))
+def test_access_guard_is_valid(tmp_path: Path, variant: str) -> None:
+    variables = firewall_vars(
+        pinka_preexisting={"access": SHARED_ACCESS}, **GUARD_VARIANTS[variant]
+    )
+    path = tmp_path / "access-guard.nft"
+    path.write_text(
+        render_template("firewall", "pinka-access-guard.nft.j2", variables), encoding="utf-8"
+    )
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_access_guard_drops_only_what_the_owner_consented_to_close() -> None:
+    # Nothing closed: an empty table, nothing hooked.
+    assert access_guard() == []
+    text = render_template(
+        "firewall",
+        "pinka-access-guard.nft.j2",
+        firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}),
+    )
+    assert "chain input" not in text
+    # Closed listeners; SSH on every address is held open for the install's
+    # path to 192.0.2.10:22 while the path is open.
+    assert access_guard(firewall_close_listeners=["tcp/8080", "tcp/22"]) == [
+        "ct state established,related accept",
+        'iifname "lo" accept',
+        'iifname "tailscale0" tcp dport { 22 } accept',
+        "ip daddr 192.0.2.10 tcp dport 8080 drop",
+    ]
+    # The path closed under the safeguard: SSH closes with it, except over the
+    # tailnet and on the extra SSH interfaces.
+    assert access_guard(
+        firewall_close_listeners=["tcp/22"],
+        pinka_closed_access=["install_path"],
+        ssh_extra_allowed_interfaces=["eth1"],
+    ) == [
+        "ct state established,related accept",
+        'iifname "lo" accept',
+        'iifname "tailscale0" tcp dport { 22 } accept',
+        'iifname { "eth1" } tcp dport 22 accept',
+        "tcp dport 22 drop",
+        "ip daddr 192.0.2.10 tcp dport 22 drop",
+    ]
+    # On a dedicated host only the install's path closes.
+    dedicated = firewall_vars(
+        pinka_preexisting={"access": {**SHARED_ACCESS, "host": "dedicated"}},
+        pinka_closed_access=["install_path"],
+    )
+    text = render_template("firewall", "pinka-access-guard.nft.j2", dedicated)
+    assert [line.strip() for line in text.splitlines() if line.strip().endswith("drop")] == [
+        "ip daddr 192.0.2.10 tcp dport 22 drop"
+    ]
+
+
+def test_the_install_path_closes_once_under_the_safeguard() -> None:
+    # A block's condition is evaluated again for each of its tasks; the
+    # closing block records the path as closed in its first task, so its
+    # condition must be a fact decided before it, or its other tasks (the
+    # drop-in, the table, the guard) would be skipped.
+    tasks = load_yaml(ROLES / "firewall" / "tasks" / "install_path.yml")
+    decide = next(t for t in tasks if t["name"].startswith("Decide whether"))
+    block = next(t for t in tasks if "block" in t)
+    assert tasks.index(decide) < tasks.index(block)
+    assert block["when"] == "firewall_closes_install_path | bool"
+    expression = decide["ansible.builtin.set_fact"]["firewall_closes_install_path"].strip()[2:-2]
+    login = [{"user": "researcher1", "address": "100.101.2.3"}]
+
+    def closes(closed: list[str], consent: bool, logins: list[dict[str, str]]) -> bool:
+        variables = firewall_vars(
+            pinka_preexisting={"access": SHARED_ACCESS},
+            pinka_closed_access=closed,
+            firewall_close_install_path=consent,
+            firewall_tailnet_logins=logins,
+        )
+        return str(evaluate(expression, variables)).strip() == "True"
+
+    assert closes([], True, login)
+    assert not closes(["install_path"], True, login)  # already closed
+    assert not closes([], False, login)  # no consent
+    assert not closes([], True, [])  # no researcher's login over the tailnet in this run
+
+
+def test_the_run_start_is_the_epoch_in_every_time_zone() -> None:
+    # The safeguard reads sshd's journal since this moment (journalctl
+    # --since=@<seconds>); a time zone offset would count logins from before
+    # the run, or none at all.
+    site = load_yaml(ROLES.parent / "site.yml")
+    task = next(
+        t
+        for play in site
+        for t in play.get("pre_tasks", [])
+        if t.get("name") == "Note when the run began"
+    )
+    template = task["ansible.builtin.set_fact"]["pinka_run_started"].strip()
+    assert template.startswith("{{") and template.endswith("}}")
+    saved = os.environ.get("TZ")
+    try:
+        for zone in ("UTC", "Asia/Tokyo", "America/Los_Angeles"):
+            os.environ["TZ"] = zone
+            time.tzset()
+            before = int(time.time())
+            value = int(evaluate(template[2:-2].strip(), {}))
+            assert before <= value <= int(time.time()), zone
+    finally:
+        if saved is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = saved
+        time.tzset()
+
+
+def test_forwarded_traffic_of_lxd_guests_and_docker_containers_is_left_alone() -> None:
+    # Owner decision 2 after D1: pinka's rules leave the forwarded traffic of
+    # LXD's guests and Docker's containers as it was. The forward chain accepts
+    # by default and every rule in it names the run networks only, whatever the
+    # host keeps or closes.
+    variants = [
+        firewall_vars(),
+        firewall_vars(host_profile={"components": {"lxd": {"networks": [{"name": "lxdbr0"}]}}}),
+        firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}),
+    ]
+    for variables in variants:
+        text = render_template("firewall", "pinka.nft.j2", variables)
+        chain = text.split("chain forward {", 1)[1].split("}", 1)[0]
+        rules = [
+            line.strip()
+            for line in chain.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        assert rules[0] == "type filter hook forward priority filter; policy accept;"
+        assert rules[1:], text
+        for rule in rules[1:]:
+            assert '"r-*"' in rule, rule
+            assert "lxdbr" not in rule and "docker" not in rule
 
 
 # Sample UIDs as getent finds them: the stores' clients (root, the collector,
@@ -844,12 +1064,60 @@ def test_firewall_units() -> None:
     )
     assert compat["Unit"]["After"] == "docker.service incus.service"
     assert compat["Service"]["ExecStart"] == "/usr/local/libexec/pinka/docker-incus-compat"
-    nft = ini(render_template("firewall", "pinka-nftables.service.j2", firewall_vars()))
-    assert nft["Service"]["ExecStart"] == "/usr/sbin/nft -f /etc/pinka/nftables/pinka.nft"
-    assert nft["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_filter"
+    # pinka's firewall tables: inet pinka_filter on the nftables backend, the
+    # access guard on every backend (BUILD_PROMPT §7.5).
+    for backend, files, tables in (
+        ("nftables", ["pinka.nft", "access-guard.nft"], ["pinka_filter", "pinka_access_guard"]),
+        ("ufw", ["access-guard.nft"], ["pinka_access_guard"]),
+        ("firewalld", ["access-guard.nft"], ["pinka_access_guard"]),
+    ):
+        text = render_template(
+            "firewall", "pinka-nftables.service.j2", firewall_vars(pinka_firewall_backend=backend)
+        )
+        lines = text.splitlines()
+
+        def values(key: str, lines: list[str] = lines) -> list[str]:
+            return [line.split("=", 1)[1] for line in lines if line.startswith(f"{key}=")]
+
+        loads = [f"/usr/sbin/nft -f /etc/pinka/nftables/{name}" for name in files]
+        assert values("ExecStart") == values("ExecReload") == loads, backend
+        assert values("ExecStop") == [f"/usr/sbin/nft delete table inet {t}" for t in tables]
 
 
 # --- ssh, sudoers ------------------------------------------------------------
+
+
+def sshd_drop_in(**extra: Any) -> list[str]:
+    text = render_template("ssh", "10-pinka.conf.j2", role_vars("ssh", **extra))
+    return [line for line in text.splitlines() if line and not line.startswith("#")]
+
+
+def test_sshd_drop_in_on_a_shared_host_is_a_match_block() -> None:
+    # BUILD_PROMPT §7.3, approved deviation SSH1: on a shared host pinka's
+    # settings apply to group pinka only; every other account keeps the host's
+    # own policy. The block ends with the file (sshd restores the including
+    # file's Match state).
+    lines = sshd_drop_in(pinka_preexisting={"access": SHARED_ACCESS})
+    assert lines[0] == "Match Group pinka"
+    assert all(line.startswith("\t") for line in lines[1:])
+    assert not [line for line in lines if "AllowGroups" in line]
+    assert "\tPasswordAuthentication no" in lines and "\tPermitRootLogin no" in lines
+
+
+def test_sshd_drop_in_on_a_dedicated_host() -> None:
+    dedicated = {**SHARED_ACCESS, "host": "dedicated"}
+    # Installed over SSH as an account that is not a researcher: it keeps the
+    # host's policy until the safeguard of §7.5 closes the install's path.
+    assert sshd_drop_in(pinka_preexisting={"access": dedicated})[0] == "Match Group pinka"
+    closed = sshd_drop_in(
+        pinka_preexisting={"access": dedicated}, pinka_closed_access=["install_path"]
+    )
+    assert "AllowGroups pinka" in closed
+    # Installed by a researcher, or from the console: the strict default at once.
+    researcher = {**dedicated, "session": {**dedicated["session"], "user": "researcher1"}}  # type: ignore[dict-item]
+    assert "AllowGroups pinka" in sshd_drop_in(pinka_preexisting={"access": researcher})
+    console = {**dedicated, "session": {"via": "console"}}
+    assert "AllowGroups pinka" in sshd_drop_in(pinka_preexisting={"access": console})
 
 
 def test_sshd_drop_in() -> None:

@@ -154,10 +154,14 @@ def lab_defaults_json(root: Path) -> str:
         collector address and interface, the Docker address pools, the
         tailnet range, the Tailscale tags pinka gives a node it joins and
         the names of the Incus bridges pinka creates (exact names and
-        prefixes, for the clash check against LXD, §7.7).
+        prefixes, for the clash check against LXD, §7.7), and the UDP ports
+        pinka's strict input policy accepts on every interface besides the
+        DHCP clients' (Tailscale's WireGuard port; the pre-existing access of
+        §2.2).
     """
     group_vars = load_yaml(root / "ansible/group_vars/all/main.yml")
     docker = load_yaml(root / "ansible/roles/docker/defaults/main.yml")
+    firewall = load_yaml(root / "ansible/roles/firewall/defaults/main.yml")
     patterns = [
         str(p)
         for p in group_vars["pinka_incus_bridge_patterns"]
@@ -177,7 +181,10 @@ def lab_defaults_json(root: Path) -> str:
             "names": sorted(p for p in patterns if "*" not in p),
             "prefixes": sorted(p.removesuffix("*") for p in patterns if p.endswith("*")),
         },
+        "admitted_udp_ports": [int(firewall["firewall_tailscale_udp_port"])],
     }
     return dump_json(
-        data, "ansible/group_vars/all/main.yml and ansible/roles/docker/defaults/main.yml"
+        data,
+        "ansible/group_vars/all/main.yml, ansible/roles/docker/defaults/main.yml and"
+        " ansible/roles/firewall/defaults/main.yml",
     )

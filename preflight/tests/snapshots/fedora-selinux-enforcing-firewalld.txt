@@ -20,6 +20,8 @@ Capabilities
   MAC selinux (enforcing), firewall backend firewalld, storage btrfs
 Features
   gpu_inference on, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics on
+Access
+  dedicated host, firewall manager firewalld, install session: the console
 Network: skipped (--offline)
 
 Warnings

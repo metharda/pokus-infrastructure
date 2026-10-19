@@ -40,6 +40,33 @@ def install_record(*, legacy: bool = False, joined: bool = False, **tailscale: A
     )
 
 
+def access_record(
+    *,
+    listeners: Sequence[dict[str, Any]] = (),
+    session: dict[str, Any] | None = None,
+    closed: Sequence[str] = (),
+    legacy: bool = False,
+) -> str:
+    """An install record noting the access to the host before pinka (§7.5)."""
+    access = {
+        "host": "shared" if listeners else "dedicated",
+        "firewall_manager": "none",
+        "session": session or {"via": "console"},
+        "listeners": list(listeners),
+        "accounts": [],
+        "reasons": [],
+    }
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "created_at": "2026-10-01T00:00:00Z",
+            "legacy": legacy,
+            "preexisting": {"components": {}, "access": access},
+            "added": {"closed_access": list(closed)},
+        }
+    )
+
+
 def run(check: Any, system: FakeSystem, **changes: Any) -> Outcome:
     outcome: Outcome = check(context(system, **changes))
     return outcome
@@ -222,9 +249,80 @@ class NetworkTest(Base):
             run(checks.check_listeners, system, listeners__tailnet_ports=ports), "fail", "18710"
         )
 
+    def test_the_listeners_from_before_pinka_are_expected(self) -> None:
+        shared = [
+            {"proto": "tcp", "address": "0.0.0.0", "port": 8080, "process": "example-web"},  # noqa: S104
+            {"proto": "udp", "address": "192.0.2.10", "port": 5353, "process": "avahi-daemon"},
+        ]
+        extra = (
+            'tcp LISTEN 0 128 *:8080 *:* users:(("example-web",pid=30,fd=3))\n'
+            'udp UNCONN 0 0 [::ffff:192.0.2.10]:5353 *:* users:(("avahi-daemon",pid=31,fd=4))\n'
+        )
+        system = FakeSystem(
+            {"ss -H -lntup": (0, SS + extra)},
+            files={RECORD: access_record(listeners=shared, closed=["udp/5353"])},
+        )
+        self.assertOutcome(
+            run(checks.check_listeners, system),
+            "pass",
+            "before pinka: tcp/8080 (kept), udp/5353 (closed by the firewall)",
+        )
+        # Another port, another address or another protocol than the recorded one.
+        for line in (
+            'tcp LISTEN 0 128 0.0.0.0:8081 0.0.0.0:* users:(("example-web",pid=30,fd=5))\n',
+            'udp UNCONN 0 0 192.0.2.11:5353 0.0.0.0:* users:(("avahi-daemon",pid=31,fd=5))\n',
+            'udp UNCONN 0 0 0.0.0.0:8080 0.0.0.0:* users:(("example-web",pid=30,fd=6))\n',
+        ):
+            system.commands["ss -H -lntup"] = (0, SS + extra + line)
+            self.assertOutcome(run(checks.check_listeners, system), "fail", "unexpected listeners")
+        # A legacy record decides nothing, a missing one notes nothing.
+        system.commands["ss -H -lntup"] = (0, SS + extra)
+        for record in (access_record(listeners=shared, legacy=True), None):
+            system.files.pop(RECORD, None)
+            if record is not None:
+                system.files[RECORD] = record
+            self.assertOutcome(run(checks.check_listeners, system), "fail", "tcp *:8080")
+
+    def test_the_install_path_warns_while_it_is_open(self) -> None:
+        lan = {
+            "via": "ssh",
+            "address": "192.0.2.10",
+            "port": 22,
+            "user": "owner1",
+            "tailnet": False,
+        }
+
+        def outcome(record: str | None) -> Outcome:
+            return run(
+                checks.check_install_path, FakeSystem(files={RECORD: record} if record else {})
+            )
+
+        self.assertOutcome(
+            outcome(access_record(session=lan)),
+            "fail",
+            "the install's access path is open: SSH to 192.0.2.10:22 from outside the tailnet,"
+            " as owner1",
+        )
+        self.assertOutcome(
+            outcome(access_record(session=lan, closed=["install_path"])),
+            "pass",
+            "(SSH to 192.0.2.10:22) is closed",
+        )
+        self.assertOutcome(
+            outcome(access_record(session={**lan, "address": "100.101.2.3", "tailnet": True})),
+            "skip",
+            "over the tailnet",
+        )
+        self.assertOutcome(outcome(access_record(session={"via": "console"})), "skip", "console")
+        for record in (access_record(session=lan, legacy=True), install_record(), None):
+            self.assertOutcome(outcome(record), "skip", "notes no access")
+        check = next(c for c in CHECKS if c.id == "network.install_path")
+        self.assertEqual(check.severity, "warning")
+
     def firewall(self, **commands: Any) -> FakeSystem:
         table = {
             "nft list table inet pinka_filter": (0, "table inet pinka_filter {}"),
+            "nft list table inet pinka_access_guard": (0, "table inet pinka_access_guard {}"),
             "iptables -n -L DOCKER-USER": (0, ""),
             "iptables -C DOCKER-USER -i r-+ -j ACCEPT": (0, ""),
             "iptables -C DOCKER-USER -o r-+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT": (
@@ -252,29 +350,51 @@ class NetworkTest(Base):
         self.assertOutcome(run(checks.check_firewall, system), "fail", "ip6tables DOCKER-USER")
 
     def test_other_firewall_backends(self) -> None:
+        guard = {"nft list table inet pinka_access_guard": (0, "table inet pinka_access_guard {}")}
         zones = {
             "firewall-cmd --info-zone pinka-tailnet": (0, "pinka-tailnet"),
             "firewall-cmd --info-zone pinka-run": (0, "pinka-run"),
         }
         self.assertOutcome(
-            run(checks.check_firewall, FakeSystem(zones), firewall__backend="firewalld"), "pass"
+            run(
+                checks.check_firewall, FakeSystem({**zones, **guard}), firewall__backend="firewalld"
+            ),
+            "pass",
         )
         for missing in zones:
-            system = FakeSystem({k: v for k, v in zones.items() if k != missing})
+            system = FakeSystem({k: v for k, v in {**zones, **guard}.items() if k != missing})
             self.assertOutcome(
                 run(checks.check_firewall, system, firewall__backend="firewalld"),
                 "fail",
                 f"zone {missing.split()[-1]} is missing",
             )
         # A zone named only "pinka" is not what the firewall role creates.
-        system = FakeSystem({"firewall-cmd --info-zone pinka": (0, "pinka")})
+        system = FakeSystem({"firewall-cmd --info-zone pinka": (0, "pinka"), **guard})
         self.assertOutcome(
             run(checks.check_firewall, system, firewall__backend="firewalld"), "fail"
         )
-        system = FakeSystem({"ufw status": (0, "Status: inactive\n")})
+        system = FakeSystem({"ufw status": (0, "Status: inactive\n"), **guard})
         self.assertOutcome(
             run(checks.check_firewall, system, firewall__backend="ufw"), "fail", "not active"
         )
+        # The access guard (§7.5) on every backend.
+        for backend, commands in (
+            ("ufw", {"ufw status": (0, "Status: active\n")}),
+            ("firewalld", zones),
+        ):
+            self.assertOutcome(
+                run(checks.check_firewall, FakeSystem(commands), firewall__backend=backend),
+                "fail",
+                "inet pinka_access_guard is missing",
+            )
+            self.assertOutcome(
+                run(
+                    checks.check_firewall,
+                    FakeSystem({**commands, **guard}),
+                    firewall__backend=backend,
+                ),
+                "pass",
+            )
 
     def tailscale(self, status: dict[str, Any], serve: dict[str, Any]) -> FakeSystem:
         return FakeSystem(

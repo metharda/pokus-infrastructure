@@ -103,6 +103,25 @@ def test_host_vars_modify_keeps_comments_and_drops_unanswered(repo: Paths) -> No
     assert hostvars.render(answers, second, "") == second  # stable
 
 
+def test_host_vars_close_only_with_consent(repo: Paths) -> None:
+    # Pre-existing access (BUILD_PROMPT §7.5): the keys are written only when
+    # the owner consented, so group_vars' defaults (nothing closed) apply.
+    answers = full_answers()
+    first = hostvars.render(answers, None, repo.example_host_vars.read_text(encoding="utf-8"))
+    values = hostvars.load(first)
+    assert values["firewall_close_listeners"] == ["tcp/8080", "udp/5353"]
+    assert values["firewall_close_install_path"] is True
+    answers.remote_access.close_listeners = []
+    answers.remote_access.close_install_path = False
+    second = hostvars.render(answers, first, "")
+    assert "firewall_close" not in second
+    back = hostvars.to_answers(hostvars.load(second), Answers())
+    assert (back.remote_access.close_listeners, back.remote_access.close_install_path) == (
+        [],
+        False,
+    )
+
+
 def test_group_vars_round_trip_keeps_everything_else(repo: Paths) -> None:
     text = repo.group_vars_main.read_text(encoding="utf-8")
     assert groupvars.render(text, *groupvars.researchers(text)) == text

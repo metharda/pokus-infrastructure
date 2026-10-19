@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from pinka_preflight import __version__
+from pinka_preflight.detect.access import Access
 from pinka_preflight.detect.components import Components
 from pinka_preflight.detect.conflicts import ConflictReport
 from pinka_preflight.detect.environment import Environment
@@ -79,6 +80,7 @@ class Detection:
         endpoints: Network probe results.
         offline: ``--offline`` was given.
         components: Components that may exist before pinka, with their origin.
+        access: The access to the host that existed before the install.
     """
 
     osr: OsRelease | None
@@ -92,6 +94,7 @@ class Detection:
     endpoints: list[EndpointResult]
     offline: bool
     components: Components = field(default_factory=Components)
+    access: Access = field(default_factory=Access)
 
 
 def utc_iso(when: dt.datetime) -> str:
@@ -242,6 +245,7 @@ def build_report(
         "disabled_features": list(decision.disabled_features),
         "storage_backend": decision.storage_backend,
         "components": det.components.as_dict(),
+        "access": det.access.as_dict(),
         "conflicts": [dataclasses.asdict(c) for c in det.conflicts.conflicts],
         "unsupported_reasons": list(decision.unsupported_reasons),
         "needs_action": list(decision.needs_action),

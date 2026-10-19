@@ -28,6 +28,7 @@ from textual.widgets import (
     Input,
     RadioButton,
     Select,
+    SelectionList,
     Static,
     TextArea,
 )
@@ -709,6 +710,46 @@ def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
     assert remote.grafana_tailscale_serve and remote.tailscale_serve_consent
     assert remote.tailscale_login == "interactive"  # pinka never logs this node in
     assert installer.ctx.wizard.provided.tailscale_authkey == ""
+
+
+def test_a_shared_host_closes_only_what_the_owner_ticks(repo: Paths) -> None:
+    # BUILD_PROMPT §7.5: a checkbox per pre-existing listener and the consent to
+    # close the install's session, on a shared host installed over SSH from the LAN.
+    host = FakeHost(preflight("ubuntu2404-access-shared", ["--researcher", "researcher1"]))
+    installer = app(context(repo, host), first="remote")
+    installer.ctx.wizard.profile = host.preflight([]).profile
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        screen = pilot.app.screen
+        listeners = screen.query_one("#close", SelectionList)
+        assert listeners.selected == []
+        listeners.select("tcp/8080")
+        tick(pilot, "close-path")
+        await forward(pilot, "gpu")
+
+    drive(installer, flow)
+    remote = installer.ctx.wizard.answers.remote_access
+    assert (remote.close_listeners, remote.close_install_path) == (["tcp/8080"], True)
+
+
+def test_without_access_to_close_the_answers_stand(repo: Paths) -> None:
+    # A console install on a dedicated host shows neither field and keeps what
+    # the answers already say (a consent given at an earlier run, for example).
+    host = FakeHost(preflight("ubuntu2404-access-console", ["--researcher", "researcher1"]))
+    installer = app(context(repo, host), first="remote")
+    installer.ctx.wizard.profile = host.preflight([]).profile
+    installer.ctx.wizard.answers.remote_access.close_install_path = True
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        assert not pilot.app.screen.query("#close")
+        assert not pilot.app.screen.query("#close-path")
+        await forward(pilot, "gpu")
+
+    drive(installer, flow)
+    remote = installer.ctx.wizard.answers.remote_access
+    assert (remote.close_listeners, remote.close_install_path) == ([], True)
 
 
 def test_the_resources_screen_warns_about_split_smt_cores(repo: Paths) -> None:

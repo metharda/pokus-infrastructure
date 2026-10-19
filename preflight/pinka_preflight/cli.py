@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from pinka_preflight import __version__, render, schema_check
+from pinka_preflight.detect.access import detect_access
 from pinka_preflight.detect.components import component_conflicts, detect_components
 from pinka_preflight.detect.conflicts import Conflict, detect_conflicts
 from pinka_preflight.detect.environment import detect_environment
@@ -158,6 +159,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="the host's incus_pool_device when incus_pool_source is device; checked against "
         "LXD's storage",
+    )
+    parser.add_argument(
+        "--researcher",
+        metavar="NAME",
+        action="append",
+        default=[],
+        help="a configured researcher; a host whose login accounts are all researchers and "
+        "that has no listener besides sshd is dedicated (§2.2); repeat for each",
     )
     parser.add_argument(
         "--allow-dirty",
@@ -306,6 +315,21 @@ def run_preflight(
     )
     conflicts.conflicts += found
     conflicts.infos += notes
+    access = detect_access(
+        fs,
+        runner,
+        firewall_manager=conflicts.firewall_manager,
+        researchers=args.researcher,
+        tailnet_v4=str(defaults["tailnet"]),
+        docker_pools=_pools(defaults),
+        record=components.record,
+        admitted_udp=[int(p) for p in defaults.get("admitted_udp_ports", [])],
+    )
+    if access.host == "shared":
+        conflicts.infos.append(
+            "shared host (" + "; ".join(access.reasons) + "): the firewall keeps the "
+            "pre-existing listeners reachable as found unless closed with consent (§7.5)"
+        )
     timesync = detect_timesync(runner)
     matrix = load_matrix(args.matrix)
     family = match_os(matrix, osr).get("family")
@@ -328,6 +352,7 @@ def run_preflight(
         endpoints,
         args.offline,
         components,
+        access,
     )
     decision = evaluate(
         matrix,

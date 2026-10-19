@@ -8,6 +8,7 @@ provider) are skipped, not passed.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import ssl
@@ -42,6 +43,8 @@ FALLBACK_MODE = 0o666
 # The install record (BUILD_PROMPT §7.21), written by the install_record role.
 INSTALL_RECORD = "/var/lib/pinka/install-record.json"
 WRITABLE_BY_OTHERS = 0o022
+# How ss and preflight show a socket on every address.
+WILDCARD_ADDRESSES = ("0.0.0.0", "::", "*")  # noqa: S104 - addresses read from the host
 
 
 # --- helpers ---------------------------------------------------------------------------
@@ -83,6 +86,37 @@ def _adopted_tailscale(ctx: Context) -> dict[str, Any] | None:
         return None
     before = ((record.get("preexisting") or {}).get("components") or {}).get("tailscale") or {}
     return dict(before) if before.get("origin") == "pre-existing" else None
+
+
+def _preexisting_access(ctx: Context) -> tuple[dict[str, Any], list[str]] | None:
+    """The access to the host before pinka and what of it was closed with consent (§7.5).
+
+    Returns:
+        The record's ``preexisting.access`` and ``added.closed_access``; None
+        where the record is missing, legacy (it decides nothing) or older than
+        the access it notes.
+    """
+    record = _install_record(ctx)
+    if record is None or record.get("legacy"):
+        return None
+    access = (record.get("preexisting") or {}).get("access")
+    if not isinstance(access, dict) or not access:
+        return None
+    closed = [str(name) for name in (record.get("added") or {}).get("closed_access") or []]
+    return access, closed
+
+
+def _same_address(found: str, recorded: str) -> bool:
+    """Whether a listener's address is one preflight recorded (every address covers all)."""
+    if recorded in WILDCARD_ADDRESSES:
+        return True
+    try:
+        one, other = ipaddress.ip_address(found), ipaddress.ip_address(recorded)
+    except ValueError:
+        return found == recorded
+    if isinstance(one, ipaddress.IPv6Address) and one.ipv4_mapped is not None:
+        one = one.ipv4_mapped
+    return one == other
 
 
 def _tailscale_status(ctx: Context) -> dict[str, Any]:
@@ -310,7 +344,12 @@ def check_containers(ctx: Context) -> Outcome:
 
 
 def check_listeners(ctx: Context) -> Outcome:
-    """Nothing listens outside loopback except sshd and the expected host services."""
+    """Nothing listens outside loopback but sshd, host services and listeners from before pinka.
+
+    The listeners the install record notes as the host's before pinka (§7.5)
+    are expected, whether the firewall keeps them reachable or closed them with
+    the owner's consent: pinka never stops a pre-existing service.
+    """
     done = ctx.system.run(["ss", "-H", "-lntup"])
     if not done.ok:
         return failed(f"ss failed: {done.stderr.strip()}")
@@ -322,23 +361,63 @@ def check_listeners(ctx: Context) -> Outcome:
     if tailnet_ports:
         shown = ctx.system.run(["tailscale", "ip"])
         tailnet = set(shown.stdout.split()) if shown.ok else set()
-    unexpected = sorted(
-        {
-            f"{proto} {address}:{port} ({process or 'unknown process'})"
-            for proto, address, port, process in listeners(done.stdout)
-            if not is_loopback(address)
-            and process not in allowed_processes
-            and address not in allowed_addresses
-            and not (address in tailnet and port in tailnet_ports)
-        }
-    )
+    access, closed = _preexisting_access(ctx) or ({}, [])
+    recorded = [item for item in access.get("listeners") or [] if isinstance(item, dict)]
+    unexpected: set[str] = set()
+    preexisting: set[str] = set()
+    for proto, address, port, process in listeners(done.stdout):
+        if (
+            is_loopback(address)
+            or process in allowed_processes
+            or address in allowed_addresses
+            or (address in tailnet and port in tailnet_ports)
+        ):
+            continue
+        if any(
+            item.get("proto") == proto
+            and item.get("port") == port
+            and _same_address(address, str(item.get("address")))
+            for item in recorded
+        ):
+            name = f"{proto}/{port}"
+            preexisting.add(f"{name} ({'closed by the firewall' if name in closed else 'kept'})")
+            continue
+        unexpected.add(f"{proto} {address}:{port} ({process or 'unknown process'})")
     if unexpected:
-        return failed("unexpected listeners: " + ", ".join(unexpected))
+        return failed("unexpected listeners: " + ", ".join(sorted(unexpected)))
+    if preexisting:
+        return passed(
+            "only loopback listeners, expected host services and the listeners the host had "
+            "before pinka: " + ", ".join(sorted(preexisting))
+        )
     return passed("only loopback listeners and expected host services")
 
 
+def check_install_path(ctx: Context) -> Outcome:
+    """The access path of the install from outside the tailnet is closed (§7.5).
+
+    It closes only with the owner's consent and after a researcher logged in
+    over the tailnet in the same run; until then it stays open and this check
+    warns.
+    """
+    found = _preexisting_access(ctx)
+    if found is None:
+        return skipped("the install record notes no access to the host before pinka")
+    access, closed = found
+    session = access.get("session") or {}
+    if session.get("via") != "ssh":
+        return skipped("the install ran on the console; there is no access path to close")
+    path = f"SSH to {session.get('address')}:{session.get('port')}"
+    if session.get("tailnet"):
+        return skipped(f"the install came over the tailnet ({path}), which the lab keeps")
+    if "install_path" in closed:
+        return passed(f"the install's access path ({path}) is closed")
+    user = session.get("user") or "an account not in /etc/passwd"
+    return failed(f"the install's access path is open: {path} from outside the tailnet, as {user}")
+
+
 def check_firewall(ctx: Context) -> Outcome:
-    """The lab's firewall rules are in place (nftables table, Docker compatibility rules)."""
+    """The lab's firewall rules are in place (backend, access guard, Docker compatibility rules)."""
     backend = str(ctx.config.get("firewall", "backend", default="nftables"))
     problems = []
     if backend == "nftables":
@@ -353,6 +432,9 @@ def check_firewall(ctx: Context) -> Outcome:
         status = ctx.system.run(["ufw", "status"])
         if "Status: active" not in status.stdout:
             problems.append("ufw is not active")
+    # What the owner consented to close (§7.5), on every backend.
+    if not ctx.system.run(["nft", "list", "table", "inet", "pinka_access_guard"]).ok:
+        problems.append("nftables table inet pinka_access_guard is missing")
     problems += _docker_user_rules(ctx)
     if problems:
         return failed("; ".join(problems))
@@ -2072,14 +2154,24 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "network.listeners",
-        "Nothing listens outside loopback except sshd and expected host services.",
+        "Nothing listens outside loopback except sshd, expected host services and the "
+        "listeners the host had before pinka.",
         "error",
         "Stop the listed service or bind it to 127.0.0.1.",
         check_listeners,
     ),
     Check(
+        "network.install_path",
+        "The install's access path from outside the tailnet is closed.",
+        "warning",
+        "Give consent to close it (firewall_close_install_path: true, or the Remote access "
+        "screen), run bootstrap and, while it runs, log in as a researcher over the tailnet; "
+        "the run closes the path at its end.",
+        check_install_path,
+    ),
+    Check(
         "network.firewall",
-        "The lab's firewall and Docker compatibility rules are present.",
+        "The lab's firewall, its access guard and the Docker compatibility rules are present.",
         "error",
         "Run bootstrap with --tags firewall.",
         check_firewall,

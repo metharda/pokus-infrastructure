@@ -4,7 +4,7 @@ type: explanation
 audience: [operator, developer, reader]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: What pinka uses as it is when Docker, Tailscale, LXD, Podman, Incus, an NVIDIA driver or accounts were on the machine first, what it refuses, and the trade-offs of an adopted Tailscale node.
+description: What pinka uses as it is when Docker, Tailscale, LXD, Podman, Incus, an NVIDIA driver, accounts or other access were on the machine first, what it refuses, and the trade-offs of an adopted Tailscale node.
 ---
 
 # Components that existed before pinka
@@ -100,6 +100,39 @@ serve configuration, which may hold the owner's own entries. On an adopted
 node it is therefore off unless the owner consents
 (`tailscale_serve_consent: true`, a checkbox in the installer); pinka notes
 every entry it adds, so only those are ever removed.
+
+## Access that existed before pinka
+
+A machine that already does other work is reachable in ways the lab did not
+choose: a web server on the LAN, the owner's SSH logins with their own
+policy, the SSH session the install runs in. Preflight records this access
+(BUILD_PROMPT §2.2): the listeners outside loopback that are not the lab's
+or a component pinka installed, the login accounts that are not pinka's, and
+the install's session. A host where only sshd listens (DHCP clients and
+Tailscale's port aside) and every login account is a researcher is
+*dedicated*; any other is *shared*.
+
+On a dedicated host pinka's strict policy is the right default: nothing
+else uses the machine. On a shared host it would cut off other people's
+work, so pinka keeps what was reachable reachable and closes a listener only
+with the owner's consent, one checkbox per listener. Closing never stops the
+service, and it does not touch the owner's firewall: pinka's own nftables
+table `inet pinka_access_guard` drops new connections to what was closed, the
+same way with nftables, firewalld or ufw, so removing that table (as
+uninstall does) makes everything reachable as it was. A port Docker
+publishes for a container is forwarded to the container and never reaches
+the host's input policy, so pinka cannot close it and says so. pinka's sshd
+settings apply only to the members of `pinka` on a shared host (a
+`Match Group pinka` block): the owner's accounts keep the machine's own SSH
+policy.
+
+The install's own access path needs one more safeguard, on every host: an
+installer working from the LAN must not lose the machine because the lab's
+policy came into force. The path closes only when the owner consented and a
+researcher logged in with a key over the tailnet during the same run, which
+shows that the lab can be reached the intended way; until then it stays open
+and doctor warns. The install record lists what was reachable and what was
+closed with consent.
 
 ## Related pages
 

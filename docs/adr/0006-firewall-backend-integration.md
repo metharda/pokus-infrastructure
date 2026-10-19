@@ -32,7 +32,10 @@ distribution's tooling and break whatever else the operator configured.
    the `pinka-tailnet` firewalld zone, or ufw rules commented `pinka`.
    It never flushes or rewrites tables, zones or rules owned by Docker, Incus,
    firewalld or ufw, and never edits a distribution's nftables configuration
-   file.
+   file. (Added with the pre-existing access of §7.5: what the owner
+   consents to close is dropped by one more table of pinka's own,
+   `inet pinka_access_guard`, which `pinka-nftables.service` loads on every
+   backend, so closing never changes the owner's zones or rules either.)
 3. All backends must produce the same **effective** policy, which doctor
    verifies with connection tests rather than by reading rules.
 4. Docker and Incus coexist through `pinka-docker-incus-compat.service`, which

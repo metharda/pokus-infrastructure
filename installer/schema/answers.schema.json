@@ -263,6 +263,19 @@
           },
           "uniqueItems": true,
           "description": "Network interfaces besides tailscale0 that accept SSH (not on WSL)."
+        },
+        "close_listeners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(tcp|udp)/[1-9][0-9]{0,4}$"
+          },
+          "uniqueItems": true,
+          "description": "On a shared host: the listeners preflight found (tcp/8080, udp/5353) that the firewall closes with your consent; every other one stays reachable as it was. The service keeps running, connections already open stay open, and uninstall makes them reachable again. A port Docker publishes for a container cannot be closed here. A listener that serves the install's access path closes only with that path."
+        },
+        "close_install_path": {
+          "type": "boolean",
+          "description": "Consent to close the install's access path (SSH from outside the tailnet, for example from the LAN) at the end of the run, once a researcher has logged in with a key over the tailnet in the same run. Without the consent or without that login it stays open and doctor warns."
         }
       },
       "description": "Tailscale and SSH access."

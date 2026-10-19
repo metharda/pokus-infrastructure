@@ -4,7 +4,7 @@ type: how-to
 audience: [operator]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Install the lab on a machine where Docker Engine, Tailscale, LXD or Podman already run, and resolve what preflight asks the owner to change.
+description: Install the lab on a machine where Docker Engine, Tailscale, LXD or Podman already run, resolve what preflight asks the owner to change, and decide what of the machine's existing access closes.
 ---
 
 # How to install next to existing Docker, Tailscale, LXD or Podman
@@ -136,6 +136,65 @@ pinka leaves Podman as it is. **`podman_docker`:** Docker Engine needs the
 `docker` command and socket. Remove the `podman-docker` package (or the link
 from `/var/run/docker.sock` to Podman's socket); Podman itself stays.
 
+## Access to the host {#access-to-the-host}
+
+Preflight also records how the machine was reachable before pinka: every
+listener outside loopback that is not the lab's, the login accounts that are
+not pinka's, and how you reached the machine for the install (the `Access`
+lines of the summary, `access` in the host profile). The install record
+keeps what the first install found.
+
+- **Dedicated host:** only sshd listens (besides DHCP clients and
+  Tailscale's port), and every login account is a researcher. pinka's strict
+  policy applies: SSH over the tailnet and the extra SSH interfaces only.
+- **Shared host:** anything else. Every listener stays reachable as it was,
+  and pinka's sshd settings apply only to the members of `pinka`, so your
+  own SSH logins keep the machine's policy.
+
+To close a listener on a shared host:
+
+1. Tick it under *Close with consent* on the installer's Remote access
+   screen, or name it in the machine's host_vars:
+
+    <!-- qa:skip reason="example host_vars excerpt" -->
+    ```yaml
+    firewall_close_listeners: [tcp/8080]
+    ```
+
+2. Run bootstrap. pinka's table `inet pinka_access_guard` drops new
+   connections to it from other machines, on every firewall backend; the
+   service keeps running and connections already open stay open. Clear its
+   checkbox (or remove it from the list) and run bootstrap again to make it
+   reachable again; uninstall makes every closed listener reachable again.
+
+A port Docker publishes for a container is forwarded to the container, not
+delivered to the host, so it cannot be closed here and bootstrap refuses it;
+close it in the container's own configuration.
+
+If you install over SSH from outside the tailnet (from the LAN, for
+example), that path stays open until a run closes it, on a dedicated host
+too:
+
+1. Give your consent: the *Install session* checkbox, or
+   `firewall_close_install_path: true` in the machine's host_vars.
+2. Run bootstrap and, while it runs, log in as a researcher over the tailnet
+   from another terminal:
+
+    <!-- qa:skip reason="needs the tailnet and a researcher's key" -->
+    ```bash
+    ssh researcher1@pinka-lab
+    ```
+
+    A login from before the run does not count.
+
+3. At its end the run closes the path; the session you ran it from stays
+   open until you leave it. A listener that serves the path (sshd on every
+   address, for example) closes only with it, even when ticked.
+
+Until then doctor warns (`network.install_path`), and pinka's sshd settings
+stay in their `Match Group pinka` form when the session's account is not a
+researcher, so that account is not locked out.
+
 ## Install
 
 Run the installer or bootstrap as usual
@@ -146,7 +205,8 @@ notes what was there before pinka.
 ## Verify the result
 
 1. Doctor passes, or warns only about `network.tailscale_identity` on an
-   adopted node:
+   adopted node and `network.install_path` while the install's access path
+   is open:
 
     <!-- qa:run env=E2 -->
     ```bash

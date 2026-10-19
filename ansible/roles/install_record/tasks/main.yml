@@ -10,6 +10,7 @@
     path: "{{ install_record_path }}"
     state: init
     components: "{{ host_profile.components | default({}) }}"
+    access: "{{ host_profile.access | default({}) }}"
     pkg_manager: "{{ pinka_pkg_manager }}"
     managed_files: "{{ install_record_managed_files }}"
   register: install_record_init
@@ -22,6 +23,20 @@
     pinka_preexisting: >-
       {{ {} if install_record_init.record.legacy | default(false)
          else install_record_init.record.preexisting | default({}) }}
+    # The pre-existing access already closed with the owner's consent
+    # (tcp/8080, install_path; BUILD_PROMPT §7.5).
+    pinka_closed_access: "{{ install_record_init.record.added.closed_access | default([]) }}"
+
+# Before anything changes: every listener named in firewall_close_listeners is
+# one preflight recorded and one the firewall can close (§7.5); the filter
+# names what is wrong.
+- name: Check the listeners the owner consented to close
+  ansible.builtin.assert:
+    that: >-
+      (pinka_preexisting.access | default({}))
+      | pinka_listener_rules(firewall_close_listeners, pinka_closed_access) is mapping
+    quiet: true
+  when: firewall_close_listeners | length > 0
 
 - name: Show what a real run would record (check mode)
   ansible.builtin.debug:

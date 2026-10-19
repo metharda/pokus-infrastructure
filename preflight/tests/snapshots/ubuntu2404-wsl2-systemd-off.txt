@@ -19,6 +19,8 @@ Capabilities
   MAC apparmor (enabled), firewall backend nftables, storage btrfs
 Features
   gpu_inference on, vm_targets off, btrfs_pool on, lvm_thin_pool off, dcgm_metrics off
+Access
+  dedicated host, firewall manager none, install session: the console
 Network: skipped (--offline)
 
 Action needed

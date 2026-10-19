@@ -158,6 +158,13 @@ def test_interfaces() -> None:
         assert validators.interface(bad)
 
 
+def test_listener_names() -> None:
+    for good in ("tcp/22", "udp/5353", "tcp/65535"):
+        assert validators.listener_name(good) is None, good
+    for bad in ("8080", "tcp/0", "tcp/65536", "sctp/1", "tcp/08", "TCP/22", "tcp/22 "):
+        assert validators.listener_name(bad), bad
+
+
 def test_ssh_keys_are_parsed_and_fingerprinted() -> None:
     lines = [public_key("ed25519"), public_key("ecdsa", ""), public_key("rsa3072")]
     found, errors = validators.parse_ssh_keys("# keys\n\n" + "\n".join(lines) + "\n")

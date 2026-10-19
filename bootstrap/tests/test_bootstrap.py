@@ -1518,6 +1518,38 @@ def test_bootstrap_sh_is_executable() -> None:
     assert shutil.which("bash")
 
 
+def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
+    # BUILD_PROMPT §2.2: a host is dedicated when its login accounts are all
+    # researchers; bootstrap passes their names from group_vars, or from
+    # host_vars when the machine lists its own.
+    group_vars = tmp_path / "ansible" / "group_vars" / "all"
+    host_vars = tmp_path / "ansible" / "inventory" / "host_vars"
+    group_vars.mkdir(parents=True)
+    host_vars.mkdir(parents=True)
+    (group_vars / "main.yml").write_text(
+        "other: 1\n"
+        "researchers:\n"
+        "  - {name: researcher1, admin: true, shell: /bin/bash}\n"
+        "  - {display_name: Two, name: 'researcher2'}  # a comment\n"
+        "  - name: researcher3\n"
+        "    display_name: name-not-this\n"
+        "  # - {name: commented}\n"
+        "researchers_removed: [old1]\n"
+        "after:\n"
+        "  - {name: not-a-researcher}\n"
+    )
+    script = f"INFRA_DIR={q(tmp_path)} OPT_MACHINE=lab1; lab_preflight_args"
+    res = bash(script)
+    assert (res.returncode, res.stdout) == (
+        0,
+        "--researcher=researcher1\n--researcher=researcher2\n--researcher=researcher3\n",
+    ), res.stderr
+    (host_vars / "lab1.yml").write_text('researchers:\n  - {name: "own1"}\n')
+    assert bash(script).stdout == "--researcher=own1\n"
+    (host_vars / "lab1.yml").write_text("researchers: []\n")
+    assert bash(script).stdout == ""
+
+
 def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
     # BUILD_PROMPT §2.2, §12.11: preflight checks the ports and the VM collector
     # address the machine configures, not only the defaults.

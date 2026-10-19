@@ -31,6 +31,18 @@ table inet pinka_filter {
 {% if ssh_extra_allowed_interfaces | length > 0 %}
 		iifname { {{ ssh_extra_allowed_interfaces | map('regex_replace', '^(.*)$', '"\\1"') | join(', ') }} } tcp dport 22 accept
 {% endif %}
+{% if firewall_listener_rules.kept | length > 0 %}
+		# Shared host: what was reachable before pinka stays reachable as found,
+		# unless the owner consented to close it (BUILD_PROMPT §7.5).
+{% for rule in firewall_listener_rules.kept %}
+		{{ (rule.family ~ ' daddr ' ~ rule.address ~ ' ') if rule.family else '' }}{{ rule.proto }} dport {{ rule.port }} accept
+{% endfor %}
+{% endif %}
+{% if firewall_install_path is not none and not firewall_install_path.closed %}
+		# The install's access path stays open until SSH over the tailnet was
+		# verified for a researcher in the same run and the owner consented (§7.5).
+		{{ firewall_install_path.family }} daddr {{ firewall_install_path.address }} tcp dport {{ firewall_install_path.port }} accept
+{% endif %}
 		# DHCP and DNS from Incus instances to Incus's dnsmasq on the host.
 		iifname @incus_bridges udp dport { 53, 67, 547 } accept
 		iifname @incus_bridges tcp dport 53 accept

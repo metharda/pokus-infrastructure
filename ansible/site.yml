@@ -23,6 +23,14 @@
         quiet: true
       tags: [always]
 
+    # The safeguard of BUILD_PROMPT §7.5 accepts SSH logins over the tailnet
+    # since this moment only: seconds since the epoch, for journalctl's
+    # --since=@ (a naive local time's timestamp(), right in every time zone).
+    - name: Note when the run began
+      ansible.builtin.set_fact:
+        pinka_run_started: "{{ now().timestamp() | int }}"
+      tags: [always]
+
   tasks:
     - name: Derive the platform facts
       ansible.builtin.import_role:
@@ -206,3 +214,11 @@
         tasks_from: start
       when: *pinka_runs_lab
       tags: [platform, lab_session]
+
+    # Last: the install's access path closes only when SSH over the tailnet was
+    # verified in this run and the owner consented (BUILD_PROMPT §7.5).
+    - name: Close the install's access path under the safeguard
+      ansible.builtin.import_role:
+        name: firewall
+        tasks_from: install_path
+      tags: [firewall]

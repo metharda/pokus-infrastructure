@@ -114,10 +114,36 @@ bootstrap with `--tags doctor`. Split inference adds listeners on the node's
 tailnet address (`tailscale ip`): ports 18704 and 18710 on an inference node,
 4317 on its paired lab node; anything else there is unexpected.
 
+The listeners the host had before pinka, as the install record notes them
+(same protocol and port, and the same address unless it was every address),
+are expected: the check names them with `kept` (the firewall keeps them
+reachable as found) or `closed by the firewall` (closed with the owner's
+consent); pinka never stops them. A listed listener is one that appeared
+after the install, or a recorded one that moved to another address. See
+[Access to the host](install-next-to-existing-components.md#access-to-the-host).
+
+## `network.install_path`: the install's access path is still open {#check-network-install_path}
+
+A warning. The install came over SSH from outside the tailnet (from the LAN,
+for example), and that path is still open: pinka closes it only with the
+owner's consent (`firewall_close_install_path: true`, or the checkbox on the
+installer's Remote access screen) and only after a researcher logged in with
+a key over the tailnet in the same run (the safeguard of BUILD_PROMPT §7.5).
+Give the consent if it is missing, run bootstrap again and, while it runs,
+log in as a researcher over the tailnet from another terminal
+(`ssh researcher1@<machine name>`); a login from before the run does not
+count. The run closes the path at its end; the session you started it from
+stays open until you leave it. If the path is meant to stay open, the
+warning stays.
+The check is skipped when the install ran on the console or over the
+tailnet, and where the install record is missing or legacy.
+
 ## `network.firewall`: firewall rules are missing {#check-network-firewall}
 
 The nftables table `inet pinka_filter`, the firewalld zones `pinka-tailnet`
-and `pinka-run` or ufw are missing or inactive, or the `DOCKER-USER` rules that let Incus bridges pass
+and `pinka-run` or ufw are missing or inactive, the access guard's table
+`inet pinka_access_guard` (every backend; it drops what the owner consented
+to close) is missing, or the `DOCKER-USER` rules that let Incus bridges pass
 Docker's forwarding policy are missing. Run bootstrap with `--tags firewall`
 and see [How to configure the firewall backend](firewall-and-selinux.md).
 

@@ -131,6 +131,25 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
         "  "
         + ", ".join(f"{name} {'on' if on else 'off'}" for name, on in report["features"].items())
     )
+    access = report["access"]
+    session = access["session"]
+    if session["via"] == "ssh":
+        via = f"SSH to {session['address']}:{session['port']} as {session['user'] or 'unknown'}"
+        via += " over the tailnet" if session["tailnet"] else ""
+    else:
+        via = "the console"
+    lines.append(paint("Access", "bold"))
+    lines.append(
+        f"  {access['host']} host, firewall manager {access['firewall_manager']},"
+        f" install session: {via}"
+    )
+    for item in access["listeners"]:
+        owner = item["process"] or "unknown process"
+        owner += f", {item['unit']}" if item["unit"] else ""
+        admitted = ", admitted by the strict policy" if item["admitted"] else ""
+        lines.append(
+            f"  listener {item['proto']}/{item['port']} on {item['address']} ({owner}){admitted}"
+        )
     network = report["network"]
     if network["offline"]:
         lines.append(paint("Network", "bold") + ": skipped (--offline)")

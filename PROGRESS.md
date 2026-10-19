@@ -413,7 +413,18 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   read them (their download host, `productionresultssa8.blob.core.windows.net`,
   is not in its network allowlist), the owner can. The Galaxy retry, the
   re-run rule and the action pin check (owner, with the "commit" for the
-  JUnit XML) follow; they wait for "commit".
+  JUnit XML) are `5fc33c1`. CI of `5fc33c1` (run 39260135484), all 20 jobs
+  on their first attempt, no re-run: privacy, lint, test,
+  test-random-order, test-isolated, docs, all six check-mode and all six
+  check-mode-extended lanes passed; `lock-check` is the known red (24
+  marker errors, the postgres and `ubuntu:24.04` tag warnings); `links`
+  runs weekly. release-package (run 39260135443) passed;
+  `lock-collections` (run 39260135548) ran, because the commit changed its
+  client, and passed: 11 requests to Galaxy, each "attempt 1 of 3", and
+  "the lock's 5 artifact pins match Galaxy". The pre-existing access
+  follow-up (D1 follow-up, decisions 3 and 4 after D1, with SSH1) is built
+  and waits for "commit" (`docs/IMPLEMENTATION_NOTES.md`, "Pre-existing
+  access (D1 follow-up, decisions 3 and 4 after D1)").
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -432,7 +443,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run and the JUnit XML done; the Galaxy retry built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML and the Galaxy retry done; the pre-existing access follow-up (with the SSH `Match` block) built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -863,8 +874,22 @@ its checks green and a commit proposal, and waits for the owner's
   >
   > Then the pre-existing access follow-up and D2, each waiting for my "commit".
 
-  Built in the commit after `fc7cc3b` (`docs/IMPLEMENTATION_NOTES.md`,
-  "Retries of the collection downloads (after `fc7cc3b`)").
+  Committed as `5fc33c1` (`docs/IMPLEMENTATION_NOTES.md`, "Retries of the
+  collection downloads (after `fc7cc3b`)").
+- **Pre-existing access** (D1 follow-up; decision 4 after D1 with its
+  safeguard, decision 3 as SSH1, both verbatim above): built in the commit
+  after `5fc33c1` (`docs/IMPLEMENTATION_NOTES.md`, "Pre-existing access (D1
+  follow-up, decisions 3 and 4 after D1)"). Preflight records the access
+  (listeners, login accounts, the install's session) and calls the host
+  dedicated or shared; the install record keeps it and what is closed with
+  consent; the firewall keeps what was reachable on a shared host, and
+  pinka's table `inet pinka_access_guard` drops what the owner closes, on
+  every backend; the install's access path closes at the end of a run with
+  consent and a researcher's key login over the tailnet during that run;
+  sshd's settings are a `Match Group pinka` block on a shared host; doctor
+  accepts the recorded listeners and warns while the path is open
+  (`network.install_path`); the installer's screen 8 has the checkboxes.
+  Interpretations for the owner are listed in the notes.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -1000,7 +1025,7 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
 | St12-1 | infra §11 (Ansible) | `make test-roles`: the provider-agnostic roles in a throwaway Incus system container or VM, only when invoked | `make check-mode` (the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` in check mode in a disposable Docker systemd container per family, also CI's required job, I2) and `make test-distros` (the full bootstrap in disposable Incus VMs, §19.9) replace it; there is no `test-roles` target and no alias. Raised by the 3e self-test; approved by the owner after 3e ("record it as an approved deviation (make check-mode and make test-distros replace it). No alias."); built in step 12 |
-| SSH1 | infra §7.3 | the drop-in sets `AllowGroups pinka`, `PasswordAuthentication no` and the other settings for the whole host | pinka's sshd settings apply in a `Match Group pinka` block, so accounts outside `pinka` keep the host's own policy (owner, decision 3 after D1, approving option (b) of the open question raised with the 3f-1 spec edit); built with the D1 follow-up |
+| SSH1 | infra §7.3 | the drop-in sets `AllowGroups pinka`, `PasswordAuthentication no` and the other settings for the whole host | pinka's sshd settings apply in a `Match Group pinka` block, so accounts outside `pinka` keep the host's own policy (owner, decision 3 after D1, approving option (b) of the open question raised with the 3f-1 spec edit); on a shared host, and on a dedicated host while the install's access path is open for an account that is not a researcher; built with the D1 follow-up |
 
 ## Platform spec changes pending
 
@@ -1146,6 +1171,26 @@ Raised by D1 of 3f-1, for the owner (decided after D1: the GPU guard in its own 
   only `tailscale0`. Interpretation built: (a) DHCP and DNS only; the
   alternative (b) accepts all traffic from LXD's bridges and extends the
   split guard to every interface. Recommendation: (a).
+
+Raised by the pre-existing access follow-up, for the owner:
+
+- **Doctor's listener check on a shared host.** §7.5's doctor bullet fails
+  on anything listening on `0.0.0.0` or `::` other than sshd, which every
+  shared host does by definition, and which pinka may not stop.
+  Interpretation built: `network.listeners` accepts a listener the install
+  record notes as the host's before pinka (same protocol and port, and the
+  same address unless it was every address), names it `kept` or `closed by
+  the firewall`, and still fails on any other. Recommendation: record it as
+  an approved deviation.
+- **Closing with a table of pinka's own on every backend.** §7.5 leaves the
+  owner's firewalld zones and ufw rules as they are; what the owner
+  consents to close is dropped by `inet pinka_access_guard`, loaded by
+  `pinka-nftables.service` on every backend (the unit then also exists on
+  firewalld and ufw hosts), instead of ufw deny or firewalld reject rules,
+  which would have blocked SSH over the tailnet for `tcp/22` on ufw, could
+  not reopen, and would have changed the owner's rule lists. A new unit
+  name was avoided: it would change `contract/reserved-names.yml`, which
+  needs a contract version bump. Recommendation: keep it.
 
 ## Owner deliverables pending
 
@@ -1435,11 +1480,11 @@ edit after D1 (`0378425`), the installer fix of the written files
 (`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
 green but the known red. Then (owner, after `37c062e`): the CI skip list
 with the nft checks and the root test in CI (`006c40d`) and the per-file
-process run (`2f27132`) and JUnit XML of every test job (`fc7cc3b`), all
-green but the known red; then, each waiting for "commit", the Galaxy retry
-with the re-run rule and the action pin check (owner, with the "commit" for
-the JUnit XML), the pre-existing access with the SSH `Match` block as a D1
-follow-up, then D2, A, B, C, E, F and G. Then
+process run (`2f27132`), JUnit XML of every test job (`fc7cc3b`) and the
+Galaxy retry with the re-run rule and the action pin check (`5fc33c1`), all
+green but the known red; then, each waiting for "commit", the pre-existing
+access with the SSH `Match` block as a D1 follow-up (built), then D2, A, B,
+C, E, F and G. Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

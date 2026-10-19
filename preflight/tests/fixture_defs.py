@@ -33,6 +33,7 @@ FIXTURES_DIR = os.path.join(HERE, "fixtures")
 GIB_KB = 1024 * 1024
 GIB = 1024**3
 NOW = "2026-10-05T09:12:44Z"
+ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
 EFI_SB = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
 
 Content = Union[str, bytes]
@@ -502,6 +503,101 @@ def port_in_use(port: int, pid: str = "4242", comm: str = "example-server") -> L
     return apply
 
 
+def sockets(*entries: tuple[str, str, int, str]) -> Layer:
+    """Sockets of ``/proc/net``: ``(table, hex address, port, inode)``.
+
+    TCP tables (``tcp``, ``tcp6``) hold listening sockets, UDP tables
+    (``udp``, ``udp6``) unconnected ones. Replaces every table it names.
+    """
+
+    def apply(f: Fixture) -> None:
+        for table in ("tcp", "tcp6", "udp", "udp6"):
+            rows = [e for e in entries if e[0] == table]
+            if not rows:
+                continue
+            state = "0A" if table.startswith("tcp") else "07"
+            f.files[f"/proc/net/{table}"] = TCP_HEADER + "".join(
+                f"   {n}: {address}:{port:04X} {'0' * len(address)}:0000 {state}"
+                f" 00000000:00000000 00:00000000 00000000     0        0 {inode} 1"
+                " 0000000000000000 100 0 0 10 0\n"
+                for n, (_, address, port, inode) in enumerate(rows)
+            )
+
+    return apply
+
+
+def process(
+    pid: str,
+    comm: str,
+    unit: str,
+    inodes: tuple[str, ...] = (),
+    *,
+    uid: str = "0",
+    ppid: str = "1",
+    environ: bytes = b"",
+) -> Layer:
+    """A process with its unit, parent, owner, environment and sockets."""
+
+    def apply(f: Fixture) -> None:
+        f.files[f"/proc/{pid}/comm"] = comm + "\n"
+        f.files[f"/proc/{pid}/cgroup"] = f"0::/system.slice/{unit}\n"
+        f.files[f"/proc/{pid}/status"] = (
+            f"Name:\t{comm}\nPPid:\t{ppid}\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n"
+        )
+        f.files[f"/proc/{pid}/environ"] = environ or b"PATH=/usr/bin\0"
+        f.dirs.append(f"/proc/{pid}/fd")
+        for n, inode in enumerate(inodes, 3):
+            f.meta["symlinks"][f"/proc/{pid}/fd/{n}"] = f"socket:[{inode}]"
+
+    return apply
+
+
+def systemd_sockets(*inodes: str, units: str) -> Layer:
+    """Sockets systemd (PID 1) holds for socket activation, and ``list-sockets``."""
+
+    def apply(f: Fixture) -> None:
+        f.dirs.append("/proc/1/fd")
+        for n, inode in enumerate(inodes, 3):
+            f.meta["symlinks"][f"/proc/1/fd/{n}"] = f"socket:[{inode}]"
+        f.cmd("systemctl list-sockets --all --no-legend --full", units)
+
+    return apply
+
+
+def passwd(*accounts: tuple[str, int, str]) -> Layer:
+    """``/etc/passwd`` with root, daemon and nobody, plus ``(name, uid, shell)``."""
+
+    def apply(f: Fixture) -> None:
+        lines = ["root:x:0:0:root:/root:/bin/bash", "daemon:x:1:1::/usr/sbin:/usr/sbin/nologin"]
+        lines += [f"{name}:x:{uid}:{uid}::/home/{name}:{shell}" for name, uid, shell in accounts]
+        lines.append("nobody:x:65534:65534::/nonexistent:/usr/sbin/nologin")
+        f.files["/etc/passwd"] = "\n".join(lines) + "\n"
+
+    return apply
+
+
+def ssh_session(client: str, server: str, port: int, uid: str) -> Layer:
+    """Preflight under sudo, started from an SSH login of ``uid`` (§2.2)."""
+    connection = f"SSH_CONNECTION={client} 51234 {server} {port}".encode()
+    return chain(
+        process("self", "pinka-preflight", "session-3.scope", ppid="3100"),
+        process("3100", "sudo", "session-3.scope", ppid="3000"),
+        process(
+            "3000", "bash", "session-3.scope", uid=uid, ppid="2990", environ=connection + b"\0"
+        ),
+    )
+
+
+def chain(*layers: Layer) -> Layer:
+    """Several layers as one."""
+
+    def apply(f: Fixture) -> None:
+        for layer in layers:
+            layer(f)
+
+    return apply
+
+
 def routed(network: str, dev: str = "eth0") -> Layer:
     """``ip -j addr`` and ``ip -j route`` with a route to ``network``."""
 
@@ -648,6 +744,20 @@ FULL_FEATURES = {
     "dcgm_metrics": True,
     "btrfs_pool": True,
 }
+
+
+def listener(
+    proto: str, address: str, port: int, process: str, unit: str, *, admitted: bool = False
+) -> dict[str, Any]:
+    """One expected listener of the host profile's ``access``."""
+    return {
+        "proto": proto,
+        "address": address,
+        "port": port,
+        "process": process,
+        "unit": unit,
+        "admitted": admitted,
+    }
 
 
 def build(*layers: Layer, expected: dict[str, Any], args: list[str] | None = None) -> Fixture:
@@ -1280,6 +1390,95 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "needs_action": [],
             "components": {"tailscale": "pre-existing"},
             "notes_contain": ["pinka uses the node as it is"],
+        },
+    )
+    # BUILD_PROMPT §2.2 "Pre-existing access", §7.5, §11: what was reachable
+    # before the install, the access path of the session, dedicated or shared.
+    lan_sshd = [
+        sockets(("tcp", "00000000", 22, "50001"), ("tcp6", "0" * 32, 22, "50002")),
+        systemd_sockets(
+            "50001",
+            "50002",
+            units="0.0.0.0:22 ssh.socket ssh.service\n[::]:22 ssh.socket ssh.service\n",
+        ),
+    ]
+    fx["ubuntu2404-access-dedicated"] = build(
+        *host,
+        sockets(
+            ("tcp", "00000000", 22, "50001"),
+            ("tcp6", "0" * 32, 22, "50002"),
+            ("udp", "00000000", 68, "50003"),
+        ),
+        lan_sshd[1],
+        process("610", "dhcpcd", "dhcpcd.service", ("50003",)),
+        passwd(("researcher1", 1000, "/bin/bash")),
+        ssh_session("192.0.2.50", "192.0.2.10", 22, uid="1000"),
+        args=["--researcher", "researcher1"],
+        expected={
+            "outcome": "supported",
+            "access": {
+                "host": "dedicated",
+                "session": {
+                    "via": "ssh",
+                    "address": "192.0.2.10",
+                    "port": 22,
+                    "user": "researcher1",
+                    "tailnet": False,
+                },
+                "listeners": [
+                    listener("tcp", ANY_V4, 22, "sshd", "ssh.socket"),
+                    listener("tcp", "::", 22, "sshd", "ssh.socket"),
+                    listener("udp", ANY_V4, 68, "dhcpcd", "dhcpcd.service", admitted=True),
+                ],
+                "accounts": ["researcher1"],
+                "reasons": [],
+            },
+        },
+    )
+    fx["ubuntu2404-access-shared"] = build(
+        *host,
+        sockets(("tcp", "00000000", 22, "51001"), ("tcp", "00000000", 8080, "51002")),
+        process("700", "sshd", "ssh.service", ("51001",)),
+        process("710", "example-web", "example-web.service", ("51002",)),
+        passwd(("researcher1", 1000, "/bin/bash"), ("owner1", 1001, "/bin/bash")),
+        ssh_session("192.0.2.50", "192.0.2.10", 22, uid="1001"),
+        args=["--researcher", "researcher1"],
+        expected={
+            "outcome": "supported",
+            "access": {
+                "host": "shared",
+                "session": {
+                    "via": "ssh",
+                    "address": "192.0.2.10",
+                    "port": 22,
+                    "user": "owner1",
+                    "tailnet": False,
+                },
+                "listeners": [
+                    listener("tcp", ANY_V4, 22, "sshd", "ssh.service"),
+                    listener("tcp", ANY_V4, 8080, "example-web", "example-web.service"),
+                ],
+                "accounts": ["owner1", "researcher1"],
+                "reasons": [
+                    "tcp/8080 on 0.0.0.0 (example-web)",
+                    "login account owner1 is not a researcher",
+                ],
+            },
+            "notes_contain": ["shared host (tcp/8080 on 0.0.0.0 (example-web);"],
+        },
+    )
+    fx["ubuntu2404-access-console"] = build(
+        *host,
+        *lan_sshd,
+        passwd(("researcher1", 1000, "/bin/bash")),
+        args=["--researcher", "researcher1"],
+        expected={
+            "outcome": "supported",
+            "access": {
+                "host": "dedicated",
+                "session": {"via": "console"},
+                "accounts": ["researcher1"],
+            },
         },
     )
     fx["ubuntu2404-baremetal-tailscale-funnel"] = build(

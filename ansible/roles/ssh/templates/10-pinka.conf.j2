@@ -1,5 +1,19 @@
 # Managed by pinka (ansible/roles/ssh/templates/10-pinka.conf.j2). Local changes will be overwritten.
 #
+{% if ssh_policy_scope == 'group' %}
+# Key-only login for researchers (group {{ ssh_allow_groups | join(', ') }}); every other account keeps
+# the host's own policy (BUILD_PROMPT §7.3, approved deviation SSH1). The block
+# ends with this file: sshd restores the including file's Match state.
+Match Group {{ ssh_allow_groups | join(',') }}
+	PasswordAuthentication no
+	KbdInteractiveAuthentication no
+	PermitRootLogin no
+	PubkeyAuthentication yes
+	X11Forwarding no
+	# Researchers need local forwards (Grafana, the LLM gateway's ad-hoc endpoint).
+	AllowTcpForwarding local
+	ClientAliveInterval {{ ssh_client_alive_interval }}
+{% else %}
 # Key-only login for researchers (group {{ ssh_allow_groups | join(', ') }}); no root login.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -10,3 +24,4 @@ X11Forwarding no
 # Researchers need local forwards (Grafana, the LLM gateway's ad-hoc endpoint).
 AllowTcpForwarding local
 ClientAliveInterval {{ ssh_client_alive_interval }}
+{% endif %}

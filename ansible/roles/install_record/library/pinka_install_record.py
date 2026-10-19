@@ -9,7 +9,8 @@ component and uninstall removes only pinka's part (§5.4).
   ``preexisting`` part (the components preflight found, the full package list
   with versions, the enabled and the masked units, the accounts and the groups
   with their members, and the content of each file pinka manages that already
-  existed) and an empty ``added`` part. On a host that pinka provisioned
+  existed, and the access to the host that existed: preflight's
+  ``access``, BUILD_PROMPT §2.2, §7.5) and an empty ``added`` part. On a host that pinka provisioned
   before the record existed (``/etc/pinka/bootstrap-state.json`` is present)
   the record is marked ``legacy``: its ``preexisting`` part then includes
   pinka's own items, so it decides nothing and uninstall removes by pinka's
@@ -17,8 +18,14 @@ component and uninstall removes only pinka's part (§5.4).
 * ``state: add`` merges items into ``added``: components pinka installs or
   joins (recorded before it acts), packages (only those absent at the first
   install), holds, accounts, groups, memberships and keys added to
-  pre-existing accounts, and ``tailscale serve`` entries. It writes only when
-  something is new, so a second run reports no change.
+  pre-existing accounts, ``tailscale serve`` entries, and the pre-existing
+  access closed with the owner's consent (``closed_access``: ``tcp/8080``,
+  ``install_path``; §7.5). It writes only when something is new, so a second
+  run reports no change.
+* ``state: remove`` takes listeners out of ``closed_access`` that are
+  reachable again because the owner no longer consents to close them; it
+  removes nothing else (what pinka added stays recorded until uninstall),
+  and never ``install_path``.
 * ``state: read`` returns the record without changing anything.
 
 Check mode writes nothing and returns the record a real run would write.
@@ -48,12 +55,16 @@ options:
     type: path
     default: /var/lib/pinka/install-record.json
   state:
-    description: init writes the record once; add merges items into added; read returns it.
+    description: init writes the record once; add merges items into added; remove takes listeners reachable again out of closed_access; read returns it.
     type: str
-    choices: [init, add, read]
+    choices: [init, add, remove, read]
     default: read
   components:
     description: init only; the components section of the host profile.
+    type: dict
+    default: {}
+  access:
+    description: init only; the access section of the host profile (listeners, firewall manager, session).
     type: dict
     default: {}
   pkg_manager:
@@ -72,14 +83,15 @@ options:
   added:
     description: >-
       add only; the items to merge: components (name to true), packages, holds, accounts,
-      groups, tailscale_serve (lists of names), memberships ({user, group}) and keys ({user, key}).
+      groups, tailscale_serve, closed_access (lists of names), memberships ({user, group})
+      and keys ({user, key}). remove only; closed_access, the listeners reachable again.
     type: dict
     default: {}
 author: pinka
 """
 
 SCHEMA_VERSION = 1
-LIST_KEYS = ("packages", "holds", "accounts", "groups", "tailscale_serve")
+LIST_KEYS = ("packages", "holds", "accounts", "groups", "tailscale_serve", "closed_access")
 PAIR_KEYS = {"memberships": ("user", "group"), "keys": ("user", "key")}
 PACKAGE_LIST = {
     "apt": ["dpkg-query", "-W", "-f", "${Package}\t${Version}\n"],
@@ -88,6 +100,9 @@ PACKAGE_LIST = {
     "pacman": ["pacman", "-Q"],
 }
 UNITS = ["systemctl", "list-unit-files", "--no-legend", "--plain", "--state"]
+# The only items state=remove takes out: listeners reachable again (§7.5).
+REMOVABLE = "closed_access"
+ONE_WAY = "install_path"
 MAX_FILE_BYTES = 65536
 
 RunCommand = Callable[[Sequence[str]], tuple[int, str, str]]
@@ -181,12 +196,18 @@ def gather(run: RunCommand, pkg_manager: str, managed_files: Sequence[str]) -> d
 
 
 def build_record(
-    *, components: Mapping[str, Any], found: Mapping[str, Any], legacy: bool, created_at: str
+    *,
+    components: Mapping[str, Any],
+    found: Mapping[str, Any],
+    legacy: bool,
+    created_at: str,
+    access: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble a new record.
 
     Args:
         components: The host profile's ``components``.
+        access: The host profile's ``access``.
         found: What :func:`gather` read.
         legacy: Pinka provisioned the host before the record existed.
         created_at: UTC time.
@@ -200,6 +221,7 @@ def build_record(
         "legacy": legacy,
         "preexisting": {
             "components": dict(components),
+            "access": dict(access or {}),
             "packages": dict(sorted(found["packages"].items())),
             "units_enabled": sorted(found["units_enabled"]),
             "units_masked": sorted(found["units_masked"]),
@@ -259,6 +281,35 @@ def merge(record: dict[str, Any], items: Mapping[str, Any]) -> bool:
     return changed
 
 
+def unmerge(record: dict[str, Any], items: Mapping[str, Any]) -> bool:
+    """Take listeners that are reachable again out of ``record['added']['closed_access']``.
+
+    Args:
+        record: The record, changed in place.
+        items: ``{"closed_access": [names]}``.
+
+    Returns:
+        Whether anything was removed.
+
+    Raises:
+        ValueError: For any other kind of item, or for ``install_path``, which
+            once closed stays closed.
+    """
+    for key in items:
+        if key != REMOVABLE:
+            raise ValueError(f"state=remove takes only {REMOVABLE}, not {key}")
+    names = record.setdefault("added", empty_added()).setdefault(REMOVABLE, [])
+    changed = False
+    for item in items.get(REMOVABLE) or []:
+        text = str(item)
+        if text == ONE_WAY:
+            raise ValueError(f"{ONE_WAY} stays closed once closed")
+        if text in names:
+            names.remove(text)
+            changed = True
+    return changed
+
+
 def read_record(path: str) -> dict[str, Any] | None:
     """Read the record, or None when there is none.
 
@@ -303,8 +354,8 @@ def run_module(params: Mapping[str, Any], *, check_mode: bool, run: RunCommand) 
         The result: ``changed``, ``record`` and ``exists``.
 
     Raises:
-        ValueError: If the record is unreadable, missing for ``add``, or an
-            item is malformed.
+        ValueError: If the record is unreadable, missing for ``add`` or
+            ``remove``, or an item is malformed.
         RuntimeError: If the host's state cannot be read.
     """
     path, state = str(params["path"]), str(params["state"])
@@ -322,6 +373,7 @@ def run_module(params: Mapping[str, Any], *, check_mode: bool, run: RunCommand) 
             found=found,
             legacy=Path(str(params["bootstrap_state"])).exists(),
             created_at=utc_now(),
+            access=params.get("access") or {},
         )
         if not check_mode:
             write_record(path, record)
@@ -330,7 +382,8 @@ def run_module(params: Mapping[str, Any], *, check_mode: bool, run: RunCommand) 
         if check_mode:
             return {"changed": False, "record": {}, "exists": False}
         raise ValueError(f"{path} does not exist; the install_record role writes it first")
-    changed = merge(record, params.get("added") or {})
+    items = params.get("added") or {}
+    changed = unmerge(record, items) if state == "remove" else merge(record, items)
     if changed and not check_mode:
         write_record(path, record)
     return {"changed": changed, "record": record, "exists": True}
@@ -343,8 +396,13 @@ def main() -> None:  # pragma: no cover - exercised on hosts
     module = AnsibleModule(
         argument_spec={
             "path": {"type": "path", "default": "/var/lib/pinka/install-record.json"},
-            "state": {"type": "str", "choices": ["init", "add", "read"], "default": "read"},
+            "state": {
+                "type": "str",
+                "choices": ["init", "add", "remove", "read"],
+                "default": "read",
+            },
             "components": {"type": "dict", "default": {}},
+            "access": {"type": "dict", "default": {}},
             "pkg_manager": {"type": "str", "choices": sorted(PACKAGE_LIST)},
             "managed_files": {"type": "list", "elements": "path", "default": []},
             "bootstrap_state": {"type": "path", "default": "/etc/pinka/bootstrap-state.json"},

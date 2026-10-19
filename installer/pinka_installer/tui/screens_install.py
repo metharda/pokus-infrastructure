@@ -268,7 +268,17 @@ def summary(
             "Remote access",
             f"{a.tailscale_tag} · login {a.remote_access.tailscale_login} · Grafana serve "
             f"{'on' if a.remote_access.grafana_tailscale_serve else 'off'}"
-            + (" · serve consent given" if a.remote_access.tailscale_serve_consent else ""),
+            + (" · serve consent given" if a.remote_access.tailscale_serve_consent else "")
+            + (
+                f"\ncloses {', '.join(a.remote_access.close_listeners)}"
+                if a.remote_access.close_listeners
+                else ""
+            )
+            + (
+                "\ninstall session closes after a researcher's tailnet login"
+                if a.remote_access.close_install_path
+                else ""
+            ),
         ),
         (
             "gpu",
