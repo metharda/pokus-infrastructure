@@ -27,6 +27,7 @@ tarballs are never committed to git.
 
 from __future__ import annotations
 
+import functools
 import gzip
 import hashlib
 import io
@@ -43,7 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pinka_lockcheck import artifact, checks, net
+from pinka_lockcheck import artifact, checks, net, retry
 
 RELEASE_DIR = "release"
 COLLECTIONS_DIR = f"{RELEASE_DIR}/collections"
@@ -294,12 +295,19 @@ def pinned(doc: Mapping[str, Any]) -> list[tuple[str, str, str, str, int]]:
     return found
 
 
-def collect(doc: Mapping[str, Any], fetch: Fetch = net.download) -> list[Bundled]:
+def collect(
+    doc: Mapping[str, Any], fetch: Fetch = net.download, policy: retry.Policy = retry.DEFAULT
+) -> list[Bundled]:
     """Download every pinned artifact and keep it only if it matches its pin.
+
+    A download is tried again after a transport error
+    (:mod:`pinka_lockcheck.retry`); an artifact that differs from its pin is
+    not.
 
     Args:
         doc: Lock document.
         fetch: ``url -> content``.
+        policy: How often to try a download.
 
     Returns:
         The artifacts, in the lock's order.
@@ -311,7 +319,7 @@ def collect(doc: Mapping[str, Any], fetch: Fetch = net.download) -> list[Bundled
     bundled = []
     for name, version, url, sha256, size in pinned(doc):
         try:
-            data = fetch(url)
+            data = policy.run(functools.partial(fetch, url), f"download {url}")
         except net.FetchError as exc:
             raise PackageError(f"{name} {version}: download failed: {exc}") from exc
         bundled.append(verify(name, version, url, sha256, size, data))
@@ -515,6 +523,7 @@ def build(
     tag: str | None = None,
     ref: str = "HEAD",
     fetch: Fetch = net.download,
+    policy: retry.Policy = retry.DEFAULT,
 ) -> Path:
     """Build the release package of a tag (or of a commit, for tests).
 
@@ -529,6 +538,7 @@ def build(
         tag: The release tag, or None.
         ref: The commit when no tag is given.
         fetch: ``url -> content`` (Galaxy).
+        policy: How often to try a download (:func:`collect`).
 
     Returns:
         The package.
@@ -540,7 +550,7 @@ def build(
     root_dir = _repo_root(infra)
     archive = _git(["archive", "--format=tar", src.tree_ish], cwd=root_dir)
     doc = checks.load_text(_git(["show", src.path("versions.lock.yml")], cwd=root_dir).decode())
-    bundled = collect(doc, fetch)
+    bundled = collect(doc, fetch, policy)
     notice_text = notice(bundled)
     record = release_json(src, bundled, notice_text)
     prefix = f"{PACKAGE_NAME}-{src.version}"

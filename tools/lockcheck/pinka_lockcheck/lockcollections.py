@@ -39,7 +39,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from pinka_lockcheck import artifact, checks, net
+from pinka_lockcheck import artifact, checks, net, retry
 
 GALAXY = "https://galaxy.ansible.com"
 NAME_RE = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
@@ -51,6 +51,10 @@ Fetch = Callable[[str], bytes]
 
 class PinError(RuntimeError):
     """A collection cannot be pinned; the message says why."""
+
+
+class GalaxyAnswerError(PinError, retry.MalformedAnswerError):
+    """Galaxy's answer is not what its API promises (tried again)."""
 
 
 @dataclass
@@ -124,51 +128,95 @@ def _json(fetch: Fetch, url: str) -> dict[str, Any]:
     try:
         value = json.loads(fetch(url))
     except ValueError as exc:
-        raise PinError(f"{url}: not JSON") from exc
+        raise GalaxyAnswerError(f"{url}: not JSON") from exc
     if not isinstance(value, dict):
-        raise PinError(f"{url}: not a JSON object")
+        raise GalaxyAnswerError(f"{url}: not a JSON object")
     return value
 
 
-def v3_root(fetch: Fetch, server: str) -> str:
+def v3_root(fetch: Fetch, server: str, policy: retry.Policy = retry.DEFAULT) -> str:
     """The v3 API of a Galaxy server, as ``ansible-galaxy`` finds it.
+
+    Args:
+        fetch: Downloads a URL.
+        server: The Galaxy server.
+        policy: Tries again after a transport error or a malformed answer.
 
     Raises:
         PinError: If the server names no v3 API.
     """
     api = server.rstrip("/") + "/api/"
-    versions = _json(fetch, api).get("available_versions") or {}
-    if "v3" not in versions:
-        raise PinError(f"{api}: available_versions names no v3 API")
-    return urllib.parse.urljoin(api, str(versions["v3"]))
+
+    def ask() -> str:
+        versions = _json(fetch, api).get("available_versions") or {}
+        if "v3" not in versions:
+            raise GalaxyAnswerError(f"{api}: available_versions names no v3 API")
+        return urllib.parse.urljoin(api, str(versions["v3"]))
+
+    return policy.run(ask, f"Galaxy: GET {api}")
 
 
 def _field(data: Mapping[str, Any], path: str, url: str) -> Any:  # noqa: ANN401 - JSON value
     value: Any = data
     for key in path.split("."):
         if not isinstance(value, Mapping) or key not in value:
-            raise PinError(f"{url}: the answer has no {path}")
+            raise GalaxyAnswerError(f"{url}: the answer has no {path}")
         value = value[key]
     return value
 
 
-def pin(fetch: Fetch, v3: str, name: str, version: str) -> Pin:
-    """Pin one collection version from Galaxy.
+def galaxy_artifact(
+    fetch: Fetch, v3: str, name: str, version: str, policy: retry.Policy = retry.DEFAULT
+) -> tuple[str, bytes]:
+    """One collection version's artifact from Galaxy, with Galaxy's sha256.
+
+    Galaxy's answer and the download are each tried again after a transport
+    error or a malformed answer; a sha256 that differs from Galaxy's is not.
+
+    Args:
+        fetch: Downloads a URL.
+        v3: Galaxy's v3 API (:func:`v3_root`).
+        name: ``namespace.name``.
+        version: Its version.
+        policy: Tries again after a transport error or a malformed answer.
+
+    Returns:
+        Galaxy's download URL and the artifact.
 
     Raises:
-        PinError: If Galaxy's answer or the artifact does not check out.
+        PinError: If Galaxy's answer stays malformed or the artifact's sha256
+            differs from Galaxy's (with the expected and the actual value).
     """
     if not NAME_RE.match(name):
         raise PinError(f"{name!r} is not namespace.name")
     namespace, collection = name.split(".")
     url = urllib.parse.urljoin(v3, f"collections/{namespace}/{collection}/versions/{version}/")
-    answer = _json(fetch, url)
-    download = urllib.parse.urljoin(url, str(_field(answer, "download_url", url)))
-    expected = str(_field(answer, "artifact.sha256", url))
-    data = fetch(download)
-    digest = hashlib.sha256(data).hexdigest()
-    if digest != expected:
-        raise PinError(f"{name} {version}: {download} has sha256 {digest}, Galaxy says {expected}")
+
+    def ask() -> tuple[str, str]:
+        answer = _json(fetch, url)
+        download = urllib.parse.urljoin(url, str(_field(answer, "download_url", url)))
+        return download, str(_field(answer, "artifact.sha256", url))
+
+    download, expected = policy.run(ask, f"Galaxy: GET {url}")
+    data = policy.run(lambda: fetch(download), f"Galaxy: download {download}")
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected:
+        raise PinError(
+            f"{name} {version}: {download} does not match Galaxy's sha256 (not retried):"
+            f" expected {expected}, actual {actual}"
+        )
+    return download, data
+
+
+def pin(
+    fetch: Fetch, v3: str, name: str, version: str, policy: retry.Policy = retry.DEFAULT
+) -> Pin:
+    """Pin one collection version from Galaxy.
+
+    Raises:
+        PinError: If Galaxy's answer or the artifact does not check out.
+    """
+    download, data = galaxy_artifact(fetch, v3, name, version, policy)
     try:
         info = artifact.check(name, version, data)
     except artifact.ArtifactError as exc:
@@ -177,7 +225,7 @@ def pin(fetch: Fetch, v3: str, name: str, version: str) -> Pin:
         name=name,
         version=version,
         url=download,
-        sha256=digest,
+        sha256=hashlib.sha256(data).hexdigest(),
         size=len(data),
         licenses=[str(x) for x in info.get("license") or []],
         license_files=list(info["license_files"]),
@@ -264,6 +312,7 @@ def pin_all(
     *,
     server: str = GALAXY,
     fetch: Fetch | None = None,
+    policy: retry.Policy = retry.DEFAULT,
 ) -> list[Pin]:
     """Pin every locked collection and every extra one.
 
@@ -272,6 +321,8 @@ def pin_all(
         extra: ``{name: version}`` from ``--with``.
         server: The Galaxy server.
         fetch: Downloads a URL (default: :func:`net.download`; tests replace it).
+        policy: Tries each request again after a transport error or a
+            malformed answer (:mod:`pinka_lockcheck.retry`).
 
     Returns:
         The pins, sorted by name.
@@ -285,8 +336,8 @@ def pin_all(
         if name in wanted:
             raise PinError(f"{name} is locked already; change its version in the lock")
         wanted[name] = version
-    v3 = v3_root(get, server)
-    pins = [pin(get, v3, name, version) for name, version in sorted(wanted.items())]
+    v3 = v3_root(get, server, policy)
+    pins = [pin(get, v3, name, version, policy) for name, version in sorted(wanted.items())]
     problems = dependency_problems(pins)
     if problems:
         raise PinError("; ".join(problems))
@@ -300,9 +351,11 @@ def run(
     server: str = GALAXY,
     fetch: Fetch | None = None,
     now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.UTC),
+    policy: retry.Policy = retry.DEFAULT,
 ) -> str:
     """The output for the lock: :func:`pin_all`, rendered (``now`` is the clock)."""
-    return render(pin_all(lock, extra, server=server, fetch=fetch), server, now())
+    pins = pin_all(lock, extra, server=server, fetch=fetch, policy=policy)
+    return render(pins, server, now())
 
 
 def _extra(values: Sequence[str]) -> dict[str, str]:

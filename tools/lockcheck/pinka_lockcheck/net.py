@@ -12,6 +12,7 @@ import hashlib
 import http.client
 import json
 import re
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -36,12 +37,41 @@ DOCKER_HUB_API = "registry-1.docker.io"
 HTTP_UNAUTHORIZED = 401
 HTTP_NOT_FOUND = 404
 HTTP_TOO_MANY_REQUESTS = 429
+HTTP_SERVER_ERROR = 500
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_MAX_WAIT = 60
 
 
+HTTP_REQUEST_TIMEOUT = 408
+TRANSIENT_STATUSES = (HTTP_REQUEST_TIMEOUT, HTTP_TOO_MANY_REQUESTS)
+
+
 class FetchError(RuntimeError):
-    """A download or registry request failed."""
+    """A download or registry request failed.
+
+    Attributes:
+        transient: Whether it is a transport error that another attempt may
+            not meet (no connection, a timeout, a connection that broke off,
+            HTTP 408, 429 or 5xx; :mod:`pinka_lockcheck.retry`). A refused
+            certificate, another HTTP status or a refused URL is not.
+    """
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        """A failed request; ``transient`` as described above."""
+        super().__init__(message)
+        self.transient = transient
+
+
+def transient_status(code: int) -> bool:
+    """Whether an HTTP status is worth another attempt (408, 429 or 5xx)."""
+    return code in TRANSIENT_STATUSES or code >= HTTP_SERVER_ERROR
+
+
+def _transport_error(url: str, exc: BaseException) -> FetchError:
+    """A connection error, transient unless the server's certificate was refused."""
+    reason = getattr(exc, "reason", exc)
+    refused = isinstance(reason, ssl.SSLCertVerificationError)
+    return FetchError(f"{url}: {exc}", transient=not refused)
 
 
 def _open(request: urllib.request.Request) -> http.client.HTTPResponse:
@@ -56,7 +86,7 @@ def _open(request: urllib.request.Request) -> http.client.HTTPResponse:
     except urllib.error.HTTPError:
         raise
     except (urllib.error.URLError, OSError) as exc:
-        raise FetchError(f"{request.full_url}: {exc}") from exc
+        raise _transport_error(request.full_url, exc) from exc
 
 
 def download(url: str) -> bytes:
@@ -76,7 +106,9 @@ def download(url: str) -> bytes:
             data: bytes = response.read()
             return data
     except urllib.error.HTTPError as exc:
-        raise FetchError(f"{url}: HTTP {exc.code}") from exc
+        raise FetchError(f"{url}: HTTP {exc.code}", transient=transient_status(exc.code)) from exc
+    except (OSError, http.client.HTTPException) as exc:  # broke off while reading
+        raise _transport_error(url, exc) from exc
 
 
 def sha256_of_url(url: str, out: BinaryIO | None = None) -> str:
@@ -95,16 +127,21 @@ def sha256_of_url(url: str, out: BinaryIO | None = None) -> str:
     digest = hashlib.sha256()
     try:
         with _open(urllib.request.Request(url)) as response:  # noqa: S310 - https only
-            while chunk := response.read(CHUNK):
+            while chunk := _read(url, response):
                 digest.update(chunk)
                 if out is not None:
                     out.write(chunk)
     except urllib.error.HTTPError as exc:
-        raise FetchError(f"{url}: HTTP {exc.code}") from exc
+        raise FetchError(f"{url}: HTTP {exc.code}", transient=transient_status(exc.code)) from exc
     return digest.hexdigest()
 
 
-HTTP_SERVER_ERROR = 500
+def _read(url: str, response: http.client.HTTPResponse) -> bytes:
+    """The next chunk; a connection that breaks off is a transport error."""
+    try:
+        return response.read(CHUNK)
+    except (OSError, http.client.HTTPException) as exc:
+        raise _transport_error(url, exc) from exc
 
 
 def reachable(url: str, timeout: float = 15.0) -> bool:

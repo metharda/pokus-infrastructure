@@ -1006,6 +1006,139 @@ def test_an_unverified_artifact_installs_nothing(tmp_path: Path, pin: str, messa
     assert not any(" install " in f" {line} " for line in calls.read_text().splitlines())
 
 
+DOWNLOAD_URL = "https://galaxy.example.com/download/ansible-posix-2.2.2.tar.gz"
+
+
+def download_stubs(tmp_path: Path, tool: str, plan: Sequence[str]) -> str:
+    """Bash stubs: ``tool`` (curl or wget) follows ``plan``, one entry per call.
+
+    An entry is ``ok`` (writes the content), ``exit:N`` (fails with exit status
+    N) or, for curl, ``http:CODE`` (answers with status CODE), for wget
+    ``exit:8:CODE`` (an error response with status CODE). ``sleep`` only
+    records its delay.
+    """
+    (tmp_path / "plan").write_text("".join(f"{entry}\n" for entry in plan))
+    (tmp_path / "count").write_text("0")
+    calls, sleeps = q(tmp_path / "count"), q(tmp_path / "sleeps")
+    return f"""
+download_tool() {{ echo {tool}; }}
+sleep() {{ echo "$1" >>{sleeps}; }}
+next_entry() {{
+  local n
+  n=$(($(cat {calls}) + 1))
+  echo "$n" >{calls}
+  sed -n "${{n}}p" {q(tmp_path / "plan")}
+}}
+out_file() {{
+  while (($#)); do
+    [[ $1 == -o || $1 == -O ]] && {{ echo "$2"; return; }}
+    shift
+  done
+}}
+curl() {{
+  local entry
+  entry=$(next_entry)
+  case $entry in
+    ok) echo content >"$(out_file "$@")"; printf 200 ;;
+    http:*) echo error >"$(out_file "$@")"; printf '%s' "${{entry#http:}}" ;;
+    exit:*) return "${{entry#exit:}}" ;;
+  esac
+}}
+wget() {{
+  local entry
+  entry=$(next_entry)
+  case $entry in
+    ok) echo content >"$(out_file "$@")" ;;
+    exit:8:*) echo "  HTTP/1.1 ${{entry#exit:8:}} Error" >&2; return 8 ;;
+    exit:*) return "${{entry#exit:}}" ;;
+  esac
+}}
+"""
+
+
+def run_download(tmp_path: Path, tool: str, plan: Sequence[str]) -> tuple[int, str, int, str]:
+    """``download`` with a scripted tool: (status, output, calls, delays)."""
+    stubs = download_stubs(tmp_path, tool, plan)
+    res = bash(stubs + f"download {q(DOWNLOAD_URL)} {q(tmp_path / 'file')} || exit $?")
+    sleeps = tmp_path / "sleeps"
+    delays = sleeps.read_text().split() if sleeps.exists() else []
+    calls = int((tmp_path / "count").read_text())
+    return res.returncode, res.stdout + res.stderr, calls, " ".join(delays)
+
+
+@pytest.mark.parametrize(
+    ("tool", "plan"),
+    [
+        ("curl", ["exit:7", "http:503", "ok"]),  # no connection, then a server error
+        ("curl", ["exit:28", "http:429", "ok"]),  # a timeout, then too many requests
+        ("wget", ["exit:4", "exit:8:502", "ok"]),  # a network failure, then a bad gateway
+    ],
+)
+def test_a_download_is_tried_again_after_a_transport_error(
+    tmp_path: Path, tool: str, plan: list[str]
+) -> None:
+    status, output, calls, delays = run_download(tmp_path, tool, plan)
+    assert status == 0, output
+    assert calls == 3
+    assert delays == "5 15"  # increasing
+    for attempt in (1, 2, 3):
+        assert f"downloading {DOWNLOAD_URL} (attempt {attempt} of 3)" in output
+    assert "(attempt 1 of 3); next attempt in 5 s" in output
+    assert "(attempt 2 of 3); next attempt in 15 s" in output
+    assert (tmp_path / "file").read_text() == "content\n"
+
+
+def test_a_download_stops_after_three_attempts(tmp_path: Path) -> None:
+    status, output, calls, delays = run_download(tmp_path, "curl", ["exit:56"] * 4)
+    assert status == 1
+    assert calls == 3
+    assert delays == "5 15"
+    assert f"cannot download {DOWNLOAD_URL}: curl exit 56 (attempt 3 of 3; none left)" in output
+
+
+@pytest.mark.parametrize(
+    ("tool", "plan", "why"),
+    [
+        ("curl", ["http:404"], "HTTP 404"),
+        ("curl", ["http:403"], "HTTP 403"),
+        ("curl", ["exit:60"], "curl exit 60"),  # a refused certificate
+        ("wget", ["exit:8:404"], "wget exit 8, HTTP 404"),
+        ("wget", ["exit:5"], "wget exit 5"),  # a refused certificate
+    ],
+)
+def test_any_other_download_error_stops_at_once(
+    tmp_path: Path, tool: str, plan: list[str], why: str
+) -> None:
+    status, output, calls, delays = run_download(tmp_path, tool, plan)
+    assert status == 1
+    assert calls == 1
+    assert delays == ""
+    assert f"cannot download {DOWNLOAD_URL}: {why} (attempt 1 of 3; not retried)" in output
+
+
+def test_a_checksum_mismatch_of_a_collection_is_not_retried(tmp_path: Path) -> None:
+    # The download succeeds with other content: install_collections stops at
+    # its checksum with the expected and the actual value, after one attempt.
+    stubs, _calls, installed = collection_setup(tmp_path)
+    # The real download, with a scripted curl.
+    stubs = "".join(
+        line for line in stubs.splitlines(keepends=True) if not line.startswith("download()")
+    )
+    stubs += download_stubs(tmp_path, "curl", ["ok"])
+    res = bash(stubs + f"install_collections {q(tmp_path / 'c')} || echo refused $?")
+    assert res.stdout.strip().endswith("refused 50"), res.stdout + res.stderr
+    assert int((tmp_path / "count").read_text()) == 1
+    actual = hashlib.sha256(b"content\n").hexdigest()
+    assert "checksum mismatch for ansible-posix-2.2.2.tar.gz: expected " in res.stderr
+    assert f", got {actual}" in res.stderr
+    assert not installed.exists()
+
+
+def test_the_download_tool_answers_curl_or_wget() -> None:
+    res = bash("download_tool")
+    assert res.stdout.strip() in ("curl", "wget")
+
+
 def test_the_pins_are_generated_from_the_lock() -> None:
     res = bash("collection_pins")
     lock = yaml.safe_load((INFRA / "versions.lock.yml").read_text())

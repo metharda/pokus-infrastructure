@@ -145,12 +145,17 @@ the traceback together with the output of `cat /etc/os-release`.
 Installing the pinned uv, CPython, the Ansible environment or the Ansible
 collections failed. The lines above the exit line name the step.
 
-- A download failed: check that the host reaches `github.com`,
+- A download failed: bootstrap tried a transport error (no connection, a
+  timeout, a connection that broke off, HTTP 408, 429 or 5xx) three times,
+  5 and 15 seconds apart, and the lines above show every attempt; any other
+  error (another HTTP status, a refused certificate) stopped it at once.
+  Check that the host reaches `github.com`,
   `release-assets.githubusercontent.com`, `releases.astral.sh` and `pypi.org`
   (preflight lists unreachable endpoints), then run bootstrap again.
-- A checksum did not match: do not work around it. The download is not the
-  file that `versions.lock.yml` pins; check for a proxy that rewrites
-  downloads, and report it if the problem stays.
+- A checksum did not match: do not work around it. The line names the
+  expected and the actual sha256, and bootstrap did not try again: the
+  download is not the file that `versions.lock.yml` pins. Check for a proxy
+  that rewrites downloads, and report it if the problem stays.
 - An Ansible collection cannot be downloaded: the line names the collection
   and its URL from `ansible_collections.artifacts` of `versions.lock.yml`;
   check that the host reaches `galaxy.ansible.com`, or install from the

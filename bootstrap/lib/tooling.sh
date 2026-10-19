@@ -16,6 +16,14 @@ readonly ANSIBLE_COLLECTIONS=$PINKA_OPT/ansible-collections
 readonly INSTALLER_VENV=$PINKA_OPT/installer-venv
 readonly UV_CACHE=/var/cache/pinka/uv
 readonly SHA256_RE='^[0-9a-f]{64}$'
+# download: attempts in all, and the seconds before the second and the third.
+readonly DOWNLOAD_TRIES=3
+readonly -a DOWNLOAD_DELAYS=(5 15)
+# curl exit codes of a transport error: no proxy or host name, no connection,
+# HTTP/2 framing, a partial file, a timeout, a failed TLS handshake, an empty
+# reply, a failed send or receive, an HTTP/2 stream error. Not 60: a refused
+# certificate is not retried.
+readonly CURL_TRANSIENT=' 5 6 7 16 18 28 35 52 55 56 92 '
 
 # uv_env: the environment every uv call runs with (no user or system uv config).
 uv_env() {
@@ -23,18 +31,76 @@ uv_env() {
     UV_PYTHON_BIN_DIR="$PINKA_PYTHON_DIR/bin" UV_NO_PROGRESS=1 "$PINKA_BIN/uv" "$@"
 }
 
-# download URL FILE: fetch an https URL with curl or wget.
+# transient_status CODE: true for an HTTP status worth another attempt
+# (408, 429, 5xx).
+transient_status() {
+  [[ $1 == 408 || $1 == 429 || $1 == 5[0-9][0-9] ]]
+}
+
+# download_tool: the download command, curl or wget.
+download_tool() {
+  if command -v curl >/dev/null 2>&1; then
+    echo curl
+  else
+    echo wget
+  fi
+}
+
+# fetch_once URL FILE: one attempt. Returns 0 on success; on failure prints
+# why and returns 2 for a transport error, 1 for any other.
+fetch_once() {
+  local url=$1 file=$2 rc=0 code status
+  if [[ $(download_tool) == curl ]]; then
+    code=$(curl -sSL --proto '=https' --tlsv1.2 -o "$file" -w '%{http_code}' "$url") || rc=$?
+    if ((rc != 0)); then
+      echo "curl exit $rc"
+      [[ $CURL_TRANSIENT == *" $rc "* ]] && return 2
+      return 1
+    fi
+    [[ $code == 2[0-9][0-9] ]] && return 0
+    echo "HTTP $code"
+  else
+    status=$(wget -q -S --https-only -O "$file" "$url" 2>&1) || rc=$?
+    ((rc == 0)) && return 0
+    code=$(sed -n 's/^ *HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\1/p' <<<"$status" | tail -n 1)
+    echo "wget exit $rc${code:+, HTTP $code}"
+    # 4: network failure; 8: an error response from the server.
+    ((rc == 4)) && return 2
+    ((rc == 8)) || return 1
+  fi
+  transient_status "$code" && return 2
+  return 1
+}
+
+# download URL FILE: fetch an https URL with curl or wget. A transport error
+# (no connection, a timeout, a connection that broke off, HTTP 408, 429 or
+# 5xx) is tried again, up to DOWNLOAD_TRIES attempts with the increasing
+# DOWNLOAD_DELAYS, and every attempt is logged; any other failure (another
+# HTTP status, a refused certificate) stops at once. The caller checks the
+# content: a checksum mismatch is never retried.
 download() {
-  local url=$1 file=$2
+  local url=$1 file=$2 attempt rc why delay
   if [[ $url != https://* ]]; then
     log_error "refusing to download a non-https URL: $url"
     return 1
   fi
-  if command -v curl >/dev/null 2>&1; then
-    curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$file" "$url"
-  else
-    wget -q --https-only -O "$file" "$url"
-  fi
+  for ((attempt = 1; ; attempt++)); do
+    log_info "downloading $url (attempt $attempt of $DOWNLOAD_TRIES)"
+    rc=0
+    why=$(fetch_once "$url" "$file") || rc=$?
+    ((rc == 0)) && return 0
+    if ((rc != 2)); then
+      log_error "cannot download $url: $why (attempt $attempt of $DOWNLOAD_TRIES; not retried)"
+      return 1
+    fi
+    if ((attempt >= DOWNLOAD_TRIES)); then
+      log_error "cannot download $url: $why (attempt $attempt of $DOWNLOAD_TRIES; none left)"
+      return 1
+    fi
+    delay=${DOWNLOAD_DELAYS[attempt - 1]}
+    log_warn "download of $url failed: $why (attempt $attempt of $DOWNLOAD_TRIES); next attempt in $delay s"
+    sleep "$delay"
+  done
 }
 
 # verify_sha256 FILE SHA256: true if the file has the expected digest.

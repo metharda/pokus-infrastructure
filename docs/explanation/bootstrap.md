@@ -96,7 +96,10 @@ flowchart TD
    `ansible-galaxy collection verify --offline` finds the installed
    collections intact, nothing is downloaded; otherwise each artifact is
    downloaded (from a release package: read from `release/collections/`,
-   with no download at all), its sha256 checked, and the artifact itself
+   with no download at all; a transport error is tried again, up to three
+   attempts 5 and 15 seconds apart, each logged, and any other failed
+   download stops at once), its sha256 checked (a mismatch is never
+   retried), and the artifact itself
    checked with
    `tools/lockcheck/pinka_lockcheck/artifact.py`, the rule
    `make lock-collections` and `make setup` apply too (`MANIFEST.json` and

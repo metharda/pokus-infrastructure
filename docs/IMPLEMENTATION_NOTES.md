@@ -5176,3 +5176,86 @@ for every run; a report of a specific test's result cites the artifact.
   second (an order dependence in one process, which the gate's file order
   would have shown). Each now uses a module name of its own and removes it
   afterwards.
+
+## Retries of the collection downloads (after `fc7cc3b`)
+
+Owner, with the "commit" for the JUnit XML, after two jobs of `2f27132`
+failed in `make setup` on one Galaxy answer: every path that downloads
+collections retries transport errors and malformed answers, up to 3 attempts
+with an increasing delay, each attempt logged; a hash or signature mismatch
+is never retried and stops at once with the expected and the actual value.
+
+### What failed on `2f27132`
+
+`ansible-galaxy collection download` printed "Missing expected 'results' in
+ansible-galaxy cache". In ansible-core 2.21.5 (`ansible/galaxy/api.py`) the
+client writes an empty cache entry (`expires`, `paginated: false`, no
+`results`) before a request that is not cached yet; when that request fails,
+the entry stays, and the next lookup of the same URL in the same run fails
+with that message. So the underlying error was a failed request to Galaxy,
+hidden behind the cache. The client also saves its cache to disk
+(`$ANSIBLE_HOME/galaxy_cache`), so a retry with the same cache could fail the
+same way for a day; and its other errors are only text, its hash mismatch
+("Mismatch artifact hash with downloaded file") without either value.
+
+### What changed
+
+- `tools/lockcheck/pinka_lockcheck/retry.py`: `Policy` (3 attempts, 5 and 15
+  s before the second and the third), every attempt logged on standard
+  error. Retried: `net.FetchError` with `transient` (no connection, a
+  timeout, a connection that broke off while the body was read, HTTP 408,
+  429 or 5xx) and `MalformedAnswerError` (not JSON, not an object, a field
+  the API promises is missing). Anything else is raised at once: another
+  HTTP status, a refused certificate, a sha256 or size that differs.
+- `net.py` marks its errors: `FetchError(transient=...)`.
+- `make lock-collections`: each request together with its parsing is one
+  attempt, so a malformed answer is fetched again;
+  `lockcollections.galaxy_artifact` downloads one version's artifact and
+  stops on a sha256 that differs from Galaxy's ("not retried: expected ...,
+  actual ...").
+- `make setup` no longer runs `ansible-galaxy collection download`: it asks
+  Galaxy's API through `galaxy_artifact`, the code `make lock-collections`
+  already ran weekly in CI, so both share one client and one policy and
+  every mismatch names both values. Whether Galaxy answers is asked up to
+  three times before the release package (or the error without one) is
+  taken; a package given by URL is downloaded with the same policy.
+  `ansible-galaxy` installs and verifies offline, as before. Galaxy's
+  artifact and its sha256 stay the only pins (owner decision with the
+  "commit" for 3d.7).
+- `make lock-check`: a collection's artifact is downloaded again after a
+  transport error; the other binaries it checks are not (not a collection
+  path; their mismatch is reported as before).
+- `make release-package` (`bundle.collect`): each pinned artifact is
+  downloaded with the same policy; an artifact that differs from its pin is
+  refused with both values, as before.
+- Bootstrap from a checkout (`download` in `bootstrap/lib/tooling.sh`, used
+  for the collections and for uv): explicit attempts instead of curl's
+  silent `--retry 3`, each logged. curl's exit status (5, 6, 7, 16, 18, 28,
+  35, 52, 55, 56, 92) or its HTTP status (408, 429, 5xx) is a transport
+  error; wget's 4, or 8 with one of those statuses. Exit 60 (curl) and 5
+  (wget), a refused certificate, are not retried. The checksum check after
+  the download is unchanged and never retried.
+- There is no signature on a collection artifact in any of these paths;
+  the rule covers the sha256 and the size.
+
+### Checked against the real servers (2026-10-19)
+
+- `make lock-collections`: exit 0, 11 requests, each on its first attempt.
+- `make setup`'s path into a scratch directory: 12 requests on their first
+  attempt, five collections installed, `ansible-galaxy collection verify
+  --offline` passed.
+- bootstrap's `download` with the real curl: `ansible.posix` 2.2.2 on the
+  first attempt and its sha256 verified; a missing artifact on Galaxy
+  answers HTTP 500, so it was tried three times, 5 and 15 s apart, each
+  attempt logged.
+
+### Action pins (decision 3)
+
+Every `uses:` of the four workflows names one of four actions by a full
+commit SHA with its version in a comment, and each SHA is the commit of that
+tag (`git ls-remote`, 2026-10-19): `actions/checkout` v7.0.1
+(`3d3c42e5…`), `astral-sh/setup-uv` v10.2.0 (`c18668ad…`),
+`actions/setup-node` v7.0.0 (`82076278…`), `actions/upload-artifact` v7.0.2
+(`cf430e03…`). None needed pinning;
+`tools/repo-checks/tests/test_workflows.py` now fails on a `uses:` without a
+full SHA or without its version comment.

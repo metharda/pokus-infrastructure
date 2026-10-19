@@ -73,6 +73,13 @@ So the next step starts only when every job of the last push passed, except
 (weekly) run, such as `lock-collections` finding a difference from Galaxy,
 blocks the next step in the same way and is reported when found.
 
+Re-runs (owner, with the "commit" for the JUnit XML), verbatim:
+
+> "CI re-runs: one re-run of a job is acceptable only for a failure in an
+> external service that the commit does not touch, and every re-run is
+> reported with the error, as you did. Record that rule in CLAUDE.md with the
+> retry commit. A job that fails twice is a real failure."
+
 ## Scoped commit exception (ended)
 
 The owner's scoped commit exception (after the 3c commit) ended
@@ -210,6 +217,19 @@ does not push the rewritten history itself.
   artifact `junit-<job>-attempt-<n>` of every run, failed ones included. A
   report of a specific test's result cites that artifact (run, artifact,
   file, class name and test name).
+- Collection downloads (owner, with the "commit" for the JUnit XML): every
+  path that downloads Ansible collections (`make setup`, `make
+  lock-collections`, `make lock-check`'s collection artifacts, `make
+  release-package`, bootstrap from a checkout) tries a transport error or a malformed answer again, up to 3
+  attempts with an increasing delay (5 and 15 s), and logs every attempt
+  (`tools/lockcheck/pinka_lockcheck/retry.py`; `download` in
+  `bootstrap/lib/tooling.sh`). A hash or signature mismatch is never retried:
+  it stops at once with the expected and the actual value. `make setup` asks
+  Galaxy's API itself (`lockcollections.galaxy_artifact`); `ansible-galaxy`
+  only installs and verifies offline.
+- Every third-party action in every workflow is pinned to a full commit SHA
+  with its version in a comment (`uses: owner/repo@<sha>  # vX.Y.Z`), resolved
+  with `git ls-remote`; `tools/repo-checks/tests/test_workflows.py` checks it.
 - Gating a commit's tree in a separate worktree: give the worktree its own
   tool folders (`make setup` in it, or real copies of `.venv`,
   `node_modules`, `.ansible-collections` and `build/tools`), never symlinks

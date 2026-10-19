@@ -84,6 +84,10 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   blocks the next step. So does a failure of a weekly scheduled run (owner,
   with the "commit" for the symbolic-link fix: "a difference found by the
   weekly run is a blocker like any other CI failure").
+- **CI re-runs (owner, with the "commit" for the JUnit XML; verbatim in
+  `CLAUDE.md`, "CI after every push"):** one re-run of a job only for a
+  failure in an external service the commit does not touch, reported with
+  the error; a job that fails twice is a real failure.
 - **Test results by name (owner, with the "commit" for the per-file run;
   verbatim under "JUnit XML and end-to-end verification" in the remaining
   plan):** every test job (`test` with the Python 3.9 runs,
@@ -394,8 +398,22 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   files, 3290 passed, none skipped, 308 s of tests, 6 min 39 s for the job,
   so on every push; `test`: pytest 3290 passed; `test-random-order` (seed
   20261019): 3290 passed; release-package (run 39235137319) passed. JUnit
-  XML of every test job (owner, with the "commit" for the per-file run)
-  follows; it waits for "commit".
+  XML of every test job (owner, with the "commit" for the per-file run) is
+  `fc7cc3b`. CI of `fc7cc3b` (run 39252260630), every job on its first
+  attempt: privacy, lint, test, test-random-order, test-isolated, docs, all
+  six check-mode and all six check-mode-extended lanes passed;
+  release-package (run 39252260657) passed; `lock-check` is the known red
+  (24 marker errors, the postgres and `ubuntu:24.04` tag warnings);
+  `lock-collections` did not run (the lock is unchanged) and `links` runs
+  weekly. `test`: pytest 3293 passed, the Python 3.9 runs as before. The
+  artifacts of the run: `junit-test-attempt-1` (ID 12186238418, sha256
+  `eeb1323e…dcd5`, 4 files: `pytest.xml` and the three `py39-*.xml`),
+  `junit-test-random-order-attempt-1` (ID 12185809509) and
+  `junit-test-isolated-attempt-1` (ID 12185269956); this environment cannot
+  read them (their download host, `productionresultssa8.blob.core.windows.net`,
+  is not in its network allowlist), the owner can. The Galaxy retry, the
+  re-run rule and the action pin check (owner, with the "commit" for the
+  JUnit XML) follow; they wait for "commit".
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -414,7 +432,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list and the per-file process run done; JUnit XML built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run and the JUnit XML done; the Galaxy retry built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then the pre-existing access follow-up (with the SSH `Match` block), D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -824,6 +842,29 @@ its checks green and a commit proposal, and waits for the owner's
   The JUnit XML is the commit after `2f27132` (`docs/IMPLEMENTATION_NOTES.md`,
   "JUnit XML of every test (after `2f27132`)"); the record is under the
   real-machine tests below.
+- **Galaxy retry, CI re-runs, action pins** (owner, with the "commit" for
+  the JUnit XML, after the CI report of `2f27132`, verbatim):
+
+  > Decisions:
+  > 1. Galaxy retry: yes, in setup and in every path that downloads collections
+  >    (setup, bootstrap from a checkout, lock-collections). Retry only transport
+  >    errors and malformed responses (like the missing results field), up to 3
+  >    attempts with increasing delay, each attempt logged. A hash or signature
+  >    mismatch is never retried: it stops at once with the expected and actual
+  >    values. Tests for both paths. Its own small commit before the pre-existing
+  >    access follow-up.
+  > 2. CI re-runs: one re-run of a job is acceptable only for a failure in an
+  >    external service that the commit does not touch, and every re-run is reported
+  >    with the error, as you did. Record that rule in CLAUDE.md with the retry
+  >    commit. A job that fails twice is a real failure.
+  > 3. Confirm that every third-party action in every workflow is pinned to a full
+  >    commit SHA like upload-artifact, with its version in a comment. If any is not,
+  >    pin it in the same commit.
+  >
+  > Then the pre-existing access follow-up and D2, each waiting for my "commit".
+
+  Built in the commit after `fc7cc3b` (`docs/IMPLEMENTATION_NOTES.md`,
+  "Retries of the collection downloads (after `fc7cc3b`)").
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -1394,9 +1435,11 @@ edit after D1 (`0378425`), the installer fix of the written files
 (`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
 green but the known red. Then (owner, after `37c062e`): the CI skip list
 with the nft checks and the root test in CI (`006c40d`) and the per-file
-process run (`2f27132`), both green but the known red; then, each waiting
-for "commit", JUnit XML of every test job, the pre-existing access with
-the SSH `Match` block as a D1 follow-up, then D2, A, B, C, E, F and G. Then
+process run (`2f27132`) and JUnit XML of every test job (`fc7cc3b`), all
+green but the known red; then, each waiting for "commit", the Galaxy retry
+with the re-run rule and the action pin check (owner, with the "commit" for
+the JUnit XML), the pre-existing access with the SSH `Match` block as a D1
+follow-up, then D2, A, B, C, E, F and G. Then
 the real-machine tests on the owner's computers
 (4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still

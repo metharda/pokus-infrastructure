@@ -32,6 +32,14 @@ For each collection it checks that:
 - every dependency the artifact declares is locked at a version that
   satisfies it.
 
+Every request to Galaxy, its answer and the download, is tried again after a
+transport error (no connection, a timeout, a connection that broke off, HTTP
+408, 429 or 5xx) or a malformed answer (not JSON, or without a field Galaxy's
+API promises), up to three attempts 5 and 15 seconds apart; every attempt is
+logged on standard error. Any other failure stops at once, and so does a
+sha256 that differs from Galaxy's, with the expected and the actual value.
+`make setup` asks Galaxy the same way, with the same rule.
+
 It prints each artifact's URL, sha256, size, declared licenses and license
 files. A license file is any file in a `LICENSES` directory, or a text file
 (no extension, `.txt`, `.md`, `.rst`) whose name contains `COPYING`,

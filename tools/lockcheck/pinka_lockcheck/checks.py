@@ -24,6 +24,7 @@ Network functions are parameters, so the tests run without a network.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import json
 import os
 import platform
@@ -38,7 +39,7 @@ from typing import Any, BinaryIO
 import jsonschema
 import yaml
 
-from pinka_lockcheck import net, nvidia_gpus, openpgp
+from pinka_lockcheck import net, nvidia_gpus, openpgp, retry
 
 MARKER = "TODO(verify)"
 MARKER_RE = re.compile(r"TODO\(verify\)|<verify>")
@@ -226,12 +227,21 @@ def _binary_assets(doc: Mapping[str, Any]) -> Iterator[tuple[str, str, str]]:
         yield f"ansible_collections.artifacts.{name}", asset["url"], asset["sha256"]
 
 
-def binary_findings(doc: Mapping[str, Any], hasher: Hasher = net.sha256_of_url) -> list[Finding]:
+def binary_findings(
+    doc: Mapping[str, Any],
+    hasher: Hasher = net.sha256_of_url,
+    policy: retry.Policy = retry.DEFAULT,
+) -> list[Finding]:
     """Download every binary asset and compare its sha256.
+
+    A collection's artifact is downloaded again after a transport error, like
+    in every path that downloads collections (:mod:`pinka_lockcheck.retry`);
+    a sha256 that differs from the pin is never retried.
 
     Args:
         doc: Lock document.
         hasher: ``url -> sha256``.
+        policy: How often to try a collection's artifact.
 
     Returns:
         One error per unreachable or mismatching asset.
@@ -241,7 +251,10 @@ def binary_findings(doc: Mapping[str, Any], hasher: Hasher = net.sha256_of_url) 
         if not _verified(url, sha256):
             continue
         try:
-            actual = hasher(url)
+            if where.startswith("ansible_collections."):
+                actual = policy.run(functools.partial(hasher, url), f"download {url}")
+            else:
+                actual = hasher(url)
         except net.FetchError as exc:
             findings.append(Finding(ERROR, where, f"download failed: {exc}"))
             continue

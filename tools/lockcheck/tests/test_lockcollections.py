@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import yaml
 from collection_testlib import artifact
+from retry_testlib import quick
 
 from pinka_lockcheck import lockcollections as lc
 from pinka_lockcheck import net
@@ -212,8 +213,12 @@ def test_galaxy_s_sha256_must_equal_the_download_s() -> None:
     fake = galaxy()
     data = fake.artifacts[("ansible.posix", "2.2.2")]
     fake.add("ansible.posix", "2.2.2", data, claimed="0" * 64)
-    with pytest.raises(lc.PinError, match="Galaxy says 0000"):
+    actual = hashlib.sha256(data).hexdigest()
+    message = rf"not retried\): expected {'0' * 64}, actual {actual}"
+    with pytest.raises(lc.PinError, match=message):
         run(fake, {DEP: "1.1.5"})
+    download = f"{SERVER}/download/ansible-posix-2.2.2.tar.gz"
+    assert fake.fetched.count(download) == 1  # a hash mismatch is never retried
 
 
 def test_a_manifest_naming_another_version_is_refused() -> None:
@@ -229,10 +234,13 @@ def test_an_unexpected_answer_names_the_missing_field() -> None:
             return json.dumps({"available_versions": {"v3": "v3/"}}).encode()
         return json.dumps({"artifact": {}}).encode()
 
+    # A malformed answer is asked again, three times in all, then named.
+    log: list[str] = []
     with pytest.raises(lc.PinError, match="has no download_url"):
-        lc.run(LOCK, {}, server=SERVER, fetch=fetch, now=lambda: NOW)
+        lc.run(LOCK, {}, server=SERVER, fetch=fetch, now=lambda: NOW, policy=quick(log))
+    assert sum("failed" in line for line in log) == 3
     with pytest.raises(lc.PinError, match="names no v3 API"):
-        lc.run(LOCK, {}, server=SERVER, fetch=lambda _u: b"{}", now=lambda: NOW)
+        lc.run(LOCK, {}, server=SERVER, fetch=lambda _u: b"{}", now=lambda: NOW, policy=quick())
 
 
 def test_with_refuses_a_locked_name_and_bad_syntax() -> None:
@@ -285,7 +293,10 @@ def test_the_check_passes_when_the_lock_holds_galaxy_s_pins(
     out = capsys.readouterr()
     assert "# check: the lock's 3 artifact pins match Galaxy" in out.out
     assert "# license files:" in out.out  # the whole output stays in the CI log
-    assert out.err == ""
+    # Every request is logged, and each succeeded at its first attempt.
+    lines = out.err.splitlines()
+    assert lines
+    assert all(line.endswith(": attempt 1 of 3") for line in lines), lines
 
 
 def test_the_check_names_every_difference(

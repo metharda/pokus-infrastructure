@@ -19,6 +19,7 @@ from typing import Any
 
 import collection_testlib
 import pytest
+from retry_testlib import quick
 
 from pinka_lockcheck import artifact, checks, cli, devsetup, net, openpgp
 
@@ -481,6 +482,7 @@ def test_galaxy_unreachable_installs_from_a_release_package(
     # artifact from the release package, compares it with the lock's pin,
     # checks it, installs it, and ansible-galaxy verifies it.
     dest = tmp_path / "collections"
+    log: list[str] = []
     installed = devsetup.install_collections(
         demo["doc"],
         demo["requirements"],
@@ -490,8 +492,14 @@ def test_galaxy_unreachable_installs_from_a_release_package(
         package=str(package_tree(tmp_path, demo["content"])),
         server=f"https://127.0.0.1:{closed_port()}",
         run=run_galaxy(demo["env"]),
+        policy=quick(log),
     )
     assert installed == devsetup.Installed("package", [])
+    # Asked three times before the package is taken, every attempt logged.
+    asked = [line for line in log if " answering: attempt " in line]
+    assert [line.split(": attempt ")[1][:6] for line in asked] == ["1 of 3"] * 2 + [
+        "2 of 3"
+    ] * 2 + ["3 of 3"] * 2
     assert (dest / "ansible_collections" / "pinkatest" / "demo" / "FILES.json").is_file()
     verify = subprocess.run(  # noqa: S603 - the venv's ansible-galaxy
         [
@@ -520,7 +528,10 @@ def test_without_galaxy_only_a_package_matching_the_pins_installs(
     doc = copy.deepcopy(demo["doc"])
     content = demo["content"]
     message = {
-        "tampered": r"sha256 \w+ and size \d+ differ from the lock's pin",
+        "tampered": (
+            r"differs from the lock's pin \(not retried\): expected sha256 \w+ and size \d+,"
+            r" actual sha256 \w+ and size \d+"
+        ),
         "unpinned": "has no verified pin in versions.lock.yml",
         "missing": f"no artifact of {DEMO} 1.0.0",
         "no package": "Galaxy is unreachable .* and no release package was given",
@@ -544,23 +555,70 @@ def test_without_galaxy_only_a_package_matching_the_pins_installs(
             package=None if case == "no package" else str(package),
             reachable=lambda url: False,
             run=recorder(calls),
+            policy=quick(),
         )
     assert calls == []  # nothing was installed
     assert not dest.exists()
 
 
-def galaxy_download(calls: list[list[str]], content: bytes) -> devsetup.Runner:
-    """ansible-galaxy whose ``collection download`` writes the demo artifact."""
+SERVER = "https://galaxy.example.com"
+VERSION_URL = f"{SERVER}/api/v3/collections/pinkatest/demo/versions/1.0.0/"
 
-    def run(argv: Any) -> int:
-        args = [str(a) for a in argv]
-        calls.append(args)
-        if args[1:3] == ["collection", "download"]:
-            target = Path(args[args.index("-p") + 1])
-            (target / "pinkatest-demo-1.0.0.tar.gz").write_bytes(content)
-        return 0
 
-    return run
+def galaxy(
+    content: bytes,
+    fetched: list[str],
+    *,
+    claimed: str | None = None,
+    first: dict[str, list[bytes | Exception]] | None = None,
+) -> Any:
+    """Galaxy's API with the demo collection, as ``make setup`` asks it.
+
+    Args:
+        content: The demo artifact.
+        fetched: Receives every URL asked for.
+        claimed: The sha256 Galaxy publishes (the content's by default).
+        first: Answers given before the real one, per URL: content returned
+            or an error raised.
+    """
+    queued = {url: list(answers) for url, answers in (first or {}).items()}
+
+    def fetch(url: str) -> bytes:
+        fetched.append(url)
+        if queued.get(url):
+            answer = queued[url].pop(0)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        if url == f"{SERVER}/api/":
+            return json.dumps({"available_versions": {"v3": "v3/"}}).encode()
+        if url == VERSION_URL:
+            sha256 = claimed or hashlib.sha256(content).hexdigest()
+            body = {"download_url": f"/download/{DEMO_FILE}", "artifact": {"sha256": sha256}}
+            return json.dumps(body).encode()
+        if url == DEMO_URL:
+            return content
+        raise net.FetchError(f"{url}: HTTP 404")
+
+    return fetch
+
+
+def from_galaxy(
+    tmp_path: Path, demo: dict[str, Any], fetch: Any, calls: list[list[str]], **kwargs: Any
+) -> devsetup.Installed:
+    """make setup's install while Galaxy (the fake one) answers."""
+    return devsetup.install_collections(
+        kwargs.pop("doc", demo["doc"]),
+        demo["requirements"],
+        tmp_path / "collections",
+        tmp_path / "downloads",
+        galaxy="ansible-galaxy",
+        server=SERVER,
+        reachable=lambda url: url == f"{SERVER}/api/",
+        fetch=fetch,
+        run=recorder(calls),
+        **kwargs,
+    )
 
 
 def test_the_demo_artifact_carries_an_internal_link(demo: dict[str, Any]) -> None:
@@ -574,27 +632,90 @@ def test_the_demo_artifact_carries_an_internal_link(demo: dict[str, Any]) -> Non
 def test_galaxy_reachable_downloads_checks_and_installs_offline(
     tmp_path: Path, demo: dict[str, Any]
 ) -> None:
+    # The artifact comes from Galaxy's API, asked the way ansible-galaxy does
+    # (pinka_lockcheck.lockcollections); ansible-galaxy only installs it offline.
     calls: list[list[str]] = []
-    downloads = tmp_path / "downloads"
-    source = devsetup.install_collections(
-        demo["doc"],
-        demo["requirements"],
-        tmp_path / "collections",
-        downloads,
-        galaxy="ansible-galaxy",
-        reachable=lambda url: url == "https://galaxy.ansible.com/api/",
+    fetched: list[str] = []
+    source = from_galaxy(
+        tmp_path,
+        demo,
+        galaxy(demo["content"], fetched),
+        calls,
         package=str(tmp_path / "unused"),  # never read while Galaxy answers
-        run=galaxy_download(calls, demo["content"]),
+        policy=quick(),
     )
     assert source == devsetup.Installed("galaxy", [])
-    target = downloads / "galaxy"
-    download = ["collection", "download", "--no-deps", "-r", str(demo["requirements"])]
+    assert fetched == [f"{SERVER}/api/", VERSION_URL, DEMO_URL]
     install = ["collection", "install", "--force", "--offline", "--no-deps"]
-    tarball = str(target / "pinkatest-demo-1.0.0.tar.gz")
-    assert calls == [
-        ["ansible-galaxy", *download, "-p", str(target)],
-        ["ansible-galaxy", *install, "-p", str(tmp_path / "collections"), tarball],
+    tarball = str(tmp_path / "downloads" / "galaxy" / DEMO_FILE)
+    assert calls == [["ansible-galaxy", *install, "-p", str(tmp_path / "collections"), tarball]]
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        [net.FetchError("HTTP 503", transient=True)],
+        [b"{}", b"not json"],  # malformed: no download_url, then not JSON
+        [net.FetchError("connection reset", transient=True), b"[]"],
+    ],
+    ids=["503", "malformed", "reset-then-list"],
+)
+def test_a_transport_error_or_a_malformed_answer_is_asked_again(
+    tmp_path: Path, demo: dict[str, Any], first: list[bytes | Exception]
+) -> None:
+    calls: list[list[str]] = []
+    fetched: list[str] = []
+    log: list[str] = []
+    waits: list[float] = []
+    fetch = galaxy(demo["content"], fetched, first={VERSION_URL: first})
+    source = from_galaxy(tmp_path, demo, fetch, calls, policy=quick(log, waits))
+    assert source == devsetup.Installed("galaxy", [])
+    assert fetched.count(VERSION_URL) == len(first) + 1
+    assert waits == [5.0, 15.0][: len(first)]  # increasing delays
+    failed = [
+        line for line in log if line.startswith(f"Galaxy: GET {VERSION_URL}") and "failed" in line
     ]
+    assert len(failed) == len(first)
+    assert f"Galaxy: GET {VERSION_URL}: attempt {len(first) + 1} of 3" in log
+    assert len(calls) == 1  # installed once, after the answer came
+
+
+def test_three_failed_attempts_install_nothing(tmp_path: Path, demo: dict[str, Any]) -> None:
+    calls: list[list[str]] = []
+    fetched: list[str] = []
+    log: list[str] = []
+    error = net.FetchError(f"{DEMO_URL}: HTTP 502", transient=True)
+    fetch = galaxy(demo["content"], fetched, first={DEMO_URL: [error] * 3})
+    with pytest.raises(checks.FetchRefusedError, match=r"Galaxy: .*HTTP 502"):
+        from_galaxy(tmp_path, demo, fetch, calls, policy=quick(log))
+    assert fetched.count(DEMO_URL) == 3
+    assert log[-1] == f"Galaxy: download {DEMO_URL}: attempt 3 of 3 failed: {error}; none left"
+    assert calls == []  # nothing was installed
+
+
+@pytest.mark.parametrize("status", ["HTTP 404", "certificate refused"])
+def test_any_other_error_stops_at_once(tmp_path: Path, demo: dict[str, Any], status: str) -> None:
+    calls: list[list[str]] = []
+    fetched: list[str] = []
+    fetch = galaxy(demo["content"], fetched, first={DEMO_URL: [net.FetchError(status)]})
+    with pytest.raises(checks.FetchRefusedError, match=status):
+        from_galaxy(tmp_path, demo, fetch, calls, policy=quick())
+    assert fetched.count(DEMO_URL) == 1
+    assert calls == []
+
+
+def test_a_sha256_that_differs_from_galaxys_is_not_retried(
+    tmp_path: Path, demo: dict[str, Any]
+) -> None:
+    calls: list[list[str]] = []
+    fetched: list[str] = []
+    actual = hashlib.sha256(demo["content"]).hexdigest()
+    fetch = galaxy(demo["content"], fetched, claimed="0" * 64)
+    message = f"not retried\\): expected {'0' * 64}, actual {actual}"
+    with pytest.raises(checks.FetchRefusedError, match=message):
+        from_galaxy(tmp_path, demo, fetch, calls, policy=quick())
+    assert fetched.count(DEMO_URL) == 1
+    assert calls == []
 
 
 @pytest.mark.parametrize("how", ["absolute", "escaping"])
@@ -612,16 +733,8 @@ def test_a_refused_artifact_from_galaxy_installs_nothing(
     )
     calls: list[list[str]] = []
     with pytest.raises(checks.FetchRefusedError, match="the artifact is refused"):
-        devsetup.install_collections(
-            doc,
-            demo["requirements"],
-            tmp_path / "collections",
-            tmp_path / "downloads",
-            galaxy="ansible-galaxy",
-            reachable=lambda url: True,
-            run=galaxy_download(calls, bad),
-        )
-    assert [c[2] for c in calls] == ["download"]  # nothing was installed
+        from_galaxy(tmp_path, demo, galaxy(bad, []), calls, doc=doc, policy=quick())
+    assert calls == []  # nothing was installed
 
 
 def test_the_collection_artifacts_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
@@ -650,18 +763,13 @@ def test_from_galaxy_the_artifact_must_match_its_pin(
     else:
         entry.update(url="TODO(verify)", sha256="TODO(verify)")
     calls: list[list[str]] = []
-    kwargs: dict[str, Any] = {
-        "galaxy": "ansible-galaxy",
-        "reachable": lambda url: True,
-        "run": galaxy_download(calls, demo["content"]),
-    }
-    args = (doc, demo["requirements"], tmp_path / "collections", tmp_path / "downloads")
+    fetch = galaxy(demo["content"], [])
     if pinned:
-        with pytest.raises(checks.FetchRefusedError, match="differ from the lock's pin"):
-            devsetup.install_collections(*args, **kwargs)
-        assert [c[2] for c in calls] == ["download"]  # nothing was installed
+        with pytest.raises(checks.FetchRefusedError, match="differs from the lock's pin"):
+            from_galaxy(tmp_path, demo, fetch, calls, doc=doc, policy=quick())
+        assert calls == []  # nothing was installed
     else:
-        installed = devsetup.install_collections(*args, **kwargs)
+        installed = from_galaxy(tmp_path, demo, fetch, calls, doc=doc, policy=quick())
         assert installed == devsetup.Installed("galaxy", [f"{DEMO} 1.0.0"])
 
 

@@ -5,14 +5,25 @@
 ``FILES.json``) and, when anything differs, installs them again with
 :func:`install_collections`. Galaxy's artifact and its sha256 are the only
 pins (owner decision with the "commit" for 3d.7): from Galaxy when it answers
-(``ansible-galaxy collection download`` of exactly the locked versions, each
-artifact's sha256 and size compared with ``ansible_collections.artifacts``
-of ``versions.lock.yml``); when it does not, from the artifacts bundled in a
-published release package (``COLLECTIONS_PACKAGE``: its file, its URL or the
-unpacked tree), with the same comparison. Either way every artifact passes
+(exactly the locked versions, asked from Galaxy's v3 API the way
+``ansible-galaxy`` does, by :mod:`pinka_lockcheck.lockcollections`, each
+artifact's sha256 equal to Galaxy's and its sha256 and size compared with
+``ansible_collections.artifacts`` of ``versions.lock.yml``); when it does
+not, from the artifacts bundled in a published release package
+(``COLLECTIONS_PACKAGE``: its file, its URL or the unpacked tree), with the
+same comparison. Either way every artifact passes
 :mod:`pinka_lockcheck.artifact`, the check ``make lock-collections`` and
 bootstrap apply, before ``ansible-galaxy`` installs it offline without
 dependencies. The same verification runs afterwards.
+
+Every request (whether Galaxy answers, its answers, the downloads, a package
+given by URL) is tried again after a transport error or a malformed answer,
+with every attempt logged (:mod:`pinka_lockcheck.retry`); a sha256 or size
+that differs from Galaxy's or the lock's stops at once with the expected and
+the actual value. ``ansible-galaxy`` itself downloads nothing: its own
+errors are only text, and its response cache keeps an entry of a failed
+request, which made the next request of the same run fail with "Missing
+expected 'results'" (CI of ``2f27132``).
 """
 
 from __future__ import annotations
@@ -29,7 +40,7 @@ from typing import Any
 
 import yaml
 
-from pinka_lockcheck import artifact, bundle, checks, net
+from pinka_lockcheck import artifact, bundle, checks, lockcollections, net, retry
 
 GALAXY = "https://galaxy.ansible.com"
 
@@ -82,6 +93,7 @@ def install_collections(
     reachable: Callable[[str], bool] = net.reachable,
     fetch: bundle.Fetch = net.download,
     run: Runner = _run,
+    policy: retry.Policy = retry.DEFAULT,
 ) -> Installed:
     """Install the locked collections into ``dest``.
 
@@ -95,8 +107,11 @@ def install_collections(
             used only when Galaxy is unreachable.
         server: Galaxy server URL (default: :func:`galaxy_server`).
         reachable: ``url -> bool``.
-        fetch: ``url -> content`` (a package given by URL).
-        run: ``argv -> exit status``.
+        fetch: ``url -> content`` (Galaxy's API and artifacts, a package
+            given by URL).
+        run: ``argv -> exit status`` (the offline install).
+        policy: Tries each request again after a transport error or a
+            malformed answer.
 
     Returns:
         Where the collections came from.
@@ -106,21 +121,21 @@ def install_collections(
             given, or an artifact is missing, differs from its pin or fails
             its check, or an install fails; nothing is installed then.
     """
-    url = f"{(server or galaxy_server()).rstrip('/')}/api/"
+    base = (server or galaxy_server()).rstrip("/")
+    url = f"{base}/api/"
     wanted = locked(requirements)
     pinned = pins(doc)
     target = downloads / "galaxy"
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
-    if reachable(url):
-        argv = [galaxy, "collection", "download", "--no-deps", "-r", str(requirements)]
-        if run([*argv, "-p", str(target)]) != 0:
-            raise checks.FetchRefusedError(f"ansible-galaxy could not download {requirements}")
-        found = {p.name: p.read_bytes() for p in target.glob("*.tar.gz")}
+    if answers(url, reachable, policy):
+        found = from_galaxy(fetch, base, wanted, policy)
         result = Installed("galaxy")
     elif package:
         try:
-            found = bundle.artifacts_of(package, fetch)
+            found = bundle.artifacts_of(
+                package, lambda link: policy.run(lambda: fetch(link), f"download {link}")
+            )
         except bundle.PackageError as exc:
             raise checks.FetchRefusedError(f"the release package: {exc}") from exc
         result = Installed("package")
@@ -148,8 +163,9 @@ def install_collections(
             actual = hashlib.sha256(data).hexdigest()
             if (actual, len(data)) != pin:
                 raise checks.FetchRefusedError(
-                    f"{name} {version}: sha256 {actual} and size {len(data)} differ from the"
-                    f" lock's pin ({pin[0]}, {pin[1]})"
+                    f"{name} {version}: the artifact differs from the lock's pin (not retried):"
+                    f" expected sha256 {pin[0]} and size {pin[1]},"
+                    f" actual sha256 {actual} and size {len(data)}"
                 )
         tarball = target / file
         tarball.write_bytes(data)
@@ -161,6 +177,60 @@ def install_collections(
     if run([*argv, *map(str, tarballs)]) != 0:
         raise checks.FetchRefusedError("ansible-galaxy could not install the checked artifacts")
     return result
+
+
+def from_galaxy(
+    fetch: bundle.Fetch, server: str, wanted: Sequence[tuple[str, str]], policy: retry.Policy
+) -> dict[str, bytes]:
+    """The wanted artifacts from Galaxy, each with Galaxy's sha256.
+
+    Args:
+        fetch: ``url -> content``.
+        server: The Galaxy server.
+        wanted: ``(name, version)`` pairs.
+        policy: Tries each request again after a transport error or a
+            malformed answer.
+
+    Returns:
+        ``file name -> artifact``, named like ``ansible-galaxy collection
+        download`` names them.
+
+    Raises:
+        checks.FetchRefusedError: If a request fails for good, an answer stays
+            malformed or an artifact differs from Galaxy's sha256.
+    """
+    found = {}
+    try:
+        v3 = lockcollections.v3_root(fetch, server, policy)
+        for name, version in wanted:
+            _, data = lockcollections.galaxy_artifact(fetch, v3, name, version, policy)
+            found[galaxy_file(name, version)] = data
+    except (lockcollections.PinError, net.FetchError) as exc:
+        raise checks.FetchRefusedError(f"Galaxy: {exc}") from exc
+    return found
+
+
+def answers(url: str, reachable: Callable[[str], bool], policy: retry.Policy) -> bool:
+    """Whether Galaxy answers, asked again while it does not.
+
+    Args:
+        url: Galaxy's API.
+        reachable: ``url -> bool``.
+        policy: How often to ask.
+
+    Returns:
+        False when no attempt got an answer.
+    """
+
+    def ask() -> bool:
+        if not reachable(url):
+            raise net.FetchError(f"{url}: no answer", transient=True)
+        return True
+
+    try:
+        return policy.run(ask, f"Galaxy: is {url} answering")
+    except net.FetchError:
+        return False
 
 
 def locked(requirements: Path) -> list[tuple[str, str]]:
