@@ -99,6 +99,21 @@ fails on a commit message in the history with a `Co-Authored-By`,
 `Claude-Session` or `Generated with` line. Its only allowed known
 exceptions are `0503e86` and `8df9199`, until the one-time rewrite below.
 
+## Commit identities (owner, after the public-readiness audit)
+
+Every commit's author and committer e-mail is a GitHub noreply address, or
+GitHub's own address for a commit made on github.com; no commit carries
+any other address. The owner's identity is their name as on `bef51af`
+with their GitHub noreply address, set in this checkout's local git
+configuration only. The privacy scan fails on any other identity and on an
+e-mail address outside the example domains or a denylist term in a commit
+message (owner decision 3 after the audit). Until the rewrite, the commits
+up to `6aa6eab` are its one identity exception (`KNOWN_IDENTITY_TIP`); the
+rewrite removes it with the two attribution exceptions. Only the `lint`
+and `privacy` jobs get the `PINKA_PRIVACY_DENYLIST` secret, both check out
+a pull request's own head, and a scan in CI without the secret prints a
+warning annotation.
+
 ## One-time history rewrite and the renamed repository (owner, after 3f)
 
 Verbatim; it replaces the fresh repository of the decision after the 3d.2
@@ -135,8 +150,9 @@ And, for the same rewrite:
 > - The rewrite waits for my explicit "rewrite".
 
 The rewrite removes the two `Co-Authored-By` trailers, sets every author
-and committer to the owner's identity, and removes the two known exceptions
-from the privacy scan's history check; every hash in PROGRESS.md and the
+and committer to the owner's identity, and removes the known exceptions
+(the two attribution commits and the identity boundary `6aa6eab`) from the
+privacy scan's history check; every hash in PROGRESS.md and the
 docs is updated. It is the only exception to the no-history-rewrite rule,
 it needs the owner's explicit "rewrite", and the assistant never
 force-pushes: the owner runs every push of the rewritten history.

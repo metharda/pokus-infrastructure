@@ -6,6 +6,7 @@ passes the privacy scan.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -26,6 +27,9 @@ SSH_KEY = "ssh-ed25519 " + "AAAA" + "C3NzaC1lZDI1NTE5" + "A" * 24
 PRIVATE_KEY = "-----BEGIN " + "OPENSSH PRIVATE KEY-----"
 PGP_KEY = "-----BEGIN PGP " + "PUBLIC KEY BLOCK-----"
 TS_KEY = "tskey" + "-auth-" + "k" * 20
+# Commit identities: a GitHub noreply address and GitHub's own address.
+NOREPLY = "1" + "+researcher1@" + privacy.GITHUB_NOREPLY_DOMAIN
+GITHUB_OWN = "@".join(privacy.GITHUB_OWN_ADDRESS)
 
 
 def rules(text: str, path: Path = PLAIN, denylist: tuple[str, ...] = ()) -> list[str]:
@@ -186,23 +190,30 @@ SESSION = "Claude-" + "Session: https://example.com/session"
 GENERATED = "\N{ROBOT FACE} " + "Generated" + " with [a tool](https://example.com)"
 
 
-def git(repo: Path, *args: str) -> str:
-    identity = ("-c", "user.name=researcher1", "-c", "user.email=researcher1@example.com")
+def git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
+    identity = ("-c", "user.name=researcher1", "-c", f"user.email={NOREPLY}")
     return subprocess.run(
-        ["git", *identity, *args], cwd=repo, check=True, capture_output=True, text=True
+        ["git", *identity, *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**os.environ, **(env or {})},
     ).stdout.strip()
 
 
-def commit(repo: Path, message: str) -> str:
+def commit(repo: Path, message: str, *, author: str = NOREPLY, committer: str = NOREPLY) -> str:
     (repo / "file.txt").write_text(message, encoding="utf-8")
     git(repo, "add", "file.txt")
-    git(repo, "commit", "-q", "-m", message)
+    env = {"GIT_AUTHOR_EMAIL": author, "GIT_COMMITTER_EMAIL": committer}
+    git(repo, "commit", "-q", "--allow-empty", "-m", message, env=env)
     return git(repo, "rev-parse", "HEAD")
 
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.delenv(privacy.DENYLIST_ENV, raising=False)
+    monkeypatch.delenv(privacy.CI_ENV, raising=False)
     path = tmp_path / "repo"
     path.mkdir()
     git(path, "init", "-q")
@@ -263,6 +274,135 @@ def test_known_exceptions_are_allowed(repo: Path) -> None:
 def test_the_known_exceptions_are_exactly_the_two_trailer_commits() -> None:
     assert {c[:7] for c in privacy.KNOWN_ATTRIBUTION_COMMITS} == {"0503e86", "8df9199"}
     assert all(len(c) == 40 for c in privacy.KNOWN_ATTRIBUTION_COMMITS)
+
+
+def test_a_known_commit_excuses_only_its_attribution_lines(repo: Path) -> None:
+    # The trailer may name an address outside the example domains (as the
+    # two known commits do); any other line of the same message is checked.
+    trailer = "Co-" + f"Authored-By: a tool <{FOREIGN_EMAIL}>"
+    known = commit(repo, f"feat: first\n\nWrite to {FOREIGN_EMAIL}.\n\n{trailer}")
+    history = privacy.read_history()
+    assert history is not None
+    findings, seen = privacy.scan_history(history, frozenset({known}))
+    assert seen == 1
+    assert [(f.commit, f.line, f.rule) for f in findings] == [(known, 3, "email")]
+
+
+@pytest.mark.parametrize(
+    ("line", "rule"),
+    [
+        (f"Reported by {FOREIGN_EMAIL}", "email"),
+        ("Reported by someone-1", "denylist"),
+    ],
+)
+def test_a_commit_message_is_scanned_for_addresses_and_denylist_terms(line: str, rule: str) -> None:
+    message = f"fix: a change\n\n{line}\n"
+    findings = privacy.scan_message("0" * 40, message, ("someone-1",))
+    assert [(f.line, f.rule) for f in findings] == [(3, rule)]
+    if rule == "denylist":
+        assert findings[0].value == "<redacted>"
+
+
+def test_example_addresses_in_a_commit_message_pass() -> None:
+    message = "docs: write to researcher1@example.com\n\nOr ops@lab.example.org.\n"
+    assert privacy.scan_message("0" * 40, message, ("someone-1",)) == []
+
+
+@pytest.mark.parametrize(
+    ("address", "allowed"),
+    [
+        (NOREPLY, True),
+        ("researcher1@" + privacy.GITHUB_NOREPLY_DOMAIN, True),
+        ("41898282+github-actions[bot]@" + privacy.GITHUB_NOREPLY_DOMAIN, True),
+        (GITHUB_OWN, True),
+        (GITHUB_OWN.upper(), True),
+        (FOREIGN_EMAIL, False),
+        ("researcher1@example.com", False),
+        ("-researcher1@" + privacy.GITHUB_NOREPLY_DOMAIN, False),
+        ("1+researcher1@sub." + privacy.GITHUB_NOREPLY_DOMAIN, False),
+        (GITHUB_OWN + ".example", False),
+        ("a@b@" + privacy.GITHUB_NOREPLY_DOMAIN, False),
+        ("researcher1", False),
+        ("", False),
+    ],
+)
+def test_the_identities_github_allows(address: str, allowed: bool) -> None:
+    assert privacy.is_github_noreply(address) is allowed
+
+
+def test_a_commit_with_another_identity_fails(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    commit(repo, "feat: first")
+    by_author = commit(repo, "feat: second", author=FOREIGN_EMAIL)
+    by_committer = commit(repo, "feat: third", committer="researcher1@example.com")
+    commit(repo, "feat: merged on github.com", committer=GITHUB_OWN)
+    assert privacy.run([repo]) == 1
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        f"commit {by_committer[:12]}: committer-identity: committer e-mail is neither "
+        "a GitHub noreply address nor GitHub's own",
+        f"commit {by_author[:12]}: author-identity: author e-mail is neither "
+        "a GitHub noreply address nor GitHub's own",
+    ]
+    assert "history of 4 commits, 2 findings, 0 known exceptions" in captured.err
+    assert privacy.run([repo], show_matches=True) == 1
+    assert f"[{FOREIGN_EMAIL}]" in capsys.readouterr().out
+
+
+def test_the_commits_before_the_rewrite_keep_their_identity(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = commit(repo, "feat: first", author=FOREIGN_EMAIL, committer=FOREIGN_EMAIL)
+    tip = commit(repo, "feat: second", author=FOREIGN_EMAIL, committer=FOREIGN_EMAIL)
+    commit(repo, "feat: third")
+    later = commit(repo, "feat: fourth", author=FOREIGN_EMAIL)
+    history = privacy.read_history(identity_tip=tip)
+    assert history is not None
+    assert history.before_rewrite == {first, tip}
+    findings, _ = privacy.scan_history(history)
+    assert [(f.commit, f.rule) for f in findings] == [(later, "author-identity")]
+    monkeypatch.setattr(privacy, "KNOWN_IDENTITY_TIP", tip)
+    assert privacy.run([repo]) == 1
+    assert "2 commits before the rewrite (identity not checked)" in capsys.readouterr().err
+
+
+def test_a_tip_the_history_does_not_hold_excuses_nothing(repo: Path) -> None:
+    commit(repo, "feat: first", author=FOREIGN_EMAIL)
+    history = privacy.read_history(identity_tip="0" * 40)
+    assert history is not None
+    assert history.before_rewrite == frozenset()
+    assert [f.rule for f in privacy.scan_history(history)[0]] == ["author-identity"]
+
+
+def test_the_identity_tip_is_the_last_commit_before_the_rewrite() -> None:
+    assert privacy.KNOWN_IDENTITY_TIP.startswith("6aa6eab")
+    assert len(privacy.KNOWN_IDENTITY_TIP) == 40
+
+
+@pytest.mark.parametrize(
+    ("ci", "denylist", "warned"),
+    [("true", "", True), ("true", "someone-1", False), (None, "", False)],
+)
+def test_ci_warns_when_it_scans_without_the_denylist(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    ci: str | None,
+    denylist: str,
+    warned: bool,
+) -> None:
+    commit(repo, "feat: first")
+    if ci is None:
+        monkeypatch.delenv(privacy.CI_ENV, raising=False)
+    else:
+        monkeypatch.setenv(privacy.CI_ENV, ci)
+    monkeypatch.setenv(privacy.DENYLIST_ENV, denylist)
+    assert privacy.run([repo]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("::warning title=privacy scan::") is warned
+    assert "someone-1" not in out
 
 
 def test_clean_history_passes(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:

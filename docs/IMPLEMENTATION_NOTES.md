@@ -5659,3 +5659,38 @@ Secure Boot; Tailscale already in use). The exact details are in
 exists only in the checkout it was written in, so the owner keeps their own
 copy. Three other places no longer tie a GPU model or a memory size to a
 computer. The rewrite replaces the old text in every commit that has it.
+
+### Decision 3: the privacy scan's additions
+
+- **Commit messages:** besides attribution lines, every line of every
+  commit message is scanned with the files' e-mail rule (any address
+  outside the example domains; SSH remotes and OpenSSH algorithm names
+  excepted as in files) and the maintainer's denylist; a denylist hit is
+  reported as its entry number only. A known attribution commit excuses
+  only its attribution lines, with what they name (`0503e86` and
+  `8df9199` name the tool's address in their trailers); every other line of
+  it is checked.
+- **Identities:** the author and committer e-mail of every commit reachable
+  from `HEAD` must be a GitHub noreply address (`<id>+<user>`, `<user>` or
+  an app's `<id>+<name>[bot]` at GitHub's noreply domain) or GitHub's own
+  address, which commits made on github.com carry as committer. A finding
+  names the commit and the role, never the address (`--show-matches`
+  prints it locally). The commits up to `6aa6eab` keep the owner's earlier
+  identity until the rewrite: `KNOWN_IDENTITY_TIP` and its ancestors are
+  not checked, and the summary counts them (`65 commits before the
+  rewrite (identity not checked)`); the rewrite removes the constant. This
+  checkout commits with the owner's noreply identity from `0e89479` on.
+- **CI without the denylist:** with `GITHUB_ACTIONS=true` and no
+  denylist, the scan prints a GitHub warning annotation (`::warning
+  title=privacy scan::...`) before scanning; every other rule still runs.
+- **Workflows:** `PINKA_PRIVACY_DENYLIST` is set only on the `lint` and
+  `privacy` jobs of `ci.yml`, no longer for every job. Both check out a
+  pull request's own head (`github.event.pull_request.head.sha`, the pushed
+  commit otherwise) instead of the test merge commit GitHub makes for a
+  pull request, so the identities the scan checks are those of the pull
+  request's commits; the other jobs still test the merge result.
+- Tests: `tools/repo-checks/tests/test_privacy.py` (messages, the allowed
+  identities, a commit with another author or committer, the boundary, a
+  boundary the history does not hold, the CI warning) and
+  `test_workflows.py` (only `lint` and `privacy` get the secret, and both
+  check out the pull request's head with the full history).

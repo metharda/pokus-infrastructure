@@ -1056,6 +1056,12 @@ its checks green and a commit proposal, and waits for the owner's
   personal address. Nothing is pushed until the owner pushes the rewritten
   history; Actions is disabled in the repository until it is public, so CI
   of these commits runs after the move.
+
+  Built as commits without a push: decision 2 (the machine classes) is
+  `0e89479`; decision 3 (the privacy scan: commit messages and identities,
+  the CI warning, the secret only on `lint` and `privacy`) is the commit
+  after it (`docs/IMPLEMENTATION_NOTES.md`, "Decision 3: the privacy scan's
+  additions").
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness

@@ -15,10 +15,18 @@ platform §16.9, docs spec §A.4 and §A.6). The scanner reports:
   (newline- or comma-separated, matched case-insensitively as whole words, so a
   term inside a longer word or a hash does not match). The denylist comes from
   a CI secret and is never committed; findings never print the term;
-* attribution lines in the commit messages of the history (owner rule: no
-  commit carries a ``Co-Authored-By`` trailer or any other attribution line).
-  Inside a git work tree every commit reachable from ``HEAD`` is checked; a
-  shallow clone is a finding, because its history cannot be checked.
+* in the commit messages of the history: attribution lines (owner rule: no
+  commit carries a ``Co-Authored-By`` trailer or any other attribution line),
+  e-mail addresses outside the example domains and denylist terms;
+* the author and committer e-mail of every commit, which must be a GitHub
+  noreply address (``<id>+<user>``, ``<user>`` or a bot's name at GitHub's
+  noreply domain) or GitHub's own address, which commits made on github.com
+  carry as committer (owner decision 3 after the public-readiness audit).
+
+Inside a git work tree every commit reachable from ``HEAD`` is checked; a
+shallow clone is a finding, because its history cannot be checked. In CI
+(``GITHUB_ACTIONS=true``) a scan without the denylist prints a GitHub warning
+annotation: a pull request from a fork gets no secrets.
 
 Findings print the rule and position but not the matched value, so CI logs do
 not spread personal data further. ``--show-matches`` prints values for local
@@ -45,8 +53,10 @@ IPV6_FULL_FORM_COLONS = 7
 GIT_LS_FILES = ("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 GIT_INSIDE = ("git", "rev-parse", "--is-inside-work-tree")
 GIT_SHALLOW = ("git", "rev-parse", "--is-shallow-repository")
-GIT_LOG = ("git", "log", "-z", "--format=%H%n%B", "HEAD")
+GIT_LOG = ("git", "log", "-z", "--format=%H%n%ae%n%ce%n%B", "HEAD")
+GIT_REV_LIST = ("git", "rev-list")
 DENYLIST_ENV = "PINKA_PRIVACY_DENYLIST"
+CI_ENV = "GITHUB_ACTIONS"
 
 RFC2606_DOMAINS = ("example.com", "example.org", "example.net")
 RFC2606_TLDS = ("example", "test", "invalid", "localhost")
@@ -101,6 +111,22 @@ KNOWN_ATTRIBUTION_COMMITS = frozenset(
         "8df919918faa98b6a8c348874aca5c7cc5eabdf0",
     }
 )
+ATTRIBUTION_RULES = frozenset(rule for rule, _ in ATTRIBUTION_RES)
+
+# Commit identities: GitHub's noreply addresses are <id>+<user> (or <user> for
+# older accounts, <id>+<name>[bot] for an app) at this domain; GitHub's own
+# address, given as local part and domain, is the committer of commits made on
+# github.com (a merge or an edit in the web interface).
+GITHUB_NOREPLY_DOMAIN = "users.noreply.github.com"
+GITHUB_NOREPLY_LOCAL_RE = re.compile(
+    r"(?:\d+\+)?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\[bot\])?"
+)
+GITHUB_OWN_ADDRESS = ("noreply", "github.com")
+# Every commit up to 6aa6eab carries the owner's earlier identity, with a
+# personal address. They stay allowed until the owner's one-time rewrite sets
+# the noreply identity on every commit; the rewrite removes this as well.
+# Nothing else is ever added.
+KNOWN_IDENTITY_TIP = "6aa6eabe44953d2fb0120b5522b9f886245d8871"
 
 
 @dataclass(frozen=True)
@@ -343,11 +369,12 @@ def read_text(path: Path) -> str | None:
 
 @dataclass(frozen=True)
 class CommitFinding:
-    """One attribution line in a commit message, or a history that cannot be checked.
+    """One finding in a commit, or a history that cannot be checked.
 
     Attributes:
         commit: Full commit hash, empty for a shallow clone.
-        line: 1-based line of the commit message, 0 for a shallow clone.
+        line: 1-based line of the commit message; 0 for a commit's identity
+            and for a shallow clone.
         rule: Stable rule identifier.
         message: Human-readable description without the matched value.
         value: The matched line, printed only with ``--show-matches``.
@@ -360,12 +387,13 @@ class CommitFinding:
     value: str
 
 
-def scan_message(commit: str, message: str) -> list[CommitFinding]:
-    """Find attribution lines in one commit message.
+def scan_message(commit: str, message: str, denylist: Sequence[str] = ()) -> list[CommitFinding]:
+    """Find attribution lines, e-mail addresses and denylist terms in one commit message.
 
     Args:
         commit: Full commit hash, for reporting.
         message: The raw commit message.
+        denylist: Lower-cased maintainer denylist terms.
 
     Returns:
         Findings in message order.
@@ -379,7 +407,29 @@ def scan_message(commit: str, message: str) -> list[CommitFinding]:
                         commit, lineno, rule, "attribution line in a commit message", line.strip()
                     )
                 )
+        for _, rule, text, value in [*_scan_emails(line), *_scan_denylist(line, denylist)]:
+            findings.append(
+                CommitFinding(commit, lineno, rule, f"{text} in a commit message", value)
+            )
     return findings
+
+
+def is_github_noreply(address: str) -> bool:
+    """Tell whether a commit identity's e-mail is one GitHub's rule allows.
+
+    Args:
+        address: An author or committer e-mail.
+
+    Returns:
+        True for a GitHub noreply address and for GitHub's own address.
+    """
+    local, at, domain = address.rpartition("@")
+    domain = domain.lower().rstrip(".")
+    if not at:
+        return False
+    if (local.lower(), domain) == GITHUB_OWN_ADDRESS:
+        return True
+    return domain == GITHUB_NOREPLY_DOMAIN and GITHUB_NOREPLY_LOCAL_RE.fullmatch(local) is not None
 
 
 def _git(argv: Sequence[str]) -> bytes | None:
@@ -390,20 +440,46 @@ def _git(argv: Sequence[str]) -> bytes | None:
 
 
 @dataclass(frozen=True)
-class History:
-    """The commit messages of ``HEAD``'s history.
+class Commit:
+    """One commit of ``HEAD``'s history.
 
     Attributes:
-        commits: (full hash, message) pairs, newest first.
-        shallow: The clone is shallow, so older commits are missing.
+        commit: Full commit hash.
+        author: The author's e-mail.
+        committer: The committer's e-mail.
+        message: The raw commit message.
     """
 
-    commits: list[tuple[str, str]]
+    commit: str
+    author: str
+    committer: str
+    message: str
+
+
+@dataclass(frozen=True)
+class History:
+    """``HEAD``'s history.
+
+    Attributes:
+        commits: The commits, newest first.
+        shallow: The clone is shallow, so older commits are missing.
+        before_rewrite: Commits up to ``KNOWN_IDENTITY_TIP`` whose identity
+            is not checked until the owner's rewrite; empty when the history
+            does not hold that commit.
+    """
+
+    commits: list[Commit]
     shallow: bool
+    before_rewrite: frozenset[str] = frozenset()
 
 
-def read_history() -> History | None:
-    """Read the commit messages of ``HEAD``'s history in the current directory.
+def read_history(identity_tip: str | None = None) -> History | None:
+    """Read ``HEAD``'s history in the current directory.
+
+    Args:
+        identity_tip: The last commit with the identity from before the
+            rewrite (default ``KNOWN_IDENTITY_TIP``); it and its ancestors are
+            not checked for identity.
 
     Returns:
         The history, or None outside a git work tree.
@@ -413,20 +489,48 @@ def read_history() -> History | None:
     shallow = (_git(GIT_SHALLOW) or b"").strip() == b"true"
     commits = []
     for record in (_git(GIT_LOG) or b"").decode("utf-8", errors="replace").split("\0"):
-        commit, _, message = record.partition("\n")
+        commit, author, committer, message = [*record.split("\n", 3), "", "", ""][:4]
         if commit:
-            commits.append((commit, message))
-    return History(commits, shallow)
+            commits.append(Commit(commit, author, committer, message))
+    tip = KNOWN_IDENTITY_TIP if identity_tip is None else identity_tip
+    before = (_git((*GIT_REV_LIST, tip)) or b"").decode().split()
+    return History(commits, shallow, frozenset(before))
+
+
+def scan_identity(commit: Commit) -> list[CommitFinding]:
+    """Check a commit's author and committer e-mail.
+
+    Args:
+        commit: The commit.
+
+    Returns:
+        One finding for each e-mail that is not a GitHub noreply address or
+        GitHub's own.
+    """
+    return [
+        CommitFinding(
+            commit.commit,
+            0,
+            f"{role}-identity",
+            f"{role} e-mail is neither a GitHub noreply address nor GitHub's own",
+            address,
+        )
+        for role, address in (("author", commit.author), ("committer", commit.committer))
+        if not is_github_noreply(address)
+    ]
 
 
 def scan_history(
-    history: History, known: frozenset[str] = KNOWN_ATTRIBUTION_COMMITS
+    history: History,
+    known: frozenset[str] = KNOWN_ATTRIBUTION_COMMITS,
+    denylist: Sequence[str] = (),
 ) -> tuple[list[CommitFinding], int]:
-    """Check commit messages for attribution lines.
+    """Check every commit's message and identity.
 
     Args:
         history: The history from `read_history`.
         known: Commits whose attribution lines are allowed known exceptions.
+        denylist: Lower-cased maintainer denylist terms.
 
     Returns:
         The findings and the number of known exceptions seen.
@@ -444,12 +548,16 @@ def scan_history(
             )
         )
     known_seen = 0
-    for commit, message in history.commits:
-        hits = scan_message(commit, message)
-        if hits and commit in known:
-            known_seen += 1
-            continue
+    for commit in history.commits:
+        hits = scan_message(commit.commit, commit.message, denylist)
+        if commit.commit in known:
+            # Only the attribution lines are excused, with what they name.
+            excused = {f.line for f in hits if f.rule in ATTRIBUTION_RULES}
+            known_seen += bool(excused)
+            hits = [f for f in hits if f.line not in excused]
         findings.extend(hits)
+        if commit.commit not in history.before_rewrite:
+            findings.extend(scan_identity(commit))
     return findings, known_seen
 
 
@@ -463,26 +571,35 @@ def run(paths: Sequence[Path], *, show_matches: bool = False) -> int:
     Returns:
         0 when no findings were made, 1 otherwise.
     """
-    status = _run_files(paths, show_matches=show_matches)
+    denylist = load_denylist()
+    if os.environ.get(CI_ENV) == "true" and not denylist:
+        print(
+            f"::warning title=privacy scan::{DENYLIST_ENV} is empty, so the maintainer's "
+            "denylist was not checked (a pull request from a fork gets no secrets); "
+            "every other rule ran"
+        )
+    status = _run_files(paths, denylist, show_matches=show_matches)
     history = read_history()
     if history is None:
         print("privacy scan: history not checked, not a git work tree", file=sys.stderr)
         return status
-    findings, known_seen = scan_history(history)
+    findings, known_seen = scan_history(history, denylist=denylist)
     for cf in findings:
-        where = f"commit {cf.commit[:12]}:{cf.line}" if cf.commit else "history"
-        suffix = f" [{cf.value}]" if show_matches and cf.value else ""
+        where = f"commit {cf.commit[:12]}" if cf.commit else "history"
+        where += f":{cf.line}" if cf.line else ""
+        suffix = f" [{cf.value}]" if show_matches and cf.value and cf.rule != "denylist" else ""
         print(f"{where}: {cf.rule}: {cf.message}{suffix}")
+    unchecked = len(history.before_rewrite & {c.commit for c in history.commits})
+    note = f", {unchecked} commits before the rewrite (identity not checked)" if unchecked else ""
     print(
         f"privacy scan: history of {len(history.commits)} commits, {len(findings)} findings, "
-        f"{known_seen} known exceptions",
+        f"{known_seen} known exceptions{note}",
         file=sys.stderr,
     )
     return 1 if findings else status
 
 
-def _run_files(paths: Sequence[Path], *, show_matches: bool) -> int:
-    denylist = load_denylist()
+def _run_files(paths: Sequence[Path], denylist: Sequence[str], *, show_matches: bool) -> int:
     files = list_files(paths)
     findings: list[Finding] = []
     skipped: list[Path] = []

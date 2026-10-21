@@ -30,7 +30,6 @@ concurrency:
 
 env:
   PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
-  PINKA_PRIVACY_DENYLIST: ${{ secrets.PINKA_PRIVACY_DENYLIST }}
 
 jobs:
   changes:
@@ -58,11 +57,18 @@ jobs:
   lint:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
+    env:
+      # The maintainer's denylist, a secret: only for the two jobs that scan
+      # with it (owner decision 3 after the public-readiness audit).
+      PINKA_PRIVACY_DENYLIST: ${{ secrets.PINKA_PRIVACY_DENYLIST }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0  # the privacy scan checks every commit message
+          # A pull request's own head, not the test merge commit GitHub makes
+          # for it: the scan checks every commit's author and committer.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           version: "0.12.23"
@@ -74,14 +80,20 @@ jobs:
 
   privacy:
     # The privacy scan on its own (the former repo-root workflow's job): every
-    # tracked file and every commit message, with no setup step it depends on.
+    # tracked file and every commit's message and identity, with no setup step
+    # it depends on.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
+    env:
+      PINKA_PRIVACY_DENYLIST: ${{ secrets.PINKA_PRIVACY_DENYLIST }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0  # the privacy scan checks every commit message
+          # A pull request's own head, not the test merge commit GitHub makes
+          # for it: the scan checks every commit's author and committer.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: make privacy
 
   test:
