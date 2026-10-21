@@ -69,9 +69,10 @@ step and, for a fixed release, version pins.
    and run it with `make test-distros`; when it passes, move the rows to
    `tested` in the matrix and commit `tests/distros/results.yml`. Add a
    pinned base image of the family to `containers.ci_images` in
-   `versions.lock.yml` and an `image:` entry to the `check-mode` and
-   `check-mode-extended` jobs of both CI workflows, so the CI fast lane
-   checks the family on every push; see
+   `versions.lock.yml` and an `image:` entry to the `check-mode` job of
+   `.github/workflows/ci.yml` and the `check-mode-extended` job of
+   `.github/workflows/check-mode-extended.yml`, so the CI fast lane checks
+   the family; see
    [How to test the distributions](../how-to/test-distributions.md).
 
 9. **Documentation.** Write `docs/distros/<family>.md` following the existing

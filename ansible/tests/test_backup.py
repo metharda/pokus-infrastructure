@@ -50,12 +50,17 @@ class FakeRunner:
         return subprocess.CompletedProcess(list(argv), rc, out, "" if rc == 0 else "boom")
 
 
+# Long and distinctive, so that no random name (the run's temporary
+# directory) can contain it by chance; "pw" did in about 1 run in 200.
+PASSWORD = "fixture-restic-password-q7z"  # noqa: S105 - a test fixture
+
+
 @pytest.fixture
 def config(tmp_path: Path) -> dict[str, Any]:
     secrets = tmp_path / "secrets"
     secrets.mkdir()
     (secrets / "repository").write_text("sftp:backup@backup.example.com:/srv/restic/lab\n")
-    (secrets / "password").write_text("pw")
+    (secrets / "password").write_text(PASSWORD)
     data = tmp_path / "srv" / "shared"
     data.mkdir(parents=True)
     return {
@@ -128,7 +133,7 @@ def test_backup_initializes_a_new_repository(config: dict[str, Any]) -> None:
     run = runner.calls[2]["argv"]
     assert run[run.index("--host") + 1] == "pinka-lab"
     assert run[run.index("--tag") + 1] == "pinka"
-    assert "pw" not in " ".join(run)  # the password never appears on a command line
+    assert PASSWORD not in " ".join(run)  # the password never appears on a command line
     gauges = metrics(config, "backup")
     assert gauges["pinka_backup_job_success"] == 1
     assert gauges["pinka_backup_data_added_bytes"] == 1234

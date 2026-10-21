@@ -277,4 +277,4 @@ def test_the_makefile_runs_the_same_steps_in_both_modes() -> None:
 def test_ci_keeps_the_verbose_output() -> None:
     text = (INFRA / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     for target in ("lint", "test", "docs"):
-        assert f"run: make {target} VERBOSE=1\n" in text, target
+        assert re.search(rf"run: make {target} VERBOSE=1( |\n)", text), target

@@ -711,8 +711,11 @@ LISTENER_RE = re.compile(r"^(?P<proto>tcp|udp)/(?P<port>[0-9]{1,5})$")
 WILDCARDS = ("0.0.0.0", "::")  # noqa: S104 - addresses read from the host profile
 DOCKER_PROXY = "docker-proxy"
 ACCEPTED_LOGIN_RE = re.compile(
-    r"Accepted publickey for (?P<user>[a-z_][a-z0-9_-]*) from (?P<address>[0-9a-fA-F:.]+) port"
+    r"Accepted publickey for (?P<user>[a-z_][a-z0-9_-]*) from (?P<address>[0-9a-fA-F:.]+) port "
 )
+# The processes that log sshd's authentications (sshd-session from OpenSSH 9.8).
+SSHD_COMMS = frozenset({"sshd", "sshd-session"})
+TAILNET_V6 = "fd7a:115c:a1e0::/48"
 
 
 def _family(address: str) -> str:
@@ -830,35 +833,79 @@ def install_path(access: Mapping[str, Any], closed: Sequence[str]) -> dict[str, 
     }
 
 
+def tailnet_peers(status: str) -> list[str]:
+    """The tailnet addresses of the node's peers, never its own.
+
+    Args:
+        status: ``tailscale status --json``; anything else gives no peers.
+
+    Returns:
+        Each peer's ``TailscaleIPs``, sorted.
+    """
+    try:
+        data = json.loads(status)
+    except ValueError:
+        return []
+    peers = (data.get("Peer") or {}) if isinstance(data, dict) else {}
+    found = {
+        str(address)
+        for peer in peers.values()
+        if isinstance(peer, dict)
+        for address in peer.get("TailscaleIPs") or []
+    }
+    return sorted(found)
+
+
 def tailnet_logins(
-    journal: str, researchers: Iterable[str], tailnet: str = "100.64.0.0/10"
+    journal: str,
+    researchers: Iterable[str],
+    peers: Iterable[str],
+    tailnet: str = "100.64.0.0/10",
 ) -> list[dict[str, str]]:
     """The researchers' SSH key logins over the tailnet, from sshd's journal.
 
     The safeguard of §7.5: the install's access path closes only after a
     successful key login of a researcher from a tailnet address in the same
-    run.
+    run. A line counts only when journald attributes it to root and to sshd
+    (``_UID`` 0, ``_COMM`` ``sshd`` or ``sshd-session``: fields the sender
+    cannot set), its message is sshd's ``Accepted publickey for <user> from
+    <address> port``, the user is a researcher, and the address is one of a
+    current tailnet peer's (``tailscale status``): not the host's own, which
+    a login over loopback would show, and not an address of the tailnet's
+    range on another network (carrier-grade NAT uses it too).
 
     Args:
-        journal: sshd's messages since the run began.
+        journal: sshd's journal since the run began, ``journalctl --output=json``.
         researchers: The researchers' names.
+        peers: The tailnet addresses of the node's peers (:func:`tailnet_peers`).
         tailnet: The tailnet's IPv4 range (its IPv6 range is fd7a:115c:a1e0::/48).
 
     Returns:
         ``{user, address}`` per such login, in order.
     """
     names = set(researchers)
-    networks = [ipaddress.ip_network(tailnet), ipaddress.ip_network("fd7a:115c:a1e0::/48")]
+    known = {str(ipaddress.ip_address(p)) for p in peers}
+    networks = [ipaddress.ip_network(tailnet), ipaddress.ip_network(TAILNET_V6)]
     found = []
     for line in journal.splitlines():
-        match = ACCEPTED_LOGIN_RE.search(line)
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(entry, dict) or entry.get("_UID") != "0":
+            continue
+        message = entry.get("MESSAGE")
+        if entry.get("_COMM") not in SSHD_COMMS or not isinstance(message, str):
+            continue
+        match = ACCEPTED_LOGIN_RE.match(message)
         if match is None or match.group("user") not in names:
             continue
         try:
             address = ipaddress.ip_address(match.group("address"))
         except ValueError:
             continue
-        if any(address.version == n.version and address in n for n in networks):
+        in_tailnet = any(address.version == n.version and address in n for n in networks)
+        if in_tailnet and str(address) in known:
             found.append({"user": match.group("user"), "address": str(address)})
     return found
 
@@ -897,4 +944,5 @@ class FilterModule:
             "pinka_listener_rules": listener_rules,
             "pinka_install_path": install_path,
             "pinka_tailnet_logins": tailnet_logins,
+            "pinka_tailnet_peers": tailnet_peers,
         }

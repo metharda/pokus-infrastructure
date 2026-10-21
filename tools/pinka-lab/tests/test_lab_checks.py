@@ -46,10 +46,12 @@ def access_record(
     session: dict[str, Any] | None = None,
     closed: Sequence[str] = (),
     legacy: bool = False,
+    host: str = "",
+    components: dict[str, bool] | None = None,
 ) -> str:
     """An install record noting the access to the host before pinka (§7.5)."""
     access = {
-        "host": "shared" if listeners else "dedicated",
+        "host": host or ("shared" if listeners else "dedicated"),
         "firewall_manager": "none",
         "session": session or {"via": "console"},
         "listeners": list(listeners),
@@ -62,7 +64,7 @@ def access_record(
             "created_at": "2026-10-01T00:00:00Z",
             "legacy": legacy,
             "preexisting": {"components": {}, "access": access},
-            "added": {"closed_access": list(closed)},
+            "added": {"closed_access": list(closed), "components": components or {}},
         }
     )
 
@@ -249,39 +251,127 @@ class NetworkTest(Base):
             run(checks.check_listeners, system, listeners__tailnet_ports=ports), "fail", "18710"
         )
 
+    # Approved deviation DL1 (owner, with the "commit" for 16bf749).
+    WEB = {
+        "proto": "tcp",
+        "address": "::",
+        "port": 8080,
+        "process": "example-web",
+        "unit": "example-web.service",
+    }
+    MDNS = {
+        "proto": "udp",
+        "address": "192.0.2.10",
+        "port": 5353,
+        "process": "avahi-daemon",
+        "unit": "avahi-daemon.service",
+    }
+    EXTRA = (
+        'tcp LISTEN 0 128 *:8080 *:* users:(("example-web",pid=30,fd=3))\n'
+        'udp UNCONN 0 0 192.0.2.10:5353 0.0.0.0:* users:(("avahi-daemon",pid=31,fd=4))\n'
+    )
+    CGROUPS = {
+        "/proc/30/cgroup": "0::/system.slice/example-web.service\n",
+        "/proc/31/cgroup": "0::/system.slice/avahi-daemon.service\n",
+    }
+
+    def shared(self, extra: str = EXTRA, **record: Any) -> FakeSystem:
+        files = {RECORD: access_record(listeners=[self.WEB, self.MDNS], **record), **self.CGROUPS}
+        return FakeSystem({"ss -H -lntup": (0, SS + extra)}, files=files)
+
     def test_the_listeners_from_before_pinka_are_expected(self) -> None:
-        shared = [
-            {"proto": "tcp", "address": "0.0.0.0", "port": 8080, "process": "example-web"},  # noqa: S104
-            {"proto": "udp", "address": "192.0.2.10", "port": 5353, "process": "avahi-daemon"},
-        ]
-        extra = (
-            'tcp LISTEN 0 128 *:8080 *:* users:(("example-web",pid=30,fd=3))\n'
-            'udp UNCONN 0 0 [::ffff:192.0.2.10]:5353 *:* users:(("avahi-daemon",pid=31,fd=4))\n'
-        )
-        system = FakeSystem(
-            {"ss -H -lntup": (0, SS + extra)},
-            files={RECORD: access_record(listeners=shared, closed=["udp/5353"])},
-        )
+        system = self.shared(closed=["udp/5353"])
         self.assertOutcome(
             run(checks.check_listeners, system),
             "pass",
             "before pinka: tcp/8080 (kept), udp/5353 (closed by the firewall)",
         )
-        # Another port, another address or another protocol than the recorded one.
+        # Anything that appeared after the install fails: another port, address,
+        # protocol, unit or process than the recorded one.
         for line in (
-            'tcp LISTEN 0 128 0.0.0.0:8081 0.0.0.0:* users:(("example-web",pid=30,fd=5))\n',
+            'tcp LISTEN 0 128 *:8081 *:* users:(("example-web",pid=30,fd=5))\n',
             'udp UNCONN 0 0 192.0.2.11:5353 0.0.0.0:* users:(("avahi-daemon",pid=31,fd=5))\n',
-            'udp UNCONN 0 0 0.0.0.0:8080 0.0.0.0:* users:(("example-web",pid=30,fd=6))\n',
+            'udp UNCONN 0 0 [::]:8080 [::]:* users:(("example-web",pid=30,fd=6))\n',
+            'tcp LISTEN 0 128 0.0.0.0:8080 0.0.0.0:* users:(("example-web",pid=30,fd=7))\n',
+            'tcp LISTEN 0 128 *:8080 *:* users:(("other-web",pid=30,fd=8))\n',
         ):
-            system.commands["ss -H -lntup"] = (0, SS + extra + line)
+            system = self.shared(self.EXTRA + line)
             self.assertOutcome(run(checks.check_listeners, system), "fail", "unexpected listeners")
+        system = self.shared()
+        system.files["/proc/30/cgroup"] = "0::/system.slice/other-web.service\n"
+        self.assertOutcome(run(checks.check_listeners, system), "fail", "tcp *:8080 (example-web)")
+
+    def test_the_exception_needs_a_root_only_record(self) -> None:
+        for owner, mode in (("researcher1", 0o600), ("root", 0o664), ("root", 0o602)):
+            system = self.shared()
+            system.infos[RECORD] = info(owner, "root", mode)
+            self.assertOutcome(
+                run(checks.check_listeners, system), "fail", "the install record is not root-only"
+            )
+            self.assertOutcome(run(checks.check_install_record, system), "fail", "only root")
         # A legacy record decides nothing, a missing one notes nothing.
-        system.commands["ss -H -lntup"] = (0, SS + extra)
-        for record in (access_record(listeners=shared, legacy=True), None):
-            system.files.pop(RECORD, None)
+        for record in (access_record(listeners=[self.WEB], legacy=True), None):
+            system = self.shared()
+            system.files.pop(RECORD)
             if record is not None:
                 system.files[RECORD] = record
             self.assertOutcome(run(checks.check_listeners, system), "fail", "tcp *:8080")
+
+    def test_pinkas_own_services_never_use_the_exception(self) -> None:
+        for cgroup in (
+            "0::/pinka.slice/pinka-services.slice/docker-0123.scope\n",
+            "0::/system.slice/pinka-query-proxy.service\n",
+        ):
+            system = self.shared()
+            system.files["/proc/30/cgroup"] = cgroup
+            self.assertOutcome(run(checks.check_listeners, system), "fail", "tcp *:8080")
+        # The daemon of a component pinka installed, recorded by an older preflight.
+        tailscaled = {
+            "proto": "udp",
+            "address": "0.0.0.0",  # noqa: S104 - a recorded address, nothing binds
+            "port": 41642,
+            "process": "tailscaled",
+            "unit": "tailscaled.service",
+        }
+        line = 'udp UNCONN 0 0 0.0.0.0:41642 0.0.0.0:* users:(("tailscaled",pid=32,fd=4))\n'
+        files = {
+            RECORD: access_record(listeners=[tailscaled], components={"tailscale": True}),
+            "/proc/32/cgroup": "0::/system.slice/tailscaled.service\n",
+        }
+        system = FakeSystem({"ss -H -lntup": (0, SS + line)}, files=files)
+        self.assertOutcome(
+            run(checks.check_listeners, system, listeners__processes=["sshd"]), "fail", "41642"
+        )
+
+    def test_a_dedicated_host_keeps_the_strict_rule(self) -> None:
+        system = self.shared(host="dedicated")
+        self.assertOutcome(run(checks.check_listeners, system), "fail", "tcp *:8080")
+
+    def test_a_socket_systemd_holds_matches_its_socket_unit(self) -> None:
+        cups = {
+            "proto": "tcp",
+            "address": "0.0.0.0",  # noqa: S104 - a recorded address, nothing binds
+            "port": 631,
+            "process": "cups",
+            "unit": "cups.socket",
+        }
+        line = 'tcp LISTEN 0 4096 0.0.0.0:631 0.0.0.0:* users:(("systemd",pid=1,fd=40))\n'
+        system = FakeSystem(
+            {
+                "ss -H -lntup": (0, SS + line),
+                "systemctl list-sockets --all --no-legend --full": (
+                    0,
+                    "0.0.0.0:631 cups.socket cups.service\n",
+                ),
+            },
+            files={RECORD: access_record(listeners=[cups])},
+        )
+        self.assertOutcome(run(checks.check_listeners, system), "pass", "tcp/631 (kept)")
+        system.commands["systemctl list-sockets --all --no-legend --full"] = (
+            0,
+            "0.0.0.0:631 other.socket other.service\n",
+        )
+        self.assertOutcome(run(checks.check_listeners, system), "fail", "tcp 0.0.0.0:631")
 
     def test_the_install_path_warns_while_it_is_open(self) -> None:
         lan = {

@@ -256,19 +256,23 @@ test:
 	@$(GATE) test $(TEST_STEPS)
 endif
 
-test-pytest: setup ## The pytest suites
-	$(BIN)/pytest --junitxml=$(JUNIT)/pytest.xml
-
-# The seed of make test-random-order; CI uses this one, so a failure repeats.
+# The seed of the random test order; CI uses this one, so a failure repeats.
 SEED ?= 20261019
+# TEST_ORDER=random: the pytest suites of make test in that random order, as
+# CI's test job runs them.
+RANDOM_ORDER_ARGS := -p pinka_repo_checks.random_order --order-seed=$(SEED)
+
+test-pytest: setup ## The pytest suites (TEST_ORDER=random: in the random order of SEED, as in CI)
+	$(if $(filter random,$(TEST_ORDER)),PYTHONPATH=tools/repo-checks )$(BIN)/pytest \
+	  $(if $(filter random,$(TEST_ORDER)),$(RANDOM_ORDER_ARGS) )--junitxml=$(JUNIT)/pytest.xml
 
 .PHONY: test-random-order
-test-random-order: setup ## The pytest suites in a random order (SEED, printed; CI runs it too), so a test that depends on an earlier one fails
-	PYTHONPATH=tools/repo-checks $(BIN)/pytest -p pinka_repo_checks.random_order --order-seed=$(SEED) \
+test-random-order: setup ## The pytest suites in a random order (SEED, printed; CI's test job runs them so), so a test that depends on an earlier one fails
+	PYTHONPATH=tools/repo-checks $(BIN)/pytest $(RANDOM_ORDER_ARGS) \
 	  --junitxml=$(JUNIT)/random-order.xml
 
 .PHONY: test-isolated
-test-isolated: setup ## Each pytest file in a process of its own (CI runs it too), so a test that depends on what another file left in the process fails
+test-isolated: setup ## Each pytest file in a process of its own (CI: weekly and on pushes that change tests), so a test that depends on what another file left in the process fails
 	PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks.isolated --log-dir $(BUILD)/isolated \
 	  --junit-dir $(JUNIT)/isolated $(if $(filter 1,$(VERBOSE)),--verbose)
 

@@ -1,0 +1,66 @@
+# Managed by pinka (.github/workflows/check-mode-extended.yml).
+#
+# Extended, NON-BLOCKING (approved deviation I2): the whole site.yml with
+# --check in a disposable systemd container per family. Components whose
+# sources are not verified are skipped; the job summary lists each of them as
+# not tested, never as passing. A skip ends by itself once the component's
+# sources are verified. To save GitHub Actions minutes (owner, with the new
+# plan after 16bf749) it runs weekly, on workflow_dispatch and on pushes that
+# change what it checks.
+name: infra-check-mode-extended
+
+on:
+  push:
+    paths:
+      - "ansible/**"
+      - "preflight/**"
+      - "tools/pinka-lab/**"
+      - "tools/test-distros/**"
+      - "tools/platform/**"
+      - "tests/distros/**"
+      - "tests/reference-platform/**"
+      - "contract/**"
+      - "versions.lock.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".github/workflows/check-mode-extended.yml"
+      - "!**.md"  # docs or records only: not an input
+  schedule:
+    - cron: "35 5 * * 1"  # weekly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-mode-extended:
+    name: check-mode-extended (non-blocking, ${{ matrix.image }})
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu_2404
+          - image: debian_13
+          - image: fedora_44
+          - image: almalinux_9
+          - image: opensuse_leap_156
+          - image: archlinux
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.23"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: make setup
+      - run: make check-mode-extended CI_IMAGE=${{ matrix.image }}

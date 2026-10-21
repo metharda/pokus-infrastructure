@@ -118,7 +118,8 @@ work, so pinka keeps what was reachable reachable and closes a listener only
 with the owner's consent, one checkbox per listener. Closing never stops the
 service, and it does not touch the owner's firewall: pinka's own nftables
 table `inet pinka_access_guard` drops new connections to what was closed, the
-same way with nftables, firewalld or ufw, so removing that table (as
+same way with nftables, firewalld or ufw and over the tailnet too, never on
+loopback, never SSH over the tailnet, and refers to no table of the owner's, so removing it (as
 uninstall does) makes everything reachable as it was. A port Docker
 publishes for a container is forwarded to the container and never reaches
 the host's input policy, so pinka cannot close it and says so. pinka's sshd

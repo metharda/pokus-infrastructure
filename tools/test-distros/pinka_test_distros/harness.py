@@ -3,6 +3,9 @@
 The lab is bootstrapped twice (the second run must change nothing) and
 checked with ``pinka doctor --smoke``, from a release package of the tested
 commit (its pinned collections bundled, owner decision of 3d.7 and 3d.8);
+on the ufw and firewalld lanes, what was closed with consent stays closed
+after the owner's firewall reloads, while SSH over the tailnet still works
+(approved deviation AG1);
 then the reference platform is deployed in it (BUILD_PROMPT §7.18, §19.9): its isolation probes, the
 training flow with the CPU-only job, a run interrupted by a reboot and
 resumed, a second deployment that changes nothing, the replacement by a
@@ -15,6 +18,7 @@ import datetime as dt
 import json
 import re
 import secrets
+import socket
 import tempfile
 import tomllib
 from collections.abc import Callable, Mapping
@@ -35,6 +39,7 @@ STAGES = (
     "bootstrap",
     "idempotent",
     "smoke",
+    "access",
     "platform",
     "isolation",
     "training",
@@ -75,6 +80,68 @@ DISABLE_MANAGERS = (
     "for unit in firewalld ufw; do"
     ' if systemctl is-active --quiet "$unit"; then systemctl disable --now "$unit"; fi; done'
 )
+# The ufw and firewalld lanes (approved deviation AG1): two services of the
+# machine's owner listen before the install, the owner's firewall admits
+# both, and the answers close the first with consent.
+ACCESS_FIREWALLS = ("ufw", "firewalld")
+CLOSED_PORT, KEPT_PORT = 8080, 8081
+OWNER_SERVICES = (
+    f"mkdir -p /srv/example-web && for port in {CLOSED_PORT} {KEPT_PORT}; do"
+    " printf '[Unit]\\nDescription=A service of the owner (test-distros)\\n[Service]\\n"
+    "ExecStart=/usr/bin/python3 -m http.server %s --bind 0.0.0.0 --directory /srv/example-web\\n"
+    '[Install]\\nWantedBy=multi-user.target\\n\' "$port"'
+    " > /etc/systemd/system/example-web-$port.service; done"
+    " && systemctl daemon-reload"
+    f" && systemctl enable --now example-web-{CLOSED_PORT}.service example-web-{KEPT_PORT}.service"
+)
+OWNER_RULES = {
+    "ufw": f"ufw allow {CLOSED_PORT}/tcp && ufw allow {KEPT_PORT}/tcp",
+    "firewalld": f"firewall-cmd --permanent --add-port={CLOSED_PORT}/tcp"
+    f" --add-port={KEPT_PORT}/tcp && firewall-cmd --reload",
+}
+RELOAD = {"ufw": "ufw reload", "firewalld": "firewall-cmd --reload"}
+# The VM's address on its network, as the harness host reaches it.
+LAN_ADDRESS = "ip -4 -o route get 192.0.2.1 | sed -n 's/.* src \\([0-9.]*\\).*/\\1/p'"
+# A second Tailscale node inside the VM, in userspace networking: SSH from it
+# reaches the VM's own node over tailscale0, never over loopback.
+TAILNET_CLIENT = "/run/pinka-test-tailnet-client"
+TAILNET_CLIENT_UNIT = "pinka-test-tailnet-client"
+# Its SOCKS5 proxy on the VM's loopback: HTTP over the tailnet to the
+# owner's services, which must answer on tcp/8081 and not on tcp/8080.
+TAILNET_SOCKS = "localhost:1055"
+CONNECT_TIMEOUT = 5.0
+
+
+def tailnet_http(port: int) -> str:
+    """An HTTP request over the tailnet to one of the owner's services on the VM.
+
+    Args:
+        port: The service's port.
+
+    Returns:
+        A shell command that succeeds only when the service answers.
+    """
+    return (
+        f"curl -sS -o /dev/null --max-time 15 --socks5-hostname {TAILNET_SOCKS}"
+        f' "http://$(tailscale ip -4):{port}/"'
+    )
+
+
+def tcp_reachable(address: str, port: int) -> bool:
+    """Whether a TCP connection from the harness host to ``address:port`` opens.
+
+    Args:
+        address: IPv4 address.
+        port: Port.
+
+    Returns:
+        True when the connection opens within the timeout.
+    """
+    try:
+        with socket.create_connection((address, port), timeout=CONNECT_TIMEOUT):
+            return True
+    except OSError:
+        return False
 
 
 class StageError(RuntimeError):
@@ -98,6 +165,8 @@ class Settings:
             that only one test VM runs at a time.
         now: Clock (UTC).
         token: Short random suffix of VM names.
+        reachable: Whether the harness host opens a TCP connection to an
+            address and port of a VM.
     """
 
     repo_tar: Path
@@ -111,6 +180,7 @@ class Settings:
     keep_running: bool = False
     now: Callable[[], dt.datetime] = field(default=lambda: dt.datetime.now(dt.UTC))
     token: Callable[[], str] = field(default=lambda: secrets.token_hex(3))
+    reachable: Callable[[str, int], bool] = field(default=tcp_reachable)
 
 
 def changed_tasks(log: str) -> int | None:
@@ -231,6 +301,10 @@ class Test:
             install = INSTALL[t.family].format(pkg=t.firewall)
             self._require("prepare", install, f"installing {t.firewall}")
             self._require("prepare", ENABLE[t.firewall], f"enabling {t.firewall}")
+            self._require("prepare", OWNER_SERVICES, "starting the owner's services")
+            self._require(
+                "prepare", OWNER_RULES[t.firewall], "admitting them in the owner's firewall"
+            )
         if t.selinux == "enforcing":
             mode = self._sh("prepare", "getenforce").stdout.strip()
             if mode != "Enforcing":
@@ -254,7 +328,7 @@ class Test:
         )
         with tempfile.TemporaryDirectory() as tmp:
             answers = Path(tmp, "answers.yml")
-            answers.write_text(render_answers(self.settings.answers, self.name), encoding="utf-8")
+            answers.write_text(self._render(), encoding="utf-8")
             self.incus.push(self.name, answers, self._answers_path(), mode="0644")
             vault = Path(tmp, "vault-pass")
             vault.write_text(secrets.token_urlsafe(32) + "\n", encoding="utf-8")
@@ -269,6 +343,22 @@ class Test:
 
     def _answers_path(self) -> str:
         return f"{GUEST_INFRA}/installer-answers/{self.name}.yml"
+
+    @property
+    def closes_listeners(self) -> bool:
+        """Whether this lane closes a pre-existing listener with consent (ufw, firewalld)."""
+        return self.target.firewall in ACCESS_FIREWALLS
+
+    def _render(self, changes: Mapping[str, Any] | None = None) -> str:
+        """The CI answers for this VM, with a stage's changes and the lane's consent."""
+        changes = dict(changes or {})
+        if self.closes_listeners:
+            template = yaml.safe_load(self.settings.answers.read_text(encoding="utf-8"))
+            changes["remote_access"] = {
+                **(template.get("remote_access") or {}),
+                "close_listeners": [f"tcp/{CLOSED_PORT}"],
+            }
+        return render_answers(self.settings.answers, self.name, changes)
 
     def _bootstrap(self, stage: str, options: str) -> int:
         script = (
@@ -331,6 +421,69 @@ class Test:
         self._require("smoke", "pinka backup now", "the first backup", timeout=3600)
         self._require("smoke", "pinka doctor --smoke", "pinka doctor --smoke", timeout=3600)
 
+    def access(self) -> None:
+        """What was closed with consent stays closed after the owner's firewall reloads (AG1).
+
+        On the ufw and firewalld lanes, before and after ``ufw reload`` or
+        ``firewall-cmd --reload``: the access guard drops new connections to
+        the closed listener; the harness host reaches the kept one and not
+        the closed one, and so does a second node over the tailnet; and SSH
+        over the tailnet still works.
+        """
+        if not self.closes_listeners:
+            return
+        address = self._require("access", LAN_ADDRESS, "finding the VM's address").stdout.strip()
+        if not address:
+            raise StageError("the VM has no address on its network")
+        self._access_holds(address, "after the install")
+        self._require("access", RELOAD[self.target.firewall], f"reloading {self.target.firewall}")
+        self._access_holds(address, f"after {RELOAD[self.target.firewall]}")
+
+    def _access_holds(self, address: str, when: str) -> None:
+        guard = self._sh("access", "nft list table inet pinka_access_guard")
+        if not guard.ok or f"tcp dport {CLOSED_PORT} drop" not in guard.stdout:
+            raise StageError(f"{when}: the access guard does not drop tcp/{CLOSED_PORT}")
+        if not self.settings.reachable(address, KEPT_PORT):
+            raise StageError(f"{when}: the kept listener tcp/{KEPT_PORT} is not reachable")
+        if self.settings.reachable(address, CLOSED_PORT):
+            raise StageError(f"{when}: the closed listener tcp/{CLOSED_PORT} is reachable")
+        self._over_the_tailnet(when)
+
+    def _over_the_tailnet(self, when: str) -> None:
+        """From a second tailnet node inside the VM: SSH works, tcp/8080 is closed, tcp/8081 not."""
+        sock = f"{TAILNET_CLIENT}/tailscaled.sock"
+        start = (
+            f"set -a; . {GUEST_SECRETS}; set +a; mkdir -p {TAILNET_CLIENT}"
+            f' && systemd-run --unit={TAILNET_CLIENT_UNIT} --collect "$(command -v tailscaled)"'
+            f" --tun=userspace-networking --socket={sock} --statedir={TAILNET_CLIENT} --port=0"
+            f" --socks5-server={TAILNET_SOCKS}"
+            f" && for i in $(seq 30); do test -S {sock} && break; sleep 1; done"
+            f' && tailscale --socket={sock} up --auth-key="$PINKA_SECRET_TAILSCALE_AUTHKEY"'
+            f" --hostname={self.name}-client --accept-dns=false --timeout=120s"
+        )
+        login = (
+            "ssh -i /root/ci-researcher -o BatchMode=yes -o StrictHostKeyChecking=no"
+            " -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30"
+            f' -o ProxyCommand="tailscale --socket={sock} nc %h %p"'
+            ' researcher1@"$(tailscale ip -4)" true'
+        )
+        try:
+            self._require("access", start, f"{when}: starting the tailnet client")
+            self._require("access", login, f"{when}: SSH over the tailnet")
+            if not self._sh("access", tailnet_http(KEPT_PORT)).ok:
+                raise StageError(
+                    f"{when}: the kept listener tcp/{KEPT_PORT} is not reachable over the tailnet"
+                )
+            if self._sh("access", tailnet_http(CLOSED_PORT)).ok:
+                raise StageError(
+                    f"{when}: the closed listener tcp/{CLOSED_PORT} is reachable over the tailnet"
+                )
+        finally:
+            self._sh(
+                "access",
+                f"tailscale --socket={sock} logout; systemctl stop {TAILNET_CLIENT_UNIT}; true",
+            )
+
     # --- the reference platform -------------------------------------------------------------
 
     def _apply(self, stage: str, changes: Mapping[str, Any], options: str = "") -> None:
@@ -338,7 +491,7 @@ class Test:
 
         The answers are kept as ``<stage>-answers.yml`` in the results.
         """
-        text = render_answers(self.settings.answers, self.name, changes)
+        text = self._render(changes)
         (self.dir / f"{stage}-answers.yml").write_text(text, encoding="utf-8")
         with tempfile.TemporaryDirectory() as tmp:
             answers = Path(tmp, "answers.yml")

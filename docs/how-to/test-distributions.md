@@ -13,13 +13,17 @@ description: Run the full distribution tests in disposable Incus VMs, record the
 `tested` distribution: for each target in `tests/distros/targets.yml` it
 launches a disposable Incus VM, bootstraps the lab from the CI answers file,
 runs bootstrap a second time (it must change nothing), backs up once and runs
-`pinka doctor --smoke`. Then it deploys the reference platform `refplat`
+`pinka doctor --smoke`. On the ufw and firewalld lanes it then checks the
+access that existed before the install
+([The access stage](#the-access-stage)). Then it deploys the reference platform `refplat`
 (`tests/reference-platform/`) in the VM and tests it as described in
 [What the reference platform stages check](#what-the-reference-platform-stages-check).
-The CI fast lane runs on every push instead, in a container per family:
-`make check-mode`, the required job, checks the provider-agnostic roles in
-check mode, and `make check-mode-extended`, a separate non-blocking job,
-checks the whole provisioning play with the reference platform enabled.
+The CI fast lane runs instead, in a container per family: `make
+check-mode`, a required lane on every push that changes more than docs or
+records, checks the provider-agnostic roles in check mode, and `make
+check-mode-extended`, a separate non-blocking workflow that runs weekly, on
+demand and on pushes that change what it checks, checks the whole
+provisioning play with the reference platform enabled.
 
 !!! note "Prerequisites"
     - A developer machine with Incus and VM support (KVM), or a lab host whose
@@ -33,8 +37,11 @@ checks the whole provisioning play with the reference platform enabled.
       Incus storage pool that allocates disks thinly (`dir`, `btrfs`, `zfs`
       or LVM thin), so a VM takes only the space it writes.
     - A checkout of the repository with the development tools (`make setup`).
-    - An ephemeral, pre-approved auth key of the tailnet for tests, tagged
-      `tag:pinka-qa`: the test VMs are staging labs and join it.
+    - An ephemeral, pre-approved, reusable auth key of the tailnet for
+      tests, tagged `tag:pinka-qa`: the test VMs are staging labs and join
+      it, and the `access` stage joins a second node with it. The tailnet
+      policy lets `tag:pinka-qa` reach `tag:pinka-qa:22`, `:8080` and
+      `:8081`.
 
 ## Run the distribution tests
 
@@ -66,6 +73,29 @@ checks the whole provisioning play with the reference platform enabled.
     ```bash
     PYTHONPATH=tools/test-distros:tools/platform:tools/lockcheck:preflight .venv/bin/python -m pinka_test_distros list
     ```
+
+## The access stage
+
+On the ufw and firewalld lanes, `prepare` starts two services of the
+machine's owner before the install (`example-web-8080` and
+`example-web-8081`, listening on every address) and admits both ports in
+the owner's firewall (`ufw allow`, or `firewall-cmd --permanent
+--add-port`); every bootstrap of the lane runs with
+`remote_access.close_listeners: [tcp/8080]`, so the host is shared and
+tcp/8080 is closed with consent. After `smoke`, the `access` stage checks,
+once after the install and again after reloading the owner's firewall
+(`ufw reload` or `firewall-cmd --reload`):
+
+- the table `inet pinka_access_guard` is in place and drops tcp/8080;
+- the harness host reaches tcp/8081 on the VM's address and not tcp/8080;
+- over the tailnet, from a second Tailscale node inside the VM (a
+  userspace `tailscaled`, unit `pinka-test-tailnet-client`, joined with the
+  same auth key, so its connections arrive on the VM's `tailscale0`): SSH
+  as the test researcher with its key works (through `tailscale nc`),
+  tcp/8081 answers and tcp/8080 does not (HTTP through the node's SOCKS5
+  proxy); the node logs out again.
+
+On the nftables lanes the stage has nothing to do and passes.
 
 ## What the reference platform stages check
 

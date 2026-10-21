@@ -44,8 +44,12 @@ firewalld or ufw the owner's zones and rules stay as they are). What the
 owner consented to close (`firewall_close_listeners`) and, once the safeguard
 held, the install's access path are dropped by the access guard, table
 `inet pinka_access_guard` in `/etc/pinka/nftables/access-guard.nft`, the same
-on every backend; it accepts established connections, loopback and pinka's
-own SSH over the tailnet and the extra interfaces first.
+on every backend (approved deviation AG1); each of its drop rules matches
+only a new connection and never one on loopback; on `tailscale0` only SSH
+is spared (accepted first), so what was closed is closed over the tailnet
+as well; SSH on the extra interfaces is accepted first too, and it refers to
+no other table (`ansible/tests/access_guard_probe.py` checks it against the
+kernel).
 `pinka-nftables.service` loads it on every backend, with `inet pinka_filter`
 on the nftables backend. A listener that serves the install's path stays
 open while the path is open. `tasks/install_path.yml` runs at the end of the

@@ -322,6 +322,10 @@ def test_access_guard_is_valid(tmp_path: Path, variant: str) -> None:
     assert result.returncode == 0, result.stderr
 
 
+NEVER = 'iifname != "lo" ct state new'
+TAILNET_SSH = 'iifname "tailscale0" tcp dport 22 accept'
+
+
 def test_the_access_guard_drops_only_what_the_owner_consented_to_close() -> None:
     # Nothing closed: an empty table, nothing hooked.
     assert access_guard() == []
@@ -334,24 +338,20 @@ def test_the_access_guard_drops_only_what_the_owner_consented_to_close() -> None
     # Closed listeners; SSH on every address is held open for the install's
     # path to 192.0.2.10:22 while the path is open.
     assert access_guard(firewall_close_listeners=["tcp/8080", "tcp/22"]) == [
-        "ct state established,related accept",
-        'iifname "lo" accept',
-        'iifname "tailscale0" tcp dport { 22 } accept',
-        "ip daddr 192.0.2.10 tcp dport 8080 drop",
+        TAILNET_SSH,
+        f"{NEVER} ip daddr 192.0.2.10 tcp dport 8080 drop",
     ]
     # The path closed under the safeguard: SSH closes with it, except over the
-    # tailnet and on the extra SSH interfaces.
+    # tailnet, on loopback and on the extra SSH interfaces.
     assert access_guard(
         firewall_close_listeners=["tcp/22"],
         pinka_closed_access=["install_path"],
         ssh_extra_allowed_interfaces=["eth1"],
     ) == [
-        "ct state established,related accept",
-        'iifname "lo" accept',
-        'iifname "tailscale0" tcp dport { 22 } accept',
+        TAILNET_SSH,
         'iifname { "eth1" } tcp dport 22 accept',
-        "tcp dport 22 drop",
-        "ip daddr 192.0.2.10 tcp dport 22 drop",
+        f"{NEVER} tcp dport 22 drop",
+        f"{NEVER} ip daddr 192.0.2.10 tcp dport 22 drop",
     ]
     # On a dedicated host only the install's path closes.
     dedicated = firewall_vars(
@@ -360,8 +360,103 @@ def test_the_access_guard_drops_only_what_the_owner_consented_to_close() -> None
     )
     text = render_template("firewall", "pinka-access-guard.nft.j2", dedicated)
     assert [line.strip() for line in text.splitlines() if line.strip().endswith("drop")] == [
-        "ip daddr 192.0.2.10 tcp dport 22 drop"
+        f"{NEVER} ip daddr 192.0.2.10 tcp dport 22 drop"
     ]
+
+
+def test_every_drop_of_the_access_guard_is_new_only_and_spares_ssh_over_the_tailnet() -> None:
+    # Approved deviation AG1 (corrected with the owner's new plan): the guard
+    # drops only new connections, never one on loopback; on tailscale0 only
+    # SSH is spared, and it refers to no table but its own.
+    variables = firewall_vars(
+        pinka_preexisting={"access": SHARED_ACCESS},
+        firewall_close_listeners=["tcp/8080", "udp/5353", "tcp/22"],
+        pinka_closed_access=["install_path"],
+        ssh_extra_allowed_interfaces=["eth1"],
+    )
+    text = render_template("firewall", "pinka-access-guard.nft.j2", variables)
+    rules = [
+        line.strip()
+        for line in text.splitlines()
+        if line.startswith("\t\t") and not line.strip().startswith("#")
+    ]
+    drops = [rule for rule in rules if rule.endswith("drop")]
+    assert len(drops) == 4  # tcp/8080, udp/5353, tcp/22 and the install's path
+    assert all(rule.startswith(NEVER + " ") for rule in drops), drops
+    accepts = [rule for rule in rules if rule.endswith("accept")]
+    assert accepts == [TAILNET_SSH, 'iifname { "eth1" } tcp dport 22 accept']
+    assert [rule for rule in rules if not rule.endswith(("drop", "accept"))] == [
+        "type filter hook input priority filter - 5; policy accept;"
+    ]
+    statements = [line for line in text.splitlines() if line and not line.startswith("#")]
+    tables = {line.split()[2] for line in statements if line.startswith("table ")}
+    assert tables == {"pinka_access_guard"}
+    assert not any(word in text for word in ("jump", "goto", "@")), text
+
+
+def test_the_access_guard_against_the_kernel(tmp_path: Path) -> None:
+    # Real packets in a network namespace of their own (access_guard_probe.py):
+    # a connection open before the guard stays open, new ones to what was
+    # closed are dropped on every interface but loopback, tailscale0 included,
+    # SSH over tailscale0 is never cut even with tcp/22 closed, and the guard
+    # works with no table of ufw or firewalld there.
+    access = {
+        "host": "shared",
+        "session": {"via": "ssh", "address": "192.0.2.1", "port": 22, "user": "owner1"},
+        "listeners": [
+            {"proto": "tcp", "address": ANY_V4, "port": port, "admitted": False}
+            for port in (22, 8080, 8081)
+        ],
+    }
+    variables = firewall_vars(
+        pinka_preexisting={"access": access},
+        firewall_close_listeners=["tcp/8080", "tcp/22"],
+        pinka_closed_access=["install_path"],
+    )
+    guard = tmp_path / "access-guard.nft"
+    guard.write_text(
+        render_template("firewall", "pinka-access-guard.nft.j2", variables), encoding="utf-8"
+    )
+    # The guard of an earlier run, closing a port nothing listens on.
+    earlier = {
+        **access,
+        "session": {"via": "console"},
+        "listeners": [{"proto": "tcp", "address": ANY_V4, "port": 9999, "admitted": False}],
+    }
+    first = tmp_path / "access-guard-earlier.nft"
+    first.write_text(
+        render_template(
+            "firewall",
+            "pinka-access-guard.nft.j2",
+            firewall_vars(
+                pinka_preexisting={"access": earlier}, firewall_close_listeners=["tcp/9999"]
+            ),
+        ),
+        encoding="utf-8",
+    )
+    nft = shutil.which("nft") or "/usr/sbin/nft"
+    unshare = shutil.which("unshare")
+    if not Path(nft).exists() or unshare is None or not Path("/dev/net/tun").exists():
+        pytest.skip("nft, unshare or /dev/net/tun is missing")
+    probe = Path(__file__).with_name("access_guard_probe.py")
+    argv = [*privileged(), unshare, "-n", sys.executable, str(probe), nft, str(first), str(guard)]
+    done = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stderr
+    found = json.loads(done.stdout)
+    assert found == {
+        "open before the guard: connect": True,
+        "open before the guard: echo before": True,
+        "tables": ["table inet pinka_access_guard"],
+        "open before the guard: echo after": True,
+        "new on eth9 to the closed listener": False,
+        "new on eth9 to the kept listener": True,
+        "new on eth9 to the closed install path": False,
+        "new on tailscale0 to the closed listener": False,
+        "new on tailscale0 to the kept listener": True,
+        "new on tailscale0 to SSH, closed elsewhere": True,
+        "new on loopback to the closed listener": True,
+        "new on loopback to the closed install path's port": True,
+    }
 
 
 def test_the_install_path_closes_once_under_the_safeguard() -> None:

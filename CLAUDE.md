@@ -198,10 +198,21 @@ does not push the rewritten history itself.
   once before the summary and always before proposing a commit. Never
   weaken a check, never hide a failure, a skip or a warning.
 - The pytest suites also run in a random order with the Makefile's fixed,
-  printed seed (`make test-random-order`, CI job `test-random-order`), and
-  each test file in a pytest process of its own (`make test-isolated`, CI
-  job `test-isolated`, on every push): a test never relies on what another
-  test or another file left in the process.
+  printed seed (`make test-random-order`; CI's `test` job runs them so,
+  `make test TEST_ORDER=random`), and each test file in a pytest process of
+  its own (`make test-isolated`; CI workflow `infra-isolated`): a test never
+  relies on what another test or another file left in the process. Run
+  `make test-random-order` and `make test-isolated` locally before every
+  proposal (owner, with the new plan after `16bf749`).
+- GitHub Actions minutes (owner, with the new plan after `16bf749`): every
+  workflow cancels a run in progress on the same branch; `test-isolated`
+  (`isolated.yml`), `check-mode-extended` (`check-mode-extended.yml`) and
+  `release-package` run weekly, on `workflow_dispatch` and on pushes that
+  touch their inputs (Markdown is never one); a push that changes only docs
+  or records skips the `check-mode` lanes (job `changes`,
+  `pinka_repo_checks.changes`). The job `required` stands for every
+  blocking job of `ci.yml`. Weekly runs run only from `main`; a failure in
+  one blocks the next step like any other.
 - Skips in CI (owner, after `37c062e`): CI keeps a list of the tests that may
   skip there, each with its run and reason
   (`tools/repo-checks/pinka_repo_checks/ci_skips.json`, empty or nearly so);
@@ -212,8 +223,8 @@ does not push the rewritten history itself.
   gate lists them under its line, and every gate and CI report names each
   skipped test, not only the count.
 - Test results by name (owner, with the "commit" for the per-file run): every
-  test job (`test` with the Python 3.9 runs, `test-random-order`,
-  `test-isolated`) writes JUnit XML to `build/junit/`, and CI keeps it as the
+  test job (`test` with the Python 3.9 runs, `test-isolated`) writes JUnit
+  XML to `build/junit/`, and CI keeps it as the
   artifact `junit-<job>-attempt-<n>` of every run, failed ones included. A
   report of a specific test's result cites that artifact (run, artifact,
   file, class name and test name).

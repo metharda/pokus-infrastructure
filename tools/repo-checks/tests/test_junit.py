@@ -148,14 +148,15 @@ def test_every_test_job_writes_and_keeps_junit_xml() -> None:
     block = makefile[makefile.index("\ntest-py39:") :].split("\n\n", 1)[0]
     assert block.count("--junit-xml $(CURDIR)/$(JUNIT)/py39-") == 3
     for line in (
-        "$(BIN)/pytest --junitxml=$(JUNIT)/pytest.xml",
+        "--junitxml=$(JUNIT)/pytest.xml",
         "--junitxml=$(JUNIT)/random-order.xml",
         "--junit-dir $(JUNIT)/isolated",
         "JUNIT := $(BUILD)/junit",
     ):
         assert line in makefile, line
-    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
-    for name in ("test", "test-random-order", "test-isolated"):
+    for workflow, name in (("ci.yml", "test"), ("isolated.yml", "test-isolated")):
+        path = ROOT / ".github" / "workflows" / workflow
+        jobs = yaml.safe_load(path.read_text(encoding="utf-8"))
         upload = jobs["jobs"][name]["steps"][-1]
         assert upload["uses"].startswith("actions/upload-artifact@"), name
         assert upload["if"] == "${{ !cancelled() }}", name  # failed runs too

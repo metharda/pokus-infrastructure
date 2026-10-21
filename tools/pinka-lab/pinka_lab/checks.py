@@ -19,7 +19,9 @@ from typing import Any
 
 from pinka_lab import window
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
+from pinka_preflight.detect import access as access_detect
 from pinka_preflight.detect import gpu
+from pinka_preflight.detect.lab import LAB_SLICE, LAB_UNIT_PREFIX
 from pinka_preflight.detect.timesync import detect_timesync
 from pinka_preflight.profile_tool import differences
 from pinka_preflight.runner import CommandResult, Runner
@@ -34,6 +36,7 @@ KEY_MODE = 0o600
 FIREWALLD_ZONES = ("pinka-tailnet", "pinka-run")
 SQL_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 PROCESS_RE = re.compile(r'\(\("([^"]+)"')
+PID_RE = re.compile(r"pid=([0-9]+)")
 LOOPBACK_V4 = "127."
 # What infra rendered for the active platform (pinka_platform, contract v2).
 RENDERED_PLATFORM = "/etc/pinka/platform/rendered.json"
@@ -43,8 +46,8 @@ FALLBACK_MODE = 0o666
 # The install record (BUILD_PROMPT §7.21), written by the install_record role.
 INSTALL_RECORD = "/var/lib/pinka/install-record.json"
 WRITABLE_BY_OTHERS = 0o022
-# How ss and preflight show a socket on every address.
-WILDCARD_ADDRESSES = ("0.0.0.0", "::", "*")  # noqa: S104 - addresses read from the host
+# ss shows a dual-stack socket on every address as "*"; preflight reads it as "::".
+SS_ANY_ADDRESS = {"*": "::"}
 
 
 # --- helpers ---------------------------------------------------------------------------
@@ -106,17 +109,84 @@ def _preexisting_access(ctx: Context) -> tuple[dict[str, Any], list[str]] | None
     return access, closed
 
 
-def _same_address(found: str, recorded: str) -> bool:
-    """Whether a listener's address is one preflight recorded (every address covers all)."""
-    if recorded in WILDCARD_ADDRESSES:
-        return True
+def _record_root_only(ctx: Context) -> bool:
+    """Whether only root can change the install record (owner root, no group or other write)."""
+    path = str(ctx.config.get("paths", "install_record", default=INSTALL_RECORD))
+    found = ctx.system.info(path)
+    return found is not None and found.owner == "root" and not found.mode & WRITABLE_BY_OTHERS
+
+
+def _canonical_address(address: str) -> str:
+    """An address as preflight writes it (``::`` for ss's ``*``), compared exactly."""
+    address = SS_ANY_ADDRESS.get(address, address)
     try:
-        one, other = ipaddress.ip_address(found), ipaddress.ip_address(recorded)
+        return str(ipaddress.ip_address(address))
     except ValueError:
-        return found == recorded
-    if isinstance(one, ipaddress.IPv6Address) and one.ipv4_mapped is not None:
-        one = one.ipv4_mapped
-    return one == other
+        return address
+
+
+def _cgroup_parts(ctx: Context, pid: str) -> list[str]:
+    parts: list[str] = []
+    for line in (ctx.system.read_text(f"/proc/{pid}/cgroup") or "").splitlines():
+        parts.extend(part for part in line.split(":", 2)[-1].split("/") if part)
+    return parts
+
+
+def _owner(
+    ctx: Context, port: int, process: str, pids: Sequence[str]
+) -> tuple[str | None, str | None, bool]:
+    """A listener's owner as preflight records it: ``(unit, process, pinka's own)``.
+
+    A socket systemd holds (PID 1) is named by its socket unit and the service
+    it activates, from ``systemctl list-sockets``; any other by the unit of its
+    first process's cgroup and the process name.
+    """
+    if "1" in pids:
+        if "socket_units" not in ctx.memo:
+            ctx.memo["socket_units"] = access_detect.socket_units(_PreflightRunner(ctx))
+        held: dict[int, tuple[str, str]] = ctx.memo["socket_units"]
+        if port in held:
+            unit, activates = held[port]
+            name = "sshd" if activates in access_detect.SSHD_UNITS else activates.rsplit(".", 1)[0]
+            return unit, name, unit.startswith(LAB_UNIT_PREFIX)
+    if not pids:
+        return None, process or None, False
+    pid = sorted(pids, key=int)[0]
+    parts = _cgroup_parts(ctx, pid)
+    ours = LAB_SLICE in parts or any(part.startswith(LAB_UNIT_PREFIX) for part in parts)
+    return access_detect.service_unit(parts), process or None, ours
+
+
+def _recorded_listener(
+    ctx: Context, sock: tuple[str, str, int, str, list[str]], access: Mapping[str, Any]
+) -> bool:
+    """Whether a listener is one the install record notes, exactly, and not pinka's own.
+
+    Approved deviation DL1 (owner, with the "commit" for ``16bf749``): only on a
+    shared host; protocol, address, port, owning unit and process all equal the
+    record's; pinka's own services and the daemons of components pinka
+    installed never use the exception.
+    """
+    if access.get("host") != "shared":
+        return False
+    proto, address, port, process, pids = sock
+    unit, name, ours = _owner(ctx, port, process, pids)
+    record = _install_record(ctx) or {}
+    if ours or (unit is not None and unit in access_detect.pinka_units(record)):
+        return False
+    found = (proto, _canonical_address(address), port, unit, name)
+    return any(
+        (
+            item.get("proto"),
+            _canonical_address(str(item.get("address"))),
+            item.get("port"),
+            item.get("unit"),
+            item.get("process"),
+        )
+        == found
+        for item in access.get("listeners") or []
+        if isinstance(item, dict)
+    )
 
 
 def _tailscale_status(ctx: Context) -> dict[str, Any]:
@@ -197,14 +267,14 @@ def sql_names(names: Sequence[str]) -> str:
     return ",".join(f"'{n}'" for n in names) or "NULL"
 
 
-def listeners(ss_output: str) -> list[tuple[str, str, int, str]]:
-    """Parse ``ss -H -lntup`` output.
+def sockets(ss_output: str) -> list[tuple[str, str, int, str, list[str]]]:
+    """Parse ``ss -H -lntup`` output, with the processes that hold each socket.
 
     Args:
         ss_output: The command's output.
 
     Returns:
-        ``(protocol, address, port, process)`` per listening socket.
+        ``(protocol, address, port, process, pids)`` per listening socket.
     """
     found = []
     for line in ss_output.splitlines():
@@ -216,9 +286,27 @@ def listeners(ss_output: str) -> list[tuple[str, str, int, str]]:
         address = address.strip("[]").split("%")[0]
         names = PROCESS_RE.findall(line)
         found.append(
-            (fields[0], address, int(port) if port.isdigit() else 0, names[0] if names else "")
+            (
+                fields[0],
+                address,
+                int(port) if port.isdigit() else 0,
+                names[0] if names else "",
+                PID_RE.findall(line),
+            )
         )
     return found
+
+
+def listeners(ss_output: str) -> list[tuple[str, str, int, str]]:
+    """Parse ``ss -H -lntup`` output.
+
+    Args:
+        ss_output: The command's output.
+
+    Returns:
+        ``(protocol, address, port, process)`` per listening socket.
+    """
+    return [sock[:4] for sock in sockets(ss_output)]
 
 
 def is_loopback(address: str) -> bool:
@@ -346,9 +434,11 @@ def check_containers(ctx: Context) -> Outcome:
 def check_listeners(ctx: Context) -> Outcome:
     """Nothing listens outside loopback but sshd, host services and listeners from before pinka.
 
-    The listeners the install record notes as the host's before pinka (§7.5)
-    are expected, whether the firewall keeps them reachable or closed them with
-    the owner's consent: pinka never stops a pre-existing service.
+    On a shared host, a listener the install record notes as the host's before
+    pinka is expected when it matches the record exactly (approved deviation
+    DL1), whether the firewall keeps it reachable or closed it with the owner's
+    consent: pinka never stops a pre-existing service. A record that someone
+    other than root can change is not trusted for it.
     """
     done = ctx.system.run(["ss", "-H", "-lntup"])
     if not done.ok:
@@ -362,10 +452,11 @@ def check_listeners(ctx: Context) -> Outcome:
         shown = ctx.system.run(["tailscale", "ip"])
         tailnet = set(shown.stdout.split()) if shown.ok else set()
     access, closed = _preexisting_access(ctx) or ({}, [])
-    recorded = [item for item in access.get("listeners") or [] if isinstance(item, dict)]
+    untrusted = bool(access) and not _record_root_only(ctx)
     unexpected: set[str] = set()
     preexisting: set[str] = set()
-    for proto, address, port, process in listeners(done.stdout):
+    for sock in sockets(done.stdout):
+        proto, address, port, process, _ = sock
         if (
             is_loopback(address)
             or process in allowed_processes
@@ -373,18 +464,18 @@ def check_listeners(ctx: Context) -> Outcome:
             or (address in tailnet and port in tailnet_ports)
         ):
             continue
-        if any(
-            item.get("proto") == proto
-            and item.get("port") == port
-            and _same_address(address, str(item.get("address")))
-            for item in recorded
-        ):
+        if access and not untrusted and _recorded_listener(ctx, sock, access):
             name = f"{proto}/{port}"
             preexisting.add(f"{name} ({'closed by the firewall' if name in closed else 'kept'})")
             continue
         unexpected.add(f"{proto} {address}:{port} ({process or 'unknown process'})")
     if unexpected:
-        return failed("unexpected listeners: " + ", ".join(sorted(unexpected)))
+        note = (
+            "; the install record is not root-only, so no listener is accepted as pre-existing"
+            if untrusted
+            else ""
+        )
+        return failed("unexpected listeners: " + ", ".join(sorted(unexpected)) + note)
     if preexisting:
         return passed(
             "only loopback listeners, expected host services and the listeners the host had "

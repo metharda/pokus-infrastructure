@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 from typing import Any
 
 import pytest
@@ -206,6 +207,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_listener_rules",
         "pinka_install_path",
         "pinka_tailnet_logins",
+        "pinka_tailnet_peers",
     }
     profile = fixture_profile("debian13-baremetal")
     result = evaluate("p | pinka_release_identity(c)", {"p": profile, "c": debian_codenames()})
@@ -463,20 +465,81 @@ def test_the_install_path_is_an_ssh_session_from_outside_the_tailnet() -> None:
     assert pinka.install_path({}, []) is None
 
 
-def test_only_researchers_key_logins_over_the_tailnet_count() -> None:
-    journal = "\n".join(
-        [
-            "Accepted publickey for researcher1 from 100.101.2.3 port 51234 ssh2: ED25519 SHA256:x",
-            "Accepted publickey for researcher2 from 192.0.2.50 port 1 ssh2: ED25519 SHA256:x",
-            "Accepted password for researcher1 from 100.101.2.3 port 2 ssh2",
-            "Accepted publickey for owner1 from 100.101.2.4 port 3 ssh2: RSA SHA256:x",
-            "Accepted publickey for researcher3 from fd7a:115c:a1e0::5 port 4 ssh2: ED25519",
-            "Failed publickey for researcher1 from 100.101.2.3 port 5 ssh2",
-        ]
+def journal_entry(message: str, uid: str = "0", comm: str = "sshd") -> str:
+    """One line of ``journalctl --output=json`` with journald's trusted fields."""
+    return json.dumps(
+        {"MESSAGE": message, "_UID": uid, "_COMM": comm, "_SYSTEMD_UNIT": "ssh.service"}
     )
-    names = ["researcher1", "researcher2", "researcher3"]
-    assert pinka.tailnet_logins(journal, names) == [
-        {"user": "researcher1", "address": "100.101.2.3"},
-        {"user": "researcher3", "address": "fd7a:115c:a1e0::5"},
+
+
+TAILNET_STATUS = json.dumps(
+    {
+        "Self": {"TailscaleIPs": ["100.101.2.1", "fd7a:115c:a1e0::1"]},
+        "Peer": {
+            "nodekey:a": {"TailscaleIPs": ["100.101.2.3", "fd7a:115c:a1e0::3"]},
+            "nodekey:b": {"TailscaleIPs": ["100.101.2.4"]},
+        },
+    }
+)
+
+
+def test_the_tailnet_peers_are_the_other_nodes() -> None:
+    assert pinka.tailnet_peers(TAILNET_STATUS) == [
+        "100.101.2.3",
+        "100.101.2.4",
+        "fd7a:115c:a1e0::3",
     ]
-    assert pinka.tailnet_logins("", names) == []
+    for broken in ("", "not json", "[]", '{"Peer": null}'):
+        assert pinka.tailnet_peers(broken) == []
+
+
+def test_only_researchers_key_logins_over_the_tailnet_count() -> None:
+    peers = pinka.tailnet_peers(TAILNET_STATUS)
+    key = "Accepted publickey for {user} from {address} port 51234 ssh2: ED25519 SHA256:x"
+    good = journal_entry(key.format(user="researcher1", address="100.101.2.3"))
+    v6 = journal_entry(
+        key.format(user="researcher2", address="fd7a:115c:a1e0::3"), comm="sshd-session"
+    )
+    names = ["researcher1", "researcher2", "owner1"]
+    assert pinka.tailnet_logins("\n".join([good, v6]), names, peers) == [
+        {"user": "researcher1", "address": "100.101.2.3"},
+        {"user": "researcher2", "address": "fd7a:115c:a1e0::3"},
+    ]
+    not_counted = {
+        "a login without a key": journal_entry(
+            "Accepted password for researcher1 from 100.101.2.3 port 2 ssh2"
+        ),
+        "a key that needs a second factor": journal_entry(
+            "Partial publickey for researcher1 from 100.101.2.3 port 3 ssh2: ED25519 SHA256:x"
+        ),
+        "a failed key": journal_entry(
+            "Failed publickey for researcher1 from 100.101.2.3 port 4 ssh2: ED25519 SHA256:x"
+        ),
+        "an account that is not a researcher": journal_entry(
+            key.format(user="intruder", address="100.101.2.3")
+        ),
+        "a LAN address in the tailnet's range (carrier-grade NAT)": journal_entry(
+            key.format(user="researcher1", address="100.64.7.9")
+        ),
+        "the host's own tailnet address (a login over loopback)": journal_entry(
+            key.format(user="researcher1", address="100.101.2.1")
+        ),
+        "a peer outside the tailnet's range": journal_entry(
+            key.format(user="researcher1", address="192.0.2.50")
+        ),
+        "a line an account logged, not root": journal_entry(
+            key.format(user="researcher1", address="100.101.2.3"), uid="1001"
+        ),
+        "a line another program of root logged": journal_entry(
+            key.format(user="researcher1", address="100.101.2.3"), comm="logger"
+        ),
+        "sshd's message quoted in another": journal_entry(
+            "error: x " + key.format(user="researcher1", address="100.101.2.3")
+        ),
+        "text instead of JSON": key.format(user="researcher1", address="100.101.2.3"),
+    }
+    for case, line in not_counted.items():
+        assert pinka.tailnet_logins(line, names, peers) == [], case
+    # Without the tailnet's peers (tailscale status failed) nothing counts.
+    assert pinka.tailnet_logins(good, names, []) == []
+    assert pinka.tailnet_logins("", names, peers) == []

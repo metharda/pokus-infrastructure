@@ -422,9 +422,19 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   `lock-collections` (run 39260135548) ran, because the commit changed its
   client, and passed: 11 requests to Galaxy, each "attempt 1 of 3", and
   "the lock's 5 artifact pins match Galaxy". The pre-existing access
-  follow-up (D1 follow-up, decisions 3 and 4 after D1, with SSH1) is built
-  and waits for "commit" (`docs/IMPLEMENTATION_NOTES.md`, "Pre-existing
-  access (D1 follow-up, decisions 3 and 4 after D1)").
+  follow-up (D1 follow-up, decisions 3 and 4 after D1, with SSH1) is
+  `16bf749` (`docs/IMPLEMENTATION_NOTES.md`, "Pre-existing access (D1
+  follow-up, decisions 3 and 4 after D1)"). CI of `16bf749` (run
+  39304851835), all 20 jobs on their first attempt, no re-run: privacy,
+  lint, test, test-random-order, test-isolated, docs, all six check-mode
+  and all six check-mode-extended lanes passed; `lock-check` is the known
+  red (24 marker errors, the postgres and `ubuntu:24.04` tag warnings);
+  `links` runs weekly; release-package and lock-collections did not run
+  (no change to the lock, its tooling or the Makefile). The owner's
+  decisions with its "commit" (approved deviations DL1 and AG1, the
+  question on the login detection), AG1's correction and the CI minutes
+  (the owner's new plan after `16bf749`, item 1) follow as one commit; it
+  waits for "commit".
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -443,9 +453,9 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML and the Galaxy retry done; the pre-existing access follow-up (with the SSH `Match` block) built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then D2, A, B, C, E, F, G | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on` | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
-| 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` | not started | — |
+| 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` and made public; moved before D2 by the owner's new plan after `16bf749` | not started; the public-readiness audit comes first | — |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
 ## Remaining plan
@@ -889,7 +899,117 @@ its checks green and a commit proposal, and waits for the owner's
   sshd's settings are a `Match Group pinka` block on a shared host; doctor
   accepts the recorded listeners and warns while the path is open
   (`network.install_path`); the installer's screen 8 has the checkboxes.
-  Interpretations for the owner are listed in the notes.
+  Interpretations for the owner are listed in the notes. Committed as
+  `16bf749`. Decisions with its "commit" (owner, verbatim):
+
+  > Decisions:
+  > 1. Doctor's listener check: approved as a deviation, with these conditions:
+  >    - a pre-existing listener is accepted only if it matches the install record
+  >      exactly (address, port, protocol and owning unit or executable); any listener
+  >      that appears after the install still fails doctor;
+  >    - the install record is writable only by root, and doctor fails if its owner or
+  >      mode is wrong;
+  >    - pinka's own services never use the exception;
+  >    - on a dedicated host the strict rule of §7.5 applies unchanged.
+  >    Record it as an approved deviation with these conditions.
+  > 2. The guard table inet pinka_access_guard on every backend: approved. Confirm
+  >    with tests that it drops only new connections, never matches tailscale0 or
+  >    loopback, and does not depend on ufw's or firewalld's own tables; and add to
+  >    the test-distros lanes for ufw and firewalld: reload the user's firewall
+  >    (ufw reload, firewall-cmd --reload) and check the guard is still in place and
+  >    the closed listener stays closed while SSH over the tailnet still works.
+  > 3. Tell me how a researcher's tailnet login during the run is detected (which
+  >    log, which fields), and whether a login without a key or from an address
+  >    outside the tailnet can be mistaken for one.
+  >
+  > D2: its report must include a table of everything uninstall removes, restores or
+  > keeps, with the guard table, the pre-existing access record and the SSH Match
+  > block in it, so I can check it against the install record before the commit.
+
+  Built in the commit after `16bf749` (`docs/IMPLEMENTATION_NOTES.md`,
+  "Decisions after `16bf749` (DL1, AG1, the login detection)"): doctor's
+  exact match (approved deviation DL1); the guard's drop rules only for new
+  connections and never on loopback, with only SSH spared on `tailscale0`
+  (corrected with the owner's new plan, below), checked by a static
+  test and against the kernel in a network namespace, and the `access`
+  stage of `make test-distros` on the ufw and firewalld lanes (approved
+  deviation AG1); the answer on the login detection, which is now stricter
+  (journald's `_UID` 0 and `_COMM` sshd, an address of a current tailnet
+  peer).
+- **New plan after `16bf749`** (owner, verbatim; it moves the history
+  rewrite, the rename and making the repository public before D2, and
+  replaces, for this order only, "after the real-machine tests" in 3g and
+  "never opens a pull request" for the one pull request it names; the
+  owner opens it). One elision, marked with brackets: the address of item 3
+  (the privacy scan refuses any e-mail address outside the example domains
+  in a file; the address is in the commit identities after the rewrite):
+
+  > Do not commit yet. New plan: the history rewrite, the rename and making the
+  > repository public move forward, before D2. Then I open a pull request from
+  > moving/on to main, and you continue with D2 on moving/on.
+  >
+  > 1. Finish the current step, as one commit:
+  >    - correction to decision 2: "never match tailscale0" was too broad on my side.
+  >      The intent was that SSH over the tailnet is never cut. On tailscale0, exempt
+  >      only the SSH port; every listener I consented to close is closed on the
+  >      tailnet too, on every backend. Update the kernel test and the test-distros
+  >      access stage (tcp/8080 closed over the tailnet as well, SSH over the tailnet
+  >      still works).
+  >    - GitHub Actions minutes (the account is at 90 % until the repository is
+  >      public): concurrency with cancel-in-progress per branch; the random-order
+  >      run becomes the main test job's run, not a separate job; test-isolated,
+  >      check-mode-extended and release-package run weekly, on workflow_dispatch and
+  >      on pushes that touch their inputs; pushes that change only docs or records
+  >      skip the Ansible lanes. You keep running make test-random-order and make
+  >      test-isolated locally before every proposal. Give me the estimated minutes
+  >      per typical push before and after.
+  >    Wait for my "commit".
+  > 2. Public-readiness audit, before the rewrite. Report, change nothing yet:
+  >    - every workflow: no pull_request_target that checks out PR code; minimal
+  >      permissions per job; no secret printed; jobs that need
+  >      PINKA_PRIVACY_DENYLIST behave correctly on pull requests from forks, which
+  >      get no secrets; anything that would run code from a fork with write access
+  >      or secrets;
+  >    - personal data in the current tree and in the whole history (every commit's
+  >      content and message on every branch): my personal e-mail address (the
+  >      non-noreply address in the commit identities) is the only item on my
+  >      denylist, so scan the full history for it yourself; also look for any other
+  >      e-mail address, names, usernames, hostnames, IP addresses, tailnet names,
+  >      home paths, and the descriptions of my test computers in PROGRESS.md and
+  >      IMPLEMENTATION_NOTES.md (QA spec rule 12 says machine details stay
+  >      private). Propose what to remove or generalize, and whether the rewrite
+  >      should also scrub it from history;
+  >    - LICENSE, NOTICE, README (with a clear pre-release status), SECURITY.md,
+  >      CONTRIBUTING.md: present or missing;
+  >    - tell me exactly what to put in the PINKA_PRIVACY_DENYLIST secret (format),
+  >      given that my personal e-mail is its only entry.
+  > 3. The rewrite, proposed only after 1 and 2 and waiting for my explicit
+  >    "rewrite": as recorded (trailers removed, author and committer set to my
+  >    identity, dates kept), with this identity: name as on bef51af, e-mail
+  >    [the owner's GitHub noreply address], plus any history scrubbing I
+  >    approve from 2. Afterwards no commit may carry any other e-mail address. Set
+  >    the same identity in this session's git config for every later commit. Show
+  >    me the before/after mapping and the identity listing.
+  > 4. After my "rewrite": the exact commands for me to force-push main, push the
+  >    rewritten work as moving/on, delete claude/zen-albattani-qfwwps on the
+  >    remote, and update other clones. Tell me whether this session can push to
+  >    moving/on afterwards; if it cannot, say which branch you will push to.
+  > 5. A checklist for me after the rename: making it public; branch protection on
+  >    main (no force-push, required CI checks); requiring approval for workflows
+  >    from first-time contributors; private vulnerability reporting; secret
+  >    scanning; re-checking the secrets.
+  > 6. The pull request moving/on -> main: the title and description, and how to
+  >    merge it so every commit keeps its author date and hash: a merge commit or a
+  >    fast-forward push, never squash or rebase-and-merge. Update HANDOFF and
+  >    CLAUDE.md to match.
+
+  Item 1 is built in the commit after `16bf749`, together with the
+  decisions with its "commit" (one commit, as asked): on `tailscale0` the
+  guard spares only tcp/22 and drops what was closed, as on every other
+  interface; the kernel test and the `access` stage check it over the
+  tailnet. CI minutes: `docs/IMPLEMENTATION_NOTES.md`, "GitHub Actions
+  minutes (the owner's new plan after `16bf749`)". Items 2 to 6 follow in
+  that order; D2 waits until the owner has opened the pull request.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite):
 
@@ -1026,6 +1146,8 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
 | St12-1 | infra §11 (Ansible) | `make test-roles`: the provider-agnostic roles in a throwaway Incus system container or VM, only when invoked | `make check-mode` (the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` in check mode in a disposable Docker systemd container per family, also CI's required job, I2) and `make test-distros` (the full bootstrap in disposable Incus VMs, §19.9) replace it; there is no `test-roles` target and no alias. Raised by the 3e self-test; approved by the owner after 3e ("record it as an approved deviation (make check-mode and make test-distros replace it). No alias."); built in step 12 |
 | SSH1 | infra §7.3 | the drop-in sets `AllowGroups pinka`, `PasswordAuthentication no` and the other settings for the whole host | pinka's sshd settings apply in a `Match Group pinka` block, so accounts outside `pinka` keep the host's own policy (owner, decision 3 after D1, approving option (b) of the open question raised with the 3f-1 spec edit); on a shared host, and on a dedicated host while the install's access path is open for an account that is not a researcher; built with the D1 follow-up |
+| DL1 | infra §7.5 (doctor bullet) | doctor fails on anything listening on `0.0.0.0`/`::` other than sshd | `network.listeners` accepts a listener the install record notes as the host's before pinka, on these conditions (owner, decision 1 with the "commit" for `16bf749`): it matches the record exactly (address, port, protocol and owning unit or executable), and any listener that appears after the install still fails; the install record is writable only by root, and doctor fails if its owner or mode is wrong (`install.record`); pinka's own services never use the exception; on a dedicated host the strict rule of §7.5 applies unchanged |
+| AG1 | infra §7.5 (pre-existing access) | firewalld or ufw: pinka leaves the owner's zones and rules as they are; closing unspecified | what the owner consents to close, and the install's access path once closed, are dropped by pinka's own table `inet pinka_access_guard` on every backend, loaded by `pinka-nftables.service` (owner, decision 2 with the "commit" for `16bf749`); tests confirm it drops only new connections and never one on loopback, spares only SSH on `tailscale0` (corrected with the owner's new plan after `16bf749`: what was closed is closed over the tailnet as well, on every backend; SSH over the tailnet is never cut), and depends on no table of ufw or firewalld; the ufw and firewalld lanes of `make test-distros` reload the owner's firewall and check the guard, the closed and the kept listener from the harness host and over the tailnet, and SSH over the tailnet |
 
 ## Platform spec changes pending
 
@@ -1172,7 +1294,7 @@ Raised by D1 of 3f-1, for the owner (decided after D1: the GPU guard in its own 
   alternative (b) accepts all traffic from LXD's bridges and extends the
   split guard to every interface. Recommendation: (a).
 
-Raised by the pre-existing access follow-up, for the owner:
+Raised by the pre-existing access follow-up, for the owner (decided with the "commit" for `16bf749`: approved deviations DL1, with conditions, and AG1):
 
 - **Doctor's listener check on a shared host.** §7.5's doctor bullet fails
   on anything listening on `0.0.0.0` or `::` other than sshd, which every
@@ -1480,13 +1602,20 @@ edit after D1 (`0378425`), the installer fix of the written files
 (`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
 green but the known red. Then (owner, after `37c062e`): the CI skip list
 with the nft checks and the root test in CI (`006c40d`) and the per-file
-process run (`2f27132`), JUnit XML of every test job (`fc7cc3b`) and the
-Galaxy retry with the re-run rule and the action pin check (`5fc33c1`), all
-green but the known red; then, each waiting for "commit", the pre-existing
-access with the SSH `Match` block as a D1 follow-up (built), then D2, A, B,
-C, E, F and G. Then
-the real-machine tests on the owner's computers
-(4.1 and 4.2 first), then the history rewrite, 3g and 3h. The owner runs
+process run (`2f27132`), JUnit XML of every test job (`fc7cc3b`), the
+Galaxy retry with the re-run rule and the action pin check (`5fc33c1`) and
+the pre-existing access with the SSH `Match` block as a D1 follow-up
+(`16bf749`), all green but the known red; then, each waiting for "commit",
+the owner's decisions after `16bf749` (DL1, AG1, the login detection)
+with AG1's correction and the CI minutes, as one commit (built). Then the
+owner's new plan after `16bf749` (verbatim in the remaining plan): the
+public-readiness audit (a report, nothing changed), the history rewrite
+(waiting for "rewrite"), the owner's pushes and the rename, the checklist
+for making the repository public, and the pull request `moving/on` ->
+`main`, which the owner opens; then, on `moving/on`, D2 (its report with
+the table of what uninstall removes, restores or keeps), A, B, C, E, F and
+G, the real-machine tests on the owner's computers (4.1 and 4.2 first) and
+3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still
 open: the remaining `TODO(verify)` items (98), which need network access or
 reference hardware.

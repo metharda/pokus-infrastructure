@@ -21,6 +21,7 @@ TEST_STAGE_TITLES = {
     "bootstrap": "Bootstrap",
     "idempotent": "Second run",
     "smoke": "Doctor --smoke",
+    "access": "Access",
     "platform": "Platform",
     "isolation": "Isolation",
     "training": "Training",

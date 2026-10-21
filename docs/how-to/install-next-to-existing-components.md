@@ -163,9 +163,11 @@ To close a listener on a shared host:
 
 2. Run bootstrap. pinka's table `inet pinka_access_guard` drops new
    connections to it from other machines, on every firewall backend; the
-   service keeps running and connections already open stay open. Clear its
-   checkbox (or remove it from the list) and run bootstrap again to make it
-   reachable again; uninstall makes every closed listener reachable again.
+   service keeps running and connections already open stay open. The
+   listener is closed over the tailnet as well; only connections on loopback
+   pass, and SSH over the tailnet is never cut. Clear its checkbox (or
+   remove it from the list) and run bootstrap again to make it reachable
+   again; uninstall makes every closed listener reachable again.
 
 A port Docker publishes for a container is forwarded to the container, not
 delivered to the host, so it cannot be closed here and bootstrap refuses it;
@@ -177,15 +179,19 @@ too:
 
 1. Give your consent: the *Install session* checkbox, or
    `firewall_close_install_path: true` in the machine's host_vars.
-2. Run bootstrap and, while it runs, log in as a researcher over the tailnet
-   from another terminal:
+2. Run bootstrap and, while it runs, log in as a researcher with their key
+   from another device on the tailnet:
 
     <!-- qa:skip reason="needs the tailnet and a researcher's key" -->
     ```bash
     ssh researcher1@pinka-lab
     ```
 
-    A login from before the run does not count.
+    A login from before the run does not count, nor one from the host
+    itself, a password login, or one from an address that is not a tailnet
+    device's: the run counts only sshd's own record of a key login
+    (`Accepted publickey`, written by root's sshd process) from the address
+    of another node of the tailnet (`tailscale status`).
 
 3. At its end the run closes the path; the session you ran it from stays
    open until you leave it. A listener that serves the path (sshd on every

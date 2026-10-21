@@ -20,6 +20,7 @@ on:
       - ".github/workflows/release-package.yml"
   schedule:
     - cron: "53 4 * * 1"  # weekly: the package from Galaxy's artifacts
+  workflow_dispatch:
 
 permissions:
   contents: read

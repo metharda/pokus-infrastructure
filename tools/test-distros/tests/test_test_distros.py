@@ -112,6 +112,13 @@ def test_changed_tasks() -> None:
 # --- the pipeline ---------------------------------------------------------------------------------
 
 
+# The access guard as nft lists it on a ufw or firewalld lane (approved deviation AG1).
+GUARD = (
+    "table inet pinka_access_guard {\n\tchain input {\n"
+    '\t\tiifname != { "lo", "tailscale0" } ct state new tcp dport 8080 drop\n\t}\n}\n'
+)
+
+
 class FakeIncus:
     """Answers incus commands for one VM; ``exec`` answers come from ``scripts``."""
 
@@ -133,6 +140,12 @@ class FakeIncus:
             "transitions": ["suspended", "resumed", "ok"],
             "replaced": True,
             "infra_source": "package",
+            "address": "10.170.0.23",
+            "guard": GUARD,
+            "tailnet_up": 0,
+            "tailnet_ssh": 0,
+            "tailnet_kept": 0,
+            "tailnet_closed": 28,  # curl: timed out
             **behaviour,
         }
         self.infra_source = self.behaviour["infra_source"]
@@ -219,6 +232,9 @@ class FakeIncus:
             return 0, "started\n" if self.standins == 1 else "running\n"
         if "--replace-platform" in script and b["replaced"]:
             self.platform = refplat.RENAMED_NAME
+        access = self.access(script)
+        if access is not None:
+            return access
         if script == "getenforce":
             return 0, f"{b['getenforce']}\n"
         if script.startswith("setenforce"):
@@ -229,6 +245,23 @@ class FakeIncus:
         if "doctor --smoke" in script:
             return int(b["doctor"]), ""
         return 0, ""
+
+    def access(self, script: str) -> tuple[int, str] | None:
+        """The access stage's commands (approved deviation AG1); None for any other."""
+        b = self.behaviour
+        if script == harness.LAN_ADDRESS:
+            return 0, f"{b['address']}\n"
+        if script == "nft list table inet pinka_access_guard":
+            return (0, str(b["guard"])) if b["guard"] else (1, "")
+        answers = {
+            harness.tailnet_http(harness.KEPT_PORT): "tailnet_kept",
+            harness.tailnet_http(harness.CLOSED_PORT): "tailnet_closed",
+        }
+        if harness.TAILNET_CLIENT_UNIT in script and " up " in script:
+            answers[script] = "tailnet_up"
+        if script.startswith("ssh -i /root/ci-researcher"):
+            answers[script] = "tailnet_ssh"
+        return (int(b[answers[script]]), "") if script in answers else None
 
     def cli(self, args: tuple[str, ...]) -> tuple[int, str]:
         answers: dict[str, dict[str, Any]] = {
@@ -274,11 +307,17 @@ class FakeIncus:
         return [c[-1] for c in self.calls if c[1] == "exec"]
 
 
+def owner_ports(address: str, port: int) -> bool:
+    """The harness host reaches the kept listener, never the closed one."""
+    return port == harness.KEPT_PORT
+
+
 def make_test(
     tmp_path: Path,
     target_id: str,
     keep: str = "failed",
     keep_running: bool = False,
+    reachable: Any = owner_ports,
     **behaviour: Any,
 ) -> tuple[harness.Test, FakeIncus]:
     fake = FakeIncus(tmp_path, **behaviour)
@@ -303,6 +342,7 @@ def make_test(
         keep_running=keep_running,
         now=lambda: next(times),
         token=lambda: "abcdef",
+        reachable=reachable,
     )
     target = next(t for t in target_file().targets if t.id == target_id)
     return harness.Test(target, incus, settings), fake
@@ -508,6 +548,107 @@ def test_variant_preparation(tmp_path: Path) -> None:
     assert "dnf install -y firewalld" in scripts
     assert "systemctl enable --now firewalld" in scripts
     assert any(s.startswith("setenforce 1") for s in scripts)
+
+
+def test_the_access_stage_on_a_ufw_lane(tmp_path: Path) -> None:
+    # Approved deviation AG1: the owner's services listen and the owner's
+    # firewall admits them before the install; the answers close tcp/8080.
+    tried: list[tuple[str, int]] = []
+
+    def reachable(address: str, port: int) -> bool:
+        tried.append((address, port))
+        return port == harness.KEPT_PORT
+
+    test, fake = make_test(tmp_path, "ubuntu-24.04-ufw", backend="ufw", reachable=reachable)
+    record = test.run()
+    assert record["stages"] == dict.fromkeys(harness.STAGES, "passed"), record["error"]
+    scripts = fake.scripts()
+    assert scripts.index(harness.OWNER_SERVICES) < scripts.index(harness.OWNER_RULES["ufw"])
+    assert scripts.index(harness.OWNER_RULES["ufw"]) < next(
+        n for n, s in enumerate(scripts) if "bootstrap.sh" in s
+    )
+    # Every bootstrap of the lane keeps the consent.
+    for answers in [
+        fake.pushed["root/pokus-infrastructure/installer-answers/ptd-ubuntu-24-04-ufw-abcdef.yml"][
+            0
+        ],
+        *(
+            path.read_text()
+            for path in (tmp_path / "out" / "ubuntu-24.04-ufw").glob("*-answers.yml")
+        ),
+    ]:
+        remote = yaml.safe_load(answers)["remote_access"]
+        assert remote["close_listeners"] == ["tcp/8080"]
+        assert remote["tailscale_login"] == "auth_key"  # the template's own keys stay
+    # Before and after the owner's firewall reloads: the guard, the closed and
+    # the kept listener, SSH over the tailnet.
+    assert scripts.count("ufw reload") == 1
+    reload = scripts.index("ufw reload")
+    checks = [n for n, s in enumerate(scripts) if s == "nft list table inet pinka_access_guard"]
+    assert len(checks) == 2 and checks[0] < reload < checks[1]
+    assert sum(s.startswith("ssh -i /root/ci-researcher") for s in scripts) == 2
+    assert scripts.count(harness.tailnet_http(harness.CLOSED_PORT)) == 2
+    assert scripts.count(harness.tailnet_http(harness.KEPT_PORT)) == 2
+    starts = [s for s in scripts if harness.TAILNET_CLIENT_UNIT in s and " up " in s]
+    assert len(starts) == 2
+    assert all("--socks5-server=localhost:1055" in s for s in starts)
+    assert all("tailscale --socket" in s for s in scripts if s.startswith("ssh -i"))
+    assert sum("logout; systemctl stop pinka-test-tailnet-client" in s for s in scripts) == 2
+    assert tried == [("10.170.0.23", 8081), ("10.170.0.23", 8080)] * 2
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "reachable", "message"),
+    [
+        ({"guard": ""}, owner_ports, "after the install: the access guard does not drop tcp/8080"),
+        ({}, lambda a, p: True, "after the install: the closed listener tcp/8080 is reachable"),
+        ({}, lambda a, p: False, "after the install: the kept listener tcp/8081 is not reachable"),
+        ({"tailnet_ssh": 255}, owner_ports, "after the install: SSH over the tailnet failed"),
+        (
+            {"tailnet_closed": 0},
+            owner_ports,
+            "after the install: the closed listener tcp/8080 is reachable over the tailnet",
+        ),
+        (
+            {"tailnet_kept": 7},
+            owner_ports,
+            "after the install: the kept listener tcp/8081 is not reachable over the tailnet",
+        ),
+        ({"tailnet_up": 1}, owner_ports, "starting the tailnet client failed"),
+        ({"address": ""}, owner_ports, "the VM has no address on its network"),
+    ],
+)
+def test_access_stage_failures(
+    tmp_path: Path, behaviour: dict[str, Any], reachable: Any, message: str
+) -> None:
+    test, fake = make_test(
+        tmp_path, "fedora-44", backend="firewalld", reachable=reachable, **behaviour
+    )
+    record = test.run()
+    assert record["stages"]["access"] == "failed"
+    assert record["stages"]["platform"] == "skipped"
+    assert message in record["error"], record["error"]
+    # The tailnet client leaves again whatever failed.
+    if any("pinka-test-tailnet-client" in s for s in fake.scripts()):
+        assert any("logout; systemctl stop" in s for s in fake.scripts())
+
+
+def test_the_access_stage_after_a_firewalld_reload(tmp_path: Path) -> None:
+    test, fake = make_test(tmp_path, "almalinux-10", backend="firewalld")
+    assert test.run()["stages"]["access"] == "passed"
+    scripts = fake.scripts()
+    assert harness.OWNER_RULES["firewalld"] in scripts
+    assert scripts.count("firewall-cmd --reload") == 1
+
+
+def test_an_nftables_lane_has_no_owner_firewall_to_reload(tmp_path: Path) -> None:
+    test, fake = make_test(tmp_path, "debian-13", reachable=lambda a, p: pytest.fail("no check"))
+    assert test.run()["stages"]["access"] == "passed"
+    assert not any("example-web" in s or "tailnet-client" in s for s in fake.scripts())
+    answers = yaml.safe_load(
+        fake.pushed["root/pokus-infrastructure/installer-answers/ptd-debian-13-abcdef.yml"][0]
+    )
+    assert "close_listeners" not in answers["remote_access"]
 
 
 def test_a_failed_launch_leaves_nothing_to_clean(tmp_path: Path) -> None:
@@ -814,9 +955,10 @@ def test_every_family_has_a_ci_image() -> None:
         "archlinux": {"archlinux"},
     }
     assert set(images) == set().union(*families.values())
-    workflow = (INFRA / ".github" / "workflows" / "ci.yml").read_text()
-    for key in images:
-        assert f"image: {key}" in workflow, key
+    for name in ("ci.yml", "check-mode-extended.yml"):
+        workflow = (INFRA / ".github" / "workflows" / name).read_text()
+        for key in images:
+            assert f"image: {key}" in workflow, (name, key)
 
 
 def test_cli_refuses_without_a_release_package(

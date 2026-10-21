@@ -2,9 +2,13 @@
 #
 # The safeguard of BUILD_PROMPT §7.5, at the end of the run: the install's
 # access path (an SSH session from outside the tailnet) closes only when SSH
-# over the tailnet was verified for at least one researcher in the same run (a
-# successful key login from a tailnet address since the play began) and the
-# owner consented (firewall_close_install_path). Otherwise it stays open and
+# over the tailnet was verified for at least one researcher in the same run
+# and the owner consented (firewall_close_install_path). Verified means a
+# journal entry since the play began that journald attributes to root and to
+# sshd (_UID 0, _COMM sshd or sshd-session, fields the sender cannot set),
+# with sshd's "Accepted publickey for <researcher> from <address>", where the
+# address is a current tailnet peer's (tailscale status), never the host's
+# own (pinka_tailnet_logins). Otherwise it stays open and
 # doctor warns. Closing re-applies the sshd drop-in (its Match block for the
 # session's account ends), removes the path's rule from pinka's table and
 # drops new connections to it in the access guard on every backend; a
@@ -19,7 +23,7 @@
       - --unit=ssh@*.service
       - --unit=sshd@*.service
       - "--since=@{{ pinka_run_started }}"
-      - --output=cat
+      - --output=json
       - --no-pager
   register: firewall_sshd_journal
   changed_when: false
@@ -29,11 +33,23 @@
     - not firewall_install_path.closed
     - firewall_close_install_path | bool
 
+- name: Read the tailnet's peers
+  ansible.builtin.command:
+    argv: [tailscale, status, --json]
+  register: firewall_tailnet_status
+  changed_when: false
+  # Without an answer there are no peers, so no login counts and the path stays open.
+  failed_when: false
+  check_mode: false
+  when: firewall_sshd_journal is not skipped
+
 - name: Note the researchers' logins over the tailnet
   ansible.builtin.set_fact:
     firewall_tailnet_logins: >-
       {{ firewall_sshd_journal.stdout | default('')
-         | pinka_tailnet_logins(researchers | map(attribute='name') | list) }}
+         | pinka_tailnet_logins(researchers | map(attribute='name') | list,
+                                (firewall_tailnet_status.stdout | default('') | pinka_tailnet_peers)
+                                if firewall_tailnet_status.rc | default(1) == 0 else []) }}
   when: firewall_sshd_journal is not skipped
 
 - name: Keep the install's access path open

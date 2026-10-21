@@ -5320,7 +5320,8 @@ item and `install_path`, which stays closed once closed.
   not have reopened it, and both would have changed the owner's rule lists. The
   guard accepts established connections, loopback, pinka's tailnet ports on
   `tailscale0` and SSH on the extra interfaces, and then drops new
-  connections to what was closed; it is re-rendered on every run, so
+  connections to what was closed (changed after `16bf749`, below: only new
+  connections, never on loopback or `tailscale0`); it is re-rendered on every run, so
   clearing a checkbox reopens, and removing it (uninstall, D2) restores everything.
 - `pinka-nftables.service` loads it on every backend (with `pinka_filter`
   on the nftables backend). A unit of its own would have added a name to
@@ -5343,7 +5344,8 @@ the epoch (`now().timestamp()`: `now(utc=true)` is a naive UTC time, whose
 `roles/firewall/tasks/install_path.yml`, the play's last task, reads sshd's
 journal since then (`ssh`, `sshd` and their per-connection units) and
 closes the path only with `firewall_close_install_path: true` and an
-`Accepted publickey` line for a researcher from a tailnet address: it
+`Accepted publickey` line for a researcher from a tailnet address (made
+stricter with decision 3 after `16bf749`, below): it
 records `install_path`, applies the ssh role again (the `Match` block for a
 non-researcher session ends), removes the path's rule from `pinka_filter`
 and adds it to the guard. Whether it closes is decided once, before the
@@ -5407,3 +5409,192 @@ Real sshd, ufw, firewalld and nftables behavior on a host, and the end-to-end
 run: `make test-distros` and real-machine tests 4.4 (pre-existing
 components: every listener reachable as before unless closed with consent,
 the install's SSH session never cut off) and 4.14 (distribution matrix).
+
+## Decisions after `16bf749` (DL1, AG1, the login detection)
+
+Owner, with the "commit" for `16bf749` (verbatim in `PROGRESS.md`).
+
+### DL1: doctor's listener exception, exactly
+
+`network.listeners` accepts a listener as one the host had before pinka only
+when all of these hold, and fails on it otherwise:
+
+- the host is shared (on a dedicated host the strict rule applies
+  unchanged);
+- the install record is root-only: owner root, writable by nobody else
+  (`install.record` fails too when it is not);
+- protocol, address (ss's `*` is preflight's `::`; addresses are compared
+  in their canonical form, never by range), port, owning unit and process
+  all equal the record's. The owner is derived as preflight derives it,
+  with preflight's own helpers: the unit of the first process's cgroup and
+  the process name, or, for a socket systemd holds (PID 1), the socket unit
+  and the service it activates (`systemctl list-sockets`);
+- it is not pinka's: a unit or slice of pinka's (`pinka-*`,
+  `pinka-services.slice`) or the daemon of a component the record names as
+  pinka's never uses the exception.
+
+### AG1: what the guard drops, checked against the kernel
+
+Every drop rule of `inet pinka_access_guard` reads
+`iifname != "lo" ct state new ...`: only a new connection, never on
+loopback; the chain first accepts `iifname "tailscale0" tcp dport 22` (and
+SSH on the extra interfaces), so SSH over the tailnet is never cut and
+every other closed listener is closed over the tailnet as well, on every
+backend. (Built first as "never on loopback or `tailscale0`" for all
+ports; the owner corrected it with the new plan: the intent was that SSH
+over the tailnet is never cut.)
+
+- `test_every_drop_of_the_access_guard_is_new_only_and_spares_ssh_over_the_tailnet`:
+  every drop rule has that prefix, the only accepts are SSH on `tailscale0`
+  and on the extra interfaces, and the file names no table but its own and
+  no jump, goto or set of another.
+- `test_the_access_guard_against_the_kernel` runs
+  `ansible/tests/access_guard_probe.py` as root in a network namespace of
+  its own (CI: `sudo -n`), standard library only: two TUN devices,
+  `eth9` and `tailscale0`, stand for the host's interfaces; TCP segments
+  from their peers are written into them and the kernel's answers read
+  back. A connection established before the guard closes its port keeps
+  echoing; a new one to the closed listener or the closed install path on
+  `eth9` gets no answer, and to the closed listener on `tailscale0` none
+  either; SSH on `tailscale0` answers although tcp/22 is closed elsewhere;
+  the kept listener answers on both; on loopback everything answers; the
+  namespace holds no table but the guard. Found while building it: a connection the kernel's connection
+  tracking has not seen (no table used it in that namespace yet) counts as
+  new on its first tracked packet. On a host connection tracking is active
+  from boot
+  (the guard itself, ufw, firewalld or `pinka_filter`), so the probe loads
+  the guard of an earlier run first, as a later bootstrap replaces it.
+- `make test-distros`, stage `access` (ufw and firewalld lanes; see
+  `docs/how-to/test-distributions.md`): the owner's services on tcp/8080
+  and tcp/8081 and the owner's firewall rules for them before the install,
+  tcp/8080 closed with consent in every bootstrap of the lane; after the
+  install and again after `ufw reload` or `firewall-cmd --reload`: the guard
+  drops tcp/8080, the harness host reaches tcp/8081 and not tcp/8080, and
+  from a second, userspace Tailscale node inside the VM (its connections
+  arrive on the VM's `tailscale0`) SSH as the test researcher works
+  (`tailscale nc`), tcp/8081 answers and tcp/8080 does not (curl through
+  the node's SOCKS5 proxy). The test tailnet's policy must let
+  `tag:pinka-qa` reach `tag:pinka-qa:22`, `:8080` and `:8081`, and the auth
+  key must be reusable. Not run here: it needs Incus VMs and the test tailnet.
+
+### Decision 3: how a researcher's tailnet login is detected
+
+Before (`16bf749`): `journalctl` for sshd's units since the run began,
+`--output=cat`; a line counted when it read `Accepted publickey for
+<researcher> from <address> port` with the address in `100.64.0.0/10` or
+`fd7a:115c:a1e0::/48`.
+
+- A login without a key was never counted: sshd writes `Accepted password`,
+  `Accepted keyboard-interactive/pam` and the like for other methods, and
+  `Partial publickey` when a key needs a second factor (then `Accepted
+  password`).
+- A login from outside the tailnet could be counted in three ways: an
+  address in `100.64.0.0/10` on another network (carrier-grade NAT uses the
+  range); a login from the host itself to its own tailnet address (over
+  loopback, logged with that address); and a line an account wrote into
+  sshd's unit (on a host without `pam_systemd`, a session stays in
+  `ssh.service`'s cgroup and `logger` writes there).
+
+Now: `journalctl --output=json`; an entry counts only with journald's
+trusted fields `_UID` 0 and `_COMM` `sshd` or `sshd-session`, a message
+that begins with sshd's `Accepted publickey for <researcher> from <address>
+port` followed by the port, and an address that is in the tailnet's ranges and one of a current
+peer's `TailscaleIPs` (`tailscale status --json`, without the host's own);
+without an answer from `tailscale status` nothing counts. In OpenSSH 9.6
+and 10.0 (`auth.c`, read for this step) `auth_log()` writes only in the
+privileged monitor, which runs as root (`sshd`, or `sshd-session` from 9.8
+on); `Accepted` is never written for an invalid user. A host on the LAN
+cannot pose as a peer: the answer to a peer's address goes out over
+`tailscale0`, so its TCP handshake never completes.
+
+### Found by the gate: a flaky backup test
+
+`ansible/tests/test_backup.py::test_backup_initializes_a_new_repository`
+checks that the repository password never appears on restic's command
+line, with the fake password `pw`. The command line names the run's
+temporary directory (`/tmp/pinka-backup-<8 random characters>`), which
+contains `pw` in about one run in 200; it did in this gate
+(`pinka-backup-9llpw2v4`). The fake password is now a long, distinctive
+value; the check is unchanged.
+
+## GitHub Actions minutes (the owner's new plan after `16bf749`)
+
+Owner, item 1 of the new plan after `16bf749` (verbatim in `PROGRESS.md`):
+the account is at 90 % of its minutes until the repository is public.
+
+- **Concurrency:** every workflow already had `concurrency` per workflow
+  and ref with `cancel-in-progress: true`; a newer push to the same branch
+  cancels the older run.
+- **Random order in the test job:** `make test TEST_ORDER=random` runs the
+  pytest suites in the random order of the Makefile's printed seed (the
+  `random_order` plugin, as `make test-random-order` does); the separate
+  `test-random-order` job is gone. Its JUnit XML is the test job's.
+- **Heavy lanes by path, weekly and on demand:** `test-isolated` moved to
+  `.github/workflows/isolated.yml` (`infra-isolated`: pushes that change a
+  test, a `conftest.py`, the test tooling, `pyproject.toml`, `uv.lock` or
+  the `Makefile`), `check-mode-extended` to
+  `.github/workflows/check-mode-extended.yml` (`infra-check-mode-extended`:
+  pushes that change Ansible, preflight, the tools the play installs or the
+  harness runs, the contract, the lock or the setup); Markdown is never
+  an input of either (`!**.md`, a role's README included); both run weekly
+  (Monday 05:29 and 05:35 UTC) and on `workflow_dispatch`.
+  `release-package` already ran weekly and on pushes that change its inputs;
+  it gained `workflow_dispatch`. A weekly run runs only from `main`, so these
+  three check the working branch only on the pushes their paths select; the
+  owner can start them on any branch with `workflow_dispatch`. A failure of
+  any of them blocks the next step, as before (`CLAUDE.md`).
+  `test-isolated` treats a change of the code under test as no input: a
+  test that depends on what another file left in the process comes from
+  the tests; `make test-isolated` runs locally before every proposal, and
+  the weekly run covers the rest.
+- **Docs or records only:** the `changes` job
+  (`pinka_repo_checks.changes`) compares the push's range
+  (`github.event.before`..`github.sha`, or the pull request's base..head)
+  and skips the six `check-mode` lanes when every changed path is
+  Markdown, below `docs/` or `specs/`, or the docs' own tooling
+  (`mkdocs.yml`, `cspell.json`, `project-words.txt`, `LICENSE-docs`). A new
+  branch, a range git does not know (after a force push), a value that is
+  not a commit ID, a schedule or a manual run counts as a change of
+  everything. The extended lanes skip such a push through their paths.
+- **One required check:** the `required` job needs `changes`, `privacy`,
+  `lint`, `test`, `docs` and `check-mode` and passes only when each passed,
+  or `check-mode` was skipped because `changes` said docs or records only.
+  Branch protection requires that one check: a matrix job skipped as a
+  whole reports a single check under the job's name, not one per lane, so
+  the lanes cannot be required one by one. `lock-check` stays outside it
+  (the known red while `TODO(verify)` markers remain).
+
+Tests: `tools/repo-checks/tests/test_changes.py` (which paths count as docs
+or records; the output for a range, a new branch, an unknown commit and a
+value that is not a commit ID) and `test_isolated.py` (the isolated job
+runs the test job's steps, the test job runs the random order, the heavy
+lanes' triggers include their own workflow, the schedule and
+`workflow_dispatch`, and the structure of `changes` and `required`);
+`test_junit.py` checks the JUnit upload of `test` and `test-isolated`.
+
+### Estimated minutes per push
+
+From the duration of each job of `16bf749`'s run (39304851835), in whole
+minutes rounded up per job, as GitHub bills them: `privacy` 1, `lint` 4,
+`docs` 2, `lock-check` 2, `test` 7, `test-random-order` 8, `test-isolated`
+8, each `check-mode` lane 3 (18), the `check-mode-extended` lanes 5, 5, 6,
+6, 5 and 5 (32). Estimated for the new jobs: `test` with the random order
+8 (the `test-random-order` job's time), `changes` 1 and `required` 1.
+
+| Push | Before | After |
+| --- | --- | --- |
+| Docs or records only | 82 | 19 |
+| Code, no test, no Ansible lane input (for example `tools/gen/`) | 82 | 37 |
+| Code and tests, no Ansible lane input (for example the installer) | 82 | 45 |
+| Ansible or preflight without tests | 82 | 69 |
+| Ansible or preflight with tests (most feature steps) | 82 | 77 |
+
+`release-package` and `lock-collections` add 1 each, as before, when a
+push changes their inputs (30 s and 20 s in `5fc33c1`'s runs 39260135443
+and 39260135548). The weekly runs from `main` add about 42 minutes a week
+(`test-isolated` 8, `check-mode-extended` 32, `release-package` 1,
+`lock-collections` 1) and `links`, not measured yet (no scheduled run so
+far). While a
+pull request from the working branch is open, each push to it runs
+`infra-ci` twice (push and `pull_request`); GitHub-hosted runners cost no
+minutes in a public repository.

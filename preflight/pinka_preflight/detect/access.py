@@ -183,7 +183,15 @@ def parse_table(text: str, state: str) -> list[tuple[str, int, str]]:
     return found
 
 
-def _service_unit(units: Sequence[str]) -> str | None:
+def service_unit(units: Sequence[str]) -> str | None:
+    """The unit a process runs in: the last service, socket or scope of its cgroup path.
+
+    Args:
+        units: The components of the process's cgroup path.
+
+    Returns:
+        The unit, or None.
+    """
     services = [u for u in units if u.endswith((".service", ".socket", ".scope"))]
     return services[-1] if services else None
 
@@ -210,7 +218,7 @@ def socket_units(runner: Runner) -> dict[int, tuple[str, str]]:
     return found
 
 
-def _pinka_units(record: Mapping[str, Any] | None) -> set[str]:
+def pinka_units(record: Mapping[str, Any] | None) -> set[str]:
     """The daemons of components the install record names as pinka's."""
     added = ((record or {}).get("added") or {}).get("components") or {}
     return {unit for name, units in COMPONENT_UNITS.items() if name in added for unit in units}
@@ -251,7 +259,7 @@ def detect_listeners(
     systemd_sockets = (
         socket_units(runner) if any("1" in owners.get(s[3], []) for s in sockets) else {}
     )
-    pinka_units = _pinka_units(record)
+    ours = pinka_units(record)
     admitted = set(DHCP_CLIENT_PORTS) | set(admitted_udp)
     found: dict[tuple[str, str, int], Listener] = {}
     for proto, address, port, inode in sockets:
@@ -267,8 +275,8 @@ def detect_listeners(
         elif pids:
             pid = sorted(pids, key=int)[0]
             process = (fs.read_first_line(f"/proc/{pid}/comm") or "").strip() or None
-            unit = _service_unit(_cgroup_units(fs, pid))
-        if unit in pinka_units:
+            unit = service_unit(_cgroup_units(fs, pid))
+        if unit in ours:
             continue
         key = (proto, address, port)
         if key not in found:

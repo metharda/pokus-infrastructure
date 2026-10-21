@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -95,17 +96,50 @@ def test_a_passing_run_prints_one_line(tmp_path: Path) -> None:
     assert "----- collection failed; complete output -----" in failed.stdout
 
 
+def workflow(name: str) -> dict[Any, Any]:
+    path = ROOT / ".github" / "workflows" / name
+    data: dict[Any, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return data
+
+
 def test_ci_runs_it_with_the_test_jobs_setup() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "$(BIN)/python -m pinka_repo_checks.isolated --log-dir $(BUILD)/isolated" in makefile
-    jobs = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
-    jobs = jobs["jobs"]
-    test = jobs["test"]["steps"]
-    for name in ("test-random-order", "test-isolated"):
-        steps = jobs[name]["steps"]
-        # The same tools, PostgreSQL 18 and nftables: nothing skips there either;
-        # the last step keeps the JUnit XML (test_junit.py).
-        assert steps[:-2] == test[:-2], name
-        assert steps[-2] == {"run": f"make {name}", "env": test[-2]["env"]}, name
-        assert steps[-1] == test[-1], name
-        assert jobs[name]["if"] == jobs["test"]["if"], name
+    test = workflow("ci.yml")["jobs"]["test"]["steps"]
+    steps = workflow("isolated.yml")["jobs"]["test-isolated"]["steps"]
+    # The same tools, PostgreSQL 18 and nftables: nothing skips there either;
+    # the last step keeps the JUnit XML (test_junit.py).
+    assert steps[:-2] == test[:-2]
+    assert steps[-2] == {"run": "make test-isolated", "env": test[-2]["env"]}
+    assert steps[-1] == test[-1]
+    # The test job runs the suites in the random order of the Makefile's seed.
+    assert test[-2]["run"] == "make test VERBOSE=1 TEST_ORDER=random"
+
+
+def test_the_heavy_lanes_run_weekly_on_demand_and_when_their_inputs_change() -> None:
+    # Owner, with the new plan after 16bf749 (GitHub Actions minutes).
+    for name in ("isolated.yml", "check-mode-extended.yml", "release-package.yml"):
+        on = workflow(name)[True]  # YAML 1.1 reads the key "on" as True
+        assert set(on) == {"push", "schedule", "workflow_dispatch"}, name
+        assert on["push"]["paths"], name
+        assert f".github/workflows/{name}" in on["push"]["paths"], name
+    ci = workflow("ci.yml")
+    assert not {"test-random-order", "test-isolated", "check-mode-extended"} & set(ci["jobs"])
+    for name in ("ci.yml", "isolated.yml", "check-mode-extended.yml", "release-package.yml"):
+        assert workflow(name)["concurrency"] == {
+            "group": "${{ github.workflow }}-${{ github.ref }}",
+            "cancel-in-progress": True,
+        }, name
+
+
+def test_a_change_of_docs_only_skips_the_ansible_lanes() -> None:
+    jobs = workflow("ci.yml")["jobs"]
+    assert jobs["check-mode"]["needs"] == "changes"
+    assert "needs.changes.outputs.ansible == 'true'" in jobs["check-mode"]["if"]
+    required = jobs["required"]
+    assert set(required["needs"]) == {"changes", "privacy", "lint", "test", "docs", "check-mode"}
+    assert "always()" in required["if"]
+    # The extended lanes and the isolated run skip such a push by their paths:
+    # Markdown is never an input, a role's README included.
+    for name in ("isolated.yml", "check-mode-extended.yml"):
+        assert workflow(name)[True]["push"]["paths"][-1] == "!**.md", name
