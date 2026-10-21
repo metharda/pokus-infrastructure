@@ -27,3 +27,7 @@ node_modules/
 /ansible/group_vars/all/vault.yml
 *.vault-pass
 .vault-pass*
+
+# The maintainer's private notes, such as the exact details of the test
+# computers (QA specification §2); PROGRESS.md names only machine classes.
+/local/

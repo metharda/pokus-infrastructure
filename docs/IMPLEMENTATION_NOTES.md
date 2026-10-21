@@ -5598,3 +5598,64 @@ far). While a
 pull request from the working branch is open, each push to it runs
 `infra-ci` twice (push and `pull_request`); GitHub-hosted runners cost no
 minutes in a public repository.
+
+## Public-readiness audit (the owner's new plan after `16bf749`, item 2)
+
+A report before the history rewrite; nothing was changed for it. The
+owner's decisions on it are verbatim in `PROGRESS.md`.
+
+### Findings
+
+- **Identities.** All 64 commits of `main` and the working branch had one
+  identity, author and committer alike: the owner's name with a personal
+  address. The rewrite sets the owner's name with the GitHub noreply
+  address; from the commit after `6aa6eab` on, this checkout commits with
+  it already.
+- **Commit messages.** Only `0503e86` and `8df9199` carry attribution lines
+  (`Co-Authored-By`, `Claude-Session`); the rewrite removes them. No
+  message holds another e-mail address, a name or a denylist term.
+- **Files, every blob of every commit on every branch.** No personal
+  address, name or username. Other e-mail addresses only in the example
+  domains, OpenSSH algorithm names and SSH remotes (`git@github.com:`); IP
+  addresses only from the documentation, private, carrier-grade NAT and
+  benchmark ranges as test values; MAC addresses zeroed or from the documentation range;
+  tailnet names only the `<tailnet>.ts.net` placeholder; no hostnames. Four
+  old commits had this build environment's checkout path in generated
+  references (generic, removed by later commits).
+- **The test computers.** `PROGRESS.md` held the owner's exact
+  descriptions of the two test computers from `eb02d37` on (distribution
+  releases, kernel builds, memory, threads, free disk, GPUs, Secure Boot
+  state, installed software), and three places tied GPU models or memory
+  to them. QA specification §2 keeps such a description in a local file.
+- **GitHub keeps the old history after a rename and a force push:** commits
+  no ref reaches stay reachable by their hash (the commit page and its
+  `.patch` show the author's address) until GitHub Support purges them; the
+  API returns every workflow run with its head commit's author and
+  committer; the repository's activity view lists the force push.
+- **Workflows.** No `pull_request_target`, `workflow_run` or comment
+  trigger; pull requests from forks run with `pull_request`, a read-only
+  token and no secrets. Every workflow reads with `contents: read`; only
+  `release.yml`'s `package` job writes, on `v*` tags. Every checkout sets
+  `persist-credentials: false`; every action is pinned to a commit. No
+  secret is printed. `PINKA_PRIVACY_DENYLIST` was set for every job of
+  `ci.yml`, though only `lint` and `privacy` read it. Without it (a fork's
+  pull request) the scan passed with a note only; the e-mail rule still
+  covers the only entry in files, but neither rule looked at commit
+  messages beyond attribution lines, or at commit identities.
+- **Project files.** `LICENSE` (Apache-2.0) and `LICENSE-docs` (CC BY 4.0)
+  present; a root `NOTICE`, a pre-release status in the README,
+  `SECURITY.md`, `CONTRIBUTING.md` and `CITATION.cff` missing.
+
+### Decision 2: the test computers' descriptions
+
+`PROGRESS.md` names only the machine classes, in brackets inside the
+owner's verbatim text: computer A, a VM host (x86_64 bare metal with
+systemd and KVM, enough memory for a 16 GiB VM, a GPU below compute
+capability 7.5 without an NVIDIA driver, no Secure Boot; Docker, LXD and
+Tailscale already in use); computer B, bare metal (x86_64 with systemd and
+KVM, a nominal 16 GiB machine, a Kepler GPU without an NVIDIA driver, no
+Secure Boot; Tailscale already in use). The exact details are in
+`local/test-computers.md`, which `.gitignore` excludes (`/local/`); it
+exists only in the checkout it was written in, so the owner keeps their own
+copy. Three other places no longer tie a GPU model or a memory size to a
+computer. The rewrite replaces the old text in every commit that has it.

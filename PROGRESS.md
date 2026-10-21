@@ -433,8 +433,11 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   (no change to the lock, its tooling or the Makefile). The owner's
   decisions with its "commit" (approved deviations DL1 and AG1, the
   question on the login detection), AG1's correction and the CI minutes
-  (the owner's new plan after `16bf749`, item 1) follow as one commit; it
-  waits for "commit".
+  (the owner's new plan after `16bf749`, item 1) are `6aa6eab`, committed
+  and not pushed (the next push is the rewritten history). The owner's
+  decisions after the public-readiness audit follow as commits without a
+  push: the test computers generalized to machine classes, the privacy
+  scan's additions, the project files; then the rewrite proposal.
 - Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
   the owner, as listed under
   [Owner deliverables pending](#owner-deliverables-pending).
@@ -1010,8 +1013,54 @@ its checks green and a commit proposal, and waits for the owner's
   tailnet. CI minutes: `docs/IMPLEMENTATION_NOTES.md`, "GitHub Actions
   minutes (the owner's new plan after `16bf749`)". Items 2 to 6 follow in
   that order; D2 waits until the owner has opened the pull request.
+
+  Item 1 is `6aa6eab`, committed with the owner's "commit" and not pushed.
+  The public-readiness audit (item 2) was reported; the owner's decisions
+  on it, verbatim but for one elision in brackets (the privacy scan refuses
+  any e-mail address outside the example domains in a file):
+
+  > commit, but do not push yet; the next push is the rewritten history.
+  >
+  > Decisions:
+  > 1. Keep the rename, option (b). I accept that my personal address stays visible
+  >    in old, unreferenced commits. To limit the rest (the attribution lines and the
+  >    machine descriptions in old commits):
+  >    - give me the exact gh commands to delete every workflow run of this
+  >      repository, to run after the force-push and before making it public, and a
+  >      check that none remain;
+  >    I have disabled Actions in this repository until it is public.
+  > 2. Test computer descriptions: generalize them to the machine classes as you
+  >    proposed, keep the exact details in a git-ignored local file, and scrub the
+  >    old text from history in the rewrite.
+  > 3. Scan additions: yes, all three (commit messages scanned for e-mail addresses
+  >    and denylist terms; every author and committer e-mail must be a GitHub noreply
+  >    address or [GitHub's own noreply address]; a visible warning in CI without the denylist).
+  >    Move PINKA_PRIVACY_DENYLIST to the lint and privacy jobs only.
+  > 4. Project files: add a root NOTICE, the pre-release status line in the README,
+  >    SECURITY.md (GitHub private vulnerability reporting, no e-mail address),
+  >    CONTRIBUTING.md (the gate, the privacy rules, a noreply identity, no
+  >    attribution lines) and CITATION.cff (author as on bef51af).
+  >    Add a tag ruleset limiting v* tags to me to the checklist for after the move.
+  >
+  > Build 2, 3 and 4 as commits before the rewrite, with the full gate, committed
+  > without pushing. Then propose the rewrite with the before/after mapping and the
+  > identity listing, and wait for my "rewrite". After it, steps 4 to 6 of my
+  > earlier message as planned (the commands for me to push, the checklist, the
+  > pull request).
+
+  The audit's findings are in `docs/IMPLEMENTATION_NOTES.md`,
+  "Public-readiness audit (the owner's new plan after `16bf749`, item 2)".
+  From the commit after `6aa6eab` on, this checkout's git identity is the
+  owner's name with the GitHub noreply address of item 3 of the new plan
+  (set in the local git configuration only), so no later commit carries the
+  personal address. Nothing is pushed until the owner pushes the rewritten
+  history; Actions is disabled in the repository until it is public, so CI
+  of these commits runs after the move.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
-  the rewrite):
+  the rewrite). The descriptions of the two computers are generalized to
+  machine classes, in brackets (owner, decision 2 after the public-readiness
+  audit); the exact details stay in the git-ignored local file
+  `local/test-computers.md` (QA specification §2):
 
   > Real-machine tests, after 3f-1 and before the rewrite, on two Linux computers
   > (not WSL2). Neither is disposable.
@@ -1607,10 +1656,11 @@ Galaxy retry with the re-run rule and the action pin check (`5fc33c1`) and
 the pre-existing access with the SSH `Match` block as a D1 follow-up
 (`16bf749`), all green but the known red; then, each waiting for "commit",
 the owner's decisions after `16bf749` (DL1, AG1, the login detection)
-with AG1's correction and the CI minutes, as one commit (built). Then the
+with AG1's correction and the CI minutes (`6aa6eab`, not pushed). Then the
 owner's new plan after `16bf749` (verbatim in the remaining plan): the
-public-readiness audit (a report, nothing changed), the history rewrite
-(waiting for "rewrite"), the owner's pushes and the rename, the checklist
+public-readiness audit (reported) and the owner's decisions on it, as
+commits without a push (the machine classes, the privacy scan's additions,
+the project files), the history rewrite (waiting for "rewrite"), the owner's pushes and the rename, the checklist
 for making the repository public, and the pull request `moving/on` ->
 `main`, which the owner opens; then, on `moving/on`, D2 (its report with
 the table of what uninstall removes, restores or keeps), A, B, C, E, F and
