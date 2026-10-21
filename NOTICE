@@ -1,0 +1,9 @@
+pokus-infrastructure
+Copyright 2026 The pokus-infrastructure authors
+
+The code is licensed under the Apache License, Version 2.0 (LICENSE); the
+documentation under Creative Commons Attribution 4.0 International
+(LICENSE-docs).
+
+A release package also bundles pinned Ansible collections; their licenses
+are in the package's release/NOTICE.

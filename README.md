@@ -1,5 +1,11 @@
 # pokus-infrastructure
 
+> **Status: pre-release.** No version has been released yet. The lab has not
+> been verified end to end on real hosts (`make test-distros` and the
+> real-machine tests are still to run), and its interfaces, the platform
+> contract and the defaults may still change. Use it only on a machine you
+> can rebuild.
+
 Infrastructure-as-code for the Pokus research lab: it turns a Linux machine
 into a lab host for benchmarking AI diagnostic agents on reproducible, injected
 Linux faults. It provides host checks (preflight), accounts, remote access over
@@ -213,15 +219,27 @@ contains no personal or installation-specific data. Real deployment data
 (host variables of real machines, researchers' SSH keys, installer answers,
 vaults) belongs in your lab's own private fork or configuration repository and
 is excluded by `.gitignore`. `make privacy` enforces this; CI can add a private
-denylist through the `PINKA_PRIVACY_DENYLIST` secret. Its value is a list of
-terms separated by newlines or commas, matched case-insensitively as whole
-words; findings never print a term. The same variable works locally:
-`PINKA_PRIVACY_DENYLIST="<terms>" make privacy`. Inside a git work tree the
-scan also checks every commit message reachable from `HEAD`: no commit
-carries a `Co-Authored-By` trailer or another attribution line, and a
-shallow clone fails because its history cannot be checked.
+denylist through the `PINKA_PRIVACY_DENYLIST` secret, which only the `lint`
+and `privacy` jobs receive. Its value is a list of terms separated by
+newlines or commas, matched case-insensitively as whole words; findings
+never print a term. The same variable works locally:
+`PINKA_PRIVACY_DENYLIST="<terms>" make privacy`. A scan in CI without it (a
+pull request from a fork gets no secrets) prints a warning. Inside a git
+work tree the scan also checks every commit reachable from `HEAD`: its
+message carries no `Co-Authored-By` trailer or other attribution line, no
+e-mail address outside the example domains and no denylist term, and its
+author and committer e-mail is a GitHub noreply address or GitHub's own; a
+shallow clone fails because its history cannot be checked. How to commit is
+in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Contributing and security
+
+How to contribute, the gate and the commit rules: [CONTRIBUTING.md](CONTRIBUTING.md).
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) describes. To
+cite the project: [CITATION.cff](CITATION.cff).
 
 ## License
 
 Code: Apache License 2.0 (`LICENSE`). Documentation: Creative Commons
-Attribution 4.0 International (`LICENSE-docs`).
+Attribution 4.0 International (`LICENSE-docs`). Copyright notice:
+[NOTICE](NOTICE).

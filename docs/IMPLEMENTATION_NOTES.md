@@ -5694,3 +5694,32 @@ computer. The rewrite replaces the old text in every commit that has it.
   boundary the history does not hold, the CI warning) and
   `test_workflows.py` (only `lint` and `privacy` get the secret, and both
   check out the pull request's head with the full history).
+
+### Decision 4: the project files
+
+- `NOTICE`: the project's copyright line ("The pokus-infrastructure
+  authors"), the two licenses, and a pointer to a release package's own
+  `release/NOTICE` for the bundled Ansible collections.
+- `README.md`: a pre-release status at the top (no release yet, not
+  verified end to end on real hosts, interfaces and the contract may still
+  change), the privacy section updated for decision 3, and links to the new
+  files.
+- `SECURITY.md`: reports only through GitHub's private vulnerability
+  reporting, no e-mail address; no data from a real lab in a report; scope
+  (this repository; upstream components are reported upstream), with the
+  threat model in `docs/security.md`.
+- `CONTRIBUTING.md`: the gate (`make lint test docs`,
+  `make test-random-order`, `make test-isolated`, no weakened check), docs
+  with the code, generated files only through `make generate`, the privacy
+  rules, the commit rules (a GitHub noreply address as author and
+  committer, no attribution lines, no e-mail address in a message), and
+  what a pull request from a fork runs without.
+- `CITATION.cff`: CFF 1.2.0, the author as on `bef51af`, the license and
+  the README's summary; no repository URL until the move (the URL is added
+  with the other references to the repository's name). It validates
+  against the official schema of CFF 1.2.0
+  (`https://citation-file-format.github.io/1.2.0/schema.json`, read from
+  the `1.2.0` tag of `citation-file-format/citation-file-format`).
+- The checklist for after the move gets a tag ruleset that lets only the
+  owner create `v*` tags: `release.yml`'s `package` job is the only one
+  with write access, and it runs on those tags.

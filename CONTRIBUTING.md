@@ -1,0 +1,60 @@
+# Contributing
+
+pokus-infrastructure is pre-release, and its interfaces may still change.
+Contributions are welcome; by contributing you license your work under the
+repository's licenses: code under the Apache License 2.0 (`LICENSE`),
+documentation under CC BY 4.0 (`LICENSE-docs`).
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) describes,
+never in an issue or a pull request.
+
+## The gate
+
+`make setup` installs the pinned tools into the checkout (`.venv/`,
+`node_modules/`, `build/tools/`). Before you open a pull request:
+
+- `make lint test docs` passes. The targets are quiet: one line each with
+  the counts of passed, failed and skipped items and of warnings, and the
+  complete output of every failing step (`VERBOSE=1` prints everything; the
+  logs are in `build/gate/<target>/`).
+- `make test-random-order` and `make test-isolated` pass: no test relies on
+  the order of the tests or on what another test file left in the process.
+- Never weaken a check, skip a test or hide a warning to get green.
+- Documentation changes with the code, following `docs/DOCS_SPEC.md`.
+  Generated files (the references, the support matrix and the files listed
+  in `CLAUDE.md`) change only through `make generate`.
+- The tests never provision the machine they run on. Bootstrap and the full
+  play run only on a lab host or in the disposable VMs of
+  `make test-distros`.
+
+## Privacy
+
+No personal or installation-specific data anywhere in the repository:
+names, usernames, e-mail addresses, organizations, hostnames, domains, IP
+and MAC addresses, serial numbers, UUIDs, SSH keys and Tailscale
+identities. Use `researcher1`, `example-org` and `example.com`, the
+documentation address ranges (`192.0.2.0/24`, `198.51.100.0/24`,
+`203.0.113.0/24`, `2001:db8::/32`), MAC addresses from
+`00:00:5e:00:53:00/24`, and zeroed serial numbers and UUIDs. Data copied
+from a real host passes `preflight/tests/sanitize_fixture.py` and a review
+first.
+
+`make privacy` (part of `make lint`) checks every file and every commit.
+
+## Commits
+
+- Commit with your GitHub noreply address as author and committer
+  (`git config user.email "<ID>+<username>@users.noreply.github.com"`; your
+  account's e-mail settings show it, and "Keep my email addresses private"
+  makes GitHub use it for what you do on github.com). The privacy scan
+  fails on a commit with any other address.
+- No attribution lines in a commit message: no `Co-Authored-By` trailer, no
+  "Generated with" line, no session link. No e-mail address outside the
+  example domains either.
+
+## Pull requests
+
+CI runs the gate on every pull request. A pull request from a fork gets no
+secrets, so the maintainer's privacy denylist is not checked there (the
+scan says so in a warning); the maintainer's own runs check it. Workflows
+of a first-time contributor wait for the maintainer's approval.

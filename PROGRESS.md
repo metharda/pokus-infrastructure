@@ -1061,7 +1061,12 @@ its checks green and a commit proposal, and waits for the owner's
   `0e89479`; decision 3 (the privacy scan: commit messages and identities,
   the CI warning, the secret only on `lint` and `privacy`) is the commit
   after it (`docs/IMPLEMENTATION_NOTES.md`, "Decision 3: the privacy scan's
-  additions").
+  additions"), `7ab1482`; decision 4 (a root `NOTICE`, the pre-release
+  status in the README, `SECURITY.md`, `CONTRIBUTING.md`, `CITATION.cff`)
+  is the commit after that ("Decision 4: the project files"). The
+  checklist for after the move (item 5 of the new plan) gains a tag
+  ruleset that lets only the owner create `v*` tags (owner, decision 4).
+  Then the rewrite proposal, which waits for "rewrite".
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
