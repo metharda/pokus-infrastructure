@@ -271,9 +271,9 @@ def test_known_exceptions_are_allowed(repo: Path) -> None:
     assert [(f.commit, f.rule) for f in findings] == [(other, "generated-with")]
 
 
-def test_the_known_exceptions_are_exactly_the_two_trailer_commits() -> None:
-    assert {c[:7] for c in privacy.KNOWN_ATTRIBUTION_COMMITS} == {"0503e86", "8df9199"}
-    assert all(len(c) == 40 for c in privacy.KNOWN_ATTRIBUTION_COMMITS)
+def test_no_commit_is_a_known_exception_since_the_rewrite() -> None:
+    # The owner's one-time rewrite removed the only two trailers.
+    assert not privacy.KNOWN_ATTRIBUTION_COMMITS
 
 
 def test_a_known_commit_excuses_only_its_attribution_lines(repo: Path) -> None:
@@ -348,36 +348,6 @@ def test_a_commit_with_another_identity_fails(
     assert "history of 4 commits, 2 findings, 0 known exceptions" in captured.err
     assert privacy.run([repo], show_matches=True) == 1
     assert f"[{FOREIGN_EMAIL}]" in capsys.readouterr().out
-
-
-def test_the_commits_before_the_rewrite_keep_their_identity(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    first = commit(repo, "feat: first", author=FOREIGN_EMAIL, committer=FOREIGN_EMAIL)
-    tip = commit(repo, "feat: second", author=FOREIGN_EMAIL, committer=FOREIGN_EMAIL)
-    commit(repo, "feat: third")
-    later = commit(repo, "feat: fourth", author=FOREIGN_EMAIL)
-    history = privacy.read_history(identity_tip=tip)
-    assert history is not None
-    assert history.before_rewrite == {first, tip}
-    findings, _ = privacy.scan_history(history)
-    assert [(f.commit, f.rule) for f in findings] == [(later, "author-identity")]
-    monkeypatch.setattr(privacy, "KNOWN_IDENTITY_TIP", tip)
-    assert privacy.run([repo]) == 1
-    assert "2 commits before the rewrite (identity not checked)" in capsys.readouterr().err
-
-
-def test_a_tip_the_history_does_not_hold_excuses_nothing(repo: Path) -> None:
-    commit(repo, "feat: first", author=FOREIGN_EMAIL)
-    history = privacy.read_history(identity_tip="0" * 40)
-    assert history is not None
-    assert history.before_rewrite == frozenset()
-    assert [f.rule for f in privacy.scan_history(history)[0]] == ["author-identity"]
-
-
-def test_the_identity_tip_is_the_last_commit_before_the_rewrite() -> None:
-    assert privacy.KNOWN_IDENTITY_TIP.startswith("6aa6eab")
-    assert len(privacy.KNOWN_IDENTITY_TIP) == 40
 
 
 @pytest.mark.parametrize(

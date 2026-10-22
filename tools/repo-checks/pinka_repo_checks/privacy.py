@@ -54,7 +54,6 @@ GIT_LS_FILES = ("git", "ls-files", "-z", "--cached", "--others", "--exclude-stan
 GIT_INSIDE = ("git", "rev-parse", "--is-inside-work-tree")
 GIT_SHALLOW = ("git", "rev-parse", "--is-shallow-repository")
 GIT_LOG = ("git", "log", "-z", "--format=%H%n%ae%n%ce%n%B", "HEAD")
-GIT_REV_LIST = ("git", "rev-list")
 DENYLIST_ENV = "PINKA_PRIVACY_DENYLIST"
 CI_ENV = "GITHUB_ACTIONS"
 
@@ -102,15 +101,9 @@ ATTRIBUTION_RES = (
     ("session-trailer", re.compile(r"^\s*claude-session\s*:", re.IGNORECASE)),
     ("generated-with", re.compile(r"^[^A-Za-z0-9]*generated (?:with|by)\b", re.IGNORECASE)),
 )
-# The two commits that carry such trailers (both on main). They stay allowed
-# until the owner's one-time rewrite after plan step 3f removes the trailers;
-# the rewrite removes them from this list too. Nothing else is ever added.
-KNOWN_ATTRIBUTION_COMMITS = frozenset(
-    {
-        "0503e863c34c5807da63b6a56fb9757fbbeeb77b",
-        "8df919918faa98b6a8c348874aca5c7cc5eabdf0",
-    }
-)
+# Commits whose attribution lines are allowed: none since the owner's
+# one-time rewrite removed the only two trailers. Nothing is ever added.
+KNOWN_ATTRIBUTION_COMMITS: frozenset[str] = frozenset()
 ATTRIBUTION_RULES = frozenset(rule for rule, _ in ATTRIBUTION_RES)
 
 # Commit identities: GitHub's noreply addresses are <id>+<user> (or <user> for
@@ -122,11 +115,6 @@ GITHUB_NOREPLY_LOCAL_RE = re.compile(
     r"(?:\d+\+)?[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\[bot\])?"
 )
 GITHUB_OWN_ADDRESS = ("noreply", "github.com")
-# Every commit up to 6aa6eab carries the owner's earlier identity, with a
-# personal address. They stay allowed until the owner's one-time rewrite sets
-# the noreply identity on every commit; the rewrite removes this as well.
-# Nothing else is ever added.
-KNOWN_IDENTITY_TIP = "6aa6eabe44953d2fb0120b5522b9f886245d8871"
 
 
 @dataclass(frozen=True)
@@ -463,23 +451,14 @@ class History:
     Attributes:
         commits: The commits, newest first.
         shallow: The clone is shallow, so older commits are missing.
-        before_rewrite: Commits up to ``KNOWN_IDENTITY_TIP`` whose identity
-            is not checked until the owner's rewrite; empty when the history
-            does not hold that commit.
     """
 
     commits: list[Commit]
     shallow: bool
-    before_rewrite: frozenset[str] = frozenset()
 
 
-def read_history(identity_tip: str | None = None) -> History | None:
+def read_history() -> History | None:
     """Read ``HEAD``'s history in the current directory.
-
-    Args:
-        identity_tip: The last commit with the identity from before the
-            rewrite (default ``KNOWN_IDENTITY_TIP``); it and its ancestors are
-            not checked for identity.
 
     Returns:
         The history, or None outside a git work tree.
@@ -492,9 +471,7 @@ def read_history(identity_tip: str | None = None) -> History | None:
         commit, author, committer, message = [*record.split("\n", 3), "", "", ""][:4]
         if commit:
             commits.append(Commit(commit, author, committer, message))
-    tip = KNOWN_IDENTITY_TIP if identity_tip is None else identity_tip
-    before = (_git((*GIT_REV_LIST, tip)) or b"").decode().split()
-    return History(commits, shallow, frozenset(before))
+    return History(commits, shallow)
 
 
 def scan_identity(commit: Commit) -> list[CommitFinding]:
@@ -556,8 +533,7 @@ def scan_history(
             known_seen += bool(excused)
             hits = [f for f in hits if f.line not in excused]
         findings.extend(hits)
-        if commit.commit not in history.before_rewrite:
-            findings.extend(scan_identity(commit))
+        findings.extend(scan_identity(commit))
     return findings, known_seen
 
 
@@ -589,11 +565,9 @@ def run(paths: Sequence[Path], *, show_matches: bool = False) -> int:
         where += f":{cf.line}" if cf.line else ""
         suffix = f" [{cf.value}]" if show_matches and cf.value and cf.rule != "denylist" else ""
         print(f"{where}: {cf.rule}: {cf.message}{suffix}")
-    unchecked = len(history.before_rewrite & {c.commit for c in history.commits})
-    note = f", {unchecked} commits before the rewrite (identity not checked)" if unchecked else ""
     print(
         f"privacy scan: history of {len(history.commits)} commits, {len(findings)} findings, "
-        f"{known_seen} known exceptions{note}",
+        f"{known_seen} known exceptions",
         file=sys.stderr,
     )
     return 1 if findings else status

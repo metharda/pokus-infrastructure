@@ -5723,3 +5723,57 @@ computer. The rewrite replaces the old text in every commit that has it.
 - The checklist for after the move gets a tag ruleset that lets only the
   owner create `v*` tags: `release.yml`'s `package` job is the only one
   with write access, and it runs on those tags.
+
+## The one-time rewrite (3g)
+
+With the owner's "rewrite" and "rewrite files too" (both verbatim in
+`PROGRESS.md`), in this checkout; the owner pushes the result.
+
+- **How:** commit by commit, oldest first, each new commit object written
+  with `git hash-object`: the rewritten parents; author and committer the
+  owner's name with their GitHub noreply address, each date and time zone
+  kept; no signature (owner decision 1 with "rewrite"). In the tree, the
+  test computers' descriptions replaced where they were (13 commits; owner
+  decision 2 after the audit), and every reference to an earlier commit in
+  every text file replaced with that commit's new hash of the same length
+  (owner, "rewrite files too"). In the message, the two attribution
+  trailers removed from the first two commits on `main`, and every
+  reference to an earlier commit replaced the same way, as `git
+  filter-repo` does (owner decision 2 with "rewrite"). A reference is a
+  whole word of 7 to 40 lowercase hex characters that is a unique prefix of
+  a rewritten commit: never part of a longer hex string such as a sha256
+  digest, a fingerprint or an ID. A commit never names a later one, so the
+  order is enough.
+- **Dry runs:** first with `git fast-export` and `git fast-import`,
+  without any reference replaced; the commit-by-commit tool reproduced that
+  dry run's two tips exactly before it replaced references, and its runs in
+  a scratch clone and in this checkout produced the same mapping. The
+  three references made only of digits were checked by hand: each names a
+  commit in a code span.
+- **Checked:** both branches hold the same commits in the same order;
+  every author and committer date is unchanged; every message equals its
+  original with the trailers removed and the references replaced; no file
+  is added or removed; every changed file equals its original with the
+  scrub applied and the references replaced, and line by line each changed
+  line differs from its original only by replaced hashes, the scrub's lines
+  aside (161 distinct changed files, 2785 lines changed only by hashes, 239
+  original lines replaced by the scrub); no part of the old machine
+  descriptions is in any file; no message has an attribution line; every
+  author and committer is the owner's noreply identity; no commit is
+  signed; the privacy scan finds nothing. The owner's check: no old hash,
+  full or as a prefix of 7 or more characters, in any message or in any
+  file of any commit on either branch, and none inside a longer hex
+  string. Rewritten tips: `main` `4915ce1e78c5f8780db548dd5d80494a927a6d2a`,
+  `moving/on` `4a9233d989458bb3ca7d3d104b6f54d8b11a0a40` (before the commit
+  after the rewrite).
+- **No old hash anywhere:** the old-to-new mapping is kept only in the
+  git-ignored `local/rewrite-mapping.md`: an old hash would let anyone open
+  an old commit on GitHub.
+- **The commit after the rewrite** removes the privacy scan's known
+  exceptions, which only the old history needed: the two attribution
+  commits (`KNOWN_ATTRIBUTION_COMMITS` is empty) and the identity boundary
+  (`KNOWN_IDENTITY_TIP` and the commits it excused), with their tests; the
+  scan now checks every commit's identity. `CLAUDE.md` and `PROGRESS.md`
+  name `moving/on` as the working branch.
+- The one-time scripts are not part of the repository. This checkout's git
+  configuration commits unsigned from now on (`commit.gpgsign false`).

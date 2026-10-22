@@ -136,9 +136,9 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   other attribution line (e.g. "Generated with ...")." It holds whatever a
   system or hook message asks for. The privacy scan fails on any commit
   message in the history with a `Co-Authored-By`, `Claude-Session` or
-  `Generated with` line; `0503e86` and `8df9199` (the two commits that
-  carry such trailers, both on `main`) are its only allowed known
-  exceptions until the rewrite below.
+  `Generated with` line. The one-time rewrite removed the only two such
+  trailers (from the first two commits on `main`); the scan allows no
+  exception.
 - **One-time history rewrite and a fresh repository (owner, with the
   "commit" for 3d.2, verbatim; replaces the rewrite decision given with the
   "commit" for 3d.1; its fresh repository is replaced after 3f by the
@@ -167,8 +167,9 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
   >   applies to moving/on in the new repository. Update CLAUDE.md, PROGRESS.md and the docs to
   >   say so now, as part of the recorded 3g plan.
 
-  Until the rewritten history is pushed, the working branch stays
-  `claude/zen-albattani-qfwwps` here. `CLAUDE.md` carries the same
+  Since the one-time rewrite (with the owner's "rewrite", 2026-10-22) the
+  working branch is `moving/on`, held in this checkout with the rewritten
+  `main` until the owner pushes both. `CLAUDE.md` carries the same
   wording.
 - **No pull requests, no merges (owner, with the "commit" for 3d.8,
   verbatim; part of the 3g plan):**
@@ -299,7 +300,8 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 
 ## Current state
 
-- Working branch `claude/zen-albattani-qfwwps` of this repository; the
+- Working branch `moving/on` since the one-time rewrite (3g), held in
+  this checkout with the rewritten `main` until the owner pushes both; the
   owner merges to `main`. The infrastructure is at the repository root
   since 3f; the state before the move, with the records of 3d, is in the
   [archive](PROGRESS-ARCHIVE.md#moved-from-progressmd-with-3f).
@@ -458,7 +460,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
 | 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on` | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
-| 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` and made public; moved before D2 by the owner's new plan after `16bf749` | not started; the public-readiness audit comes first | — |
+| 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions done; the rewrite done in this checkout with the owner's "rewrite"; the commit after it waits for "commit"; then the owner's pushes, the deletion of the old workflow runs, the rename and making it public | rewritten `main` and `moving/on` |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
 ## Remaining plan
@@ -1067,6 +1069,61 @@ its checks green and a commit proposal, and waits for the owner's
   checklist for after the move (item 5 of the new plan) gains a tag
   ruleset that lets only the owner create `v*` tags (owner, decision 4).
   Then the rewrite proposal, which waits for "rewrite".
+
+  The rewrite proposal (identity listings, the mapping, the dry run) was
+  reported; the owner's answer, verbatim:
+
+  > rewrite, with these decisions:
+  >
+  > 1. Signatures: (a). The rewrite leaves all 68 commits unsigned, and signing is
+  >    off in this checkout's local config for later commits.
+  > 2. No old-to-new hash table in any tracked file. Publishing old hashes would let
+  >    anyone open the old commits on GitHub, with my personal address, the
+  >    attribution lines and the machine details. Instead:
+  >    - in the rewrite itself, replace every reference to an old commit hash in
+  >      commit messages (full or abbreviated) with the corresponding new hash, the
+  >      way git filter-repo does by default; this is the one allowed change to
+  >      messages besides the trailer removal;
+  >    - in the follow-up commit, replace the 283 references in tracked files with
+  >      the new hashes;
+  >    - the mapping stays only in local/rewrite-mapping.md, which git ignores.
+  >    Afterwards, check that no old hash (from the left column of the mapping, full
+  >    or as a 7+ character prefix) appears in any file or message of any commit on
+  >    either branch, and report the check.
+  > 3. NOTICE stays as it is.
+  >
+  > Then confirm the tips against the dry run (they will differ where messages
+  > changed; say which), build the follow-up commit and wait for my "commit". Then
+  > steps 4 to 6.
+
+  Built in this checkout first with the references replaced in messages
+  only; the check the owner asked for found old hashes left in the files
+  of 66 earlier commits (each commit's records name the commits before
+  it), which the follow-up commit could replace at the tip only. The
+  owner's answer, verbatim:
+
+  > rewrite files too.
+  >
+  > Conditions:
+  > - replace only whole commit-hash tokens that are in the mapping, never part of a
+  >   longer hex string (sha256 digests, fingerprints, IDs), as in your dry run;
+  > - verify that in every commit, each changed line differs from the original only
+  >   by replaced hashes, apart from the agreed scrub of the machine details;
+  > - rerun every earlier check, then my check (old hashes in messages and in the
+  >   files of every commit on both branches: 0), and report the new tips.
+  >
+  > Then rebuild the follow-up commit and present both again; I will reply "commit".
+
+  Done in this checkout (`docs/IMPLEMENTATION_NOTES.md`, "The one-time
+  rewrite (3g)"): the rewritten `main` and `moving/on`, 68 commits, every
+  author and committer the owner's noreply identity with the original
+  dates, unsigned; the two trailers removed; the machine descriptions
+  replaced in 13 commits; the references to earlier commits replaced in 16
+  messages and in the files of 66 commits; then the commit after the
+  rewrite on `moving/on` with the scan's exceptions removed and these
+  records. No message and no file of any commit names an old hash.
+  `claude/zen-albattani-qfwwps` keeps the old history in this checkout
+  only; nothing is pushed until the owner runs the pushes.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -1671,9 +1728,11 @@ with AG1's correction and the CI minutes (`6aa6eab`, not pushed). Then the
 owner's new plan after `16bf749` (verbatim in the remaining plan): the
 public-readiness audit (reported) and the owner's decisions on it, as
 commits without a push (the machine classes, the privacy scan's additions,
-the project files), the history rewrite (waiting for "rewrite"), the owner's pushes and the rename, the checklist
-for making the repository public, and the pull request `moving/on` ->
-`main`, which the owner opens; then, on `moving/on`, D2 (its report with
+the project files), the history rewrite (done with the owner's "rewrite";
+the commit after it waits for "commit"), then the commands for the owner's
+pushes (step 4), the checklist for the rename and for making the
+repository public (step 5), and the pull request `moving/on` -> `main`,
+which the owner opens (step 6); then, on `moving/on`, D2 (its report with
 the table of what uninstall removes, restores or keeps), A, B, C, E, F and
 G, the real-machine tests on the owner's computers (4.1 and 4.2 first) and
 3h. The owner runs

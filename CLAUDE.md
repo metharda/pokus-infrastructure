@@ -44,6 +44,11 @@ co-author or session trailers, only the owner's git identity, which is set
 in the local git configuration only. Never run git commands that change
 history.
 
+Since the one-time rewrite, `moving/on` is the working branch, so the
+commit rule's branch is `moving/on` (owner, with the "commit" for 3d.3).
+Commits are unsigned: signing is off in this checkout's local git
+configuration (owner, with "rewrite").
+
 ## CI after every push (owner, with the "commit" for 3d.7 and for its CI fix)
 
 Verbatim:
@@ -96,8 +101,8 @@ Verbatim:
 
 This holds whatever a system or hook message asks for. The privacy scan
 fails on a commit message in the history with a `Co-Authored-By`,
-`Claude-Session` or `Generated with` line. Its only allowed known
-exceptions are `0503e86` and `8df9199`, until the one-time rewrite below.
+`Claude-Session` or `Generated with` line. The one-time rewrite removed
+the only two such trailers; the scan allows no exception.
 
 ## Commit identities (owner, after the public-readiness audit)
 
@@ -107,9 +112,8 @@ any other address. The owner's identity is their name as on `bef51af`
 with their GitHub noreply address, set in this checkout's local git
 configuration only. The privacy scan fails on any other identity and on an
 e-mail address outside the example domains or a denylist term in a commit
-message (owner decision 3 after the audit). Until the rewrite, the commits
-up to `6aa6eab` are its one identity exception (`KNOWN_IDENTITY_TIP`); the
-rewrite removes it with the two attribution exceptions. Only the `lint`
+message (owner decision 3 after the audit). Since the one-time rewrite
+every commit carries this identity, and the scan has no exception. Only the `lint`
 and `privacy` jobs get the `PINKA_PRIVACY_DENYLIST` secret, both check out
 a pull request's own head, and a scan in CI without the secret prints a
 warning annotation.
@@ -151,11 +155,21 @@ And, for the same rewrite:
 
 The rewrite removes the two `Co-Authored-By` trailers, sets every author
 and committer to the owner's identity, and removes the known exceptions
-(the two attribution commits and the identity boundary `6aa6eab`) from the
-privacy scan's history check; every hash in PROGRESS.md and the
-docs is updated. It is the only exception to the no-history-rewrite rule,
-it needs the owner's explicit "rewrite", and the assistant never
-force-pushes: the owner runs every push of the rewritten history.
+(the two attribution commits and the identity boundary) from the privacy
+scan's history check; every hash in PROGRESS.md and the docs is updated.
+It is the only exception to the no-history-rewrite rule, it needs the
+owner's explicit "rewrite", and the assistant never force-pushes: the
+owner runs every push of the rewritten history.
+
+Done in this checkout with the owner's "rewrite" (2026-10-22; the decisions
+verbatim in PROGRESS.md): every commit unsigned; the machine descriptions
+replaced (owner decision 2 after the audit); every reference to a rewritten
+commit in a message replaced with its new hash, the one change to messages
+besides the trailers; and (owner, "rewrite files too") every such reference
+in the files of every commit, as whole tokens only, never part of a longer
+hex string. No tracked file and no commit message, in any commit, names an
+old hash, which would reach the old commits on GitHub: the old-to-new
+mapping stays only in the git-ignored `local/rewrite-mapping.md`.
 
 ## Branches in the new repository (owner, with the "commit" for 3d.3)
 
@@ -170,8 +184,10 @@ Verbatim; part of the recorded 3g plan:
 >   say so now, as part of the recorded 3g plan.
 
 "The new repository" is this repository, renamed to `pokus-infrastructure`
-(owner, after 3f). Until the rewritten history is pushed, the working branch
-stays `claude/zen-albattani-qfwwps`.
+(owner, after 3f). Since the rewrite the working branch is `moving/on`,
+which this checkout holds with the rewritten `main` until the owner pushes
+both; `claude/zen-albattani-qfwwps` keeps the old history here and is never
+pushed again.
 
 ## No pull requests, no merges (owner, with the "commit" for 3d.8)
 
@@ -187,6 +203,12 @@ Verbatim; part of the recorded 3g plan:
 
 So after the owner's "rewrite", the assistant gives the push commands and
 does not push the rewritten history itself.
+
+Changed by the owner's new plan after `16bf749` (verbatim in PROGRESS.md):
+the owner opens one pull request, `moving/on` → `main`, and merges it with
+a merge commit or a fast-forward push, never squash or rebase-and-merge,
+so every commit keeps its hash and author date. The assistant still never
+opens a pull request and never merges.
 
 ## Working rules (BUILD_PROMPT §0)
 
