@@ -442,6 +442,9 @@ def test_the_access_guard_against_the_kernel(tmp_path: Path) -> None:
     argv = [*privileged(), unshare, "-n", sys.executable, str(probe), nft, str(first), str(guard)]
     done = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=120)
     assert done.returncode == 0, done.stderr
+    # Nothing on stderr: a thread's traceback written while the interpreter
+    # shut down aborted it once in CI (exit -6).
+    assert done.stderr == ""
     found = json.loads(done.stdout)
     assert found == {
         "open before the guard: connect": True,

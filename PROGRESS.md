@@ -300,9 +300,10 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 
 ## Current state
 
-- Working branch `moving/on` since the one-time rewrite (3g), held in
-  this checkout with the rewritten `main` until the owner pushes both; the
-  owner merges to `main`. The infrastructure is at the repository root
+- Working branch `moving/on` since the one-time rewrite (3g), in the
+  fresh repository `pokus-infrastructure` (this checkout's `origin`; the
+  owner created it instead of renaming the old one); the owner merges to
+  `main`. The infrastructure is at the repository root
   since 3f; the state before the move, with the records of 3d, is in the
   [archive](PROGRESS-ARCHIVE.md#moved-from-progressmd-with-3f).
 - Committed: infra steps 1-14, I1 and I2, plan items 3a-3f (3d steps 1-8
@@ -460,7 +461,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
 | 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on` | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
-| 3g | History rewrite (identities and trailers), the repository renamed to `pokus-infrastructure` and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions done; the rewrite done in this checkout with the owner's "rewrite"; the commit after it waits for "commit"; then the owner's pushes, the deletion of the old workflow runs, the rename and making it public | rewritten `main` and `moving/on` |
+| 3g | History rewrite (identities and trailers), published as the fresh repository `pokus-infrastructure` instead of the rename (owner, after the rewrite) and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions, the rewrite (owner's "rewrite") and the commit after it done; the owner created the fresh repository and pushed `main` and `moving/on` to it; then making it public | `a716eae` (the commit after the rewrite) |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
 ## Remaining plan
@@ -1122,6 +1123,48 @@ its checks green and a commit proposal, and waits for the owner's
   messages and in the files of 66 commits; then the commit after the
   rewrite on `moving/on` with the scan's exceptions removed and these
   records. No message and no file of any commit names an old hash.
+
+  That commit is `a716eae`, committed with the owner's "commit". The
+  owner's answer after the push commands, verbatim but for the account
+  name, elided in brackets (no account name in a tracked file):
+
+  > I did not rename. I created a fresh, empty repository [owner]/pokus-infrastructure
+  > and pushed main (4915ce1) and moving/on (a716eae) from the bundle; ls-remote shows
+  > exactly those. The old repository [owner]/pokus stays private and is not touched
+  > again; its runs are not deleted, since it will never be public.
+  > - Attach [owner]/pokus-infrastructure to this session, set it as origin, and test
+  >   git push --dry-run origin moving/on. Report the result before anything else.
+  > - Then delete the old local branch and old references here, so the old commits are
+  >   gone from this checkout too.
+  > - In the next commit, record in CLAUDE.md and PROGRESS.md that 3g used a fresh
+  >   repository instead of a rename (my decision after the activity-view finding),
+  >   and drop the run-deletion steps from the docs.
+  > Then continue as planned: CI of the pull request job by job, then D2.
+
+  So 3g used a fresh repository instead of the rename (the owner's decision
+  after the audit's finding that a renamed repository keeps the old
+  commits reachable and lists the force push in its activity view): the
+  rewritten `main` and `moving/on` are the only branches of
+  `pokus-infrastructure`, the old repository stays private and untouched,
+  and its workflow runs stay (it is never made public), so decision 1
+  after the audit (deleting every workflow run) no longer applies. This
+  checkout's `origin` is the new repository; `git push --dry-run origin
+  moving/on` succeeded; the old local branch, its references and the old
+  commits are gone from this checkout.
+
+  CI of `a716eae` in the new repository (pushed by the owner), job by job:
+  `changes`, `privacy`, `lint`, `docs`, all six `check-mode` lanes,
+  `test-isolated`, all six `check-mode-extended` lanes, `release-package`
+  and `lock-collections` passed; `lock-check` is the known red (24
+  `TODO(verify)` errors; four tag warnings: postgres, `refplat_job`,
+  `ubuntu:24.04` and `debian:13` moved, the pins unchanged); `test` failed
+  in `test_the_access_guard_against_the_kernel` (the probe aborted at
+  interpreter shutdown, exit -6), so `required` failed too; `links` runs
+  weekly. The privacy scan ran without the denylist (no
+  `PINKA_PRIVACY_DENYLIST` secret in the new repository yet) and said so
+  in a warning. The fix is the commit after `a716eae`
+  (`docs/IMPLEMENTATION_NOTES.md`, "CI of `a716eae`: the access guard
+  probe's shutdown").
   `claude/zen-albattani-qfwwps` keeps the old history in this checkout
   only; nothing is pushed until the owner runs the pushes.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
@@ -1178,7 +1221,9 @@ its checks green and a commit proposal, and waits for the owner's
   on Python 3.12 and 3.9, and every role in check mode.
 - **3g** History rewrite and the renamed repository (owner, after 3f,
   replacing the fresh repository of the decision with the "commit" for
-  3d.2; see "Process rules in force"): after the real-machine tests, the
+  3d.2; see "Process rules in force"; done, but published as a fresh
+  repository after all, by the owner's decision after the rewrite, below
+  under the owner's new plan): after the real-machine tests, the
   assistant lists every author and committer identity of `main` and the
   working branch, then proposes the one-time rewrite of the full history
   that removes the two `Co-Authored-By` trailers, sets author and committer
@@ -1730,9 +1775,11 @@ public-readiness audit (reported) and the owner's decisions on it, as
 commits without a push (the machine classes, the privacy scan's additions,
 the project files), the history rewrite (done with the owner's "rewrite";
 the commit after it waits for "commit"), then the commands for the owner's
-pushes (step 4), the checklist for the rename and for making the
-repository public (step 5), and the pull request `moving/on` -> `main`,
-which the owner opens (step 6); then, on `moving/on`, D2 (its report with
+pushes (step 4; the owner created the fresh repository
+`pokus-infrastructure` instead of the rename and pushed `main` and
+`moving/on` to it), the checklist for making the repository public (step
+5), and the pull request `moving/on` -> `main`, which the owner opens (step
+6); then, on `moving/on`, D2 (its report with
 the table of what uninstall removes, restores or keeps), A, B, C, E, F and
 G, the real-machine tests on the owner's computers (4.1 and 4.2 first) and
 3h. The owner runs

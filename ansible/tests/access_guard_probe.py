@@ -18,6 +18,7 @@ one JSON object: case name to whether the host answered.
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import os
@@ -199,8 +200,11 @@ def serve(port: int) -> None:
             threading.Thread(target=echo, args=(conn,), daemon=True).start()
 
     def echo(conn: socket.socket) -> None:
-        while data := conn.recv(4096):
-            conn.sendall(data)
+        # Every peer resets its connection when its case is done; that ends
+        # the connection, nothing to report.
+        with conn, contextlib.suppress(OSError):
+            while data := conn.recv(4096):
+                conn.sendall(data)
 
     threading.Thread(target=loop, daemon=True).start()
 
@@ -251,7 +255,10 @@ def main(nft: str, first: str, guard: str) -> None:
         peer.reset()
     found["new on loopback to the closed listener"] = loopback(8080)
     found["new on loopback to the closed install path's port"] = loopback(22)
-    print(json.dumps(found))
+    print(json.dumps(found), flush=True)
+    # The server threads still wait on their sockets: end the process without
+    # finalizing the interpreter, which aborts when a thread writes meanwhile.
+    os._exit(0)
 
 
 if __name__ == "__main__":

@@ -5777,3 +5777,35 @@ With the owner's "rewrite" and "rewrite files too" (both verbatim in
   name `moving/on` as the working branch.
 - The one-time scripts are not part of the repository. This checkout's git
   configuration commits unsigned from now on (`commit.gpgsign false`).
+- **Published as a fresh repository** (owner, after the rewrite): instead
+  of renaming the old repository, the owner created the empty repository
+  `pokus-infrastructure` and pushed the rewritten `main` and `moving/on` to
+  it from a git bundle of the two branches (which held none of the old
+  commits). The old repository stays private and untouched, and its
+  workflow runs stay, since it is never made public. This checkout's
+  `origin` is the new repository; its old branch, references and commits
+  are deleted (the reference logs expired, unreachable objects pruned).
+
+## CI of `a716eae`: the access guard probe's shutdown
+
+The first CI run in the new repository: every job passed but `test`
+(and `required`, which stands for it) and the known red `lock-check`.
+`test_the_access_guard_against_the_kernel` failed with exit code -6:
+`Fatal Python error: _enter_buffered_busy: could not acquire lock for
+<stderr> at interpreter shutdown, possibly due to daemon threads`. The
+probe resets every connection it opens; the server's echo threads (daemon
+threads) let the reset escape as `ConnectionResetError` and printed its
+traceback to stderr, and in CI one did so while the interpreter shut down.
+The guard's results were right; the same test passed in that run's
+`test-isolated` and in every local run, also 64 in parallel, because the
+abort needs that timing.
+
+- Reproduced deterministically: the test now also requires an empty
+  stderr from the probe; with the old probe it failed 10 of 10 local runs
+  (each with three `ConnectionResetError` tracebacks).
+- Fixed: an echo thread ends quietly when its peer resets
+  (`contextlib.suppress(OSError)`, the connection closed), and the probe
+  prints its result, flushes and leaves with `os._exit(0)`, so the
+  interpreter never finalizes while its server threads still wait. 40 runs
+  of the test and 64 parallel runs of the probe: no failure, no stderr,
+  one identical result.

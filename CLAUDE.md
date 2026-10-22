@@ -118,7 +118,7 @@ and `privacy` jobs get the `PINKA_PRIVACY_DENYLIST` secret, both check out
 a pull request's own head, and a scan in CI without the secret prints a
 warning annotation.
 
-## One-time history rewrite and the renamed repository (owner, after 3f)
+## One-time history rewrite and the new repository (owner, after 3f)
 
 Verbatim; it replaces the fresh repository of the decision after the 3d.2
 commit, whose text stays in PROGRESS.md:
@@ -171,6 +171,14 @@ hex string. No tracked file and no commit message, in any commit, names an
 old hash, which would reach the old commits on GitHub: the old-to-new
 mapping stays only in the git-ignored `local/rewrite-mapping.md`.
 
+Published as a fresh repository instead of the rename (owner, after the
+rewrite, on the finding that a renamed repository keeps the old commits
+reachable and lists the force push in its activity view): the owner
+created the empty repository `pokus-infrastructure` and pushed the
+rewritten `main` and `moving/on` to it; it is this checkout's `origin`.
+The old repository stays private and is never touched again; its workflow
+runs are not deleted, since it is never made public.
+
 ## Branches in the new repository (owner, with the "commit" for 3d.3)
 
 Verbatim; part of the recorded 3g plan:
@@ -183,11 +191,10 @@ Verbatim; part of the recorded 3g plan:
 >   applies to moving/on in the new repository. Update CLAUDE.md, PROGRESS.md and the docs to
 >   say so now, as part of the recorded 3g plan.
 
-"The new repository" is this repository, renamed to `pokus-infrastructure`
-(owner, after 3f). Since the rewrite the working branch is `moving/on`,
-which this checkout holds with the rewritten `main` until the owner pushes
-both; `claude/zen-albattani-qfwwps` keeps the old history here and is never
-pushed again.
+"The new repository" is the fresh repository `pokus-infrastructure` (owner,
+after the rewrite; not a rename). Its only branches are `main` and the
+working branch `moving/on`; `claude/zen-albattani-qfwwps` and the old
+history exist in neither it nor this checkout.
 
 ## No pull requests, no merges (owner, with the "commit" for 3d.8)
 
