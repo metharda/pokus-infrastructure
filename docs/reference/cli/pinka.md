@@ -17,7 +17,7 @@ description: Every command and option of pinka.
 pinka [-h] [--config FILE] [--version] COMMAND ...
 ```
 
-Operate a Pokus lab host: health checks, fingerprint, start and stop, backups, golden images, researchers, inference node pairing, host updates and the documentation.
+Operate a Pokus lab host: health checks, fingerprint, start and stop, backups, golden images, researchers, inference node pairing, host updates, the documentation and uninstall.
 
 ## Global options
 
@@ -46,6 +46,7 @@ Every command also accepts `-h`, `--help`.
 | `pinka fingerprint` | print the environment fingerprint and its hash |
 | `pinka backup` | back up now or list the snapshots (root) |
 | `pinka restore` | run bootstrap with --restore (root) |
+| `pinka uninstall` | remove what pinka installed and keep the lab's data (root) |
 | `pinka images` | golden images: list, build, export |
 | `pinka images list` | aliases, fingerprints, build time and export state |
 | `pinka images build` | build missing images, or one blueprint (root) |
@@ -206,6 +207,24 @@ pinka restore [-h] [BOOTSTRAP_OPTION ...]
 
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
+| `BOOTSTRAP_OPTION` (optional) | — | — | passed to bootstrap.sh (after --) |
+
+### pinka uninstall
+
+Run bootstrap.sh --uninstall from the checkout recorded in /etc/pinka/bootstrap-state.json: the removal plan first, then a backup offer and the typed machine name. Further bootstrap options follow `--`, as in `pinka uninstall -- --non-interactive --confirm-machine lab1`.
+
+```text
+pinka uninstall [-h] [--dry-run] [--purge-data] [--skip-backup]
+                       [--json]
+                       [BOOTSTRAP_OPTION ...]
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--dry-run` | — | — | print the plan and change nothing |
+| `--purge-data` | — | — | also remove the lab's data (the machine name is typed a second time) |
+| `--skip-backup` | — | — | do not offer a backup first |
+| `--json` | — | — | print the plan or the report as JSON |
 | `BOOTSTRAP_OPTION` (optional) | — | — | passed to bootstrap.sh (after --) |
 
 ### pinka images

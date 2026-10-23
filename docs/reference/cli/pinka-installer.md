@@ -91,4 +91,4 @@ pinka-installer tui [-h] [--machine MACHINE] [--answers ANSWERS]
 | `--answers` | `ANSWERS` | — | answers to start from |
 | `--bootstrap-arg` | `BOOTSTRAP_ARG` | — | option passed on to the non-interactive bootstrap the TUI runs (repeatable) |
 
-Exit status of validate, describe and apply: 0 done, 1 an operator action is needed (the reason is printed), 2 usage error. The TUI exits with the installation's status: doctor's 0, 1 or 2 after Finish, 75 or 76 when WSL or the host must restart, and 77 when the operator quit before the installation finished or the terminal is unsuitable. See [Exit codes](../exit-codes.md).
+Exit status of validate, describe and apply: 0 done, 1 an operator action is needed (the reason is printed), 2 usage error. The TUI exits with the installation's status: doctor's 0, 1 or 2 after Finish, 75 or 76 when WSL or the host must restart, and 77 when the operator quit before the installation finished or the terminal is unsuitable; after Uninstall, with bootstrap's status of the uninstall (0, 80 or 81). See [Exit codes](../exit-codes.md).

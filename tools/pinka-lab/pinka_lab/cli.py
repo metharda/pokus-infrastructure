@@ -29,8 +29,8 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
     parser = argparse.ArgumentParser(
         prog="pinka",
         description="Operate a Pokus lab host: health checks, fingerprint, start and stop, "
-        "backups, golden images, researchers, inference node pairing, host updates and the "
-        "documentation.",
+        "backups, golden images, researchers, inference node pairing, host updates, the "
+        "documentation and uninstall.",
         epilog=EPILOG,
     )
     parser.add_argument(
@@ -102,6 +102,29 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
         "as in `pinka restore -- --non-interactive`.",
     )
     restore.add_argument(
+        "bootstrap_options",
+        nargs="*",
+        metavar="BOOTSTRAP_OPTION",
+        help="passed to bootstrap.sh (after --)",
+    )
+
+    gone = sub.add_parser(
+        "uninstall",
+        help="remove what pinka installed and keep the lab's data (root)",
+        description="Run bootstrap.sh --uninstall from the checkout recorded in "
+        "/etc/pinka/bootstrap-state.json: the removal plan first, then a backup offer and the "
+        "typed machine name. Further bootstrap options follow `--`, as in "
+        "`pinka uninstall -- --non-interactive --confirm-machine lab1`.",
+    )
+    gone.add_argument("--dry-run", action="store_true", help="print the plan and change nothing")
+    gone.add_argument(
+        "--purge-data",
+        action="store_true",
+        help="also remove the lab's data (the machine name is typed a second time)",
+    )
+    gone.add_argument("--skip-backup", action="store_true", help="do not offer a backup first")
+    gone.add_argument("--json", action="store_true", help="print the plan or the report as JSON")
+    gone.add_argument(
         "bootstrap_options",
         nargs="*",
         metavar="BOOTSTRAP_OPTION",
@@ -388,6 +411,15 @@ def main(argv: Sequence[str], system: System | None = None) -> int:
     args = build_parser().parse_args(list(argv))
     host = system or RealSystem()
     try:
+        if args.command == "uninstall":
+            # Uninstall works on a partial install, without the lab description.
+            optional = load(host, args.config) if host.info(args.config) else None
+            flags = [
+                f"--{name.replace('_', '-')}"
+                for name in ("dry_run", "purge_data", "skip_backup", "json")
+                if getattr(args, name)
+            ]
+            return commands.uninstall(host, optional, flags, args.bootstrap_options)
         if args.command == "docs":
             # The documentation can be served without a lab, from a checkout.
             optional = load(host, args.config) if host.info(args.config) else None

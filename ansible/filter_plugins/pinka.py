@@ -15,6 +15,7 @@ import ipaddress
 import json
 import re
 import secrets
+import urllib.parse
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -131,6 +132,57 @@ def component_source(matrix: Mapping[str, Any], component: str, group: str) -> d
         raise PinkaFilterError(f"unknown component {component!r}")
     entries = matrix[component]
     return dict(entries.get(group) or entries["default"])
+
+
+def component_packages(components: Iterable[str], matrix: Mapping[str, Any]) -> list[str]:
+    """Every package of some components, whatever the source group (§5.4).
+
+    Uninstall's ``--remove-component`` on a host without an install record
+    removes those of them that are installed.
+
+    Args:
+        components: Component names, for example ``docker``.
+        matrix: ``components`` of ansible/component-sources.yml.
+
+    Returns:
+        The package names, sorted.
+
+    Raises:
+        PinkaFilterError: If a component is unknown.
+    """
+    found: set[str] = set()
+    for component in components:
+        if component not in matrix:
+            raise PinkaFilterError(f"unknown component {component!r}")
+        for entry in matrix[component].values():
+            found.update(str(p) for p in (entry or {}).get("packages") or [])
+    return sorted(found)
+
+
+def component_repos(components: Iterable[str], matrix: Mapping[str, Any]) -> list[str]:
+    """Every vendor repository of some components, whatever the source group.
+
+    Uninstall keeps a component's repository (``pinka-<repo>`` files) when the
+    component stays because it holds kept data (owner, D2 review).
+
+    Args:
+        components: Component names, for example ``incus``.
+        matrix: ``components`` of ansible/component-sources.yml.
+
+    Returns:
+        The repository names, sorted.
+
+    Raises:
+        PinkaFilterError: If a component is unknown.
+    """
+    found: set[str] = set()
+    for component in components:
+        if component not in matrix:
+            raise PinkaFilterError(f"unknown component {component!r}")
+        for entry in matrix[component].values():
+            if (entry or {}).get("repo"):
+                found.add(str(entry["repo"]))
+    return sorted(found)
 
 
 def lock_packages(packages: Mapping[str, Any], component: str, release_key: str) -> dict[str, str]:
@@ -669,6 +721,115 @@ def researcher_memberships(
     return found
 
 
+def new_memberships(
+    users: Iterable[str], group: str, members: Iterable[str]
+) -> list[dict[str, str]]:
+    """The memberships of ``group`` pinka is about to add, for the install record (§7.21).
+
+    Args:
+        users: Accounts pinka puts in the group.
+        group: The group.
+        members: Its members now.
+
+    Returns:
+        ``{user, group}`` for every account not yet a member.
+    """
+    present = set(members)
+    return [{"user": str(u), "group": group} for u in users if str(u) not in present]
+
+
+def settings_before(lines: Iterable[str], wanted: Mapping[str, Any]) -> dict[str, str]:
+    """The settings pinka is about to change, with their values now (§5.4, §7.21).
+
+    Args:
+        lines: ``name=value`` lines as the host reports them.
+        wanted: Each setting's value as pinka sets it.
+
+    Returns:
+        Every setting the host reports whose value differs from pinka's, with
+        its value now (blanks collapsed). A setting reported without a value
+        is left out: there is nothing to set back.
+    """
+    found: dict[str, str] = {}
+    for line in lines:
+        name, sep, value = str(line).partition("=")
+        value = " ".join(value.split())
+        if sep and name in wanted and value and value != " ".join(str(wanted[name]).split()):
+            found[name] = value
+    return found
+
+
+def _incus_names(text: str) -> set[str]:
+    """The object names of an ``incus query`` listing (URLs, or objects with a name)."""
+    try:
+        listing = json.loads(text) if text else []
+    except ValueError:
+        return set()
+    names = set()
+    for entry in listing if isinstance(listing, list) else []:
+        if isinstance(entry, Mapping):
+            names.add(str(entry.get("name", "")))
+        else:
+            names.add(urllib.parse.unquote(str(entry).split("?", 1)[0].rsplit("/", 1)[-1]))
+    return names
+
+
+def incus_new_objects(found: Mapping[str, str], desired: Mapping[str, Any]) -> list[str]:
+    """The Incus objects pinka is about to create on an Incus it did not install (§7.21).
+
+    Args:
+        found: Each listing's ``incus query`` output (JSON, empty when the query
+            failed): ``storage-pools``, ``networks``, ``network-acls``,
+            ``projects``, ``certificates`` and ``profiles:<project>``.
+        desired: ``pool`` (a name), ``networks``, ``acls``, ``projects`` and
+            ``certificates`` (lists of names) and ``profiles`` (``{project, name}``).
+
+    Returns:
+        ``<kind>:<name>`` of every desired object that does not exist yet
+        (``profile:<project>/<name>``), sorted.
+    """
+    wanted = [
+        ("pool", "storage-pools", [desired.get("pool")]),
+        ("network", "networks", desired.get("networks", [])),
+        ("acl", "network-acls", desired.get("acls", [])),
+        ("project", "projects", desired.get("projects", [])),
+        ("certificate", "certificates", desired.get("certificates", [])),
+    ]
+    new = [
+        f"{kind}:{name}"
+        for kind, listing, names in wanted
+        for name in names
+        if name and str(name) not in _incus_names(found.get(listing, ""))
+    ]
+    for profile in desired.get("profiles", []):
+        project, name = str(profile["project"]), str(profile["name"])
+        if name not in _incus_names(found.get(f"profiles:{project}", "")):
+            new.append(f"profile:{project}/{name}")
+    return sorted(new)
+
+
+def incus_config_before(server: str, wanted: Mapping[str, Any]) -> dict[str, str]:
+    """The server settings pinka is about to change, as they are (§5.4, §7.21).
+
+    Args:
+        server: ``incus query /1.0`` (JSON).
+        wanted: The server configuration pinka sets.
+
+    Returns:
+        ``incus:config:<key>`` with the value now ("" when unset) for every key
+        whose value differs from pinka's.
+    """
+    try:
+        config = (json.loads(server) or {}).get("config") or {}
+    except (ValueError, AttributeError):
+        return {}
+    return {
+        f"incus:config:{key}": str(config.get(key, ""))
+        for key, value in wanted.items()
+        if str(config.get(key, "")) != str(value)
+    }
+
+
 def key_entries(text: str, user: str) -> list[dict[str, str]]:
     """The keys of a ``users/<name>.pub`` file as install record entries (§7.21).
 
@@ -923,6 +1084,8 @@ class FilterModule:
             "pinka_release_identity": release_identity,
             "pinka_component_source": component_source,
             "pinka_lock_packages": lock_packages,
+            "pinka_component_packages": component_packages,
+            "pinka_component_repos": component_repos,
             "pinka_driver_supports_gpu": driver_supports_gpu,
             "pinka_package_specs": package_specs,
             "pinka_repo_url": repo_url,
@@ -940,6 +1103,10 @@ class FilterModule:
             "pinka_vault_keys": vault_keys,
             "pinka_researcher_memberships": researcher_memberships,
             "pinka_key_entries": key_entries,
+            "pinka_new_memberships": new_memberships,
+            "pinka_incus_new_objects": incus_new_objects,
+            "pinka_incus_config_before": incus_config_before,
+            "pinka_settings_before": settings_before,
             "pinka_subnet": subnet,
             "pinka_listener_rules": listener_rules,
             "pinka_install_path": install_path,

@@ -1,0 +1,9 @@
+# Managed by pinka (ansible/roles/uninstall/defaults/main.yml). Local changes will be overwritten.
+
+# Components --remove-component names, and their entries in the component
+# source matrix (ansible/component-sources.yml), whose packages it removes.
+uninstall_component_sources:
+  docker: [docker]
+  incus: [incus]
+  tailscale: [tailscale]
+  nvidia: [nvidia_driver, nvidia_container_toolkit]

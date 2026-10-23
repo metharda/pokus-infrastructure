@@ -23,3 +23,7 @@ install_record_managed_files:
   - /etc/docker/daemon.json
   - /etc/wsl.conf
   - /etc/ld.so.conf.d/pinka-wsl.conf
+# Managed files bootstrap changes before the record exists, and where it keeps
+# their original (BUILD_PROMPT §5.4): pre-preflight's /etc/wsl.conf on WSL.
+install_record_originals:
+  /etc/wsl.conf: /var/lib/pinka/originals/etc/wsl.conf

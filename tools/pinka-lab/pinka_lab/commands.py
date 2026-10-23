@@ -765,6 +765,52 @@ def restore(system: System, config: LabConfig, extra: Sequence[str]) -> int:
     return system.interactive(bootstrap_argv(config, "--restore", *extra))
 
 
+BOOTSTRAP_STATE = "/etc/pinka/bootstrap-state.json"
+
+
+def uninstall(
+    system: System,
+    config: LabConfig | None,
+    flags: Sequence[str],
+    extra: Sequence[str],
+) -> int:
+    """Run ``bootstrap.sh --uninstall`` from the checkout bootstrap last ran from (§5.4).
+
+    The checkout is the one ``/etc/pinka/bootstrap-state.json`` records, else
+    the lab description's. Uninstall works without the lab description, so
+    this command does too.
+
+    Args:
+        system: Host access.
+        config: The lab description, when there is one.
+        flags: Uninstall's own options (``--dry-run``, ``--purge-data``, ...).
+        extra: Further bootstrap options (such as ``--confirm-machine``).
+
+    Returns:
+        Bootstrap's exit code.
+
+    Raises:
+        CommandError: Without root, or when no checkout is recorded.
+    """
+    require_root(system, "uninstall")
+    infra = ""
+    text = system.read_text(BOOTSTRAP_STATE)
+    if text:
+        try:
+            state = json.loads(text)
+        except ValueError:
+            state = {}
+        infra = str(state.get("infra_dir", "")) if isinstance(state, dict) else ""
+    if not infra and config is not None:
+        infra = config.infra_dir
+    if not infra:
+        raise CommandError(
+            f"{BOOTSTRAP_STATE} names no checkout; run uninstall from one: "
+            "sudo <checkout>/bootstrap/bootstrap.sh --uninstall"
+        )
+    return system.interactive([f"{infra}/bootstrap/bootstrap.sh", "--uninstall", *flags, *extra])
+
+
 # --- golden images --------------------------------------------------------------------------
 
 

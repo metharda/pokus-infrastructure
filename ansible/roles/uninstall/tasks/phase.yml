@@ -1,0 +1,16 @@
+# Managed by pinka (ansible/roles/uninstall/tasks/phase.yml). Local changes will be overwritten.
+#
+# One phase of the confirmed plan (BUILD_PROMPT §5.4). An item that cannot be
+# removed is a result ("failed", bootstrap exits 81), not a failed task; a
+# failed task stops the phases after it, and the report notes them.
+- name: Remove {{ uninstall_phase }}
+  pinka_uninstall:
+    state: apply
+    phase: "{{ uninstall_phase }}"
+    family: "{{ uninstall_family }}"
+    plan_file: "{{ pinka_uninstall.plan_file }}"
+  register: uninstall_phase_result
+
+- name: Keep the results of {{ uninstall_phase }}
+  ansible.builtin.set_fact:
+    uninstall_results: "{{ uninstall_results | default([]) + uninstall_phase_result.results }}"

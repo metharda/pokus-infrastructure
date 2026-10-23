@@ -1,4 +1,4 @@
-"""Running the installation from the TUI (BUILD_PROMPT §18.1, §18.4 screen 16).
+"""Running the installation, or uninstall, from the TUI (BUILD_PROMPT §5.4, §18.1, §18.4).
 
 The TUI is a front-end only: it runs ``bootstrap.sh`` again, non-interactively
 and without the TUI, exactly as an ``--answers`` run would after the files are
@@ -12,6 +12,7 @@ pane, and the full log stays in ``/var/log/pinka-bootstrap/``.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import signal
@@ -69,6 +70,20 @@ class RunRequest:
         ]
 
 
+@dataclass
+class UninstallRun:
+    """One ``bootstrap.sh --uninstall --json`` run (BUILD_PROMPT §5.4).
+
+    Attributes:
+        code: Bootstrap's exit code (0, 80, 81, ...).
+        result: The JSON it printed: the plan (a dry run, or a run that stopped
+            before removing anything) or the report; empty when none.
+    """
+
+    code: int
+    result: dict[str, Any]
+
+
 class Runner(Protocol):
     """Runs bootstrap and reports its events and output."""
 
@@ -89,6 +104,15 @@ class Runner(Protocol):
 
     def cancel(self) -> None:
         """Stop a running bootstrap (it is idempotent; running it again continues)."""
+        ...
+
+    def uninstall(self, options: Sequence[str], on_output: Callable[[str], None]) -> UninstallRun:
+        """Run ``bootstrap.sh --uninstall`` non-interactively with ``--json``.
+
+        Args:
+            options: Uninstall's options (``--dry-run``, ``--confirm-machine``, ...).
+            on_output: Called with each line of bootstrap's log.
+        """
         ...
 
 
@@ -173,14 +197,57 @@ class BootstrapRunner:
         self._process = None
         return int(process.returncode)
 
+    def uninstall(  # noqa: D102
+        self, options: Sequence[str], on_output: Callable[[str], None]
+    ) -> UninstallRun:
+        argv = [
+            str(self.paths.bootstrap),
+            "--uninstall",
+            "--non-interactive",
+            "--no-tui",
+            "--json",
+            *options,
+        ]
+        # The log comes on standard error, the JSON alone on standard output.
+        process = subprocess.Popen(  # noqa: S603 - bootstrap with options the TUI built
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=self.paths.infra,
+            start_new_session=True,
+        )
+        self._process = process
+        reader = threading.Thread(
+            target=self._read, args=(process, on_output, "stderr"), daemon=True
+        )
+        reader.start()
+        assert process.stdout is not None  # noqa: S101 - set by Popen(stdout=PIPE)
+        text = process.stdout.read()
+        process.wait()
+        reader.join(timeout=5)
+        self._process = None
+        try:
+            result = json.loads(text) if text.strip() else {}
+        except ValueError:
+            result = {}
+        return UninstallRun(int(process.returncode), result if isinstance(result, dict) else {})
+
     def cancel(self) -> None:  # noqa: D102
         process = self._process
         if process is not None and process.poll() is None:
             os.killpg(process.pid, signal.SIGTERM)
 
-    def _read(self, process: subprocess.Popen[str], on_output: Callable[[str], None]) -> None:
-        assert process.stdout is not None  # noqa: S101 - set by Popen(stdout=PIPE)
-        for line in process.stdout:
+    def _read(
+        self,
+        process: subprocess.Popen[str],
+        on_output: Callable[[str], None],
+        stream: str = "stdout",
+    ) -> None:
+        source = process.stdout if stream == "stdout" else process.stderr
+        assert source is not None  # noqa: S101 - set by Popen(stdout=PIPE, stderr=PIPE)
+        for line in source:
             text = line.rstrip("\n")
             match = LOG_PATH_RE.search(text)
             if match and not self.log_file:

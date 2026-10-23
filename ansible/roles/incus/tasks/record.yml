@@ -1,0 +1,53 @@
+# Managed by pinka (ansible/roles/incus/tasks/record.yml). Local changes will be overwritten.
+#
+# On an Incus that existed before pinka (--adopt-incus), the install record
+# notes the objects pinka is about to create and the server settings it is
+# about to change, before it acts (§7.21): uninstall removes only those
+# objects there and sets the settings back (§5.4). Pinka's own Incus goes as
+# a whole.
+- name: Read the Incus objects that exist
+  ansible.builtin.command:
+    argv: ["{{ incus_cli }}", query, "{{ item.url }}"]
+  loop:
+    - {key: server, url: /1.0}
+    - {key: storage-pools, url: /1.0/storage-pools}
+    - {key: networks, url: /1.0/networks}
+    - {key: network-acls, url: /1.0/network-acls}
+    - {key: projects, url: /1.0/projects}
+    - {key: certificates, url: "/1.0/certificates?recursion=1"}
+  loop_control:
+    label: "{{ item.key }}"
+  register: incus_found_objects
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Read the profiles of pinka's projects that exist
+  ansible.builtin.command:
+    argv: ["{{ incus_cli }}", query, "/1.0/profiles?project={{ item }}"]
+  loop: "{{ incus_projects | map(attribute='name') | list }}"
+  register: incus_found_profiles
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Record what pinka creates and changes in this Incus
+  pinka_install_record:
+    state: add
+    added:
+      incus_objects: "{{ incus_found | pinka_incus_new_objects(incus_desired) }}"
+      changed: "{{ incus_found.server | default('') | pinka_incus_config_before(incus_server_config) }}"
+  vars:
+    incus_found: >-
+      {{ dict(incus_found_objects.results | map(attribute='item.key')
+              | zip(incus_found_objects.results | map(attribute='stdout', default='')))
+         | combine(dict(incus_found_profiles.results | map(attribute='item')
+                        | map('regex_replace', '^', 'profiles:')
+                        | zip(incus_found_profiles.results | map(attribute='stdout', default='')))) }}
+    incus_desired:
+      pool: "{{ incus_pool.name }}"
+      networks: "{{ incus_networks | map(attribute='name') | list }}"
+      acls: ["{{ incus_run_acl }}"]
+      projects: "{{ incus_projects | map(attribute='name') | list }}"
+      profiles: "{{ incus_profiles }}"
+      certificates: "{{ (incus_service_certificates + [incus_metrics_certificate]) | map(attribute='name') | list }}"

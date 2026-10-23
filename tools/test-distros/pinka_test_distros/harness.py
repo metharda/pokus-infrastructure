@@ -9,7 +9,11 @@ after the owner's firewall reloads, while SSH over the tailnet still works
 then the reference platform is deployed in it (BUILD_PROMPT §7.18, §19.9): its isolation probes, the
 training flow with the CPU-only job, a run interrupted by a reboot and
 resumed, a second deployment that changes nothing, the replacement by a
-renamed copy, and a backup and restore.
+renamed copy, and a backup and restore. Last, the uninstall lane: the host's
+snapshot before the install must equal the one after the uninstall, apart
+from what uninstall keeps on purpose; on the pre-existing variant, Docker
+with a workload and a logged-in Tailscale node exist before pinka and stay
+as they were through install and uninstall (BUILD_PROMPT §5.4, §19.9).
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ import secrets
 import socket
 import tempfile
 import tomllib
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,13 +33,14 @@ from typing import Any
 import yaml
 
 from pinka_platform import contract as contract_mod
-from pinka_test_distros import isolation, refplat
+from pinka_test_distros import isolation, preexisting, refplat, snapshot
 from pinka_test_distros.incus import Incus, IncusError, Result
 from pinka_test_distros.targets import Target
 
 STAGES = (
     "launch",
     "prepare",
+    "snapshot",
     "bootstrap",
     "idempotent",
     "smoke",
@@ -47,6 +52,7 @@ STAGES = (
     "redeploy",
     "replace",
     "restore",
+    "uninstall",
 )
 KEEP = ("never", "failed", "always")
 GUEST_REPO = "/root/pinka"
@@ -63,6 +69,42 @@ SHOWN_PROBLEMS = 5
 STATE_FILE = "/etc/pinka/bootstrap-state.json"
 PROFILE_FILE = "/etc/pinka/host-profile.json"
 BOOTSTRAP_TIMEOUT = 4 * 3600.0
+UNINSTALL_TIMEOUT = 3600.0
+UNINSTALL_REPORTS = "/var/log/pinka-uninstall"
+# What bootstrap --uninstall logs when nothing of pinka's is left
+# (bootstrap/lib/stages.sh, uninstall_flow).
+NOTHING_LEFT = "nothing of pinka's is on this host; nothing was removed"
+# The kept data the uninstall lane marks before it uninstalls and finds again
+# afterwards (owner, D2 review): a package script or a removal that took one
+# fails the lane. Docker's data root is the one docker info names.
+KEPT_DATA = ("/srv/pinka", "/var/lib/containerd", "/var/lib/incus", "/var/lib/tailscale")
+KEPT_MARK = ".pinka-uninstall-lane"
+# The backups open with the key uninstall kept (restic, as root).
+KEPT_BACKUP = (
+    "k=/var/lib/pinka-kept/backup; RESTIC_REPOSITORY_FILE=$k/secrets/repository"
+    " RESTIC_PASSWORD_FILE=$k/secrets/password $k/restic --no-cache snapshots --json"
+    " | grep -q '\"id\"'"
+)
+
+
+def mark_kept_data(stamp: str) -> str:
+    """The script that marks every kept data directory there is and prints each one."""
+    return (
+        "root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true);"
+        f' for d in {" ".join(KEPT_DATA)} $root; do test -d "$d" || continue;'
+        f' echo {stamp} >"$d/{KEPT_MARK}" && echo "$d"; done'
+    )
+
+
+def check_kept_data(marked: Sequence[str], stamp: str) -> str:
+    """The script that fails, naming them, when marked directories lost their mark."""
+    return (
+        f"lost=; for d in {' '.join(marked)}; do"
+        f' test "$(cat "$d/{KEPT_MARK}" 2>/dev/null)" = {stamp} || lost="$lost $d"; done;'
+        ' test -z "$lost" || { echo "lost:$lost" >&2; exit 1; }'
+    )
+
+
 RECAP_RE = re.compile(r"^\S+\s*:\s*ok=\d+\s+changed=(\d+)\s+unreachable=\d+\s+failed=\d+", re.M)
 # The harness's own package commands, before bootstrap (variants only).
 INSTALL = {
@@ -239,6 +281,9 @@ class Test:
         self.contract = contract_mod.load()
         # The answers' platform sections of the platform deployed last.
         self.platform_answers: dict[str, Any] = {}
+        # The host's snapshot before the install (the uninstall lane).
+        self.before: dict[str, list[str]] = {}
+        self.sysctl = snapshot.sysctl_keys()
 
     def _sh(self, stage: str, script: str, *, timeout: float = 1800) -> Result:
         result = self.incus.exec(self.name, ["bash", "-c", script], timeout=timeout)
@@ -305,14 +350,7 @@ class Test:
             self._require(
                 "prepare", OWNER_RULES[t.firewall], "admitting them in the owner's firewall"
             )
-        if t.selinux == "enforcing":
-            mode = self._sh("prepare", "getenforce").stdout.strip()
-            if mode != "Enforcing":
-                self._require(
-                    "prepare",
-                    'setenforce 1 && test "$(getenforce)" = Enforcing',
-                    f"switching SELinux from {mode or 'unknown'} to enforcing",
-                )
+        self._enforce_selinux("prepare")
         self.incus.push(self.name, self.settings.repo_tar, "/root/pinka.tar")
         self._require(
             "prepare",
@@ -340,6 +378,40 @@ class Test:
             f" && install -D -m 0644 /root/ci-researcher.pub {GUEST_INFRA}/users/researcher1.pub",
             "creating the test researcher's key",
         )
+        self._preexisting_setup()
+
+    def _enforce_selinux(self, stage: str) -> None:
+        """SELinux in enforcing mode on the SELinux lanes (again after a reboot)."""
+        if self.target.selinux != "enforcing":
+            return
+        mode = self._sh(stage, "getenforce").stdout.strip()
+        if mode != "Enforcing":
+            self._require(
+                stage,
+                'setenforce 1 && test "$(getenforce)" = Enforcing',
+                f"switching SELinux from {mode or 'unknown'} to enforcing",
+            )
+
+    def _preexisting_setup(self) -> None:
+        """The variant's components, set up as their owner would have (BUILD_PROMPT §19.9)."""
+        t = self.target
+        install = INSTALL[t.family]
+        if "docker" in t.preexisting:
+            self._require("prepare", preexisting.docker_script(install), "Docker and the workload")
+        if "tailscale" in t.preexisting:
+            codename = self._require(
+                "prepare", preexisting.CODENAME, "reading the release's codename"
+            ).stdout.strip()
+            pins = preexisting.tailscale_pins(t.os_id, t.version_id or "", codename)
+            tags = sorted({preexisting.lab_tag(), preexisting.OWNER_TAG})
+            script = preexisting.tailscale_script(
+                install, pins, f"{self.name}-owner", tags, GUEST_SECRETS
+            )
+            self._require("prepare", script, "Tailscale, logged in as the owner's node")
+
+    def _fixed(self) -> list[str]:
+        """The pre-existing components' packages, whose versions must not change."""
+        return [p for c in self.target.preexisting for p in preexisting.PACKAGES[c]]
 
     def _answers_path(self) -> str:
         return f"{GUEST_INFRA}/installer-answers/{self.name}.yml"
@@ -359,6 +431,85 @@ class Test:
                 "close_listeners": [f"tcp/{CLOSED_PORT}"],
             }
         return render_answers(self.settings.answers, self.name, changes)
+
+    def _reboot(self, stage: str) -> None:
+        """Reboot the VM and wait until boot has finished."""
+        self.incus.restart(self.name)
+        self.incus.wait_ready(self.name)
+        self._enforce_selinux(stage)
+        self._sh(stage, snapshot.SETTLE, timeout=600)
+
+    def _snapshot(self, stage: str, name: str) -> dict[str, list[str]]:
+        """The host's snapshot, kept as ``snapshot-<name>.txt`` in the results."""
+        result = self._require(stage, snapshot.script(self.sysctl), f"the {name} snapshot")
+        (self.dir / f"snapshot-{name}.txt").write_text(result.stdout, encoding="utf-8")
+        return snapshot.parse(result.stdout)
+
+    def _address(self, stage: str) -> str:
+        """The VM's address on its network."""
+        address = self._require(stage, LAN_ADDRESS, "finding the VM's address").stdout.strip()
+        if not address:
+            raise StageError("the VM has no address on its network")
+        return address
+
+    def _workload_problems(self, stage: str) -> list[str]:
+        """What the workload cannot reach, or what cannot reach it."""
+        port = preexisting.WORKLOAD_PORT
+        problems = []
+        if not self._sh(stage, preexisting.workload_answers()).ok:
+            problems.append(f"the workload does not answer on tcp/{port} in the VM")
+        if not self.settings.reachable(self._address(stage), port):
+            problems.append(f"the workload's tcp/{port} is not reachable from the harness host")
+        if not self._sh(stage, preexisting.workload_egress()).ok:
+            host, out = preexisting.EGRESS
+            problems.append(f"the workload does not reach {host}:{out}")
+        return problems
+
+    def _preexisting_unchanged(self, stage: str, when: str) -> None:
+        """The pre-existing components are as they were before the install (§19.9).
+
+        The Tailscale node keeps its identity, state and preferences (the
+        snapshot's ``tailscale`` section), the components' packages keep
+        their versions, and the workload keeps its connectivity.
+        """
+        t = self.target
+        problems = []
+        if "tailscale" in t.preexisting:
+            now = self._sh(stage, snapshot.section_script("tailscale")).stdout.splitlines()
+            changed = snapshot.section_differences("tailscale", self.before["tailscale"], now)
+            if changed:
+                problems.append(f"the Tailscale node changed: {', '.join(changed)}")
+        if fixed := self._fixed():
+            was = snapshot.versions(self.before["packages"])
+            now_versions = snapshot.versions(
+                self._sh(stage, preexisting.versions_script(fixed)).stdout.splitlines()
+            )
+            problems += [
+                f"{p} {was.get(p)} -> {now_versions.get(p)}"
+                for p in fixed
+                if was.get(p) != now_versions.get(p)
+            ]
+        if "docker" in t.preexisting:
+            problems += self._workload_problems(stage)
+        if problems:
+            raise StageError(f"{when}: {'; '.join(problems)}")
+
+    def snapshot(self) -> None:
+        """After a reboot, the host as it is before the install (the uninstall lane, §19.9).
+
+        On the pre-existing variant, the node must be running and the
+        workload reachable: the baseline the later stages compare with.
+        """
+        self._reboot("snapshot")
+        self.before = self._snapshot("snapshot", "before")
+        if "tailscale" in self.target.preexisting:
+            state = [line for line in self.before["tailscale"] if line.startswith("state ")]
+            if state != ["state Running"]:
+                raise StageError(f"the owner's Tailscale node is not running: {state}")
+        if "docker" in self.target.preexisting:
+            problems = self._workload_problems("snapshot")
+            if problems:
+                raise StageError(f"before the install: {'; '.join(problems)}")
 
     def _bootstrap(self, stage: str, options: str) -> int:
         script = (
@@ -422,19 +573,21 @@ class Test:
         self._require("smoke", "pinka doctor --smoke", "pinka doctor --smoke", timeout=3600)
 
     def access(self) -> None:
-        """What was closed with consent stays closed after the owner's firewall reloads (AG1).
+        """What existed before the install is still there and reachable.
 
-        On the ufw and firewalld lanes, before and after ``ufw reload`` or
-        ``firewall-cmd --reload``: the access guard drops new connections to
-        the closed listener; the harness host reaches the kept one and not
-        the closed one, and so does a second node over the tailnet; and SSH
-        over the tailnet still works.
+        On the pre-existing variant (§19.9): the Tailscale node, the
+        components' versions and the workload's connectivity are unchanged.
+        On the ufw and firewalld lanes (AG1), before and after ``ufw reload``
+        or ``firewall-cmd --reload``: the access guard drops new connections
+        to the closed listener; the harness host reaches the kept one and
+        not the closed one, and so does a second node over the tailnet; and
+        SSH over the tailnet still works.
         """
+        if self.target.preexisting:
+            self._preexisting_unchanged("access", "after the install")
         if not self.closes_listeners:
             return
-        address = self._require("access", LAN_ADDRESS, "finding the VM's address").stdout.strip()
-        if not address:
-            raise StageError("the VM has no address on its network")
+        address = self._address("access")
         self._access_holds(address, "after the install")
         self._require("access", RELOAD[self.target.firewall], f"reloading {self.target.firewall}")
         self._access_holds(address, f"after {RELOAD[self.target.firewall]}")
@@ -650,6 +803,77 @@ class Test:
         self._require("restore", f"test -s {record}", "the restored controller record")
         self._deployed("restore", refplat.RENAMED_NAME)
         self._require("restore", "pinka doctor --smoke", "pinka doctor --smoke", timeout=3600)
+
+    # --- the uninstall lane --------------------------------------------------------------------
+
+    def uninstall(self) -> None:
+        """Uninstall; after a reboot the host equals its snapshot before the install (§19.9).
+
+        The harness first removes what it added itself (the inference
+        stand-in). Bootstrap uninstalls non-interactively with the typed
+        machine name, backing up first, and must exit 0; a second run must
+        find nothing left. Every difference kept on purpose is listed with
+        its reason in ``uninstall-differences.txt``; any other fails the
+        stage. The kept data must keep the marks set before the uninstall,
+        and the backups must open with the kept key. On the pre-existing
+        variant the components are checked again.
+        """
+        self._require("uninstall", refplat.standin_removal(), "removing the inference stand-in")
+        stamp = f"kept-{self.name}"
+        marked = self._require(
+            "uninstall", mark_kept_data(stamp), "marking the kept data"
+        ).stdout.split()
+        command = (
+            f"cd {GUEST_INFRA} && ./bootstrap/bootstrap.sh --uninstall --non-interactive"
+            f" --confirm-machine {self.name}"
+        )
+        result = self._sh("uninstall", command, timeout=UNINSTALL_TIMEOUT)
+        report = self._uninstall_report()
+        if result.returncode != 0:
+            failed = [
+                f"{i.get('name')}: {i.get('reason')}"
+                for i in report.get("items") or []
+                if isinstance(i, dict) and i.get("result") == "failed"
+            ]
+            raise StageError(
+                f"uninstall ended with exit {result.returncode}"
+                + (f"; could not remove {'; '.join(failed[:SHOWN_PROBLEMS])}" if failed else "")
+            )
+        again = self._sh("uninstall", command, timeout=UNINSTALL_TIMEOUT)
+        if again.returncode != 0 or NOTHING_LEFT not in again.stdout + again.stderr:
+            raise StageError(
+                f"a second uninstall still found something of pinka's (exit {again.returncode})"
+            )
+        self._reboot("uninstall")
+        self._require("uninstall", check_kept_data(marked, stamp), "the kept data")
+        self._require("uninstall", KEPT_BACKUP, "opening the backups with the kept key")
+        after = self._snapshot("uninstall", "after")
+        platforms = [str(refplat.manifest()["name"]), refplat.RENAMED_NAME]
+        failing, kept = snapshot.differences(self.before, after, platforms, self._fixed())
+        lines = [f"failing: {d}" for d in failing] + [f"kept: {d}" for d in kept]
+        (self.dir / "uninstall-differences.txt").write_text(
+            "".join(f"{line}\n" for line in lines), encoding="utf-8"
+        )
+        if failing:
+            extra = len(failing) - SHOWN_PROBLEMS
+            more = f" and {extra} more" if extra > 0 else ""
+            raise StageError(
+                f"after the uninstall, unlike before the install: "
+                f"{'; '.join(failing[:SHOWN_PROBLEMS])}{more}"
+            )
+        if self.target.preexisting:
+            self._preexisting_unchanged("uninstall", "after the uninstall")
+
+    def _uninstall_report(self) -> dict[str, Any]:
+        """The newest uninstall report, kept as ``uninstall-report.json``; empty if none."""
+        newest = self._sh(
+            "uninstall", f"ls -1t {UNINSTALL_REPORTS}/*.json 2>/dev/null | head -n 1"
+        ).stdout.strip()
+        local = self.dir / "uninstall-report.json"
+        if not newest or not self.incus.pull(self.name, newest, local):
+            return {}
+        data = json.loads(local.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
 
     # --- the whole test -----------------------------------------------------------------------
 

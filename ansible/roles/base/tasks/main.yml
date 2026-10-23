@@ -15,6 +15,37 @@
          | map('extract', base_package_names | combine(base_package_overrides[pinka_source_group] | default({})))
          | select | list }}
 
+# Uninstall sets the time zone and the kernel settings back (BUILD_PROMPT
+# §5.4): the values before pinka first changes them, noted first.
+- name: Read the time zone and the kernel settings
+  ansible.builtin.shell:
+    cmd: |
+      zone=$(timedatectl show --property=Timezone --value 2>/dev/null) || zone=''
+      if [ -z "$zone" ]; then
+        zone=$(readlink /etc/localtime 2>/dev/null) || zone=''
+        case $zone in */zoneinfo/*) zone=${zone#*/zoneinfo/} ;; *) zone='' ;; esac
+      fi
+      printf 'timezone=%s\n' "$zone"
+      for key in {{ base_sysctl.keys() | join(' ') }}; do
+        printf 'sysctl:%s=%s\n' "$key" "$(sysctl -n "$key" 2>/dev/null)"
+      done
+    executable: /bin/sh
+  register: base_settings_now
+  changed_when: false
+  check_mode: false
+
+- name: Record the settings pinka changes, as they were
+  pinka_install_record:
+    state: add
+    added:
+      changed: "{{ base_settings_before }}"
+  vars:
+    base_settings_before: >-
+      {{ base_settings_now.stdout_lines | pinka_settings_before(
+           {'timezone': 'UTC'} | combine(dict(base_sysctl.keys() | map('regex_replace', '^', 'sysctl:')
+                                              | zip(base_sysctl.values())))) }}
+  when: base_settings_before | length > 0
+
 - name: Set the system time zone to UTC
   community.general.timezone:
     name: UTC

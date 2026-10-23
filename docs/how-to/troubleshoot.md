@@ -290,6 +290,48 @@ Bootstrap stopped and printed what to do. Common messages:
 `<machine>` is the name you pass with `--machine`; `<file>` is a file that
 contains the vault password; `<key>` is the key file the message names.
 
+## Exit code 80: uninstall refused {#exit-code-80}
+
+`bootstrap.sh --uninstall` removed nothing. The message above the exit code
+says why:
+
+| Message | What to do |
+| --- | --- |
+| uninstall not confirmed | Type the machine name exactly as the plan shows it, or pass it with `--confirm-machine <machine>` when there is no terminal (`--non-interactive`). With `--purge-data` the name is asked a second time. |
+| --confirm-machine ... is not this host's machine name | Pass the name the plan shows, the one `/etc/pinka/bootstrap-state.json` records. |
+| --machine ... is not this host's machine | Leave out `--machine`, or pass the recorded name. |
+| ... is missing, so the machine name is unknown | The state file is gone; pass `--machine <machine>`, the name this host was installed as. |
+| the backup failed ... nothing was removed | Fix the backup (`sudo pinka backup now` shows the error), or add `--skip-backup` to uninstall without one. |
+| uninstall refused: --remove-component applies only on a host without a usable install record | Leave out `--remove-component`: the install record already says which components pinka installed. |
+
+Then run the same `--uninstall` command again. See
+[How to uninstall pinka](uninstall.md).
+
+## Exit code 81: uninstall kept items {#exit-code-81}
+
+Uninstall ran to the end, but some items it should have removed are still
+there. The report names each with the reason:
+
+<!-- qa:run env=E2 -->
+```bash
+sudo ls -t /var/log/pinka-uninstall/
+sudo grep -B3 -A2 '"result": "failed"' "/var/log/pinka-uninstall/<report>"
+```
+
+`<report>` is the first name the `ls` command lists. Deal with each reason
+(for example a package another package still needs, or a path that is
+busy), then run `sudo ./bootstrap/bootstrap.sh --uninstall` again: what is
+already gone is reported as such, and uninstall continues with the rest.
+Two reasons keep the lab's data safe and need you first: `the kept data
+could not be guarded` (no package was removed, because a kept data directory
+could not be mounted read-only; the guard's item names the `mount` error)
+and `the kept copy of ... is missing` (a path that holds the backups' key or
+a record was not removed, because its copy in `/var/lib/pinka-kept` failed;
+the `keep` item names why).
+When it ran from the installer, `/opt/pinka` is removed after the installer
+has ended; if that fails, the report names it as well, and `sudo rm -rf
+/opt/pinka` removes it.
+
 ## Verify the fix
 
 1. Run bootstrap again with the same options:

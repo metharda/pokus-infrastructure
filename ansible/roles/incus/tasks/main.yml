@@ -18,6 +18,10 @@
 - name: Work out the desired configuration
   ansible.builtin.include_tasks: desired.yml
 
+- name: Record what pinka creates in an Incus that existed before it
+  ansible.builtin.include_tasks: record.yml
+  when: ((pinka_preexisting.components | default({})).incus | default({})).installed | default(false)
+
 - name: Initialize a new installation
   ansible.builtin.include_tasks: initialize.yml
 

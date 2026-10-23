@@ -32,7 +32,7 @@ source "$BOOTSTRAP_DIR/lib/stages.sh"
 # Exit codes that stages return on purpose; any other failure is internal.
 readonly DELIBERATE_CODES=" $EXIT_DEGRADED $EXIT_EXPERIMENTAL $EXIT_UNSUPPORTED $EXIT_NEEDS_ACTION \
 $EXIT_PREFLIGHT_ERROR $EXIT_TOOLING $EXIT_ANSIBLE $EXIT_USAGE $EXIT_INTERNAL $EXIT_WSL_RESTART \
-$EXIT_REBOOT $EXIT_OPERATOR "
+$EXIT_REBOOT $EXIT_OPERATOR $EXIT_UNINSTALL_REFUSED $EXIT_UNINSTALL_KEPT "
 
 INTERACTIVE=false
 USE_TUI=false
@@ -67,7 +67,12 @@ on_exit() {
     write_state "$rc" "$STATE_FILE" || log_warn "could not write $STATE_FILE"
   fi
   emit_event bootstrap.result bootstrap "$(result_name "$rc")" "$rc"
-  if ((rc == 0)); then
+  if "$OPT_UNINSTALL"; then
+    finish_uninstall
+  fi
+  if ((rc == 0)) && "$OPT_UNINSTALL"; then
+    log_info "uninstall finished"
+  elif ((rc == 0)); then
     log_info "bootstrap finished: $(exit_meaning "$rc")"
   else
     log_error "bootstrap ended with exit code $rc: $(exit_meaning "$rc")"
@@ -102,7 +107,14 @@ main() {
   trap on_exit EXIT
   stage_git
   stage_prepreflight
+  [[ -d $PINKA_OPT ]] && OPT_EXISTED=true
   stage_tooling
+  if "$OPT_UNINSTALL"; then
+    stage_uninstall_profile
+    stage_ansible_env
+    stage_uninstall
+    exit "$FINAL_RC"
+  fi
   stage_frontend
   stage_preflight
   stage_ansible_env

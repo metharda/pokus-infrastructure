@@ -17,6 +17,27 @@
 - name: Reload firewalld so the new zone exists
   ansible.builtin.meta: flush_handlers
 
+# Uninstall sets back what pinka changes in zones it did not create
+# (BUILD_PROMPT §5.4): tailscale0's zone before pinka ("" when it had none),
+# and the zones where pinka opens SSH; noted before the first change only.
+- name: Find the zone of tailscale0
+  ansible.builtin.command:
+    argv: [firewall-cmd, --permanent, "--get-zone-of-interface={{ firewall_tailnet_interface }}"]
+  register: firewall_tailnet_zone_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Record the zone of tailscale0 before pinka
+  pinka_install_record:
+    state: add
+    added:
+      changed: >-
+        {{ {'firewalld:zone-of:' ~ firewall_tailnet_interface:
+            firewall_tailnet_zone_before.stdout | default('') | trim
+            if firewall_tailnet_zone_before.rc | default(1) == 0 else ''} }}
+  when: firewall_tailnet_zone_before.stdout | default('') | trim != 'pinka-tailnet'
+
 - name: Put tailscale0 in the pinka-tailnet zone
   ansible.posix.firewalld:
     zone: pinka-tailnet
@@ -41,6 +62,30 @@
   register: firewall_extra_zones
   changed_when: false
   check_mode: false
+
+- name: Find whether SSH is open in the zones of the extra interfaces
+  ansible.builtin.command:
+    argv: [firewall-cmd, --permanent, "--zone={{ item.stdout | trim }}", --query-service=ssh]
+  loop: "{{ firewall_extra_zones.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: firewall_extra_ssh_before
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Record the zones where pinka opens SSH
+  pinka_install_record:
+    state: add
+    added:
+      changed: "{{ dict(firewall_ssh_opened | zip(['absent'] * firewall_ssh_opened | length)) }}"
+  vars:
+    firewall_ssh_opened: >-
+      {{ firewall_extra_ssh_before.results | rejectattr('rc', 'eq', 0)
+         | map(attribute='item.stdout') | map('trim')
+         | map('regex_replace', '^', 'firewalld:service:') | map('regex_replace', '$', ':ssh')
+         | unique | list }}
+  when: firewall_ssh_opened | length > 0
 
 - name: Allow SSH on the extra interfaces
   ansible.posix.firewalld:

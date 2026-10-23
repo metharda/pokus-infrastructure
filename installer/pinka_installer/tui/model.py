@@ -42,7 +42,13 @@ STEPS = (
     ("review", "Review"),
 )
 STEP_NAMES = tuple(name for name, _ in STEPS)
-AFTER_STEPS = {"progress": "Install progress", "doctor": "Doctor", "finish": "Finish"}
+AFTER_STEPS = {
+    "progress": "Install progress",
+    "doctor": "Doctor",
+    "finish": "Finish",
+    "uninstall": "Uninstall",
+    "uninstall_run": "Uninstall progress",
+}
 CONSENTS = ("accept_degraded", "accept_experimental", "force_unsupported", "accept_mok_enrollment")
 LOOP_RESERVE_GIB = 50
 MIN_VAULT_PASSWORD = 12
@@ -82,6 +88,9 @@ class Wizard:
             by typing its name (memory only; the TUI's ``--replace-platform``).
         replace_key: The platform answers that confirmation was made for; a
             change of them drops it.
+        uninstall: The operator chose to uninstall on the Install mode screen
+            (never an answers mode: uninstall is not replayed from a file).
+        uninstall_options: The confirmed uninstall's options (memory only).
     """
 
     answers: Answers = field(default_factory=Answers)
@@ -104,6 +113,8 @@ class Wizard:
     platform_approved: bool = False
     replace_platform: str = ""
     replace_key: str = ""
+    uninstall: bool = False
+    uninstall_options: list[str] = field(default_factory=list)
 
     def replacing(self) -> str:
         """The confirmed replacement, while the platform answers are the confirmed ones."""

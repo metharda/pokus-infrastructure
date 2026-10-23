@@ -11,6 +11,8 @@ import yaml
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,40}$")
 FIREWALLS = ("nftables", "firewalld", "ufw")
+# What the uninstall lane's variant installs before pinka (Debian family only).
+PREEXISTING = ("docker", "tailscale")
 # Family of an os-release ID, for the harness's own package commands.
 FAMILIES = {
     "ubuntu": "debian",
@@ -45,6 +47,9 @@ class Target:
         cpus: vCPUs.
         memory: Memory limit (Incus size).
         disk: Root disk size (Incus size).
+        preexisting: Components the harness installs before bootstrap (the
+            uninstall lane's variant, BUILD_PROMPT §19.9): ``docker``,
+            ``tailscale``.
     """
 
     id: str
@@ -57,6 +62,7 @@ class Target:
     cpus: int
     memory: str
     disk: str
+    preexisting: tuple[str, ...] = ()
 
     @property
     def image_ref(self) -> str:
@@ -119,6 +125,7 @@ def _target(entry: dict[str, Any], defaults: dict[str, Any]) -> Target:
         cpus=int(merged.get("cpus", 0)),
         memory=str(merged.get("memory", "")),
         disk=str(merged.get("disk", "")),
+        preexisting=tuple(str(c) for c in merged.get("preexisting") or ()),
     )
     problems = []
     if not ID_RE.match(target.id):
@@ -133,6 +140,10 @@ def _target(entry: dict[str, Any], defaults: dict[str, Any]) -> Target:
         problems.append("selinux")
     if target.cpus < 1 or not target.memory or not target.disk:
         problems.append("resources")
+    if not set(target.preexisting) <= set(PREEXISTING) or (
+        target.preexisting and target.family != "debian"
+    ):
+        problems.append("preexisting")
     if problems:
         raise TargetError(f"target {target.id or '?'}: invalid {', '.join(problems)}")
     return target

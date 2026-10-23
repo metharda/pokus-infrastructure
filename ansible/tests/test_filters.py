@@ -203,6 +203,12 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_vault_keys",
         "pinka_researcher_memberships",
         "pinka_key_entries",
+        "pinka_new_memberships",
+        "pinka_component_packages",
+        "pinka_component_repos",
+        "pinka_settings_before",
+        "pinka_incus_new_objects",
+        "pinka_incus_config_before",
         "pinka_subnet",
         "pinka_listener_rules",
         "pinka_install_path",
@@ -543,3 +549,122 @@ def test_only_researchers_key_logins_over_the_tailnet_count() -> None:
     # Without the tailnet's peers (tailscale status failed) nothing counts.
     assert pinka.tailnet_logins(good, names, []) == []
     assert pinka.tailnet_logins("", names, peers) == []
+
+
+def test_new_memberships_leave_out_the_members_already_there() -> None:
+    assert pinka.new_memberships(["researcher1", "researcher2"], "incus", ["researcher2"]) == [
+        {"user": "researcher1", "group": "incus"}
+    ]
+    assert pinka.new_memberships([], "incus", []) == []
+
+
+def test_settings_before_are_the_values_pinka_changes() -> None:
+    # Uninstall sets these back (BUILD_PROMPT §5.4).
+    lines = [
+        "timezone=Europe/Example",
+        "sysctl:net.ipv4.ip_forward=0",
+        "sysctl:fs.inotify.max_user_watches=1048576",
+        "sysctl:fs.inotify.max_user_instances=",
+        "unrelated=1",
+        "no separator",
+    ]
+    wanted = {
+        "timezone": "UTC",
+        "sysctl:net.ipv4.ip_forward": 1,
+        "sysctl:fs.inotify.max_user_watches": 1048576,
+        "sysctl:fs.inotify.max_user_instances": 8192,
+    }
+    assert pinka.settings_before(lines, wanted) == {
+        "timezone": "Europe/Example",
+        "sysctl:net.ipv4.ip_forward": "0",
+    }
+    # A second run finds pinka's values: nothing to note.
+    assert pinka.settings_before(["timezone=UTC", "sysctl:net.ipv4.ip_forward=1"], wanted) == {}
+
+
+def test_incus_new_objects_are_those_missing_from_an_adopted_incus() -> None:
+    found = {
+        "storage-pools": json.dumps(["/1.0/storage-pools/default"]),
+        "networks": json.dumps(["/1.0/networks/incusbr0", "/1.0/networks/incusbr-1000"]),
+        "network-acls": "",
+        "projects": json.dumps(["/1.0/projects/default", "/1.0/projects/user-1000"]),
+        "certificates": json.dumps([{"name": "owner-laptop"}]),
+        "profiles:user-1000": json.dumps(["/1.0/profiles/default?project=user-1000"]),
+        "profiles:bench": "",
+    }
+    desired = {
+        "pool": "pinka-targets",
+        "networks": ["pinka-build0", "incusbr-1000"],
+        "acls": ["pinka-run-default"],
+        "projects": ["bench", "user-1000"],
+        "profiles": [
+            {"project": "bench", "name": "target-container", "config": {}},
+            {"project": "user-1000", "name": "default"},
+        ],
+        "certificates": ["pinka-metrics"],
+    }
+    # The personal project and its network existed (incus-user made them):
+    # they stay the host's.
+    assert pinka.incus_new_objects(found, desired) == [
+        "acl:pinka-run-default",
+        "certificate:pinka-metrics",
+        "network:pinka-build0",
+        "pool:pinka-targets",
+        "profile:bench/target-container",
+        "project:bench",
+    ]
+
+
+def test_incus_config_before_notes_what_pinka_changes() -> None:
+    server = json.dumps({"config": {"core.https_address": "192.0.2.10:8443"}})
+    wanted = {"core.https_address": "127.0.0.1:8443"}
+    assert pinka.incus_config_before(server, wanted) == {
+        "incus:config:core.https_address": "192.0.2.10:8443"
+    }
+    assert pinka.incus_config_before(json.dumps({"config": {}}), wanted) == {
+        "incus:config:core.https_address": ""
+    }
+    unchanged = json.dumps({"config": {"core.https_address": "127.0.0.1:8443"}})
+    assert pinka.incus_config_before(unchanged, wanted) == {}
+    assert pinka.incus_config_before("", wanted) == {}
+
+
+def test_component_packages_span_every_source_group() -> None:
+    matrix = {
+        "docker": {
+            "ubuntu": {"packages": ["docker-ce", "containerd.io"]},
+            "arch": {"packages": ["docker"]},
+            "default": {"packages": []},
+        },
+        "tailscale": {"default": {"packages": ["tailscale"]}},
+    }
+    assert pinka.component_packages(["docker", "tailscale"], matrix) == [
+        "containerd.io",
+        "docker",
+        "docker-ce",
+        "tailscale",
+    ]
+    with pytest.raises(pinka.PinkaFilterError, match="unknown component"):
+        pinka.component_packages(["podman"], matrix)
+
+
+def test_component_repos_span_every_source_group() -> None:
+    matrix = {
+        "incus": {
+            "ubuntu": {"source": "vendor_repo", "repo": "zabbly-incus-lts", "packages": ["incus"]},
+            "fedora": {"source": "distro", "packages": ["incus"]},
+        },
+        "docker": {
+            "ubuntu": {"repo": "docker-deb"},
+            "fedora": {"repo": "docker-rpm-fedora"},
+            "default": {"packages": []},
+        },
+    }
+    assert pinka.component_repos(["incus"], matrix) == ["zabbly-incus-lts"]
+    assert pinka.component_repos(["docker", "incus"], matrix) == [
+        "docker-deb",
+        "docker-rpm-fedora",
+        "zabbly-incus-lts",
+    ]
+    with pytest.raises(pinka.PinkaFilterError, match="unknown component"):
+        pinka.component_repos(["podman"], matrix)

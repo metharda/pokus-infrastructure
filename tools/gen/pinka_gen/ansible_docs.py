@@ -30,7 +30,7 @@ LAYOUT_END = "<!-- generated:layout:end -->"
 KEY_RE = re.compile(r"^(?P<key>[a-z_][a-z0-9_]*):(?P<rest>.*)$")
 TRAILING_COMMENT_RE = re.compile(r"\s#\s?(?P<text>.*)$")
 # Variables passed by bootstrap.sh as extra variables, not defined in any vars file.
-BOOTSTRAP_VARS = {"host_profile", "pinka_bootstrap", "machine"}
+BOOTSTRAP_VARS = {"host_profile", "pinka_bootstrap", "pinka_uninstall", "machine"}
 INLINE_DEFAULT_MAX = 80
 ROLE_SHORT_DESCRIPTIONS = "short_description"
 

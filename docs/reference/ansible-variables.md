@@ -1628,6 +1628,13 @@ Files roles write or edit; the record keeps the content of each that existed bef
       /etc/sudoers.d/90-pinka-admin, /etc/docker/daemon.json, /etc/wsl.conf, /etc/ld.so.conf.d/pinka-wsl.conf]
     ```
 
+### `install_record_originals`
+
+Managed files bootstrap changes before the record exists, mapped to the copy it keeps of the original.
+
+- Type: `dict`
+- Default: `{/etc/wsl.conf: /var/lib/pinka/originals/etc/wsl.conf}`
+
 ## lab_session
 
 pinka-lab.target, the startup health gate and the per-boot session record.
@@ -2512,6 +2519,33 @@ HTTPS port of the docs service's serve.
 
 - Type: `int`
 - Default: `10000`
+
+## uninstall
+
+Remove what pinka installed and keep the lab's data.
+
+Entry points: `main` (Remove what pinka installed and keep the lab's data). Role README: `ansible/roles/uninstall/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `host_profile` | bootstrap.sh | The host profile preflight wrote for this run; its access names the install's session. |
+| `pinka_uninstall` | bootstrap.sh | The options bootstrap passes: mode (plan or apply), machine, purge_data, remove_components, opt_existed, plan_file, plan_text, report_file, started_at, repo_commit and log_file. |
+
+### `uninstall_component_sources`
+
+For --remove-component, each component's entries in the component source matrix.
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    docker: [docker]
+    incus: [incus]
+    tailscale: [tailscale]
+    nvidia: [nvidia_driver, nvidia_container_toolkit]
+    ```
 
 ## users_groups
 

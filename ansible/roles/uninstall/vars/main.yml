@@ -1,0 +1,5 @@
+# Managed by pinka (ansible/roles/uninstall/vars/main.yml). Local changes will be overwritten.
+#
+# The phases of uninstall in removal order (BUILD_PROMPT §5.4); the module
+# names the same (PHASES in library/pinka_uninstall.py, a test checks it).
+uninstall_phases: [platform, keep, units, compose, incus, firewall, tailscale, packages, accounts, dropins, paths]

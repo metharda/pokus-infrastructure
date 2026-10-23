@@ -63,6 +63,28 @@ class MainTest(unittest.TestCase):
         self.assertIn(f"{CONFIG} does not exist", err)
         self.assertEqual(call(["doctor"], FakeSystem())[0], 2)
 
+    def test_uninstall_needs_no_lab_description(self) -> None:
+        state = json.dumps({"infra_dir": "/srv/checkout"})
+        bare = FakeSystem(files={"/etc/pinka/bootstrap-state.json": state}, interactive_rc=0)
+        code, _, _ = call(
+            ["uninstall", "--dry-run", "--json", "--", "--confirm-machine", "lab1"], bare
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            bare.interactive_calls[0][0],
+            [
+                "/srv/checkout/bootstrap/bootstrap.sh",
+                "--uninstall",
+                "--dry-run",
+                "--json",
+                "--confirm-machine",
+                "lab1",
+            ],
+        )
+        code, _, err = call(["uninstall"], FakeSystem())
+        self.assertEqual(code, 1)
+        self.assertIn("names no checkout", err)
+
     def test_docs_serve(self) -> None:
         bare = FakeSystem(files={"/tmp/site/index.html": ""})  # no lab description
         code, out, _ = call(["docs", "serve", "--dir", "/tmp/site", "--port", "18800"], bare)

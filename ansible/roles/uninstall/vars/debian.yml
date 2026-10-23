@@ -1,0 +1,38 @@
+# Managed by pinka (ansible/roles/uninstall/vars/debian.yml). Local changes will be overwritten.
+#
+# Debian family: what uninstall runs to take off holds and remove packages
+# (BUILD_PROMPT §5.4). dpkg removes exactly the packages named and refuses
+# one another package still depends on; apt's autoremove names the
+# dependencies no package needs any more.
+# TODO(verify): the messages of dpkg --dry-run --purge and apt-get --simulate
+# autoremove on every supported release.
+uninstall_family:
+  list: [dpkg-query, -W, -f, "${Package}\t${Version}\n"]
+  test_remove: [dpkg, --dry-run, --purge]
+  remove: [dpkg, --purge]
+  # Without --purge-data, a package whose purge deletes kept data is removed
+  # without purging (owner, D2 review). Read from the packages' postrm on
+  # 2026-10-23: Zabbly's incus-base (Ubuntu 24.04, 22.04, Debian 13) and
+  # Tailscale's tailscale (the same releases); Docker CE, containerd.io,
+  # their plugins and the NVIDIA container toolkit delete no data.
+  remove_keeping_config: [dpkg, --remove]
+  purge_deletes:
+    incus-base: [/var/lib/incus, /var/cache/incus, /var/log/incus, /var/lib/incus-lxcfs]
+    tailscale: [/var/lib/tailscale]
+  # Tailscale's postrm masks tailscaled.service on a removal without purge.
+  masked_on_remove:
+    tailscale: [tailscaled.service]
+  blocked: 'dependency problems prevent removal of (?P<package>[^\s:]+)'
+  provides: []
+  unneeded: [apt-get, --simulate, autoremove]
+  unneeded_line: '^Remv (?P<package>\S+)'
+  hold_method: apt_preferences
+  hold_file: /etc/apt/preferences.d/pinka-pins
+  holds_list: []
+  unhold: []
+  lock_file: ""
+  repo_globs: [/etc/apt/sources.list.d/pinka-*, /etc/apt/keyrings/pinka-*]
+  rpm_keys: false
+  initramfs: [update-initramfs, -u, -k, all]
+  sshd: /usr/sbin/sshd
+  ssh_service: ssh

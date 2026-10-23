@@ -1,0 +1,30 @@
+# Managed by pinka (ansible/roles/uninstall/vars/suse.yml). Local changes will be overwritten.
+#
+# SUSE family: what uninstall runs to take off holds and remove packages
+# (BUILD_PROMPT §5.4). rpm -e removes exactly the packages named and refuses
+# one another package still needs; zypper names the dependencies no package
+# needs any more.
+# TODO(verify): the table of zypper packages --unneeded on Leap and Tumbleweed.
+uninstall_family:
+  list: [rpm, -qa, --qf, "%{NAME}\t%{EPOCH}:%{VERSION}-%{RELEASE}\n"]
+  test_remove: [rpm, -e, --test]
+  remove: [rpm, -e]
+  # No purge: the removal keeps configuration and data alike; the guard keeps
+  # the kept data read-only while packages go (owner, D2 review).
+  remove_keeping_config: [rpm, -e]
+  purge_deletes: {}
+  masked_on_remove: {}
+  blocked: '^\s+(?P<capability>\S+).* is needed by \(installed\)'
+  provides: [rpm, -q, --qf, "%{NAME}\n", --whatprovides]
+  unneeded: [zypper, --non-interactive, packages, --unneeded]
+  unneeded_line: '^i\S*\s*\|[^|]*\|\s*(?P<package>\S+)\s*\|'
+  hold_method: zypper_lock
+  hold_file: ""
+  holds_list: [zypper, --non-interactive, locks]
+  unhold: [zypper, --non-interactive, removelock]
+  lock_file: /etc/zypp/locks
+  repo_globs: [/etc/zypp/repos.d/pinka-*.repo, /etc/pki/rpm-gpg/pinka-*]
+  rpm_keys: true
+  initramfs: [dracut, --force, --regenerate-all]
+  sshd: /usr/sbin/sshd
+  ssh_service: sshd

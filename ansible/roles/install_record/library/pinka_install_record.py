@@ -9,19 +9,26 @@ component and uninstall removes only pinka's part (§5.4).
   ``preexisting`` part (the components preflight found, the full package list
   with versions, the enabled and the masked units, the accounts and the groups
   with their members, and the content of each file pinka manages that already
-  existed, and the access to the host that existed: preflight's
-  ``access``, BUILD_PROMPT §2.2, §7.5) and an empty ``added`` part. On a host that pinka provisioned
-  before the record existed (``/etc/pinka/bootstrap-state.json`` is present)
-  the record is marked ``legacy``: its ``preexisting`` part then includes
+  existed with its mode and owner, and the access to the host that existed:
+  preflight's ``access``, BUILD_PROMPT §2.2, §7.5) and an empty ``added`` part. On a host that pinka provisioned
+  before the record existed (``/etc/pinka/bootstrap-state.json`` names a run
+  that reached the play; a run that stopped before it changed nothing) the
+  record is marked ``legacy``: its ``preexisting`` part then includes
   pinka's own items, so it decides nothing and uninstall removes by pinka's
   names only. An existing record is never rewritten.
 * ``state: add`` merges items into ``added``: components pinka installs or
   joins (recorded before it acts), packages (only those absent at the first
   install), holds, accounts, groups, memberships and keys added to
-  pre-existing accounts, ``tailscale serve`` entries, and the pre-existing
-  access closed with the owner's consent (``closed_access``: ``tcp/8080``,
-  ``install_path``; §7.5). It writes only when something is new, so a second
-  run reports no change.
+  pre-existing accounts, ``tailscale serve`` entries, the repository keys
+  pinka imported into the package manager's keyring (``repo_keys``), the
+  Incus objects pinka created on an Incus it did not install
+  (``incus_objects``), the pre-existing access closed with the owner's
+  consent (``closed_access``: ``tcp/8080``, ``install_path``; §7.5), and
+  ``changed``: a setting of the host as it was before pinka first changed it
+  (the time zone, a sysctl value, a firewalld zone, Incus's server address),
+  for uninstall to set back (§5.4); the first value recorded for a setting
+  stays. It writes only when something is new, so a second run reports no
+  change.
 * ``state: remove`` takes listeners out of ``closed_access`` that are
   reachable again because the owner no longer consents to close them; it
   removes nothing else (what pinka added stays recorded until uninstall),
@@ -38,6 +45,7 @@ import grp
 import json
 import os
 import pwd
+import stat
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -77,21 +85,42 @@ options:
     elements: path
     default: []
   bootstrap_state:
-    description: init only; a file that exists only on hosts pinka provisioned before.
+    description: >-
+      init only; bootstrap's state file, which names a run that reached the play only on
+      hosts pinka provisioned before.
     type: path
     default: /etc/pinka/bootstrap-state.json
+  originals:
+    description: >-
+      init only; managed files that bootstrap changed before the record existed, mapped to the
+      copy it kept of the original (an empty file named <copy>.absent: there was none).
+    type: dict
+    default: {}
   added:
     description: >-
       add only; the items to merge: components (name to true), packages, holds, accounts,
-      groups, tailscale_serve, closed_access (lists of names), memberships ({user, group})
-      and keys ({user, key}). remove only; closed_access, the listeners reachable again.
+      groups, tailscale_serve, repo_keys, incus_objects, closed_access (lists of names),
+      memberships ({user, group}), keys ({user, key}) and changed (setting to its value
+      before pinka changed it; the first value recorded stays). remove only; closed_access,
+      the listeners reachable again.
     type: dict
     default: {}
 author: pinka
 """
 
 SCHEMA_VERSION = 1
-LIST_KEYS = ("packages", "holds", "accounts", "groups", "tailscale_serve", "closed_access")
+LIST_KEYS = (
+    "packages",
+    "holds",
+    "accounts",
+    "groups",
+    "tailscale_serve",
+    "repo_keys",
+    "incus_objects",
+    "closed_access",
+)
+# Settings pinka changes, with their value before the first change (§5.4).
+CHANGED = "changed"
 PAIR_KEYS = {"memberships": ("user", "group"), "keys": ("user", "key")}
 PACKAGE_LIST = {
     "apt": ["dpkg-query", "-W", "-f", "${Package}\t${Version}\n"],
@@ -141,7 +170,49 @@ def parse_units(text: str) -> list[str]:
 
 def empty_added() -> dict[str, Any]:
     """The ``added`` part of a new record."""
-    return {"components": {}, **{key: [] for key in (*LIST_KEYS, *PAIR_KEYS)}}
+    return {"components": {}, CHANGED: {}, **{key: [] for key in (*LIST_KEYS, *PAIR_KEYS)}}
+
+
+def file_mode(path: str) -> dict[str, str]:
+    """A managed file's mode, owner and group (the names, or the numbers without one)."""
+    info = os.lstat(path)
+    try:
+        owner = pwd.getpwuid(info.st_uid).pw_name
+    except KeyError:
+        owner = str(info.st_uid)
+    try:
+        group = grp.getgrgid(info.st_gid).gr_name
+    except KeyError:
+        group = str(info.st_gid)
+    return {"mode": f"{stat.S_IMODE(info.st_mode):04o}", "owner": owner, "group": group}
+
+
+# Stages of a bootstrap run that ran the play, so changed the host (§5.2).
+PROVISIONED_STAGES = ("ansible", "restore", "doctor")
+
+
+def provisioned_before(state_file: str) -> bool:
+    """Whether bootstrap's state file names a run that reached the play.
+
+    A run that stopped before the play (pre-preflight, tooling, preflight)
+    changed nothing, so its state file does not make the record legacy. A
+    state file that cannot be read counts as provisioned: a legacy record
+    decides nothing, which is the safe side.
+
+    Args:
+        state_file: ``/etc/pinka/bootstrap-state.json``.
+
+    Returns:
+        True when the host was provisioned before the record existed.
+    """
+    if not Path(state_file).exists():
+        return False
+    try:
+        with Path(state_file).open(encoding="utf-8") as handle:
+            state = json.load(handle)
+        return str(state.get("stage", "")) in PROVISIONED_STAGES
+    except (OSError, ValueError, AttributeError):
+        return True
 
 
 def read_file(path: str) -> str | None:
@@ -159,17 +230,25 @@ def read_file(path: str) -> str | None:
         return "<not UTF-8 text, not kept>"
 
 
-def gather(run: RunCommand, pkg_manager: str, managed_files: Sequence[str]) -> dict[str, Any]:
+def gather(
+    run: RunCommand,
+    pkg_manager: str,
+    managed_files: Sequence[str],
+    originals: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """Read the host's state for a new record.
 
     Args:
         run: Runs a command, returning ``(rc, stdout, stderr)``.
         pkg_manager: ``apt``, ``dnf``, ``zypper`` or ``pacman``.
         managed_files: Files pinka writes or edits.
+        originals: Managed files bootstrap changed before the record existed,
+            with the copy it kept of each original (``<copy>.absent``: there
+            was none).
 
     Returns:
         ``packages``, ``units_enabled``, ``units_masked``, ``users``,
-        ``groups`` and ``files``.
+        ``groups``, ``files`` and ``file_modes``.
 
     Raises:
         RuntimeError: If the package list cannot be read.
@@ -181,10 +260,16 @@ def gather(run: RunCommand, pkg_manager: str, managed_files: Sequence[str]) -> d
     for state in ("enabled", "masked"):
         rc, out_units, _ = run([*UNITS, state])
         units[state] = parse_units(out_units) if rc == 0 else []
-    files = {}
+    files, modes = {}, {}
     for path in managed_files:
-        if os.path.lexists(path):
-            files[path] = read_file(path)
+        source = (originals or {}).get(path, path)
+        if source != path and os.path.lexists(f"{source}.absent"):
+            continue
+        if not os.path.lexists(source):
+            source = path
+        if os.path.lexists(source):
+            files[path] = read_file(source)
+            modes[path] = file_mode(source)
     return {
         "packages": parse_packages(out),
         "units_enabled": units["enabled"],
@@ -192,6 +277,7 @@ def gather(run: RunCommand, pkg_manager: str, managed_files: Sequence[str]) -> d
         "users": [p.pw_name for p in pwd.getpwall()],
         "groups": {g.gr_name: list(g.gr_mem) for g in grp.getgrall()},
         "files": files,
+        "file_modes": modes,
     }
 
 
@@ -228,9 +314,55 @@ def build_record(
             "users": sorted(found["users"]),
             "groups": {n: sorted(m) for n, m in sorted(found["groups"].items())},
             "files": dict(sorted(found["files"].items())),
+            "file_modes": dict(sorted(found.get("file_modes", {}).items())),
         },
         "added": empty_added(),
     }
+
+
+def merge_components(added: dict[str, Any], value: Mapping[str, Any] | None) -> bool:
+    """Note the components pinka joined or installed (a flag once set stays).
+
+    Args:
+        added: The record's ``added`` part, changed in place.
+        value: ``{component: true}``.
+
+    Returns:
+        Whether a component was new.
+    """
+    current = added.setdefault("components", {})
+    new = False
+    for name, flag in (value or {}).items():
+        if flag and not current.get(name):
+            current[name] = True
+            new = True
+    return new
+
+
+def merge_changed(added: dict[str, Any], value: object) -> bool:
+    """Note settings with their values before pinka changed them; the first value stays.
+
+    Args:
+        added: The record's ``added`` part, changed in place.
+        value: ``{setting: value before}``, each value text or null.
+
+    Returns:
+        Whether a setting was new.
+
+    Raises:
+        ValueError: If ``value`` is not such a mapping.
+    """
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{CHANGED} needs a mapping of settings to their values before")
+    settings = added.setdefault(CHANGED, {})
+    new = False
+    for name, before in value.items():
+        if before is not None and not isinstance(before, str):
+            raise ValueError(f"{CHANGED}: the value of {name} before must be text or null")
+        if str(name) not in settings:
+            settings[str(name)] = before
+            new = True
+    return new
 
 
 def merge(record: dict[str, Any], items: Mapping[str, Any]) -> bool:
@@ -251,11 +383,9 @@ def merge(record: dict[str, Any], items: Mapping[str, Any]) -> bool:
     changed = False
     for key, value in items.items():
         if key == "components":
-            current = added.setdefault("components", {})
-            for name, flag in (value or {}).items():
-                if flag and not current.get(name):
-                    current[name] = True
-                    changed = True
+            changed = merge_components(added, value) or changed
+        elif key == CHANGED:
+            changed = merge_changed(added, value) or changed
         elif key in LIST_KEYS:
             names = added.setdefault(key, [])
             for item in value or []:
@@ -367,11 +497,16 @@ def run_module(params: Mapping[str, Any], *, check_mode: bool, run: RunCommand) 
             return {"changed": False, "record": record, "exists": True}
         if not params.get("pkg_manager"):
             raise ValueError("state=init needs pkg_manager")
-        found = gather(run, str(params["pkg_manager"]), params.get("managed_files") or [])
+        found = gather(
+            run,
+            str(params["pkg_manager"]),
+            params.get("managed_files") or [],
+            params.get("originals") or {},
+        )
         record = build_record(
             components=params.get("components") or {},
             found=found,
-            legacy=Path(str(params["bootstrap_state"])).exists(),
+            legacy=provisioned_before(str(params["bootstrap_state"])),
             created_at=utc_now(),
             access=params.get("access") or {},
         )
@@ -406,6 +541,7 @@ def main() -> None:  # pragma: no cover - exercised on hosts
             "pkg_manager": {"type": "str", "choices": sorted(PACKAGE_LIST)},
             "managed_files": {"type": "list", "elements": "path", "default": []},
             "bootstrap_state": {"type": "path", "default": "/etc/pinka/bootstrap-state.json"},
+            "originals": {"type": "dict", "default": {}},
             "added": {"type": "dict", "default": {}},
         },
         supports_check_mode=True,

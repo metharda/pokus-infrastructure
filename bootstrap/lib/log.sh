@@ -57,7 +57,8 @@ emit_event() {
   if [[ -n $message ]]; then
     line+=$(printf ',"message":"%s"' "$(json_escape "$message")")
   fi
-  printf '%s}\n' "$line" >>"$PINKA_EVENTS_FILE"
+  # An event that cannot be written never stops bootstrap.
+  printf '%s}\n' "$line" 2>/dev/null >>"$PINKA_EVENTS_FILE" || true
 }
 
 # stage_begin NAME / stage_end NAME STATUS [CODE] [MESSAGE]: log and emit.

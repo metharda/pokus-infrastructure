@@ -123,6 +123,7 @@ check_systemd() {
       read -r answer || answer=''
       case $answer in
         [yY] | [yY][eE][sS])
+          keep_original "$conf" /etc/wsl.conf
           if [ -f "$conf" ]; then
             printf '\n[boot]\nsystemd=true\n' >>"$conf"
           else
@@ -140,6 +141,23 @@ check_systemd() {
     "Set 'systemd=true' in the [boot] section of /etc/wsl.conf," \
     "then run on the Windows side: wsl --terminate $distro" \
     "and re-run bootstrap."
+}
+
+# keep_original FILE NAME: before the first change to a system file, which
+# happens before the install record exists, keep its original below
+# /var/lib/pinka/originals (NAME.absent when there was none), so the record
+# and uninstall see it as it was (BUILD_PROMPT §5.4, §7.21).
+keep_original() {
+  copy=$ROOT/var/lib/pinka/originals$2
+  if [ -e "$copy" ] || [ -e "$copy.absent" ]; then
+    return 0
+  fi
+  mkdir -p "${copy%/*}"
+  if [ -f "$1" ]; then
+    cp -p "$1" "$copy"
+  else
+    : >"$copy.absent"
+  fi
 }
 
 check_libc() {

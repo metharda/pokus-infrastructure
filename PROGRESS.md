@@ -225,6 +225,24 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 - **Order of work after 3f (owner, verbatim):** "Order from here: commits 1
   and 2, then 3f-1, then the real-machine tests on my computers, then the
   history rewrite, 3g and 3h."
+- **Order within 3f-1, and the checkpoint before the tests (owner, with the
+  "commit" for D2, verbatim):**
+
+  > Order from here: finish 3f-1 completely before any real-machine test, so the
+  > tests cover a finished product once. After D2: A, B, C, E, F, then G, each as
+  > its own step with the full gate, waiting for my "commit", and its CI reported
+  > after the push. No new side work in between unless CI or a test forces it; if
+  > something comes up, record it as an open item and continue.
+  >
+  > When G is done, give me a feature-complete checkpoint:
+  > - every feature of the infrastructure (from the spec masters, the approved
+  >   deviations and 3f-1), each with the real-machine test numbers of the QA
+  >   specification that verify it, and every feature no test covers;
+  > - every open TODO(verify) item, grouped by what closes it (a real-machine test,
+  >   make lock-pins on my machine, a vendor publishing something, a maintenance
+  >   update);
+  > - what I must prepare before the tests: accounts, tailnet tags and ACL rules,
+  >   auth keys, secrets, the test agent's machine file, the backup of computer B.
 - **Provisioning runs after 3f, and the end of the exception (owner, after
   3e, verbatim):**
 
@@ -459,7 +477,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on` | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) built after `fb665c2`, waiting for the owner's "commit" (record: `docs/IMPLEMENTATION_NOTES.md`, "Uninstall (D2, 3f-1)") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), published as the fresh repository `pokus-infrastructure` instead of the rename (owner, after the rewrite) and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions, the rewrite (owner's "rewrite") and the commit after it done; the owner created the fresh repository and pushed `main` and `moving/on` to it; then making it public | `a716eae` (the commit after the rewrite) |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -1223,6 +1241,104 @@ its checks green and a commit proposal, and waits for the owner's
   fixes follow in the D2 commit. A pull request from `moving/on` ran CI
   twice per commit because `ci.yml` and `lock-collections.yml` ran on every
   push and on every pull request.
+
+  The owner merged the pull request with a merge commit, `6ea7468` on
+  `main` (2026-10-23, the tree of `fb665c2`). CI of `6ea7468`, job by job:
+  `changes`, `privacy`, `lint`, `docs`, `test`, all six `check-mode`
+  lanes, `required`, `test-isolated`, all six `check-mode-extended` lanes,
+  `release-package` and `lock-collections` passed; `lock-check` is the
+  known red (24 `TODO(verify)` errors; four tag warnings: postgres,
+  `refplat_job`, `ubuntu:24.04` and `debian:13` moved, the pins
+  unchanged); `links` runs weekly. `main` now holds a merge commit that
+  `moving/on` does not, so the next merge of `moving/on` is a merge commit
+  too.
+
+  The five fixes in the D2 commit (`docs/IMPLEMENTATION_NOTES.md`,
+  "Uninstall: what stays and what nothing may delete"):
+  1. Where every kept item lives is in `docs/how-to/uninstall.md`'s table
+     and the notes: every store of pinka's containers is a bind mount below
+     `/srv/pinka` (no named Docker volume, checked by
+     `test_pinkas_containers_keep_their_data_below_the_research_space`);
+     the data of a Docker, Incus or Tailscale pinka installed stays in
+     their own directories (Docker's data root as `docker info` names it).
+     The maintainer scripts were read for every package pinka installs
+     from a vendor repository (Docker's deb for Ubuntu 24.04, 22.04 and
+     Debian 13 and its rpm for Fedora 43 and EL 9, Zabbly's Incus,
+     Tailscale's deb and its rpm for Fedora, EL 10 and openSUSE Leap 16,
+     the NVIDIA toolkit's deb and rpm) and for Ubuntu's own packages of
+     the lists (24.04 and 22.04): Tailscale's deb postrm deletes
+     `/var/lib/tailscale` and Zabbly's `incus-base` deletes `/var/lib/incus`
+     with its cache, logs and lxcfs state on purge; no other script deletes
+     kept data (Ubuntu's sysstat, sudo, systemd-timesyncd and
+     selinux-policy-default delete their own state on purge, which is not
+     the lab's). The distributions' own packages on Debian, Fedora, EL,
+     openSUSE and Arch could not be read here (their mirrors are blocked
+     from this environment): an open item under "TODO(verify)"; the guard
+     protects the kept data whatever their scripts do, and the uninstall
+     lane checks it on every family. Those two are removed without purging (`purge_deletes`;
+     Tailscale's removal masks `tailscaled`, which uninstall unmasks), and
+     every kept data directory is mounted read-only while packages go; when
+     one cannot be, no package is removed. A researcher's personal Incus
+     project with instances or volumes keeps Incus installed with its
+     pool, network, packages, hold and repository. Tests: a fake dpkg whose
+     scripts delete the data paths (`KeptDataTest`), the guard on real
+     bind mounts in a private mount namespace, and the uninstall lane marks
+     each kept directory before and checks the marks after.
+  2. The backups' key and settings (`/etc/pinka/secrets/backup`,
+     `/etc/pinka/backup`), the backup state, the restic binary and the
+     vault password bootstrap stored are copied to `/var/lib/pinka-kept`
+     (root only, also with `--purge-data`) before their paths go, with a
+     README of the restic commands; the QA keys, attestations, the
+     arbiter's, session, fingerprint, platform and verification records
+     too without `--purge-data`. A path whose copy is missing is not
+     removed. Plan, report, bootstrap and the installer name where the key
+     is; the lane opens the backups with the kept key.
+  3. Pinka writes three boot-time files (the nouveau blacklist,
+     `60-pinka.conf` in `sysctl.d`, `pinka-wsl.conf` in `ld.so.conf.d`):
+     uninstall removes them and rebuilds the initramfs, runs
+     `sysctl --system` and `ldconfig`, sets the changed kernel settings back
+     and reloads systemd; no role writes the boot loader's configuration,
+     the kernel command line, modules-load files or presets (a test fails
+     if one starts to). The report has `reboot_needed` and its reasons.
+  4. The report's `follow_ups` name the Tailscale node to delete (when
+     pinka joined it) and the deploy key to revoke with its fingerprint
+     and repository; bootstrap and the installer print them.
+  5. The pre-push hook (`.git/hooks/pre-push`, not tracked) refuses every
+     URL but the new repository's; the rule is in `CLAUDE.md`. A session
+     restart after this review reset `origin` once more; it was set back
+     before anything was pushed.
+
+  The owner's "commit" for both (verbatim; its order and checkpoint are
+  under "Process rules in force"):
+
+  > commit both, with two additions first:
+  >
+  > 1. Before the two commits: fast-forward moving/on to main
+  >    (git merge --ff-only origin/main), so moving/on contains the merge commit and
+  >    later merges can be fast-forwards again. Only a fast-forward; if it is not
+  >    possible, stop and tell me.
+  > 2. In the D2 commit: /var/lib/pinka-kept holds secrets that can still reach the
+  >    backup server (restic password, SFTP key, vault password). The report,
+  >    bootstrap and the installer put it at the top of the follow-ups: what is in
+  >    it, that it grants access to the backups, and the commands to copy it off the
+  >    host and then delete it securely. Doctor is not involved (pinka is gone), but
+  >    the how-to uninstall page says the same.
+  >
+  > Then push each commit on its own, as proposed, and report both runs job by job.
+
+  Done: `moving/on` fast-forwarded from `fb665c2` to `6ea7468`; the commit
+  for one CI run per commit is `6bab38b`, pushed on its own. In the D2
+  commit, the first follow-up names what `/var/lib/pinka-kept` holds that
+  grants access to the backups (the copies marked `secret`: the
+  repository's password and location with the SFTP key, the vault
+  password), with the commands to stream it off the host (`tar | ssh`) and
+  delete it (`shred -u`, then `rm -rf`), and says to change the repository's
+  password and replace the SFTP key where `shred` cannot reach every old
+  copy (an SSD, a copy-on-write file system); the follow-ups' heading is
+  "Afterwards" now, since this one is on the host. The report, bootstrap's
+  last lines, the installer's report, the README in `/var/lib/pinka-kept`
+  and `docs/how-to/uninstall.md` ("Take the kept secrets off the host") say
+  it; a later dry run says it again while the copy is there.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -1560,6 +1676,11 @@ Raised by the pre-existing access follow-up, for the owner (decided with the "co
   6. the first golden image builds;
   7. optionally, the Docker check-mode runs, which CI already runs on every
      push.
+- **The test tailnet's policy for the uninstall lane's variant** (D2): the
+  target `ubuntu-24.04-preexisting` logs in its own Tailscale node before
+  pinka with the tags `tag:pinka-qa` and `tag:pinka-qa-owner`, so the
+  policy must let `tag:pinka-qa` own `tag:pinka-qa-owner`
+  (`docs/how-to/test-distributions.md`, prerequisites).
 - Approval of the model candidates in `models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
   `TODO(verify)` revisions because Hugging Face is not reachable from the build
@@ -1582,12 +1703,25 @@ Raised by the pre-existing access follow-up, for the owner (decided with the "co
 after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
 collection artifacts, 128 after the lock's header comment stopped naming the
 marker, 118 with the owner's collection pins, 113 after 3e, 96 with the
-pins of `make lock-pins` after 3f, 98 with D1 of 3f-1; details in
+pins of `make lock-pins` after 3f, 98 with D1 of 3f-1, 103 with D2; details in
 `docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after step 4"
 through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
   (`preflight/support-matrix.yml`).
+- Uninstall (D2): the output of each family's test removal and
+  unneeded-package listing (`ansible/roles/uninstall/vars/*.yml`, four),
+  and how rpm 6 names a v6 key (`ansible/roles/pkg/tasks/repo_rpm.yml`).
+  And the maintainer scripts of the distributions' own packages that pinka
+  may install and uninstall removes, which could not be read from this
+  environment (their mirrors are blocked): Debian's (`nvidia-driver` and
+  the base packages), Fedora's, EL's (with EPEL) and openSUSE's (Docker,
+  Incus, the base packages; RPM Fusion's `akmod-nvidia`) and Arch's
+  (Docker, Incus, Tailscale, `nvidia-container-toolkit`, `nvidia-open`):
+  whether a removal deletes kept data (the guard keeps it read-only
+  meanwhile) or masks a unit (`masked_on_remove`; on Debian also whether
+  a purge deletes data, `purge_deletes`). `make test-distros` checks the
+  kept data on every family.
 - openSUSE Leap 15.6 end of support (`preflight/support-matrix.yml`).
 - 16 endpoint URLs whose hosts are blocked from the build environment
   (`preflight/endpoints.yml`), including `releases.astral.sh`, from
@@ -1835,10 +1969,15 @@ pushes (step 4; the owner created the fresh repository
 `pokus-infrastructure` instead of the rename and pushed `main` and
 `moving/on` to it), the checklist for making the repository public (step
 5), and the pull request `moving/on` -> `main`, which the owner opens (step
-6); then, on `moving/on`, D2 (its report with
-the table of what uninstall removes, restores or keeps), A, B, C, E, F and
-G, the real-machine tests on the owner's computers (4.1 and 4.2 first) and
+6; merged as `6ea7468`, and `moving/on` fast-forwarded to it); then, on
+`moving/on`, the commit for one CI run per commit (`6bab38b`) and D2 with
+the owner's five fixes and the kept secrets' follow-up (its report with the
+table of what uninstall removes, restores or keeps), then A, B, C, E, F and
+G, each its own step with the full gate, waiting for the owner's "commit",
+its CI reported after the push, no side work in between (anything that
+comes up is an open item), then the feature-complete checkpoint (under
+"Process rules in force"), the real-machine tests on the owner's computers (4.1 and 4.2 first) and
 3h. The owner runs
 `make lock-pins` on their machine and pastes the output separately. Still
-open: the remaining `TODO(verify)` items (98), which need network access or
+open: the remaining `TODO(verify)` items (103), which need network access or
 reference hardware.

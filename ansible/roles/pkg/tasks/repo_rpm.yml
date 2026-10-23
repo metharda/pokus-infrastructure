@@ -8,6 +8,27 @@
     group: root
     mode: "0644"
 
+# Uninstall removes from rpm's keyring only the keys pinka imported
+# (BUILD_PROMPT §5.4): note the key first unless rpm had it already. rpm
+# names a key gpg-pubkey-<version>, the last 8 hex digits of the fingerprint
+# (TODO(verify): rpm 6 names v6 keys by their whole fingerprint; both count).
+- name: Read the keys rpm has
+  ansible.builtin.command:
+    argv: [rpm, -q, gpg-pubkey, --qf, "%{VERSION}\n"]
+  register: pkg_rpm_keys
+  check_mode: false
+  changed_when: false
+  failed_when: false
+
+- name: Record as pinka's the key of {{ pkg_repo_name }}
+  pinka_install_record:
+    state: add
+    added:
+      repo_keys: ["{{ pkg_repo_lock_key.fingerprint }}"]
+  when: >-
+    [pkg_repo_lock_key.fingerprint[-8:] | lower, pkg_repo_lock_key.fingerprint | lower]
+    | intersect(pkg_rpm_keys.stdout_lines) | length == 0
+
 # From the verified download, which exists in check mode too (the copy above does not).
 - name: Import into rpm the key of {{ pkg_repo_name }}
   ansible.builtin.rpm_key:

@@ -33,6 +33,8 @@ description: Exit codes of the pokus-infrastructure tools.
 | 75 | `EXIT_WSL_RESTART` | WSL restart required | Run 'wsl --terminate &lt;distro&gt;' on the Windows side, then re-run bootstrap | [Exit code 75](../how-to/troubleshoot.md#exit-code-75) |
 | 76 | `EXIT_REBOOT` | Reboot required | Reboot (and enroll the MOK if asked), then re-run bootstrap | [Exit code 76](../how-to/troubleshoot.md#exit-code-76) |
 | 77 | `EXIT_OPERATOR` | Operator action required | The printed message says what to do (for example run as root, commit the changes, accept a changed host profile) | [Exit code 77](../how-to/troubleshoot.md#exit-code-77) |
+| 80 | `EXIT_UNINSTALL_REFUSED` | Uninstall refused | Uninstall was not confirmed (the typed machine name was missing or differed), the backup offered first failed, or an option did not apply to this host; nothing was removed | [Exit code 80](../how-to/troubleshoot.md#exit-code-80) |
+| 81 | `EXIT_UNINSTALL_KEPT` | Uninstall kept items | Uninstall finished, but items it should have removed are still there; the report in /var/log/pinka-uninstall names each and why | [Exit code 81](../how-to/troubleshoot.md#exit-code-81) |
 
 ## pinka-preflight
 

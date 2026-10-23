@@ -13,6 +13,7 @@
     access: "{{ host_profile.access | default({}) }}"
     pkg_manager: "{{ pinka_pkg_manager }}"
     managed_files: "{{ install_record_managed_files }}"
+    originals: "{{ install_record_originals }}"
   register: install_record_init
 
 # A legacy record (the host was provisioned before the record existed) lists

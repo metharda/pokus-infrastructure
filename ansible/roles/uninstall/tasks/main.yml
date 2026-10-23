@@ -1,0 +1,65 @@
+# Managed by pinka (ansible/roles/uninstall/tasks/main.yml). Local changes will be overwritten.
+#
+# Uninstall (BUILD_PROMPT §5.4). Mode plan computes what goes, what is set
+# back and what stays, from the install record and the host, and writes it
+# for bootstrap to show (changes nothing). Mode apply removes the plan the
+# operator confirmed, phase by phase in removal order, and always writes the
+# report, also when a phase fails.
+- name: Load the uninstall commands of this family
+  ansible.builtin.include_vars:
+    file: "{{ pinka_family }}.yml"
+
+- name: Load the component source matrix
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/component-sources.yml"
+    name: uninstall_sources
+
+- name: Work out the plan
+  pinka_uninstall:
+    state: plan
+    machine: "{{ pinka_uninstall.machine }}"
+    purge_data: "{{ pinka_uninstall.purge_data | bool }}"
+    remove_components: "{{ pinka_uninstall.remove_components }}"
+    family: "{{ uninstall_family }}"
+    component_packages: "{{ uninstall_component_packages }}"
+    component_repos: "{{ uninstall_component_repos }}"
+    session: "{{ (host_profile.access | default({})).session | default({}) }}"
+    opt_existed: "{{ pinka_uninstall.opt_existed | bool }}"
+    plan_file: "{{ pinka_uninstall.plan_file }}"
+    plan_text: "{{ pinka_uninstall.plan_text }}"
+  vars:
+    uninstall_component_packages: >-
+      {{ dict(uninstall_component_sources.keys()
+              | zip(uninstall_component_sources.values()
+                    | map('pinka_component_packages', uninstall_sources.components) | list)) }}
+    uninstall_component_repos: >-
+      {{ dict(uninstall_component_sources.keys()
+              | zip(uninstall_component_sources.values()
+                    | map('pinka_component_repos', uninstall_sources.components) | list)) }}
+  when: pinka_uninstall.mode == 'plan'
+
+- name: Remove what the confirmed plan names
+  when: pinka_uninstall.mode == 'apply'
+  block:
+    - name: Remove, phase by phase
+      ansible.builtin.include_tasks: phase.yml
+      loop: "{{ uninstall_phases }}"
+      loop_control:
+        loop_var: uninstall_phase
+  always:
+    - name: Write the report
+      pinka_uninstall:
+        state: report
+        plan_file: "{{ pinka_uninstall.plan_file }}"
+        report_file: "{{ pinka_uninstall.report_file }}"
+        started_at: "{{ pinka_uninstall.started_at }}"
+        repo_commit: "{{ pinka_uninstall.repo_commit }}"
+        log_file: "{{ pinka_uninstall.log_file }}"
+        results: "{{ uninstall_results | default([]) }}"
+      register: uninstall_report
+
+    - name: Show what uninstall did
+      ansible.builtin.debug:
+        msg: >-
+          {{ uninstall_report.counts | default({}) | dict2items
+             | map('join', ': ') | join(', ') }}; report: {{ pinka_uninstall.report_file }}

@@ -30,6 +30,7 @@ DKMS
 dnsmasq
 docstrings
 dracut
+dropins
 EPEL
 fcontext
 FDNAMES
@@ -57,6 +58,7 @@ linuxcontainers
 lockcheck
 lockfiles
 logprobs
+lxcfs
 micromamba
 miniplat
 mkinitcpio
@@ -81,6 +83,7 @@ pgpass
 pids
 pinka
 pokus
+postrm
 potka
 prefs
 prepreflight

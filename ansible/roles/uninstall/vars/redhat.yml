@@ -1,0 +1,30 @@
+# Managed by pinka (ansible/roles/uninstall/vars/redhat.yml). Local changes will be overwritten.
+#
+# Red Hat family: what uninstall runs to take off holds and remove packages
+# (BUILD_PROMPT §5.4). rpm -e removes exactly the packages named and refuses
+# one another package still needs; dnf names the dependencies no package
+# needs any more.
+# TODO(verify): dnf5's repoquery --unneeded and its query format on Fedora.
+uninstall_family:
+  list: [rpm, -qa, --qf, "%{NAME}\t%{EPOCH}:%{VERSION}-%{RELEASE}\n"]
+  test_remove: [rpm, -e, --test]
+  remove: [rpm, -e]
+  # No purge: the removal keeps configuration and data alike; the guard keeps
+  # the kept data read-only while packages go (owner, D2 review).
+  remove_keeping_config: [rpm, -e]
+  purge_deletes: {}
+  masked_on_remove: {}
+  blocked: '^\s+(?P<capability>\S+).* is needed by \(installed\)'
+  provides: [rpm, -q, --qf, "%{NAME}\n", --whatprovides]
+  unneeded: [dnf, repoquery, --unneeded, --qf, "%{name}\n"]
+  unneeded_line: '^(?P<package>[A-Za-z0-9][\w.+-]*)$'
+  hold_method: dnf_versionlock
+  hold_file: ""
+  holds_list: [dnf, versionlock, list]
+  unhold: [dnf, versionlock, delete]
+  lock_file: /etc/dnf/plugins/versionlock.list
+  repo_globs: [/etc/yum.repos.d/pinka-*.repo, /etc/pki/rpm-gpg/pinka-*]
+  rpm_keys: true
+  initramfs: [dracut, --force, --regenerate-all]
+  sshd: /usr/sbin/sshd
+  ssh_service: sshd

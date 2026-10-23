@@ -385,31 +385,50 @@ class PreflightScreen(StepScreen):
 
 
 class ModeScreen(StepScreen):
-    """Screen 3: fresh install, restore from backup, or modify an existing install."""
+    """Screen 3: fresh install, restore from backup, modify an existing install, or uninstall."""
 
     STEP = "mode"
     HELP = (
         "Fresh install sets up a new lab. Restore installs and then restores a restic "
         "snapshot (choose the repository on the backups screen). Modify changes an "
         "installed lab: every screen starts from its host_vars and answers, and the "
-        "Review screen shows a diff of each file."
+        "Review screen shows a diff of each file. Uninstall removes what pinka installed "
+        "and keeps the lab's data: it shows the plan first, offers a backup and asks for "
+        "the machine name."
     )
 
     def body(self) -> ComposeResult:  # noqa: D102
         mode = self.answers.mode
+        uninstall = self.wizard.uninstall
         with RadioSet(id="mode"):
-            yield RadioButton("Fresh install", value=mode == "fresh", id="mode-fresh")
-            yield RadioButton("Restore from backup", value=mode == "restore", id="mode-restore")
+            yield RadioButton(
+                "Fresh install", value=mode == "fresh" and not uninstall, id="mode-fresh"
+            )
+            yield RadioButton(
+                "Restore from backup",
+                value=mode == "restore" and not uninstall,
+                id="mode-restore",
+            )
             yield RadioButton(
                 "Modify the existing installation",
-                value=mode == "modify",
+                value=mode == "modify" and not uninstall,
                 id="mode-modify",
                 disabled=not self.wizard.installed,
             )
+            yield RadioButton(
+                "Uninstall pinka from this host",
+                value=uninstall,
+                id="mode-uninstall",
+                disabled=not self.wizard.installed,
+            )
         if not self.wizard.installed:
-            yield Static("Modify is offered once a lab is installed on this host.", classes="hint")
+            yield Static(
+                "Modify and Uninstall are offered once a lab is installed on this host.",
+                classes="hint",
+            )
 
     def save(self) -> Problems:  # noqa: D102
+        self.wizard.uninstall = self.query_one("#mode-uninstall", RadioButton).value
         for mode in ("fresh", "restore", "modify"):
             if self.query_one(f"#mode-{mode}", RadioButton).value:
                 if mode == "modify" and self.answers.mode != "modify":

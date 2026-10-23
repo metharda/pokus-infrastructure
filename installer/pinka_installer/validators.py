@@ -661,3 +661,20 @@ def ssh_keygen_fingerprint(line: str) -> str | None:
         raise ValueError(done.stderr.strip() or "ssh-keygen rejected the key")
     fields = done.stdout.split()
     return fields[1] if len(fields) > 1 else None
+
+
+def uninstall_confirmation(typed: str, machine: str) -> str | None:
+    """The machine name typed to confirm uninstall, or to delete the lab's data too (§5.4).
+
+    Args:
+        typed: What the operator typed.
+        machine: This host's machine name.
+
+    Returns:
+        A problem, or None when it is the machine name exactly.
+    """
+    if not typed:
+        return f"type the machine name, {machine}, to confirm"
+    if typed != machine:
+        return f"not the machine name: type {machine} exactly"
+    return None

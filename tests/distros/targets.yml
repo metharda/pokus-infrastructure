@@ -6,7 +6,8 @@
 # firewall-backend and SELinux variants. `firewall` is the backend the harness
 # establishes before bootstrap (firewalld or ufw installed and active;
 # nftables: neither active) and expects in the host profile afterwards;
-# `selinux: enforcing` requires SELinux in enforcing mode. Images come from the
+# `selinux: enforcing` requires SELinux in enforcing mode; `preexisting` names
+# what the harness installs before pinka. Images come from the
 # `images` remote and are resolved when the test runs; the result records the
 # fingerprint that was used. A derivative distribution is added once an image
 # for one is verified.
@@ -28,6 +29,9 @@ defaults:
 targets:
   - {id: ubuntu-24.04, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables}
   - {id: ubuntu-24.04-ufw, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: ufw}
+  # The uninstall lane's variant (BUILD_PROMPT §19.9): Docker with a workload
+  # and a logged-in Tailscale node exist before pinka; both stay as they were.
+  - {id: ubuntu-24.04-preexisting, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables, preexisting: [docker, tailscale]}
   - {id: debian-13, image: debian/13/cloud, os: {id: debian, version_id: "13"}, firewall: nftables}
   - {id: ubuntu-22.04, image: ubuntu/22.04/cloud, os: {id: ubuntu, version_id: "22.04"}, firewall: nftables}
   - {id: fedora-43, image: fedora/43/cloud, os: {id: fedora, version_id: "43"}, firewall: firewalld, selinux: enforcing}

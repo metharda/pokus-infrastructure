@@ -18,3 +18,7 @@ argument_specs:
         elements: path
         default: []
         description: Files roles write or edit; the record keeps the content of each that existed before pinka.
+      install_record_originals:
+        type: dict
+        default: {}
+        description: Managed files bootstrap changes before the record exists, mapped to the copy it keeps of the original.

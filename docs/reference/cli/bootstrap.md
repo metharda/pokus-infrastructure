@@ -21,7 +21,7 @@ sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]
 
 | Option | Value | Description |
 | --- | --- | --- |
-| `--machine` | `NAME` | Selects ansible/inventory/host_vars/NAME.yml; required unless --answers or the TUI names it |
+| `--machine` | `NAME` | Selects ansible/inventory/host_vars/NAME.yml; required unless --answers, --uninstall or the TUI names it |
 | `--ref` | `REF` | Git ref of pokus-infrastructure being applied (recorded; default: current HEAD) |
 | `--restore` | — | After provisioning, run restore.yml (prompts for snapshot) |
 | `--tags` | `T1,T2` | Pass through to ansible-playbook |
@@ -45,5 +45,12 @@ sudo ./bootstrap/bootstrap.sh [--machine <name>] [options]
 | `--answers` | `FILE` | Non-secret answers file (as exported by the installer TUI) |
 | `--tui`, `--no-tui` | — | Force or disable the TUI (default: TUI when stdin and stdout are TTYs) |
 | `-h`, `--help` | — | Show this help and exit |
+| `--uninstall` | — | Remove what pinka installed and keep the lab's data |
+| `--dry-run` | — | Print the removal plan and change nothing |
+| `--purge-data` | — | Also remove the lab's data (the typed machine name is asked for again) |
+| `--confirm-machine` | `NAME` | The typed machine name, for --non-interactive |
+| `--skip-backup` | — | Do not offer a backup first |
+| `--remove-component` | `C` | On a host without an install record, also remove C: |
+| `--json` | — | Print the plan (with --dry-run) or the report as JSON on standard output |
 
 Exit codes: see [Exit codes](../exit-codes.md#bootstrapsh).

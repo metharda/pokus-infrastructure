@@ -1286,3 +1286,88 @@ class patched_environ:  # noqa: N801 - used like a function
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+
+
+def test_uninstall_shows_the_plan_and_needs_the_machine_name(repo: Paths) -> None:
+    # BUILD_PROMPT §5.4, §18.4 screen 3: the dry run, the backup offer, the
+    # typed confirmations, then the same command as bootstrap.sh --uninstall.
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    runner.plan["backup"] = True
+    installer = app(context(repo, host, runner), first="mode")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        pick(pilot, "mode-uninstall")
+        await forward(pilot, "uninstall")
+        screen = pilot.app.screen
+        assert runner.uninstall_calls == [["--dry-run"]]
+        assert "Uninstall plan for pinka-lab" in str(screen.query_one("#plan", Static).content)
+        assert screen.query_one("#backup", Checkbox).display
+        # Nothing is typed: nothing runs.
+        await forward(pilot, "uninstall")
+        assert any("type the machine name, pinka-lab" in e for e in shown_errors(pilot))
+        fill(pilot, confirm="pinka-lab")
+        tick(pilot, "purge")
+        await settle(pilot)
+        assert screen.query_one("#field-confirm-data").display
+        fill(pilot, confirm_data="pinka")
+        await forward(pilot, "uninstall")
+        assert any("not the machine name" in e for e in shown_errors(pilot))
+        assert len(runner.uninstall_calls) == 1
+        fill(pilot, confirm_data="pinka-lab")
+        tick(pilot, "backup", on=False)
+        await forward(pilot, "uninstall_run")
+        report = str(pilot.app.screen.query_one("#report", Static).content)
+        assert "1 failed" in report
+        assert "researcher1 is logged in" in report
+        assert "/opt/pinka goes when you close the installer" in report
+        assert "Reboot the host: uninstall never reboots.\n  the initramfs was rebuilt" in report
+        # The kept secrets come first: what grants access to the backups, and
+        # how to take it off the host.
+        assert "Afterwards:\n  - /var/lib/pinka-kept holds the restic repository's" in report
+        assert "grant access to the backups" in report
+        assert "shred -u" in report
+        assert report.index("/var/lib/pinka-kept holds") < report.index("Delete the node pinka-lab")
+        assert "key and settings in /var/lib/pinka-kept/backup/secrets" in report
+        # What to do comes before the long list of what was kept.
+        assert report.index("Afterwards") < report.index("Kept:")
+        await pilot.press("ctrl+n")
+
+    code = drive(installer, flow)
+    assert runner.uninstall_calls[1] == [
+        "--confirm-machine",
+        "pinka-lab",
+        "--purge-data",
+        "--skip-backup",
+    ]
+    assert code == 81
+    assert runner.requests == []  # no install ran
+
+
+def test_uninstall_is_offered_only_on_an_installed_host(repo: Paths) -> None:
+    host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
+    installer = app(context(repo, host), first="mode")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        assert pilot.app.screen.query_one("#mode-uninstall", RadioButton).disabled
+
+    drive(installer, flow)
+
+
+def test_a_refused_plan_offers_no_uninstall(repo: Paths) -> None:
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    runner.plan["refusal"] = "the record says what pinka installed"
+    installer = app(context(repo, host, runner), first="uninstall")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        status = str(pilot.app.screen.query_one("#uninstall-status", Static).content)
+        assert "refused here: the record says what pinka installed" in status
+        assert pilot.app.screen.query_one("#next").disabled
+        await pilot.press("ctrl+b")
+        await settle(pilot)
+        assert at(pilot) == "mode"
+
+    drive(installer, flow)

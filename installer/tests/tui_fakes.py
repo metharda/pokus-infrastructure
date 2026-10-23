@@ -28,7 +28,7 @@ from pinka_installer.tui.app import InstallerApp, build_context
 from pinka_installer.tui.base import Context
 from pinka_installer.tui.events import read_new
 from pinka_installer.tui.host import CommandResult, Disk, GitInfo, Preflight
-from pinka_installer.tui.runner import RunRequest
+from pinka_installer.tui.runner import RunRequest, UninstallRun
 from pinka_platform import config as config_mod
 from pinka_platform import contract as contract_mod
 from pinka_platform import deploy, validate
@@ -274,12 +274,30 @@ class FakeHost:
 
 @dataclass
 class FakeRunner:
-    """Replays recorded bootstrap runs, one per call."""
+    """Replays recorded bootstrap runs, one per call.
+
+    Uninstall's dry run answers with ``data/uninstall-plan.json`` (the module's
+    plan of a full install) and its removal with ``data/uninstall-report.json``
+    and ``uninstall_code``.
+    """
 
     runs: list[tuple[str, int]]
     requests: list[RunRequest] = field(default_factory=list)
     cancelled: bool = False
     log_file: str = ""
+    uninstall_calls: list[list[str]] = field(default_factory=list)
+    uninstall_code: int = 81
+    plan: dict[str, Any] = field(
+        default_factory=lambda: json.loads((DATA / "uninstall-plan.json").read_text())
+    )
+
+    def uninstall(self, options: Sequence[str], on_output: Callable[[str], None]) -> UninstallRun:
+        self.uninstall_calls.append(list(options))
+        if "--dry-run" in options:
+            return UninstallRun(0, dict(self.plan))
+        on_output("bootstrap: replayed uninstall")
+        report = json.loads((DATA / "uninstall-report.json").read_text())
+        return UninstallRun(self.uninstall_code, report)
 
     def run(
         self,

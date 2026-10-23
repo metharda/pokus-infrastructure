@@ -151,4 +151,5 @@ def test_every_pytest_run_loads_the_plugin_and_the_unittest_runs_use_the_runner(
     block = makefile[makefile.index("\ntest-py39:") :].split("\n\n", 1)[0]
     commands = [line for line in block.splitlines() if not line.lstrip().startswith("@#")]
     assert not [line for line in commands if "python -m unittest" in line]
-    assert block.count("python -m pinka_repo_checks.unittest_run") == 3
+    # preflight, pinka, the install record module and the uninstall module
+    assert block.count("python -m pinka_repo_checks.unittest_run") == 4

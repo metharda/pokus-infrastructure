@@ -93,6 +93,7 @@ nav:
       - Build, test and export golden images: how-to/build-golden-images.md
       - Back up, restore and run a restore drill: how-to/backup-and-restore.md
       - Migrate the lab to a new machine: how-to/migrate-lab.md
+      - Uninstall pinka: how-to/uninstall.md
       - Rotate secrets and certificates: how-to/rotate-secrets.md
       - Run a QA maintenance window on staging: how-to/staging-window.md
       - Serve a documentation release on the lab: how-to/install-docs-release.md

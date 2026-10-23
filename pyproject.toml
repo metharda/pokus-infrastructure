@@ -98,7 +98,7 @@ convention = "google"
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:tools/lockcheck/tests:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/install_record/library:ansible/roles/incus/files:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pinka-lab:tools/pinka-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins:tools/platform:tools/platform/tests:ansible/roles/gpu_arbiter/files:tests/reference-platform/src:tests/reference-platform/packages/refplat-agent/src"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:tools/lockcheck/tests:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/install_record/library:ansible/roles/uninstall/library:ansible/roles/incus/files:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pinka-lab:tools/pinka-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins:tools/platform:tools/platform/tests:ansible/roles/gpu_arbiter/files:tests/reference-platform/src:tests/reference-platform/packages/refplat-agent/src"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -136,6 +136,7 @@ pythonpath = [
   "ansible/filter_plugins",
   "ansible/roles/incus/library",
   "ansible/roles/install_record/library",
+  "ansible/roles/uninstall/library",
   "ansible/roles/incus/files",
   "ansible/roles/models/files",
   "ansible/roles/vllm/files",

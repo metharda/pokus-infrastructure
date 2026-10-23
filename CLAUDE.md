@@ -49,6 +49,13 @@ commit rule's branch is `moving/on` (owner, with the "commit" for 3d.3).
 Commits are unsigned: signing is off in this checkout's local git
 configuration (owner, with "rewrite").
 
+Push guard (owner, D2 review): a session restart can set `origin` back to
+the old repository. Before every push, check that `origin` is
+`https://github.com/metharda/pokus-infrastructure`
+(`git remote get-url origin`), and set it back if not. This checkout's
+`.git/hooks/pre-push` refuses a push to any other URL; never bypass it
+(`--no-verify`) and never remove it.
+
 ## CI after every push (owner, with the "commit" for 3d.7 and for its CI fix)
 
 Verbatim:
@@ -269,7 +276,9 @@ opens a pull request and never merges.
   than `required`, because a skipped job counts as passing. Branch
   protection requires only `required`; never make a job required that can be
   skipped under its own name. `tools/repo-checks/tests/test_triggers.py`
-  evaluates the workflows' expressions for every kind of event.
+  evaluates the workflows' expressions for every kind of event. A push runs
+  only its tip, so push each commit on its own (`git push origin
+  <commit>:moving/on`, oldest first), never several at once.
 - Skips in CI (owner, after `37c062e`): CI keeps a list of the tests that may
   skip there, each with its run and reason
   (`tools/repo-checks/pinka_repo_checks/ci_skips.json`, empty or nearly so);
@@ -323,8 +332,9 @@ opens a pull request and never merges.
 - WSL detection runs before container classification; `wsl` is never a container.
 - Exit codes: 0 supported, 10 degraded, 20 unsupported, 30 needs_action,
   40 preflight_error. Bootstrap adds 75 (WSL restart), 76 (reboot/MOK),
-  77 (operator action), passes doctor's 0/1/2 through, and (ADR-0002,
-  accepted) 11, 50, 60, 64, 70.
+  77 (operator action), passes doctor's 0/1/2 through, (ADR-0002,
+  accepted) 11, 50, 60, 64, 70, and for uninstall (§5.4) 80 (refused or
+  not confirmed) and 81 (items kept that could not be removed).
 - Storage must be `btrfs` or LVM thin; no `dir` backend.
 - The `preflight_gate` role fails if outcome, provider or features differ from
   `/etc/pinka/host-profile.json` without `--refresh-profile`.
@@ -442,28 +452,29 @@ opens a pull request and never merges.
 - Custom modules (`roles/*/library/`) run on the target's Python: the pinned
   CPython of the Ansible venv on a host, the distribution's own in the
   check-mode containers (3.9 on EL 9). Keep them compatible with Python 3.9
-  at run time, not only in syntax; the install record module's tests also
-  run on CPython 3.9 (`make test-py39`).
+  at run time, not only in syntax; the install record and uninstall
+  modules' tests also run on CPython 3.9 (`make test-py39`).
 - Distribution differences live only in the support matrix,
   `ansible/component-sources.yml`, `roles/<role>/vars/<family>.yml` and
   `roles/<role>/tasks/<name>_<family>.yml`, for all four families at once.
-- Packages are installed, pinned and held only through the `pkg` role.
-  Anything unverified in `component-sources.yml` carries
-  `verify: "TODO(verify): ..."` and is refused by the play.
+- Packages are installed, pinned and held only through the `pkg` role, and
+  removed only by uninstall. Anything unverified in `component-sources.yml`
+  carries `verify: "TODO(verify): ..."` and is refused by the play.
 - `ansible/tests/` checks role structure, templates (rendered like the
   template module; nft rulesets with `nft -c` in a private network
   namespace) and data consistency; add a render test for every new template.
 - Incus objects are only changed through the incus role's module
   `pinka_incus_object` (create or update, never delete); the pool and the
-  networks are created once and never rewritten. The one deletion is
-  `rotate.yml` removing the trust entries of replaced client certificates;
-  build instances and images of the images role are not such objects. Only
-  the docker role writes `/etc/docker/daemon.json`, and only on a Docker
-  Engine pinka installed (`live-restore`, `data-root`, `selinux-enabled` on
-  SELinux hosts); every other Docker setting lives in pinka's Compose
-  projects. Docker 28.2 and later enable CDI by default, so pinka writes
-  `features.cdi: true` only for a distribution Docker older than 28.2 that
-  it installed itself.
+  networks are created once and never rewritten. The deletions are
+  `rotate.yml` removing the trust entries of replaced client certificates,
+  and uninstall removing what the install record names as pinka's; build
+  instances and images of the images role are not such objects. Only
+  the docker role writes `/etc/docker/daemon.json` (uninstall restores the
+  copy the record kept), and only on a Docker Engine pinka installed
+  (`live-restore`, `data-root`, `selinux-enabled` on SELinux hosts); every
+  other Docker setting lives in pinka's Compose projects. Docker 28.2 and
+  later enable CDI by default, so pinka writes `features.cdi: true` only for
+  a distribution Docker older than 28.2 that it installed itself.
 
 ## pinka (BUILD_PROMPT §9, §10.2)
 
@@ -520,6 +531,67 @@ opens a pull request and never merges.
   ADR-0016): rules match the socket's UID, never its GID, and a new client
   needs an entry in `group_vars/all/main.yml` with its reason, or in the
   rendering for platform accounts.
+
+## Uninstall (BUILD_PROMPT §5.4, §19.9)
+
+- `ansible/uninstall.yml` (role `uninstall`, module `pinka_uninstall`:
+  `plan`, `apply` per phase, `report`) is the only code that removes what
+  pinka installed. It runs without the group and host variables and the
+  vault (`ANSIBLE_VARS_ENABLED=''`), with only the host profile and
+  bootstrap's options (`pinka_uninstall`), so it works on a partial
+  install; the family facts come from `platform_facts/tasks/family.yml`.
+  Every option bootstrap passes is read by the play
+  (`ansible/tests/test_uninstall.py`).
+- It removes only what the install record names as pinka's (without a
+  record, only what carries pinka's names, plus `--remove-component`),
+  never a pre-existing component, sets back what pinka changed (the record's
+  `added.changed`, the copies in `originals`), keeps the lab's data unless
+  `--purge-data` with the typed machine name, keeps the logs and the
+  backups, and never reboots. Packages are removed exactly (dpkg, rpm or
+  pacman, never a solver that could take others along), only those absent
+  before the first install, with their dependencies that were absent before
+  too and that no package needs any more.
+- A role that creates something on a host records it in the install record
+  before it creates it (`pinka_install_record: state: add`), and a setting
+  it changes with its value before (`changed`, first value wins); paths,
+  units and names that follow from pinka's own data are in the module's
+  `NAMES`, which `ansible/tests/test_uninstall.py` checks against the
+  roles' accounts, units, paths, Compose projects, Incus objects, firewall
+  objects and managed files.
+- Bootstrap shows the plan before anything is removed, offers a backup,
+  needs the machine name (typed, or `--confirm-machine`), writes the report
+  to `/var/log/pinka-uninstall/` and removes `/opt/pinka` last (after the
+  installer has ended when the TUI ran it).
+- Without `--purge-data` nothing kept may be lost (owner, D2 review). The
+  packages phase stops the components' services, mounts every kept data
+  directory read-only on itself (the guard item's `paths`, fixed in the
+  plan) while packages go, and removes no package when one cannot be
+  guarded; a package whose purge deletes data (the family's
+  `purge_deletes`) is removed without purging. A new package pinka installs
+  needs its maintainer scripts checked on every family: what its remove or
+  purge deletes goes into `purge_deletes`, and the units its removal masks
+  into `masked_on_remove`.
+- What lies below a path uninstall removes but must stay (the backups' key
+  and settings, the restic binary, the stored vault password; the records
+  and attestations without `--purge-data`) is copied first to
+  `/var/lib/pinka-kept` (root only; `NAMES["kept_copies"]`), and a path
+  whose copy is missing is not removed. A new key needed to read, verify or
+  decrypt something kept gets a kept copy too.
+- Everything pinka changes that takes effect at boot is a drop-in in
+  `NAMES["dropins"]` with the command that regenerates what reads it
+  (initramfs, `sysctl --system`, `ldconfig`, `daemon-reload`); no role
+  writes the boot loader's or the kernel command line's configuration,
+  modules-load files or presets (`test_boot_time_state_is_restored_and_regenerated`).
+  The report says whether to reboot and why, where the kept key is, and
+  what to do afterwards: first take `/var/lib/pinka-kept` off the host and
+  delete it securely (what it holds grants access to the backups; the
+  copies marked `secret`), then the Tailscale node and the deploy key.
+- The `make test-distros` uninstall lane compares the host's snapshot
+  before the install with the one after the uninstall
+  (`tools/test-distros/pinka_test_distros/snapshot.py`), checks the marks
+  it set in the kept data, and opens the backups with the kept key. Add to
+  its kept differences (`KEPT`, `system_account`) only what uninstall keeps
+  on purpose under §5.4, with the reason; never widen it to make a lane pass.
 
 ## Reference platform (BUILD_PROMPT §7.18)
 

@@ -202,3 +202,27 @@ def evaluate(expression: str, variables: Mapping[str, Any]) -> Any:
     from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
 
     return _templar(variables).template(trust_as_template("{{ " + expression + " }}"))
+
+
+def template_value(text: Any, variables: Mapping[str, Any]) -> Any:
+    """Template a task's value (text with ``{{ }}``) as Ansible does, to a native value.
+
+    Args:
+        text: The value as the task file has it.
+        variables: Variables.
+
+    Returns:
+        The native result.
+    """
+    from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
+
+    def trusted(value: Any) -> Any:
+        if isinstance(value, str):
+            return trust_as_template(value)
+        if isinstance(value, Mapping):
+            return {k: trusted(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [trusted(v) for v in value]
+        return value
+
+    return _templar(variables).template(trusted(text))

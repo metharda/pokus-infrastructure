@@ -358,6 +358,34 @@ class BackupTest(unittest.TestCase):
         )
 
 
+class UninstallTest(unittest.TestCase):
+    def test_uninstall_runs_bootstrap_from_the_recorded_checkout(self) -> None:
+        state = json.dumps({"machine": "pinka-lab", "infra_dir": "/srv/checkout"})
+        system = FakeSystem(interactive_rc=81, files={commands.BOOTSTRAP_STATE: state})
+        rc = commands.uninstall(system, None, ["--dry-run"], ["--non-interactive"])
+        self.assertEqual(rc, 81)
+        self.assertEqual(
+            system.interactive_calls[0][0],
+            [
+                "/srv/checkout/bootstrap/bootstrap.sh",
+                "--uninstall",
+                "--dry-run",
+                "--non-interactive",
+            ],
+        )
+
+    def test_without_a_state_file_the_lab_description_names_the_checkout(self) -> None:
+        system = FakeSystem(interactive_rc=0, files={commands.BOOTSTRAP_STATE: "not json"})
+        commands.uninstall(system, lab(), [], [])
+        self.assertEqual(
+            system.interactive_calls[0][0][0], f"{lab().infra_dir}/bootstrap/bootstrap.sh"
+        )
+        with self.assertRaisesRegex(commands.CommandError, "names no checkout"):
+            commands.uninstall(FakeSystem(), None, [], [])
+        with self.assertRaisesRegex(commands.CommandError, "needs root"):
+            commands.uninstall(FakeSystem(euid=1000), lab(), [], [])
+
+
 class ImagesTest(unittest.TestCase):
     def test_chain(self) -> None:
         self.assertEqual(

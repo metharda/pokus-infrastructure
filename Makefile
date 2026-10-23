@@ -44,7 +44,8 @@ DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
 DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
-  ansible/roles/incus/library ansible/roles/install_record/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
+  ansible/roles/incus/library ansible/roles/install_record/library ansible/roles/uninstall/library \
+	  ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/roles/gpu_arbiter/files ansible/roles/firewall/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins tools/platform tests/reference-platform
@@ -289,7 +290,7 @@ check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in chec
 	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
 
 .PHONY: test-py39
-test-py39: ## Preflight, pinka and install record module tests with plain unittest on CPython 3.9 (stdlib only)
+test-py39: ## Preflight, pinka, install record and uninstall module tests with plain unittest on CPython 3.9 (stdlib only)
 	@# unittest_run: python -m unittest plus the CI skip list (it names every skipped test).
 	cd preflight && PYTHONPATH=.:tests:../tools/repo-checks $(UV) run --no-project \
 	  --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
@@ -303,6 +304,10 @@ test-py39: ## Preflight, pinka and install record module tests with plain unitte
 	  --no-project --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
 	  --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-install-record.xml \
 	  test_install_record_module
+	cd ansible/tests && PYTHONPATH=../roles/uninstall/library:../../tools/repo-checks $(UV) run \
+	  --no-project --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-uninstall.xml \
+	  test_uninstall_module
 
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)

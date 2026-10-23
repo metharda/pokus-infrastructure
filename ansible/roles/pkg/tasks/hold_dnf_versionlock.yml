@@ -2,6 +2,15 @@
 #
 # TODO(verify): the versionlock plugin package on Fedora's dnf5 (dnf 4 on EL 9
 # ships it as python3-dnf-plugin-versionlock).
+
+# Installed here, not through main.yml, so noted here: uninstall removes it
+# unless it was there before pinka (§5.4).
+- name: Record the dnf versionlock plugin as pinka's
+  pinka_install_record:
+    state: add
+    added:
+      packages: ["{{ pkg_versionlock_package }}"]
+
 - name: Install the dnf versionlock plugin
   ansible.builtin.dnf:
     name: "{{ pkg_versionlock_package }}"

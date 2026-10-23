@@ -25,6 +25,15 @@
     images_upstream_present: >-
       {{ images_base_fingerprint in (images_list.stdout | from_json | map(attribute='fingerprint') | list) }}
 
+# Uninstall removes the base images pinka brought into an Incus it did not
+# install, and only those (§5.4): noted before the image arrives.
+- name: Record the upstream base image as pinka's
+  pinka_install_record:
+    state: add
+    added:
+      incus_objects: ["image:{{ images_base_fingerprint }}"]
+  when: not images_upstream_present
+
 - name: Look for the upstream export
   ansible.builtin.stat:
     path: "{{ images_upstream_export }}/SHA256SUMS"

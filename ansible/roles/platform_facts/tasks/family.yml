@@ -1,0 +1,25 @@
+# Managed by pinka (ansible/roles/platform_facts/tasks/family.yml). Local changes will be overwritten.
+#
+# The family facts alone, for uninstall.yml (BUILD_PROMPT §5.4), which runs
+# without the group and host variables that main.yml checks: the same facts,
+# from the same host profile, as main.yml sets them.
+- name: Check that the host profile is available
+  ansible.builtin.assert:
+    that:
+      - host_profile is mapping
+      - host_profile.family in ['debian', 'redhat', 'suse', 'archlinux']
+    fail_msg: "The host profile is missing or its family is unsupported; run the play through bootstrap/bootstrap.sh."
+    quiet: true
+
+- name: Load the family variables
+  ansible.builtin.include_vars:
+    file: "{{ host_profile.family }}.yml"
+
+- name: Set the family facts
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - fact names defined by BUILD_PROMPT §19.1
+    pinka_family: "{{ host_profile.family }}"
+    pinka_pkg_manager: "{{ host_profile.pkg_manager }}"
+    pinka_service_names: "{{ platform_facts_family.service_names }}"
+    pinka_initramfs_tool: "{{ platform_facts_family.initramfs_tool }}"
+    pinka_version_hold_method: "{{ platform_facts_family.version_hold_method }}"
+    pinka_provider: "{{ host_profile.provider }}"

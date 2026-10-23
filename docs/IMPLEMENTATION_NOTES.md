@@ -5862,3 +5862,259 @@ expression. If GitHub shows the expression's text instead of its value for
 a skipped job, the name is still not `required`. The first push to
 `moving/on` while the pull request is open shows it: the head commit must
 have exactly one check named `required`, from the push run.
+
+## Uninstall (D2, 3f-1)
+
+BUILD_PROMPT §5.4, §7.21, §18.4 (screen 3), §19.9. Built on `moving/on`
+after `fb665c2`, in six parts: the install record's gaps closed (D2-rec),
+the plan module (D2a), the removal play (D2b), bootstrap and `pinka
+uninstall` (D2c), the installer's Uninstall screens (D2d), the
+`make test-distros` uninstall lane with its pre-existing variant (D2e), and
+these docs and records (D2f).
+
+### What was built
+
+- **Install record** (`pinka_install_record`): `added.changed` (a setting
+  with its value before pinka changed it; the first value recorded stays),
+  `repo_keys` (rpm keys pinka imported), `incus_objects` (what pinka
+  created in an Incus it did not install), each kept file's mode and owner
+  (`preexisting.file_modes`), and `originals` (the copy bootstrap keeps of
+  `/etc/wsl.conf` before it edits it, before the record exists; `.absent`
+  when there was none). A host counts as provisioned by an older pinka
+  (legacy record) only when `bootstrap-state.json` names a stage at or
+  after the play (`ansible`, `restore`, `doctor`), not after an install
+  that stopped in preflight. The roles now record what they change: the
+  time zone and the kernel settings (`base`), the zone of `tailscale0` and
+  the zones where pinka opens SSH (`firewall`, firewalld), the rpm keys and
+  the versionlock plugin (`pkg`), the Incus objects, server settings and
+  group memberships in an Incus that existed before (`incus`), and the
+  images it brings in (`images`).
+- **Play** `ansible/uninstall.yml`, role `uninstall`, module
+  `pinka_uninstall`: `plan` computes every item from the record and the
+  host (remove, restore or keep, with the reason), `apply` carries out one
+  phase (`platform`, `keep`, `units`, `compose`, `incus`, `firewall`,
+  `tailscale`, `packages`, `accounts`, `dropins`, `paths`), `report` writes
+  `/var/log/pinka-uninstall/<UTC>.json`, also when a phase failed. The play
+  runs without group or host variables and without the vault
+  (`ANSIBLE_VARS_ENABLED=''`), so a partial install or a lost vault does not
+  stop it; the family facts come from `platform_facts/tasks/family.yml`.
+- **Bootstrap** `--uninstall` with `--dry-run`, `--purge-data`,
+  `--confirm-machine`, `--skip-backup`, `--remove-component`, `--json`;
+  exit codes 80 and 81. It runs preflight read-only and offline for the
+  family, prints the plan, offers a backup when a restic repository is
+  configured, needs the machine name (typed, twice with `--purge-data`, or
+  `--confirm-machine`), ignores SIGHUP while it removes (logging out a node
+  pinka joined ends an SSH session over the tailnet), and removes
+  `/opt/pinka` last, after the play, or after the installer has ended when
+  the TUI ran it. `pinka uninstall` runs it from the checkout that
+  `bootstrap-state.json` records (its new `infra_dir`).
+- **Installer**: the Install mode screen offers *Uninstall pinka from this
+  host* once a lab is installed; the Uninstall screen shows bootstrap's dry
+  run, the backup offer and the typed confirmations, the run screen the
+  output and the report's summary.
+- **test-distros**: stages `snapshot` (after `prepare`) and `uninstall`
+  (after `restore`) on every target, and the target
+  `ubuntu-24.04-preexisting` (Docker with a workload and a logged-in
+  Tailscale node before pinka); see
+  [How to test the distributions](how-to/test-distributions.md#the-uninstall-lane).
+
+### What uninstall removes, restores or keeps
+
+In removal order. "Record" is `/var/lib/pinka/install-record.json`;
+"names" is the module's `NAMES`, checked against the roles by
+`ansible/tests/test_uninstall.py`. Without a usable record, uninstall uses
+the names only and keeps what it cannot attribute ("origin unknown").
+
+| Phase | Item | Uninstall | Decided by |
+| --- | --- | --- | --- |
+| platform | the active platform and the lab | `pinka stop`: drains the platform, idles the GPU arbiter, stops `pinka-platform.target` and `pinka-lab.target` | an active platform or `pinka-lab.target` |
+| keep | the backups' key and settings (`/etc/pinka/secrets/backup`, `/etc/pinka/backup`), the backup state, the restic binary, the vault password bootstrap stored | copied to `/var/lib/pinka-kept` (root only) with a README, also with `--purge-data`; a path whose copy is missing is not removed later | names (`kept_copies`) |
+| keep | the QA keys and attestations, the arbiter's, session, fingerprint, platform and verification records | copied to `/var/lib/pinka-kept`; not with `--purge-data` | names |
+| units | every `pinka-*` unit in `/etc/systemd/system` (targets, timers, sockets, paths, services, slices, templates) and the active and retired platforms' units | removed: stopped, disabled, file, drop-ins and links | names; the platforms' recorded names and `rendered.json` |
+| compose | containers of `pinka-core`, `pinka-observability`, `pinka-inference` or named `pinka-*`; their networks and `pinka-core_default` | removed | Compose project labels, names |
+| compose | images pinka pulled (`lab.json`'s pins, the GPU image, the platforms' job images, its containers' images) | removed; kept when a container that is not pinka's uses one | `lab.json`, `rendered.json` |
+| incus | instances, volumes and profiles in pinka's projects; images pinka built (`pinka.recipe_commit`) or brought in; the projects `bench`, `build` and `user-*`; the networks `pinka-build0`, `r-*`, `incusbr-*`; the ACL `pinka-run-default`; client certificates pinka trusted | removed, in that order | Incus pinka installed: names; Incus that existed before: only the record's `incus_objects`; no record: names, personal projects and networks kept (incus-user's too) |
+| incus | the storage pool `pinka-targets` | removed last | as above |
+| incus | server settings pinka set in an Incus that existed before | restored to the value before (or unset) | record `added.changed` (`incus:config:*`) |
+| incus | a researcher's personal project (`user-*`) with instances or volumes | kept with its network and the pool, and Incus with them (its packages, hold, repository, units and data); removed with `--purge-data` | the project's instances and custom volumes |
+| incus | Incus itself | kept when it existed before; kept without a record unless `--remove-component incus`; kept while it holds a researcher's work; pinka's goes with its packages otherwise | record `origin` |
+| firewall | nft tables `inet pinka_*` (filter, telemetry and inference guards) | removed | names |
+| firewall | **the guard table `inet pinka_access_guard`** | removed: what was closed with consent (named from the record's `closed_access`, for example `tcp/8080`, the install's access path) is reachable again | record `added.closed_access` |
+| firewall | **the pre-existing access record** (`preexisting.access`: the listeners, the firewall manager, the host class, the install's session) | read, never changed: pinka never changed the owner's firewall beyond the rows of this phase; it goes with the record at the end | record |
+| firewall | `DOCKER-USER` ACCEPT rules for pinka's bridges (`r-+`, `pinka-build0`, `incusbr-+`), iptables and ip6tables | removed | names |
+| firewall | the interface `pinka-otlp0` | removed | names |
+| firewall | firewalld: the zone of `tailscale0` | restored to the zone before pinka, or none | record `firewalld:zone-of:tailscale0` |
+| firewall | firewalld: SSH pinka opened in a zone | removed (the plan warns when the session comes over SSH) | record `firewalld:service:<zone>:ssh` |
+| firewall | firewalld: pinka's bridges in `trusted`, the zones `pinka-tailnet` and `pinka-run` | removed; firewalld reloaded after the phase | names |
+| firewall | ufw rules with the comment `pinka` | removed | the comment |
+| firewall | the owner's firewall manager, zones, rules and nft tables | kept as they are (not in the plan) | — |
+| tailscale | serve entries pinka added | removed | record `tailscale_serve` |
+| tailscale | a node pinka joined | logged out (the plan warns when the session comes over the tailnet) | record `components.tailscale`; without a record only with `--remove-component tailscale` |
+| tailscale | a node logged in before pinka | kept as it is | record `origin` |
+| packages | holds: pinka's blocks in `/etc/apt/preferences.d/pinka-pins` or `pacman.conf`, its versionlock and zypper locks | removed (the preferences file too when pinka created it); a hold that existed before is kept | record `holds`, the files before |
+| packages | repository and key files `pinka-*` (apt, dnf, zypper) and rpm keys pinka imported | removed | names; record `repo_keys` |
+| packages | **the kept data** (`/srv/pinka`, `/var/lib/pinka-kept`, the logs, the data of the components that go) | the components' services stopped, then each directory mounted read-only on itself while packages go, so that no package script can delete it; when one cannot be guarded, no package goes (exit 81) | the guard item's `paths`, fixed in the plan |
+| packages | packages pinka installed (absent at the first install) | removed exactly (`dpkg --purge`, `rpm -e`, `pacman -R`) after a test removal; Tailscale's and `incus-base` with `dpkg --remove`, because their purge deletes their data (and `tailscaled` unmasked after); one another package still needs is kept with that reason; the SSH server is never removed | record `added.packages`; the family's `purge_deletes`, `masked_on_remove` |
+| packages | their dependencies | removed: only those absent at the first install that no package needs any more | the solver's unneeded list, intersected with the record |
+| packages | packages that existed before (also at a newer version now), file requirements (`/usr/bin/curl`) | kept: uninstall never downgrades | record |
+| packages | Machine Owner Keys, when pinka's NVIDIA driver goes | kept, with the `mokutil --delete` steps | names |
+| packages | Docker Engine, the NVIDIA driver | kept when they existed before; kept without a record unless `--remove-component` | record `origin` |
+| accounts | memberships and SSH keys pinka added to existing accounts | removed | record `memberships`, `keys` |
+| accounts | memberships of `docker` and `incus-admin` that pinka took away | restored | record `preexisting.groups` |
+| accounts | accounts pinka created (researchers, infra accounts) and the platforms' accounts | removed; a home outside `/var/lib/pinka` is kept unless `--purge-data` | record `accounts`; the platforms' names |
+| accounts | groups pinka created, its accounts' primary groups, the platforms' groups, `docker`, `incus`, `incus-admin` when their component goes and the group is new | removed | record, names |
+| accounts | accounts and groups that existed before | kept | record `preexisting.users`, `groups` |
+| dropins | **`/etc/ssh/sshd_config.d/10-pinka.conf`, the SSH `Match` block** | removed (restored when it existed before); `sshd -t` first, the old file back if it fails, then a reload | record `preexisting.files` |
+| dropins | **the `Include /etc/ssh/sshd_config.d/*.conf` line pinka added to `sshd_config`** | removed with the file's mode and owner kept; `sshd -t`, then a reload | record: the line was not there before |
+| dropins | `/etc/sudoers.d/90-pinka-admin` | removed; `visudo -c`, the file back if it fails | record |
+| dropins | journald, sysctl, modprobe (nouveau blacklist), apt and dnf automatic-update, `ld.so.conf.d`, tmpfiles drop-ins of pinka | removed, or restored to the content before when they existed; journald restarted, `sysctl --system`, `ldconfig` | names; record `preexisting.files` |
+| dropins | `/etc/docker/daemon.json` (only when pinka's Docker goes) | restored to the copy the record kept, or removed | record |
+| dropins | `/etc/wsl.conf` | restored from the copy bootstrap kept (`originals`), or removed | record `originals` |
+| dropins | systemd drop-ins `*.d/*pinka*.conf` of other units | removed; daemon-reload | names |
+| dropins | the time zone and the kernel settings pinka set | restored to the values before (runtime; the files go above) | record `added.changed` |
+| dropins | SELinux file contexts below `/srv/pinka` | removed | `semanage fcontext --locallist` |
+| dropins | distribution units pinka enabled (Docker, Incus, Tailscale, CDI refresh, time sync, dnf-automatic, guest agents) | disabled and stopped, as before; SSH is never stopped (kept, with the command) | record `units_enabled` |
+| dropins | sleep targets pinka masked | unmasked | record `units_masked` |
+| dropins | the initramfs | rebuilt when the blacklist or pinka's NVIDIA driver goes; the report's `reboot_needed` with the reason | — |
+| paths | links `/usr/local/bin/restic`, `quarto` and the platforms' commands | removed when they point into pinka's paths | names |
+| paths | `/usr/local/bin/pinka`, `/usr/local/{lib,libexec,share}/pinka`, `/etc/pinka`, `/run/pinka`, `/var/cache/pinka` | removed | names |
+| paths | `/var/lib/pinka` (state, infra account homes, `originals`) | removed, the record last of all | names |
+| paths | `/srv/pinka`; Docker's data root (`docker info`, `/var/lib/docker` by default), `/var/lib/containerd`, `/var/lib/incus`, `/var/lib/tailscale` of components pinka installed | kept; removed with `--purge-data` | names, `docker info` |
+| paths | `/var/lib/pinka-kept` | kept, also with `--purge-data`; the first of the report's `follow_ups` says what in it grants access to the backups (the repository's password and location, the SFTP key, the vault password) and how to copy it off the host and delete it securely | names (`kept_copies`, `secret`) |
+| paths | `/var/log/pinka-bootstrap`, `/var/log/pinka-uninstall`, the restic repository | kept | — |
+| paths | the platform's deploy key on the Git host, the Tailscale node pinka joined | kept there: the report's `follow_ups` say to revoke the key (with its fingerprint and repository) and to delete the node in the admin console | — |
+| paths | `/opt/pinka` | removed by bootstrap after the play (after the installer has ended when the TUI ran it) | bootstrap |
+
+### Interpretations for the owner
+
+1. **Packages are removed exactly.** §5.4 says what goes, not how: the
+   module removes with `dpkg --purge`, `rpm -e` or `pacman -R` after a test
+   removal, never with a solver that could take other packages along. A
+   package another package still needs is kept with that reason (exit 81
+   only for a real failure). Dependencies go only when the solver lists
+   them as unneeded and the record says they were absent at the first
+   install.
+2. **No downgrades.** A package that existed before pinka and is newer now
+   (an update, or a version a package of pinka needed) stays as it is.
+3. **What the data is.** Without `--purge-data` uninstall keeps
+   `/srv/pinka`, the data directories of the components pinka installed
+   (Docker's, containerd's, Incus's, Tailscale's) and the homes of the
+   researchers it created; the backups (local or remote) are never
+   deleted.
+4. **The guard and the pre-existing access.** The guard table goes, so what
+   was closed with consent is reachable again, and the plan names it from
+   the record. The pre-existing access part of the record is only read:
+   pinka never changed the owner's firewall beyond what the firewall phase
+   lists, so nothing else needs setting back.
+5. **`--remove-component`** is refused on a host with a usable record (the
+   record already says what pinka installed), so it cannot remove a
+   component that existed before.
+6. **The play runs without the vault.** Nothing in uninstall needs a
+   secret; running without group and host variables also makes it work
+   when the machine's files are gone.
+7. **The report names the commit** that ran the uninstall (`repo_commit`).
+8. **No package without the guard** (owner's review, point 1). When a kept
+   data directory cannot be mounted read-only, no package is removed and
+   the run ends with 81; the owner frees the mount and runs uninstall
+   again. A partial removal that might lose data is worse than none.
+9. **A researcher's work keeps Incus.** A personal project with instances
+   or volumes is the researcher's data, so without `--purge-data` Incus
+   stays installed for it (packages, hold, repository, units, pool and
+   bridge rules), even though pinka installed it.
+10. **The key is copied, not refused, and then taken away** (owner's
+    review, point 2 offered both; the follow-up with the "commit" for D2). Uninstall copies what opens the backups to a root-only directory
+    outside its paths instead of asking for a confirmation that a copy
+    exists: an uninstall without a terminal (`--confirm-machine`) cannot
+    confirm, and a copy loses nothing. The signing keys' private halves are
+    not kept (nothing kept needs them; the public halves stay in
+    `/srv/pinka/shared/signing-keys`). Since the copy grants access to the
+    backups, the first follow-up of the report, bootstrap's last lines, the
+    installer's report, the keep directory's README and the how-to say what
+    it holds and give the commands to stream it off the host (`tar | ssh`)
+    and delete it with `shred -u`; on an SSD or a copy-on-write file system,
+    where `shred` cannot reach every old copy, they say to change the
+    repository's password and replace the SFTP key as well.
+
+### What stays and what nothing may delete (owner's review of D2)
+
+Where each kept item lives is the table in
+[How to uninstall pinka](how-to/uninstall.md). Every store of pinka's
+containers is a bind mount below `/srv/pinka` (`state/postgres`,
+`state/prometheus`, `state/loki`, `state/tempo`, `state/grafana`,
+`state/otelcol-journald`, `state/vllm-cache`); no Compose project has a
+named volume, so `docker rm --volumes` takes no data
+(`test_pinkas_containers_keep_their_data_below_the_research_space`).
+
+The maintainer scripts of the packages uninstall may remove, read on
+2026-10-23 (scratch scan of the vendor repositories and Ubuntu's archive;
+the scriptlets' text in each package's control or header):
+
+| Source | Packages | Deletes on remove | Deletes on purge | Uninstall |
+| --- | --- | --- | --- | --- |
+| Docker deb (Ubuntu 24.04, 22.04, Debian 13), Docker rpm (Fedora 43, EL 9) | `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` | nothing | nothing (deb) | purged (deb); the data root and `/var/lib/containerd` guarded |
+| Zabbly (Ubuntu 24.04, 22.04, Debian 13) | `incus`, `incus-client` | nothing | nothing | purged |
+| Zabbly | `incus-base` | nothing | `/var/lib/incus`, `/var/cache/incus`, `/var/log/incus`, `/var/lib/incus-lxcfs` | `dpkg --remove` (`purge_deletes`); `/var/lib/incus` guarded |
+| Tailscale deb (Ubuntu, Debian) | `tailscale` | nothing; masks `tailscaled` | `/var/lib/tailscale` | `dpkg --remove`; unmasked after (`masked_on_remove`); guarded |
+| Tailscale rpm (Fedora, EL 10, openSUSE Leap 16) | `tailscale` | nothing (disables and stops `tailscaled`) | — | `rpm -e`; guarded |
+| NVIDIA toolkit deb and rpm | the four toolkit packages | nothing | nothing | removed |
+| Ubuntu 24.04 and 22.04 archive | the base packages of the lists, the NVIDIA driver 580 packages, `dkms`, `openssh-server` | nothing kept | their own state only: sysstat's logs, sudo's lecture state, timesyncd's clock file, the SELinux policy store | purged; `openssh-server` never removed (its purge deletes the host keys) |
+
+Not read here, because their mirrors are blocked from this environment: the
+distributions' own packages on Debian, Fedora, EL, openSUSE and Arch
+(PROGRESS.md, "TODO(verify)"). Whatever their scripts do, the guard keeps
+the kept data read-only while they run, and the uninstall lane checks the
+marks it set in the kept data on every family.
+
+The guard: after the components' services stop, each kept data directory
+that exists is bind-mounted on itself and remounted read-only (not
+recursively: a mount below it stays hidden from the scripts); the mounts
+are recorded in `/run/pinka-uninstall-guards`, so a run interrupted in the
+middle releases them on the next run or at the report. Tested with a fake
+dpkg whose scripts delete the data paths (`KeptDataTest`: guarded nothing
+is lost; unguarded no package goes; with `--purge-data` the same scripts do
+delete), and with real bind mounts in a private mount namespace
+(`test_the_guard_stops_a_package_script_on_a_real_mount`, root or `sudo -n`).
+
+Boot-time state: pinka writes three files read at boot,
+`/etc/modprobe.d/pinka-blacklist-nouveau.conf` (initramfs),
+`/etc/sysctl.d/60-pinka.conf` (`sysctl --system`, and the values before
+set back with `sysctl -w`) and `/etc/ld.so.conf.d/pinka-wsl.conf`
+(`ldconfig`); systemd units and drop-ins are followed by a daemon-reload,
+the units pinka enabled are disabled and the sleep targets unmasked. No
+role writes the boot loader's configuration, the kernel command line,
+modules-load files, dracut or initramfs-tools configuration or presets
+(`test_boot_time_state_is_restored_and_regenerated` fails if one starts
+to).
+
+### Found while building
+
+- The plan's warning for an SSH session over the tailnet read the key
+  `from_tailnet`; the host profile's key is `tailnet`. Fixed; a test now
+  checks every session key the module reads against the host profile's
+  schema.
+- bootstrap passed `skip_backup` and `infra_dir` to the play, which read
+  neither; they are no longer passed, and a test checks that the play reads
+  every option bootstrap passes.
+- A Docker that existed before pinka needs its Compose and buildx plugins
+  (preflight's `docker_plugins_missing`), so the variant installs
+  `docker-compose-v2` and `docker-buildx` with `docker.io`; the three names
+  were read in Ubuntu 24.04's noble-updates universe index on 2026-10-22.
+
+### Not verified here
+
+- Uninstall has run here only as a plan (`ansible-playbook --check
+  ansible/uninstall.yml` in this container); every removal step is tested
+  against a fake host, the guard also on real bind mounts. End to end it is verified only by the
+  `make test-distros` uninstall lane (VMs with Incus) and the real-machine
+  tests; both are the owner's to run.
+- Five `TODO(verify)` notes: the output of each family's test removal and
+  unneeded-package listing (`ansible/roles/uninstall/vars/*.yml`) and rpm
+  6's key naming (`ansible/roles/pkg/tasks/repo_rpm.yml`).
+- The pre-existing variant needs the test tailnet's policy to let
+  `tag:pinka-qa` own `tag:pinka-qa-owner`; that a node joining with an auth
+  key tagged `tag:pinka-qa` can advertise both tags is assumed, not
+  checked.
+- The snapshot's kept differences are the ones §5.4 implies; a first run of
+  the lane may find others (for example an update the distribution
+  installed during the test). Each is either a fix to uninstall or, with
+  its reason, a kept difference, never a wider `KEPT` to make a lane pass.

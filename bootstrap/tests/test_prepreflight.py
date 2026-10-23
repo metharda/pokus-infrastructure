@@ -16,7 +16,7 @@ import pytest
 from bashlib import BOOTSTRAP
 
 SCRIPT = BOOTSTRAP / "lib" / "prepreflight.sh"
-REAL_TOOLS = ("cat", "grep", "awk", "date", "chmod")
+REAL_TOOLS = ("cat", "grep", "awk", "date", "chmod", "mkdir", "cp")
 WSL2_KERNEL = "6.6.87.2-microsoft-standard-WSL2"
 
 
@@ -129,6 +129,10 @@ def test_wsl2_interactive_creates_wsl_conf(host: Host) -> None:
     assert res.returncode == 75
     conf = host.root / "etc" / "wsl.conf"
     assert conf.read_text() == "[boot]\nsystemd=true\n"
+    # There was none: uninstall removes it again (BUILD_PROMPT §5.4).
+    kept = host.root / "var/lib/pinka/originals/etc/wsl.conf"
+    assert not kept.exists()
+    assert Path(f"{kept}.absent").exists()
 
 
 def test_wsl2_interactive_appends_boot_section(host: Host) -> None:
@@ -137,6 +141,9 @@ def test_wsl2_interactive_appends_boot_section(host: Host) -> None:
     res = host.run("--interactive", answer="yes\n")
     assert res.returncode == 75
     assert conf.read_text() == "[network]\nhostname = lab\n\n[boot]\nsystemd=true\n"
+    # The original, before the install record exists (BUILD_PROMPT §5.4, §7.21).
+    kept = host.root / "var/lib/pinka/originals/etc/wsl.conf"
+    assert kept.read_text() == "[network]\nhostname = lab\n"
 
 
 def test_wsl2_interactive_declined(host: Host) -> None:

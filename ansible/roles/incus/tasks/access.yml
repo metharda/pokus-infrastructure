@@ -3,6 +3,25 @@
 # Researchers reach their personal project through incus-user, whose socket
 # only the incus group may use; nobody is added to incus-admin
 # (BUILD_PROMPT §6.1, safety invariant 4).
+# Uninstall takes back only the memberships pinka added (§5.4): noted first.
+- name: Read the members of the Incus user group
+  ansible.builtin.getent:
+    database: group
+    key: "{{ incus_groups.user }}"
+    fail_key: false
+
+- name: Record the researchers pinka adds to the Incus user group
+  pinka_install_record:
+    state: add
+    added:
+      memberships: >-
+        {{ researchers | map(attribute='name')
+           | pinka_new_memberships(incus_groups.user, incus_members) }}
+  vars:
+    incus_members: >-
+      {{ ((ansible_facts.getent_group | default({}))[incus_groups.user] | default(['', '', ''], true))[2]
+         | default('', true) | split(',') | select | list }}
+
 - name: Add researchers to the Incus user group
   ansible.builtin.user:
     name: "{{ item.name }}"

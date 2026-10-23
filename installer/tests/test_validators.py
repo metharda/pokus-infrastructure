@@ -203,3 +203,12 @@ def test_key_check_with_and_without_ssh_keygen() -> None:
         assert keys.check(line).keys == result.keys
     else:
         assert validators.ssh_keygen_fingerprint(line) is None
+
+
+def test_uninstall_confirmation() -> None:
+    assert validators.uninstall_confirmation("pinka-lab", "pinka-lab") is None
+    assert "type the machine name, pinka-lab" in str(
+        validators.uninstall_confirmation("", "pinka-lab")
+    )
+    for typed in ("pinka-lab ", "Pinka-lab", "pinka"):
+        assert "not the machine name" in str(validators.uninstall_confirmation(typed, "pinka-lab"))

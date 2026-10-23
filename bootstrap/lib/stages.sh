@@ -20,6 +20,13 @@ readonly LOG_DIR=/var/log/pinka-bootstrap
 readonly LOCK_FILE=/run/lock/pinka-bootstrap.lock
 readonly PINKA_LAB=/usr/local/bin/pinka
 readonly SIGNAL_CODES=' 65 75 76 77 '
+# Uninstall (§5.4): its working files, outside pinka's paths that it removes,
+# and its reports, which it keeps.
+readonly UNINSTALL_DIR=/run/pinka-uninstall
+readonly UNINSTALL_REPORT_DIR=/var/log/pinka-uninstall
+# The installer TUI runs from /opt/pinka: an uninstall it runs leaves the
+# tooling to the bootstrap that started the TUI, through this file.
+readonly TOOLING_HANDOFF=/run/pinka-uninstall-tooling
 
 # Run-time state (read by the EXIT trap and the state file).
 CURRENT_STAGE=''
@@ -353,6 +360,7 @@ state_json() {
   "infra_tree": "$(json_escape "$GIT_INFRA_TREE")",
   "infra_dirty": $(json_bool "$GIT_INFRA_DIRTY"),
   "infra_source": "$(json_escape "$GIT_SOURCE")",
+  "infra_dir": "$(json_escape "$INFRA_DIR")",
   "release_tag": "$(json_escape "$RELEASE_TAG")",
   "ref": "$(json_escape "${OPT_REF:-HEAD}")",
   "started_at": "$(json_escape "$STARTED_AT")",
@@ -439,7 +447,14 @@ stage_logging() {
   install -d -m 0700 "$LOG_DIR"
   LOG_FILE=$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ).log
   (umask 077 && : >>"$LOG_FILE")
-  exec > >(tee -a -- "$LOG_FILE") 2>&1
+  if "$OPT_JSON"; then
+    # --json: standard output carries only the JSON (on descriptor 8); the
+    # log goes to standard error.
+    exec 8>&1
+    exec > >(tee -a -- "$LOG_FILE" >&2) 2>&1
+  else
+    exec > >(tee -a -- "$LOG_FILE") 2>&1
+  fi
   TEE_PID=$!
   install -d -m 0755 "$(dirname -- "$LOCK_FILE")"
   exec 9>"$LOCK_FILE"
@@ -477,7 +492,8 @@ stage_git() {
   [[ -n $GIT_COMMIT && -n $GIT_INFRA_TREE ]] \
     || fail "$EXIT_OPERATOR" "cannot read the checked-out commit of $GIT_REPO_ROOT"
   STATE_ENABLED=true
-  "$OPT_CHECK" && STATE_ENABLED=false
+  # Check mode provisions nothing, and uninstall removes /etc/pinka.
+  if "$OPT_CHECK" || "$OPT_UNINSTALL"; then STATE_ENABLED=false; fi
   if [[ $GIT_SOURCE == package ]]; then
     if [[ -n $OPT_REF ]] && ! ref_matches_package "$OPT_REF"; then
       fail "$EXIT_OPERATOR" "--ref $OPT_REF is not this package's release (${RELEASE_TAG:-no tag}, commit $GIT_COMMIT); unpack that release's package"
@@ -587,9 +603,10 @@ tui_bootstrap_args() {
 # run_tui: hand the terminal to the installer TUI (§5.3, §18). The lock is
 # released and the output no longer goes through the log writer: the TUI runs
 # bootstrap again, non-interactively, for the installation itself, and that
-# run writes its own log, state file and events.
+# run writes its own log, state file and events. When the TUI ends, the
+# /opt/pinka an uninstall it ran left behind (the TUI runs from it) goes.
 run_tui() {
-  local arg
+  local arg rc=0
   local -a args=()
   [[ -n $OPT_MACHINE ]] && args+=(--machine "$OPT_MACHINE")
   [[ -n $OPT_ANSWERS ]] && args+=(--answers "$OPT_ANSWERS")
@@ -602,9 +619,23 @@ run_tui() {
   trap - ERR EXIT
   flock -u 9
   exec 9>&- </dev/tty >/dev/tty 2>&1
-  exec env PYTHONPATH="$INFRA_DIR/installer:$INFRA_DIR/tools/platform" PINKA_BOOTSTRAP_LOG="$LOG_FILE" \
-    "$INSTALLER_VENV/bin/python" -m pinka_installer \
-    --infra "$INFRA_DIR" tui "${args[@]}"
+  rm -f -- "$TOOLING_HANDOFF"
+  env PYTHONPATH="$INFRA_DIR/installer:$INFRA_DIR/tools/platform" PINKA_BOOTSTRAP_LOG="$LOG_FILE" \
+    PINKA_TOOLING_HANDOFF="$TOOLING_HANDOFF" "$INSTALLER_VENV/bin/python" -m pinka_installer \
+    --infra "$INFRA_DIR" tui "${args[@]}" || rc=$?
+  finish_tooling_handoff "$TOOLING_HANDOFF" "$PINKA_OPT" || rc=$EXIT_UNINSTALL_KEPT
+  exit "$rc"
+}
+
+# finish_tooling_handoff FILE DIR: after the TUI ended, remove DIR (/opt/pinka)
+# when an uninstall the TUI ran left it (FILE names that uninstall's report),
+# and close the report's pending item (§5.4). False when DIR stays.
+finish_tooling_handoff() {
+  [[ -f $1 ]] || return 0
+  UNINSTALL_REPORT=$(head -n 1 -- "$1")
+  rm -f -- "$1"
+  remove_tooling "$2"
+  [[ ! -e $2 ]]
 }
 
 # terminal_problem: print why this terminal cannot show the TUI, or nothing.
@@ -919,5 +950,292 @@ stage_doctor() {
       FINAL_RC=$EXIT_DOCTOR_FAILURES
       ;;
   esac
+  leave_stage
+}
+
+# ---------------------------------------------------------------------------
+# Uninstall (§5.4): bootstrap.sh --uninstall
+# ---------------------------------------------------------------------------
+
+# Whether /opt/pinka existed when this run began: a dry run removes the
+# tooling it had to install for itself, so it leaves the host as it was.
+OPT_EXISTED=false
+UNINSTALL_MACHINE=''
+UNINSTALL_REPORT=''
+# The report's one item the play leaves open: /opt/pinka, which bootstrap
+# removes after the play that runs from it.
+readonly PENDING_ITEM='"result": "pending"'
+readonly PENDING_REASON='bootstrap removes it after the play'
+
+# json_field FILE KEY: print a top-level value of a JSON object file, a
+# string as it is and anything else as JSON; nothing when it is missing.
+json_field() {
+  pinka_python -c '
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        value = json.load(handle).get(sys.argv[2])
+except (OSError, ValueError, AttributeError):
+    sys.exit(0)
+if value is not None:
+    print(value if isinstance(value, str) else json.dumps(value))
+' "$1" "$2"
+}
+
+# confirm_yes QUESTION: ask a yes/no question whose default is yes; false
+# when prompting is not allowed or the answer is no.
+confirm_yes() {
+  local answer=''
+  "$INTERACTIVE" || return 1
+  printf '%s [Y/n] ' "$1" >&2
+  read -r answer || return 1
+  [[ -z $answer || $answer == [yY] || $answer == [yY][eE][sS] ]]
+}
+
+# ask_typed PROMPT: print the line the operator types; false when prompting
+# is not allowed.
+ask_typed() {
+  local answer=''
+  "$INTERACTIVE" || return 1
+  printf '%s ' "$1" >&2
+  read -r answer || return 1
+  printf '%s' "$answer"
+}
+
+# uninstall_machine STATE_FILE: set UNINSTALL_MACHINE to the machine name the
+# install recorded in the state file; --machine, when given, must name the
+# same. Without a state file, --machine names it. Returns
+# EXIT_UNINSTALL_REFUSED when they differ.
+uninstall_machine() {
+  local recorded=''
+  [[ -f $1 ]] && recorded=$(json_field "$1" machine)
+  if [[ -n $recorded && -n $OPT_MACHINE && $OPT_MACHINE != "$recorded" ]]; then
+    log_error "--machine $OPT_MACHINE is not this host's machine: $1 names $recorded"
+    return "$EXIT_UNINSTALL_REFUSED"
+  fi
+  UNINSTALL_MACHINE=${recorded:-$OPT_MACHINE}
+}
+
+# uninstall_confirmed: true when the operator confirmed the removal with the
+# machine name: typed on the terminal (twice with --purge-data, the second
+# time for the lab's data) or given with --confirm-machine.
+uninstall_confirmed() {
+  local typed
+  if [[ -n $OPT_CONFIRM_MACHINE ]]; then
+    if [[ $OPT_CONFIRM_MACHINE != "$UNINSTALL_MACHINE" ]]; then
+      log_error "--confirm-machine $OPT_CONFIRM_MACHINE is not this host's machine name"
+      return 1
+    fi
+    return 0
+  fi
+  if ! "$INTERACTIVE"; then
+    log_error "without a terminal, uninstall needs the machine name: --confirm-machine NAME"
+    return 1
+  fi
+  typed=$(ask_typed "Type the machine name ($UNINSTALL_MACHINE) to remove pinka from this host:") || return 1
+  if [[ $typed != "$UNINSTALL_MACHINE" ]]; then
+    log_error "the typed name differs"
+    return 1
+  fi
+  "$OPT_PURGE_DATA" || return 0
+  typed=$(ask_typed "--purge-data also deletes the lab's data. Type the machine name again to delete it:") \
+    || return 1
+  if [[ $typed != "$UNINSTALL_MACHINE" ]]; then
+    log_error "the typed name differs"
+    return 1
+  fi
+}
+
+# offer_backup PLAN PINKA: before anything is removed, take a backup with
+# 'pinka backup now' when the plan says one can be taken (a restic repository
+# is configured and pinka is installed), unless --skip-backup or the operator
+# declines (§5.4). Returns EXIT_UNINSTALL_REFUSED when the backup fails.
+offer_backup() {
+  "$OPT_SKIP_BACKUP" && return 0
+  [[ $(json_field "$1" backup) == true ]] || return 0
+  if "$INTERACTIVE" && ! confirm_yes "A restic repository is configured. Back up the lab first (pinka backup now)?"; then
+    log_warn "no backup taken: declined"
+    return 0
+  fi
+  log_info "backing up the lab first: $2 backup now"
+  if ! "$2" backup now; then
+    log_error "the backup failed (output above); nothing was removed: fix the backup, or re-run with --skip-backup"
+    return "$EXIT_UNINSTALL_REFUSED"
+  fi
+}
+
+# uninstall_vars_json MODE DIR: the variables of uninstall.yml: the host
+# profile (DIR/host-profile.json) and this run's options; the plan in DIR.
+uninstall_vars_json() {
+  printf '{"host_profile": %s,\n' "$(cat -- "$2/host-profile.json")"
+  cat <<JSON
+ "pinka_uninstall": {
+  "mode": "$1",
+  "machine": "$(json_escape "$UNINSTALL_MACHINE")",
+  "purge_data": $(json_bool "$OPT_PURGE_DATA"),
+  "remove_components": $(json_list "$OPT_REMOVE_COMPONENTS"),
+  "plan_file": "$(json_escape "$2/plan.json")",
+  "plan_text": "$(json_escape "$2/plan.txt")",
+  "report_file": "$(json_escape "$UNINSTALL_REPORT")",
+  "started_at": "$(json_escape "$STARTED_AT")",
+  "repo_commit": "$(json_escape "$GIT_COMMIT")",
+  "log_file": "$(json_escape "$LOG_FILE")",
+  "opt_existed": $(json_bool "$OPT_EXISTED")
+ }
+}
+JSON
+}
+
+# run_uninstall_play MODE DIR: run uninstall.yml in MODE (plan or apply)
+# with its working files in DIR. It runs without the group and host variables
+# (ANSIBLE_VARS_ENABLED empty), so it needs neither the machine's files nor
+# the vault (§5.4).
+run_uninstall_play() {
+  local rc=0 vars=$2/vars-$1.json
+  local -a cmd=()
+  (umask 077 && uninstall_vars_json "$1" "$2" >"$vars")
+  cmd=("$ANSIBLE_VENV/bin/ansible-playbook" -i "$INFRA_DIR/ansible/inventory/hosts.yml"
+    "$INFRA_DIR/ansible/uninstall.yml" -e "@$vars")
+  log_info "running: ${cmd[*]}"
+  (cd -- "$INFRA_DIR/ansible" \
+    && ANSIBLE_CONFIG=$INFRA_DIR/ansible/ansible.cfg ANSIBLE_VARS_ENABLED='' LC_ALL=C.UTF-8 \
+      LANG=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 "${cmd[@]}") || rc=$?
+  if ((rc != 0)); then
+    log_error "ansible-playbook failed with exit status $rc; the failing task is above and in the log"
+    return "$EXIT_ANSIBLE"
+  fi
+}
+
+# report_summary REPORT: one line with the number of items per result.
+report_summary() {
+  pinka_python -c '
+import collections, json, sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    items = json.load(handle).get("items", [])
+counts = collections.Counter(item.get("result") for item in items)
+print(", ".join(f"{n} {name}" for name, n in sorted(counts.items())) or "nothing")
+' "$1"
+}
+
+# report_notes REPORT: what the owner needs after the uninstall, one line
+# each: where the kept backups' key is, why to reboot, what to do afterwards,
+# taking the kept secrets off the host first (owner, D2 review).
+report_notes() {
+  pinka_python -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    report = json.load(handle)
+if report.get("backup_access"):
+    print("kept backups: their key and settings are in %s (root only; %s/README.txt says how)"
+          % (report["backup_access"], report.get("kept_dir", "")))
+for reason in report.get("reboot_reasons") or []:
+    print("reboot needed: " + reason + "; uninstall never reboots")
+for step in report.get("follow_ups") or []:
+    print("afterwards: " + step)
+' "$1"
+}
+
+# remove_tooling DIR: remove /opt/pinka last, after the play that ran from
+# it, and close the report's pending item with the result (§5.4).
+remove_tooling() {
+  local result=removed reason='removed last, after the play'
+  if ! rm -rf -- "$1"; then
+    result=failed
+    reason='could not be removed; the error is in the log'
+    log_error "$1 could not be removed; remove it yourself: rm -rf $1"
+  fi
+  [[ -f $UNINSTALL_REPORT ]] || return 0
+  sed -i -e "s|$PENDING_ITEM|\"result\": \"$result\"|" \
+    -e "s|\"reason\": \"$PENDING_REASON\"|\"reason\": \"$reason\"|" \
+    -- "$UNINSTALL_REPORT"
+}
+
+# finish_uninstall: from the EXIT trap: with --json, print the report, or the
+# plan when nothing was removed; then remove the working files.
+finish_uninstall() {
+  if "$OPT_JSON"; then
+    if [[ -n $UNINSTALL_REPORT && -f $UNINSTALL_REPORT ]]; then
+      cat -- "$UNINSTALL_REPORT" >&8
+    elif [[ -f $UNINSTALL_DIR/plan.json ]]; then
+      cat -- "$UNINSTALL_DIR/plan.json" >&8
+    fi
+  fi
+  rm -rf -- "$UNINSTALL_DIR"
+}
+
+# stage_uninstall_profile: preflight, read-only and offline, for the family
+# and the components the plan needs. Its outcome decides nothing: every
+# host can be uninstalled.
+stage_uninstall_profile() {
+  local rc=0
+  enter_stage preflight
+  install -d -m 0700 "$UNINSTALL_DIR"
+  "$INFRA_DIR/preflight/pinka-preflight" --no-write --quiet --offline \
+    --output "$UNINSTALL_DIR/host-profile.json" --repo-commit "$GIT_COMMIT" || rc=$?
+  case $rc in
+    0 | 10 | 20 | 30) ;;
+    *) fail "$EXIT_PREFLIGHT_ERROR" "preflight failed (exit status $rc); the traceback is above and in the log" ;;
+  esac
+  leave_stage
+}
+
+# uninstall_flow DIR REPORT_DIR STATE_FILE: compute and show the plan (in
+# DIR); with --dry-run stop there; then offer a backup, take the typed
+# confirmation, remove, remove /opt/pinka last and report in REPORT_DIR
+# (§5.4). Sets FINAL_RC; a refusal ends bootstrap with 80.
+uninstall_flow() {
+  local dir=$1 plan=$1/plan.json refusal count summary notes line failed
+  UNINSTALL_REPORT=$2/$(date -u +%Y%m%dT%H%M%SZ).json
+  uninstall_machine "$3" || exit "$?"
+  run_uninstall_play plan "$dir" || exit "$?"
+  [[ -f $plan && -f $dir/plan.txt ]] || fail "$EXIT_INTERNAL" "uninstall.yml wrote no plan"
+  cat -- "$dir/plan.txt"
+  refusal=$(json_field "$plan" refusal)
+  [[ -z $refusal ]] || fail "$EXIT_UNINSTALL_REFUSED" "uninstall refused: $refusal"
+  count=$(json_field "$plan" to_remove)
+  if "$OPT_DRY_RUN" || [[ $count == 0 ]]; then
+    "$OPT_EXISTED" || rm -rf -- "$PINKA_OPT"
+    if "$OPT_DRY_RUN"; then
+      log_info "dry run: nothing was removed"
+    else
+      log_info "nothing of pinka's is on this host; nothing was removed"
+    fi
+    FINAL_RC=$EXIT_OK
+    return 0
+  fi
+  [[ -n $UNINSTALL_MACHINE ]] || fail "$EXIT_UNINSTALL_REFUSED" \
+    "$3 is missing, so the machine name is unknown: pass --machine NAME, the name this host was installed as"
+  offer_backup "$plan" "$PINKA_LAB" || exit "$?"
+  uninstall_confirmed || fail "$EXIT_UNINSTALL_REFUSED" "uninstall not confirmed; nothing was removed"
+  # Logging out a node pinka joined ends an SSH session over the tailnet:
+  # uninstall goes on without its terminal, and its report says how it ended.
+  trap '' HUP
+  run_uninstall_play apply "$dir" || exit "$?"
+  [[ -f $UNINSTALL_REPORT ]] || fail "$EXIT_INTERNAL" "uninstall.yml wrote no report"
+  summary=$(report_summary "$UNINSTALL_REPORT")
+  notes=$(report_notes "$UNINSTALL_REPORT")
+  if [[ -n ${PINKA_TOOLING_HANDOFF:-} ]]; then
+    printf '%s\n' "$UNINSTALL_REPORT" >"$PINKA_TOOLING_HANDOFF"
+    log_info "$PINKA_OPT is removed when the installer, which runs from it, ends"
+  else
+    remove_tooling "$PINKA_OPT"
+  fi
+  failed=$(grep -c '"result": "failed"' -- "$UNINSTALL_REPORT" || true)
+  log_info "uninstall: $summary (before $PINKA_OPT); report: $UNINSTALL_REPORT"
+  while IFS= read -r line; do
+    [[ -z $line ]] || log_warn "$line"
+  done <<<"$notes"
+  if ((failed > 0)); then
+    log_error "$failed item(s) could not be removed; the report names each and why"
+    FINAL_RC=$EXIT_UNINSTALL_KEPT
+  else
+    FINAL_RC=$EXIT_OK
+  fi
+}
+
+# stage_uninstall: bootstrap.sh --uninstall after its tooling (§5.4).
+stage_uninstall() {
+  enter_stage uninstall
+  uninstall_flow "$UNINSTALL_DIR" "$UNINSTALL_REPORT_DIR" "$STATE_FILE"
   leave_stage
 }

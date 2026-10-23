@@ -24,6 +24,7 @@ SCREENSHOTS = (
     "review",
     "progress",
     "doctor",
+    "uninstall",
 )
 CLI_INTRO = (
     "`python -m pinka_installer` is the installer behind `bootstrap.sh`: bootstrap runs it "
@@ -35,7 +36,8 @@ EXIT_TEXT = (
     "Exit status of validate, describe and apply: 0 done, 1 an operator action is needed (the "
     "reason is printed), 2 usage error. The TUI exits with the installation's status: "
     "doctor's 0, 1 or 2 after Finish, 75 or 76 when WSL or the host must restart, and 77 when "
-    "the operator quit before the installation finished or the terminal is unsuitable."
+    "the operator quit before the installation finished or the terminal is unsuitable; after "
+    "Uninstall, with bootstrap's status of the uninstall (0, 80 or 81)."
 )
 
 

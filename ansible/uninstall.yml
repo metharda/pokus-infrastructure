@@ -1,0 +1,30 @@
+# Managed by pinka (ansible/uninstall.yml). Local changes will be overwritten.
+#
+# Uninstall (BUILD_PROMPT §5.4), run by bootstrap.sh --uninstall: in mode plan
+# it writes the plan and changes nothing; in mode apply it removes the
+# confirmed plan and writes the report. Bootstrap runs it without the group
+# and host variables (ANSIBLE_VARS_ENABLED empty), so it needs neither the
+# machine's files nor the vault, and passes host_profile (a fresh, read-only
+# preflight) and pinka_uninstall.
+- name: Uninstall pinka
+  hosts: localhost
+  gather_facts: false
+  pre_tasks:
+    - name: Check the variables passed by bootstrap
+      ansible.builtin.assert:
+        that:
+          - host_profile is mapping
+          - pinka_uninstall is mapping
+          - pinka_uninstall.mode in ['plan', 'apply']
+        fail_msg: "Run this play through bootstrap/bootstrap.sh --uninstall, which passes host_profile and pinka_uninstall."
+        quiet: true
+
+  tasks:
+    - name: Derive the family facts
+      ansible.builtin.import_role:
+        name: platform_facts
+        tasks_from: family
+
+    - name: Uninstall
+      ansible.builtin.import_role:
+        name: uninstall

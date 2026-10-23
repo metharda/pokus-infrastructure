@@ -188,6 +188,15 @@ def standin_script(port: int, python: str = deploy.PYTHON) -> str:
     )
 
 
+def standin_removal() -> str:
+    """Bash: the stand-in goes again, before uninstall (it is the harness's, not pinka's)."""
+    unit = f"/etc/systemd/system/{STANDIN_UNIT}.service"
+    return (
+        f"systemctl disable --now --quiet {STANDIN_UNIT} 2>/dev/null;"
+        f" rm -f {unit} && systemctl daemon-reload"
+    )
+
+
 def last_json(stdout: str) -> dict[str, Any]:
     """The last line of output that is a JSON object.
 
