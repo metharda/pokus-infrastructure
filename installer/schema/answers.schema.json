@@ -151,9 +151,16 @@
           "description": "loop: a loop file inside the system; device: a dedicated disk, formatted."
         },
         "loop_size_gib": {
-          "type": "integer",
-          "minimum": 20,
-          "description": "Size of the loop file (source loop), at least 20 GiB."
+          "anyOf": [
+            {
+              "const": "auto"
+            },
+            {
+              "type": "integer",
+              "minimum": 20
+            }
+          ],
+          "description": "Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space, BUILD_PROMPT §2.3), or whole GiB, at least 20."
         },
         "device": {
           "type": "string",

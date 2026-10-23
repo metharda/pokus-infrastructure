@@ -180,7 +180,7 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
             pilot.app.screen.query(".banner.warn").results(Static).__next__().content
         )
         await forward(pilot, "storage")
-        await forward(pilot, "researchers")  # loop file of 300 GiB fits 500 GiB free
+        await forward(pilot, "researchers")  # auto: preflight sizes the loop file
         await add_researcher(pilot, "researcher2", key)
         await forward(pilot, "remote")
         assert pilot.app.screen.query_one("#ifaces").disabled  # WSL: Windows owns the network
@@ -649,7 +649,7 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         await forward(pilot, "storage")
         fill(pilot, loop_size="10")
         await forward(pilot, "storage")
-        assert shown_errors(pilot) == ["✖ at least 20 GiB"]
+        assert shown_errors(pilot) == ["✖ auto, or at least 20 GiB"]
         fill(pilot, loop_size="460")
         await forward(pilot, "storage")
         assert shown_errors(pilot) == ["✖ at most 450 GiB fits here"]

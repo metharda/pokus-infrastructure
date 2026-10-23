@@ -5,8 +5,11 @@
 incus_pool_name: pinka-targets
 # loop (a file inside the root filesystem) or device (a dedicated disk).
 incus_pool_source: loop
-# Size of a loop pool.
-incus_pool_size: 300GiB
+# Size of a loop pool: auto (computed by preflight from the golden images,
+# the concurrent targets' root disks and a margin, limited by the free space
+# where the loop file goes; BUILD_PROMPT §2.3) or a size such as 300GiB. An
+# existing pool keeps its size.
+incus_pool_size: auto
 # Dedicated device (use /dev/disk/by-id/...). Nothing is formatted unless
 # incus_pool_device_confirm repeats it exactly (BUILD_PROMPT §13.1).
 incus_pool_device: ""

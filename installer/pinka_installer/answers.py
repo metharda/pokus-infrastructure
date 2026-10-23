@@ -82,7 +82,9 @@ class Storage:
     """Screen 6: the Incus storage pool."""
 
     source: str = "loop"
-    loop_size_gib: int = 300
+    # auto: computed by preflight from the targets, the golden images and the
+    # free space (BUILD_PROMPT §2.3); or whole GiB.
+    loop_size_gib: int | str = "auto"
     device: str = ""
     device_confirm: str = ""
     force_wipe: bool = False

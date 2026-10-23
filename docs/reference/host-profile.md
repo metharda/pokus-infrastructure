@@ -164,6 +164,11 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `requirements.growth.gib_per_week` | number | yes | — |
 | `requirements.growth.days_until_full` | integer or null | yes | The day the disk fills at this rate; null if the retention keeps it below the free space for ten years. |
 | `requirements.growth.items` | array | yes | — |
+| `requirements.pool` | object or null | yes | The Incus pool's size (§2.3): a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node. |
+| `requirements.pool.source` | one of `loop`, `device` | yes | — |
+| `requirements.pool.size_gib` | number or null | yes | — |
+| `requirements.pool.basis` | one of `computed`, `configured` | yes | — |
+| `requirements.pool.detail` | string | yes | — |
 | `requirements.notes` | array | yes | — |
 | `features` | object | yes | — |
 | `features.gpu_inference` | boolean | yes | — |

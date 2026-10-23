@@ -69,7 +69,7 @@ def test_round_trip_through_the_file(repo: Paths, tmp_path: Path) -> None:
     path = tmp_path / "answers.yml"
     path.write_text(answers_mod.dumps(answers), encoding="utf-8")
     assert answers_mod.load(path, apply.context(repo)) == answers.normalized()
-    assert answers.normalized().storage.loop_size_gib == 300  # not used with a device
+    assert answers.normalized().storage.loop_size_gib == "auto"  # not used with a device
     assert path.read_text().startswith("# Installer answers for pinka-lab")
 
 

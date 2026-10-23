@@ -281,7 +281,11 @@ def plan_defaults(root: Path) -> dict[str, Any]:
         "docker_data_root": str(docker["docker_data_root"]),
         "pool": {
             "source": str(incus["incus_pool_source"]),
-            "size_gib": size_gib(incus["incus_pool_size"]),
+            "size_gib": (
+                None
+                if str(incus["incus_pool_size"]) == "auto"
+                else size_gib(incus["incus_pool_size"])
+            ),
         },
         "concurrent_targets": int(incus["incus_concurrent_targets"]),
         "model": None,
@@ -348,6 +352,15 @@ def requirements_json(root: Path) -> str:
     data["disk"]["pool_file"] = f"{data['disk']['incus_dir']}/disks/{incus['incus_pool_name']}.img"
     data["target_memory_gib"] = {
         name: size_gib(incus[f"incus_{key}"]["memory"])
+        for name, key in (
+            ("container", "target_container"),
+            ("vm", "target_vm"),
+            ("probe_client", "probe_client"),
+            ("build", "build_instance"),
+        )
+    }
+    data["target_root_gib"] = {
+        name: size_gib(incus[f"incus_{key}"]["root_size"])
         for name, key in (
             ("container", "target_container"),
             ("vm", "target_vm"),

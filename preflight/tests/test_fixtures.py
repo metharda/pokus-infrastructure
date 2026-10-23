@@ -205,6 +205,10 @@ class FixtureDecisionTest(unittest.TestCase):
             elif key == "access":
                 found = {field: doc["access"][field] for field in value}
                 self.assertEqual(found, value, f"{name}: access")
+            elif key == "pool":
+                pool = doc["requirements"]["pool"]
+                for field, wanted in value.items():
+                    self.assertEqual(pool[field], wanted, f"{name}: pool {field}")
             elif key == "switches":
                 switches = doc["requirements"]["switches"]
                 for path, wanted in value.items():

@@ -11,7 +11,7 @@ argument_specs:
       host_profile:
         type: dict
         required: true
-        description: Host profile (storage_backend, hardware) passed by bootstrap.
+        description: Host profile (storage_backend, hardware, requirements.pool) passed by bootstrap.
       pinka_bootstrap:
         type: dict
         required: true
@@ -31,8 +31,11 @@ argument_specs:
         description: A loop file in the root filesystem, or a dedicated device.
       incus_pool_size:
         type: str
-        default: 300GiB
-        description: Size of a loop pool.
+        default: auto
+        description: >-
+          Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden
+          images, the concurrent targets' root disks and the free space (host profile
+          requirements.pool, BUILD_PROMPT §2.3). An existing pool keeps its size.
       incus_pool_device:
         type: str
         default: ""

@@ -271,6 +271,8 @@ class Requirements:
         cpu_threads: The CPU estimate of the running parts (information).
         disks: The disk known at install, per mount point.
         growth: What grows with use.
+        pool: The Incus pool's size (``source``, ``size_gib``, ``basis``
+            ``computed`` or ``configured``, ``detail``); empty on an inference node.
         unsupported: Why the plan does not fit (memory below the floor or the
             required value, a disk shortfall).
         degraded: Why it fits only with consent (memory below the recommended value).
@@ -290,6 +292,7 @@ class Requirements:
     cpu_threads: float = 0.0
     disks: list[MountCheck] = field(default_factory=list)
     growth: Growth | None = None
+    pool: dict[str, Any] = field(default_factory=dict)
     unsupported: list[str] = field(default_factory=list)
     degraded: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -316,6 +319,7 @@ class Requirements:
             "cpu_threads": {"estimated": self.cpu_threads},
             "disk": [asdict(m) for m in self.disks],
             "growth": asdict(self.growth) if self.growth else None,
+            "pool": dict(self.pool) or None,
             "notes": list(self.notes),
         }
 
@@ -844,7 +848,9 @@ def _disk_items(
         )
     if role in LAB_ROLES:
         pool = plan["pool"]
-        if pool["source"] == "loop":
+        # A loop pool of incus_pool_size: auto comes last (_auto_pool): it
+        # follows the free space left after every other item.
+        if pool["source"] == "loop" and pool["size_gib"] is not None:
             add(
                 "pool",
                 "the Incus pool (loop file)",
@@ -854,11 +860,8 @@ def _disk_items(
                 basis="configured",
                 source="incus_pool_size: a loop file counts fully",
             )
-        else:
-            notes.append(
-                f"the Incus pool is a dedicated device of {text_gib(pool['size_gib'])}: "
-                "on no mount point"
-            )
+        elif pool["source"] == "device":
+            notes.append("the Incus pool is a dedicated device: on no mount point")
         for name in plan["images"]:
             blueprint = data["blueprints"].get(name)
             if blueprint is None:
@@ -883,6 +886,124 @@ def _disk_items(
     return out
 
 
+def _measure(fs: FileSystem, runner: Runner, path: str, measured: dict[str, DiskInfo]) -> DiskInfo:
+    """``disk_info`` once per path."""
+    if path not in measured:
+        measured[path] = disk_info(fs, runner, path)
+    return measured[path]
+
+
+def _growth_caps(data: Mapping[str, Any], plan: Mapping[str, Any]) -> float:
+    """What the stores below the research space hold at their retention (GiB)."""
+    total = 0.0
+    retention = plan["retention"]
+    for spec in data["growth"]:
+        if plan["node_role"] not in spec["roles"] or not spec.get("retention"):
+            continue
+        cap = float(spec["gib_per_day"]) * float(retention[spec["retention"]])
+        size_cap = float(retention.get(spec.get("size_cap") or "", 0) or 0)
+        total += min(cap, size_cap) if size_cap > 0 else cap
+    return total
+
+
+def _pool(
+    data: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    entries: list[tuple[DiskItem, str]],
+    *,
+    features: Mapping[str, bool],
+    fs: FileSystem,
+    runner: Runner,
+    measured: dict[str, DiskInfo],
+    warnings: list[str],
+) -> dict[str, Any]:
+    """The pool's size, and for incus_pool_size: auto its loop file item (§2.3).
+
+    The computed size: the golden images and the concurrent targets' root
+    disks (or the build instance's, when larger) with the margin, rounded up
+    to whole GiB, limited by the free space on the loop file's mount point
+    minus pinka's other needs there, never below the floor. The item is
+    appended to ``entries``.
+    """
+    pool = plan["pool"]
+    if pool["source"] == "device":
+        return {"source": "device", "size_gib": None, "basis": "configured", "detail": ""}
+    if pool["size_gib"] is not None:
+        size = float(pool["size_gib"])
+        return {
+            "source": "loop",
+            "size_gib": gib(size),
+            "basis": "configured",
+            "detail": f"incus_pool_size {text_gib(size)}",
+        }
+    spec, roots = data["pool"], data["target_root_gib"]
+    path = str(data["disk"]["pool_file"])
+    images = sum(float(data["blueprints"][n]["estimated_size_gib"]) for n in plan["images"])
+    target = float(roots["vm" if features.get("vm_targets") else "container"])
+    count = int(plan["concurrent_targets"])
+    running = count * (target + float(roots["probe_client"]))
+    build = float(roots["build"]) if plan["images"] else 0.0
+    base = images + max(running, build)
+    wanted = math.ceil(base * (1 + float(spec["margin"])) - EPSILON)
+    floor = int(spec["floor_gib"])
+    disks = (
+        f"{count} x ({text_gib(target)} target + "
+        f"{text_gib(float(roots['probe_client']))} probe client) root disks"
+    )
+    if build > running:
+        disks = f"the {text_gib(build)} build instance's root disk (larger than {disks})"
+    elif build:
+        disks += f" (the {text_gib(build)} build instance is not larger)"
+    detail = (
+        f"golden images {text_gib(images)} + {disks} + {float(spec['margin']):.0%} = {wanted} GiB"
+    )
+    info = _measure(fs, runner, path, measured)
+    mount = info.mount or info.checked_path
+    if fs.exists(path):
+        size = float(wanted)
+        detail = "the existing pool keeps its size (Incus pools are never rewritten)"
+    elif info.free_bytes is None:
+        size = float(max(floor, wanted))
+        warnings.append(f"disk: the free space of {mount} could not be measured for the pool")
+    else:
+        others = sum(
+            item.size_gib
+            for item, item_path in entries
+            if not item.present
+            and (_measure(fs, runner, item_path, measured).mount or item_path) == mount
+        )
+        srv = _measure(fs, runner, str(plan["srv_path"]), measured)
+        growth = _growth_caps(data, plan) if (srv.mount or srv.checked_path) == mount else 0.0
+        available = info.free_bytes / GIB - others - growth
+        size = float(max(floor, min(wanted, math.floor(available + EPSILON))))
+        detail += (
+            f"; {available:.1f} GiB free on {mount} after pinka's other needs there "
+            f"({text_gib(others)} at install"
+            + (f", {text_gib(growth)} the stores hold at their retention" if growth else "")
+            + ")"
+        )
+        if size < wanted:
+            floored = f" (the floor of {floor} GiB)" if size == floor else ""
+            detail += f", so {size:g} GiB{floored}"
+    entries.append(
+        (
+            DiskItem(
+                "pool",
+                "the Incus pool (loop file)",
+                path,
+                "",
+                size,
+                fs.exists(path),
+                0.0,
+                "estimated",
+                "incus_pool_size: auto, computed (preflight/requirements.yml pool)",
+            ),
+            path,
+        )
+    )
+    return {"source": "loop", "size_gib": gib(size), "basis": "computed", "detail": detail}
+
+
 def _up(value: float) -> float:
     """Round up to a tenth, so that a small shortfall never reads as 0.0."""
     return math.ceil(value * 10 - 1e-9) / 10
@@ -901,9 +1022,12 @@ def _distribute(items: list[DiskItem], shortfall: float) -> None:
 
 
 def _disks(
-    entries: list[tuple[DiskItem, str]], fs: FileSystem, runner: Runner, req: Requirements
+    entries: list[tuple[DiskItem, str]],
+    fs: FileSystem,
+    runner: Runner,
+    req: Requirements,
+    measured: dict[str, DiskInfo],
 ) -> dict[str, DiskInfo]:
-    measured: dict[str, DiskInfo] = {}
     mounts: dict[str, MountCheck] = {}
     exact: dict[str, float | None] = {}
     for item, path in entries:
@@ -1063,7 +1187,19 @@ def compute(
         warnings=req.warnings,
         notes=req.notes,
     )
-    measured = _disks(entries, fs, runner, req)
+    measured: dict[str, DiskInfo] = {}
+    if str(plan["node_role"]) in LAB_ROLES:
+        req.pool = _pool(
+            data,
+            plan,
+            entries,
+            features=features,
+            fs=fs,
+            runner=runner,
+            measured=measured,
+            warnings=req.warnings,
+        )
+    measured = _disks(entries, fs, runner, req, measured)
     srv = str(plan["srv_path"])
     srv_info = measured.get(f"{srv.rstrip('/')}/models") or disk_info(fs, runner, srv)
     req.growth = _growth(data, plan, req, srv_info)

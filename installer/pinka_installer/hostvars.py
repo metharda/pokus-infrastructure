@@ -129,7 +129,9 @@ def _storage(answers: Answers) -> dict[str, Any]:
     device = storage.source == "device"
     return {
         "incus_pool_source": storage.source,
-        "incus_pool_size": f"{storage.loop_size_gib}GiB",
+        "incus_pool_size": (
+            "auto" if storage.loop_size_gib == "auto" else f"{storage.loop_size_gib}GiB"
+        ),
         "incus_pool_device": storage.device if device else "",
         "incus_pool_device_confirm": storage.device_confirm if device else "",
         "incus_pool_device_force_wipe": storage.force_wipe if device else False,
@@ -406,8 +408,10 @@ def _resources_from(values: Mapping[str, Any], answers: Answers) -> None:
 def _storage_from(values: Mapping[str, Any], answers: Answers) -> None:
     storage = answers.storage
     storage.source = str(values.get("incus_pool_source", storage.source))
-    size = str(values.get("incus_pool_size", f"{storage.loop_size_gib}GiB"))
-    if size.endswith("GiB") and size[:-3].isdigit():
+    size = str(values.get("incus_pool_size", "auto"))
+    if size == "auto":
+        storage.loop_size_gib = "auto"
+    elif size.endswith("GiB") and size[:-3].isdigit():
         storage.loop_size_gib = int(size[:-3])
     storage.device = str(values.get("incus_pool_device", ""))
     storage.device_confirm = str(values.get("incus_pool_device_confirm", ""))

@@ -8,6 +8,7 @@ thresholds these tests compute.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shlex
 import tempfile
@@ -178,6 +179,80 @@ class MemoryTest(ComputeCase):
         self.assertEqual(req.switches.memory_max_gib, 4)  # the floor
 
 
+class PoolTest(ComputeCase):
+    """incus_pool_size: auto (§2.3): the targets and golden images, limited by the free space."""
+
+    def pool(self, req: reqs.Requirements) -> tuple[float, bool]:
+        item = next(i for m in req.disks for i in m.items if i.id == "pool")
+        return item.size_gib, item.present
+
+    def test_defaults(self) -> None:
+        # 3.7 GiB of golden images + 2 x (16 GiB VM + 4 GiB probe client), + 50 %.
+        req = self.compute(GPU)
+        self.assertEqual(req.pool["size_gib"], 66)
+        self.assertEqual(req.pool["basis"], "computed")
+        self.assertEqual(self.pool(req), (66.0, False))
+        self.assertIn("+ 50% = 66 GiB", req.pool["detail"])
+        containers = self.compute({**GPU, "vm_targets": False})
+        self.assertEqual(containers.pool["size_gib"], 42)
+        four = self.compute(GPU, concurrent_targets=4)
+        self.assertEqual(four.pool["size_gib"], 126)  # (3.7 + 4 x 20) x 1.5, rounded up
+
+    def test_the_build_instance_counts_when_larger(self) -> None:
+        req = self.compute(GPU, concurrent_targets=1, images=["_base"])
+        # 0.5 GiB + the 16 GiB build instance (one 20 GiB target is larger).
+        self.assertEqual(req.pool["size_gib"], 31)
+        alone = self.compute({**GPU, "vm_targets": False}, concurrent_targets=1, images=["_base"])
+        self.assertEqual(alone.pool["size_gib"], 30)  # (0.5 + 16) x 1.5 = 24.75: the floor
+        self.assertIn("the 16.0 GiB build instance is not larger", req.pool["detail"])
+        self.assertIn(
+            "the 16.0 GiB build instance's root disk (larger than 1 x (8.0 GiB target",
+            alone.pool["detail"],
+        )
+
+    def test_the_free_space_limits_it(self) -> None:
+        # / holds pinka (5 GiB), the images and the Incus image store; /srv is apart.
+        self.free["/"] = 60.0
+        req = self.compute(GPU, inference="off", training=caps("off"))
+        others = sum(
+            i.size_gib for m in req.disks for i in m.items if m.mount == "/" and i.id != "pool"
+        )
+        self.assertEqual(req.pool["size_gib"], math.floor(60.0 - others))
+        self.assertIn("free on / after pinka's other needs there", req.pool["detail"])
+        self.assertEqual(req.unsupported, [])
+
+    def test_never_below_the_floor(self) -> None:
+        self.free["/"] = 35.0
+        req = self.compute(GPU, inference="off", training=caps("off"))
+        self.assertEqual(req.pool["size_gib"], 30)
+        self.assertIn("(the floor of 30 GiB)", req.pool["detail"])
+        self.assertIn("the Incus pool (loop file): 30.0 GiB, missing", " ".join(req.unsupported))
+
+    def test_one_file_system_keeps_room_for_the_stores(self) -> None:
+        # /srv on / too: the stores' growth up to their retention (15.3 GiB) is pinka's.
+        self.extra["df --output=target,fstype,size,avail -B1 /srv"] = df("/", 80.0)
+        self.free["/"] = 80.0
+        req = self.compute(GPU, inference="off", training=caps("off"))
+        self.assertIn("15.3 GiB the stores hold at their retention", req.pool["detail"])
+        self.assertLess(req.pool["size_gib"], 66)
+
+    def test_an_explicit_size_a_device_and_an_existing_pool(self) -> None:
+        req = self.compute(GPU, pool={"source": "loop", "size_gib": 300})
+        self.assertEqual((req.pool["size_gib"], req.pool["basis"]), (300, "configured"))
+        device = self.compute(GPU, pool={"source": "device", "size_gib": None})
+        self.assertEqual(device.pool["source"], "device")
+        self.assertNotIn("pool", {i.id for m in device.disks for i in m.items})
+        image = "/var/lib/incus/disks/pinka-targets.img"
+        self.put(image)
+        self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
+        existing = self.compute(GPU)
+        self.assertEqual(self.pool(existing)[1], True)  # present: counts nothing
+        self.assertIn("keeps its size", existing.pool["detail"])
+
+    def test_a_lab_node_only(self) -> None:
+        self.assertEqual(self.compute(GPU, node_role="inference").pool, {})
+
+
 class SwitchTest(ComputeCase):
     """The inference and training switches (§2.3)."""
 
@@ -314,11 +389,13 @@ class DiskTest(ComputeCase):
         self.assertIn("dedicated device", " ".join(req.notes))
 
     def test_just_above_and_just_below(self) -> None:
-        needed = self.mounts(self.compute(GPU))["/"].required_gib
+        # An explicit pool: a computed one would follow the free space.
+        pool = {"source": "loop", "size_gib": 300}
+        needed = self.mounts(self.compute(GPU, pool=pool))["/"].required_gib
         self.free["/"] = needed + 0.01
-        self.assertEqual(self.compute(GPU).unsupported, [])
+        self.assertEqual(self.compute(GPU, pool=pool).unsupported, [])
         self.free["/"] = needed - 0.01
-        text = " ".join(self.compute(GPU).unsupported)
+        text = " ".join(self.compute(GPU, pool=pool).unsupported)
         self.assertIn(f"/ has {needed - 0.01:.2f} GiB free", text)
         self.assertIn("the Incus pool (loop file): 300.0 GiB, missing 0.1 GiB on /", text)
 

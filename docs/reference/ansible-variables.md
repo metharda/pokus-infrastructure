@@ -1395,7 +1395,7 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware) passed by bootstrap. |
+| `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware, requirements.pool) passed by bootstrap. |
 | `pinka_bootstrap` | bootstrap.sh | Bootstrap options (adopt_incus, interactive). |
 | `pinka_dir` | host_vars | Infra directory of the checkout (incus/ templates). |
 | `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
@@ -1418,10 +1418,10 @@ A loop file in the root filesystem, or a dedicated device.
 
 ### `incus_pool_size`
 
-Size of a loop pool.
+Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden images, the concurrent targets' root disks and the free space (host profile requirements.pool, BUILD_PROMPT §2.3). An existing pool keeps its size.
 
 - Type: `str`
-- Default: `300GiB`
+- Default: `auto`
 
 ### `incus_pool_device`
 

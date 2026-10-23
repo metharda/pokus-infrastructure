@@ -170,6 +170,11 @@
     "incus_dir": "/var/lib/incus",
     "pool_file": "/var/lib/incus/disks/pinka-targets.img"
   },
+  "pool": {
+    "margin": 0.5,
+    "floor_gib": 30,
+    "source": "the incus role's root disk sizes (incus_target_container, incus_target_vm, incus_probe_client, incus_build_instance) and the blueprints' estimated_size_gib; margin (estimate): the instances' copy-on-write divergence from their images, snapshots and the targets' own data; floor: the pool the distribution test VMs install with (30 GiB)"
+  },
   "images": {
     "cadvisor": {
       "roles": [
@@ -483,6 +488,12 @@
     "probe_client": 0.5,
     "build": 2.0
   },
+  "target_root_gib": {
+    "container": 8.0,
+    "vm": 16.0,
+    "probe_client": 4.0,
+    "build": 16.0
+  },
   "defaults": {
     "schema_version": 1,
     "node_role": "full",
@@ -491,7 +502,7 @@
     "docker_data_root": "/var/lib/docker",
     "pool": {
       "source": "loop",
-      "size_gib": 300.0
+      "size_gib": null
     },
     "concurrent_targets": 2,
     "model": null,

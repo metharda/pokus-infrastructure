@@ -171,6 +171,25 @@ disk:
   # (disks/<pool>.img).
   incus_dir: /var/lib/incus
 
+# incus_pool_size: auto, for a loop pool: the golden images to build, the
+# concurrent targets' root disks (each target with its probe client; the
+# build instance's instead when golden images are built and it is larger,
+# since a build runs while no target runs) and a margin, rounded up to whole
+# GiB; limited by the free space on the loop file's mount point minus pinka's
+# other needs there (the other items known at install and the stores' growth
+# up to their retention, when the research space shares the mount), and never
+# below floor_gib. An explicit incus_pool_size wins; a pool already created
+# keeps its size (Incus pools are never rewritten).
+pool:
+  margin: 0.5
+  floor_gib: 30
+  source: >-
+    the incus role's root disk sizes (incus_target_container, incus_target_vm,
+    incus_probe_client, incus_build_instance) and the blueprints'
+    estimated_size_gib; margin (estimate): the instances' copy-on-write
+    divergence from their images, snapshots and the targets' own data;
+    floor: the pool the distribution test VMs install with (30 GiB)
+
 # The container images each node pulls (keys of versions.lock.yml
 # containers.images). roles: the node roles that run it; features: features
 # that must be on after the switches (§2.3); gpu: only where the GPU is in use

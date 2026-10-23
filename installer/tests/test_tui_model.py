@@ -438,7 +438,9 @@ def test_review_summary_and_destructive_actions() -> None:
     answers.machine.name = "pinka-lab"
     answers.researchers = [answers_mod.Researcher("researcher1", True)]
     sections = {step: text for step, _, text in summary(answers)}
-    assert sections["storage"] == "loop file of 300 GiB"
+    assert sections["storage"] == "loop file of auto size"
+    answers.storage.loop_size_gib = 300
+    assert {step: text for step, _, text in summary(answers)}["storage"] == "loop file of 300 GiB"
     assert sections["researchers"] == "researcher1 (admin)"
     assert destructive(answers) == []
     answers.storage.source = "device"

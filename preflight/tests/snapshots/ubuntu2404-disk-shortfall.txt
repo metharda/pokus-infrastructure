@@ -36,6 +36,7 @@ Requirements
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
     vLLM serving example-model or a training job: 8.7 / 24 GiB (estimated; the model's files (5.7 GiB) + 3.0 GiB to 5.0 GiB; or a training job at training_caps.memory_max 24G (auto, computed from this host): the GPU arbiter runs one at a time)
   CPU estimate 7.1 threads
+  Incus pool: loop file of 300 GiB (configured: incus_pool_size 300.0 GiB)
   disk / (ext4): 100.0 GiB free, 332.3 GiB needed at install, 232.3 GiB missing
     pinka itself: 5.0 GiB (estimated)
     container images (14): 23.6 GiB (estimated)

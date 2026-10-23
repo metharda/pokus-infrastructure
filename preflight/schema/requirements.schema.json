@@ -5,7 +5,7 @@
   "description": "What each part of the lab needs, for the requirements computed from the operator's choices (BUILD_PROMPT §2.3). Every number carries its basis (estimated or measured) and its source.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "image_unpack_factor", "components", "training_cap", "disk", "images", "growth"],
+  "required": ["schema_version", "image_unpack_factor", "components", "training_cap", "disk", "pool", "images", "growth"],
   "properties": {
     "schema_version": {"const": 1},
     "image_unpack_factor": {"type": "number", "minimum": 1},
@@ -53,6 +53,17 @@
         "pinka_basis": {"$ref": "#/$defs/basis"},
         "pinka_source": {"type": "string", "minLength": 1},
         "incus_dir": {"type": "string", "pattern": "^/"}
+      }
+    },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["margin", "floor_gib", "source"],
+      "description": "incus_pool_size: auto for a loop pool: the golden images and the concurrent targets' root disks with the margin, limited by the free space on its mount point minus pinka's other needs there, never below floor_gib (BUILD_PROMPT §2.3).",
+      "properties": {
+        "margin": {"type": "number", "minimum": 0},
+        "floor_gib": {"type": "integer", "minimum": 1},
+        "source": {"type": "string", "minLength": 1}
       }
     },
     "images": {

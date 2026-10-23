@@ -802,6 +802,7 @@
         "cpu_threads",
         "disk",
         "growth",
+        "pool",
         "notes"
       ],
       "properties": {
@@ -1069,6 +1070,44 @@
               "items": {
                 "$ref": "#/$defs/growth_item"
               }
+            }
+          }
+        },
+        "pool": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "size_gib",
+            "basis",
+            "detail"
+          ],
+          "description": "The Incus pool's size (\u00a72.3): a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node.",
+          "properties": {
+            "source": {
+              "enum": [
+                "loop",
+                "device"
+              ]
+            },
+            "size_gib": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "basis": {
+              "enum": [
+                "computed",
+                "configured"
+              ]
+            },
+            "detail": {
+              "type": "string"
             }
           }
         },

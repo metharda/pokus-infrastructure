@@ -35,11 +35,12 @@ Requirements
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
   CPU estimate 5.1 threads
-  disk / (ext4): 400.0 GiB free, 310.8 GiB needed at install
+  Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 389.2 GiB free on / after pinka's other needs there (10.8 GiB at install))
+  disk / (ext4): 400.0 GiB free, 76.8 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
     container images (11): 2.1 GiB (estimated)
-    the Incus pool (loop file): 300.0 GiB (configured)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
+    the Incus pool (loop file): 66.0 GiB (estimated)
   disk /srv (ext4): 500.0 GiB free, 3.7 GiB needed at install
     golden images (export) (6): 3.7 GiB (estimated)
   growth on /srv: 0.27 GiB a day, 1.89 GiB a week; not full within ten years at this rate

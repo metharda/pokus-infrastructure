@@ -5,5 +5,9 @@
     "revision": "0000000000000000000000000000000000000000",
     "size_bytes": 6120328396
   },
+  "pool": {
+    "size_gib": 300,
+    "source": "loop"
+  },
   "schema_version": 1
 }

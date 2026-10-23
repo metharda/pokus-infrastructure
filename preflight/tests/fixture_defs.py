@@ -255,16 +255,18 @@ def system(
     return apply
 
 
-def disks(root_free: float, srv_free: float, fstype: str = "ext4") -> Layer:
+def disks(root_free: float, srv_free: float | None = None, fstype: str = "ext4") -> Layer:
     """Answer ``df`` for the root file system (/, /var/lib) and /srv (free GiB).
 
     /opt/pinka, Docker's data root and /var/lib/incus do not exist yet, so
     preflight measures their nearest existing ancestors, / and /var/lib.
+    Without ``srv_free`` /srv is on the root file system too.
     """
+    srv_mount = "/" if srv_free is None else "/srv"
 
     def apply(f: Fixture) -> None:
         for path, mount, free in (("/", "/", root_free), ("/var/lib", "/", root_free),
-                                  ("/srv", "/srv", srv_free)):  # fmt: skip
+                                  ("/srv", srv_mount, root_free if srv_free is None else srv_free)):  # fmt: skip
             f.cmd(
                 f"df --output=target,fstype,size,avail -B1 {path}",
                 f"Mounted on Type 1B-blocks Avail\n{mount} {fstype} {1000 * GIB} "
@@ -1573,7 +1575,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
-        plan=model,
+        plan={**model, "pool": {"source": "loop", "size_gib": 300}},
         expected={
             "outcome": "unsupported",
             "unsupported_contains": [
@@ -1582,6 +1584,24 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             ],
         },
     )
+    # incus_pool_size: auto (§2.3) on one file system: the golden images and two
+    # VM targets with their probe clients, + 50 %, is 66 GiB with 144 or 386 GiB
+    # free; with 60 GiB free the space left after pinka's other needs (14.6 GiB
+    # at install, 15.3 GiB of stores at their retention) sets the 30 GiB floor.
+    for free, size in ((144, 66), (386, 66), (60, 30)):
+        fx[f"ubuntu2404-pool-auto-{free}"] = build(
+            UBUNTU_2404,
+            system(),
+            disks(root_free=free),
+            apparmor,
+            baremetal(),
+            kvm(),
+            expected={
+                "outcome": "degraded",
+                "disabled": ["gpu_inference", "gpu_training"],
+                "pool": {"size_gib": size, "basis": "computed"},
+            },
+        )
     # BUILD_PROMPT §2.2, §7.4, §7.6, §7.7: components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with
     # them unchanged.

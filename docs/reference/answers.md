@@ -36,7 +36,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `resources.concurrent_targets` | integer | no | Targets that run at once (incus_concurrent_targets): they size the bench project's memory and the memory preflight requires (BUILD_PROMPT §2.3). |
 | `storage` | object | yes | The Incus storage pool of the targets. |
 | `storage.source` | one of `loop`, `device` | yes | loop: a loop file inside the system; device: a dedicated disk, formatted. |
-| `storage.loop_size_gib` | integer | no | Size of the loop file (source loop), at least 20 GiB. |
+| `storage.loop_size_gib` | any | no | Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space, BUILD_PROMPT §2.3), or whole GiB, at least 20. |
 | `storage.device` | string | no | The pool disk by its /dev/disk/by-id path (source device). |
 | `storage.device_confirm` | string | no | Must equal device exactly; the pool disk is formatted only then (safety invariant 1). |
 | `storage.force_wipe` | boolean | no | Wipe a device that carries signatures (typed WIPE confirmation in the TUI). |

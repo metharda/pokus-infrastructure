@@ -6344,3 +6344,68 @@ a model vLLM itself sets the recommended value.
   `site.yml` sets; restore runs as its own `ansible-playbook`, so the model
   re-verification and the re-render of the restored deployment never run.
   Recorded as an open item (not fixed here: no side work).
+
+## The computed Incus pool size (owner, item 2 after `a9bb439`)
+
+The owner, verbatim: "300 GiB counted in full for a loop file means a host
+with 144 GiB free cannot install with defaults. Compute the default like the
+cap: the golden images, the concurrent targets' root disks and a margin,
+limited by the free space on its mount point minus pinka's other needs, with
+a floor you propose; an explicit size still wins."
+
+### What was built
+
+- `incus_pool_size: auto` is the default (incus role defaults, the example
+  machine, the installer's `storage.loop_size_gib`, the plan's
+  `pool.size_gib: null`). An explicit size wins and is checked like every
+  other item; a dedicated device has no size.
+- Preflight (`requirements._pool`): the golden images to build (each
+  blueprint's `estimated_size_gib`), plus the larger of the concurrent
+  targets' root disks (each target with its probe client; a VM target where
+  the host has `vm_targets`, else a container) and the build instance's root
+  disk when golden images are built, times 1 + the margin (0.5), rounded up
+  to whole GiB. It is limited by the free space on the loop file's mount
+  point minus the other items still to install there and, when the research
+  space shares the mount point, what the stores hold at their retention
+  (Prometheus, Loki, Tempo, the dumps; the database and the training runs
+  have no retention and are not reserved), and never below the floor. An
+  existing pool file counts as present and keeps its size (Incus pools are
+  never rewritten). The host profile records `requirements.pool` (size,
+  basis, how it was computed); the summary prints it.
+- `preflight/requirements.yml` `pool` (margin, floor, source), compiled with
+  the incus role's root disk sizes (`target_root_gib`: `incus_target_vm`,
+  `incus_target_container`, `incus_probe_client`, `incus_build_instance`).
+- The incus role takes `host_profile.requirements.pool.size_gib` (the
+  profile bootstrap passes) when `incus_pool_size` is `auto`.
+- The installer: the storage screen accepts `auto` or whole GiB; the review
+  screen says "loop file of auto size"; answers schema, host_vars mapping
+  and the plan writer follow.
+- Fixtures `ubuntu2404-pool-auto-144`, `-386` and `-60` (one file system);
+  the disk-shortfall fixture keeps an explicit 300 GiB.
+
+### The floor: 30 GiB
+
+The pool the distribution test VMs install with (`tests/answers/ci.yml`,
+`loop_size_gib: 30`), the smallest pool a full install is known to work
+with. Below it the host is refused like any other shortfall.
+
+### What it becomes (defaults: two concurrent targets, the golden images)
+
+| Free on `/` (one file system) | VM targets | Container targets |
+| --- | --- | --- |
+| 386 GiB | 66 GiB | 42 GiB |
+| 144 GiB | 66 GiB | 42 GiB |
+| 60 GiB | 30 GiB (limited to 30.1 GiB, the floor) | 30 GiB |
+
+66 GiB = (3.7 GiB golden images + 2 × (16 GiB VM + 4 GiB probe client)) ×
+1.5, rounded up; 42 GiB the same with 8 GiB containers. On 144 GiB and
+386 GiB the computed size fits: 114.1 GiB and 356.1 GiB remain after
+pinka's other needs on `/` (14.6 GiB at install, 15.3 GiB the stores hold at
+their retention). With defaults the size does not grow with the free space;
+an operator who wants a larger pool sets one.
+
+### Interpretation for the owner
+
+- The spec's §8.1 example shows `incus_pool_size: 300GiB`; recorded as the
+  approved deviation PL1 (the owner's item 2), for the next spec edit, rather
+  than edited in `specs/`.

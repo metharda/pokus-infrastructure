@@ -341,8 +341,8 @@ class StorageScreen(StepScreen):
                 "Dedicated disk", value=storage.source == "device", id="source-device"
             )
         yield Field(
-            "Loop file size (GiB)",
-            Input(str(storage.loop_size_gib), id="loop_size", type="integer"),
+            "Loop file size (GiB, or auto)",
+            Input(str(storage.loop_size_gib), id="loop_size"),
         )
         yield Static("", id="loop-check", classes="hint")
         table: DataTable[str] = DataTable(id="disks", cursor_type="row")
@@ -373,7 +373,8 @@ class StorageScreen(StepScreen):
         self.free_gib = free
         self.query_one("#loop-check", Static).update(
             f"{free:.0f} GiB free in /var/lib; at most {loop_size_limit(free)} GiB "
-            f"keeps {LOOP_RESERVE_GIB} GiB in reserve"
+            f"keeps {LOOP_RESERVE_GIB} GiB in reserve; auto: preflight sizes it from the "
+            "targets, the golden images and the free space"
         )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:  # noqa: D102
@@ -419,8 +420,10 @@ class StorageScreen(StepScreen):
         storage.source = "device" if self.query_one("#source-device", RadioButton).value else "loop"
         text = _value(self, "#loop_size")
         if storage.source == "loop":
-            if not text.isdigit() or int(text) < MIN_LOOP_GIB:
-                problems.append(("loop_size", f"at least {MIN_LOOP_GIB} GiB"))
+            if text == "auto":
+                storage.loop_size_gib = "auto"
+            elif not text.isdigit() or int(text) < MIN_LOOP_GIB:
+                problems.append(("loop_size", f"auto, or at least {MIN_LOOP_GIB} GiB"))
             else:
                 storage.loop_size_gib = int(text)
                 free = self.free_gib

@@ -1466,6 +1466,23 @@ its checks green and a commit proposal, and waits for the owner's
   decision (spec checksum above); the table is in
   `docs/IMPLEMENTATION_NOTES.md`, "Correction: vLLM and a job never add
   up".
+
+  Item 1 is `1a8b18b`, pushed on its own. Its CI, every job on its first
+  attempt: infra-ci (run 40031287598): changes, privacy, lint, test, docs,
+  all six check-mode lanes and `required` passed, `links` skipped (weekly),
+  `lock-check` the known red (24 marker errors; tag warnings for postgres,
+  refplat_job, ubuntu_2404 and debian_13); test-isolated (run 40031287504)
+  and all six check-mode-extended lanes (run 40031287465) passed;
+  release-package and lock-collections did not run (their inputs are
+  unchanged). Item 2: `incus_pool_size: auto` is the default; preflight
+  computes the loop pool from the golden images, the concurrent targets'
+  root disks (or the build instance's, when larger) and a 50 % margin,
+  limited by the free space on its mount point minus pinka's other needs
+  there, never below the proposed floor of 30 GiB (the test VMs' pool); an
+  explicit size wins (approved deviation PL1). With defaults on one file
+  system it is 66 GiB with VM targets and 42 GiB with containers on both
+  144 and 386 GiB free; the table is in `docs/IMPLEMENTATION_NOTES.md`,
+  "The computed Incus pool size".
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -1609,6 +1626,7 @@ are in the archive). Contract-level resolutions are also recorded with citations
 | SSH1 | infra §7.3 | the drop-in sets `AllowGroups pinka`, `PasswordAuthentication no` and the other settings for the whole host | pinka's sshd settings apply in a `Match Group pinka` block, so accounts outside `pinka` keep the host's own policy (owner, decision 3 after D1, approving option (b) of the open question raised with the 3f-1 spec edit); on a shared host, and on a dedicated host while the install's access path is open for an account that is not a researcher; built with the D1 follow-up |
 | DL1 | infra §7.5 (doctor bullet) | doctor fails on anything listening on `0.0.0.0`/`::` other than sshd | `network.listeners` accepts a listener the install record notes as the host's before pinka, on these conditions (owner, decision 1 with the "commit" for `16bf749`): it matches the record exactly (address, port, protocol and owning unit or executable), and any listener that appears after the install still fails; the install record is writable only by root, and doctor fails if its owner or mode is wrong (`install.record`); pinka's own services never use the exception; on a dedicated host the strict rule of §7.5 applies unchanged |
 | AG1 | infra §7.5 (pre-existing access) | firewalld or ufw: pinka leaves the owner's zones and rules as they are; closing unspecified | what the owner consents to close, and the install's access path once closed, are dropped by pinka's own table `inet pinka_access_guard` on every backend, loaded by `pinka-nftables.service` (owner, decision 2 with the "commit" for `16bf749`); tests confirm it drops only new connections and never one on loopback, spares only SSH on `tailscale0` (corrected with the owner's new plan after `16bf749`: what was closed is closed over the tailnet as well, on every backend; SSH over the tailnet is never cut), and depends on no table of ufw or firewalld; the ufw and firewalld lanes of `make test-distros` reload the owner's firewall and check the guard, the closed and the kept listener from the harness host and over the tailnet, and SSH over the tailnet |
+| PL1 | infra §8.1 (`incus_pool_size: 300GiB # for loop`), §2.3 (disk) | a loop pool's size from host_vars, 300 GiB in the example | `incus_pool_size: auto` is the default: preflight computes it from the golden images, the concurrent targets' root disks (or the build instance's) and a 50 % margin, limited by the free space on the loop file's mount point minus pinka's other needs there, never below 30 GiB; an explicit size wins; an existing pool keeps its size (owner, item 2 after `a9bb439`: "Compute the default like the cap"). For the next spec edit |
 
 ## Platform spec changes pending
 

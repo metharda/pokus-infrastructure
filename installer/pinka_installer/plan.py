@@ -100,8 +100,8 @@ def plan(  # noqa: PLR0912 - one branch per setting
             raise PlanError(f"incus_pool_source must be loop or device (got {source!r})")
         result["pool"]["source"] = source
     if "incus_pool_size" in variables:
-        size = _checked("incus_pool_size", variables["incus_pool_size"], validators.size)
-        result["pool"]["size_gib"] = validators.size_bytes(size) / GIB
+        size = _checked("incus_pool_size", variables["incus_pool_size"], validators.pool_size)
+        result["pool"]["size_gib"] = None if size == "auto" else validators.size_bytes(size) / GIB
     if "incus_concurrent_targets" in variables:
         count = variables["incus_concurrent_targets"]
         problem = (

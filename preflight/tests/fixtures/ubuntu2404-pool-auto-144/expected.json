@@ -1,0 +1,11 @@
+{
+  "disabled": [
+    "gpu_inference",
+    "gpu_training"
+  ],
+  "outcome": "degraded",
+  "pool": {
+    "basis": "computed",
+    "size_gib": 66
+  }
+}

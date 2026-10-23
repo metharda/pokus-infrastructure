@@ -237,7 +237,8 @@ def summary(
     a = answers.normalized()
     m, r, s, g, b = a.machine, a.resources, a.storage, a.gpu, a.backups
     caps = a.training_caps
-    pool = f"loop file of {s.loop_size_gib} GiB" if s.source == "loop" else f"disk {s.device}"
+    size = "auto size" if s.loop_size_gib == "auto" else f"{s.loop_size_gib} GiB"
+    pool = f"loop file of {size}" if s.source == "loop" else f"disk {s.device}"
     return [
         ("mode", "Install mode", a.mode),
         (

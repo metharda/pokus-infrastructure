@@ -161,7 +161,8 @@ What is known at install time is checked per mount point, item by item:
 - the model's files below the research space, their sizes from
   `models.lock.yml`;
 - the Incus pool: a loop file counts fully on its mount point
-  (`/var/lib/incus/disks/`), a dedicated device on none;
+  (`/var/lib/incus/disks/`), a dedicated device on none; its default size is
+  computed (see [The pool's size](#the-pools-size));
 - each golden image to build, its estimate from its `image.yaml`, twice:
   the export below the research space and Incus's image store.
 
@@ -169,8 +170,43 @@ What is already on the host (a pulled image, a downloaded model, a built
 golden image, the pool's file) needs no more space and counts nothing, so
 preflight gives the same answer on a re-run. When a mount point is short, the
 host is `unsupported` and the shortfall is listed with the largest items
-first, the ones to shrink, for example
+first, the ones to shrink, for example, with an explicit
+`incus_pool_size: 300GiB` on a host with 100 GiB free,
 `the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /`.
+
+## The pool's size
+
+A loop pool's size is `incus_pool_size: auto` unless you set one; preflight
+computes it like the training cap, from what the pool holds:
+
+- the golden images to build (each blueprint's estimate);
+- the root disks of the concurrent targets, each with its probe client (a
+  VM target 16 GiB where the host has VM targets, a container 8 GiB, the
+  probe client 4 GiB); or the build instance's 16 GiB when golden images
+  are built and it is larger, since a build runs while no target runs;
+- a margin of 50 % for the instances' copy-on-write changes, snapshots and
+  the targets' own data;
+
+rounded up to whole GiB. It is limited by the free space on the loop file's
+mount point minus pinka's other needs there: the other items at install
+and, when the research space is on the same file system, what the stores
+hold at their retention. It is never below 30 GiB, the pool the
+distribution test VMs install with; below that the host is refused like any
+other shortfall. The summary shows the size and how it was computed.
+
+With the defaults (two concurrent targets, the golden images, one file
+system for everything):
+
+| Free on `/` | VM targets | Container targets |
+| --- | --- | --- |
+| 386 GiB | 66 GiB | 42 GiB |
+| 144 GiB | 66 GiB | 42 GiB |
+| 60 GiB | 30 GiB (limited, the floor) | 30 GiB |
+
+An explicit size (`incus_pool_size: 300GiB`, or a number in the installer)
+wins and is checked like every other item. Incus creates the pool once and
+never resizes it: on a re-run the existing pool keeps its size, and preflight
+counts it as present.
 
 ## What grows with use
 
@@ -198,7 +234,7 @@ one within 7 days ([`disk.free_space`](../how-to/fix-doctor-checks.md#check-disk
 | Choice | Setting (host_vars) | Installer answers |
 | --- | --- | --- |
 | concurrent targets | `incus_concurrent_targets` | `resources.concurrent_targets` |
-| pool | `incus_pool_source`, `incus_pool_size` | `storage` |
+| pool | `incus_pool_source`, `incus_pool_size` (`auto`: computed) | `storage` |
 | model | `vllm_default_deployment` | `gpu.default_model` |
 | golden images | `images_blueprints` | `images.build` |
 | inference, training | `inference`, `training` | `features` |

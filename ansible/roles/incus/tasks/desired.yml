@@ -38,6 +38,16 @@
   loop_control:
     label: "{{ item.name }}"
 
+# incus_pool_size: auto takes the size preflight computed for this host
+# (requirements.pool of the host profile bootstrap passes, BUILD_PROMPT
+# §2.3); Incus creates the pool once and never resizes it.
+- name: Decide the loop pool's size
+  ansible.builtin.set_fact:
+    incus_pool_loop_size: >-
+      {{ ((host_profile.requirements.pool.size_gib | int) ~ 'GiB')
+         if (incus_pool_size | string) == 'auto' else incus_pool_size }}
+  when: incus_pool_source == 'loop'
+
 - name: Describe the server, the pool and the networks
   ansible.builtin.set_fact:
     incus_server_config:
@@ -47,7 +57,7 @@
       description: pinka instances
       driver: "{{ 'btrfs' if host_profile.storage_backend == 'btrfs' else 'lvm' }}"
       config: >-
-        {{ ({'size': incus_pool_size} if incus_pool_source == 'loop' else {'source': incus_pool_device})
+        {{ ({'size': incus_pool_loop_size} if incus_pool_source == 'loop' else {'source': incus_pool_device})
            | combine({'lvm.use_thinpool': 'true'} if host_profile.storage_backend == 'lvm' else {}) }}
     incus_networks:
       - name: "{{ incus_build_network }}"

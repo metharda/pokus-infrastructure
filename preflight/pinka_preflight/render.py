@@ -99,6 +99,13 @@ def requirements_lines(req: Mapping[str, Any]) -> list[str]:
             f" ({item['basis']}{detail})"
         )
     lines.append(f"  CPU estimate {req['cpu_threads']['estimated']:g} threads")
+    pool = req.get("pool")
+    if pool and pool["source"] == "loop":
+        lines.append(
+            f"  Incus pool: loop file of {pool['size_gib']:g} GiB ({pool['basis']}"
+            + (f": {pool['detail']}" if pool["detail"] else "")
+            + ")"
+        )
     for mount in req["disk"]:
         lines.extend(_disk_lines(mount))
     growth = req.get("growth")

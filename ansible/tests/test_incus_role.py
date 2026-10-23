@@ -142,14 +142,20 @@ def test_server_and_pool(desired: dict[str, Any]) -> None:
         "name": "pinka-targets",
         "description": "pinka instances",
         "driver": "btrfs",
-        "config": {"size": "300GiB"},
+        "config": {"size": "66GiB"},  # incus_pool_size: auto, computed by preflight
     }
+
+
+def test_explicit_pool_size_wins() -> None:
+    variables = incus_vars(researchers=[], incus_pool_size="300GiB")
+    facts = run_set_facts(ROLES / "incus" / "tasks" / "desired.yml", variables)
+    assert facts["incus_pool"]["config"] == {"size": "300GiB"}
 
 
 @pytest.mark.parametrize(
     ("backend", "source", "driver", "config"),
     [
-        ("lvm", "loop", "lvm", {"size": "300GiB", "lvm.use_thinpool": "true"}),
+        ("lvm", "loop", "lvm", {"size": "66GiB", "lvm.use_thinpool": "true"}),
         ("btrfs", "device", "btrfs", {"source": "/dev/disk/by-id/example-disk"}),
     ],
 )

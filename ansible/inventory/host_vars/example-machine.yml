@@ -37,11 +37,13 @@ expected:
 cpuset_services: ""
 cpuset_targets: ""
 
-# Incus storage pool. loop: a file of incus_pool_size. device: a dedicated
-# disk or partition, formatted ONLY if incus_pool_device_confirm equals
-# incus_pool_device exactly and the device carries no signature.
+# Incus storage pool. loop: a file of incus_pool_size (auto: computed from the
+# golden images, the concurrent targets and the free space; or a size such as
+# 300GiB). device: a dedicated disk or partition, formatted ONLY if
+# incus_pool_device_confirm equals incus_pool_device exactly and the device
+# carries no signature.
 incus_pool_source: loop
-incus_pool_size: 300GiB
+incus_pool_size: auto
 incus_pool_device: ""              # /dev/disk/by-id/... for device
 incus_pool_device_confirm: ""
 # Targets that run at once: they size the bench project's memory and the
