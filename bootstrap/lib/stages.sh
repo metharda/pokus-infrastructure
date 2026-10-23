@@ -14,6 +14,7 @@
 readonly RUN_DIR=/run/pinka/bootstrap
 readonly SIGNAL_FILE=/run/pinka/bootstrap-signal.json
 readonly PROFILE_FILE=/etc/pinka/host-profile.json
+readonly PLAN_FILE=/etc/pinka/plan.json
 readonly STATE_FILE=/etc/pinka/bootstrap-state.json
 readonly STORED_VAULT_PASS=/etc/pinka/secrets/vault-pass
 readonly LOG_DIR=/var/log/pinka-bootstrap
@@ -421,6 +422,7 @@ extra_vars_json() {
   "offline": $(json_bool "$OPT_OFFLINE"),
   "interactive": $(json_bool "$INTERACTIVE"),
   "profile_path": "$(json_escape "$profile")",
+  "plan_path": "$(json_escape "$RUN_DIR/plan.json")",
   "signal_file": "$(json_escape "$SIGNAL_FILE")"
  }
 }
@@ -660,9 +662,8 @@ terminal_problem() {
 stage_frontend() {
   local problem
   enter_stage frontend
-  if [[ -n $OPT_ANSWERS ]] || "$USE_TUI"; then
-    setup_venv "$INSTALLER_VENV" "$INFRA_DIR/installer/requirements.lock"
-  fi
+  # Also without the TUI or answers: the installer writes the requirements plan (§2.3).
+  setup_venv "$INSTALLER_VENV" "$INFRA_DIR/installer/requirements.lock"
   if "$USE_TUI"; then
     problem=$(terminal_problem)
     if [[ -n $problem ]]; then
@@ -768,6 +769,14 @@ researcher_names() {
   ' "$1"
 }
 
+# write_plan FILE: the machine's requirements plan (§2.3), from host_vars,
+# group_vars and models.lock.yml, for preflight --plan and the play's
+# preflight gate; doctor and pinka preflight read the stored copy.
+write_plan() {
+  installer plan --machine "$OPT_MACHINE" --output "$1" \
+    || fail "$EXIT_OPERATOR" "the requirements plan of $OPT_MACHINE cannot be written (reason above)"
+}
+
 # lab_preflight_args: the preflight options of the machine's port overrides,
 # VM collector address and pool device in host_vars, and of the configured
 # researchers (host_vars when it lists them, else group_vars), one per line
@@ -805,6 +814,8 @@ stage_preflight() {
   local -a lab_args=()
   enter_stage preflight
   install -d -m 0700 "$RUN_DIR"
+  write_plan "$RUN_DIR/plan.json"
+  args+=(--plan "$RUN_DIR/plan.json")
   mode=$(nvidia_driver_mode) || exit "$EXIT_OPERATOR"
   args+=(--nvidia-driver "$mode")
   lab=$(lab_preflight_args) || exit "$EXIT_OPERATOR"
@@ -848,9 +859,10 @@ stage_preflight() {
     esac
   fi
   if "$OPT_CHECK"; then
-    log_info "check mode: the host profile is not stored"
+    log_info "check mode: the host profile and the requirements plan are not stored"
   else
     profile_tool store "$RUN_DIR/host-profile.json"
+    install -D -m 0644 "$RUN_DIR/plan.json" "$PLAN_FILE"
   fi
   leave_stage
 }

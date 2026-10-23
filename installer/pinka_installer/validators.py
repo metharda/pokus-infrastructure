@@ -34,6 +34,13 @@ TIME_RE = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 INTERFACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$")
 SNAPSHOT_RE = re.compile(r"^(latest|[0-9a-f]{8,64})$")
 CAP_SIZE_RE = re.compile(r"^[1-9][0-9]*[KMG]$")
+RETENTION_RE = re.compile(r"^([1-9][0-9]*)([a-z])$")
+PROMETHEUS_SIZE_RE = re.compile(r"^(?:0|([1-9][0-9]*)(KB|MB|GB|TB|KiB|MiB|GiB|TiB))$")
+# Days per unit of a retention period (Prometheus and Loki take h, d, w and y;
+# Tempo, a Go duration, takes hours only).
+RETENTION_DAYS = {"h": 1 / 24, "d": 1, "w": 7, "y": 365}
+CAP_FACTORS = {"K": 2**10, "M": 2**20, "G": 2**30}
+MAX_CONCURRENT_TARGETS = 40
 SERVICE_SECRET_RE = re.compile(r"^[a-z][a-z0-9]{0,9}\.[a-z][a-z0-9_-]{0,63}$")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 LISTENER_RE = re.compile(r"^(tcp|udp)/([1-9][0-9]{0,4})$")
@@ -367,6 +374,97 @@ def cap_size(value: str) -> str | None:
         The error, or None.
     """
     return None if CAP_SIZE_RE.fullmatch(value) else "a whole number of K, M or G, such as 24G"
+
+
+def cap_size_gib(value: str) -> float:
+    """The GiB of a valid training cap size (Docker's K, M and G are powers of 2).
+
+    Args:
+        value: A size accepted by :func:`cap_size`.
+
+    Returns:
+        GiB.
+    """
+    if not CAP_SIZE_RE.fullmatch(value):
+        raise ValueError(value)
+    return int(value[:-1]) * CAP_FACTORS[value[-1]] / 2**30
+
+
+def concurrent_targets(value: int) -> str | None:
+    """The targets that run at once (the capacity plan, BUILD_PROMPT §2.3).
+
+    Args:
+        value: The number.
+
+    Returns:
+        The error, or None.
+    """
+    if isinstance(value, bool) or not 1 <= value <= MAX_CONCURRENT_TARGETS:
+        return f"a whole number from 1 to {MAX_CONCURRENT_TARGETS}"
+    return None
+
+
+def retention_period(value: str, units: str = "hdwy") -> str | None:
+    """A retention period of the telemetry stores, such as ``90d`` or ``720h``.
+
+    Args:
+        value: The period.
+        units: The units the store accepts (Tempo: ``h`` only).
+
+    Returns:
+        The error, or None.
+    """
+    match = RETENTION_RE.fullmatch(value)
+    if not match or match.group(2) not in units:
+        return f"a whole number with one unit of {', '.join(units)}, such as 90{units[-1]}"
+    return None
+
+
+def retention_days(value: str) -> float:
+    """The days of a valid retention period.
+
+    Args:
+        value: A period accepted by :func:`retention_period`.
+
+    Returns:
+        Days.
+    """
+    match = RETENTION_RE.fullmatch(value)
+    if match is None or match.group(2) not in RETENTION_DAYS:
+        raise ValueError(value)
+    return int(match.group(1)) * RETENTION_DAYS[match.group(2)]
+
+
+def prometheus_size(value: str) -> str | None:
+    """Prometheus's retention by size: ``0`` (by time only) or a size such as ``50GB``.
+
+    Args:
+        value: The size.
+
+    Returns:
+        The error, or None.
+    """
+    if not PROMETHEUS_SIZE_RE.fullmatch(value):
+        return "0, or a whole number with a unit: KB, MB, GB, TB, KiB, MiB, GiB or TiB"
+    return None
+
+
+def prometheus_size_gib(value: str) -> float:
+    """The GiB of a valid Prometheus size; Prometheus reads every unit as a power of 2.
+
+    Args:
+        value: A size accepted by :func:`prometheus_size`.
+
+    Returns:
+        GiB.
+    """
+    match = PROMETHEUS_SIZE_RE.fullmatch(value)
+    if match is None:
+        raise ValueError(value)
+    if value == "0":
+        return 0.0
+    power = 10 * ("KMGT".index(match.group(2)[0]) + 1)
+    return float(int(match.group(1)) * 2**power / 2**30)
 
 
 def platform_secret_key(value: str) -> str | None:

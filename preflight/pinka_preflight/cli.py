@@ -47,6 +47,7 @@ from pinka_preflight.matrix import (
     MATRIX_JSON,
     NVIDIA_DRIVER_MODES,
     Decision,
+    apply_requirements,
     evaluate,
     load_matrix,
     match_os,
@@ -58,6 +59,13 @@ from pinka_preflight.report import (
     load_schema,
     to_json,
     write_profile,
+)
+from pinka_preflight.requirements import (
+    REQUIREMENTS_JSON,
+    PlanError,
+    compute,
+    load_plan,
+    load_requirements,
 )
 from pinka_preflight.runner import FixtureRunner, RealRunner, Runner
 
@@ -99,8 +107,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--srv-path",
         metavar="PATH",
-        default=DEFAULT_SRV_PATH,
-        help=f"configured location of the research space (default: {DEFAULT_SRV_PATH})",
+        help="configured location of the research space (default: the plan's srv_path, "
+        f"else {DEFAULT_SRV_PATH})",
+    )
+    parser.add_argument(
+        "--plan",
+        metavar="FILE",
+        help="the operator's choices that size the lab, as bootstrap and the installer write "
+        "them (JSON, preflight/schema/plan.schema.json); without it, the configured defaults",
     )
     parser.add_argument(
         "--accept-degraded",
@@ -197,6 +211,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--endpoints", metavar="FILE", default=ENDPOINTS_JSON, help="compiled endpoint list (JSON)"
     )
     parser.add_argument(
+        "--requirements",
+        metavar="FILE",
+        default=REQUIREMENTS_JSON,
+        help="compiled requirements of the lab's parts (JSON)",
+    )
+    parser.add_argument(
         "--lab-defaults",
         metavar="FILE",
         default=LAB_DEFAULTS_JSON,
@@ -264,7 +284,10 @@ def _repo_commit(args: argparse.Namespace, fs: FileSystem, runner: Runner) -> st
 
 
 def run_preflight(
-    args: argparse.Namespace, fs: FileSystem, runner: Runner
+    args: argparse.Namespace,
+    fs: FileSystem,
+    runner: Runner,
+    plan: tuple[dict[str, Any], str] | None = None,
 ) -> tuple[dict[str, Any], Decision]:
     """Detect, decide and assemble the report.
 
@@ -272,6 +295,8 @@ def run_preflight(
         args: Parsed arguments.
         fs: Filesystem view.
         runner: Command runner.
+        plan: The effective plan and its label (:func:`load_plan`); None loads
+            it from ``args``.
 
     Returns:
         ``(report, decision)``.
@@ -279,10 +304,12 @@ def run_preflight(
     Raises:
         RuntimeError: If the report does not validate against the schema.
     """
+    data = load_requirements(args.requirements)
+    choices, label = plan or load_plan(args.plan, data["defaults"], args.srv_path)
     osr = detect_os_release(fs)
     env = detect_environment(fs, runner)
     kernel = detect_kernel(fs, runner)
-    hw = detect_hardware(fs, runner, args.srv_path)
+    hw = detect_hardware(fs, runner, str(choices["srv_path"]))
     gpu = detect_gpu(fs, runner, env.env_class)
     conflicts = detect_conflicts(
         fs,
@@ -369,6 +396,20 @@ def run_preflight(
             "mok_enrollment_accepted": args.accept_mok_enrollment,
         },
     )
+    apply_requirements(
+        decision,
+        compute(
+            data,
+            choices,
+            label,
+            minimums=matrix["minimums"],
+            features=decision.features,
+            memory_gib=None if hw.memory_bytes is None else hw.memory_bytes / 2**30,
+            fs=fs,
+            runner=runner,
+            machine=machine,
+        ),
+    )
     overrides = Overrides(
         accept_degraded=args.accept_degraded,
         accept_experimental=args.accept_experimental,
@@ -417,12 +458,16 @@ def main(argv: Sequence[str]) -> int:
             f"--port: unknown lab ports {', '.join(unknown)} (known: {', '.join(sorted(known))})"
         )
     try:
+        plan = load_plan(args.plan, load_requirements(args.requirements)["defaults"], args.srv_path)
+    except PlanError as exc:
+        parser.error(str(exc))
+    try:
         if args.root:
             fs = FileSystem(args.root)
             runner: Runner = FixtureRunner.from_file(os.path.join(fs.root, "commands.json"))
         else:
             fs, runner = FileSystem("/"), RealRunner()
-        report, decision = run_preflight(args, fs, runner)
+        report, decision = run_preflight(args, fs, runner, plan)
     except Exception:
         sys.stderr.write("pinka-preflight: detection failed (preflight_error)\n")
         traceback.print_exc()

@@ -31,12 +31,15 @@ except ImportError:  # plain `python3 -m unittest` run without the dev environme
 
 
 def fixture_args(name: str) -> list[str]:
-    """The extra preflight arguments of a fixture (``args.json``, if any)."""
+    """The extra preflight arguments of a fixture (``args.json``, and ``plan.json`` as ``--plan``)."""
+    args: list[str] = []
     path = os.path.join(FIXTURES_DIR, name, "args.json")
-    if not os.path.exists(path):
-        return []
-    with open(path, encoding="utf-8") as handle:
-        args: list[str] = json.load(handle)
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as handle:
+            args = json.load(handle)
+    plan = os.path.join(FIXTURES_DIR, name, "plan.json")
+    if os.path.exists(plan):
+        args += ["--plan", plan]
     return args
 
 
@@ -179,6 +182,12 @@ class FixtureDecisionTest(unittest.TestCase):
                     self.assertTrue(
                         any(needle in r for r in doc["unsupported_reasons"]),
                         f"{name}: reason {needle!r}",
+                    )
+            elif key == "degraded_contains":
+                for needle in value:
+                    self.assertTrue(
+                        any(needle in r for r in doc["degraded_reasons"]),
+                        f"{name}: degraded reason {needle!r}",
                     )
             elif key == "remediation_contains":
                 remediations = [d.get("remediation", "") for d in doc["disabled_features"]]

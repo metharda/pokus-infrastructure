@@ -76,12 +76,13 @@ Every command also accepts `-h`, `--help`.
 Run preflight read-only.
 
 ```text
-pinka preflight [-h] [--json]
+pinka preflight [-h] [--json] [--plan FILE]
 ```
 
 | Argument | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--json` | — | — | print the JSON report |
+| `--plan` | `FILE` | — | the choices whose requirements to compute (default: the plan bootstrap stored, /etc/pinka/plan.json) |
 
 ### pinka doctor
 

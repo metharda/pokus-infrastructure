@@ -73,14 +73,13 @@ Lifecycle sources:
 
 ## Minimum hardware
 
-Below *required* the host is unsupported; below *recommended* preflight warns.
+Below *required* the host is unsupported; below *recommended* preflight warns. Memory has a floor: below it the host is unsupported. Above the floor, the required and recommended memory and the free disk per mount point are computed from the operator's choices ([Capacity planning](explanation/capacity-planning.md)). Every memory threshold compares `MemTotal` with 0.94 times its nominal value, so a machine with the nominal amount passes.
 
 | Resource | Required | Recommended |
 | --- | --- | --- |
-| Memory (GiB) | 16 | 24 |
+| Memory (GiB) | floor 8; above it computed | computed |
 | CPU threads | 8 | 16 |
-| Free disk for /var/lib (GiB) | 150 | 400 |
-| Free disk for /srv/pinka (GiB) | 100 | 500 |
+| Free disk | computed per mount point | - |
 
 ## Core requirements
 

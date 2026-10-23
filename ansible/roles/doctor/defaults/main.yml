@@ -4,6 +4,10 @@
 doctor_max_clock_offset: 1.0
 # Free space of the Incus pool below which doctor warns, in GiB.
 doctor_min_pool_free_gib: 20
+# Free space per mount point the lab uses (BUILD_PROMPT §9): warn below this
+# share, or when the trend of the recorded runs fills it within these days.
+doctor_disk_warn_free_percent: 15
+doctor_disk_full_within_days: 7
 # Age of the last successful backup after which doctor warns, in hours.
 doctor_backup_max_age_hours: 26
 # Seconds doctor waits for its telemetry probe, and for a smoke target's logs.

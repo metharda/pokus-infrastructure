@@ -80,6 +80,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:?}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:?}
       - --web.listen-address=127.0.0.1:${PROMETHEUS_PORT:?}
     volumes:
       - ./config/prometheus:/etc/prometheus:ro

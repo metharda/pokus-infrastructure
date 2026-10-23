@@ -137,6 +137,7 @@ nav:
       - How the preflight gate decides: explanation/preflight-gate.md
       - How bootstrap works: explanation/bootstrap.md
       - Components that existed before pinka: explanation/pre-existing-components.md
+      - Capacity planning: explanation/capacity-planning.md
       - Portability: explanation/portability.md
       - How benchmark targets are isolated: explanation/target-isolation.md
       - How telemetry, metrics and logs flow: explanation/telemetry.md

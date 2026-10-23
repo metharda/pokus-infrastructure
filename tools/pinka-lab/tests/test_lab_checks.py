@@ -15,8 +15,9 @@ from pinka_lab.checks import CHECKS
 from pinka_lab.doctor import Check, Outcome
 
 PREFLIGHT = (
-    "/usr/local/lib/pinka/preflight/pinka-preflight --no-write --quiet --srv-path /srv/pinka"
+    "/usr/local/lib/pinka/preflight/pinka-preflight --no-write --srv-path /srv/pinka --quiet"
 )
+PLAN_PATH = "/etc/pinka/plan.json"
 PROFILE_PATH = "/etc/pinka/host-profile.json"
 BOOT_ID = "00000000-0000-0000-0000-000000000000"
 NOW_TS = NOW.timestamp()
@@ -126,6 +127,15 @@ class PreflightTest(Base):
         checks.check_preflight_outcome(ctx)
         checks.check_preflight_drift(ctx)
         self.assertEqual(sum(1 for c in system.calls if c[0].endswith("pinka-preflight")), 1)
+
+    def test_the_stored_plan_is_used(self) -> None:
+        # BUILD_PROMPT §2.3: doctor computes the requirements of the configured choices.
+        plan = PREFLIGHT.replace(" --quiet", f" --plan {PLAN_PATH} --quiet")
+        system = FakeSystem(
+            {plan: (0, dict(PROFILE, outcome="supported"))},
+            files={PROFILE_PATH: json.dumps(PROFILE), PLAN_PATH: "{}"},
+        )
+        self.assertOutcome(run(checks.check_preflight_outcome, system), "pass")
 
     def test_drift(self) -> None:
         self.assertOutcome(run(checks.check_preflight_drift, self.report("supported")), "pass")
@@ -650,6 +660,83 @@ class GpuTest(Base):
         self.assertOutcome(run(checks.check_vllm, system), "pass")
         system = FakeSystem(files=current, http={"GET http://127.0.0.1:18704/health": (503, "")})
         self.assertOutcome(run(checks.check_vllm, system), "fail", "503")
+
+
+class DiskTest(Base):
+    """Free space per mount point and its trend (BUILD_PROMPT §9)."""
+
+    HISTORY = "/var/lib/pinka/doctor/disk-history.json"
+    DF = "df --output=target,size,avail -B1 / /srv"
+
+    def system(
+        self, free: dict[str, float], runs: Sequence[tuple[float, dict[str, float]]] = (), **kw: Any
+    ) -> FakeSystem:
+        report = dict(
+            PROFILE,
+            outcome="supported",
+            requirements={"disk": [{"mount": "/srv"}, {"mount": "/"}, {"mount": "/"}]},
+        )
+        lines = "Mounted on 1B-blocks Avail\n" + "".join(
+            f"{m} {100 * 2**30} {int(f * 2**30)}\n" for m, f in free.items()
+        )
+        history = {
+            "runs": [
+                {
+                    "at": (NOW - dt.timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "free": {m: int(f * 2**30) for m, f in values.items()},
+                }
+                for hours, values in runs
+            ]
+        }
+        return FakeSystem(
+            {PREFLIGHT: (0, report), self.DF: (0, lines)},
+            files={self.HISTORY: json.dumps(history)},
+            **kw,
+        )
+
+    def test_free_space_and_the_record(self) -> None:
+        system = self.system({"/": 40, "/srv": 60})
+        self.assertOutcome(
+            run(checks.check_disk_free_space, system), "pass", "/ 40.0 GiB free (40.0 %)"
+        )
+        text, mode = system.written[self.HISTORY]
+        self.assertEqual(mode, 0o644)
+        self.assertEqual(
+            json.loads(text)["runs"][-1],
+            {"at": "2026-01-01T12:00:00Z", "free": {"/": 40 * 2**30, "/srv": 60 * 2**30}},
+        )
+
+    def test_below_15_percent(self) -> None:
+        outcome = run(checks.check_disk_free_space, self.system({"/": 14.9, "/srv": 60}))
+        self.assertOutcome(outcome, "fail", "/ has 14.9 % free, below 15 %")
+
+    def test_the_trend_fills_a_disk_within_7_days(self) -> None:
+        # 50 GiB two days ago, 40 now: 5 GiB a day, full in 8 days.
+        slow = self.system({"/": 40, "/srv": 60}, [(48.0, {"/": 50, "/srv": 60})])
+        self.assertOutcome(run(checks.check_disk_free_space, slow), "pass")
+        # 70 GiB two days ago: 15 GiB a day, full in 2.7 days.
+        fast = self.system({"/": 40, "/srv": 60}, [(48.0, {"/": 70, "/srv": 60})])
+        self.assertOutcome(run(checks.check_disk_free_space, fast), "fail", "/ fills in about 2.7")
+        # Runs older than the window and runs within 6 hours give no trend.
+        old = self.system({"/": 40, "/srv": 60}, [(24.0 * 8, {"/": 90}), (2.0, {"/": 90})])
+        self.assertOutcome(run(checks.check_disk_free_space, old), "pass")
+
+    def test_the_record_keeps_the_last_runs(self) -> None:
+        runs = [(1000.0 - i, {"/": 40.0}) for i in range(checks.DISK_HISTORY_KEEP)]
+        system = self.system({"/": 40, "/srv": 60}, runs)
+        run(checks.check_disk_free_space, system)
+        kept = json.loads(system.written[self.HISTORY][0])["runs"]
+        self.assertEqual(len(kept), checks.DISK_HISTORY_KEEP)
+        self.assertEqual(kept[-1]["at"], "2026-01-01T12:00:00Z")
+
+    def test_only_root_writes_the_record(self) -> None:
+        system = self.system({"/": 40, "/srv": 60}, euid=1000)
+        run(checks.check_disk_free_space, system)
+        self.assertNotIn(self.HISTORY, system.written)
+
+    def test_df_without_answers(self) -> None:
+        system = FakeSystem({PREFLIGHT: (0, dict(PROFILE, outcome="supported"))})
+        self.assertOutcome(run(checks.check_disk_free_space, system), "fail", "df measured none")
 
 
 class IncusTest(Base):

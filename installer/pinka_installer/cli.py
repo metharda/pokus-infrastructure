@@ -10,6 +10,9 @@ Bootstrap runs these commands with the installer environment
   researchers, the vault and the answers file (BUILD_PROMPT §18.6); with a
   platform it first inspects the release with the platform tool (its checks,
   and the database roles and secrets it needs in the vault);
+- ``plan --machine NAME --output FILE`` writes the machine's requirements plan
+  (BUILD_PROMPT §2.3) from host_vars, group_vars and models.lock.yml, which
+  bootstrap passes to preflight (``--plan``) and to the play;
 - ``tui`` starts the installer TUI on the terminal (BUILD_PROMPT §18).
 
 Exit status: 0 done, 1 operator action needed (the reason is printed), 2 usage.
@@ -18,12 +21,14 @@ Exit status: 0 done, 1 operator action needed (the reason is printed), 2 usage.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 from pinka_installer import answers as answers_mod
 from pinka_installer import apply, release, vault
+from pinka_installer import plan as plan_mod
 from pinka_installer.paths import Paths
 
 EXIT_OK = 0
@@ -62,6 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         metavar="NAME",
         help="the active platform the answers' platform may replace (from --replace-platform)",
+    )
+    requirements = sub.add_parser(
+        "plan", help="write the machine's requirements plan for preflight --plan"
+    )
+    requirements.add_argument("--machine", required=True, help="the machine (host_vars/<name>.yml)")
+    requirements.add_argument(
+        "--output", type=Path, default=None, help="the plan file (default: standard output)"
     )
     tui = sub.add_parser("tui", help="start the installer TUI")
     tui.add_argument("--machine", default="", help="machine name given to bootstrap")
@@ -187,6 +199,29 @@ def cmd_apply(args: argparse.Namespace, paths: Paths) -> int:
     return EXIT_OK
 
 
+def cmd_plan(args: argparse.Namespace, paths: Paths) -> int:
+    """Write the machine's requirements plan (``preflight --plan``).
+
+    Args:
+        args: Parsed options.
+        paths: Installer paths.
+
+    Returns:
+        Exit status.
+    """
+    try:
+        found = plan_mod.machine_plan(paths, args.machine)
+    except (plan_mod.PlanError, OSError) as exc:
+        sys.stderr.write(f"pinka-installer: the requirements plan: {exc}\n")
+        return EXIT_ACTION
+    text = json.dumps(found, indent=2, sort_keys=True) + "\n"
+    if args.output is None:
+        sys.stdout.write(text)
+    else:
+        args.output.write_text(text, encoding="utf-8")
+    return EXIT_OK
+
+
 def cmd_tui(args: argparse.Namespace, paths: Paths) -> int:
     """Start the installer TUI.
 
@@ -208,6 +243,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Paths], int]] = {
     "validate": cmd_validate,
     "describe": cmd_describe,
     "apply": cmd_apply,
+    "plan": cmd_plan,
     "tui": cmd_tui,
 }
 

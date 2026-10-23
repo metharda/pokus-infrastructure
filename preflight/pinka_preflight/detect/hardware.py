@@ -20,16 +20,20 @@ class DiskInfo:
     Attributes:
         path: The path asked for.
         checked_path: The nearest existing ancestor that was measured.
+        mount: The mount point of its filesystem.
         fstype: Filesystem type.
         size_gib: Filesystem size.
-        free_gib: Available space as reported by ``df``.
+        free_gib: Available space as reported by ``df``, rounded to a tenth of a GiB.
+        free_bytes: The same in bytes, for the requirements (§2.3).
     """
 
     path: str
     checked_path: str
+    mount: str | None
     fstype: str | None
     size_gib: float | None
     free_gib: float | None
+    free_bytes: int | None = None
 
 
 @dataclass
@@ -62,10 +66,11 @@ class Hardware:
         cpu_threads_effective: The smaller of the two.
         vmx: Intel VT-x flag.
         svm: AMD-V flag.
-        memory_gib: ``MemTotal``.
+        memory_gib: ``MemTotal`` in GiB, rounded to a tenth.
         swap_gib: ``SwapTotal``.
         disks: Free space per role (``var_lib``, ``srv_pinka``).
         block_devices: Block devices (informational).
+        memory_bytes: ``MemTotal`` in bytes, for the memory thresholds (§2.3).
     """
 
     cpu_model: str | None
@@ -78,6 +83,7 @@ class Hardware:
     swap_gib: float | None
     disks: dict[str, DiskInfo] = field(default_factory=dict)
     block_devices: list[BlockDevice] = field(default_factory=list)
+    memory_bytes: int | None = None
 
 
 def _gib(value: float) -> float:
@@ -147,18 +153,27 @@ def disk_info(fs: FileSystem, runner: Runner, path: str) -> DiskInfo:
         path: Absolute path.
 
     Returns:
-        Disk facts (fields are None if ``df`` failed).
+        Disk facts with the mount point (``df``'s target; fields are None if
+        ``df`` failed).
     """
     checked = nearest_existing(fs, path)
-    res = runner.run(["df", "--output=fstype,size,avail", "-B1", checked])
+    res = runner.run(["df", "--output=target,fstype,size,avail", "-B1", checked])
     lines = res.stdout.strip().splitlines() if res.ok else []
     if len(lines) >= 2:  # noqa: PLR2004
         parts = lines[-1].split()
         try:
-            return DiskInfo(path, checked, parts[0], _gib(int(parts[1])), _gib(int(parts[2])))
+            return DiskInfo(
+                path,
+                checked,
+                " ".join(parts[:-3]) or None,
+                parts[-3],
+                _gib(int(parts[-2])),
+                _gib(int(parts[-1])),
+                int(parts[-1]),
+            )
         except (IndexError, ValueError):
             pass
-    return DiskInfo(path, checked, None, None, None)
+    return DiskInfo(path, checked, None, None, None, None)
 
 
 def _flag(value: str | None) -> bool | None:
@@ -231,4 +246,5 @@ def detect_hardware(fs: FileSystem, runner: Runner, srv_path: str) -> Hardware:
             "srv_pinka": disk_info(fs, runner, srv_path),
         },
         block_devices=block_devices(fs),
+        memory_bytes=mem.get("MemTotal"),
     )

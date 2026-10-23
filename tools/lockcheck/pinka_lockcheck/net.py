@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, BinaryIO
 
@@ -34,6 +35,12 @@ MANIFEST_TYPES = ", ".join(
 CHALLENGE_PARAM = re.compile(r'(\w+)="([^"]*)"')
 DOCKER_HUB = "docker.io"
 DOCKER_HUB_API = "registry-1.docker.io"
+# Google's pull-through mirror of Docker Hub, read for sizes before Docker Hub
+# (anonymous reads are limited per address), and ECR Public's copies of
+# Docker Hub's official images.
+DOCKER_HUB_MIRROR = "mirror.gcr.io"
+ECR_PUBLIC = "public.ecr.aws"
+ECR_DOCKER_LIBRARY = "docker/library/"
 HTTP_UNAUTHORIZED = 401
 HTTP_NOT_FOUND = 404
 HTTP_TOO_MANY_REQUESTS = 429
@@ -285,6 +292,7 @@ def registry_json(image: str, path: str) -> tuple[dict[str, str], Any]:
     ref = ImageRef.parse(image)
     url = f"https://{ref.api_host}/v2/{ref.repository}/{path}"
     headers = {"Accept": MANIFEST_TYPES}
+    rate_limited = 0
     while True:
         request = urllib.request.Request(url, headers=headers)
         try:
@@ -296,9 +304,91 @@ def registry_json(image: str, path: str) -> tuple[dict[str, str], Any]:
                 challenge = parse_challenge(exc.headers.get("WWW-Authenticate", ""))
                 headers["Authorization"] = f"Bearer {_token(challenge, ref)}"
                 continue
-            raise FetchError(f"{url}: HTTP {exc.code}") from exc
+            if exc.code == HTTP_TOO_MANY_REQUESTS and rate_limited < RATE_LIMIT_RETRIES:
+                rate_limited += 1
+                time.sleep(retry_after(exc.headers.get("Retry-After"), rate_limited))
+                continue
+            raise FetchError(
+                f"{url}: HTTP {exc.code}", transient=transient_status(exc.code)
+            ) from exc
         except ValueError as exc:
             raise FetchError(f"{url}: not JSON") from exc
+
+
+# The platforms the lock pins images for (versions-lock.schema.json, $defs.image).
+LOCK_PLATFORMS = ("linux/amd64", "linux/arm64")
+RegistryJson = Callable[[str, str], "tuple[Mapping[str, str], Any]"]
+
+
+def platform_of(entry: Mapping[str, Any]) -> str:
+    """``os/architecture`` of an index entry (``unknown/unknown`` for attestations)."""
+    found = entry.get("platform") or {}
+    return f"{found.get('os')}/{found.get('architecture')}"
+
+
+def size_sources(image: str) -> list[str]:
+    """Where to read an image's manifests, in order: names that hold the same digests.
+
+    Docker Hub limits anonymous manifest reads per address, so its images are
+    read from Google's mirror first; ECR Public's copies of Docker Hub's
+    official images fall back to the mirror.
+    """
+    ref = ImageRef.parse(image)
+    if ref.registry == DOCKER_HUB:
+        return [f"{DOCKER_HUB_MIRROR}/{ref.repository}", image]
+    if ref.registry == ECR_PUBLIC and ref.repository.startswith(ECR_DOCKER_LIBRARY):
+        return [image, f"{DOCKER_HUB_MIRROR}/{ref.repository.removeprefix('docker/')}"]
+    return [image]
+
+
+def image_sizes(image: str, digest: str, fetch: RegistryJson = registry_json) -> dict[str, int]:
+    """The compressed size of a pinned image per platform: the sum of its layers' sizes.
+
+    The requirements computation estimates the unpacked size from it until the
+    image is pulled on a host (BUILD_PROMPT §2.3, §10.1). A digest names its
+    content, so every source of :func:`size_sources` that holds it gives the
+    same sizes; the next is read when one fails.
+
+    Args:
+        image: Fully qualified image name.
+        digest: The digest of its multi-platform index.
+        fetch: ``(image, path) -> (headers, JSON)`` from the registry's v2 API.
+
+    Returns:
+        ``{platform: bytes}`` for every platform of the lock the index holds.
+
+    Raises:
+        FetchError: If no source answers, the digest is not a multi-platform
+            index, or a manifest has no layers.
+    """
+    sources = size_sources(image)
+    for number, source in enumerate(sources, 1):
+        try:
+            return _sizes_from(source, digest, fetch)
+        except FetchError:
+            if number == len(sources):
+                raise
+    raise FetchError(f"{image}: no source")  # pragma: no cover - sources is never empty
+
+
+def _sizes_from(image: str, digest: str, fetch: RegistryJson) -> dict[str, int]:
+    _, index = fetch(image, f"manifests/{digest}")
+    entries = index.get("manifests") if isinstance(index, dict) else None
+    if not entries:
+        raise FetchError(f"{image}@{digest} is not a multi-platform index")
+    children: dict[str, str] = {}
+    for entry in entries:
+        platform = platform_of(entry)
+        if platform in LOCK_PLATFORMS:
+            children.setdefault(platform, str(entry["digest"]))
+    sizes: dict[str, int] = {}
+    for platform, child in sorted(children.items()):
+        _, manifest = fetch(image, f"manifests/{child}")
+        layers = manifest.get("layers") if isinstance(manifest, dict) else None
+        if not layers:
+            raise FetchError(f"{image}@{child} ({platform}) has no layers")
+        sizes[platform] = sum(int(layer["size"]) for layer in layers)
+    return sizes
 
 
 def retry_after(header: str | None, attempt: int) -> float:

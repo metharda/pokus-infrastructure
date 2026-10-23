@@ -181,6 +181,81 @@ def test_missing_digest_and_registry_errors() -> None:
     assert "registry request failed" in checks.container_findings(image_doc(), failing)[0].message
 
 
+def test_image_sizes_sum_the_layers_of_each_platform() -> None:
+    index = {
+        "manifests": [
+            {"platform": {"os": "linux", "architecture": "amd64"}, "digest": "sha256:amd"},
+            {
+                "platform": {"os": "linux", "architecture": "arm64", "variant": "v8"},
+                "digest": "sha256:arm",
+            },
+            {"platform": {"os": "unknown", "architecture": "unknown"}, "digest": "sha256:att"},
+        ]
+    }
+    manifests = {
+        "sha256:amd": {"layers": [{"size": 100}, {"size": 20}]},
+        "sha256:arm": {"layers": [{"size": 90}]},
+    }
+    asked: list[str] = []
+
+    def fetch(image: str, path: str) -> tuple[dict[str, str], Any]:
+        asked.append(image)
+        reference = path.removeprefix("manifests/")
+        return {}, index if reference == DIGEST else manifests[reference]
+
+    sizes = net.image_sizes("ghcr.io/example-org/x", DIGEST, fetch)
+    assert sizes == {"linux/amd64": 120, "linux/arm64": 90}
+    assert set(asked) == {"ghcr.io/example-org/x"}
+
+
+def test_docker_hub_sizes_come_from_its_mirror_first_and_then_from_docker_hub() -> None:
+    asked: list[str] = []
+
+    def fetch(image: str, path: str) -> tuple[dict[str, str], Any]:
+        asked.append(image)
+        if image.startswith("mirror.gcr.io/") and path == f"manifests/{DIGEST}":
+            raise net.FetchError("HTTP 404")
+        if path == f"manifests/{DIGEST}":
+            return {}, {
+                "manifests": [
+                    {"platform": {"os": "linux", "architecture": "amd64"}, "digest": "sha256:c"}
+                ]
+            }
+        return {}, {"layers": [{"size": 7}]}
+
+    assert net.image_sizes("docker.io/library/x", DIGEST, fetch) == {"linux/amd64": 7}
+    assert asked == ["mirror.gcr.io/library/x", "docker.io/library/x", "docker.io/library/x"]
+    assert net.size_sources("public.ecr.aws/docker/library/python") == [
+        "public.ecr.aws/docker/library/python",
+        "mirror.gcr.io/library/python",
+    ]
+    assert net.size_sources("ghcr.io/google/cadvisor") == ["ghcr.io/google/cadvisor"]
+    with pytest.raises(net.FetchError, match="multi-platform"):
+        net.image_sizes("ghcr.io/example-org/x", DIGEST, lambda image, path: ({}, {"layers": []}))
+
+
+def test_recorded_sizes_are_checked_against_the_manifests() -> None:
+    doc = image_doc()
+    doc["containers"]["images"]["x"]["sizes"] = {"linux/amd64": 120}
+    assert checks.size_findings(doc, lambda image, digest: {"linux/amd64": 120}) == []
+    wrong = checks.size_findings(doc, lambda image, digest: {"linux/amd64": 121})
+    assert [(f.severity, f.where) for f in wrong] == [("error", "containers.images.x.sizes")]
+    assert "recorded 120, the manifest says 121" in wrong[0].message
+    missing = checks.size_findings(doc, lambda image, digest: {"linux/arm64": 1})
+    assert "the index has no linux/amd64 image" in missing[0].message
+
+    def failing(image: str, digest: str) -> dict[str, int]:
+        raise net.FetchError("HTTP 500")
+
+    assert "registry request failed" in checks.size_findings(doc, failing)[0].message
+
+
+def test_every_lab_image_records_its_sizes(lock: dict[str, Any]) -> None:
+    for name, entry in lock["containers"]["images"].items():
+        assert set(entry["sizes"]) == set(entry["platforms"]), name
+        assert all(size > 1_000_000 for size in entry["sizes"].values()), name
+
+
 def test_target_and_ci_images_are_checked_too() -> None:
     doc = image_doc()
     doc["containers"]["target_images"] = {"web": doc["containers"]["images"]["x"]}

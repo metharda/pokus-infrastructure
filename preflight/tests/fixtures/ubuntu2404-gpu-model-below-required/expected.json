@@ -1,0 +1,7 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "vLLM serving example-model",
+    "a model of at most 5.7 GiB"
+  ]
+}

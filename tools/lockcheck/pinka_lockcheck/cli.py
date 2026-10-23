@@ -85,6 +85,7 @@ def _check(lock: Path, *, offline: bool, only: Sequence[str]) -> int:
     if not offline and not any(f.where == "(root)" for f in findings):
         if "containers" in only:
             findings += checks.container_findings(doc)
+            findings += checks.size_findings(doc)
         if "binaries" in only:
             findings += checks.binary_findings(doc)
         if "keys" in only:

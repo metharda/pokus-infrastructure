@@ -6118,3 +6118,119 @@ to).
   the lane may find others (for example an update the distribution
   installed during the test). Each is either a fix to uninstall or, with
   its reason, a kept difference, never a wider `KEPT` to make a lane pass.
+
+## Requirements computed from the choices (A, 3f-1)
+
+Built after `8696cb3` (BUILD_PROMPT §2.3, §7.7, §7.9, §7.12, §7.13, §9,
+§19.9; the owner's 3f-1.A and decisions 6 and 7 on the 3f-1 proposal).
+
+### What was built
+
+- **Sizes in the locks.** Every image of `versions.lock.yml`
+  `containers.images` records its compressed size per platform
+  (`sizes`, the sum of the layers of each platform manifest, read with the
+  registry API on 2026-10-23; Docker Hub's official and community images
+  through `mirror.gcr.io`, which holds the same digests, since Docker Hub's
+  anonymous limit was spent on this network). `make lock-check` re-reads
+  them (`size_findings`), `make lock-pins` prints them. Every
+  `images/*/image.yaml` has an `estimated_size_gib` (0.5-0.8 GiB, an
+  estimate until a build measures it). Every file of `models.lock.yml` has
+  its `size` from the Hub's tree (the field names stay under the existing
+  `TODO(verify)` of `installer/pinka_installer/models.py`).
+- **`preflight/requirements.yml`** (schema
+  `preflight/schema/requirements.schema.json`), compiled by `make generate`
+  to `preflight/requirements.json` with the image sizes, the blueprints'
+  estimates, the incus role's target profiles, the pool's loop file path
+  and the configured defaults (`plan_defaults`, from group_vars and the
+  roles' defaults). The generator refuses an image of the lock that the
+  file does not classify. The memory floor (8 GiB nominal) and the 0.94
+  tolerance moved into the support matrix's `minimums.memory_gib`; the
+  fixed memory and free-disk minimums are gone.
+- **Preflight** (`pinka_preflight/requirements.py`): `--plan FILE`
+  (`preflight/schema/plan.schema.json`, checked by preflight's own
+  validator; a bad plan is a usage error, exit 2), the memory items per
+  node role, required and recommended with the floor and the tolerance
+  compared with `MemTotal` in bytes, the disk per mount point (`df` now
+  reports the mount point and the free bytes), present items counting
+  nothing, the shortfall attributed to the largest items first, the growth
+  with the day the research space fills, and "these would fit" hints
+  (concurrent targets, model size, training cap). `apply_requirements`
+  adds memory and disk to `minimums`, unsupported and `degraded_reasons`
+  (new in the host profile, listed by the consent of bootstrap and the
+  installer). The host profile's `requirements` carries `plan`, `choices`,
+  `memory_gib`, `cpu_threads`, `disk`, `growth` and `notes`; the summary
+  prints the breakdown (bootstrap's log has it for an answers install).
+- **The plan's one writer**, `pinka-installer plan --machine NAME`
+  (`pinka_installer/plan.py`): the compiled defaults overlaid with what
+  group_vars and host_vars set (host_vars win), the model's files from
+  `models.lock.yml`; a template value or an unpinned model is refused.
+  Bootstrap now always sets up the installer's hash-locked environment,
+  writes the plan before preflight, passes it to preflight and to the play
+  (`pinka_bootstrap.plan_path`, used by `preflight_gate`), and stores it as
+  `/etc/pinka/plan.json`; doctor and `pinka preflight` (which now also
+  passes the machine's `preflight_args`) use it, `pinka preflight --plan
+  FILE` another one.
+- **Answers and host_vars:** `resources.concurrent_targets`
+  (`incus_concurrent_targets`), `telemetry_retention` (the three stores and
+  Prometheus by size) and `backups.pg_dumps_kept` (`backup_pgdump_keep`),
+  with validators (Tempo takes hours only, being a Go duration).
+- **Ansible:** `incus_concurrent_targets` (default 2) sizes the `bench`
+  project's `limits.memory` (targets times the VM or container profile plus
+  a probe client, filter `pinka_size_mib`) instead of 60 % of the host;
+  `observability_prometheus_retention_size` (default 0, by time only)
+  becomes `--storage.tsdb.retention.size`; doctor installs
+  `requirements.json` and the plan schema with preflight.
+- **Doctor:** `disk.free_space` (warning) records the free space of every
+  mount point the requirements name in `/var/lib/pinka/doctor/disk-history.json`
+  (as root, the last 60 runs) and warns below 15 % free or when the trend
+  of the last 7 days (at least 6 hours apart) fills one within 7 days.
+- **Test VMs** are sized from the requirement of the CI answers computed
+  with the installer's plan and preflight's computation (10 GiB, 80 GiB);
+  a test keeps `tests/distros/targets.yml` in step.
+- **Fixtures** just below and just above each threshold: the floor
+  (7.51/7.53 GiB), required with four targets (9.48/9.51 against 9.49),
+  recommended with the defaults (34.95/34.98 against 34.97), a served model
+  of 5.7 GiB (14.84/14.86 against 14.85: a nominal 16 GiB machine serves
+  it), and a disk shortfall on two mount points; the generic fixtures got
+  64 GiB, since the defaults recommend 37.2 GiB. Unit tests cover the disk
+  just above and below, presence, the growth and the plan.
+
+### The estimates
+
+Every number is `estimated` until real-machine test 4.15 measures it; the
+sources are in `preflight/requirements.yml`.
+
+| Part | Required / recommended | CPU | Source |
+| --- | --- | --- | --- |
+| host services | 1.0 / 1.5 GiB | 0.5 | resident memory of sshd, tailscaled, dockerd, containerd, pinka's units |
+| Incus daemon | 0.2 / 0.4 GiB | 0.2 | incusd and lxcfs idle |
+| PostgreSQL | 0.5 / 1.5 GiB | 0.5 | pinka's shared_buffers (1/16 of RAM, 128 MiB-4 GiB) + ~10 MiB per connection |
+| telemetry stores | 1.5 / 3.0 GiB | 0.5 | Prometheus at ~5,000 series, Loki, Tempo, Grafana, query proxy |
+| collectors and exporters | 0.3 / 0.8 GiB | 0.3 | the gateway's memory_limiter (512 MiB) and half for journald |
+| OPA | 0.1 / 0.2 GiB | 0.1 | OPA with a policy bundle |
+| bootstrap and the installer | 0.5 / 0.8 GiB | 1 | ansible-playbook's peak and the TUI |
+| each concurrent target | 1.5 / 2.5 GiB (container or VM + probe client) | 1 | the incus role's profiles |
+| vLLM | model + 3 / + 5 GiB | 2 | Python, PyTorch, CUDA libraries + the files while loading |
+| a training job | 0 / `training_caps.memory_max` | caps | the arbiter's cap |
+| pinka itself (disk) | 5 GiB on `/opt/pinka` | | the environments the locks install, room for an update |
+| images (disk) | compressed × 2.5 until pulled | | owner decision 7 |
+| growth (disk) | Prometheus 0.05, Loki 0.1, Tempo 0.05, dumps 0.05, database 0.02 GiB a day | | estimates; the platform's share comes on top |
+
+With the defaults the lab requires 8 GiB (7.1 GiB summed, below the floor)
+and recommends 37.2 GiB on a full node with VM targets (35.2 without), of
+which 24 GiB is the training cap.
+
+### Interpretations for the owner
+
+Recorded in PROGRESS.md under "Open questions" (A of 3f-1): the training
+cap in the recommended value, no feature switches in the plan, "artifacts"
+retention, and the smaller test VMs. Also:
+
+- A golden image counts twice (its export below the research space and
+  Incus's image store); its unpacked volume lives in the pool, already
+  counted.
+- The pool's loop file and a pulled image count nothing on a re-run; the
+  loop file's growth inside its size is not checked at install (doctor's
+  free-space check watches the file system).
+- VRAM is left to B (the capacity plan screen's VRAM bar); A computes RAM
+  and disk.

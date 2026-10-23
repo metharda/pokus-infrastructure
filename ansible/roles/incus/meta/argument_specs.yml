@@ -69,9 +69,13 @@ argument_specs:
         type: int
         default: 4
         description: Most VMs at once in the bench and build projects (with the vm_targets feature).
+      incus_concurrent_targets:
+        type: int
+        default: 2
+        description: Targets that run at once; they size the bench project's memory and the memory preflight requires.
       incus_bench_limits:
         type: dict
-        description: Project limits of bench (derived from the host's memory and CPUs, or from cpuset_targets).
+        description: Project limits of bench (memory from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
       incus_target_container:
         type: dict
         default: {cpu: "1", memory: 1GiB, root_size: 8GiB}

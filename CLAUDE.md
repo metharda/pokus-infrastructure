@@ -338,6 +338,20 @@ opens a pull request and never merges.
 - Storage must be `btrfs` or LVM thin; no `dir` backend.
 - The `preflight_gate` role fails if outcome, provider or features differ from
   `/etc/pinka/host-profile.json` without `--refresh-profile`.
+- Memory above the floor (8 GiB nominal, every memory threshold compared at
+  0.94) and the disk per mount point follow the operator's choices (§2.3):
+  `preflight/requirements.yml` lists every part with its numbers, their
+  source and `basis` (`estimated` until real-machine test 4.15 measures
+  them), compiled with the image sizes of `versions.lock.yml` and the
+  blueprints' `estimated_size_gib` to the generated
+  `preflight/requirements.json`. Every image of `containers.images` needs an
+  entry there (the generator refuses otherwise), and a new store that grows
+  with use a `growth` entry. The plan has one writer, `pinka-installer plan`
+  (from host_vars, group_vars and `models.lock.yml`, whose files carry their
+  sizes); bootstrap passes it to preflight and the play and stores it as
+  `/etc/pinka/plan.json`, which doctor and `pinka preflight` use. Never lower
+  an estimate or a threshold to make a test or a VM pass; the test VMs are
+  sized to the computed requirement of what they install.
 
 ## Safety invariants (BUILD_PROMPT §13)
 
@@ -395,7 +409,7 @@ opens a pull request and never merges.
 
 - Never edit generated files by hand: `preflight/support-matrix.json`,
   `preflight/endpoints.json`, `preflight/lab-defaults.json`,
-  `preflight/nvidia-gpus.json`, `docs/support-matrix.md`,
+  `preflight/nvidia-gpus.json`, `preflight/requirements.json`, `docs/support-matrix.md`,
   `docs/reference/{cli/pinka-preflight,cli/bootstrap,cli/pinka,exit-codes,host-profile}.md`,
   `docs/reference/{doctor-checks,fingerprint}.md`,
   `docs/reference/{versions,ansible-variables,component-sources,accounts}.md`,

@@ -174,8 +174,9 @@ def test_projects(desired: dict[str, Any]) -> None:
     assert bench["features.images"] == "false"
     assert bench["restricted.devices.proxy"] == "allow"
     assert bench["limits.virtual-machines"] == "4"
-    memory = fixture_profile(FIXTURE)["hardware"]["memory_gib"]
-    assert bench["limits.memory"] == f"{max(int(memory * 0.6), 1)}GiB"
+    # Two concurrent targets (the default), each a VM (vm_targets) of 2 GiB
+    # with a probe client of 512 MiB.
+    assert bench["limits.memory"] == f"{2 * (2048 + 512)}MiB"
     assert by_name(projects, "build")["config"]["restricted.networks.access"] == "pinka-build0"
     user = by_name(projects, "user-1001")["config"]
     assert set(user) >= INCUS_USER_KEYS
@@ -213,6 +214,20 @@ def test_no_vms_without_vm_targets() -> None:
     )
     assert "target-vm" not in [p["name"] for p in facts["incus_profiles"]]
     assert all(p["config"]["limits.virtual-machines"] == "0" for p in facts["incus_projects"])
+
+
+@pytest.mark.parametrize(
+    ("targets", "vm_targets", "memory"), [(1, False, "1536MiB"), (5, True, "12800MiB")]
+)
+def test_bench_memory_follows_the_concurrent_targets(
+    targets: int, vm_targets: bool, memory: str
+) -> None:
+    """The bench project holds the chosen targets, not a share of the host (§2.3)."""
+    facts = run_set_facts(
+        ROLES / "incus" / "tasks" / "desired.yml",
+        incus_vars(vm_targets=vm_targets, researchers=[], incus_concurrent_targets=targets),
+    )
+    assert by_name(facts["incus_projects"], "bench")["config"]["limits.memory"] == memory
 
 
 def test_preseed_lists_everything(desired: dict[str, Any]) -> None:

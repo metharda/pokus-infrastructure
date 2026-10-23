@@ -201,30 +201,27 @@ def support_matrix_page(root: Path) -> str:
         )
     )
     mins = m["minimums"]
+    memory = mins["memory_gib"]
     out.append(
         "\n## Minimum hardware\n\nBelow *required* the host is unsupported; "
-        "below *recommended* preflight warns.\n\n"
+        "below *recommended* preflight warns. Memory has a floor: below it the host is "
+        "unsupported. Above the floor, the required and recommended memory and the free disk "
+        "per mount point are computed from the operator's choices "
+        "([Capacity planning](explanation/capacity-planning.md)). Every memory threshold "
+        f"compares `MemTotal` with {memory['tolerance']} times its nominal value, so a machine "
+        "with the nominal amount passes.\n\n"
     )
     out.append(
         table(
             ["Resource", "Required", "Recommended"],
             [
-                ["Memory (GiB)", mins["memory_gib"]["required"], mins["memory_gib"]["recommended"]],
+                ["Memory (GiB)", f"floor {memory['floor']}; above it computed", "computed"],
                 [
                     "CPU threads",
                     mins["cpu_threads"]["required"],
                     mins["cpu_threads"]["recommended"],
                 ],
-                [
-                    "Free disk for /var/lib (GiB)",
-                    mins["free_disk_gib"]["var_lib"]["required"],
-                    mins["free_disk_gib"]["var_lib"]["recommended"],
-                ],
-                [
-                    "Free disk for /srv/pinka (GiB)",
-                    mins["free_disk_gib"]["srv_pinka"]["required"],
-                    mins["free_disk_gib"]["srv_pinka"]["recommended"],
-                ],
+                ["Free disk", "computed per mount point", "-"],
             ],
         )
     )

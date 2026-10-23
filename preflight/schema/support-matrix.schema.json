@@ -93,19 +93,19 @@
     "minimums": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["memory_gib", "cpu_threads", "free_disk_gib"],
+      "required": ["memory_gib", "cpu_threads"],
       "properties": {
-        "memory_gib": {"$ref": "#/$defs/minimum"},
-        "cpu_threads": {"$ref": "#/$defs/minimum"},
-        "free_disk_gib": {
+        "memory_gib": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["var_lib", "srv_pinka"],
+          "required": ["floor", "tolerance"],
+          "description": "The memory floor in nominal GiB, and the fraction of every nominal memory threshold MemTotal is compared with; required and recommended memory are computed from the choices (preflight/requirements.yml)",
           "properties": {
-            "var_lib": {"$ref": "#/$defs/minimum"},
-            "srv_pinka": {"$ref": "#/$defs/minimum"}
+            "floor": {"type": "number", "exclusiveMinimum": 0},
+            "tolerance": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
           }
-        }
+        },
+        "cpu_threads": {"$ref": "#/$defs/minimum"}
       }
     },
     "core_requirements": {

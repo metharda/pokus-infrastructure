@@ -1,0 +1,7 @@
+{
+  "degraded_contains": [
+    "below the 37.2 GiB recommended",
+    "a training job 24.0 GiB"
+  ],
+  "outcome": "degraded"
+}

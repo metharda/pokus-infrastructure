@@ -5,7 +5,7 @@
   "description": "A golden image blueprint (BUILD_PROMPT §7.13). The images role builds it as alias <name>/<version>.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "name", "version", "description", "base", "type", "nesting", "packages", "docker_images", "services", "telemetry", "tests"],
+  "required": ["schema_version", "name", "version", "description", "base", "type", "nesting", "estimated_size_gib", "packages", "docker_images", "services", "telemetry", "tests"],
   "properties": {
     "schema_version": {"const": 1},
     "name": {"type": "string", "pattern": "^(_base|[a-z][a-z0-9-]{1,40})$"},
@@ -19,6 +19,7 @@
     },
     "type": {"enum": ["container", "vm"]},
     "nesting": {"type": "boolean"},
+    "estimated_size_gib": {"type": "number", "exclusiveMinimum": 0, "description": "The space one build takes below /srv/pinka/images (the exported image), in GiB; the requirements computation counts it for every blueprint not yet built until a build measures it (BUILD_PROMPT \u00a72.3, \u00a77.13)"},
     "packages": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9+.-]*(=[A-Za-z0-9.:~+-]+)?$"}},
     "docker_images": {"type": "array", "items": {"type": "string", "description": "Key of versions.lock.yml containers.target_images"}},
     "services": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9@._-]*$"}},

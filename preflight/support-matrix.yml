@@ -161,12 +161,15 @@ environment:
   container: {tier: unsupported, reason: "The lab needs its own kernel features, systemd as PID 1, and nested container/VM capabilities"}
   unknown: {tier: unsupported, reason: "Could not determine the environment reliably"}
 
+# Nominal values. MemTotal is compared with tolerance × each memory threshold:
+# the firmware and the kernel keep part of the installed memory (§2.2; owner,
+# decision 6 on the 3f-1 proposal). The floor is the core stack with no
+# target running: below it the host is unsupported. Above it, the required
+# and recommended memory and the free disk per mount point are computed from
+# the operator's choices (preflight/requirements.yml, §2.3).
 minimums:
-  memory_gib: {required: 16, recommended: 24}
+  memory_gib: {floor: 8, tolerance: 0.94}
   cpu_threads: {required: 8, recommended: 16}
-  free_disk_gib:
-    var_lib: {required: 150, recommended: 400}
-    srv_pinka: {required: 100, recommended: 500}
 
 core_requirements:  # failing any of these → unsupported (or needs_action when a provider rule resolves it)
   - id: systemd_pid1

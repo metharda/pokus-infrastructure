@@ -27,10 +27,16 @@ from pinka_test_distros import (
 )
 from pinka_test_distros.incus import Incus, Result
 
+from pinka_installer import answers as answers_mod
+from pinka_installer import hostvars
+from pinka_installer import plan as plan_mod
 from pinka_platform import contract as contract_mod
 from pinka_platform import render
+from pinka_preflight import requirements
 from pinka_preflight.detect.os_release import OsRelease
+from pinka_preflight.fs import FileSystem
 from pinka_preflight.matrix import load_matrix, match_os
+from pinka_preflight.runner import FixtureRunner
 
 INFRA = Path(__file__).resolve().parents[3]
 AUTHKEY = "placeholder-auth-key-for-tests"
@@ -488,8 +494,8 @@ def test_a_passing_test(tmp_path: Path) -> None:
     }
     launch = next(c for c in fake.calls if c[1] == "launch")
     assert launch[2:5] == ("images:debian/13/cloud", "ptd-debian-13-abcdef", "--vm")
-    assert launch[-2:] == ("--device", "root,size=300GiB")
-    assert "limits.cpu=8" in launch and "limits.memory=18GiB" in launch
+    assert launch[-2:] == ("--device", "root,size=80GiB")
+    assert "limits.cpu=8" in launch and "limits.memory=10GiB" in launch
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
     runs = [s for s in scripts if "bootstrap.sh" in s]
@@ -1394,7 +1400,7 @@ def test_every_make_target_finds_the_packages_the_cli_imports(target: str) -> No
     assert done.returncode == 0, done.stderr
 
 
-# Sizes as Incus writes them (``18GiB``), in GiB.
+# Sizes as Incus writes them (``10GiB``), in GiB.
 SIZE_UNITS = {"GiB": 1.0, "TiB": 1024.0, "MiB": 1 / 1024}
 # The guest's MemTotal is below the assigned memory by what the kernel reserves
 # (its own image, page tables, a crash kernel); preflight compares MemTotal.
@@ -1408,15 +1414,41 @@ def _gib(size: str) -> float:
     return float(number) * SIZE_UNITS[unit]
 
 
-def test_every_target_meets_the_minimums_preflight_enforces() -> None:
-    # The VMs must pass preflight as a real host does; preflight's minimums are
-    # never lowered for tests (owner decision after 3f).
+def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) -> None:
+    # BUILD_PROMPT §2.3, §19.9: the VMs are sized to the requirement preflight
+    # computes for the CI answers, never below its minimums (owner decision
+    # after 3f: preflight's thresholds are never lowered for tests).
     matrix = yaml.safe_load((INFRA / "preflight" / "support-matrix.yml").read_text())
-    minimums = matrix["minimums"]
-    memory = minimums["memory_gib"]["required"]
-    threads = minimums["cpu_threads"]["required"]
-    disk = sum(d["required"] for d in minimums["free_disk_gib"].values())
+    data = requirements.load_requirements()
+    ci = answers_mod.Answers.from_dict(yaml.safe_load((INFRA / "tests/answers/ci.yml").read_text()))
+    plan = plan_mod.plan(data["defaults"], hostvars.host_vars(ci), {"models": []})
+    for path in ("var/lib", "srv"):
+        (tmp_path / path).mkdir(parents=True)
+    df = f"Mounted on Type 1B-blocks Avail\n/ ext4 {2**50} {2**45}\n"
+    runner = FixtureRunner(
+        {
+            "commands": {
+                f"df --output=target,fstype,size,avail -B1 {path}": {"stdout": df}
+                for path in ("/", "/var/lib", "/srv")
+            }
+        }
+    )
+    needed = requirements.compute(
+        data,
+        plan,
+        "ci",
+        minimums=matrix["minimums"],
+        features={"gpu_inference": False, "vm_targets": True},
+        memory_gib=None,
+        fs=FileSystem(str(tmp_path)),
+        runner=runner,
+        machine="x86_64",
+    )
+    (disk,) = needed.disks  # one file system in a VM
+    threads = matrix["minimums"]["cpu_threads"]["required"]
     for target in targets.load(cli.TARGETS).targets:
         assert target.cpus >= threads, target.id
-        assert _gib(target.memory) >= memory + KERNEL_RESERVE_GIB, target.id
-        assert _gib(target.disk) >= disk + SYSTEM_GIB, target.id
+        assert _gib(target.memory) >= needed.required_gib + KERNEL_RESERVE_GIB, target.id
+        assert _gib(target.disk) >= disk.required_gib + SYSTEM_GIB, target.id
+    # The defaults sit at these values: a change of the estimates shows here.
+    assert (needed.required_gib, disk.required_gib) == (8.0, 37.2)

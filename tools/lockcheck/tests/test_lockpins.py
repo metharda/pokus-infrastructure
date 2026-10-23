@@ -269,10 +269,25 @@ class World:
         digest.update(self.big[url])
 
     def registry_json(self, image: str, path: str) -> tuple[dict[str, str], Any]:
-        assert image == lockpins.DCGM_IMAGE
-        if path not in self.registry:
-            raise net.FetchError(f"{path}: HTTP 404")
-        return self.registry[path]
+        if path in self.registry:
+            assert image == lockpins.DCGM_IMAGE
+            return self.registry[path]
+        # Every lab image's index and platform manifests, for the sizes.
+        reference = path.removeprefix("manifests/")
+        for entry in LOCK["containers"]["images"].values():
+            if reference == entry["digest"]:
+                children = [
+                    {
+                        "platform": {"os": "linux", "architecture": arch},
+                        "digest": child(entry, arch),
+                    }
+                    for arch in ("amd64", "arm64")
+                ]
+                return {}, {"manifests": children}
+            for arch in ("amd64", "arm64"):
+                if reference == child(entry, arch):
+                    return {}, {"layers": [{"size": 1000}, {"size": 23 if arch == "arm64" else 0}]}
+        raise net.FetchError(f"{path}: HTTP 404")
 
     def network(self) -> lockpins.Network:
         trusted = {ZABBLY, TAILSCALE, UBUNTU}
@@ -294,6 +309,11 @@ class World:
             read_file=read_file,
             extract=extract,
         )
+
+
+def child(entry: Mapping[str, Any], arch: str) -> str:
+    """The fake digest of one platform's manifest of a lab image."""
+    return "sha256:" + hashlib.sha256(f"{entry['digest']}/{arch}".encode()).hexdigest()
 
 
 def run(world: World) -> tuple[str, list[str]]:
@@ -572,6 +592,9 @@ def test_the_run_prints_every_section_in_the_lock_format() -> None:
     assert blocks["packages.incus"]["ubuntu-24.04"] == {"incus": "1:6.0.6-x-202603272003"}
     assert blocks["packages.tailscale"]["debian-13"] == {"tailscale": "1.104.1"}
     assert blocks["containers.images.dcgm_exporter"]["dcgm_exporter"]["tag"] == "4.8.10"
+    sizes = blocks["containers.images.<name>.sizes"]
+    assert set(sizes) == set(LOCK["containers"]["images"])
+    assert sizes["vllm"] == {"sizes": {"linux/amd64": 1000, "linux/arm64": 1023}}
     assert set(
         blocks["incus_base_images.images.<name>.fingerprints"]["ubuntu-24.04"]["fingerprints"]
     ) == {

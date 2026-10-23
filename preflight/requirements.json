@@ -1,0 +1,519 @@
+{
+  "_generated_from": "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml and the Ansible defaults by tools/gen (make generate); do not edit",
+  "schema_version": 1,
+  "image_unpack_factor": 2.5,
+  "components": [
+    {
+      "id": "base",
+      "title": "host services",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab",
+        "inference"
+      ],
+      "memory_gib": {
+        "required": 1.0,
+        "recommended": 1.5
+      },
+      "cpu_threads": 0.5,
+      "basis": "estimated",
+      "source": "estimate: resident memory of sshd, tailscaled, dockerd and containerd and pinka's units and timers on a small host; the upper value leaves room for the page cache they use"
+    },
+    {
+      "id": "incus",
+      "title": "Incus daemon",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "memory_gib": {
+        "required": 0.2,
+        "recommended": 0.4
+      },
+      "cpu_threads": 0.2,
+      "basis": "estimated",
+      "source": "estimate: incusd and lxcfs idle, without instances"
+    },
+    {
+      "id": "postgres",
+      "title": "PostgreSQL",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "memory_gib": {
+        "required": 0.5,
+        "recommended": 1.5
+      },
+      "cpu_threads": 0.5,
+      "basis": "estimated",
+      "source": "pinka's shared_buffers (1/16 of the memory, 128 MiB to 4 GiB) plus about 10 MiB per connection; the upper value is a 16-32 GiB host's shared_buffers with a platform's connections"
+    },
+    {
+      "id": "stores",
+      "title": "telemetry stores",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "memory_gib": {
+        "required": 1.5,
+        "recommended": 3.0
+      },
+      "cpu_threads": 0.5,
+      "basis": "estimated",
+      "source": "estimate: Prometheus, Loki, Tempo, Grafana and the query proxy; Prometheus at about 5,000 series (the lab's exporters at 15 s), Loki and Tempo as single binaries, Grafana; grows with the platform's own metrics, logs and traces"
+    },
+    {
+      "id": "collectors",
+      "title": "collectors and exporters",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab",
+        "inference"
+      ],
+      "memory_gib": {
+        "required": 0.3,
+        "recommended": 0.8
+      },
+      "cpu_threads": 0.3,
+      "basis": "estimated",
+      "source": "the OpenTelemetry collectors, node_exporter, cAdvisor and the database and GPU exporters: the gateway collector's memory_limiter (observability_collector_memory_mib, 512 MiB) and half of it for the journald collector as the upper value; the exporters about 50 MiB each"
+    },
+    {
+      "id": "opa",
+      "title": "OPA",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "memory_gib": {
+        "required": 0.1,
+        "recommended": 0.2
+      },
+      "cpu_threads": 0.1,
+      "basis": "estimated",
+      "source": "estimate: OPA with the platform's policy bundle"
+    },
+    {
+      "id": "install",
+      "title": "bootstrap and the installer",
+      "kind": "fixed",
+      "roles": [
+        "full",
+        "lab",
+        "inference"
+      ],
+      "memory_gib": {
+        "required": 0.5,
+        "recommended": 0.8
+      },
+      "cpu_threads": 1,
+      "basis": "estimated",
+      "source": "estimate: ansible-playbook at its peak (0.3-0.6 GiB) and the installer TUI (0.1-0.2 GiB); they run again on every update next to the running lab"
+    },
+    {
+      "id": "targets",
+      "title": "concurrent targets",
+      "kind": "targets",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "cpu_threads": 1,
+      "basis": "estimated",
+      "source": "the profiles' limits of the incus role (incus_target_container, incus_target_vm, incus_build_instance) times the concurrent targets"
+    },
+    {
+      "id": "vllm",
+      "title": "vLLM serving the selected model",
+      "kind": "vllm",
+      "roles": [
+        "full",
+        "inference"
+      ],
+      "overhead_gib": {
+        "required": 3.0,
+        "recommended": 5.0
+      },
+      "cpu_threads": 2,
+      "basis": "estimated",
+      "source": "estimate: Python, PyTorch and the CUDA libraries (about 3 GiB) plus the model's file size from models.lock.yml while it loads"
+    },
+    {
+      "id": "training",
+      "title": "a training job",
+      "kind": "training",
+      "roles": [
+        "full"
+      ],
+      "cpu_threads": 0,
+      "basis": "estimated",
+      "source": "training_caps.memory_max (§7.18); the arbiter refuses a job over it"
+    }
+  ],
+  "disk": {
+    "pinka_gib": 5,
+    "pinka_basis": "estimated",
+    "pinka_source": "estimate from the environments the locks install (about 2-3 GiB) with room for an update, which installs next to the running version",
+    "incus_dir": "/var/lib/incus",
+    "pool_file": "/var/lib/incus/disks/pinka-targets.img"
+  },
+  "images": {
+    "cadvisor": {
+      "roles": [
+        "full",
+        "lab",
+        "inference"
+      ],
+      "image": "ghcr.io/google/cadvisor",
+      "digest": "sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a",
+      "sizes": {
+        "linux/amd64": 30686694,
+        "linux/arm64": 27661931
+      }
+    },
+    "cuda_base_test": {
+      "roles": [
+        "full",
+        "inference"
+      ],
+      "features": [
+        "gpu_inference"
+      ],
+      "image": "docker.io/nvidia/cuda",
+      "digest": "sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701",
+      "sizes": {
+        "linux/amd64": 139444203,
+        "linux/arm64": 133135420
+      }
+    },
+    "dcgm_exporter": {
+      "roles": [
+        "full",
+        "inference"
+      ],
+      "features": [
+        "gpu_inference"
+      ],
+      "gpu_exporter": "dcgm",
+      "image": "nvcr.io/nvidia/k8s/dcgm-exporter",
+      "digest": "sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003",
+      "sizes": {
+        "linux/amd64": 62787403,
+        "linux/arm64": 59314654
+      }
+    },
+    "gpu_exporter": {
+      "roles": [
+        "full",
+        "inference"
+      ],
+      "features": [
+        "gpu_inference"
+      ],
+      "gpu_exporter": "nvidia_smi",
+      "image": "docker.io/utkuozdemir/nvidia_gpu_exporter",
+      "digest": "sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087",
+      "sizes": {
+        "linux/amd64": 11522084,
+        "linux/arm64": 11049290
+      }
+    },
+    "grafana": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/grafana/grafana",
+      "digest": "sha256:c8f326efdb7be9be52047edaab34cf8dadb5152c1244af102eb0a517a7797068",
+      "sizes": {
+        "linux/amd64": 357327283,
+        "linux/arm64": 333133702
+      }
+    },
+    "loki": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/grafana/loki",
+      "digest": "sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+      "sizes": {
+        "linux/amd64": 48003511,
+        "linux/arm64": 42737611
+      }
+    },
+    "node_exporter": {
+      "roles": [
+        "full",
+        "lab",
+        "inference"
+      ],
+      "image": "docker.io/prom/node-exporter",
+      "digest": "sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0",
+      "sizes": {
+        "linux/amd64": 13404971,
+        "linux/arm64": 12466898
+      }
+    },
+    "opa": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/openpolicyagent/opa",
+      "digest": "sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e",
+      "sizes": {
+        "linux/amd64": 30513355,
+        "linux/arm64": 28078584
+      }
+    },
+    "otel_collector": {
+      "roles": [
+        "full",
+        "lab",
+        "inference"
+      ],
+      "image": "docker.io/otel/opentelemetry-collector-contrib",
+      "digest": "sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6",
+      "sizes": {
+        "linux/amd64": 112744572,
+        "linux/arm64": 102592160
+      }
+    },
+    "postgres": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/library/postgres",
+      "digest": "sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722",
+      "sizes": {
+        "linux/amd64": 162473560,
+        "linux/arm64": 161088536
+      }
+    },
+    "postgres_exporter": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/prometheuscommunity/postgres-exporter",
+      "digest": "sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e",
+      "sizes": {
+        "linux/amd64": 11780276,
+        "linux/arm64": 10960510
+      }
+    },
+    "prometheus": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/prom/prometheus",
+      "digest": "sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e",
+      "sizes": {
+        "linux/amd64": 114035258,
+        "linux/arm64": 104810464
+      }
+    },
+    "query_proxy": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/library/nginx",
+      "digest": "sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94",
+      "sizes": {
+        "linux/amd64": 26073522,
+        "linux/arm64": 25966398
+      }
+    },
+    "refplat_job": {
+      "roles": [],
+      "image": "public.ecr.aws/docker/library/python",
+      "digest": "sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "sizes": {
+        "linux/amd64": 43259288,
+        "linux/arm64": 43533362
+      }
+    },
+    "tempo": {
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "image": "docker.io/grafana/tempo",
+      "digest": "sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a",
+      "sizes": {
+        "linux/amd64": 37423831,
+        "linux/arm64": 33831008
+      }
+    },
+    "vllm": {
+      "roles": [
+        "full",
+        "inference"
+      ],
+      "features": [
+        "gpu_inference"
+      ],
+      "image": "docker.io/vllm/vllm-openai",
+      "digest": "sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3",
+      "sizes": {
+        "linux/amd64": 9035211086,
+        "linux/arm64": 10134470647
+      }
+    }
+  },
+  "growth": [
+    {
+      "id": "prometheus",
+      "title": "Prometheus samples",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "path": "srv",
+      "gib_per_day": 0.05,
+      "retention": "prometheus_days",
+      "size_cap": "prometheus_size_gib",
+      "basis": "estimated",
+      "source": "about 5,000 series at a 15 s interval and 1.5 bytes per sample"
+    },
+    {
+      "id": "loki",
+      "title": "Loki logs",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "path": "srv",
+      "gib_per_day": 0.1,
+      "retention": "loki_days",
+      "basis": "estimated",
+      "source": "estimate for the host's and the lab's logs; a platform's logs come on top"
+    },
+    {
+      "id": "tempo",
+      "title": "Tempo traces",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "path": "srv",
+      "gib_per_day": 0.05,
+      "retention": "tempo_days",
+      "basis": "estimated",
+      "source": "estimate; the traces come from the platform and its targets"
+    },
+    {
+      "id": "pg_dumps",
+      "title": "local PostgreSQL dumps (backup staging)",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "path": "srv",
+      "gib_per_day": 0.05,
+      "retention": "pg_dumps",
+      "basis": "estimated",
+      "source": "one dump a day (backup_pgdump_keep kept); its size follows the database"
+    },
+    {
+      "id": "database",
+      "title": "the PostgreSQL database",
+      "roles": [
+        "full",
+        "lab"
+      ],
+      "path": "srv",
+      "gib_per_day": 0.02,
+      "basis": "estimated",
+      "source": "estimate; the platform's records, no retention by pinka"
+    },
+    {
+      "id": "training_runs",
+      "title": "training runs (output and checkpoints)",
+      "roles": [
+        "full"
+      ],
+      "path": "srv",
+      "gib_per_day": 0,
+      "per_run": "run_storage_max_gib",
+      "basis": "estimated",
+      "source": "training_caps.run_storage_max (§7.18), the most one run may write"
+    }
+  ],
+  "blueprints": {
+    "_base": {
+      "version": "1.0.0",
+      "estimated_size_gib": 0.5
+    },
+    "docker-host": {
+      "version": "1.0.0",
+      "estimated_size_gib": 0.8
+    },
+    "pg-primary": {
+      "version": "1.0.0",
+      "estimated_size_gib": 0.6
+    },
+    "probe-client": {
+      "version": "1.0.0",
+      "estimated_size_gib": 0.6
+    },
+    "redis-cache": {
+      "version": "1.0.0",
+      "estimated_size_gib": 0.6
+    },
+    "web-nginx-flask": {
+      "version": "1.0.0",
+      "estimated_size_gib": 0.6
+    }
+  },
+  "target_memory_gib": {
+    "container": 1.0,
+    "vm": 2.0,
+    "probe_client": 0.5,
+    "build": 2.0
+  },
+  "defaults": {
+    "schema_version": 1,
+    "node_role": "full",
+    "srv_path": "/srv/pinka",
+    "docker_data_root": "/var/lib/docker",
+    "pool": {
+      "source": "loop",
+      "size_gib": 300.0
+    },
+    "concurrent_targets": 2,
+    "model": null,
+    "images": [
+      "_base",
+      "web-nginx-flask",
+      "pg-primary",
+      "redis-cache",
+      "docker-host",
+      "probe-client"
+    ],
+    "gpu_exporter": "nvidia_smi",
+    "training": {
+      "memory_max_gib": 24.0,
+      "run_storage_max_gib": 16.0
+    },
+    "retention": {
+      "prometheus_days": 90.0,
+      "prometheus_size_gib": 0.0,
+      "loki_days": 90.0,
+      "tempo_days": 30.0,
+      "pg_dumps": 7
+    }
+  }
+}

@@ -9,6 +9,9 @@ description: Redis in-memory cache
 base: {blueprint: _base}
 type: container
 nesting: false
+# Space one build takes below /srv/pinka/images (the exported image),
+# estimated until a build measures it (BUILD_PROMPT §2.3, §7.13).
+estimated_size_gib: 0.6
 packages: [redis-server]
 docker_images: []
 services: [redis-server]

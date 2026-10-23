@@ -15,7 +15,7 @@ description: Every option of pinka-preflight.
 
 ```text
 pinka-preflight [-h] [--root PATH] [--output FILE] [--offline]
-                       [--srv-path PATH] [--accept-degraded]
+                       [--srv-path PATH] [--plan FILE] [--accept-degraded]
                        [--accept-experimental] [--force-unsupported]
                        [--adopt-incus] [--nvidia-driver {auto,manual,skip}]
                        [--accept-mok-enrollment] [--port NAME=PORT]
@@ -23,7 +23,7 @@ pinka-preflight [-h] [--root PATH] [--output FILE] [--offline]
                        [--researcher NAME] [--allow-dirty] [--no-write]
                        [--color {auto,always,never}] [--quiet]
                        [--repo-commit SHA] [--matrix FILE] [--endpoints FILE]
-                       [--lab-defaults FILE] [--version]
+                       [--requirements FILE] [--lab-defaults FILE] [--version]
 ```
 
 Detect the host, decide whether the Pokus lab is supported on it, and print a JSON host profile. Read-only except for storing the profile on real runs as root.
@@ -36,7 +36,8 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--root` | `PATH` | — | inspect a fixture root instead of this host; commands come from PATH/commands.json |
 | `--output` | `FILE` | — | write the JSON report to FILE instead of stdout |
 | `--offline` | — | — | skip network reachability checks (for testing only) |
-| `--srv-path` | `PATH` | `/srv/pinka` | configured location of the research space (default: /srv/pinka) |
+| `--srv-path` | `PATH` | — | configured location of the research space (default: the plan's srv_path, else /srv/pinka) |
+| `--plan` | `FILE` | — | the operator's choices that size the lab, as bootstrap and the installer write them (JSON, preflight/schema/plan.schema.json); without it, the configured defaults |
 | `--accept-degraded` | — | — | record consent to continue with missing optional features |
 | `--accept-experimental` | — | — | record consent to continue on an experimental tier |
 | `--force-unsupported` | — | — | record that the operator forces an unsupported host (carried into every fingerprint) |
@@ -54,6 +55,7 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `--repo-commit` | `SHA` | — | commit to record as repo_commit (default: detected with git) |
 | `--matrix` | `FILE` | `preflight/support-matrix.json` | compiled support matrix (JSON) |
 | `--endpoints` | `FILE` | `preflight/endpoints.json` | compiled endpoint list (JSON) |
+| `--requirements` | `FILE` | `preflight/requirements.json` | compiled requirements of the lab's parts (JSON) |
 | `--lab-defaults` | `FILE` | `preflight/lab-defaults.json` | the lab's default ports and addresses (JSON) |
 | `--version` | — | — | show program's version number and exit |
 

@@ -670,6 +670,48 @@ def vault_keys(
 
 
 CPUSET_RE = re.compile(r"^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$")
+# Sizes as Incus (1GiB, 512MiB, 2GB) and Docker (24G, 512m) write them.
+SIZE_RE = re.compile(r"^([0-9]+(?:\.[0-9]+)?)([KMGT]i?B|[kKmMgGtT]|B)?$")
+SIZE_FACTORS = {
+    "": 1,
+    "B": 1,
+    "KB": 1000,
+    "MB": 1000**2,
+    "GB": 1000**3,
+    "TB": 1000**4,
+    "KiB": 1024,
+    "MiB": 1024**2,
+    "GiB": 1024**3,
+    "TiB": 1024**4,
+    "k": 1024,
+    "m": 1024**2,
+    "g": 1024**3,
+    "t": 1024**4,
+}
+
+
+def size_mib(value: str | int) -> int:
+    """A size in whole MiB, rounded up (the bench project's ``limits.memory``).
+
+    Args:
+        value: Bytes, or a size as Incus writes it (``1GiB``, ``512MiB``,
+            ``2GB``, decimal for KB-TB) or as Docker does (``24G``, ``512m``,
+            binary).
+
+    Returns:
+        The size in MiB.
+
+    Raises:
+        PinkaFilterError: If the size is malformed.
+    """
+    match = SIZE_RE.match(str(value).strip())
+    if not match:
+        raise PinkaFilterError(f"not a size: {value!r}")
+    unit = match.group(2) or ""
+    factor = SIZE_FACTORS.get(unit if unit.endswith("B") else unit.lower())
+    if factor is None:
+        raise PinkaFilterError(f"unknown size unit in {value!r}")
+    return -(-int(float(match.group(1)) * factor) // 1024**2)
 
 
 def cpuset_cpus(spec: str | None) -> list[int]:
@@ -1100,6 +1142,7 @@ class FilterModule:
             "pinka_socket_specs": socket_specs,
             "pinka_unit_hardening": unit_hardening,
             "pinka_cpuset_cpus": cpuset_cpus,
+            "pinka_size_mib": size_mib,
             "pinka_vault_keys": vault_keys,
             "pinka_researcher_memberships": researcher_memberships,
             "pinka_key_entries": key_entries,

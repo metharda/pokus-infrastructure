@@ -1,0 +1,6 @@
+{
+  "degraded_contains": [
+    "training_caps.memory_max 23G"
+  ],
+  "outcome": "degraded"
+}

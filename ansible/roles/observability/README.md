@@ -17,7 +17,8 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   journal with the host's `journalctl` (chroot into the read-only host root)
   and forwards it to the gateway; separate so that the instance that accepts
   OTLP from targets has no access to the host's files.
-- **Prometheus** (retention `observability_prometheus_retention`), scraping
+- **Prometheus** (retention `observability_prometheus_retention`, and by size
+  `observability_prometheus_retention_size`), scraping
   the collectors, node_exporter, cAdvisor, the Postgres exporter, Loki,
   Tempo, Grafana, Incus (metrics-only certificate) and, with `gpu_inference`,
   the GPU exporter and vLLM.

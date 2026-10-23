@@ -200,6 +200,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_socket_specs",
         "pinka_unit_hardening",
         "pinka_cpuset_cpus",
+        "pinka_size_mib",
         "pinka_vault_keys",
         "pinka_researcher_memberships",
         "pinka_key_entries",
@@ -330,6 +331,20 @@ def test_cpuset_cpus() -> None:
     for bad in ("a-b", "5-3", "1,,2", "-1", "1-"):
         with pytest.raises(pinka.PinkaFilterError):
             pinka.cpuset_cpus(bad)
+
+
+def test_size_mib() -> None:
+    # Incus sizes (KB-TB decimal, KiB-TiB binary) and Docker's (k-t binary), rounded up.
+    assert pinka.size_mib("1GiB") == 1024
+    assert pinka.size_mib("512MiB") == 512
+    assert pinka.size_mib("2GB") == 1908  # 2e9 bytes
+    assert pinka.size_mib("24G") == 24 * 1024
+    assert pinka.size_mib("512m") == 512
+    assert pinka.size_mib(1) == 1
+    assert pinka.size_mib(2**20) == 1
+    for bad in ("", "1 GiB", "GiB", "1Gi", "1XB", "-1GiB"):
+        with pytest.raises(pinka.PinkaFilterError):
+            pinka.size_mib(bad)
 
 
 def test_memberships_and_keys_of_pre_existing_accounts() -> None:

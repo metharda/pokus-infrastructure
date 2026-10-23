@@ -51,6 +51,8 @@ class Fixture:
         data: Other ``commands.json`` sections (which, cpu_count, machine, ...).
         expected: ``expected.json`` content.
         args: Extra preflight arguments (``args.json``, written when not empty).
+        plan: The operator's choices (``plan.json``, passed as ``--plan``; written
+            when not empty), merged with the configured defaults.
     """
 
     files: dict[str, Content] = field(default_factory=dict)
@@ -62,6 +64,7 @@ class Fixture:
     data: dict[str, Any] = field(default_factory=dict)
     expected: dict[str, Any] = field(default_factory=dict)
     args: list[str] = field(default_factory=list)
+    plan: dict[str, Any] = field(default_factory=dict)
 
     def cmd(self, line: str, stdout: str = "", rc: int = 0, stderr: str = "") -> None:
         """Register a command answer."""
@@ -200,7 +203,7 @@ def system(
     *,
     kernel: str = "6.8.0-85-generic",
     threads: int = 24,
-    memory_gib: float = 32,
+    memory_gib: float = 64,
     swap_gib: float = 8,
     flags: str = "fpu vme de pse tsc msr pae mce cx8 apic sep sse sse2 ht syscall nx lm vmx",
     loaded: list[str] | None = None,
@@ -247,23 +250,26 @@ def system(
             "timedatectl timesync-status", "       Server: 192.0.2.123\n       Offset: +1.250ms\n"
         )
         f.data.update({"cpu_count": threads, "machine": "x86_64", "euid": 0, "now": NOW})
-        disks(var_lib_free=400, srv_free=500)(f)
+        disks(root_free=400, srv_free=500)(f)
 
     return apply
 
 
-def disks(var_lib_free: float, srv_free: float, fstype: str = "ext4") -> Layer:
-    """Answer ``df`` for /var/lib and /srv (free space in GiB)."""
+def disks(root_free: float, srv_free: float, fstype: str = "ext4") -> Layer:
+    """Answer ``df`` for the root file system (/, /var/lib) and /srv (free GiB).
+
+    /opt/pinka, Docker's data root and /var/lib/incus do not exist yet, so
+    preflight measures their nearest existing ancestors, / and /var/lib.
+    """
 
     def apply(f: Fixture) -> None:
-        f.cmd(
-            "df --output=fstype,size,avail -B1 /var/lib",
-            f"Type 1B-blocks Avail\n{fstype} {1000 * GIB} {int(var_lib_free * GIB)}\n",
-        )
-        f.cmd(
-            "df --output=fstype,size,avail -B1 /srv",
-            f"Type 1B-blocks Avail\n{fstype} {1000 * GIB} {int(srv_free * GIB)}\n",
-        )
+        for path, mount, free in (("/", "/", root_free), ("/var/lib", "/", root_free),
+                                  ("/srv", "/srv", srv_free)):  # fmt: skip
+            f.cmd(
+                f"df --output=target,fstype,size,avail -B1 {path}",
+                f"Mounted on Type 1B-blocks Avail\n{mount} {fstype} {1000 * GIB} "
+                f"{int(free * GIB)}\n",
+            )
 
     return apply
 
@@ -760,13 +766,19 @@ def listener(
     }
 
 
-def build(*layers: Layer, expected: dict[str, Any], args: list[str] | None = None) -> Fixture:
-    """Compose layers into a fixture run with the extra preflight ``args``."""
+def build(
+    *layers: Layer,
+    expected: dict[str, Any],
+    args: list[str] | None = None,
+    plan: dict[str, Any] | None = None,
+) -> Fixture:
+    """Compose layers into a fixture run with the extra preflight ``args`` and ``plan``."""
     f = Fixture()
     for layer in layers:
         layer(f)
     f.expected = expected
     f.args = list(args or [])
+    f.plan = dict(plan or {})
     return f
 
 
@@ -1353,14 +1365,127 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("loaded"),
         expected={"outcome": "unsupported", "unsupported_contains": ["cgroup2_unified"]},
     )
+    # Memory thresholds (BUILD_PROMPT §2.3), each just below and just above
+    # 0.94 times its nominal value. The numbers follow preflight/requirements.yml and
+    # the incus role's profiles; test_requirements.py checks them.
     fx["ubuntu2404-low-memory"] = build(
         UBUNTU_2404,
-        system(memory_gib=8),
+        system(memory_gib=7.51),  # floor 8 GiB: 7.52 GiB
         apparmor,
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
-        expected={"outcome": "unsupported", "unsupported_contains": ["memory_gib"]},
+        expected={"outcome": "unsupported", "unsupported_contains": ["below the floor of 8 GiB"]},
+    )
+    fx["ubuntu2404-memory-above-floor"] = build(
+        UBUNTU_2404,
+        system(memory_gib=7.53),  # the defaults require the floor; recommended 37.2 GiB
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["below the 37.2 GiB recommended", "a training job 24.0 GiB"],
+        },
+    )
+    # Four targets require 10.1 GiB: 9.49 GiB at the tolerance.
+    four_targets = {"concurrent_targets": 4}
+    fx["ubuntu2404-memory-below-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=9.48),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan=four_targets,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": ["below the 10.1 GiB these choices require",
+                                     "incus_concurrent_targets 3"],
+        },
+    )  # fmt: skip
+    fx["ubuntu2404-memory-above-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=9.51),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan=four_targets,
+        expected={"outcome": "degraded", "degraded_contains": ["recommended for these choices"]},
+    )
+    # The defaults recommend 37.2 GiB on a full node with VM targets: 34.97 GiB.
+    fx["ubuntu2404-memory-below-recommended"] = build(
+        UBUNTU_2404,
+        system(memory_gib=34.95),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={"outcome": "degraded", "degraded_contains": ["training_caps.memory_max 23G"]},
+    )
+    fx["ubuntu2404-memory-above-recommended"] = build(
+        UBUNTU_2404,
+        system(memory_gib=34.98),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={"outcome": "supported"},
+    )
+    # A served model of 5.7 GiB: vLLM needs its files and 3 GiB, 15.8 GiB in
+    # all (14.85 GiB at the tolerance); a nominal 16 GiB machine passes.
+    model = {
+        "model": {
+            "id": "example-model",
+            "hf_repo": "example-org/example-model",
+            "revision": "0" * 40,
+            "size_bytes": int(5.7 * GIB),
+        }
+    }
+    fx["ubuntu2404-gpu-model-below-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=14.84),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan=model,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": ["vLLM serving example-model", "a model of at most 5.7 GiB"],
+        },
+    )
+    fx["ubuntu2404-gpu-model-above-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=14.86),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan=model,
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["vLLM serving example-model or a training job 24.0 GiB"],
+        },
+    )
+    # Disk known at install: the 300 GiB loop pool on a root file system with
+    # 100 GiB free, and the model on a research space with 3 GiB free.
+    fx["ubuntu2404-disk-shortfall"] = build(
+        UBUNTU_2404,
+        system(),
+        disks(root_free=100, srv_free=3),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan=model,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /",
+                "model example-model: 5.7 GiB, missing 5.7 GiB on /srv",
+            ],
+        },
     )
     # BUILD_PROMPT §2.2, §7.4, §7.6, §7.7: components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with
@@ -1567,6 +1692,8 @@ def write_fixture(name: str, f: Fixture, base: str = FIXTURES_DIR) -> None:
     ]
     if f.args:
         files.append(("args.json", f.args))
+    if f.plan:
+        files.append(("plan.json", {"schema_version": 1, **f.plan}))
     for fname, data in files:
         with open(os.path.join(root, fname), "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, sort_keys=True)

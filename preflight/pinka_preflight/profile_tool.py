@@ -111,11 +111,17 @@ def consent_text(profile: dict[str, Any], kind: str) -> list[str]:
         Text lines.
     """
     if kind == "degraded":
-        lines = ["The following optional features are disabled on this host:"]
-        lines += [
-            f"  - {d['feature']}: {d['impact']} {d.get('remediation', '')}".rstrip()
-            for d in profile["disabled_features"]
-        ]
+        lines: list[str] = []
+        if profile["disabled_features"]:
+            lines.append("The following optional features are disabled on this host:")
+            lines += [
+                f"  - {d['feature']}: {d['impact']} {d.get('remediation', '')}".rstrip()
+                for d in profile["disabled_features"]
+            ]
+        reasons = profile.get("degraded_reasons") or []
+        if reasons:
+            lines.append("The host is below what these choices recommend (BUILD_PROMPT §2.3):")
+            lines += [f"  - {reason}" for reason in reasons]
         return lines
     lines = [
         f"This host is on the experimental tier (OS tier: {profile['os_tier']}, "

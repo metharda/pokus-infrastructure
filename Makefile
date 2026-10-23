@@ -26,6 +26,7 @@ LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pinka_lockcheck
 # YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
   preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
+  preflight/requirements.yml=preflight/schema/requirements.schema.json \
   models.lock.yml=tools/lockcheck/schema/models-lock.schema.json \
   models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json \
   tests/answers/ci.yml=installer/schema/answers.schema.json \
@@ -340,7 +341,7 @@ lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing wh
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml --check
 
 .PHONY: lock-pins
-lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
+lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the lab images' sizes, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
 	@$(LOCKCHECK).lockpins --lock versions.lock.yml
 
 .PHONY: lock-update

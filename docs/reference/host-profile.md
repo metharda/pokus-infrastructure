@@ -126,6 +126,32 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `requirements` | object | yes | — |
 | `requirements.core` | array | yes | — |
 | `requirements.minimums` | array | yes | — |
+| `requirements.plan` | string | yes | defaults, or the plan file given with --plan (§2.3). |
+| `requirements.choices` | object | yes | The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json). |
+| `requirements.memory_gib` | object | yes | MemTotal against the floor and the required and recommended memory computed from the choices; each nominal threshold is compared at the tolerance. |
+| `requirements.memory_gib.total` | number or null | yes | — |
+| `requirements.memory_gib.floor` | number | yes | — |
+| `requirements.memory_gib.required` | number | yes | — |
+| `requirements.memory_gib.recommended` | number | yes | — |
+| `requirements.memory_gib.tolerance` | number | yes | — |
+| `requirements.memory_gib.items` | array | yes | — |
+| `requirements.cpu_threads` | object | yes | The estimated CPU use of the running parts (information; the threshold is the matrix's cpu_threads). |
+| `requirements.cpu_threads.estimated` | number | yes | — |
+| `requirements.disk` | array | yes | The disk known at install, per mount point, item by item. |
+| `requirements.disk[].mount` | string | yes | — |
+| `requirements.disk[].fstype` | string or null | yes | — |
+| `requirements.disk[].free_gib` | number or null | yes | — |
+| `requirements.disk[].required_gib` | number | yes | — |
+| `requirements.disk[].shortfall_gib` | number | yes | — |
+| `requirements.disk[].items` | array | yes | — |
+| `requirements.growth` | object or null | yes | What grows with use below the research space; never a reason to refuse. |
+| `requirements.growth.mount` | string or null | yes | — |
+| `requirements.growth.free_after_install_gib` | number or null | yes | — |
+| `requirements.growth.gib_per_day` | number | yes | — |
+| `requirements.growth.gib_per_week` | number | yes | — |
+| `requirements.growth.days_until_full` | integer or null | yes | The day the disk fills at this rate; null if the retention keeps it below the free space for ten years. |
+| `requirements.growth.items` | array | yes | — |
+| `requirements.notes` | array | yes | — |
 | `features` | object | yes | — |
 | `features.gpu_inference` | boolean | yes | — |
 | `features.vm_targets` | boolean | yes | — |
@@ -196,6 +222,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `access.reasons` | array | yes | What makes the host shared; empty on a dedicated host. |
 | `conflicts` | array | yes | — |
 | `unsupported_reasons` | array | yes | — |
+| `degraded_reasons` | array | yes | Why the host is degraded besides disabled features: memory below the recommended value for the choices (§2.3). |
 | `needs_action` | array | yes | — |
 | `needs_action[].id` | string | yes | — |
 | `needs_action[].action` | string | yes | — |
@@ -224,9 +251,11 @@ one of `supported`, `tested`, `experimental`, `unsupported`
 | --- | --- | --- | --- |
 | `disk.path` | string | yes | — |
 | `disk.checked_path` | string | yes | — |
+| `disk.mount` | string or null | yes | The mount point of its filesystem (df's target). |
 | `disk.fstype` | string or null | yes | — |
 | `disk.size_gib` | number or null | yes | — |
 | `disk.free_gib` | number or null | yes | — |
+| `disk.free_bytes` | integer or null | yes | The free space in bytes, which the requirements compare (§2.3). |
 
 ### block_device
 
@@ -276,3 +305,42 @@ one of `supported`, `tested`, `experimental`, `unsupported`
 | `component.version` | string or null | yes | Its version, if it could be read. |
 | `component.running` | boolean | yes | Its daemon is active. |
 | `component.origin` | one of `pinka`, `pre-existing`, `null` | yes | pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed. |
+
+### memory_item
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `memory_item.id` | string | yes | — |
+| `memory_item.title` | string | yes | — |
+| `memory_item.required_gib` | number | yes | — |
+| `memory_item.recommended_gib` | number | yes | — |
+| `memory_item.cpu_threads` | number | yes | — |
+| `memory_item.detail` | string | yes | How the numbers follow from the choices. |
+| `memory_item.basis` | one of `estimated`, `measured` | yes | — |
+| `memory_item.source` | string | yes | — |
+
+### disk_item
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `disk_item.id` | string | yes | — |
+| `disk_item.title` | string | yes | — |
+| `disk_item.path` | string | yes | — |
+| `disk_item.mount` | string | yes | — |
+| `disk_item.size_gib` | number | yes | — |
+| `disk_item.present` | boolean | yes | Already on the host: it needs no more space. |
+| `disk_item.missing_gib` | number | yes | — |
+| `disk_item.basis` | one of `estimated`, `measured`, `configured` | yes | — |
+| `disk_item.source` | string | yes | — |
+
+### growth_item
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `growth_item.id` | string | yes | — |
+| `growth_item.title` | string | yes | — |
+| `growth_item.gib_per_day` | number | yes | — |
+| `growth_item.cap_gib` | number or null | yes | Where its retention stops it; null if nothing does. |
+| `growth_item.per_run_gib` | number or null | yes | — |
+| `growth_item.basis` | one of `estimated`, `measured` | yes | — |
+| `growth_item.source` | string | yes | — |

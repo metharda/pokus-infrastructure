@@ -98,8 +98,10 @@
     - {name: endpoints.json, mode: "0644"}
     - {name: lab-defaults.json, mode: "0644"}
     - {name: nvidia-gpus.json, mode: "0644"}
+    - {name: requirements.json, mode: "0644"}
     - {name: schema/host-profile.schema.json, mode: "0644"}
     - {name: schema/support-matrix.schema.json, mode: "0644"}
+    - {name: schema/plan.schema.json, mode: "0644"}
   loop_control:
     label: "{{ item.name }}"
 
@@ -185,6 +187,7 @@
       paths:
         preflight: "{{ doctor_lib }}/preflight/pinka-preflight"
         host_profile: "{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}"
+        plan: /etc/pinka/plan.json
         bootstrap_state: /etc/pinka/bootstrap-state.json
         install_record: "{{ install_record_path }}"
         health_gate_status: "{{ lab_session_gate_status }}"
@@ -198,6 +201,10 @@
         cache: "{{ doctor_fingerprint_dir }}/current.json"
         versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
         host_vars_sha256: "{{ doctor_config_files.results[1].stat.checksum | default(none) }}"
+      disk:
+        history: /var/lib/pinka/doctor/disk-history.json
+        warn_free_percent: "{{ doctor_disk_warn_free_percent | int }}"
+        full_within_days: "{{ doctor_disk_full_within_days | int }}"
       lab:
         drain_timeout: "{{ doctor_drain_timeout | int }}"
         health_wait: "{{ doctor_health_wait | int }}"

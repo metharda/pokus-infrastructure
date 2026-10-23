@@ -22,6 +22,7 @@ PYTHON_ENVIRONMENTS = (
     ("model_tools", "/opt/pinka/models-venv"),
     ("installer", "/opt/pinka/installer-venv"),
 )
+GIB = 1024**3
 
 
 def _lock(root: Path) -> dict[str, Any]:
@@ -97,7 +98,14 @@ def _python(lock: dict[str, Any]) -> list[str]:
 def _containers(lock: dict[str, Any]) -> list[str]:
     section = lock["containers"]
     rows = [
-        [name, f"`{e['image']}`", _code(e["tag"]), _code(e["digest"]), e["platforms"]]
+        [
+            name,
+            f"`{e['image']}`",
+            _code(e["tag"]),
+            _code(e["digest"]),
+            e["platforms"],
+            ", ".join(f"{size / GIB:.2f}" for _, size in sorted(e["sizes"].items())),
+        ]
         for name, e in section["images"].items()
     ]
     targets = [
@@ -113,7 +121,11 @@ def _containers(lock: dict[str, Any]) -> list[str]:
         "\n## Container images\n\n",
         "Every image is used by digest; the tag is informational. ",
         _section_note(section),
-        pages.table(["Name", "Image", "Tag", "Digest", "Platforms"], rows),
+        pages.table(
+            ["Name", "Image", "Tag", "Digest", "Platforms", "Compressed GiB (per platform)"], rows
+        ),
+        "\nThe requirements computation estimates an image's unpacked size as 2.5 times its "
+        "compressed size until it is pulled on the host (BUILD_PROMPT §2.3).\n",
     ]
     if built_on:
         parts.append(

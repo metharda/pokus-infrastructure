@@ -34,6 +34,7 @@ from pinka_preflight.detect.hardware import Hardware
 from pinka_preflight.detect.kernel import KernelInfo
 from pinka_preflight.detect.network import EndpointResult
 from pinka_preflight.detect.os_release import OsRelease
+from pinka_preflight.requirements import Requirements
 
 MATRIX_JSON = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "support-matrix.json"
@@ -52,13 +53,14 @@ OUTCOME_MEANINGS = {
         "Bootstrap continues.",
     ),
     "degraded": (
-        "Core requirements met, one or more optional features unavailable.",
+        "Core requirements met; one or more optional features unavailable, or memory between "
+        "the required and the recommended value for the choices.",
         "Bootstrap continues only with --accept-degraded or interactive confirmation that lists "
         "every disabled feature and its research impact.",
     ),
     "unsupported": (
-        "A core requirement failed, the OS, architecture or environment is unsupported, or a "
-        "blocking conflict exists.",
+        "A core requirement failed, the OS, architecture or environment is unsupported, a "
+        "blocking conflict exists, or memory or disk is below what the choices require.",
         "Bootstrap aborts; --force-unsupported continues and records overrides.force_unsupported "
         "in the host profile and every environment fingerprint.",
     ),
@@ -120,13 +122,17 @@ class Decision:
         disabled_features: Features that make the host degraded, with impact text.
         storage_backend: ``btrfs``, ``lvm`` or None.
         core_requirements: Core requirement results.
-        minimums: Hardware minimum results.
+        minimums: Hardware minimum results (CPU threads; memory and the disk per
+            mount point once the requirements are applied).
         unsupported_reasons: Why the host is unsupported.
+        degraded_reasons: Why the host is degraded besides disabled features
+            (memory below the recommended value for the choices, §2.3).
         needs_action: Operator actions, as ``{"id", "action"}``.
         planned_actions: Actions bootstrap carries out with the operator's
             consent instead of stopping, as ``{"id", "action"}``.
         warnings: Warnings.
         notes: Informational notes.
+        requirements: The requirements computed from the choices (§2.3).
     """
 
     outcome: str
@@ -146,10 +152,12 @@ class Decision:
     core_requirements: list[Check] = field(default_factory=list)
     minimums: list[Check] = field(default_factory=list)
     unsupported_reasons: list[str] = field(default_factory=list)
+    degraded_reasons: list[str] = field(default_factory=list)
     needs_action: list[dict[str, str]] = field(default_factory=list)
     planned_actions: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    requirements: Requirements | None = None
 
 
 def load_matrix(path: str = MATRIX_JSON) -> dict[str, Any]:
@@ -325,10 +333,6 @@ def build_facts(
         "wsl_automount_enabled": wsl.automount if wsl else None,
         "memory_gib": hw.memory_gib,
         "cpu_threads": hw.cpu_threads_effective,
-        "free_disk_var_lib_gib": hw.disks["var_lib"].free_gib if "var_lib" in hw.disks else None,
-        "free_disk_srv_pinka_gib": hw.disks["srv_pinka"].free_gib
-        if "srv_pinka" in hw.disks
-        else None,
         "blocking_conflicts": sum(1 for c in conflicts.conflicts if c.severity == "blocking"),
     }
 
@@ -464,20 +468,10 @@ def _core_checks(matrix: Mapping[str, Any], facts: Facts, kernel: KernelInfo) ->
 
 
 def _minimum_checks(matrix: Mapping[str, Any], facts: Facts) -> list[Check]:
+    """The fixed minimums: CPU threads (memory and disk follow the choices, §2.3)."""
     mins = matrix["minimums"]
     items: list[tuple[str, Any, Mapping[str, Any]]] = [
-        ("memory_gib", facts.get("memory_gib"), mins["memory_gib"]),
         ("cpu_threads", facts.get("cpu_threads"), mins["cpu_threads"]),
-        (
-            "free_disk_var_lib_gib",
-            facts.get("free_disk_var_lib_gib"),
-            mins["free_disk_gib"]["var_lib"],
-        ),
-        (
-            "free_disk_srv_pinka_gib",
-            facts.get("free_disk_srv_pinka_gib"),
-            mins["free_disk_gib"]["srv_pinka"],
-        ),
     ]
     checks: list[Check] = []
     for name, value, limits in items:
@@ -614,12 +608,7 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
         if check.detail == "unknown":
             d.warnings.append(f"{check.id}: could not be measured")
             continue
-        limits = {
-            "memory_gib": mins["memory_gib"],
-            "cpu_threads": mins["cpu_threads"],
-            "free_disk_var_lib_gib": mins["free_disk_gib"]["var_lib"],
-            "free_disk_srv_pinka_gib": mins["free_disk_gib"]["srv_pinka"],
-        }[check.id]
+        limits = mins[check.id]
         if not check.ok:
             d.unsupported_reasons.append(
                 f"{check.id} is {value}, below the required {limits['required']}"
@@ -696,11 +685,55 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
                 f"core requirement {check.id} failed ({check.detail}). {remediation}".strip()
             )
 
+    _set_outcome(d)
+    return d
+
+
+def _set_outcome(d: Decision) -> None:
+    """Outcome and exit code by precedence: unsupported, needs_action, degraded."""
     if d.unsupported_reasons:
         d.outcome = "unsupported"
     elif d.needs_action:
         d.outcome = "needs_action"
-    elif d.disabled_features:
+    elif d.disabled_features or d.degraded_reasons:
         d.outcome = "degraded"
+    else:
+        d.outcome = "supported"
     d.exit_code = EXIT_CODES[d.outcome]
-    return d
+
+
+def apply_requirements(d: Decision, req: Requirements) -> None:
+    """Add the requirements computed from the choices to the decision (§2.3).
+
+    Memory below the floor or the required value and a disk shortfall make the
+    host unsupported; memory below the recommended value makes it degraded.
+
+    Args:
+        d: The decision of :func:`evaluate`.
+        req: The requirements.
+    """
+    d.requirements = req
+    total = req.memory_total_gib
+    if total is not None:
+        d.minimums.append(
+            Check(
+                "memory_gib",
+                not any(r.startswith("memory:") for r in req.unsupported),
+                f"{total} (floor {req.floor_gib:g}, required {req.required_gib:g}, recommended "
+                f"{req.recommended_gib:g}, compared at {req.tolerance:g})",
+            )
+        )
+    for mount in req.disks:
+        if mount.free_gib is None:
+            continue
+        d.minimums.append(
+            Check(
+                f"free_disk:{mount.mount}",
+                mount.shortfall_gib == 0,
+                f"{mount.free_gib} (required {mount.required_gib:g})",
+            )
+        )
+    d.unsupported_reasons.extend(req.unsupported)
+    d.degraded_reasons.extend(req.degraded)
+    d.warnings.extend(req.warnings)
+    _set_outcome(d)

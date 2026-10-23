@@ -10,6 +10,9 @@ description: Docker Engine with one containerized web service on port 8080
 base: {blueprint: _base}
 type: container
 nesting: true
+# Space one build takes below /srv/pinka/images (the exported image),
+# estimated until a build measures it (BUILD_PROMPT §2.3, §7.13).
+estimated_size_gib: 0.8
 packages: [docker.io]
 # Keys of versions.lock.yml containers.target_images, pulled by digest.
 docker_images: [docker_host_web]

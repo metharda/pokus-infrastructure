@@ -14,7 +14,8 @@ description: Every command and option of the installer that bootstrap.sh runs.
 `python -m pinka_installer` is the installer behind `bootstrap.sh`: bootstrap runs it from the installer environment (`/opt/pinka/installer-venv`) to replay an answers file (`--answers`) or to start the TUI on a terminal. Operators use `bootstrap.sh` (see [bootstrap.sh](bootstrap.md) and [Installer answers file](../answers.md)).
 
 ```text
-pinka-installer [-h] [--infra INFRA] {validate,describe,apply,tui} ...
+pinka-installer [-h] [--infra INFRA]
+                       {validate,describe,apply,plan,tui} ...
 ```
 
 The pinka installer: TUI and answers replay (run by bootstrap.sh).
@@ -33,6 +34,7 @@ The pinka installer: TUI and answers replay (run by bootstrap.sh).
 | `pinka-installer validate` | check an answers file |
 | `pinka-installer describe` | print machine, mode, snapshot and MOK consent of answers |
 | `pinka-installer apply` | write the files of an answers file (non-interactive) |
+| `pinka-installer plan` | write the machine's requirements plan for preflight --plan |
 | `pinka-installer tui` | start the installer TUI |
 
 ### pinka-installer validate
@@ -75,6 +77,19 @@ pinka-installer apply [-h] --answers ANSWERS [--machine MACHINE]
 | `--machine` | `MACHINE` | — | must match the answers (from --machine) |
 | `--vault-password-file` | `VAULT_PASSWORD_FILE` | — | file with the vault password (0600): encrypts a new vault or opens the existing one |
 | `--replace-platform` | `NAME` | — | the active platform the answers' platform may replace (from --replace-platform) |
+
+### pinka-installer plan
+
+Write the machine's requirements plan for preflight --plan.
+
+```text
+pinka-installer plan [-h] --machine MACHINE [--output OUTPUT]
+```
+
+| Argument | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--machine` | `MACHINE` | — | the machine (host_vars/&lt;name&gt;.yml) |
+| `--output` | `OUTPUT` | — | the plan file (default: standard output) |
 
 ### pinka-installer tui
 

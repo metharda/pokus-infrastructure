@@ -692,6 +692,7 @@ installer() {
       "${ANSWERS_MOK:-false}"
   fi
   if [[ " $* " == *" apply "* && -n ${APPLY_FAIL:-} ]]; then return 1; fi
+  if [[ " $* " == *" plan "* && -n ${PLAN_FAIL:-} ]]; then return 1; fi
   return 0
 }
 """
@@ -726,6 +727,34 @@ def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
     assert "machine=lab1 restore=false" in out
     assert "venv /opt/pinka/installer-venv" in calls
     assert "installer apply --answers" in calls and "--machine lab1" in calls
+
+
+def test_the_installer_is_set_up_without_answers_or_tui(tmp_path: Path) -> None:
+    # It writes the requirements plan of every run (BUILD_PROMPT §2.3).
+    code, out, calls = frontend(tmp_path, "OPT_ANSWERS=''; OPT_MACHINE=lab1")
+    assert code == 0, out
+    assert "venv /opt/pinka/installer-venv" in calls
+    assert "installer apply" not in calls
+
+
+def test_the_plan_comes_from_the_installer(tmp_path: Path) -> None:
+    calls = tmp_path / "calls"
+    script = FAKE_INSTALLER + f"OPT_MACHINE=lab1; write_plan {q(tmp_path / 'plan.json')}"
+    res = bash(script, env={"CALLS": str(calls)})
+    assert res.returncode == 0, res.stderr
+    assert calls.read_text() == f"installer plan --machine lab1 --output {tmp_path}/plan.json\n"
+    res = bash(script, env={"CALLS": str(calls), "PLAN_FAIL": "1"})
+    assert res.returncode == 77
+    assert "the requirements plan of lab1 cannot be written" in res.stderr
+
+
+def test_the_play_gets_the_plan(tmp_path: Path) -> None:
+    profile = tmp_path / "profile.json"
+    profile.write_text("{}")
+    res = bash(f"OPT_MACHINE=lab1; extra_vars_json {q(profile)}")
+    assert res.returncode == 0, res.stderr
+    variables = json.loads(res.stdout)
+    assert variables["pinka_bootstrap"]["plan_path"] == "/run/pinka/bootstrap/plan.json"
 
 
 def test_answers_get_the_replace_option(tmp_path: Path) -> None:

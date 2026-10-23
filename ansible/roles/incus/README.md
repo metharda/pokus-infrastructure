@@ -22,7 +22,8 @@ Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
   everything that leaves a run bridge (to the host, to other run networks, to
   the outside) is rejected except Incus's DHCP and DNS.
 - **Projects:** `bench` (restricted; nesting, proxy devices and snapshots
-  allowed; VMs only with `vm_targets`; limits from the host's size), `build`
+  allowed; VMs only with `vm_targets`; its memory from
+  `incus_concurrent_targets`, each target with a probe client), `build`
   (restricted to `pinka-build0`), and `user-<uid>` per researcher with the
   restrictions incus-user would set, resource limits and no GPU. Pokus Infrastructure creates
   the personal projects in advance because incus-user sets no limits and

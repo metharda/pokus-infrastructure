@@ -240,6 +240,7 @@ def build_report(
         "requirements": {
             "core": [dataclasses.asdict(c) for c in decision.core_requirements],
             "minimums": [dataclasses.asdict(c) for c in decision.minimums],
+            **(decision.requirements.as_dict() if decision.requirements else {}),
         },
         "features": dict(decision.features),
         "disabled_features": list(decision.disabled_features),
@@ -248,6 +249,7 @@ def build_report(
         "access": det.access.as_dict(),
         "conflicts": [dataclasses.asdict(c) for c in det.conflicts.conflicts],
         "unsupported_reasons": list(decision.unsupported_reasons),
+        "degraded_reasons": list(decision.degraded_reasons),
         "needs_action": list(decision.needs_action),
         "planned_actions": list(decision.planned_actions),
         "warnings": list(decision.warnings),

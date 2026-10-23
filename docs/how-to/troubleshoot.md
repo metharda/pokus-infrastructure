@@ -79,11 +79,17 @@ bootstrap again (see
 ## Exit code 10: degraded {#exit-code-10}
 
 Preflight found that optional features are unavailable, for example no usable
-GPU or no KVM, and nobody consented to continue without them. Bootstrap
-printed each disabled feature with its consequence for research.
+GPU or no KVM, or that the memory is below what your choices recommend, and
+nobody consented to continue. Bootstrap printed each disabled feature with its
+consequence for research, and the memory reason with its largest parts and
+the choices that would fit.
 
 - If the missing feature can be provided (a driver, nested virtualization),
   provide it and run bootstrap again.
+- If memory is the reason, change a choice the message names (fewer
+  `incus_concurrent_targets`, a lower `training_caps.memory_max`) in the
+  machine's host_vars, or add memory
+  ([Capacity planning](../explanation/capacity-planning.md)).
 - If the lab is useful without it, run bootstrap again with
   `--accept-degraded`, or answer `y` when bootstrap asks. The consent is
   recorded in the host profile.
@@ -98,10 +104,17 @@ answer `y` when it asks); the consent is recorded in the host profile.
 ## Exit code 20: unsupported {#exit-code-20}
 
 A core requirement failed, or the operating system, architecture or
-environment is unsupported, or a blocking conflict exists. The reasons are
+environment is unsupported, or a blocking conflict exists, or the memory or a
+disk is below what your choices require. The reasons are
 printed above the exit line and stored in `unsupported_reasons` of the host
 profile. Fix the cause, for example by installing a supported distribution or
-by running the lab in a VM on this machine. Only if you accept running
+by running the lab in a VM on this machine. A memory reason lists the parts
+and the choices that would fit; a disk reason lists, per mount point, the
+items that do not fit, the largest first: shrink one (for example
+`incus_pool_size`), choose a smaller model, or free space
+([Capacity planning](../explanation/capacity-planning.md)). A plan bootstrap
+cannot write (a template value, a model not pinned in `models.lock.yml`)
+stops it with exit code 77 and the setting's name. Only if you accept running
 outside the support matrix, run bootstrap again with `--force-unsupported`;
 this is recorded in the host profile and in every environment fingerprint.
 

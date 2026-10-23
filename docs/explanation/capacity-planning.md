@@ -1,0 +1,158 @@
+---
+title: Capacity planning
+type: explanation
+audience: [operator, developer, reader]
+applies_to: {infra: ">=0.1"}
+last_verified: {date: null, rc: null, by: null}
+description: How preflight computes the memory and disk a lab needs from the operator's choices, what is estimated and what is measured, what grows with use, and where each choice is set.
+---
+
+# Capacity planning
+
+The lab does not decide its own scale. A machine with 8 GiB of memory can
+run a small lab with one target at a time; a workstation with a GPU can serve
+a model and run training jobs. What decides is what you choose: the node role,
+the number of targets that run at once, the model vLLM serves, the golden
+images, the Incus pool, the retention of the telemetry stores and the caps on
+training jobs. Preflight adds up what these choices need and checks that this
+machine has it, before anything is installed.
+
+## Where the numbers come from
+
+`preflight/requirements.yml` lists every part of the lab with the memory and
+CPU it needs and the disk it takes, each with its source and whether it is
+`estimated` or `measured`. `make generate` compiles it, with the container
+images' sizes of `versions.lock.yml`, the golden images' estimates in their
+`image.yaml`, the target profiles of the incus role and the configured
+defaults, into `preflight/requirements.json`, which preflight reads.
+
+Every number is an estimate until real-machine test 4.15 measures a lab at
+idle and during a run; the measured numbers then replace them, marked
+`measured`. The breakdown always shows which kind a number is. Sizes you set
+yourself (the pool) are marked `configured`.
+
+## The choices: the plan
+
+Preflight reads the choices from a plan (`pinka-preflight --plan FILE`,
+format in `preflight/schema/plan.schema.json`): the node role, the research
+space, Docker's data root, the pool's source and size, the concurrent
+targets, the model to serve with its files' sizes, the golden images to
+build, the GPU exporter, the training caps and the retention settings.
+
+- Bootstrap writes the plan of the machine on every run, from its
+  `host_vars`, `group_vars` and `models.lock.yml` (`pinka-installer plan`),
+  passes it to preflight and to the play's preflight gate, and stores it as
+  `/etc/pinka/plan.json` next to the host profile.
+- `sudo pinka preflight` and doctor use the stored plan, so they compute the
+  same numbers; `pinka preflight --plan FILE` computes another one.
+- Without a plan, preflight takes the configured defaults (what the Ansible
+  defaults set).
+
+The features (`gpu_inference`, `vm_targets` and the others) are not part of
+the plan: preflight detects them on the machine.
+
+## Memory
+
+Each part has a required and a recommended value. Required is what it needs
+to run; recommended adds what it uses at its upper end. Preflight sums them
+for the parts the node role runs:
+
+| Part | Required / recommended (GiB) | On |
+| --- | --- | --- |
+| host services (sshd, tailscaled, Docker, pinka's units) | 1.0 / 1.5 | every node |
+| Incus daemon | 0.2 / 0.4 | full, lab |
+| PostgreSQL | 0.5 / 1.5 | full, lab |
+| telemetry stores (Prometheus, Loki, Tempo, Grafana, query proxy) | 1.5 / 3.0 | full, lab |
+| collectors and exporters | 0.3 / 0.8 | every node |
+| OPA | 0.1 / 0.2 | full, lab |
+| bootstrap and the installer | 0.5 / 0.8 | every node |
+| concurrent targets | each a container (1 GiB) / a VM (2 GiB) with `vm_targets`, plus a 0.5 GiB probe client; at least the 2 GiB build instance when golden images are built | full, lab |
+| vLLM serving the model | the model's files + 3 / + 5 | full, inference, with `gpu_inference` and a model |
+| a training job | 0 / `training_caps.memory_max` | full |
+
+The GPU arbiter runs vLLM or a training job, never both, so on a node that
+serves a model the larger of the two counts. A training job counts only in
+recommended: the lab runs without one, and the arbiter refuses a job over the
+cap.
+
+Three thresholds follow, each compared with `MemTotal` at 0.94 times its
+nominal value, because the firmware and the kernel keep part of the installed
+memory (a nominal 16 GiB machine reports about 15.1 to 15.6 GiB and passes
+16 GiB):
+
+- below the floor of 8 GiB, the core stack with no target running, the host
+  is `unsupported`;
+- below the required sum (never less than the floor) it is `unsupported`,
+  with the breakdown and the choices that would fit, such as fewer concurrent
+  targets or a smaller model;
+- below the recommended sum it is `degraded`: the install continues only with
+  your consent (`--accept-degraded`, or the installer's checkbox), and the
+  message names the largest parts and what would fit, such as a lower
+  `training_caps.memory_max`.
+
+With the defaults (a full node, two targets, no model, a training cap of
+24G), the lab requires 8 GiB and recommends 37.2 GiB, most of it the training
+cap. A 16 GiB machine installs degraded unless the cap is lowered.
+
+The Incus `bench` project's `limits.memory` follows the same choice: the
+concurrent targets, each with its probe client.
+
+CPU threads stay a fixed minimum of the support matrix (8 required, 16
+recommended); the breakdown shows each part's CPU estimate for information.
+
+## Disk at install
+
+What is known at install time is checked per mount point, item by item:
+
+- pinka itself: 5 GiB on the file system of `/opt/pinka`;
+- the container images the node pulls, on Docker's data root: each image's
+  compressed size for this architecture (in `versions.lock.yml`) times 2.5,
+  until it is pulled; then its real size;
+- the model's files below the research space, their sizes from
+  `models.lock.yml`;
+- the Incus pool: a loop file counts fully on its mount point
+  (`/var/lib/incus/disks/`), a dedicated device on none;
+- each golden image to build, its estimate from its `image.yaml`, twice:
+  the export below the research space and Incus's image store.
+
+What is already on the host (a pulled image, a downloaded model, a built
+golden image, the pool's file) needs no more space and counts nothing, so
+preflight gives the same answer on a re-run. When a mount point is short, the
+host is `unsupported` and the shortfall is listed with the largest items
+first, the ones to shrink, for example
+`the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /`.
+
+## What grows with use
+
+What grows is never a reason to refuse. Preflight shows it below the
+breakdown: per store, its growth per day and the size its retention holds it
+to, then the growth per day and per week below the research space and the
+day the disk fills at that rate.
+
+| Store | Growth (estimated) | Held by |
+| --- | --- | --- |
+| Prometheus | 0.05 GiB a day | `observability_prometheus_retention` (90d) and `observability_prometheus_retention_size` |
+| Loki | 0.1 GiB a day | `observability_loki_retention` (2160h) |
+| Tempo | 0.05 GiB a day | `observability_tempo_retention` (720h) |
+| local PostgreSQL dumps | 0.05 GiB a day | `backup_pgdump_keep` (7) |
+| the database | 0.02 GiB a day | nothing: the platform's records |
+| training runs | up to `training_caps.run_storage_max` per run | nothing: research data, never pruned by pinka |
+
+The platform's own logs, traces and state come on top and follow the
+platform's settings. Doctor records the free space of every mount point the
+lab uses on each run and warns at 15 % free, or when the recorded trend fills
+one within 7 days ([`disk.free_space`](../how-to/fix-doctor-checks.md#check-disk-free_space)).
+
+## Where to change a choice
+
+| Choice | Setting (host_vars) | Installer answers |
+| --- | --- | --- |
+| concurrent targets | `incus_concurrent_targets` | `resources.concurrent_targets` |
+| pool | `incus_pool_source`, `incus_pool_size` | `storage` |
+| model | `vllm_default_deployment` | `gpu.default_model` |
+| golden images | `images_blueprints` | `images.build` |
+| training caps | `training_caps` | `training_caps` |
+| retention | `observability_*_retention`, `observability_prometheus_retention_size`, `backup_pgdump_keep` | `telemetry_retention`, `backups.pg_dumps_kept` |
+
+Run `sudo pinka preflight` after a change to see the new breakdown; bootstrap
+applies it.

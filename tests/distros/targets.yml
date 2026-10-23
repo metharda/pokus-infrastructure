@@ -13,19 +13,20 @@
 # for one is verified.
 schema_version: 1
 verify: "TODO(verify): VM image aliases on images.linuxcontainers.org (not reachable from the build environment)"
-# Every VM meets preflight's minimums (preflight/support-matrix.yml
-# `minimums`; a test keeps them in step): 8 CPU threads; 18 GiB of memory,
-# because preflight compares the guest's MemTotal, which the kernel's own
-# reservations keep below the assigned size, with 16 GiB; a 300 GiB root disk
-# for /var/lib (150 GiB free) and /srv/pinka (100 GiB free) on one file system,
-# with room for the system. The pool must allocate disks thinly (dir, btrfs,
-# zfs or LVM thin), so a VM takes only the space it writes. The harness runs
-# one VM at a time.
+# Every VM is sized to the requirement preflight computes for what it installs
+# (BUILD_PROMPT §2.3: tests/answers/ci.yml, no GPU, no golden images, a 30 GiB
+# loop pool), never below preflight's minimums; a test computes it with the
+# installer's plan and preflight's requirements and keeps these in step:
+# 8 CPU threads (the matrix's cpu_threads); 10 GiB of memory, the required
+# 8 GiB with 2 GiB for what the guest kernel reserves; an 80 GiB root disk for
+# the 37.2 GiB the install needs, the system's own 20 GiB and the growth of a
+# test run. The pool must allocate disks thinly (dir, btrfs, zfs or LVM thin),
+# so a VM takes only the space it writes. The harness runs one VM at a time.
 defaults:
   remote: images
   cpus: 8
-  memory: 18GiB
-  disk: 300GiB
+  memory: 10GiB
+  disk: 80GiB
 targets:
   - {id: ubuntu-24.04, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables}
   - {id: ubuntu-24.04-ufw, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: ufw}

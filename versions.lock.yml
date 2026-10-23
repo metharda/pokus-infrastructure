@@ -153,13 +153,17 @@ python:
 containers:
   # Every lab service image, pinned by the digest of its multi-platform index
   # (BUILD_PROMPT §7.6-§7.11). `platforms` lists the platforms pinka needs and
-  # that the index was verified to contain. Tags are informational: only the
-  # digest is used.
+  # that the index was verified to contain; `sizes` is each platform's
+  # compressed size in bytes (the sum of its layers), which the requirements
+  # computation estimates at 2.5 x unpacked until the image is pulled (§2.3,
+  # §10.1). Tags are informational: only the digest is used.
   verified_on: 2026-10-05
   source: >-
     Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and
     the Docker Hub tag API); latest stable releases on 2026-10-05. The DCGM
-    exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z
+    exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z. The sizes:
+    each platform manifest's layers, read on 2026-10-23 with the registry API
+    (Docker Hub's images through mirror.gcr.io, which holds the same digests)
   images:
     postgres:
       # PostgreSQL 18 is the newest stable major (19 is in beta).
@@ -167,53 +171,63 @@ containers:
       tag: "18.6-trixie"
       digest: sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 162473560, linux/arm64: 161088536}
     otel_collector:
       image: docker.io/otel/opentelemetry-collector-contrib
       tag: "0.162.0"
       digest: sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 112744572, linux/arm64: 102592160}
     prometheus:
       image: docker.io/prom/prometheus
       tag: "v3.15.0"
       digest: sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 114035258, linux/arm64: 104810464}
     loki:
       image: docker.io/grafana/loki
       tag: "3.7.8"
       digest: sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 48003511, linux/arm64: 42737611}
     tempo:
       image: docker.io/grafana/tempo
       tag: "2.10.8"
       digest: sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 37423831, linux/arm64: 33831008}
     grafana:
       image: docker.io/grafana/grafana
       tag: "13.0.10"
       digest: sha256:c8f326efdb7be9be52047edaab34cf8dadb5152c1244af102eb0a517a7797068
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 357327283, linux/arm64: 333133702}
     node_exporter:
       image: docker.io/prom/node-exporter
       tag: "v1.12.1"
       digest: sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 13404971, linux/arm64: 12466898}
     cadvisor:
       image: ghcr.io/google/cadvisor
       tag: "v0.60.6"
       digest: sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 30686694, linux/arm64: 27661931}
     postgres_exporter:
       # The same digest is published on GHCR (ghcr.io/prometheus-community/postgres-exporter).
       image: docker.io/prometheuscommunity/postgres-exporter
       tag: "v0.20.1"
       digest: sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 11780276, linux/arm64: 10960510}
     gpu_exporter:
       # nvidia-smi based exporter (used where DCGM is not available, e.g. WSL2).
       image: docker.io/utkuozdemir/nvidia_gpu_exporter
       tag: "1.15.1"
       digest: sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 11522084, linux/arm64: 11049290}
     dcgm_exporter:
       # make lock-pins on 2026-10-17: the newest release tag on nvcr.io, the
       # digest of its image index; the release's hack/versions.env on GitHub
@@ -222,11 +236,13 @@ containers:
       tag: "4.8.4"
       digest: sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 62787403, linux/arm64: 59314654}
     opa:
       image: docker.io/openpolicyagent/opa
       tag: "1.21.1-static"
       digest: sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 30513355, linux/arm64: 28078584}
     vllm:
       # cuda: the CUDA version the image is built on (BUILD_PROMPT §2.2), read
       # from CUDA_VERSION in the configuration of both platform images (also
@@ -237,6 +253,7 @@ containers:
       tag: "v0.31.0"
       digest: sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 9035211086, linux/arm64: 10134470647}
       cuda: "13.0.2"
     query_proxy:
       # The telemetry query proxy (BUILD_PROMPT §7.9): the nginx release and
@@ -246,12 +263,14 @@ containers:
       tag: "1.30.5-alpine"
       digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 26073522, linux/arm64: 25966398}
     cuda_base_test:
       # GPU smoke test (BUILD_PROMPT §7.6); same CUDA version as the vLLM image.
       image: docker.io/nvidia/cuda
       tag: "13.0.2-base-ubuntu24.04"
       digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 139444203, linux/arm64: 133135420}
     refplat_job:
       # The reference platform's training job image (tests only; BUILD_PROMPT
       # §7.18): Python's official image through the ECR Public mirror of
@@ -265,6 +284,7 @@ containers:
       tag: "3.12-slim-trixie"
       digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 43259288, linux/arm64: 43533362}
   # Images preloaded inside golden images (BUILD_PROMPT §7.13), never run by
   # the lab itself. Verified on 2026-10-06 with the registry API (index digest
   # of the tag).

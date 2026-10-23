@@ -7,6 +7,7 @@ tests.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -33,6 +34,84 @@ def _fmt(value: Any) -> str:  # noqa: ANN401 - report value
     if isinstance(value, bool):
         return "yes" if value else "no"
     return str(value)
+
+
+def _gib(value: float | None) -> str:
+    return "-" if value is None else f"{value:.1f} GiB"
+
+
+def _disk_lines(mount: Mapping[str, Any]) -> list[str]:
+    """One mount point: the total, then its items (container and golden images summed)."""
+    lines = [
+        f"  disk {mount['mount']} ({_fmt(mount['fstype'])}): {_gib(mount['free_gib'])} free, "
+        f"{_gib(mount['required_gib'])} needed at install"
+        + (f", {_gib(mount['shortfall_gib'])} missing" if mount["shortfall_gib"] else "")
+    ]
+    groups: dict[str, list[Mapping[str, Any]]] = {}
+    for item in mount["items"]:
+        kind = item["id"].split(":", 1)[0] if ":" in item["id"] else item["id"]
+        groups.setdefault(kind, []).append(item)
+    titles = {
+        "image": "container images",
+        "golden": "golden images (export)",
+        "golden-store": "golden images (Incus image store)",
+    }
+    for kind, items in groups.items():
+        present = sum(1 for i in items if i["present"])
+        size = sum(i["size_gib"] for i in items)
+        title = titles.get(kind) if len(items) > 1 or kind in titles else None
+        label = f"{title} ({len(items)})" if title else items[0]["title"]
+        state = f", {present} present" if present else ""
+        basis = sorted({i["basis"] for i in items})
+        lines.append(f"    {label}: {_gib(size)}{state} ({', '.join(basis)})")
+    return lines
+
+
+def requirements_lines(req: Mapping[str, Any]) -> list[str]:
+    """The requirements computed from the choices (§2.3), for the summary and the log.
+
+    Args:
+        req: The host profile's ``requirements``.
+
+    Returns:
+        Text lines.
+    """
+    mem = req["memory_gib"]
+    lines = [
+        f"  plan {os.path.basename(req['plan'])}; memory {_gib(mem['total'])}:"
+        f" floor {mem['floor']:g},"
+        f" required {mem['required']:g}, recommended {mem['recommended']:g} GiB"
+        f" (each compared at {mem['tolerance']:g} times the nominal value)"
+    ]
+    for item in mem["items"]:
+        detail = f"; {item['detail']}" if item["detail"] else ""
+        lines.append(
+            f"    {item['title']}: {item['required_gib']:g} / {item['recommended_gib']:g} GiB"
+            f" ({item['basis']}{detail})"
+        )
+    lines.append(f"  CPU estimate {req['cpu_threads']['estimated']:g} threads")
+    for mount in req["disk"]:
+        lines.extend(_disk_lines(mount))
+    growth = req.get("growth")
+    if growth:
+        if growth["days_until_full"] is None:
+            when = "not full within ten years at this rate"
+        else:
+            when = f"full in about {growth['days_until_full']} days at this rate"
+        lines.append(
+            f"  growth on {_fmt(growth['mount'])}: {growth['gib_per_day']:g} GiB a day,"
+            f" {growth['gib_per_week']:g} GiB a week; {when}"
+        )
+        for item in growth["items"]:
+            if item["per_run_gib"] is not None:
+                lines.append(f"    {item['title']}: up to {item['per_run_gib']:g} GiB per run")
+            else:
+                cap = (
+                    "no retention" if item["cap_gib"] is None else f"up to {item['cap_gib']:g} GiB"
+                )
+                lines.append(f"    {item['title']}: {item['gib_per_day']:g} GiB a day, {cap}")
+    lines.extend(f"  - {note}" for note in req["notes"])
+    return lines
 
 
 def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: PLR0915 - linear layout
@@ -150,6 +229,8 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
         lines.append(
             f"  listener {item['proto']}/{item['port']} on {item['address']} ({owner}){admitted}"
         )
+    lines.append(paint("Requirements", "bold"))
+    lines.extend(requirements_lines(report["requirements"]))
     network = report["network"]
     if network["offline"]:
         lines.append(paint("Network", "bold") + ": skipped (--offline)")
@@ -166,6 +247,7 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
             lines.extend(f"  - {item}" for item in items)
 
     section("Unsupported", list(report["unsupported_reasons"]), "unsupported")
+    section("Degraded", list(report["degraded_reasons"]), "degraded")
     section(
         "Action needed",
         [f"{a['id']}: {a['action']}" for a in report["needs_action"]],

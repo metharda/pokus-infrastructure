@@ -158,7 +158,8 @@
             "vllm": {
               "$ref": "#/$defs/image",
               "required": [
-                "cuda"
+                "cuda",
+                "sizes"
               ]
             }
           },
@@ -166,7 +167,10 @@
             "$ref": "#/$defs/identifier"
           },
           "additionalProperties": {
-            "$ref": "#/$defs/image"
+            "$ref": "#/$defs/image",
+            "required": [
+              "sizes"
+            ]
           }
         },
         "target_images": {
@@ -732,6 +736,21 @@
               "$ref": "#/$defs/todo"
             }
           ]
+        },
+        "sizes": {
+          "description": "The compressed size in bytes of each platform's image (the sum of its manifest's layers); the requirements computation estimates the unpacked size as 2.5 times that until the image is pulled on a host (BUILD_PROMPT \u00a72.3, \u00a710.1).",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "linux/amd64",
+              "linux/arm64"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       }
     }

@@ -74,6 +74,7 @@ class Resources:
     cpuset_services: str = ""
     cpuset_targets: str = ""
     postgres_shared_buffers: str = ""
+    concurrent_targets: int = 2
 
 
 @dataclass
@@ -172,6 +173,17 @@ class Backups:
     retention: Retention = field(default_factory=Retention)
     include_models: bool = False
     include_secrets: bool = False
+    pg_dumps_kept: int = 7
+
+
+@dataclass
+class TelemetryRetention:
+    """How long the telemetry stores keep their data (BUILD_PROMPT §2.3, §7.9)."""
+
+    prometheus: str = "90d"
+    prometheus_size: str = "0"
+    loki: str = "2160h"
+    tempo: str = "720h"
 
 
 @dataclass
@@ -248,6 +260,7 @@ class Answers:
     platform_settings: dict[str, Any] = field(default_factory=dict)
     gpu_arbiter: GpuArbiter = field(default_factory=GpuArbiter)
     training_caps: TrainingCaps = field(default_factory=TrainingCaps)
+    telemetry_retention: TelemetryRetention = field(default_factory=TelemetryRetention)
     images_build: list[str] = field(default_factory=list)
     secrets: Secrets = field(default_factory=Secrets)
 
@@ -345,6 +358,7 @@ class Answers:
             data["platform_settings"] = copy.deepcopy(clean.platform_settings)
         data["gpu_arbiter"] = asdict(clean.gpu_arbiter)
         data["training_caps"] = asdict(clean.training_caps)
+        data["telemetry_retention"] = asdict(clean.telemetry_retention)
         data["images"] = {"build": list(clean.images_build)}
         secrets = asdict(clean.secrets)
         if not secrets["platform"]:
@@ -388,6 +402,9 @@ class Answers:
         answers.platform_settings = copy.deepcopy(dict(data.get("platform_settings") or {}))
         answers.gpu_arbiter = _build(GpuArbiter, data.get("gpu_arbiter") or {})
         answers.training_caps = _build(TrainingCaps, data.get("training_caps") or {})
+        answers.telemetry_retention = _build(
+            TelemetryRetention, data.get("telemetry_retention") or {}
+        )
         answers.images_build = list((data.get("images") or {}).get("build", []))
         secrets = {k: v for k, v in (data.get("secrets") or {}).items() if k != "generate"}
         answers.secrets = _build(Secrets, secrets)
@@ -510,6 +527,7 @@ def problems(answers: Answers, context: Context) -> list[str]:
     if answers.mode == "restore":
         _check(found, "restore/snapshot", validators.snapshot(answers.restore_snapshot))
     _source_problems(found, answers)
+    _retention_problems(found, answers)
     for name in answers.images_build:
         if context.blueprints and name not in context.blueprints:
             found.append(f"images/build: no blueprint {name!r} in images/")
@@ -521,6 +539,11 @@ def _resource_problems(found: list[str], resources: Resources, context: Context)
         value = getattr(resources, name)
         if value:
             _check(found, f"resources/{name}", validators.cpuset(value, context.cpu_count))
+    _check(
+        found,
+        "resources/concurrent_targets",
+        validators.concurrent_targets(resources.concurrent_targets),
+    )
     if resources.cpuset_services and resources.cpuset_targets:
         _check(
             found,
@@ -587,6 +610,23 @@ def _backup_problems(found: list[str], answers: Answers) -> None:
     _check(found, "backups/schedule", validators.time_of_day(backups.schedule))
     if answers.mode == "restore" and repository.type == "later":
         found.append("backups/repository: restore mode needs the repository to restore from")
+
+
+def _retention_problems(found: list[str], answers: Answers) -> None:
+    retention = answers.telemetry_retention
+    for name, units in (("prometheus", "hdwy"), ("loki", "hdwy"), ("tempo", "h")):
+        _check(
+            found,
+            f"telemetry_retention/{name}",
+            validators.retention_period(getattr(retention, name), units),
+        )
+    _check(
+        found,
+        "telemetry_retention/prometheus_size",
+        validators.prometheus_size(retention.prometheus_size),
+    )
+    if answers.backups.pg_dumps_kept < 1:
+        found.append("backups/pg_dumps_kept: keep at least one dump")
 
 
 def _source_problems(found: list[str], answers: Answers) -> None:

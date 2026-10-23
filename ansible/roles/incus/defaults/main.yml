@@ -32,10 +32,20 @@ incus_run_acl_egress: >-
 # Most VMs at once in a project, when the vm_targets feature is on.
 incus_max_virtual_machines: 4
 
-# Limits of the bench project (the sum over all its instances). Its CPUs are
-# those of cpuset_targets when set (the platform pins targets inside it).
+# Targets that run at once (BUILD_PROMPT §2.3, §7.7): they size the bench
+# project's memory and the memory preflight requires.
+incus_concurrent_targets: 2
+# Limits of the bench project (the sum over all its instances). Its memory is
+# the concurrent targets, each with a probe client, at the target-vm profile's
+# memory with vm_targets and the target-container profile's without (the
+# operator's choice, not a share of the host). Its CPUs are those of
+# cpuset_targets when set (the platform pins targets inside it).
 incus_bench_limits:
-  limits.memory: "{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB"
+  limits.memory: >-
+    {{ (incus_concurrent_targets | int)
+       * (((incus_target_vm if pinka_features.vm_targets | default(false) else incus_target_container).memory
+           | pinka_size_mib)
+          + (incus_probe_client.memory | pinka_size_mib)) }}MiB
   limits.cpu: >-
     {{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets
        else [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}

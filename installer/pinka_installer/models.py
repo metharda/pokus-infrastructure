@@ -3,7 +3,9 @@
 The TUI resolves an entry of models.catalog.yml or a custom repository to a full commit and
 the sha256 of every file vLLM needs, from the Hugging Face Hub's API: the tree
 of the commit gives the sha256 of files stored in Git LFS (the weights); the
-small files are downloaded at the pinned commit and hashed. Nothing is pinned
+small files are downloaded at the pinned commit and hashed. Every file's size
+goes into the lock too, for the requirements computed from the choices
+(BUILD_PROMPT §2.3). Nothing is pinned
 from an unverified value. The network calls go through an injectable getter.
 """
 
@@ -36,9 +38,12 @@ NEEDED = (
     "vocab.txt",
 )
 SKIPPED = ("README*", ".gitattributes", "*.md", "*.png", "*.jpg", "*.gif")
-# TODO(verify): the Hub API field names (revision "sha", tree "path", "type" and "lfs.oid"
-# as the sha256 of an LFS object); the Hub was not reachable from the build environment.
+# TODO(verify): the Hub API field names (revision "sha", tree "path", "type", "size" and
+# "lfs.oid" as the sha256 of an LFS object, "lfs.size" as its size); the Hub was not
+# reachable from the build environment.
 LFS_SHA256 = ("lfs", "oid")
+LFS_SIZE = ("lfs", "size")
+SIZE = "size"
 
 Getter = Callable[[str, str], bytes]
 
@@ -143,10 +148,12 @@ class PinnedFile:
     Attributes:
         path: Path in the repository.
         sha256: Its sha256.
+        size: Its size in bytes.
     """
 
     path: str
     sha256: str
+    size: int
 
 
 def pin_files(repo: str, revision: str, token: str, get: Getter = hub_get) -> list[PinnedFile]:
@@ -176,11 +183,15 @@ def pin_files(repo: str, revision: str, token: str, get: Getter = hub_get) -> li
             continue
         lfs = entry.get(LFS_SHA256[0])
         digest = str(lfs.get(LFS_SHA256[1], "")) if isinstance(lfs, dict) else ""
+        size = lfs.get(LFS_SIZE[1]) if isinstance(lfs, dict) else entry.get(SIZE)
         if not digest:
             quoted = urllib.parse.quote(path)
             body = get(f"{HUB}/{repo}/resolve/{revision}/{quoted}", token)
             digest = hashlib.sha256(body).hexdigest()
-        files.append(PinnedFile(path, digest))
+            size = len(body)
+        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+            raise HubError(f"{repo}@{revision}: no size for {path}")
+        files.append(PinnedFile(path, digest, size))
     if not any(f.path.endswith(".safetensors") for f in files):
         raise HubError(f"{repo}@{revision}: no .safetensors weights")
     return sorted(files, key=lambda f: f.path)
@@ -210,7 +221,7 @@ def lock_entry(
         "id": model_id,
         "hf_repo": repo,
         "revision": revision,
-        "files": [{"path": f.path, "sha256": f.sha256} for f in files],
+        "files": [{"path": f.path, "sha256": f.sha256, "size": f.size} for f in files],
         "license": str(meta.get("license", "")),
         "gated": bool(meta.get("gated", False)),
     }

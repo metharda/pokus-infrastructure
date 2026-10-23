@@ -44,6 +44,9 @@ incus_pool_source: loop
 incus_pool_size: 300GiB
 incus_pool_device: ""              # /dev/disk/by-id/... for device
 incus_pool_device_confirm: ""
+# Targets that run at once: they size the bench project's memory and the
+# memory preflight requires (docs/explanation/capacity-planning.md).
+incus_concurrent_targets: 2
 
 pinka_root: /srv/pinka
 docker_data_root: /var/lib/docker

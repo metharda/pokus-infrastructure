@@ -427,6 +427,19 @@ shows why the guard did not load. See
 [ADR-0016](../adr/0016-telemetry-query-isolation.md) for why accounts, not
 vLLM's API key, decide.
 
+## `disk.free_space`: a mount point is filling up {#check-disk-free_space}
+
+A file system the lab uses (the research space, Docker's data root, the
+Incus pool's loop file, `/opt/pinka`) has less than
+`doctor_disk_warn_free_percent` (15 %) free, or the free space doctor
+recorded on its runs over the last week shrinks fast enough to fill it within
+`doctor_disk_full_within_days` (7 days). Doctor keeps the record in
+`/var/lib/pinka/doctor/disk-history.json`. `sudo pinka preflight` shows what
+grows and how much the retention settings allow; lower them
+(`observability_prometheus_retention` and `_size`, `observability_loki_retention`,
+`observability_tempo_retention`, `backup_pgdump_keep`), delete training runs
+or datasets that are no longer needed, or give the file system more space.
+
 ## `incus.pool`: wrong backend or little free space {#check-incus-pool}
 
 The Incus pool uses another driver than preflight chose, or has less free

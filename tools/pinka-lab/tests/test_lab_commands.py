@@ -45,6 +45,28 @@ class LabTest(unittest.TestCase):
             ["--no-write", "--srv-path", "/srv/pinka", "--quiet"],
         )
 
+    def test_preflight_takes_the_machines_options_and_plan(self) -> None:
+        # BUILD_PROMPT §2.3: the same run as doctor's, with the plan bootstrap stored.
+        command = "/usr/local/lib/pinka/preflight/pinka-preflight *"
+        config = lab(preflight_args=["--port=grafana=18750"])
+        stored = FakeSystem({command: (0, "{}")}, files={"/etc/pinka/plan.json": "{}"})
+        captured(lambda: commands.preflight(stored, config, True))
+        self.assertEqual(
+            stored.calls[0][1:],
+            [
+                "--no-write",
+                "--srv-path",
+                "/srv/pinka",
+                "--port=grafana=18750",
+                "--plan",
+                "/etc/pinka/plan.json",
+                "--quiet",
+            ],
+        )
+        given = FakeSystem({command: (0, "{}")}, files={"/etc/pinka/plan.json": "{}"})
+        captured(lambda: commands.preflight(given, config, True, "/tmp/other.json"))
+        self.assertEqual(given.calls[0][-3:], ["--plan", "/tmp/other.json", "--quiet"])
+
     def test_preflight_summary_runs_interactively(self) -> None:
         system = FakeSystem(interactive_rc=0)
         self.assertEqual(commands.preflight(system, lab(), False), 0)

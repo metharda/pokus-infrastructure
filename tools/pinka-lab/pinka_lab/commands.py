@@ -97,19 +97,45 @@ def bootstrap_argv(config: LabConfig, *extra: str) -> list[str]:
 # --- preflight, start, stop, status --------------------------------------------------------
 
 
-def preflight(system: System, config: LabConfig, as_json: bool) -> int:
+# The requirements plan bootstrap stored with the host profile (BUILD_PROMPT §2.3).
+PLAN_FILE = "/etc/pinka/plan.json"
+
+
+def preflight_argv(system: System, config: LabConfig, plan: str | None = None) -> list[str]:
+    """The read-only preflight run of this machine, as doctor and ``pinka preflight`` run it.
+
+    Args:
+        system: Host access.
+        config: The lab description.
+        plan: A plan file (``--plan``); None takes the stored plan when there is one.
+
+    Returns:
+        The command line: the machine's port overrides and VM collector address
+        (``preflight_args``) and the plan, so the requirements are those of the
+        configured choices.
+    """
+    command = str(config.get("paths", "preflight"))
+    argv = [command, "--no-write", "--srv-path", config.pinka_root]
+    argv += [str(arg) for arg in config.get("preflight_args", default=[])]
+    stored = str(config.get("paths", "plan", default=PLAN_FILE))
+    if plan is None and system.info(stored) is not None:
+        plan = stored
+    return [*argv, "--plan", plan] if plan else argv
+
+
+def preflight(system: System, config: LabConfig, as_json: bool, plan: str | None = None) -> int:
     """Run preflight read-only.
 
     Args:
         system: Host access.
         config: The lab description.
         as_json: Print the JSON report instead of the summary.
+        plan: A plan file whose requirements to compute (default: the stored one).
 
     Returns:
         Preflight's exit code.
     """
-    command = str(config.get("paths", "preflight"))
-    argv = [command, "--no-write", "--srv-path", config.pinka_root]
+    argv = preflight_argv(system, config, plan)
     if as_json:
         done = system.run([*argv, "--quiet"], timeout=300)
         sys.stdout.write(done.stdout)

@@ -44,7 +44,7 @@ a lab host, `pinka docs serve` serves it on `127.0.0.1` for offline use.
 | wsl2 | supported |
 | vm | supported |
 
-At least 16 GiB of memory and 8 CPU threads. Derivatives are experimental; everything else, and the full rules, are in [docs/support-matrix.md](docs/support-matrix.md).
+At least 8 GiB of memory, more as the choices require (features, node role, concurrent targets, the model), and 8 CPU threads; the disk follows the choices too. Derivatives are experimental; everything else, and the full rules, are in [docs/support-matrix.md](docs/support-matrix.md).
 <!-- generated:environments:end -->
 
 ## Prerequisites

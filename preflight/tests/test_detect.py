@@ -289,13 +289,21 @@ class HardwareTest(TempRootCase):
         self.assertEqual(hardware.nearest_existing(fs, "/missing"), "/")
         r = runner(
             {
-                "df --output=fstype,size,avail -B1 /srv": "Type 1B-blocks Avail\nbtrfs 2147483648 1073741824\n"
+                "df --output=target,fstype,size,avail -B1 /srv": (
+                    "Mounted on Type 1B-blocks Avail\n/srv btrfs 2147483648 1073741824\n"
+                ),
+                "df --output=target,fstype,size,avail -B1 /": (
+                    "Mounted on Type 1B-blocks Avail\n/mnt/a b ext4 2147483648 1073741824\n"
+                ),
             }
         )
         d = hardware.disk_info(fs, r, "/srv/pinka")
         self.assertEqual(
-            (d.checked_path, d.fstype, d.size_gib, d.free_gib), ("/srv", "btrfs", 2.0, 1.0)
+            (d.checked_path, d.mount, d.fstype, d.size_gib, d.free_gib),
+            ("/srv", "/srv", "btrfs", 2.0, 1.0),
         )
+        # A mount point with a space keeps it: df prints it as it is.
+        self.assertEqual(hardware.disk_info(fs, r, "/missing").mount, "/mnt/a b")
         self.assertIsNone(hardware.disk_info(fs, runner(), "/srv").free_gib)
 
     def test_quota_limits_threads_and_block_devices(self) -> None:

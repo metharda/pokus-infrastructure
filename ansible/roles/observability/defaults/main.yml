@@ -5,6 +5,9 @@
 observability_collector_memory_mib: 512
 # Prometheus retention (BUILD_PROMPT §7.9).
 observability_prometheus_retention: 90d
+# Prometheus retention by size as well (such as 50GB; powers of 2, as Prometheus
+# reads them); 0: by time only.
+observability_prometheus_retention_size: 0
 # Loki retention of logs.
 observability_loki_retention: 2160h
 # Tempo retention of traces.

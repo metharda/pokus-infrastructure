@@ -33,6 +33,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `resources.cpuset_services` | see `cpuset` | no | CPUs of the lab services (Linux cpuset list, such as 0-5). |
 | `resources.cpuset_targets` | see `cpuset` | no | CPUs of the Incus targets; must not overlap cpuset_services. |
 | `resources.postgres_shared_buffers` | string | no | Postgres shared_buffers, such as 2048MB; empty derives it from the memory. |
+| `resources.concurrent_targets` | integer | no | Targets that run at once (incus_concurrent_targets): they size the bench project's memory and the memory preflight requires (BUILD_PROMPT §2.3). |
 | `storage` | object | yes | The Incus storage pool of the targets. |
 | `storage.source` | one of `loop`, `device` | yes | loop: a loop file inside the system; device: a dedicated disk, formatted. |
 | `storage.loop_size_gib` | integer | no | Size of the loop file (source loop), at least 20 GiB. |
@@ -72,6 +73,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `backups.retention.monthly` | integer | yes | Monthly snapshots kept. |
 | `backups.include_models` | boolean | no | Back up model weights too (large; they can be downloaded again). |
 | `backups.include_secrets` | boolean | no | Back up /etc/pinka/secrets inside restic's encryption. |
+| `backups.pg_dumps_kept` | integer | no | Local PostgreSQL dumps kept below the research space, one a day (backup_pgdump_keep). |
 | `restore` | object | no | Restore mode only. |
 | `restore.snapshot` | string | yes | latest, or a snapshot id. |
 | `platform` | any | yes | The platform release to deploy (BUILD_PROMPT §7.14, §8.1), or null for a standalone lab without a platform. |
@@ -93,6 +95,11 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `training_caps.dataset_max` | see `cap_size` | no | The size of a published dataset. |
 | `training_caps.run_storage_max` | see `cap_size` | no | A run's output and checkpoints together. |
 | `training_caps.tmp_max` | see `cap_size` | no | A job's /tmp (a tmpfs counted against its memory). |
+| `telemetry_retention` | object | no | How long the telemetry stores keep their data (BUILD_PROMPT §2.3, §7.9); the capacity plan shows the growth they allow. |
+| `telemetry_retention.prometheus` | string | no | Prometheus's retention by time (observability_prometheus_retention), such as 90d. |
+| `telemetry_retention.prometheus_size` | string | no | Prometheus's retention by size (observability_prometheus_retention_size; powers of 2), such as 50GB; 0: by time only. |
+| `telemetry_retention.loki` | string | no | Loki's retention of logs (observability_loki_retention), such as 2160h. |
+| `telemetry_retention.tempo` | string | no | Tempo's retention of traces (observability_tempo_retention), in hours, such as 720h. |
 | `images` | object | yes | Golden images. |
 | `images.build` | array | yes | Golden image blueprints to build (images/&lt;name&gt;/). |
 | `secrets` | object | yes | Which secrets are generated and which are provided (never their values). |

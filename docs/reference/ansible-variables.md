@@ -1030,6 +1030,20 @@ Free space of the Incus pool below which doctor warns, in GiB.
 - Type: `int`
 - Default: `20`
 
+### `doctor_disk_warn_free_percent`
+
+Free share of a mount point the lab uses below which doctor warns.
+
+- Type: `int`
+- Default: `15`
+
+### `doctor_disk_full_within_days`
+
+Doctor warns when the trend of its recorded runs fills a mount point within these days.
+
+- Type: `int`
+- Default: `7`
+
 ### `doctor_backup_max_age_hours`
 
 Age of the last successful backup after which doctor warns, in hours.
@@ -1458,17 +1472,26 @@ Most VMs at once in the bench and build projects (with the vm_targets feature).
 - Type: `int`
 - Default: `4`
 
+### `incus_concurrent_targets`
+
+Targets that run at once; they size the bench project's memory and the memory preflight requires.
+
+- Type: `int`
+- Default: `2`
+
 ### `incus_bench_limits`
 
-Project limits of bench (derived from the host's memory and CPUs, or from cpuset_targets).
+Project limits of bench (memory from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
 
 - Type: `dict`
 - Default:
 
     ```yaml
-    {limits.memory: '{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB',
-      limits.cpu: "{{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets\n   else\
-        \ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}", limits.instances: '40'}
+    {limits.memory: "{{ (incus_concurrent_targets | int)\n   * (((incus_target_vm if pinka_features.vm_targets\
+        \ | default(false) else incus_target_container).memory\n       | pinka_size_mib)\n   \
+        \   + (incus_probe_client.memory | pinka_size_mib)) }}MiB", limits.cpu: "{{ (cpuset_targets\
+        \ | pinka_cpuset_cpus | length) if cpuset_targets\n   else [(host_profile.hardware.cpu_threads_effective\
+        \ | int) - 2, 1] | max }}", limits.instances: '40'}
     ```
 
 ### `incus_target_container`
@@ -1842,6 +1865,13 @@ Prometheus retention.
 
 - Type: `str`
 - Default: `90d`
+
+### `observability_prometheus_retention_size`
+
+Prometheus retention by size (such as 50GB, powers of 2); 0 is by time only.
+
+- Type: `raw`
+- Default: `0`
 
 ### `observability_loki_retention`
 

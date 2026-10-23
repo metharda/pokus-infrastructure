@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/schema/requirements.schema.json",
+  "title": "preflight/requirements.yml",
+  "description": "What each part of the lab needs, for the requirements computed from the operator's choices (BUILD_PROMPT §2.3). Every number carries its basis (estimated or measured) and its source.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "image_unpack_factor", "components", "disk", "images", "growth"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "image_unpack_factor": {"type": "number", "minimum": 1},
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "kind", "roles", "cpu_threads", "basis", "source"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "title": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["fixed", "targets", "vllm", "training"]},
+          "roles": {"$ref": "#/$defs/roles"},
+          "memory_gib": {"$ref": "#/$defs/range"},
+          "overhead_gib": {"$ref": "#/$defs/range"},
+          "cpu_threads": {"type": "number", "minimum": 0},
+          "basis": {"$ref": "#/$defs/basis"},
+          "source": {"type": "string", "minLength": 1}
+        },
+        "allOf": [
+          {"if": {"properties": {"kind": {"const": "fixed"}}}, "then": {"required": ["memory_gib"]}},
+          {"if": {"properties": {"kind": {"const": "vllm"}}}, "then": {"required": ["overhead_gib"]}}
+        ]
+      }
+    },
+    "disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pinka_gib", "pinka_basis", "pinka_source", "incus_dir"],
+      "properties": {
+        "pinka_gib": {"type": "number", "exclusiveMinimum": 0},
+        "pinka_basis": {"$ref": "#/$defs/basis"},
+        "pinka_source": {"type": "string", "minLength": 1},
+        "incus_dir": {"type": "string", "pattern": "^/"}
+      }
+    },
+    "images": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["roles"],
+        "properties": {
+          "roles": {"$ref": "#/$defs/roles"},
+          "features": {"type": "array", "items": {"type": "string"}},
+          "gpu_exporter": {"enum": ["nvidia_smi", "dcgm"]}
+        }
+      }
+    },
+    "growth": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "roles", "path", "gib_per_day", "basis", "source"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "title": {"type": "string", "minLength": 1},
+          "roles": {"$ref": "#/$defs/roles"},
+          "path": {"enum": ["srv"]},
+          "gib_per_day": {"type": "number", "minimum": 0},
+          "retention": {"enum": ["prometheus_days", "loki_days", "tempo_days", "pg_dumps"]},
+          "size_cap": {"enum": ["prometheus_size_gib"]},
+          "per_run": {"enum": ["run_storage_max_gib"]},
+          "basis": {"$ref": "#/$defs/basis"},
+          "source": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "roles": {"type": "array", "uniqueItems": true, "items": {"enum": ["full", "lab", "inference"]}},
+    "basis": {"enum": ["estimated", "measured"]},
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "recommended"],
+      "properties": {
+        "required": {"type": "number", "minimum": 0},
+        "recommended": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}

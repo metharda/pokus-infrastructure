@@ -1,0 +1,236 @@
+# Managed by pinka (preflight/requirements.yml). Local changes will be overwritten.
+#
+# What each part of the lab needs, for the requirements computed from the
+# operator's choices (BUILD_PROMPT §2.3). make generate compiles it, with the
+# container images' sizes of versions.lock.yml, the golden images' estimates
+# of images/*/image.yaml, the target profiles of the incus role and the
+# configured defaults, to preflight/requirements.json, which preflight reads.
+#
+# Every number below is an estimate (basis: estimated) until real-machine test
+# 4.15 of the test specification measures the lab at idle and during a run;
+# a measured number gets basis: measured and the test's report as its source.
+# Schema: preflight/schema/requirements.schema.json.
+schema_version: 1
+
+# The memory floor and the tolerance of every memory threshold are the
+# support matrix's minimums.memory_gib.
+
+# A container image's size on disk as a multiple of its compressed size, until
+# the image is pulled on the host and its real size is known (owner, decision
+# 7 on the 3f-1 proposal).
+image_unpack_factor: 2.5
+
+# Memory and CPU while the lab runs. kind: fixed counts memory_gib on the
+# node roles listed; targets, vllm and training are computed (see their
+# comments). cpu_threads is shown in the breakdown; the CPU threshold stays the
+# support matrix's cpu_threads minimum.
+components:
+  - id: base
+    title: host services
+    kind: fixed
+    roles: [full, lab, inference]
+    memory_gib: {required: 1.0, recommended: 1.5}
+    cpu_threads: 0.5
+    basis: estimated
+    source: >-
+      estimate: resident memory of sshd, tailscaled, dockerd and containerd and
+      pinka's units and timers on a small host; the upper value leaves room for
+      the page cache they use
+  - id: incus
+    title: Incus daemon
+    kind: fixed
+    roles: [full, lab]
+    memory_gib: {required: 0.2, recommended: 0.4}
+    cpu_threads: 0.2
+    basis: estimated
+    source: "estimate: incusd and lxcfs idle, without instances"
+  - id: postgres
+    title: PostgreSQL
+    kind: fixed
+    roles: [full, lab]
+    memory_gib: {required: 0.5, recommended: 1.5}
+    cpu_threads: 0.5
+    basis: estimated
+    source: >-
+      pinka's shared_buffers (1/16 of the memory, 128 MiB to 4 GiB) plus about
+      10 MiB per connection; the upper value is a 16-32 GiB host's shared_buffers
+      with a platform's connections
+  - id: stores
+    title: telemetry stores
+    kind: fixed
+    roles: [full, lab]
+    memory_gib: {required: 1.5, recommended: 3.0}
+    cpu_threads: 0.5
+    basis: estimated
+    source: >-
+      estimate: Prometheus, Loki, Tempo, Grafana and the query proxy; Prometheus
+      at about 5,000 series (the lab's exporters at 15 s),
+      Loki and Tempo as single binaries, Grafana; grows with the platform's own
+      metrics, logs and traces
+  - id: collectors
+    title: collectors and exporters
+    kind: fixed
+    roles: [full, lab, inference]
+    memory_gib: {required: 0.3, recommended: 0.8}
+    cpu_threads: 0.3
+    basis: estimated
+    source: >-
+      the OpenTelemetry collectors, node_exporter, cAdvisor and the database and GPU
+      exporters: the gateway collector's memory_limiter (observability_collector_memory_mib,
+      512 MiB) and half of it for the journald collector as the upper value; the
+      exporters about 50 MiB each
+  - id: opa
+    title: OPA
+    kind: fixed
+    roles: [full, lab]
+    memory_gib: {required: 0.1, recommended: 0.2}
+    cpu_threads: 0.1
+    basis: estimated
+    source: "estimate: OPA with the platform's policy bundle"
+  - id: install
+    title: bootstrap and the installer
+    kind: fixed
+    roles: [full, lab, inference]
+    memory_gib: {required: 0.5, recommended: 0.8}
+    cpu_threads: 1
+    basis: estimated
+    source: >-
+      estimate: ansible-playbook at its peak (0.3-0.6 GiB) and the installer TUI
+      (0.1-0.2 GiB); they run again on every update next to the running lab
+  # Each concurrent target at its profile's memory limit (the incus role's
+  # incus_target_container and incus_target_vm): required counts containers,
+  # recommended counts VMs when the host has vm_targets. At least the build
+  # instance (incus_build_instance) when golden images are to be built: the
+  # build runs while no target runs.
+  - id: targets
+    title: concurrent targets
+    kind: targets
+    roles: [full, lab]
+    cpu_threads: 1
+    basis: estimated
+    source: >-
+      the profiles' limits of the incus role (incus_target_container,
+      incus_target_vm, incus_build_instance) times the concurrent targets
+  # The vLLM server on a node that serves inference (gpu_inference, node roles
+  # full and inference) with a selected model: the model's files (they pass
+  # through host memory while the server loads them) plus overhead_gib. The GPU
+  # arbiter runs a training job only instead of vLLM, so recommended is the
+  # larger of the two on a full node.
+  - id: vllm
+    title: vLLM serving the selected model
+    kind: vllm
+    roles: [full, inference]
+    overhead_gib: {required: 3.0, recommended: 5.0}
+    cpu_threads: 2
+    basis: estimated
+    source: >-
+      estimate: Python, PyTorch and the CUDA libraries (about 3 GiB) plus the
+      model's file size from models.lock.yml while it loads
+  # A training job at the host's cap (training_caps.memory_max): the GPU
+  # arbiter refuses a job over it, so the cap is what a job may take. Counted
+  # in recommended only, since the lab runs without one; on a node with vLLM
+  # the arbiter stops vLLM for the job.
+  - id: training
+    title: a training job
+    kind: training
+    roles: [full]
+    cpu_threads: 0
+    basis: estimated
+    source: training_caps.memory_max (§7.18); the arbiter refuses a job over it
+
+# Disk known at install time is computed from these and the choices: the
+# images below, the selected model's files (models.lock.yml), the Incus pool
+# (a loop file counts fully on its mount point, a dedicated device on none),
+# the golden images to build (estimated_size_gib of their image.yaml, once in
+# the export below the research space and once in Incus's image store) and
+# pinka itself.
+disk:
+  # pinka itself on the file system of /opt/pinka: the pinned CPython, the
+  # Ansible, installer and model tool environments, the collections.
+  pinka_gib: 5
+  pinka_basis: estimated
+  pinka_source: >-
+    estimate from the environments the locks install (about 2-3 GiB) with room
+    for an update, which installs next to the running version
+  # Incus's directory: its image store and, for a loop pool, the pool's file
+  # (disks/<pool>.img).
+  incus_dir: /var/lib/incus
+
+# The container images each node pulls (keys of versions.lock.yml
+# containers.images). roles: the node roles that run it; features: features
+# that must be on; gpu_exporter: the observability_gpu_exporter it belongs to.
+# An image no node pulls (roles: []) is used by the tests only.
+images:
+  postgres: {roles: [full, lab]}
+  postgres_exporter: {roles: [full, lab]}
+  otel_collector: {roles: [full, lab, inference]}
+  prometheus: {roles: [full, lab]}
+  loki: {roles: [full, lab]}
+  tempo: {roles: [full, lab]}
+  grafana: {roles: [full, lab]}
+  query_proxy: {roles: [full, lab]}
+  node_exporter: {roles: [full, lab, inference]}
+  cadvisor: {roles: [full, lab, inference]}
+  opa: {roles: [full, lab]}
+  gpu_exporter: {roles: [full, inference], features: [gpu_inference], gpu_exporter: nvidia_smi}
+  dcgm_exporter: {roles: [full, inference], features: [gpu_inference], gpu_exporter: dcgm}
+  cuda_base_test: {roles: [full, inference], features: [gpu_inference]}
+  vllm: {roles: [full, inference], features: [gpu_inference]}
+  refplat_job: {roles: []}
+
+# What grows with use: never a reason to refuse (§2.3). Each store grows by
+# gib_per_day up to its retention (retention: the plan's retention key, in
+# days; the Prometheus size cap too); a store without retention grows until
+# someone deletes. path: below the research space (srv).
+growth:
+  - id: prometheus
+    title: Prometheus samples
+    roles: [full, lab]
+    path: srv
+    gib_per_day: 0.05
+    retention: prometheus_days
+    size_cap: prometheus_size_gib
+    basis: estimated
+    source: about 5,000 series at a 15 s interval and 1.5 bytes per sample
+  - id: loki
+    title: Loki logs
+    roles: [full, lab]
+    path: srv
+    gib_per_day: 0.1
+    retention: loki_days
+    basis: estimated
+    source: estimate for the host's and the lab's logs; a platform's logs come on top
+  - id: tempo
+    title: Tempo traces
+    roles: [full, lab]
+    path: srv
+    gib_per_day: 0.05
+    retention: tempo_days
+    basis: estimated
+    source: estimate; the traces come from the platform and its targets
+  - id: pg_dumps
+    title: local PostgreSQL dumps (backup staging)
+    roles: [full, lab]
+    path: srv
+    gib_per_day: 0.05
+    retention: pg_dumps
+    basis: estimated
+    source: one dump a day (backup_pgdump_keep kept); its size follows the database
+  - id: database
+    title: the PostgreSQL database
+    roles: [full, lab]
+    path: srv
+    gib_per_day: 0.02
+    basis: estimated
+    source: estimate; the platform's records, no retention by pinka
+  # The artifacts infra keeps: a training run's output and checkpoints, up to
+  # the plan's training run_storage_max_gib each; research data, kept until
+  # deleted (pinka prunes no run).
+  - id: training_runs
+    title: training runs (output and checkpoints)
+    roles: [full]
+    path: srv
+    gib_per_day: 0
+    per_run: run_storage_max_gib
+    basis: estimated
+    source: training_caps.run_storage_max (§7.18), the most one run may write

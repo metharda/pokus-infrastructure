@@ -43,8 +43,8 @@ The exit code is the outcome of the support-matrix decision (see [Support matrix
 | Code | Outcome | Meaning | Bootstrap behavior |
 | --- | --- | --- | --- |
 | 0 | `supported` | All core requirements met; features computed. | Bootstrap continues. |
-| 10 | `degraded` | Core requirements met, one or more optional features unavailable. | Bootstrap continues only with --accept-degraded or interactive confirmation that lists every disabled feature and its research impact. |
-| 20 | `unsupported` | A core requirement failed, the OS, architecture or environment is unsupported, or a blocking conflict exists. | Bootstrap aborts; --force-unsupported continues and records overrides.force_unsupported in the host profile and every environment fingerprint. |
+| 10 | `degraded` | Core requirements met; one or more optional features unavailable, or memory between the required and the recommended value for the choices. | Bootstrap continues only with --accept-degraded or interactive confirmation that lists every disabled feature and its research impact. |
+| 20 | `unsupported` | A core requirement failed, the OS, architecture or environment is unsupported, a blocking conflict exists, or memory or disk is below what the choices require. | Bootstrap aborts; --force-unsupported continues and records overrides.force_unsupported in the host profile and every environment fingerprint. |
 | 30 | `needs_action` | Fixable by operator action (reboot, wsl --terminate, enroll MOK, remove a conflict). | Bootstrap prints the exact remediation steps and aborts; re-run after the action. |
 | 40 | `preflight_error` | Detection itself failed unexpectedly. | Bootstrap aborts with the traceback in the log. |
 

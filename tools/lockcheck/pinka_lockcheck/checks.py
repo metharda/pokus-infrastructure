@@ -218,6 +218,44 @@ def container_findings(
     return findings
 
 
+def size_findings(
+    doc: Mapping[str, Any], sizes: Callable[[str, str], dict[str, int]] = net.image_sizes
+) -> list[Finding]:
+    """Check every lab image's recorded compressed sizes against its manifests (§10.1).
+
+    Args:
+        doc: Lock document.
+        sizes: ``(image, digest) -> {platform: bytes}``.
+
+    Returns:
+        Errors for a size that differs from the registry or a platform without one.
+    """
+    findings: list[Finding] = []
+    for name, entry in doc["containers"]["images"].items():
+        where = f"containers.images.{name}.sizes"
+        if not _verified(entry["digest"]):
+            continue
+        try:
+            found = sizes(entry["image"], entry["digest"])
+        except net.FetchError as exc:
+            findings.append(Finding(ERROR, where, f"registry request failed: {exc}"))
+            continue
+        recorded = dict(entry.get("sizes") or {})
+        for target in entry["platforms"]:
+            if target not in found:
+                findings.append(Finding(ERROR, where, f"the index has no {target} image"))
+            elif recorded.get(target) != found[target]:
+                findings.append(
+                    Finding(
+                        ERROR,
+                        where,
+                        f"{target}: recorded {recorded.get(target)}, "
+                        f"the manifest says {found[target]}",
+                    )
+                )
+    return findings
+
+
 def _binary_assets(doc: Mapping[str, Any]) -> Iterator[tuple[str, str, str]]:
     for name, entry in doc["binaries"].items():
         for arch, asset in entry["assets"].items():

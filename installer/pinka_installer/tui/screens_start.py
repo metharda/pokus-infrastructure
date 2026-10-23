@@ -275,6 +275,14 @@ class PreflightScreen(StepScreen):
                         classes="consent-feature",
                     )
                 )
+            for reason in profile.get("degraded_reasons") or []:
+                report.mount(
+                    Checkbox(
+                        str(reason),
+                        value="accept_degraded" in self.wizard.consents,
+                        classes="consent-feature",
+                    )
+                )
         if profile.get("tier") == "experimental":
             report.mount(
                 Checkbox(

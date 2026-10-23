@@ -42,6 +42,7 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
         "preflight/endpoints.json": lambda: sources.endpoints_json(root),
         "preflight/lab-defaults.json": lambda: sources.lab_defaults_json(root),
         "preflight/nvidia-gpus.json": lambda: sources.nvidia_gpus_json(root),
+        "preflight/requirements.json": lambda: sources.requirements_json(root),
         "docs/support-matrix.md": lambda: pages.support_matrix_page(root),
         "docs/reference/cli/pinka-preflight.md": lambda: pages.cli_page(
             pages.relative_defaults(preflight_parser(), root),

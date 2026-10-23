@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/schema/plan.schema.json",
+  "title": "Requirements plan",
+  "description": "The operator's choices that size the lab, as bootstrap and the installer write them and pinka-preflight --plan reads them (BUILD_PROMPT §2.3). A missing key takes the configured default (preflight/requirements.json defaults).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "node_role": {"enum": ["full", "lab", "inference"], "description": "node_role: full, lab or inference (§19.10)."},
+    "srv_path": {"type": "string", "pattern": "^/", "description": "The research space (pinka_root)."},
+    "docker_data_root": {"type": "string", "pattern": "^/", "description": "Docker's data root, where the container images go."},
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "size_gib"],
+      "description": "The Incus storage pool: a loop file of size_gib counts fully on its mount point; a dedicated device on none.",
+      "properties": {
+        "source": {"enum": ["loop", "device"]},
+        "size_gib": {"type": "number", "minimum": 0}
+      }
+    },
+    "concurrent_targets": {"type": "integer", "minimum": 1, "maximum": 40, "description": "Targets that run at once (incus_concurrent_targets)."},
+    "model": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "hf_repo", "revision", "size_bytes"],
+      "description": "The model vLLM serves after the install (vllm_default_deployment.model_id) as models.lock.yml pins it, with the sum of its files' sizes; null: none.",
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "hf_repo": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "size_bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "images": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^(_base|[a-z][a-z0-9-]{1,40})$"}, "description": "The golden image blueprints to build (images_blueprints)."},
+    "gpu_exporter": {"enum": ["nvidia_smi", "dcgm"], "description": "observability_gpu_exporter."},
+    "training": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_max_gib", "run_storage_max_gib"],
+      "description": "The training caps (training_caps.memory_max and run_storage_max).",
+      "properties": {
+        "memory_max_gib": {"type": "number", "minimum": 0},
+        "run_storage_max_gib": {"type": "number", "minimum": 0}
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prometheus_days", "prometheus_size_gib", "loki_days", "tempo_days", "pg_dumps"],
+      "description": "The retention settings, in days (pg_dumps: the dumps kept, one a day); prometheus_size_gib 0 means by time only.",
+      "properties": {
+        "prometheus_days": {"type": "number", "minimum": 0},
+        "prometheus_size_gib": {"type": "number", "minimum": 0},
+        "loki_days": {"type": "number", "minimum": 0},
+        "tempo_days": {"type": "number", "minimum": 0},
+        "pg_dumps": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

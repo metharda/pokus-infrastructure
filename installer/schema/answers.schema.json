@@ -126,6 +126,12 @@
           "type": "string",
           "pattern": "^[1-9][0-9]*(kB|MB|GB)$",
           "description": "Postgres shared_buffers, such as 2048MB; empty derives it from the memory."
+        },
+        "concurrent_targets": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40,
+          "description": "Targets that run at once (incus_concurrent_targets): they size the bench project's memory and the memory preflight requires (BUILD_PROMPT §2.3)."
         }
       },
       "description": "Expected resources and the CPU split between lab services and targets."
@@ -461,6 +467,11 @@
         "include_secrets": {
           "type": "boolean",
           "description": "Back up /etc/pinka/secrets inside restic's encryption."
+        },
+        "pg_dumps_kept": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Local PostgreSQL dumps kept below the research space, one a day (backup_pgdump_keep)."
         }
       },
       "description": "restic backups."
@@ -586,6 +597,33 @@
         "tmp_max": {
           "$ref": "#/$defs/cap_size",
           "description": "A job's /tmp (a tmpfs counted against its memory)."
+        }
+      }
+    },
+    "telemetry_retention": {
+      "description": "How long the telemetry stores keep their data (BUILD_PROMPT §2.3, §7.9); the capacity plan shows the growth they allow.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prometheus": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*[hdwy]$",
+          "description": "Prometheus's retention by time (observability_prometheus_retention), such as 90d."
+        },
+        "prometheus_size": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*(KB|MB|GB|TB|KiB|MiB|GiB|TiB))$",
+          "description": "Prometheus's retention by size (observability_prometheus_retention_size; powers of 2), such as 50GB; 0: by time only."
+        },
+        "loki": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*[hdwy]$",
+          "description": "Loki's retention of logs (observability_loki_retention), such as 2160h."
+        },
+        "tempo": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*h$",
+          "description": "Tempo's retention of traces (observability_tempo_retention), in hours, such as 720h."
         }
       }
     },

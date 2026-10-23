@@ -477,7 +477,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) built after `fb665c2`, waiting for the owner's "commit" (record: `docs/IMPLEMENTATION_NOTES.md`, "Uninstall (D2, 3f-1)") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) committed after the CI commit (`6bab38b`); A (requirements computed from the choices) built after `8696cb3`, waiting for the owner's "commit" (record: `docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A, 3f-1)") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access), `6bab38b` (one CI run per commit), `8696cb3` (D2) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), published as the fresh repository `pokus-infrastructure` instead of the rename (owner, after the rewrite) and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions, the rewrite (owner's "rewrite") and the commit after it done; the owner created the fresh repository and pushed `main` and `moving/on` to it; then making it public | `a716eae` (the commit after the rewrite) |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -1648,6 +1648,32 @@ Raised by the pre-existing access follow-up, for the owner (decided with the "co
   name was avoided: it would change `contract/reserved-names.yml`, which
   needs a contract version bump. Recommendation: keep it.
 
+Raised by A of 3f-1 (requirements computed from the choices), for the owner;
+recorded as open items while B, C, E, F and G follow (details in
+`docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A,
+3f-1)"):
+
+- **The training cap sets the recommended memory.** A training job counts
+  at `training_caps.memory_max` in the recommended value (not in required),
+  the larger of it and vLLM where vLLM serves. With the defaults (cap 24G)
+  a full node recommends 37.2 GiB, so a 16 GiB or 32 GiB machine installs
+  `degraded` (with consent) unless the cap is lowered; the message names
+  the cap that would fit. Alternatives: count the job only with
+  `gpu_training`, or lower the default cap (§7.18, §8.1 name 24G).
+- **Features are not part of the plan.** §2.3 lists "features" among the
+  plan's choices, but no setting turns a detected feature off today, so the
+  plan carries none; adding one would be new behavior.
+- **"Artifacts" retention.** §2.3 lists artifacts among the retention
+  settings. Infra keeps no artifact it could prune: training runs and
+  datasets are research data (shown per run, up to `run_storage_max`), the
+  platform's artifacts follow the platform's own settings. The local dumps
+  (`backup_pgdump_keep`) are the backups' retention on this host.
+- **The test VMs shrink to the computed requirement.** The CI answers
+  require 8 GiB and 37.2 GiB of disk; the VMs get 10 GiB and 80 GiB (the
+  kernel's and the system's margins as before), down from 18 GiB and
+  300 GiB. If a run shows the estimates too low, the estimates change, not
+  the VMs.
+
 ## Owner deliverables pending
 
 - **`make lock-pins` on the owner's machine** (owner decision on item 0,
@@ -1972,7 +1998,8 @@ pushes (step 4; the owner created the fresh repository
 6; merged as `6ea7468`, and `moving/on` fast-forwarded to it); then, on
 `moving/on`, the commit for one CI run per commit (`6bab38b`) and D2 with
 the owner's five fixes and the kept secrets' follow-up (its report with the
-table of what uninstall removes, restores or keeps), then A, B, C, E, F and
+table of what uninstall removes, restores or keeps), then A (built, waiting
+for the owner's "commit"), B, C, E, F and
 G, each its own step with the full gate, waiting for the owner's "commit",
 its CI reported after the push, no side work in between (anything that
 comes up is an open item), then the feature-complete checkpoint (under

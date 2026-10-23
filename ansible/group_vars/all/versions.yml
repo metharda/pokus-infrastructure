@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "9e22bde9ded4f0e0e06ecb98c4b5fd46fb2b9806b46bf6c6767d2178d3f4f320"
+pinka_versions_lock_sha256: "9d712ff7a43b89d60a8317c7f8c8c46ee3c7f2c54052132fb654e7d524256b1f"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -104,7 +104,8 @@ pinka_versions:
     verified_on: '2026-10-05'
     source: 'Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub
       tag API); latest stable releases on 2026-10-05. The DCGM exporter: nvcr.io with make lock-pins at
-      2026-10-17T22:47:21Z'
+      2026-10-17T22:47:21Z. The sizes: each platform manifest''s layers, read on 2026-10-23 with the registry
+      API (Docker Hub''s images through mirror.gcr.io, which holds the same digests)'
     images:
       postgres:
         image: docker.io/library/postgres
@@ -113,6 +114,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 162473560
+          linux/arm64: 161088536
       otel_collector:
         image: docker.io/otel/opentelemetry-collector-contrib
         tag: 0.162.0
@@ -120,6 +124,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 112744572
+          linux/arm64: 102592160
       prometheus:
         image: docker.io/prom/prometheus
         tag: v3.15.0
@@ -127,6 +134,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 114035258
+          linux/arm64: 104810464
       loki:
         image: docker.io/grafana/loki
         tag: 3.7.8
@@ -134,6 +144,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 48003511
+          linux/arm64: 42737611
       tempo:
         image: docker.io/grafana/tempo
         tag: 2.10.8
@@ -141,6 +154,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 37423831
+          linux/arm64: 33831008
       grafana:
         image: docker.io/grafana/grafana
         tag: 13.0.10
@@ -148,6 +164,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 357327283
+          linux/arm64: 333133702
       node_exporter:
         image: docker.io/prom/node-exporter
         tag: v1.12.1
@@ -155,6 +174,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 13404971
+          linux/arm64: 12466898
       cadvisor:
         image: ghcr.io/google/cadvisor
         tag: v0.60.6
@@ -162,6 +184,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 30686694
+          linux/arm64: 27661931
       postgres_exporter:
         image: docker.io/prometheuscommunity/postgres-exporter
         tag: v0.20.1
@@ -169,6 +194,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 11780276
+          linux/arm64: 10960510
       gpu_exporter:
         image: docker.io/utkuozdemir/nvidia_gpu_exporter
         tag: 1.15.1
@@ -176,6 +204,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 11522084
+          linux/arm64: 11049290
       dcgm_exporter:
         image: nvcr.io/nvidia/k8s/dcgm-exporter
         tag: 4.8.4
@@ -183,6 +214,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 62787403
+          linux/arm64: 59314654
       opa:
         image: docker.io/openpolicyagent/opa
         tag: 1.21.1-static
@@ -190,6 +224,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 30513355
+          linux/arm64: 28078584
       vllm:
         image: docker.io/vllm/vllm-openai
         tag: v0.31.0
@@ -197,6 +234,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 9035211086
+          linux/arm64: 10134470647
         cuda: 13.0.2
       query_proxy:
         image: docker.io/library/nginx
@@ -205,6 +245,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 26073522
+          linux/arm64: 25966398
       cuda_base_test:
         image: docker.io/nvidia/cuda
         tag: 13.0.2-base-ubuntu24.04
@@ -212,6 +255,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 139444203
+          linux/arm64: 133135420
       refplat_job:
         image: public.ecr.aws/docker/library/python
         tag: 3.12-slim-trixie
@@ -219,6 +265,9 @@ pinka_versions:
         platforms:
           - linux/amd64
           - linux/arm64
+        sizes:
+          linux/amd64: 43259288
+          linux/arm64: 43533362
     target_images:
       docker_host_web:
         image: docker.io/library/nginx

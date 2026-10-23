@@ -156,6 +156,7 @@
     compose_profiles: "{{ ['stores'] if observability_stores else [] }}"
     compose_extra_env:
       PROMETHEUS_RETENTION: "{{ observability_prometheus_retention }}"
+      PROMETHEUS_RETENTION_SIZE: "{{ observability_prometheus_retention_size }}"
       GRAFANA_AUTO_ASSIGN_ORG_ROLE: "{{ observability_grafana_user_role }}"
       OTEL_PAIRING_HASH: "{{ observability_pairing_hash | default('') }}"
       OTELCOL_UID: "{{ observability_ids.otel_gateway.uid }}"

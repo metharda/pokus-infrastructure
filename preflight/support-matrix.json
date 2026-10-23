@@ -300,22 +300,12 @@
   },
   "minimums": {
     "memory_gib": {
-      "required": 16,
-      "recommended": 24
+      "floor": 8,
+      "tolerance": 0.94
     },
     "cpu_threads": {
       "required": 8,
       "recommended": 16
-    },
-    "free_disk_gib": {
-      "var_lib": {
-        "required": 150,
-        "recommended": 400
-      },
-      "srv_pinka": {
-        "required": 100,
-        "recommended": 500
-      }
     }
   },
   "core_requirements": [

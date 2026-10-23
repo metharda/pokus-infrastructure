@@ -981,6 +981,16 @@ def run(  # noqa: PLR0912, PLR0915 - one block per section
             f"  digest: {image.digest}",
             f"  platforms: [{', '.join(image.platforms)}]",
         ]
+    out.append("# --- containers.images.<name>.sizes (compressed bytes per platform)")
+    for name, entry in lock["containers"]["images"].items():
+        try:
+            sizes = net.image_sizes(entry["image"], entry["digest"], network.registry_json)
+        except (net.FetchError, KeyError, ValueError) as exc:
+            failed.append(f"containers.images.{name}.sizes: {exc}")
+            out.append(f"# {name}: NOT PINNED: {exc}")
+            continue
+        rendered = ", ".join(f"{platform}: {size}" for platform, size in sorted(sizes.items()))
+        out.append(f"{name}: {{sizes: {{{rendered}}}}}")
     out.append("# --- incus_base_images.images.<name>.fingerprints")
     for name, entry in lock["incus_base_images"]["images"].items():
         try:

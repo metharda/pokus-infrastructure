@@ -38,6 +38,7 @@
     "access",
     "conflicts",
     "unsupported_reasons",
+    "degraded_reasons",
     "needs_action",
     "planned_actions",
     "warnings",
@@ -793,7 +794,14 @@
       "additionalProperties": false,
       "required": [
         "core",
-        "minimums"
+        "minimums",
+        "plan",
+        "choices",
+        "memory_gib",
+        "cpu_threads",
+        "disk",
+        "growth",
+        "notes"
       ],
       "properties": {
         "core": {
@@ -806,6 +814,178 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/check"
+          }
+        },
+        "plan": {
+          "type": "string",
+          "description": "defaults, or the plan file given with --plan (\u00a72.3)."
+        },
+        "choices": {
+          "type": "object",
+          "description": "The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json)."
+        },
+        "memory_gib": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "floor",
+            "required",
+            "recommended",
+            "tolerance",
+            "items"
+          ],
+          "description": "MemTotal against the floor and the required and recommended memory computed from the choices; each nominal threshold is compared at the tolerance.",
+          "properties": {
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "floor": {
+              "type": "number",
+              "minimum": 0
+            },
+            "required": {
+              "type": "number",
+              "minimum": 0
+            },
+            "recommended": {
+              "type": "number",
+              "minimum": 0
+            },
+            "tolerance": {
+              "type": "number",
+              "minimum": 0
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/memory_item"
+              }
+            }
+          }
+        },
+        "cpu_threads": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "estimated"
+          ],
+          "description": "The estimated CPU use of the running parts (information; the threshold is the matrix's cpu_threads).",
+          "properties": {
+            "estimated": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "disk": {
+          "type": "array",
+          "description": "The disk known at install, per mount point, item by item.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mount",
+              "fstype",
+              "free_gib",
+              "required_gib",
+              "shortfall_gib",
+              "items"
+            ],
+            "properties": {
+              "mount": {
+                "type": "string"
+              },
+              "fstype": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "free_gib": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "required_gib": {
+                "type": "number",
+                "minimum": 0
+              },
+              "shortfall_gib": {
+                "type": "number",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/disk_item"
+                }
+              }
+            }
+          }
+        },
+        "growth": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "mount",
+            "free_after_install_gib",
+            "gib_per_day",
+            "gib_per_week",
+            "days_until_full",
+            "items"
+          ],
+          "description": "What grows with use below the research space; never a reason to refuse.",
+          "properties": {
+            "mount": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "free_after_install_gib": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "gib_per_day": {
+              "type": "number",
+              "minimum": 0
+            },
+            "gib_per_week": {
+              "type": "number",
+              "minimum": 0
+            },
+            "days_until_full": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "The day the disk fills at this rate; null if the retention keeps it below the free space for ten years."
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/growth_item"
+              }
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       }
@@ -1274,6 +1454,13 @@
         "type": "string"
       }
     },
+    "degraded_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Why the host is degraded besides disabled features: memory below the recommended value for the choices (\u00a72.3)."
+    },
     "needs_action": {
       "type": "array",
       "items": {
@@ -1378,9 +1565,11 @@
       "required": [
         "path",
         "checked_path",
+        "mount",
         "fstype",
         "size_gib",
-        "free_gib"
+        "free_gib",
+        "free_bytes"
       ],
       "properties": {
         "path": {
@@ -1388,6 +1577,13 @@
         },
         "checked_path": {
           "type": "string"
+        },
+        "mount": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The mount point of its filesystem (df's target)."
         },
         "fstype": {
           "type": [
@@ -1408,6 +1604,14 @@
             "null"
           ],
           "minimum": 0
+        },
+        "free_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The free space in bytes, which the requirements compare (\u00a72.3)."
         }
       }
     },
@@ -1582,6 +1786,153 @@
             null
           ],
           "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+        }
+      }
+    },
+    "memory_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "required_gib",
+        "recommended_gib",
+        "cpu_threads",
+        "detail",
+        "basis",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "required_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recommended_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cpu_threads": {
+          "type": "number",
+          "minimum": 0
+        },
+        "detail": {
+          "type": "string",
+          "description": "How the numbers follow from the choices."
+        },
+        "basis": {
+          "enum": [
+            "estimated",
+            "measured"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "disk_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "path",
+        "mount",
+        "size_gib",
+        "present",
+        "missing_gib",
+        "basis",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "mount": {
+          "type": "string"
+        },
+        "size_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "present": {
+          "type": "boolean",
+          "description": "Already on the host: it needs no more space."
+        },
+        "missing_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "basis": {
+          "enum": [
+            "estimated",
+            "measured",
+            "configured"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "growth_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "gib_per_day",
+        "cap_gib",
+        "per_run_gib",
+        "basis",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "gib_per_day": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cap_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Where its retention stops it; null if nothing does."
+        },
+        "per_run_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "basis": {
+          "enum": [
+            "estimated",
+            "measured"
+          ]
+        },
+        "source": {
+          "type": "string"
         }
       }
     }

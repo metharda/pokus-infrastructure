@@ -25,7 +25,10 @@ def entry(files: Mapping[str, bytes] = FILES, **changes: Any) -> dict[str, Any]:
         "id": "test-model",
         "hf_repo": "example-org/test-model",
         "revision": REVISION,
-        "files": [{"path": p, "sha256": hashlib.sha256(d).hexdigest()} for p, d in files.items()],
+        "files": [
+            {"path": p, "sha256": hashlib.sha256(d).hexdigest(), "size": len(d)}
+            for p, d in files.items()
+        ],
         "license": "apache-2.0",
         "gated": False,
         "quantization": "awq",

@@ -1,0 +1,9 @@
+{
+  "model": {
+    "hf_repo": "example-org/example-model",
+    "id": "example-model",
+    "revision": "0000000000000000000000000000000000000000",
+    "size_bytes": 6120328396
+  },
+  "schema_version": 1
+}

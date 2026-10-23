@@ -64,6 +64,15 @@ class ProfileToolTest(unittest.TestCase):
         for item in disabled:
             self.assertIn(f"  - {item['feature']}: {item['impact']}", out)
 
+    def test_consent_degraded_lists_the_memory_reason(self) -> None:
+        # BUILD_PROMPT §2.3: memory below the recommended value needs the same consent.
+        path = self.profile("ubuntu2404-memory-below-recommended")
+        code, out, _ = run_tool("consent", path, "degraded")
+        self.assertEqual(code, 0)
+        self.assertNotIn("optional features are disabled", out)
+        self.assertIn("below what these choices recommend", out)
+        self.assertIn("  - memory: MemTotal 34.95 GiB is below the 37.2 GiB recommended", out)
+
     def test_consent_experimental_names_the_tier(self) -> None:
         path = self.profile("linuxmint22-baremetal")
         code, out, _ = run_tool("consent", path, "experimental")

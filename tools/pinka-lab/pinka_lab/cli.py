@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
 
     preflight = sub.add_parser("preflight", help="run preflight read-only")
     preflight.add_argument("--json", action="store_true", help="print the JSON report")
+    preflight.add_argument(
+        "--plan",
+        metavar="FILE",
+        help="the choices whose requirements to compute (default: the plan bootstrap stored, "
+        "/etc/pinka/plan.json)",
+    )
 
     doctor = sub.add_parser("doctor", help="run the health and security checks (root)")
     doctor.add_argument("--json", action="store_true", help="print the report as JSON")
@@ -343,7 +349,7 @@ def dispatch(args: argparse.Namespace, system: System, config: LabConfig) -> int
         The command's exit code.
     """
     if args.command == "preflight":
-        return commands.preflight(system, config, args.json)
+        return commands.preflight(system, config, args.json, args.plan)
     if args.command == "doctor":
         return run_doctor(system, config, args.json, args.smoke)
     if args.command == "fingerprint":

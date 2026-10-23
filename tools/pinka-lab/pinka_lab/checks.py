@@ -8,6 +8,7 @@ provider) are skipped, not passed.
 
 from __future__ import annotations
 
+import datetime as dt
 import ipaddress
 import json
 import re
@@ -17,7 +18,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pinka_lab import window
+from pinka_lab import commands, window
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
 from pinka_preflight.detect import access as access_detect
 from pinka_preflight.detect import gpu
@@ -200,11 +201,8 @@ def _tailscale_status(ctx: Context) -> dict[str, Any]:
 def _preflight(ctx: Context) -> dict[str, Any] | None:
     """Run preflight once (read-only) and keep its report."""
     if "preflight" not in ctx.memo:
-        command = str(ctx.config.get("paths", "preflight"))
-        extra = [str(arg) for arg in ctx.config.get("preflight_args", default=[])]
         done = ctx.system.run(
-            [command, "--no-write", "--quiet", "--srv-path", ctx.config.pinka_root, *extra],
-            timeout=300,
+            [*commands.preflight_argv(ctx.system, ctx.config), "--quiet"], timeout=300
         )
         parsed = done.json() if done.returncode in (0, 10, 20, 30) else None
         ctx.memo["preflight"] = parsed if isinstance(parsed, dict) else None
@@ -906,6 +904,86 @@ def check_incus_pool(ctx: Context) -> Outcome:
     if free_gib < minimum:
         return failed(f"pool {pool} has {free_gib:.1f} GiB free, less than {minimum:g} GiB")
     return passed(f"pool {pool} ({driver}), {free_gib:.1f} GiB free")
+
+
+# Free space per mount point (BUILD_PROMPT §9): the runs kept, the trend's window.
+DISK_HISTORY_DEFAULT = "/var/lib/pinka/doctor/disk-history.json"
+DISK_HISTORY_KEEP = 60
+DISK_TREND_DAYS = 7
+DISK_TREND_MIN_HOURS = 6
+
+
+def _df(ctx: Context, paths: Sequence[str]) -> dict[str, tuple[int, int]]:
+    """Size and free bytes per mount point of ``paths`` (df's target)."""
+    done = ctx.system.run(["df", "--output=target,size,avail", "-B1", *paths])
+    found: dict[str, tuple[int, int]] = {}
+    for line in done.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():  # noqa: PLR2004
+            found[" ".join(parts[:-2])] = (int(parts[-2]), int(parts[-1]))
+    return found
+
+
+def _disk_history(ctx: Context, path: str) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(ctx.system.read_text(path) or "{}")
+    except ValueError:
+        return []
+    runs = data.get("runs") if isinstance(data, dict) else None
+    return [r for r in runs or [] if isinstance(r, dict) and isinstance(r.get("free"), dict)]
+
+
+def _days_until_full(
+    runs: Sequence[Mapping[str, Any]], mount: str, free: int, now: dt.datetime
+) -> float | None:
+    """Days until ``mount`` is full at the rate since the oldest run of the trend window."""
+    since = now - dt.timedelta(days=DISK_TREND_DAYS)
+    for run_ in runs:
+        at = dt.datetime.strptime(str(run_.get("at")), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=dt.timezone.utc
+        )
+        before = run_["free"].get(mount)
+        if at < since or not isinstance(before, int):
+            continue
+        hours = (now - at).total_seconds() / 3600
+        if hours < DISK_TREND_MIN_HOURS or before <= free:
+            return None
+        return free / ((before - free) / (hours / 24))
+    return None
+
+
+def check_disk_free_space(ctx: Context) -> Outcome:
+    """Each mount point the lab uses keeps free space, and its trend does not fill it soon (§9)."""
+    report = _preflight(ctx) or {}
+    mounts = sorted({str(m["mount"]) for m in (report.get("requirements") or {}).get("disk", [])})
+    if not mounts:
+        mounts = [ctx.config.pinka_root]
+    measured = _df(ctx, mounts)
+    if not measured:
+        return failed("df measured none of " + ", ".join(mounts))
+    history = str(ctx.config.get("disk", "history", default=DISK_HISTORY_DEFAULT))
+    warn_percent = float(ctx.config.get("disk", "warn_free_percent", default=15))
+    full_days = float(ctx.config.get("disk", "full_within_days", default=DISK_TREND_DAYS))
+    now = ctx.system.now()
+    runs = _disk_history(ctx, history)
+    problems, states = [], []
+    for mount, (size, free) in sorted(measured.items()):
+        percent = 100 * free / size if size else 0.0
+        days = _days_until_full(runs, mount, free, now)
+        states.append(f"{mount} {free / 2**30:.1f} GiB free ({percent:.1f} %)")
+        if percent < warn_percent:
+            problems.append(f"{mount} has {percent:.1f} % free, below {warn_percent:g} %")
+        if days is not None and days < full_days:
+            problems.append(f"{mount} fills in about {days:.1f} days at its recent rate")
+    if ctx.system.euid() == 0:
+        stamp = now.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        entry = {"at": stamp, "free": {m: free for m, (_, free) in measured.items()}}
+        kept = [*runs, entry][-DISK_HISTORY_KEEP:]
+        text = json.dumps({"schema_version": 1, "runs": kept}, indent=2, sort_keys=True)
+        ctx.system.write_text(history, text + "\n", 0o644)
+    if problems:
+        return failed("; ".join(problems))
+    return passed("; ".join(states))
 
 
 def check_incus_objects(ctx: Context) -> Outcome:
@@ -2400,6 +2478,13 @@ CHECKS: tuple[Check, ...] = (
         "Pair the nodes again if the record has no address, then run bootstrap with --tags "
         "firewall (`systemctl restart pinka-split-guard.service` reloads it).",
         check_split_guard,
+    ),
+    Check(
+        "disk.free_space",
+        "Each mount point the lab uses has free space left, and its trend does not fill it soon.",
+        "warning",
+        "Free space or lower the retention settings; `pinka preflight` shows the growth.",
+        check_disk_free_space,
     ),
     Check(
         "incus.pool",
