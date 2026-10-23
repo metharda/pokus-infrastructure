@@ -459,7 +459,11 @@ def _training_cap(
     memory_gib: float | None,
     sw: Switches,
 ) -> None:
-    """Fill the training cap: the configured one, or computed from the host (§2.3)."""
+    """Fill the training cap: the configured one, or computed from the host (§2.3).
+
+    ``others`` are the parts that run next to a job: the core stack and the
+    targets, never vLLM, which the arbiter stops for a job.
+    """
     configured = plan["training"]["memory_max_gib"]
     if configured is not None:
         sw.memory_max_gib = float(configured)
@@ -479,7 +483,8 @@ def _training_cap(
     left = memory_gib - rest
     sw.memory_max_gib = float(min(high, max(low, math.floor(left + EPSILON))))
     sw.memory_max_detail = (
-        f"MemTotal {memory_gib:.2f} GiB - {text_gib(rest)} recommended for the rest = "
+        f"MemTotal {memory_gib:.2f} GiB - {text_gib(rest)} recommended for the core stack and "
+        f"the targets = "
         f"{text_gib(left)}, rounded down to whole GiB within {low} and {high} GiB"
     )
 
@@ -564,8 +569,10 @@ def _memory_items(
             items.append(vllm)
         elif kind == "training":
             training = comp
-    # The cap follows what else runs, so it comes after every other part.
-    _training_cap(data, plan, items, memory_gib, sw)
+    # The cap follows the core stack and the targets. vLLM does not count:
+    # the arbiter never runs it and a job at once, so the recommended value
+    # takes the larger of the two (_add_training), never their sum.
+    _training_cap(data, plan, [i for i in items if i is not vllm], memory_gib, sw)
     if training is not None and sw.runs != "off":
         _add_training(items, vllm, training, sw)
     return items

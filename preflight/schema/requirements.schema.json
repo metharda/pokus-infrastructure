@@ -37,7 +37,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["floor_gib", "ceiling_gib", "source"],
-      "description": "training_caps.memory_max: auto: MemTotal minus the recommended memory of every other part that runs, rounded down to whole GiB, within floor_gib and ceiling_gib (BUILD_PROMPT §2.3).",
+      "description": "training_caps.memory_max: auto: MemTotal minus the recommended memory of the core stack and the targets (vLLM, which never runs next to a job, does not count), rounded down to whole GiB, within floor_gib and ceiling_gib (BUILD_PROMPT §2.3).",
       "properties": {
         "floor_gib": {"type": "integer", "minimum": 1},
         "ceiling_gib": {"type": "integer", "minimum": 1},

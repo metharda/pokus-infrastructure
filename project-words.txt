@@ -49,6 +49,7 @@ IOMMU
 iotop
 journalctl
 kaplan
+katex
 keyserver
 libdnf
 libexec
@@ -104,6 +105,7 @@ semanage
 setype
 simplestreams
 SLES
+smol
 SNTP
 splittable
 sysfs

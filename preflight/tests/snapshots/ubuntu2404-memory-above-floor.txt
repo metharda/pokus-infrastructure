@@ -25,7 +25,7 @@ Access
 Requirements
   plan defaults; memory 7.5 GiB: floor 8, required 8, recommended 17.2 GiB (each compared at 0.94 times the nominal value)
   inference on (gpu_inference on a full node, inference: auto); training gpu (gpu_training on this host, training: auto)
-  training cap 4G (computed: MemTotal 7.53 GiB - 13.2 GiB recommended for the rest = -5.7 GiB, rounded down to whole GiB within 4 and 24 GiB)
+  training cap 4G (computed: MemTotal 7.53 GiB - 13.2 GiB recommended for the core stack and the targets = -5.7 GiB, rounded down to whole GiB within 4 and 24 GiB)
     host services: 1 / 1.5 GiB (estimated)
     Incus daemon: 0.2 / 0.4 GiB (estimated)
     PostgreSQL: 0.5 / 1.5 GiB (estimated)

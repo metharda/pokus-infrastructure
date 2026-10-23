@@ -252,9 +252,16 @@ class TrainingCapTest(ComputeCase):
         for memory, cap in ((30.08, 16), (31.2, 18), (31.36, 18)):
             with self.subTest(memory=memory):
                 self.assertEqual(self.cap(memory), cap)
-        # With the 5.7 GiB model, vLLM's 10.7 GiB counts among the rest (23.9 GiB).
+        # vLLM never runs next to a job: the model does not lower the cap, and
+        # the recommended value takes the larger of the two, never the sum.
         self.assertEqual(self.cap(15.6, model=MODEL), 4)
-        self.assertEqual(self.cap(31.2, model=MODEL), 7)
+        self.assertEqual(self.cap(31.2, model=MODEL), 18)
+        served = self.compute(GPU, memory_gib=31.2, model=MODEL)
+        self.assertEqual(served.recommended_gib, REST + 18)
+        self.assertEqual(served.degraded, [])
+        vllm = next(i for i in served.memory_items if i.id == "vllm")
+        self.assertEqual((vllm.required_gib, vllm.recommended_gib), (8.7, 18.0))
+        self.assertNotIn("training", {i.id for i in served.memory_items})
         # Container targets (no vm_targets) leave 2 GiB more.
         req = self.compute({"gpu_training": True, "vm_targets": False}, memory_gib=31.2)
         self.assertEqual(req.switches.memory_max_gib, 20)
@@ -278,8 +285,8 @@ class TrainingCapTest(ComputeCase):
         detail = self.compute(GPU, memory_gib=31.2).switches.memory_max_detail
         self.assertEqual(
             detail,
-            "MemTotal 31.20 GiB - 13.2 GiB recommended for the rest = 18.0 GiB, rounded down to "
-            "whole GiB within 4 and 24 GiB",
+            "MemTotal 31.20 GiB - 13.2 GiB recommended for the core stack and the targets = "
+            "18.0 GiB, rounded down to whole GiB within 4 and 24 GiB",
         )
 
 

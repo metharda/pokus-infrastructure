@@ -6305,8 +6305,9 @@ its matrix, a host not degraded for a switched-off feature, and
 
 ### The cap on nominal 16 and 32 GiB hosts
 
-Defaults (full node, two targets), with a usable GPU; a nominal machine
-reports about 0.94 to 0.98 of it as `MemTotal`:
+As built in `a9bb439`, before the correction below (the cap subtracted vLLM
+too). Defaults (full node, two targets), with a usable GPU; a nominal
+machine reports about 0.94 to 0.98 of it as `MemTotal`:
 
 | `MemTotal` | VM targets, no model | containers, no model | VM targets, 5.7 GiB model | containers, 5.7 GiB model |
 | --- | --- | --- | --- | --- |
@@ -6316,6 +6317,26 @@ reports about 0.94 to 0.98 of it as `MemTotal`:
 
 Without a usable GPU (`training: auto`) training is off and nothing is
 counted for it: 13.2 GiB recommended with VM targets fits both.
+
+### Correction: vLLM and a job never add up (owner, after `a9bb439`)
+
+The owner, verbatim: "the arbiter never runs vLLM and a training job at the
+same time, so they must not be added. Both the recommended memory and the
+computed cap use max(vLLM with its model, the training job), not the sum:
+cap = MemTotal minus the recommended memory of the core stack and the
+targets, within 4 and 24 GiB." The recommended value already took the
+larger of the two (one item, `vLLM serving <model> or a training job`); the
+cap now leaves vLLM out of what it subtracts. §2.3's "Training cap" bullet
+says so (spec checksum in PROGRESS.md). The same hosts:
+
+| `MemTotal` | VM targets, no model | containers, no model | VM targets, 5.7 GiB model | containers, 5.7 GiB model |
+| --- | --- | --- | --- | --- |
+| 15.04-15.68 GiB (16) | 4G (floor), recommends 17.2: degraded | 4G, recommends 15.2: fits | 4G; vLLM 10.7 is larger, recommends 23.9: degraded | 4G, 21.9: degraded |
+| 30.08 GiB (32) | 16G, 29.2: fits | 18G, 29.2: fits | 16G; the job is larger, 29.2: fits | 18G, 29.2: fits |
+| 31.2-31.36 GiB (32) | 18G, 31.2: fits | 20G, 31.2: fits | 18G, 31.2: fits | 20G, 31.2: fits |
+
+On the 16 GiB host nothing changes: the floor applied before too, and with
+a model vLLM itself sets the recommended value.
 
 ### Found while building
 

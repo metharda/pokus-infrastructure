@@ -59,7 +59,7 @@ gpu_arbiter:
 # start, and the run is stopped and failed beyond it) and the job's /tmp
 # (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto
 # computes the cap from the host (§2.3): MemTotal minus the recommended memory
-# of everything else that runs, in whole GiB within 4 and 24 GiB (preflight
+# of the core stack and the targets, in whole GiB within 4 and 24 GiB (preflight
 # records it in the host profile); a size such as 12G sets it.
 training_caps:
   timeout_seconds: 86400

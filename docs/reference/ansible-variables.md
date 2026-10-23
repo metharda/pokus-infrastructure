@@ -89,7 +89,7 @@ The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default depl
 
 ### `training_caps`
 
-Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto computes the cap from the host (§2.3): MemTotal minus the recommended memory of everything else that runs, in whole GiB within 4 and 24 GiB (preflight records it in the host profile); a size such as 12G sets it.
+Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto computes the cap from the host (§2.3): MemTotal minus the recommended memory of the core stack and the targets, in whole GiB within 4 and 24 GiB (preflight records it in the host profile); a size such as 12G sets it.
 
 - Default:
 

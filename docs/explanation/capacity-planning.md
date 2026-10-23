@@ -124,11 +124,13 @@ training job at the computed cap comes on top.
 ## The training cap
 
 A training job counts at `training_caps.memory_max`, the most the GPU
-arbiter lets a job take. With `memory_max: auto` (the default), preflight
+arbiter lets a job take. The arbiter never runs vLLM and a job at once, so
+on a node that serves a model the recommended value counts the larger of the
+two, never their sum. With `memory_max: auto` (the default), preflight
 computes the cap from the host: `MemTotal` minus the recommended memory of
-everything else that runs on the node (the core stack, the targets, vLLM
-with the selected model), rounded down to whole GiB, within a floor of 4 GiB
-and a ceiling of 24 GiB (`training_cap` in `preflight/requirements.yml`). An
+the core stack and the targets, rounded down to whole GiB, within a floor of
+4 GiB and a ceiling of 24 GiB (`training_cap` in
+`preflight/requirements.yml`). The selected model does not lower it. An
 explicit `memory_max`, such as `12G`, wins. The host profile records the cap
 and how it was computed (`requirements.switches.training`); the GPU arbiter,
 the platform's validation and doctor use it.
@@ -140,10 +142,7 @@ defaults and a usable GPU:
 | Host | `MemTotal` | VM targets, no model | containers only, no model | VM targets, a 5.7 GiB model |
 | --- | --- | --- | --- | --- |
 | nominal 16 GiB | 15.0-15.7 GiB | cap 4G; recommends 17.2 GiB: `degraded` (fits: one target, a cap of 2-3G, or `training: off`) | cap 4G; recommends 15.2 GiB: fits | cap 4G; vLLM itself recommends 10.7 GiB, 23.9 GiB in all: `degraded` |
-| nominal 32 GiB | 30.1-31.4 GiB | cap 16-18G; recommends 29.2-31.2 GiB: fits | cap 18-20G: fits | cap 6-7G: fits |
-
-The cap leaves vLLM's share out, although the GPU arbiter stops vLLM for a
-job, so the computed value stays on the safe side.
+| nominal 32 GiB | 30.1-31.4 GiB | cap 16-18G; recommends 29.2-31.2 GiB: fits | cap 18-20G: fits | cap 16-18G; the job is larger than vLLM's 10.7 GiB, 29.2-31.2 GiB in all: fits |
 
 The Incus `bench` project's `limits.memory` follows the same choice: the
 concurrent targets, each with its probe client.

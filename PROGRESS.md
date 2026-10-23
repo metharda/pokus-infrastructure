@@ -39,7 +39,7 @@ Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `bc7f11e96894eafe93c02e71177dd31d3f582b6d6f4a5eab5e85dac08cc91a99` |
+| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `685306c16b6e6db5f318d59670993bf2c47f301ec78d5967375b476651b246c8` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
 | `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `79bcb4fc75343b736a1f5e728cbee12d12574a2d2524530a4efff79bfaf936cc` |
 
@@ -61,9 +61,11 @@ spec edit changed the infra prompt from `a07bbc3b…` to `a661077c…`
 (sections listed in `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"), and
 the small spec edit after D1 from `a661077c…` to `e01ad3d7…`
 (`docs/IMPLEMENTATION_NOTES.md`, "Spec edit after D1"), and the small spec
-edit for A's follow-up from `e01ad3d7…` to the checksum above
+edit for A's follow-up from `e01ad3d7…` to `bc7f11e9…`
 (`docs/IMPLEMENTATION_NOTES.md`, "Inference and training switches, the
-computed training cap (A follow-up, 3f-1)"); its copy
+computed training cap (A follow-up, 3f-1)"), and the owner's correction of
+the cap after `a9bb439` (vLLM and a job never add up) from `bc7f11e9…` to
+the checksum above; its copy
 `docs/BUILD_PROMPT.md` has the same checksum.
 
 The real-machine test specification (`specs/pokus-infrastructure-qa-spec.md`)
@@ -1392,6 +1394,78 @@ its checks green and a commit proposal, and waits for the owner's
   "Inference and training switches, the computed training cap (A
   follow-up, 3f-1)". The proposed floor and ceiling of the computed cap are
   4 and 24 GiB.
+- **The follow-up and four more commits** (owner, with the "commit" for the
+  follow-up, verbatim):
+
+  > commit
+  >
+  > Then these four, each as its own commit, pushed on its own, CI reported job by
+  > job. Do not start B in this session.
+  >
+  > 1. Correction, my wording was wrong: the arbiter never runs vLLM and a training
+  >    job at the same time, so they must not be added. Both the recommended memory
+  >    and the computed cap use max(vLLM with its model, the training job), not the
+  >    sum: cap = MemTotal minus the recommended memory of the core stack and the
+  >    targets, within 4 and 24 GiB. Show the 16 and 32 GiB table again.
+  > 2. The Incus pool's default size: 300 GiB counted in full for a loop file means a
+  >    host with 144 GiB free cannot install with defaults. Compute the default like
+  >    the cap: the golden images, the concurrent targets' root disks and a margin,
+  >    limited by the free space on its mount point minus pinka's other needs, with a
+  >    floor you propose; an explicit size still wins. Show what it becomes with
+  >    144 GiB and 386 GiB free.
+  > 3. The restore.yml bug (pinka_features missing on restore) is a defect in an
+  >    existing feature, not side work: fix it as its own small commit, with a test
+  >    that runs restore without site.yml's gate.
+  > 4. Dependabot: the 16 alerts on main are:
+  >    - npm, package-lock.json, all marked development and transitive: dompurify
+  >      (#18, #19, #20; #20 critical), markdown-it (#15, #16, #17), smol-toml (#14),
+  >      katex (#13);
+  >    - pip, uv.lock: certifi (#22, critical, compromised emSign intermediates),
+  >      virtualenv (#23, #24 high; #25, #26, #28 moderate), black (#27, high; the
+  >      advisory is about the Black GitHub Action, which we do not use), pytest
+  >      (#21, moderate).
+  >    For each: which lock it is in, whether that lock is shipped (bootstrap, the
+  >    installer, the playbooks' environment, the reference platform, release
+  >    package) or development-only, and why GitHub reads "uv in /infra" when infra/
+  >    no longer exists. Update every one to a fixed version, certifi first; for
+  >    anything shipped, also check that bootstrap and the release package pick up
+  >    the new version and that every pinned hash is updated. Its own commit, with
+  >    the full gate. Do not enable Dependabot pull requests: their commits would
+  >    not carry my identity. Instead, add to the maintenance checklist that the
+  >    Dependabot alerts are reviewed and the locks updated at each maintenance
+  >    update.
+  >
+  > When all four are pushed and their CI is green, prepare a handover for a new
+  > session, which will start B from the repository alone:
+  > - PROGRESS.md states exactly where 3f-1 stands, the next step (B) and the order
+  >   after it (B, C, E, F, G, then the feature-complete checkpoint I asked for),
+  >   every open item and open decision, and every rule I gave in this session that
+  >   is not yet in CLAUDE.md;
+  > - CLAUDE.md has every standing rule: the commit rule, one push per commit, the
+  >   push guard and how to restore origin after a restart, the CI skip list, local
+  >   random-order and per-file runs before every proposal, the re-run rule,
+  >   unsigned commits under my noreply identity, no attribution lines, merges by
+  >   fast-forward or merge commit only, no side work during 3f-1;
+  > - list for me anything this session knows that is not in the repository
+  >   (for example local/test-computers.md and local/rewrite-mapping.md, which are
+  >   git-ignored), so I can keep copies;
+  > - tell me whether the stop hook that asks you to commit can be turned off in
+  >   this environment, and how; it costs a turn every time.
+  > Then stop and wait.
+
+  The follow-up is `a9bb439`, pushed on its own. Its CI, every job on its
+  first attempt: infra-ci (run 40028169144): changes, privacy, lint, test,
+  docs, all six check-mode lanes and `required` passed, `links` skipped
+  (weekly), `lock-check` the known red (24 marker errors; tag warnings for
+  postgres, refplat_job, ubuntu_2404 and debian_13); test-isolated (run
+  40028169081) and all six check-mode-extended lanes (run 40028169140)
+  passed; release-package and lock-collections did not run (their inputs
+  are unchanged). Item 1: the cap no longer
+  subtracts vLLM; the recommended value already counted the larger of vLLM
+  and the job. The "Training cap" bullet of §2.3 follows the corrected
+  decision (spec checksum above); the table is in
+  `docs/IMPLEMENTATION_NOTES.md`, "Correction: vLLM and a job never add
+  up".
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -1743,8 +1817,9 @@ computed training cap (A follow-up, 3f-1)"):
   with a usable GPU and VM targets the floor still counts: it recommends
   17.2 GiB and installs `degraded` (fits: one target, a cap of 2-3G, or
   `training: "off"`); with containers only it fits. On a nominal 32 GiB host
-  the cap is 16-18G (6-7G with a 5.7 GiB model, whose 10.7 GiB stays
-  reserved for vLLM although the arbiter stops vLLM for a job, as decided).
+  the cap is 16-18G, with or without a model: vLLM and a job never run at
+  once, so the cap leaves vLLM out and the recommended value takes the
+  larger of the two (owner's correction after `a9bb439`).
 - **A host is not degraded for a feature its switch turns off.** Built into
   §2.3 with the spec edit: `inference: "off"` or `training: "off"`/`cpu`
   turns the missing GPU feature into a note, so a small lab without a GPU

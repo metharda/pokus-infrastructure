@@ -141,9 +141,10 @@ components:
     source: training_caps.memory_max (§7.18); the arbiter refuses a job over it
 
 # training_caps.memory_max: auto (§2.3): MemTotal minus the recommended memory
-# of every other part that runs on the node (the core stack, the targets, vLLM
-# with the selected model), rounded down to whole GiB, within floor_gib and
-# ceiling_gib. An explicit memory_max wins.
+# of the core stack and the targets, rounded down to whole GiB, within
+# floor_gib and ceiling_gib. vLLM does not count: the arbiter never runs it and
+# a job at once, so the recommended value takes the larger of the two. An
+# explicit memory_max wins.
 training_cap:
   floor_gib: 4
   ceiling_gib: 24
