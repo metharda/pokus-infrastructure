@@ -1,0 +1,63 @@
+# Managed by pinka (ansible/roles/vllm/tasks/default_deployment.yml). Local changes will be overwritten.
+#
+# The default deployment from host_vars (BUILD_PROMPT §7.11, contracts.md#inference):
+# /etc/pinka/vllm/deployments/<id>@<version>.yml. Deployment files are
+# immutable: a different spec under an existing id and version is refused.
+- name: Read the model lock and the starter list of models
+  ansible.builtin.set_fact:
+    vllm_lock: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.lock.yml') | from_yaml }}"
+    vllm_catalog: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.catalog.yml') | from_yaml }}"
+
+- name: Derive the default deployment
+  ansible.builtin.set_fact:
+    vllm_default_id: >-
+      {{ vllm_default_deployment.id | default('default-' ~ vllm_profile) }}@{{ vllm_default_deployment.version | default(1) }}
+    vllm_default_spec:
+      id: "{{ vllm_default_deployment.id | default('default-' ~ vllm_profile) }}"
+      version: "{{ vllm_default_deployment.version | default(1) | int }}"
+      model_id: "{{ vllm_default_deployment.model_id }}"
+      adapter_ids: []
+      profile: "{{ vllm_profile }}"
+      overrides: >-
+        {{ ({'tool_call_parser': vllm_catalog_entry[0].tool_call_parser} if vllm_catalog_entry else {})
+           | combine(vllm_default_deployment.overrides | default({})) }}
+      sampling_defaults: "{{ vllm_default_deployment.sampling_defaults | default({}) }}"
+  vars:
+    vllm_catalog_entry: >-
+      {{ (vllm_catalog.models + vllm_catalog.restricted)
+         | selectattr('id', 'equalto', vllm_default_deployment.model_id) | list }}
+
+- name: Check the default deployment
+  ansible.builtin.assert:
+    that:
+      - vllm_default_deployment.model_id in (vllm_lock.models | map(attribute='id') | list)
+      - vllm_default_id is match('^[a-z0-9][a-z0-9-]{0,62}@[0-9]{1,6}$')
+    fail_msg: >-
+      vllm_default_deployment.model_id {{ vllm_default_deployment.model_id }} is not
+      in models.lock.yml, or the deployment id/version is invalid ({{ vllm_default_id }}).
+    quiet: true
+
+- name: Look for an existing file of this deployment
+  ansible.builtin.slurp:
+    src: "/etc/pinka/vllm/deployments/{{ vllm_default_id }}.yml"
+  register: vllm_default_existing
+  failed_when: false
+
+- name: Refuse to change an existing deployment version
+  ansible.builtin.assert:
+    that:
+      - vllm_default_existing.content is not defined
+        or (vllm_default_existing.content | b64decode | from_yaml) == vllm_default_spec
+    fail_msg: >-
+      /etc/pinka/vllm/deployments/{{ vllm_default_id }}.yml exists with a different
+      spec; deployment files are immutable: raise vllm_default_deployment.version.
+    quiet: true
+
+- name: Write the default deployment
+  ansible.builtin.copy:
+    content: "{{ vllm_default_spec | to_nice_yaml(indent=2, sort_keys=False) }}"
+    dest: "/etc/pinka/vllm/deployments/{{ vllm_default_id }}.yml"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false

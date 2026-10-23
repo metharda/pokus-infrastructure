@@ -1,0 +1,29 @@
+#!/bin/sh
+# Managed by pinka (preflight/pinka-preflight).
+#
+# Thin wrapper: runs the stdlib-only preflight package with the pinned CPython
+# installed by bootstrap (/opt/pinka/python) when present, otherwise with the
+# first python3 >= 3.9 on PATH. POSIX sh, no bashisms.
+set -eu
+
+here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+
+pick_python() {
+  for candidate in /opt/pinka/python/bin/python3 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 \
+      && "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! python=$(pick_python); then
+  echo "pinka-preflight: Python 3.9 or newer is required" >&2
+  exit 40
+fi
+
+PYTHONPATH="${here}${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH
+exec "$python" -m pinka_preflight "$@"

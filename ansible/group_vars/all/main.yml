@@ -1,0 +1,340 @@
+# Managed by pinka (ansible/group_vars/all/main.yml). Local changes will be overwritten.
+#
+# Lab-wide settings shared by every host (BUILD_PROMPT §6, §8). Per-machine
+# values and overrides belong in inventory/host_vars/<machine>.yml; secrets in
+# the Ansible Vault file group_vars/all/vault.yml (shape: vault.yml.example).
+# Names are placeholders: real researchers are entered on the deployed host
+# and live only in the lab's private configuration (owner answer E1).
+
+# --- Machine defaults (host_vars override them; see example-machine.yml) ----
+
+# Host name of the machine in the tailnet, in /etc/wsl.conf and in the fingerprint.
+machine_name: pinka-lab
+# production, or staging for QA environments (own vault, Tailscale tag and
+# signing key; never pairs with a production host).
+lab_mode: production
+# Staging only: this staging host runs on production's hardware, so it starts
+# only inside an open maintenance window with the GPU idle and its ports free
+# (BUILD_PROMPT §7.20, pinka window open).
+staging_shared_hardware: false
+# Provider role: auto (the provider preflight detected), baremetal, wsl2 or vm.
+# Any other value than auto must match the detected provider.
+lab_provider: auto
+# Power policy on bare metal and VMs: never_sleep (sleep targets masked),
+# lab_session_inhibit (a sleep inhibitor while pinka-lab.target is up) or os_default.
+power_policy: lab_session_inhibit
+# What this host runs: full (everything), lab (everything except vLLM) or
+# inference (only the inference stack).
+node_role: full
+# Firewall backend: auto (firewalld if active, else ufw if active, else
+# nftables), nftables, firewalld or ufw.
+firewall_backend: auto
+# NVIDIA driver: auto (install with the family's method), manual (the operator
+# installs it) or skip. Ignored on WSL2, where the driver comes from Windows.
+install_nvidia_driver: auto
+# Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded
+# in the fingerprint. bootstrap.sh --allow-community-repos does the same.
+allow_community_repos: false
+# The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default
+# deployment) or idle; restore_after_training brings the deployment served
+# before a training run back when the run ends, unless the submission says
+# otherwise.
+gpu_arbiter:
+  after_boot: serve
+  restore_after_training: true
+# Infra's caps on training (§7.18): a job's run time, memory and CPUs (the
+# arbiter refuses a run whose job exceeds them; validation and doctor warn),
+# the size of a published dataset (dataset_max), the combined size of a run's
+# output and checkpoints (run_storage_max: the free space a run needs to
+# start, and the run is stopped and failed beyond it) and the job's /tmp
+# (tmp_max: a tmpfs, counted against the job's memory).
+training_caps:
+  timeout_seconds: 86400
+  memory_max: 24G
+  cpus: 8
+  dataset_max: 8G
+  run_storage_max: 16G
+  tmp_max: 1G
+# Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
+grafana_tailscale_serve: false
+# The documentation release the docs service serves (BUILD_PROMPT §7.19):
+# {url, sha256} of a release's documentation tarball (an https:// URL or an
+# absolute path); null: no docs service.
+docs_release: null
+# Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
+docs_tailscale_serve: false
+# On a Tailscale node that existed before pinka (adopted, BUILD_PROMPT §7.4):
+# the owner's consent to publish Grafana or the docs with tailscale serve.
+tailscale_serve_consent: false
+# Whether pinka may publish with tailscale serve at all: always on a node it
+# joined, only with tailscale_serve_consent on an adopted node (§7.4).
+pinka_tailscale_serve_allowed: >-
+  {{ (host_profile.components.tailscale | default({})).origin | default(none) != 'pre-existing'
+     or tailscale_serve_consent | bool }}
+# Interfaces besides tailscale0 on which sshd accepts connections.
+ssh_extra_allowed_interfaces: []
+# Shared host: pre-existing listeners to close, as protocol/port such as
+# [tcp/8080] (BUILD_PROMPT §2.2, §7.5); every other one stays reachable as
+# preflight found it. The installer's Remote access screen sets it.
+firewall_close_listeners: []
+# Close the install's access path (for example SSH from the LAN) once SSH over
+# the tailnet was verified for a researcher in the same run (§7.5); without
+# both it stays open and doctor warns.
+firewall_close_install_path: false
+# Root of the research space (BUILD_PROMPT §6.2).
+pinka_root: /srv/pinka
+# CPUs of the lab services (Linux cpuset list such as "0-5"); empty: no pinning.
+# Set per machine in host_vars; must not overlap cpuset_targets.
+cpuset_services: ""
+# CPUs of the Incus benchmark targets; empty: no pinning. The platform pins
+# targets inside it (endpoints.toml), and it sizes the bench project's CPUs.
+cpuset_targets: ""
+# Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
+pinka_services_slice: pinka-services.slice
+# Size limit of one log file of the `local` log driver of every lab container
+# (Docker's own default), set per container by the Compose projects and the
+# GPU arbiter rather than in the Docker daemon (BUILD_PROMPT §7.6).
+pinka_container_log_max_size: 20m
+# Number of log files the `local` log driver keeps per lab container (Docker's
+# own default), set like pinka_container_log_max_size.
+pinka_container_log_max_file: 5
+# Let automatic security updates update the kernel on bare metal (held by default).
+allow_kernel_updates: false
+# Tailscale tag of the host per lab_mode (owner answer E2).
+pinka_tailscale_tags:
+  production: tag:pinka-lab
+  staging: tag:pinka-qa
+
+# --- Groups and accounts (BUILD_PROMPT §6.1, contracts.md) ---------------------
+
+# Groups created by users_groups.
+pinka_groups:
+  - {name: pinka, system: false, description: all researchers}
+  - {name: pinka-admin, system: false, description: researchers with sudo}
+  - {name: pinka-restricted, system: true, description: "restricted data: only accounts of restricted-capable profiles (§12.4)"}
+  - {name: pinka-datasets, system: true, description: "published training datasets: no human members (§7.18)"}
+  - {name: pinka-query, system: true, description: "the telemetry query proxy: exactly the accounts of the profiles that query (§7.9)"}
+
+# Placeholders (owner answer E1). keys_file is relative to the repository root;
+# key files are never committed (users/*.pub is excluded by .gitignore).
+# Optional per researcher: display_name (Grafana) and grafana: false (no
+# Grafana account). The installer TUI edits this list.
+researchers:
+  - {name: researcher1, admin: true, shell: /bin/bash, keys_file: users/researcher1.pub}
+  - {name: researcher2, admin: false, shell: /bin/bash, keys_file: users/researcher2.pub}
+  - {name: researcher3, admin: false, shell: /bin/bash, keys_file: users/researcher3.pub}
+
+# Researchers that left: locked (usermod -L, nologin), never deleted; data kept.
+researchers_removed: []
+
+# Admins that are explicitly allowed into the docker group (logged loudly).
+break_glass_docker: []
+
+# Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no
+# SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5);
+# pinka-inference runs the inference control endpoint of an inference node
+# (§19.10) and holds its mutual-TLS key.
+infra_accounts:
+  - {name: pinka-build, groups: [], description: unprivileged platform builds}
+  - {name: pinka-inference, groups: [], description: the inference control endpoint of an inference node}
+  - {name: pinka-query-proxy, groups: [], description: "the telemetry query proxy's container user (§7.9)"}
+  - {name: pinka-otelcol, groups: [], description: "the gateway collector's container user (§7.9)"}
+  - {name: pinka-prometheus, groups: [], description: "Prometheus's container user (§7.9)"}
+  - {name: pinka-loki, groups: [], description: "Loki's container user (§7.9)"}
+  - {name: pinka-tempo, groups: [], description: "Tempo's container user (§7.9)"}
+  - {name: pinka-grafana, groups: [], description: "Grafana's container user (§7.9)"}
+# The account of the inference control endpoint.
+inference_control_account: pinka-inference
+
+# The platform's accounts and groups are not listed here: the platform role
+# renders them from the active platform's manifest and profiles (§6.1, §12.2).
+# Their UIDs come from this range (ADR-0016): systemd's table of UID and GID
+# allocations (v255) lists it as unused; the deployment tool never takes a
+# UID that is already in use.
+pinka_platform_uids: {min: 60578, max: 61183}
+# The only accounts that reach the telemetry stores directly (§7.9, ADR-0016
+# as decided with the "commit" for 3d.4 and 3d.4b): infra's own clients, each
+# by name. The telemetry guard resets every other account's connection to the
+# stores' ports on the host loopback: researchers, Grafana, the platform's
+# services and everyone else query through the read-only query proxy and send
+# through the collector's OTLP receivers. The guard matches UIDs only, never
+# groups.
+pinka_telemetry_clients:
+  - {account: root, reason: "doctor, the health gate and administrators (sudo)"}
+  - {account: pinka-otelcol, reason: the gateway collector writes to Loki and Tempo}
+  - {account: pinka-prometheus, reason: "Prometheus scrapes the collector, Loki, Tempo and itself"}
+  - {account: pinka-loki, reason: Loki's own gRPC port}
+  - {account: pinka-tempo, reason: "Tempo's own gRPC and OTLP ports"}
+  - {account: pinka-query-proxy, reason: "the query proxy, which forwards the query endpoints"}
+# The only accounts that reach the query proxy's loopback port: Grafana, whose
+# data sources all go through the proxy (so no Grafana user, editor or admin
+# included, reaches a push, admin or delete endpoint), and root. The
+# platform's services that query use the proxy's socket and its group.
+pinka_query_port_clients:
+  - {account: root, reason: doctor and administrators (sudo)}
+  - {account: pinka-grafana, reason: "Grafana's Prometheus, Loki and Tempo data sources"}
+# The stores' ports the telemetry guard closes to every other account (§7.9):
+# Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the
+# collector's metrics exporter. The collector's OTLP receivers stay open.
+pinka_telemetry_guard_ports: >-
+  {{ [pinka_ports.prometheus, pinka_ports.loki, pinka_ports.tempo,
+      pinka_internal_ports.loki_grpc, pinka_internal_ports.tempo_grpc,
+      pinka_internal_ports.tempo_otlp_grpc, pinka_internal_ports.collector_metrics] | sort }}
+# Infra's own clients of the inference API on the host loopback (BUILD_PROMPT
+# §7.11, ADR-0016), per node role: the inference guard adds the active
+# platform's accounts whose profile reaches the API (controller, inference
+# broker) and resets every other account's connection to vLLM, or to the
+# inference forwarder of a lab node. UIDs only, never groups.
+pinka_inference_clients:
+  - account: root
+    reason: "doctor, the health gate, the serving verification and the GPU arbiter; vLLM's own health check"
+    node_roles: [full, lab, inference]
+  - {account: pinka-prometheus, reason: "Prometheus scrapes vLLM's metrics", node_roles: [full]}
+  - {account: pinka-otelcol, reason: "the collector scrapes vLLM's metrics", node_roles: [full, inference]}
+  - {account: pinka-inference, reason: the control endpoint forwards the API, node_roles: [inference]}
+
+# Parent of the infra and platform account homes (/var/lib/pinka/<account>).
+pinka_service_home: /var/lib/pinka
+
+# Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
+pinka_python: /opt/pinka/python/bin/python3
+
+# --- Layout (BUILD_PROMPT §6.2) -------------------------------------------------
+
+# The research space layout, the single source of truth: the layout role
+# creates exactly these entries, and tools/gen renders them into
+# docs/architecture.md. `path` is relative to pinka_root ("" is pinka_root itself).
+pinka_layout:
+  - {path: "", owner: root, group: pinka, mode: "2775", notes: "research space root"}
+  - {path: platforms, owner: root, group: root, mode: "0755", notes: "per platform: releases/<ref>/, content/<package>/<ref>/, state/"}
+  - {path: restricted, owner: root, group: pinka-restricted, mode: "0750", notes: "restricted data per platform, files 0640"}
+  - {path: models, owner: root, group: pinka, mode: "0755", notes: "model weights, 0444 after verification"}
+  - {path: models/adapters, owner: root, group: pinka, mode: "0755", notes: "registered adapters, read-only, with lineage"}
+  - {path: training, owner: root, group: root, mode: "0755", notes: "parent of the training areas"}
+  - {path: training/datasets, owner: root, group: pinka-datasets, mode: "0750", notes: "published training datasets, files 0640, each with PROVENANCE.json"}
+  - {path: training/jobs, owner: root, group: root, mode: "0755", notes: "per job run: output/ and checkpoints/, owned by the job's account"}
+  - {path: datasets, owner: root, group: pinka, mode: "2775", default_acl: ["group:pinka:rwX"], notes: "shared datasets"}
+  - {path: images, owner: root, group: pinka-admin, mode: "0750", notes: "exported golden image tarballs with sha256"}
+  - {path: shared, owner: root, group: pinka, mode: "2770", default_acl: ["group:pinka:rwX"], notes: "shared files"}
+  - {path: users, owner: root, group: root, mode: "0755", notes: "parent of the per-researcher directories"}
+  - {path: services, owner: root, group: pinka-admin, mode: "0750", notes: "rendered compose and config, never plaintext secrets readable by all"}
+  - {path: state, owner: root, group: root, mode: "0755", notes: "parent of state/<service>/ (container UID, 0700), created by the service roles"}
+  - {path: backups, owner: root, group: root, mode: "0700", notes: "local backup staging only"}
+
+# Per-researcher directory: users/<name>/ owned by <name>:<name>, mode 0700.
+pinka_layout_user_mode: "0700"
+
+# Host paths outside pinka_root (absolute).
+pinka_system_layout:
+  - {path: /etc/pinka, owner: root, group: root, mode: "0755", notes: "host profile, bootstrap state, rendered non-secret config"}
+  - {path: /etc/pinka/secrets, owner: root, group: root, mode: "0711", notes: "rendered secrets, one directory per platform account (0750 root:<account>)"}
+  - {path: /var/lib/pinka, owner: root, group: root, mode: "0755", notes: "service homes and lab state"}
+  - {path: /etc/pinka/platform, owner: root, group: root, mode: "0755", notes: "the active platform: active.json, principals.json, endpoints.toml"}
+  - {path: /var/lib/pinka/git, owner: root, group: root, mode: "0700", notes: "root-only Git mirrors of the platform and content sources"}
+  - {path: /var/lib/pinka/staging, owner: root, group: root, mode: "0700", notes: "root-only run directories of deployments"}
+  - {path: /var/lib/pinka/platforms, owner: root, group: root, mode: "0700", notes: "deployment and retirement records per platform"}
+  - {path: /var/cache/pinka, owner: root, group: root, mode: "0755", notes: "caches"}
+  - {path: /var/cache/pinka/uv, owner: pinka-build, group: pinka-build, mode: "0700", notes: "uv cache of the platform builds"}
+
+# --- Ports (contracts.md, resolution C10; every listener on 127.0.0.1) --------
+
+# Default listener ports of the lab services (contracts.md#ports, BUILD_PROMPT
+# §12.11). Override them per machine with `ports:`; read the effective values
+# from pinka_ports.
+pinka_default_ports:
+  otlp_grpc: 4317
+  otlp_http: 4318
+  opa: 8181
+  incus_https: 8443
+  grafana: 18700
+  prometheus: 18701
+  loki: 18702
+  tempo: 18703
+  vllm: 18704
+  gateway_adhoc: 18705
+  docs_serve: 18706
+  inference_control: 18710
+# Port overrides by the names of pinka_default_ports, set in host_vars, for
+# example {grafana: 18750}. Preflight reports a configured port that a process
+# outside the lab uses; endpoints.toml carries the effective values.
+ports: {}
+# The effective listener ports: the defaults with the machine's overrides.
+pinka_ports: "{{ pinka_default_ports | combine(ports) }}"
+# The preflight options of the machine's port overrides, VM collector address
+# and pool device (bootstrap passes the same; the preflight gate and doctor
+# re-run preflight with them).
+pinka_preflight_args: >-
+  {{ (ports.items() | map('join', '=') | map('regex_replace', '^', '--port=') | list)
+     + ['--vm-collector-address', vm_collector_address]
+     + (['--pool-device', incus_pool_device]
+        if incus_pool_source | default('loop') == 'device' and incus_pool_device | default('') | length > 0
+        else []) }}
+
+# Loopback ports of lab-internal listeners: exporters, the collectors' own
+# metrics and health checks, Loki's and Tempo's internal servers. Not part of
+# the contract; every observability container uses the host network and binds
+# 127.0.0.1 (BUILD_PROMPT §7.9).
+pinka_internal_ports:
+  collector_metrics: 18720
+  collector_telemetry: 18721
+  journald_telemetry: 18722
+  node_exporter: 18723
+  cadvisor: 18724
+  postgres_exporter: 18725
+  gpu_exporter: 18726
+  tempo_otlp_grpc: 18727
+  loki_grpc: 18728
+  tempo_grpc: 18729
+  collector_health: 18730
+  journald_health: 18731
+  # The collector's receiver behind the agent OTLP socket (pinka-otlp-agent).
+  otlp_agent: 18732
+  # The query proxy's loopback port for Grafana; platform services use its socket.
+  query_proxy: 18733
+
+# Address of the collector listener for VM targets (BUILD_PROMPT §12.11) on
+# the dummy interface of pinka_vm_otlp. Preflight reports it when it is
+# already assigned or routed on the host, or overlaps the Docker pools, an
+# Incus network or the tailnet range; choose another one in host_vars.
+vm_collector_address: 198.18.0.1
+# Dedicated collector listener for VM targets (contracts.md#telemetry, C4):
+# an address on a dummy interface, reachable only from run networks through
+# the run ACL and the firewall, OTLP gRPC and HTTP on the ports of
+# pinka_ports. Set up only with the vm_targets feature.
+pinka_vm_otlp: {interface: pinka-otlp0, address: "{{ vm_collector_address }}"}
+
+# Incus bridges the firewall treats as Incus networks (contracts.md: run
+# networks are named r-<short>; image builds use pinka-build0).
+pinka_incus_bridge_patterns: ["r-*", "pinka-build0"]
+# Bridges of the researchers' personal Incus projects (incusbr-<uid>); unlike
+# run networks they have NAT and an uplink.
+pinka_incus_personal_bridge_patterns: ["incusbr-*"]
+
+# --- Platform deployment (BUILD_PROMPT §7.14, contract v2) --------------------
+
+# The platform release to deploy: {repo, ref, path, tag_prefix}; empty: no
+# platform. repo is an SSH URL (read-only deploy key generated on the host),
+# an anonymous HTTPS URL or a root-owned file:/// repository, never a URL
+# with credentials; ref a tag (recommended), branch or full commit; path the
+# release's subdirectory ("" for the repository root); tag_prefix the prefix
+# of its release tags.
+platform: {}
+# Content packages of the platform's manifest: {<package>: {repo, ref, path,
+# tag_prefix}}. A package from the release's repository must not overlap the
+# release path or another package.
+content: {}
+# Extra known_hosts lines for SSH sources (GitHub's keys come from versions.lock.yml).
+pinka_source_known_hosts: []
+# Deploy only tags carrying a valid SSH signature of an allowed signer (owner answer E16).
+require_signed_tags: false
+# Allowed signers for signed tags, ssh-keygen allowed_signers lines ("<principal> <key type> <key>").
+pinka_allowed_signers: []
+# Tailnet name of the paired inference node of a lab node (node_role: lab,
+# BUILD_PROMPT §19.10); set when the nodes are paired.
+inference_remote_node: ""
+# Tailnet name of the paired lab node of an inference node (node_role:
+# inference), which receives its telemetry; set when the nodes are paired.
+inference_lab_node: ""
+# QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of
+# {name: <file name without .pem>, pem: <PEM public key>}.
+qa_trusted_keys: []

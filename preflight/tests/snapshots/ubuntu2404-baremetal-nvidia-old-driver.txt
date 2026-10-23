@@ -1,0 +1,28 @@
+pinka preflight: DEGRADED (exit 10)
+  tier supported (os supported, arch supported) · release model fixed · provider baremetal
+
+Environment
+  class baremetal, confidence high
+OS and kernel
+  Ubuntu 24.04.3 LTS [ubuntu 24.04, family debian, parent release noble]
+  arch x86_64, kernel 6.8.0-85-generic
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  NVIDIA GeForce RTX 4070, 12.0 GiB, driver 570.172.08 (CUDA 12.8), compute 8.9, path native, usable yes
+  PCI 10de:2786, supported by the open kernel module of the pinned driver: 580.178.04
+Capabilities
+  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
+  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics on
+Access
+  dedicated host, firewall manager none, install session: the console
+Network: skipped (--offline)
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. The NVIDIA driver supports CUDA 12.8, the pinned vLLM image needs 13.0: install a driver branch that supports CUDA 13.0.

@@ -1,0 +1,11 @@
+# Managed by pinka (ansible/roles/base/templates/pinka-security-patch.timer.j2). Local changes will be overwritten.
+[Unit]
+Description=pinka: daily security patches
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

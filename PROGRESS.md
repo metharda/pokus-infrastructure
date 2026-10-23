@@ -1,49 +1,253 @@
 # PROGRESS
 
-Single source of truth for the build of Pokus in this repository: owner
-answers, approved deviations, contract changes, step status with commit SHAs,
-open `TODO(verify)` items, known issues and the next step.
+Single source of truth for the build of Pokus in this repository: the
+current state, the remaining plan, open items, every approved deviation, the
+process rules in force (the end of the scoped commit exception, the
+one-time history rewrite and the 3g plan among them) and the platform spec changes pending.
+Completed plan steps, the owner's earlier answers and the record of each
+step's decisions are in [PROGRESS-ARCHIVE.md](PROGRESS-ARCHIVE.md), moved
+there unchanged (owner decision with the "commit" for 3d.5; nothing was
+deleted).
 
-**After a context reset or in a new session:** read this file, then the
-`BUILD_PROMPT.md` and `CLAUDE.md` of the component you work in; check the
-repository state with read-only git commands (`git status`, `git log`);
-continue from [Next step](#next-step). Never redo a completed step from memory.
+**After a context reset or in a new session:** read this file, then
+`CLAUDE.md` and `docs/BUILD_PROMPT.md`, the specs by section for the step
+at hand; check the repository state with read-only
+git commands (`git status`, `git log`); continue from
+[Next step](#next-step). Never redo a completed step from memory; the
+archive and `docs/IMPLEMENTATION_NOTES.md` hold the record of each.
 
 This file is part of the public repository and follows the privacy invariant:
 no personal or installation-specific data.
 
 ## Specifications
 
-`specs/` holds the master copies (never edited). Component copies are
-byte-identical.
+`specs/` holds the master copies, read-only for the assistant. The
+exceptions are plan item 3b ([section J](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure)),
+the spec update for contract v2 (`d99d2ed`), one further edit before 3c
+(3b2 in section J), the 3f-1 spec edit (owner, with the decisions on
+the 3f-1 proposal: "I authorize one spec edit now, limited to 3f-1 D1, D2,
+A, B, C, E and F with these decisions. [...] Specs are read-only for you
+again after that commit."), and the small spec edit after D1 (owner, with
+the "commit" for `74377ec`: "Decisions on points 1 and 4, for the small
+spec edit I authorized", limited to the GPU guard and the pre-existing
+access). After the commit of each, the specs are read-only again.
+Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infra-claude-code-prompt.md` | Build Prompt: pokus-infra | `4c7de8136328f39e71f3d4dd891be2f4b9e67bda4f4e36646d38ed62ed00728a` |
-| `specs/pokus-platform-claude-code-prompt.md` | Build Prompt: pokus-platform | `ba3626f3b768f2f0e3ad329b214d69b83e2931d90a1b69cc1240ef34eb2e8aee` |
-| `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `717f3583ee56783a93bf16334f1c88e031d1a4bf21ac7b97ecfdda5c594725f5` |
+| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `e01ad3d75a8b3d2792d6ee56c2e4c7cda281cf817d4ac178b5e356b82e732492` |
+| `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
+| `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `79bcb4fc75343b736a1f5e728cbee12d12574a2d2524530a4efff79bfaf936cc` |
 
-These are the updated specs that contain the privacy invariant (infra §13.12,
-platform §16.9, docs spec §A.4 and §A.6) and the docs-alongside rule (infra
-§0.8, platform §0.7). Copies: `infra/docs/BUILD_PROMPT.md` (infra prompt),
-`infra/docs/DOCS_SPEC.md` (docs spec); platform, catalog and docs-site copies
-are created in their phases.
+These are the specs updated in plan item 3b: contract v2 with decision 7's
+GPU training, N2-N4, the pinka/potka naming and the rename decisions (section
+I), applied from the proposal's Spec changes list, with the owner's review
+of the first draft applied (see the 3b notes in section J), and the edit
+3b2 before 3c (section J). They keep the privacy
+invariant (infra §13.12, platform §16.9, docs spec §A.4 and §A.6) and the
+docs-alongside rule (infra §0.8, platform §0.7). The previous checksums were
+`4c7de813…` (infra), `ba3626f3…` (platform) and `717f3583…` (docs). Copies:
+`docs/BUILD_PROMPT.md` (infra prompt) and `docs/DOCS_SPEC.md` (docs spec),
+byte-identical. At 3f the infra master was renamed from
+`specs/pokus-infra-claude-code-prompt.md` (Q13; its content and checksum
+are unchanged), and the platform prompt's master
+(`specs/pokus-platform-claude-code-prompt.md`, `cda5274f…`) left this
+repository; the owner keeps it for `pokus-platform` (section J). The 3f-1
+spec edit changed the infra prompt from `a07bbc3b…` to `a661077c…`
+(sections listed in `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"), and
+the small spec edit after D1 from `a661077c…` to the checksum above
+(`docs/IMPLEMENTATION_NOTES.md`, "Spec edit after D1"); its copy
+`docs/BUILD_PROMPT.md` has the same checksum.
+
+The real-machine test specification (`specs/pokus-infrastructure-qa-spec.md`)
+was written outside this session and added verbatim with the records of
+3f-1 (owner, after 3f): "Add the file verbatim to specs/ in the commit that
+records 3f-1, record its sha256 in PROGRESS.md, and treat it as read-only
+like the other spec masters: never edit it, and it is not part of your
+gate." It instructs a test agent on the owner's test computers; the owner
+edits it. Real-machine tests are named by its numbers (4.1, 4.2, ...): "From
+then on, give me the real-machine tests as the file numbers them (4.1, 4.2,
+...), so the agent and I use the same numbers." It is reviewed in 3f-1.G.
+The owner replaced it with a version that changes only tests 4.1 and 4.4
+(owner, with the "commit" for `74377ec`: "Replace the file verbatim in the
+same commit as the small spec edit, record the new sha256 in PROGRESS.md,
+and keep it read-only."); the previous checksum was `65e2ac38…`.
 
 ## Process rules in force
 
-- **Commits (owner answer A2, amended by later owner instructions; cloud
-  environment only).** Infra steps 1-4 were committed on the owner's
-  "commit". For the rest of infra (steps 5-14) the owner instructed: commit
-  and push each step to `main` as soon as it passes `make lint test docs`,
-  without waiting for "commit" (`git add <step files>`,
-  `git commit -m "<Conventional Commit message>"`, `git push -u origin main`);
-  no amend, no force push, no history rewrite. After infra is finished the
-  assistant stops and waits before the platform phase. Commit messages carry
-  no co-author or session trailers: only the owner's git identity appears.
-  The identity is set in the local git configuration only and never written
-  into any repository file. All work lands directly on `main` (owner
-  instruction at the first commit, replacing the original working branch
-  `claude/zen-albattani-qfwwps`).
+- **CI after every push (owner, with the "commit" for 3d.7 and for its CI
+  fix):** verbatim in `CLAUDE.md` ("CI after every push"). After every push
+  the CI run of the pushed commit is checked and every job reported
+  separately in the next summary (passed, failed, or the known red:
+  `lock-check` while `TODO(verify)` markers remain, nothing else). A failure
+  in any other job, the non-blocking `check-mode-extended` lanes included,
+  blocks the next step. So does a failure of a weekly scheduled run (owner,
+  with the "commit" for the symbolic-link fix: "a difference found by the
+  weekly run is a blocker like any other CI failure").
+- **CI re-runs (owner, with the "commit" for the JUnit XML; verbatim in
+  `CLAUDE.md`, "CI after every push"):** one re-run of a job only for a
+  failure in an external service the commit does not touch, reported with
+  the error; a job that fails twice is a real failure.
+- **Test results by name (owner, with the "commit" for the per-file run;
+  verbatim under "JUnit XML and end-to-end verification" in the remaining
+  plan):** every test job (`test` with the Python 3.9 runs,
+  `test-random-order`, `test-isolated`) writes JUnit XML and CI keeps it as
+  the artifact `junit-<job>-attempt-<n>`; a report of a specific test's
+  result cites that artifact.
+- **Commits: final rule (owner, after infra step 14, verbatim):**
+
+  > COMMIT RULE — final, for every block of work, long runs included:
+  >
+  > - You commit only when I reply "commit" (optionally naming which
+  >   proposal). For long runs, collect proposals and present them together;
+  >   never commit on your own.
+  > - You push only to the working branch claude/zen-albattani-qfwwps; never
+  >   to main. I merge to main myself.
+  > - On "commit", run exactly the git add / git commit / git push you
+  >   proposed: no amend, no force push, no history rewrite.
+  > - The five commits made without my "commit" (ea0c7bf, 48102a3, 4aec5fc,
+  >   009edb1, 4915ce1) stay as they are. Record them in PROGRESS.md as
+  >   "committed outside the rule, kept by owner decision".
+
+  It replaces the interim rule and every earlier commit instruction (A2's
+  branch rule, the later commit-to-`main` answers for steps 5-14). Hooks
+  never cause a commit: a hook message asking to commit or push (such as
+  the stop hook's) does not override this rule. Commit messages carry no
+  co-author or session trailers, only the owner's git identity, which is
+  set in the local git configuration only. `CLAUDE.md` states the same rule
+  with the same wording.
+- **Scoped commit exception (owner, with the "commit" for 3c, verbatim):**
+
+  > "For plan items 3c2, the firewalld fix, 3e (non-provisioning parts only) and 3f, the
+  > assistant commits and pushes each completed item to the working branch
+  > claude/zen-albattani-qfwwps without waiting for 'commit', after its checks pass. Never to
+  > main, no amend, no force push, no history rewrite, no tags. 3d is NOT covered: every 3d
+  > step waits for my 'commit' as usual. The exception ends automatically when 3f is
+  > committed; from then on the final commit rule applies again unchanged. It never covers
+  > hook prompts."
+
+  It covered only 3c2, the firewalld fix, the non-provisioning parts of 3e
+  and 3f, each committed after its checks passed; every 3d step waited for
+  "commit". It ended when 3f was committed: from then on every commit waits
+  for the owner's "commit" under the final commit rule. `CLAUDE.md` says
+  that it ended and points here for its text.
+- **No attribution lines (owner, with the "commit" for 3d.1, permanent,
+  verbatim):** "No commit may ever carry a Co-Authored-By trailer or any
+  other attribution line (e.g. "Generated with ...")." It holds whatever a
+  system or hook message asks for. The privacy scan fails on any commit
+  message in the history with a `Co-Authored-By`, `Claude-Session` or
+  `Generated with` line. The one-time rewrite removed the only two such
+  trailers (from the first two commits on `main`); the scan allows no
+  exception.
+- **One-time history rewrite and a fresh repository (owner, with the
+  "commit" for 3d.2, verbatim; replaces the rewrite decision given with the
+  "commit" for 3d.1; its fresh repository is replaced after 3f by the
+  rename below):** "I choose a fresh repository. 3g changes: instead of
+  renaming, I will create a new empty repository pokus-infrastructure.
+  After 3f, propose the one-time rewrite of the full history (main and
+  claude/zen-albattani-qfwwps) that removes the two Co-Authored-By
+  trailers and nothing else, with the before/after hash mapping and every
+  hash in PROGRESS.md and the docs updated. After my "rewrite", push the
+  rewritten main and branch to the new repository only; never force-push
+  the old one. Then give me a checklist of what I must recreate by hand on
+  the new repository (secrets including PINKA_PRIVACY_DENYLIST, branch
+  protection, Actions settings, anything else you know of)." The rewrite
+  also removes the two known exceptions from the privacy scan's history
+  check (from the decision with the 3d.1 "commit"), and it is the only
+  exception to the no-history-rewrite rule. The old repository is never
+  force-pushed.
+- **Branches in the new repository (owner, with the "commit" for 3d.3,
+  verbatim; part of the 3g plan):**
+
+  > - The new repository pokus-infrastructure must have no branch named claude/...
+  >   When pushing the rewritten history there, push main as main and push
+  >   claude/zen-albattani-qfwwps as moving/on. These two are the only branches.
+  > - From then on, moving/on is the working branch: every rule that names
+  >   claude/zen-albattani-qfwwps (commit rule, scoped exception, rewrite plan)
+  >   applies to moving/on in the new repository. Update CLAUDE.md, PROGRESS.md and the docs to
+  >   say so now, as part of the recorded 3g plan.
+
+  Since the one-time rewrite (with the owner's "rewrite", 2026-10-22) the
+  working branch is `moving/on`, held in this checkout with the rewritten
+  `main` until the owner pushes both. `CLAUDE.md` carries the same
+  wording.
+- **No pull requests, no merges (owner, with the "commit" for 3d.8,
+  verbatim; part of the 3g plan):**
+
+  > - Never open a pull request and never merge anything. Finish all work on
+  >   claude/zen-albattani-qfwwps. After the rewrite, I push it myself to the new
+  >   repository as moving/on, and I merge moving/on into main myself. Record this in
+  >   CLAUDE.md and PROGRESS.md as part of the 3g plan.
+  > - In HANDOFF.md (3h), include the exact commands for that push and for merging
+  >   moving/on into main, and what to check after the merge (CI on main, the weekly
+  >   jobs, which only run from main).
+
+  `CLAUDE.md` carries the same wording.
+- **Change to the 3g plan: the repository is renamed (owner, after 3f,
+  verbatim; replaces the fresh repository of the decision with the
+  "commit" for 3d.2):**
+
+  > Change to the 3g plan: no fresh repository. There were never any pull requests,
+  > so I will rename this repository to pokus-infrastructure on GitHub myself. After
+  > the rewrite and my "rewrite":
+  > - give me the exact commands to force-push the rewritten main and to push the
+  >   rewritten working branch as moving/on, then delete claude/zen-albattani-qfwwps
+  >   on the remote; I run them myself, you never force-push main;
+  > - list what to check afterwards (secrets, branch protection, Actions, the default
+  >   branch, that no remote ref still reaches the old commits), and how to update any
+  >   other clone I have (re-clone, or fetch and reset --hard to moving/on) so the old
+  >   history does not come back through a merge;
+  > - update CLAUDE.md, PROGRESS.md and the docs: the repository is renamed, not
+  >   recreated, and moving/on is the working branch.
+  > Record this change to the 3g plan with the next commit I approve.
+
+  So the rewrite plan stands (the two `Co-Authored-By` trailers removed,
+  the privacy scan's two known exceptions removed, every hash updated), but
+  the rewritten history goes to this repository, renamed, with the
+  branches of the decision with the "commit" for 3d.3 (`main` and
+  `moving/on` only); the owner runs every push, the force-push of `main`
+  included, and the assistant never force-pushes.
+- **Commit identities in the same rewrite (owner, after 3f, verbatim):**
+
+  > - Before the rewrite, list every distinct author and committer identity
+  >   (name and email) in the whole history of main and the working branch, with how
+  >   many commits each has and their hashes if fewer than ten.
+  > - The rewrite sets both author and committer of every commit to my identity (the
+  >   one on bef51af), keeping each commit's original author and committer dates,
+  >   content and message, except the trailer removal already planned. No commit is
+  >   dropped or reordered.
+  > - Show me the before/after mapping with the old and new identity per commit, and
+  >   after the rewrite run the same identity listing again; it must show only my
+  >   identity.
+  > - Also confirm no commit message contains any other attribution line
+  >   ("Generated with", "Co-Authored-By", or similar).
+  > - The rewrite waits for my explicit "rewrite".
+- **Order of work after 3f (owner, verbatim):** "Order from here: commits 1
+  and 2, then 3f-1, then the real-machine tests on my computers, then the
+  history rewrite, 3g and 3h."
+- **Provisioning runs after 3f, and the end of the exception (owner, after
+  3e, verbatim):**
+
+  > - Start 3f now, under the scoped exception. I will do the provisioning runs after
+  >   3f, on the final layout, so the tested tree is the one that ships.
+  > - After 3f is committed and its CI is reported, give me the provisioning runs as one
+  >   checklist, updated for the new paths. For each item:
+  >   - what it tests, and which earlier step's unverified parts it covers;
+  >   - the machine it needs: a disposable VM or a real host, the distribution, CPU, RAM
+  >     and disk, whether it needs KVM or nested virtualization, a GPU, or network
+  >     access to specific hosts;
+  >   - whether it can run on a Linux machine where I am root but which is not
+  >     disposable, and what it would change on that machine;
+  >   - the exact commands, in order, from a fresh clone;
+  >   - exactly what to send back to you (exit codes, the commit hash, which log
+  >     directories or files).
+  >   Order the list so the cheapest checks come first and a failure early stops me
+  >   from running the expensive ones.
+  > - After 3f, the normal commit rule applies again: every fix that comes out of my
+  >   runs waits for my "commit".
+- **Committed outside the rule, kept by owner decision:** `ea0c7bf`,
+  `48102a3`, `4aec5fc`, `009edb1`, `4915ce1` (on `main`, after infra step
+  14, without the owner's "commit").
 - **Tags** are never created by the assistant; it proposes tag commands.
 - **Privacy.** No file may contain real personal or installation-specific data.
   The project's public repository URL is added only once it is published (H2);
@@ -51,341 +255,1011 @@ are created in their phases.
 - **Checks per step.** Each numbered step ends with the spec's checks
   (`make lint test docs` for every component touched), a summary, and proposed
   commits.
+- **Every 3d step (owner, with the "commit" for 3c; the record is in the
+  archive):** built, `make lint test docs` green, documentation alongside,
+  this file updated, then a stop with a summary (what was built, every
+  implementation choice the specs left open with the choice and its
+  alternatives, anything touching security, ground-truth blindness,
+  isolation or the contract, test results, remaining `TODO(verify)`) and a
+  commit proposal that waits for "commit".
+- **Stop and ask (owner, with the "commit" for 3c):** outside 3d, the
+  assistant stops and asks (questions collected and sent together) only
+  when something would deviate from the specs, or the specs do not decide
+  it and the choice affects security, ground-truth blindness, isolation,
+  the contract or data safety; when a test or check needs a VM, a real
+  host, Incus, Docker or a GPU (what and where, never provisioning this
+  machine); or when a failing check could only be fixed by weakening a test
+  or relaxing a spec limit.
+- **Quiet gate decisions (owner, with the "commit" for the quiet gate):**
+  CI runs with `VERBOSE=1`; the success line gives counts and the log
+  directory; a warning is counted at least once (twice is possible, fewer
+  never); the hash format and the `training_caps` warning belong to 3d.6.
+- **Token efficiency (owner, with the "commit" for 3d.5, verbatim):**
 
-## Owner answers
+  > Token efficiency — never weaken a check, never hide a failure, a skip or a warning:
+  >
+  > - Add a quiet mode to the gate and use it by default. On success each target prints
+  >   one summary line that always includes the counts of passed, failed, skipped and
+  >   warnings. On failure it prints the full output of every failing test and every
+  >   finding, with full tracebacks. The full verbose run stays available as before.
+  >   No third-party output filters or command-rewriting hooks.
+  > - While building a step, run only the tests relevant to what you changed; run the
+  >   full gate once before the summary, and always before proposing a commit.
+  > - Move completed plan steps out of PROGRESS.md into PROGRESS-ARCHIVE.md. PROGRESS.md
+  >   keeps only the current state, the remaining plan, open items, all approved
+  >   deviations, the scoped exception, the rewrite and 3g plan, and "Platform spec
+  >   changes pending". Keep CLAUDE.md to rules only; move history out of it. Nothing
+  >   is deleted, only moved.
+  > - Read the specs by section for the step at hand, not whole.
 
-Recorded from the owner's answers to the open questions (§5 of the master
-prompt). "Approved" means the assistant's stated default is implemented
-exactly.
+  `make lint`, `make test` and `make docs` are quiet by default: one line
+  per target with the counts of passed, failed and skipped items and of
+  warnings, the complete output of every failing step first, step logs in
+  `build/gate/<target>/`; `VERBOSE=1` prints
+  everything as before (CI uses it).
 
-### A. Inputs, process, environment
+## Current state
 
-- **A1** `specs/` copies: approved; byte-identical, sha256 above.
-- **A2** Git process: see [Process rules](#process-rules-in-force).
-- **A3** Version verification: the owner will allow network access for the
-  domains listed in `infra/docs/IMPLEMENTATION_NOTES.md`. Until then items stay
-  `TODO(verify)` and `lock-check` / `verify-todos` keep failing; this is the
-  correct behavior and is not worked around.
-- **A4** Dev tools: approved; user space only, pinned, nothing via apt or under
-  `/etc`. PostgreSQL for integration tests: a pinned, checksum-verified static
-  `micromamba` installs `postgresql` from conda-forge, pinned to the same major
-  version as the Postgres container in infra's `versions.lock.yml`, into a
-  user-space prefix; a throwaway cluster runs on a Unix socket in a temporary
-  directory; tests read the DSN from an environment variable; CI uses a service
-  container of the same major version.
+- Working branch `moving/on` since the one-time rewrite (3g), in the
+  fresh repository `pokus-infrastructure` (this checkout's `origin`; the
+  owner created it instead of renaming the old one); the owner merges to
+  `main`. The infrastructure is at the repository root
+  since 3f; the state before the move, with the records of 3d, is in the
+  [archive](PROGRESS-ARCHIVE.md#moved-from-progressmd-with-3f).
+- Committed: infra steps 1-14, I1 and I2, plan items 3a-3f (3d steps 1-8
+  with 3d.4b). The commit of each is in the table below and, for the steps
+  before section J, in the archive.
+- 3e, the self-test without provisioning, is committed (`5ea9b82`), with the
+  owner's decisions after it (`bef51af`); the CI runs of both passed every
+  job but the known red `lock-check` (38 `TODO(verify)` errors and the
+  postgres tag warning).
+- 3f moved everything below `infra/` to the repository root with `git mv`,
+  so history follows: one `CLAUDE.md`, the workflows in `.github/workflows/`
+  without wrappers (the former `repo-root.yml` check is the `privacy` job
+  of `ci.yml`), bootstrap's tree hash and dirty check over the whole
+  repository, release tags `vX.Y.Z`, the platform spec master removed and
+  the infra master renamed (Q13). Its record is in
+  `docs/IMPLEMENTATION_NOTES.md`, "Move to the repository root (plan step
+  3f)". It is `68967e9`; its CI passed every job but the known red
+  `lock-check` (38 marker errors, and 2 warnings: the postgres tag and the
+  moved `ubuntu:24.04` tag of `ci_images.ubuntu_2404`), the new `privacy`
+  job, all six `check-mode` and all six `check-mode-extended` jobs,
+  `release-package` and `lock-collections` included. The scoped commit
+  exception ended with the 3f commit: every later commit waits for the
+  owner's "commit".
+- After 3f (owner decisions): `make lock-pins` pinned the vendor sources of
+  provisioning item 0 that this environment reaches (`1a46f64`; GitHub's
+  SSH host keys wait for the owner's run), and every test VM recipe meets
+  preflight's minimums (`b7be7ff`) (`docs/IMPLEMENTATION_NOTES.md`, "Pins
+  of the vendor sources (make lock-pins)" and "Sizes of the test VMs (after
+  3f)"). CI of both passed every job but the known red `lock-check` (24
+  marker errors, the postgres and `ubuntu:24.04` tag warnings, no error for
+  any new pin); the extended check-mode lanes of `ubuntu_2404` and
+  `debian_13` passed with the `tailscale` and `incus` roles, which they no
+  longer skip; `release-package` and `lock-collections` ran for `1a46f64`
+  and passed.
+- 3f-1 (owner, after 3f): recorded with the QA specification in `eb02d37`;
+  its CI passed every job but the known red `lock-check` (24 marker errors,
+  the postgres and `ubuntu:24.04` tag warnings). The owner decided the
+  proposal (verbatim under 3f-1 in the remaining plan) and authorized one
+  spec edit, limited to D1, D2, A, B, C, E and F: it is `4591db9`. D1, the
+  first feature step (the install record and the components that existed
+  before pinka), is `8558bee`; its record is in
+  `docs/IMPLEMENTATION_NOTES.md`, "3f-1.D1 Pre-existing components and the
+  install record". CI of `8558bee`: every job passed but the known red
+  `lock-check` (24 marker errors, the postgres and `ubuntu:24.04` tag
+  warnings) and both `almalinux_9` check-mode lanes, which failed in the
+  install record module: `datetime.UTC` does not exist on the container's
+  Python 3.9. The fix (`timezone.utc`, and the module's tests on CPython 3.9
+  in `make test-py39`) is `74377ec`; its CI passed every job but the known
+  red `lock-check` (24 marker errors, the same two tag warnings), all twelve
+  check-mode lanes included. The small spec edit after D1 (the owner's
+  decisions 1 and 4, with the owner's new QA specification) is `0378425`.
+  Found while building the GPU guard: the installer wrote `null` in two
+  forms depending on what the same process had written before; the fix
+  (every written file the same bytes, the equivalence test with the replay
+  in its own process, and the CI job `test-random-order`) is `32b2c95`,
+  recorded in `docs/IMPLEMENTATION_NOTES.md`, "Installer: the same bytes in
+  every written file". The GPU support guard (decision 1: a driver only for
+  a GPU the pinned release's open kernel module supports, from NVIDIA's
+  `supported-gpus.json` pinned in `versions.lock.yml`) is the commit after
+  it, recorded in `docs/IMPLEMENTATION_NOTES.md`, "GPU support guard
+  (decision 1 after D1)"; the three were pushed together. CI of `37c062e`
+  (run 39217765497): every job passed (privacy, lint, test, the new
+  test-random-order, docs, all six check-mode and all six
+  check-mode-extended lanes, release-package, lock-collections) but the
+  known red `lock-check` (24 marker errors, the postgres and `ubuntu:24.04`
+  tag warnings; its new `gpus` check recomputed both lists). The test job
+  skipped 8 tests, as on every earlier run that was reported as green
+  without naming them: the 7 `nft -c` checks of
+  `ansible/tests/test_templates.py` (`test_nft_ruleset_is_valid` with
+  `default`, `extra-interfaces-grafana`, `vm-targets` and `lxd`,
+  `test_telemetry_guard_is_valid`, `test_inference_guard_ruleset`,
+  `test_split_guard_ruleset`: GitHub's runner refuses the unprivileged
+  network namespace) and
+  `bootstrap/tests/test_bootstrap.py::test_git_state_refuses_a_foreign_checkout`
+  (needs root). The CI skip list (owner, after `37c062e`) makes them run in
+  CI through `sudo -n` and fails any skip it does not name: `006c40d`. CI of
+  `006c40d` (run 39225936248): every job passed (privacy, lint, test,
+  test-random-order, docs, all six check-mode and all six
+  check-mode-extended lanes; release-package in run 39225936214) but the
+  known red `lock-check` (24 marker errors, the postgres and `ubuntu:24.04`
+  tag warnings); `lock-collections` did not run (the lock is unchanged) and
+  `links` runs weekly. The test job ran the 8 tests by name: the 7 `nft -c`
+  checks and `test_git_state_refuses_a_foreign_checkout` passed (pytest 3286
+  passed, none skipped); the Python 3.9 runs passed 143 with the one listed
+  skip (the reference validator test of `preflight/tests/test_fixtures.py`,
+  named in the log), 223 and 7. The per-file process run (owner decision 3
+  after `37c062e`) is `2f27132`. CI of `2f27132` (run 39235137608): every
+  job passed but the known red `lock-check` (24 marker errors, the postgres
+  and `ubuntu:24.04` tag warnings), after one re-run of two jobs:
+  `check-mode (ubuntu_2404)` and `check-mode-extended (fedora_44)` failed in
+  `make setup` on the first attempt, both at 10:08 UTC with the same Galaxy
+  answer (the version listing of `community.crypto` without `results`;
+  "nothing unverified was installed"), while the 18 other jobs downloaded
+  the same collections; both passed on the re-run. `test-isolated`: 88
+  files, 3290 passed, none skipped, 308 s of tests, 6 min 39 s for the job,
+  so on every push; `test`: pytest 3290 passed; `test-random-order` (seed
+  20261019): 3290 passed; release-package (run 39235137319) passed. JUnit
+  XML of every test job (owner, with the "commit" for the per-file run) is
+  `fc7cc3b`. CI of `fc7cc3b` (run 39252260630), every job on its first
+  attempt: privacy, lint, test, test-random-order, test-isolated, docs, all
+  six check-mode and all six check-mode-extended lanes passed;
+  release-package (run 39252260657) passed; `lock-check` is the known red
+  (24 marker errors, the postgres and `ubuntu:24.04` tag warnings);
+  `lock-collections` did not run (the lock is unchanged) and `links` runs
+  weekly. `test`: pytest 3293 passed, the Python 3.9 runs as before. The
+  artifacts of the run: `junit-test-attempt-1` (ID 12186238418, sha256
+  `eeb1323e…dcd5`, 4 files: `pytest.xml` and the three `py39-*.xml`),
+  `junit-test-random-order-attempt-1` (ID 12185809509) and
+  `junit-test-isolated-attempt-1` (ID 12185269956); this environment cannot
+  read them (their download host, `productionresultssa8.blob.core.windows.net`,
+  is not in its network allowlist), the owner can. The Galaxy retry, the
+  re-run rule and the action pin check (owner, with the "commit" for the
+  JUnit XML) are `5fc33c1`. CI of `5fc33c1` (run 39260135484), all 20 jobs
+  on their first attempt, no re-run: privacy, lint, test,
+  test-random-order, test-isolated, docs, all six check-mode and all six
+  check-mode-extended lanes passed; `lock-check` is the known red (24
+  marker errors, the postgres and `ubuntu:24.04` tag warnings); `links`
+  runs weekly. release-package (run 39260135443) passed;
+  `lock-collections` (run 39260135548) ran, because the commit changed its
+  client, and passed: 11 requests to Galaxy, each "attempt 1 of 3", and
+  "the lock's 5 artifact pins match Galaxy". The pre-existing access
+  follow-up (D1 follow-up, decisions 3 and 4 after D1, with SSH1) is
+  `16bf749` (`docs/IMPLEMENTATION_NOTES.md`, "Pre-existing access (D1
+  follow-up, decisions 3 and 4 after D1)"). CI of `16bf749` (run
+  39304851835), all 20 jobs on their first attempt, no re-run: privacy,
+  lint, test, test-random-order, test-isolated, docs, all six check-mode
+  and all six check-mode-extended lanes passed; `lock-check` is the known
+  red (24 marker errors, the postgres and `ubuntu:24.04` tag warnings);
+  `links` runs weekly; release-package and lock-collections did not run
+  (no change to the lock, its tooling or the Makefile). The owner's
+  decisions with its "commit" (approved deviations DL1 and AG1, the
+  question on the login detection), AG1's correction and the CI minutes
+  (the owner's new plan after `16bf749`, item 1) are `6aa6eab`, committed
+  and not pushed (the next push is the rewritten history). The owner's
+  decisions after the public-readiness audit follow as commits without a
+  push: the test computers generalized to machine classes, the privacy
+  scan's additions, the project files; then the rewrite proposal.
+- Everything that needs a VM, a real host, Incus, Docker or a GPU waits for
+  the owner, as listed under
+  [Owner deliverables pending](#owner-deliverables-pending).
 
-### B. One-repository mapping
+### Status of the plan of section J
 
-- **B1** Spec copies: approved, including `docs-site/docs/BUILD_PROMPT.md` =
-  full docs spec; spec copies and `IMPLEMENTATION_NOTES.md` are excluded from
-  MkDocs builds.
-- **B2** Ground-truth exposure from monorepo deployment: approved exactly as
-  proposed: root-only bare mirror in `/var/lib/pokus/git/` (0700); tag and
-  signature checks there; `git archive` of a single subtree per deployment;
-  never any `.git` in deployed paths; `catalog/` only into
-  `/srv/pokus/catalog/<ref>/` (root:pokus-gt 0750); `DEPLOYED_FROM.json`
-  provenance file in the contract and used by the platform's official check.
-  Add a doctor check and a test asserting that no deployed path contains
-  `.git` or catalog content outside `/srv/pokus/catalog`.
-- **B3** Bootstrap git checks: record the repository commit plus the `infra/`
-  tree hash; dirty-tree check limited to `infra/` (platform and catalog are
-  deployed from tags via the mirror, never from the working tree).
-- **B4** Tags and versions: prefixes `infra-v`, `platform-v`, `catalog-v`,
-  `docs-v`; "deployed from a tag" = the commit carries a tag with that
-  component's prefix; RC triple = three commits of this repository plus each
-  component's tree hash; all components start at 0.1.0; the owner creates tags.
-- **B5** CI: canonical `<component>/.github/workflows/ci.yml` calling make
-  targets, thin root workflows with `working-directory` and `paths` filters.
-  Runs on GitHub Actions, but only lint, unit, type checks, docs
-  build/coverage/drift, lock-check and syntax/check-mode jobs. Never
-  provisioning, distro VM harnesses or real-host tests on Actions.
-- **B6** Catalog lint dependency: a permanent uv path dependency on
-  `../platform` inside this monorepo (lint always runs with the platform of the
-  same commit). `catalog/README` documents that a future split replaces it with
-  a git URL pinned by commit.
-- **B7** Starter catalog for platform tests: `POKUS_TEST_CATALOG`, Makefile
-  default `../catalog`; no vendored copy.
-- **B8** Starter content is written into `catalog/` during platform step 4;
-  Phase 3 completes `catalog/` as a self-contained component.
-- **B9** Docs site: no submodules; `git archive` of `infra/`, `platform/`,
-  `catalog/` at the given commits.
+| Item | Content | Status | Commit |
+| --- | --- | --- | --- |
+| 3a | `PROGRESS.md`: final commit rule, rename decisions, plan; root `CLAUDE.md` with the commit rule | done | `836cfce` |
+| 3b | Spec update (contract v2, naming, rename decisions) | done | `d99d2ed` |
+| 3b2 | Spec edit before 3c (proposals of steps 7-11, items A-D, isolation probe per profile) | done | `169266e` |
+| 3c | Rename `pokus` → `pinka`/`potka` | done | `63b7e56` |
+| 3c2 | Images free of project names; workflows read `PINKA_PRIVACY_DENYLIST` | done | `502f15c` |
+| 3c3 | Doctor's firewalld zone check | done | `3ce8d43` |
+| 3d | Contract v2, steps 1-8 (with 3d.4b between 4 and 5) | done | `912b240` (1), `9ece578` (2), `212121c` (3), `9b932f6` (4), `9c152a3` (4b), `3da2671` (5), `a686e28` (6), `0d72e54` (7), `e525a1e` (8), `a425c7f` (CI fix of 8 and the `release-package` job) |
+| 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
+| 3f | Move infra to the repository root | done | `68967e9` |
+| After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on` | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access) |
+| Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
+| 3g | History rewrite (identities and trailers), published as the fresh repository `pokus-infrastructure` instead of the rename (owner, after the rewrite) and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions, the rewrite (owner's "rewrite") and the commit after it done; the owner created the fresh repository and pushed `main` and `moving/on` to it; then making it public | `a716eae` (the commit after the rewrite) |
+| 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
 
-### C. Integration contract
+## Remaining plan
 
-- **C1** One merged `contract_version 1`, byte-identical `docs/contracts.md` in
-  `infra/` and `platform/` (added to the platform layout), a CI check that fails
-  if the copies differ. Spec files are not edited; `contracts.md` is the
-  resolved contract and each resolution cites the sections it reconciles.
-- **C2** Agent-reachable sockets: gateway `agent.sock`, executor socket,
-  orchestrator `svc.sock`; every other `/run/pokus/*` path and the Postgres
-  socket in `InaccessiblePaths`. The orchestrator's `svc.sock` endpoints
-  enforce peercred allowlists so `pokus-agent` can only call the agent-session
-  endpoints.
-- **C3** vLLM deployment switching: socket-activated root helper unit reachable
-  only by `pokus-orch` (peercred-checked); argument = deployment spec ID only,
-  validated against `/etc/pokus/vllm/deployments/`; the orchestrator keeps full
-  hardening; no sudo anywhere.
-- **C4** VM telemetry: the VM alternative is in the merged contract; Incus
-  proxy-device support for VMs is verified in infra step 6; if unsupported, the
-  ACL-restricted route to a dedicated collector listener is used.
-- **C5** Inference modes `local | remote | scripted`, `endpoints.toml`,
-  `/etc/pokus/inference/` and deployment specs on both nodes are in the merged
-  contract.
-- **C6** OPA on `127.0.0.1:8181`, started with authorization enabled and a
-  `system.authz` policy allowing only decision queries (GET/POST on
-  `/v1/data/pokus/...`) and health, denying all policy and data writes. Verify
-  that writes are rejected; add a doctor check and a test.
-- **C7** `<svc>` short names `orch, agent, gw, exec, inject, verify, eval`;
-  Postgres password files keep role names.
-- **C8** Socket permissions as proposed (group + POSIX ACL where two principals
-  are needed, peercred allowlists everywhere), with the group + peercred
-  fallback if ACLs are unavailable on `/run`; doctor verifies effective
-  permissions.
-- **C9** Contract gaps (a)-(h) approved as proposed. For (e) LoRA adapters:
-  only what the specs define (adapters table, deployment `adapter_ids`, storage
-  path `/srv/pokus/models/adapters/<name>/<sha256>/` with a `MANIFEST.json` the
-  platform imports read-only and whose hashes infra's models role verifies).
-  No training or adapter-creation flow.
-- **C10** Ports: proposed in infra step 1 (`infra/docs/contracts.md#ports`).
-  Everything on `127.0.0.1`, no common-collision ports (avoid 3000, 5432, 8000,
-  8080, 9090 defaults where possible), documented in `contracts.md`.
+From section J of the owner answers; its completed items are in the
+[archive](PROGRESS-ARCHIVE.md#j-plan-after-infra-step-14-this-repository-becomes-pokus-infrastructure),
+the records of 3d and the definition of 3f in
+[Moved from PROGRESS.md with 3f](PROGRESS-ARCHIVE.md#moved-from-progressmd-with-3f).
 
-### D. External verification hooks
+This repository holds `pokus-infrastructure` (its fresh repository of that
+name follows in 3g): infra was finished here and moved to the repository
+root (3f). The platform, the catalog and the Pokus
+docs site live in the separate repository `pokus-platform`, which the owner
+starts; the assistant does not start them. Each remaining item ends with
+its checks green and a commit proposal, and waits for the owner's
+"commit".
 
-The repository that consumes these hooks is not part of this build and its
-instructions will not be provided. The hooks below are part of the merged
-contract.
+- **3e** Infra self-test: everything that runs without provisioning, as in
+  the master prompt's self-test rules (never weaken tests; "not tested"
+  stated honestly). Anything that needs a VM or a real host is described
+  exactly (what and where) and runs only after the owner's confirmation.
+  Results, the faults it found, what ran in CI instead, and the exact
+  commands for each untested part: `docs/IMPLEMENTATION_NOTES.md`,
+  "Infra self-test without provisioning".
+- **3f-1** Features before 3g (owner, after 3f, verbatim; recorded with
+  the first commit approved after it):
 
-- **D1** `lab_mode: production | staging`. Staging hosts use their own vault,
-  `/srv/pokus`, Tailscale identity (`tag:pokus-qa`) and signing key, never pair
-  with or write to a production host; `scripted` inference backends are
-  accepted only in staging.
-- **D2** Attestation format owned and verified by the platform (JSON Schema in
-  `platform/schemas/`): fields `schema_version`, `attestation_id` (ULID), `rc`
-  (infra/platform/catalog commits), `tree_hashes` (same three),
-  `verification_run_id`, `verifier_commit`, `suites`, `verdict` (`pass|fail`),
-  `issued_at` (UTC ISO 8601 Z), `key_id` (sha256 of the public key).
-  Canonicalized with RFC 8785 (JCS); detached ed25519 signature in
-  `<file>.sig` (base64); trusted public keys as PEM in
-  `/etc/pokus/qa/trusted-keys/`. The official check requires verdict `pass`, a
-  trusted key, a valid signature, and rc commits + tree hashes equal to the
-  `DEPLOYED_FROM.json` of the deployed platform and catalog and the infra commit
-  recorded by bootstrap.
-- **D3** `scripted` backend: any OpenAI-compatible endpoint configured in
-  `endpoints.toml`; no scripted model server is built; runs using it are always
-  `official=false`.
-- **D4** `qa:run` / `qa:skip` markers: syntax implemented and validated by a
-  docs lint (env labels `E0`-`E3` as opaque strings); nothing here executes them.
-- **D5** `last_verified` with no verification runs:
-  `{date: null, rc: null, by: null}`, flagged by CI, never fabricated.
-- **D6** `make site`: `QA=` optional; the footer reads "no attestation" when absent.
+  > NEW PLAN ITEM 3f-1 — features before 3g. Record it in PROGRESS.md with the next
+  > commit I approve. Order from here: commits 1 and 2, then 3f-1, then the
+  > real-machine tests on my computers, then the history rewrite, 3g and 3h.
+  >
+  > 3f-1 works like 3d: first one proposal covering all features below, with the
+  > exact list of spec sections each changes and the effort. I decide, then authorize
+  > one spec edit. Then each feature is built as its own step, in the order
+  > D, A, B, C, E, F, G, each step with the gate green, docs alongside, PROGRESS.md
+  > updated, CI reported job by job after the push, and waiting for my "commit".
+  > Do not build anything before my decision.
+  >
+  > 3f-1.D Uninstallation (first, because my test computers are not disposable).
+  > A full uninstall of the lab (for example pinka uninstall). It must:
+  > - remove only what pinka itself installed or created. Bootstrap records at install
+  >   time what was already present (packages, repositories, users, groups, services,
+  >   firewall configuration, Docker, Incus, Tailscale) and what it added; uninstall
+  >   removes only the added part and leaves the rest as it found it. Say how existing
+  >   hosts without that record are handled.
+  > - reverse everything else bootstrap does: stop and remove units, timers, sockets
+  >   and containers; Incus projects, profiles, networks, images and the storage pool
+  >   it created; firewall rules; vendor repositories, keys and package holds;
+  >   accounts and groups; sudoers and other drop-ins; /etc/pinka, /opt/pinka,
+  >   /run/pinka, /var/lib/pinka, /usr/local paths.
+  > - Tailscale: both my computers already run Tailscale on my own tailnet. If
+  >   Tailscale is already installed and logged in, bootstrap must not log it out,
+  >   re-authenticate it, change its tags, hostname or settings, or replace its
+  >   package; it uses the existing node, or refuses with a clear message if the
+  >   existing node cannot be used. Uninstall logs out or removes Tailscale only if
+  >   pinka installed or joined it. The same rule for Docker and any other component
+  >   that was already present and in use.
+  > - treat data separately: /srv/pinka, the database, backups and models are kept
+  >   by default. Before deleting anything, offer a backup. Deleting data needs a
+  >   separate flag and typing the machine name, like pinka platform purge.
+  > - show a dry-run of everything it will remove before it removes anything;
+  >   work on partial or failed installs; be idempotent; have its own exit codes.
+  > - leave a report of what was removed and what was kept.
+  > - be reachable from the installer TUI as well, behind the same typed confirmation.
+  > - be testable: test-distros gets a lane that installs, uninstalls and checks the
+  >   host against a snapshot taken before install (packages, users and groups,
+  >   enabled units, firewall rules, listening ports, files under the pinka paths,
+  >   Tailscale and Docker state), failing on any difference not listed as kept on
+  >   purpose. Include a variant where Tailscale and Docker were present before the
+  >   install.
+  >
+  > 3f-1.A Requirements computed from the user's choices.
+  > The infrastructure must also serve small-scale use, independent of any platform.
+  > The lab must not decide the user's scale; it only checks that the user's own
+  > choices fit.
+  > - For each component (PostgreSQL, the observability stack, OPA, Incus and each
+  >   target, vLLM including host RAM while loading a model, a training job, the
+  >   installer and bootstrap itself) give your estimate of RAM, CPU and disk, and
+  >   where each number comes from.
+  > - Memory: an absolute floor for the core stack below which preflight refuses;
+  >   everything above it is computed from the enabled features and choices
+  >   (gpu_inference, gpu_training, node_role, concurrent targets, and vLLM's host RAM
+  >   computed from the selected model's size). Between the floor and the recommended
+  >   value preflight reports degraded and asks for consent. Every threshold tolerates
+  >   the kernel's reservation, so a machine with the nominal amount passes (16 GiB of
+  >   RAM shows about 15.1-15.6 GiB in MemTotal). Fixtures just above and just below
+  >   each threshold.
+  > - Disk: drop the fixed 150 + 100 GiB. Split it in two:
+  >   (a) What is known at install time, preflight computes and checks: the selected
+  >       models' sizes (from the model lock), the container images of the enabled
+  >       features, the configured Incus pool size, the golden images to build, and a
+  >       small fixed floor for pinka itself. If it does not fit, refuse and show the
+  >       shortfall item by item (for example "model X: 10 GiB, missing 8 GiB").
+  >   (b) What grows with use (telemetry, artifacts, datasets, adapters, backups) is
+  >       not a reason to refuse. Pool size and every retention setting are
+  >       configurable; the installer shows the expected growth for the chosen
+  >       settings; doctor monitors free space and warns before it runs out.
+  > - These values are provisional until the first real installs; the real-machine
+  >   tests measure the real footprint at idle and during a run, so the final values
+  >   come from measurement.
+  > - Test VM sizes and the drift test then follow the computed minimum for the
+  >   configuration each target installs.
+  >
+  > 3f-1.B Capacity plan screen in the installer.
+  > Merge the resource, storage and GPU/model choices into one capacity plan screen:
+  > - the detected machine: RAM, CPU, free disk per mount point, GPU with VRAM,
+  >   compute capability and driver state;
+  > - the choices: features, node role, model (only models that fit the GPU, each
+  >   with its size), Incus pool size, concurrent targets, retention settings;
+  > - live budget bars for RAM, disk and VRAM, each expandable to its items; green
+  >   fits, yellow degraded (needs consent), red does not fit (shows the shortfall
+  >   and blocks going on);
+  > - the expected disk growth per day and week for the chosen retention, and roughly
+  >   when the disk fills at that rate;
+  > - every number marked as measured or estimated.
+  > The decision logic stays in preflight; the screen only shows it. A
+  > non-interactive install with an answers file runs the same computation and writes
+  > the same breakdown to the log. Snapshot tests for fits, degraded and does-not-fit.
+  >
+  > 3f-1.C Ubuntu 26.04 LTS as a supported distribution.
+  > It is the current Ubuntu LTS. Is there any reason it cannot be supported? If not,
+  > add it as supported next to 24.04: Docker, Zabbly Incus, Tailscale, NVIDIA driver
+  > and Container Toolkit packages verified and pinned through make lock-pins, a CI
+  > check-mode image, a test-distros target, preflight fixtures. It is claimed as
+  > supported only after its test-distros run passes; until then mark it as pending
+  > verification.
+  >
+  > 3f-1.E DCGM wiring. A setting that silently does something else is not
+  > acceptable: when dcgm is chosen, compose runs the DCGM exporter at the pinned
+  > digest instead of the nvidia-smi exporter, with a test. Its driver and CUDA
+  > compatibility is checked on the GPU host; record that as an open check.
+  >
+  > 3f-1.F Zabbly version per architecture. Approved as a spec deviation; fold it
+  > into the same spec edit.
+  >
+  > 3f-1.G Real-machine test specification — review only, last step of 3f-1.
+  > I attach specs/pokus-infrastructure-qa-spec.md, written outside this session. It
+  > instructs a test agent that runs on my own test computers and does, one test at a
+  > time, the tests you cannot do because they need real machines, VMs, KVM, Incus,
+  > Docker or a GPU. There is no separate QA repository; the agent only reads a
+  > checkout and writes reports, which I pass to you.
+  > Add the file verbatim to specs/ in the commit that records 3f-1, record its sha256
+  > in PROGRESS.md, and treat it as read-only like the other spec masters: never edit
+  > it, and it is not part of your gate. As the last step of 3f-1, review it against
+  > the spec masters, the approved deviations and what was built, without changing
+  > it, and give me a list of:
+  > - names, paths, commands, flags or behaviors it states that differ from the specs
+  >   or from what was built;
+  > - real-machine checks the specs or the 3f-1 features need that it does not cover;
+  > - anything it asks for that the specs do not define, or that could be done
+  >   without a real machine and therefore belongs to CI instead.
+  > I decide each point and edit the file myself. From then on, give me the
+  > real-machine tests as the file numbers them (4.1, 4.2, ...), so the agent and I
+  > use the same numbers.
 
-### E. infra
+  Other decisions given with it (owner, verbatim): "Tailscale rpm: stays
+  unverified for now; it must be closed before any rpm-family target is
+  claimed as tested." "Base image pins: approved, including the lock-check
+  warning."
 
-- **E1** Researchers: placeholders only — `researcher1` (admin),
-  `researcher2`, `researcher3`, display names "Researcher 1/2/3". No key files
-  are ever committed; real researchers and keys are entered through the TUI on a
-  deployed host and live in that lab's private configuration. Doctor and TUI
-  flag missing keys.
-- **E2** Tailscale tags: `tag:pokus-lab` (production), `tag:pokus-qa` (staging).
-- **E3** Git URL for deployments: required variable `pokus_source_repo`, asked
-  by the TUI, never hard-coded; examples use
-  `git@github.com:example-org/pokus.git`. Authentication: SSH with a read-only
-  deploy key generated on the host; Git host keys pinned in a managed
-  `known_hosts` (for GitHub, its published fingerprints pinned in
-  `versions.lock.yml`); anonymous public HTTPS clones also supported. No
-  personal tokens.
-- **E4** Backup destination: default "configure later" (doctor warns). restic
-  over SFTP to a deployer-chosen host is the primary path, rest-server
-  secondary, local path test-only. Examples use placeholder hosts only
-  (`backup.example.com`, documentation IP ranges).
-- **E5** Disk safety: approved.
-- **E6** Host vars: only `example-machine.yml` and `tests/answers/ci.yml` committed.
-- **E7** Model candidates: permissive, non-gated licenses first (Apache-2.0,
-  MIT or equivalent); gated or custom-license models only listed separately and
-  only with owner approval; presented in step 7.
-- **E8** Distro matrix: changes presented in step 2. Only non-EOL releases in
-  any tier; Ubuntu 26.04 added as `tested` if released and supported by Docker,
-  Incus, NVIDIA toolkit and Tailscale; EOL releases dropped; supported tier
-  stays Ubuntu 24.04 + Debian 13 unless a reason is shown. Incus: newest LTS
-  line packaged for the supported-tier distros; report the finding.
-- **E9** RHEL 8: explicit `unsupported` row for RHEL-compatible major 8 before
-  the `ID_LIKE` rows; remediation names the cgroup v2 kernel argument and
-  recommends a supported release; the `rhel8-cgroup-v1` fixture expects
-  unsupported.
-- **E10** YAML in preflight: generated, committed, drift-checked JSON.
-- **E11** Lockfiles: `infra/pyproject.toml` + `uv.lock` for dev tools only; the
-  installer keeps its own lockfile; `bootstrap/requirements.lock` stays separate.
-- **E12** Certificates and keys: `community.crypto`, pinned.
-- **E13** Researcher DB access: separate reader socket directory (group
-  `pokus`) and reader credential 0640 group `pokus`; the reader role can never
-  see the `gt` schema (tested).
-- **E14** Metrics path: approved (collector Prometheus exporter, scraped).
-- **E15** Compose unit pattern: approved.
-- **E16** `require_signed_tags`: default `false`; SSH-signed tags against a
-  committed allowed-signers file when `true`; both paths implemented and tested.
+  Decisions on the 3f-1 proposal (owner, with the "commit" for `eb02d37`,
+  verbatim):
 
-### F. platform
+  > 1. D in two steps (D1, D2): approved.
+  > 2. Adopting an existing Tailscale node: approved, including the refusal when
+  >    Funnel or Tailscale SSH is on. Additions:
+  >    - an adopted node may not carry tag:pinka-lab and its key may expire with a
+  >      personal account: doctor reports that as a warning, not a failure, and the
+  >      docs explain the trade-off;
+  >    - on an adopted node, tailscale serve for Grafana or docs is off by default and
+  >      needs explicit consent; uninstall removes only the serve entries pinka added.
+  > 3. Existing Docker: approved: pinka never writes daemon.json and never restarts
+  >    a Docker it did not install. Verify whether the pinned Docker version enables
+  >    CDI by default. If it does, keep the rule the same everywhere. If it does not,
+  >    pinka may configure CDI only on a Docker it installed itself (per the install
+  >    record); on a pre-existing Docker it refuses with the exact change, as
+  >    proposed. The DOCKER-USER rules pinka adds for Incus bridges must not affect
+  >    existing containers' networking (real-machine test 4.4) and are removed by
+  >    uninstall.
+  > 4. Hosts without an install record: approved.
+  > 5. Exit codes 80 and 81: approved.
+  > 6. Memory floor 8 GiB nominal and the 0.94 tolerance: approved.
+  > 7. Image sizes as compressed size x 2.5: approved as an estimate; once an image
+  >    is pulled on a host, preflight and doctor use its real size there.
+  > 8. Incus on Ubuntu 26.04: option (a), Ubuntu's incus from universe. State in the
+  >    support matrix that universe has no guaranteed security updates; make
+  >    lock-pins report when Zabbly's lts-6.0 publishes a 26.04 suite, so the choice
+  >    is revisited.
+  > 9. "Pending verification" cleared only by a passing test-distros result: approved.
+  > 10. DCGM without profiling metrics and without added capabilities: approved.
+  >
+  > Addition to D1: LXD and Podman are pre-existing components too. Detect them;
+  > never change, stop or reconfigure them; check that Incus next to LXD does not
+  > clash (bridge names, dnsmasq, firewall, storage); if it would, refuse with a
+  > clear message instead of installing.
+  >
+  > Spec edit: I authorize one spec edit now, limited to 3f-1 D1, D2, A, B, C, E and F
+  > with these decisions. Edit the spec master and docs/BUILD_PROMPT.md together, keep
+  > them byte-identical, record the checksums, and show me a section-by-section
+  > summary of the diff with the commit proposal. Specs are read-only for you again
+  > after that commit. Then build D1 and wait.
 
-- **F1** SQLAlchemy Core + psycopg 3, with an ADR.
-- **F2** Dependencies approved as listed (httpx, PyYAML, jsonschema, pyarrow,
-  numpy, scipy, matplotlib, zstandard; own ULID, CloudEvents, canonical JSON
-  and unified-diff code) and an argparse CLI. Canonical JSON implements RFC 8785
-  (JCS) exactly, tested against the RFC's test vectors. The unified-diff
-  applier rejects any fuzz or offset mismatch. All property-tested; versions
-  verified and locked.
-- **F3** Reports: compute in Python, code-free `.qmd` templates, no Jupyter.
-- **F4** Approval delivery: long-poll with the campaign's approval timeout.
-- **F5** Logprobs: JSONL + zstd.
-- **F6** MTTD/MTTR: Kaplan–Meier median and IQR plus a resolution-by-time
-  curve; the method is documented in the metrics reference.
-- **F7** `pokus dev`: records and artifacts through new orchestrator
-  `api.sock` endpoints, stored `kind=dev`, `official=false`; no new DB role.
-- **F8** Admin = membership in `pokus-admin`.
-- **F9** `pokus catalog show`: as specified (pokus-gt members only), documented.
-- **F10** Policy rule 8: `budgets.max_same_action_repeats` from the agent config.
-- **F11** LLM-as-judge: implemented, disabled by default.
+  Checked for these decisions (2026-10-18, details in
+  `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"):
+  - Decision 3: the pinned Docker Engine 29.8.2 enables CDI by default. In
+    the moby source at tag `docker-v29.8.2` (`daemon/command/daemon.go`,
+    sha256 `39f0b29b…d712b`), `cdiEnabled` returns true on Linux unless
+    `features.cdi` is set, and false only when it is set to `false`; the
+    default changed in 28.2.0 (28.1.1 registered CDI only with
+    `features.cdi: true`). `docker info` reports no CDI spec directories
+    when CDI is off. So the rule is the same everywhere: pinka writes no
+    CDI setting on a Docker of 28.2 or later, and a pre-existing Docker
+    with CDI off is refused with the exact change when a GPU feature is
+    on. The one exception follows the decision's other branch: a GPU
+    host whose Docker pinka installs from a distribution package older
+    than 28.2 (possible only on openSUSE, whose Docker pin is still
+    unverified) gets `features.cdi: true` in pinka's own `daemon.json`.
+  - Item C: Ubuntu 26.04 (`resolute`) ships `python3` 3.14.3-0ubuntu2 in
+    main (the signed `InRelease` checked with the Ubuntu archive key, the
+    index's sha256 matching it).
 
-### G. catalog
+  Decisions with the "commit" for the spec edit and D1 (`4591db9`,
+  `8558bee`) (owner, verbatim):
 
-- **G1** Splits `train | dev | test`; all eight starter scenarios in `dev`.
-- **G2** Blueprints: DOCKER-001 → docker-host, DB-001 → pg-primary, all others
-  including CONTROL-000 → web-nginx-flask; the redis-cache blueprint has no
-  starter scenario. Full designs presented in platform step 4.
+  > commit both: commit 1 (spec edit) first, then commit 2 (D1), then push and report
+  > CI job by job, including whether install_record passes in every check-mode lane.
+  >
+  > Decisions:
+  > 1. GPU driver: skip on computer B is right, but fix the general case in D2's step
+  >    or as its own small commit: with install_nvidia_driver: auto, bootstrap never
+  >    installs a driver for a GPU below the minimum compute capability or one the
+  >    pinned driver branch does not support; preflight marks it as no usable GPU and
+  >    the install continues without GPU features. Fixtures for Kepler and Pascal
+  >    cards. A user must not need to set skip by hand.
+  > 2. LXD guests: DHCP and DNS only on LXD bridges, approved. Confirm that pinka's
+  >    rules leave LXD guests' and Docker containers' forwarded traffic (their own
+  >    outbound access) as it was, and make real-machine test 4.4 check it.
+  > 3. SSH on hosts with other accounts: option (b), a Match Group pinka block,
+  >    approved.
+  > 4. Pre-existing listeners: on a host with existing accounts or services, pinka's
+  >    default-drop input policy must not cut off access that existed before the
+  >    install (for example SSH from the LAN, or another service already listening on
+  >    a non-loopback address). Preflight records the non-loopback listeners and how
+  >    they were reachable; pinka keeps them reachable as found, or asks for explicit
+  >    consent to close each one; the install record lists them and uninstall restores
+  >    the firewall as it was. On a fresh dedicated host the strict default stays.
+  >    Propose where this fits (D1 follow-up or D2) and the spec sections it touches;
+  >    it needs a small spec edit, which I authorize together with point 1.
+  >
+  > Then continue with D2.
 
-### H. Documentation and docs-site
+  Decisions with the "commit" for `74377ec` (owner, verbatim; the
+  attachment is the new `specs/pokus-infrastructure-qa-spec.md`):
 
-- **H1** License: Apache-2.0 for code, CC-BY-4.0 for catalog content and documentation.
-- **H2** `CITATION.cff`: project-level only — title "Pokus", authors as the
-  entity "The Pokus contributors", license, version and release date filled at
-  release time. No personal names, ORCIDs, affiliations or thesis details. The
-  public repository URL goes in once published (placeholder until then,
-  flagged by CI only at release time).
-- **H3** Code of conduct: Contributor Covenant 2.1; enforcement contact is the
-  repository's private reporting channel (GitHub private vulnerability
-  reporting / a maintainers' issue form), described generically; no personal
-  e-mail. Same for `SECURITY.md`.
-- **H4** Docs tooling: approved (MkDocs Material pinned, Node tools pinned via
-  `package-lock.json`, mermaid-cli with a preinstalled Chromium, weekly link check).
-- **H5** Page ownership: approved in principle; the page-by-page table is in
-  `infra/docs/IMPLEMENTATION_NOTES.md` for approval.
-- **H6** Front matter scope: approved (site pages and ADRs; not README,
-  CLAUDE, CHANGELOG, role READMEs, spec copies or IMPLEMENTATION_NOTES).
-- **H7** Tour screenshots: report screenshot from the fake end-to-end report;
-  Grafana screenshot marked pending a real-host run and listed as a known gap.
-- **H8** Changelogs: hand-maintained per component.
-- **H9** Publishing: release tarball + `pokus-lab docs serve` (127.0.0.1
-  only); no GitHub Pages.
-- **H10** PDF export: pinned Quarto/Typst.
-- **H11** Versioned docs: mike, demonstrated with two test versions.
+  > commit
+  >
+  > Decisions on points 1 and 4, for the small spec edit I authorized:
+  >
+  > Point 1, GPU guard: approved in principle, but a Ubuntu-only list would stop
+  > automatic driver installs on every other supported distribution, Debian 13
+  > included, even for supported cards. Check first whether the pinned NVIDIA driver
+  > release ships a machine-readable list of supported GPUs with PCI IDs and open
+  > kernel module support (for example supported-gpus.json in the driver package or
+  > its documentation), usable for every distribution. If it does, pin that list
+  > through make lock-pins and use it everywhere, with the Ubuntu index as a
+  > cross-check. If it does not, use the Ubuntu list as proposed and tell me which
+  > families lose automatic installs. In every case, a GPU below the minimum compute
+  > capability never gets a driver installed automatically. Fixtures: Kepler, Pascal,
+  > a Turing control, and one per family.
+  >
+  > Point 4, existing listeners: a D1 follow-up built before D2, as proposed, with the
+  > spec sections you listed. Your rule for a dedicated host (no non-loopback
+  > listener besides sshd and no login account that is not a researcher) is
+  > approved, with one safeguard that applies to every host, dedicated or not: the
+  > access path used for the install (for example SSH from the LAN) is never closed
+  > until SSH over the tailnet has been verified to work for at least one researcher
+  > in that same run, and closing it needs explicit consent on the Remote access
+  > screen or an answers-file key. Without both, it stays open and doctor reports it
+  > as a warning. Uninstall restores the firewall as it was.
+  >
+  > Point 2: thanks, and I added your suggested probe to real-machine test 4.4.
+  >
+  > QA spec update: I attach a new version of specs/pokus-infrastructure-qa-spec.md
+  > (sha256 79bcb4fc75343b736a1f5e728cbee12d12574a2d2524530a4efff79bfaf936cc). It
+  > changes only tests 4.1 and 4.4. Replace the file verbatim in the same commit as
+  > the small spec edit, record the new sha256 in PROGRESS.md, and keep it read-only.
+  >
+  > Then the small spec edit, the GPU guard, the listeners follow-up and D2, each
+  > waiting for my "commit", with CI reported job by job after each push.
 
-### I. Contract v2: plug-in platforms (owner decision after infra step 14)
+  Checked for point 1 (2026-10-18, details in `docs/IMPLEMENTATION_NOTES.md`,
+  "Spec edit after D1"): the pinned release 580.178.04 ships NVIDIA's
+  `supported-gpus.json` (in Ubuntu's `nvidia-kernel-common-580`, from the
+  signed index), with a `legacybranch` per GPU the release no longer
+  supports and the `kernelopen` feature per GPU its open kernel module
+  supports. Its 449 current device IDs equal the `Modaliases` of Ubuntu's
+  `nvidia-driver-580`, its 289 `kernelopen` IDs equal those of the pinned
+  `nvidia-driver-580-open` and the table of NVIDIA's open-gpu-kernel-modules
+  README at tag 580.178.04, which states that the open modules "can be used
+  on any Turing or later GPU". The GT 730 (`10de:1287`) carries
+  `legacybranch: 470.xx`; the GT 1030 (`10de:1d01`) is current but without
+  `kernelopen`. No family loses automatic installs through the list; they
+  are limited only by their own driver pins, still unverified outside Ubuntu.
 
-Infra becomes a standalone lab product that any testing platform plugs into
-through a manifest, with Pokus as the first platform. Approved overall with
-changes; the proposal document itself is kept outside the repository. **No
-v2 code before step 0:** the owner updates the three specs first and creates
-`pokus-infra`. The per-section spec changes are part of the proposal.
+  Decisions with the "commit" for the spec edit after D1 (`0378425`) (owner,
+  verbatim):
 
-- **Approved as recommended:** decisions 2 (profiles), 4 (runtimes
-  `python-uv` and `static`, builds as `pokus-build`), 5 (hooks as commands),
-  6 (`<platform>-migrate` account), 8 (optional pinned tools), 9 (extra
-  manifest fields), 11 (`file://` sources), 13 (installer inspects the
-  release).
-- **1, naming:** infra keeps its namespace; platform objects are
-  `<platform>-<service>`; the schema lists every reserved infra name per
-  namespace (accounts, groups, units, containers, roles, databases, path
-  segments, commands, platform names), and the collision check uses it.
-- **3, agent sockets:** a socket marked `untrusted_clients: true` is
-  dedicated to `untrusted-agent`, never shared with other profiles or humans;
-  the platform spec obliges that its endpoints never return restricted data,
-  proven by a platform test; installer and doctor highlight these sockets.
-- **7, GPU:** GPU training jobs are a first-class v2 capability:
-  - 7.1 an eighth profile `gpu-trainer`, the only one that ever gets GPU
-    devices, for the new manifest field `jobs[]` (image pinned by digest,
-    pulled at deployment, never at job start);
-  - 7.2 a root-owned, socket-activated GPU arbiter (`pokus-gpu-arbiter`,
-    `/run/pokus/gpu.sock`) replacing the deploy helper: modes `idle`,
-    `serving <deployment>`, `training <run>`, one at a time; `train` only
-    with no running or waiting vLLM requests and the controller's sessions
-    drained; every transition in `/var/lib/pokus/gpu/transitions.jsonl`;
-    admins use `pokus-lab gpu status|serve|train|idle`;
-  - 7.3 OCI training containers with options fixed by infra, never from the
-    manifest (`--network none`, read-only root, `--cap-drop ALL`,
-    no-new-privileges, default seccomp, non-root job account, GPU via CDI,
-    limits within infra's caps);
-  - 7.4 a datasets area `/srv/pokus/training/datasets/<sha256>/`
-    (root:`pokus-datasets`, read-only) published by the arbiter with
-    `PROVENANCE.json` (every instance with its split, source runs, builder
-    commit); the split guard refuses to publish or mount any dataset that
-    lists a `test`-split instance; completeness of the provenance is the
-    platform's obligation;
-  - 7.5 adapters hashed and registered read-only under
-    `/srv/pokus/models/adapters/<name>/<sha256>/` with `LINEAGE.json` (base
-    model, dataset and image hashes, job-spec hash, hyperparameters, seed,
-    platform and infra commits, times), served as `<name>@<sha256>` in
-    `adapter_ids`; adapters and datasets are backed up;
-  - 7.6 checkpoints and resume: jobs checkpoint into their run directory; at
-    boot a job left in `training` is `interrupted` and resumed from its
-    checkpoint only with `resumable: true`, else the arbiter restores the
-    previous deployment or stays `idle`;
-  - 7.7 a tiny training job in the reference platform, with a CPU-only
-    variant (`resources.gpus: 0`) for hosts and CI without a GPU;
-  - 7.8 platform-side spec additions: dataset builder with the split guard,
-    job submission through the controller, lineage import, base-versus-adapter
-    comparison campaigns, and the contamination flag (test results are
-    flagged when their scenario template is in the adapter's training data,
-    read from the lineage).
-- **10, restricted schema:** the revoke and check after every migration is
-  the guarantee; the event trigger only after its `GRANT`/`REVOKE` coverage
-  is verified on the pinned PostgreSQL release.
-- **12, repositories:** `pokus-infra` (new; infra and the reference
-  platform; the owner creates it and moves infra's history with
-  `git filter-repo --subdirectory-filter infra`) and `pokus` (this
-  repository: platform, catalog, Pokus docs); catalog lint keeps its path
-  dependency; each repository has its own docs site; Pokus CI validates its
-  manifest against the schema of the infra release it targets. Of the
-  one-repository rules, B3, B9, C1 and E3 go and B2, B4, B5 change at the
-  split; B1, B6, B7, B8 stay. At the split: `pokus-infra` gets its own
-  `PROGRESS.md` (infra steps, infra deviations, v2 steps) and `CLAUDE.md`,
-  the infra build prompt's master copy, `ci.yml` at its root without a
-  wrapper, tags `vX.Y.Z` and its own docs site; this repository drops the
-  `infra.yml` wrapper, keeps the platform and catalog wrappers and the tags
-  `platform-v`, `catalog-v`, `docs-v`, adds a CI job validating the Pokus
-  manifest against the schema of the targeted infra release, and builds the
-  Pokus docs site linking to that release. A release candidate becomes an
-  infra release plus the platform and catalog commits of this repository.
-  Infra publishes contract v2, the manifest schema and the profile table
-  with each release, replacing the byte-identical `contracts.md` copies.
-- **Additions:** the v1 agent-runner finding (TCP access, `pokus-svc`
-  membership) is not patched separately in v1; v2 step 3 includes tests
-  proving both are closed. The neutrality lint matches an explicit name list
-  as whole words. Out of scope for v2, recorded: an OCI runtime for platform
-  services, Incus fine-grained authorization, several platforms at once.
-- **Open, for the owner (new points from the changes):** N1 the platform
-  name `pokus` (reserved names checked per namespace), N2 dedicated sockets
-  for every agent client, N3 training datasets readable by no human group,
-  N4 training only on `node_role: full`.
-- **Proposal status:** the updated proposal (decision table, profile table
-  with `gpu-trainer` and the arbiter, security model and threat table,
-  training flow, repository split, test plan, effort) and the per-section
-  spec change list for infra, platform and docs were delivered to the owner
-  after infra step 14; nothing of v2 is implemented. Next is the owner's
-  step 0.
+  > commit, in three commits instead of two: proposal 1 (spec edit) first, then the
+  > group-vars writer fix on its own, then the GPU guard. Push and report CI job by
+  > job.
+  >
+  > The group-vars writer fix is not unrelated: if one write changes how null is
+  > written for every later YAML write in the same process, a real TUI install may
+  > write later config files differently from an answers-file replay. Before the
+  > commit, tell me:
+  > - which files a real install writes after the group-vars writer runs, and whether
+  >   any of them were written wrongly before the fix;
+  > - whether the answers-equivalence test would have caught it, and if not, why not.
+  > Its commit message says what it fixes for a real install, not only for the test.
+  >
+  > Add, in the same fix commit or as a small follow-up: the Python test suite also
+  > runs in random order with a fixed, logged seed (one CI job), so order-dependent
+  > tests show up in CI instead of by chance. If random order exposes more failures,
+  > list them before fixing.
+  >
+  > Record as an open item: the driver package pins outside Ubuntu are still
+  > unverified; they must be verified before a GPU install on those families is
+  > claimed to work.
+  >
+  > Then the pre-existing access follow-up and D2, each waiting for my "commit".
 
-### Privacy clean-up (owner instruction)
+  Answered before the commits (details in `docs/IMPLEMENTATION_NOTES.md`,
+  "Installer: the same bytes in every written file"): after the group_vars
+  write of a plan come the users' key files, the vault and the answers file,
+  and in the same process every later plan (the TUI plans again after an
+  "Edit" on the review screen and in the pairing step). No value was wrong,
+  but host_vars of a machine without a default model read
+  `vllm_default_deployment:` from a first plan and an answers replay, and
+  `vllm_default_deployment: null` from a later plan, so the same
+  configuration gave different `host_vars_sha256` and fingerprints, and a
+  modify run that changed nothing rewrote host_vars. The equivalence test ran
+  the replay in its own process and passed the review screen once: in the
+  suite both sides inherited the change and matched. Random order exposed
+  no further failure (the whole suite with seeds 20261019, 1, 2 and 3); on
+  the old code it did not expose this one either in six seeds, and in about
+  6% of 10,000 simulated seeds, while each test file in its own process
+  exposes it every time.
 
-Scan everything already written for personal or installation-specific data,
-replace it with placeholders, report changes; add the privacy scan to every
-component's `make lint` and to CI. Result at infra step 1: nothing had been
-written before the instruction (the repository was empty), so nothing needed
-replacing; `make privacy` is part of `infra`'s `make lint`, and CI runs it for
-`infra/` and for the root-level files (`.github/workflows/repo-root.yml`).
+  Decisions after the CI report of `37c062e` (owner, verbatim):
+
+  > CI result noted, and thank you for the correction on the skips.
+  >
+  > Decisions:
+  > 1. The nftables check commit: approved as proposed, before the pre-existing
+  >    access follow-up. Widen it into a general rule:
+  >    - CI keeps an allowlist of tests that may skip there, each with its reason;
+  >      any skip in CI that is not on the list fails the job;
+  >    - the root-only bootstrap test also runs in CI through the runner's sudo, so
+  >      the list should be empty or nearly so;
+  >    - every gate and CI report from now on names each skipped test, not only the
+  >      count. Record the rule in CLAUDE.md.
+  > 2. Test counts: the local gate reports 3624 passed, CI's test job 3273 passed
+  >    plus 8 skipped. Explain the difference of about 340 tests (for example the
+  >    Python 3.9 run or tests outside CI's selection). If any test file or group
+  >    never runs in CI, list it and make CI run it, or tell me why it cannot.
+  > 3. Per-file process run: yes, as its own small commit after the nftables one.
+  >    Each test file runs in a process of its own (make test-isolated and a CI job).
+  >    Tell me its CI duration: under about ten minutes, on every push; otherwise
+  >    nightly and on demand, required before any release. List any failures it
+  >    exposes before fixing them.
+  > 4. Gating in a separate worktree: symlinked tool folders must not be able to
+  >    change the main tree again (npm emptying node_modules). Use real copies in
+  >    gating worktrees, or record the caveat in CLAUDE.md.
+  >
+  > Order: the nftables/skip commit, the per-file run, then the pre-existing access
+  > follow-up and D2, each waiting for my "commit".
+
+  Answer to 2 (details in `docs/IMPLEMENTATION_NOTES.md`, "CI skip list
+  (after `37c062e`)"): the gate's test line adds two steps, the Python 3.9
+  unittest runs (373 tests: preflight 143, pinka 223, the install record
+  module 7; 1 skipped) and pytest (3253 collected here); CI's test job runs
+  the same two steps, and the line quoted was pytest's alone. CI's pytest
+  collects 28 more (3281): the database tests run once per installed
+  PostgreSQL major, 16 and 18 in CI, 16 here (`test_postgres_sql.py` 48
+  against 25, `test_refplat.py` 46 against 41). Never run in CI: the 8 skips
+  (now run there), the golden images' own tests (`images/*/tests/*.sh`, run
+  inside built images on an Incus host; CI only runs ShellCheck on them) and
+  `make test-distros` (VMs); CI never provisions anything.
+- **JUnit XML and end-to-end verification** (owner, with the "commit" for
+  the per-file run, after the CI report of `006c40d`, verbatim):
+
+  > Instead of a separate -v step for the 8 tests: every test job (test,
+  > test-random-order, test-isolated, and the Python 3.9 runs if their runner can
+  > emit it) writes JUnit XML and uploads it as a CI artifact, so each test's name
+  > and result is kept for every run. Fold that into the next commit, and from then
+  > on cite the artifact when you report a specific test's result.
+  >
+  > Record in PROGRESS.md, under the real-machine tests: the firewall, privilege
+  > profiles, isolation and the install record are verified end to end only by
+  > make test-distros and real-machine tests 4.4, 4.7, 4.8 and 4.14; 3f-1 is not
+  > considered verified until those have passed.
+  >
+  > Then the pre-existing access follow-up and D2, each waiting for my "commit".
+
+  The JUnit XML is the commit after `2f27132` (`docs/IMPLEMENTATION_NOTES.md`,
+  "JUnit XML of every test (after `2f27132`)"); the record is under the
+  real-machine tests below.
+- **Galaxy retry, CI re-runs, action pins** (owner, with the "commit" for
+  the JUnit XML, after the CI report of `2f27132`, verbatim):
+
+  > Decisions:
+  > 1. Galaxy retry: yes, in setup and in every path that downloads collections
+  >    (setup, bootstrap from a checkout, lock-collections). Retry only transport
+  >    errors and malformed responses (like the missing results field), up to 3
+  >    attempts with increasing delay, each attempt logged. A hash or signature
+  >    mismatch is never retried: it stops at once with the expected and actual
+  >    values. Tests for both paths. Its own small commit before the pre-existing
+  >    access follow-up.
+  > 2. CI re-runs: one re-run of a job is acceptable only for a failure in an
+  >    external service that the commit does not touch, and every re-run is reported
+  >    with the error, as you did. Record that rule in CLAUDE.md with the retry
+  >    commit. A job that fails twice is a real failure.
+  > 3. Confirm that every third-party action in every workflow is pinned to a full
+  >    commit SHA like upload-artifact, with its version in a comment. If any is not,
+  >    pin it in the same commit.
+  >
+  > Then the pre-existing access follow-up and D2, each waiting for my "commit".
+
+  Committed as `5fc33c1` (`docs/IMPLEMENTATION_NOTES.md`, "Retries of the
+  collection downloads (after `fc7cc3b`)").
+- **Pre-existing access** (D1 follow-up; decision 4 after D1 with its
+  safeguard, decision 3 as SSH1, both verbatim above): built in the commit
+  after `5fc33c1` (`docs/IMPLEMENTATION_NOTES.md`, "Pre-existing access (D1
+  follow-up, decisions 3 and 4 after D1)"). Preflight records the access
+  (listeners, login accounts, the install's session) and calls the host
+  dedicated or shared; the install record keeps it and what is closed with
+  consent; the firewall keeps what was reachable on a shared host, and
+  pinka's table `inet pinka_access_guard` drops what the owner closes, on
+  every backend; the install's access path closes at the end of a run with
+  consent and a researcher's key login over the tailnet during that run;
+  sshd's settings are a `Match Group pinka` block on a shared host; doctor
+  accepts the recorded listeners and warns while the path is open
+  (`network.install_path`); the installer's screen 8 has the checkboxes.
+  Interpretations for the owner are listed in the notes. Committed as
+  `16bf749`. Decisions with its "commit" (owner, verbatim):
+
+  > Decisions:
+  > 1. Doctor's listener check: approved as a deviation, with these conditions:
+  >    - a pre-existing listener is accepted only if it matches the install record
+  >      exactly (address, port, protocol and owning unit or executable); any listener
+  >      that appears after the install still fails doctor;
+  >    - the install record is writable only by root, and doctor fails if its owner or
+  >      mode is wrong;
+  >    - pinka's own services never use the exception;
+  >    - on a dedicated host the strict rule of §7.5 applies unchanged.
+  >    Record it as an approved deviation with these conditions.
+  > 2. The guard table inet pinka_access_guard on every backend: approved. Confirm
+  >    with tests that it drops only new connections, never matches tailscale0 or
+  >    loopback, and does not depend on ufw's or firewalld's own tables; and add to
+  >    the test-distros lanes for ufw and firewalld: reload the user's firewall
+  >    (ufw reload, firewall-cmd --reload) and check the guard is still in place and
+  >    the closed listener stays closed while SSH over the tailnet still works.
+  > 3. Tell me how a researcher's tailnet login during the run is detected (which
+  >    log, which fields), and whether a login without a key or from an address
+  >    outside the tailnet can be mistaken for one.
+  >
+  > D2: its report must include a table of everything uninstall removes, restores or
+  > keeps, with the guard table, the pre-existing access record and the SSH Match
+  > block in it, so I can check it against the install record before the commit.
+
+  Built in the commit after `16bf749` (`docs/IMPLEMENTATION_NOTES.md`,
+  "Decisions after `16bf749` (DL1, AG1, the login detection)"): doctor's
+  exact match (approved deviation DL1); the guard's drop rules only for new
+  connections and never on loopback, with only SSH spared on `tailscale0`
+  (corrected with the owner's new plan, below), checked by a static
+  test and against the kernel in a network namespace, and the `access`
+  stage of `make test-distros` on the ufw and firewalld lanes (approved
+  deviation AG1); the answer on the login detection, which is now stricter
+  (journald's `_UID` 0 and `_COMM` sshd, an address of a current tailnet
+  peer).
+- **New plan after `16bf749`** (owner, verbatim; it moves the history
+  rewrite, the rename and making the repository public before D2, and
+  replaces, for this order only, "after the real-machine tests" in 3g and
+  "never opens a pull request" for the one pull request it names; the
+  owner opens it). One elision, marked with brackets: the address of item 3
+  (the privacy scan refuses any e-mail address outside the example domains
+  in a file; the address is in the commit identities after the rewrite):
+
+  > Do not commit yet. New plan: the history rewrite, the rename and making the
+  > repository public move forward, before D2. Then I open a pull request from
+  > moving/on to main, and you continue with D2 on moving/on.
+  >
+  > 1. Finish the current step, as one commit:
+  >    - correction to decision 2: "never match tailscale0" was too broad on my side.
+  >      The intent was that SSH over the tailnet is never cut. On tailscale0, exempt
+  >      only the SSH port; every listener I consented to close is closed on the
+  >      tailnet too, on every backend. Update the kernel test and the test-distros
+  >      access stage (tcp/8080 closed over the tailnet as well, SSH over the tailnet
+  >      still works).
+  >    - GitHub Actions minutes (the account is at 90 % until the repository is
+  >      public): concurrency with cancel-in-progress per branch; the random-order
+  >      run becomes the main test job's run, not a separate job; test-isolated,
+  >      check-mode-extended and release-package run weekly, on workflow_dispatch and
+  >      on pushes that touch their inputs; pushes that change only docs or records
+  >      skip the Ansible lanes. You keep running make test-random-order and make
+  >      test-isolated locally before every proposal. Give me the estimated minutes
+  >      per typical push before and after.
+  >    Wait for my "commit".
+  > 2. Public-readiness audit, before the rewrite. Report, change nothing yet:
+  >    - every workflow: no pull_request_target that checks out PR code; minimal
+  >      permissions per job; no secret printed; jobs that need
+  >      PINKA_PRIVACY_DENYLIST behave correctly on pull requests from forks, which
+  >      get no secrets; anything that would run code from a fork with write access
+  >      or secrets;
+  >    - personal data in the current tree and in the whole history (every commit's
+  >      content and message on every branch): my personal e-mail address (the
+  >      non-noreply address in the commit identities) is the only item on my
+  >      denylist, so scan the full history for it yourself; also look for any other
+  >      e-mail address, names, usernames, hostnames, IP addresses, tailnet names,
+  >      home paths, and the descriptions of my test computers in PROGRESS.md and
+  >      IMPLEMENTATION_NOTES.md (QA spec rule 12 says machine details stay
+  >      private). Propose what to remove or generalize, and whether the rewrite
+  >      should also scrub it from history;
+  >    - LICENSE, NOTICE, README (with a clear pre-release status), SECURITY.md,
+  >      CONTRIBUTING.md: present or missing;
+  >    - tell me exactly what to put in the PINKA_PRIVACY_DENYLIST secret (format),
+  >      given that my personal e-mail is its only entry.
+  > 3. The rewrite, proposed only after 1 and 2 and waiting for my explicit
+  >    "rewrite": as recorded (trailers removed, author and committer set to my
+  >    identity, dates kept), with this identity: name as on bef51af, e-mail
+  >    [the owner's GitHub noreply address], plus any history scrubbing I
+  >    approve from 2. Afterwards no commit may carry any other e-mail address. Set
+  >    the same identity in this session's git config for every later commit. Show
+  >    me the before/after mapping and the identity listing.
+  > 4. After my "rewrite": the exact commands for me to force-push main, push the
+  >    rewritten work as moving/on, delete claude/zen-albattani-qfwwps on the
+  >    remote, and update other clones. Tell me whether this session can push to
+  >    moving/on afterwards; if it cannot, say which branch you will push to.
+  > 5. A checklist for me after the rename: making it public; branch protection on
+  >    main (no force-push, required CI checks); requiring approval for workflows
+  >    from first-time contributors; private vulnerability reporting; secret
+  >    scanning; re-checking the secrets.
+  > 6. The pull request moving/on -> main: the title and description, and how to
+  >    merge it so every commit keeps its author date and hash: a merge commit or a
+  >    fast-forward push, never squash or rebase-and-merge. Update HANDOFF and
+  >    CLAUDE.md to match.
+
+  Item 1 is built in the commit after `16bf749`, together with the
+  decisions with its "commit" (one commit, as asked): on `tailscale0` the
+  guard spares only tcp/22 and drops what was closed, as on every other
+  interface; the kernel test and the `access` stage check it over the
+  tailnet. CI minutes: `docs/IMPLEMENTATION_NOTES.md`, "GitHub Actions
+  minutes (the owner's new plan after `16bf749`)". Items 2 to 6 follow in
+  that order; D2 waits until the owner has opened the pull request.
+
+  Item 1 is `6aa6eab`, committed with the owner's "commit" and not pushed.
+  The public-readiness audit (item 2) was reported; the owner's decisions
+  on it, verbatim but for one elision in brackets (the privacy scan refuses
+  any e-mail address outside the example domains in a file):
+
+  > commit, but do not push yet; the next push is the rewritten history.
+  >
+  > Decisions:
+  > 1. Keep the rename, option (b). I accept that my personal address stays visible
+  >    in old, unreferenced commits. To limit the rest (the attribution lines and the
+  >    machine descriptions in old commits):
+  >    - give me the exact gh commands to delete every workflow run of this
+  >      repository, to run after the force-push and before making it public, and a
+  >      check that none remain;
+  >    I have disabled Actions in this repository until it is public.
+  > 2. Test computer descriptions: generalize them to the machine classes as you
+  >    proposed, keep the exact details in a git-ignored local file, and scrub the
+  >    old text from history in the rewrite.
+  > 3. Scan additions: yes, all three (commit messages scanned for e-mail addresses
+  >    and denylist terms; every author and committer e-mail must be a GitHub noreply
+  >    address or [GitHub's own noreply address]; a visible warning in CI without the denylist).
+  >    Move PINKA_PRIVACY_DENYLIST to the lint and privacy jobs only.
+  > 4. Project files: add a root NOTICE, the pre-release status line in the README,
+  >    SECURITY.md (GitHub private vulnerability reporting, no e-mail address),
+  >    CONTRIBUTING.md (the gate, the privacy rules, a noreply identity, no
+  >    attribution lines) and CITATION.cff (author as on bef51af).
+  >    Add a tag ruleset limiting v* tags to me to the checklist for after the move.
+  >
+  > Build 2, 3 and 4 as commits before the rewrite, with the full gate, committed
+  > without pushing. Then propose the rewrite with the before/after mapping and the
+  > identity listing, and wait for my "rewrite". After it, steps 4 to 6 of my
+  > earlier message as planned (the commands for me to push, the checklist, the
+  > pull request).
+
+  The audit's findings are in `docs/IMPLEMENTATION_NOTES.md`,
+  "Public-readiness audit (the owner's new plan after `16bf749`, item 2)".
+  From the commit after `6aa6eab` on, this checkout's git identity is the
+  owner's name with the GitHub noreply address of item 3 of the new plan
+  (set in the local git configuration only), so no later commit carries the
+  personal address. Nothing is pushed until the owner pushes the rewritten
+  history; Actions is disabled in the repository until it is public, so CI
+  of these commits runs after the move.
+
+  Built as commits without a push: decision 2 (the machine classes) is
+  `0e89479`; decision 3 (the privacy scan: commit messages and identities,
+  the CI warning, the secret only on `lint` and `privacy`) is the commit
+  after it (`docs/IMPLEMENTATION_NOTES.md`, "Decision 3: the privacy scan's
+  additions"), `7ab1482`; decision 4 (a root `NOTICE`, the pre-release
+  status in the README, `SECURITY.md`, `CONTRIBUTING.md`, `CITATION.cff`)
+  is the commit after that ("Decision 4: the project files"). The
+  checklist for after the move (item 5 of the new plan) gains a tag
+  ruleset that lets only the owner create `v*` tags (owner, decision 4).
+  Then the rewrite proposal, which waits for "rewrite".
+
+  The rewrite proposal (identity listings, the mapping, the dry run) was
+  reported; the owner's answer, verbatim:
+
+  > rewrite, with these decisions:
+  >
+  > 1. Signatures: (a). The rewrite leaves all 68 commits unsigned, and signing is
+  >    off in this checkout's local config for later commits.
+  > 2. No old-to-new hash table in any tracked file. Publishing old hashes would let
+  >    anyone open the old commits on GitHub, with my personal address, the
+  >    attribution lines and the machine details. Instead:
+  >    - in the rewrite itself, replace every reference to an old commit hash in
+  >      commit messages (full or abbreviated) with the corresponding new hash, the
+  >      way git filter-repo does by default; this is the one allowed change to
+  >      messages besides the trailer removal;
+  >    - in the follow-up commit, replace the 283 references in tracked files with
+  >      the new hashes;
+  >    - the mapping stays only in local/rewrite-mapping.md, which git ignores.
+  >    Afterwards, check that no old hash (from the left column of the mapping, full
+  >    or as a 7+ character prefix) appears in any file or message of any commit on
+  >    either branch, and report the check.
+  > 3. NOTICE stays as it is.
+  >
+  > Then confirm the tips against the dry run (they will differ where messages
+  > changed; say which), build the follow-up commit and wait for my "commit". Then
+  > steps 4 to 6.
+
+  Built in this checkout first with the references replaced in messages
+  only; the check the owner asked for found old hashes left in the files
+  of 66 earlier commits (each commit's records name the commits before
+  it), which the follow-up commit could replace at the tip only. The
+  owner's answer, verbatim:
+
+  > rewrite files too.
+  >
+  > Conditions:
+  > - replace only whole commit-hash tokens that are in the mapping, never part of a
+  >   longer hex string (sha256 digests, fingerprints, IDs), as in your dry run;
+  > - verify that in every commit, each changed line differs from the original only
+  >   by replaced hashes, apart from the agreed scrub of the machine details;
+  > - rerun every earlier check, then my check (old hashes in messages and in the
+  >   files of every commit on both branches: 0), and report the new tips.
+  >
+  > Then rebuild the follow-up commit and present both again; I will reply "commit".
+
+  Done in this checkout (`docs/IMPLEMENTATION_NOTES.md`, "The one-time
+  rewrite (3g)"): the rewritten `main` and `moving/on`, 68 commits, every
+  author and committer the owner's noreply identity with the original
+  dates, unsigned; the two trailers removed; the machine descriptions
+  replaced in 13 commits; the references to earlier commits replaced in 16
+  messages and in the files of 66 commits; then the commit after the
+  rewrite on `moving/on` with the scan's exceptions removed and these
+  records. No message and no file of any commit names an old hash.
+
+  That commit is `a716eae`, committed with the owner's "commit". The
+  owner's answer after the push commands, verbatim but for the account
+  name, elided in brackets (no account name in a tracked file):
+
+  > I did not rename. I created a fresh, empty repository [owner]/pokus-infrastructure
+  > and pushed main (4915ce1) and moving/on (a716eae) from the bundle; ls-remote shows
+  > exactly those. The old repository [owner]/pokus stays private and is not touched
+  > again; its runs are not deleted, since it will never be public.
+  > - Attach [owner]/pokus-infrastructure to this session, set it as origin, and test
+  >   git push --dry-run origin moving/on. Report the result before anything else.
+  > - Then delete the old local branch and old references here, so the old commits are
+  >   gone from this checkout too.
+  > - In the next commit, record in CLAUDE.md and PROGRESS.md that 3g used a fresh
+  >   repository instead of a rename (my decision after the activity-view finding),
+  >   and drop the run-deletion steps from the docs.
+  > Then continue as planned: CI of the pull request job by job, then D2.
+
+  So 3g used a fresh repository instead of the rename (the owner's decision
+  after the audit's finding that a renamed repository keeps the old
+  commits reachable and lists the force push in its activity view): the
+  rewritten `main` and `moving/on` are the only branches of
+  `pokus-infrastructure`, the old repository stays private and untouched,
+  and its workflow runs stay (it is never made public), so decision 1
+  after the audit (deleting every workflow run) no longer applies. This
+  checkout's `origin` is the new repository; `git push --dry-run origin
+  moving/on` succeeded; the old local branch, its references and the old
+  commits are gone from this checkout.
+
+  CI of `a716eae` in the new repository (pushed by the owner), job by job:
+  `changes`, `privacy`, `lint`, `docs`, all six `check-mode` lanes,
+  `test-isolated`, all six `check-mode-extended` lanes, `release-package`
+  and `lock-collections` passed; `lock-check` is the known red (24
+  `TODO(verify)` errors; four tag warnings: postgres, `refplat_job`,
+  `ubuntu:24.04` and `debian:13` moved, the pins unchanged); `test` failed
+  in `test_the_access_guard_against_the_kernel` (the probe aborted at
+  interpreter shutdown, exit -6), so `required` failed too; `links` runs
+  weekly. The privacy scan ran without the denylist (no
+  `PINKA_PRIVACY_DENYLIST` secret in the new repository yet) and said so
+  in a warning. The fix is the commit after `a716eae`
+  (`docs/IMPLEMENTATION_NOTES.md`, "CI of `a716eae`: the access guard
+  probe's shutdown").
+  `claude/zen-albattani-qfwwps` keeps the old history in this checkout
+  only; nothing is pushed until the owner runs the pushes.
+- **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
+  the rewrite). The descriptions of the two computers are generalized to
+  machine classes, in brackets (owner, decision 2 after the public-readiness
+  audit); the exact details stay in the git-ignored local file
+  `local/test-computers.md` (QA specification §2):
+
+  > Real-machine tests, after 3f-1 and before the rewrite, on two Linux computers
+  > (not WSL2). Neither is disposable.
+  >
+  > Computer A: [a VM host: x86_64 bare metal with systemd and KVM, enough
+  > memory for a 16 GiB VM, a GPU below compute capability 7.5 without an NVIDIA
+  > driver, no Secure Boot; Docker, LXD and Tailscale already installed and in
+  > use.]
+  > Every test on A runs inside a VM; nothing on the host may change except what a
+  > test VM needs. LXD is already there; use LXD VMs unless you have a reason to
+  > prefer another tool, and say how to create and delete each VM.
+  >
+  > Computer B: [bare metal: x86_64 with systemd and KVM, a nominal 16 GiB
+  > machine, a Kepler GPU without an NVIDIA driver, no Secure Boot; Tailscale
+  > already installed and in use.]
+  > It cannot host a 16 GiB VM, so on B tests run directly on the host. Nothing is
+  > installed on B until the uninstall tests (including the variant with Tailscale
+  > already present) have passed in VMs on A. Before the first install on B, give me
+  > the steps to take a full backup of B and to restore it. Then B is for: a real
+  > bare-metal install of the smallest configuration on a supported distribution,
+  > the memory tolerance on a real 16 GiB machine, a GPU whose driver current NVIDIA
+  > releases no longer support (it must be treated as no usable GPU, without breaking
+  > the install), the disk check with a small model and pool, and install plus
+  > uninstall with the host snapshot comparison.
+  >
+  > When 3f-1 is done, give me the real-machine tests one at a time, starting with
+  > 4.1 (read-only preflight on both computers) and 4.2 (bootstrap in check mode in
+  > an Ubuntu 24.04 LXD VM on A): the exact steps from a clean start to cleanup, the
+  > VM size, and what to send back. With the first test, also tell me:
+  > - which tests run on A, which on B, and which need different hardware (GPU
+  >   inference and training need compute capability >= 7.5; Secure Boot enrollment
+  >   needs Secure Boot);
+  > - how to run make test-distros (4.14) on A without breaking LXD or Docker on the
+  >   host: Incus next to LXD, Incus inside a large VM with nested KVM, or something
+  >   else, with the risks of each;
+  > - whether preflight with --no-write writes or installs anything.
+  >
+  > I will run make lock-pins on my machine and paste the output separately.
+
+  End-to-end verification (owner, with the "commit" for the per-file run,
+  verbatim above): the firewall, privilege profiles, isolation and the
+  install record are verified end to end only by `make test-distros` and
+  real-machine tests 4.4, 4.7, 4.8 and 4.14; 3f-1 is not considered verified
+  until those have passed. CI checks their parts without a host: the
+  rendered nft rulesets with `nft -c`, the guards in a network namespace,
+  the isolation probe's expectations per profile, the install record module
+  on Python 3.12 and 3.9, and every role in check mode.
+- **3g** History rewrite and the renamed repository (owner, after 3f,
+  replacing the fresh repository of the decision with the "commit" for
+  3d.2; see "Process rules in force"; done, but published as a fresh
+  repository after all, by the owner's decision after the rewrite, below
+  under the owner's new plan): after the real-machine tests, the
+  assistant lists every author and committer identity of `main` and the
+  working branch, then proposes the one-time rewrite of the full history
+  that removes the two `Co-Authored-By` trailers, sets author and committer
+  of every commit to the owner's identity (the one on `bef51af`) with the
+  original dates, content and messages, drops and reorders nothing, and
+  removes the privacy scan's two known exceptions; with the before/after
+  hash and identity mapping and every hash in `PROGRESS.md` and the docs
+  updated. It waits for the owner's "rewrite". The owner renames this
+  repository to `pokus-infrastructure` on GitHub. After "rewrite" the
+  assistant gives the exact commands to force-push the rewritten `main`,
+  push the rewritten working branch as `moving/on` and delete
+  `claude/zen-albattani-qfwwps` on the remote; the owner runs them, and the
+  assistant never force-pushes. Then: the list of what to check afterwards
+  (secrets including `PINKA_PRIVACY_DENYLIST`, branch protection, Actions,
+  the default branch, no remote ref still reaching the old commits), how to
+  update any other clone (re-clone, or fetch and `reset --hard` to
+  `moving/on`), and `CLAUDE.md`, `PROGRESS.md` and the docs updated: the
+  repository is renamed, not recreated, and `moving/on` is the working
+  branch, to which every rule that names `claude/zen-albattani-qfwwps`
+  applies (owner decision with the "commit" for 3d.3). The owner merges
+  `moving/on` into `main` themselves; the assistant never opens a pull
+  request and never merges anything (owner, with the "commit" for 3d.8). A
+  small commit proposal updates every reference to the repository's name
+  and URL (README, docs, the `CITATION.cff` placeholder, examples).
+- **3h** Final report: `TEST_REPORT.md` and `HANDOFF.md` for infra as the
+  master prompt describes, their commit proposal, then stop. `HANDOFF.md`
+  gives the exact commands for pushing the rewritten history to the renamed
+  repository as `moving/on` and for merging `moving/on` into `main`, and
+  what to check after the merge: CI on `main`, and the weekly jobs, which
+  run only from `main` (owner, with the "commit" for 3d.8). After 3h the
+  assistant waits for the owner's explicit instruction.
 
 ## Approved deviations
 
-Resolutions above that differ from the spec text. Contract-level resolutions
-are also recorded with citations in `infra/docs/contracts.md#resolutions`.
+Resolutions that differ from the spec text (the owner answers they come from
+are in the archive). Contract-level resolutions are also recorded with citations in `docs/contracts.md#resolutions`.
 
 | ID | Spec section | Spec text (short) | Approved resolution |
 | --- | --- | --- | --- |
@@ -393,11 +1267,11 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | A4 | platform §17 | Postgres via testcontainers or CI service | micromamba + conda-forge PostgreSQL locally; CI service container |
 | B1 | docs spec §A.4 | every Markdown page has front matter | spec copies and IMPLEMENTATION_NOTES are excluded from builds, kept verbatim |
 | B2 | infra §7.14 | clone pokus-platform / pokus-catalog at a ref | bare mirror + `git archive` of one subtree + `DEPLOYED_FROM.json` |
-| B3 | infra §5.2 step 1 | refuse a dirty tree | dirty check limited to `infra/`; commit + `infra/` tree hash recorded |
-| B4 | docs spec §B.1, platform §4.1.2 | RC triple of three repositories | three commits of one repository + tree hashes; prefixed tags |
-| B5 | infra §4, §11 | `.github/workflows/ci.yml` per repository | canonical per component + thin root wrappers; restricted job set |
-| B6 | master prompt §3 | components splittable without changes | catalog lint uses a permanent `../platform` path dependency |
-| C1 | platform §18 | layout without `docs/contracts.md` | `platform/docs/contracts.md` added, CI identity check |
+| B3 | infra §5.2 step 1 | refuse a dirty tree | dirty check limited to `infra/`; commit + `infra/` tree hash recorded. **Ended with 3f:** bootstrap records the commit and the tree hash of the whole repository, and its dirty check covers the whole repository, as §5.2 step 1 states |
+| B4 | docs spec §B.1, platform §4.1.2 | RC triple of three repositories | three commits of one repository + tree hashes; prefixed tags. **Ended with 3f:** infra, platform and catalog live in their own repositories; this repository's release tags are `vX.Y.Z` (package `pokus-infrastructure-X.Y.Z.tar.gz`) |
+| B5 | infra §4, §11 | `.github/workflows/ci.yml` per repository | canonical per component + thin root wrappers; restricted job set. **Ended with 3f:** the wrappers are gone; `.github/workflows/ci.yml` (with the `privacy` job of the former `repo-root.yml`), `lock-collections.yml`, `release-package.yml` and `release.yml` run at the repository root |
+| B6 | master prompt §3 | components splittable without changes | catalog lint uses a permanent `../platform` path dependency. **Ended with 3f:** no platform or catalog code is in this repository; they live in `pokus-platform` |
+| C1 | platform §18 | layout without `docs/contracts.md` | `platform/docs/contracts.md` added, CI identity check. **Ended with 3f:** replaced by the copy rule (owner, with the "commit" for 3d.8): a platform repository that keeps a copy of `docs/contracts.md` keeps it identical to the infra release it pins, and its own CI checks it |
 | C2 | infra §7.14 | agent reaches only gateway and executor sockets | also orchestrator `svc.sock`, agent-session endpoints only |
 | C3 | platform §3, §4.1; infra §12 | sudo rule for the deploy helper | socket-activated root helper, no sudo |
 | C4 | platform §3 | (no VM telemetry alternative) | VM alternative added |
@@ -405,7 +1279,7 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | C6 | platform §3; infra §7.10 | OPA on 8181 or a Unix socket | 8181 with `system.authz` restricting the API |
 | C8 | platform §4.1 | api.sock "group pokus + pokus-svc" | group + POSIX ACL, fallback group + peercred |
 | C9 | infra §7.11, §7.12, §8.2, §9; platform §3, §6 | (gaps) | resolutions C9a-h in `contracts.md` |
-| C10 | infra §12 | `127.0.0.1:<port>` unspecified | port table in `contracts.md` |
+| C10 | infra §12 | `127.0.0.1:<port>` unspecified | port table in `contracts.md`; approved with the changes of P3b |
 | D1-D3 | platform §3, §4.1.2; infra §8.1 | formats defined by the external QA instructions | hooks defined here (D1-D3) |
 | D4 | docs spec §A.8 | QA bots execute `qa:run` blocks | markers linted only; nothing executes them here |
 | D5 | docs spec §A.4, §B.5 | `last_verified` from a QA run | null until a verification run exists |
@@ -418,296 +1292,225 @@ are also recorded with citations in `infra/docs/contracts.md#resolutions`.
 | H11 | docs spec §B.5 | current and previous release browsable | demonstrated with two test versions until real releases exist |
 | I1 | infra §2.3 (`provider_rules.baremetal`, rule `secure_boot_mok`), §2.4, §3.2, §11 (fixture `ubuntu2404-baremetal-nvidia-no-driver-secureboot`), §18.4 screen 7, §18.7, §19.8 | NVIDIA GPU, Secure Boot on, no driver → `needs_action` (exit 30) | with `install_nvidia_driver: auto` and the operator's consent to MOK enrollment (TUI consent screen, or `--accept-mok-enrollment` / the matching answers-file key when non-interactive), preflight reports a planned action (a warning, recorded in the host profile) instead of `needs_action`; bootstrap installs the driver, imports the MOK with a one-time password and exits 76; the re-run resumes. Without consent: 30 with the current remediation. `manual`: 30 as now. `skip`: degraded (no `gpu_inference`). Fixtures for all four cases; the bare-metal tutorial shows the automatic flow with consent as the main path and manual installation as the alternative. Approved after infra step 14; implemented in commit "feat(infra): install the NVIDIA driver on Secure Boot hosts with MOK consent" (`--accept-mok-enrollment`, `--mok-password-stdin`, `gpu.accept_mok_enrollment`; bootstrap imports the key named by the play's 76) |
 | I2 | infra §11 (Ansible, CI), §19.9 (fast lane) | CI check mode for the provider-agnostic roles | the required job stays exactly as specified: check mode for the provider-agnostic roles only, blocking, no skips. The whole-play check-mode run is allowed only as a separate, non-blocking job named as extended; its summary lists every skipped component and never reports one as passing; each skip is removed as soon as that component's sources are verified. Approved after infra step 14; implemented in commit "ci(infra): split the fast lane into a required and an extended job" (`make check-mode`, `make check-mode-extended`) |
+| St2-1 | infra §2.3, §19.2 | Debian 12 in the `tested` tier | Debian 12 removed from `tested`, with an explicit `unsupported` row naming the end of regular security support (E8 policy). Implemented in step 2; approved after the 3b commit |
+| St2-3 | infra §2.3 | releases not listed fall through to the `ID_LIKE` rows or `unsupported` | an explicit `unsupported` row per implemented distribution for its unlisted releases ("release not in the support matrix"), placed before the `ID_LIKE` rows. Approved after the 3b commit; implemented in 3d.4 |
+| St7-1 | infra §7.11 | `current.yml` rendered to `current.env` | `current.yaml` (the `vllm serve --config` file) rendered next to `current.env`, which carries its hash; an infra-internal detail, not a contract item. Implemented in step 7 (deploy helper; the GPU arbiter keeps it in 3d); approved after the 3b commit |
+| P3a | infra §7.6, §7.7, §8.1, §12.6, §18.4 screen 5; platform §3, §4.1, §5, §12.1 | `cpuset_targets` with no contract field | `[incus] cpuset_targets` in `endpoints.toml`; the platform sets every target's `limits.cpu` to a CPU range inside it, never a count, records the range in the run manifest and refuses measurement campaigns on a host without it; the `bench` project's `limits.cpu` is the number of those CPUs; services run on `cpuset_services`; installer and doctor warn when SMT siblings of one core fall into different sets. Approved in the owner's review of the 3b spec update; implemented in `00da783` except the SMT warning |
+| P3b | infra §2.2, §7.5, §7.9, §7.11, §8.1, §12.3, §12.6, §12.11, §13.3, §19.10 | `127.0.0.1:<port>` unspecified | the port table with its defaults (also in `contracts.md`); ports overridable in host_vars (`ports:`), effective values in `endpoints.toml`; preflight checks the configured ports; `vm_collector_address` configurable with its conflict check; a non-loopback block (the inference node's 18704 and 18710, the lab node's tailnet 4317, the VM collector address). Approved in the owner's review of the 3b spec update; implemented in 3d.4 (preflight reads listeners from `/proc/net/tcp*`, details in `docs/IMPLEMENTATION_NOTES.md`) |
+| P3c | infra §7.4, §7.19, §8.1, §9, §12.11; docs spec §B.4 | `pinka docs serve` (docs spec only) | the docs service `pinka-docs.service` on `127.0.0.1:18706`, `docs_release` in host_vars, `pinka docs install` and `docs rollback` (root only), three versions kept, `docs_tailscale_serve`. Approved in the owner's review of the 3b spec update; implemented in 3d.4 (the service runs `pinka docs serve`) |
+| V1 | infra §12.1 ("Sources in one repository"), §7.14 step 4 | a content package may not overlap the release path in the same repository | content packages from one repository may not overlap each other either (`source-overlap`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
+| V2 | infra §12.1 (`requires`) | the health gate checks exactly the declared facilities | a manifest that uses a facility it does not declare is refused (`facility-undeclared`): profiles `sandbox-operator` and `restricted-operator` need `incus`, `inference-broker` needs `inference`, `gpu-trainer` jobs need `gpu`; the fields `policy` need `opa`, `dashboards` and `telemetry` need `telemetry`, `backup.database: true` needs `postgres` (`contract/profiles.yml`, `facilities`). Approved with the "commit" for 3d.1 as stricter validation; implemented in 3d.2; for the next spec edit |
+| V3 | infra §7.14 step 5, §12.1 (`runtime: python-uv`); platform spec (release layout) | `uv sync --frozen` builds the release | two build phases: locked wheels with network, nothing built or compiled; then the release built offline with the backend from a `build` dependency group. A release with a `[build-system]` locks its backend in that group, and every dependency is a wheel. Approved with the "commit" for 3d.3; to be carried into the platform spec too |
+| V4 | infra §7.14 (hardening baseline), §6.2 | `RuntimeDirectory=pinka/platform/<service>` | no `RuntimeDirectory=` on the socket directories: socket units create `/run/pinka/platform/<service>/` (root, 0755). Approved with the "commit" for 3d.3 on condition that a service that needs its own runtime directory gets one at a separate path that contains no sockets; done in 3d.4 (`/run/pinka/platform-runtime/<service>`) |
+| V5 | infra §11 (neutrality lint) | the lint excludes test fixtures, docs and the reserved list | the installer and its answers files are excluded too, as an explicit named exclusion in the lint configuration with a comment pointing to 3d.7. Approved with the "commit" for 3d.3; removed in 3d.7 (the installer and `tests/answers/` are scanned, a test keeps it so) |
+| V6 | infra §7.14 (agent allowlist), §7.14 step 5, §12.1 (`untrusted-agent`); platform spec (release layout) | the agent's allowlist binds the platform's code it needs | an `untrusted-agent` service names its own package in the manifest (`package`, its directory); the build gives it a separate environment with only that package and its locked dependencies; the agent binds only that package and that environment, never the rest of the release; a manifest whose agent package depends, directly or transitively, on another package of the release is refused. Approved with the "commit" for 3d.4; implemented in 3d.4b (`package`, `own_package`, `.agent-venvs/<service>/`; details in `docs/IMPLEMENTATION_NOTES.md`, "Contract v2, step 4b") |
+| V7 | infra §2.2, §2.3 (`gpu_inference`) | NVIDIA GPU with compute capability ≥ 7.0 | compute capability ≥ 7.5, matching the vLLM image's kernels (`TORCH_CUDA_ARCH_LIST` from 7.5); preflight refuses GPU inference below it. Approved with the "commit" for 3d.4; implemented in 3d.4b |
+| P3d | infra §7.20, §8.1, §9, §13.10 | the QA maintenance window (docs spec how-to only) | the record `/etc/pinka/maintenance-window.json`, `pinka window open` and `window close`, fail-safe expiry (staging stops and refuses; production stays stopped until `window close`), `staging_shared_hardware` with the GPU-idle and port checks. Approved in the owner's review of the 3b spec update; implemented in 3d.4 |
+| St12-1 | infra §11 (Ansible) | `make test-roles`: the provider-agnostic roles in a throwaway Incus system container or VM, only when invoked | `make check-mode` (the provider-agnostic roles `base`, `users_groups`, `ssh` and `layout` in check mode in a disposable Docker systemd container per family, also CI's required job, I2) and `make test-distros` (the full bootstrap in disposable Incus VMs, §19.9) replace it; there is no `test-roles` target and no alias. Raised by the 3e self-test; approved by the owner after 3e ("record it as an approved deviation (make check-mode and make test-distros replace it). No alias."); built in step 12 |
+| SSH1 | infra §7.3 | the drop-in sets `AllowGroups pinka`, `PasswordAuthentication no` and the other settings for the whole host | pinka's sshd settings apply in a `Match Group pinka` block, so accounts outside `pinka` keep the host's own policy (owner, decision 3 after D1, approving option (b) of the open question raised with the 3f-1 spec edit); on a shared host, and on a dedicated host while the install's access path is open for an account that is not a researcher; built with the D1 follow-up |
+| DL1 | infra §7.5 (doctor bullet) | doctor fails on anything listening on `0.0.0.0`/`::` other than sshd | `network.listeners` accepts a listener the install record notes as the host's before pinka, on these conditions (owner, decision 1 with the "commit" for `16bf749`): it matches the record exactly (address, port, protocol and owning unit or executable), and any listener that appears after the install still fails; the install record is writable only by root, and doctor fails if its owner or mode is wrong (`install.record`); pinka's own services never use the exception; on a dedicated host the strict rule of §7.5 applies unchanged |
+| AG1 | infra §7.5 (pre-existing access) | firewalld or ufw: pinka leaves the owner's zones and rules as they are; closing unspecified | what the owner consents to close, and the install's access path once closed, are dropped by pinka's own table `inet pinka_access_guard` on every backend, loaded by `pinka-nftables.service` (owner, decision 2 with the "commit" for `16bf749`); tests confirm it drops only new connections and never one on loopback, spares only SSH on `tailscale0` (corrected with the owner's new plan after `16bf749`: what was closed is closed over the tailnet as well, on every backend; SSH over the tailnet is never cut), and depends on no table of ufw or firewalld; the ufw and firewalld lanes of `make test-distros` reload the owner's firewall and check the guard, the closed and the kept listener from the harness host and over the tailnet, and SSH over the tailnet |
 
-## Contract changes
+## Platform spec changes pending
 
-`contract_version 1` is defined by `infra/docs/contracts.md` (resolutions B2,
-B3, B4, C2-C10, D1-D3, E3, E13). The ports table (C10) is proposed and awaits
-owner approval.
+Approved deviations after the 3b2 spec edit that the platform must follow;
+the owner folds them into the platform spec
+(its master, which the owner keeps for `pokus-platform`). Each names what changes for
+the platform.
 
-Proposed in infra step 7 (awaiting owner approval; written into
-`infra/docs/contracts.md`, details in `infra/docs/IMPLEMENTATION_NOTES.md`,
-"Step 7"):
+| ID | What the platform must follow |
+| --- | --- |
+| V1 | The release path and every content package of one repository are disjoint subtrees: no content package may lie inside the release or inside another content package (`source-overlap`). The `platform/` and `catalog/` layout already complies. |
+| V2 | The manifest's `requires` names every infra facility the platform uses: `incus` for `sandbox-operator` and `restricted-operator`, `inference` for `inference-broker`, `gpu` for `gpu-trainer` jobs, `opa` for `policy`, `telemetry` for `dashboards` and `telemetry`, `postgres` for `backup.database: true`; anything else is refused (`facility-undeclared`). |
+| V3 | Wheels only: every locked dependency is available as a wheel; nothing is built from an sdist. A release with a `[build-system]` at its root, or a workspace member with one, locks its build backend in a `[dependency-groups] build` group of the root `pyproject.toml`; the build installs the locked wheels with network first, then builds the release offline without build isolation. |
+| V4 | Services take their sockets from systemd (socket activation, `LISTEN_FDS`/`LISTEN_FDNAMES`) and never create sockets themselves; a service's own runtime directory is `/run/pinka/platform-runtime/<service>/` and holds no sockets. |
+| V5 | No platform impact (infra's neutrality lint and its installer). |
+| V6 | The `agent` service names its own package in the manifest (`package: packages/potka-agent/`). `potka-agent` may not depend, directly or through other packages, on `potka-core` or any other package of the release, nor on a path, Git or URL source: only on packages from an `https://` index. What the agent needs from shared code moves into `potka-agent`. The build installs it alone into `.agent-venvs/agent/`, where `.venv/bin/potka-agent-runner` resolves; the agent sees nothing else of the release (prompts, agent configs and tool schemas reach it over its sockets). A release ships neither `.venv` nor `.agent-venvs`. |
+| V7 | GPU inference needs an NVIDIA GPU with compute capability 7.5 or newer (the pinned vLLM image's kernels); the platform's hardware requirements and docs state 7.5. |
+| (restore) | A restore deploys exactly the recorded commit and tree, through the recorded tag only with signed tags required (owner decision with the "commit" for 3d.4): the platform's release process never moves or deletes a release tag and never rewrites history a deployed release came from. |
+| (contract copy) | A platform repository that keeps a copy of `docs/contracts.md` keeps it identical to the copy in the infra release it pins, and the platform's CI checks it (owner decision with the "commit" for 3d.8). The attestation format and the official check are the platform's, documented on its own site (infra only provides the QA directories, the trusted keys and the commits and tree hashes an attestation is checked against). |
 
-- Telemetry, VMs (C4): the dedicated collector listener `198.18.0.1:4317`/
-  `4318` on the dummy interface `pokus-otlp0`, one egress rule in
-  `pokus-run-default`, nothing else from run networks; listed in the ports table.
-- Sockets: `/run/pokus/postgres/` also serves infra's metrics exporter
-  (`pokus_monitor`); `/run/pokus/postgres-reader/` also serves Grafana as
-  `pokus_grafana`; `pg_hba` cannot tell the directories apart, the password
-  files decide the role (replaces "role `pokus_reader` only (`pg_hba`)").
-- PostgreSQL: no TCP listener at all; the infra-internal role `pokus_monitor`.
-- Inference: the deploy helper also renders `current.yaml` (the
-  `vllm serve --config` file) next to `current.env`.
+Built in 3d.5 and approved with the "commit" for 3d.5 (the arbiter's
+protocol, the job interface, the inference API's clients); the platform
+must follow them too:
 
-Proposed in infra step 8 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 8"):
+- The controller switches deployments with the GPU arbiter's `serve`
+  request on `/run/pinka/gpu.sock`, not the deploy helper's socket; a
+  deployment spec names adapters in `adapter_ids` (`<name>@<sha256>`), and
+  `adapters` is refused.
+- It starts a run with `train` and a submission (`base_model`, `datasets`
+  mapped to published hashes, `hyperparameters`, `seed`,
+  `sessions_drained`, optional `restore`) after draining its sessions, and
+  publishes datasets with `publish-dataset` from its own state directory,
+  every file its own, with `provenance` (`instances` with their split,
+  `source_runs`).
+- A training job reads `/model`, `/datasets/<kind>`, `PINKA_JOB_RUN`,
+  `PINKA_JOB_SEED`, `PINKA_JOB_HYPERPARAMETERS`, `PINKA_JOB_RESUME`, writes
+  its checkpoints to `/checkpoints` and its adapter to `/output/adapter/`,
+  and runs with a read-only root file system and a writable `/tmp` only.
+- The inference API is reachable only by the accounts of profiles with
+  `inference_api` (the controller and the inference broker); on a lab node
+  only the controller reaches the control port.
 
-- Golden images: the Incus property `requirements.nesting` is `true` for
-  blueprints that need nesting (a container engine inside the target), so the
-  platform launches them with `security.nesting=true`.
+**Requests for the next platform spec edit** (the platform spec is
+read-only; the owner keeps its master for `pokus-platform`):
 
-Proposed in infra step 9 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 9"):
-
-- Session records: the record's fields (`schema_version`, `boot_id`,
-  `started_at`, `fingerprint_hash`, `fingerprint`, `preflight_outcome`,
-  `errors`), matching the platform's `lab_sessions` table; a field that could
-  not be computed is `null` with its reason under `errors`.
-
-Proposed in infra step 10 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 10"):
-
-- Fingerprint document: `fingerprint_schema_version`, `hash`
-  (`sha256:<hex>` of the canonical JSON of `fingerprint`), `fingerprint`,
-  `computed_at` and `boot_id` (not hashed), with the JSON Schema
-  `infra/tools/pokus-lab/schema/fingerprint.schema.json`.
-- Lab drain: `POST /lab/drain` with `{"timeout_seconds": <int>}` and
-  `GET /lab/status` answering `{"active_runs": <int>}` on the orchestrator's
-  `api.sock`, called as root by `pokus-lab stop` and `update-host`; runs still
-  active when the lab stops are recorded as interrupted.
-
-Proposed in infra step 11 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Step 11"; `contracts.md` itself is
-unchanged):
-
-- Inference mTLS material: on lab nodes also `u:pokus-gw:r-x` on
-  `/etc/pokus/inference/` and `u:pokus-gw:r--` on `self.key`, because the LLM
-  gateway calls the remote inference node too.
-- Inference control API: `GET /health` (`ok`, `vllm_status`, `deployment`,
-  `fingerprint` with `hash` and `computed_at`), `GET /model` (`deployment`,
-  `models`, the served model's verified `manifest`), `GET /metrics`,
-  `POST /activate` with `{"deployment": "<id>@<version>"}` (the deploy
-  helper's answer) and `POST /verify` (the serving verification's report).
-- Ports: pairing uses 18710 while the control endpoint is stopped; a paired
-  lab node receives the inference node's telemetry with OTLP gRPC on 4317 of
-  its tailnet address (mutual TLS).
-- Inference node: vLLM stays on `127.0.0.1:18704`; the control endpoint
-  terminates mutual TLS on the tailnet address and forwards 18704 (instead
-  of vLLM itself bound to `tailscale0`).
-- Question: the agent runner cannot read `/etc/pokus/secrets/agent/`
-  because `/etc/pokus/secrets` is in its `InaccessiblePaths` (C2); proposed
-  `LoadCredential=` if the agent needs a secret.
-
-Proposed after infra step 13 (same status; details in
-`infra/docs/IMPLEMENTATION_NOTES.md`, "Follow-up after step 13: CPU sets"):
-
-- Incus: `[incus] cpuset_targets` in `endpoints.toml` when host_vars sets it;
-  the platform sets every bench instance's `limits.cpu` to CPUs inside it
-  (never a plain count), and the `bench` project's `limits.cpu` is the number
-  of those CPUs.
-
-## Step status
-
-### Phase 1 — infra/
-
-| Step | Content | Status | Commit |
-| --- | --- | --- | --- |
-| 1 | Skeleton, tooling, CLAUDE.md, IMPLEMENTATION_NOTES | done | `8df9199` (with steps 2-4; root files in `0503e86`) |
-| 2 | Preflight | done | `8df9199` |
-| 3 | bootstrap.sh | done | `8df9199` |
-| 4 | versions.lock.yml + lock-check | done | `8df9199` |
-| 5 | Ansible foundation roles (four families) | done | `ced6b6d` |
-| 6 | docker, nvidia_container_toolkit, incus | done | `ea46ba3` |
-| 7 | postgres, observability, opa, vllm, models | done | `99768ea` |
-| 8 | images | done | `5526e43` |
-| 9 | lab_session, backup, restore.yml, rotate.yml | done | `ca9ea42` |
-| 10 | pokus-lab CLI with doctor and fingerprint | done | `f89e1c7` |
-| 11 | catalog and platform roles, split inference | done | `a9be1d3` (CI fixes in `7955dde`) |
-| 12 | test-distros harness and CI fast lane | done | `f453176` (fast-lane fixes in `b31d54b`, `07e53f3`; whole play in check mode `40e214c`, its findings `0f8f2aa`, `cce39fe`, `8b5a0e8`) |
-| 13 | Installer TUI | done | `01fc3e3` (CPU sets in `00da783`) |
-| 14 | Documentation completion | done | commit "docs(infra): complete the infra documentation" |
-
-### Phase 2 — platform/ (steps 1-13), Phase 3 — catalog/, Phase 4 — docs-site/, Phase 5 — self-test
-
-Not started.
+- The official check requires `result` success in
+  `/etc/pinka/bootstrap-state.json` (interpretation 3.4); whether
+  `doctor_warnings` also counts is decided in that edit.
+- V3 (owner decision with the "commit" for 3d.3): a `python-uv` release
+  locks its build backend in a `[dependency-groups] build` group and every
+  dependency is available as a wheel; infra builds it in two phases (locked
+  wheels with network, then the release built offline).
+- Found in 3d.6, approved with the "commit" for 3d.6: infra's database
+  bootstrap gives a platform's service roles no privilege on the schemas
+  `public` and `restricted`; the platform's `migrate` hook grants its own
+  services what they use (usage on the schemas, rights on the tables), and
+  the restricted check accepts only the profiles allowed there. A
+  controller that polls the GPU arbiter rarely reads the current run from
+  `status` and treats a run with no transition left in the answer (it shows
+  the last ten) as ended.
 
 ## Open questions
 
-All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
+Decided after the 3b commit: every interpretation of steps 2-14 and of the
+follow-ups after step 13 that `docs/IMPLEMENTATION_NOTES.md` lists as
+"awaiting owner confirmation" (archive, section J, "Interpretations"); the notes keep
+the original wording and the findings of each step. Still open, from step 1
+("Questions raised by step 1"): reference agents for scenario validation and
+the QA results schema (both for `pokus-platform` and `pokus-qa`), and the
+page-ownership table (H5). Settled since: the port table (P3b), the
+project files at the repository root (3f) and `make test-roles` (St12-1,
+after 3e).
 
-- From step 1 ("Questions raised by step 1"): reference agents for scenario
-  validation, the QA results schema, project files at the monorepo root,
-  approval of the port table (`infra/docs/contracts.md#ports`) and of the
-  page-ownership table.
-- From step 2 ("Interpretations awaiting owner confirmation"): Debian 12 under
-  the E8 policy, the `debian13-baremetal` fixture tier (BUILD_PROMPT §11 vs
-  §2.3/E8), rows for unlisted releases of implemented distributions,
-  unreachable required endpoints → `needs_action`, storing the profile only as
-  root and not with `--no-write`, and the meaning of the `qa:run` labels E0-E3.
-- From step 3 ("Interpretations awaiting owner confirmation (step 3)"): the
-  additional bootstrap exit codes 11, 50, 60, 64 and 70 (ADR-0002, proposed);
-  stopping with 77 on a changed host profile, except after a run that ended
-  with a play signal; `--force-unsupported` not skipping required actions; the
-  state file written at every exit with `result` (and a proposed contract
-  addition so that the official check requires a successful result); check
-  mode writing neither profile nor state; `tar` and `git` checks and the
-  interactive `wsl.conf` edit in pre-preflight; `--tui`/`--answers` stopping
-  with 77 until the installer exists; the vault password order; the
-  concurrency lock; `LC_ALL=C.UTF-8` for Ansible; and non-check runs ending
-  with 60 until `pokus-lab` exists (step 10).
-- From step 4 ("Interpretations awaiting owner confirmation (step 4)" and
-  "Findings to report"): the lock structure; newest stable releases rather
-  than LTS lines; vLLM 0.31.0 on CUDA 13.0 (a `-cu129` variant exists for
-  older drivers); HEAD-only registry checks; the `verify-todos` exclusions; the
-  failing `lock-check` CI job; staying on Incus 6.0 LTS although `v7.0.x` tags
-  exist; NVIDIA's rpm repository file using `gpgcheck=0` (to be resolved in
-  step 6).
-- From step 5 ("Interpretations awaiting owner confirmation (step 5)" and
-  "Findings to report (step 5)"): unverified component sources as `verify`
-  data that the play refuses; `pokus_incus_bridge_patterns` from the contract
-  instead of `incus_bridge_prefix`; the distribution-fact check as a
-  repository check; `--allow-reboot` scheduling `shutdown -r +1` after signal
-  76; removed researchers also leaving `pokus-admin`; Incus's per-user group
-  added in step 6; how lab-wide variables are documented; role check-mode
-  tests deferred to step 12; run networks on firewalld and ufw hosts relying
-  on Incus until step 6; the Secure Boot MOK password on non-interactive
-  driver installs.
-- From step 6 ("Findings to report (step 6)" and "Interpretations awaiting
-  owner confirmation (step 6)"): **a contract question**: a certificate
-  restricted to `bench` can create run networks but cannot delete them
-  (bridges live in the default project); proposed: a socket-activated root
-  helper for `r-*` networks, like C3, reachable only by `pokus-orch`. Also:
-  staying on Incus 6.0 although a 7.0 branch exists; `bench` cannot limit
-  network access to `r-*` by name; personal projects created in advance with
-  limits and without GPU; personal bridges trusted like the build bridge; the
-  `daemon.json` label as managed header; the GPU check's device flags; preseed
-  once, then convergence; bench limit defaults; Compose units in step 7.
-- From step 7 ("Findings to report (step 7)" and "Interpretations awaiting
-  owner confirmation (step 7)"): the observability stack on the host network
-  bound to `127.0.0.1` (Prometheus must reach the loopback-only Incus API);
-  Grafana and the exporter on the PostgreSQL sockets and no TCP listener at
-  all (ADR-0010); a second collector instance for the host journal; the VM
-  listener address `198.18.0.1` on `pokus-otlp0`; vLLM on the host network on
-  `127.0.0.1` only; `current.yaml` rendered next to `current.env` and the
-  limits on deployment overrides; immutable deployment files; generated
-  superuser and exporter passwords; adapters in `models.lock.yml`; the pinned
-  OPA CLI for tests; one GPU service per GPU method; models and vLLM only on
-  serving nodes. Findings: libpq ignores the group-readable reader credential
-  (researchers copy it to `~/.pgpass`); `pg_hba` cannot tell socket
-  directories apart; service accounts now get their own primary groups; the
-  run explorer's database panel assumes a table `public.runs` until the
-  platform's migrations exist.
-- From step 8 ("Findings to report (step 8)" and "Interpretations awaiting
-  owner confirmation (step 8)"): the leakage lint's design (baseline of the
-  base image, whole-token findings, benign words; ADR-0012) and its default
-  allow rules; unpinned distribution packages recorded in `packages.txt`; the
-  extra image properties `requirements.nesting` and `description`; `-dirty`
-  in `pokus.recipe_commit`; the export layout (`SHA256SUMS`, `build.json`,
-  `_upstream/`); importing an export instead of rebuilding; failed builds
-  kept for inspection; nesting per build instance; the agent reading the
-  whole journal plus per-blueprint log files; each blueprint running only its
-  own tests; the role on `full` and `lab` nodes. Findings: no build could be
-  run here (no Incus); every build waits for the Incus base image
-  fingerprints; in-image files carry the managed-file header that names the
-  project, which the default leakage patterns allow.
-- From step 9 ("Findings to report (step 9)" and "Interpretations awaiting
-  owner confirmation (step 9)"): what a restore brings back (the research
-  space directories, and from `/etc/pokus` only vLLM deployments and QA
-  files; newer files kept; secrets never restored); the wider set of secret
-  paths excluded from backups; the snapshot prompt and `restore_snapshot`;
-  the repository password changed only by `rotate.yml` (`restic key
-  passwd`); initializing the repository on first use; the SFTP key and pinned
-  host keys; the health gate's checks and thresholds (WSL clock within 1 s of
-  `pool.ntp.org`); autostart of `pokus-lab.target`; the scope of `rotate.yml`
-  (including removing replaced Incus trust entries); schedules and
-  retention; backup timers outside the lab target. Findings: nothing could be
-  run against real services here; session records and the restore's doctor
-  run depend on `pokus-lab` (step 10); a restore drill must disable the spare
-  machine's backup timers.
-- From step 10 ("Findings to report (step 10)" and "Interpretations awaiting
-  owner confirmation (step 10)"): the lab description `/etc/pokus/lab.json`
-  as the CLI's only input; package copies (with a copy of preflight) under
-  `/usr/local/lib/pokus/`; doctor needing root and exiting 2 when it cannot
-  run; which checks are warnings (a fresh lab without a backup repository
-  ends bootstrap with 1); the listener allowlist; the telemetry round trip
-  and the smoke checks' assertions (VM blueprints skipped); the inference
-  project left out of the unit list; `pokus-lab restore -- <options>`;
-  `status` needing root for containers and Incus; the reboot notice from
-  `/var/run/reboot-required`; `pokus-lab user` refusing host_vars files it
-  cannot edit line by line. Findings: nothing ran against a real lab; the
-  proposed fingerprint and drain contract additions (the platform must
-  implement the drain endpoints); `site.yml` still applies `postgres` and
-  `opa` on inference nodes (aligned in step 11); the step 5 sleep inhibitor
-  was never enabled (fixed); `pokus-lab docs serve` follows in step 14.
-- From step 12 ("Findings to report (step 12)" and "Interpretations awaiting
-  owner confirmation (step 12)"): test images resolved at run time with the
-  fingerprint recorded; results valid for 90 days shown as a *Valid until*
-  date; the stages of a test (first backup before `doctor --smoke`); test VMs
-  as staging labs on a test tailnet with an ephemeral key; the harness's
-  safety rules; the fast lane's roles, base images (Leap instead of
-  Tumbleweed) and profile. Findings: no distribution test has run (no Incus;
-  image aliases unverified); `make test-distros` needs the answers replay of
-  step 13; the fast lane runs for the first time in CI with this step; no
-  derivative target yet.
-- From step 11 ("Findings to report (step 11)" and "Interpretations awaiting
-  owner confirmation (step 11)"): deployment directory names, refusing moved
-  tags, keeping old deployments; SSH deploy keys or anonymous HTTPS only;
-  SSH-signed tags; the uv environment and console-script check; schema
-  checks with the release's interpreter; socket permissions from a root
-  `ExecStartPost=+` helper with the ACL fallback; migrations before `current`
-  switches, once per commit; the evaluator without `MemoryDenyWriteExecute`;
-  disabling the platform stops but removes nothing; vLLM on loopback behind
-  the control endpoint on an inference node; the pairing protocol (P-256
-  identities for 3650 days, 60-bit code, HMAC over both fingerprints, five
-  attempts, equal `lab_mode`); what an inference node runs and how its
-  telemetry reaches the lab node; tailnet addresses read at bootstrap; the
-  split-inference firewall ports; doctor on split nodes. Findings: nothing
-  ran against a real host; the SSH-signed tag test needs `ssh-keygen`;
-  GitHub's SSH host keys are still unverified (SSH sources on github.com are
-  refused until then); the contract proposals above; `InaccessiblePaths`
-  needs existing paths (unit ordering); existing hosts may recreate the
-  collector and store containers once.
+Raised by the pins of `make lock-pins` (after 3f), for the owner; decided
+with the plan of 3f-1 (owner, after 3f): Zabbly's per-architecture version
+is approved as a spec deviation (3f-1.F), DCGM is wired in 3f-1.E, and
+Tailscale on the rpm releases stays unverified until it is closed before
+any rpm-family target is claimed as tested. The records as they were
+raised:
 
-- From step 13 ("Findings to report (step 13)" and "Interpretations awaiting
-  owner confirmation (step 13)"): `--machine` optional with `--answers` or
-  the TUI (this replaces the step 3 interpretation that `--tui` and
-  `--answers` stop with 77); the TUI re-running bootstrap non-interactively
-  for the installation; one installer lockfile that includes ansible-core for
-  the vault API; segno for the QR code; pytest 8.4.2 for the snapshot plugin;
-  the per-researcher Grafana switch in the observability role; an optional
-  inference peer named later by pairing; the CI answers' power policy; E3 as
-  no HTTPS tokens; the TUI's exit codes; mouse, `NO_COLOR` and themes; the
-  Finish screen's commit as the invoking user, never pushed. Findings, fixed
-  in the step: task names with role prefixes in the callback, Ansible's
-  curses probe crashing the TUI, modify mode replacing the restic password,
-  resume losing incomplete answers, modify mode asking again for the
-  Tailscale key, the phase tree's provider and helper roles. Not covered: no
-  real bootstrap driven by the TUI yet; estimates are counts only (no measured
-  build data); MOK enrollment and the Hub API field names unverified.
-- From the follow-ups after step 13 (IMPLEMENTATION_NOTES, "CPU sets" and
-  "check mode of the whole play"): empty CPU sets by default; which units and
-  containers the services slice holds; the proposed `[incus] cpuset_targets`
-  contract addition; the CI fast lane running all of `site.yml` (beyond the
-  provider-agnostic roles of BUILD_PROMPT §19.9) with the container as bare
-  metal, and skipping roles whose sources are unverified. Findings: Tailscale
-  and Incus are skipped on every CI image until verified, Docker on Leap and
-  Arch; check mode on a fresh Debian-family host needs python3-apt and
-  python3-debian; python3-debian was missing for real runs too (fixed); the
-  whole-play fast lane also found the never-enforced Grafana password check
-  and the backup unit templates that failed every real run (both fixed).
-  The fast-lane interpretation is decided by I2: the required job runs the
-  provider-agnostic roles only, the whole play runs in a separate,
-  non-blocking extended job.
-- From step 14 ("Findings to report (step 14)" and "Interpretations awaiting
-  owner confirmation (step 14)"): **preflight's `secure_boot_mok` rule
-  (BUILD_PROMPT §2 matrix and fixture) stops bootstrap with 30 before the
-  play can install the NVIDIA driver on a Secure Boot host**, so the
-  automatic driver installation cannot run there; proposal: a warning
-  instead, or consent to the MOK flow. `pokus-lab docs serve` as a
-  foreground command for any account on `127.0.0.1`; documentation installed
-  by extracting a release tarball; the README excerpt (supported and tested
-  only); the QA maintenance window read as a separate staging lab.
+- **Zabbly's per-architecture versions.** Zabbly builds Incus for each
+  architecture separately, and the version names the build
+  (`1:6.0.6-ubuntu24.04-202603272003` on x86_64, `…-202603272249` on
+  aarch64). The lock holds one version per release (infra §19.4), so the
+  pins are the x86_64 builds and an aarch64 host (experimental) cannot
+  install them. Recommendation: allow a per-architecture mapping for such a
+  package (`incus: {x86_64: ..., aarch64: ...}`) in the lock, its schema and
+  `pinka_lock_packages`, as a spec deviation; the alternative is to leave
+  aarch64 hosts without Incus from Zabbly.
+- **DCGM is not wired.** `observability_gpu_exporter: dcgm` passes the
+  role's check once the image is pinned, but `compose/observability` always
+  runs the nvidia-smi exporter (`GPU_EXPORTER_IMAGE`, with that exporter's
+  flags); nothing uses `DCGM_EXPORTER_IMAGE`. Recommendation: wire the DCGM
+  exporter as its own compose service with its own flags and capabilities,
+  with a render test, or refuse `dcgm` until it is; either way its image's
+  CUDA requirement must be checked against driver 580 on a GPU host (its
+  configuration is behind `layers.nvcr.io`, which this environment cannot
+  reach).
+- **Tailscale on the rpm releases.** Tailscale's repositories use one layout
+  per distribution (`stable/fedora/$basearch` with no release, also for
+  AlmaLinux and Rocky Linux per its installer; `stable/centos/<major>/`,
+  `stable/rhel/<major>/`; `stable/opensuse/leap/<version>/`), which the one
+  template of `tailscale-rpm` cannot express. Recommendation: one
+  repository entry per source group, with a `{version}` placeholder for
+  openSUSE Leap, then their pins with `make lock-pins`.
+
+Raised by the 3f-1 spec edit, for the owner (decided after D1: option (b), approved deviation SSH1):
+
+- **SSH policy on a host with other accounts.** The `ssh` role's drop-in
+  (§7.3) sets `AllowGroups pinka` and `PasswordAuthentication no` for the
+  whole host, so every account outside `pinka` loses SSH access and
+  password logins end, also for accounts that existed before pinka
+  (computer B). Under the new pre-existing rule this changes how existing
+  accounts are used, but §7.3 was outside the authorized edit, so it is
+  unchanged. Options: (a) keep it and say so in the pre-existing
+  components how-to and in the dry run; (b) put pinka's settings in a
+  `Match Group pinka` block, so other accounts keep the host's own policy;
+  (c) refuse with `needs_action` when SSH-capable accounts outside `pinka`
+  exist, unless the owner consents. Recommendation: (b), with sshd still
+  reachable only on `tailscale0` and the allowed interfaces.
+
+Raised by D1 of 3f-1, for the owner (decided after D1: the GPU guard in its own commit; LXD guests: DHCP and DNS only, approved):
+
+- **Computer B's Kepler GPU.** With `install_nvidia_driver: auto` and no usable
+  driver, bootstrap blacklists nouveau and installs the pinned open driver
+  branch, which does not support Kepler GPUs such as the GT 730. D1 leaves a
+  driver that existed before pinka alone, but a host without one still gets
+  the pinned branch. Options: (a) `install_nvidia_driver: skip` on B (the
+  GPU features stay off; the installer offers it); (b) a supported-device
+  guard: preflight compares the GPU's PCI ID with the pinned branch's
+  supported list and reports the GPU unusable instead of installing.
+  Recommendation: (a) now for the real-machine tests; (b) as a later item
+  if hosts with old GPUs are expected.
+- **LXD's guests and pinka's input policy** (§7.7: "pinka's rules must not
+  change LXD's traffic"). On the nftables backend pinka's input chain drops
+  by default, which would also drop the DHCP and DNS requests of LXD's
+  guests to LXD's dnsmasq. D1 admits DHCP and DNS on LXD's bridges (as for
+  Incus's), and pinka's forward chain filters only its run networks, so
+  LXD's guests keep their addresses, names and outbound traffic. Their other
+  traffic to the host itself (a service of the host on the bridge address)
+  meets pinka's input policy like any interface. Accepting all of it would
+  also let LXD's guests reach the split-inference ports, whose guard filters
+  only `tailscale0`. Interpretation built: (a) DHCP and DNS only; the
+  alternative (b) accepts all traffic from LXD's bridges and extends the
+  split guard to every interface. Recommendation: (a).
+
+Raised by the pre-existing access follow-up, for the owner (decided with the "commit" for `16bf749`: approved deviations DL1, with conditions, and AG1):
+
+- **Doctor's listener check on a shared host.** §7.5's doctor bullet fails
+  on anything listening on `0.0.0.0` or `::` other than sshd, which every
+  shared host does by definition, and which pinka may not stop.
+  Interpretation built: `network.listeners` accepts a listener the install
+  record notes as the host's before pinka (same protocol and port, and the
+  same address unless it was every address), names it `kept` or `closed by
+  the firewall`, and still fails on any other. Recommendation: record it as
+  an approved deviation.
+- **Closing with a table of pinka's own on every backend.** §7.5 leaves the
+  owner's firewalld zones and ufw rules as they are; what the owner
+  consents to close is dropped by `inet pinka_access_guard`, loaded by
+  `pinka-nftables.service` on every backend (the unit then also exists on
+  firewalld and ufw hosts), instead of ufw deny or firewalld reject rules,
+  which would have blocked SSH over the tailnet for `tcp/22` on ufw, could
+  not reopen, and would have changed the owner's rule lists. A new unit
+  name was avoided: it would change `contract/reserved-names.yml`, which
+  needs a contract version bump. Recommendation: keep it.
 
 ## Owner deliverables pending
 
-- Approval of the model candidates in `infra/models.catalog.yml` (owner answer
+- **`make lock-pins` on the owner's machine** (owner decision on item 0,
+  after 3f): this environment reaches every source but GitHub's meta API
+  and SSH port, so GitHub's SSH host keys need the owner's run on a fresh
+  Ubuntu 24.04 machine (prerequisites and commands in
+  `docs/how-to/pin-vendor-sources.md`); the output, pasted back, is
+  recorded and its commit proposed. The run also cross-checks every pin
+  recorded from here. The Incus base image pins age out within days: renew
+  them with `make lock-pins` right before the first golden image build.
+- **The real-machine tests** (owner, after 3f): after 3f-1, on the owner's
+  computers A and B, one at a time, named by the numbers of
+  `specs/pokus-infrastructure-qa-spec.md` and starting with 4.1 and 4.2;
+  the plan is under "Real-machine tests" in the remaining plan. They
+  replace the checklist of the 3e runs, which the owner asked for after 3e
+  (owner instruction with the "commit" for `a425c7f`: stop and say exactly
+  what to run and where), listed in `docs/IMPLEMENTATION_NOTES.md`, "Infra
+  self-test without provisioning", "Not tested":
+  1. bootstrap in check mode on a disposable Ubuntu 24.04 VM;
+  2. `make test-distros` on a machine with Incus VMs;
+  3. a full bootstrap on a real supported host, with a second run at
+     `changed=0` and `pinka doctor --smoke`;
+  4. a TUI install compared with an answers replay;
+  5. the GPU checks: vLLM serving with the tool-call check, GPU training,
+     MOK, DCGM;
+  6. the first golden image builds;
+  7. optionally, the Docker check-mode runs, which CI already runs on every
+     push.
+- Approval of the model candidates in `models.catalog.yml` (owner answer
   E7): four permissive candidates and one restricted one, all `proposed`, with
   `TODO(verify)` revisions because Hugging Face is not reachable from the build
   environment.
 
 - Domain allowlist for the environment (A3); the list is in
-  `infra/docs/IMPLEMENTATION_NOTES.md`. Since step 3, GitHub release
+  `docs/IMPLEMENTATION_NOTES.md`. Since step 3, GitHub release
   downloads, `api.github.com` and `security.ubuntu.com` are reachable; the
   other listed hosts and `releases.astral.sh` (CPython builds for uv) are
   still blocked.
@@ -719,40 +1522,48 @@ All listed in `infra/docs/IMPLEMENTATION_NOTES.md`:
 
 ## TODO(verify)
 
-`make verify-todos` lists every marker in the tree (110 after step 13; details
-in `infra/docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after
-step 4" through "after step 13"):
+`make verify-todos` lists every marker in the tree (110 after step 13, 117
+after 3d.6 with the Galaxy fallback pins, 129 after 3d.7 with the
+collection artifacts, 128 after the lock's header comment stopped naming the
+marker, 118 with the owner's collection pins, 113 after 3e, 96 with the
+pins of `make lock-pins` after 3f, 98 with D1 of 3f-1; details in
+`docs/IMPLEMENTATION_NOTES.md`, "Open `TODO(verify)` items after step 4"
+through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 - Ubuntu 26.04: Incus, NVIDIA Container Toolkit and Tailscale support
-  (`infra/preflight/support-matrix.yml`).
-- openSUSE Leap 15.6 end of support (`infra/preflight/support-matrix.yml`).
+  (`preflight/support-matrix.yml`).
+- openSUSE Leap 15.6 end of support (`preflight/support-matrix.yml`).
 - 16 endpoint URLs whose hosts are blocked from the build environment
-  (`infra/preflight/endpoints.yml`), including `releases.astral.sh`, from
+  (`preflight/endpoints.yml`), including `releases.astral.sh`, from
   which uv 0.12.23 downloads the pinned CPython.
 - Output formats of `timedatectl timesync-status` and `chronyc -n tracking`
-  (`infra/preflight/pokus_preflight/detect/timesync.py`).
+  (`preflight/pinka_preflight/detect/timesync.py`).
 - Detection of an incomplete dnf transaction
-  (`infra/preflight/pokus_preflight/detect/conflicts.py`).
-- 32 lines of `infra/versions.lock.yml`: the DCGM exporter image (nvcr.io);
+  (`preflight/pinka_preflight/detect/conflicts.py`).
+- 32 lines of `versions.lock.yml`: the DCGM exporter image (nvcr.io);
   Tailscale and Zabbly repository keys; Docker packages for openSUSE Leap;
   Incus and Tailscale packages for every pinned release; Incus base image
   fingerprints; GitHub SSH host keys (api.github.com/meta is not readable
-  from this environment).
+  from this environment). After 3f, `make lock-pins` pinned the DCGM image,
+  the Tailscale and Zabbly keys, Incus (Zabbly) and Tailscale on the apt
+  releases and the Incus base images; still open: GitHub's SSH host keys
+  (the owner's run of `make lock-pins`), Docker on openSUSE Leap, Incus on
+  the Fedora, EL and openSUSE releases, and Tailscale on the rpm releases.
 - Step 5: 7 more lock lines (NVIDIA driver pins for the releases other than
-  Ubuntu); 17 `verify` entries of `infra/ansible/component-sources.yml`
+  Ubuntu); 17 `verify` entries of `ansible/component-sources.yml`
   (Tailscale and Zabbly repository layouts; Docker, Incus and NVIDIA package
   names and methods outside Ubuntu); 20 notes in role files (package and
   service names of the Red Hat, SUSE and Arch families, dnf5 and zypper
   behavior, Incus's firewalld/ufw/Docker guidance, the WSL library path, the
   `tailscale serve` status format, the Secure Boot MOK flow); the Windows
-  helper `infra/contrib/windows/pokus-wsl.ps1` (not run on Windows).
+  helper `contrib/windows/pinka-wsl.ps1` (not run on Windows).
 - Step 6: resolved the three firewall and Docker coexistence notes from
   Incus's documentation; added the Incus group, unit and path names of
   Zabbly's packages and of the Red Hat, SUSE and Arch families
-  (`infra/ansible/roles/incus/vars/`).
+  (`ansible/roles/incus/vars/`).
 - Step 7: the revisions of the five candidate models in
-  `infra/models.catalog.yml` (with two explanatory lines) and the field names
-  of the Hugging Face tree API in `infra/docs/how-to/add-a-model.md` (with the
+  `models.catalog.yml` (with two explanatory lines) and the field names
+  of the Hugging Face tree API in `docs/how-to/add-a-model.md` (with the
   catalog warning); Hugging Face is not reachable from the build environment.
 - Step 8: nothing added or resolved; the Incus base image fingerprints now
   block every golden image build (images.linuxcontainers.org is not reachable
@@ -762,14 +1573,35 @@ step 4" through "after step 13"):
 - Step 11: nothing added or resolved; vLLM's TLS options, planned as a
   marker, were verified in vLLM's source (and are not used). GitHub's SSH
   host keys (above) now also gate SSH deployments from github.com.
-- Step 12: the VM image aliases of `infra/tests/distros/targets.yml`
+- Step 12: the VM image aliases of `tests/distros/targets.yml`
   (images.linuxcontainers.org is not reachable from the build environment).
 - Step 13: the Hugging Face Hub API field names the installer reads when it
-  pins a model (`infra/installer/pokus_installer/models.py`), and the MOK
-  enrollment with `mokutil` (`infra/installer/pokus_installer/tui/screens_install.py`).
+  pins a model (`installer/pinka_installer/models.py`), and the MOK
+  enrollment with `mokutil` (`installer/pinka_installer/tui/screens_install.py`).
+- 3d.6: the release tarball URL and sha256 of each pinned Ansible
+  collection (`ansible_collections.fallback` in `versions.lock.yml`).
+- 3d.7: the Galaxy artifact URL and sha256 of each of the five pinned
+  collections (`ansible_collections.artifacts` in `versions.lock.yml`)
+  and their copy in the generated `bootstrap/lib/pins.sh`. Resolved
+  with the owner's `make lock-collections` output (`4aeb35b`); the four
+  `ansible_collections.fallback` entries go with the fallback in 3d.8.
+- 3f-1.D1: the JSON of `tailscale serve status --json` and `tailscale
+  debug prefs` of the pinned Tailscale, and of `lxc network list` and `lxc
+  storage list` of the LXD releases in use
+  (`preflight/pinka_preflight/detect/components.py`).
 
 ## Known issues
 
+- **NVIDIA driver pins outside Ubuntu** (open item, owner, with the
+  "commit" for the GPU guard). The driver packages of Debian 13, Fedora 43
+  and 44, EL 9 and 10 and openSUSE Leap 15.6 and 16.0 are still unverified
+  (`packages.nvidia_driver` is `TODO(verify)`, and the `verify` entries of
+  `nvidia_driver` in `ansible/component-sources.yml`), so the play stops
+  for a manual install there instead of installing; Arch, a rolling
+  release, installs its current `nvidia-open` without a pin, judged by the
+  pinned release's GPU list. They must be verified (with the GPU list of
+  their release, which `make lock-check` then requires) before a GPU
+  install on those families is claimed to work.
 - Network access from the build environment is limited (A3); most
   verification hosts are blocked until the owner allows them. The GitHub REST
   API is limited to this session's repositories, so upstream releases are read
@@ -781,33 +1613,108 @@ step 4" through "after step 13"):
   supported family is to be confirmed on real hosts (Phase 5).
 - Bootstrap has not been run end to end on a real host (the build
   environment must not be provisioned); since step 10 its last stage runs
-  `pokus-lab doctor`. Its stages, the roles and the doctor checks are
+  `pinka doctor` (`pokus-lab doctor` before 3c). Its stages, the roles and the doctor checks are
   covered by tests that never provision; Phase 5 runs them on real hosts.
 - Run networks can be created but not deleted by the platform's restricted
   certificates (see the step 6 contract question); until the owner decides,
   the contract is unchanged and nothing works around it.
 - `make setup` also downloads the pinned OPA CLI (`binaries.opa`) from GitHub
   releases and checks its sha256; the OPA policy tests need it.
-- `make setup` installs the pinned Ansible collections from Galaxy, which the
-  build environment cannot reach; here they were installed from their release
-  tags on GitHub into the git-ignored `infra/.ansible-collections/`.
+- `make setup` installs the pinned Ansible collections from Galaxy and, when
+  Galaxy is unreachable (as here), from the GitHub release tarballs pinned in
+  `ansible_collections.fallback` of the lock, each only after its sha256
+  matched (3d.6). Those pins are `TODO(verify)`: GitHub's web pages and API
+  answer 403 here for the ansible-collections organization, so whether each
+  release carries the built tarball, and its URL and sha256, could not be
+  read (the release tags were confirmed with `git ls-remote`). Until they are
+  verified, setup without Galaxy stops and says so; this session's
+  collections were installed earlier from the release tags into the
+  git-ignored `.ansible-collections/`, which setup verifies and keeps.
+  Since 3d.7 the lock also holds `community.library_inventory_filtering_v1`
+  1.1.5 (a dependency of `community.docker`); it has no fallback entry
+  until the owner decides on the fallback (3d.7 finding: the GitHub
+  releases carry no Galaxy artifact), so setup without Galaxy names it as
+  missing. In this session it was installed into the same git-ignored
+  directory from its release tag 1.1.5 (commit
+  `5f70dd8678885157cb186e8b64382a30cab3e12f`), which setup verifies.
+- Since 3d.7 bootstrap installs the collections only from the artifacts of
+  `ansible_collections.artifacts` in the lock, each after its sha256
+  matched. Their URLs, sha256s and sizes are the owner's
+  `make lock-collections` output of 2026-10-15 (`4aeb35b`).
+- `make lock-collections` listed only `COPYING` as `ansible.posix`'s
+  license file: its rule took only names beginning with `COPYING` or
+  `LICENSE` and missed `PSF-license.txt`. Fixed with the pins (`4aeb35b`):
+  any file in a `LICENSES` directory, or a text file whose name
+  contains `COPYING`, `LICENSE`, `LICENCE` or `NOTICE`; REUSE's `.license`
+  annotations excluded.
+- CI's `infra` workflow was red on `a686e28` (3d.6), found in 3d.7 from
+  the run's logs (the build environment cannot run the check-mode lanes:
+  no Docker daemon): every `check-mode` and `check-mode-extended` job
+  stopped at `users_groups`, whose argument spec still required
+  `service_accounts`, which 3d.3 (`212121c`) had removed from group_vars;
+  the uv tests failed because 3d.6's Makefile installed uv to a doubled
+  path in CI (`infra//home/runner/...`); the drift check failed because the
+  generated `pinka-platform` reference held this checkout's path as the
+  `--contract` default (since 3d.1). All three are fixed in 3d.7, each with
+  a test (every required role option has a source; no generated file names
+  the checkout's path; the uv install path). The check-mode lanes have not
+  run past `users_groups` since 3d.3; their result after the fix is known
+  only from CI. `lock-check` stays red while `TODO(verify)` markers remain.
+- CI of `0d72e54` (3d.7): lint, test, docs and the six required
+  check-mode jobs passed; `lock-check` was red on `TODO(verify)` markers
+  only. Every `check-mode-extended` job stopped at the observability role:
+  ansible-core 2.21 refuses a conditional whose result is not a boolean,
+  and `when: observability_platform_dashboards` is a mapping (`{}` without
+  a platform), so a real provisioning run stopped there too, with or
+  without a platform. Ten more such conditionals were in the platform role
+  (`active_platform.database`, `.cli`, `.run_network`, `platform_plan.replace`,
+  `platform_retire.cli_link`, `.cli_wrapper`); they now use `is truthy`, and
+  `ansible/tests/test_conditionals.py` requires a known boolean for every
+  bare condition and runs ansible-core's own check. The lock's header
+  comment named the marker itself, so `lock-check` would have stayed red
+  after every pin was verified (since step 4); reworded, with a test.
+- The installer TUI passed `--skip-tags=images` (images chosen, built
+  later) and `--tags=...` to bootstrap, whose parser accepted only the
+  space-separated form, so such an install stopped with a usage error
+  (since step 13). Fixed in 3d.7: options with a value also take
+  `--option=value`, with a test that bootstrap accepts every option the
+  TUI builds.
+- Candidate for the next maintenance update of the pins (owner decision:
+  keep the pin until then): `containers.images.postgres`, whose tag
+  `18.6-trixie` now points to
+  `sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336`;
+  the lock keeps
+  `sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722`
+  (`lock-check` warns about it). The same for `containers.ci_images.ubuntu_2404`
+  (owner decision after 3f: keep the pin, update it with the postgres tag):
+  its tag `24.04` now points to
+  `sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac`;
+  the lock keeps
+  `sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55`.
+- `make lock-collections` refused every symbolic link in an artifact, so
+  the owner's first run stopped at `community.general`'s
+  `tests/utils/shippable/aix.sh`. Fixed after `d5fe24d` (separate commit):
+  one artifact rule (`tools/lockcheck/pinka_lockcheck/artifact.py`)
+  for `make lock-collections`, `make setup` and bootstrap, accepting only
+  relative links that stay inside the collection (`3d4bab2`).
 - MkDocs 1.6.1 (pinned) has had no release since 2024-08-30, and the Material
   for MkDocs team announces that MkDocs 2.0 removes plugins. Builds work with
   the pin; the replacement decision belongs to the docs-site plugin review
   (docs spec §B.2) and needs an ADR and owner approval.
-- The build environment's default uv is older than the pinned 0.12.23; the
-  pinned uv is installed in a user-space scratch directory and put first on
-  `PATH` for all make runs. CPython 3.9.25 and 3.12.11 are installed in user
-  space by uv.
+- The build environment's default uv (0.8.17) is older than the pinned
+  0.12.23; since 3d.6 `make setup` installs the pinned uv into
+  `build/tools/` (checked against its sha256) and runs `uv sync` with
+  it, so no uv on `PATH` is needed. CPython 3.9.25 and 3.12.11 are installed
+  in user space by uv.
 - mypy 2.x cannot type-check for Python 3.9; the 3.9 compatibility of
-  preflight and `pokus-lab` is enforced by ruff (`py39` target) and by running
+  preflight and `pinka` is enforced by ruff (`py39` target) and by running
   their test suites on CPython 3.9 (ADR-0001).
 - Preflight fixture paths contain colons (sysfs PCI addresses such as
   `0000:01:00.0`), so the repository cannot be checked out on a Windows
   filesystem; clone it inside WSL or on Linux (the lab is Linux-only anyway).
 - Several command output formats are modeled in the preflight fixtures from
   upstream knowledge and must be confirmed on real hosts in Phase 5 (list in
-  `infra/docs/IMPLEMENTATION_NOTES.md`).
+  `docs/IMPLEMENTATION_NOTES.md`).
 - CI's `test` and `docs` jobs failed from infra step 7 through step 11
   although `make test docs` passed here: this environment runs as root, CI
   does not. The bootstrap git-state tests and the deploy helper's tests
@@ -819,22 +1726,63 @@ step 4" through "after step 13"):
   recorded event streams (see the step 13 notes); Phase 5 runs it on the
   reference hosts.
 - The build environment has no `ssh-keygen` and no `setfacl`: the test of
-  SSH-signed tag deployments is skipped here (it runs where OpenSSH is
-  installed, as in CI), and the socket ACL handling is tested with a fake
-  `setfacl` only.
+  SSH-signed tag deployments is skipped here (CI asserts `ssh-keygen` and
+  runs it), and the socket ACL helper is tested with a fake `setfacl` only.
+
+- A fresh session on a machine that reaches PyPI, npm and GitHub can run
+  `make setup` and the full gate from the repository alone (3d.6: setup
+  installs the pinned uv itself and falls back to the pinned release
+  tarballs when Galaxy is unreachable); only the PostgreSQL 18 SQL tests run
+  in CI only (PGDG is not reachable from here; CI installs 18, the SQL tests
+  here use the newest local `/usr/lib/postgresql/<major>/bin`, 16 in this
+  image). Two conditions remain, stated so they are not hidden: without
+  Galaxy the fallback works only once its pins are verified (see the entry
+  above), and the machine provides a Chromium or Chrome for the Mermaid check
+  (the image's `/opt/pw-browsers`; mermaid-cli's own browser download is
+  disabled) and a local PostgreSQL server for the SQL tests. Reachable here:
+  PyPI, npm, GitHub releases of uv, OPA and the CPython builds.
+- The reference platform's `make test-distros` stages and the extended
+  check-mode run with it enabled have not run yet: this environment has
+  neither Incus nor Docker. They are covered by tests against fake `incus`
+  and `docker` commands; their first real run is the owner's (on a
+  developer machine or a stopped lab host). The VMs have no GPU, so the
+  training stages use `tunecpu`, and vLLM serving an adapter is tested only
+  on GPU hosts.
+- The preflight test that compares reports with the reference
+  `jsonschema` validator skips in the Python 3.9 run (`make test-py39`,
+  standard library only): `jsonschema` 4.26.0, the pinned version, needs
+  Python 3.10. The same test runs and passes in the pytest step of every
+  `make test` (Python 3.12) and in CI; the skip has existed since step 2
+  and is now counted by the quiet gate.
 
 ## Next step
 
-Phase 1 (infra) is complete as far as it can be built here. The owner
-approved the deviations I1 (Secure Boot MOK consent flow) and I2 (required
-fast-lane job as specified, whole play only as a non-blocking extended job)
-and gave the go for both: both are implemented (I2 green in CI; I1's
-interpretations to confirm are in `infra/docs/IMPLEMENTATION_NOTES.md`,
-section "Approved deviation I1"). The owner approved
-contract v2 (plug-in platforms, owner answers section I); its order is: step
-0 by the owner (spec update, `pokus-infra` created with infra's history),
-then the v2 steps in `pokus-infra`, then Phase 2 (platform) against contract
-v2. Still open: the new points N1-N4 of contract v2, the contract proposals
-(CPU sets, the ports table C10), the step 14 interpretations (`docs serve`,
-the QA maintenance window), and the remaining `TODO(verify)` items (111),
-which need network access or reference hardware.
+Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
+and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
+(`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
+edit after D1 (`0378425`), the installer fix of the written files
+(`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
+green but the known red. Then (owner, after `37c062e`): the CI skip list
+with the nft checks and the root test in CI (`006c40d`) and the per-file
+process run (`2f27132`), JUnit XML of every test job (`fc7cc3b`), the
+Galaxy retry with the re-run rule and the action pin check (`5fc33c1`) and
+the pre-existing access with the SSH `Match` block as a D1 follow-up
+(`16bf749`), all green but the known red; then, each waiting for "commit",
+the owner's decisions after `16bf749` (DL1, AG1, the login detection)
+with AG1's correction and the CI minutes (`6aa6eab`, not pushed). Then the
+owner's new plan after `16bf749` (verbatim in the remaining plan): the
+public-readiness audit (reported) and the owner's decisions on it, as
+commits without a push (the machine classes, the privacy scan's additions,
+the project files), the history rewrite (done with the owner's "rewrite";
+the commit after it waits for "commit"), then the commands for the owner's
+pushes (step 4; the owner created the fresh repository
+`pokus-infrastructure` instead of the rename and pushed `main` and
+`moving/on` to it), the checklist for making the repository public (step
+5), and the pull request `moving/on` -> `main`, which the owner opens (step
+6); then, on `moving/on`, D2 (its report with
+the table of what uninstall removes, restores or keeps), A, B, C, E, F and
+G, the real-machine tests on the owner's computers (4.1 and 4.2 first) and
+3h. The owner runs
+`make lock-pins` on their machine and pastes the output separately. Still
+open: the remaining `TODO(verify)` items (98), which need network access or
+reference hardware.

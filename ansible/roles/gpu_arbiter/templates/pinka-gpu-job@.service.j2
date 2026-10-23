@@ -1,0 +1,41 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/templates/pinka-gpu-job@.service.j2). Local changes will be overwritten.
+#
+# One training run (BUILD_PROMPT §7.18), started by the GPU arbiter: the
+# container pinka-job-<run> with infra's fixed options, then the adapter's
+# registration and the way back to the previous deployment or idle. Stop a
+# run for good with pinka gpu idle; a stopped unit (the lab stopped, a
+# shutdown) stops the container with the same grace and suspends a resumable
+# run, which resumes when the lab starts again (pinka start or a reboot).
+[Unit]
+Description=pinka training run %i
+Requires=docker.service
+After=docker.service
+CollectMode=inactive-or-failed
+# Stopping the lab stops a run like pinka stop: the container gets its grace
+# to checkpoint and the run is suspended (resumable) or ends failed.
+PartOf=pinka-lab.target
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=exec
+ExecStart={{ gpu_arbiter_program }} run-job %i
+KillMode=mixed
+TimeoutStopSec={{ gpu_arbiter_stop_grace | int + gpu_arbiter_serve_timeout | int + 120 }}
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# vLLM's /health and /metrics on the loopback, nothing else.
+IPAddressAllow=localhost
+IPAddressDeny=any
+# The Docker CLI's configuration directory.
+Environment=HOME={{ gpu_arbiter_state_dir }}
+ReadWritePaths={{ gpu_arbiter_writes | map('regex_replace', '^', '-') | join(' ') }}

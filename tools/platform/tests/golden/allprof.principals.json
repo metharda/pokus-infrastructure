@@ -1,0 +1,325 @@
+{
+  "_comment": "Managed by pinka (principals.json, contract v2 §12.3). Local changes will be overwritten.",
+  "schema_version": 1,
+  "contract_version": 2,
+  "platform": "allprof",
+  "groups": {
+    "admins": "pinka-admin",
+    "researchers": "pinka"
+  },
+  "services": [
+    {
+      "name": "ctl",
+      "profile": "controller",
+      "account": "allprof-ctl",
+      "uid": 2001,
+      "config": "/etc/pinka/platform/config/ctl.json",
+      "secrets_dir": "/etc/pinka/secrets/allprof-ctl",
+      "state": {
+        "records": "/srv/pinka/platforms/allprof/state/ctl/records"
+      }
+    },
+    {
+      "name": "brk",
+      "profile": "inference-broker",
+      "account": "allprof-brk",
+      "uid": 2002,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
+    },
+    {
+      "name": "sbx",
+      "profile": "sandbox-operator",
+      "account": "allprof-sbx",
+      "uid": 2003,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
+    },
+    {
+      "name": "rop",
+      "profile": "restricted-operator",
+      "account": "allprof-rop",
+      "uid": 2004,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
+    },
+    {
+      "name": "rrd",
+      "profile": "restricted-reader",
+      "account": "allprof-rrd",
+      "uid": 2005,
+      "config": null,
+      "secrets_dir": null,
+      "state": {
+        "reports": "/srv/pinka/platforms/allprof/state/rrd/reports"
+      }
+    },
+    {
+      "name": "obs",
+      "profile": "observer",
+      "account": "allprof-obs",
+      "uid": 2006,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
+    },
+    {
+      "name": "agt",
+      "profile": "untrusted-agent",
+      "account": "allprof-agt",
+      "uid": 2007,
+      "config": null,
+      "secrets_dir": null,
+      "state": {
+        "scratch": "/srv/pinka/platforms/allprof/state/agt/scratch"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "name": "trn",
+      "profile": "gpu-trainer",
+      "account": "allprof-trn",
+      "uid": 2008
+    }
+  ],
+  "sockets": [
+    {
+      "service": "ctl",
+      "name": "api",
+      "path": "/run/pinka/platform/ctl/api.sock",
+      "owner": "allprof-ctl",
+      "group": "allprof-ctl-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [],
+        "accounts": [],
+        "humans": [
+          "researchers",
+          "admins"
+        ],
+        "human_groups": [
+          "pinka",
+          "pinka-admin"
+        ],
+        "root": true
+      }
+    },
+    {
+      "service": "ctl",
+      "name": "svc",
+      "path": "/run/pinka/platform/ctl/svc.sock",
+      "owner": "allprof-ctl",
+      "group": "allprof-ctl-svc",
+      "mode": "0660",
+      "fd_name": "svc",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "inference-broker",
+          "sandbox-operator",
+          "restricted-operator",
+          "restricted-reader",
+          "observer"
+        ],
+        "accounts": [
+          "allprof-brk",
+          "allprof-obs",
+          "allprof-rop",
+          "allprof-rrd",
+          "allprof-sbx"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "ctl",
+      "name": "agent",
+      "path": "/run/pinka/platform/ctl/agent.sock",
+      "owner": "allprof-ctl",
+      "group": "allprof-ctl-agent",
+      "mode": "0660",
+      "fd_name": "agent",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "allprof-agt"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "brk",
+      "name": "agent",
+      "path": "/run/pinka/platform/brk/agent.sock",
+      "owner": "allprof-brk",
+      "group": "allprof-brk-agent",
+      "mode": "0660",
+      "fd_name": "agent",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "allprof-agt"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "brk",
+      "name": "api",
+      "path": "/run/pinka/platform/brk/api.sock",
+      "owner": "allprof-brk",
+      "group": "allprof-brk-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "allprof-ctl"
+        ],
+        "humans": [
+          "researchers"
+        ],
+        "human_groups": [
+          "pinka"
+        ],
+        "root": true
+      }
+    },
+    {
+      "service": "sbx",
+      "name": "agent",
+      "path": "/run/pinka/platform/sbx/agent.sock",
+      "owner": "allprof-sbx",
+      "group": "allprof-sbx-agent",
+      "mode": "0660",
+      "fd_name": "agent",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "allprof-agt"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "sbx",
+      "name": "api",
+      "path": "/run/pinka/platform/sbx/api.sock",
+      "owner": "allprof-sbx",
+      "group": "allprof-sbx-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "allprof-ctl"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": true
+      }
+    },
+    {
+      "service": "rop",
+      "name": "api",
+      "path": "/run/pinka/platform/rop/api.sock",
+      "owner": "allprof-rop",
+      "group": "allprof-rop-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "allprof-ctl"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": true
+      }
+    },
+    {
+      "service": "rrd",
+      "name": "api",
+      "path": "/run/pinka/platform/rrd/api.sock",
+      "owner": "allprof-rrd",
+      "group": "allprof-rrd-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller"
+        ],
+        "accounts": [
+          "allprof-ctl"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "obs",
+      "name": "api",
+      "path": "/run/pinka/platform/obs/api.sock",
+      "owner": "allprof-obs",
+      "group": "allprof-obs-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [
+          "controller",
+          "inference-broker",
+          "observer"
+        ],
+        "accounts": [
+          "allprof-brk",
+          "allprof-ctl",
+          "allprof-obs"
+        ],
+        "humans": [
+          "researchers",
+          "admins"
+        ],
+        "human_groups": [
+          "pinka",
+          "pinka-admin"
+        ],
+        "root": true
+      }
+    }
+  ]
+}

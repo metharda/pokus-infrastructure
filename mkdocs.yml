@@ -1,0 +1,173 @@
+# Managed by pinka (mkdocs.yml).
+# The documentation of this repository, built in strict mode by `make docs`.
+# The combined Pokus site lives in the pokus-platform repository and
+# assembles these pages from an exact commit.
+site_name: Pokus Infrastructure
+site_description: Infrastructure-as-code for the Pokus research lab.
+docs_dir: docs
+site_dir: site
+strict: true
+copyright: Documentation licensed under CC-BY-4.0; code under Apache-2.0.
+
+# Verbatim specifications and working notes are not site pages.
+exclude_docs: |
+  BUILD_PROMPT.md
+  DOCS_SPEC.md
+  IMPLEMENTATION_NOTES.md
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/brightness-7, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/brightness-4, name: Switch to light mode}
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - Install a lab on WSL2: tutorials/install-wsl2.md
+      - Install a lab on bare-metal Linux: tutorials/install-baremetal.md
+      - Write a minimal platform: tutorials/write-a-minimal-platform.md
+  - How-to guides:
+      - Operating the lab: operations.md
+      - Check whether a machine can host the lab: how-to/check-a-host.md
+      - Install a lab with the installer TUI: how-to/install-with-the-tui.md
+      - Install a lab from an answers file: how-to/install-without-the-tui.md
+      - Install from a release package: how-to/install-from-a-release-package.md
+      - Install next to existing Docker, Tailscale, LXD or Podman: how-to/install-next-to-existing-components.md
+      - Start, stop and drain the lab: how-to/start-stop-drain.md
+      - Update the host operating system: how-to/update-host.md
+      - Add, remove or lock a researcher: how-to/manage-researchers.md
+      - Add a model and activate a deployment: how-to/add-a-model.md
+      - Run a training job and serve its adapter: how-to/run-training-job.md
+      - Plug a platform into the lab: how-to/deploy-platform.md
+      - Replace or purge a platform: how-to/replace-platform.md
+      - Run inference on a separate GPU node: how-to/pair-inference-node.md
+      - Connect to the lab: how-to/connect.md
+      - Reach Grafana and the lab database: how-to/reach-grafana.md
+      - Build, test and export golden images: how-to/build-golden-images.md
+      - Back up, restore and run a restore drill: how-to/backup-and-restore.md
+      - Migrate the lab to a new machine: how-to/migrate-lab.md
+      - Rotate secrets and certificates: how-to/rotate-secrets.md
+      - Run a QA maintenance window on staging: how-to/staging-window.md
+      - Serve a documentation release on the lab: how-to/install-docs-release.md
+      - Install QA trusted keys and attestations: how-to/install-attestation.md
+      - Configure the firewall backend and SELinux: how-to/firewall-and-selinux.md
+      - Move a lab port or the VM collector address: how-to/move-a-lab-port.md
+      - Add a preflight fixture: how-to/add-preflight-fixture.md
+      - Add a distribution family: distros/adding-a-family.md
+      - Test the distributions: how-to/test-distributions.md
+      - Troubleshoot a bootstrap run: how-to/troubleshoot.md
+      - Fix a failed doctor check: how-to/fix-doctor-checks.md
+      - Update pinned versions: how-to/update-versions.md
+      - Pin the Ansible collections: how-to/pin-ansible-collections.md
+      - Pin the vendor sources: how-to/pin-vendor-sources.md
+      - Publish a release package: how-to/publish-a-release-package.md
+      - Validate a platform release: how-to/validate-a-platform-release.md
+  - Reference:
+      - Support matrix: support-matrix.md
+      - Component sources: reference/component-sources.md
+      - "CLI: bootstrap.sh": reference/cli/bootstrap.md
+      - "CLI: pinka-preflight": reference/cli/pinka-preflight.md
+      - "CLI: pinka": reference/cli/pinka.md
+      - "CLI: pinka-installer": reference/cli/pinka-installer.md
+      - "CLI: pinka-platform": reference/cli/pinka-platform.md
+      - Platform manifest: reference/platform-manifest.md
+      - Platform privilege profiles: reference/platform-profiles.md
+      - Platform records: reference/platform-records.md
+      - Principals and endpoints files: reference/platform-files.md
+      - GPU arbiter requests: reference/gpu-arbiter.md
+      - Installer answers file: reference/answers.md
+      - Doctor checks: reference/doctor-checks.md
+      - Exit codes: reference/exit-codes.md
+      - Ansible variables: reference/ansible-variables.md
+      - Accounts and groups: reference/accounts.md
+      - Host profile schema: reference/host-profile.md
+      - Fingerprint schema: reference/fingerprint.md
+      - Pinned versions: reference/versions.md
+      - Integration contract: contracts.md
+  - Explanation:
+      - Lab host architecture: architecture.md
+      - How the preflight gate decides: explanation/preflight-gate.md
+      - How bootstrap works: explanation/bootstrap.md
+      - Components that existed before pinka: explanation/pre-existing-components.md
+      - Portability: explanation/portability.md
+      - How benchmark targets are isolated: explanation/target-isolation.md
+      - How telemetry, metrics and logs flow: explanation/telemetry.md
+      - How golden images are built: explanation/golden-images.md
+      - How the lab comes up: explanation/lab-session.md
+      - Privilege profiles and restricted data: explanation/privilege-profiles.md
+      - The GPU arbiter: explanation/gpu-arbiter.md
+      - Node roles and split inference: node-roles.md
+      - Reproducibility, fingerprints and sessions: reproducibility.md
+      - Security of the lab host: security.md
+      - Providers:
+          - WSL2 hosts: providers/wsl2.md
+          - Bare-metal hosts: providers/baremetal.md
+          - Virtual machine hosts: providers/vm.md
+      - Distribution families:
+          - Debian family: distros/debian.md
+          - Red Hat family: distros/redhat.md
+          - SUSE family: distros/suse.md
+          - Arch family: distros/archlinux.md
+      - "ADR-0001: Standard-library-only preflight": adr/0001-stdlib-only-preflight.md
+      - "ADR-0002: Bootstrap exit codes and error handling": adr/0002-bootstrap-exit-codes.md
+      - "ADR-0003: One provider role per host environment": adr/0003-provider-model.md
+      - "ADR-0004: Family-based portability": adr/0004-family-based-portability.md
+      - "ADR-0005: uv-managed Python": adr/0005-uv-managed-python.md
+      - "ADR-0006: Firewall backend integration": adr/0006-firewall-backend-integration.md
+      - "ADR-0007: Incus for benchmark targets": adr/0007-incus-for-targets.md
+      - "ADR-0008: Native Docker Engine": adr/0008-native-docker-engine.md
+      - "ADR-0009: btrfs or LVM thin pool": adr/0009-btrfs-or-lvm-thin-pool.md
+      - "ADR-0010: PostgreSQL on Unix sockets only": adr/0010-postgres-socket-only.md
+      - "ADR-0011: OpenTelemetry as the single telemetry entry point": adr/0011-otel-telemetry.md
+      - "ADR-0012: Leakage lint against the base image, with benign words": adr/0012-leakage-lint.md
+      - "ADR-0013: No orchestration frameworks": adr/0013-no-orchestration-frameworks.md
+      - "ADR-0014: Platforms plug in through manifests and fixed privilege profiles": adr/0014-platforms-through-manifests.md
+      - "ADR-0015: GPU training as infra-run container jobs": adr/0015-gpu-training-container-jobs.md
+      - "ADR-0016: Telemetry reached only through the query proxy and the agent socket": adr/0016-telemetry-query-isolation.md

@@ -1,0 +1,26 @@
+# Managed by pinka (ansible/roles/vllm/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: vLLM on 127.0.0.1 with serving profiles, deployments and the serving verification; served through the GPU arbiter.
+    options:
+      pinka_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (vllm/profiles, models.lock.yml, models.catalog.yml).
+      vllm_profile:
+        type: str
+        default: ada-12g
+        description: Serving profile of this host (vllm/profiles/<name>.yml).
+      vllm_default_deployment:
+        type: dict
+        description: >-
+          Deployment to serve after installation (model_id, start_after_install, optional id,
+          version, overrides, sampling_defaults); null installs vLLM without serving.
+      vllm_wait_timeout:
+        type: int
+        default: 1200
+        description: Seconds to wait for vLLM to load the model and answer /health.
+      vllm_verify:
+        type: bool
+        default: true
+        description: Run the serving verification after start.

@@ -1,0 +1,55 @@
+# Managed by pinka (ansible/roles/firewall/defaults/main.yml). Local changes will be overwritten.
+
+# The tailnet interface; SSH is reachable here (plus ssh_extra_allowed_interfaces).
+firewall_tailnet_interface: tailscale0
+# Port of `tailscale serve` for Grafana (grafana_tailscale_serve).
+firewall_grafana_serve_port: 443
+# Port of `tailscale serve` for the docs service (docs_tailscale_serve).
+firewall_docs_serve_port: 10000
+# TCP ports open on the tailnet interface: SSH, the Grafana and docs serve ports, and for
+# split inference (BUILD_PROMPT §19.10) the forwarded vLLM API and the control
+# endpoint on an inference node, OTLP gRPC from the paired inference node on a
+# lab node. Mutual TLS guards the split-inference ports.
+firewall_tailnet_tcp_ports: >-
+  {{ [22]
+     + ([firewall_grafana_serve_port] if grafana_tailscale_serve | bool and pinka_tailscale_serve_allowed | bool else [])
+     + ([firewall_docs_serve_port]
+        if docs_tailscale_serve | bool and docs_release is not none and pinka_tailscale_serve_allowed | bool else [])
+     + ([pinka_ports.vllm, pinka_ports.inference_control] if node_role == 'inference' else [])
+     + ([pinka_ports.otlp_grpc] if node_role == 'lab' and inference_remote_node | length > 0 else []) }}
+# UDP port of the WireGuard transport of tailscaled.
+firewall_tailscale_udp_port: 41641
+# Name pattern of the per-run networks (contracts.md: r-<short>).
+firewall_run_bridge_pattern: "r-*"
+# Every Incus bridge that gets DHCP and DNS from the host.
+firewall_incus_bridge_patterns: "{{ pinka_incus_bridge_patterns + pinka_incus_personal_bridge_patterns }}"
+# Bridges with NAT and an uplink (image builds, personal projects), trusted like
+# Incus documents for firewalld and ufw hosts.
+firewall_uplink_bridge_patterns: "{{ ['pinka-build0'] + pinka_incus_personal_bridge_patterns }}"
+# Bridges of an LXD that existed before pinka (preflight's components): pinka's
+# input policy admits DHCP and DNS on them, so LXD's guests keep the service of
+# LXD's dnsmasq (BUILD_PROMPT §7.7); forwarding is not filtered by pinka. Only
+# names that are valid interface names are used.
+firewall_preexisting_bridges: >-
+  {{ (((host_profile | default({})).components | default({})).lxd | default({})).networks | default([])
+     | map(attribute='name') | select('match', '^[A-Za-z0-9_.-]{1,15}$') | list }}
+# OTLP ports of the dedicated collector listener that VM targets reach from the
+# run networks (contracts.md#telemetry, C4); empty without vm_targets and on
+# inference nodes, which run no targets.
+firewall_vm_otlp_ports: >-
+  {{ [pinka_ports.otlp_grpc, pinka_ports.otlp_http]
+     if (pinka_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}
+# The access that existed before pinka's first install, from the install record
+# (BUILD_PROMPT §2.2, §7.5, §7.21). A record without it (a legacy one) keeps
+# nothing: pinka's strict policy was already in place.
+firewall_access: "{{ (pinka_preexisting | default({})).access | default({}) }}"
+# Shared host: the pre-existing listeners kept reachable as found and those
+# closed with the owner's consent (firewall_close_listeners), and those held
+# open for the install's access path until it closes; a dedicated host
+# keeps and closes none.
+firewall_listener_rules: >-
+  {{ firewall_access | pinka_listener_rules(firewall_close_listeners, pinka_closed_access | default([])) }}
+# The install's access path (an SSH session from outside the tailnet), kept
+# open until closed under the safeguard of §7.5 (install_path.yml); none for an
+# install from the console or over the tailnet.
+firewall_install_path: "{{ firewall_access | pinka_install_path(pinka_closed_access | default([])) }}"

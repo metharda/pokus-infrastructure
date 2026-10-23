@@ -1,0 +1,17 @@
+# Managed by pinka (images/probe-client/image.yaml). Local changes will be overwritten.
+#
+# Golden image blueprint `probe-client` (BUILD_PROMPT §7.13): the client side
+# of probes and load: curl, dig and the ab load generator.
+schema_version: 1
+name: probe-client
+version: "1.0.0"
+description: Client for probes and load generation (curl, dig, ab, redis and PostgreSQL clients)
+base: {blueprint: _base}
+type: container
+nesting: false
+packages: [apache2-utils, postgresql-client, redis-tools]
+docker_images: []
+services: []
+telemetry:
+  log_files: []
+tests: [tests/test_probe.sh]

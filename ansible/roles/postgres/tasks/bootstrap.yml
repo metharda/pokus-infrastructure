@@ -1,0 +1,60 @@
+# Managed by pinka (ansible/roles/postgres/tasks/bootstrap.yml). Local changes will be overwritten.
+#
+# Idempotent bootstrap of infra's role through psql inside the container (the
+# superuser password never leaves it), then its password: a role whose stored
+# SCRAM secret does not match its password gets a new secret, computed here,
+# so neither the password nor a change is reported on later runs.
+- name: Wait until PostgreSQL accepts the superuser
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--tuples-only', '--no-align', '--command', 'SELECT 1'] }}"
+  register: postgres_ready
+  retries: 20
+  delay: 3
+  until: postgres_ready.rc == 0
+  changed_when: false
+
+- name: Create infra's own role
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--quiet', '--file', '/etc/postgresql/bootstrap.sql'] }}"
+  register: postgres_bootstrap
+  changed_when: "'pinka-changed:' in postgres_bootstrap.stderr"
+
+- name: Read the generated exporter password
+  ansible.builtin.slurp:
+    src: "{{ postgres_container_secrets_dir }}/pinka-monitor"
+  register: postgres_monitor_secret
+  no_log: true
+
+- name: Read the stored password secrets
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--tuples-only', '--no-align', '--command', postgres_secrets_query] }}"
+  register: postgres_stored
+  changed_when: false
+  no_log: true
+
+- name: Set the passwords whose stored secret does not match
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--quiet'] }}"
+    stdin: >-
+      ALTER ROLE "{{ item.key }}" PASSWORD '{{ item.value | pinka_scram_verifier }}';
+  loop: "{{ [{'key': postgres_monitor_role, 'value': postgres_monitor_secret.content | b64decode}] }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: not (item.value | pinka_scram_matches((postgres_stored.stdout | from_json).get(item.key)))
+  changed_when: true
+  no_log: true
+
+- name: Read the durability settings
+  ansible.builtin.command:
+    argv: "{{ postgres_psql + ['--tuples-only', '--no-align', '--command', postgres_durability_query] }}"
+  register: postgres_settings
+  changed_when: false
+
+- name: Check that no durability setting is disabled
+  ansible.builtin.assert:
+    that:
+      - (postgres_settings.stdout | from_json) == postgres_durability
+    fail_msg: "PostgreSQL durability settings differ from {{ postgres_durability }}: {{ postgres_settings.stdout }}"
+    quiet: true
+  vars:
+    postgres_durability: {fsync: "on", synchronous_commit: "on", full_page_writes: "on", data_checksums: "on"}

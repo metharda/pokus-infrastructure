@@ -1,0 +1,13 @@
+# Managed by pinka (ansible/roles/backup/templates/backup-job.timer.j2). Local changes will be overwritten.
+#
+# The host is not always on: Persistent=true runs a missed job after boot.
+[Unit]
+Description=pinka {{ backup_job.description }} (timer)
+
+[Timer]
+OnCalendar={{ backup_job.schedule }}
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,7 +1,0 @@
-# Managed by pokus-infra (ansible/roles/nvidia_container_toolkit/handlers/main.yml). Local changes will be overwritten.
-- name: Regenerate the CDI specification
-  ansible.builtin.systemd_service:
-    name: nvidia-cdi-refresh.service
-    state: restarted
-    daemon_reload: true
-  when: not ansible_check_mode or 'nvidia-cdi-refresh.service' in pokus_present.units

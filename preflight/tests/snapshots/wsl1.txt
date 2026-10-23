@@ -1,0 +1,40 @@
+pinka preflight: UNSUPPORTED (exit 20)
+  tier unsupported (os supported, arch supported) · release model fixed · provider -
+
+Environment
+  class wsl1, hypervisor microsoft, confidence high
+OS and kernel
+  Ubuntu 24.04.3 LTS [ubuntu 24.04, family debian, parent release noble]
+  arch x86_64, kernel 4.4.0-19041-Microsoft
+  PID 1 init, system state -
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  none
+  - GPU not probed in environment class wsl1
+Capabilities
+  cgroup2 no, tun yes, KVM usable no, btrfs yes, dm_thin_pool no, Secure Boot not_efi
+  MAC none (-), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets off, btrfs_pool on, lvm_thin_pool off, dcgm_metrics off
+Access
+  dedicated host, firewall manager none, install session: the console
+Network: skipped (--offline)
+
+Unsupported
+  - WSL1 has no real Linux kernel; convert with 'wsl --set-version <distro> 2'
+  - core requirement systemd_pid1 failed (no). PID 1 must be systemd.
+  - core requirement cgroup2_unified failed (no). Boot with the unified cgroup v2 hierarchy (systemd.unified_cgroup_hierarchy=1) or use a release that defaults to it.
+  - core requirement cgroup2_controllers failed (missing: cpu, cpuset, memory, io, pids). The cgroup v2 controllers cpu, cpuset, memory, io and pids must be available.
+  - core requirement kernel_features failed (missing: br_netfilter, nf_tables, veth). The kernel must provide overlay, br_netfilter, nf_tables and veth (built in or loadable).
+  - blocking conflict: PID 1 is not systemd. Run a supported distribution in a VM on this host (vm provider) and install the lab inside it; see docs/providers/vm.md.
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+  - vm_targets: No KVM: VM-class scenarios (kernel-level faults) cannot run on this host.
+
+Notes
+  - dcgm_metrics disabled (unmet: environment in ['baremetal', 'vm'], nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

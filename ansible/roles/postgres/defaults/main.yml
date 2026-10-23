@@ -1,0 +1,23 @@
+# Managed by pinka (ansible/roles/postgres/defaults/main.yml). Local changes will be overwritten.
+
+# shared_buffers: 1/16 of the host memory, between 128 MB and 4 GB; host_vars
+# may set a value such as 2GB (BUILD_PROMPT §8.1).
+postgres_shared_buffers: "{{ [[(host_profile.hardware.memory_gib * 64) | int, 128] | max, 4096] | min }}MB"
+# effective_cache_size: 1/4 of the host memory, between 512 MB and 16 GB.
+postgres_effective_cache_size: "{{ [[(host_profile.hardware.memory_gib * 256) | int, 512] | max, 16384] | min }}MB"
+# max_connections of the server.
+postgres_max_connections: 100
+# UID and GID of the postgres user in the pinned image (the official
+# Debian-based image creates it with 999:999).
+postgres_container_uid: 999
+postgres_container_gid: 999
+# UID of the exporter container (nobody; the Compose file sets it).
+postgres_exporter_uid: 65534
+# Name of the PostgreSQL container (compose/core/compose.yml).
+postgres_container: pinka-postgres
+# Data directory on the host, mounted at /var/lib/postgresql.
+postgres_state_dir: "{{ pinka_root }}/state/postgres"
+# Rendered postgresql.conf, pg_hba.conf and bootstrap.sql (mounted read-only).
+postgres_config_dir: "{{ pinka_root }}/services/core/config/postgres"
+# Role of the metrics exporter (pg_monitor; its password is generated on the host).
+postgres_monitor_role: pinka_monitor

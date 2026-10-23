@@ -1,0 +1,62 @@
+# Managed by pinka (compose/inference/compose.yml). Local changes will be overwritten.
+#
+# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the OpenAI-compatible API
+# on 127.0.0.1 only (host network; vLLM binds the address of the rendered
+# configuration), models read-only from /srv/pinka/models, no Hub access.
+# /etc/pinka/vllm/current.yaml (the `vllm serve --config` file) and
+# current.env are rendered by the GPU arbiter (pinka-gpu-arbiter); current.env
+# carries the configuration's hash, so a new deployment recreates the
+# container. One service per GPU method (Compose profile from .env).
+name: pinka-inference
+
+# Settings every lab container gets here rather than from the Docker daemon,
+# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
+# §7.6): the local log driver with size limits and the lab services' slice.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: ${LOG_MAX_SIZE:?}
+    max-file: ${LOG_MAX_FILE:?}
+
+x-vllm: &vllm
+  image: ${VLLM_IMAGE:?pinned image missing}
+  container_name: pinka-vllm
+  restart: unless-stopped
+  logging: *logging
+  cgroup_parent: ${CGROUP_PARENT:?}
+  network_mode: host
+  command: ["--config", "/etc/pinka/vllm/current.yaml"]
+  # Optional so that the project validates before the first deployment; the
+  # unit only starts once a deployment is rendered.
+  env_file:
+    - path: /etc/pinka/vllm/current.env
+      required: false
+  shm_size: 2gb
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  tmpfs: [/tmp]
+  volumes:
+    - ${PINKA_ROOT:?}/models:/models:ro
+    - /etc/pinka/vllm:/etc/pinka/vllm:ro
+    - ${PINKA_ROOT:?}/state/vllm-cache:/root/.cache
+  healthcheck:
+    test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${VLLM_PORT:?}/health', timeout=5)"]
+    interval: 15s
+    timeout: 10s
+    retries: 5
+    start_period: 900s
+
+services:
+  vllm:
+    <<: *vllm
+    profiles: [gpu-cdi]
+    devices: ["nvidia.com/gpu=all"]
+
+  vllm_runtime:
+    <<: *vllm
+    profiles: [gpu-runtime]
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility

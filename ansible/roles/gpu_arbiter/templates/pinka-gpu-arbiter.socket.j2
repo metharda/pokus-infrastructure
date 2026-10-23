@@ -1,0 +1,19 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/templates/pinka-gpu-arbiter.socket.j2). Local changes will be overwritten.
+#
+# The GPU arbiter's socket (BUILD_PROMPT §7.18, §12.8): only the allowed
+# account (the active platform's controller; on an inference node the
+# control endpoint's account) and root can connect; every connection starts
+# one arbiter instance for one request.
+[Unit]
+Description=pinka GPU arbiter socket
+
+[Socket]
+ListenStream={{ gpu_arbiter_socket }}
+SocketUser={{ gpu_arbiter_peer }}
+SocketGroup=root
+SocketMode=0600
+Accept=yes
+MaxConnections=8
+
+[Install]
+WantedBy=sockets.target

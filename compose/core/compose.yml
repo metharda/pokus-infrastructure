@@ -1,0 +1,118 @@
+# Managed by pinka (compose/core/compose.yml). Local changes will be overwritten.
+#
+# Core services (BUILD_PROMPT §7.8, §7.10, contracts.md): PostgreSQL on Unix
+# sockets only (the container has no network; Grafana and the exporter use the
+# sockets too) and OPA on 127.0.0.1. Variables come from .env,
+# written by the compose role: images pinned by digest, ports, paths, and the
+# hash of each configuration directory, used as a label so that a changed
+# configuration recreates its service.
+name: pinka-core
+
+# Settings every lab container gets here rather than from the Docker daemon,
+# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
+# §7.6): the local log driver with size limits and the lab services' slice.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: ${LOG_MAX_SIZE:?}
+    max-file: ${LOG_MAX_FILE:?}
+
+x-lab: &lab
+  logging: *logging
+  cgroup_parent: ${CGROUP_PARENT:?}
+
+services:
+  postgres:
+    <<: *lab
+    image: ${POSTGRES_IMAGE:?pinned image missing}
+    container_name: pinka-postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
+    labels:
+      org.pinka.config-hash: ${POSTGRES_CONFIG_HASH:-}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-superuser
+      POSTGRES_INITDB_ARGS: --data-checksums --auth-local=scram-sha-256 --auth-host=scram-sha-256
+    volumes:
+      - ${PINKA_ROOT:?}/state/postgres:/var/lib/postgresql
+      - ./config/postgres:/etc/postgresql:ro
+      - /run/pinka/postgres:/run/pinka/postgres
+      - /run/pinka/postgres-reader:/run/pinka/postgres-reader
+      - /etc/pinka/secrets/containers/postgres-superuser:/run/secrets/postgres-superuser:ro
+    shm_size: 256mb
+    stop_grace_period: 60s
+    network_mode: none
+    healthcheck:
+      test: ["CMD", "pg_isready", "--host", "/var/run/postgresql", "--dbname", "postgres", "--username", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  # Host network on 127.0.0.1 for Prometheus; the database through the
+  # service socket directory (its group: the platform's <platform>-db, or root).
+  postgres_exporter:
+    <<: *lab
+    image: ${POSTGRES_EXPORTER_IMAGE:?pinned image missing}
+    container_name: pinka-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+    network_mode: host
+    user: "65534:65534"
+    group_add: ["${POSTGRES_SOCKET_GID:?}"]
+    command: ["--web.listen-address=127.0.0.1:${POSTGRES_EXPORTER_PORT:?}"]
+    environment:
+      DATA_SOURCE_URI: /postgres?host=/run/pinka/postgres&sslmode=disable
+      DATA_SOURCE_USER: pinka_monitor
+      DATA_SOURCE_PASS_FILE: /run/secrets/pinka-monitor
+    volumes:
+      - /run/pinka/postgres:/run/pinka/postgres
+      - /etc/pinka/secrets/containers/pinka-monitor:/run/secrets/pinka-monitor:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+  opa:
+    # Its own log driver (below), so only the lab services' slice from x-lab.
+    cgroup_parent: ${CGROUP_PARENT:?}
+    image: ${OPA_IMAGE:?pinned image missing}
+    container_name: pinka-opa
+    restart: unless-stopped
+    # Authorization on: /config/authz.rego (package system.authz) allows only
+    # the two decision queries and health checks (§7.10). The deny-all
+    # placeholder is always loaded; ./policy is a symbolic link to the active
+    # platform's policy bundle or to an empty directory (opa role); Docker
+    # resolves it when the container starts.
+    labels:
+      org.pinka.config-hash: ${OPA_CONFIG_HASH:-}
+    command:
+      - run
+      - --server
+      - --addr=0.0.0.0:8181
+      - --authorization=basic
+      - --config-file=/config/opa.yaml
+      - /config/authz.rego
+      - /config/placeholder
+      - /policy
+    ports:
+      - 127.0.0.1:${OPA_PORT:?}:8181
+    volumes:
+      - ./config/opa:/config:ro
+      - ./policy:/policy:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # Decision logs go to the console and through journald to the collector.
+    logging:
+      driver: journald
+      options: {tag: pinka-opa}
+
+# OPA's network: an explicit subnet from pinka's own pool, not from the
+# Docker daemon's address pools (BUILD_PROMPT §7.6).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${CORE_SUBNET:?}

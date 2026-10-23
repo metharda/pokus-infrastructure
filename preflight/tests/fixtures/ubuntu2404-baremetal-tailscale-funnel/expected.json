@@ -1,0 +1,6 @@
+{
+  "needs_action": [
+    "tailscale_funnel_on"
+  ],
+  "outcome": "needs_action"
+}

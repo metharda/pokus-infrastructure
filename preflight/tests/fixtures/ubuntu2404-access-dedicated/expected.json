@@ -1,0 +1,43 @@
+{
+  "access": {
+    "accounts": [
+      "researcher1"
+    ],
+    "host": "dedicated",
+    "listeners": [
+      {
+        "address": "0.0.0.0",
+        "admitted": false,
+        "port": 22,
+        "process": "sshd",
+        "proto": "tcp",
+        "unit": "ssh.socket"
+      },
+      {
+        "address": "::",
+        "admitted": false,
+        "port": 22,
+        "process": "sshd",
+        "proto": "tcp",
+        "unit": "ssh.socket"
+      },
+      {
+        "address": "0.0.0.0",
+        "admitted": true,
+        "port": 68,
+        "process": "dhcpcd",
+        "proto": "udp",
+        "unit": "dhcpcd.service"
+      }
+    ],
+    "reasons": [],
+    "session": {
+      "address": "192.0.2.10",
+      "port": 22,
+      "tailnet": false,
+      "user": "researcher1",
+      "via": "ssh"
+    }
+  },
+  "outcome": "supported"
+}

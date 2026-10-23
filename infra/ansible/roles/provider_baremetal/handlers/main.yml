@@ -1,9 +1,0 @@
-# Managed by pokus-infra (ansible/roles/provider_baremetal/handlers/main.yml). Local changes will be overwritten.
-- name: Rebuild the initramfs
-  ansible.builtin.command:
-    argv: "{{ provider_baremetal_initramfs_commands[pokus_initramfs_tool] }}"
-  changed_when: true
-
-- name: Reload systemd
-  ansible.builtin.systemd_service:
-    daemon_reload: true

@@ -1,0 +1,25 @@
+# Managed by pinka (ansible/roles/install_record/defaults/main.yml). Local changes will be overwritten.
+
+# The install record (BUILD_PROMPT §7.21).
+install_record_path: /var/lib/pinka/install-record.json
+# Files outside pinka's own names that roles write or edit; the record keeps
+# the content of each that existed before pinka, so uninstall can restore it.
+# Pinka's own drop-ins (pinka-* and 10-pinka.conf, 60-pinka.conf, ...) are
+# recorded too, in case a file of that name was there first.
+install_record_managed_files:
+  - /etc/apt/apt.conf.d/20auto-upgrades
+  - /etc/apt/apt.conf.d/52pinka-unattended-upgrades
+  - /etc/apt/preferences.d/pinka-pins
+  - /etc/dnf/automatic.conf
+  - /etc/dnf/plugins/versionlock.list
+  - /etc/zypp/locks
+  - /etc/pacman.conf
+  - /etc/ssh/sshd_config
+  - /etc/ssh/sshd_config.d/10-pinka.conf
+  - /etc/sysctl.d/60-pinka.conf
+  - /etc/systemd/journald.conf.d/60-pinka.conf
+  - /etc/modprobe.d/pinka-blacklist-nouveau.conf
+  - /etc/sudoers.d/90-pinka-admin
+  - /etc/docker/daemon.json
+  - /etc/wsl.conf
+  - /etc/ld.so.conf.d/pinka-wsl.conf

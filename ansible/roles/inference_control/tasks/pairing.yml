@@ -1,0 +1,37 @@
+# Managed by pinka (ansible/roles/inference_control/tasks/pairing.yml). Local changes will be overwritten.
+#
+# `pinka pair` writes peer.crt and peer.json; the host_vars name the
+# paired node (inference_lab_node or inference_remote_node). Both must agree.
+- name: Read the pairing record
+  ansible.builtin.slurp:
+    src: "{{ inference_control_peer_record }}"
+  register: inference_control_peer_raw
+  failed_when: false
+
+- name: Describe the pairing
+  ansible.builtin.set_fact:
+    inference_control_paired_node: >-
+      {{ ((inference_control_peer_raw.content | b64decode | from_json).node | default(''))
+         if inference_control_peer_raw.content is defined else '' }}
+
+- name: Check that the configured node is the paired one
+  ansible.builtin.assert:
+    that:
+      - inference_control_expected_peer | length == 0 or inference_control_paired_node == inference_control_expected_peer
+    fail_msg: >-
+      {{ 'inference_lab_node' if node_role == 'inference' else 'inference_remote_node' }} is
+      {{ inference_control_expected_peer }}, but this node is
+      {{ ('paired with ' ~ inference_control_paired_node) if inference_control_paired_node else 'not paired' }}.
+      Pair the nodes first (sudo pinka pair show on the inference node, then
+      sudo pinka pair connect on the lab node; docs/how-to/pair-inference-node.md).
+    quiet: true
+
+- name: Remind the operator to name the paired node
+  ansible.builtin.debug:
+    msg: >-
+      This node is paired with {{ inference_control_paired_node }}; set
+      {{ 'inference_lab_node' if node_role == 'inference' else 'inference_remote_node' }}:
+      {{ inference_control_paired_node }} in its host_vars file and apply it.
+  when:
+    - inference_control_paired_node | length > 0
+    - inference_control_expected_peer | length == 0

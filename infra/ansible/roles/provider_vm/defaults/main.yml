@@ -1,5 +1,0 @@
-# Managed by pokus-infra (ansible/roles/provider_vm/defaults/main.yml). Local changes will be overwritten.
-#
-# Guest agents come from vars/<family>.yml (provider_vm_guest_agents); the
-# driver, power policy and reboot handling are shared with provider_baremetal.
-{}

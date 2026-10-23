@@ -1,0 +1,74 @@
+# Managed by pinka (ansible/roles/base/tasks/main.yml). Local changes will be overwritten.
+#
+# Base system (BUILD_PROMPT §7.2): packages by logical name, UTC, persistent
+# journald with limits, time sync, automatic security updates, sysctl.
+- name: Load the package names of this family
+  ansible.builtin.include_vars:
+    file: "{{ pinka_family }}.yml"
+
+- name: Install the base packages
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: >-
+      {{ base_packages
+         | map('extract', base_package_names | combine(base_package_overrides[pinka_source_group] | default({})))
+         | select | list }}
+
+- name: Set the system time zone to UTC
+  community.general.timezone:
+    name: UTC
+
+- name: Configure journald (persistent, size-limited)
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/60-pinka.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+
+- name: Keep time synchronized
+  ansible.builtin.include_tasks: timesync.yml
+
+- name: Configure automatic security updates
+  ansible.builtin.include_tasks: "updates_{{ pinka_family }}.yml"
+
+- name: Apply the kernel settings
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/60-pinka.conf
+    sysctl_set: true
+    state: present
+  loop: "{{ base_sysctl | dict2items }}"
+
+- name: Check the CPU sets of services and targets
+  ansible.builtin.assert:
+    that:
+      - base_cpus_services | intersect(base_cpus_targets) | length == 0
+      - (base_cpus_services + base_cpus_targets) | select('ge', base_cpu_count) | list | length == 0
+    fail_msg: >-
+      cpuset_services ({{ cpuset_services }}) and cpuset_targets ({{ cpuset_targets }})
+      must not overlap and must name CPUs below {{ base_cpu_count }} (this host's CPUs)
+    quiet: true
+  vars:
+    base_cpus_services: "{{ cpuset_services | pinka_cpuset_cpus }}"
+    base_cpus_targets: "{{ cpuset_targets | pinka_cpuset_cpus }}"
+    base_cpu_count: "{{ host_profile.hardware.cpu_threads | int }}"
+
+- name: Write the slice of the lab services
+  ansible.builtin.template:
+    src: pinka-services.slice.j2
+    dest: "/etc/systemd/system/{{ pinka_services_slice }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: base_services_slice
+
+# Now, not in a handler: Docker and the lab units place themselves in the slice
+# later in this play. A running slice takes a changed CPU set at the next lab
+# start (doctor check resources.cpusets reports the difference).
+- name: Load the slice of the lab services
+  ansible.builtin.systemd_service:
+    daemon_reload: "{{ base_services_slice is changed }}"

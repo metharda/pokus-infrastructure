@@ -1,0 +1,18 @@
+# Managed by pinka (ansible/roles/pkg/defaults/main.yml). Local changes will be overwritten.
+
+# Packages to install (tasks_from: main).
+pkg_packages: []
+# Pinned versions by package name (from versions.lock.yml); packages missing
+# here are installed unpinned (rolling releases only).
+pkg_versions: {}
+# Repository to add (tasks_from: repo): a key of ansible/component-sources.yml repositories.
+pkg_repo_name: ""
+# Packages to hold (tasks_from: hold) and the component name used in markers.
+pkg_hold_packages: []
+pkg_hold_name: ""
+# Debian architecture names for ansible_facts.architecture.
+pkg_deb_arches:
+  x86_64: amd64
+  aarch64: arm64
+# dnf plugin that provides `dnf versionlock`.
+pkg_versionlock_package: python3-dnf-plugin-versionlock

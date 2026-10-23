@@ -1,7 +1,0 @@
-# Managed by pokus-infra (ansible/roles/incus/handlers/main.yml). Local changes will be overwritten.
-- name: Restart pokus-incus-events
-  ansible.builtin.systemd_service:
-    name: pokus-incus-events.service
-    state: restarted
-    daemon_reload: true
-  when: not ansible_check_mode or 'pokus-incus-events.service' in pokus_present.units

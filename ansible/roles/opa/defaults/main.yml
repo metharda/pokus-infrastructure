@@ -1,0 +1,11 @@
+# Managed by pinka (ansible/roles/opa/defaults/main.yml). Local changes will be overwritten.
+
+# The active platform's policy bundle in its published release and its
+# decision path below /v1/data (from the manifest's policy); empty without a
+# platform or without a policy.
+opa_platform_policy_dir: "{{ ((active_platform | default({}, true)).opa | default({}, true)).bundle | default('') }}"
+opa_decision_path: "{{ ((active_platform | default({}, true)).opa | default({}, true)).decision_path | default('') }}"
+# Rendered configuration (mounted read-only at /config).
+opa_config_dir: "{{ pinka_root }}/services/core/config/opa"
+# Symbolic link to the active policy directory (mounted read-only at /policy).
+opa_policy_link: "{{ pinka_root }}/services/core/policy"

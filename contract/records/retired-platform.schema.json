@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/records/retired-platform.schema.json",
+  "title": "retired.json",
+  "description": "A platform replaced by another (--replace-platform), `/var/lib/pinka/platforms/<platform>/retired.json`, 0600 root. pinka platform purge reads it and sets purged_at.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_version",
+    "retired_at",
+    "replaced_by",
+    "purged_at",
+    "active"
+  ],
+  "properties": {
+    "record_version": {
+      "const": 1,
+      "description": "Version of this record format."
+    },
+    "retired_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC time of the replacement."
+    },
+    "replaced_by": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,11}$",
+      "description": "The platform that replaced it."
+    },
+    "purged_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "UTC time of the purge, or null."
+    },
+    "active": {
+      "type": "object",
+      "description": "Its active platform record (active-platform.schema.json) at the time of the replacement."
+    }
+  }
+}

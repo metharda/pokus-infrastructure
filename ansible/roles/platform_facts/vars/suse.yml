@@ -1,0 +1,10 @@
+# Managed by pinka (ansible/roles/platform_facts/vars/suse.yml). Local changes will be overwritten.
+#
+# SUSE family (openSUSE Leap, Tumbleweed, SLES).
+platform_facts_family:
+  service_names:
+    ssh: sshd
+    timesync: [chronyd, systemd-timesyncd]
+  initramfs_tool: dracut
+  version_hold_method: zypper_lock
+  codenames: {}

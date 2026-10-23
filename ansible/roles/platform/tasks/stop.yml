@@ -1,0 +1,35 @@
+# Managed by pinka (ansible/roles/platform/tasks/stop.yml). Local changes will be overwritten.
+#
+# Drain the active platform, then stop it (BUILD_PROMPT §7.14 step 8, §12.9):
+# the drain hook of the release that runs, from active.json and
+# rendered.json, then pinka-platform.target, which stops every unit that is
+# PartOf it (services, sockets, the reconcile unit). A drain that fails or
+# times out does not stop the switch: infra stops the services anyway and
+# the platform records what was interrupted. platform_drain_first: false
+# skips the drain (a replaced platform that retire.yml drained already).
+
+- name: Run the active platform's drain hook
+  ansible.builtin.command:
+    argv: ["{{ platform_tool }}", hook, drain]
+  register: platform_drain
+  changed_when: true
+  failed_when: false
+  when: platform_drain_first | default(true) | bool
+
+- name: Warn when the platform did not drain
+  ansible.builtin.debug:
+    msg: >-
+      The platform's drain hook did not report "drained": true
+      ({{ platform_drain.stderr | default('') | trim }}); its services are stopped anyway.
+  when:
+    - platform_drain_first | default(true) | bool
+    - platform_drain.rc != 0
+
+- name: Stop the platform
+  ansible.builtin.systemd_service:
+    name: pinka-platform.target
+    state: stopped
+
+- name: Remember that the platform is stopped
+  ansible.builtin.set_fact:
+    platform_stopped: true

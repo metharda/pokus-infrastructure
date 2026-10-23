@@ -1,0 +1,35 @@
+# Managed by pinka (ansible/roles/tailscale/tasks/install.yml). Local changes will be overwritten.
+#
+# Tailscale from the component source matrix, pinned and held (BUILD_PROMPT
+# §7.4); only when no Tailscale package existed before pinka.
+- name: Add the Tailscale repository
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: repo
+  vars:
+    pkg_repo_name: "{{ tailscale_source.repo }}"
+  when: tailscale_source.source == 'vendor_repo'
+
+# The repository is not really added in check mode, so its packages cannot be
+# resolved; everything below needs Tailscale installed.
+- name: Skip the rest in check mode before Tailscale is installed
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - "'tailscale' not in pinka_present.commands"
+
+- name: Install Tailscale
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: "{{ tailscale_source.packages }}"
+    pkg_versions: "{{ tailscale_versions }}"
+
+- name: Hold the Tailscale packages
+  ansible.builtin.include_role:
+    name: pkg
+    tasks_from: hold
+  vars:
+    pkg_hold_name: tailscale
+    pkg_hold_packages: "{{ tailscale_source.packages }}"
+    pkg_versions: "{{ tailscale_versions }}"

@@ -1,0 +1,12 @@
+{
+  "access": {
+    "accounts": [
+      "researcher1"
+    ],
+    "host": "dedicated",
+    "session": {
+      "via": "console"
+    }
+  },
+  "outcome": "supported"
+}

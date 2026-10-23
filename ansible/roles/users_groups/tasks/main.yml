@@ -1,0 +1,137 @@
+# Managed by pinka (ansible/roles/users_groups/tasks/main.yml). Local changes will be overwritten.
+#
+# Groups and accounts (BUILD_PROMPT §6.1, contracts.md). Researchers are
+# members of pinka (and of Incus's per-user group, added by the incus role);
+# admins also of pinka-admin with sudo. Nobody is added to docker or
+# incus-admin implicitly. Infra accounts are system users without login.
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+# A researcher with an account's name would turn that account into a human
+# one (the user module below adds it to pinka): refuse before anything changes.
+- name: Refuse researchers named like an account or group of the lab
+  ansible.builtin.assert:
+    that: users_groups_clashes | length == 0
+    fail_msg: >-
+      researcher names {{ users_groups_clashes | join(', ') }} are accounts or
+      groups of infra or of the active platform; choose other names
+    quiet: true
+
+# An account or group with a reserved name that pinka did not create would
+# make it pinka's; refuse before anything changes (§6.1, §12.1).
+- name: Refuse accounts and groups of the lab's names that existed before pinka
+  ansible.builtin.assert:
+    that: users_groups_reserved_existing | length == 0
+    fail_msg: >-
+      {{ users_groups_reserved_existing | join(', ') }} existed before pinka with the name of an
+      account or group of the lab; rename or remove it, then re-run bootstrap
+    quiet: true
+
+# The install record (§7.21) notes what pinka creates before it creates it.
+- name: Record the accounts and groups pinka creates
+  pinka_install_record:
+    state: add
+    added:
+      groups: >-
+        {{ ((pinka_groups + infra_accounts) | map(attribute='name') | list)
+           | reject('in', users_groups_before_groups) | list }}
+      accounts: >-
+        {{ ((infra_accounts + researchers) | map(attribute='name') | list)
+           | reject('in', users_groups_before_users) | list }}
+      memberships: "{{ researchers | pinka_researcher_memberships(users_groups_existing_researchers) }}"
+
+- name: Create the pinka groups
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    system: "{{ item.system }}"
+    state: present
+  loop: "{{ pinka_groups }}"
+
+# Each infra account has a primary group of its own name; useradd only creates
+# one where USERGROUPS_ENAB is set. The platform's accounts and groups come
+# from the platform role (rendered from its manifest and profiles).
+- name: Create the groups of the infra accounts
+  ansible.builtin.group:
+    name: "{{ item.name }}"
+    system: true
+    state: present
+  loop: "{{ infra_accounts }}"
+
+- name: Create the infra accounts
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    group: "{{ item.name }}"
+    system: true
+    shell: "{{ users_groups_nologin_shell }}"
+    home: "{{ pinka_service_home }}/{{ item.name }}"
+    create_home: true
+    password: "!"
+    groups: "{{ item.groups }}"
+    append: false
+    state: present
+  loop: "{{ infra_accounts }}"
+
+- name: Create the researchers
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    shell: "{{ item.shell | default('/bin/bash') }}"
+    groups: "{{ ['pinka'] + (['pinka-admin'] if item.admin | default(false) else []) }}"
+    append: true
+    create_home: true
+    state: present
+  loop: "{{ researchers | rejectattr('name', 'in', users_groups_existing_researchers) | list }}"
+
+# An account that existed before pinka keeps its shell and home; pinka only
+# adds its groups (recorded above, removed by uninstall).
+- name: Add pre-existing researcher accounts to the lab's groups
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: "{{ ['pinka'] + (['pinka-admin'] if item.admin | default(false) else []) }}"
+    append: true
+  loop: "{{ researchers | selectattr('name', 'in', users_groups_existing_researchers) | list }}"
+
+- name: Read the members of pinka-admin
+  ansible.builtin.getent:
+    database: group
+    key: pinka-admin
+    fail_key: false  # in check mode the group above is not created
+
+- name: Remove non-admins and removed researchers from pinka-admin
+  ansible.builtin.command:
+    argv: [gpasswd, -d, "{{ item }}", pinka-admin]
+  loop: "{{ (researchers | rejectattr('admin', 'true') | map(attribute='name') | list) + researchers_removed }}"
+  when: item in (ansible_facts.getent_group['pinka-admin'][2] | default('')).split(',')
+  changed_when: true
+
+- name: Install the sudo rule for admins
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/90-pinka-admin
+    content: |
+      # Managed by pinka (ansible/roles/users_groups). Local changes will be overwritten.
+      %pinka-admin ALL=(ALL:ALL) ALL
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+
+- name: Manage the SSH keys of the researchers
+  ansible.builtin.include_tasks: keys.yml
+
+- name: Keep researchers out of privileged groups
+  ansible.builtin.include_tasks: privileged_groups.yml
+
+- name: Lock removed researchers (data is kept)
+  ansible.builtin.user:
+    name: "{{ item }}"
+    password_lock: true
+    shell: "{{ users_groups_nologin_shell }}"
+    expires: 1
+  loop: "{{ researchers_removed }}"
+
+- name: Warn about break-glass Docker access
+  ansible.builtin.debug:
+    msg: >-
+      BREAK-GLASS: {{ break_glass_docker | join(', ') }} will be added to the docker group (root-equivalent)
+      by the docker role. This is recorded in the fingerprint.
+  when: break_glass_docker | length > 0

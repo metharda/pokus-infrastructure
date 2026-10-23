@@ -1,4 +1,0 @@
-# Managed by pokus-infra (ansible/roles/catalog/vars/main.yml). Local changes will be overwritten.
-
-# Deployment root (contracts.md#paths): /srv/pokus/catalog/<ref>/ and current.
-catalog_root: "{{ pokus_root }}/catalog"

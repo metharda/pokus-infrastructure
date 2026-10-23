@@ -1,0 +1,10 @@
+# Managed by pinka (ansible/roles/pkg/tasks/hold_apt_preferences.yml). Local changes will be overwritten.
+- name: Pin in /etc/apt/preferences.d/pinka-pins the packages of {{ pkg_hold_name }}
+  ansible.builtin.blockinfile:
+    path: /etc/apt/preferences.d/pinka-pins
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+    marker: "# {mark} pinka {{ pkg_hold_name }}"
+    block: "{{ pkg_versions | dict2items | selectattr('key', 'in', pkg_hold_packages) | items2dict | pinka_apt_pin_block }}"

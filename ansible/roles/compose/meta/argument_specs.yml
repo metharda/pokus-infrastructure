@@ -1,0 +1,69 @@
+# Managed by pinka (ansible/roles/compose/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Install and start one Compose project of the lab services under systemd.
+    options:
+      pinka_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (compose/<project>/compose.yml).
+      compose_project:
+        type: str
+        required: true
+        choices: [core, observability, inference]
+        description: Compose project.
+      compose_description:
+        type: str
+        default: ""
+        description: Description of pinka-<project>.service.
+      compose_services:
+        type: list
+        elements: str
+        default: []
+        description: Services to start now; empty starts every service of the project.
+      compose_profiles:
+        type: list
+        elements: str
+        default: []
+        description: Compose profiles to enable besides the GPU profile (observability uses stores).
+      compose_gpu:
+        type: bool
+        default: false
+        description: Run the project's GPU services (profile gpu-cdi or gpu-runtime after the method Docker offers).
+      compose_log_max_size:
+        type: str
+        default: "{{ pinka_container_log_max_size }}"
+        description: Maximum size of one log file of the local log driver, per lab container.
+      compose_log_max_file:
+        type: int
+        default: "{{ pinka_container_log_max_file }}"
+        description: Number of log files kept per lab container.
+      compose_cgroup_parent:
+        type: str
+        default: "{{ pinka_services_slice }}"
+        description: Systemd slice of every lab container (pinned to cpuset_services).
+      compose_core_subnet:
+        type: str
+        default: 172.30.0.0/24
+        description: Subnet of the core project's network (OPA), the first of docker_address_pools.
+      compose_start:
+        type: bool
+        default: true
+        description: Start the services and enable the unit; false installs the unit disabled.
+      compose_wait_timeout:
+        type: int
+        default: 300
+        description: Seconds `docker compose up --wait` waits for healthy containers.
+      compose_root:
+        type: path
+        description: Directory of the rendered projects (pinka_root/services).
+      compose_images:
+        type: dict
+        description: Images pinned by digest (versions.lock.yml containers.images).
+      compose_extra_env:
+        type: dict
+        default: {}
+        description: Further variables for the project's .env file (the same for every role of a project).
+      compose_db_socket_group:
+        type: str
+        description: Group of the database socket directory, which the exporter joins (the active platform's <platform>-db, or root).

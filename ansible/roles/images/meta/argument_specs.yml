@@ -1,0 +1,63 @@
+# Managed by pinka (ansible/roles/images/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Build, test, leakage-lint, publish and export the golden images of images/.
+    options:
+      pinka_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (images/ recipes).
+      pinka_root:
+        type: path
+        required: true
+        description: Research space root; the exports go to its images/ directory.
+      pinka_versions:
+        type: dict
+        required: true
+        description: >-
+          The pinned versions (generated group_vars versions.yml): the base images, the agent
+          and the target container images.
+      pinka_bootstrap:
+        type: dict
+        required: true
+        description: Bootstrap options; repo_commit and infra_dirty become the pinka.recipe_commit property.
+      images_blueprints:
+        type: list
+        elements: str
+        default: [_base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]
+        description: Blueprints to build, in build order (a base blueprint before the blueprints that start from it).
+      images_rebuild:
+        type: bool
+        default: false
+        description: >-
+          Build the listed blueprints again although their alias and export exist; the new image
+          replaces the alias and the export of the same version.
+      images_export_root:
+        type: path
+        description: Root of the exports, <blueprint>/<version>/ and _upstream/<base>/<fingerprint>/ (pinka_root/images).
+      images_project:
+        type: str
+        default: build
+        description: Incus project of the build instances.
+      images_profile:
+        type: str
+        default: build
+        description: Incus profile of the build instances.
+      images_boot_timeout:
+        type: int
+        default: 900
+        description: Seconds to wait for cloud-init in a new build instance.
+      images_leakage_paths:
+        type: list
+        elements: str
+        default: [/etc, /opt, /srv, /usr/local]
+        description: Directories whose file names and contents the leakage lint checks (unit names, the host name and .git directories are always checked).
+      images_leakage_patterns:
+        type: list
+        elements: str
+        default: ["[A-Z]+-[0-9]{3}", "(?i)fault", "(?i)inject", "(?i)ground[_-]?truth", "(?i)scenario", "(?i)pokus", "(?i)pinka", "(?i)potka"]
+        description: Python regular expressions that fail the build when the build adds a match.
+      images_leakage_allow:
+        type: list
+        elements: dict
+        description: Benign words ({match, optional path}, regular expressions) cut out of a finding before the patterns are applied again.

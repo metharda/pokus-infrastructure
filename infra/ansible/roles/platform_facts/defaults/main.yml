@@ -1,5 +1,0 @@
-# Managed by pokus-infra (ansible/roles/platform_facts/defaults/main.yml). Local changes will be overwritten.
-#
-# platform_facts has no settings of its own; it reads host_profile and the
-# lab-wide variables lab_provider, firewall_backend and allow_community_repos.
-{}

@@ -1,0 +1,116 @@
+# Managed by pinka (ansible/roles/lab_session/tasks/main.yml). Local changes will be overwritten.
+#
+# pinka-lab.target with the health gate and the session record (BUILD_PROMPT
+# §7.16). Sleep inhibition belongs to the provider roles (power_policy).
+
+- name: Create the directories of the helpers and the session records
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ lab_session_libexec }}"
+    - "{{ lab_session_sessions_dir }}"
+
+- name: Install the helpers
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ lab_session_libexec }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - {src: pinka_health_gate.py, dest: health-gate}
+    - {src: pinka_session_start.py, dest: session-start}
+
+- name: Read what Docker offers (how containers reach the GPU)
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
+  when: lab_session_gpu
+
+# The clock is always checked; of the facilities this node runs, the gate
+# checks exactly those the active platform's manifest requires (read from
+# rendered.json at every start).
+- name: Describe the checks of the health gate
+  ansible.builtin.set_fact:
+    lab_session_checks: >-
+      {{ {'time': {'wsl': pinka_provider == 'wsl2', 'ntp_reference': lab_session_ntp_reference,
+                   'max_offset': lab_session_max_clock_offset | float}} }}
+    lab_session_facilities: >-
+      {{ {'telemetry': {'url': lab_session_collector_health}}
+         | combine({'postgres': {'container': lab_session_postgres_container}, 'incus': {},
+                    'opa': {'url': lab_session_opa_health},
+                    'inference': {'endpoints': lab_session_platform_endpoints}}
+                   if node_role in ['full', 'lab'] else {})
+         | combine({'gpu': {'image': lab_session_gpu_image, 'device_args': lab_session_gpu_args}}
+                   if lab_session_gpu else {}) }}
+  vars:
+    lab_session_gpu_args: "{{ pinka_docker_gpu_args | default([]) }}"
+
+- name: Write the health gate's configuration
+  ansible.builtin.copy:
+    dest: "{{ lab_session_gate_config }}"
+    content: >-
+      {{ {'schema_version': 1, 'timeout': lab_session_gate_timeout | int,
+          'interval': lab_session_gate_interval | int, 'checks': lab_session_checks,
+          'facilities': lab_session_facilities,
+          'rendered': lab_session_platform_rendered,
+          'window': {'record': lab_session_window_record, 'mode': lab_mode,
+                     'shared': lab_mode == 'staging' and staging_shared_hardware | bool}} | to_nice_json }}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the lab session units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ lab_session_units }}"
+  register: lab_session_unit_files
+
+- name: Enable the health gate and the session record
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    daemon_reload: "{{ lab_session_unit_files is changed }}"
+  loop: [pinka-health-gate.service, pinka-session-start.service]
+  when: not ansible_check_mode or item in pinka_present.units
+
+- name: Install the maintenance window expiry units (staging on shared hardware)
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ lab_session_expiry_units }}"
+  register: lab_session_expiry_files
+  when: lab_session_window_expiry
+
+- name: Run the maintenance window expiry timer (staging on shared hardware)
+  ansible.builtin.systemd_service:
+    name: pinka-window-expiry.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ lab_session_expiry_files is changed }}"
+  when:
+    - lab_session_window_expiry
+    - not ansible_check_mode or 'pinka-window-expiry.timer' in pinka_present.units
+
+- name: Start the lab at boot or not
+  ansible.builtin.systemd_service:
+    name: pinka-lab.target
+    enabled: "{{ lab_session_autostart | bool }}"
+  when: not ansible_check_mode or 'pinka-lab.target' in pinka_present.units
+
+- name: Bring the lab up (waits for the health gate and the session record)
+  ansible.builtin.systemd_service:
+    name: pinka-lab.target
+    state: started
+  when: not ansible_check_mode

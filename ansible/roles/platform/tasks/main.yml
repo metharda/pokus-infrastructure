@@ -1,0 +1,45 @@
+# Managed by pinka (ansible/roles/platform/tasks/main.yml). Local changes will be overwritten.
+#
+# Generic platform deployment (BUILD_PROMPT §7.14, contract v2): at most one
+# platform per lab, from the release and the content packages the host
+# settings name (platform, content), validated against contract v2 before
+# anything on the host changes. The role names no platform: everything comes
+# from the manifest and the host settings. The steps run in the deployment
+# tool pinka-platform (tools/platform): fetch into root-only mirrors, stage,
+# validate (a refusal ends bootstrap with exit code 65), build in a sandbox,
+# pull job images by digest, publish read-only with provenance, replace the
+# previous platform, render from the profiles (accounts, units, sockets,
+# database roles, certificates), switch with the drain and migrate hooks
+# (§12.9). start.yml, imported by site.yml after the lab session, starts the
+# platform and waits for its health hook.
+
+- name: Deploy the platform
+  when: platform_deploy | bool
+  block:
+    - name: Install the deployment tool
+      ansible.builtin.include_tasks: engine.yml
+
+    - name: Set up the sources
+      ansible.builtin.include_tasks: sources.yml
+
+    - name: Fetch, stage and validate the release
+      ansible.builtin.include_tasks: prepare.yml
+      when: not ansible_check_mode
+
+    - name: Build, publish and switch to the release
+      ansible.builtin.include_tasks: deploy.yml
+      when:
+        - not ansible_check_mode
+        - not platform_inspect | bool
+
+- name: Refuse --inspect-platform without a platform source
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      --inspect-platform needs the platform source: set platform (repo, ref, path,
+      tag_prefix) in the host variables.
+  when:
+    - platform_inspect | bool
+    - not platform_deploy | bool

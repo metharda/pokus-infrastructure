@@ -1,0 +1,17 @@
+# Managed by pinka (images/web-nginx-flask/image.yaml). Local changes will be overwritten.
+#
+# Golden image blueprint `web-nginx-flask` (BUILD_PROMPT §7.13): nginx on port
+# 80 in front of gunicorn serving a small Flask application on 127.0.0.1:8000.
+schema_version: 1
+name: web-nginx-flask
+version: "1.0.0"
+description: nginx reverse proxy in front of gunicorn and a small Flask application
+base: {blueprint: _base}
+type: container
+nesting: false
+packages: [nginx, gunicorn, python3-flask]
+docker_images: []
+services: [nginx, webapp]
+telemetry:
+  log_files: [/var/log/nginx/access.log, /var/log/nginx/error.log]
+tests: [tests/test_web.sh]

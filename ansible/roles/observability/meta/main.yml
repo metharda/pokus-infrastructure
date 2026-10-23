@@ -1,0 +1,23 @@
+# Managed by pinka (ansible/roles/observability/meta/main.yml). Local changes will be overwritten.
+galaxy_info:
+  role_name: observability
+  namespace: pinka
+  author: Pokus project
+  description: "OpenTelemetry Collector, Prometheus, Loki, Tempo, Grafana and exporters on 127.0.0.1"
+  license: Apache-2.0
+  min_ansible_version: "2.21"
+  platforms:
+    - name: Ubuntu
+      versions: [jammy, noble]
+    - name: Debian
+      versions: [trixie]
+    - name: Fedora
+      versions: ["43", "44"]
+    - name: EL
+      versions: ["9", "10"]
+    - name: opensuse
+      versions: [all]
+    - name: ArchLinux
+      versions: [all]
+  galaxy_tags: [pinka]
+dependencies: []

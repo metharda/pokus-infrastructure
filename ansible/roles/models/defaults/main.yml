@@ -1,0 +1,12 @@
+# Managed by pinka (ansible/roles/models/defaults/main.yml). Local changes will be overwritten.
+
+# Root of the model weights (contracts.md#paths); adapters/ below it belongs to the GPU arbiter.
+models_root: "{{ pinka_root }}/models"
+# Isolated environment of the pinned huggingface_hub CLI.
+models_venv: /opt/pinka/models-venv
+# Pinned uv installed by bootstrap.
+models_uv: /opt/pinka/bin/uv
+# Hugging Face token for gated entries (vault; empty for public models).
+models_hf_token: "{{ vault_hf_token | default('') }}"
+# Hash verified files again (restore.yml) instead of trusting their manifest.
+models_reverify: false

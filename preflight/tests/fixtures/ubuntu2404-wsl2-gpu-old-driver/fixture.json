@@ -1,0 +1,13 @@
+{
+  "char_devices": [
+    "/dev/dxg",
+    "/dev/kvm",
+    "/dev/net/tun"
+  ],
+  "rw_openable": [
+    "/dev/dxg",
+    "/dev/kvm",
+    "/dev/net/tun"
+  ],
+  "symlinks": {}
+}

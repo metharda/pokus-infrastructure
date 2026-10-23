@@ -1,0 +1,205 @@
+"""Validation rules (BUILD_PROMPT §18.8)."""
+
+from __future__ import annotations
+
+import shutil
+
+import pytest
+from installer_testlib import private_key, public_key
+
+from pinka_installer import keys, validators
+
+
+@pytest.mark.parametrize("value", ["pinka-lab", "a", "lab2", "x" * 63])
+def test_hostname_ok(value: str) -> None:
+    assert validators.hostname(value) is None
+
+
+@pytest.mark.parametrize("value", ["", "-lab", "lab-", "Lab", "lab_1", "lab.example", "x" * 64])
+def test_hostname_bad(value: str) -> None:
+    assert validators.hostname(value)
+
+
+@pytest.mark.parametrize("value", ["researcher1", "_svc", "a-b_c", "r" * 32])
+def test_username_ok(value: str) -> None:
+    assert validators.username(value, ["pinka-build"]) is None
+
+
+@pytest.mark.parametrize(
+    ("value", "reason"),
+    [
+        ("Researcher", "lower-case"),
+        ("1abc", "lower-case"),
+        ("r" * 33, "lower-case"),
+        ("root", "reserved"),
+        ("docker", "reserved"),
+        ("pinka-build", "lab's own accounts"),
+        ("pinka-new", "lab's own accounts"),
+    ],
+)
+def test_username_bad(value: str, reason: str) -> None:
+    message = validators.username(value, ["pinka-build"])
+    assert message and reason in message
+
+
+@pytest.mark.parametrize("value", ["/srv/pinka", "/", "/var/lib/docker"])
+def test_absolute_path_ok(value: str) -> None:
+    assert validators.absolute_path(value) is None
+
+
+@pytest.mark.parametrize(
+    "value", ["srv", "/srv/../etc", "/srv/./x", "/srv//x", "/srv/", "/a b", "/a\tb"]
+)
+def test_absolute_path_bad(value: str) -> None:
+    assert validators.absolute_path(value)
+
+
+def test_cpusets() -> None:
+    assert validators.parse_cpuset("0-2,5") == {0, 1, 2, 5}
+    assert validators.cpuset("0-5", 8) is None
+    assert "does not exist" in (validators.cpuset("0-8", 8) or "")
+    for bad in ("", "a", "3-1", "1,,2", "1-"):
+        assert validators.cpuset(bad)
+    assert validators.cpusets_disjoint("0-5", "6-19") is None
+    assert "share CPUs 4-5" in (validators.cpusets_disjoint("0-5", "4-9") or "")
+    assert validators.format_cpuset([0, 1, 2, 5, 7, 8]) == "0-2,5,7-8"
+
+
+def test_sizes() -> None:
+    assert validators.size("300GiB") is None
+    assert validators.size_bytes("2GB") == 2 * 10**9
+    assert validators.size_bytes("1TiB") == 2**40
+    for bad in ("0GiB", "1.5GiB", "300", "300 GiB", "300gb"):
+        assert validators.size(bad)
+
+
+def test_urls_and_sources() -> None:
+    assert validators.https_url("https://example.com/x") is None
+    assert validators.https_url("http://example.com")
+    assert "credentials" in (validators.https_url("https://user:pw@example.com") or "")
+
+
+def test_platform_sources_are_the_platform_tool_s() -> None:
+    release = {"repo": "git@github.com:example-org/example-platform.git", "ref": "example-v1"}
+    for repo in (
+        "git@github.com:example-org/example-platform.git",
+        "ssh://git@git.example.com:2222/example-org/example-platform.git",
+        "https://git.example.com/example-org/example-platform.git",
+        "file:///srv/git/example-platform.git",
+    ):
+        assert validators.platform_sources({**release, "repo": repo}, {}) == [], repo
+    for repo in (
+        "github.com/example-org/example-platform",
+        "ftp://example.com/x",
+        "https://u:p@example.com/x",
+        "http://git.example.com/x.git",
+    ):
+        found = validators.platform_sources({**release, "repo": repo}, {})
+        assert found and found[0].startswith("platform/repo:"), repo
+    assert validators.platform_sources({**release, "ref": "a..b"}, {})[0].startswith("platform/ref")
+    bad_path = {"cases": {**release, "path": "../x"}}
+    assert validators.platform_sources(release, bad_path)[0].startswith("content/cases/path")
+    assert validators.platform_sources(release, {"Bad": release})[0].startswith("content:")
+
+
+def test_cap_sizes_and_secret_keys() -> None:
+    for ok in ("24G", "512M", "1K"):
+        assert validators.cap_size(ok) is None, ok
+    for bad in ("24GiB", "0G", "1.5G", "G", "24"):
+        assert validators.cap_size(bad), bad
+    assert validators.platform_secret_key("ctl.api-token") is None
+    for bad in ("ctl", "Ctl.x", "ctl.X", "verylongname1.x"):
+        assert validators.platform_secret_key(bad), bad
+
+
+def test_serve_on_an_adopted_node_needs_consent() -> None:
+    # BUILD_PROMPT §7.4: off by default on a node logged in before pinka.
+    assert validators.serve_consent(adopted=True, serve=True, consent=False)
+    assert validators.serve_consent(adopted=True, serve=True, consent=True) is None
+    assert validators.serve_consent(adopted=True, serve=False, consent=False) is None
+    assert validators.serve_consent(adopted=False, serve=True, consent=False) is None
+
+
+def test_tags_models_times_snapshots() -> None:
+    assert validators.tailscale_tag("tag:pinka-lab") is None
+    for bad in ("pinka-lab", "tag:Pinka", "tag:1x", "tag:"):
+        assert validators.tailscale_tag(bad)
+    assert validators.hf_repo("example-org/model-7b.v1") is None
+    for bad in ("model", "a/b/c", "-a/b", "a/b..c"):
+        assert validators.hf_repo(bad)
+    assert validators.revision("0123456789abcdef0123456789abcdef01234567") is None
+    for bad in ("main", "0123456789ABCDEF0123456789ABCDEF01234567", "abc"):
+        assert validators.revision(bad)
+    assert validators.time_of_day("03:00") is None
+    assert validators.time_of_day("24:00")
+    assert validators.snapshot("latest") is None
+    assert validators.snapshot("deadbeef") is None
+    assert validators.snapshot("xyz")
+
+
+def test_restic_repositories() -> None:
+    assert validators.restic_repository("sftp:backup@backup.example.com:/srv/restic/lab") is None
+    assert validators.restic_repository("sftp:backup@192.0.2.10:/srv/restic") is None
+    assert validators.restic_repository("rest:https://backup.example.com/lab") is None
+    assert validators.restic_repository("/var/backups/pinka") is None
+    for bad in (
+        "sftp:backup.example.com:/x",
+        "sftp:u@h:relative",
+        "rest:http://x",
+        "s3:x",
+        "relative",
+    ):
+        assert validators.restic_repository(bad), bad
+
+
+def test_interfaces() -> None:
+    assert validators.interface("enp5s0") is None
+    for bad in ("lo", "tailscale0", "a b", "x" * 16):
+        assert validators.interface(bad)
+
+
+def test_listener_names() -> None:
+    for good in ("tcp/22", "udp/5353", "tcp/65535"):
+        assert validators.listener_name(good) is None, good
+    for bad in ("8080", "tcp/0", "tcp/65536", "sctp/1", "tcp/08", "TCP/22", "tcp/22 "):
+        assert validators.listener_name(bad), bad
+
+
+def test_ssh_keys_are_parsed_and_fingerprinted() -> None:
+    lines = [public_key("ed25519"), public_key("ecdsa", ""), public_key("rsa3072")]
+    found, errors = validators.parse_ssh_keys("# keys\n\n" + "\n".join(lines) + "\n")
+    assert errors == []
+    assert [k.key_type for k in found] == ["ssh-ed25519", "ecdsa-sha2-nistp256", "ssh-rsa"]
+    assert all(k.fingerprint.startswith("SHA256:") and "=" not in k.fingerprint for k in found)
+    assert found[2].bits == 3072
+    assert found[0].line == lines[0]
+
+
+def test_bad_ssh_keys_are_rejected_with_a_reason() -> None:
+    _, errors = validators.parse_ssh_keys(private_key())
+    assert errors and "PRIVATE" in errors[0]
+    _, errors = validators.parse_ssh_keys(public_key("rsa2048"))
+    assert "3072 bits" in errors[0]
+    good = public_key()
+    kind, data, *_ = good.split()
+    _, errors = validators.parse_ssh_keys(f"ssh-rsa {data}")
+    assert "does not match" in errors[0]
+    _, errors = validators.parse_ssh_keys(f"{kind} not-base64!")
+    assert "base64" in errors[0]
+    _, errors = validators.parse_ssh_keys("ssh-dss AAAA")
+    assert "unsupported" in errors[0]
+    _, errors = validators.parse_ssh_keys(f"{good}\n{good}")
+    assert "duplicate" in errors[0]
+    _, errors = validators.parse_ssh_keys("\n# nothing\n")
+    assert errors == ["no public key found"]
+
+
+def test_key_check_with_and_without_ssh_keygen() -> None:
+    line = public_key()
+    result = keys.check(line, use_ssh_keygen=False)
+    assert result.errors == ()
+    assert result.fingerprints[0].endswith("researcher1@example.com")
+    if shutil.which("ssh-keygen"):
+        assert keys.check(line).keys == result.keys
+    else:
+        assert validators.ssh_keygen_fingerprint(line) is None

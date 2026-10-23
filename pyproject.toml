@@ -1,0 +1,160 @@
+# Development tooling for pokus-infrastructure.
+#
+# This project is never installed on lab hosts. Hosts get their Python
+# environments from bootstrap/requirements.lock (Ansible) and
+# installer/requirements.lock (installer TUI). Versions are exact pins; uv.lock
+# adds hashes. Bump only through the lock update procedure in docs/reproducibility.md.
+
+[project]
+name = "pinka-dev"
+version = "0.1.0"
+description = "Development, lint, test and documentation tooling for pokus-infrastructure."
+requires-python = "==3.12.*"
+license = "Apache-2.0"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  # lint and type checks
+  "ruff==0.16.10",
+  "mypy==2.4.0",
+  "yamllint==1.38.0",
+  "shellcheck-py==0.11.0.1",
+  "shfmt-py==4.2.0",
+  "types-pyyaml==6.0.12.20260906",
+  "types-jsonschema==4.26.0.20260518",
+  # Ansible: --syntax-check and ansible-lint (production profile)
+  "ansible-core==2.21.5",
+  "ansible-lint==26.9.0",
+  # git hooks (local hooks only, see .pre-commit-config.yaml)
+  "pre-commit==4.6.2",
+  # tests (pytest 8: pytest-textual-snapshot 1.1.0 pins syrupy 4.8.0, which needs pytest<9)
+  "pytest==8.4.2",
+  "pytest-textual-snapshot==1.1.0",
+  # installer TUI (the pins of python.installer in versions.lock.yml)
+  "textual==8.2.8",
+  "ruamel.yaml==0.19.1",
+  "segno==1.6.6",
+  # documentation
+  "mkdocs==1.6.1",
+  "mkdocs-material==9.7.7",
+  "mkdocs-static-i18n==1.3.1",
+  "pymdown-extensions==12.1",
+  # repo checks (front matter, schemas)
+  "pyyaml==6.0.3",
+  "jsonschema==4.26.0",
+  "packaging==26.3",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.12.23"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Third-party and generated trees; force-exclude keeps them out even when a
+# path inside them is passed on the command line.
+extend-exclude = [".ansible-collections", ".venv", "node_modules", "site", "build"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "S", "D", "ANN", "RUF", "PL", "SIM", "PTH", "N"]
+ignore = [
+  "D203",    # one-blank-line-before-class conflicts with D211
+  "D213",    # multi-line summary on second line conflicts with D212
+  "PLR0913", # argument counts are reviewed, not capped
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+  "pinka_repo_checks",
+  "pinka_gen",
+  "pinka_preflight",
+  "pinka_lockcheck",
+  "pinka",
+  "pinka_incus_object",
+  "ansible_testlib",
+  "pinka_installer",
+  "pinka_platform",
+  "refplat",
+  "refplat_agent",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101", "D", "ANN", "PLR2004"]
+"bootstrap/tests/**" = ["S603", "S607"]  # the tests drive bash, git and setpriv
+"ansible/tests/**" = ["S603", "S607"]  # the tests run nft, ShellCheck, sh and visudo
+"installer/tests/**" = ["S603", "S607", "PLR0915"]  # preflight, bash, ansible-playbook; flows walk every screen
+"tools/platform/tests/**" = ["S603", "S607"]  # the tests build source repositories with git
+"tools/repo-checks/tests/**" = ["S603", "S607"]  # the history check's tests build repositories with git
+"tools/test-distros/tests/**" = ["S603", "S607"]  # the tests build the renamed copy with git and run the probe
+"ansible/roles/*/library/*.py" = ["E501"]  # managed header and module documentation lines
+"ansible/roles/*/files/*.py" = ["E501", "EXE001"]  # managed header; installed executable, shebang for the host
+"ansible/callback_plugins/*.py" = ["E501", "ANN401"]  # managed header; Ansible objects have no types
+
+[tool.mypy]
+strict = true
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:tools/lockcheck/tests:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/install_record/library:ansible/roles/incus/files:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pinka-lab:tools/pinka-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins:tools/platform:tools/platform/tests:ansible/roles/gpu_arbiter/files:tests/reference-platform/src:tests/reference-platform/packages/refplat-agent/src"
+python_version = "3.12"
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["ansible", "ansible.*"]
+ignore_missing_imports = true  # ansible-core ships no type information
+
+[tool.pytest.ini_options]
+# skip_policy names every skipped test; in CI a skip the CI skip list does not
+# name fails (tools/repo-checks/pinka_repo_checks/ci_skips.json).
+addopts = "-ra --strict-markers --strict-config -p pinka_repo_checks.skip_policy"
+markers = [
+  "uv: needs the uv of versions.lock.yml (tools/platform/tests/conftest.py); in CI a skip fails",
+]
+testpaths = [
+  "tools/repo-checks/tests",
+  "preflight/tests",
+  "tools/gen/tests",
+  "tools/lockcheck/tests",
+  "bootstrap/tests",
+  "ansible/tests",
+  "tools/pinka-lab/tests",
+  "tools/test-distros/tests",
+  "installer/tests",
+  "tools/platform/tests",
+]
+pythonpath = [
+  "tools/repo-checks",
+  "preflight",
+  "preflight/tests",
+  "tools/gen",
+  "tools/lockcheck",
+  "tools/lockcheck/tests",
+  "bootstrap/tests",
+  "ansible/filter_plugins",
+  "ansible/roles/incus/library",
+  "ansible/roles/install_record/library",
+  "ansible/roles/incus/files",
+  "ansible/roles/models/files",
+  "ansible/roles/vllm/files",
+  "ansible/roles/images/files",
+  "ansible/roles/lab_session/files",
+  "ansible/roles/backup/files",
+  "ansible/roles/platform/files",
+  "ansible/roles/inference_control/files",
+  "ansible/roles/gpu_arbiter/files",
+  "ansible/roles/firewall/files",
+  "ansible/tests",
+  "tools/pinka-lab",
+  "tools/pinka-lab/tests",
+  "tools/test-distros",
+  "installer",
+  "installer/tests",
+  "ansible/callback_plugins",
+  "tools/platform",
+  "tools/platform/tests",
+  "tests/reference-platform/src",
+  "tests/reference-platform/packages/refplat-agent/src",
+]

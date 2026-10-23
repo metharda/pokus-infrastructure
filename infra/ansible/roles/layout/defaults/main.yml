@@ -1,5 +1,0 @@
-# Managed by pokus-infra (ansible/roles/layout/defaults/main.yml). Local changes will be overwritten.
-#
-# The layout itself is lab-wide data in group_vars/all/main.yml
-# (pokus_layout, pokus_system_layout, pokus_layout_user_mode).
-{}

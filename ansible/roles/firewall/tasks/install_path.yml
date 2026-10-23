@@ -1,0 +1,104 @@
+# Managed by pinka (ansible/roles/firewall/tasks/install_path.yml). Local changes will be overwritten.
+#
+# The safeguard of BUILD_PROMPT §7.5, at the end of the run: the install's
+# access path (an SSH session from outside the tailnet) closes only when SSH
+# over the tailnet was verified for at least one researcher in the same run
+# and the owner consented (firewall_close_install_path). Verified means a
+# journal entry since the play began that journald attributes to root and to
+# sshd (_UID 0, _COMM sshd or sshd-session, fields the sender cannot set),
+# with sshd's "Accepted publickey for <researcher> from <address>", where the
+# address is a current tailnet peer's (tailscale status), never the host's
+# own (pinka_tailnet_logins). Otherwise it stays open and
+# doctor warns. Closing re-applies the sshd drop-in (its Match block for the
+# session's account ends), removes the path's rule from pinka's table and
+# drops new connections to it in the access guard on every backend; a
+# listener held open for the path and named in firewall_close_listeners
+# closes with it. The session itself stays open until it ends.
+- name: Read sshd's logins since the run began
+  ansible.builtin.command:
+    argv:
+      - journalctl
+      - --unit=ssh.service
+      - --unit=sshd.service
+      - --unit=ssh@*.service
+      - --unit=sshd@*.service
+      - "--since=@{{ pinka_run_started }}"
+      - --output=json
+      - --no-pager
+  register: firewall_sshd_journal
+  changed_when: false
+  check_mode: false
+  when:
+    - firewall_install_path is not none
+    - not firewall_install_path.closed
+    - firewall_close_install_path | bool
+
+- name: Read the tailnet's peers
+  ansible.builtin.command:
+    argv: [tailscale, status, --json]
+  register: firewall_tailnet_status
+  changed_when: false
+  # Without an answer there are no peers, so no login counts and the path stays open.
+  failed_when: false
+  check_mode: false
+  when: firewall_sshd_journal is not skipped
+
+- name: Note the researchers' logins over the tailnet
+  ansible.builtin.set_fact:
+    firewall_tailnet_logins: >-
+      {{ firewall_sshd_journal.stdout | default('')
+         | pinka_tailnet_logins(researchers | map(attribute='name') | list,
+                                (firewall_tailnet_status.stdout | default('') | pinka_tailnet_peers)
+                                if firewall_tailnet_status.rc | default(1) == 0 else []) }}
+  when: firewall_sshd_journal is not skipped
+
+- name: Keep the install's access path open
+  ansible.builtin.debug:
+    msg: >-
+      The install's access path (SSH to {{ firewall_install_path.address }}:{{ firewall_install_path.port }})
+      stays open:
+      {{ 'firewall_close_install_path is false (no consent to close it)'
+         if not firewall_close_install_path | bool
+         else 'no researcher logged in with a key over the tailnet during this run; run bootstrap again and,'
+              ~ ' while it runs, log in as a researcher over the tailnet (ssh <researcher>@' ~ machine_name ~ ')' }}.
+      doctor reports it as a warning (BUILD_PROMPT §7.5).
+  when:
+    - firewall_install_path is not none
+    - not firewall_install_path.closed
+    - not firewall_close_install_path | bool or firewall_tailnet_logins | default([]) | length == 0
+
+# Decided once: a block's condition is evaluated again for each of its tasks,
+# and the path counts as closed as soon as the first of them records it.
+- name: Decide whether the install's access path closes now
+  ansible.builtin.set_fact:
+    firewall_closes_install_path: >-
+      {{ firewall_install_path is not none and not firewall_install_path.closed
+         and firewall_close_install_path | bool
+         and firewall_tailnet_logins | default([]) | length > 0 }}
+
+- name: Close the install's access path (the safeguard holds)
+  when: firewall_closes_install_path | bool
+  block:
+    - name: Record that the install's access path closes
+      pinka_install_record:
+        state: add
+        added:
+          closed_access: [install_path]
+
+    - name: Note the closed path for the roles that apply it
+      ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - the install_record role's fact
+        pinka_closed_access: "{{ pinka_closed_access | default([]) + ['install_path'] }}"
+
+    - name: Apply the sshd drop-in for the closed path
+      ansible.builtin.include_role:
+        name: ssh
+
+    - name: Remove the path's rule from pinka's table
+      ansible.builtin.include_tasks: nftables.yml
+      when: pinka_firewall_backend == 'nftables'
+
+    - name: Close the path in the access guard
+      ansible.builtin.include_tasks: access_guard.yml
+
+    - name: Apply the changes now
+      ansible.builtin.meta: flush_handlers

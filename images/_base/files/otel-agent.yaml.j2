@@ -1,0 +1,58 @@
+# In-target OpenTelemetry agent (BUILD_PROMPT §7.13, contracts.md#telemetry).
+# It sends to {{ otlp_endpoint }}: inside a container that is the Incus proxy
+# device the platform attaches, inside a VM the lab's VM listener. It holds no
+# identifier of a run: the resource attributes come at run time from
+# OTEL_RESOURCE_ATTRIBUTES (resource_detection, env detector), which the
+# platform sets when it launches the instance. It listens on nothing.
+receivers:
+  host_metrics:
+    collection_interval: 15s
+    scrapers:
+      cpu: {}
+      memory: {}
+      load: {}
+      disk: {}
+      filesystem: {}
+      network: {}
+      paging: {}
+      processes: {}
+  journald:
+    directory: /var/log/journal
+    priority: info
+    convert_to_semantic_conventions: true
+{% if image.telemetry.log_files %}
+  file_log:
+    include: {{ image.telemetry.log_files | to_json }}
+    start_at: end
+{% endif %}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 128
+    spike_limit_mib: 32
+  resource_detection:
+    detectors: [env, system]
+    system:
+      hostname_sources: [os]
+  batch: {}
+
+exporters:
+  otlp_grpc:
+    endpoint: {{ otlp_endpoint }}
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [host_metrics]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_grpc]
+    logs:
+      receivers: [journald{{ ', file_log' if image.telemetry.log_files else '' }}]
+      processors: [memory_limiter, resource_detection, batch]
+      exporters: [otlp_grpc]

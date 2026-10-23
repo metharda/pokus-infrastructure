@@ -1,0 +1,331 @@
+# Managed by pinka (ansible/restore.yml). Local changes will be overwritten.
+#
+# Restore play run by `bootstrap.sh --restore` after site.yml (BUILD_PROMPT
+# §5.2 step 10, §7.15): drain the platform (its drain hook) and stop the lab,
+# restore a chosen restic snapshot of this host, load the newest PostgreSQL
+# dump, re-import the golden images from their exports (aliases kept,
+# fingerprints checked), re-verify the model hashes (re-downloading what is
+# missing), redeploy the platform release and content refs that the
+# snapshot's active.json records, start the lab, wait for the platform's
+# health hook and run doctor.
+#
+# The snapshot comes from restore_snapshot (host_vars: an ID or "latest") or,
+# in an interactive run, from a prompt. Files of /etc/pinka that bootstrap
+# renders are not restored; restore_etc_paths lists the ones it cannot render.
+- name: Restore the Pokus lab host from a backup
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - "inventory/host_vars/{{ machine }}.yml"
+  vars:
+    pinka_dir: "{{ playbook_dir | dirname }}"
+    restore_backup: /usr/local/libexec/pinka/backup
+    restore_etc_paths:
+      - /etc/pinka/vllm/deployments
+      - /etc/pinka/vllm/current.yml
+      - /etc/pinka/qa
+  pre_tasks:
+    - name: Check the variables passed by bootstrap
+      ansible.builtin.assert:
+        that:
+          - machine is defined
+          - host_profile is mapping
+          - pinka_bootstrap is mapping
+        fail_msg: "Run this play through bootstrap/bootstrap.sh --restore, which passes machine, host_profile and pinka_bootstrap."
+        quiet: true
+      tags: [always]
+
+  tasks:
+    - name: Derive the platform facts
+      ansible.builtin.import_role:
+        name: platform_facts
+      tags: [always]
+
+    - name: Check that a backup repository is configured
+      ansible.builtin.stat:
+        path: /etc/pinka/secrets/backup/repository
+      register: restore_repository
+
+    - name: Stop without a repository
+      ansible.builtin.assert:
+        that: restore_repository.stat.exists
+        fail_msg: >-
+          No backup repository is configured on this host: set vault_restic_repository and
+          vault_restic_password (the values of the backed-up lab) and run bootstrap again.
+        quiet: true
+
+    - name: List the snapshots of this host
+      ansible.builtin.command:
+        argv: ["{{ restore_backup }}", snapshots]
+      register: restore_snapshots_raw
+      changed_when: false
+      check_mode: false
+
+    # restic lists snapshots oldest first; their times carry the host's UTC
+    # offset, so they are not re-sorted as strings.
+    - name: Describe the snapshots
+      ansible.builtin.set_fact:
+        restore_snapshots: "{{ restore_snapshots_raw.stdout | from_json | list }}"
+
+    - name: Stop without snapshots
+      ansible.builtin.assert:
+        that: restore_snapshots | length > 0
+        fail_msg: "The repository holds no snapshot of {{ machine_name }}."
+        quiet: true
+
+    - name: Ask which snapshot to restore
+      ansible.builtin.pause:
+        prompt: |-
+          Snapshots of {{ machine_name }} (newest last):
+          {% for s in restore_snapshots %}
+            {{ s.short_id }}  {{ s.time }}
+          {% endfor %}
+          Snapshot to restore (ID, or empty for the newest)
+      register: restore_answer
+      when:
+        - restore_snapshot is not defined
+        - pinka_bootstrap.interactive | default(false)
+
+    - name: Choose the snapshot
+      ansible.builtin.set_fact:
+        restore_chosen: >-
+          {{ restore_snapshot | default(restore_answer.user_input | default('') | trim, true)
+             | default('latest', true) }}
+
+    - name: Stop when a non-interactive run names no snapshot
+      ansible.builtin.assert:
+        that: restore_snapshot is defined or pinka_bootstrap.interactive | default(false)
+        fail_msg: >-
+          A non-interactive restore needs restore_snapshot in the host_vars file (a snapshot ID
+          from the list above, or "latest").
+        quiet: true
+
+    - name: Check the form of the snapshot ID
+      ansible.builtin.assert:
+        that: restore_chosen == 'latest' or restore_chosen is match('^[0-9a-f]{8,64}$')
+        fail_msg: "{{ restore_chosen }} is neither a snapshot ID nor latest."
+        quiet: true
+
+    - name: Find the chosen snapshot (an ID or a prefix of one)
+      ansible.builtin.set_fact:
+        restore_entry: >-
+          {{ restore_snapshots[-1] if restore_chosen == 'latest'
+             else (restore_snapshots | selectattr('id', 'match', restore_chosen) | list + [{}]) | first }}
+
+    - name: Stop on an unknown snapshot
+      ansible.builtin.assert:
+        that: restore_entry.id is defined
+        fail_msg: "{{ restore_chosen }} is not a snapshot of {{ machine_name }}."
+        quiet: true
+
+    # Before anything changes: the platform the snapshot records must still be
+    # deployable exactly, its commits and trees (owner decision with the
+    # "commit" for 3d.4).
+    - name: Check the platform the snapshot records
+      when:
+        - not ansible_check_mode
+        - node_role in ['full', 'lab']
+        - (platform | default({}, true)).repo | default('') | length > 0
+      block:
+        - name: Read the platform record of the snapshot
+          ansible.builtin.command:
+            argv: ["{{ restore_backup }}", platform-record, --snapshot, "{{ restore_entry.id }}"]
+          register: restore_platform_record
+          changed_when: false
+
+        - name: Remember the recorded release
+          ansible.builtin.set_fact:
+            restore_record: "{{ restore_platform_record.stdout | from_json }}"
+
+        # Exactly the recorded commit and tree (owner decision with the
+        # "commit" for 3d.4): the deployment refuses if the mirror no longer
+        # has the commit or the tree differs. With signed tags required the
+        # ref is the recorded tag, which must still point to that commit.
+        - name: Pin the platform source to the recorded commit and tree
+          ansible.builtin.set_fact:
+            restore_platform: >-
+              {{ platform | combine({
+                   'ref': restore_record.release.tag
+                          if (require_signed_tags | bool) and restore_record.release.tag
+                          else restore_record.release.commit,
+                   'commit': restore_record.release.commit,
+                   'tree': restore_record.release.tree}) }}
+          when: restore_record is mapping
+
+        # Content packages the snapshot does not record keep their host_vars refs.
+        - name: Pin the content sources to the recorded commits and trees
+          ansible.builtin.set_fact:
+            restore_content: >-
+              {{ restore_content | default({})
+                 | combine({item.key: item.value | combine(
+                     {'ref': restore_recorded.tag
+                             if (require_signed_tags | bool) and restore_recorded.tag
+                             else restore_recorded.commit,
+                      'commit': restore_recorded.commit,
+                      'tree': restore_recorded.tree}
+                     if restore_recorded else {})}) }}
+          vars:
+            restore_recorded: "{{ (restore_record.content | default({}, true))[item.key] | default(none) }}"
+          loop: "{{ (content | default({}, true)) | dict2items }}"
+          loop_control:
+            label: "{{ item.key }}"
+          when: restore_record is mapping
+
+        - name: Check that the recorded commits and trees can be deployed
+          ansible.builtin.include_role:
+            name: platform
+            tasks_from: check
+          vars:
+            platform: "{{ restore_platform }}"  # noqa: var-naming[no-role-prefix]
+            content: "{{ restore_content | default({}) }}"  # noqa: var-naming[no-role-prefix]
+          when: restore_record is mapping
+
+    - name: Restore the snapshot
+      when: not ansible_check_mode
+      block:
+        - name: Look for an active platform
+          ansible.builtin.stat:
+            path: /etc/pinka/platform/active.json
+          register: restore_active_platform
+
+        - name: Drain and stop the platform (§12.9)
+          ansible.builtin.include_role:
+            name: platform
+            tasks_from: stop
+          when: restore_active_platform.stat.exists
+
+        - name: Stop the lab
+          ansible.builtin.systemd_service:
+            name: pinka-lab.target
+            state: stopped
+
+        - name: Restore the files
+          ansible.builtin.command:
+            argv: >-
+              {{ [restore_backup, 'restore', '--snapshot', restore_entry.id]
+                 + (restore_entry.paths | select('match', '^' ~ pinka_root ~ '/') | list
+                    + restore_etc_paths) | map('regex_replace', '^', '--include=') | list }}
+          changed_when: true
+
+        - name: Load the newest PostgreSQL dump
+          when: node_role in ['full', 'lab']
+          block:
+            - name: Read the active platform
+              ansible.builtin.include_role:
+                name: active_platform
+
+            - name: Find the dumps of the platform database
+              ansible.builtin.find:
+                paths: "{{ pinka_root }}/backups/pg"
+                patterns: "{{ ((active_platform.database | default({}, true)).database | default('none', true)) ~ '-*.dump' }}"
+              register: restore_dumps
+
+            - name: Start PostgreSQL
+              ansible.builtin.systemd_service:
+                name: pinka-core.service
+                state: started
+              when: restore_dumps.files | length > 0
+
+            - name: Load the dump
+              ansible.builtin.command:
+                argv:
+                  - "{{ restore_backup }}"
+                  - pgrestore
+                  - --dump
+                  - "{{ (restore_dumps.files | map(attribute='path') | sort | last) }}"
+              changed_when: true
+              when: restore_dumps.files | length > 0
+
+            - name: Apply infra's database role again
+              ansible.builtin.include_role:
+                name: postgres
+                tasks_from: bootstrap
+              when: restore_dumps.files | length > 0
+
+            - name: Apply the platform's roles, grants, revokes and the restricted check again
+              ansible.builtin.include_role:
+                name: postgres
+                tasks_from: platform
+              when:
+                - restore_dumps.files | length > 0
+                - active_platform.database | default({}, true)
+
+        - name: Re-import the golden images
+          ansible.builtin.include_role:
+            name: images
+            tasks_from: restore
+          when: node_role in ['full', 'lab']
+
+        - name: Re-verify the model files
+          ansible.builtin.include_role:
+            name: models
+          vars:
+            models_reverify: true
+          when:
+            - pinka_features.gpu_inference | default(false)
+            - node_role in ['full', 'inference']
+
+        - name: Find the restored vLLM deployment
+          ansible.builtin.stat:
+            path: /etc/pinka/vllm/current.yml
+          register: restore_vllm_current
+
+        - name: Render the restored vLLM deployment
+          ansible.builtin.command:
+            argv:
+              - /usr/local/libexec/pinka/gpu-arbiter
+              - prepare
+              - "{{ restore_vllm_current.stat.lnk_target | basename | regex_replace('\\.yml$', '') }}"
+          changed_when: true
+          when:
+            - restore_vllm_current.stat.islnk | default(false)
+            - pinka_features.gpu_inference | default(false)
+            - node_role in ['full', 'inference']
+
+        - name: Redeploy the platform the snapshot recorded
+          when:
+            - node_role in ['full', 'lab']
+            - (platform | default({}, true)).repo | default('') | length > 0
+          block:
+            - name: Deploy the recorded release and content (§7.15)
+              ansible.builtin.include_role:
+                name: platform
+              vars:
+                # The role's own source settings (host_vars names), pinned to the record.
+                platform: "{{ restore_platform }}"  # noqa: var-naming[no-role-prefix]
+                content: "{{ restore_content | default({}) }}"  # noqa: var-naming[no-role-prefix]
+              when: restore_record is mapping
+
+        - name: Start the lab
+          ansible.builtin.systemd_service:
+            name: pinka-lab.target
+            state: started
+
+        - name: Start the platform and wait for its health hook
+          ansible.builtin.include_role:
+            name: platform
+            tasks_from: start
+          when: node_role in ['full', 'lab']
+
+    - name: Look for the pinka CLI
+      ansible.builtin.stat:
+        path: /usr/local/bin/pinka
+      register: restore_pinka_lab
+
+    - name: Run doctor
+      ansible.builtin.command:
+        argv: [/usr/local/bin/pinka, doctor]
+      register: restore_doctor
+      changed_when: false
+      failed_when: restore_doctor.rc not in [0, 1]
+      when:
+        - restore_pinka_lab.stat.exists
+        - not ansible_check_mode
+
+    - name: Report the restore
+      ansible.builtin.debug:
+        msg: >-
+          Restored snapshot {{ restore_entry.short_id | default(restore_entry.id) }} of
+          {{ restore_entry.time }}.
+          {{ 'Doctor: ' ~ ('passed' if restore_doctor.rc == 0 else 'warnings, see above')
+             if restore_doctor.rc is defined else 'Doctor is not installed; run pinka doctor once it is.' }}

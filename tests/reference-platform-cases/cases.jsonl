@@ -1,0 +1,8 @@
+{"answer": "1", "id": "case-001", "prompt": "Sum the numbers 1 to 1.", "split": "train"}
+{"answer": "3", "id": "case-002", "prompt": "Sum the numbers 1 to 2.", "split": "train"}
+{"answer": "6", "id": "case-003", "prompt": "Sum the numbers 1 to 3.", "split": "train"}
+{"answer": "10", "id": "case-004", "prompt": "Sum the numbers 1 to 4.", "split": "test"}
+{"answer": "15", "id": "case-005", "prompt": "Sum the numbers 1 to 5.", "split": "train"}
+{"answer": "21", "id": "case-006", "prompt": "Sum the numbers 1 to 6.", "split": "train"}
+{"answer": "28", "id": "case-007", "prompt": "Sum the numbers 1 to 7.", "split": "train"}
+{"answer": "36", "id": "case-008", "prompt": "Sum the numbers 1 to 8.", "split": "test"}

@@ -1,0 +1,30 @@
+# Managed by pinka (ansible/roles/platform_facts/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Derive the platform facts from the host profile.
+    description:
+      - Sets pinka_family, pinka_distro, pinka_release, pinka_parent_release, pinka_release_key,
+        pinka_release_identity, pinka_source_group, pinka_release_model, pinka_pkg_manager,
+        pinka_service_names, pinka_initramfs_tool, pinka_version_hold_method, pinka_provider,
+        pinka_mac, pinka_firewall_backend, pinka_repositories, pinka_component_sources and
+        pinka_community_repos_allowed.
+      - The only role that interprets the distribution (BUILD_PROMPT §19.1).
+    options:
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile written by preflight, passed by bootstrap.sh.
+      lab_provider:
+        type: str
+        required: true
+        choices: [auto, baremetal, wsl2, vm]
+        description: Provider; auto takes it from the host profile, an explicit value must match it.
+      firewall_backend:
+        type: str
+        required: true
+        choices: [auto, nftables, firewalld, ufw]
+        description: Firewall backend; auto selects firewalld if active, else ufw if active, else nftables.
+      allow_community_repos:
+        type: bool
+        required: true
+        description: Consent to community repositories (COPR, OBS, RPM Fusion); also set by --allow-community-repos.

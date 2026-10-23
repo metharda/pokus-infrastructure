@@ -1,0 +1,14 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/defaults/main.yml). Local changes will be overwritten.
+
+# The account allowed besides root on the arbiter's socket: the control
+# endpoint's account on an inference node, the active platform's controller
+# elsewhere, root without one (BUILD_PROMPT §7.18).
+gpu_arbiter_peer: >-
+  {{ inference_control_account if node_role == 'inference'
+     else ((active_platform | default({}, true)).controller | default('root', true)) }}
+# Seconds a deployment may take to load its model and answer /health.
+gpu_arbiter_serve_timeout: 1200
+# Seconds a stopped training job gets to write its checkpoint before it is killed.
+gpu_arbiter_stop_grace: 120
+# Process limit of a training job's container (infra's, not the manifest's).
+gpu_arbiter_pids_limit: 4096

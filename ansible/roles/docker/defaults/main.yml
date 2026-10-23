@@ -1,0 +1,15 @@
+# Managed by pinka (ansible/roles/docker/defaults/main.yml). Local changes will be overwritten.
+
+# Root of Docker's images, containers and volumes (host_vars docker_data_root).
+docker_data_root: /var/lib/docker
+# pinka's address pool for the subnets of its Compose networks (compose
+# role). It must not overlap Incus bridges, Tailscale's 100.64.0.0/10 or
+# common home LANs (192.168.0.0/16).
+docker_address_pools:
+  - {base: 172.30.0.0/16, size: 24}
+# First Docker Engine version with CDI device support (Docker 25.0).
+docker_cdi_min_version: "25.0"
+# First Docker Engine version that enables CDI by default (Docker 28.2, moby
+# docker-v29.8.2 daemon/command/daemon.go); daemon.json sets features.cdi
+# only below it.
+docker_cdi_default_since: "28.2"

@@ -1,0 +1,1589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pokus host profile",
+  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT \u00a72). generated_at is the only volatile field.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "preflight_version",
+    "repo_commit",
+    "outcome",
+    "exit_code",
+    "tier",
+    "os_tier",
+    "arch_tier",
+    "release_model",
+    "family",
+    "pkg_manager",
+    "provider",
+    "os",
+    "kernel",
+    "init",
+    "environment",
+    "wsl",
+    "hardware",
+    "gpu",
+    "capabilities",
+    "mac",
+    "firewall",
+    "timesync",
+    "network",
+    "requirements",
+    "features",
+    "disabled_features",
+    "storage_backend",
+    "components",
+    "access",
+    "conflicts",
+    "unsupported_reasons",
+    "needs_action",
+    "planned_actions",
+    "warnings",
+    "notes",
+    "overrides"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Version of this schema.",
+      "const": 1
+    },
+    "generated_at": {
+      "description": "Report time, UTC ISO 8601.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "preflight_version": {
+      "description": "Version of pinka-preflight.",
+      "type": "string",
+      "minLength": 1
+    },
+    "repo_commit": {
+      "description": "Commit of the pokus-infrastructure checkout that ran preflight, if known.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outcome": {
+      "description": "Decision (BUILD_PROMPT \u00a72.4).",
+      "enum": [
+        "supported",
+        "degraded",
+        "unsupported",
+        "needs_action"
+      ]
+    },
+    "exit_code": {
+      "description": "Exit code that belongs to the outcome.",
+      "enum": [
+        0,
+        10,
+        20,
+        30
+      ]
+    },
+    "tier": {
+      "description": "Worst of the OS, architecture and environment tiers.",
+      "$ref": "#/$defs/tier"
+    },
+    "os_tier": {
+      "description": "Tier of the matched OS rule.",
+      "$ref": "#/$defs/tier"
+    },
+    "arch_tier": {
+      "description": "Tier of the matched architecture rule.",
+      "$ref": "#/$defs/tier"
+    },
+    "release_model": {
+      "description": "Release model of the distribution.",
+      "enum": [
+        "fixed",
+        "fast",
+        "rolling",
+        null
+      ]
+    },
+    "family": {
+      "description": "Implementation family.",
+      "enum": [
+        "debian",
+        "redhat",
+        "suse",
+        "archlinux",
+        null
+      ]
+    },
+    "pkg_manager": {
+      "description": "Package manager of the family.",
+      "enum": [
+        "apt",
+        "dnf",
+        "zypper",
+        "pacman",
+        null
+      ]
+    },
+    "provider": {
+      "description": "Provider role that applies to this host.",
+      "enum": [
+        "baremetal",
+        "wsl2",
+        "vm",
+        null
+      ]
+    },
+    "os": {
+      "description": "Operating system identity from os-release.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "id_like",
+        "version_id",
+        "codename",
+        "pretty_name",
+        "variant_id",
+        "arch",
+        "release",
+        "parent_release"
+      ],
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id_like": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "version_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "codename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pretty_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "variant_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "arch": {
+          "type": "string"
+        },
+        "release": {
+          "description": "The distribution's own release identity.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parent_release": {
+          "description": "Release identity used for third-party repositories (parent for derivatives).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "kernel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release",
+        "version"
+      ],
+      "properties": {
+        "release": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "init": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pid1",
+        "systemd",
+        "system_state"
+      ],
+      "properties": {
+        "pid1": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "systemd": {
+          "type": "boolean"
+        },
+        "system_state": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "hypervisor",
+        "confidence",
+        "signals",
+        "conflicts_between_signals"
+      ],
+      "properties": {
+        "class": {
+          "enum": [
+            "baremetal",
+            "wsl2",
+            "wsl1",
+            "vm",
+            "container",
+            "unknown"
+          ]
+        },
+        "hypervisor": {
+          "enum": [
+            "kvm",
+            "qemu",
+            "microsoft",
+            "vmware",
+            "oracle",
+            "xen",
+            "parallels",
+            "amazon",
+            "google",
+            "other",
+            null
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "signals": {
+          "description": "Every signal used for classification and its value.",
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "boolean",
+              "string",
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "conflicts_between_signals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "wsl": {
+      "description": "Effective /etc/wsl.conf values (WSL only).",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "conf_present",
+        "systemd",
+        "automount",
+        "mount_fstab",
+        "interop",
+        "append_windows_path",
+        "hostname"
+      ],
+      "properties": {
+        "conf_present": {
+          "type": "boolean"
+        },
+        "systemd": {
+          "type": "boolean"
+        },
+        "automount": {
+          "type": "boolean"
+        },
+        "mount_fstab": {
+          "type": "boolean"
+        },
+        "interop": {
+          "type": "boolean"
+        },
+        "append_windows_path": {
+          "type": "boolean"
+        },
+        "hostname": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu_model",
+        "cpu_threads",
+        "cpu_quota_threads",
+        "cpu_threads_effective",
+        "vmx",
+        "svm",
+        "memory_gib",
+        "swap_gib",
+        "disks",
+        "block_devices"
+      ],
+      "properties": {
+        "cpu_model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cpu_threads": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "cpu_quota_threads": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "cpu_threads_effective": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "vmx": {
+          "type": "boolean"
+        },
+        "svm": {
+          "type": "boolean"
+        },
+        "memory_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "swap_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "disks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "srv_pinka",
+            "var_lib"
+          ],
+          "properties": {
+            "srv_pinka": {
+              "$ref": "#/$defs/disk"
+            },
+            "var_lib": {
+              "$ref": "#/$defs/disk"
+            }
+          }
+        },
+        "block_devices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block_device"
+          }
+        }
+      }
+    },
+    "gpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "probed",
+        "present",
+        "usable",
+        "vendor",
+        "backend",
+        "name",
+        "count",
+        "vram_gib",
+        "driver",
+        "compute_capability",
+        "driver_cuda",
+        "path",
+        "driver_state",
+        "unsupported_devices",
+        "notes",
+        "install_driver",
+        "pci_device",
+        "open_module_drivers",
+        "proprietary_only_drivers"
+      ],
+      "properties": {
+        "probed": {
+          "type": "boolean"
+        },
+        "present": {
+          "type": "boolean"
+        },
+        "usable": {
+          "type": "boolean"
+        },
+        "vendor": {
+          "enum": [
+            "nvidia",
+            "amd",
+            null
+          ]
+        },
+        "backend": {
+          "enum": [
+            "nvidia",
+            "none"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vram_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compute_capability": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "driver_cuda": {
+          "description": "The highest CUDA version the loaded NVIDIA driver supports (major.minor, from nvidia-smi; on WSL2 the Windows driver's).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "path": {
+          "enum": [
+            "wsl-dxg",
+            "native",
+            "passthrough",
+            null
+          ]
+        },
+        "driver_state": {
+          "enum": [
+            "windows_driver",
+            "not_installed",
+            "installed_not_loaded",
+            "loaded",
+            null
+          ]
+        },
+        "unsupported_devices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "install_driver": {
+          "description": "The host's install_nvidia_driver setting given to preflight (--nvidia-driver): auto, manual or skip.",
+          "enum": [
+            "auto",
+            "manual",
+            "skip"
+          ]
+        },
+        "pci_device": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^10de:[0-9a-f]{4}$",
+          "description": "PCI vendor and device ID of the first NVIDIA GPU on the PCI bus (bare metal, VM passthrough); null elsewhere."
+        },
+        "open_module_drivers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them (BUILD_PROMPT \u00a72.2, \u00a710.1)."
+        },
+        "proprietary_only_drivers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The pinned NVIDIA driver releases that support this GPU only with their proprietary kernel module (Maxwell, Pascal, Volta: below compute capability 7.5), so no driver is installed for it; empty for a GPU only a legacy branch supports or the list does not name."
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cgroup2",
+        "cgroup_fs_type",
+        "cgroup2_controllers",
+        "filesystems",
+        "kernel_modules",
+        "tun",
+        "kvm_present",
+        "kvm_usable",
+        "kvm_nested",
+        "btrfs",
+        "dm_thin_pool",
+        "secure_boot",
+        "nouveau_loaded"
+      ],
+      "properties": {
+        "cgroup2": {
+          "type": "boolean"
+        },
+        "cgroup_fs_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cgroup2_controllers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "filesystems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kernel_modules": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "loaded",
+              "builtin",
+              "loadable",
+              "missing"
+            ]
+          }
+        },
+        "tun": {
+          "type": "boolean"
+        },
+        "kvm_present": {
+          "type": "boolean"
+        },
+        "kvm_usable": {
+          "type": "boolean"
+        },
+        "kvm_nested": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "btrfs": {
+          "type": "boolean"
+        },
+        "dm_thin_pool": {
+          "type": "boolean"
+        },
+        "secure_boot": {
+          "enum": [
+            "enabled",
+            "disabled",
+            "not_efi",
+            "unknown"
+          ]
+        },
+        "nouveau_loaded": {
+          "type": "boolean"
+        }
+      }
+    },
+    "mac": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system",
+        "mode"
+      ],
+      "properties": {
+        "system": {
+          "enum": [
+            "selinux",
+            "apparmor",
+            "none"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "enforcing",
+            "permissive",
+            "enabled",
+            "disabled",
+            null
+          ]
+        }
+      }
+    },
+    "firewall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "active_manager",
+        "backend"
+      ],
+      "properties": {
+        "active_manager": {
+          "enum": [
+            "firewalld",
+            "ufw",
+            null
+          ]
+        },
+        "backend": {
+          "enum": [
+            "nftables",
+            "firewalld",
+            "ufw"
+          ]
+        }
+      }
+    },
+    "timesync": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ntp_synchronized",
+        "ntp_service",
+        "time_usec",
+        "offset_s",
+        "source"
+      ],
+      "properties": {
+        "ntp_synchronized": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "ntp_service": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "time_usec": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "offset_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "source": {
+          "enum": [
+            "timesyncd",
+            "chrony",
+            null
+          ]
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offline",
+        "endpoints"
+      ],
+      "properties": {
+        "offline": {
+          "type": "boolean"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/endpoint"
+          }
+        }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "core",
+        "minimums"
+      ],
+      "properties": {
+        "core": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        },
+        "minimums": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gpu_inference",
+        "vm_targets",
+        "btrfs_pool",
+        "lvm_thin_pool",
+        "dcgm_metrics"
+      ],
+      "properties": {
+        "gpu_inference": {
+          "type": "boolean"
+        },
+        "vm_targets": {
+          "type": "boolean"
+        },
+        "btrfs_pool": {
+          "type": "boolean"
+        },
+        "lvm_thin_pool": {
+          "type": "boolean"
+        },
+        "dcgm_metrics": {
+          "type": "boolean"
+        }
+      }
+    },
+    "disabled_features": {
+      "description": "Features whose absence makes the host degraded, with their research impact.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "feature",
+          "impact",
+          "unmet"
+        ],
+        "properties": {
+          "feature": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "unmet": {
+            "type": "string"
+          },
+          "remediation": {
+            "description": "What makes the feature available, when the matrix names it (for example the driver update of gpu_inference).",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "storage_backend": {
+      "description": "Backend for the Incus pool; null means no quota-capable storage.",
+      "enum": [
+        "btrfs",
+        "lvm",
+        null
+      ]
+    },
+    "components": {
+      "description": "Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks (BUILD_PROMPT \u00a72.2, \u00a77.21).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "install_record",
+        "docker",
+        "tailscale",
+        "lxd",
+        "podman",
+        "incus",
+        "nvidia_driver"
+      ],
+      "properties": {
+        "install_record": {
+          "type": "boolean",
+          "description": "The host has an install record."
+        },
+        "docker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "cdi": {
+              "type": "boolean",
+              "description": "CDI is on (docker info lists CDI spec directories; without a running daemon: daemon.json and the version)."
+            },
+            "compose": {
+              "type": "boolean",
+              "description": "The Compose v2 plugin answers."
+            },
+            "buildx": {
+              "type": "boolean",
+              "description": "The buildx plugin answers."
+            }
+          }
+        },
+        "tailscale": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "logged_in": {
+              "type": "boolean",
+              "description": "The node is logged in (BackendState Running)."
+            },
+            "hostname": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The node's host name on the tailnet."
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "The node's tags."
+            },
+            "key_expiry": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When the node's key expires; null when key expiry is off."
+            },
+            "funnel": {
+              "type": "boolean",
+              "description": "Funnel is on."
+            },
+            "ssh": {
+              "type": "boolean",
+              "description": "Tailscale SSH is on."
+            }
+          }
+        },
+        "lxd": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "networks": {
+              "type": "array",
+              "description": "LXD's managed networks.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "ipv4"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "ipv4": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Its ipv4.address."
+                  }
+                }
+              }
+            },
+            "storage_sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Sources of LXD's storage pools."
+            }
+          }
+        },
+        "podman": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "installed",
+            "version",
+            "running",
+            "origin"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean",
+              "description": "The component is on the host."
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Its version, if it could be read."
+            },
+            "running": {
+              "type": "boolean",
+              "description": "Its daemon is active."
+            },
+            "origin": {
+              "enum": [
+                "pinka",
+                "pre-existing",
+                null
+              ],
+              "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+            },
+            "docker_compat": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "How Podman provides Docker's command or socket, if it does."
+            }
+          }
+        },
+        "incus": {
+          "$ref": "#/$defs/component"
+        },
+        "nvidia_driver": {
+          "$ref": "#/$defs/component"
+        }
+      }
+    },
+    "access": {
+      "description": "The access to the host that existed before the install (BUILD_PROMPT \u00a72.2 \"Pre-existing access\", \u00a77.5): the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "firewall_manager",
+        "session",
+        "listeners",
+        "accounts",
+        "reasons"
+      ],
+      "properties": {
+        "host": {
+          "description": "dedicated: no listener besides sshd and the admitted ones, and every login account is a configured researcher; shared otherwise.",
+          "enum": [
+            "dedicated",
+            "shared"
+          ]
+        },
+        "firewall_manager": {
+          "description": "The active firewall manager.",
+          "enum": [
+            "firewalld",
+            "ufw",
+            "none"
+          ]
+        },
+        "session": {
+          "description": "The access path of the install: SSH (the server address and port of SSH_CONNECTION of the nearest process up the tree that has it, its login account, and whether the address is on the tailnet) or the console.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "via"
+          ],
+          "properties": {
+            "via": {
+              "description": "ssh or console.",
+              "enum": [
+                "ssh",
+                "console"
+              ]
+            },
+            "address": {
+              "description": "The server address the session reached.",
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "description": "The server port the session reached.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "user": {
+              "description": "The session's login account, or null when it is not in /etc/passwd.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tailnet": {
+              "description": "The server address is on the tailnet.",
+              "type": "boolean"
+            }
+          }
+        },
+        "listeners": {
+          "description": "Every non-loopback TCP and UDP listener that is not the lab's.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "proto",
+              "address",
+              "port",
+              "process",
+              "unit",
+              "admitted"
+            ],
+            "properties": {
+              "proto": {
+                "description": "tcp or udp.",
+                "enum": [
+                  "tcp",
+                  "udp"
+                ]
+              },
+              "address": {
+                "description": "The local address; 0.0.0.0 and :: listen on every address.",
+                "type": "string",
+                "minLength": 1
+              },
+              "port": {
+                "description": "The local port.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535
+              },
+              "process": {
+                "description": "The process name, or null when preflight cannot see it (it does not run as root); sshd for a socket that activates the SSH server.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "unit": {
+                "description": "The process's systemd unit, or the socket unit of a socket systemd holds.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "admitted": {
+                "description": "pinka's strict input policy accepts this traffic anyway on every interface (the DHCP and DHCPv6 clients, Tailscale's WireGuard port).",
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "accounts": {
+          "description": "The login accounts that are not pinka's: a UID in the login range of /etc/login.defs and a login shell.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reasons": {
+          "description": "What makes the host shared; empty on a dedicated host.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/conflict"
+      }
+    },
+    "unsupported_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "needs_action": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "action"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "planned_actions": {
+      "description": "Actions bootstrap carries out with the operator's consent instead of stopping (for example the MOK enrollment of an NVIDIA driver on a Secure Boot host); each is also listed among the warnings.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "action"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "overrides": {
+      "description": "Operator overrides; carried into every environment fingerprint.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accept_degraded",
+        "accept_experimental",
+        "force_unsupported",
+        "adopt_incus",
+        "allow_dirty",
+        "accept_mok_enrollment"
+      ],
+      "properties": {
+        "accept_degraded": {
+          "type": "boolean"
+        },
+        "accept_experimental": {
+          "type": "boolean"
+        },
+        "force_unsupported": {
+          "type": "boolean"
+        },
+        "adopt_incus": {
+          "type": "boolean"
+        },
+        "allow_dirty": {
+          "type": "boolean"
+        },
+        "accept_mok_enrollment": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "tier": {
+      "enum": [
+        "supported",
+        "tested",
+        "experimental",
+        "unsupported"
+      ]
+    },
+    "disk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "checked_path",
+        "fstype",
+        "size_gib",
+        "free_gib"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "checked_path": {
+          "type": "string"
+        },
+        "fstype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "free_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "block_device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "size_gib",
+        "rotational",
+        "removable",
+        "model"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size_gib": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rotational": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "removable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "url",
+        "host",
+        "purpose",
+        "required",
+        "status",
+        "http_status",
+        "detail"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "dns_failed",
+            "unreachable",
+            "skipped"
+          ]
+        },
+        "http_status": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ok",
+        "detail"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "message",
+        "remediation"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "blocking",
+            "needs_action",
+            "warning"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed",
+        "version",
+        "running",
+        "origin"
+      ],
+      "properties": {
+        "installed": {
+          "type": "boolean",
+          "description": "The component is on the host."
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its version, if it could be read."
+        },
+        "running": {
+          "type": "boolean",
+          "description": "Its daemon is active."
+        },
+        "origin": {
+          "enum": [
+            "pinka",
+            "pre-existing",
+            null
+          ],
+          "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+        }
+      }
+    }
+  }
+}

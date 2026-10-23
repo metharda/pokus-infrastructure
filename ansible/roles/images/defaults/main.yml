@@ -1,0 +1,34 @@
+# Managed by pinka (ansible/roles/images/defaults/main.yml). Local changes will be overwritten.
+
+# Blueprints of images/ to build, in build order: a blueprint that starts from
+# another blueprint comes after it (BUILD_PROMPT §7.13).
+images_blueprints: [_base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]
+# Build the listed blueprints again although their alias and export exist; the
+# new build replaces the alias and the export of the same version.
+images_rebuild: false
+# Root of the exports: <blueprint>/<version>/ and _upstream/<base>/<fingerprint>/.
+images_export_root: "{{ pinka_root }}/images"
+# Incus project and profile of the build instances (incus role).
+images_project: build
+images_profile: build
+# Seconds to wait for cloud-init in a new build instance.
+images_boot_timeout: 900
+# Leakage lint (BUILD_PROMPT §7.13): directories whose file names and contents
+# are checked, Python regular expressions that fail the build, and benign words
+# ({match, optional path}) cut out of a finding before the patterns are applied again.
+images_leakage_paths: [/etc, /opt, /srv, /usr/local]
+images_leakage_patterns:
+  - "[A-Z]+-[0-9]{3}"
+  - "(?i)fault"
+  - "(?i)inject"
+  - "(?i)ground[_-]?truth"
+  - "(?i)scenario"
+  # The project's names (owner decision 3c2): images carry none of them, no allow rule.
+  - "(?i)pokus"
+  - "(?i)pinka"
+  - "(?i)potka"
+images_leakage_allow:
+  # "default", "DefaultLimitCORE", "default_server": every distribution file has them.
+  - {match: "(?i)default"}
+  # Comments of the stock Redis configuration ("in the worst scenario").
+  - {match: "(?i)scenarios?", path: "etc/redis/redis\\.conf"}

@@ -1,0 +1,34 @@
+pinka preflight: UNSUPPORTED (exit 20)
+  tier supported (os supported, arch supported) · release model fixed · provider wsl2
+
+Environment
+  class wsl2, hypervisor microsoft, confidence high
+OS and kernel
+  Ubuntu 24.04.3 LTS [ubuntu 24.04, family debian, parent release noble]
+  arch x86_64, kernel 6.6.87.2-microsoft-standard-WSL2
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  NVIDIA GeForce RTX 4070, 12.0 GiB, driver 580.82.07 (CUDA 13.0), compute 8.9, path wsl-dxg, usable no
+Capabilities
+  cgroup2 yes, tun yes, KVM usable no, btrfs yes, dm_thin_pool no, Secure Boot not_efi
+  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, vm_targets off, btrfs_pool on, lvm_thin_pool off, dcgm_metrics off
+Access
+  dedicated host, firewall manager none, install session: the console
+Network: skipped (--offline)
+
+Unsupported
+  - blocking conflict: A Linux NVIDIA kernel driver is installed inside WSL. Remove the Linux NVIDIA driver packages from this WSL distribution; WSL uses the Windows NVIDIA driver through /dev/dxg. Never install a Linux NVIDIA driver in WSL.
+
+Disabled features
+  - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+  - vm_targets: No KVM: VM-class scenarios (kernel-level faults) cannot run on this host.
+
+Notes
+  - dcgm_metrics disabled (unmet: environment in ['baremetal', 'vm'], nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

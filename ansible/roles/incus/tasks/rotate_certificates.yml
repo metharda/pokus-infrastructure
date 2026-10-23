@@ -1,0 +1,47 @@
+# Managed by pinka (ansible/roles/incus/tasks/rotate_certificates.yml). Local changes will be overwritten.
+#
+# Entry point of rotate.yml: new client certificates for the platform services
+# and Prometheus. The new ones are issued and trusted exactly as on a first
+# run (certificates.yml); then the trust entries of the replaced ones are
+# removed, which is the one place where infra deletes an Incus object: a
+# rotated credential must stop working.
+
+- name: Load the Incus names of this family
+  ansible.builtin.include_vars:
+    file: "{{ pinka_family }}.yml"
+
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+- name: Read the current client certificates
+  community.crypto.x509_certificate_info:
+    path: "{{ incus_cert_dir }}/{{ item.short }}/client.crt"
+  register: incus_old_certs
+  loop: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+  loop_control:
+    label: "{{ item.short }}"
+  failed_when: false
+
+- name: Remove the current keys and certificates
+  ansible.builtin.file:
+    path: "{{ incus_cert_dir }}/{{ item.0.short }}/{{ item.1 }}"
+    state: absent
+  loop: "{{ (incus_service_certificates + [incus_metrics_certificate]) | product(['client.key', 'client.crt']) | list }}"
+  loop_control:
+    label: "{{ item.0.short }}/{{ item.1 }}"
+
+- name: Issue and trust new client certificates
+  ansible.builtin.include_tasks: certificates.yml
+
+- name: Remove the trust entries of the replaced certificates
+  ansible.builtin.command:
+    argv: [incus, config, trust, remove, "{{ item.fingerprints.sha256 | replace(':', '') | lower }}"]
+  loop: "{{ incus_old_certs.results | selectattr('fingerprints', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.short }}"
+  register: incus_trust_removed
+  changed_when: incus_trust_removed.rc == 0
+  # An entry an operator already removed is gone either way.
+  failed_when: incus_trust_removed.rc != 0 and 'not found' not in (incus_trust_removed.stderr | lower)
+  when: not ansible_check_mode

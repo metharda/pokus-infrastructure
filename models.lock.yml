@@ -1,0 +1,16 @@
+# Managed by pinka (models.lock.yml). Local changes will be overwritten.
+#
+# Models selected for this lab, pinned (BUILD_PROMPT §7.12,
+# contracts.md#inference). The models role downloads each entry with the
+# pinned `hf` CLI into /srv/pinka/models/<hf_repo>/<revision>/, checks every
+# sha256 and writes MANIFEST.json. Adapters are not pinned here: only the GPU
+# arbiter registers them, under /srv/pinka/models/adapters/ (§7.18). Entries
+# are only ever added with a full commit hash and the per-file sha256 from
+# Hugging Face's file metadata
+# (the installer TUI resolves them; see docs/how-to/add-a-model.md); there is
+# no TODO(verify) in this file. Schema: tools/lockcheck/schema/models-lock.schema.json.
+#
+# Empty until the owner approves candidates of models.catalog.yml (owner
+# answer E7) and a lab selects one.
+schema_version: 1
+models: []

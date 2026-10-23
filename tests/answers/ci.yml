@@ -1,0 +1,40 @@
+# Managed by pinka (tests/answers/ci.yml). Local changes will be overwritten.
+#
+# Installer answers for the distribution tests (BUILD_PROMPT §19.9, §18.6):
+# a staging lab without GPU, platform or golden images, with a loop file pool
+# and a local backup repository, so that one VM runs the whole
+# bootstrap. The harness copies it to installer-answers/<vm>.yml with the VM's
+# name as machine name. Secrets are generated, except the Tailscale auth key,
+# which comes from PINKA_SECRET_TAILSCALE_AUTHKEY (an ephemeral key of the test
+# tailnet); the vault password comes from --vault-password-file.
+schema_version: 1
+mode: fresh
+machine:
+  name: ci-placeholder
+  lab_mode: staging
+  node_role: full
+  power_policy: os_default
+  srv_path: /srv/pinka
+storage:
+  source: loop
+  loop_size_gib: 30
+researchers:
+  - {name: researcher1, display_name: Researcher One, admin: true, grafana: true}
+remote_access:
+  tailscale_login: auth_key
+  accept_dns: false
+  grafana_tailscale_serve: false
+  ssh_extra_allowed_interfaces: []
+gpu:
+  install_driver: skip
+  default_model: none
+backups:
+  repository: {type: local, path: /var/backups/pinka-ci}
+  password: generate
+  include_models: false
+  include_secrets: false
+platform: null
+images: {build: []}
+secrets:
+  generate: all
+  grafana_admin: generate

@@ -1,6 +1,0 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/install_zypper.yml). Local changes will be overwritten.
-- name: Install packages with zypper
-  community.general.zypper:
-    name: "{{ pkg_packages | pokus_package_specs(pkg_versions, 'zypper') }}"
-    state: present
-    disable_recommends: true

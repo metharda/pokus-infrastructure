@@ -1,0 +1,177 @@
+# Managed by pinka (ansible/component-sources.yml). Local changes will be overwritten.
+#
+# Component source matrix (BUILD_PROMPT §19.4): where each host component
+# comes from on each distribution, and which packages make it up. Versions are
+# NOT here: they are pinned per release in versions.lock.yml
+# (`packages.<component>.<release key>`); repository keys (URLs and
+# fingerprints) are in versions.lock.yml `repository_keys`.
+#
+# Lookup (platform_facts): components.<component>.<source group>, falling back
+# to components.<component>.default. Source groups: ubuntu, debian, fedora,
+# rhel_like (RHEL, AlmaLinux, Rocky Linux, CentOS Stream, Oracle Linux), opensuse
+# (Leap, Tumbleweed, SLES), arch. Derivatives use their parent's group and the
+# parent's release identity in repository URLs, never their own codename.
+#
+# source: vendor_repo (the upstream vendor's repository; `repo` names an entry
+# under `repositories`), distro (the distribution's own packages) or community
+# (COPR, OBS home projects, RPM Fusion: needs allow_community_repos or
+# --allow-community-repos, recorded in the fingerprint).
+#
+# `verify` marks an entry or repository whose details could not be verified
+# yet. The pinka_component_source filter and the pkg role refuse to use it, so
+# nothing unverified is installed; tools/gen shows it in
+# docs/reference/component-sources.md.
+
+repositories:
+  # Placeholders in URLs: {distro} = ubuntu|debian (rpm: the distribution
+  # id), {codename} = parent release codename, {major} = major release number,
+  # {deb_arch} = amd64|arm64; $basearch is expanded by dnf and zypper.
+  docker-deb:
+    type: apt
+    key: docker-deb
+    uri: "https://download.docker.com/linux/{distro}"
+    suite: "{codename}"
+    components: [stable]
+  docker-rpm-fedora:
+    type: rpm
+    key: docker-rpm
+    baseurl: "https://download.docker.com/linux/fedora/{major}/$basearch/stable"
+  docker-rpm-centos:
+    type: rpm
+    key: docker-rpm
+    baseurl: "https://download.docker.com/linux/centos/{major}/$basearch/stable"
+  nvidia-container-toolkit-deb:
+    # Flat repository, as in NVIDIA's own nvidia-container-toolkit.list (which
+    # writes $(ARCH); {deb_arch} is the same value, amd64 or arm64).
+    type: apt
+    key: nvidia-container-toolkit
+    uri: "https://nvidia.github.io/libnvidia-container/stable/deb/{deb_arch}"
+    suite: "/"
+    components: []
+  nvidia-container-toolkit-rpm:
+    # NVIDIA's own .repo file sets gpgcheck=0 with repo_gpgcheck=1; pinka
+    # requires gpgcheck=1 (BUILD_PROMPT §7.2). The packages are signed: the
+    # 1.20.1 RPMs carry an RSA header signature by the key pinned in
+    # versions.lock.yml (repository_keys.keys.nvidia-container-toolkit).
+    type: rpm
+    key: nvidia-container-toolkit
+    baseurl: "https://nvidia.github.io/libnvidia-container/stable/rpm/$basearch"
+    repo_gpgcheck: true
+  tailscale-deb:
+    # Checked with make lock-pins on 2026-10-17: the signed InRelease of each
+    # apt release names the component main (as Tailscale's own
+    # <codename>.tailscale-keyring.list does).
+    type: apt
+    key: tailscale
+    uri: "https://pkgs.tailscale.com/stable/{distro}"
+    suite: "{codename}"
+    components: [main]
+  tailscale-rpm:
+    # Tailscale's .repo files (read on 2026-10-17) use stable/fedora/$basearch
+    # with no release (also for AlmaLinux and Rocky Linux, per Tailscale's
+    # installer), stable/centos/<major>/ and stable/rhel/<major>/, and
+    # stable/opensuse/leap/<version>/: one template cannot express them.
+    type: rpm
+    key: tailscale
+    baseurl: "https://pkgs.tailscale.com/stable/{distro}/{major}/$basearch"
+    verify: "TODO(verify): one base URL per source group (fedora, rhel_like, opensuse), see the comment above"
+  zabbly-incus-lts:
+    # Checked with make lock-pins on 2026-10-17, as Zabbly's README documents
+    # it: the signed InRelease of each release names the component main.
+    type: apt
+    key: zabbly
+    uri: "https://pkgs.zabbly.com/incus/lts-6.0"
+    suite: "{codename}"
+    components: [main]
+
+components:
+  docker:
+    default:
+      source: distro
+      packages: [docker, docker-compose, docker-buildx]
+      verify: "TODO(verify): package names"
+    ubuntu: &docker_deb
+      source: vendor_repo
+      repo: docker-deb
+      packages: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    debian: *docker_deb
+    fedora:
+      source: vendor_repo
+      repo: docker-rpm-fedora
+      packages: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    rhel_like:
+      source: vendor_repo
+      repo: docker-rpm-centos
+      packages: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+    opensuse:
+      source: distro
+      packages: [docker, docker-compose, docker-buildx]
+      verify: "TODO(verify): package names"
+    arch:
+      source: distro
+      packages: [docker, docker-compose, docker-buildx]
+      verify: "TODO(verify): package names"
+
+  nvidia_container_toolkit:
+    default:
+      source: vendor_repo
+      repo: nvidia-container-toolkit-rpm
+      packages: &nvidia_ctk [nvidia-container-toolkit, nvidia-container-toolkit-base, libnvidia-container-tools, libnvidia-container1]
+    ubuntu: {source: vendor_repo, repo: nvidia-container-toolkit-deb, packages: *nvidia_ctk}
+    debian: {source: vendor_repo, repo: nvidia-container-toolkit-deb, packages: *nvidia_ctk}
+    arch: {source: distro, packages: [nvidia-container-toolkit], verify: "TODO(verify): package name"}
+
+  incus:
+    # Incus 6.0 LTS where it exists (BUILD_PROMPT §7.7); `channel` is recorded
+    # in the host profile facts and the fingerprint.
+    default: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): package name"}
+    ubuntu: &incus_zabbly
+      # incus depends on incus-base and incus-client at its exact version, so
+      # the one pin holds the whole build (Zabbly's index, 2026-10-17).
+      source: vendor_repo
+      repo: zabbly-incus-lts
+      packages: [incus]
+      channel: lts
+    debian: *incus_zabbly
+    fedora: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): package name"}
+    rhel_like: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): EPEL or COPR"}
+    opensuse: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): distribution or OBS"}
+    arch: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): package name"}
+
+  tailscale:
+    default: {source: vendor_repo, repo: tailscale-rpm, packages: [tailscale]}
+    ubuntu: {source: vendor_repo, repo: tailscale-deb, packages: [tailscale]}
+    debian: {source: vendor_repo, repo: tailscale-deb, packages: [tailscale]}
+    arch: {source: distro, packages: [tailscale]}
+
+  nvidia_driver:
+    # Installed only by provider_baremetal and provider_vm with
+    # install_nvidia_driver: auto (BUILD_PROMPT §19.8). Only the Ubuntu and
+    # Debian methods are `supported`; the TUI recommends `manual` elsewhere.
+    default: {source: distro, packages: [], method: manual}
+    ubuntu: {source: distro, packages: [nvidia-driver-580-open], method: dkms, tier: supported}
+    debian:
+      source: distro
+      packages: [nvidia-driver]
+      method: dkms
+      tier: supported
+      verify: "TODO(verify): the non-free component setup per the Debian release documentation"
+    fedora:
+      source: community
+      packages: [akmod-nvidia]
+      method: akmods
+      tier: tested
+      verify: "TODO(verify): RPM Fusion setup"
+    rhel_like:
+      source: vendor_repo
+      packages: []
+      method: dkms
+      tier: tested
+      verify: "TODO(verify): NVIDIA's current recommendation and repository"
+    opensuse:
+      source: vendor_repo
+      packages: []
+      method: kmp
+      tier: tested
+      verify: "TODO(verify): open kernel module package names and repository"
+    arch: {source: distro, packages: [nvidia-open], method: prebuilt, tier: tested}

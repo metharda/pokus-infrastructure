@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/records/session-record.schema.json",
+  "title": "session record",
+  "description": "One lab session: `/var/lib/pinka/sessions/<boot_id>.json`, 0644 root, written once per boot by pinka-session-start.service (BUILD_PROMPT §7.16) and read by the platform's controller. A field that could not be computed is null, with the reason under errors.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "boot_id",
+    "started_at",
+    "fingerprint_hash",
+    "fingerprint",
+    "preflight_outcome",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Version of this record format."
+    },
+    "boot_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "description": "The kernel's boot ID (/proc/sys/kernel/random/boot_id); the file name."
+    },
+    "started_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC time the session started."
+    },
+    "fingerprint_hash": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "hash of the fingerprint; null if it could not be computed."
+    },
+    "fingerprint": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "The environment fingerprint document (fingerprint.schema.json); null if it could not be computed."
+    },
+    "preflight_outcome": {
+      "enum": [
+        "supported",
+        "degraded",
+        "unsupported",
+        "needs_action",
+        null
+      ],
+      "description": "Preflight's outcome at the session's start; null if preflight failed."
+    },
+    "errors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "description": "Why the fingerprint could not be computed."
+        },
+        "preflight": {
+          "type": "string",
+          "description": "Why preflight produced no outcome."
+        }
+      },
+      "description": "Why a field is null, by field."
+    }
+  }
+}

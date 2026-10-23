@@ -1,0 +1,22 @@
+-- Managed by pinka (config/postgres/bootstrap.sql.j2). Local changes will be overwritten.
+--
+-- Idempotent bootstrap of infra's own role (BUILD_PROMPT §7.8): the metrics
+-- exporter's role with pg_monitor. The platform database, its roles and
+-- schemas are rendered from the active platform's manifest (pinka-platform,
+-- database.py) and run by the platform role. Every change raises a NOTICE that
+-- starts with "pinka-changed:", which the role reports as a change.
+\set ON_ERROR_STOP on
+
+DO $bootstrap$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{{ postgres_monitor_role }}') THEN
+    CREATE ROLE {{ postgres_monitor_role }} LOGIN;
+    RAISE NOTICE 'pinka-changed: created role {{ postgres_monitor_role }}';
+  END IF;
+
+  IF NOT pg_has_role('{{ postgres_monitor_role }}', 'pg_monitor', 'MEMBER') THEN
+    GRANT pg_monitor TO {{ postgres_monitor_role }};
+    RAISE NOTICE 'pinka-changed: pg_monitor for {{ postgres_monitor_role }}';
+  END IF;
+END
+$bootstrap$;

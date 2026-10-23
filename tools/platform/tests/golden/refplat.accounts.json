@@ -1,0 +1,95 @@
+{
+  "infra_groups": [
+    "pinka-restricted",
+    "pinka-query",
+    "pinka-datasets"
+  ],
+  "groups": [
+    "refplat-ctl",
+    "refplat-agent",
+    "refplat-broker",
+    "refplat-tune",
+    "refplat-tunecpu",
+    "refplat-migrate",
+    "refplat-ctl-api",
+    "refplat-ctl-session",
+    "refplat-broker-infer",
+    "refplat-db"
+  ],
+  "accounts": [
+    {
+      "name": "refplat-ctl",
+      "group": "refplat-ctl",
+      "groups": [
+        "pinka-query",
+        "pinka-restricted",
+        "refplat-db"
+      ],
+      "home": "/var/lib/pinka/refplat-ctl",
+      "comment": "service ctl (controller)",
+      "kind": "service",
+      "member": "ctl",
+      "profile": "controller"
+    },
+    {
+      "name": "refplat-agent",
+      "group": "refplat-agent",
+      "groups": [
+        "refplat-ctl-session"
+      ],
+      "home": "/var/lib/pinka/refplat-agent",
+      "comment": "service agent (untrusted-agent)",
+      "kind": "service",
+      "member": "agent",
+      "profile": "untrusted-agent"
+    },
+    {
+      "name": "refplat-broker",
+      "group": "refplat-broker",
+      "groups": [
+        "refplat-db"
+      ],
+      "home": "/var/lib/pinka/refplat-broker",
+      "comment": "service broker (inference-broker)",
+      "kind": "service",
+      "member": "broker",
+      "profile": "inference-broker"
+    },
+    {
+      "name": "refplat-tune",
+      "group": "refplat-tune",
+      "groups": [
+        "pinka-datasets"
+      ],
+      "home": "/var/lib/pinka/refplat-tune",
+      "comment": "job tune (gpu-trainer)",
+      "kind": "job",
+      "member": "tune",
+      "profile": "gpu-trainer"
+    },
+    {
+      "name": "refplat-tunecpu",
+      "group": "refplat-tunecpu",
+      "groups": [
+        "pinka-datasets"
+      ],
+      "home": "/var/lib/pinka/refplat-tunecpu",
+      "comment": "job tunecpu (gpu-trainer)",
+      "kind": "job",
+      "member": "tunecpu",
+      "profile": "gpu-trainer"
+    },
+    {
+      "name": "refplat-migrate",
+      "group": "refplat-migrate",
+      "groups": [
+        "refplat-db"
+      ],
+      "home": "/var/lib/pinka/refplat-migrate",
+      "comment": "migrate migrate",
+      "kind": "migrate",
+      "member": "migrate",
+      "profile": null
+    }
+  ]
+}

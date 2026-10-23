@@ -1,0 +1,24 @@
+# Managed by pinka (.yamllint.yml).
+# Compatible with ansible-lint's yamllint requirements.
+extends: default
+# The third-party and generated trees are ignored explicitly, not only
+# through .gitignore (tools/repo-checks/tests/test_dev_tools.py).
+ignore-from-file: [.gitignore, .lint-ignore]
+rules:
+  line-length:
+    max: 160
+  comments:
+    min-spaces-from-content: 1
+    # cloud-init user data must start with the line "#cloud-config".
+    ignore: |
+      images/*/cloud-init.yaml
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  document-start: disable

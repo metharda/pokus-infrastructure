@@ -1,0 +1,17 @@
+# Managed by pinka (images/redis-cache/image.yaml). Local changes will be overwritten.
+#
+# Golden image blueprint `redis-cache` (BUILD_PROMPT §7.13): Redis from the
+# Ubuntu archive with its packaged configuration.
+schema_version: 1
+name: redis-cache
+version: "1.0.0"
+description: Redis in-memory cache
+base: {blueprint: _base}
+type: container
+nesting: false
+packages: [redis-server]
+docker_images: []
+services: [redis-server]
+telemetry:
+  log_files: []
+tests: [tests/test_redis.sh]

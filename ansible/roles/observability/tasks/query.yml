@@ -1,0 +1,52 @@
+# Managed by pinka (ansible/roles/observability/tasks/query.yml). Local changes will be overwritten.
+#
+# The query proxy's socket directory and the agent OTLP socket (BUILD_PROMPT
+# §7.9), on the nodes that run Prometheus, Loki and Tempo. The proxy's
+# container creates its socket in /run/pinka/query (owned by its account,
+# group pinka-query); /run/pinka/query.sock links to it, both recreated by
+# tmpfiles.d at every boot.
+- name: Recreate the query socket's directory and link at boot
+  ansible.builtin.template:
+    src: pinka-query.tmpfiles.conf.j2
+    dest: /etc/tmpfiles.d/pinka-query.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: observability_query_tmpfiles
+
+- name: Create the query socket's directory and link now
+  ansible.builtin.command:
+    argv: [systemd-tmpfiles, --create, /etc/tmpfiles.d/pinka-query.conf]
+  changed_when: observability_query_tmpfiles is changed
+  when: not ansible_check_mode
+
+- name: Check for the socket proxy of the agent OTLP socket
+  ansible.builtin.stat:
+    path: "{{ observability_socket_proxyd }}"
+  register: observability_proxyd
+
+- name: Stop without systemd's socket proxy
+  ansible.builtin.assert:
+    that: observability_proxyd.stat.executable | default(false) or ansible_check_mode
+    fail_msg: >-
+      {{ observability_socket_proxyd }} is missing: the agent OTLP socket needs systemd's
+      socket proxy (systemd-socket-proxyd), which systemd ships on every supported family.
+    quiet: true
+
+- name: Install the agent OTLP socket and its forwarder
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [pinka-otlp-agent.socket, pinka-otlp-agent.service]
+  register: observability_agent_units
+
+- name: Enable and start the agent OTLP socket
+  ansible.builtin.systemd_service:
+    name: pinka-otlp-agent.socket
+    enabled: true
+    state: started
+    daemon_reload: "{{ observability_agent_units is changed }}"
+  when: not ansible_check_mode or 'pinka-otlp-agent.socket' in pinka_present.units

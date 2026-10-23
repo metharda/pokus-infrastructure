@@ -1,0 +1,28 @@
+# Managed by pinka (ansible/roles/preflight_gate/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Re-run preflight and stop if the host changed.
+    description:
+      - Sets pinka_host_profile (the fresh profile) and pinka_features (its feature flags).
+    options:
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile validated by bootstrap.sh for this run.
+      install_nvidia_driver:
+        type: str
+        required: true
+        choices: [auto, manual, skip]
+        description: The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did.
+      pinka_root:
+        type: path
+        required: true
+        description: Research space; preflight measures its free disk space.
+      preflight_gate_command:
+        type: path
+        default: "{{ pinka_dir }}/preflight/pinka-preflight"
+        description: Preflight wrapper of this checkout.
+      preflight_gate_profile_path:
+        type: path
+        default: /etc/pinka/host-profile.json
+        description: Profile to compare with; bootstrap passes the profile it validated (pinka_bootstrap.profile_path).

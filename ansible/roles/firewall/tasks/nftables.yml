@@ -1,0 +1,22 @@
+# Managed by pinka (ansible/roles/firewall/tasks/nftables.yml). Local changes will be overwritten.
+#
+# Own table inet pinka_filter, loaded by pinka-nftables.service from
+# /etc/pinka/nftables/pinka.nft; the distribution's nftables configuration is
+# not touched. The unit is installed with the access guard (access_guard.yml).
+- name: Create the nftables directory
+  ansible.builtin.file:
+    path: /etc/pinka/nftables
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render the pinka nftables table
+  ansible.builtin.template:
+    src: pinka.nft.j2
+    dest: /etc/pinka/nftables/pinka.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  notify: Reload the pinka nftables table

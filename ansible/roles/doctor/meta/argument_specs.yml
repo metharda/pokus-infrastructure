@@ -1,0 +1,74 @@
+# Managed by pinka (ansible/roles/doctor/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: The pinka operator CLI, a copy of preflight it runs, and the lab description /etc/pinka/lab.json.
+    options:
+      machine:
+        type: str
+        required: true
+        description: Name of the host_vars file (bootstrap --machine); pinka passes it back to bootstrap.
+      machine_name:
+        type: str
+        required: true
+        description: Machine name; the Tailscale host name doctor expects.
+      pinka_dir:
+        type: str
+        required: true
+        description: Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints.
+      pinka_provider:
+        type: str
+        required: true
+        description: Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path).
+      node_role:
+        type: str
+        required: true
+        description: full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks.
+      pinka_features:
+        type: dict
+        required: true
+        description: Feature flags of the host profile (gpu_inference, vm_targets).
+      pinka_versions:
+        type: dict
+        required: true
+        description: The pinned versions (the image and digest every lab container must run).
+      host_profile:
+        type: dict
+        required: true
+        description: The validated host profile (storage backend of the Incus pool).
+      doctor_max_clock_offset:
+        type: float
+        default: 1.0
+        description: Largest clock offset doctor accepts, in seconds.
+      doctor_min_pool_free_gib:
+        type: int
+        default: 20
+        description: Free space of the Incus pool below which doctor warns, in GiB.
+      doctor_backup_max_age_hours:
+        type: int
+        default: 26
+        description: Age of the last successful backup after which doctor warns, in hours.
+      doctor_telemetry_wait:
+        type: int
+        default: 60
+        description: Seconds doctor waits for its telemetry probe to arrive in Loki, Tempo and Prometheus.
+      doctor_smoke_wait:
+        type: int
+        default: 120
+        description: Seconds doctor --smoke waits for a throwaway target's logs in Loki.
+      doctor_certificate_renew_days:
+        type: int
+        default: 30
+        description: Days before a pairing certificate expires at which doctor fails inference.pairing.
+      doctor_drain_timeout:
+        type: int
+        default: 1800
+        description: Seconds `pinka stop` and `update-host` give the platform's drain hook.
+      doctor_health_wait:
+        type: int
+        default: 300
+        description: Seconds `pinka start` waits for the platform's health hook to answer ok.
+      doctor_listener_processes:
+        type: list
+        elements: str
+        default: [sshd, tailscaled, dnsmasq, systemd-network, dhclient, NetworkManager, chronyd]
+        description: Processes that may listen outside loopback (names as `ss -p` shows them).

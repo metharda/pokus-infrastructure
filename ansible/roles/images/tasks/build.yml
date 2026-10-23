@@ -1,0 +1,222 @@
+# Managed by pinka (ansible/roles/images/tasks/build.yml). Local changes will be overwritten.
+#
+# Build flow of one blueprint (BUILD_PROMPT §7.13), in the Incus project
+# `build` on the NAT network pinka-build0: launch from the pinned base →
+# provision → tests → leakage lint → clean → stop → publish. A failed build
+# leaves its instance in the project for inspection; the next run replaces it.
+# A published image starts from its base's metadata, so every property a
+# derived image could inherit wrongly is set explicitly.
+
+- name: Describe the build
+  ansible.builtin.set_fact:
+    images_instance: "build-{{ images_name | replace('_', '') }}"
+    images_build_dir: "{{ images_work_dir }}/{{ images_name }}"
+    images_recipe_dir: "{{ images_recipe_root }}/{{ images_name }}"
+    images_incus_exec: [incus, exec, --project, "{{ images_project }}", "build-{{ images_name | replace('_', '') }}", --]
+    images_provision: {}
+
+- name: List the instances of the build project
+  ansible.builtin.command:
+    argv: [incus, list, --project, "{{ images_project }}", --format, csv, --columns, n]
+  register: images_build_instances
+  changed_when: false
+
+- name: Remove the instance of an earlier failed build
+  ansible.builtin.command:
+    argv: [incus, delete, --project, "{{ images_project }}", --force, "{{ images_instance }}"]
+  changed_when: true
+  when: images_instance in images_build_instances.stdout_lines
+
+- name: Create the build directory
+  ansible.builtin.file:
+    path: "{{ images_build_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the provisioning variables and the leakage lint configuration
+  ansible.builtin.copy:
+    dest: "{{ images_build_dir }}/{{ item.name }}"
+    content: "{{ item.content | to_nice_json }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - name: vars.json
+      content:
+        image: "{{ images_spec }}"
+        otlp_endpoint: "{{ images_otlp_endpoint[images_spec.type] }}"
+        otel_agent: "{{ pinka_versions.binaries.otelcol_contrib.assets[ansible_facts['architecture']] }}"
+        target_images: "{{ images_spec.docker_images | map('extract', pinka_versions.containers.target_images | default({})) | list }}"
+    - name: leakage.json
+      content:
+        paths: "{{ images_leakage_paths }}"
+        patterns: "{{ images_leakage_patterns }}"
+        allow: "{{ images_leakage_allow }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Build, test, lint, clean and publish the blueprint
+  block:
+    - name: Launch the build instance from the base image
+      ansible.builtin.command:
+        argv: >-
+          {{ ['incus', 'launch', images_base_fingerprint, images_instance,
+              '--project', images_project, '--profile', images_profile,
+              '--config', 'security.nesting=' ~ (images_spec.nesting | string | lower),
+              '--config', 'cloud-init.user-data=' ~ lookup('ansible.builtin.file', images_recipe_dir ~ '/cloud-init.yaml')]
+             + (['--vm'] if images_spec.type == 'vm' else []) }}
+      changed_when: true
+
+    - name: Wait for cloud-init in the build instance
+      ansible.builtin.command:
+        argv: "{{ images_incus_exec + ['cloud-init', 'status', '--wait'] }}"
+      register: images_boot
+      changed_when: false
+      # 2: done with recoverable errors; the tests decide whether they matter.
+      until: images_boot.rc in [0, 2]
+      failed_when: images_boot.rc not in [0, 2]
+      retries: "{{ (images_boot_timeout | int) // 10 }}"
+      delay: 10
+
+    - name: Copy the leakage lint, its configuration and the clean script into the instance
+      ansible.builtin.command:
+        argv:
+          - incus
+          - file
+          - push
+          - --project
+          - "{{ images_project }}"
+          - --create-dirs
+          - --mode
+          - "0600"
+          - "{{ item.src }}"
+          - "{{ images_instance }}{{ images_guest_dir }}/{{ item.dest }}"
+      changed_when: true
+      loop:
+        - {src: "{{ role_path }}/files/pinka_leakage_lint.py", dest: leakage-lint.py}
+        - {src: "{{ images_build_dir }}/leakage.json", dest: leakage.json}
+        - {src: "{{ role_path }}/files/image-clean.sh", dest: image-clean.sh}
+      loop_control:
+        label: "{{ item.dest }}"
+
+    - name: Copy the blueprint's tests into the instance
+      ansible.builtin.command:
+        argv:
+          - incus
+          - file
+          - push
+          - --project
+          - "{{ images_project }}"
+          - --create-dirs
+          - --recursive
+          - "{{ images_recipe_dir }}/tests"
+          - "{{ images_instance }}{{ images_guest_dir }}/"
+      changed_when: true
+
+    - name: Record the leakage baseline of the base image
+      ansible.builtin.command:
+        argv: >-
+          {{ images_incus_exec + ['python3', '-I', images_guest_dir ~ '/leakage-lint.py', 'scan',
+             '--config', images_guest_dir ~ '/leakage.json', '--out', images_guest_dir ~ '/baseline.json'] }}
+      changed_when: false
+
+    - name: Provision the instance and configure its telemetry agent
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python | dirname }}/ansible-playbook"
+          - --inventory
+          - "{{ images_instance }},"
+          - --connection
+          - community.general.incus
+          - --extra-vars
+          - "ansible_incus_project={{ images_project }} ansible_python_interpreter={{ images_guest_python }}"
+          - --extra-vars
+          - "@{{ images_build_dir }}/vars.json"
+          - "{{ images_recipe_dir }}/provision.yml"
+          - "{{ images_recipe_root }}/_base/agent.yml"
+      environment:
+        ANSIBLE_CONFIG: "{{ pinka_dir }}/ansible/ansible.cfg"
+        ANSIBLE_NOCOLOR: "1"
+      register: images_provision
+      changed_when: true
+
+    - name: Run the blueprint's tests
+      ansible.builtin.command:
+        argv: "{{ images_incus_exec + ['sh', images_guest_dir ~ '/' ~ item] }}"
+      changed_when: false
+      loop: "{{ images_spec.tests }}"
+
+    - name: Record the installed packages
+      ansible.builtin.command:
+        argv: >-
+          {{ images_incus_exec + ['dpkg-query', '--show', '--showformat',
+             '${Status}\t${Package}\t${Version}\t${Architecture}\n'] }}
+      register: images_packages
+      changed_when: false
+
+    - name: Run the leakage lint
+      ansible.builtin.command:
+        argv: >-
+          {{ images_incus_exec + ['python3', '-I', images_guest_dir ~ '/leakage-lint.py', 'check',
+             '--config', images_guest_dir ~ '/leakage.json', '--baseline', images_guest_dir ~ '/baseline.json'] }}
+      register: images_leakage
+      changed_when: false
+
+    - name: Clean the instance
+      ansible.builtin.command:
+        argv: "{{ images_incus_exec + ['sh', images_guest_dir ~ '/image-clean.sh'] }}"
+      changed_when: true
+
+    - name: Stop the instance
+      ansible.builtin.command:
+        argv: [incus, stop, --project, "{{ images_project }}", "{{ images_instance }}"]
+      changed_when: true
+
+    - name: Publish the image
+      ansible.builtin.command:
+        argv: >-
+          {{ ['incus', 'publish', '--project', images_project, images_instance, '--alias', images_alias]
+             + (['--reuse'] if images_image != {} else [])
+             + ['pinka.recipe_commit=' ~ pinka_bootstrap.repo_commit ~ ('-dirty' if pinka_bootstrap.infra_dirty | default(false) else ''),
+                'pinka.built_at=' ~ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'pinka.base_fingerprint=' ~ images_base_fingerprint,
+                'requirements.nesting=' ~ (images_spec.nesting | string | lower),
+                'description=' ~ images_spec.description] }}
+      changed_when: true
+
+    - name: Delete the build instance
+      ansible.builtin.command:
+        argv: [incus, delete, --project, "{{ images_project }}", "{{ images_instance }}"]
+      changed_when: true
+
+  rescue:
+    - name: Report the failed build
+      ansible.builtin.fail:
+        msg: >-
+          Building {{ images_alias }} failed in task "{{ ansible_failed_task.name }}". The instance
+          {{ images_instance }} stays in the project {{ images_project }} for inspection
+          (incus exec --project {{ images_project }} {{ images_instance }} -- bash); if the provisioning
+          ran, its output is in {{ images_build_dir }}/provision.log. The next run replaces the instance.
+
+  always:
+    - name: Keep the output of the provisioning
+      ansible.builtin.copy:
+        dest: "{{ images_build_dir }}/provision.log"
+        content: "{{ images_provision.stdout | default('') }}\n{{ images_provision.stderr | default('') }}\n"
+        owner: root
+        group: root
+        mode: "0600"
+      when: images_provision.stdout is defined
+
+- name: List the images after the build
+  ansible.builtin.command:
+    argv: [incus, image, list, --format, json]
+  register: images_list
+  changed_when: false
+
+- name: Use the published image
+  ansible.builtin.set_fact:
+    images_image: "{{ images_list.stdout | from_json | pinka_image_by_alias(images_alias) }}"
+    images_package_list: "{{ images_packages.stdout | pinka_dpkg_packages }}"

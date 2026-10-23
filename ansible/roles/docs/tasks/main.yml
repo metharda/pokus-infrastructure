@@ -1,0 +1,69 @@
+# Managed by pinka (ansible/roles/docs/tasks/main.yml). Local changes will be overwritten.
+#
+# The documentation service (BUILD_PROMPT §7.19). With docs_release set,
+# bootstrap installs that release the way `pinka docs install` does (checksum,
+# safe unpacking, current switched in one step, three versions kept) and runs
+# pinka-docs.service; with docs_release null the service is off.
+- name: Check the documentation release
+  ansible.builtin.assert:
+    that:
+      - docs_release is mapping
+      - docs_release.url | default('') is string
+      - docs_release.url | default('') is match('^(https://|/)')
+      - docs_release.sha256 | default('') is string
+      - docs_release.sha256 | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      docs_release must be null or {url, sha256}: an https:// URL or an absolute path of the
+      release's documentation tarball and its SHA-256 (64 lowercase hex digits).
+    quiet: true
+  when: docs_release is not none
+
+- name: Create the directories of the documentation
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ '0755' if item == docs_dir else '0700' }}"
+  loop: ["{{ docs_dir }}", "{{ docs_cache }}"]
+
+- name: Download the documentation release
+  ansible.builtin.get_url:
+    url: "{{ docs_release.url }}"
+    dest: "{{ docs_cache }}/{{ docs_release.url | basename }}"
+    checksum: "sha256:{{ docs_release.sha256 }}"
+    owner: root
+    group: root
+    mode: "0600"
+  # In check mode the cache directory does not exist yet on a fresh host.
+  when: docs_release is not none and docs_release.url is match('^https://') and not ansible_check_mode
+
+- name: Install the documentation release
+  ansible.builtin.command:
+    argv:
+      - "{{ docs_cli }}"
+      - docs
+      - install
+      - "{{ docs_release.url if docs_release.url is match('^/') else docs_cache ~ '/' ~ (docs_release.url | basename) }}"
+      - --sha256
+      - "{{ docs_release.sha256 }}"
+  register: docs_installed
+  changed_when: docs_installed.stdout is not search('is already current')
+  when: docs_release is not none and not ansible_check_mode
+
+- name: Install the documentation service
+  ansible.builtin.template:
+    src: pinka-docs.service.j2
+    dest: "/etc/systemd/system/{{ docs_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: docs_unit_file
+
+- name: Run the documentation service while a release is configured
+  ansible.builtin.systemd_service:
+    name: "{{ docs_unit }}"
+    enabled: "{{ docs_release is not none }}"
+    state: "{{ 'started' if docs_release is not none else 'stopped' }}"
+    daemon_reload: "{{ docs_unit_file is changed }}"
+  when: not ansible_check_mode or docs_unit in pinka_present.units

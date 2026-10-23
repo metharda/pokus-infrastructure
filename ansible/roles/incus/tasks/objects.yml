@@ -1,0 +1,60 @@
+# Managed by pinka (ansible/roles/incus/tasks/objects.yml). Local changes will be overwritten.
+#
+# Converge every Incus object pinka maintains. The storage pool and the
+# networks are only created when missing: their addresses and sources are
+# chosen once and never rewritten.
+- name: Configure the Incus server
+  pinka_incus_object:
+    kind: server
+    config: "{{ incus_server_config }}"
+
+- name: Create the storage pool {{ incus_pool_name }}
+  pinka_incus_object:
+    kind: storage_pool
+    name: "{{ incus_pool.name }}"
+    description: "{{ incus_pool.description }}"
+    driver: "{{ incus_pool.driver }}"
+    config: "{{ incus_pool.config }}"
+    update: false
+
+- name: Create the networks
+  pinka_incus_object:
+    kind: network
+    name: "{{ item.name }}"
+    type: "{{ item.type }}"
+    description: "{{ item.description }}"
+    config: "{{ item.config }}"
+    update: false
+  loop: "{{ incus_networks }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Converge the run network ACL {{ incus_run_acl }}
+  pinka_incus_object:
+    kind: network_acl
+    name: "{{ incus_run_acl }}"
+    description: "pinka run networks: nothing leaves the bridge except DHCP, DNS and the VM telemetry listener"
+    ingress: []
+    egress: "{{ incus_run_acl_egress }}"
+
+- name: Converge the projects
+  pinka_incus_object:
+    kind: project
+    name: "{{ item.name }}"
+    description: "{{ item.description }}"
+    config: "{{ item.config }}"
+  loop: "{{ incus_projects }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Converge the profiles
+  pinka_incus_object:
+    kind: profile
+    name: "{{ item.name }}"
+    project: "{{ item.project }}"
+    description: "{{ item.description }}"
+    config: "{{ item.config }}"
+    devices: "{{ item.devices }}"
+  loop: "{{ incus_profiles }}"
+  loop_control:
+    label: "{{ item.project }}/{{ item.name }}"

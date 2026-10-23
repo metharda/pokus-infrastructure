@@ -1,0 +1,62 @@
+# Managed by pinka (ansible/roles/firewall/tasks/access_guard.yml). Local changes will be overwritten.
+#
+# The access guard (BUILD_PROMPT §7.5) on every backend: its own table inet
+# pinka_access_guard drops what the owner consented to close, so the owner's
+# tables, zones and rules stay as they are. pinka-nftables.service loads it
+# at boot, with pinka's table inet pinka_filter on the nftables backend. The
+# install record lists what is closed (§7.21): a listener the owner no longer
+# wants closed is reachable again and leaves the record; the install's access
+# path, once closed, stays closed.
+- name: Record the pre-existing listeners closed with consent
+  pinka_install_record:
+    state: add
+    added:
+      closed_access: "{{ firewall_listener_rules.closed | map(attribute='name') | unique | list }}"
+  when: firewall_listener_rules.closed | length > 0
+
+- name: Record the pre-existing listeners reachable again
+  pinka_install_record:
+    state: remove
+    added:
+      closed_access: "{{ firewall_reopened }}"
+  vars:
+    firewall_reopened: >-
+      {{ pinka_closed_access | default([]) | reject('eq', 'install_path')
+         | reject('in', firewall_listener_rules.closed | map(attribute='name') | list) | list }}
+  when: firewall_reopened | length > 0
+
+- name: Create the directory of pinka's nftables files
+  ansible.builtin.file:
+    path: /etc/pinka/nftables
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the access guard
+  ansible.builtin.template:
+    src: pinka-access-guard.nft.j2
+    dest: /etc/pinka/nftables/access-guard.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/nft -c -f %s
+  notify: Reload the pinka nftables table
+
+- name: Install pinka-nftables.service
+  ansible.builtin.template:
+    src: pinka-nftables.service.j2
+    dest: /etc/systemd/system/pinka-nftables.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload the pinka nftables table
+
+- name: Enable pinka-nftables.service
+  ansible.builtin.systemd_service:
+    name: pinka-nftables.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  # In check mode the unit above is not written (pinka_present: platform_facts).
+  when: not ansible_check_mode or 'pinka-nftables.service' in pinka_present.units

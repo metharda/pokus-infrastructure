@@ -1,0 +1,34 @@
+# Managed by pinka (ansible/roles/inference_control/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Pairing identity on lab and inference nodes; the control endpoint on an inference node.
+    options:
+      node_role:
+        type: str
+        required: true
+        choices: [lab, inference]
+        description: The role runs on lab and inference nodes only.
+      machine_name:
+        type: str
+        required: true
+        description: Tailnet name of this node; the subject alternative name of its certificate.
+      inference_lab_node:
+        type: str
+        default: ""
+        description: Inference node only. Tailnet name of the paired lab node; must match peer.json.
+      inference_remote_node:
+        type: str
+        default: ""
+        description: Lab node only. Tailnet name of the paired inference node; must match peer.json.
+      inference_control_certificate_days:
+        type: int
+        default: 3650
+        description: Validity of the self-signed identity certificate in days.
+      inference_control_verify_wait:
+        type: int
+        default: 60
+        description: Seconds the verification call waits for vLLM's health.
+      pinka_root:
+        type: path
+        required: true
+        description: Research space root (model weights under models/).

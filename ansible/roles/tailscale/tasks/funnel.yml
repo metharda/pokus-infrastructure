@@ -1,0 +1,56 @@
+# Managed by pinka (ansible/roles/tailscale/tasks/funnel.yml). Local changes will be overwritten.
+#
+# Funnel publishes a port to the internet and is never allowed (BUILD_PROMPT
+# §13.3). TODO(verify): the JSON layout of `tailscale serve status --json`
+# (AllowFunnel) in the pinned Tailscale version.
+- name: Read the serve and Funnel configuration
+  ansible.builtin.command:
+    argv: [tailscale, serve, status, --json]
+  register: tailscale_serve_status
+  changed_when: false
+
+- name: Fail if any Funnel configuration exists
+  ansible.builtin.assert:
+    that:
+      - (tailscale_serve_status.stdout | default('{}', true) | from_json).AllowFunnel | default({}) | length == 0
+    fail_msg: >-
+      Tailscale Funnel is configured on this host; pinka never publishes lab services to the
+      internet. Remove it with `tailscale funnel reset` and re-run bootstrap.
+    quiet: true
+
+# On a node that existed before pinka, serve needs the owner's consent as
+# well (tailscale_serve_consent, §7.4); the install record notes each entry
+# pinka adds, and uninstall removes only those.
+- name: Decide which services to publish on the tailnet
+  ansible.builtin.set_fact:
+    tailscale_serve_entries: >-
+      {{ ([{'port': tailscale_grafana_serve_port, 'target': 'http://127.0.0.1:' ~ pinka_ports.grafana}]
+          if grafana_tailscale_serve | bool else [])
+         + ([{'port': tailscale_docs_serve_port, 'target': 'http://127.0.0.1:' ~ pinka_ports.docs_serve}]
+            if docs_tailscale_serve | bool and docs_release is not none else [])
+         if pinka_tailscale_serve_allowed | bool else [] }}
+
+- name: Record the serve entries pinka adds
+  pinka_install_record:
+    state: add
+    added:
+      tailscale_serve: "{{ tailscale_serve_entries | map(attribute='port') | map('regex_replace', '^', 'https:') | list }}"
+  when: tailscale_serve_entries | length > 0
+
+- name: Publish on the tailnet only
+  ansible.builtin.command:
+    argv: [tailscale, serve, --bg, "--https={{ item.port }}", "{{ item.target }}"]
+  loop: "{{ tailscale_serve_entries }}"
+  when: >-
+    (tailscale_serve_status.stdout | default('{}', true) | from_json).TCP | default({})
+    is not search(item.port | string)
+  changed_when: true
+
+- name: Say why nothing is published on an adopted node
+  ansible.builtin.debug:
+    msg: >-
+      This Tailscale node existed before pinka: Grafana and the docs are not published with
+      tailscale serve unless tailscale_serve_consent is true (docs/explanation/pre-existing-components.md).
+  when:
+    - not pinka_tailscale_serve_allowed | bool
+    - grafana_tailscale_serve | bool or docs_tailscale_serve | bool

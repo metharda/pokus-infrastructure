@@ -1,0 +1,29 @@
+# Managed by pinka (ansible/roles/lab_session/vars/main.yml). Local changes will be overwritten.
+
+# Helpers (contracts.md: health gate, session records).
+lab_session_libexec: /usr/local/libexec/pinka
+lab_session_gate_config: /etc/pinka/health-gate.json
+lab_session_gate_status: /run/pinka/health-gate.json
+lab_session_sessions_dir: /var/lib/pinka/sessions
+# The lab's PostgreSQL container, the collector gateway's and OPA's health
+# endpoints, and the active platform's files the gate reads at every start
+# (its requires, and the inference API it is told).
+lab_session_postgres_container: pinka-postgres
+lab_session_collector_health: "http://127.0.0.1:{{ pinka_internal_ports.collector_health }}/"
+lab_session_opa_health: "http://127.0.0.1:{{ pinka_ports.opa }}/health"
+lab_session_platform_rendered: /etc/pinka/platform/rendered.json
+lab_session_platform_endpoints: /etc/pinka/platform/endpoints.toml
+# Units of the lab session.
+lab_session_units: [pinka-lab.target, pinka-health-gate.service, pinka-session-start.service]
+# The maintenance window record (BUILD_PROMPT §7.20, pinka window open); the
+# health gate reads it at every start.
+lab_session_window_record: /etc/pinka/maintenance-window.json
+# Staging on shared hardware: the timer that stops the staging lab once its
+# window has ended (pinka window expire, every minute).
+lab_session_window_expiry: "{{ lab_mode == 'staging' and staging_shared_hardware | bool }}"
+lab_session_expiry_units: [pinka-window-expiry.service, pinka-window-expiry.timer]
+# GPU check: when the lab serves inference, a container from the pinned CUDA
+# image (pulled by the nvidia_container_toolkit role) must see the GPU.
+lab_session_gpu: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
+lab_session_gpu_image: >-
+  {{ pinka_versions.containers.images.cuda_base_test.image }}@{{ pinka_versions.containers.images.cuda_base_test.digest }}

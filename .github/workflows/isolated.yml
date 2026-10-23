@@ -1,0 +1,85 @@
+# Managed by pinka (.github/workflows/isolated.yml).
+#
+# Each pytest file in a process of its own (make test-isolated), so a test
+# that passes only because another file ran first in the same process fails
+# here; the test job's setup (ci.yml), so nothing skips. To save GitHub
+# Actions minutes (owner, with the new plan after 16bf749) it runs weekly, on
+# workflow_dispatch and on pushes that change the tests or what runs them;
+# make test-isolated runs locally before every proposal.
+name: infra-isolated
+
+on:
+  push:
+    paths:
+      - "**/tests/**"
+      - "**/conftest.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "tools/repo-checks/**"
+      - "Makefile"
+      - ".github/workflows/isolated.yml"
+      - "!**.md"  # docs or records only: not an input
+  schedule:
+    - cron: "29 5 * * 1"  # weekly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+
+jobs:
+  test-isolated:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.23"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: make setup
+      - name: ssh-keygen is present (the signed-tag test must run in CI)
+        run: command -v ssh-keygen
+      # PostgreSQL 18, the major the lab pins, from PGDG with the signing key that
+      # Ubuntu's postgresql-common ships; its fingerprint was verified from that
+      # package (docs/IMPLEMENTATION_NOTES.md, "Verified in 3d.4").
+      - name: PostgreSQL 18 from PGDG (the restricted-schema SQL tests run on it) and nftables
+        run: |
+          set -euo pipefail
+          keyring=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          fpr="$(gpg --show-keys --with-colons "$keyring" | awk -F: '$1 == "fpr" {print $10; exit}')"
+          test "$fpr" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+          . /etc/os-release
+          printf 'Types: deb\nURIs: https://apt.postgresql.org/pub/repos/apt\nSuites: %s-pgdg\nComponents: main\nSigned-By: %s\n' \
+            "$VERSION_CODENAME" "$keyring" | sudo tee /etc/apt/sources.list.d/pgdg.sources
+          sudo install -d /etc/postgresql-common/createcluster.d
+          echo 'create_main_cluster = false' | sudo tee /etc/postgresql-common/createcluster.d/pinka-ci.conf
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends postgresql-18 nftables
+      - name: PostgreSQL server binaries, systemd-analyze and nft are present (the SQL, unit and telemetry guard checks must run in CI)
+        run: |
+          ls /usr/lib/postgresql/*/bin/initdb
+          command -v systemd-analyze
+          command -v nft
+          sudo -n true
+      - run: make test-isolated
+        env:
+          PINKA_POSTGRES_REQUIRED: "18"
+      # Every test's name and result (JUnit XML of pytest and of the Python 3.9
+      # runs), kept for each run and each attempt, failed ones included.
+      - name: JUnit XML of every test
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: junit-${{ github.job }}-attempt-${{ github.run_attempt }}
+          path: build/junit/
+          if-no-files-found: error

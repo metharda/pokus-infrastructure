@@ -1,0 +1,18 @@
+# Managed by pinka (ansible/roles/platform_facts/vars/debian.yml). Local changes will be overwritten.
+#
+# Debian family (Debian, Ubuntu and their derivatives).
+platform_facts_family:
+  service_names:
+    ssh: ssh
+    timesync: [systemd-timesyncd, chrony]
+  initramfs_tool: update-initramfs
+  version_hold_method: apt_preferences
+  # Release codename -> distribution and version, for the release keys of
+  # versions.lock.yml and for derivatives (Debian/Ubuntu distro-info-data,
+  # verified in implementation step 2).
+  codenames:
+    jammy: {distro: ubuntu, version: "22.04"}
+    noble: {distro: ubuntu, version: "24.04"}
+    resolute: {distro: ubuntu, version: "26.04"}
+    bookworm: {distro: debian, version: "12"}
+    trixie: {distro: debian, version: "13"}

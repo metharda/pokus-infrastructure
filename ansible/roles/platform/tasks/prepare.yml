@@ -1,0 +1,74 @@
+# Managed by pinka (ansible/roles/platform/tasks/prepare.yml). Local changes will be overwritten.
+#
+# §7.14 steps 1-4: fetch every repository into its mirror, stage each source
+# into a fresh run directory and validate the sources, the manifest, the
+# release and the one-platform rule. A refused release ends the play with
+# bootstrap exit code 65 and every reason; nothing else on the host changed.
+# --inspect-platform prints the summary (with the vault keys the release
+# needs) and ends the play here; otherwise a missing vault key ends it with
+# exit code 77.
+
+- name: Create the staging directory (root only)
+  ansible.builtin.file:
+    path: "{{ platform_staging_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the deployment settings
+  ansible.builtin.copy:
+    dest: "{{ platform_settings_file }}"
+    content: "{{ platform_tool_settings | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Fetch, stage and validate the release (§7.14 steps 1-4)
+  ansible.builtin.command:
+    argv: >-
+      {{ [platform_tool, 'deploy', 'prepare', '--settings', platform_settings_file]
+         + (['--inspect'] if platform_inspect | bool else []) }}
+  register: platform_prepare
+  changed_when: false  # a run directory only; the release changes nothing yet
+  failed_when: platform_prepare.rc not in [0, 65]
+
+- name: Refuse the release (bootstrap exit code 65)
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 65
+    bootstrap_signal_message: >-
+      The platform release is refused; nothing on the host changed:
+      {{ (platform_prepare.stdout | from_json).problems_text | join('; ') }}
+  when: platform_prepare.rc == 65
+
+- name: Remember the deployment plan
+  ansible.builtin.set_fact:
+    platform_plan: "{{ platform_prepare.stdout | from_json }}"
+
+- name: Show the release
+  ansible.builtin.debug:
+    msg: "{{ platform_plan.summary_text.splitlines() }}"
+
+# A job over this host's training_caps deploys, but the GPU arbiter refuses
+# every run of it (§7.18); doctor's training.caps reports the same.
+- name: Warn about jobs over this host's training caps
+  ansible.builtin.debug:
+    msg: "{{ ['WARNING: a job exceeds training_caps'] + platform_plan.warnings }}"
+  when: platform_plan.warnings | default([]) | length > 0
+
+- name: End the inspection (--inspect-platform changes nothing else)
+  ansible.builtin.meta: end_play
+  when: platform_inspect | bool
+
+- name: Ask for the vault keys the release needs (bootstrap exit code 77)
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      The release needs these keys in group_vars/all/vault.yml (see
+      vault.yml.example); nothing on the host changed:
+      {{ platform_plan.vault_keys.missing | join(', ') }}
+  when: platform_plan.vault_keys.missing | length > 0

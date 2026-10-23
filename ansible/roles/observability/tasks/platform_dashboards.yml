@@ -1,0 +1,42 @@
+# Managed by pinka (ansible/roles/observability/tasks/platform_dashboards.yml). Local changes will be overwritten.
+#
+# The active platform's dashboards (BUILD_PROMPT §7.9): the JSON files of the
+# manifest's dashboards directory in its published release, copied read-only
+# into grafana/platform-dashboards/ and provisioned into a Grafana folder
+# named after the platform. Files the release no longer has are removed.
+- name: Find the dashboards of the active platform's release
+  ansible.builtin.find:
+    paths: "{{ observability_platform_dashboards.dir }}"
+    patterns: ["*.json"]
+    recurse: false
+  register: observability_platform_sources
+  when: observability_platform_dashboards is truthy
+
+- name: Find the installed platform dashboards
+  ansible.builtin.find:
+    paths: "{{ observability_config_dir }}/grafana/platform-dashboards"
+    patterns: ["*"]
+  register: observability_platform_installed
+
+- name: Install the platform dashboards
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ observability_config_dir }}/grafana/platform-dashboards/{{ item.path | basename }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ (observability_platform_sources.files | default([])) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Remove the dashboards the platform no longer has
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ observability_platform_installed.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: >-
+    item.path | basename not in
+    (observability_platform_sources.files | default([]) | map(attribute='path') | map('basename') | list)

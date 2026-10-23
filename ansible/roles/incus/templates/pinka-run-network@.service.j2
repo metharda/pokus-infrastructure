@@ -1,0 +1,33 @@
+# Managed by pinka (ansible/roles/incus/templates/pinka-run-network@.service.j2). Local changes will be overwritten.
+#
+# One run-network helper per connection (BUILD_PROMPT §7.7). Runs as root to
+# reach the Incus API socket; it accepts only create and delete of r-<short>
+# with fixed settings, from the controller or root.
+[Unit]
+Description=pinka run-network helper
+CollectMode=inactive-or-failed
+After=incus.service
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=oneshot
+ExecStart=/usr/local/libexec/pinka/run-network serve
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec=120
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/pinka/run-networks

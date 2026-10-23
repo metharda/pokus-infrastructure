@@ -1,0 +1,36 @@
+# Managed by pinka (ansible/roles/docker/tasks/facts.yml). Local changes will be overwritten.
+#
+# What the lab needs to know of the running Docker Engine, whoever installed
+# it (BUILD_PROMPT §7.6): how containers reach the GPU (CDI when `docker info`
+# lists CDI spec directories, the NVIDIA runtime when it lists that runtime,
+# otherwise none) and its data root. The compose, gpu_arbiter, lab_session,
+# doctor and nvidia_container_toolkit roles include this file
+# (tasks_from: facts). Without a running engine (check mode before Docker is
+# installed) the method is none and the data root docker_data_root.
+- name: Ask Docker how containers reach the GPU and where its data is
+  ansible.builtin.command:
+    argv:
+      - docker
+      - info
+      - --format
+      - "{{ '{{' }}json .CDISpecDirs{{ '}}' }}\n{{ '{{' }}json .Runtimes{{ '}}' }}\n{{ '{{' }}json .DockerRootDir{{ '}}' }}"
+  register: docker_info_facts
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Record what Docker offers
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - shared facts like the pinka_* facts
+    pinka_docker_gpu_method: "{{ docker_facts_method }}"
+    pinka_docker_gpu_args: >-
+      {{ ['--device', 'nvidia.com/gpu=all'] if docker_facts_method == 'cdi'
+         else (['--runtime', 'nvidia', '--gpus', 'all'] if docker_facts_method == 'runtime' else []) }}
+    pinka_docker_data_root: "{{ docker_facts_parts[2] | from_json or docker_data_root | default('/var/lib/docker') }}"
+  vars:
+    docker_facts_parts: >-
+      {{ (docker_info_facts.stdout | default('')).splitlines()
+         if docker_info_facts.rc | default(1) == 0 and (docker_info_facts.stdout | default('')).splitlines() | length == 3
+         else ['null', 'null', 'null'] }}
+    docker_facts_method: >-
+      {{ 'cdi' if docker_facts_parts[0] | from_json
+         else ('runtime' if 'nvidia' in (docker_facts_parts[1] | from_json or {}) else 'none') }}

@@ -1,0 +1,21 @@
+# Managed by pinka (ansible/roles/incus/tasks/events.yml). Local changes will be overwritten.
+#
+# Lifecycle and logging events of every project as JSON lines in the journal
+# (identifier pinka-incus-events), read by the collector's journald receiver;
+# the platform's integrity check uses them (BUILD_PROMPT §7.7).
+- name: Install pinka-incus-events.service
+  ansible.builtin.template:
+    src: pinka-incus-events.service.j2
+    dest: /etc/systemd/system/pinka-incus-events.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart pinka-incus-events
+
+- name: Enable pinka-incus-events.service
+  ansible.builtin.systemd_service:
+    name: pinka-incus-events.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode or 'pinka-incus-events.service' in pinka_present.units

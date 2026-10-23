@@ -1,0 +1,47 @@
+# Managed by pinka (ansible/roles/firewall/tasks/split_guard.yml). Local changes will be overwritten.
+#
+# The split-inference guard (BUILD_PROMPT §19.10, interpretation 11.13) on
+# every backend of a lab or inference node: its own nftables table, loaded by
+# its own unit. Once paired, the split-inference ports on the tailnet
+# interface accept only the paired peer's tailnet address (from peer.json,
+# which pinka pair writes); before a pairing nobody. The pairing port is open
+# to the tailnet only while pinka pair show waits.
+- name: Install the split guard's loader
+  ansible.builtin.copy:
+    src: pinka_split_guard.py
+    dest: /usr/local/libexec/pinka/split-guard
+    owner: root
+    group: root
+    mode: "0755"
+  register: firewall_split_guard_program
+
+- name: Write the split guard's settings
+  ansible.builtin.copy:
+    content: "{{ firewall_split_guard | to_nice_json }}\n"
+    dest: /etc/pinka/nftables/split-guard.json
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall_split_guard_spec
+
+- name: Install the split guard's unit
+  ansible.builtin.template:
+    src: pinka-split-guard.service.j2
+    dest: /etc/systemd/system/pinka-split-guard.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: firewall_split_guard_unit
+
+# A pairing made before the peer's address was recorded loads the guard
+# closed and fails here: pair the nodes again.
+- name: Enable and load the split guard
+  ansible.builtin.systemd_service:
+    name: pinka-split-guard.service
+    enabled: true
+    state: >-
+      {{ 'restarted' if (firewall_split_guard_program is changed
+                         or firewall_split_guard_spec is changed
+                         or firewall_split_guard_unit is changed) else 'started' }}
+    daemon_reload: "{{ firewall_split_guard_unit is changed }}"
+  when: not ansible_check_mode or 'pinka-split-guard.service' in pinka_present.units

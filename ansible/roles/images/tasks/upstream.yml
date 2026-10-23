@@ -1,0 +1,106 @@
+# Managed by pinka (ansible/roles/images/tasks/upstream.yml). Local changes will be overwritten.
+#
+# The pinned upstream base image of a blueprint (versions.lock.yml
+# incus_base_images): public image servers rotate their images, so the base is
+# exported once and imported from that export when the image store lacks it.
+
+- name: Describe the upstream base image
+  ansible.builtin.set_fact:
+    images_upstream: "{{ pinka_versions.incus_base_images.images[images_spec.base.image] }}"
+    images_base_fingerprint: >-
+      {{ pinka_versions.incus_base_images.images[images_spec.base.image].fingerprints[ansible_facts['architecture']] | default('') }}
+
+- name: Refuse an unverified upstream base image
+  ansible.builtin.assert:
+    that: images_base_fingerprint is match('^[0-9a-f]{64}$')
+    fail_msg: >-
+      versions.lock.yml pins no verified fingerprint of the base image {{ images_spec.base.image }}
+      for {{ ansible_facts['architecture'] }} (found {{ images_base_fingerprint or 'none' }}).
+      Resolve it as described in docs/how-to/update-versions.md, or skip the images tag.
+    quiet: true
+
+- name: Describe the upstream export
+  ansible.builtin.set_fact:
+    images_upstream_export: "{{ images_upstream_dir }}/{{ images_spec.base.image }}/{{ images_base_fingerprint }}"
+    images_upstream_present: >-
+      {{ images_base_fingerprint in (images_list.stdout | from_json | map(attribute='fingerprint') | list) }}
+
+- name: Look for the upstream export
+  ansible.builtin.stat:
+    path: "{{ images_upstream_export }}/SHA256SUMS"
+  register: images_upstream_sums
+
+- name: Check the upstream export before importing it
+  ansible.builtin.command:
+    argv: ["{{ images_files_helper }}", verify, --dir, "{{ images_upstream_export }}", --fingerprint, "{{ images_base_fingerprint }}"]
+  register: images_upstream_verify
+  changed_when: false
+  failed_when: images_upstream_verify.rc != 0 or not (images_upstream_verify.stdout | from_json).ok
+  when:
+    - not images_upstream_present
+    - images_upstream_sums.stat.exists
+
+- name: Import the upstream base image from its export
+  ansible.builtin.command:
+    argv: >-
+      {{ ['incus', 'image', 'import']
+         + ((images_upstream_verify.stdout | from_json).files | map('regex_replace', '^', images_upstream_export ~ '/') | list) }}
+  changed_when: true
+  when:
+    - not images_upstream_present
+    - images_upstream_sums.stat.exists
+
+- name: Download the upstream base image by fingerprint
+  ansible.builtin.command:
+    argv: >-
+      {{ ['incus', 'image', 'copy', images_upstream.remote ~ ':' ~ images_base_fingerprint, 'local:']
+         + (['--vm'] if images_upstream.type == 'virtual-machine' else []) }}
+  changed_when: true
+  when:
+    - not images_upstream_present
+    - not images_upstream_sums.stat.exists
+
+- name: Export the upstream base image
+  when: not images_upstream_sums.stat.exists
+  block:
+    - name: Create the upstream export directory
+      ansible.builtin.file:
+        path: "{{ images_upstream_export }}"
+        state: directory
+        owner: root
+        group: pinka-admin
+        mode: "0750"
+
+    - name: Export the upstream base image
+      ansible.builtin.command:
+        argv: [incus, image, export, "{{ images_base_fingerprint }}", "{{ images_upstream_export }}/"]
+      changed_when: true
+
+    - name: Check the upstream export and record its sha256 sums
+      ansible.builtin.command:
+        argv: ["{{ images_files_helper }}", verify, --dir, "{{ images_upstream_export }}", --fingerprint, "{{ images_base_fingerprint }}", --write-sums]
+      register: images_upstream_written
+      changed_when: (images_upstream_written.stdout | from_json).changed | default(false)
+      failed_when: images_upstream_written.rc != 0 or not (images_upstream_written.stdout | from_json).ok
+
+    - name: Record where the upstream base image came from
+      ansible.builtin.copy:
+        dest: "{{ images_upstream_export }}/source.json"
+        content: >-
+          {{ {'schema_version': 1, 'name': images_spec.base.image, 'remote': images_upstream.remote,
+              'alias': images_upstream.alias, 'type': images_upstream.type,
+              'architecture': ansible_facts['architecture'], 'fingerprint': images_base_fingerprint,
+              'files': (images_upstream_written.stdout | from_json).files,
+              'exported_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ')} | to_nice_json }}
+        owner: root
+        group: pinka-admin
+        mode: "0640"
+
+    - name: Restrict the upstream export to the lab's admins
+      ansible.builtin.file:
+        path: "{{ images_upstream_export }}"
+        state: directory
+        recurse: true
+        owner: root
+        group: pinka-admin
+        mode: u=rwX,g=rX,o=

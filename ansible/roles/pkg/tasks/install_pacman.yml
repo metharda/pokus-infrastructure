@@ -1,0 +1,8 @@
+# Managed by pinka (ansible/roles/pkg/tasks/install_pacman.yml). Local changes will be overwritten.
+#
+# Arch Linux is rolling: packages are not pinned, they are held after
+# installation (hold.yml) and their versions are recorded in the fingerprint.
+- name: Install packages with pacman
+  community.general.pacman:
+    name: "{{ pkg_packages }}"
+    state: present

@@ -1,0 +1,76 @@
+# Managed by pinka (ansible/roles/vllm/tasks/main.yml). Local changes will be overwritten.
+#
+# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the pinka-inference
+# Compose project, the serving profiles, the default deployment and the
+# serving verification. The GPU arbiter (gpu_arbiter role, §7.18) renders and
+# serves deployments. Applied with gpu_inference on full and inference nodes.
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+- name: Create the vLLM directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/pinka/vllm, mode: "0755"}
+    - {path: /etc/pinka/vllm/deployments, mode: "0755"}
+    - {path: /etc/pinka/vllm/profiles, mode: "0755"}
+    - {path: /usr/local/libexec/pinka, mode: "0755"}
+    - {path: /var/lib/pinka/verify, mode: "0755"}
+    - {path: "{{ pinka_root }}/state/vllm-cache", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the serving profiles
+  ansible.builtin.copy:
+    src: "{{ pinka_dir }}/vllm/profiles/"
+    dest: /etc/pinka/vllm/profiles/
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the serving verification
+  ansible.builtin.copy:
+    src: pinka_vllm_verify.py
+    dest: /usr/local/libexec/pinka/vllm-verify
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the default deployment
+  ansible.builtin.include_tasks: default_deployment.yml
+  when: vllm_default_deployment is mapping
+
+- name: Find the current deployment
+  ansible.builtin.stat:
+    path: /etc/pinka/vllm/current.yml
+  register: vllm_current
+
+# The platform's choice wins: once current.yml exists, the GPU arbiter
+# re-renders that deployment and never replaces it with the default.
+- name: Choose the deployment to serve
+  ansible.builtin.set_fact:
+    vllm_target: >-
+      {{ (vllm_current.stat.lnk_target | default('') | basename | regex_replace('\.yml$', ''))
+         if vllm_current.stat.islnk | default(false)
+         else (vllm_default_id | default('')) }}
+    vllm_start: >-
+      {{ vllm_current.stat.islnk | default(false)
+         or vllm_default_deployment.start_after_install | default(true) }}
+
+# Installed and disabled: vLLM starts only through the GPU arbiter (its start
+# unit at boot and its serve request), which then serves and verifies the
+# chosen deployment (gpu_arbiter role).
+- name: Install the vLLM project
+  ansible.builtin.include_role:
+    name: compose
+  vars:
+    compose_project: inference
+    compose_description: vLLM
+    compose_gpu: true
+    compose_wait_timeout: "{{ vllm_wait_timeout }}"
+    compose_start: false

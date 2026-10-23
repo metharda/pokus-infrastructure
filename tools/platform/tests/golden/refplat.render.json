@@ -1,0 +1,453 @@
+{
+  "backup": {
+    "database": true,
+    "paths": [
+      "/srv/pinka/platforms/refplat/state/ctl/records"
+    ]
+  },
+  "cli": {
+    "content": "#!/bin/sh\n# Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.\n# refplat: the researchers' CLI of platform refplat.\nexec /srv/pinka/platforms/refplat/releases/current/.venv/bin/refplat \"$@\"\n",
+    "link": "/usr/local/bin/refplat",
+    "name": "refplat",
+    "wrapper": "/usr/local/lib/pinka/platform/cli/refplat"
+  },
+  "config_files": [
+    {
+      "content": "{}\n",
+      "group": "refplat-ctl",
+      "mode": "0640",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config/ctl.json",
+      "service": "ctl"
+    }
+  ],
+  "controller": "refplat-ctl",
+  "dashboards": null,
+  "database": {
+    "all_roles": [
+      "refplat_broker",
+      "refplat_controller",
+      "refplat_ctl",
+      "refplat_grafana",
+      "refplat_inference_broker",
+      "refplat_migrator",
+      "refplat_reader"
+    ],
+    "database": "refplat",
+    "grafana": "refplat_grafana",
+    "group_roles": [
+      "refplat_controller",
+      "refplat_inference_broker"
+    ],
+    "logins": [
+      {
+        "account": "refplat-ctl",
+        "group_role": "refplat_controller",
+        "profile": "controller",
+        "role": "refplat_ctl"
+      },
+      {
+        "account": "refplat-broker",
+        "group_role": "refplat_inference_broker",
+        "profile": "inference-broker",
+        "role": "refplat_broker"
+      }
+    ],
+    "migrator": "refplat_migrator",
+    "password_dir": "/etc/pinka/secrets/postgres",
+    "password_files": [
+      {
+        "group": "refplat-ctl",
+        "mode": "0640",
+        "owner": "root",
+        "role": "refplat_ctl"
+      },
+      {
+        "group": "refplat-broker",
+        "mode": "0640",
+        "owner": "root",
+        "role": "refplat_broker"
+      },
+      {
+        "group": "refplat-migrate",
+        "mode": "0640",
+        "owner": "root",
+        "role": "refplat_migrator"
+      }
+    ],
+    "platform": "refplat",
+    "reader": "refplat_reader",
+    "reader_credential": "/etc/pinka/postgres-reader/pgpass",
+    "restricted_allowed": [
+      "refplat_controller",
+      "refplat_ctl",
+      "refplat_migrator"
+    ],
+    "socket_group": "refplat-db",
+    "stale_roles": [],
+    "vault_roles": [
+      "refplat_broker",
+      "refplat_ctl",
+      "refplat_grafana",
+      "refplat_migrator",
+      "refplat_reader"
+    ]
+  },
+  "directories": [
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/platform/config"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/refplat/state"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/srv/pinka/platforms/refplat/state/ctl"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0700",
+      "owner": "refplat-ctl",
+      "path": "/srv/pinka/platforms/refplat/state/ctl/records"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0700",
+      "owner": "refplat-ctl",
+      "path": "/srv/pinka/platforms/refplat/state/ctl/datasets"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/refplat-ctl"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/signing/refplat"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa"
+    },
+    {
+      "group": "root",
+      "mode": "0755",
+      "owner": "root",
+      "path": "/etc/pinka/qa/trusted-keys"
+    },
+    {
+      "group": "refplat-ctl",
+      "mode": "0750",
+      "owner": "root",
+      "path": "/etc/pinka/qa/attestations"
+    },
+    {
+      "group": "root",
+      "mode": "0711",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/postgres"
+    }
+  ],
+  "hardening": [
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups"
+      ],
+      "profile": "controller",
+      "properties": {
+        "Group": "refplat-ctl",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "refplat-ctl"
+      },
+      "unit": "refplat-ctl.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX"
+      ],
+      "agent_view": {
+        "own_dirs": [
+          "/run/pinka/platform-runtime/agent"
+        ],
+        "release": "/srv/pinka/platforms/refplat/releases/refplat-v1",
+        "release_paths": [
+          "packages/refplat-agent",
+          ".agent-venvs/agent"
+        ],
+        "sockets": [
+          "/run/pinka/otlp/agent.sock",
+          "/run/pinka/platform/ctl/session.sock"
+        ]
+      },
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/run/pinka/postgres",
+        "/run/pinka/postgres-reader",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "untrusted-agent",
+      "properties": {
+        "Group": "refplat-agent",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateNetwork": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "refplat-agent"
+      },
+      "unit": "refplat-agent.service"
+    },
+    {
+      "address_families": [
+        "AF_UNIX",
+        "AF_INET",
+        "AF_INET6"
+      ],
+      "inaccessible_paths": [
+        "/var/lib/pinka/git",
+        "/var/lib/pinka/staging",
+        "/var/lib/incus",
+        "/var/lib/docker",
+        "/run/docker.sock",
+        "/var/run/docker.sock",
+        "/etc/pinka/secrets/containers",
+        "/etc/pinka/secrets/backup",
+        "/etc/pinka/inference",
+        "/srv/pinka/backups",
+        "/run/pinka/gpu.sock",
+        "/run/pinka/run-network.sock",
+        "/srv/pinka/restricted",
+        "/etc/pinka/incus",
+        "/etc/pinka/signing"
+      ],
+      "profile": "inference-broker",
+      "properties": {
+        "Group": "refplat-broker",
+        "LockPersonality": "yes",
+        "MemoryDenyWriteExecute": "yes",
+        "NoNewPrivileges": "yes",
+        "PrivateDevices": "yes",
+        "PrivateTmp": "yes",
+        "ProcSubset": "pid",
+        "ProtectClock": "yes",
+        "ProtectControlGroups": "yes",
+        "ProtectHome": "yes",
+        "ProtectHostname": "yes",
+        "ProtectKernelLogs": "yes",
+        "ProtectKernelModules": "yes",
+        "ProtectKernelTunables": "yes",
+        "ProtectProc": "invisible",
+        "ProtectSystem": "strict",
+        "RestrictRealtime": "yes",
+        "RestrictSUIDSGID": "yes",
+        "Slice": "pinka-services.slice",
+        "User": "refplat-broker"
+      },
+      "unit": "refplat-broker.service"
+    }
+  ],
+  "incus_certificates": [],
+  "inference_clients": [
+    "refplat-broker",
+    "refplat-ctl"
+  ],
+  "opa": null,
+  "platform": "refplat",
+  "render_version": 1,
+  "requires": [
+    "gpu",
+    "inference",
+    "postgres",
+    "telemetry"
+  ],
+  "run_network": null,
+  "secrets": [
+    {
+      "group": "refplat-ctl",
+      "mode": "0640",
+      "name": "api-token",
+      "owner": "root",
+      "path": "/etc/pinka/secrets/refplat-ctl/api-token",
+      "service": "ctl"
+    }
+  ],
+  "service_units": [
+    "refplat-ctl.service",
+    "refplat-agent.service",
+    "refplat-broker.service"
+  ],
+  "signing": {
+    "dir": "/etc/pinka/signing/refplat",
+    "key": "/etc/pinka/signing/refplat/signing.key",
+    "owner": "refplat-ctl",
+    "pub": "/etc/pinka/signing/refplat/signing.pub",
+    "published_dir": "/srv/pinka/shared/signing-keys",
+    "published_prefix": "refplat-pinka-lab-"
+  },
+  "socket_units": [
+    "refplat-ctl-api.socket",
+    "refplat-ctl-session.socket",
+    "refplat-broker-infer.socket"
+  ],
+  "sockets": [
+    {
+      "acl": [
+        "group:pinka:rw-"
+      ],
+      "group": "refplat-ctl-api",
+      "mode": "0660",
+      "owner": "refplat-ctl",
+      "path": "/run/pinka/platform/ctl/api.sock",
+      "unit": "refplat-ctl-api.socket",
+      "untrusted_clients": false
+    },
+    {
+      "acl": [],
+      "group": "refplat-ctl-session",
+      "mode": "0660",
+      "owner": "refplat-ctl",
+      "path": "/run/pinka/platform/ctl/session.sock",
+      "unit": "refplat-ctl-session.socket",
+      "untrusted_clients": true
+    },
+    {
+      "acl": [
+        "group:pinka:rw-"
+      ],
+      "group": "refplat-broker-infer",
+      "mode": "0660",
+      "owner": "refplat-broker",
+      "path": "/run/pinka/platform/broker/infer.sock",
+      "unit": "refplat-broker-infer.socket",
+      "untrusted_clients": false
+    }
+  ],
+  "stale_units": [],
+  "state_dirs": [
+    "/srv/pinka/platforms/refplat/state/ctl/records",
+    "/srv/pinka/platforms/refplat/state/ctl/datasets"
+  ],
+  "telemetry_labels": [],
+  "tools": [],
+  "training": {
+    "dataset_sources": [
+      "/srv/pinka/platforms/refplat/state/ctl/records",
+      "/srv/pinka/platforms/refplat/state/ctl/datasets"
+    ],
+    "jobs": [
+      {
+        "account": "refplat-tune",
+        "adapter": "refplat-tune",
+        "base_model": true,
+        "command": [
+          "python3",
+          "-I",
+          "-c",
+          "\"\"\"refplat's toy training (the jobs tune and tunecpu): deterministic and resumable.\n\nThe arbiter runs it with ``python3 -I -c``: the manifest carries this file's\ntext in both jobs, and the tests keep the three identical. It hashes the\ntraining dataset with the seed into a state, advances the state one step at a\ntime with a checkpoint after each step, and writes the final state as its\nadapter. A resumed run (``PINKA_JOB_RESUME=1``) continues from the checkpoint\nand ends with the same adapter as an uninterrupted one.\n\"\"\"\n\nimport hashlib\nimport json\nimport os\nimport pathlib\nimport time\n\nseed = os.environ[\"PINKA_JOB_SEED\"]\nparams = json.loads(os.environ.get(\"PINKA_JOB_HYPERPARAMETERS\") or \"{}\")\nsteps, pause = int(params.get(\"steps\", 8)), float(params.get(\"step_seconds\", 0))\nroot = pathlib.Path(\"/datasets/train\")\ndata = hashlib.sha256()\nfiles = sorted(\n    (p for p in root.rglob(\"*\") if p.is_file()),\n    key=lambda p: p.relative_to(root).as_posix().encode(),\n)\nfor path in files:\n    data.update(path.relative_to(root).as_posix().encode() + b\"\\0\" + path.read_bytes())\nstate, start = data.hexdigest() + seed, 0\ncheckpoint = pathlib.Path(\"/checkpoints/state.json\")\nif os.environ.get(\"PINKA_JOB_RESUME\") == \"1\" and checkpoint.is_file():\n    saved = json.loads(checkpoint.read_text(encoding=\"utf-8\"))\n    state, start = saved[\"state\"], saved[\"step\"]\nfor step in range(start, steps):\n    state = hashlib.sha256(f\"{state}:{step}\".encode()).hexdigest()\n    temp = checkpoint.with_suffix(\".tmp\")\n    temp.write_text(json.dumps({\"step\": step + 1, \"state\": state}), encoding=\"utf-8\")\n    temp.replace(checkpoint)\n    print(f\"step {step + 1}/{steps}\", flush=True)\n    time.sleep(pause)\nout = pathlib.Path(\"/output/adapter\")\nout.mkdir(parents=True, exist_ok=True)\n(out / \"adapter_model.bin\").write_bytes(bytes.fromhex(state))\nconfig = {\"seed\": seed, \"steps\": steps, \"toy\": True}\n(out / \"adapter_config.json\").write_text(json.dumps(config, sort_keys=True), encoding=\"utf-8\")\n"
+        ],
+        "cpus": 2,
+        "datasets": [
+          "train"
+        ],
+        "gpus": 1,
+        "image": "public.ecr.aws/docker/library/python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+        "memory_max": "4G",
+        "name": "tune",
+        "resumable": true,
+        "timeout_seconds": 600
+      },
+      {
+        "account": "refplat-tunecpu",
+        "adapter": "refplat-tune",
+        "base_model": false,
+        "command": [
+          "python3",
+          "-I",
+          "-c",
+          "\"\"\"refplat's toy training (the jobs tune and tunecpu): deterministic and resumable.\n\nThe arbiter runs it with ``python3 -I -c``: the manifest carries this file's\ntext in both jobs, and the tests keep the three identical. It hashes the\ntraining dataset with the seed into a state, advances the state one step at a\ntime with a checkpoint after each step, and writes the final state as its\nadapter. A resumed run (``PINKA_JOB_RESUME=1``) continues from the checkpoint\nand ends with the same adapter as an uninterrupted one.\n\"\"\"\n\nimport hashlib\nimport json\nimport os\nimport pathlib\nimport time\n\nseed = os.environ[\"PINKA_JOB_SEED\"]\nparams = json.loads(os.environ.get(\"PINKA_JOB_HYPERPARAMETERS\") or \"{}\")\nsteps, pause = int(params.get(\"steps\", 8)), float(params.get(\"step_seconds\", 0))\nroot = pathlib.Path(\"/datasets/train\")\ndata = hashlib.sha256()\nfiles = sorted(\n    (p for p in root.rglob(\"*\") if p.is_file()),\n    key=lambda p: p.relative_to(root).as_posix().encode(),\n)\nfor path in files:\n    data.update(path.relative_to(root).as_posix().encode() + b\"\\0\" + path.read_bytes())\nstate, start = data.hexdigest() + seed, 0\ncheckpoint = pathlib.Path(\"/checkpoints/state.json\")\nif os.environ.get(\"PINKA_JOB_RESUME\") == \"1\" and checkpoint.is_file():\n    saved = json.loads(checkpoint.read_text(encoding=\"utf-8\"))\n    state, start = saved[\"state\"], saved[\"step\"]\nfor step in range(start, steps):\n    state = hashlib.sha256(f\"{state}:{step}\".encode()).hexdigest()\n    temp = checkpoint.with_suffix(\".tmp\")\n    temp.write_text(json.dumps({\"step\": step + 1, \"state\": state}), encoding=\"utf-8\")\n    temp.replace(checkpoint)\n    print(f\"step {step + 1}/{steps}\", flush=True)\n    time.sleep(pause)\nout = pathlib.Path(\"/output/adapter\")\nout.mkdir(parents=True, exist_ok=True)\n(out / \"adapter_model.bin\").write_bytes(bytes.fromhex(state))\nconfig = {\"seed\": seed, \"steps\": steps, \"toy\": True}\n(out / \"adapter_config.json\").write_text(json.dumps(config, sort_keys=True), encoding=\"utf-8\")\n"
+        ],
+        "cpus": 2,
+        "datasets": [
+          "train"
+        ],
+        "gpus": 0,
+        "image": "public.ecr.aws/docker/library/python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+        "memory_max": "4G",
+        "name": "tunecpu",
+        "resumable": true,
+        "timeout_seconds": 600
+      }
+    ]
+  }
+}

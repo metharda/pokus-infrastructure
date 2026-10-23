@@ -1,0 +1,34 @@
+# Managed by pinka (ansible/roles/docker/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Docker Engine with Compose and buildx, pinned and held, and its daemon configuration; a pre-existing Docker is used as it is.
+    options:
+      researchers:
+        type: list
+        elements: dict
+        required: true
+        description: Researchers; break-glass Docker access is only allowed for admins.
+      break_glass_docker:
+        type: list
+        elements: str
+        required: true
+        description: Admins added to the docker group (root-equivalent), logged and recorded in the fingerprint.
+      docker_data_root:
+        type: path
+        default: /var/lib/docker
+        description: Root of Docker's images, containers and volumes.
+      docker_address_pools:
+        type: list
+        elements: dict
+        default: [{base: 172.30.0.0/16, size: 24}]
+        description: >-
+          pinka's address pool for the subnets of its Compose networks; must not
+          overlap Incus bridges, Tailscale's 100.64.0.0/10 or 192.168.0.0/16.
+      docker_cdi_min_version:
+        type: str
+        default: "25.0"
+        description: First Docker Engine version with CDI device support; an older engine pinka installs gets the NVIDIA runtime.
+      docker_cdi_default_since:
+        type: str
+        default: "28.2"
+        description: First Docker Engine version that enables CDI by default; daemon.json sets features.cdi only below it.

@@ -1,0 +1,156 @@
+{
+  "infra_groups": [
+    "pinka-restricted",
+    "pinka-query",
+    "pinka-datasets"
+  ],
+  "groups": [
+    "potka-orch",
+    "potka-agent",
+    "potka-gw",
+    "potka-exec",
+    "potka-inject",
+    "potka-verify",
+    "potka-eval",
+    "potka-lora",
+    "potka-migrate",
+    "potka-orch-api",
+    "potka-orch-svc",
+    "potka-orch-agent-session",
+    "potka-gw-agent",
+    "potka-gw-svc",
+    "potka-exec-agent",
+    "potka-exec-api",
+    "potka-inject-api",
+    "potka-verify-api",
+    "potka-db"
+  ],
+  "accounts": [
+    {
+      "name": "potka-orch",
+      "group": "potka-orch",
+      "groups": [
+        "pinka-query",
+        "pinka-restricted",
+        "potka-db",
+        "potka-exec-api",
+        "potka-gw-svc",
+        "potka-inject-api",
+        "potka-verify-api"
+      ],
+      "home": "/var/lib/pinka/potka-orch",
+      "comment": "service orch (controller)",
+      "kind": "service",
+      "member": "orch",
+      "profile": "controller"
+    },
+    {
+      "name": "potka-agent",
+      "group": "potka-agent",
+      "groups": [
+        "potka-exec-agent",
+        "potka-gw-agent",
+        "potka-orch-agent-session"
+      ],
+      "home": "/var/lib/pinka/potka-agent",
+      "comment": "service agent (untrusted-agent)",
+      "kind": "service",
+      "member": "agent",
+      "profile": "untrusted-agent"
+    },
+    {
+      "name": "potka-gw",
+      "group": "potka-gw",
+      "groups": [
+        "potka-db",
+        "potka-orch-svc"
+      ],
+      "home": "/var/lib/pinka/potka-gw",
+      "comment": "service gw (inference-broker)",
+      "kind": "service",
+      "member": "gw",
+      "profile": "inference-broker"
+    },
+    {
+      "name": "potka-exec",
+      "group": "potka-exec",
+      "groups": [
+        "pinka-query",
+        "potka-db",
+        "potka-orch-svc"
+      ],
+      "home": "/var/lib/pinka/potka-exec",
+      "comment": "service exec (sandbox-operator)",
+      "kind": "service",
+      "member": "exec",
+      "profile": "sandbox-operator"
+    },
+    {
+      "name": "potka-inject",
+      "group": "potka-inject",
+      "groups": [
+        "pinka-restricted",
+        "potka-db",
+        "potka-orch-svc"
+      ],
+      "home": "/var/lib/pinka/potka-inject",
+      "comment": "service inject (restricted-operator)",
+      "kind": "service",
+      "member": "inject",
+      "profile": "restricted-operator"
+    },
+    {
+      "name": "potka-verify",
+      "group": "potka-verify",
+      "groups": [
+        "pinka-restricted",
+        "potka-db",
+        "potka-orch-svc"
+      ],
+      "home": "/var/lib/pinka/potka-verify",
+      "comment": "service verify (restricted-operator)",
+      "kind": "service",
+      "member": "verify",
+      "profile": "restricted-operator"
+    },
+    {
+      "name": "potka-eval",
+      "group": "potka-eval",
+      "groups": [
+        "pinka-query",
+        "pinka-restricted",
+        "potka-db",
+        "potka-orch-svc"
+      ],
+      "home": "/var/lib/pinka/potka-eval",
+      "comment": "service eval (restricted-reader)",
+      "kind": "service",
+      "member": "eval",
+      "profile": "restricted-reader"
+    },
+    {
+      "name": "potka-lora",
+      "group": "potka-lora",
+      "groups": [
+        "pinka-datasets"
+      ],
+      "home": "/var/lib/pinka/potka-lora",
+      "comment": "job lora (gpu-trainer)",
+      "kind": "job",
+      "member": "lora",
+      "profile": "gpu-trainer"
+    },
+    {
+      "name": "potka-migrate",
+      "group": "potka-migrate",
+      "groups": [
+        "potka-db"
+      ],
+      "home": "/var/lib/pinka/potka-migrate",
+      "comment": "migrate migrate",
+      "kind": "migrate",
+      "member": "migrate",
+      "profile": null
+    }
+  ]
+}

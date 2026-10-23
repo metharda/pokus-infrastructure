@@ -1,0 +1,12 @@
+# Managed by pinka (ansible/roles/active_platform/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Read what infra rendered for the active platform.
+    description:
+      - Sets the fact active_platform from /etc/pinka/platform/rendered.json, or {} without an active platform.
+      - Keeps a value the platform role already set during a deployment.
+    options:
+      active_platform_file:
+        type: path
+        default: /etc/pinka/platform/rendered.json
+        description: The rendering of the active platform (infra-internal, no secrets).

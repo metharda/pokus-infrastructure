@@ -1,0 +1,68 @@
+# Managed by pinka (ansible/roles/images/tasks/export.yml). Local changes will be overwritten.
+#
+# Export of a blueprint's image (images_image) to
+# <images_export_root>/<blueprint>/<version>/ with SHA256SUMS and build.json,
+# written last. build.json holds the installed packages (name, version,
+# architecture) that the build recorded, which the environment fingerprint
+# reports; an image exported without a build in this run keeps the list of
+# its record only when the record is of the same image, otherwise it is null.
+
+- name: Create the export directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: pinka-admin
+    mode: "0750"
+  loop:
+    - "{{ images_export_dir | dirname }}"
+    - "{{ images_export_dir }}"
+
+- name: Remove the files of the version's previous image
+  ansible.builtin.file:
+    path: "{{ images_export_dir }}/{{ item }}"
+    state: absent
+  loop: "{{ images_record.files | default([]) }}"
+  when: images_record.fingerprint | default(images_image.fingerprint) != images_image.fingerprint
+
+- name: Export the image
+  ansible.builtin.command:
+    argv: [incus, image, export, "{{ images_image.fingerprint }}", "{{ images_export_dir }}/"]
+  changed_when: true
+
+- name: Check the export and record its sha256 sums
+  ansible.builtin.command:
+    argv: ["{{ images_files_helper }}", verify, --dir, "{{ images_export_dir }}", --fingerprint, "{{ images_image.fingerprint }}", --write-sums]
+  register: images_written
+  changed_when: (images_written.stdout | from_json).changed | default(false)
+  failed_when: images_written.rc != 0 or not (images_written.stdout | from_json).ok
+
+- name: Restrict the export to the lab's admins
+  ansible.builtin.file:
+    path: "{{ images_export_dir }}"
+    state: directory
+    recurse: true
+    owner: root
+    group: pinka-admin
+    mode: u=rwX,g=rX,o=
+
+- name: Write the export record
+  ansible.builtin.copy:
+    dest: "{{ images_export_dir }}/build.json"
+    content: >-
+      {{ {'schema_version': 1, 'blueprint': images_name, 'version': images_spec.version,
+          'alias': images_alias, 'fingerprint': images_image.fingerprint,
+          'type': images_spec.type, 'nesting': images_spec.nesting,
+          'architecture': images_image.architecture, 'base': images_spec.base,
+          'properties': images_image.properties | default({}) | dict2items
+                        | selectattr('key', 'match', '^pinka[.]') | items2dict,
+          'files': (images_written.stdout | from_json).files,
+          'packages': images_package_list
+                      if images_package_list is not none
+                      else (images_record.packages | default(none)
+                            if images_record.fingerprint | default('') == images_image.fingerprint
+                            else none),
+          'exported_at': now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ')} | to_nice_json }}
+    owner: root
+    group: pinka-admin
+    mode: "0640"

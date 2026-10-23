@@ -1,0 +1,25 @@
+# Managed by pinka (ansible/roles/bootstrap_signal/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Stop the play with a bootstrap signal.
+    description:
+      - Writes the signal file that bootstrap.sh reads and fails the play.
+      - bootstrap.sh then exits with the signal code and prints the message.
+    options:
+      bootstrap_signal_code:
+        type: int
+        required: true
+        choices: [65, 75, 76, 77]
+        description: 65 platform release refused, 75 WSL restart required, 76 reboot or MOK enrollment required, 77 operator action required.
+      bootstrap_signal_message:
+        type: str
+        required: true
+        description: What the operator has to do; printed by bootstrap.sh.
+      bootstrap_signal_file:
+        type: path
+        default: /run/pinka/bootstrap-signal.json
+        description: Signal file; bootstrap.sh passes its path in pinka_bootstrap.signal_file.
+      bootstrap_signal_mok_key:
+        type: path
+        default: ""
+        description: With code 76, a Machine Owner Key that bootstrap.sh imports (mokutil --import) with the operator's one-time password before it exits.

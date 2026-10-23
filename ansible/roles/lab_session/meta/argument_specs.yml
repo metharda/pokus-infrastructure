@@ -1,0 +1,41 @@
+# Managed by pinka (ansible/roles/lab_session/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: pinka-lab.target, the startup health gate and the per-boot session record.
+    options:
+      pinka_provider:
+        type: str
+        required: true
+        description: Provider of this host; on wsl2 the gate also compares the clock with an NTP reference.
+      node_role:
+        type: str
+        required: true
+        description: full, lab or inference; selects the checks of the health gate.
+      pinka_features:
+        type: dict
+        required: true
+        description: Feature flags of the host profile (gpu_inference adds the GPU check).
+      pinka_versions:
+        type: dict
+        required: true
+        description: The pinned versions (the CUDA image of the GPU check).
+      lab_session_autostart:
+        type: bool
+        default: true
+        description: Start the lab at boot (multi-user.target wants pinka-lab.target).
+      lab_session_gate_timeout:
+        type: int
+        default: 600
+        description: Seconds the health gate keeps checking before it fails.
+      lab_session_gate_interval:
+        type: int
+        default: 5
+        description: Seconds between two rounds of checks.
+      lab_session_ntp_reference:
+        type: str
+        default: pool.ntp.org
+        description: WSL only; NTP server the wall clock is compared with ("" for none). An unreachable server skips the comparison.
+      lab_session_max_clock_offset:
+        type: float
+        default: 1.0
+        description: WSL only; largest clock offset to the NTP reference, in seconds.

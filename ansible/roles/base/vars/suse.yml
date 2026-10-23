@@ -1,0 +1,29 @@
+# Managed by pinka (ansible/roles/base/vars/suse.yml). Local changes will be overwritten.
+#
+# TODO(verify): package names (openSUSE mirrors are not reachable from the
+# build environment).
+base_package_names:
+  ca_certificates: ca-certificates
+  curl: curl
+  gpg: gpg2
+  jq: jq
+  git: git
+  acl: acl
+  btrfs_tools: btrfsprogs
+  lvm2: lvm2
+  thin_provisioning_tools: thin-provisioning-tools
+  nftables: nftables
+  rsync: rsync
+  tmux: tmux
+  htop: htop
+  iotop: iotop
+  sysstat: sysstat
+  sudo: sudo
+  xz: xz
+  zstd: zstd
+  bzip2: bzip2
+  tar: tar
+  python_debian: ""  # Debian family only
+base_package_overrides: {}
+base_timesync_default_package: chrony
+base_timesync_default_service: chronyd

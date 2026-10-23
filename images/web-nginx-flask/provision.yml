@@ -1,0 +1,49 @@
+# Managed by pinka (images/web-nginx-flask/provision.yml). Local changes will be overwritten.
+#
+# nginx, gunicorn and the application (BUILD_PROMPT §7.13), on top of `_base`.
+- name: Provision the web blueprint
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Install the packages
+      ansible.builtin.apt:
+        name: "{{ image.packages }}"
+        state: present
+        update_cache: true
+        install_recommends: false
+
+    - name: Create the application directory
+      ansible.builtin.file:
+        path: /srv/webapp
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the application
+      ansible.builtin.copy:
+        src: files/app.py
+        dest: /srv/webapp/app.py
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install the application's unit
+      ansible.builtin.copy:
+        src: files/webapp.service
+        dest: /etc/systemd/system/webapp.service
+        mode: "0644"
+
+    - name: Configure nginx
+      ansible.builtin.copy:
+        src: files/nginx-site.conf
+        dest: /etc/nginx/sites-available/default
+        mode: "0644"
+
+    - name: Start the services
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: restarted
+        daemon_reload: true
+      loop: [webapp.service, nginx.service]

@@ -1,8 +1,0 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/install_apt.yml). Local changes will be overwritten.
-- name: Install packages with apt
-  ansible.builtin.apt:
-    name: "{{ pkg_packages | pokus_package_specs(pkg_versions, 'apt') }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-    install_recommends: false

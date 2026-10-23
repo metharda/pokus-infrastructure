@@ -1,0 +1,17 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "install_driver": "auto",
+  "needs_action": [],
+  "open_module_drivers": [],
+  "outcome": "degraded",
+  "pci_device": "10de:1d01",
+  "proprietary_only_drivers": [
+    "580.178.04"
+  ],
+  "provider": "baremetal",
+  "warnings_contain": [
+    "only with its proprietary kernel module (Maxwell, Pascal"
+  ]
+}

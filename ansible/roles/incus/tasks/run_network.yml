@@ -1,0 +1,41 @@
+# Managed by pinka (ansible/roles/incus/tasks/run_network.yml). Local changes will be overwritten.
+#
+# The run-network helper (BUILD_PROMPT §7.7): root-run, one instance per
+# connection on /run/pinka/run-network.sock, which belongs to the active
+# platform's controller account (0600; root can always connect). It creates
+# and deletes run networks r-<short> with fixed settings and logs every
+# operation to /var/lib/pinka/run-networks/operations.jsonl. The platform role
+# includes this file to give the socket to a new controller.
+- name: Create the directory of the helper's operation log
+  ansible.builtin.file:
+    path: /var/lib/pinka/run-networks
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install the run-network helper
+  ansible.builtin.copy:
+    src: pinka_run_network.py
+    dest: /usr/local/libexec/pinka/run-network
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the units of the run-network helper
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: [pinka-run-network.socket, pinka-run-network@.service]
+  register: incus_run_network_units
+
+- name: Enable the run-network helper's socket
+  ansible.builtin.systemd_service:
+    name: pinka-run-network.socket
+    enabled: true
+    state: "{{ 'restarted' if incus_run_network_units is changed else 'started' }}"
+    daemon_reload: "{{ incus_run_network_units is changed }}"
+  when: not ansible_check_mode or 'pinka-run-network.socket' in pinka_present.units

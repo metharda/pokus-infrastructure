@@ -1,0 +1,9 @@
+# Managed by pinka (ansible/roles/incus/vars/archlinux.yml). Local changes will be overwritten.
+#
+# TODO(verify): group, unit and path names of the Incus packages of this
+# family (its mirrors are not reachable from the build environment). Upstream
+# Incus (incus-user --group) and the Debian packaging use these names.
+incus_groups: {user: incus, admin: incus-admin}
+incus_units: {daemon: incus.service, user_socket: incus-user.socket}
+incus_cli: /usr/bin/incus
+incus_server_certificate: /var/lib/incus/server.crt

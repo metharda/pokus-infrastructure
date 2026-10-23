@@ -1,0 +1,41 @@
+# Managed by pinka (vllm/profiles/ada-12g.yml). Local changes will be overwritten.
+#
+# Serving profile for one NVIDIA Ada GPU with 12 GB (BUILD_PROMPT §7.11): the
+# vLLM 0.31.0 `serve` options every deployment on this GPU class starts from.
+# A deployment (contracts.md#inference) may override only the keys listed in
+# `overridable`; the vLLM config file the deploy helper renders always pins
+# model, served name, host, port and the tracing endpoint itself.
+name: ada-12g
+description: One Ada GPU (compute capability 8.9) with 12 GB, e.g. a desktop RTX 40-series card
+gpu:
+  min_memory_mib: 11500
+  compute_capability: "8.9"
+# Weight formats that fit the budget: 4-bit AWQ/GPTQ, FP8, or BF16 for small models.
+quantizations: [awq, awq_marlin, gptq, gptq_marlin, fp8, null]
+# vLLM serve options (long names, as in a `vllm serve --config` file).
+args:
+  gpu-memory-utilization: 0.88
+  max-model-len: 8192
+  max-num-seqs: 8
+  dtype: auto
+  seed: 0
+  enable-auto-tool-choice: true
+  enable-lora: false
+  max-loras: 1
+  max-lora-rank: 16
+  enable-prefix-caching: true
+# Deployment override keys (snake_case in the deployment spec) and the vLLM
+# option each one sets.
+overridable:
+  max_model_len: max-model-len
+  max_num_seqs: max-num-seqs
+  gpu_memory_utilization: gpu-memory-utilization
+  quantization: quantization
+  dtype: dtype
+  tool_call_parser: tool-call-parser
+  chat_template: chat-template
+  enable_lora: enable-lora
+  max_loras: max-loras
+  max_lora_rank: max-lora-rank
+  enable_prefix_caching: enable-prefix-caching
+  seed: seed

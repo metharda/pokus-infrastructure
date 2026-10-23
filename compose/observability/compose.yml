@@ -1,0 +1,221 @@
+# Managed by pinka (compose/observability/compose.yml). Local changes will be overwritten.
+#
+# Observability services (BUILD_PROMPT §7.9, contracts.md#telemetry). Every
+# service uses the host network and binds 127.0.0.1 only (Prometheus scrapes
+# Incus's loopback API and the exporters; the platform's services and the
+# researchers' SSH forwards reach the contract ports); the gateway collector
+# also binds the VM listener address when the vm_targets feature is on.
+# Variables come from .env (compose role): images pinned by digest, ports,
+# paths, configuration hashes and the profiles: "stores" (Prometheus, Loki,
+# Tempo and Grafana; full and lab nodes, not inference nodes, BUILD_PROMPT
+# §19.10) and the GPU profile.
+name: pinka-observability
+
+# Settings every lab container gets here rather than from the Docker daemon,
+# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
+# §7.6): the local log driver with size limits and the lab services' slice.
+x-logging: &logging
+  driver: local
+  options:
+    max-size: ${LOG_MAX_SIZE:?}
+    max-file: ${LOG_MAX_FILE:?}
+
+x-hardened: &hardened
+  restart: unless-stopped
+  logging: *logging
+  cgroup_parent: ${CGROUP_PARENT:?}
+  network_mode: host
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+x-gpu-exporter: &gpu_exporter
+  <<: *hardened
+  image: ${GPU_EXPORTER_IMAGE:?pinned image missing}
+  container_name: pinka-gpu-exporter
+  command: ["--web.listen-address=127.0.0.1:${GPU_EXPORTER_PORT:?}"]
+
+services:
+  otel_gateway:
+    <<: *hardened
+    image: ${OTEL_COLLECTOR_IMAGE:?pinned image missing}
+    container_name: pinka-otel-gateway
+    labels:
+      org.pinka.config-hash: ${OTEL_CONFIG_HASH:-}
+      org.pinka.pairing-hash: ${OTEL_PAIRING_HASH:-}
+    # Infra accounts (observability role), the telemetry guard's allowlist (ADR-0016).
+    user: "${OTELCOL_UID:?}:${OTELCOL_GID:?}"
+    command: ["--config=/etc/otelcol/gateway.yaml"]
+    volumes:
+      - ./config/otel:/etc/otelcol:ro
+      # Split inference: mutual TLS to or from the paired node (empty otherwise).
+      - /etc/pinka/secrets/containers/otel-pairing:/etc/pinka-pairing:ro
+
+  # Reads the host journal through the host's journalctl (chroot into the
+  # read-only host root, which needs root and CAP_SYS_CHROOT) and forwards it
+  # to the gateway; it accepts nothing from targets.
+  otel_journald:
+    <<: *hardened
+    image: ${OTEL_COLLECTOR_IMAGE:?pinned image missing}
+    container_name: pinka-otel-journald
+    labels:
+      org.pinka.config-hash: ${OTEL_CONFIG_HASH:-}
+    user: "0:0"
+    cap_add: [SYS_CHROOT]
+    command: ["--config=/etc/otelcol/journald.yaml"]
+    volumes:
+      - ./config/otel:/etc/otelcol:ro
+      - /:/hostfs:ro,rslave
+      - ${PINKA_ROOT:?}/state/otelcol-journald:/var/lib/otelcol/journald
+
+  prometheus:
+    <<: *hardened
+    profiles: [stores]
+    image: ${PROMETHEUS_IMAGE:?pinned image missing}
+    container_name: pinka-prometheus
+    user: "${PROMETHEUS_UID:?}:${PROMETHEUS_GID:?}"
+    labels:
+      org.pinka.config-hash: ${PROMETHEUS_CONFIG_HASH:-}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:?}
+      - --web.listen-address=127.0.0.1:${PROMETHEUS_PORT:?}
+    volumes:
+      - ./config/prometheus:/etc/prometheus:ro
+      - /etc/pinka/secrets/containers/prometheus-incus:/etc/prometheus/incus:ro
+      - ${PINKA_ROOT:?}/state/prometheus:/prometheus
+
+  loki:
+    <<: *hardened
+    profiles: [stores]
+    image: ${LOKI_IMAGE:?pinned image missing}
+    container_name: pinka-loki
+    user: "${LOKI_UID:?}:${LOKI_GID:?}"
+    labels:
+      org.pinka.config-hash: ${LOKI_CONFIG_HASH:-}
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./config/loki:/etc/loki:ro
+      - ${PINKA_ROOT:?}/state/loki:/loki
+
+  tempo:
+    <<: *hardened
+    profiles: [stores]
+    image: ${TEMPO_IMAGE:?pinned image missing}
+    container_name: pinka-tempo
+    user: "${TEMPO_UID:?}:${TEMPO_GID:?}"
+    labels:
+      org.pinka.config-hash: ${TEMPO_CONFIG_HASH:-}
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./config/tempo:/etc/tempo:ro
+      - ${PINKA_ROOT:?}/state/tempo:/var/tempo
+
+  # The only way to query telemetry (BUILD_PROMPT §7.9): forwards only the
+  # query endpoints of Prometheus, Loki and Tempo and answers 403 to
+  # everything else. Platform services reach it through
+  # /run/pinka/query.sock (a link to query/query.sock, 0660, group
+  # pinka-query; the umask makes the mode), Grafana through its loopback
+  # port. A socket left over from a crash is removed before nginx starts.
+  query_proxy:
+    <<: *hardened
+    profiles: [stores]
+    image: ${QUERY_PROXY_IMAGE:?pinned image missing}
+    container_name: pinka-query-proxy
+    labels:
+      org.pinka.config-hash: ${QUERY_PROXY_CONFIG_HASH:-}
+    user: "${QUERY_PROXY_UID:?}:${PINKA_QUERY_GID:?}"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - umask 0117 && rm -f /run/query/query.sock && exec nginx -c /etc/query-proxy/nginx.conf -g 'daemon off;'
+    tmpfs: [/tmp]
+    volumes:
+      - ./config/query-proxy:/etc/query-proxy:ro
+      - /run/pinka/query:/run/query
+
+  grafana:
+    <<: *hardened
+    profiles: [stores]
+    image: ${GRAFANA_IMAGE:?pinned image missing}
+    container_name: pinka-grafana
+    # Group 0: the image grants its own paths to group 0 for any user.
+    user: "${GRAFANA_UID:?}:0"
+    labels:
+      org.pinka.config-hash: ${GRAFANA_CONFIG_HASH:-}
+    # Membership of the host group pinka opens the reader socket directory.
+    group_add: ["${PINKA_GID:?}"]
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: ${GRAFANA_PORT:?}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana-admin
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_AUTO_ASSIGN_ORG_ROLE: ${GRAFANA_AUTO_ASSIGN_ORG_ROLE:?}
+      GF_LOG_MODE: console
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    tmpfs: [/tmp]
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./config/grafana/platform-dashboards:/etc/grafana/platform-dashboards:ro
+      - ${PINKA_ROOT:?}/state/grafana:/var/lib/grafana
+      - /run/pinka/postgres-reader:/run/pinka/postgres-reader
+      - /etc/pinka/secrets/containers/grafana-admin:/run/secrets/grafana-admin:ro
+      - /etc/pinka/secrets/containers/platform-grafana:/run/secrets/platform-grafana:ro
+
+  node_exporter:
+    <<: *hardened
+    image: ${NODE_EXPORTER_IMAGE:?pinned image missing}
+    container_name: pinka-node-exporter
+    pid: host
+    command:
+      - --web.listen-address=127.0.0.1:${NODE_EXPORTER_PORT:?}
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/host/var/lib/pinka/node-exporter
+    volumes:
+      - /:/host:ro,rslave
+
+  cadvisor:
+    <<: *hardened
+    image: ${CADVISOR_IMAGE:?pinned image missing}
+    container_name: pinka-cadvisor
+    command:
+      - -listen_ip=127.0.0.1
+      - -port=${CADVISOR_PORT:?}
+      - -docker_only=true
+      - -housekeeping_interval=30s
+      - -store_container_labels=false
+    tmpfs: [/tmp]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - ${DOCKER_DATA_ROOT:?}:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+
+  # GPU metrics through nvidia-smi (works on WSL2), with the GPU method Docker
+  # offers: CDI device or the NVIDIA runtime. COMPOSE_PROFILES in .env enables
+  # one of the two services when gpu_inference is on.
+  gpu_exporter:
+    <<: *gpu_exporter
+    profiles: [gpu-cdi]
+    devices: ["nvidia.com/gpu=all"]
+
+  gpu_exporter_runtime:
+    <<: *gpu_exporter
+    profiles: [gpu-runtime]
+    runtime: nvidia
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: utility

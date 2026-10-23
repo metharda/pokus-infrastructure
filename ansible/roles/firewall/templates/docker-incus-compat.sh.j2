@@ -1,0 +1,22 @@
+#!/bin/sh
+# Managed by pinka (ansible/roles/firewall/templates/docker-incus-compat.sh.j2). Local changes will be overwritten.
+#
+# Docker sets the FORWARD policy to DROP and loads br_netfilter, which breaks
+# Incus bridge traffic. Accept Incus bridge traffic in DOCKER-USER, the chain
+# Docker reserves for its users, exactly as Incus documents it ("Prevent
+# connectivity issues with Incus and Docker", doc/howto/network_bridge_firewalld.md
+# of Incus 6.0.6). "+" is the iptables interface wildcard. Idempotent: rules
+# are only inserted if missing.
+set -eu
+for ipt in iptables ip6tables; do
+  command -v "$ipt" >/dev/null 2>&1 || continue
+  "$ipt" -n -L DOCKER-USER >/dev/null 2>&1 || continue
+{% for pattern in firewall_incus_bridge_patterns %}
+  if ! "$ipt" -C DOCKER-USER -i "{{ pattern | replace('*', '+') }}" -j ACCEPT 2>/dev/null; then
+    "$ipt" -I DOCKER-USER -i "{{ pattern | replace('*', '+') }}" -j ACCEPT
+  fi
+  if ! "$ipt" -C DOCKER-USER -o "{{ pattern | replace('*', '+') }}" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null; then
+    "$ipt" -I DOCKER-USER -o "{{ pattern | replace('*', '+') }}" -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  fi
+{% endfor %}
+done

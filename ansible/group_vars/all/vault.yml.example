@@ -1,0 +1,42 @@
+# Managed by pinka (ansible/group_vars/all/vault.yml.example). Local changes will be overwritten.
+#
+# Shape of group_vars/all/vault.yml, the Ansible Vault file with every secret
+# (BUILD_PROMPT §8.2). The real file is always encrypted
+# (`ansible-vault create group_vars/all/vault.yml`), never committed to the
+# public project (.gitignore), and its values never appear in logs: every task
+# that handles them uses `no_log: true`. The installer TUI generates the
+# passwords by default. Values below are placeholders.
+#
+# Per-machine identities are NOT secrets in this file; they are generated on
+# the host: SSH host keys, the Tailscale node identity, Incus certificates and
+# the platform's signing key.
+
+# One password per database role of the platform release (§12.5): its
+# services' login roles <platform>_<service>, and <platform>_migrator,
+# <platform>_reader and <platform>_grafana. `bootstrap.sh --inspect-platform`
+# lists the keys a release needs; a missing one stops bootstrap (exit 77).
+vault_postgres_passwords:
+  "<platform>_<service>": "<generated>"
+  "<platform>_migrator": "<generated>"
+  "<platform>_reader": "<generated>"
+  "<platform>_grafana": "<generated>"
+
+# The secrets the platform's manifest names, per service (§8.2).
+vault_platform_secrets:
+  "<service>":
+    "<name>": "<value>"
+
+vault_grafana_admin_password: "<generated or entered>"
+vault_grafana_user_passwords:      # one per researcher with a Grafana account
+  researcher1: "<generated>"
+  researcher2: "<generated>"
+  researcher3: "<generated>"
+
+vault_restic_repository: "sftp:backup@backup.example.com:/srv/restic/pinka-lab"
+vault_restic_password: "<generated>"
+
+vault_tailscale_authkey: ""        # optional; empty = interactive login
+vault_hf_token: ""                 # optional; only for gated models
+# Optional deploy keys per source (the release or a content package, §8.2).
+# Not read yet: bootstrap generates the host's deploy key and prints it.
+vault_git_deploy_keys: {}

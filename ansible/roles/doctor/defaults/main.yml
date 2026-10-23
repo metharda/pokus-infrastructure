@@ -1,0 +1,21 @@
+# Managed by pinka (ansible/roles/doctor/defaults/main.yml). Local changes will be overwritten.
+
+# Largest clock offset doctor accepts, in seconds.
+doctor_max_clock_offset: 1.0
+# Free space of the Incus pool below which doctor warns, in GiB.
+doctor_min_pool_free_gib: 20
+# Age of the last successful backup after which doctor warns, in hours.
+doctor_backup_max_age_hours: 26
+# Seconds doctor waits for its telemetry probe, and for a smoke target's logs.
+doctor_telemetry_wait: 60
+doctor_smoke_wait: 120
+# Seconds `pinka stop` and `update-host` give the platform's drain hook.
+doctor_drain_timeout: 1800
+# Seconds `pinka start` waits for the platform's health hook to answer ok.
+doctor_health_wait: 300
+# Processes that may listen outside loopback: sshd (firewalled), Tailscale,
+# Incus's DNS and DHCP server on its bridges, DHCP clients and time daemons.
+doctor_listener_processes: [sshd, tailscaled, dnsmasq, systemd-network, dhclient, NetworkManager, chronyd]
+# Days before the expiry of a node's pairing certificate at which doctor
+# fails inference.pairing (a new certificate means pairing again).
+doctor_certificate_renew_days: 30

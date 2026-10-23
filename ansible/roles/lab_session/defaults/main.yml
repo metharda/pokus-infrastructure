@@ -1,0 +1,11 @@
+# Managed by pinka (ansible/roles/lab_session/defaults/main.yml). Local changes will be overwritten.
+
+# Start the lab at boot: multi-user.target wants pinka-lab.target.
+lab_session_autostart: true
+# Seconds the health gate keeps checking before it fails, and between rounds.
+lab_session_gate_timeout: 600
+lab_session_gate_interval: 5
+# WSL only: NTP server the wall clock is compared with ("" for none) and the
+# largest offset in seconds. An unreachable server skips the comparison.
+lab_session_ntp_reference: pool.ntp.org
+lab_session_max_clock_offset: 1.0

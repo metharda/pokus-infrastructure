@@ -1,0 +1,68 @@
+# Managed by pinka (ansible/roles/postgres/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: PostgreSQL on Unix sockets with infra's own role; pg_hba and socket groups for the active platform.
+    options:
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile (hardware.memory_gib sizes the memory settings).
+      pinka_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (config/postgres/*.j2).
+      postgres_shared_buffers:
+        type: str
+        description: shared_buffers (default 1/16 of the memory, 128 MB to 4 GB).
+      postgres_effective_cache_size:
+        type: str
+        description: effective_cache_size (default 1/4 of the memory, 512 MB to 16 GB).
+      postgres_max_connections:
+        type: int
+        default: 100
+        description: max_connections.
+      postgres_container_uid:
+        type: int
+        default: 999
+        description: UID of the postgres user in the pinned image.
+      postgres_container_gid:
+        type: int
+        default: 999
+        description: GID of the postgres user in the pinned image.
+      postgres_exporter_uid:
+        type: int
+        default: 65534
+        description: UID of the exporter container (nobody).
+      postgres_container:
+        type: str
+        default: pinka-postgres
+        description: Name of the PostgreSQL container.
+      postgres_state_dir:
+        type: path
+        description: Data directory on the host (pinka_root/state/postgres).
+      postgres_config_dir:
+        type: path
+        description: Rendered configuration (pinka_root/services/core/config/postgres).
+      postgres_monitor_role:
+        type: str
+        default: pinka_monitor
+        description: Role of the metrics exporter (pg_monitor).
+  platform:
+    short_description: The active platform's database, roles, password files and restricted-schema check (run by the platform role).
+    options:
+      active_platform:
+        type: dict
+        required: true
+        description: The platform role's fresh rendering; its database key is the plan (roles, password files, SQL).
+      vault_postgres_passwords:
+        type: dict
+        required: true
+        description: Passwords of the platform's login roles (vault; printable ASCII).
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile (hardware.memory_gib sizes the memory settings).
+      pinka_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (config/postgres/*.j2).

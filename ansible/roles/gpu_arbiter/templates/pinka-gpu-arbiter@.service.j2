@@ -1,0 +1,37 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/templates/pinka-gpu-arbiter@.service.j2). Local changes will be overwritten.
+#
+# One GPU arbiter per connection of pinka-gpu-arbiter.socket (BUILD_PROMPT
+# §7.18). Runs as root because it switches vLLM, starts training runs and
+# writes the datasets and adapters areas; it checks the peer itself. A serve
+# request waits until the deployment answers, an idle request until the
+# running job has stopped.
+[Unit]
+Description=pinka GPU arbiter (one request)
+CollectMode=inactive-or-failed
+
+[Service]
+Slice={{ pinka_services_slice }}
+Type=oneshot
+ExecStart={{ gpu_arbiter_program }} connection
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+TimeoutStartSec={{ gpu_arbiter_serve_timeout | int + gpu_arbiter_stop_grace | int + 300 }}
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# vLLM's /health and /metrics on the loopback, nothing else.
+IPAddressAllow=localhost
+IPAddressDeny=any
+# The Docker CLI's configuration directory.
+Environment=HOME={{ gpu_arbiter_state_dir }}
+ReadWritePaths={{ gpu_arbiter_writes | map('regex_replace', '^', '-') | join(' ') }}

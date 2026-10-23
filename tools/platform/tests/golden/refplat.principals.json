@@ -1,0 +1,121 @@
+{
+  "_comment": "Managed by pinka (principals.json, contract v2 §12.3). Local changes will be overwritten.",
+  "schema_version": 1,
+  "contract_version": 2,
+  "platform": "refplat",
+  "groups": {
+    "admins": "pinka-admin",
+    "researchers": "pinka"
+  },
+  "services": [
+    {
+      "name": "ctl",
+      "profile": "controller",
+      "account": "refplat-ctl",
+      "uid": 2001,
+      "config": "/etc/pinka/platform/config/ctl.json",
+      "secrets_dir": "/etc/pinka/secrets/refplat-ctl",
+      "state": {
+        "records": "/srv/pinka/platforms/refplat/state/ctl/records",
+        "datasets": "/srv/pinka/platforms/refplat/state/ctl/datasets"
+      }
+    },
+    {
+      "name": "agent",
+      "profile": "untrusted-agent",
+      "account": "refplat-agent",
+      "uid": 2002,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
+    },
+    {
+      "name": "broker",
+      "profile": "inference-broker",
+      "account": "refplat-broker",
+      "uid": 2003,
+      "config": null,
+      "secrets_dir": null,
+      "state": {}
+    }
+  ],
+  "jobs": [
+    {
+      "name": "tune",
+      "profile": "gpu-trainer",
+      "account": "refplat-tune",
+      "uid": 2004
+    },
+    {
+      "name": "tunecpu",
+      "profile": "gpu-trainer",
+      "account": "refplat-tunecpu",
+      "uid": 2005
+    }
+  ],
+  "sockets": [
+    {
+      "service": "ctl",
+      "name": "api",
+      "path": "/run/pinka/platform/ctl/api.sock",
+      "owner": "refplat-ctl",
+      "group": "refplat-ctl-api",
+      "mode": "0660",
+      "fd_name": "api",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [],
+        "accounts": [],
+        "humans": [
+          "researchers"
+        ],
+        "human_groups": [
+          "pinka"
+        ],
+        "root": true
+      }
+    },
+    {
+      "service": "ctl",
+      "name": "session",
+      "path": "/run/pinka/platform/ctl/session.sock",
+      "owner": "refplat-ctl",
+      "group": "refplat-ctl-session",
+      "mode": "0660",
+      "fd_name": "session",
+      "agent_dedicated": true,
+      "clients": {
+        "profiles": [
+          "untrusted-agent"
+        ],
+        "accounts": [
+          "refplat-agent"
+        ],
+        "humans": [],
+        "human_groups": [],
+        "root": false
+      }
+    },
+    {
+      "service": "broker",
+      "name": "infer",
+      "path": "/run/pinka/platform/broker/infer.sock",
+      "owner": "refplat-broker",
+      "group": "refplat-broker-infer",
+      "mode": "0660",
+      "fd_name": "infer",
+      "agent_dedicated": false,
+      "clients": {
+        "profiles": [],
+        "accounts": [],
+        "humans": [
+          "researchers"
+        ],
+        "human_groups": [
+          "pinka"
+        ],
+        "root": true
+      }
+    }
+  ]
+}

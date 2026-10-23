@@ -1,0 +1,30 @@
+pinka preflight: DEGRADED (exit 10)
+  tier supported (os supported, arch supported) · release model fixed · provider wsl2
+
+Environment
+  class wsl2, hypervisor microsoft, confidence high
+OS and kernel
+  Ubuntu 24.04.3 LTS [ubuntu 24.04, family debian, parent release noble]
+  arch x86_64, kernel 6.6.87.2-microsoft-standard-WSL2
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 32.0 GiB, swap 8.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  NVIDIA GeForce RTX 4070, 12.0 GiB, driver 580.82.07 (CUDA 13.0), compute 8.9, path wsl-dxg, usable yes
+Capabilities
+  cgroup2 yes, tun yes, KVM usable no, btrfs yes, dm_thin_pool no, Secure Boot not_efi
+  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+Features
+  gpu_inference on, vm_targets off, btrfs_pool on, lvm_thin_pool off, dcgm_metrics off
+Access
+  dedicated host, firewall manager none, install session: the console
+Network: skipped (--offline)
+
+Disabled features
+  - vm_targets: No KVM: VM-class scenarios (kernel-level faults) cannot run on this host.
+
+Notes
+  - dcgm_metrics disabled (unmet: environment in ['baremetal', 'vm'], nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.

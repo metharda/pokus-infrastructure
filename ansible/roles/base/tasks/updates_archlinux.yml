@@ -1,0 +1,7 @@
+# Managed by pinka (ansible/roles/base/tasks/updates_archlinux.yml). Local changes will be overwritten.
+#
+# Arch Linux is rolling: no automatic updates; update the host only with
+# `pinka update-host` (BUILD_PROMPT §19.5).
+- name: Note that updates are manual on Arch Linux
+  ansible.builtin.debug:
+    msg: "No automatic updates on a rolling release; use 'pinka update-host'."

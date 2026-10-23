@@ -1,0 +1,12 @@
+# Managed by pinka (CITATION.cff).
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: pokus-infrastructure
+abstract: >-
+  Infrastructure-as-code for the Pokus research lab: it turns a Linux machine
+  into a lab host for benchmarking AI diagnostic agents on reproducible,
+  injected Linux faults.
+authors:
+  - given-names: Arda
+license: Apache-2.0

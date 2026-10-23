@@ -1,0 +1,1490 @@
+"""Role templates render to valid files with the required content.
+
+Templates are rendered like ``ansible.builtin.template`` with the variables
+the role sees. Where a validator exists it is used: ``nft -c`` (in a new,
+empty network namespace, so the check never touches the host's firewall),
+ShellCheck and ``sh -n`` for scripts, ``visudo -c`` for the sudoers drop-in;
+systemd units and INI-style files are parsed. Expected values come from
+BUILD_PROMPT §3.1 (wsl.conf), §7.2 (updates), §7.3 (sshd) and §7.5 (firewall).
+"""
+
+from __future__ import annotations
+
+import configparser
+import fnmatch
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from ansible_testlib import (
+    GROUP_VARS,
+    ROLES,
+    ansible_vars,
+    evaluate,
+    load_yaml,
+    render_template,
+    role_names,
+    role_vars,
+)
+
+TESTED_TEMPLATES = {
+    ("base", "52pinka-unattended-upgrades.j2"),
+    ("base", "dnf-automatic.conf.j2"),
+    ("base", "journald.conf.j2"),
+    ("base", "pinka-security-patch.service.j2"),
+    ("base", "pinka-security-patch.timer.j2"),
+    ("base", "pinka-services.slice.j2"),
+    ("firewall", "docker-incus-compat.sh.j2"),
+    ("firewall", "pinka-docker-incus-compat.service.j2"),
+    ("firewall", "pinka-nftables.service.j2"),
+    ("firewall", "pinka.nft.j2"),
+    ("firewall", "pinka-access-guard.nft.j2"),
+    ("firewall", "pinka-telemetry-guard.nft.j2"),
+    ("firewall", "pinka-telemetry-guard.service.j2"),
+    ("firewall", "pinka-inference-guard.service.j2"),
+    ("firewall", "pinka-split-guard.service.j2"),
+    ("provider_baremetal", "pinka-sleep-inhibit.service.j2"),
+    ("provider_wsl2", "wsl.conf.j2"),
+    ("provider_wsl2", "wslconfig.recommended.j2"),
+    ("ssh", "10-pinka.conf.j2"),
+    # Tested in test_incus_role.py:
+    ("docker", "daemon.json.j2"),
+    ("nvidia_container_toolkit", "nvidia-cdi-refresh-pinka.conf.j2"),
+    ("incus", "pinka-incus-events.service.j2"),
+    # Tested in test_core.py:
+    ("compose", "env.j2"),
+    ("compose", "pinka-compose.service.j2"),
+    ("postgres", "pgpass.j2"),
+    ("postgres", "pinka-postgres.tmpfiles.conf.j2"),
+    # Tested in test_observability.py:
+    ("observability", "pinka-vm-otlp-address.service.j2"),
+    ("observability", "pinka-otlp-agent.socket.j2"),
+    ("observability", "pinka-otlp-agent.service.j2"),
+    ("observability", "pinka-query.tmpfiles.conf.j2"),
+    # Tested in test_gpu_arbiter.py:
+    ("gpu_arbiter", "arbiter.json.j2"),
+    ("gpu_arbiter", "pinka-gpu-arbiter.socket.j2"),
+    ("gpu_arbiter", "pinka-gpu-arbiter@.service.j2"),
+    ("gpu_arbiter", "pinka-gpu-arbiter.service.j2"),
+    ("gpu_arbiter", "pinka-gpu-job@.service.j2"),
+    # Tested in test_lab_session.py:
+    ("lab_session", "pinka-lab.target.j2"),
+    ("lab_session", "pinka-health-gate.service.j2"),
+    ("lab_session", "pinka-session-start.service.j2"),
+    # Tested in test_backup.py:
+    ("backup", "backup-job.service.j2"),
+    ("backup", "backup-job.timer.j2"),
+    # Tested in test_run_network.py:
+    ("incus", "pinka-run-network.socket.j2"),
+    ("incus", "pinka-run-network@.service.j2"),
+    # Tested in test_inference_control.py:
+    ("inference_control", "pinka-inference-control.service.j2"),
+    ("inference_control", "pinka-inference-forwarder.service.j2"),
+    # Tested in test_docs_window.py:
+    ("docs", "pinka-docs.service.j2"),
+    ("lab_session", "pinka-window-expiry.service.j2"),
+    ("lab_session", "pinka-window-expiry.timer.j2"),
+}
+
+
+def test_every_template_is_tested() -> None:
+    templates = {
+        (role, p.name) for role in role_names() for p in (ROLES / role / "templates").glob("*.j2")
+    }
+    assert templates == TESTED_TEMPLATES
+
+
+def ini(text: str) -> configparser.ConfigParser:
+    parser = configparser.ConfigParser(interpolation=None, delimiters=("=",), strict=True)
+    parser.optionxform = str  # type: ignore[assignment,method-assign]
+    parser.read_string(text)
+    return parser
+
+
+# --- firewall --------------------------------------------------------------
+
+
+def firewall_vars(**extra: Any) -> dict[str, Any]:
+    return role_vars("firewall", **extra)
+
+
+def nft_argv(path: Path) -> list[str] | None:
+    nft = shutil.which("nft") or next(
+        (p for p in ("/usr/sbin/nft", "/sbin/nft") if Path(p).exists()), None
+    )
+    unshare = shutil.which("unshare")
+    if nft is None or unshare is None:
+        return None
+    # A new network namespace (user namespace too when unprivileged): the check
+    # runs against an empty ruleset and cannot affect the host.
+    return [unshare, "-n" if os.geteuid() == 0 else "-rn", nft, "-c", "-f", str(path)]
+
+
+def nft_check(path: Path) -> subprocess.CompletedProcess[str]:
+    """``nft -c`` on a ruleset in a private network namespace.
+
+    Unprivileged, the namespace needs a user namespace too, which some hosts
+    refuse (GitHub's Ubuntu 24.04 runners); then the check runs with
+    ``sudo -n`` (:func:`privileged`), which CI has.
+    """
+    probe = path.parent / "probe.nft"
+    probe.write_text("table inet pinka_probe {\n}\n", encoding="utf-8")
+    argv = nft_argv(probe)
+    if argv is None:
+        pytest.skip("nft or unshare is not installed")
+    prefix: list[str] = []
+    if subprocess.run(argv, capture_output=True, text=True, check=False).returncode != 0:
+        if os.geteuid() == 0:
+            pytest.skip("nft cannot check rulesets in a private network namespace here")
+        prefix = [*privileged(), argv[0], "-n"]
+    argv = nft_argv(path)
+    assert argv is not None
+    if prefix:
+        argv = [*prefix, *argv[2:]]
+    return subprocess.run(argv, capture_output=True, text=True, check=False)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {},
+        {"ssh_extra_allowed_interfaces": ["eth1", "enp3s0"], "grafana_tailscale_serve": True},
+        {"pinka_features": {"vm_targets": True}},
+        {"host_profile": {"components": {"lxd": {"networks": [{"name": "lxdbr0"}]}}}},
+        {"pinka_preexisting": {"access": None}},
+        {"pinka_preexisting": {"access": None}, "firewall_close_listeners": ["tcp/8080"]},
+    ],
+    ids=["default", "extra-interfaces-grafana", "vm-targets", "lxd", "shared", "shared-closed"],
+)
+def test_nft_ruleset_is_valid(tmp_path: Path, extra: dict[str, Any]) -> None:
+    if "pinka_preexisting" in extra:
+        extra = {**extra, "pinka_preexisting": {"access": SHARED_ACCESS}}
+    text = render_template("firewall", "pinka.nft.j2", firewall_vars(**extra))
+    path = tmp_path / "pinka.nft"
+    path.write_text(text, encoding="utf-8")
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_nft_ruleset_policy() -> None:
+    text = render_template("firewall", "pinka.nft.j2", firewall_vars())
+    lines = [line.strip() for line in text.splitlines()]
+    # Only pinka's own table is (re)created.
+    assert [line for line in lines if line.startswith(("table ", "delete table", "flush"))] == [
+        "table inet pinka_filter",
+        "delete table inet pinka_filter",
+        "table inet pinka_filter {",
+    ]
+    assert "type filter hook input priority filter; policy drop;" in lines
+    assert 'elements = { "r-*", "pinka-build0", "incusbr-*" }' in lines
+    assert 'iifname "tailscale0" tcp dport { 22 } accept' in lines
+    assert 'iifname "r-*" oifname != "r-*" drop' in lines
+    assert 'oifname "r-*" iifname != "r-*" ct state new drop' in lines
+    # SSH is never opened on all interfaces.
+    assert not [line for line in lines if "dport 22" in line and "iifname" not in line]
+
+
+def test_nft_vm_listener_rule() -> None:
+    def rules(**extra: Any) -> list[str]:
+        text = render_template("firewall", "pinka.nft.j2", firewall_vars(**extra))
+        return [line.strip() for line in text.splitlines() if "198.18.0.1" in line]
+
+    assert rules() == []
+    assert rules(pinka_features={"vm_targets": True}) == [
+        'iifname "r-*" ip daddr 198.18.0.1 tcp dport { 4317, 4318 } accept'
+    ]
+
+
+def test_nft_ruleset_leaves_lxds_guests_their_dhcp_and_dns() -> None:
+    # BUILD_PROMPT §7.7: pinka's rules must not break an LXD that existed before
+    # pinka; its guests keep DHCP and DNS from LXD's dnsmasq, and pinka's
+    # forward chain filters only run networks.
+    def rules(networks: list[dict[str, Any]]) -> list[str]:
+        profile = {"components": {"lxd": {"installed": True, "networks": networks}}}
+        text = render_template("firewall", "pinka.nft.j2", firewall_vars(host_profile=profile))
+        return [line.strip() for line in text.splitlines() if "lxd" in line]
+
+    assert rules([]) == []
+    networks: list[dict[str, Any]] = [
+        {"name": "lxdbr0", "ipv4": "10.0.3.1/24"},
+        {"name": "lxd-lab", "ipv4": None},
+    ]
+    assert rules(networks) == [
+        'iifname { "lxdbr0", "lxd-lab" } udp dport { 53, 67, 547 } accept',
+        'iifname { "lxdbr0", "lxd-lab" } tcp dport 53 accept',
+    ]
+    assert rules([{"name": 'bad"name', "ipv4": None}]) == []
+
+
+def test_nft_ruleset_options() -> None:
+    variables = firewall_vars(ssh_extra_allowed_interfaces=["eth1"], grafana_tailscale_serve=True)
+    lines = [
+        line.strip() for line in render_template("firewall", "pinka.nft.j2", variables).splitlines()
+    ]
+    assert 'iifname "tailscale0" tcp dport { 22, 443 } accept' in lines
+    assert 'iifname { "eth1" } tcp dport 22 accept' in lines
+
+
+ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
+# A shared host (BUILD_PROMPT §2.2): sshd and a web server reachable from the LAN,
+# a DHCP client the strict policy admits anyway, installed over SSH from the LAN.
+SHARED_ACCESS = {
+    "host": "shared",
+    "session": {"via": "ssh", "address": "192.0.2.10", "port": 22, "user": "owner1"},
+    "listeners": [
+        {"proto": "tcp", "address": ANY_V4, "port": 22, "admitted": False},
+        {"proto": "tcp", "address": "::", "port": 22, "admitted": False},
+        {"proto": "tcp", "address": "192.0.2.10", "port": 8080, "admitted": False},
+        {"proto": "udp", "address": "2001:db8::10", "port": 5353, "admitted": False},
+        {"proto": "udp", "address": ANY_V4, "port": 68, "admitted": True},
+    ],
+}
+
+
+def access_rules(access: dict[str, Any], **extra: Any) -> list[str]:
+    """The input rules of pinka's ruleset that keep pre-existing access."""
+    variables = firewall_vars(pinka_preexisting={"access": access}, **extra)
+    text = render_template("firewall", "pinka.nft.j2", variables)
+    lines = [line.strip() for line in text.splitlines()]
+    return [
+        line
+        for line in lines
+        if line.endswith("accept")
+        and ("dport 22 accept" in line or "8080" in line or "5353" in line)
+        and "iifname" not in line
+    ]
+
+
+def test_a_shared_host_keeps_its_listeners_and_the_install_path() -> None:
+    # §7.5: every listener stays reachable as it was; the install's access path
+    # stays open until the safeguard closes it.
+    assert access_rules(SHARED_ACCESS) == [
+        "tcp dport 22 accept",
+        "ip daddr 192.0.2.10 tcp dport 8080 accept",
+        "ip6 daddr 2001:db8::10 udp dport 5353 accept",
+        "ip daddr 192.0.2.10 tcp dport 22 accept",
+    ]
+    # Closed with consent: only what the owner named, and the path once closed.
+    assert access_rules(
+        SHARED_ACCESS, firewall_close_listeners=["tcp/8080"], pinka_closed_access=["install_path"]
+    ) == ["tcp dport 22 accept", "ip6 daddr 2001:db8::10 udp dport 5353 accept"]
+
+
+def test_a_dedicated_host_keeps_only_the_install_path() -> None:
+    dedicated = {**SHARED_ACCESS, "host": "dedicated"}
+    assert access_rules(dedicated) == ["ip daddr 192.0.2.10 tcp dport 22 accept"]
+    assert access_rules(dedicated, pinka_closed_access=["install_path"]) == []
+    console = {**dedicated, "session": {"via": "console"}}
+    assert access_rules(console) == []
+    # A record without the access (a legacy one) keeps nothing.
+    assert access_rules({}) == []
+
+
+def access_guard(**extra: Any) -> list[str]:
+    """The rules of the access guard (BUILD_PROMPT §7.5)."""
+    variables = firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}, **extra)
+    text = render_template("firewall", "pinka-access-guard.nft.j2", variables)
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().endswith(("accept", "drop")) and not line.strip().startswith("#")
+    ]
+
+
+GUARD_VARIANTS = {
+    "nothing-closed": {},
+    "closed": {
+        "firewall_close_listeners": ["tcp/8080", "udp/5353", "tcp/22"],
+        "pinka_closed_access": ["install_path"],
+        "ssh_extra_allowed_interfaces": ["eth1"],
+        "grafana_tailscale_serve": True,
+    },
+}
+
+
+@pytest.mark.parametrize("variant", sorted(GUARD_VARIANTS))
+def test_access_guard_is_valid(tmp_path: Path, variant: str) -> None:
+    variables = firewall_vars(
+        pinka_preexisting={"access": SHARED_ACCESS}, **GUARD_VARIANTS[variant]
+    )
+    path = tmp_path / "access-guard.nft"
+    path.write_text(
+        render_template("firewall", "pinka-access-guard.nft.j2", variables), encoding="utf-8"
+    )
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+NEVER = 'iifname != "lo" ct state new'
+TAILNET_SSH = 'iifname "tailscale0" tcp dport 22 accept'
+
+
+def test_the_access_guard_drops_only_what_the_owner_consented_to_close() -> None:
+    # Nothing closed: an empty table, nothing hooked.
+    assert access_guard() == []
+    text = render_template(
+        "firewall",
+        "pinka-access-guard.nft.j2",
+        firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}),
+    )
+    assert "chain input" not in text
+    # Closed listeners; SSH on every address is held open for the install's
+    # path to 192.0.2.10:22 while the path is open.
+    assert access_guard(firewall_close_listeners=["tcp/8080", "tcp/22"]) == [
+        TAILNET_SSH,
+        f"{NEVER} ip daddr 192.0.2.10 tcp dport 8080 drop",
+    ]
+    # The path closed under the safeguard: SSH closes with it, except over the
+    # tailnet, on loopback and on the extra SSH interfaces.
+    assert access_guard(
+        firewall_close_listeners=["tcp/22"],
+        pinka_closed_access=["install_path"],
+        ssh_extra_allowed_interfaces=["eth1"],
+    ) == [
+        TAILNET_SSH,
+        'iifname { "eth1" } tcp dport 22 accept',
+        f"{NEVER} tcp dport 22 drop",
+        f"{NEVER} ip daddr 192.0.2.10 tcp dport 22 drop",
+    ]
+    # On a dedicated host only the install's path closes.
+    dedicated = firewall_vars(
+        pinka_preexisting={"access": {**SHARED_ACCESS, "host": "dedicated"}},
+        pinka_closed_access=["install_path"],
+    )
+    text = render_template("firewall", "pinka-access-guard.nft.j2", dedicated)
+    assert [line.strip() for line in text.splitlines() if line.strip().endswith("drop")] == [
+        f"{NEVER} ip daddr 192.0.2.10 tcp dport 22 drop"
+    ]
+
+
+def test_every_drop_of_the_access_guard_is_new_only_and_spares_ssh_over_the_tailnet() -> None:
+    # Approved deviation AG1 (corrected with the owner's new plan): the guard
+    # drops only new connections, never one on loopback; on tailscale0 only
+    # SSH is spared, and it refers to no table but its own.
+    variables = firewall_vars(
+        pinka_preexisting={"access": SHARED_ACCESS},
+        firewall_close_listeners=["tcp/8080", "udp/5353", "tcp/22"],
+        pinka_closed_access=["install_path"],
+        ssh_extra_allowed_interfaces=["eth1"],
+    )
+    text = render_template("firewall", "pinka-access-guard.nft.j2", variables)
+    rules = [
+        line.strip()
+        for line in text.splitlines()
+        if line.startswith("\t\t") and not line.strip().startswith("#")
+    ]
+    drops = [rule for rule in rules if rule.endswith("drop")]
+    assert len(drops) == 4  # tcp/8080, udp/5353, tcp/22 and the install's path
+    assert all(rule.startswith(NEVER + " ") for rule in drops), drops
+    accepts = [rule for rule in rules if rule.endswith("accept")]
+    assert accepts == [TAILNET_SSH, 'iifname { "eth1" } tcp dport 22 accept']
+    assert [rule for rule in rules if not rule.endswith(("drop", "accept"))] == [
+        "type filter hook input priority filter - 5; policy accept;"
+    ]
+    statements = [line for line in text.splitlines() if line and not line.startswith("#")]
+    tables = {line.split()[2] for line in statements if line.startswith("table ")}
+    assert tables == {"pinka_access_guard"}
+    assert not any(word in text for word in ("jump", "goto", "@")), text
+
+
+def test_the_access_guard_against_the_kernel(tmp_path: Path) -> None:
+    # Real packets in a network namespace of their own (access_guard_probe.py):
+    # a connection open before the guard stays open, new ones to what was
+    # closed are dropped on every interface but loopback, tailscale0 included,
+    # SSH over tailscale0 is never cut even with tcp/22 closed, and the guard
+    # works with no table of ufw or firewalld there.
+    access = {
+        "host": "shared",
+        "session": {"via": "ssh", "address": "192.0.2.1", "port": 22, "user": "owner1"},
+        "listeners": [
+            {"proto": "tcp", "address": ANY_V4, "port": port, "admitted": False}
+            for port in (22, 8080, 8081)
+        ],
+    }
+    variables = firewall_vars(
+        pinka_preexisting={"access": access},
+        firewall_close_listeners=["tcp/8080", "tcp/22"],
+        pinka_closed_access=["install_path"],
+    )
+    guard = tmp_path / "access-guard.nft"
+    guard.write_text(
+        render_template("firewall", "pinka-access-guard.nft.j2", variables), encoding="utf-8"
+    )
+    # The guard of an earlier run, closing a port nothing listens on.
+    earlier = {
+        **access,
+        "session": {"via": "console"},
+        "listeners": [{"proto": "tcp", "address": ANY_V4, "port": 9999, "admitted": False}],
+    }
+    first = tmp_path / "access-guard-earlier.nft"
+    first.write_text(
+        render_template(
+            "firewall",
+            "pinka-access-guard.nft.j2",
+            firewall_vars(
+                pinka_preexisting={"access": earlier}, firewall_close_listeners=["tcp/9999"]
+            ),
+        ),
+        encoding="utf-8",
+    )
+    nft = shutil.which("nft") or "/usr/sbin/nft"
+    unshare = shutil.which("unshare")
+    if not Path(nft).exists() or unshare is None or not Path("/dev/net/tun").exists():
+        pytest.skip("nft, unshare or /dev/net/tun is missing")
+    probe = Path(__file__).with_name("access_guard_probe.py")
+    argv = [*privileged(), unshare, "-n", sys.executable, str(probe), nft, str(first), str(guard)]
+    done = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stderr
+    # Nothing on stderr: a thread's traceback written while the interpreter
+    # shut down aborted it once in CI (exit -6).
+    assert done.stderr == ""
+    found = json.loads(done.stdout)
+    assert found == {
+        "open before the guard: connect": True,
+        "open before the guard: echo before": True,
+        "tables": ["table inet pinka_access_guard"],
+        "open before the guard: echo after": True,
+        "new on eth9 to the closed listener": False,
+        "new on eth9 to the kept listener": True,
+        "new on eth9 to the closed install path": False,
+        "new on tailscale0 to the closed listener": False,
+        "new on tailscale0 to the kept listener": True,
+        "new on tailscale0 to SSH, closed elsewhere": True,
+        "new on loopback to the closed listener": True,
+        "new on loopback to the closed install path's port": True,
+    }
+
+
+def test_the_install_path_closes_once_under_the_safeguard() -> None:
+    # A block's condition is evaluated again for each of its tasks; the
+    # closing block records the path as closed in its first task, so its
+    # condition must be a fact decided before it, or its other tasks (the
+    # drop-in, the table, the guard) would be skipped.
+    tasks = load_yaml(ROLES / "firewall" / "tasks" / "install_path.yml")
+    decide = next(t for t in tasks if t["name"].startswith("Decide whether"))
+    block = next(t for t in tasks if "block" in t)
+    assert tasks.index(decide) < tasks.index(block)
+    assert block["when"] == "firewall_closes_install_path | bool"
+    expression = decide["ansible.builtin.set_fact"]["firewall_closes_install_path"].strip()[2:-2]
+    login = [{"user": "researcher1", "address": "100.101.2.3"}]
+
+    def closes(closed: list[str], consent: bool, logins: list[dict[str, str]]) -> bool:
+        variables = firewall_vars(
+            pinka_preexisting={"access": SHARED_ACCESS},
+            pinka_closed_access=closed,
+            firewall_close_install_path=consent,
+            firewall_tailnet_logins=logins,
+        )
+        return str(evaluate(expression, variables)).strip() == "True"
+
+    assert closes([], True, login)
+    assert not closes(["install_path"], True, login)  # already closed
+    assert not closes([], False, login)  # no consent
+    assert not closes([], True, [])  # no researcher's login over the tailnet in this run
+
+
+def test_the_run_start_is_the_epoch_in_every_time_zone() -> None:
+    # The safeguard reads sshd's journal since this moment (journalctl
+    # --since=@<seconds>); a time zone offset would count logins from before
+    # the run, or none at all.
+    site = load_yaml(ROLES.parent / "site.yml")
+    task = next(
+        t
+        for play in site
+        for t in play.get("pre_tasks", [])
+        if t.get("name") == "Note when the run began"
+    )
+    template = task["ansible.builtin.set_fact"]["pinka_run_started"].strip()
+    assert template.startswith("{{") and template.endswith("}}")
+    saved = os.environ.get("TZ")
+    try:
+        for zone in ("UTC", "Asia/Tokyo", "America/Los_Angeles"):
+            os.environ["TZ"] = zone
+            time.tzset()
+            before = int(time.time())
+            value = int(evaluate(template[2:-2].strip(), {}))
+            assert before <= value <= int(time.time()), zone
+    finally:
+        if saved is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = saved
+        time.tzset()
+
+
+def test_forwarded_traffic_of_lxd_guests_and_docker_containers_is_left_alone() -> None:
+    # Owner decision 2 after D1: pinka's rules leave the forwarded traffic of
+    # LXD's guests and Docker's containers as it was. The forward chain accepts
+    # by default and every rule in it names the run networks only, whatever the
+    # host keeps or closes.
+    variants = [
+        firewall_vars(),
+        firewall_vars(host_profile={"components": {"lxd": {"networks": [{"name": "lxdbr0"}]}}}),
+        firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}),
+    ]
+    for variables in variants:
+        text = render_template("firewall", "pinka.nft.j2", variables)
+        chain = text.split("chain forward {", 1)[1].split("}", 1)[0]
+        rules = [
+            line.strip()
+            for line in chain.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+        assert rules[0] == "type filter hook forward priority filter; policy accept;"
+        assert rules[1:], text
+        for rule in rules[1:]:
+            assert '"r-*"' in rule, rule
+            assert "lxdbr" not in rule and "docker" not in rule
+
+
+# Sample UIDs as getent finds them: the stores' clients (root, the collector,
+# Prometheus, Loki, Tempo, the query proxy) and the query port's (root, Grafana).
+TELEMETRY_CLIENT_UIDS = [0, 991, 992, 993, 994, 996]
+GRAFANA_UID = 995
+QUERY_PORT_CLIENT_UIDS = [0, GRAFANA_UID]
+
+
+def guard_vars() -> dict[str, Any]:
+    return firewall_vars(
+        firewall_telemetry_client_uids=TELEMETRY_CLIENT_UIDS,
+        firewall_query_port_client_uids=QUERY_PORT_CLIENT_UIDS,
+    )
+
+
+def test_telemetry_guard_is_valid(tmp_path: Path) -> None:
+    text = render_template("firewall", "pinka-telemetry-guard.nft.j2", guard_vars())
+    path = tmp_path / "telemetry-guard.nft"
+    path.write_text(text, encoding="utf-8")
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_telemetry_guard_allows_only_infras_clients() -> None:
+    lines = [
+        line.strip()
+        for line in render_template(
+            "firewall", "pinka-telemetry-guard.nft.j2", guard_vars()
+        ).splitlines()
+    ]
+    # Only its own table, never one of Docker, Incus, firewalld or ufw.
+    assert [line for line in lines if line.startswith(("table ", "delete table", "flush"))] == [
+        "table inet pinka_telemetry_guard",
+        "delete table inet pinka_telemetry_guard",
+        "table inet pinka_telemetry_guard {",
+    ]
+    assert "type filter hook output priority filter; policy accept;" in lines
+    assert "elements = { 0, 991, 992, 993, 994, 996 }" in lines
+    assert "elements = { 0, 995 }" in lines
+    # Sets of UIDs only: a group never admits anything.
+    assert [line for line in lines if line.startswith("type ") and "hook" not in line] == [
+        "type uid",
+        "type uid",
+    ]
+    assert not any("skgid" in line for line in lines)
+    # Prometheus, Loki, Tempo, their gRPC and OTLP ports and the collector's
+    # metrics exporter; the query proxy's loopback port has its own rule.
+    ports = "18701, 18702, 18703, 18720, 18727, 18728, 18729"
+    assert (
+        f'oifname "lo" tcp dport {{ {ports} }} meta skuid != @telemetry_clients '
+        "reject with tcp reset"
+    ) in lines
+    assert (
+        'oifname "lo" tcp dport 18733 meta skuid != @query_port_clients reject with tcp reset'
+    ) in lines
+    # The OTLP receivers stay open: platform services send telemetry there.
+    assert "4317" not in ports and "4318" not in ports
+
+
+def test_the_telemetry_clients_are_infras_own_accounts() -> None:
+    # ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b: an explicit
+    # allowlist of infra's accounts, without Grafana, whose data sources go
+    # through the query proxy; no image's default user (nobody, 10001, 472),
+    # which other host processes may share.
+    variables = firewall_vars()
+    clients = [c["account"] for c in evaluate("pinka_telemetry_clients", variables)]
+    query = [c["account"] for c in evaluate("pinka_query_port_clients", variables)]
+    infra = {a["name"] for a in evaluate("infra_accounts", variables)}
+    assert clients[0] == "root" and query[0] == "root"
+    assert set(clients[1:]) | set(query[1:]) <= infra
+    assert set(clients[1:]) == {
+        "pinka-otelcol",
+        "pinka-prometheus",
+        "pinka-loki",
+        "pinka-tempo",
+        "pinka-query-proxy",
+    }
+    assert query[1:] == ["pinka-grafana"]
+    tasks = (ROLES / "firewall" / "tasks" / "telemetry_guard.yml").read_text(encoding="utf-8")
+    assert "pinka_telemetry_clients" in tasks and "pinka_query_port_clients" in tasks
+    assert "getent" in tasks
+
+
+# Run in a private network namespace as root: load the guard, listen on the
+# guarded ports and an open port, connect as each UID and GID, print what
+# connected.
+GUARD_PROBE = """
+import fcntl, json, os, socket, struct, subprocess, sys
+nft, ruleset, spec = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+flags = struct.unpack("16sh22x", fcntl.ioctl(s, 0x8913, struct.pack("16sh22x", b"lo", 0)))[1]
+fcntl.ioctl(s, 0x8914, struct.pack("16sh22x", b"lo", flags | 1))
+subprocess.run([nft, "-f", ruleset], check=True)
+listeners = []
+for port in spec["ports"]:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", port))
+    sock.listen(64)
+    listeners.append(sock)
+results = {}
+for name, (uid, gid) in spec["accounts"].items():
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(r)
+        os.setgroups([gid])
+        os.setgid(gid)
+        os.setuid(uid)
+        out = {}
+        for port in spec["ports"]:
+            c = socket.socket()
+            c.settimeout(3)
+            try:
+                c.connect(("127.0.0.1", port))
+                out[str(port)] = True
+            except OSError:
+                out[str(port)] = False
+            c.close()
+        os.write(w, json.dumps(out).encode())
+        os._exit(0)
+    os.close(w)
+    data = os.read(r, 65536)
+    os.waitpid(pid, 0)
+    results[name] = json.loads(data)
+print(json.dumps(results))
+"""
+
+
+def privileged() -> list[str]:
+    """How to run as root: directly, or with sudo -n in CI; skip otherwise."""
+    if os.geteuid() == 0:
+        return []
+    sudo = shutil.which("sudo")
+    if sudo and subprocess.run([sudo, "-n", "true"], check=False).returncode == 0:
+        return [sudo, "-n"]
+    if os.environ.get("CI") == "true":
+        pytest.fail("the nftables checks need root or sudo -n in CI")
+    pytest.skip("needs root or sudo -n; allowed to skip only outside CI")
+
+
+def test_telemetry_guard_per_account_class(tmp_path: Path) -> None:
+    # One connection per account class against the kernel's rules (ADR-0016):
+    # only root and infra's store clients reach the stores, only root and
+    # Grafana the query proxy's port; researchers, the platform's services,
+    # the agent, infra's other accounts, the images' default users and an
+    # account in group 0 are reset. The collector's OTLP port stays open.
+    argv = nft_argv(tmp_path / "x")
+    if argv is None:
+        if os.environ.get("CI") == "true":
+            pytest.fail("nft and unshare are required in CI")
+        pytest.skip("nft or unshare is not installed")
+    nft, unshare = argv[2], argv[0]
+    prefix = privileged()
+    ruleset = tmp_path / "guard.nft"
+    ruleset.write_text(
+        render_template("firewall", "pinka-telemetry-guard.nft.j2", guard_vars()), encoding="utf-8"
+    )
+    probe = tmp_path / "probe.py"
+    probe.write_text(GUARD_PROBE, encoding="utf-8")
+    variables = guard_vars()
+    stores = [int(p) for p in evaluate("pinka_telemetry_guard_ports", variables)]
+    query = int(evaluate("pinka_internal_ports.query_proxy", variables))
+    otlp = int(evaluate("pinka_ports.otlp_http", variables))
+    accounts = {
+        "root (doctor, the health gate)": (0, 0),
+        **{f"store client {uid}": (uid, uid) for uid in TELEMETRY_CLIENT_UIDS[1:]},
+        "Grafana": (GRAFANA_UID, 0),
+        "another infra account": (990, 990),
+        "researcher": (1000, 1000),
+        "an account in group 0": (1234, 0),
+        "platform service": (60578, 60578),
+        "untrusted agent": (60580, 60580),
+        "nobody (an image's default)": (65534, 65534),
+        "Loki's image default": (10001, 10001),
+        "Grafana's image default": (472, 0),
+    }
+    spec = {"ports": [*stores, query, otlp], "accounts": accounts}
+    done = subprocess.run(
+        [
+            *prefix,
+            unshare,
+            "-n",
+            sys.executable,
+            "-I",
+            str(probe),
+            nft,
+            str(ruleset),
+            json.dumps(spec),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0 and "Operation not permitted" in done.stderr and not prefix:
+        pytest.skip("this container cannot load nftables rules in a namespace")
+    assert done.returncode == 0, done.stderr
+    results = json.loads(done.stdout)
+    store_clients = {"root (doctor, the health gate)"} | {
+        f"store client {u}" for u in TELEMETRY_CLIENT_UIDS[1:]
+    }
+    query_clients = {"root (doctor, the health gate)", "Grafana"}
+    for name, reached in results.items():
+        assert reached[str(otlp)] is True, f"{name}: the OTLP receiver must stay open"
+        expected = name in store_clients
+        assert {p: reached[str(p)] for p in stores} == dict.fromkeys(stores, expected), name
+        assert reached[str(query)] is (name in query_clients), name
+
+
+# --- the inference guard (§7.11, ADR-0016) ------------------------------------------
+
+INFERENCE_UIDS = {
+    "root": 0,
+    "pinka-otelcol": 991,
+    "pinka-prometheus": 992,
+    "pinka-inference": 997,
+    "demo-ctl": 60578,
+    "demo-brk": 60579,
+    "demo-sbx": 60580,
+    "demo-agent": 60581,
+}
+RENDERED = {"controller": "demo-ctl", "inference_clients": ["demo-brk", "demo-ctl"]}
+
+
+def inference_spec(node_role: str) -> dict[str, Any]:
+    variables = firewall_vars(node_role=node_role)
+    tasks = load_yaml(ROLES / "firewall" / "tasks" / "inference_guard.yml")
+    describe = tasks[0]["ansible.builtin.set_fact"]["firewall_inference_guard"]
+    return {
+        k: evaluate(str(v).strip("{} ").strip(), variables)
+        if isinstance(v, str)
+        else [int(evaluate(str(p).strip("{} ").strip(), variables)) for p in v]
+        for k, v in describe.items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("node_role", "clients", "control"),
+    [
+        ("full", ["root", "pinka-prometheus", "pinka-otelcol"], []),
+        ("lab", ["root"], [18710]),
+        ("inference", ["root", "pinka-otelcol", "pinka-inference"], []),
+    ],
+)
+def test_inference_guard_clients_per_node_role(
+    node_role: str, clients: list[str], control: list[int]
+) -> None:
+    spec = inference_spec(node_role)
+    assert spec == {"clients": clients, "ports": [18704], "control_ports": control}
+    # Infra's own accounts only; the platform's come from rendered.json.
+    infra = {a["name"] for a in evaluate("infra_accounts", firewall_vars())}
+    assert set(clients) - {"root"} <= infra
+
+
+def test_inference_guard_ruleset(tmp_path: Path) -> None:
+    import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
+
+    text, missing = guard.build(inference_spec("lab"), RENDERED, INFERENCE_UIDS.get)
+    lines = [line.strip() for line in text.splitlines()]
+    assert missing == []
+    assert [line for line in lines if line.startswith(("table ", "delete table"))] == [
+        "table inet pinka_inference_guard",
+        "delete table inet pinka_inference_guard",
+        "table inet pinka_inference_guard {",
+    ]
+    assert "elements = { 0, 60578, 60579 }" in lines  # root, the broker, the controller
+    assert "elements = { 0, 60578 }" in lines  # the control port: root and the controller
+    assert not any("skgid" in line for line in lines)
+    assert (
+        'oifname "lo" tcp dport { 18704 } meta skuid != @inference_clients reject with tcp reset'
+    ) in lines
+    assert (
+        'oifname "lo" tcp dport { 18710 } meta skuid != @inference_control_clients '
+        "reject with tcp reset"
+    ) in lines
+    full, _ = guard.build(inference_spec("full"), None, INFERENCE_UIDS.get)
+    assert "inference_control_clients" not in full
+    assert "elements = { 0, 991, 992 }" in [line.strip() for line in full.splitlines()]
+    _, missing = guard.build(inference_spec("full"), RENDERED, {"root": 0}.get)
+    assert missing == ["pinka-prometheus", "pinka-otelcol", "demo-brk", "demo-ctl"]
+    path = tmp_path / "inference-guard.nft"
+    path.write_text(text, encoding="utf-8")
+    result = nft_check(path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_inference_guard_main_prints_the_ruleset(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
+
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"clients": ["root"], "ports": [18704], "control_ports": []}))
+    argv = ["--spec", str(spec), "--rendered", str(tmp_path / "none.json"), "--print"]
+    assert guard.main(argv) == 0
+    assert "table inet pinka_inference_guard {" in capsys.readouterr().out
+    assert guard.main(["--spec", str(tmp_path / "missing.json"), "--print"]) == 1
+
+
+def test_inference_guard_per_account_class(tmp_path: Path) -> None:
+    # One connection per account class against the kernel's rules (§7.11):
+    # only the controller and the inference broker of the platform reach the
+    # inference API, besides root and infra's scrapers; only root and the
+    # controller reach the forwarder's control port of a lab node. A group,
+    # GID 0 included, admits nothing.
+    import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
+
+    argv = nft_argv(tmp_path / "x")
+    if argv is None:
+        if os.environ.get("CI") == "true":
+            pytest.fail("nft and unshare are required in CI")
+        pytest.skip("nft or unshare is not installed")
+    nft, unshare = argv[2], argv[0]
+    prefix = privileged()
+    spec = {"clients": ["root", "pinka-prometheus"], "ports": [18704], "control_ports": [18710]}
+    text, _ = guard.build(spec, RENDERED, INFERENCE_UIDS.get)
+    ruleset = tmp_path / "guard.nft"
+    ruleset.write_text(text, encoding="utf-8")
+    probe = tmp_path / "probe.py"
+    probe.write_text(GUARD_PROBE, encoding="utf-8")
+    otlp = 4318
+    accounts = {
+        "root": (0, 0),
+        "Prometheus": (992, 992),
+        "controller": (60578, 60578),
+        "inference broker": (60579, 60579),
+        "sandbox operator": (60580, 60580),
+        "untrusted agent": (60581, 60581),
+        "researcher": (1000, 1000),
+        "an account in group 0": (1234, 0),
+        "the collector (not a client on this node)": (991, 991),
+    }
+    done = subprocess.run(
+        [
+            *prefix,
+            unshare,
+            "-n",
+            sys.executable,
+            "-I",
+            str(probe),
+            nft,
+            str(ruleset),
+            json.dumps({"ports": [18704, 18710, otlp], "accounts": accounts}),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0 and "Operation not permitted" in done.stderr and not prefix:
+        pytest.skip("this container cannot load nftables rules in a namespace")
+    assert done.returncode == 0, done.stderr
+    results = json.loads(done.stdout)
+    api = {"root", "Prometheus", "controller", "inference broker"}
+    control = {"root", "controller"}
+    for name, reached in results.items():
+        assert reached[str(otlp)] is True, name
+        assert reached["18704"] is (name in api), name
+        assert reached["18710"] is (name in control), name
+
+
+def test_inference_guard_unit() -> None:
+    unit = ini(render_template("firewall", "pinka-inference-guard.service.j2", firewall_vars()))
+    assert unit["Service"]["ExecStart"] == "/usr/local/libexec/pinka/inference-guard"
+    assert unit["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_inference_guard"
+    assert unit["Unit"]["Before"] == "network-pre.target"
+    switch = load_yaml(ROLES / "platform" / "tasks" / "switch.yml")
+    reload = next(
+        t for t in switch if t["name"] == "Load the inference guard with the platform's clients"
+    )
+    assert reload["ansible.builtin.systemd_service"]["state"] == "restarted"
+
+
+def split_guard_spec(node_role: str) -> dict[str, Any]:
+    variables = ansible_vars(
+        GROUP_VARS,
+        ROLES / "firewall" / "defaults" / "main.yml",
+        ROLES / "firewall" / "vars" / "main.yml",
+        node_role=node_role,
+    )
+    spec = evaluate("firewall_split_guard", variables)
+    assert isinstance(spec, dict)
+    return spec
+
+
+@pytest.mark.parametrize(
+    ("node_role", "ports"), [("inference", [18704, 18710]), ("lab", [4317]), ("full", [])]
+)
+def test_split_guard_ports_per_node_role(node_role: str, ports: list[int]) -> None:
+    spec = split_guard_spec(node_role)
+    assert spec == {
+        "interface": "tailscale0",
+        "ports": ports,
+        "peer_record": "/etc/pinka/inference/peer.json",
+    }
+    main = load_yaml(ROLES / "firewall" / "tasks" / "main.yml")
+    include = next(t for t in main if t.get("ansible.builtin.include_tasks") == "split_guard.yml")
+    assert include["when"] == "node_role in ['lab', 'inference']"
+
+
+def test_split_guard_ruleset(tmp_path: Path) -> None:
+    import pinka_split_guard as guard  # noqa: PLC0415 - the role's own file
+
+    spec = split_guard_spec("inference")
+    paired = guard.build(spec, {"node": "pinka-lab", "address": "100.64.0.7"})
+    lines = [line.strip() for line in paired.splitlines()]
+    assert [line for line in lines if line.startswith(("table ", "delete table"))] == [
+        "table inet pinka_split_guard",
+        "delete table inet pinka_split_guard",
+        "table inet pinka_split_guard {",
+    ]
+    assert "elements = { 100.64.0.7 }" in lines
+    assert 'iifname "tailscale0" tcp dport @pairing accept' in lines
+    assert 'iifname "tailscale0" tcp dport { 18704, 18710 } ip saddr @peer accept' in lines
+    assert lines[-3] == 'iifname "tailscale0" tcp dport { 18704, 18710 } drop'
+    # Before a pairing the set is empty: nobody reaches the ports.
+    unpaired = guard.build(spec, None)
+    assert "elements" not in unpaired
+    # A record without an address (or with something else) is refused.
+    for record in ({"node": "pinka-lab"}, {"address": "fd7a:115c:a1e0::1"}, {"address": "x"}):
+        with pytest.raises(guard.GuardError, match="pair again"):
+            guard.build(spec, record)
+    with pytest.raises(guard.GuardError, match="interface and a list of ports"):
+        guard.build({"interface": "tailscale0", "ports": ["18704"]}, None)
+    for name, text in (("paired", paired), ("unpaired", unpaired)):
+        path = tmp_path / f"{name}.nft"
+        path.write_text(text, encoding="utf-8")
+        result = nft_check(path)
+        assert result.returncode == 0, result.stderr
+
+
+def test_split_guard_fails_closed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import pinka_split_guard as guard  # noqa: PLC0415 - the role's own file
+
+    record = tmp_path / "peer.json"
+    spec = tmp_path / "spec.json"
+    spec.write_text(
+        json.dumps({"interface": "tailscale0", "ports": [18704], "peer_record": str(record)})
+    )
+    argv = ["--spec", str(spec), "--print"]
+    assert guard.main(argv) == 0  # not paired: closed, and that is fine
+    assert "elements" not in capsys.readouterr().out
+    record.write_text(json.dumps({"node": "pinka-lab"}))
+    assert guard.main(argv) == 1  # an old record: closed, and it says so
+    captured = capsys.readouterr()
+    assert "elements" not in captured.out
+    assert "pair again" in captured.err
+    record.write_text(json.dumps({"node": "pinka-lab", "address": "100.64.0.7"}))
+    assert guard.main(argv) == 0
+    assert "elements = { 100.64.0.7 }" in capsys.readouterr().out
+    assert guard.main(["--spec", str(tmp_path / "missing.json"), "--print"]) == 1
+
+
+SPLIT_PROBE = """
+import fcntl, json, socket, struct, subprocess, sys, time
+nft, unpaired, paired, spec = sys.argv[1], sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+flags = struct.unpack("16sh22x", fcntl.ioctl(s, 0x8913, struct.pack("16sh22x", b"lo", 0)))[1]
+fcntl.ioctl(s, 0x8914, struct.pack("16sh22x", b"lo", flags | 1))
+listeners = []
+for port in spec["ports"]:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", port))
+    sock.listen(64)
+    listeners.append(sock)
+
+def reached():
+    out = {}
+    for source in spec["sources"]:
+        for port in spec["ports"]:
+            c = socket.socket()
+            c.settimeout(0.5)
+            c.bind((source, 0))
+            try:
+                c.connect(("127.0.0.1", port))
+                out[f"{source}:{port}"] = True
+            except OSError:
+                out[f"{source}:{port}"] = False
+            c.close()
+    return out
+
+def run(*args):
+    subprocess.run([nft, *args], check=True)
+
+window = ["inet", "pinka_split_guard", "pairing"]
+control = spec["ports"][-1]
+results = {}
+run("-f", unpaired)
+results["not paired"] = reached()
+run("add", "element", *window, "{ %d timeout 60s }" % control)
+results["pairing"] = reached()
+run("delete", "element", *window, "{ %d }" % control)
+run("-f", paired)
+results["paired"] = reached()
+run("add", "element", *window, "{ %d timeout 1s }" % control)
+time.sleep(2)
+results["window expired"] = reached()
+print(json.dumps(results))
+"""
+
+
+def test_split_guard_admits_only_the_paired_peer(tmp_path: Path) -> None:
+    # Interpretation 11.13 against the kernel's rules: before a pairing nobody
+    # reaches the split-inference ports; while pinka pair show waits, the
+    # pairing (control) port is open to every tailnet address and nothing
+    # else is; once paired, only the peer's address gets in and an unpaired
+    # tailnet address is refused on every port, also after a pairing window
+    # expired on its own. The loopback stands in for tailscale0, 127.0.0.2
+    # for the paired peer and 127.0.0.3 for another tailnet node.
+    import pinka_split_guard as guard  # noqa: PLC0415 - the role's own file
+
+    argv = nft_argv(tmp_path / "x")
+    if argv is None:
+        if os.environ.get("CI") == "true":
+            pytest.fail("nft and unshare are required in CI")
+        pytest.skip("nft or unshare is not installed")
+    nft, unshare = argv[2], argv[0]
+    prefix = privileged()
+    api, control = 18704, 18710
+    spec = {"interface": "lo", "ports": [api, control]}
+    unpaired, paired = tmp_path / "unpaired.nft", tmp_path / "paired.nft"
+    unpaired.write_text(guard.build(spec, None), encoding="utf-8")
+    paired.write_text(guard.build(spec, {"address": "127.0.0.2"}), encoding="utf-8")
+    probe = tmp_path / "probe.py"
+    probe.write_text(SPLIT_PROBE, encoding="utf-8")
+    sources = {"peer": "127.0.0.2", "other": "127.0.0.3"}
+    done = subprocess.run(
+        [
+            *prefix,
+            unshare,
+            "-n",
+            sys.executable,
+            "-I",
+            str(probe),
+            nft,
+            str(unpaired),
+            str(paired),
+            json.dumps({"ports": [api, control], "sources": list(sources.values())}),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if done.returncode != 0 and "Operation not permitted" in done.stderr and not prefix:
+        pytest.skip("this container cannot load nftables rules in a namespace")
+    assert done.returncode == 0, done.stderr
+    results = json.loads(done.stdout)
+
+    def gets_in(phase: str, who: str, port: int) -> bool:
+        return bool(results[phase][f"{sources[who]}:{port}"])
+
+    for who in sources:
+        assert not gets_in("not paired", who, api), who
+        assert not gets_in("not paired", who, control), who
+        assert gets_in("pairing", who, control), who
+        assert not gets_in("pairing", who, api), who
+    assert gets_in("paired", "peer", api) and gets_in("paired", "peer", control)
+    # The unpaired tailnet address is refused after the pairing.
+    assert not gets_in("paired", "other", api)
+    assert not gets_in("paired", "other", control)
+    assert not gets_in("window expired", "other", control)
+    assert gets_in("window expired", "peer", control)
+
+
+def test_split_guard_unit() -> None:
+    unit = ini(render_template("firewall", "pinka-split-guard.service.j2", firewall_vars()))
+    assert unit["Service"]["ExecStart"] == "/usr/local/libexec/pinka/split-guard"
+    assert unit["Service"]["ExecReload"] == "/usr/local/libexec/pinka/split-guard"
+    assert unit["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_split_guard"
+    # Loaded before the network: the ports are never open to the tailnet first.
+    assert unit["Unit"]["Before"] == "network-pre.target"
+
+
+def test_telemetry_guard_unit() -> None:
+    unit = ini(render_template("firewall", "pinka-telemetry-guard.service.j2", firewall_vars()))
+    assert (
+        unit["Service"]["ExecStart"] == "/usr/sbin/nft -f /etc/pinka/nftables/telemetry-guard.nft"
+    )
+    assert unit["Service"]["ExecStop"] == "/usr/sbin/nft delete table inet pinka_telemetry_guard"
+    assert unit["Unit"]["Before"] == "network-pre.target"
+
+
+def test_docker_incus_compat_script(tmp_path: Path) -> None:
+    text = render_template("firewall", "docker-incus-compat.sh.j2", firewall_vars())
+    path = tmp_path / "docker-incus-compat"
+    path.write_text(text, encoding="utf-8")
+    shellcheck = Path(sys.executable).parent / "shellcheck"
+    result = subprocess.run(
+        [str(shellcheck), "-s", "sh", str(path)], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stdout
+    assert subprocess.run(["sh", "-n", str(path)], check=False).returncode == 0
+    # iptables writes interface wildcards with "+".
+    for bridge in ("r-+", "pinka-build0", "incusbr-+"):
+        assert f'-I DOCKER-USER -i "{bridge}" -j ACCEPT' in text
+    assert "*" not in text.split("set -eu", 1)[1]
+
+
+def test_docker_user_rules_touch_only_incus_bridges() -> None:
+    # Owner decision 3 on 3f-1 (real-machine test 4.4): the rules pinka adds to
+    # DOCKER-USER must not change the networking of containers that were there
+    # before; every rule matches an Incus bridge, none matches Docker's or LXD's.
+    variables = firewall_vars()
+    text = render_template("firewall", "docker-incus-compat.sh.j2", variables)
+    patterns = evaluate("firewall_incus_bridge_patterns", variables)
+    bridges = {p.replace("*", "+") for p in patterns}
+    rules = [line.split() for line in text.splitlines() if "-I DOCKER-USER" in line]
+    assert len(rules) == 2 * len(bridges)
+    for rule in rules:
+        interface = next(rule[i + 1] for i, word in enumerate(rule) if word in ("-i", "-o"))
+        assert interface.strip('"') in bridges, rule
+    for other in ("docker0", "br-0123456789ab", "lxdbr0", "podman0"):
+        assert not any(fnmatch.fnmatchcase(other, b.replace("+", "*")) for b in bridges), other
+
+
+def test_firewall_units() -> None:
+    compat = ini(
+        render_template("firewall", "pinka-docker-incus-compat.service.j2", firewall_vars())
+    )
+    assert compat["Unit"]["After"] == "docker.service incus.service"
+    assert compat["Service"]["ExecStart"] == "/usr/local/libexec/pinka/docker-incus-compat"
+    # pinka's firewall tables: inet pinka_filter on the nftables backend, the
+    # access guard on every backend (BUILD_PROMPT §7.5).
+    for backend, files, tables in (
+        ("nftables", ["pinka.nft", "access-guard.nft"], ["pinka_filter", "pinka_access_guard"]),
+        ("ufw", ["access-guard.nft"], ["pinka_access_guard"]),
+        ("firewalld", ["access-guard.nft"], ["pinka_access_guard"]),
+    ):
+        text = render_template(
+            "firewall", "pinka-nftables.service.j2", firewall_vars(pinka_firewall_backend=backend)
+        )
+        lines = text.splitlines()
+
+        def values(key: str, lines: list[str] = lines) -> list[str]:
+            return [line.split("=", 1)[1] for line in lines if line.startswith(f"{key}=")]
+
+        loads = [f"/usr/sbin/nft -f /etc/pinka/nftables/{name}" for name in files]
+        assert values("ExecStart") == values("ExecReload") == loads, backend
+        assert values("ExecStop") == [f"/usr/sbin/nft delete table inet {t}" for t in tables]
+
+
+# --- ssh, sudoers ------------------------------------------------------------
+
+
+def sshd_drop_in(**extra: Any) -> list[str]:
+    text = render_template("ssh", "10-pinka.conf.j2", role_vars("ssh", **extra))
+    return [line for line in text.splitlines() if line and not line.startswith("#")]
+
+
+def test_sshd_drop_in_on_a_shared_host_is_a_match_block() -> None:
+    # BUILD_PROMPT §7.3, approved deviation SSH1: on a shared host pinka's
+    # settings apply to group pinka only; every other account keeps the host's
+    # own policy. The block ends with the file (sshd restores the including
+    # file's Match state).
+    lines = sshd_drop_in(pinka_preexisting={"access": SHARED_ACCESS})
+    assert lines[0] == "Match Group pinka"
+    assert all(line.startswith("\t") for line in lines[1:])
+    assert not [line for line in lines if "AllowGroups" in line]
+    assert "\tPasswordAuthentication no" in lines and "\tPermitRootLogin no" in lines
+
+
+def test_sshd_drop_in_on_a_dedicated_host() -> None:
+    dedicated = {**SHARED_ACCESS, "host": "dedicated"}
+    # Installed over SSH as an account that is not a researcher: it keeps the
+    # host's policy until the safeguard of §7.5 closes the install's path.
+    assert sshd_drop_in(pinka_preexisting={"access": dedicated})[0] == "Match Group pinka"
+    closed = sshd_drop_in(
+        pinka_preexisting={"access": dedicated}, pinka_closed_access=["install_path"]
+    )
+    assert "AllowGroups pinka" in closed
+    # Installed by a researcher, or from the console: the strict default at once.
+    researcher = {**dedicated, "session": {**dedicated["session"], "user": "researcher1"}}  # type: ignore[dict-item]
+    assert "AllowGroups pinka" in sshd_drop_in(pinka_preexisting={"access": researcher})
+    console = {**dedicated, "session": {"via": "console"}}
+    assert "AllowGroups pinka" in sshd_drop_in(pinka_preexisting={"access": console})
+
+
+def test_sshd_drop_in() -> None:
+    text = render_template("ssh", "10-pinka.conf.j2", role_vars("ssh"))
+    directives = dict(
+        line.split(" ", 1) for line in text.splitlines() if line and not line.startswith("#")
+    )
+    assert directives == {
+        "PasswordAuthentication": "no",
+        "KbdInteractiveAuthentication": "no",
+        "PermitRootLogin": "no",
+        "PubkeyAuthentication": "yes",
+        "AllowGroups": "pinka",
+        "X11Forwarding": "no",
+        "AllowTcpForwarding": "local",
+        "ClientAliveInterval": "60",
+    }
+
+
+def test_sudoers_drop_in_is_valid(tmp_path: Path) -> None:
+    tasks = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
+    task = next(
+        t
+        for t in tasks
+        if t.get("ansible.builtin.copy", {}).get("dest") == "/etc/sudoers.d/90-pinka-admin"
+    )
+    module = task["ansible.builtin.copy"]
+    assert module["validate"] == "visudo -cf %s"
+    assert module["mode"] == "0440"
+    path = tmp_path / "90-pinka-admin"
+    path.write_text(module["content"], encoding="utf-8")
+    visudo = shutil.which("visudo") or "/usr/sbin/visudo"
+    if not Path(visudo).exists():
+        pytest.skip("visudo is not installed")
+    result = subprocess.run([visudo, "-cf", str(path)], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("name", "clash"),
+    [
+        ("researcher1", False),
+        ("pinka-build", True),
+        ("pinka-admin", True),
+        ("demo-ctl", True),
+        ("demo-db", True),
+        ("pinka-restricted", True),
+    ],
+)
+def test_researchers_never_take_an_account_of_the_lab(name: str, clash: bool) -> None:
+    platform = {
+        "accounts": [{"name": "demo-ctl"}, {"name": "demo-agent"}],
+        "groups": ["demo-db", "demo-ctl-api"],
+        "infra_groups": ["pinka-restricted"],
+    }
+    variables = ansible_vars(
+        GROUP_VARS,
+        ROLES / "users_groups" / "vars" / "main.yml",
+        researchers=[{"name": name}],
+        active_platform=platform,
+    )
+    assert evaluate("users_groups_clashes", variables) == ([name] if clash else [])
+    tasks = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
+    names = [t["name"] for t in tasks]
+    assert names.index("Refuse researchers named like an account or group of the lab") < (
+        names.index("Create the researchers")
+    )
+
+
+# --- providers -----------------------------------------------------------------
+
+
+def test_wsl_conf() -> None:
+    conf = ini(
+        render_template(
+            "provider_wsl2", "wsl.conf.j2", role_vars("provider_wsl2", machine_name="lab-01")
+        )
+    )
+    assert {section: dict(conf[section]) for section in conf.sections()} == {
+        "boot": {"systemd": "true"},
+        "automount": {"enabled": "false", "mountFsTab": "false"},
+        "interop": {"enabled": "false", "appendWindowsPath": "false"},
+        "network": {"hostname": "lab-01", "generateHosts": "true", "generateResolvConf": "true"},
+    }
+
+
+@pytest.mark.parametrize(
+    ("expected", "memory", "processors"),
+    [(None, "18GB", "8"), ({"memory_gib": 48, "cpu_threads": 20}, "48GB", "20")],
+)
+def test_wslconfig_recommendation(
+    expected: dict[str, int] | None, memory: str, processors: str
+) -> None:
+    variables = role_vars("provider_wsl2", machine_name="lab-01")
+    if expected is not None:
+        variables["expected"] = expected
+    conf = ini(render_template("provider_wsl2", "wslconfig.recommended.j2", variables))
+    assert dict(conf["wsl2"]) == {
+        "memory": memory,
+        "processors": processors,
+        "swap": "8GB",
+        "nestedVirtualization": "true",
+        "localhostForwarding": "false",
+    }
+
+
+def test_sleep_inhibitor_unit() -> None:
+    unit = ini(
+        render_template(
+            "provider_baremetal", "pinka-sleep-inhibit.service.j2", role_vars("provider_baremetal")
+        )
+    )
+    assert unit["Unit"]["PartOf"] == "pinka-lab.target"
+    assert unit["Install"]["WantedBy"] == "pinka-lab.target"
+    assert "systemd-inhibit --what=sleep:idle --mode=block" in unit["Service"]["ExecStart"]
+
+
+# --- base ------------------------------------------------------------------------
+
+
+def base_vars(family: str, **facts: Any) -> dict[str, Any]:
+    defaults = {
+        "pinka_provider": "baremetal",
+        "pinka_release_model": "fixed",
+        "allow_kernel_updates": False,
+    }
+    return role_vars("base", family, **{**defaults, **facts})
+
+
+def blacklist(text: str) -> list[str]:
+    block = text.split("Unattended-Upgrade::Package-Blacklist {", 1)[1].split("};", 1)[0]
+    return [line.strip().strip('";') for line in block.splitlines() if line.strip()]
+
+
+@pytest.mark.parametrize(
+    ("group", "origin"),
+    [
+        ("ubuntu", '"origin=Ubuntu,archive=${distro_codename}-security,label=Ubuntu";'),
+        ("debian", '"origin=Debian,codename=${distro_codename}-security,label=Debian-Security";'),
+    ],
+)
+def test_unattended_upgrades_security_only(group: str, origin: str) -> None:
+    text = render_template(
+        "base", "52pinka-unattended-upgrades.j2", base_vars("debian", pinka_source_group=group)
+    )
+    origins = text.split("Unattended-Upgrade::Origins-Pattern {", 1)[1].split("};", 1)[0]
+    assert [line.strip() for line in origins.splitlines() if line.strip()] == [origin]
+    assert 'Unattended-Upgrade::Automatic-Reboot "false";' in text
+    held = blacklist(text)
+    for pattern in ("docker-ce", "containerd.io", "nvidia-", "incus", "tailscale", "linux-image-"):
+        assert pattern in held
+
+
+@pytest.mark.parametrize(
+    ("facts", "kernel_held"),
+    [
+        ({}, True),
+        ({"allow_kernel_updates": True}, False),
+        ({"pinka_provider": "wsl2"}, False),
+    ],
+)
+def test_kernel_hold(facts: dict[str, Any], kernel_held: bool) -> None:
+    variables = base_vars("debian", pinka_source_group="ubuntu", **facts)
+    debian = render_template("base", "52pinka-unattended-upgrades.j2", variables)
+    assert ("linux-image-" in blacklist(debian)) is kernel_held
+    redhat = ini(render_template("base", "dnf-automatic.conf.j2", base_vars("redhat", **facts)))
+    assert (redhat["base"].get("exclude") == "kernel*") is kernel_held
+
+
+def test_dnf_automatic() -> None:
+    conf = ini(render_template("base", "dnf-automatic.conf.j2", base_vars("redhat")))
+    assert dict(conf["commands"]) == {
+        "upgrade_type": "security",
+        "download_updates": "yes",
+        "apply_updates": "yes",
+        "reboot": "never",
+    }
+
+
+def test_journald_drop_in() -> None:
+    conf = ini(render_template("base", "journald.conf.j2", base_vars("debian")))
+    assert dict(conf["Journal"]) == {
+        "Storage": "persistent",
+        "SystemMaxUse": "2G",
+        "SystemKeepFree": "4G",
+    }
+
+
+def test_security_patch_units() -> None:
+    service = ini(render_template("base", "pinka-security-patch.service.j2", base_vars("suse")))
+    assert (
+        service["Service"]["ExecStart"]
+        == "/usr/bin/zypper --non-interactive patch --category security"
+    )
+    timer = ini(render_template("base", "pinka-security-patch.timer.j2", base_vars("suse")))
+    assert timer["Timer"]["OnCalendar"] == "daily"
+    assert timer["Install"]["WantedBy"] == "timers.target"
+
+
+def test_auto_updates_only_on_fixed_releases() -> None:
+    assert evaluate("base_auto_updates_effective | bool", base_vars("debian")) is True
+    assert (
+        evaluate(
+            "base_auto_updates_effective | bool", base_vars("redhat", pinka_release_model="fast")
+        )
+        is True
+    )
+    rolling = base_vars("archlinux", pinka_release_model="rolling")
+    assert evaluate("base_auto_updates_effective | bool", rolling) is False
+    off = base_vars("debian", base_auto_updates=False)
+    assert evaluate("base_auto_updates_effective | bool", off) is False
+
+
+# --- expressions in task files -------------------------------------------------
+
+
+def test_apt_pin_block_expression() -> None:
+    task = load_yaml(ROLES / "pkg" / "tasks" / "hold_apt_preferences.yml")[0]
+    expression = task["ansible.builtin.blockinfile"]["block"].strip("{} ")
+    variables = {
+        "pkg_versions": {"docker-ce": "5:29.0.0-1", "docker-ce-cli": "5:29.0.0-1"},
+        "pkg_hold_packages": ["docker-ce"],
+    }
+    assert (
+        evaluate(expression, variables)
+        == "Package: docker-ce\nPin: version 5:29.0.0-1\nPin-Priority: 1001"
+    )
+
+
+def test_tailnet_ports() -> None:
+    assert evaluate("firewall_tailnet_tcp_ports", firewall_vars()) == [22]
+    assert evaluate("firewall_tailnet_tcp_ports", firewall_vars(grafana_tailscale_serve=True)) == [
+        22,
+        443,
+    ]
+    inference = firewall_vars(node_role="inference")
+    assert evaluate("firewall_tailnet_tcp_ports", inference) == [22, 18704, 18710]
+    assert evaluate("firewall_tailnet_tcp_ports", firewall_vars(node_role="lab")) == [22]
+    paired = firewall_vars(node_role="lab", inference_remote_node="pinka-gpu")
+    assert evaluate("firewall_tailnet_tcp_ports", paired) == [22, 4317]
+
+    features = {"vm_targets": True}
+    assert evaluate("firewall_vm_otlp_ports", firewall_vars(pinka_features=features)) == [
+        4317,
+        4318,
+    ]
+    no_targets = firewall_vars(pinka_features=features, node_role="inference")
+    assert evaluate("firewall_vm_otlp_ports", no_targets) == []
+
+
+@pytest.mark.parametrize(("cpuset", "allowed"), [("0-3,8", "0,1,2,3,8"), ("", None)])
+def test_services_slice(cpuset: str, allowed: str | None) -> None:
+    text = render_template(
+        "base", "pinka-services.slice.j2", role_vars("base", cpuset_services=cpuset)
+    )
+    unit = ini(text)
+    assert unit["Unit"]["Before"] == "slices.target"
+    assert unit["Slice"].get("AllowedCPUs") == allowed
+
+
+def test_lab_units_run_in_the_services_slice() -> None:
+    for path in sorted(ROLES.glob("*/templates/*.service.j2")):
+        text = path.read_text(encoding="utf-8")
+        lab_unit = "PartOf=pinka-lab.target" in text or path.name in {
+            "backup-job.service.j2",
+            "pinka-incus-events.service.j2",
+            "pinka-gpu-arbiter@.service.j2",
+            "pinka-gpu-job@.service.j2",
+            "pinka-run-network@.service.j2",
+            "pinka-window-expiry.service.j2",
+        }
+        assert ("Slice={{ pinka_services_slice }}" in text) == lab_unit, path

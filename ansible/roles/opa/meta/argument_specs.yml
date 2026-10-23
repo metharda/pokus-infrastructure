@@ -1,0 +1,23 @@
+# Managed by pinka (ansible/roles/opa/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: OPA on 127.0.0.1:8181 serving the active platform's policy bundle and the deny-all placeholder.
+    options:
+      pinka_dir:
+        type: path
+        required: true
+        description: Infra directory of the checkout (config/opa/).
+      opa_platform_policy_dir:
+        type: str
+        description: >-
+          The active platform's policy bundle in its published release (from its rendering);
+          empty without a platform or without a policy, and then an empty directory is mounted.
+      opa_decision_path:
+        type: str
+        description: The active platform's decision path below /v1/data (manifest policy.decision_path); empty without one.
+      opa_config_dir:
+        type: path
+        description: Rendered configuration (pinka_root/services/core/config/opa), mounted at /config.
+      opa_policy_link:
+        type: path
+        description: Symbolic link to the active policy directory (pinka_root/services/core/policy), mounted at /policy.

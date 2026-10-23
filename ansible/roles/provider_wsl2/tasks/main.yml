@@ -1,0 +1,41 @@
+# Managed by pinka (ansible/roles/provider_wsl2/tasks/main.yml). Local changes will be overwritten.
+#
+# WSL2 provider (BUILD_PROMPT §3.1). Never installs a Linux NVIDIA kernel
+# driver and never touches the Windows side: the GPU comes from the Windows
+# driver through /dev/dxg and the libraries in /usr/lib/wsl/lib.
+- name: Manage /etc/wsl.conf
+  ansible.builtin.template:
+    src: wsl.conf.j2
+    dest: /etc/wsl.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: provider_wsl2_conf_file
+
+- name: Ask for a WSL restart when wsl.conf changed or systemd is not PID 1
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 75
+    bootstrap_signal_message: >-
+      {{ 'wsl.conf changed' if provider_wsl2_conf_file is changed else 'systemd is not PID 1' }}.
+      On the Windows side run: wsl --terminate {{ provider_wsl2_distro_name }}
+      Then open the distribution again and re-run bootstrap.
+  when:
+    - not ansible_check_mode
+    - provider_wsl2_conf_file is changed or not host_profile.init.systemd
+
+- name: Add the WSL GPU libraries to the dynamic linker path
+  # TODO(verify): NVIDIA's current CUDA-on-WSL guide for the library path the
+  # NVIDIA Container Toolkit needs (docs.nvidia.com is not reachable from the
+  # build environment).
+  ansible.builtin.copy:
+    dest: /etc/ld.so.conf.d/pinka-wsl.conf
+    content: |
+      # Managed by pinka (ansible/roles/provider_wsl2). Local changes will be overwritten.
+      /usr/lib/wsl/lib
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Run ldconfig
+  when: host_profile.gpu.present

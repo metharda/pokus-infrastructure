@@ -1,4 +1,0 @@
-# Managed by pokus-infra (ansible/roles/mac/vars/archlinux.yml). Local changes will be overwritten.
-#
-# Arch Linux ships without SELinux; hosts that added it manage it themselves.
-mac_selinux_packages: []

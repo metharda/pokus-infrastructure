@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/pinka/contract/v2/principals.schema.json",
+  "title": "principals.json",
+  "description": "The principals of the active platform, /etc/pinka/platform/principals.json (contract v2, BUILD_PROMPT \u00a712.3): every service and job with its account and UID, every socket with its path and allowed clients, and the groups of the human classes. Written by infra at every deployment, 0644 root. The platform builds its per-endpoint peer allowlists from this file instead of hard-coding names.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "_comment",
+    "schema_version",
+    "contract_version",
+    "platform",
+    "groups",
+    "services",
+    "jobs",
+    "sockets"
+  ],
+  "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "The notice that infra manages the file; ignore it."
+    },
+    "schema_version": {
+      "const": 1,
+      "description": "Version of this file's format."
+    },
+    "contract_version": {
+      "const": 2,
+      "description": "Contract version of the installed infra."
+    },
+    "platform": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,11}$",
+      "description": "Platform name."
+    },
+    "groups": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admins",
+        "researchers"
+      ],
+      "properties": {
+        "admins": {
+          "type": "string",
+          "description": "Group of the admins (`pinka-admin`)."
+        },
+        "researchers": {
+          "type": "string",
+          "description": "Group of every researcher (`pinka`)."
+        }
+      },
+      "description": "The Unix group of each human class a socket can name."
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profile",
+          "account",
+          "uid",
+          "config",
+          "secrets_dir",
+          "state"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{0,9}$",
+            "description": "Name of the service or job in the manifest."
+          },
+          "profile": {
+            "enum": [
+              "controller",
+              "inference-broker",
+              "sandbox-operator",
+              "restricted-operator",
+              "restricted-reader",
+              "observer",
+              "untrusted-agent"
+            ],
+            "description": "Its privilege profile."
+          },
+          "account": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{1,11}-[a-z][a-z0-9]{0,9}$",
+            "description": "Its Unix account, `<platform>-<name>`."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The account's UID, in infra's platform UID range."
+          },
+          "config": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^/",
+            "description": "Its non-secret configuration file, `/etc/pinka/platform/config/<service>.json`, when the manifest declares `config`; otherwise null."
+          },
+          "secrets_dir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^/",
+            "description": "Its secrets directory, `/etc/pinka/secrets/<account>/`, one file per declared secret, when the manifest declares `secrets`; otherwise null."
+          },
+          "state": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^/"
+            },
+            "description": "Its state directories: the name the manifest declares, mapped to the directory below `/srv/pinka/platforms/<platform>/state/<service>/`."
+          }
+        },
+        "description": "A service."
+      },
+      "description": "Every service, in manifest order."
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "profile",
+          "account",
+          "uid"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{0,9}$",
+            "description": "Name of the service or job in the manifest."
+          },
+          "profile": {
+            "const": "gpu-trainer",
+            "description": "Its privilege profile, always `gpu-trainer`."
+          },
+          "account": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{1,11}-[a-z][a-z0-9]{0,9}$",
+            "description": "Its Unix account, `<platform>-<name>`."
+          },
+          "uid": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The account's UID, in infra's platform UID range."
+          }
+        },
+        "description": "A training job."
+      },
+      "description": "Every training job, in manifest order."
+    },
+    "sockets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "name",
+          "path",
+          "owner",
+          "group",
+          "mode",
+          "fd_name",
+          "agent_dedicated",
+          "clients"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]{0,9}$",
+            "description": "The serving service."
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z]([a-z0-9-]{0,14}[a-z0-9])?$",
+            "description": "Socket name in the manifest."
+          },
+          "path": {
+            "type": "string",
+            "pattern": "^/",
+            "description": "The socket, `/run/pinka/platform/<service>/<socket>.sock`."
+          },
+          "owner": {
+            "type": "string",
+            "description": "The serving service's account, which owns the socket."
+          },
+          "group": {
+            "type": "string",
+            "description": "The socket's client group, `<platform>-<service>-<socket>`."
+          },
+          "mode": {
+            "const": "0660",
+            "description": "The socket's mode."
+          },
+          "fd_name": {
+            "type": "string",
+            "description": "The name systemd passes the socket under (`LISTEN_FDNAMES`); the service takes the socket from systemd and never creates it."
+          },
+          "agent_dedicated": {
+            "type": "boolean",
+            "description": "Whether the socket is dedicated to the agent (`untrusted_clients: true`): `untrusted-agent` is then its only client, and no endpoint on it may return restricted data."
+          },
+          "clients": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "profiles",
+              "accounts",
+              "humans",
+              "human_groups",
+              "root"
+            ],
+            "properties": {
+              "profiles": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "controller",
+                    "inference-broker",
+                    "sandbox-operator",
+                    "restricted-operator",
+                    "restricted-reader",
+                    "observer",
+                    "untrusted-agent",
+                    "gpu-trainer"
+                  ]
+                },
+                "description": "The client profiles the manifest names."
+              },
+              "accounts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The accounts of the services with those profiles, sorted; the members of the socket's group."
+              },
+              "humans": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "researchers",
+                    "admins"
+                  ]
+                },
+                "description": "The human classes the manifest names."
+              },
+              "human_groups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Their groups, in the same order; each gets a POSIX ACL entry on the socket."
+              },
+              "root": {
+                "type": "boolean",
+                "description": "Whether the manifest names `root` as a client (root can always connect, for the hooks)."
+              }
+            },
+            "description": "Who may connect: build the socket's peer-credential allowlist from these."
+          }
+        },
+        "description": "A socket."
+      },
+      "description": "Every socket, in manifest order."
+    }
+  }
+}

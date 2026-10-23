@@ -1,0 +1,28 @@
+# Managed by pinka (ansible/roles/layout/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Create the research space and the lab's host paths.
+    options:
+      pinka_root:
+        type: path
+        required: true
+        description: Research space base path.
+      pinka_layout:
+        type: list
+        elements: dict
+        required: true
+        description: Entries {path (relative to pinka_root), owner, group, mode, default_acl, notes}.
+      pinka_system_layout:
+        type: list
+        elements: dict
+        required: true
+        description: Absolute host paths {path, owner, group, mode, notes}.
+      pinka_layout_user_mode:
+        type: str
+        required: true
+        description: Mode of users/<name>/ (owned by <name>:<name>).
+      researchers:
+        type: list
+        elements: dict
+        required: true
+        description: Researchers; each gets users/<name>/.

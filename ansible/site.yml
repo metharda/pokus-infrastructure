@@ -1,0 +1,224 @@
+# Managed by pinka (ansible/site.yml). Local changes will be overwritten.
+#
+# Provisioning play run by bootstrap.sh (BUILD_PROMPT §5.2 step 8) with
+# `-e machine=<name>` and the variables host_profile and pinka_bootstrap.
+# Every role is tagged with its name; platform_facts and preflight_gate always
+# run, so `--tags <role>` still works on the validated facts.
+- name: Provision the Pokus lab host
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - "inventory/host_vars/{{ machine }}.yml"
+  vars:
+    pinka_dir: "{{ playbook_dir | dirname }}"
+  pre_tasks:
+    - name: Check the variables passed by bootstrap
+      ansible.builtin.assert:
+        that:
+          - machine is defined
+          - host_profile is mapping
+          - host_profile.schema_version == 1
+          - pinka_bootstrap is mapping
+        fail_msg: "Run this play through bootstrap/bootstrap.sh, which passes machine, host_profile and pinka_bootstrap."
+        quiet: true
+      tags: [always]
+
+    # The safeguard of BUILD_PROMPT §7.5 accepts SSH logins over the tailnet
+    # since this moment only: seconds since the epoch, for journalctl's
+    # --since=@ (a naive local time's timestamp(), right in every time zone).
+    - name: Note when the run began
+      ansible.builtin.set_fact:
+        pinka_run_started: "{{ now().timestamp() | int }}"
+      tags: [always]
+
+  tasks:
+    - name: Derive the platform facts
+      ansible.builtin.import_role:
+        name: platform_facts
+      tags: [platform_facts, always]
+
+    - name: Re-validate the host profile
+      ansible.builtin.import_role:
+        name: preflight_gate
+      tags: [preflight_gate, always]
+
+    # Before any change to the host: what existed before pinka (§7.21).
+    - name: Record what existed before pinka
+      ansible.builtin.import_role:
+        name: install_record
+      tags: [install_record, always]
+
+    - name: Apply the provider
+      ansible.builtin.include_role:
+        name: "provider_{{ pinka_provider }}"
+        apply:
+          tags: ["provider_{{ pinka_provider }}", providers]
+      tags: [provider_wsl2, provider_baremetal, provider_vm, providers]
+
+    - name: Base system
+      ansible.builtin.import_role:
+        name: base
+      tags: [base]
+
+    - name: Groups and accounts
+      ansible.builtin.import_role:
+        name: users_groups
+      tags: [users_groups]
+
+    - name: SSH
+      ansible.builtin.import_role:
+        name: ssh
+      tags: [ssh]
+
+    - name: Research space layout
+      ansible.builtin.import_role:
+        name: layout
+      tags: [layout]
+
+    - name: Provider files that need the layout
+      ansible.builtin.include_role:
+        name: provider_wsl2
+        tasks_from: post_layout
+        apply:
+          tags: [provider_wsl2, providers]
+      when: pinka_provider == 'wsl2'
+      tags: [provider_wsl2, providers]
+
+    - name: Mandatory access control
+      ansible.builtin.import_role:
+        name: mac
+      tags: [mac]
+
+    - name: Firewall
+      ansible.builtin.import_role:
+        name: firewall
+      tags: [firewall]
+
+    - name: Tailscale
+      ansible.builtin.import_role:
+        name: tailscale
+      tags: [tailscale]
+
+    # Needs the tailnet address; before observability, which forwards over the pairing.
+    - name: Pairing identity and the inference control endpoint
+      ansible.builtin.import_role:
+        name: inference_control
+      when: node_role in ['lab', 'inference']
+      tags: [inference_control]
+
+    - name: Docker Engine
+      ansible.builtin.import_role:
+        name: docker
+      tags: [docker]
+
+    - name: NVIDIA Container Toolkit
+      ansible.builtin.include_role:
+        name: nvidia_container_toolkit
+        apply:
+          tags: [nvidia_container_toolkit]
+      when: pinka_features.gpu_inference | default(false)
+      tags: [nvidia_container_toolkit]
+
+    # An inference node runs only the inference stack (BUILD_PROMPT §19.10).
+    - name: Incus
+      ansible.builtin.import_role:
+        name: incus
+      when: &pinka_runs_lab node_role in ['full', 'lab']
+      tags: [incus]
+
+    - name: PostgreSQL
+      ansible.builtin.import_role:
+        name: postgres
+      when: *pinka_runs_lab
+      tags: [postgres]
+
+    # Before OPA, which then serves the deployed platform's policy bundle.
+    - name: Platform deployment
+      ansible.builtin.import_role:
+        name: platform
+      when: *pinka_runs_lab
+      tags: [platform]
+
+    - name: Open Policy Agent
+      ansible.builtin.import_role:
+        name: opa
+      when: *pinka_runs_lab
+      tags: [opa]
+
+    - name: Observability
+      ansible.builtin.import_role:
+        name: observability
+      tags: [observability]
+
+    - name: Model weights
+      ansible.builtin.include_role:
+        name: models
+        apply:
+          tags: [models]
+      when: &pinka_serves_inference
+        - pinka_features.gpu_inference | default(false)
+        - node_role in ['full', 'inference']
+      tags: [models]
+
+    - name: Inference server (vLLM)
+      ansible.builtin.include_role:
+        name: vllm
+        apply:
+          tags: [vllm]
+      when: *pinka_serves_inference
+      tags: [vllm]
+
+    # After vLLM, which it serves; on a full node without a GPU it runs
+    # CPU-only training jobs (BUILD_PROMPT §7.18).
+    - name: GPU arbiter
+      ansible.builtin.include_role:
+        name: gpu_arbiter
+        apply:
+          tags: [gpu_arbiter]
+      when: node_role in ['full', 'inference']
+      tags: [gpu_arbiter, vllm]
+
+    - name: Golden images
+      ansible.builtin.include_role:
+        name: images
+        apply:
+          tags: [images]
+      when: *pinka_runs_lab
+      tags: [images]
+
+    - name: Backups
+      ansible.builtin.import_role:
+        name: backup
+      tags: [backup]
+
+    - name: Operator CLI pinka and the lab description
+      ansible.builtin.import_role:
+        name: doctor
+      tags: [doctor]
+
+    - name: Documentation service
+      ansible.builtin.import_role:
+        name: docs
+      tags: [docs]
+
+    - name: Lab session (target, health gate, session record)
+      ansible.builtin.import_role:
+        name: lab_session
+      tags: [lab_session]
+
+    # After the lab is up and OPA serves the new policy bundle (§7.14 step 8):
+    # start the active platform and wait for its health hook.
+    - name: Start the platform
+      ansible.builtin.import_role:
+        name: platform
+        tasks_from: start
+      when: *pinka_runs_lab
+      tags: [platform, lab_session]
+
+    # Last: the install's access path closes only when SSH over the tailnet was
+    # verified in this run and the owner consented (BUILD_PROMPT §7.5).
+    - name: Close the install's access path under the safeguard
+      ansible.builtin.import_role:
+        name: firewall
+        tasks_from: install_path
+      tags: [firewall]

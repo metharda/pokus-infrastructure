@@ -1,0 +1,15 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "install_driver": "auto",
+  "needs_action": [],
+  "open_module_drivers": [],
+  "outcome": "degraded",
+  "pci_device": "10de:1287",
+  "proprietary_only_drivers": [],
+  "provider": "baremetal",
+  "warnings_contain": [
+    "No usable GPU: the pinned NVIDIA driver does not support this GPU"
+  ]
+}

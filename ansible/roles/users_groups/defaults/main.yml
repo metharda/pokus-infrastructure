@@ -1,0 +1,5 @@
+# Managed by pinka (ansible/roles/users_groups/defaults/main.yml). Local changes will be overwritten.
+
+# Login shell of service accounts and locked researchers (/usr/sbin is the
+# same directory as /usr/bin on merged-/usr distributions).
+users_groups_nologin_shell: /usr/sbin/nologin

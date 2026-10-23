@@ -1,0 +1,78 @@
+# Managed by pinka (ansible/roles/images/tasks/main.yml). Local changes will be overwritten.
+#
+# Golden image pipeline (BUILD_PROMPT §7.13): build every listed blueprint
+# that has no image yet, publish it as <blueprint>/<version> and export it
+# with its upstream base to images_export_root.
+
+- name: Choose the blueprints of this run
+  ansible.builtin.set_fact:
+    images_order: "{{ images_selected.split(',') if images_selected else images_blueprints }}"
+    images_rebuild_names: "{{ images_rebuild_selected.split(',') if images_rebuild_selected else [] }}"
+
+- name: Read the blueprints
+  ansible.builtin.set_fact:
+    images_specs: >-
+      {{ images_specs | default({})
+         | combine({item: lookup('ansible.builtin.file', images_recipe_root ~ '/' ~ item ~ '/image.yaml') | from_yaml}) }}
+  loop: "{{ images_order }}"
+
+- name: Check the blueprints against the build order and the pinned versions
+  ansible.builtin.assert:
+    that:
+      - images_spec.name == item
+      - images_spec.base.blueprint is not defined
+        or images_spec.base.blueprint in images_order[:images_index]
+      - images_spec.base.image is not defined
+        or images_spec.base.image in pinka_versions.incus_base_images.images
+      - images_spec.base.image is not defined
+        or images_instance_types[images_spec.type] == pinka_versions.incus_base_images.images[images_spec.base.image].type
+      - images_spec.base.blueprint is not defined
+        or images_spec.type == images_specs[images_spec.base.blueprint].type | default('')
+      - images_spec.docker_images | difference(pinka_versions.containers.target_images | default({}) | list) == []
+    fail_msg: >-
+      Blueprint {{ item }}: the name must match its directory, a base blueprint must come
+      earlier in the list of blueprints and have the same type, a base image must be a key of
+      versions.lock.yml incus_base_images with the same type, and docker_images must be keys
+      of containers.target_images.
+    quiet: true
+  loop: "{{ images_order }}"
+  loop_control:
+    index_var: images_index
+  vars:
+    images_spec: "{{ images_specs[item] }}"
+
+- name: Create the directories of the exports and the build state
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ images_export_root }}", group: pinka-admin, mode: "0750"}
+    - {path: "{{ images_upstream_dir }}", group: pinka-admin, mode: "0750"}
+    - {path: "{{ images_work_dir }}", group: root, mode: "0700"}
+    - {path: "{{ images_files_helper | dirname }}", group: root, mode: "0755"}
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Install the export helper
+  ansible.builtin.copy:
+    src: pinka_image_files.py
+    dest: "{{ images_files_helper }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+# The incus role installs Incus only outside check mode.
+- name: Skip the blueprints in check mode before Incus is installed
+  ansible.builtin.meta: end_role
+  when:
+    - ansible_check_mode
+    - "'incus' not in pinka_present.commands"
+
+- name: Process the blueprints
+  ansible.builtin.include_tasks: blueprint.yml
+  loop: "{{ images_order }}"
+  loop_control:
+    loop_var: images_name

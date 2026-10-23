@@ -1,0 +1,68 @@
+# Managed by pinka (ansible/roles/provider_wsl2/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: WSL2 provider.
+    options:
+      machine_name:
+        type: str
+        required: true
+        description: Host name written to wsl.conf.
+      host_profile:
+        type: dict
+        required: true
+        description: Host profile (init.systemd, gpu.present).
+      provider_wsl2_automount:
+        type: bool
+        default: false
+        description: "[automount] enabled: mount Windows drives under /mnt."
+      provider_wsl2_mount_fstab:
+        type: bool
+        default: false
+        description: "[automount] mountFsTab."
+      provider_wsl2_interop:
+        type: bool
+        default: false
+        description: "[interop] enabled: run Windows executables from Linux."
+      provider_wsl2_append_windows_path:
+        type: bool
+        default: false
+        description: "[interop] appendWindowsPath."
+      provider_wsl2_generate_hosts:
+        type: bool
+        default: true
+        description: "[network] generateHosts."
+      provider_wsl2_generate_resolv_conf:
+        type: bool
+        default: true
+        description: "[network] generateResolvConf."
+      provider_wsl2_distro_name:
+        type: str
+        default: "<distro>"
+        description: Distribution name in the restart instruction (from WSL_DISTRO_NAME when available).
+  post_layout:
+    short_description: Render the recommended .wslconfig into the research space.
+    options:
+      machine_name:
+        type: str
+        required: true
+        description: Host name, mentioned in the file.
+      pinka_root:
+        type: path
+        required: true
+        description: Research space; the file goes to services/contrib/wslconfig.recommended.
+      expected:
+        type: dict
+        default: {}
+        description: host_vars `expected` (memory_gib, cpu_threads).
+      provider_wsl2_default_memory_gib:
+        type: int
+        default: 18
+        description: Memory in the recommendation when `expected.memory_gib` is not set.
+      provider_wsl2_default_cpu_threads:
+        type: int
+        default: 8
+        description: Processors in the recommendation when `expected.cpu_threads` is not set.
+      provider_wsl2_swap_gib:
+        type: int
+        default: 8
+        description: Swap in the recommendation.

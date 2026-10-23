@@ -1,0 +1,30 @@
+# Managed by pinka (ansible/roles/gpu_arbiter/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: The GPU arbiter with its socket, its start unit and the training run units; serves the chosen deployment.
+    options:
+      gpu_arbiter:
+        type: dict
+        required: true
+        description: after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1).
+      training_caps:
+        type: dict
+        required: true
+        description: Caps on a training job's timeout_seconds, memory_max and cpus (group_vars).
+      gpu_arbiter_peer:
+        type: str
+        description: >-
+          The account allowed besides root on /run/pinka/gpu.sock (the control endpoint's account on
+          an inference node, the active platform's controller elsewhere, root without one).
+      gpu_arbiter_serve_timeout:
+        type: int
+        default: 1200
+        description: Seconds a deployment may take to load its model and answer /health.
+      gpu_arbiter_stop_grace:
+        type: int
+        default: 120
+        description: Seconds a stopped training job gets to write its checkpoint.
+      gpu_arbiter_pids_limit:
+        type: int
+        default: 4096
+        description: Process limit of a training job's container.

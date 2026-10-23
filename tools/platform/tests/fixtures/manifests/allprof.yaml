@@ -1,0 +1,76 @@
+# A platform using all eight profiles and every manifest field (static
+# runtime, so every command exists before a build).
+contract_version: 2
+name: allprof
+version: 1.2.3-rc.1
+runtime: static
+requires: [postgres, incus, telemetry, inference, opa, gpu]
+services:
+  - name: ctl
+    profile: controller
+    start: [bin/ctl]
+    state: [records]
+    config: schemas/ctl.schema.json
+    secrets: [token]
+    limits: {memory_max: 1G, tasks_max: 256}
+  - name: brk
+    profile: inference-broker
+    start: [bin/brk]
+    after: [ctl]
+  - name: sbx
+    profile: sandbox-operator
+    start: [bin/sbx]
+    after: [ctl]
+  - name: rop
+    profile: restricted-operator
+    start: [bin/rop]
+  - name: rrd
+    profile: restricted-reader
+    start: [bin/rrd]
+    state: [reports]
+    relaxations: [wx-memory]
+  - name: obs
+    profile: observer
+    start: [bin/obs]
+  - name: agt
+    profile: untrusted-agent
+    package: agent/
+    start: [agent/agt, --verbose]
+    state: [scratch]
+    after: [ctl, brk, sbx]
+jobs:
+  - name: trn
+    profile: gpu-trainer
+    image: registry.example.com:5000/train/toy:1.0@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    command: [python3, -I, train.py]
+    inputs: {base_model: false, datasets: [train, validation]}
+    outputs: {adapter: allprof-trn}
+    resources: {gpus: 0, memory_max: 2G, cpus: 1}
+    timeout_seconds: 300
+    resumable: false
+sockets:
+  - {name: api, service: ctl, clients: [researchers, admins, root]}
+  - {name: svc, service: ctl, clients: [inference-broker, sandbox-operator, restricted-operator, restricted-reader, observer]}
+  - {name: agent, service: ctl, clients: [untrusted-agent], untrusted_clients: true}
+  - {name: agent, service: brk, clients: [untrusted-agent], untrusted_clients: true}
+  - {name: api, service: brk, clients: [controller, researchers, root]}
+  - {name: agent, service: sbx, clients: [untrusted-agent], untrusted_clients: true}
+  - {name: api, service: sbx, clients: [controller, root]}
+  - {name: api, service: rop, clients: [controller, root]}
+  - {name: api, service: rrd, clients: [controller]}
+  - {name: api, service: obs, clients: [controller, inference-broker, observer, researchers, admins, root]}
+hooks:
+  migrate: {run: [bin/admin, migrate], timeout_seconds: 300}
+  reconcile: {run: [bin/admin, reconcile], timeout_seconds: 120}
+  drain: {run: [bin/admin, drain], timeout_seconds: 600}
+  health: {run: [bin/admin, health], timeout_seconds: 30}
+backup: {paths: [ctl/records, rrd/reports/archive], database: false}
+content:
+  - {name: cases, restricted: true, required: true}
+  - {name: guides, restricted: false, required: false}
+docs: docs
+policy: {bundle: policy, decision_path: allprof/decide}
+dashboards: dashboards
+tools: [quarto]
+cli: {name: allprof, run: [bin/allprof]}
+telemetry: {labels: [allprof.run, allprof.node, allprof.case, allprof.step]}

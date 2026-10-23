@@ -1,0 +1,81 @@
+# Managed by pinka (ansible/roles/observability/vars/main.yml). Local changes will be overwritten.
+
+# Prometheus, Loki, Tempo and Grafana run on full and lab nodes; an inference
+# node runs the collectors and exporters only and forwards everything to its
+# paired lab node (BUILD_PROMPT §19.10).
+observability_stores: "{{ node_role in ['full', 'lab'] }}"
+# Inference node: the paired lab node that receives its telemetry (empty until paired).
+observability_forward_node: "{{ inference_lab_node if node_role == 'inference' else '' }}"
+# Lab node: the paired inference node whose telemetry arrives over mutual TLS.
+observability_inference_node: "{{ inference_remote_node if node_role == 'lab' else '' }}"
+# The collector gateway's copy of the pairing material (/etc/pinka/inference),
+# readable by its container user only.
+observability_pairing_dir: "{{ observability_secrets_dir }}/otel-pairing"
+observability_pairing_files: [self.crt, self.key, peer.crt]
+# Researchers with grafana: false get no Grafana account; the accounts to keep
+# (everyone else) and to disable (those and the removed researchers).
+observability_grafana_opted_out: >-
+  {{ researchers | selectattr('grafana', 'defined') | rejectattr('grafana') | map(attribute='name') | list }}
+observability_grafana_researchers: >-
+  {{ researchers | map(attribute='name') | reject('in', observability_grafana_opted_out) | list }}
+observability_grafana_disabled: "{{ observability_grafana_opted_out + researchers_removed }}"
+# The infra accounts the containers run as (compose/observability/compose.yml):
+# their UIDs are the host's, so the telemetry guard can name exactly these
+# (ADR-0016), and no image's default user (nobody, 10001, 472), which other
+# host processes may share, reaches the stores.
+observability_container_accounts:
+  otel_gateway: pinka-otelcol
+  prometheus: pinka-prometheus
+  loki: pinka-loki
+  tempo: pinka-tempo
+  grafana: pinka-grafana
+  query_proxy: pinka-query-proxy
+# The collector gateway's account (it reads the pairing material).
+observability_gateway_account: "{{ observability_container_accounts.otel_gateway }}"
+# The dedicated OTLP listener for VM targets exists only with vm_targets (C4),
+# on nodes that run Incus.
+observability_vm_listener: "{{ (pinka_features.vm_targets | default(false) | bool) and observability_stores }}"
+# The agent OTLP socket and its untrusted pipelines, on the nodes that run the
+# platform (BUILD_PROMPT §7.9).
+observability_agent_otlp: "{{ observability_stores }}"
+# The agent OTLP socket (contract path) and systemd's socket proxy behind it
+# (installed by systemd at this path, verified in the v255 build).
+observability_agent_socket: /run/pinka/otlp/agent.sock
+observability_socket_proxyd: /usr/lib/systemd/systemd-socket-proxyd
+# The query proxy's container user (an infra account, so its UID is the host's).
+observability_query_account: "{{ observability_container_accounts.query_proxy }}"
+# OTLP receivers of the gateway's pipelines.
+observability_otlp_receivers: "{{ ['otlp'] + (['otlp/vm'] if observability_vm_listener else []) }}"
+# An inference node's gateway scrapes the local exporters itself (receiver prometheus).
+observability_metrics_receivers: "{{ observability_otlp_receivers + ([] if observability_stores else ['prometheus']) }}"
+# Exporters by signal: the local stores, the paired lab node, or nowhere
+# (nop) on an inference node that is not paired yet.
+observability_exporters: >-
+  {{ {'logs': 'otlp_http/loki', 'metrics': 'prometheus', 'traces': 'otlp_grpc/tempo'} if observability_stores
+     else ({'logs': 'otlp_grpc/lab', 'metrics': 'otlp_grpc/lab', 'traces': 'otlp_grpc/lab'}
+           if observability_forward_node | length > 0
+           else {'logs': 'nop', 'metrics': 'nop', 'traces': 'nop'}) }}
+# GPU metrics only with gpu_inference.
+observability_gpu: "{{ pinka_features.gpu_inference | default(false) | bool }}"
+# vLLM serves on this host (node_role full or inference) with gpu_inference.
+observability_vllm: "{{ observability_gpu and node_role in ['full', 'inference'] }}"
+# Data directories under pinka_root/state, owned by the container that writes
+# them (Grafana keeps group 0: its image grants its own paths to group 0).
+observability_state_dirs:
+  - {name: prometheus, container: prometheus}
+  - {name: loki, container: loki}
+  - {name: tempo, container: tempo}
+  - {name: grafana, container: grafana, group: root}
+  - {name: otelcol-journald, owner: root, group: root}
+# Secrets mounted into containers (directory 0700 root; files 0400 owned by the reader's UID).
+observability_secrets_dir: /etc/pinka/secrets/containers
+# The Incus metrics certificate (incus role) and its copy for Prometheus.
+observability_incus_cert_dir: /etc/pinka/incus/metrics
+observability_incus_server_cert: /var/lib/incus/server.crt
+# The active platform's telemetry.labels, which Loki indexes as labels (§7.9).
+observability_loki_labels: >-
+  {{ (active_platform | default({}, true)).telemetry_labels | default([], true) | list }}
+# Grafana's HTTP API on the host.
+observability_grafana_url: "http://127.0.0.1:{{ pinka_ports.grafana }}"
+# Directory of the node exporter's textfile collector (backup and other host metrics).
+observability_textfile_dir: /var/lib/pinka/node-exporter

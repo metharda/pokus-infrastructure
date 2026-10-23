@@ -1,0 +1,54 @@
+# Managed by pinka (config/tempo/tempo.yaml.j2). Local changes will be overwritten.
+#
+# Tempo single binary (BUILD_PROMPT §7.9): host network, HTTP, gRPC and the
+# OTLP receiver on 127.0.0.1, local storage under /srv/pinka/state/tempo,
+# retention by the compactor. Rings stay in memory, so no memberlist port opens.
+stream_over_http_enabled: true
+
+server:
+  http_listen_address: 127.0.0.1
+  http_listen_port: {{ pinka_ports.tempo }}
+  grpc_listen_address: 127.0.0.1
+  grpc_listen_port: {{ pinka_internal_ports.tempo_grpc }}
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 127.0.0.1:{{ pinka_internal_ports.tempo_otlp_grpc }}
+  ring:
+    kvstore:
+      store: inmemory
+
+ingester:
+  lifecycler:
+    address: 127.0.0.1
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+
+compactor:
+  ring:
+    kvstore:
+      store: inmemory
+  compaction:
+    block_retention: {{ observability_tempo_retention }}
+
+metrics_generator:
+  ring:
+    kvstore:
+      store: inmemory
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+
+usage_report:
+  reporting_enabled: false

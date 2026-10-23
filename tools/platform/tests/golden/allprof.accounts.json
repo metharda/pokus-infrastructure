@@ -1,0 +1,160 @@
+{
+  "infra_groups": [
+    "pinka-restricted",
+    "pinka-query",
+    "pinka-datasets"
+  ],
+  "groups": [
+    "allprof-ctl",
+    "allprof-brk",
+    "allprof-sbx",
+    "allprof-rop",
+    "allprof-rrd",
+    "allprof-obs",
+    "allprof-agt",
+    "allprof-trn",
+    "allprof-migrate",
+    "allprof-ctl-api",
+    "allprof-ctl-svc",
+    "allprof-ctl-agent",
+    "allprof-brk-agent",
+    "allprof-brk-api",
+    "allprof-sbx-agent",
+    "allprof-sbx-api",
+    "allprof-rop-api",
+    "allprof-rrd-api",
+    "allprof-obs-api",
+    "allprof-db"
+  ],
+  "accounts": [
+    {
+      "name": "allprof-ctl",
+      "group": "allprof-ctl",
+      "groups": [
+        "allprof-brk-api",
+        "allprof-db",
+        "allprof-obs-api",
+        "allprof-rop-api",
+        "allprof-rrd-api",
+        "allprof-sbx-api",
+        "pinka-query",
+        "pinka-restricted"
+      ],
+      "home": "/var/lib/pinka/allprof-ctl",
+      "comment": "service ctl (controller)",
+      "kind": "service",
+      "member": "ctl",
+      "profile": "controller"
+    },
+    {
+      "name": "allprof-brk",
+      "group": "allprof-brk",
+      "groups": [
+        "allprof-ctl-svc",
+        "allprof-db",
+        "allprof-obs-api"
+      ],
+      "home": "/var/lib/pinka/allprof-brk",
+      "comment": "service brk (inference-broker)",
+      "kind": "service",
+      "member": "brk",
+      "profile": "inference-broker"
+    },
+    {
+      "name": "allprof-sbx",
+      "group": "allprof-sbx",
+      "groups": [
+        "allprof-ctl-svc",
+        "allprof-db",
+        "pinka-query"
+      ],
+      "home": "/var/lib/pinka/allprof-sbx",
+      "comment": "service sbx (sandbox-operator)",
+      "kind": "service",
+      "member": "sbx",
+      "profile": "sandbox-operator"
+    },
+    {
+      "name": "allprof-rop",
+      "group": "allprof-rop",
+      "groups": [
+        "allprof-ctl-svc",
+        "allprof-db",
+        "pinka-restricted"
+      ],
+      "home": "/var/lib/pinka/allprof-rop",
+      "comment": "service rop (restricted-operator)",
+      "kind": "service",
+      "member": "rop",
+      "profile": "restricted-operator"
+    },
+    {
+      "name": "allprof-rrd",
+      "group": "allprof-rrd",
+      "groups": [
+        "allprof-ctl-svc",
+        "allprof-db",
+        "pinka-query",
+        "pinka-restricted"
+      ],
+      "home": "/var/lib/pinka/allprof-rrd",
+      "comment": "service rrd (restricted-reader)",
+      "kind": "service",
+      "member": "rrd",
+      "profile": "restricted-reader"
+    },
+    {
+      "name": "allprof-obs",
+      "group": "allprof-obs",
+      "groups": [
+        "allprof-ctl-svc",
+        "allprof-db",
+        "allprof-obs-api",
+        "pinka-query"
+      ],
+      "home": "/var/lib/pinka/allprof-obs",
+      "comment": "service obs (observer)",
+      "kind": "service",
+      "member": "obs",
+      "profile": "observer"
+    },
+    {
+      "name": "allprof-agt",
+      "group": "allprof-agt",
+      "groups": [
+        "allprof-brk-agent",
+        "allprof-ctl-agent",
+        "allprof-sbx-agent"
+      ],
+      "home": "/var/lib/pinka/allprof-agt",
+      "comment": "service agt (untrusted-agent)",
+      "kind": "service",
+      "member": "agt",
+      "profile": "untrusted-agent"
+    },
+    {
+      "name": "allprof-trn",
+      "group": "allprof-trn",
+      "groups": [
+        "pinka-datasets"
+      ],
+      "home": "/var/lib/pinka/allprof-trn",
+      "comment": "job trn (gpu-trainer)",
+      "kind": "job",
+      "member": "trn",
+      "profile": "gpu-trainer"
+    },
+    {
+      "name": "allprof-migrate",
+      "group": "allprof-migrate",
+      "groups": [
+        "allprof-db"
+      ],
+      "home": "/var/lib/pinka/allprof-migrate",
+      "comment": "migrate migrate",
+      "kind": "migrate",
+      "member": "migrate",
+      "profile": null
+    }
+  ]
+}

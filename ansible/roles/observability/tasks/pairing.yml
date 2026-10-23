@@ -1,0 +1,77 @@
+# Managed by pinka (ansible/roles/observability/tasks/pairing.yml). Local changes will be overwritten.
+#
+# Split inference (BUILD_PROMPT §19.10): the collector gateway gets a copy of
+# the pairing material (/etc/pinka/inference, inference_control role) that its
+# container user can read. An inference node exports to the paired lab node's
+# tailnet address; a lab node receives the paired inference node's telemetry
+# on its own tailnet address. The gateway's container carries a hash of the
+# certificates, so a new pairing recreates it.
+- name: Create the collector's copy of the pairing material
+  ansible.builtin.file:
+    path: "{{ observability_pairing_dir }}"
+    state: directory
+    owner: "{{ observability_ids.otel_gateway.uid or omit }}"
+    group: root
+    mode: "0500"
+
+- name: Forward between paired nodes
+  when: (observability_forward_node | length > 0) or (observability_inference_node | length > 0)
+  block:
+    - name: Look for the pairing
+      ansible.builtin.stat:
+        path: /etc/pinka/inference/peer.crt
+      register: observability_peer_cert
+
+    - name: Refuse to forward without a pairing
+      ansible.builtin.assert:
+        that:
+          - observability_peer_cert.stat.exists
+        fail_msg: >-
+          {{ 'inference_lab_node' if observability_forward_node else 'inference_remote_node' }} is set,
+          but this node is not paired; pair it first (docs/how-to/pair-inference-node.md).
+        quiet: true
+      when: not ansible_check_mode
+
+    - name: Copy the pairing material for the collector
+      ansible.builtin.copy:
+        src: "/etc/pinka/inference/{{ item }}"
+        remote_src: true
+        dest: "{{ observability_pairing_dir }}/{{ item }}"
+        owner: "{{ observability_ids.otel_gateway.uid or omit }}"
+        group: root
+        mode: "0400"
+      loop: "{{ observability_pairing_files }}"
+      register: observability_pairing_copy
+      diff: false
+      when: not ansible_check_mode
+
+    # Without an argument the node's own address, with a peer name the peer's.
+    - name: Read the tailnet address
+      ansible.builtin.command:
+        argv: "{{ ['tailscale', 'ip', '-4'] + ([observability_forward_node] if observability_forward_node else []) }}"
+      register: observability_tailnet
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Check the tailnet address
+      ansible.builtin.assert:
+        that:
+          - observability_tailnet.rc == 0
+          - observability_tailnet.stdout_lines[0] | default('') is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$')
+        fail_msg: >-
+          tailscale ip -4 {{ observability_forward_node }} gave no address; both nodes must be on
+          the tailnet (tailscale role) and see each other.
+        quiet: true
+      when: not ansible_check_mode
+
+    # 127.0.0.1 only in check mode on a host that is not on the tailnet yet.
+    - name: Remember the forwarding settings
+      ansible.builtin.set_fact:
+        observability_tailnet_address: "{{ observability_address if observability_inference_node else '' }}"
+        observability_forward_address: "{{ observability_address if observability_forward_node else '' }}"
+        observability_pairing_hash: >-
+          {{ observability_pairing_copy.results | default([]) | rejectattr('item', 'equalto', 'self.key')
+             | map(attribute='checksum', default='') | join(',') | hash('sha256') }}
+      vars:
+        observability_address: "{{ observability_tailnet.stdout_lines[0] | default('127.0.0.1') }}"

@@ -1,0 +1,48 @@
+# Managed by pinka (ansible/roles/users_groups/tasks/keys.yml). Local changes will be overwritten.
+#
+# authorized_keys comes exclusively from users/<name>.pub (BUILD_PROMPT §6.1):
+# a key removed from the file is removed from the host. Key files are never
+# committed to the public project; a missing file is reported (doctor and the
+# TUI flag it) and leaves the account without keys.
+#
+# An account that existed before pinka keeps its own keys: pinka adds the
+# keys of users/<name>.pub, records them (§7.21), and never removes a key it
+# did not add.
+- name: Install the SSH keys of each researcher (exclusive)
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/' ~ item.keys_file) }}"
+    exclusive: true
+    manage_dir: true
+    state: present
+  loop: "{{ researchers | rejectattr('name', 'in', users_groups_existing_researchers) | list }}"
+  when:
+    - (pinka_dir ~ '/' ~ item.keys_file) is file
+    # In check mode new accounts are not created (pinka_present: platform_facts).
+    - not ansible_check_mode or item.name in pinka_present.users
+
+- name: Record the keys pinka adds to accounts that existed before it
+  pinka_install_record:
+    state: add
+    added:
+      keys: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/' ~ item.keys_file) | pinka_key_entries(item.name) }}"
+  loop: "{{ researchers | selectattr('name', 'in', users_groups_existing_researchers) | list }}"
+  when: (pinka_dir ~ '/' ~ item.keys_file) is file
+
+- name: Add the SSH keys of researcher accounts that existed before pinka
+  ansible.posix.authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/' ~ item.keys_file) }}"
+    exclusive: false
+    manage_dir: true
+    state: present
+  loop: "{{ researchers | selectattr('name', 'in', users_groups_existing_researchers) | list }}"
+  when:
+    - (pinka_dir ~ '/' ~ item.keys_file) is file
+    - not ansible_check_mode or item.name in pinka_present.users
+
+- name: Report researchers without a key file
+  ansible.builtin.debug:
+    msg: "No SSH key file {{ item.keys_file }} for {{ item.name }}: the account has no SSH access."
+  loop: "{{ researchers }}"
+  when: (pinka_dir ~ '/' ~ item.keys_file) is not file

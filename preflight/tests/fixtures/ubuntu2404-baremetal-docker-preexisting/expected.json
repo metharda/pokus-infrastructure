@@ -1,0 +1,11 @@
+{
+  "components": {
+    "docker": "pre-existing"
+  },
+  "conflicts": [],
+  "needs_action": [],
+  "notes_contain": [
+    "Docker Engine 29.8.2 is installed already"
+  ],
+  "outcome": "supported"
+}

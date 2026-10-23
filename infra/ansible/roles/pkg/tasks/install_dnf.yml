@@ -1,5 +1,0 @@
-# Managed by pokus-infra (ansible/roles/pkg/tasks/install_dnf.yml). Local changes will be overwritten.
-- name: Install packages with dnf
-  ansible.builtin.dnf:
-    name: "{{ pkg_packages | pokus_package_specs(pkg_versions, 'dnf') }}"
-    state: present

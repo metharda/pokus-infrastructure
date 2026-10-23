@@ -1,0 +1,154 @@
+# The reference platform (BUILD_PROMPT §7.18, the example of §12.1): the
+# controller ctl, the inference broker broker, the agent with its own package,
+# the toy training job tune and its CPU-only variant tunecpu (the same script,
+# jobs/tune.py, which the tests keep identical; the image is the lock's
+# containers.images.refplat_job).
+contract_version: 2
+name: refplat
+version: 0.1.0
+runtime: python-uv
+requires: [postgres, telemetry, inference, gpu]
+services:
+  - name: ctl
+    profile: controller
+    start: [.venv/bin/refplat-ctl]
+    state: [records, datasets]
+    config: schemas/ctl.schema.json
+    secrets: [api-token]
+  - name: agent
+    profile: untrusted-agent
+    package: packages/refplat-agent/
+    start: [.venv/bin/refplat-agent]
+    after: [ctl]
+  - name: broker
+    profile: inference-broker
+    start: [.venv/bin/refplat-broker]
+jobs:
+  - name: tune
+    profile: gpu-trainer
+    image: public.ecr.aws/docker/library/python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    command:
+      - python3
+      - -I
+      - -c
+      - |
+        """refplat's toy training (the jobs tune and tunecpu): deterministic and resumable.
+
+        The arbiter runs it with ``python3 -I -c``: the manifest carries this file's
+        text in both jobs, and the tests keep the three identical. It hashes the
+        training dataset with the seed into a state, advances the state one step at a
+        time with a checkpoint after each step, and writes the final state as its
+        adapter. A resumed run (``PINKA_JOB_RESUME=1``) continues from the checkpoint
+        and ends with the same adapter as an uninterrupted one.
+        """
+
+        import hashlib
+        import json
+        import os
+        import pathlib
+        import time
+
+        seed = os.environ["PINKA_JOB_SEED"]
+        params = json.loads(os.environ.get("PINKA_JOB_HYPERPARAMETERS") or "{}")
+        steps, pause = int(params.get("steps", 8)), float(params.get("step_seconds", 0))
+        root = pathlib.Path("/datasets/train")
+        data = hashlib.sha256()
+        files = sorted(
+            (p for p in root.rglob("*") if p.is_file()),
+            key=lambda p: p.relative_to(root).as_posix().encode(),
+        )
+        for path in files:
+            data.update(path.relative_to(root).as_posix().encode() + b"\0" + path.read_bytes())
+        state, start = data.hexdigest() + seed, 0
+        checkpoint = pathlib.Path("/checkpoints/state.json")
+        if os.environ.get("PINKA_JOB_RESUME") == "1" and checkpoint.is_file():
+            saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+            state, start = saved["state"], saved["step"]
+        for step in range(start, steps):
+            state = hashlib.sha256(f"{state}:{step}".encode()).hexdigest()
+            temp = checkpoint.with_suffix(".tmp")
+            temp.write_text(json.dumps({"step": step + 1, "state": state}), encoding="utf-8")
+            temp.replace(checkpoint)
+            print(f"step {step + 1}/{steps}", flush=True)
+            time.sleep(pause)
+        out = pathlib.Path("/output/adapter")
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "adapter_model.bin").write_bytes(bytes.fromhex(state))
+        config = {"seed": seed, "steps": steps, "toy": True}
+        (out / "adapter_config.json").write_text(json.dumps(config, sort_keys=True), encoding="utf-8")
+    inputs: {base_model: true, datasets: [train]}
+    outputs: {adapter: refplat-tune}
+    resources: {gpus: 1, memory_max: 4G, cpus: 2}
+    timeout_seconds: 600
+    resumable: true
+  - name: tunecpu
+    profile: gpu-trainer
+    image: public.ecr.aws/docker/library/python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+    command:
+      - python3
+      - -I
+      - -c
+      - |
+        """refplat's toy training (the jobs tune and tunecpu): deterministic and resumable.
+
+        The arbiter runs it with ``python3 -I -c``: the manifest carries this file's
+        text in both jobs, and the tests keep the three identical. It hashes the
+        training dataset with the seed into a state, advances the state one step at a
+        time with a checkpoint after each step, and writes the final state as its
+        adapter. A resumed run (``PINKA_JOB_RESUME=1``) continues from the checkpoint
+        and ends with the same adapter as an uninterrupted one.
+        """
+
+        import hashlib
+        import json
+        import os
+        import pathlib
+        import time
+
+        seed = os.environ["PINKA_JOB_SEED"]
+        params = json.loads(os.environ.get("PINKA_JOB_HYPERPARAMETERS") or "{}")
+        steps, pause = int(params.get("steps", 8)), float(params.get("step_seconds", 0))
+        root = pathlib.Path("/datasets/train")
+        data = hashlib.sha256()
+        files = sorted(
+            (p for p in root.rglob("*") if p.is_file()),
+            key=lambda p: p.relative_to(root).as_posix().encode(),
+        )
+        for path in files:
+            data.update(path.relative_to(root).as_posix().encode() + b"\0" + path.read_bytes())
+        state, start = data.hexdigest() + seed, 0
+        checkpoint = pathlib.Path("/checkpoints/state.json")
+        if os.environ.get("PINKA_JOB_RESUME") == "1" and checkpoint.is_file():
+            saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+            state, start = saved["state"], saved["step"]
+        for step in range(start, steps):
+            state = hashlib.sha256(f"{state}:{step}".encode()).hexdigest()
+            temp = checkpoint.with_suffix(".tmp")
+            temp.write_text(json.dumps({"step": step + 1, "state": state}), encoding="utf-8")
+            temp.replace(checkpoint)
+            print(f"step {step + 1}/{steps}", flush=True)
+            time.sleep(pause)
+        out = pathlib.Path("/output/adapter")
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "adapter_model.bin").write_bytes(bytes.fromhex(state))
+        config = {"seed": seed, "steps": steps, "toy": True}
+        (out / "adapter_config.json").write_text(json.dumps(config, sort_keys=True), encoding="utf-8")
+    inputs: {base_model: false, datasets: [train]}
+    outputs: {adapter: refplat-tune}
+    resources: {gpus: 0, memory_max: 4G, cpus: 2}
+    timeout_seconds: 600
+    resumable: true
+sockets:
+  - {name: api, service: ctl, clients: [researchers, root]}
+  - {name: session, service: ctl, clients: [untrusted-agent], untrusted_clients: true}
+  - {name: infer, service: broker, clients: [researchers, root]}
+hooks:
+  migrate: {run: [.venv/bin/refplat-admin, migrate], timeout_seconds: 300}
+  reconcile: {run: [.venv/bin/refplat-admin, reconcile], timeout_seconds: 120}
+  drain: {run: [.venv/bin/refplat-admin, drain], timeout_seconds: 600}
+  health: {run: [.venv/bin/refplat-admin, health], timeout_seconds: 30}
+backup: {paths: [ctl/records], database: true}
+content:
+  - {name: cases, restricted: true, required: true}
+docs: docs/
+cli: {name: refplat, run: [.venv/bin/refplat]}

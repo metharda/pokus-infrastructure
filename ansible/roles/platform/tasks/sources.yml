@@ -1,0 +1,64 @@
+# Managed by pinka (ansible/roles/platform/tasks/sources.yml). Local changes will be overwritten.
+#
+# Access to the sources (§7.14 steps 1-2): the root-only mirror directory, a
+# read-only deploy key generated on the host and the pinned host keys for SSH
+# sources (GitHub's from versions.lock.yml, others from
+# pinka_source_known_hosts), and the allowed signers of signed tags.
+# Anonymous HTTPS and root-owned file:/// repositories need neither.
+
+- name: Check the source settings
+  ansible.builtin.assert:
+    that:
+      - platform_ssh_repos | length == 0 or platform_known_host_lines | length > 0
+      - not require_signed_tags or pinka_allowed_signers | length > 0
+    fail_msg: >-
+      SSH sources need pinned host keys: GitHub's come from versions.lock.yml once verified,
+      other hosts need pinka_source_known_hosts. require_signed_tags needs pinka_allowed_signers.
+      The deployment tool checks everything else and lists every problem.
+    quiet: true
+
+- name: Create the mirror directory (root only)
+  ansible.builtin.file:
+    path: "{{ platform_git_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  register: platform_git_dir_state
+
+- name: Generate the read-only deploy key
+  community.crypto.openssh_keypair:
+    path: "{{ platform_deploy_key }}"
+    type: ed25519
+    comment: "pinka-deploy@{{ machine_name }}"
+    owner: root
+    group: root
+    mode: "0600"
+  register: platform_keypair
+  when:
+    - platform_ssh_repos | length > 0
+    - not (ansible_check_mode and platform_git_dir_state is changed)  # the directory may not exist yet
+
+- name: Show the deploy key (add it to the Git host as a read-only deploy key)
+  ansible.builtin.debug:
+    msg: >-
+      Deploy key of this host for {{ platform_ssh_repos | join(', ') }} (read-only):
+      {{ platform_keypair.public_key | default('') }}
+  when: platform_ssh_repos | length > 0
+
+- name: Pin the Git host keys
+  ansible.builtin.copy:
+    dest: "{{ platform_known_hosts }}"
+    content: "{{ platform_known_host_lines | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  when: platform_ssh_repos | length > 0
+
+- name: Write the allowed signers of signed tags
+  ansible.builtin.copy:
+    dest: "{{ platform_allowed_signers }}"
+    content: "{{ (pinka_allowed_signers | join('\n') ~ '\n') if pinka_allowed_signers else '' }}"
+    owner: root
+    group: root
+    mode: "0644"

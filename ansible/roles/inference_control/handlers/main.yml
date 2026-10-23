@@ -1,0 +1,16 @@
+# Managed by pinka (ansible/roles/inference_control/handlers/main.yml). Local changes will be overwritten.
+
+# Restarting an unpaired endpoint is harmless: ConditionPathExists skips it.
+- name: Restart the inference control endpoint
+  ansible.builtin.systemd_service:
+    name: "{{ inference_control_unit }}"
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode or inference_control_unit in pinka_present.units
+
+- name: Restart the inference forwarder
+  ansible.builtin.systemd_service:
+    name: "{{ inference_control_forwarder_unit }}"
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode or inference_control_forwarder_unit in pinka_present.units

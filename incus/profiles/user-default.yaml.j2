@@ -1,0 +1,20 @@
+# Managed by pinka (incus/profiles/user-default.yaml.j2). Local changes will be overwritten.
+#
+# Default profile of a researcher's personal project: the shared pool and the
+# researcher's own NAT bridge, as incus-user sets it up, with default limits.
+name: default
+project: "user-{{ incus_user.uid }}"
+description: Default profile of a personal project
+config:
+  limits.cpu: "{{ incus_user_instance.cpu }}"
+  limits.memory: "{{ incus_user_instance.memory }}"
+devices:
+  root:
+    type: disk
+    path: /
+    pool: "{{ incus_pool_name }}"
+    size: "{{ incus_user_instance.root_size }}"
+  eth0:
+    type: nic
+    name: eth0
+    network: "{{ incus_user.network }}"

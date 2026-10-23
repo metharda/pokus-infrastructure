@@ -1,0 +1,9 @@
+# Managed by pinka (ansible/roles/provider_vm/vars/archlinux.yml). Local changes will be overwritten.
+#
+# TODO(verify): package and service names (Arch mirrors are not reachable from
+# the build environment).
+provider_vm_guest_agents:
+  kvm: {packages: [qemu-guest-agent], service: qemu-guest-agent}
+  qemu: {packages: [qemu-guest-agent], service: qemu-guest-agent}
+  vmware: {packages: [open-vm-tools], service: vmtoolsd}
+  microsoft: {packages: [hyperv], service: hv_kvp_daemon}

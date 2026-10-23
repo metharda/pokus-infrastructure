@@ -1,0 +1,41 @@
+# Managed by pinka (ansible/roles/base/tasks/timesync.yml). Local changes will be overwritten.
+#
+# Keep whatever the distribution uses (systemd-timesyncd or chronyd); install
+# the family default only if neither is present.
+- name: Read the installed services
+  ansible.builtin.service_facts:
+
+- name: Find the time sync service in use
+  ansible.builtin.set_fact:
+    base_timesync_service: >-
+      {{ (pinka_service_names.timesync
+          | select('in', ansible_facts.services | dict2items | map(attribute='key') | map('regex_replace', '\.service$', '') | list)
+          | list + [''])[0] }}
+
+- name: Install the default time sync service
+  ansible.builtin.include_role:
+    name: pkg
+  vars:
+    pkg_packages: ["{{ base_timesync_default_package }}"]
+  when: base_timesync_service == ''
+
+- name: Enable time synchronization
+  ansible.builtin.systemd_service:
+    name: "{{ base_timesync_service or base_timesync_default_service }}"
+    enabled: true
+    state: started
+  # In check mode the default package above is not installed.
+  when: not ansible_check_mode or base_timesync_service != ''
+
+- name: Read the synchronization state
+  ansible.builtin.command:
+    argv: [timedatectl, show, --property=NTPSynchronized, --value]
+  register: base_ntp_synchronized
+  changed_when: false
+  check_mode: false
+  failed_when: false
+
+- name: Warn when the clock is not synchronized yet
+  ansible.builtin.debug:
+    msg: "The clock is not synchronized yet; doctor checks it again and the health gate waits for it."
+  when: base_ntp_synchronized.stdout | trim != 'yes'

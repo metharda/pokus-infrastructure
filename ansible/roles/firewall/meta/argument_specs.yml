@@ -1,0 +1,101 @@
+# Managed by pinka (ansible/roles/firewall/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Firewall policy with the nftables, firewalld or ufw backend.
+    options:
+      grafana_tailscale_serve:
+        type: bool
+        required: true
+        description: Open the Grafana serve port on the tailnet interface.
+      node_role:
+        type: str
+        required: true
+        description: Inference nodes and paired lab nodes open the split-inference ports.
+      inference_remote_node:
+        type: str
+        default: ""
+        description: The paired inference node of a lab node; its telemetry arrives on OTLP gRPC.
+      pinka_ports:
+        type: dict
+        required: true
+        description: Contract ports (vllm, inference_control, otlp_grpc).
+      ssh_extra_allowed_interfaces:
+        type: list
+        elements: str
+        required: true
+        description: Interfaces besides tailscale0 on which SSH is reachable.
+      firewall_close_listeners:
+        type: list
+        elements: str
+        required: true
+        description: Shared host, pre-existing listeners to close with the owner's consent (tcp/8080 and the like).
+      firewall_close_install_path:
+        type: bool
+        required: true
+        description: Close the install's access path once SSH over the tailnet is verified in the same run.
+      pinka_incus_bridge_patterns:
+        type: list
+        elements: str
+        required: true
+        description: Interface name patterns of Incus bridges (run networks and the build bridge).
+      pinka_incus_personal_bridge_patterns:
+        type: list
+        elements: str
+        required: true
+        description: Interface name patterns of the bridges of personal Incus projects.
+      firewall_tailnet_interface:
+        type: str
+        default: tailscale0
+        description: Tailnet interface.
+      firewall_grafana_serve_port:
+        type: int
+        default: 443
+        description: TCP port of `tailscale serve` for Grafana.
+      firewall_docs_serve_port:
+        type: int
+        default: 10000
+        description: TCP port of `tailscale serve` for the docs service.
+      firewall_tailnet_tcp_ports:
+        type: list
+        elements: int
+        default: [22]
+        description: >-
+          TCP ports open on the tailnet interface (derived: 22, the serve port if enabled,
+          18704 and 18710 on an inference node, 4317 on a paired lab node).
+      firewall_tailscale_udp_port:
+        type: int
+        default: 41641
+        description: UDP port of the WireGuard transport of tailscaled.
+      firewall_run_bridge_pattern:
+        type: str
+        default: r-*
+        description: Name pattern of the per-run networks; nothing is forwarded out of them.
+      pinka_vm_otlp:
+        type: dict
+        required: true
+        description: Interface and address of the collector listener for VM targets (C4).
+      firewall_vm_otlp_ports:
+        type: list
+        elements: int
+        description: OTLP ports VM targets may reach on the listener address (derived; empty without vm_targets).
+      firewall_incus_bridge_patterns:
+        type: list
+        elements: str
+        description: Every Incus bridge that may use DHCP and DNS on the host (derived).
+      firewall_uplink_bridge_patterns:
+        type: list
+        elements: str
+        description: Incus bridges with NAT and an uplink, trusted as Incus documents (derived).
+      firewall_preexisting_bridges:
+        type: list
+        elements: str
+        description: Bridges of a pre-existing LXD, on which the input policy admits DHCP and DNS for LXD's dnsmasq (derived from the host profile).
+      firewall_access:
+        type: dict
+        description: The access to the host before pinka's first install, from the install record (derived; empty for a legacy record).
+      firewall_listener_rules:
+        type: dict
+        description: The pre-existing listeners kept and closed, and those held open for the install's access path (derived, pinka_listener_rules).
+      firewall_install_path:
+        type: raw
+        description: The install's access path while it is pinka's to keep (address, port, family, user, closed), or none (derived, pinka_install_path).

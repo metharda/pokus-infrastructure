@@ -1,0 +1,7 @@
+# Managed by pinka (ansible/roles/inference_control/defaults/main.yml). Local changes will be overwritten.
+
+# Validity of the node's self-signed identity certificate in days; a new
+# certificate means pairing again (docs/how-to/pair-inference-node.md).
+inference_control_certificate_days: 3650
+# Seconds the control endpoint's verification call waits for vLLM's health.
+inference_control_verify_wait: 60

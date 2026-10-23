@@ -1,0 +1,18 @@
+# Managed by pinka (ansible/roles/provider_wsl2/templates/wsl.conf.j2). Local changes will be overwritten.
+# Changes take effect after `wsl --terminate <distro>` on the Windows side.
+
+[boot]
+systemd=true
+
+[automount]
+enabled={{ provider_wsl2_automount | bool | lower }}
+mountFsTab={{ provider_wsl2_mount_fstab | bool | lower }}
+
+[interop]
+enabled={{ provider_wsl2_interop | bool | lower }}
+appendWindowsPath={{ provider_wsl2_append_windows_path | bool | lower }}
+
+[network]
+hostname={{ machine_name }}
+generateHosts={{ provider_wsl2_generate_hosts | bool | lower }}
+generateResolvConf={{ provider_wsl2_generate_resolv_conf | bool | lower }}

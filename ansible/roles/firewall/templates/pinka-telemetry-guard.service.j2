@@ -1,0 +1,17 @@
+# Managed by pinka (ansible/roles/firewall/templates/pinka-telemetry-guard.service.j2). Local changes will be overwritten.
+[Unit]
+Description=pinka telemetry guard (nftables table inet pinka_telemetry_guard)
+Wants=network-pre.target
+Before=network-pre.target
+DefaultDependencies=no
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/pinka/nftables/telemetry-guard.nft
+ExecReload=/usr/sbin/nft -f /etc/pinka/nftables/telemetry-guard.nft
+ExecStop=/usr/sbin/nft delete table inet pinka_telemetry_guard
+
+[Install]
+WantedBy=multi-user.target

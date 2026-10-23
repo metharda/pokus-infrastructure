@@ -1,0 +1,61 @@
+# Managed by pinka (ansible/roles/inference_control/vars/main.yml). Local changes will be overwritten.
+
+# The mTLS material (§12.8, §19.10): directory 0750 root:<inference_control_account>.
+inference_control_dir: /etc/pinka/inference
+# This node's identity, created on lab and inference nodes.
+inference_control_cert: "{{ inference_control_dir }}/self.crt"
+inference_control_key: "{{ inference_control_dir }}/self.key"
+# The private key: 0640 root:<inference_control_account> on an inference node,
+# whose control endpoint runs as that account; 0600 root on a lab node, where
+# only the root-run forwarder uses it.
+inference_control_key_group: "{{ inference_control_account if node_role == 'inference' else 'root' }}"
+inference_control_key_mode: "{{ '0640' if node_role == 'inference' else '0600' }}"
+# The paired node's certificate and record, written by pinka pair.
+inference_control_peer_cert: "{{ inference_control_dir }}/peer.crt"
+inference_control_peer_record: "{{ inference_control_dir }}/peer.json"
+# The endpoint of an inference node: program, settings, unit and state.
+inference_control_program: /usr/local/libexec/pinka/inference-control
+inference_control_config: "{{ inference_control_dir }}/control.json"
+inference_control_unit: pinka-inference-control.service
+inference_control_state_dir: /var/lib/pinka/inference-control
+# The paired node this host is configured for (empty until paired).
+inference_control_expected_peer: "{{ inference_lab_node if node_role == 'inference' else inference_remote_node }}"
+# Paths the endpoint never needs (InaccessiblePaths; "-" ignores missing ones).
+inference_control_denied_paths:
+  - /etc/pinka/secrets
+  - /etc/pinka/signing
+  - /srv/pinka/restricted
+  - /srv/pinka/artifacts
+  - /var/lib/pinka/git
+# control.json: the fields of the endpoint's Config. The address comes from
+# `tailscale ip -4` (tasks/endpoint.yml); 127.0.0.1 only in check mode on a
+# host that is not on the tailnet yet.
+inference_control_settings:
+  listen: "{{ inference_control_tailnet.stdout_lines[0] | default('127.0.0.1') }}"
+  api_port: "{{ pinka_ports.vllm | int }}"
+  control_port: "{{ pinka_ports.inference_control | int }}"
+  cert: "{{ inference_control_cert }}"
+  key: "{{ inference_control_key }}"
+  peer: "{{ inference_control_peer_cert }}"
+  gpu_socket: /run/pinka/gpu.sock
+  activate_timeout: "{{ gpu_arbiter_serve_timeout | default(1200) | int + 300 }}"
+  gpu_metrics: "http://127.0.0.1:{{ pinka_internal_ports.gpu_exporter }}/metrics"
+  current: /etc/pinka/vllm/current.yml
+  verify: [/usr/local/libexec/pinka/vllm-verify]
+  verify_wait: "{{ inference_control_verify_wait | int }}"
+  state_dir: "{{ inference_control_state_dir }}"
+  models: "{{ pinka_root }}/models"
+  fingerprint: /var/lib/pinka/fingerprint/current.json
+# The inference forwarder of a lab node (§12.8): program, settings and unit.
+inference_control_forwarder_program: /usr/local/libexec/pinka/inference-forwarder
+inference_control_forwarder_config: "{{ inference_control_dir }}/forwarder.json"
+inference_control_forwarder_unit: pinka-inference-forwarder.service
+# forwarder.json: the fields of the forwarder's Config.
+inference_control_forwarder_settings:
+  remote: "{{ inference_remote_node }}"
+  listen: 127.0.0.1
+  api_port: "{{ pinka_ports.vllm | int }}"
+  control_port: "{{ pinka_ports.inference_control | int }}"
+  cert: "{{ inference_control_cert }}"
+  key: "{{ inference_control_key }}"
+  peer: "{{ inference_control_peer_cert }}"

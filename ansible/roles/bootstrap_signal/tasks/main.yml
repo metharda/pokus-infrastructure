@@ -1,0 +1,23 @@
+# Managed by pinka (ansible/roles/bootstrap_signal/tasks/main.yml). Local changes will be overwritten.
+#
+# Stop the play with a condition that bootstrap.sh maps to its exit code
+# (BUILD_PROMPT §5.2 step 9): 65 platform release refused, 75 WSL restart,
+# 76 reboot or MOK enrollment, 77 operator action. The signal file is written
+# even in check mode, because bootstrap reads it to report the condition. A 76
+# can name a Machine Owner Key that bootstrap imports before it exits
+# (approved deviation I1).
+- name: Write the bootstrap signal file
+  ansible.builtin.copy:
+    dest: "{{ bootstrap_signal_file }}"
+    content: >
+      {{ {'code': bootstrap_signal_code | int, 'message': bootstrap_signal_message}
+         | combine({'mok_key': bootstrap_signal_mok_key} if bootstrap_signal_mok_key else {})
+         | to_json }}
+    owner: root
+    group: root
+    mode: "0644"
+  check_mode: false
+
+- name: Stop the play with the bootstrap signal
+  ansible.builtin.fail:
+    msg: "PINKA-BOOTSTRAP-SIGNAL {{ bootstrap_signal_code }}: {{ bootstrap_signal_message }}"

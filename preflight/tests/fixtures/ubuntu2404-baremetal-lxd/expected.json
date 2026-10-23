@@ -1,0 +1,12 @@
+{
+  "components": {
+    "docker": "pre-existing",
+    "lxd": "pre-existing"
+  },
+  "conflicts": [],
+  "needs_action": [],
+  "notes_contain": [
+    "LXD 5.21.3 is installed: pinka leaves it as it is"
+  ],
+  "outcome": "supported"
+}

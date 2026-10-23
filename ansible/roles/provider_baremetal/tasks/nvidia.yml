@@ -1,0 +1,186 @@
+# Managed by pinka (ansible/roles/provider_baremetal/tasks/nvidia.yml). Local changes will be overwritten.
+#
+# NVIDIA driver per family (BUILD_PROMPT §19.8). Only the Ubuntu and Debian
+# methods are `supported`; elsewhere the TUI recommends install_nvidia_driver:
+# manual. Never on WSL2 (provider_wsl2 has no driver tasks at all).
+- name: Look up the NVIDIA driver source
+  ansible.builtin.set_fact:
+    provider_baremetal_driver: "{{ pinka_component_sources | pinka_component_source('nvidia_driver', pinka_source_group) }}"
+    # A driver that existed before pinka is never replaced or removed (§7.21);
+    # preflight has judged it (a driver too old for the vLLM image leaves the
+    # GPU unused, with the remediation).
+    provider_baremetal_driver_preexisting: >-
+      {{ ((host_profile.components | default({})).nvidia_driver | default({})).origin | default(none)
+         == 'pre-existing' }}
+    # A driver is installed automatically only for a GPU the open kernel
+    # module of the release's pinned driver supports (§2.2, §10.1): preflight
+    # names the pinned driver versions whose list has the GPU, and a GPU below
+    # compute capability 7.5 is in none of them.
+    provider_baremetal_gpu_supported: >-
+      {{ pinka_versions.packages
+         | pinka_driver_supports_gpu(pinka_release_key, host_profile.gpu.open_module_drivers | default([])) }}
+
+- name: Install no driver for a GPU the pinned driver does not support
+  ansible.builtin.debug:
+    msg: >-
+      The NVIDIA GPU {{ host_profile.gpu.pci_device | default('') }} is not supported by the open kernel
+      module of the pinned driver (Turing or later, compute capability 7.5 and up): no driver is installed
+      for it automatically and the lab installs without GPU features.
+  when:
+    - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
+    - not provider_baremetal_gpu_supported
+    - install_nvidia_driver == 'auto'
+
+- name: Leave a driver that existed before pinka as it is
+  ansible.builtin.debug:
+    msg: >-
+      The NVIDIA driver {{ host_profile.gpu.driver | default('') }} existed before pinka; pinka does
+      not replace it{{ '' if host_profile.gpu.usable else ', and the GPU stays unused until it is updated' }}.
+  when: provider_baremetal_driver_preexisting
+
+- name: Stop when the driver must be installed by hand
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      No usable NVIDIA driver is loaded. {{ 'install_nvidia_driver is manual: install' if install_nvidia_driver == 'manual'
+      else 'pinka has no verified installation method for this distribution; install' }} the driver
+      following your distribution's documentation, then re-run bootstrap (or set install_nvidia_driver: skip).
+      {{ '' if provider_baremetal_gpu_supported else 'The open kernel module of the pinned driver does not
+      support this GPU: the lab uses it only with a driver whose compute capability is 7.5 or more.' }}
+  when:
+    - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
+    - >-
+      install_nvidia_driver == 'manual' or provider_baremetal_gpu_supported
+      and (provider_baremetal_driver.packages | length == 0 or provider_baremetal_driver.verify is defined)
+
+- name: Stop when the driver source needs consent to a community repository
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      The NVIDIA driver for this distribution comes from a community repository
+      ({{ provider_baremetal_driver.packages | join(', ') }}). Re-run bootstrap with
+      --allow-community-repos (recorded in the fingerprint) or use install_nvidia_driver: manual.
+  when:
+    - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
+    - provider_baremetal_gpu_supported
+    - provider_baremetal_driver.source == 'community'
+    - not pinka_community_repos_allowed
+
+- name: Install the NVIDIA driver
+  when:
+    - not host_profile.gpu.usable
+    - not provider_baremetal_driver_preexisting
+    - provider_baremetal_gpu_supported
+  block:
+    - name: Record that pinka installs the NVIDIA driver
+      pinka_install_record:
+        state: add
+        added:
+          components: {nvidia_driver: true}
+
+    - name: Blacklist nouveau
+      ansible.builtin.copy:
+        dest: /etc/modprobe.d/pinka-blacklist-nouveau.conf
+        content: |
+          # Managed by pinka (ansible/roles/provider_baremetal). Local changes will be overwritten.
+          blacklist nouveau
+          options nouveau modeset=0
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Rebuild the initramfs
+
+    - name: Install the pinned NVIDIA driver packages
+      ansible.builtin.include_role:
+        name: pkg
+      vars:
+        pkg_packages: "{{ provider_baremetal_driver.packages }}"
+        pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('nvidia_driver', pinka_release_key) }}"
+
+    - name: Hold the NVIDIA driver packages
+      ansible.builtin.include_role:
+        name: pkg
+        tasks_from: hold
+      vars:
+        pkg_hold_name: nvidia_driver
+        pkg_hold_packages: "{{ provider_baremetal_driver.packages }}"
+        pkg_versions: "{{ pinka_versions.packages | pinka_lock_packages('nvidia_driver', pinka_release_key) }}"
+
+    - name: Rebuild the initramfs now
+      ansible.builtin.meta: flush_handlers
+
+# Secure Boot (approved deviation I1): the driver's DKMS module is signed with
+# a key that must be enrolled as a Machine Owner Key. A pending enrollment only
+# needs the reboot. A signing key that is neither enrolled nor pending is named
+# in the signal, and bootstrap imports it (mokutil --import, with the
+# operator's one-time password) before it exits with 76.
+# TODO(verify) on reference hardware: where each family's DKMS keeps the
+# signing certificate (provider_baremetal_mok_keys), the wording of
+# `mokutil --test-key`, and whether Ubuntu's signed prebuilt modules make the
+# MOK step unnecessary.
+- name: Check the Machine Owner Key enrollment
+  when:
+    - host_profile.capabilities.secure_boot == 'enabled'
+    - host_profile.gpu.usable or provider_baremetal_gpu_supported
+  block:
+    - name: Check for a pending Machine Owner Key enrollment
+      ansible.builtin.command:
+        argv: [mokutil, --list-new]
+      register: provider_baremetal_mok
+      failed_when: false
+      changed_when: false
+      check_mode: false
+
+    - name: Ask for a reboot to enroll the pending MOK
+      ansible.builtin.include_role:
+        name: bootstrap_signal
+      vars:
+        bootstrap_signal_code: 76
+        bootstrap_signal_message: >-
+          Secure Boot is on and a Machine Owner Key is waiting for enrollment. Reboot, choose
+          "Enroll MOK" at the blue MOK Manager screen, confirm with the MOK password, then re-run bootstrap.
+      when: provider_baremetal_mok.stdout | default('') | length > 0
+
+    - name: Look for the module signing key
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ provider_baremetal_mok_keys }}"
+      register: provider_baremetal_mok_key_stat
+      when: not host_profile.gpu.usable
+
+    - name: Pick the module signing key
+      ansible.builtin.set_fact:
+        provider_baremetal_mok_key: >-
+          {{ (provider_baremetal_mok_key_stat.results | default([])
+              | selectattr('stat', 'defined') | selectattr('stat.exists')
+              | map(attribute='item') | list + [''])[0] }}
+
+    - name: Check whether the module signing key is enrolled
+      ansible.builtin.command:
+        argv: [mokutil, --test-key, "{{ provider_baremetal_mok_key }}"]
+      register: provider_baremetal_mok_test
+      failed_when: false
+      changed_when: false
+      check_mode: false
+      when: provider_baremetal_mok_key | length > 0
+
+    - name: Ask bootstrap to import the module signing key and reboot
+      ansible.builtin.include_role:
+        name: bootstrap_signal
+      vars:
+        bootstrap_signal_code: 76
+        bootstrap_signal_mok_key: "{{ provider_baremetal_mok_key }}"
+        bootstrap_signal_message: >-
+          Secure Boot is on and the NVIDIA module is signed with {{ provider_baremetal_mok_key }}, which is
+          not enrolled. Bootstrap imports it with your one-time MOK password. Reboot, choose "Enroll MOK"
+          at the blue MOK Manager screen, enter that password, then re-run bootstrap.
+      when:
+        - provider_baremetal_mok_key | length > 0
+        - "'already enrolled' not in provider_baremetal_mok_test.stdout | default('')"

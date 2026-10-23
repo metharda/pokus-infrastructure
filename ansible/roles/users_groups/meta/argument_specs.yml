@@ -1,0 +1,38 @@
+# Managed by pinka (ansible/roles/users_groups/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Groups, researcher and infra accounts, sudo for admins, SSH keys.
+    options:
+      pinka_groups:
+        type: list
+        elements: dict
+        required: true
+        description: Groups ({name, system}) from group_vars/all/main.yml.
+      researchers:
+        type: list
+        elements: dict
+        required: true
+        description: Researchers ({name, admin, shell, keys_file}); keys_file is relative to the repository root.
+      researchers_removed:
+        type: list
+        elements: str
+        required: true
+        description: Researchers that are locked (password, shell nologin, expired), never deleted.
+      infra_accounts:
+        type: list
+        elements: dict
+        required: true
+        description: Infra's own accounts ({name, groups}), such as pinka-build; system users without login.
+      break_glass_docker:
+        type: list
+        elements: str
+        required: true
+        description: Admins explicitly allowed into the docker group (added by the docker role, logged loudly).
+      pinka_service_home:
+        type: path
+        required: true
+        description: Parent of the service account homes.
+      users_groups_nologin_shell:
+        type: path
+        default: /usr/sbin/nologin
+        description: Shell of infra accounts and locked researchers.

@@ -1,0 +1,6 @@
+# Managed by pinka (tests/distros/results.yml). Written by `make test-distros`.
+#
+# The latest result per target of tests/distros/targets.yml; commit it after a
+# run. docs/support-matrix.md is generated from it (make generate).
+schema_version: 1
+results: []

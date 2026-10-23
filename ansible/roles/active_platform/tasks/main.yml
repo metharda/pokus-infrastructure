@@ -1,0 +1,20 @@
+# Managed by pinka (ansible/roles/active_platform/tasks/main.yml). Local changes will be overwritten.
+#
+# Sets active_platform: what infra rendered for the active platform
+# (rendered.json), or {} without one. The platform role sets the same fact
+# from a fresh rendering during a deployment; the roles that serve the
+# platform (postgres, opa, observability, incus, vllm, models, backup, doctor)
+# read it here so that no role names a platform.
+- name: Read what was rendered for the active platform
+  ansible.builtin.slurp:
+    src: "{{ active_platform_file }}"
+  register: active_platform_read
+  failed_when: false
+  when: active_platform is not defined
+
+- name: Remember the active platform
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - lab-wide fact read by every role
+    active_platform: >-
+      {{ (active_platform_read.content | b64decode | from_json)
+         if active_platform_read.content is defined else {} }}
+  when: active_platform is not defined

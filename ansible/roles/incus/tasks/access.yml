@@ -1,0 +1,19 @@
+# Managed by pinka (ansible/roles/incus/tasks/access.yml). Local changes will be overwritten.
+#
+# Researchers reach their personal project through incus-user, whose socket
+# only the incus group may use; nobody is added to incus-admin
+# (BUILD_PROMPT §6.1, safety invariant 4).
+- name: Add researchers to the Incus user group
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: ["{{ incus_groups.user }}"]
+    append: true
+  loop: "{{ researchers }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Enable the incus-user socket
+  ansible.builtin.systemd_service:
+    name: "{{ incus_units.user_socket }}"
+    enabled: true
+    state: started

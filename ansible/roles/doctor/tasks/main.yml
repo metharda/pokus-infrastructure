@@ -1,0 +1,326 @@
+# Managed by pinka (ansible/roles/doctor/tasks/main.yml). Local changes will be overwritten.
+#
+# The operator CLI pinka (BUILD_PROMPT §9): the pinka_lab package and a
+# copy of preflight under /usr/local/lib/pinka, the wrapper
+# /usr/local/bin/pinka, and the lab description /etc/pinka/lab.json that
+# doctor, status and the fingerprint compare the host with. It runs before
+# lab_session: the session record calls `pinka fingerprint` at boot.
+
+- name: Create the directories of the CLI and the fingerprint cache
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ doctor_lib }}"
+    - "{{ doctor_lib }}/pinka-lab"
+    - "{{ doctor_lib }}/preflight"
+    - "{{ doctor_lib }}/preflight/schema"
+    - "{{ doctor_fingerprint_dir }}"
+    - "{{ doctor_docs_dir }}"
+
+- name: Find the modules of pinka and preflight
+  ansible.builtin.find:
+    paths: "{{ pinka_dir }}/{{ item.src }}"
+    patterns: ["*.py"]
+    recurse: true
+  loop: "{{ doctor_packages }}"
+  loop_control:
+    label: "{{ item.src }}"
+  register: doctor_sources
+
+- name: Find the installed modules
+  ansible.builtin.find:
+    paths: "{{ doctor_lib }}/{{ item.dest }}"
+    patterns: ["*.py"]
+    recurse: true
+  loop: "{{ doctor_packages }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  register: doctor_installed
+
+- name: List the modules to install
+  ansible.builtin.set_fact:
+    doctor_modules: >-
+      {{ doctor_modules | default([])
+         + item.files | map(attribute='path')
+           | map('relpath', pinka_dir ~ '/' ~ item.item.src)
+           | map('regex_replace', '^', item.item.dest ~ '/') | list }}
+    doctor_module_sources: >-
+      {{ doctor_module_sources | default({})
+         | combine(dict(item.files | map(attribute='path')
+                        | map('relpath', pinka_dir ~ '/' ~ item.item.src)
+                        | map('regex_replace', '^', item.item.dest ~ '/') | list
+                        | zip(item.files | map(attribute='path') | list))) }}
+  loop: "{{ doctor_sources.results }}"
+  loop_control:
+    label: "{{ item.item.src }}"
+
+- name: Create the package directories
+  ansible.builtin.file:
+    path: "{{ doctor_lib }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ doctor_modules | map('dirname') | unique | sort }}"
+
+- name: Install the modules
+  ansible.builtin.copy:
+    src: "{{ doctor_module_sources[item] }}"
+    dest: "{{ doctor_lib }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ doctor_modules | sort }}"
+
+- name: Remove modules that are no longer shipped
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: >-
+    {{ doctor_installed.results | map(attribute='files') | flatten | map(attribute='path')
+       | map('relpath', doctor_lib) | difference(doctor_modules) | map('regex_replace', '^', doctor_lib ~ '/')
+       | sort }}
+
+- name: Install the data files of preflight
+  ansible.builtin.copy:
+    src: "{{ pinka_dir }}/preflight/{{ item.name }}"
+    dest: "{{ doctor_lib }}/preflight/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {name: pinka-preflight, mode: "0755"}
+    - {name: support-matrix.json, mode: "0644"}
+    - {name: endpoints.json, mode: "0644"}
+    - {name: lab-defaults.json, mode: "0644"}
+    - {name: nvidia-gpus.json, mode: "0644"}
+    - {name: schema/host-profile.schema.json, mode: "0644"}
+    - {name: schema/support-matrix.schema.json, mode: "0644"}
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Read the active platform
+  ansible.builtin.include_role:
+    name: active_platform
+
+- name: Install the pinka command
+  ansible.builtin.copy:
+    src: "{{ pinka_dir }}/tools/pinka-lab/pinka"
+    dest: "{{ doctor_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Read the configuration the fingerprint records
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - "{{ pinka_dir }}/versions.lock.yml"
+    - "{{ pinka_dir }}/ansible/inventory/host_vars/{{ machine }}.yml"
+  register: doctor_config_files
+
+- name: Read the defaults of the images role (included only on lab nodes)
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../images/defaults/main.yml"
+    name: doctor_images_defaults
+
+- name: Read the variables of the images role
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/../images/vars/main.yml"
+    name: doctor_images_vars
+
+- name: Describe the blueprints
+  ansible.builtin.set_fact:
+    doctor_blueprints: >-
+      {{ doctor_blueprints | default([])
+         + [{'name': doctor_spec.name, 'type': doctor_spec.type, 'nesting': doctor_spec.nesting | default(false),
+             'services': doctor_spec.services | default([]),
+             'base_blueprint': doctor_spec.base.blueprint | default(none)}] }}
+  vars:
+    doctor_spec: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/images/' ~ item ~ '/image.yaml') | from_yaml }}"
+  loop: "{{ doctor_images_blueprints if doctor_runs_lab else [] }}"
+
+- name: Describe the layout (absolute paths)
+  ansible.builtin.set_fact:
+    doctor_layout: >-
+      {{ doctor_layout | default([])
+         + [item | combine({'path': item.path if item.path is abs
+                                   else (pinka_root ~ '/' ~ item.path) | regex_replace('/$', '')})] }}
+  loop: "{{ pinka_system_layout + pinka_layout }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Read what Docker offers (how containers reach the GPU)
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
+  when: doctor_serves_inference
+
+- name: Write the lab description
+  ansible.builtin.copy:
+    dest: "{{ doctor_config }}"
+    content: "{{ doctor_lab | to_nice_json(sort_keys=true) }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  vars:
+    doctor_lab:
+      schema_version: 1
+      machine: "{{ machine_name }}"
+      host_vars: "{{ machine }}"
+      infra_dir: "{{ pinka_dir }}"
+      pinka_root: "{{ pinka_root }}"
+      node_role: "{{ node_role }}"
+      provider: "{{ pinka_provider }}"
+      features: "{{ pinka_features }}"
+      lab_mode: "{{ lab_mode }}"
+      # The machine's port overrides and VM collector address, as bootstrap
+      # passes them to preflight (BUILD_PROMPT §2.2, §12.11).
+      preflight_args: "{{ pinka_preflight_args }}"
+      paths:
+        preflight: "{{ doctor_lib }}/preflight/pinka-preflight"
+        host_profile: "{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}"
+        bootstrap_state: /etc/pinka/bootstrap-state.json
+        install_record: "{{ install_record_path }}"
+        health_gate_status: "{{ lab_session_gate_status }}"
+        sessions: "{{ lab_session_sessions_dir }}"
+        python: "{{ pinka_python }}"
+        ansible: /opt/pinka/ansible-venv/bin/ansible
+        platform_tool: /usr/local/libexec/pinka/pinka-platform
+        active_platform: /etc/pinka/platform/active.json
+        rendered_platform: /etc/pinka/platform/rendered.json
+      fingerprint:
+        cache: "{{ doctor_fingerprint_dir }}/current.json"
+        versions_lock_sha256: "{{ doctor_config_files.results[0].stat.checksum | default(none) }}"
+        host_vars_sha256: "{{ doctor_config_files.results[1].stat.checksum | default(none) }}"
+      lab:
+        drain_timeout: "{{ doctor_drain_timeout | int }}"
+        health_wait: "{{ doctor_health_wait | int }}"
+      units: "{{ doctor_units }}"
+      containers: "{{ doctor_containers }}"
+      listeners:
+        processes: "{{ doctor_listener_processes }}"
+        addresses: "{{ [pinka_vm_otlp.address] if observability_vm_listener else [] }}"
+        tailnet_ports: "{{ doctor_tailnet_ports }}"
+      firewall:
+        backend: "{{ pinka_firewall_backend }}"
+        incus_bridge_patterns: "{{ firewall_incus_bridge_patterns if doctor_runs_lab else [] }}"
+      tailscale:
+        enabled: true
+        hostname: "{{ machine_name }}"
+        tag: "{{ tailscale_tag }}"
+      gpu:
+        image: "{{ doctor_gpu_image }}"
+        device_args: "{{ pinka_docker_gpu_args | default([]) }}"
+        method: "{{ pinka_docker_gpu_method | default('none') }}"
+        nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pinka_provider == 'wsl2' else 'nvidia-smi' }}"
+        # The CUDA version the pinned vLLM image is built on (BUILD_PROMPT §2.2).
+        vllm_cuda: "{{ pinka_versions.containers.images.vllm.cuda | string }}"
+      inference:
+        dir: "{{ inference_control_dir }}"
+        control_port: "{{ pinka_ports.inference_control | int }}"
+        peer: >-
+          {{ inference_lab_node if node_role == 'inference'
+             else (inference_remote_node if node_role == 'lab' else '') }}
+        renew_days: "{{ doctor_certificate_renew_days | int }}"
+        key_group: "{{ inference_control_key_group }}"
+        key_mode: "{{ inference_control_key_mode }}"
+      vllm:
+        current: /etc/pinka/vllm/current.yml
+        health_url: "http://127.0.0.1:{{ pinka_ports.vllm }}/health"
+      incus: "{{ doctor_incus if doctor_runs_lab else {} }}"
+      postgres:
+        container: "{{ postgres_container }}"
+        roles: "{{ postgres_all_roles if doctor_runs_lab else [] }}"
+        database: "{{ postgres_platform.database | default('') if doctor_runs_lab else '' }}"
+        restricted_roles: >-
+          {{ [postgres_platform.reader, postgres_platform.grafana]
+             if doctor_runs_lab and postgres_platform else [] }}
+      opa:
+        url: "http://127.0.0.1:{{ pinka_ports.opa }}"
+      # An inference node has no stores: its telemetry is checked on the lab node.
+      observability: "{{ doctor_observability if doctor_runs_lab else {} }}"
+      layout: "{{ doctor_layout | default([]) }}"
+      accounts:
+        researchers: "{{ researchers | map(attribute='name') | list }}"
+        platform_accounts: "{{ (active_platform | default({}, true)).accounts | default([]) | map(attribute='name') | list }}"
+        privileged_groups: [docker, incus-admin]
+        break_glass_docker: "{{ break_glass_docker }}"
+      hardening: "{{ doctor_hardening }}"
+      # The GPU arbiter and training (§7.18): none on a lab node. The socket's
+      # owner is the controller from rendered.json, or the control endpoint's
+      # account on an inference node.
+      gpu_arbiter: >-
+        {{ {'socket': '/run/pinka/gpu.sock',
+            'peer': inference_control_account if node_role == 'inference' else '',
+            'state': '/var/lib/pinka/gpu/state.json',
+            'transitions': '/var/lib/pinka/gpu/transitions.jsonl',
+            'training': node_role == 'full',
+            'models': pinka_root ~ '/models',
+            'datasets': pinka_root ~ '/training/datasets',
+            'jobs': pinka_root ~ '/training/jobs',
+            'adapters': pinka_root ~ '/models/adapters',
+            'caps': training_caps}
+           if node_role in ['full', 'inference'] else {} }}
+      # The inference guard (§7.11, ADR-0016): infra's clients for this node
+      # role; the platform's come from rendered.json at run time.
+      inference_isolation:
+        clients: >-
+          {{ pinka_inference_clients | selectattr('node_roles', 'contains', node_role)
+             | map(attribute='account') | list }}
+        ports: "{{ [pinka_ports.vllm | int] }}"
+        control_ports: "{{ [pinka_ports.inference_control | int] if node_role == 'lab' else [] }}"
+      # The split-inference guard (§19.10, interpretation 11.13): the tailnet
+      # ports only the paired peer reaches (firewall role).
+      split_guard: "{{ firewall_split_guard if node_role in ['lab', 'inference'] else {} }}"
+      # The telemetry isolation (§7.9, ADR-0016): infra's clients of the stores
+      # and their ports, the query port's clients (Grafana's data sources), the
+      # query socket's link with its target and directory.
+      telemetry_isolation:
+        clients: "{{ pinka_telemetry_clients | map(attribute='account') | list }}"
+        ports: "{{ pinka_telemetry_guard_ports }}"
+        query_clients: "{{ pinka_query_port_clients | map(attribute='account') | list }}"
+        query_ports: "{{ [pinka_internal_ports.query_proxy] }}"
+        query_link: "{{ '/run/pinka/query.sock' if doctor_runs_lab else '' }}"
+        query_target: query/query.sock
+        query_dir: /run/pinka/query
+        query_owner: pinka-query-proxy
+        query_socket: "{{ '/run/pinka/query/query.sock' if doctor_runs_lab else '' }}"
+        agent_socket: "{{ '/run/pinka/otlp/agent.sock' if doctor_runs_lab else '' }}"
+      images:
+        blueprints: "{{ doctor_blueprints | default([]) }}"
+        bench_project: bench
+        export_root: "{{ images_export_root | default(doctor_images_defaults.images_export_root) }}"
+        files_helper: "{{ doctor_images_vars.images_files_helper }}"
+      backup:
+        configured: "{{ backup_configured | bool }}"
+        helper: "{{ backup_helper }}"
+        state: "{{ backup_state_dir }}/state.json"
+        max_age_hours: "{{ doctor_backup_max_age_hours | int }}"
+      time:
+        max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
+      # Maintenance windows (BUILD_PROMPT §7.20) and the effective lab ports
+      # that staging on shared hardware needs free before it starts.
+      window:
+        record: /etc/pinka/maintenance-window.json
+        shared_hardware: "{{ lab_mode == 'staging' and staging_shared_hardware | bool }}"
+      ports: "{{ pinka_ports }}"
+      docs:
+        dir: "{{ doctor_docs_dir }}"
+        port: "{{ pinka_ports.docs_serve | int }}"
+        unit: pinka-docs.service
+        # The docs service runs only with a configured release (§7.19).
+        configured: "{{ docs_release is not none }}"
+      cpusets:
+        services: "{{ cpuset_services }}"
+        targets: "{{ cpuset_targets }}"
+        slice: "{{ pinka_services_slice }}"
+      wsl:
+        memory_gib: "{{ (expected | default({})).memory_gib | default(none) }}"
+        cpus: "{{ (expected | default({})).cpu_threads | default(none) }}"
+        kvm_expected: "{{ pinka_features.vm_targets | default(false) | bool }}"

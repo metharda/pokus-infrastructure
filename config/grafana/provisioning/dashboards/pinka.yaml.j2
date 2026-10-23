@@ -1,0 +1,28 @@
+# Managed by pinka (config/grafana/provisioning/dashboards/pinka.yaml.j2). Local changes will be overwritten.
+#
+# The dashboards of config/grafana/dashboards/, read-only in the folder pinka,
+# and the active platform's, read-only in a folder named after it.
+apiVersion: 1
+
+providers:
+  - name: pinka
+    orgId: 1
+    folder: pinka
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/dashboards
+{% if observability_platform_dashboards %}
+
+  - name: platform
+    orgId: 1
+    folder: {{ observability_platform_dashboards.folder }}
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/grafana/platform-dashboards
+{% endif %}

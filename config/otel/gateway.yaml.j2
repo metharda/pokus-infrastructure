@@ -1,0 +1,194 @@
+# Managed by pinka (config/otel/gateway.yaml.j2). Local changes will be overwritten.
+#
+# OpenTelemetry Collector gateway (BUILD_PROMPT §7.9, contracts.md#telemetry).
+# Host network, every listener on 127.0.0.1; with the vm_targets feature also
+# OTLP on the dedicated VM address (C4). Pipelines:
+#   logs:    otlp (services, targets, the journald collector) -> Loki (native OTLP)
+#   metrics: otlp -> Prometheus exporter, scraped by Prometheus (owner answer E14)
+#   traces:  otlp -> Tempo
+# Split inference (BUILD_PROMPT §19.10): an inference node also scrapes its
+# exporters and vLLM and forwards every signal to the paired lab node over
+# mutual TLS (nothing leaves it before pairing); the lab node receives them
+# on its tailnet address and stores them with pinka.machine set to the
+# inference node.
+# The agent OTLP socket (BUILD_PROMPT §7.9): pinka-otlp-agent.socket forwards
+# /run/pinka/otlp/agent.sock to the receiver otlp/agent (OTLP/HTTP on a
+# loopback port of its own); its pipelines stamp everything with
+# pinka.trust=untrusted, overwriting whatever the sender set.
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.collector_health }}
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:{{ pinka_ports.otlp_grpc }}
+      http:
+        endpoint: 127.0.0.1:{{ pinka_ports.otlp_http }}
+{% if observability_vm_listener %}
+  otlp/vm:
+    protocols:
+      grpc:
+        endpoint: {{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_grpc }}
+      http:
+        endpoint: {{ pinka_vm_otlp.address }}:{{ pinka_ports.otlp_http }}
+{% endif %}
+{% if observability_agent_otlp %}
+  otlp/agent:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:{{ pinka_internal_ports.otlp_agent }}
+{% endif %}
+{% if observability_inference_node %}
+  otlp/inference:
+    protocols:
+      grpc:
+        endpoint: {{ observability_tailnet_address }}:{{ pinka_ports.otlp_grpc }}
+        tls:
+          cert_file: /etc/pinka-pairing/self.crt
+          key_file: /etc/pinka-pairing/self.key
+          client_ca_file: /etc/pinka-pairing/peer.crt
+          min_version: "1.3"
+{% endif %}
+{% if not observability_stores %}
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          static_configs:
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.collector_telemetry }}"]
+              labels: {collector: gateway}
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.journald_telemetry }}"]
+              labels: {collector: journald}
+        - job_name: node
+          static_configs:
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.node_exporter }}"]
+        - job_name: cadvisor
+          static_configs:
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.cadvisor }}"]
+{% if observability_gpu %}
+        - job_name: gpu
+          static_configs:
+            - targets: ["127.0.0.1:{{ pinka_internal_ports.gpu_exporter }}"]
+{% endif %}
+{% if observability_vllm %}
+        - job_name: vllm
+          static_configs:
+            - targets: ["127.0.0.1:{{ pinka_ports.vllm }}"]
+{% endif %}
+{% endif %}
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: {{ observability_collector_memory_mib }}
+    spike_limit_mib: {{ (observability_collector_memory_mib // 4) | int }}
+  resource:
+    attributes:
+      - key: pinka.machine
+        value: {{ machine_name | to_json }}
+        action: upsert
+      - key: pinka.lab_mode
+        value: {{ lab_mode | to_json }}
+        action: upsert
+  batch: {}
+{% if observability_agent_otlp %}
+  # Everything from the agent socket is untrusted, whatever the agent claims.
+  resource/untrusted:
+    attributes:
+      - key: pinka.trust
+        value: untrusted
+        action: upsert
+{% endif %}
+{% if observability_inference_node %}
+  # Mutual TLS proved the sender is the paired node.
+  resource/inference:
+    attributes:
+      - key: pinka.machine
+        value: {{ observability_inference_node | to_json }}
+        action: upsert
+      - key: pinka.lab_mode
+        value: {{ lab_mode | to_json }}
+        action: upsert
+{% endif %}
+
+exporters:
+{% if observability_stores %}
+  otlp_http/loki:
+    endpoint: http://127.0.0.1:{{ pinka_ports.loki }}/otlp
+  otlp_grpc/tempo:
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.tempo_otlp_grpc }}
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 127.0.0.1:{{ pinka_internal_ports.collector_metrics }}
+    # Resource attributes, such as a platform's run identifiers, become labels,
+    # so dashboards can filter target metrics by run.
+    resource_to_telemetry_conversion:
+      enabled: true
+{% elif observability_forward_node %}
+  # The lab node's tailnet address; its certificate names it by tailnet name.
+  otlp_grpc/lab:
+    endpoint: {{ observability_forward_address }}:{{ pinka_ports.otlp_grpc }}
+    tls:
+      ca_file: /etc/pinka-pairing/peer.crt
+      cert_file: /etc/pinka-pairing/self.crt
+      key_file: /etc/pinka-pairing/self.key
+      server_name_override: {{ observability_forward_node | to_json }}
+      min_version: "1.3"
+{% else %}
+  nop: {}
+{% endif %}
+
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: {{ pinka_internal_ports.collector_telemetry }}
+  pipelines:
+    logs:
+      receivers: [{{ observability_otlp_receivers | join(', ') }}]
+      processors: [memory_limiter, resource, batch]
+      exporters: [{{ observability_exporters.logs }}]
+    metrics:
+      receivers: [{{ observability_metrics_receivers | join(', ') }}]
+      processors: [memory_limiter, resource, batch]
+      exporters: [{{ observability_exporters.metrics }}]
+    traces:
+      receivers: [{{ observability_otlp_receivers | join(', ') }}]
+      processors: [memory_limiter, resource, batch]
+      exporters: [{{ observability_exporters.traces }}]
+{% if observability_agent_otlp %}
+    logs/agent:
+      receivers: [otlp/agent]
+      processors: [memory_limiter, resource, resource/untrusted, batch]
+      exporters: [{{ observability_exporters.logs }}]
+    metrics/agent:
+      receivers: [otlp/agent]
+      processors: [memory_limiter, resource, resource/untrusted, batch]
+      exporters: [{{ observability_exporters.metrics }}]
+    traces/agent:
+      receivers: [otlp/agent]
+      processors: [memory_limiter, resource, resource/untrusted, batch]
+      exporters: [{{ observability_exporters.traces }}]
+{% endif %}
+{% if observability_inference_node %}
+    logs/inference:
+      receivers: [otlp/inference]
+      processors: [memory_limiter, resource/inference, batch]
+      exporters: [otlp_http/loki]
+    metrics/inference:
+      receivers: [otlp/inference]
+      processors: [memory_limiter, resource/inference, batch]
+      exporters: [prometheus]
+    traces/inference:
+      receivers: [otlp/inference]
+      processors: [memory_limiter, resource/inference, batch]
+      exporters: [otlp_grpc/tempo]
+{% endif %}

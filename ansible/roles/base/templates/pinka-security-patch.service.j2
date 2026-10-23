@@ -1,0 +1,9 @@
+# Managed by pinka (ansible/roles/base/templates/pinka-security-patch.service.j2). Local changes will be overwritten.
+[Unit]
+Description=pinka: install security patches (no reboot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/zypper --non-interactive patch --category security

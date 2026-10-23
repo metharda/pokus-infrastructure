@@ -1,0 +1,102 @@
+# Managed by pinka (ansible/roles/observability/tasks/grafana_users.yml). Local changes will be overwritten.
+#
+# Grafana accounts (BUILD_PROMPT §7.9): the admin password from the vault and
+# one account per researcher with the role of observability_grafana_user_role
+# (GF_USERS_AUTO_ASSIGN_ORG_ROLE), named after display_name; researchers with
+# grafana: false and removed researchers are disabled. A password is only
+# reset when logging in with it fails.
+- name: Check the Grafana admin password
+  ansible.builtin.uri:
+    url: "{{ observability_grafana_url }}/api/user"
+    url_username: admin
+    url_password: "{{ observability_grafana_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 401]
+  register: observability_grafana_admin
+
+# GF_SECURITY_ADMIN_PASSWORD__FILE applies only when the database is created.
+- name: Set the Grafana admin password from the vault
+  ansible.builtin.command:
+    argv: [docker, exec, --interactive, pinka-grafana, grafana, cli, admin, reset-admin-password, --password-from-stdin]
+    stdin: "{{ observability_grafana_admin_password }}"
+  changed_when: true
+  no_log: true
+  when: observability_grafana_admin.status == 401
+
+- name: Look up the researchers' accounts
+  ansible.builtin.uri:
+    url: "{{ observability_grafana_url }}/api/users/lookup?loginOrEmail={{ item | urlencode }}"
+    url_username: admin
+    url_password: "{{ observability_grafana_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: observability_grafana_lookup
+  loop: "{{ observability_grafana_researchers + observability_grafana_disabled }}"
+
+- name: Create the missing accounts
+  ansible.builtin.uri:
+    url: "{{ observability_grafana_url }}/api/admin/users"
+    method: POST
+    url_username: admin
+    url_password: "{{ observability_grafana_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      name: "{{ (researchers | selectattr('name', 'equalto', item.item) | first).display_name | default(item.item, true) }}"
+      login: "{{ item.item }}"
+      password: "{{ observability_grafana_user_passwords[item.item] }}"
+    status_code: 200
+  changed_when: true
+  no_log: true
+  loop: "{{ observability_grafana_lookup.results }}"
+  when:
+    - item.status == 404
+    - item.item not in observability_grafana_disabled
+
+- name: Check the researchers' passwords
+  ansible.builtin.uri:
+    url: "{{ observability_grafana_url }}/api/user"
+    url_username: "{{ item.item }}"
+    url_password: "{{ observability_grafana_user_passwords[item.item] }}"
+    force_basic_auth: true
+    status_code: [200, 401]
+  register: observability_grafana_logins
+  no_log: true
+  loop: "{{ observability_grafana_lookup.results }}"
+  when:
+    - item.status == 200
+    - item.item not in observability_grafana_disabled
+    - not item.json.isDisabled | default(false)
+
+- name: Reset the passwords that do not work
+  ansible.builtin.uri:
+    url: "{{ observability_grafana_url }}/api/admin/users/{{ item.item.json.id }}/password"
+    method: PUT
+    url_username: admin
+    url_password: "{{ observability_grafana_admin_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      password: "{{ observability_grafana_user_passwords[item.item.item] }}"
+    status_code: 200
+  changed_when: true
+  no_log: true
+  loop: "{{ observability_grafana_logins.results }}"
+  when: item.status | default(0) == 401
+
+- name: Disable the accounts of removed researchers and those without Grafana
+  ansible.builtin.uri:
+    url: "{{ observability_grafana_url }}/api/admin/users/{{ item.json.id }}/disable"
+    method: POST
+    url_username: admin
+    url_password: "{{ observability_grafana_admin_password }}"
+    force_basic_auth: true
+    status_code: 200
+  changed_when: true
+  loop: "{{ observability_grafana_lookup.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - item.status == 200
+    - item.item in observability_grafana_disabled
+    - not item.json.isDisabled | default(false)

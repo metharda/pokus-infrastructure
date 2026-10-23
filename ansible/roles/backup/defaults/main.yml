@@ -1,0 +1,30 @@
+# Managed by pinka (ansible/roles/backup/defaults/main.yml). Local changes will be overwritten.
+
+# restic repository and password (owner answer E4: SFTP to a host the deployer
+# chooses, a rest-server second, a local path for tests only). An empty
+# repository means "configure later": no backup or prune timer, and the
+# metrics (and doctor) report that backups are not configured.
+backup_repository: "{{ vault_restic_repository | default('') }}"
+backup_password: "{{ vault_restic_password | default('') }}"
+# SFTP repositories: known_hosts lines of the backup server, checked out of band.
+backup_sftp_known_hosts: []
+# Infra's own directories below pinka_root that are backed up (BUILD_PROMPT
+# §7.15). The restricted area, the training datasets, the adapters and the
+# active platform's backup.paths are always backed up (backup_fixed).
+backup_include: [images, datasets, shared, users, backups/pg]
+# Model weights are re-downloaded and verified on restore, so they are left out.
+backup_include_models: false
+# Time-series state (prometheus, loki, tempo) is left out unless listed here.
+backup_include_state: []
+# Back up secrets too (the files of backup_secret_paths); needs
+# backup_secrets_acknowledged: the repository's encryption is all that protects them.
+backup_include_secrets: false
+backup_secrets_acknowledged: false
+# Local PostgreSQL dumps kept in pinka_root/backups/pg.
+backup_pgdump_keep: 7
+# When the timers run (systemd OnCalendar); missed runs are caught up after boot.
+backup_pgdump_schedule: "*-*-* 02:30:00"
+backup_schedule: "*-*-* 03:00:00"
+backup_prune_schedule: "Sun *-*-* 04:00:00"
+# Snapshots kept by the prune job (restic forget).
+backup_retention: {daily: 7, weekly: 4, monthly: 12}

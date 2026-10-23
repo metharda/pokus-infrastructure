@@ -1,0 +1,32 @@
+# Managed by pinka (ansible/roles/postgres/tasks/sockets.yml). Local changes will be overwritten.
+#
+# The socket directories (§7.8): /run/pinka/postgres for the platform's
+# service roles (group <platform>-db, or root without a platform) and
+# /run/pinka/postgres-reader for the researchers' reader role and Grafana
+# (group pinka), recreated by tmpfiles.d at every boot.
+- name: Recreate the socket directories at boot
+  ansible.builtin.template:
+    src: pinka-postgres.tmpfiles.conf.j2
+    dest: /etc/tmpfiles.d/pinka-postgres.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Create the runtime directory
+  ansible.builtin.file:
+    path: /run/pinka
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the socket directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ postgres_container_uid }}"
+    group: "{{ item.group }}"
+    mode: "0750"
+  loop: "{{ postgres_socket_dirs }}"
+  loop_control:
+    label: "{{ item.path }}"

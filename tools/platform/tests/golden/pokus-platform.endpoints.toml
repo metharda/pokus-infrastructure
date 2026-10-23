@@ -1,0 +1,79 @@
+# Managed by pinka (endpoints.toml, contract v2 §12.3). Local changes will be overwritten.
+# The addresses and paths infra provides to the platform, with the effective ports.
+schema_version = 1
+platform = "potka"
+
+[lab]
+machine = "pinka-lab"
+lab_mode = "production"
+node_role = "full"
+
+[postgres]
+socket_dir = "/run/pinka/postgres"
+reader_socket_dir = "/run/pinka/postgres-reader"
+database = "potka"
+migrator_role = "potka_migrator"
+reader_role = "potka_reader"
+grafana_role = "potka_grafana"
+
+[postgres.roles]
+orch = "potka_orch"
+gw = "potka_gw"
+exec = "potka_exec"
+inject = "potka_inject"
+verify = "potka_verify"
+eval = "potka_eval"
+
+[telemetry]
+otlp_grpc = "127.0.0.1:4317"
+otlp_http = "127.0.0.1:4318"
+vm_collector_grpc = "198.18.0.1:4317"
+vm_collector_http = "198.18.0.1:4318"
+agent_otlp_socket = "/run/pinka/otlp/agent.sock"
+query_socket = "/run/pinka/query.sock"
+
+[inference]
+mode = "local"
+researcher_endpoint = "127.0.0.1:18705"
+api_url = "http://127.0.0.1:18704"
+
+[opa]
+url = "http://127.0.0.1:8181"
+decision_path = "/v1/data/potka/action/decision"
+
+[incus]
+url = "https://127.0.0.1:8443"
+cert_dir = "/etc/pinka/incus"
+projects = ["bench", "build"]
+run_network_socket = "/run/pinka/run-network.sock"
+cpuset_targets = "8-15"
+
+[gpu]
+arbiter_socket = "/run/pinka/gpu.sock"
+
+[signing]
+key_file = "/etc/pinka/signing/potka/signing.key"
+public_key_file = "/etc/pinka/signing/potka/signing.pub"
+published_keys_dir = "/srv/pinka/shared/signing-keys"
+
+[attestations]
+trusted_keys_dir = "/etc/pinka/qa/trusted-keys"
+attestations_dir = "/etc/pinka/qa/attestations"
+
+[sessions]
+records_dir = "/var/lib/pinka/sessions"
+fingerprint_command = ["pinka", "fingerprint", "--json"]
+
+[ports]
+docs_serve = 18706
+gateway_adhoc = 18705
+grafana = 18700
+incus_https = 8443
+inference_control = 18710
+loki = 18702
+opa = 8181
+otlp_grpc = 4317
+otlp_http = 4318
+prometheus = 18701
+tempo = 18703
+vllm = 18704

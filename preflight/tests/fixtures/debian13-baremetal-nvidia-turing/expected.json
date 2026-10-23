@@ -1,0 +1,15 @@
+{
+  "disabled": [
+    "gpu_inference"
+  ],
+  "family": "debian",
+  "install_driver": "auto",
+  "needs_action": [],
+  "open_module_drivers": [
+    "580.178.04"
+  ],
+  "outcome": "degraded",
+  "pci_device": "10de:1e04",
+  "proprietary_only_drivers": [],
+  "provider": "baremetal"
+}

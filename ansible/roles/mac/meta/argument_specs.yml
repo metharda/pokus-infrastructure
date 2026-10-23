@@ -1,0 +1,18 @@
+# Managed by pinka (ansible/roles/mac/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Mandatory access control for the research space.
+    options:
+      pinka_root:
+        type: path
+        required: true
+        description: Research space labeled with the rules below.
+      mac_selinux_fcontexts:
+        type: list
+        elements: dict
+        default: []
+        description: Persistent file context rules ({target, setype}).
+      mac_restorecon_always:
+        type: bool
+        default: false
+        description: Run restorecon on every play, not only when a rule changed.

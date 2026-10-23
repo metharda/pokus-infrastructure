@@ -1,0 +1,117 @@
+# Managed by pinka (ansible/roles/platform/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Deploy the platform release and its content packages (contract v2), if a platform source is set.
+    options:
+      platform:
+        type: dict
+        default: {}
+        description: >-
+          The platform source: {repo, ref, path, tag_prefix}, and optionally the commit and tree
+          its ref must resolve to (restore pins both); empty: no platform.
+      content:
+        type: dict
+        default: {}
+        description: >-
+          Sources of the manifest's content packages: {<package>: {repo, ref, path, tag_prefix}},
+          each optionally with the commit and tree its ref must resolve to.
+      pinka_source_known_hosts:
+        type: list
+        elements: str
+        default: []
+        description: known_hosts lines for SSH sources other than GitHub.
+      require_signed_tags:
+        type: bool
+        default: false
+        description: Deploy only release tags with a valid SSH signature of an allowed signer.
+      pinka_allowed_signers:
+        type: list
+        elements: str
+        default: []
+        description: ssh-keygen allowed_signers lines for signed tags.
+      platform_replace:
+        type: str
+        default: ""
+        description: The active platform a release with another name may replace (--replace-platform).
+      platform_inspect:
+        type: bool
+        default: false
+        description: Fetch, stage and validate only, print the summary (--inspect-platform).
+      platform_settings:
+        type: dict
+        default: {}
+        description: >-
+          Non-secret configuration per service name, checked against the service's config
+          schema in the release and written to /etc/pinka/platform/config/<service>.json.
+      platform_inference_mode:
+        type: str
+        default: auto
+        choices: [auto, local, remote, scripted]
+        description: Inference backend of endpoints.toml; auto is local where this node serves inference, otherwise remote.
+      platform_scripted_api_url:
+        type: str
+        default: ""
+        description: OpenAI-compatible endpoint of the scripted backend (staging only).
+      platform_health_wait:
+        type: int
+        default: 300
+        description: Seconds bootstrap waits after starting the platform for its health hook.
+      vault_postgres_passwords:
+        type: dict
+        default: {}
+        description: Database passwords by role; the release's roles must be there (missing keys end bootstrap with exit code 77).
+      vault_platform_secrets:
+        type: dict
+        default: {}
+        description: "The secrets the manifest names, {<service>: {<name>: value}}."
+      qa_trusted_keys:
+        type: list
+        elements: dict
+        default: []
+        description: "QA public keys trusted for attestations, {name, pem}, installed in /etc/pinka/qa/trusted-keys/."
+      pinka_ports:
+        type: dict
+        required: true
+        description: Effective ports (endpoints.toml, the inference broker's port).
+      pinka_vm_otlp:
+        type: dict
+        required: true
+        description: The VM collector address (endpoints.toml).
+      cpuset_targets:
+        type: str
+        default: ""
+        description: CPUs of the targets (endpoints.toml).
+      node_role:
+        type: str
+        required: true
+        description: The platform runs on full and lab nodes only.
+      lab_mode:
+        type: str
+        required: true
+        description: production or staging; scripted inference needs staging.
+      machine_name:
+        type: str
+        required: true
+        description: Machine name (endpoints.toml, published signing keys).
+      pinka_features:
+        type: dict
+        required: true
+        description: Feature flags (gpu_inference decides local inference).
+      pinka_versions:
+        type: dict
+        required: true
+        description: The pinned versions (Quarto).
+  rotate_signing:
+    short_description: Replace the active platform's signing key; old public keys stay published.
+    options:
+      active_platform_file:
+        type: path
+        default: /etc/pinka/platform/rendered.json
+        description: What infra rendered for the active platform; its controller restarts with the new key.
+  start:
+    short_description: Start the active platform and wait for its health hook (site.yml, after the lab session).
+    options:
+      platform_health_wait:
+        type: int
+        default: 300
+        description: Seconds to wait for the health hook to answer ok; an unhealthy platform is reported.

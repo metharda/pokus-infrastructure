@@ -1,0 +1,14 @@
+# Managed by pinka (incus/preseed.yaml.j2). Local changes will be overwritten.
+#
+# Initial Incus configuration (BUILD_PROMPT §7.7), applied once with
+# `incus admin init --preseed` on a new installation. The incus role converges
+# the same objects on every run, so this file always shows the configuration
+# pinka maintains. No default incusbr0: targets only get the run networks the
+# platform creates (r-<short>, no NAT, no uplink, ACL {{ incus_run_acl }}).
+{{ {
+  'config': incus_server_config,
+  'storage_pools': [incus_pool],
+  'networks': incus_networks,
+  'projects': incus_projects,
+  'profiles': incus_profiles,
+} | to_nice_yaml(indent=2, sort_keys=False) }}

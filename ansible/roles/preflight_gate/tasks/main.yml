@@ -1,0 +1,97 @@
+# Managed by pinka (ansible/roles/preflight_gate/tasks/main.yml). Local changes will be overwritten.
+#
+# BUILD_PROMPT §2.6, §7.1: re-run preflight (read-only) and stop if the
+# outcome, provider or feature flags differ from the host profile bootstrap
+# validated for this run, unless --refresh-profile was given. A changed host
+# is an operator decision, so the play stops with bootstrap signal 77.
+- name: Stop when preflight judged the GPU with another driver setting
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      install_nvidia_driver is {{ install_nvidia_driver }}, but bootstrap ran preflight with
+      {{ host_profile.gpu.install_driver }}. Set it as a plain value (auto, manual or skip) in
+      ansible/inventory/host_vars/{{ machine | default('<machine>') }}.yml, then re-run bootstrap.
+  when: install_nvidia_driver != host_profile.gpu.install_driver | default(install_nvidia_driver)
+
+- name: Create a temporary file for the fresh host profile
+  ansible.builtin.tempfile:
+    suffix: .host-profile.json
+  register: preflight_gate_tmp
+  check_mode: false
+  changed_when: false
+
+- name: Re-run preflight
+  block:
+    - name: Run preflight without storing anything
+      ansible.builtin.command:
+        argv: >-
+          {{ [preflight_gate_command, '--no-write', '--quiet', '--output', preflight_gate_tmp.path,
+              '--srv-path', pinka_root]
+             + ['--nvidia-driver', install_nvidia_driver]
+             + pinka_preflight_args
+             + (['--accept-mok-enrollment'] if host_profile.overrides.accept_mok_enrollment | default(false) else [])
+             + (['--adopt-incus'] if pinka_bootstrap.adopt_incus | default(false) else [])
+             + (['--offline'] if pinka_bootstrap.offline | default(false) else []) }}
+      register: preflight_gate_run
+      failed_when: preflight_gate_run.rc not in [0, 10, 20, 30]
+      check_mode: false
+      changed_when: false
+
+    - name: Compare outcome, provider and features with the validated profile
+      ansible.builtin.command:
+        argv:
+          - "{{ pinka_python }}"
+          - -m
+          - pinka_preflight.profile_tool
+          - diff
+          - "{{ preflight_gate_profile_path }}"
+          - "{{ preflight_gate_tmp.path }}"
+      environment:
+        PYTHONPATH: "{{ pinka_dir }}/preflight"
+      register: preflight_gate_diff
+      failed_when: preflight_gate_diff.rc not in [0, 1]
+      check_mode: false
+      changed_when: false
+
+    - name: Read the fresh host profile
+      ansible.builtin.slurp:
+        src: "{{ preflight_gate_tmp.path }}"
+      register: preflight_gate_fresh
+  always:
+    - name: Remove the temporary profile
+      ansible.builtin.file:
+        path: "{{ preflight_gate_tmp.path }}"
+        state: absent
+      check_mode: false
+      changed_when: false
+
+- name: Stop because the host changed
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 77
+    bootstrap_signal_message: >-
+      The host changed since bootstrap validated it ({{ preflight_gate_diff.stdout_lines | join('; ') }}).
+      Check the changes, then re-run bootstrap with --refresh-profile to accept them.
+  when:
+    - preflight_gate_diff.rc == 1
+    - not (pinka_bootstrap.refresh_profile | default(false))
+
+- name: Expose the host profile and the feature flags
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - lab-wide facts read by every role
+    pinka_host_profile: "{{ preflight_gate_fresh.content | b64decode | from_json }}"
+    pinka_features: "{{ (preflight_gate_fresh.content | b64decode | from_json).features }}"
+
+- name: Check the preflight outcome against the recorded consent
+  ansible.builtin.assert:
+    that:
+      - pinka_host_profile.outcome != 'needs_action'
+      - pinka_host_profile.outcome != 'unsupported' or host_profile.overrides.force_unsupported
+      - pinka_host_profile.outcome != 'degraded' or host_profile.overrides.accept_degraded
+      - pinka_host_profile.tier != 'experimental' or host_profile.overrides.accept_experimental
+    fail_msg: >-
+      Preflight outcome {{ pinka_host_profile.outcome }} (tier {{ pinka_host_profile.tier }}) is not
+      covered by the recorded consent. Run bootstrap/bootstrap.sh, which asks for it.
+    quiet: true

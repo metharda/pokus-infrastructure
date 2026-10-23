@@ -1,0 +1,27 @@
+# Managed by pinka (ansible/roles/users_groups/tasks/privileged_groups.yml). Local changes will be overwritten.
+#
+# docker and incus-admin are root-equivalent. Researchers are removed from
+# them unless they are on the explicit break_glass_docker list (docker only).
+- name: Read the privileged groups
+  ansible.builtin.getent:
+    database: group
+    fail_key: false
+
+- name: Remove researchers from docker (unless break-glass)
+  ansible.builtin.command:
+    argv: [gpasswd, -d, "{{ item.name }}", docker]
+  loop: "{{ researchers }}"
+  when:
+    - "'docker' in ansible_facts.getent_group"
+    - item.name not in break_glass_docker
+    - item.name in (ansible_facts.getent_group['docker'][2] | default('')).split(',')
+  changed_when: true
+
+- name: Remove researchers from incus-admin
+  ansible.builtin.command:
+    argv: [gpasswd, -d, "{{ item.name }}", incus-admin]
+  loop: "{{ researchers }}"
+  when:
+    - "'incus-admin' in ansible_facts.getent_group"
+    - item.name in (ansible_facts.getent_group['incus-admin'][2] | default('')).split(',')
+  changed_when: true

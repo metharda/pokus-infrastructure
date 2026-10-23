@@ -1,0 +1,20 @@
+# Managed by pinka (ansible/roles/platform/defaults/main.yml). Local changes will be overwritten.
+
+# --replace-platform NAME: the active platform that a release with another name
+# may replace (BUILD_PROMPT §7.14 "One platform per lab"); "" refuses that.
+platform_replace: "{{ (pinka_bootstrap | default({})).replace_platform | default('') }}"
+# --inspect-platform: fetch, stage and validate the release, print its summary,
+# change nothing else.
+platform_inspect: "{{ (pinka_bootstrap | default({})).inspect_platform | default(false) }}"
+# Non-secret configuration per service name, checked against the service's
+# config schema in the release and written to
+# /etc/pinka/platform/config/<service>.json (0640 root:<account>).
+platform_settings: {}
+# Inference backend of endpoints.toml (§12.8): auto (local where this node serves
+# inference, otherwise remote), local, remote, or scripted (staging only).
+platform_inference_mode: auto
+# OpenAI-compatible endpoint of the scripted backend (scripted mode only).
+platform_scripted_api_url: ""
+# Seconds bootstrap waits after starting the platform for its health hook to
+# answer ok (§12.9); an unhealthy platform is reported, not fatal.
+platform_health_wait: 300

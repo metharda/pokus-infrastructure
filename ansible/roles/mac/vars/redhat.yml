@@ -1,0 +1,5 @@
+# Managed by pinka (ansible/roles/mac/vars/redhat.yml). Local changes will be overwritten.
+#
+# TODO(verify): package names on Fedora and EL (mirrors not reachable from the
+# build environment).
+mac_selinux_packages: [policycoreutils-python-utils, container-selinux]

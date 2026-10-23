@@ -1,0 +1,61 @@
+# Managed by pinka (ansible/roles/platform/tasks/deploy.yml). Local changes will be overwritten.
+#
+# §7.14 steps 5-9 on the run directory that prepare.yml created: the
+# sandboxed build, the job images by digest, the optional tools, publishing
+# with provenance, replacing the previous platform, rendering from the
+# profiles, and the switch (switch.yml) with the drain and migrate hooks.
+# start.yml starts the platform at the end of the play. A failure before the
+# drain leaves the running release untouched. The run directory is removed
+# in every case.
+
+- name: Deploy the prepared release
+  block:
+    - name: Build the release in its sandbox (§7.14 step 5)
+      ansible.builtin.command:
+        argv: ["{{ platform_tool }}", deploy, build, --run, "{{ platform_plan.run_dir }}"]
+      register: platform_build
+      changed_when: platform_build.rc == 0 and (platform_build.stdout | from_json).changed
+      failed_when: platform_build.rc not in [0, 65]
+
+    - name: Refuse a release whose build breaks it (bootstrap exit code 65)
+      ansible.builtin.include_role:
+        name: bootstrap_signal
+      vars:
+        bootstrap_signal_code: 65
+        bootstrap_signal_message: >-
+          The platform release is refused after its build; the running release is untouched:
+          {{ (platform_build.stdout | from_json).problems_text | join('; ') }}
+      when: platform_build.rc == 65
+
+    - name: Pull the training job images by digest (§7.14 step 5)
+      ansible.builtin.command:
+        argv: ["{{ platform_tool }}", deploy, pull, --run, "{{ platform_plan.run_dir }}"]
+      register: platform_pull
+      changed_when: (platform_pull.stdout | from_json).changed
+      when: platform_plan.jobs | length > 0
+
+    - name: Install the optional tools of the manifest
+      ansible.builtin.include_tasks: quarto.yml
+      when: "'quarto' in platform_plan.tools"
+
+    - name: Publish the release and the content packages (§7.14 steps 6 and 9)
+      ansible.builtin.command:
+        argv: ["{{ platform_tool }}", deploy, publish, --run, "{{ platform_plan.run_dir }}"]
+      register: platform_publish
+      changed_when: (platform_publish.stdout | from_json).changed
+
+    - name: Retire the platform this release replaces
+      ansible.builtin.include_tasks: retire.yml
+      when: platform_plan.replace is truthy
+
+    - name: Render the platform from its profiles (§7.14 step 7)
+      ansible.builtin.include_tasks: render.yml
+
+    - name: Switch to the release (§7.14 step 8)
+      ansible.builtin.include_tasks: switch.yml
+
+  always:
+    - name: Remove the run directory
+      ansible.builtin.command:
+        argv: ["{{ platform_tool }}", deploy, clean, --run, "{{ platform_plan.run_dir }}"]
+      changed_when: false

@@ -1,7 +1,0 @@
-# Managed by pokus-infra (ansible/roles/platform/handlers/main.yml). Local changes will be overwritten.
-- name: Restart the platform
-  ansible.builtin.command:
-    argv: >-
-      {{ ['systemctl', 'try-restart']
-         + (platform_units | rejectattr('type', 'defined') | map(attribute='unit') | list) }}
-  changed_when: true

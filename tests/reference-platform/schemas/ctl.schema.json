@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "refplat ctl settings",
+  "description": "platform_settings.ctl in the host_vars; every key is optional.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "job": {
+      "type": "string",
+      "enum": ["tune", "tunecpu"],
+      "description": "The training job a dataset is trained with; tunecpu on hosts without a GPU."
+    },
+    "base_model": {
+      "type": "string",
+      "description": "A model id of models.lock.yml for the job tune."
+    },
+    "steps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "Training steps of the toy job."
+    },
+    "step_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 60,
+      "description": "Seconds the toy job waits after each step (to test interruptions)."
+    }
+  }
+}

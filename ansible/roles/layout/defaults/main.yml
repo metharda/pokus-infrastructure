@@ -1,0 +1,5 @@
+# Managed by pinka (ansible/roles/layout/defaults/main.yml). Local changes will be overwritten.
+#
+# The layout itself is lab-wide data in group_vars/all/main.yml
+# (pinka_layout, pinka_system_layout, pinka_layout_user_mode).
+{}

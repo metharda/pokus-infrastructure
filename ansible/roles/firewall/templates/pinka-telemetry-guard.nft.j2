@@ -1,0 +1,33 @@
+#!/usr/sbin/nft -f
+# Managed by pinka (ansible/roles/firewall/templates/pinka-telemetry-guard.nft.j2). Local changes will be overwritten.
+#
+# The telemetry guard (BUILD_PROMPT §7.9, ADR-0016): only infra's own clients
+# of the telemetry stores ({{ pinka_telemetry_clients | map(attribute='account') | join(', ') }})
+# connect to Prometheus, Loki, Tempo and the collector's metrics exporter on
+# the host loopback, and only {{ pinka_query_port_clients | map(attribute='account') | join(' and ') }}
+# to the query proxy's loopback port; every other account's connection is
+# reset. The sets hold UIDs: a group, GID 0 included, admits nothing.
+# Everyone else queries telemetry through the query proxy (its socket for the
+# profiles that query) and sends it to the collector's OTLP receivers. Only
+# this table is replaced, on every firewall backend; tables of Docker, Incus,
+# firewalld and ufw are not touched.
+table inet pinka_telemetry_guard
+delete table inet pinka_telemetry_guard
+
+table inet pinka_telemetry_guard {
+	set telemetry_clients {
+		type uid
+		elements = { {{ firewall_telemetry_client_uids | join(', ') }} }
+	}
+
+	set query_port_clients {
+		type uid
+		elements = { {{ firewall_query_port_client_uids | join(', ') }} }
+	}
+
+	chain output {
+		type filter hook output priority filter; policy accept;
+		oifname "lo" tcp dport { {{ pinka_telemetry_guard_ports | join(', ') }} } meta skuid != @telemetry_clients reject with tcp reset
+		oifname "lo" tcp dport {{ pinka_internal_ports.query_proxy }} meta skuid != @query_port_clients reject with tcp reset
+	}
+}

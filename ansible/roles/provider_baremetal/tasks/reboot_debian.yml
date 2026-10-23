@@ -1,0 +1,10 @@
+# Managed by pinka (ansible/roles/provider_baremetal/tasks/reboot_debian.yml). Local changes will be overwritten.
+- name: Look for /run/reboot-required
+  ansible.builtin.stat:
+    path: /run/reboot-required
+  register: provider_baremetal_reboot_file
+
+- name: Record the reboot state
+  ansible.builtin.set_fact:
+    provider_baremetal_reboot_required: "{{ provider_baremetal_reboot_file.stat.exists }}"
+    provider_baremetal_reboot_reason: /run/reboot-required exists

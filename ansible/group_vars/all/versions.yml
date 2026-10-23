@@ -1,0 +1,956 @@
+# Managed by pinka (ansible/group_vars/all/versions.yml). Local changes will be overwritten.
+# Generated from versions.lock.yml by tools/gen (make generate); do not edit.
+# bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
+# versions.lock.yml (BUILD_PROMPT §5.2 step 7).
+pinka_versions_lock_sha256: "9e22bde9ded4f0e0e06ecb98c4b5fd46fb2b9806b46bf6c6767d2178d3f4f320"
+pinka_versions:
+  schema_version: 1
+  verified_on: '2026-10-05'
+  fedora_supported_releases:
+    releases:
+      - '43'
+      - '44'
+    verified_on: '2026-10-05'
+    source: 'osinfo-db 0.20251212+git20260710.7306ae26 (archive.ubuntu.com, package sha256 cb48ca157c25aacbec867581ea1f33a8494d7f7bface3cb6691dc68f141f48e2):
+      fedora-43 released 2025-10-28, end of life 2026-12-09; fedora-44 released 2026-04-26, end of life
+      2027-06-02'
+  binaries:
+    uv:
+      version: 0.12.23
+      verified_on: '2026-10-05'
+      source: GitHub release astral-sh/uv 0.12.23 (tag commit 46b84fd0bfec23b72f29e8e2185ba68a65052f48);
+        both archives downloaded and hashed, matching the published .sha256 files
+      format: tar.gz
+      assets:
+        x86_64:
+          url: https://github.com/astral-sh/uv/releases/download/0.12.23/uv-x86_64-unknown-linux-gnu.tar.gz
+          sha256: 9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6
+        aarch64:
+          url: https://github.com/astral-sh/uv/releases/download/0.12.23/uv-aarch64-unknown-linux-gnu.tar.gz
+          sha256: 6524bd338177ed50d035d39354e12545e993bbeba2ecbddf0480c5b3a81d313f
+    restic:
+      version: 0.19.1
+      verified_on: '2026-10-05'
+      source: GitHub release restic/restic v0.19.1; both archives downloaded and hashed, matching the
+        release's SHA256SUMS file
+      format: bzip2
+      assets:
+        x86_64:
+          url: https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_amd64.bz2
+          sha256: f415415624dcc452f2a02b8c33641791a8c6d6d3b65bbb3543fcf9a25151585c
+        aarch64:
+          url: https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_arm64.bz2
+          sha256: a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465
+    quarto:
+      version: 1.10.18
+      verified_on: '2026-10-05'
+      source: GitHub release quarto-dev/quarto-cli v1.10.18 (tag commit 5d07f3ed1105dbfd19e1abd9f1d847f2b8681d38),
+        stable per quarto-dev/quarto-web docs/download/_download.json; both archives downloaded and hashed,
+        matching quarto-1.10.18-checksums.txt
+      format: tar.gz
+      assets:
+        x86_64:
+          url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-amd64.tar.gz
+          sha256: afad071b5bd22c02f2d300695743189d3650e0537a53073e654b630cff2b0c73
+        aarch64:
+          url: https://github.com/quarto-dev/quarto-cli/releases/download/v1.10.18/quarto-1.10.18-linux-arm64.tar.gz
+          sha256: f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c
+    otelcol_contrib:
+      version: 0.162.0
+      verified_on: '2026-10-06'
+      source: GitHub release open-telemetry/opentelemetry-collector-releases v0.162.0; both packages downloaded
+        and hashed, matching the release's per-file .sha256 files
+      format: deb
+      assets:
+        x86_64:
+          url: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.162.0/otelcol-contrib_0.162.0_linux_amd64.deb
+          sha256: 0b2b37eeb83db8e19a5f9dfc60894d058c739384a226ac085e674561befaad44
+        aarch64:
+          url: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.162.0/otelcol-contrib_0.162.0_linux_arm64.deb
+          sha256: b6163e6639989ac608ae2ba58b891128f2f31bba1b0af31a937ac5d0de7b0c23
+    opa:
+      version: 1.21.1
+      verified_on: '2026-10-05'
+      source: GitHub release open-policy-agent/opa v1.21.1 (tag commit 2a109e54103370d2ef288782ef3cb4c8a37902b2);
+        both static binaries downloaded and hashed, matching the published .sha256 files
+      format: binary
+      assets:
+        x86_64:
+          url: https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_amd64_static
+          sha256: 668506eb17a2eaa1fce6cc0d1f42ef85125d4ac5bda5fc74d1152d0c77145031
+        aarch64:
+          url: https://github.com/open-policy-agent/opa/releases/download/v1.21.1/opa_linux_arm64_static
+          sha256: 9a1f3625529c6f01240fe68286dde06aa0b23c5253da700ac48f4d943ff8a4de
+  python:
+    python_version: 3.12.15
+    python_build: python-build-standalone 20261003 (cpython-3.12.15+20261003-<arch>-unknown-linux-gnu-install_only_stripped)
+    packages:
+      ansible-core: 2.21.5
+      jmespath: 1.1.0
+      cryptography: 50.0.2
+    model_tools:
+      huggingface-hub: 2.1.1
+    installer:
+      textual: 8.2.8
+      ruamel.yaml: 0.19.1
+      jsonschema: 4.26.0
+      segno: 1.6.6
+    verified_on: '2026-10-06'
+    source: PyPI JSON API (pypi.org/pypi/<name>/<version>/json) for the packages (the huggingface-hub
+      2.1.1 wheel downloaded and matched against its published sha256; textual 8.2.8, ruamel.yaml 0.19.1,
+      jsonschema 4.26.0 and segno 1.6.6 are the latest releases, not yanked); `uv python list 3.12.15
+      --only-downloads` of uv 0.12.23 for the CPython build
+  containers:
+    verified_on: '2026-10-05'
+    source: 'Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub
+      tag API); latest stable releases on 2026-10-05. The DCGM exporter: nvcr.io with make lock-pins at
+      2026-10-17T22:47:21Z'
+    images:
+      postgres:
+        image: docker.io/library/postgres
+        tag: 18.6-trixie
+        digest: sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      otel_collector:
+        image: docker.io/otel/opentelemetry-collector-contrib
+        tag: 0.162.0
+        digest: sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      prometheus:
+        image: docker.io/prom/prometheus
+        tag: v3.15.0
+        digest: sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      loki:
+        image: docker.io/grafana/loki
+        tag: 3.7.8
+        digest: sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      tempo:
+        image: docker.io/grafana/tempo
+        tag: 2.10.8
+        digest: sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      grafana:
+        image: docker.io/grafana/grafana
+        tag: 13.0.10
+        digest: sha256:c8f326efdb7be9be52047edaab34cf8dadb5152c1244af102eb0a517a7797068
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      node_exporter:
+        image: docker.io/prom/node-exporter
+        tag: v1.12.1
+        digest: sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      cadvisor:
+        image: ghcr.io/google/cadvisor
+        tag: v0.60.6
+        digest: sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      postgres_exporter:
+        image: docker.io/prometheuscommunity/postgres-exporter
+        tag: v0.20.1
+        digest: sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      gpu_exporter:
+        image: docker.io/utkuozdemir/nvidia_gpu_exporter
+        tag: 1.15.1
+        digest: sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      dcgm_exporter:
+        image: nvcr.io/nvidia/k8s/dcgm-exporter
+        tag: 4.8.4
+        digest: sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      opa:
+        image: docker.io/openpolicyagent/opa
+        tag: 1.21.1-static
+        digest: sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      vllm:
+        image: docker.io/vllm/vllm-openai
+        tag: v0.31.0
+        digest: sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+        platforms:
+          - linux/amd64
+          - linux/arm64
+        cuda: 13.0.2
+      query_proxy:
+        image: docker.io/library/nginx
+        tag: 1.30.5-alpine
+        digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      cuda_base_test:
+        image: docker.io/nvidia/cuda
+        tag: 13.0.2-base-ubuntu24.04
+        digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
+        platforms:
+          - linux/amd64
+          - linux/arm64
+      refplat_job:
+        image: public.ecr.aws/docker/library/python
+        tag: 3.12-slim-trixie
+        digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+        platforms:
+          - linux/amd64
+          - linux/arm64
+    target_images:
+      docker_host_web:
+        image: docker.io/library/nginx
+        tag: 1.30.5-alpine
+        digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+        platforms:
+          - linux/amd64
+          - linux/arm64
+    ci_images:
+      ubuntu_2404:
+        image: docker.io/library/ubuntu
+        tag: '24.04'
+        digest: sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+        platforms:
+          - linux/amd64
+      debian_13:
+        image: docker.io/library/debian
+        tag: '13'
+        digest: sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5
+        platforms:
+          - linux/amd64
+      fedora_44:
+        image: docker.io/library/fedora
+        tag: '44'
+        digest: sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+        platforms:
+          - linux/amd64
+      almalinux_9:
+        image: docker.io/library/almalinux
+        tag: '9'
+        digest: sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16
+        platforms:
+          - linux/amd64
+      opensuse_leap_156:
+        image: docker.io/opensuse/leap
+        tag: '15.6'
+        digest: sha256:79be7751205ea84559990fb76b1bec71e38d6fad41c70a4f6c921b803b58f421
+        platforms:
+          - linux/amd64
+      archlinux:
+        image: docker.io/library/archlinux
+        tag: base-20261004.0.606936
+        digest: sha256:4e77cf2ea5f410e6f8be5abf93ccf17ce2436e87a138c167208356711a405dbd
+        platforms:
+          - linux/amd64
+  repository_keys:
+    verified_on: '2026-10-05'
+    source: Keys downloaded from the listed URLs and fingerprinted with gpg and with the lock checker's
+      own OpenPGP parser; the Zabbly and Tailscale keys with make lock-pins at 2026-10-17T22:47:21Z (their
+      comments name the cross-checks)
+    keys:
+      docker-deb:
+        urls:
+          - https://download.docker.com/linux/ubuntu/gpg
+          - https://download.docker.com/linux/debian/gpg
+        fingerprint: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+      docker-rpm:
+        urls:
+          - https://download.docker.com/linux/fedora/gpg
+          - https://download.docker.com/linux/centos/gpg
+        fingerprint: 060A61C51B558A7F742B77AAC52FEB6B621E9F35
+      nvidia-container-toolkit:
+        urls:
+          - https://nvidia.github.io/libnvidia-container/gpgkey
+        fingerprint: C95B321B61E88C1809C4F759DDCAE044F796ECB0
+      tailscale:
+        urls:
+          - https://pkgs.tailscale.com/stable/ubuntu/noble.asc
+          - https://pkgs.tailscale.com/stable/ubuntu/jammy.asc
+          - https://pkgs.tailscale.com/stable/debian/trixie.asc
+          - https://pkgs.tailscale.com/stable/fedora/repo.gpg
+        fingerprint: 2596A99EAAB33821893C0A79458CA832957F5868
+      zabbly:
+        urls:
+          - https://pkgs.zabbly.com/key.asc
+        fingerprint: 4EFC590696CB15B87C73A3AD82CC8797C838DCFD
+  packages:
+    verified_on: '2026-10-05'
+    source: 'Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata
+      for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of
+      NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Incus (Zabbly)
+      and Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z (signed InRelease and
+      index sha256 checked)'
+    docker:
+      ubuntu-24.04:
+        docker-ce: 5:29.8.2-1~ubuntu.24.04~noble
+        docker-ce-cli: 5:29.8.2-1~ubuntu.24.04~noble
+        containerd.io: 2.3.6-1~ubuntu.24.04~noble
+        docker-buildx-plugin: 0.37.1-1~ubuntu.24.04~noble
+        docker-compose-plugin: 5.6.0-1~ubuntu.24.04~noble
+      ubuntu-22.04:
+        docker-ce: 5:29.8.2-1~ubuntu.22.04~jammy
+        docker-ce-cli: 5:29.8.2-1~ubuntu.22.04~jammy
+        containerd.io: 2.3.6-1~ubuntu.22.04~jammy
+        docker-buildx-plugin: 0.37.1-1~ubuntu.22.04~jammy
+        docker-compose-plugin: 5.6.0-1~ubuntu.22.04~jammy
+      debian-13:
+        docker-ce: 5:29.8.2-1~debian.13~trixie
+        docker-ce-cli: 5:29.8.2-1~debian.13~trixie
+        containerd.io: 2.3.6-1~debian.13~trixie
+        docker-buildx-plugin: 0.37.1-1~debian.13~trixie
+        docker-compose-plugin: 5.6.0-1~debian.13~trixie
+      fedora-43:
+        docker-ce: 3:29.8.2-1.fc43
+        docker-ce-cli: 1:29.8.2-1.fc43
+        containerd.io: 2.3.6-1.fc43
+        docker-buildx-plugin: 0.37.1-1.fc43
+        docker-compose-plugin: 5.6.0-1.fc43
+      fedora-44:
+        docker-ce: 3:29.8.2-1.fc44
+        docker-ce-cli: 1:29.8.2-1.fc44
+        containerd.io: 2.3.6-1.fc44
+        docker-buildx-plugin: 0.37.1-1.fc44
+        docker-compose-plugin: 5.6.0-1.fc44
+      el-9:
+        docker-ce: 3:29.8.2-1.el9
+        docker-ce-cli: 1:29.8.2-1.el9
+        containerd.io: 2.3.6-1.el9
+        docker-buildx-plugin: 0.37.1-1.el9
+        docker-compose-plugin: 5.6.0-1.el9
+      el-10:
+        docker-ce: 3:29.8.2-1.el10
+        docker-ce-cli: 1:29.8.2-1.el10
+        containerd.io: 2.3.6-1.el10
+        docker-buildx-plugin: 0.37.1-1.el10
+        docker-compose-plugin: 5.6.0-1.el10
+      opensuse-leap-15.6: TODO(verify)
+      opensuse-leap-16.0: TODO(verify)
+    nvidia_container_toolkit:
+      ubuntu-24.04:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      ubuntu-22.04:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      debian-13:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      fedora-43:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      fedora-44:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      el-9:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      el-10:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      opensuse-leap-15.6:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+      opensuse-leap-16.0:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
+    incus:
+      ubuntu-24.04:
+        incus: 1:6.0.6-ubuntu24.04-202603272003
+      ubuntu-22.04:
+        incus: 1:6.0.6-ubuntu22.04-202603271957
+      debian-13:
+        incus: 1:6.0.6-debian13-202603272000
+      fedora-43: TODO(verify)
+      fedora-44: TODO(verify)
+      el-9: TODO(verify)
+      el-10: TODO(verify)
+      opensuse-leap-15.6: TODO(verify)
+      opensuse-leap-16.0: TODO(verify)
+    nvidia_driver:
+      ubuntu-24.04:
+        nvidia-driver-580-open: 580.178.04-0ubuntu0.24.04.1
+      ubuntu-22.04:
+        nvidia-driver-580-open: 580.178.04-0ubuntu0.22.04.1
+      debian-13: TODO(verify)
+      fedora-43: TODO(verify)
+      fedora-44: TODO(verify)
+      el-9: TODO(verify)
+      el-10: TODO(verify)
+      opensuse-leap-15.6: TODO(verify)
+      opensuse-leap-16.0: TODO(verify)
+    tailscale:
+      ubuntu-24.04:
+        tailscale: 1.104.1
+      ubuntu-22.04:
+        tailscale: 1.104.1
+      debian-13:
+        tailscale: 1.104.1
+      fedora-43: TODO(verify)
+      fedora-44: TODO(verify)
+      el-9: TODO(verify)
+      el-10: TODO(verify)
+      opensuse-leap-15.6: TODO(verify)
+      opensuse-leap-16.0: TODO(verify)
+  nvidia_driver_gpus:
+    verified_on: '2026-10-18'
+    source: make lock-pins at 2026-10-18T19:18:58Z (the signed index, the package's and the list's sha256
+      and the cross-checks of each entry's comment)
+    releases:
+      580.178.04:
+        source: https://archive.ubuntu.com/ubuntu/pool/restricted/n/nvidia-graphics-drivers-580/nvidia-kernel-common-580_580.178.04-0ubuntu0.24.04.1_amd64.deb
+        package_sha256: f15c8327d015b0f4e0718831e2a114983d33d961d89b4e13350b476a6ea302d6
+        path: usr/share/doc/nvidia-kernel-common-580/supported-gpus.json
+        sha256: 2fd600dd713ad843006aec6d3c2abf6787d45a2cbf55053b0c07b26e693d1c05
+        open_module:
+          - 1E02
+          - 1E04
+          - 1E07
+          - 1E09
+          - 1E30
+          - 1E36
+          - 1E78
+          - 1E81
+          - 1E82
+          - 1E84
+          - 1E87
+          - 1E89
+          - 1E90
+          - 1E91
+          - 1E93
+          - 1EB0
+          - 1EB1
+          - 1EB5
+          - 1EB6
+          - 1EB8
+          - 1EC2
+          - 1EC7
+          - 1ED0
+          - 1ED1
+          - 1ED3
+          - 1EF5
+          - 1F02
+          - 1F03
+          - 1F06
+          - 1F07
+          - 1F08
+          - 1F0A
+          - 1F0B
+          - 1F10
+          - 1F11
+          - 1F12
+          - 1F14
+          - 1F15
+          - 1F36
+          - 1F42
+          - 1F47
+          - 1F50
+          - 1F51
+          - 1F54
+          - 1F55
+          - 1F76
+          - 1F82
+          - 1F83
+          - 1F91
+          - 1F95
+          - 1F96
+          - 1F97
+          - 1F98
+          - 1F99
+          - 1F9C
+          - 1F9D
+          - 1F9F
+          - 1FA0
+          - 1FB0
+          - 1FB1
+          - 1FB2
+          - 1FB6
+          - 1FB7
+          - 1FB8
+          - 1FB9
+          - 1FBA
+          - 1FBB
+          - 1FBC
+          - 1FDD
+          - 1FF0
+          - 1FF2
+          - 1FF9
+          - 20B0
+          - 20B2
+          - 20B3
+          - 20B5
+          - 20B6
+          - 20B7
+          - 20BD
+          - 20F1
+          - 20F3
+          - 20F5
+          - 20F6
+          - 20FD
+          - '2182'
+          - '2184'
+          - '2187'
+          - '2188'
+          - '2189'
+          - '2191'
+          - '2192'
+          - 21C4
+          - 21D1
+          - '2203'
+          - '2204'
+          - '2206'
+          - '2207'
+          - '2208'
+          - 220A
+          - 220D
+          - '2216'
+          - '2230'
+          - '2231'
+          - '2232'
+          - '2233'
+          - '2235'
+          - '2236'
+          - '2237'
+          - '2238'
+          - 230E
+          - '2321'
+          - '2322'
+          - '2324'
+          - '2329'
+          - 232C
+          - '2330'
+          - '2331'
+          - '2335'
+          - '2339'
+          - 233A
+          - 233B
+          - '2342'
+          - '2348'
+          - '2414'
+          - '2420'
+          - '2438'
+          - '2460'
+          - '2482'
+          - '2484'
+          - '2486'
+          - '2487'
+          - '2488'
+          - '2489'
+          - 248A
+          - 249C
+          - 249D
+          - 24A0
+          - 24B0
+          - 24B1
+          - 24B6
+          - 24B7
+          - 24B8
+          - 24B9
+          - 24BA
+          - 24BB
+          - 24C7
+          - 24C9
+          - 24DC
+          - 24DD
+          - 24E0
+          - 24FA
+          - '2503'
+          - '2504'
+          - '2507'
+          - '2508'
+          - '2520'
+          - '2521'
+          - '2523'
+          - '2531'
+          - '2544'
+          - '2560'
+          - '2563'
+          - '2571'
+          - '2582'
+          - '2584'
+          - 25A0
+          - 25A2
+          - 25A5
+          - 25A6
+          - 25A7
+          - 25A9
+          - 25AA
+          - 25AB
+          - 25AC
+          - 25AD
+          - 25B0
+          - 25B2
+          - 25B6
+          - 25B8
+          - 25B9
+          - 25BA
+          - 25BB
+          - 25BC
+          - 25BD
+          - 25E0
+          - 25E2
+          - 25E5
+          - 25EC
+          - 25ED
+          - 25F9
+          - 25FA
+          - 25FB
+          - '2684'
+          - '2685'
+          - '2689'
+          - 26B1
+          - 26B2
+          - 26B3
+          - 26B5
+          - 26B9
+          - 26BA
+          - '2702'
+          - '2704'
+          - '2705'
+          - '2709'
+          - '2717'
+          - '2730'
+          - '2757'
+          - '2770'
+          - '2782'
+          - '2783'
+          - '2786'
+          - '2788'
+          - 27A0
+          - 27B0
+          - 27B1
+          - 27B2
+          - 27B6
+          - 27B8
+          - 27BA
+          - 27BB
+          - 27E0
+          - 27FB
+          - '2803'
+          - '2805'
+          - '2808'
+          - '2820'
+          - '2822'
+          - '2838'
+          - '2860'
+          - '2882'
+          - 28A0
+          - 28A1
+          - 28A3
+          - 28B0
+          - 28B8
+          - 28B9
+          - 28BA
+          - 28BB
+          - 28E0
+          - 28E1
+          - 28E3
+          - 28F8
+          - '2901'
+          - '2941'
+          - 29BB
+          - 2B85
+          - 2B87
+          - 2B8C
+          - 2BB1
+          - 2BB3
+          - 2BB4
+          - 2BB5
+          - 2BB9
+          - 2C02
+          - 2C05
+          - 2C18
+          - 2C19
+          - 2C31
+          - 2C33
+          - 2C34
+          - 2C38
+          - 2C39
+          - 2C58
+          - 2C59
+          - 2C77
+          - 2C79
+          - 2D04
+          - 2D05
+          - 2D18
+          - 2D19
+          - 2D30
+          - 2D39
+          - 2D58
+          - 2D59
+          - 2D79
+          - 2D83
+          - 2D98
+          - 2DB8
+          - 2DB9
+          - 2DD8
+          - 2DF9
+          - 2E12
+          - 2F04
+          - 2F18
+          - 2F38
+          - 2F58
+          - '3182'
+          - 31C2
+        proprietary_only:
+          - '1340'
+          - '1341'
+          - '1344'
+          - '1346'
+          - '1347'
+          - '1348'
+          - '1349'
+          - 134B
+          - 134D
+          - 134E
+          - 134F
+          - 137A
+          - 137B
+          - '1380'
+          - '1381'
+          - '1382'
+          - '1390'
+          - '1391'
+          - '1392'
+          - '1393'
+          - '1398'
+          - '1399'
+          - 139A
+          - 139B
+          - 139C
+          - 139D
+          - 13B0
+          - 13B1
+          - 13B2
+          - 13B3
+          - 13B4
+          - 13B6
+          - 13B9
+          - 13BA
+          - 13BB
+          - 13BC
+          - 13C0
+          - 13C2
+          - 13D7
+          - 13D8
+          - 13D9
+          - 13DA
+          - 13F0
+          - 13F1
+          - 13F2
+          - 13F3
+          - 13F8
+          - 13F9
+          - 13FA
+          - 13FB
+          - '1401'
+          - '1402'
+          - '1406'
+          - '1407'
+          - '1427'
+          - '1430'
+          - '1431'
+          - '1436'
+          - 15F0
+          - 15F7
+          - 15F8
+          - 15F9
+          - '1617'
+          - '1618'
+          - '1619'
+          - 161A
+          - '1667'
+          - 174D
+          - 174E
+          - 179C
+          - 17C2
+          - 17C8
+          - 17F0
+          - 17F1
+          - 17FD
+          - 1B00
+          - 1B02
+          - 1B06
+          - 1B30
+          - 1B38
+          - 1B80
+          - 1B81
+          - 1B82
+          - 1B83
+          - 1B84
+          - 1B87
+          - 1BA0
+          - 1BA1
+          - 1BA2
+          - 1BB0
+          - 1BB1
+          - 1BB3
+          - 1BB4
+          - 1BB5
+          - 1BB6
+          - 1BB7
+          - 1BB8
+          - 1BB9
+          - 1BBB
+          - 1BC7
+          - 1BE0
+          - 1BE1
+          - 1C02
+          - 1C03
+          - 1C04
+          - 1C06
+          - 1C07
+          - 1C09
+          - 1C20
+          - 1C21
+          - 1C22
+          - 1C23
+          - 1C30
+          - 1C31
+          - 1C60
+          - 1C61
+          - 1C62
+          - 1C81
+          - 1C82
+          - 1C83
+          - 1C8C
+          - 1C8D
+          - 1C8F
+          - 1C90
+          - 1C91
+          - 1C92
+          - 1C94
+          - 1C96
+          - 1CB1
+          - 1CB2
+          - 1CB3
+          - 1CB6
+          - 1CBA
+          - 1CBB
+          - 1CBC
+          - 1CBD
+          - 1CFA
+          - 1CFB
+          - 1D01
+          - 1D02
+          - 1D10
+          - 1D11
+          - 1D12
+          - 1D13
+          - 1D16
+          - 1D33
+          - 1D34
+          - 1D52
+          - 1D81
+          - 1DB1
+          - 1DB3
+          - 1DB4
+          - 1DB5
+          - 1DB6
+          - 1DB7
+          - 1DB8
+          - 1DBA
+          - 1DF0
+          - 1DF2
+          - 1DF6
+  ansible_collections:
+    verified_on: '2026-10-15'
+    source: 'ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection''s git tag and
+      its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1,
+      required (>=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in
+      ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4,
+      read 2026-10-15). Artifacts: make lock-collections run by the owner at 2026-10-15T20:33:03Z against
+      galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy''s; MANIFEST.json,
+      FILES.json and every file checked; every dependency locked at a satisfying version)'
+    collections:
+      ansible.posix: 2.2.2
+      community.crypto: 3.4.0
+      community.docker: 5.3.0
+      community.general: 13.4.0
+      community.library_inventory_filtering_v1: 1.1.5
+    artifacts:
+      ansible.posix:
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/ansible-posix-2.2.2.tar.gz
+        sha256: 00a58c5d804c9adc99c3c3dc1b9f2246f4bb5f7337941440e0956f0e31c3b82b
+        size: 166545
+      community.crypto:
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-crypto-3.4.0.tar.gz
+        sha256: 5025c31e448592004076da1d8e09d3060224c56cdf9252f9a740efadbbadac2e
+        size: 601275
+      community.docker:
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-docker-5.3.0.tar.gz
+        sha256: fd721d1ec3dca67a5c665ab6a43cf137f4114de18cb31afe1370efc76f9f8dfa
+        size: 598156
+      community.general:
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-general-13.4.0.tar.gz
+        sha256: efd1c0b5dc6f89b9667e4bd77f2426c30545861910dba188593871095ede1804
+        size: 2866617
+      community.library_inventory_filtering_v1:
+        url: https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/artifacts/community-library_inventory_filtering_v1-1.1.5.tar.gz
+        sha256: cbb9e86c5b1720df21e940cedcd2f3e1226c38262623e090a883712610733851
+        size: 36002
+  incus_base_images:
+    verified_on: '2026-10-17'
+    source: 'make lock-pins at 2026-10-17T22:47:21Z: build 20261016_07:42 of ubuntu/24.04/cloud in the
+      simplestreams index of images.linuxcontainers.org; each fingerprint computed from the downloaded
+      incus.tar.xz and rootfs.squashfs and equal to the index'
+    images:
+      ubuntu-24.04:
+        remote: images
+        alias: ubuntu/24.04/cloud
+        type: container
+        fingerprints:
+          x86_64: ddbc871ce856d7fc978e1c3aba7f8a7e058d128b42585cbb7caf6ebdcb1a791f
+          aarch64: f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a
+  github_ssh_host_keys:
+    verified_on: '2026-10-05'
+    source: GitHub meta API, api.github.com/meta (ssh_keys, ssh_key_fingerprints); not read yet
+    keys:
+      ssh-ed25519:
+        public_key: TODO(verify)
+        fingerprint: TODO(verify)
+      ecdsa-sha2-nistp256:
+        public_key: TODO(verify)
+        fingerprint: TODO(verify)
+      ssh-rsa:
+        public_key: TODO(verify)
+        fingerprint: TODO(verify)

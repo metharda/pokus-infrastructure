@@ -1,6 +1,6 @@
 # Pokus Documentation Specification
 
-> Shared by every bot and human that writes code for Pokus. Commit it as `docs/DOCS_SPEC.md` in `pokus-infra`, `pokus-platform`, `pokus-catalog` and `pokus-qa`, and as the build prompt of the `pokus-docs` repository (Part B).
+> Shared by every bot and human that writes code for Pokus, the project as a whole: Pokus Infrastructure (`pinka`, repository `pokus-infrastructure`) and Pokus Platform (`potka`, repository `pokus-platform`, which holds the catalog in `catalog/`). Commit it as `docs/DOCS_SPEC.md` in `pokus-infrastructure`, `pokus-platform` and the external verification repository `pokus-qa`. Part B is the build prompt of the two documentation sites.
 >
 > Rule of thumb: **a feature is not done until it is documented.** Every BUILD_PROMPT's "definition of done" includes the documentation required here.
 
@@ -14,7 +14,7 @@ The documentation must let each of these readers succeed **without asking anyone
 
 | Reader | Must be able to… |
 |---|---|
-| **Researcher** (one of the three lab users) | log in, submit and monitor campaigns, approve actions, inspect runs, compare models, export data, reproduce a past result |
+| **Researcher** (one of the lab's researchers) | log in, submit and monitor campaigns, approve actions, inspect runs, compare models, export data, reproduce a past result |
 | **Lab operator / admin** | install the lab on any supported distro, operate it daily, add users, update, back up, restore, migrate, troubleshoot |
 | **Scenario author** | write, test and publish a new fault scenario that is solvable, reproducible and leak-free |
 | **Platform developer** | understand the architecture, set up a dev environment, change a service safely, add tools/primitives/policy rules, respect the contract |
@@ -37,7 +37,7 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 **Getting started**
 - What Pokus is (one page: problem, approach, what it is not)
 - Concepts and glossary: campaign, run, scenario, scenario instance, seed, blueprint, golden image, target, node alias, ticket, evidence bundle, tool, primitive, probe, policy decision, approval mode, agent mode, run style, deployment, activation, fingerprint, session, validity vs outcome, official vs exploratory, ground truth, attestation
-- A 10-minute tour with annotated screenshots (TUI, `pokus` CLI, Grafana run explorer, a report)
+- A 10-minute tour with annotated screenshots (TUI, `potka` CLI, Grafana run explorer, a report)
 
 **Tutorials**
 1. Install a lab on WSL2 (reference setup)
@@ -51,7 +51,7 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 **How-to guides — operators**
 - Start, stop and drain the lab; what happens on power loss
 - Add, remove or lock a researcher; rotate a researcher's SSH key
-- Update the host safely (`pokus-lab update-host`) on each distro family
+- Update the host safely (`pinka update-host`) on each distro family
 - Pin, update and verify versions (`versions.lock.yml` workflow)
 - Add a model, verify it, create and activate a deployment
 - Build, test and export golden images
@@ -70,7 +70,7 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 - Monitor a campaign; find invalid runs and why
 - Approve or deny actions (`human` approval mode)
 - Inspect a run: events, tool calls, LLM calls, artifacts, traces
-- Run exploratory experiments (`pokus dev`) and their limits
+- Run exploratory experiments (`potka dev`) and their limits
 - Run evaluations, snapshots, reports and comparisons
 - Export data (Parquet/CSV/JSON) for external analysis
 - Cite a result correctly (which IDs and hashes to include)
@@ -81,7 +81,7 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 - Choosing primitives and probes; writing confirm, verification and collateral rules
 - Writing tickets that do not leak (with good/bad examples)
 - Control scenarios
-- Validating: `pokus catalog lint`, injection reliability, oracle/null agent checks
+- Validating: `potka catalog lint`, injection reliability, oracle/null agent checks
 - Versioning and publishing a scenario change
 
 **How-to guides — developers**
@@ -94,7 +94,7 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 - Release process (tags, changelog, QA attestation)
 
 **Reference (generated wherever marked ⚙)**
-- ⚙ CLI reference: `pokus`, `pokus-lab`, `pokus-preflight`, `bootstrap.sh` (from argument parsers / `--help`)
+- ⚙ CLI reference: `potka`, `pinka`, `pinka-preflight`, `bootstrap.sh` (from argument parsers / `--help`)
 - ⚙ HTTP API reference per platform service (OpenAPI from FastAPI, rendered), including which callers each endpoint allows
 - ⚙ Configuration reference: platform TOML settings (from pydantic settings models), Ansible variables per role (from `meta/argument_specs.yml`), host_vars and group_vars keys, installer answers file
 - ⚙ Schemas: scenario, ground truth, taxonomy, blueprint, campaign, agent config, deployment, host profile, fingerprint, run manifest, QA results, attestation (from JSON Schemas)
@@ -124,6 +124,10 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 - **Benchmark methodology** (written so it can be cited in publications): research questions the lab supports, experimental protocol, metric definitions, validity controls, statistical analysis, known limitations and threats to validity (container vs VM kernel effects, WSL virtualization overhead, oracle-approval leakage, model non-determinism, scenario coverage)
 - ADR index (links to every ADR in every repo)
 
+**Contract v2 and training**
+- Pokus Infrastructure site: how-tos "Plug a platform into the lab", "Replace or purge a platform" and "Run a training job and serve its adapter"; tutorial "Write a minimal platform"; explanations "Privilege profiles and restricted data" and "The GPU arbiter"; ⚙ references for the manifest, the profile grants, the reserved names, the principals and endpoints files, and the provenance and lineage records. The infra site records split-node training (a lab and inference pair) as future work.
+- Pokus Platform site: how-tos "Build a training dataset", "Train an adapter" and "Compare a base model with an adapter"; explanation "Contamination"; reference "Attestation format" (moved from the infra contract).
+
 **Project pages**
 - Changelog per repo (Keep a Changelog format, generated from Conventional Commits and edited by a human at release)
 - Release notes per release candidate (RC triple, QA attestation link, notable changes, migration notes)
@@ -133,7 +137,7 @@ All documentation follows the Diátaxis framework. Every page belongs to exactly
 
 ### A.4 Page conventions
 
-Every Markdown page starts with front matter:
+Every site page and every ADR starts with front matter (not README, CLAUDE.md, CHANGELOG, role READMEs, spec copies or IMPLEMENTATION_NOTES, which stay out of the site build and are kept verbatim):
 
 ```yaml
 ---
@@ -145,6 +149,7 @@ last_verified: {date: 2026-10-05, rc: "infra@abc123 platform@def456 catalog@789a
 ---
 ```
 
+- Until a verification run exists, `last_verified` is `{date: null, rc: null, by: null}`; CI flags it, and it is never filled in by hand.
 - **One task or topic per page.** Title says what the reader achieves.
 - **Prerequisites** box at the top of tutorials and how-tos.
 - **Verification step** at the end of every how-to ("you should now see …").
@@ -172,7 +177,8 @@ last_verified: {date: 2026-10-05, rc: "infra@abc123 platform@def456 catalog@789a
 - `make docs` builds the repo's docs with **strict mode** (warnings fail): broken internal links, missing pages in navigation, invalid front matter.
 - **Docs coverage check:** every CLI command and option, HTTP endpoint, config key, Ansible variable, schema, tool, primitive, probe, policy rule, event type, metric, exit code, doctor check and DB table has a reference entry. Missing entries fail CI.
 - **Drift check:** regenerate all ⚙ pages and fail if the committed version differs.
-- **Link check** for external links (weekly, non-blocking but reported).
+- **Link check** for external links (weekly, non-blocking but reported); on the Pokus Platform site it also covers the links to the docs of the infra release it targets.
+- The generated references of the manifest schema and the profile table are drift-checked like the other ⚙ pages.
 - Privacy scan of all pages and the built site (same rules as the build prompts' privacy invariant).
 - Spell check with a project dictionary; Markdown lint; Mermaid syntax validation.
 - `last_verified` older than the last release on a page whose `applies_to` covers that release → warning in CI, failure at release time.
@@ -187,17 +193,17 @@ last_verified: {date: 2026-10-05, rc: "infra@abc123 platform@def456 catalog@789a
 
 ### A.8 Docs are tested
 
-QA bots (pokus-qa) execute every `qa:run` block of every tutorial and how-to in the indicated environment, compare outputs where the page states expected output, and file findings with the page path and block number when a step fails. A tutorial that does not work is an **S1** finding; a wrong reference entry is **S2**; a wrong statement in the Benchmark methodology page is **S1**.
+QA bots (`pokus-qa`) execute every `qa:run` block of every tutorial and how-to in the indicated environment, compare outputs where the page states expected output, and file findings with the page path and block number when a step fails. A tutorial that does not work is an **S1** finding; a wrong reference entry is **S2**; a wrong statement in the Benchmark methodology page is **S1**.
 
 ---
 
-## Part B — The `pokus-docs` site repository (build prompt)
+## Part B — The documentation sites (build prompt)
 
-> Paste Part B into Claude Code to build the combined documentation site. Follow the working rules of the other BUILD_PROMPTs: never invent versions, small Conventional Commits, `make lint test` green, ask open questions first.
+> Paste Part B into Claude Code to build a repository's documentation site. Follow the working rules of the other BUILD_PROMPTs: never invent versions, small Conventional Commits, `make lint test` green, ask open questions first.
 
 ### B.1 What it is
 
-A repository that assembles the documentation of all Pokus repositories into **one versioned website**, built from an exact release-candidate triple (infra, platform, catalog commits) plus the `pokus-qa` commit.
+Each repository builds its own **versioned website**. The **Pokus Infrastructure** site is built in `pokus-infrastructure` from its own docs. The **Pokus Platform** site is built in `pokus-platform` from the platform and the catalog at the release candidate's commits plus the `pokus-qa` commit, and links to the docs of the infra release it targets.
 
 ### B.2 Technology
 
@@ -206,13 +212,15 @@ A repository that assembles the documentation of all Pokus repositories into **o
 
 ### B.3 Site navigation
 
+This is the navigation of the Pokus Platform site; its infrastructure sections (marked →) link to the Pokus Infrastructure site of the targeted release, which has its own navigation for operators.
+
 ```
 Home
 Getting started   (what is Pokus · concepts & glossary · tour)
 Tutorials
 Guides
   ├── Researchers
-  ├── Operators
+  ├── Operators          → the infra site of the targeted release
   ├── Scenario authors
   └── Developers
 Reference
@@ -220,11 +228,12 @@ Reference
   ├── Tools · Primitives & probes · Policy rules
   ├── Database · Events · Telemetry
   ├── Metrics & statistics
-  ├── Support matrix · Versions · Exit codes · Doctor checks
-  └── Filesystem, accounts & sockets
+  ├── Support matrix · Versions · Exit codes · Doctor checks   → the infra site
+  └── Filesystem, accounts & sockets                           → the infra site
 Explanation
   ├── Architecture · Run lifecycle · Ground-truth blindness · Agent boundary
-  ├── Target isolation · Reproducibility · Portability · Security
+  ├── Target isolation · Reproducibility · Security
+  ├── Portability       → the infra site
   ├── QA & validity controls
   └── Benchmark methodology
 Scenario catalog   (generated: one page per scenario, public fields only — no ground truth)
@@ -236,15 +245,16 @@ The **scenario catalog** pages are generated from public scenario metadata only 
 
 ### B.4 Build and publish
 
-- `make site RC=<infra-sha>,<platform-sha>,<catalog-sha> QA=<qa-sha>`: fetch exact commits, run each repo's generators, build in strict mode, run the site-wide checks (links, coverage, GT-leak scan), produce `site/` and a tarball with its sha256.
-- Every page footer shows the RC triple, the docs build date, and a link to the QA attestation if one exists for that triple.
-- Publishing targets (ask me which): the Git host's Pages (private), a static tarball attached to each release, and optionally served on the lab itself through `pokus-lab docs serve` bound to `127.0.0.1` (reachable by researchers via SSH port forwarding or `tailscale serve`), so docs are available offline.
-- PDF export of the Benchmark methodology and Architecture explanations (for publication appendices), with the RC triple on the title page.
+- `make site RC=<infra-release>,<platform-sha>,<catalog-sha> [QA=<qa-sha>]`: `git archive` of the platform and the catalog at the given commits plus, when `QA=` is given, the `pokus-qa` commit, run their generators, build in strict mode, run the site-wide checks (links, including those to the infra release's site; coverage; GT-leak scan), produce `site/` and a tarball with its sha256.
+- The infra site is built and published the same way in `pokus-infrastructure` (strict build, release tarball with its sha256).
+- Every page footer shows the release candidate (infra release, platform and catalog commits), the docs build date, and a link to the QA attestation if one exists for that triple; without `QA=` it reads "no attestation".
+- Publishing: a static tarball with its sha256 attached to each release, and optionally served on the lab itself by infra's docs service (installed with `pinka docs install`, bound to `127.0.0.1:18706`, reachable by researchers via SSH port forwarding or the admin's opt-in `tailscale serve`), so docs are available offline. No Git host Pages.
+- PDF export of the Benchmark methodology and Architecture explanations (for publication appendices), with the release candidate on the title page.
 
 ### B.5 Definition of done
 
-- The site builds in strict mode from a given RC triple with zero warnings.
+- The site builds in strict mode from a given release candidate with zero warnings.
 - Coverage check reports 100 % for reference entries.
 - GT-leak scan clean.
-- Every tutorial carries a `last_verified` from a QA run on the same RC.
-- Versioned docs for at least the current and previous release are browsable.
+- Every tutorial carries a `last_verified` from a QA run on the same RC; a null value (no verification run yet) is flagged, never fabricated.
+- Versioned docs for at least the current and previous release are browsable on each of the two sites.

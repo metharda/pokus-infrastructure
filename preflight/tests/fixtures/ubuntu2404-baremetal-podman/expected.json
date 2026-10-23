@@ -1,0 +1,10 @@
+{
+  "components": {
+    "podman": "pre-existing"
+  },
+  "needs_action": [],
+  "notes_contain": [
+    "Podman 5.4.2 is installed: pinka leaves it as it is"
+  ],
+  "outcome": "supported"
+}

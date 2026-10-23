@@ -1,0 +1,22 @@
+# Managed by pinka (ansible/roles/docs/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: The documentation service on 127.0.0.1 serving the installed docs release (§7.19).
+    options:
+      docs_release:
+        type: dict
+        description: >-
+          The docs release to install, {url, sha256}: an HTTPS URL or a local path of the
+          release's documentation tarball and its SHA-256; null keeps the service off.
+      docs_dir:
+        type: path
+        description: Installed versions and the current link (pinka docs install).
+      docs_cache:
+        type: path
+        description: Where the downloaded release tarball is kept.
+      docs_unit:
+        type: str
+        description: Name of the documentation service.
+      docs_cli:
+        type: path
+        description: The pinka CLI that installs releases.

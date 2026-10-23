@@ -1,0 +1,42 @@
+# Managed by pinka (ansible/roles/platform/tasks/check.yml). Local changes will be overwritten.
+#
+# Fetch, stage and validate the platform sources without deploying them
+# (§7.14 steps 1-4 with --inspect). restore.yml runs it with the commits and
+# trees the snapshot records before it stops anything (owner decision with
+# the "commit" for 3d.4): a repository that no longer has a recorded commit,
+# a moved tag or another tree ends the play with bootstrap exit code 65.
+
+- name: Create the staging directory (root only)
+  ansible.builtin.file:
+    path: "{{ platform_staging_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Write the settings of the check
+  ansible.builtin.copy:
+    dest: "{{ platform_settings_file }}.check"
+    content: "{{ platform_tool_settings | to_nice_json }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Fetch, stage and validate the sources without deploying them
+  ansible.builtin.command:
+    argv: [
+      "{{ platform_tool }}", deploy, prepare, --settings, "{{ platform_settings_file }}.check", --inspect
+    ]
+  register: platform_check
+  changed_when: false  # the mirrors only; the run directory is removed again
+  failed_when: platform_check.rc not in [0, 65]
+
+- name: Refuse the sources (bootstrap exit code 65)
+  ansible.builtin.include_role:
+    name: bootstrap_signal
+  vars:
+    bootstrap_signal_code: 65
+    bootstrap_signal_message: >-
+      The recorded platform cannot be deployed exactly; nothing on the host changed:
+      {{ (platform_check.stdout | from_json).problems_text | join('; ') }}
+  when: platform_check.rc == 65

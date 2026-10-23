@@ -1,0 +1,13 @@
+{
+  "char_devices": [
+    "/dev/kvm",
+    "/dev/net/tun"
+  ],
+  "rw_openable": [
+    "/dev/kvm",
+    "/dev/net/tun"
+  ],
+  "symlinks": {
+    "/proc/4242/fd/3": "socket:[40001]"
+  }
+}

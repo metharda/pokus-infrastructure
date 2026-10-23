@@ -1,5 +1,0 @@
-# Managed by pokus-infra (ansible/roles/models/files/requirements.in). Local changes will be overwritten.
-# Generated from versions.lock.yml (python.model_tools) by tools/gen (make generate).
-# Python packages of /opt/pokus/models-venv, the models role's download tool (BUILD_PROMPT §7.12);
-# `make models-lock` compiles the hash-locked requirements.lock from it.
-huggingface-hub==2.1.1

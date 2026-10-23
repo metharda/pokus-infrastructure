@@ -1,0 +1,15 @@
+# Managed by pinka (ansible/requirements.yml). Local changes will be overwritten.
+# Generated from versions.lock.yml (ansible_collections) by tools/gen (make generate).
+# Bootstrap installs these collections into /opt/pinka/ansible-collections
+# (BUILD_PROMPT §5.2 step 6).
+collections:
+  - name: ansible.posix
+    version: "2.2.2"
+  - name: community.crypto
+    version: "3.4.0"
+  - name: community.docker
+    version: "5.3.0"
+  - name: community.general
+    version: "13.4.0"
+  - name: community.library_inventory_filtering_v1
+    version: "1.1.5"

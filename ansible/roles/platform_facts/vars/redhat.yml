@@ -1,0 +1,10 @@
+# Managed by pinka (ansible/roles/platform_facts/vars/redhat.yml). Local changes will be overwritten.
+#
+# Red Hat family (Fedora, RHEL, AlmaLinux, Rocky Linux, CentOS Stream, Oracle Linux).
+platform_facts_family:
+  service_names:
+    ssh: sshd
+    timesync: [chronyd, systemd-timesyncd]
+  initramfs_tool: dracut
+  version_hold_method: dnf_versionlock
+  codenames: {}

@@ -1,9 +1,0 @@
-# Managed by pokus-infra (config/postgres/pg_hba.conf.j2). Local changes will be overwritten.
-#
-# Unix sockets only: the superuser (maintenance inside the container) and the
-# contract's roles. pg_hba cannot tell the socket directories apart: their
-# groups decide who reaches a socket, the password files decide the role.
-# Everything else is rejected.
-# TYPE  DATABASE  USER  METHOD
-local   all       postgres  scram-sha-256
-local   pokus     {{ postgres_all_roles | join(',') }}  scram-sha-256

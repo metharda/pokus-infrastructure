@@ -1,0 +1,29 @@
+# Managed by pinka (config/postgres/postgresql.conf.j2). Local changes will be overwritten.
+#
+# PostgreSQL for the lab (BUILD_PROMPT §7.8, contracts.md#postgresql).
+# Durability settings are fixed; the postgres role checks them after start.
+
+# Unix sockets for the host: {{ postgres_service_socket_dir }} (the platform's
+# service roles, group <platform>-db) and {{ postgres_reader_socket_dir }} (researchers' reader
+# role, group pinka); /var/run/postgresql stays for maintenance inside the
+# container. The directory permissions on the host gate access; pg_hba cannot
+# tell the directories apart, so the password files decide the role.
+unix_socket_directories = '/var/run/postgresql,{{ postgres_service_socket_dir }},{{ postgres_reader_socket_dir }}'
+unix_socket_permissions = 0777
+# No TCP at all: every client, Grafana and the exporter included, uses a socket
+# (the container has no network).
+listen_addresses = ''
+hba_file = '/etc/postgresql/pg_hba.conf'
+password_encryption = scram-sha-256
+
+fsync = on
+synchronous_commit = on
+full_page_writes = on
+
+shared_buffers = {{ postgres_shared_buffers }}
+effective_cache_size = {{ postgres_effective_cache_size }}
+max_connections = {{ postgres_max_connections }}
+
+log_line_prefix = '%m [%p] %q%u@%d '
+log_timezone = 'UTC'
+timezone = 'UTC'
