@@ -400,11 +400,19 @@ def test_ci_builds_the_package_twice_from_galaxy_and_uploads_nothing() -> None:
     # with the new plan after 16bf749: GitHub Actions minutes).
     workflow = yaml.safe_load((INFRA / ".github" / "workflows" / "release-package.yml").read_text())
     triggers = workflow[True]  # YAML 1.1 reads the key "on" as true
-    assert set(triggers) == {"push", "schedule", "workflow_dispatch"}
+    # A fork's pull request runs it too; a branch here runs it once, on its
+    # push (one run per commit, tools/repo-checks/tests/test_triggers.py).
+    assert set(triggers) == {"push", "pull_request", "schedule", "workflow_dispatch"}
     assert {"versions.lock.yml", "tools/lockcheck/**", "Makefile"} <= set(triggers["push"]["paths"])
     assert workflow["permissions"] == {"contents": "read"}
     job = workflow["jobs"]["release-package"]
-    assert "permissions" not in job and "continue-on-error" not in job and "if" not in job
+    assert "permissions" not in job and "continue-on-error" not in job
+    # Its only condition skips the pull request run of a branch of this
+    # repository, whose commit runs on its push.
+    assert job["if"] == (
+        "(github.event_name != 'pull_request' || "
+        "github.event.pull_request.head.repo.full_name != github.repository)"
+    )
     runs = [step.get("run", "") for step in job["steps"]]
     assert runs[2] == "make release-package REF=HEAD RELEASE_OUT=build/release-a"
     assert runs[3] == "make release-package REF=HEAD RELEASE_OUT=build/release-b"

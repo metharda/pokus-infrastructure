@@ -12,6 +12,14 @@ name: infra-release-package
 
 on:
   push:
+    branches: ["**"]
+    paths:
+      - "versions.lock.yml"
+      - "tools/lockcheck/**"
+      - "Makefile"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-package.yml"
+  pull_request:  # a fork's only (the job's condition): one run per commit
     paths:
       - "versions.lock.yml"
       - "tools/lockcheck/**"
@@ -25,12 +33,18 @@ on:
 permissions:
   contents: read
 
+# One run per commit (owner, after D2): on main and moving/on each commit's
+# run has a group of its own and always finishes; elsewhere (a pull request
+# from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' ||
+    github.ref == 'refs/heads/moving/on') && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   release-package:
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

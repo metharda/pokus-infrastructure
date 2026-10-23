@@ -12,10 +12,20 @@
 # (check-mode-extended.yml) and release-package run weekly, on
 # workflow_dispatch and on pushes that touch their inputs. The required job
 # stands for every blocking job, so branch protection requires that one.
+#
+# One real run per commit (owner, after D2): every commit pushed to a branch
+# of this repository runs here once, on its push, whether or not a pull
+# request is open; a pull request runs the jobs only when it comes from a
+# fork, whose commits have no push run here. In the pull request run of a
+# branch of this repository every job is skipped, and the skipped gate job
+# is not named "required", so the required check of the pull request's head
+# commit always comes from the real run of that commit. Tag pushes are
+# release.yml's.
 name: infra-ci
 
 on:
   push:
+    branches: ["**"]
   pull_request:
   schedule:
     - cron: "17 5 * * 1"  # weekly external link check
@@ -24,8 +34,13 @@ on:
 permissions:
   contents: read
 
+# One run per commit (owner, after D2): on main and moving/on each commit's
+# run has a group of its own and always finishes; elsewhere (a pull request
+# from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' ||
+    github.ref == 'refs/heads/moving/on') && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -36,7 +51,7 @@ jobs:
     # Whether the Ansible lanes are needed: not for a change of docs or records
     # only (pinka_repo_checks.changes). A new branch, a force push, a schedule
     # or a manual run needs them.
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     outputs:
       ansible: ${{ steps.range.outputs.ansible }}
@@ -55,7 +70,7 @@ jobs:
           cat "$GITHUB_OUTPUT"
 
   lint:
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     env:
       # The maintainer's denylist, a secret: only for the two jobs that scan
@@ -82,7 +97,7 @@ jobs:
     # The privacy scan on its own (the former repo-root workflow's job): every
     # tracked file and every commit's message and identity, with no setup step
     # it depends on.
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     env:
       PINKA_PRIVACY_DENYLIST: ${{ secrets.PINKA_PRIVACY_DENYLIST }}
@@ -97,7 +112,7 @@ jobs:
       - run: make privacy
 
   test:
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -151,7 +166,7 @@ jobs:
           if-no-files-found: error
 
   docs:
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -169,7 +184,7 @@ jobs:
   lock-check:
     # Re-verifies every pin over the network and fails while any unverified
     # marker remains in versions.lock.yml (BUILD_PROMPT §10.1).
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -190,7 +205,10 @@ jobs:
     # systemd container per family, nothing skipped; never a host. Blocking;
     # skipped for a change of docs or records only.
     needs: changes
-    if: github.event_name != 'schedule' && needs.changes.outputs.ansible == 'true'
+    if: >-
+      github.event_name != 'schedule' && (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository) &&
+      needs.changes.outputs.ansible == 'true'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -219,8 +237,18 @@ jobs:
     # The blocking jobs in one check for branch protection: every one passed,
     # or check-mode was skipped for a change of docs or records only. (A
     # matrix job skipped as a whole reports one check under its own name, not
-    # one per lane, so the lanes cannot be required one by one.)
-    if: github.event_name != 'schedule' && always()
+    # one per lane, so the lanes cannot be required one by one.) It runs
+    # always in a real run, also a cancelled one, and fails unless every job
+    # passed; skipped (the weekly run, and the pull request run of a branch of
+    # this repository) it carries another name, so a skipped job, which counts
+    # as passing, can never stand in for "required".
+    name: >-
+      ${{ (github.event_name == 'schedule' || github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      'required (skipped: the real run of this commit checks it)' || 'required' }}
+    if: >-
+      github.event_name != 'schedule' && always() && (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository)
     needs: [changes, privacy, lint, test, docs, check-mode]
     runs-on: ubuntu-24.04
     steps:

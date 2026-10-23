@@ -1167,6 +1167,62 @@ its checks green and a commit proposal, and waits for the owner's
   probe's shutdown").
   `claude/zen-albattani-qfwwps` keeps the old history in this checkout
   only; nothing is pushed until the owner runs the pushes.
+- **The owner's review of D2 and the CI runs** (after `fb665c2`, verbatim
+  but for one elision in brackets):
+
+  > Not yet "commit". I checked the uninstall table; fix these first, in the same
+  > D2 commit:
+  >
+  > 1. Data and package purges: list where every kept data item lives (database,
+  >    telemetry stores, models, adapters, artifacts, verification results, keys,
+  >    backups), including Docker volumes and Incus storage. For every package
+  >    uninstall removes, on every family, check whether its maintainer scripts
+  >    delete data on remove or purge (for example /var/lib/docker or
+  >    /var/lib/containerd on a Docker pinka installed). Kept data must never be
+  >    deleted through a package script: use remove instead of purge where needed,
+  >    or keep the data directory explicitly, and add a test with a fake script
+  >    that deletes a data path. Without --purge-data, nothing listed as kept may
+  >    be lost.
+  > 2. Kept backups must stay usable: say where the restic password and repository
+  >    settings live. If they are under a path uninstall removes, keep them in a
+  >    root-only file outside it, or refuse unless the owner confirms a copy exists.
+  >    The report names where the key is. The same for any key needed to verify or
+  >    decrypt kept records.
+  > 3. Boot-time state: for everything pinka changed that takes effect at boot
+  >    (initramfs and the nouveau blacklist, kernel command line or GRUB, modprobe
+  >    options, sysctl, ld.so cache, systemd presets), uninstall restores it and
+  >    regenerates what is needed (update-initramfs or dracut, the bootloader
+  >    config, sysctl --system, ldconfig, daemon-reload). The report says whether a
+  >    reboot is needed.
+  > 4. The report lists manual follow-ups outside the host: revoke the platform's
+  >    deploy key on the Git host, delete the logged-out Tailscale node in the admin
+  >    console, if pinka joined it.
+  > 5. Push guard: since a session restart reset origin to the old repository,
+  >    check before every push that origin is [owner]/pokus-infrastructure, and add
+  >    a pre-push hook in this checkout that refuses any other remote URL. Record the
+  >    rule in CLAUDE.md.
+  >
+  > Separately, as its own small commit before D2: CI runs twice for every commit
+  > of an open pull request from moving/on (once for the push, once for the pull
+  > request). Make it run exactly once per commit:
+  > - every commit on main and on moving/on gets one real CI run, whether or not a
+  >   pull request is open;
+  > - pull requests from forks still get a full CI run;
+  > - the required check on a pull request's head commit always comes from a real
+  >   run of that commit; it must never be satisfied by a skipped or cancelled job
+  >   (a skipped required job counts as passing on GitHub);
+  > - the weekly and on-demand workflows keep working.
+  > Propose the trigger design and explain how it meets each point, then build it.
+  >
+  > I have opened the pull request moving/on -> main at fb665c2. I will merge it
+  > myself by fast-forward or a merge commit once its required check passes. Then
+  > propose D2 again with the fixes above.
+
+  The CI part is the commit after `fb665c2`
+  (`docs/IMPLEMENTATION_NOTES.md`, "One CI run per commit"); the five D2
+  fixes follow in the D2 commit. A pull request from `moving/on` ran CI
+  twice per commit because `ci.yml` and `lock-collections.yml` ran on every
+  push and on every pull request.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness

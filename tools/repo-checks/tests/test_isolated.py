@@ -120,16 +120,17 @@ def test_the_heavy_lanes_run_weekly_on_demand_and_when_their_inputs_change() -> 
     # Owner, with the new plan after 16bf749 (GitHub Actions minutes).
     for name in ("isolated.yml", "check-mode-extended.yml", "release-package.yml"):
         on = workflow(name)[True]  # YAML 1.1 reads the key "on" as True
-        assert set(on) == {"push", "schedule", "workflow_dispatch"}, name
+        # A fork's pull request runs them as a push would (test_triggers.py).
+        assert set(on) == {"push", "pull_request", "schedule", "workflow_dispatch"}, name
         assert on["push"]["paths"], name
         assert f".github/workflows/{name}" in on["push"]["paths"], name
     ci = workflow("ci.yml")
     assert not {"test-random-order", "test-isolated", "check-mode-extended"} & set(ci["jobs"])
+    # One concurrency rule for every workflow that tests a commit: a newer run
+    # cancels the older, except on main and moving/on (test_triggers.py).
     for name in ("ci.yml", "isolated.yml", "check-mode-extended.yml", "release-package.yml"):
-        assert workflow(name)["concurrency"] == {
-            "group": "${{ github.workflow }}-${{ github.ref }}",
-            "cancel-in-progress": True,
-        }, name
+        assert workflow(name)["concurrency"] == ci["concurrency"], name
+        assert workflow(name)["concurrency"]["cancel-in-progress"] is True, name
 
 
 def test_a_change_of_docs_only_skips_the_ansible_lanes() -> None:

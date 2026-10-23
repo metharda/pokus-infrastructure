@@ -249,15 +249,27 @@ opens a pull request and never merges.
   relies on what another test or another file left in the process. Run
   `make test-random-order` and `make test-isolated` locally before every
   proposal (owner, with the new plan after `16bf749`).
-- GitHub Actions minutes (owner, with the new plan after `16bf749`): every
-  workflow cancels a run in progress on the same branch; `test-isolated`
-  (`isolated.yml`), `check-mode-extended` (`check-mode-extended.yml`) and
-  `release-package` run weekly, on `workflow_dispatch` and on pushes that
+- GitHub Actions minutes (owner, with the new plan after `16bf749`): a
+  newer run cancels the older on the same ref, except on `main` and
+  `moving/on`; `test-isolated` (`isolated.yml`), `check-mode-extended`
+  (`check-mode-extended.yml`) and `release-package` run weekly, on
+  `workflow_dispatch` and on pushes (and pull requests from forks) that
   touch their inputs (Markdown is never one); a push that changes only docs
   or records skips the `check-mode` lanes (job `changes`,
   `pinka_repo_checks.changes`). The job `required` stands for every
   blocking job of `ci.yml`. Weekly runs run only from `main`; a failure in
   one blocks the next step like any other.
+- One real CI run per commit (owner, after D2's review): every commit pushed
+  to a branch of this repository runs once, on its push, whether or not a
+  pull request is open; a pull request runs the jobs only when it comes from
+  a fork; tag pushes run only `release.yml`. On `main` and `moving/on` each
+  commit's run has a concurrency group of its own and always finishes. The
+  gate job always runs in a real run (also a cancelled one) and fails unless
+  every blocking job passed; wherever it is skipped it carries another name
+  than `required`, because a skipped job counts as passing. Branch
+  protection requires only `required`; never make a job required that can be
+  skipped under its own name. `tools/repo-checks/tests/test_triggers.py`
+  evaluates the workflows' expressions for every kind of event.
 - Skips in CI (owner, after `37c062e`): CI keeps a list of the tests that may
   skip there, each with its run and reason
   (`tools/repo-checks/pinka_repo_checks/ci_skips.json`, empty or nearly so);

@@ -11,6 +11,23 @@ name: infra-check-mode-extended
 
 on:
   push:
+    branches: ["**"]
+    paths:
+      - "ansible/**"
+      - "preflight/**"
+      - "tools/pinka-lab/**"
+      - "tools/test-distros/**"
+      - "tools/platform/**"
+      - "tests/distros/**"
+      - "tests/reference-platform/**"
+      - "contract/**"
+      - "versions.lock.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".github/workflows/check-mode-extended.yml"
+      - "!**.md"  # docs or records only: not an input
+  pull_request:  # a fork's only (the job's condition): one run per commit
     paths:
       - "ansible/**"
       - "preflight/**"
@@ -33,13 +50,19 @@ on:
 permissions:
   contents: read
 
+# One run per commit (owner, after D2): on main and moving/on each commit's
+# run has a group of its own and always finishes; elsewhere (a pull request
+# from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name }}-${{ (github.ref == 'refs/heads/main' ||
+    github.ref == 'refs/heads/moving/on') && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   check-mode-extended:
     name: check-mode-extended (non-blocking, ${{ matrix.image }})
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     continue-on-error: true
     strategy:

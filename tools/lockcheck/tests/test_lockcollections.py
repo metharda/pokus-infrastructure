@@ -369,5 +369,11 @@ def test_ci_compares_the_pins_on_every_change_and_weekly() -> None:
     assert paths <= set(triggers["pull_request"]["paths"])
     assert triggers["schedule"] and "workflow_dispatch" in triggers
     job = workflow["jobs"]["lock-collections"]
-    assert "continue-on-error" not in job and "if" not in job
+    assert "continue-on-error" not in job
+    # Its only condition skips the pull request run of a branch of this
+    # repository, whose commit runs on its push (repo-checks' test_triggers.py).
+    assert job["if"] == (
+        "(github.event_name != 'pull_request' || "
+        "github.event.pull_request.head.repo.full_name != github.repository)"
+    )
     assert {"run": "make lock-collections-check"} in job["steps"]

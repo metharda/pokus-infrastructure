@@ -5809,3 +5809,56 @@ abort needs that timing.
   interpreter never finalizes while its server threads still wait. 40 runs
   of the test and 64 parallel runs of the probe: no failure, no stderr,
   one identical result.
+
+## One CI run per commit (owner, after D2's review)
+
+A pull request from `moving/on` ran CI twice for every commit: `ci.yml` and
+`lock-collections.yml` ran on every push and on every pull request, and
+every workflow that tests a commit also ran on tag pushes (path filters do
+not apply to tags). The owner's four points, and how the triggers meet
+them (`tools/repo-checks/tests/test_triggers.py` evaluates the workflows'
+own expressions for each kind of event):
+
+- **Every commit on `main` and `moving/on` gets one real run, whether or not
+  a pull request is open.** `ci.yml`, `lock-collections.yml`,
+  `isolated.yml`, `check-mode-extended.yml` and `release-package.yml` run on
+  pushes to every branch of this repository (`branches: ["**"]`, so not on
+  tags; `release.yml` tests a tag). Their jobs run in the push run. In the
+  pull request run of a branch of this repository every job is skipped
+  (`if: ... (github.event_name != 'pull_request' ||
+  github.event.pull_request.head.repo.full_name != github.repository)`),
+  so the commit runs once, on its push. On `main` and `moving/on` the
+  concurrency group is the commit itself (`github.sha`), so a later push
+  never cancels or replaces an earlier commit's run; elsewhere (other
+  branches, a fork's pull request, a manual run) the group is the ref and a
+  newer run cancels the older, as before. A push of several commits at once
+  is one push event: its last commit is the one that runs, as before.
+- **Pull requests from forks still get a full run.** A fork's commits have
+  no push run here, so in a fork's pull request every job runs, and
+  `isolated.yml`, `check-mode-extended.yml` and `release-package.yml` now
+  also run for a fork's pull request that touches their inputs (the same
+  paths as for a push), so a fork's change gets the lanes a branch here
+  would get.
+- **The required check on a pull request's head commit always comes from a
+  real run of that commit.** A skipped job counts as passing, so the gate
+  job never carries the name `required` where it is skipped: its name is
+  `required` only where it runs (a push, a fork's pull request, a manual
+  run), and `required (skipped: the real run of this commit checks it)` in
+  the pull request run of a branch of this repository and in the weekly
+  run. Where it runs it always runs (`always()`), also when the run was
+  cancelled, and fails unless every blocking job passed (check-mode may
+  skip only for a change of docs or records), so a cancelled run gives a
+  failed `required`, never a passing one. For a pull request from
+  `moving/on`, the head commit's `required` is the one of its push run,
+  which on `moving/on` is never cancelled by a newer push.
+- **The weekly and on-demand runs keep working.** The schedules and
+  `workflow_dispatch` are unchanged; the job conditions only exclude the
+  pull request run of a branch of this repository, so weekly and manual
+  runs run every job they ran before (`links` in `ci.yml` only weekly and
+  on demand, as before).
+
+Not verified here: GitHub's naming of a skipped job whose name is an
+expression. If GitHub shows the expression's text instead of its value for
+a skipped job, the name is still not `required`. The first push to
+`moving/on` while the pull request is open shows it: the head commit must
+have exactly one check named `required`, from the push run.
