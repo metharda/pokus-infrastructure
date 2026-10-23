@@ -809,7 +809,12 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "degraded",
             "provider": "baremetal",
             "disabled": ["gpu_inference"],
-            "features": {"gpu_inference": False, "dcgm_metrics": True, "vm_targets": True},
+            "features": {
+                "gpu_inference": False,
+                "gpu_training": True,  # a job brings its own CUDA
+                "dcgm_metrics": True,
+                "vm_targets": True,
+            },
             "remediation_contains": [
                 "supports CUDA 12.8, the pinned vLLM image needs 13.0",
                 "install a driver branch that supports CUDA 13.0",
@@ -826,7 +831,12 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "degraded",
             "provider": "baremetal",
             "disabled": ["gpu_inference"],
-            "features": {"gpu_inference": False, "dcgm_metrics": True, "vm_targets": True},
+            "features": {
+                "gpu_inference": False,
+                "gpu_training": True,  # a job brings its own CUDA
+                "dcgm_metrics": True,
+                "vm_targets": True,
+            },
             "remediation_contains": [
                 "compute capability is 7.0, below 7.5",
                 "GPU inference is refused on this GPU",
@@ -856,7 +866,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         "outcome": "degraded",
         "provider": "baremetal",
         "needs_action": [],
-        "disabled": ["gpu_inference"],
+        "disabled": ["gpu_inference", "gpu_training"],
         "open_module_drivers": [],
         "install_driver": "auto",
     }
@@ -890,7 +900,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
     supported_gpu = {
         "outcome": "degraded",
         "needs_action": [],
-        "disabled": ["gpu_inference"],
+        "disabled": ["gpu_inference", "gpu_training"],
         "pci_device": "10de:1e04",
         "open_module_drivers": OPEN_DRIVERS,
         "proprietary_only_drivers": [],
@@ -935,7 +945,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "needs_action": [],
             "planned_actions": ["secure_boot_mok"],
             "warnings_contain": ["planned action secure_boot_mok"],
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference", "gpu_training"],
             "secure_boot": "enabled",
             "install_driver": "auto",
             "overrides_on": ["accept_mok_enrollment"],
@@ -961,7 +971,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "provider": "baremetal",
             "needs_action": [],
             "planned_actions": [],
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference", "gpu_training"],
             "install_driver": "skip",
         },
     )
@@ -972,7 +982,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         expected={
             "outcome": "degraded",
             "provider": "baremetal",
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference", "gpu_training"],
             "features": {"gpu_inference": False, "vm_targets": True},
         },
     )
@@ -1012,7 +1022,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "degraded",
             "provider": "wsl2",
             "env_class": "wsl2",
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference"],  # the GPU still trains
             "features": {"gpu_inference": False, "vm_targets": True},
             "remediation_contains": [
                 "supports CUDA 12.7, the pinned vLLM image needs 13.0",
@@ -1377,16 +1387,19 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("loaded"),
         expected={"outcome": "unsupported", "unsupported_contains": ["below the floor of 8 GiB"]},
     )
+    # The defaults require the floor; with a GPU they recommend 13.2 GiB for the
+    # rest and a training job at the computed cap, here its floor of 4 GiB.
     fx["ubuntu2404-memory-above-floor"] = build(
         UBUNTU_2404,
-        system(memory_gib=7.53),  # the defaults require the floor; recommended 37.2 GiB
+        system(memory_gib=7.53),
         apparmor,
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
         expected={
             "outcome": "degraded",
-            "degraded_contains": ["below the 37.2 GiB recommended", "a training job 24.0 GiB"],
+            "degraded_contains": ["below the 17.2 GiB recommended", "a training job 4.0 GiB"],
+            "switches": {"training.memory_max": "4G", "training.memory_max_basis": "computed"},
         },
     )
     # Four targets require 10.1 GiB: 9.49 GiB at the tolerance.
@@ -1413,24 +1426,58 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         plan=four_targets,
         expected={"outcome": "degraded", "degraded_contains": ["recommended for these choices"]},
     )
-    # The defaults recommend 37.2 GiB on a full node with VM targets: 34.97 GiB.
+    # With a GPU the defaults recommend 13.2 GiB for the rest (VM targets) and a
+    # training job at the computed cap (MemTotal minus the rest, 4 to 24 GiB):
+    # below 17.2 GiB the cap is its floor, 17.2 GiB at the tolerance is 16.17 GiB.
     fx["ubuntu2404-memory-below-recommended"] = build(
         UBUNTU_2404,
-        system(memory_gib=34.95),
+        system(memory_gib=16.16),
         apparmor,
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
-        expected={"outcome": "degraded", "degraded_contains": ["training_caps.memory_max 23G"]},
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["training_caps.memory_max 3G", "training: off"],
+        },
     )
     fx["ubuntu2404-memory-above-recommended"] = build(
         UBUNTU_2404,
-        system(memory_gib=34.98),
+        system(memory_gib=16.18),
         apparmor,
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
-        expected={"outcome": "supported"},
+        expected={"outcome": "supported", "switches": {"training.memory_max": "4G"}},
+    )
+    # Above it the cap follows the host: 31.25 GiB (a nominal 32 GiB machine)
+    # leaves 18 GiB for a job, and the recommended value still fits.
+    fx["ubuntu2404-training-cap-computed"] = build(
+        UBUNTU_2404,
+        system(memory_gib=31.25),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={
+            "outcome": "supported",
+            "switches": {"training.runs": "gpu", "training.memory_max": "18G"},
+        },
+    )
+    # An explicit cap wins over the computed one.
+    fx["ubuntu2404-training-cap-configured"] = build(
+        UBUNTU_2404,
+        system(memory_gib=31.2),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan={"training": {"mode": "auto", "memory_max_gib": 24, "run_storage_max_gib": 16}},
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["training_caps.memory_max 19G", "training: off"],
+            "switches": {"training.memory_max": "24G", "training.memory_max_basis": "configured"},
+        },
     )
     # A served model of 5.7 GiB: vLLM needs its files and 3 GiB, 15.8 GiB in
     # all (14.85 GiB at the tolerance); a nominal 16 GiB machine passes.
@@ -1465,7 +1512,55 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         plan=model,
         expected={
             "outcome": "degraded",
-            "degraded_contains": ["vLLM serving example-model or a training job 24.0 GiB"],
+            "degraded_contains": ["vLLM serving example-model or a training job 10.7 GiB"],
+        },
+    )
+    # The switches (§2.3): a GPU host with inference and training off counts
+    # neither, and a host without a GPU is not degraded for features switched off.
+    switched_off = {
+        "inference": "off",
+        "training": {"mode": "off", "memory_max_gib": None, "run_storage_max_gib": 16},
+    }
+    fx["ubuntu2404-gpu-switched-off"] = build(
+        UBUNTU_2404,
+        system(memory_gib=13.0),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan={**switched_off, **model},
+        expected={
+            "outcome": "supported",
+            "features": {"gpu_inference": True, "gpu_training": True},
+            "switches": {"inference.serves": False, "training.runs": "off"},
+        },
+    )
+    fx["ubuntu2404-no-gpu-switched-off"] = build(
+        UBUNTU_2404,
+        system(memory_gib=13.0),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan=switched_off,
+        expected={
+            "outcome": "supported",
+            "disabled": [],
+            "notes_contain": ["not used: inference: off", "not used: training: off"],
+        },
+    )
+    # training: cpu runs the CPU-only variant without a GPU, and counts it.
+    fx["ubuntu2404-no-gpu-training-cpu"] = build(
+        UBUNTU_2404,
+        system(memory_gib=13.0),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan={"training": {"mode": "cpu", "memory_max_gib": None, "run_storage_max_gib": 16}},
+        expected={
+            "outcome": "degraded",
+            "disabled": ["gpu_inference"],
+            "degraded_contains": ["a training job (CPU-only variant) 4.0 GiB", "training: off"],
+            "switches": {"training.runs": "cpu", "training.memory_max": "4G"},
         },
     )
     # Disk known at install: the 300 GiB loop pool on a root file system with

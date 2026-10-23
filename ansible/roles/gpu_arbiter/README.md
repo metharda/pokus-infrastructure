@@ -22,9 +22,10 @@ deploy helper and decides whether the GPU serves, trains or idles:
 - `pinka-gpu-job@<run>.service`: one training run in the container
   `pinka-job-<run>` with infra's fixed options, then the adapter's
   registration under `/srv/pinka/models/adapters/<name>/<sha256>/`;
-- `/etc/pinka/gpu/arbiter.json`: node role, peer, `gpu_arbiter`,
-  `training_caps`, how a container reaches the GPU (as for vLLM), ports and
-  timeouts. The state is in `/var/lib/pinka/gpu/` (`state.json`,
+- `/etc/pinka/gpu/arbiter.json`: node role, peer, whether it serves and
+  trains, `gpu_arbiter`, the training caps (`memory_max: auto` replaced by
+  the cap preflight computed), how a container reaches the GPU (as for
+  vLLM), ports and timeouts. The state is in `/var/lib/pinka/gpu/` (`state.json`,
   `transitions.jsonl`, `runs/`).
 
 ## Variables
@@ -33,13 +34,18 @@ See `meta/argument_specs.yml`.
 
 ## Feature flags
 
-Applied on `node_role` `full` and `inference` in `site.yml`. Without
-`gpu_inference` the arbiter serves nothing; a full node still runs CPU-only
-jobs (`resources.gpus: 0`). Training runs only on `full` nodes.
+Applied on `node_role` `full` and `inference` in `site.yml`, with the
+flags after the switches (BUILD_PROMPT §2.3, `preflight_gate`). Without
+`gpu_inference` (no usable GPU, or `inference: off`) the arbiter serves
+nothing, and a deployment served before is stopped (`idle
+--unless-training`). Training runs only on `full` nodes where
+`pinka_training` is not `off`: on the GPU with `gpu_training`, otherwise the
+CPU-only jobs (`resources.gpus: 0`) with `training: cpu`; with training off
+the arbiter refuses every run and dataset publication.
 
 ## Idempotency
 
 Files are written only when their content changes. The chosen deployment is
 served through the arbiter, which restarts vLLM only when its rendering
 changed or vLLM does not answer; a running or suspended training run is
-never interrupted (`serve --unless-training`).
+never interrupted (`serve --unless-training`, `idle --unless-training`).

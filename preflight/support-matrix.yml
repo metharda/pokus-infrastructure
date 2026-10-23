@@ -231,6 +231,16 @@ features:  # optional; each becomes a boolean feature flag
         unknown: >-
           nvidia-smi did not report the CUDA version the NVIDIA driver supports; the pinned vLLM
           image needs {required}: update the NVIDIA driver (on WSL2, on Windows).
+  # The GPU arbiter's training jobs (BUILD_PROMPT §2.3, §7.18): a job's image
+  # brings its own CUDA, so the driver's CUDA version is not compared. Without
+  # it no job gets the GPU; training: cpu runs the jobs' CPU-only variant.
+  gpu_training:
+    requires:
+      - nvidia_gpu_usable
+      - {gpu_vram_gib_min: 8}
+      - {gpu_compute_capability_min: "7.0"}
+    on_missing: degrade
+    impact: "No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs."
   vm_targets:
     requires: [kvm_usable]
     on_missing: degrade

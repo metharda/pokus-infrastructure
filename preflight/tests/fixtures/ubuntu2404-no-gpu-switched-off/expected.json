@@ -1,0 +1,8 @@
+{
+  "disabled": [],
+  "notes_contain": [
+    "not used: inference: off",
+    "not used: training: off"
+  ],
+  "outcome": "supported"
+}

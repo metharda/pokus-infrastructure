@@ -51,6 +51,18 @@ What this host runs: full (everything), lab (everything except vLLM) or inferenc
 
 - Default: `full`
 
+### `inference`
+
+The inference switch (BUILD_PROMPT §2.3): auto (vLLM, its images and the selected model where preflight detects gpu_inference on a full or inference node) or off (none of them is installed or counted in the requirements). An inference node needs auto.
+
+- Default: `auto`
+
+### `training`
+
+The training switch (§2.3, §7.18), on a full node only: auto (training jobs where preflight detects gpu_training), cpu (also without a usable GPU: the jobs' CPU-only variant) or off (the GPU arbiter refuses every run, no job image is pulled, nothing is counted in the requirements).
+
+- Default: `auto`
+
 ### `firewall_backend`
 
 Firewall backend: auto (firewalld if active, else ufw if active, else nftables), nftables, firewalld or ufw.
@@ -77,12 +89,12 @@ The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default depl
 
 ### `training_caps`
 
-Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory).
+Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto computes the cap from the host (§2.3): MemTotal minus the recommended memory of everything else that runs, in whole GiB within 4 and 24 GiB (preflight records it in the host profile); a size such as 12G sets it.
 
 - Default:
 
     ```yaml
-    {timeout_seconds: 86400, memory_max: 24G, cpus: 8, dataset_max: 8G, run_storage_max: 16G,
+    {timeout_seconds: 86400, memory_max: auto, cpus: 8, dataset_max: 8G, run_storage_max: 16G,
       tmp_max: 1G}
     ```
 
@@ -1012,8 +1024,10 @@ Variables the role reads from elsewhere:
 | `machine_name` | [lab-wide](#machine_name) | Machine name; the Tailscale host name doctor expects. |
 | `node_role` | [lab-wide](#node_role) | full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks. |
 | `pinka_dir` | host_vars | Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints. |
-| `pinka_features` | host_vars | Feature flags of the host profile (gpu_inference, vm_targets). |
+| `pinka_features` | host_vars | Feature flags after the switches (gpu_inference, gpu_training, vm_targets; preflight_gate). |
 | `pinka_provider` | host_vars | Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path). |
+| `pinka_training` | host_vars | Where training jobs run (preflight_gate); lab.json tells the CLI whether this host trains. |
+| `pinka_training_caps` | host_vars | The training caps with memory_max auto replaced by the computed cap (preflight_gate); in lab.json. |
 | `pinka_versions` | host_vars | The pinned versions (the image and digest every lab container must run). |
 
 ### `doctor_max_clock_offset`
@@ -1247,7 +1261,8 @@ Variables the role reads from elsewhere:
 | Variable | Set by | Description |
 | --- | --- | --- |
 | `gpu_arbiter` | [lab-wide](#gpu_arbiter) | after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1). |
-| `training_caps` | [lab-wide](#training_caps) | Caps on a training job's timeout_seconds, memory_max and cpus (group_vars). |
+| `pinka_training` | host_vars | Where training jobs run (preflight_gate, BUILD_PROMPT §2.3); off makes the arbiter refuse every run. |
+| `pinka_training_caps` | host_vars | Caps on a training job's timeout_seconds, memory_max and cpus (training_caps, with memory_max auto replaced by the cap preflight computed; preflight_gate). |
 
 ### `gpu_arbiter_peer`
 
@@ -2252,6 +2267,7 @@ Variables the role reads from elsewhere:
 | `host_profile` | bootstrap.sh | Host profile validated by bootstrap.sh for this run. |
 | `install_nvidia_driver` | [lab-wide](#install_nvidia_driver) | The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did. |
 | `pinka_root` | [lab-wide](#pinka_root) | Research space; preflight measures its free disk space. |
+| `training_caps` | [lab-wide](#training_caps) | The caps on training jobs; memory_max auto takes the cap preflight computed (§2.3). |
 
 ### `preflight_gate_command`
 

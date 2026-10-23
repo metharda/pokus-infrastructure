@@ -55,10 +55,13 @@ observability_exporters: >-
      else ({'logs': 'otlp_grpc/lab', 'metrics': 'otlp_grpc/lab', 'traces': 'otlp_grpc/lab'}
            if observability_forward_node | length > 0
            else {'logs': 'nop', 'metrics': 'nop', 'traces': 'nop'}) }}
-# GPU metrics only with gpu_inference.
-observability_gpu: "{{ pinka_features.gpu_inference | default(false) | bool }}"
+# GPU metrics where the lab uses the GPU: vLLM serves or training jobs run on
+# it (the flags after the switches, BUILD_PROMPT §2.3).
+observability_gpu: >-
+  {{ (pinka_features.gpu_inference | default(false) | bool)
+     or (pinka_features.gpu_training | default(false) | bool) }}
 # vLLM serves on this host (node_role full or inference) with gpu_inference.
-observability_vllm: "{{ observability_gpu and node_role in ['full', 'inference'] }}"
+observability_vllm: "{{ (pinka_features.gpu_inference | default(false) | bool) and node_role in ['full', 'inference'] }}"
 # Data directories under pinka_root/state, owned by the container that writes
 # them (Grafana keeps group 0: its image grants its own paths to group 0).
 observability_state_dirs:

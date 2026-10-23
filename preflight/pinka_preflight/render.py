@@ -83,6 +83,15 @@ def requirements_lines(req: Mapping[str, Any]) -> list[str]:
         f" required {mem['required']:g}, recommended {mem['recommended']:g} GiB"
         f" (each compared at {mem['tolerance']:g} times the nominal value)"
     ]
+    inference, training = req["switches"]["inference"], req["switches"]["training"]
+    lines.append(
+        f"  inference {'on' if inference['serves'] else 'off'} ({inference['reason']});"
+        f" training {training['runs']} ({training['reason']})"
+    )
+    lines.append(
+        f"  training cap {training['memory_max']} ({training['memory_max_basis']}:"
+        f" {training['memory_max_detail']})"
+    )
     for item in mem["items"]:
         detail = f"; {item['detail']}" if item["detail"] else ""
         lines.append(

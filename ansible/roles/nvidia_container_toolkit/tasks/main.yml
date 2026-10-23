@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/nvidia_container_toolkit/tasks/main.yml). Local changes will be overwritten.
 #
-# NVIDIA Container Toolkit (BUILD_PROMPT §7.6), only on hosts with the
-# gpu_inference feature. Containers reach the GPU through CDI where Docker
+# NVIDIA Container Toolkit (BUILD_PROMPT §7.6), only where the lab uses the
+# GPU (gpu_inference or gpu_training after the switches, §2.3). Containers reach the GPU through CDI where Docker
 # supports it: the toolkit's own nvidia-cdi-refresh units (toolkit 1.18 and
 # later) write /var/run/cdi/nvidia.yaml whenever the driver or the toolkit
 # changes, in WSL mode on WSL2. Docker 28.2 and later enable CDI by default;

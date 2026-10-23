@@ -228,7 +228,7 @@ features:                     # optional; each becomes a boolean feature flag
     on_missing: degrade       # lab installs without vLLM; a too-old driver prints the remediation of §2.2
   gpu_training:
     requires: [nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: "7.0"]
-    on_missing: degrade       # no GPU training jobs; their CPU-only variant still runs (§7.18)
+    on_missing: degrade       # no GPU training jobs; their CPU-only variant runs with training: cpu (§2.3, §7.18)
   vm_targets:
     requires: [kvm_usable]
     on_missing: degrade       # kernel-level scenarios unavailable
@@ -273,8 +273,10 @@ Note: storage must end up as either `btrfs_pool` or `lvm_thin_pool`. If neither 
 **Requirements computed from the choices.** Memory above the floor and free disk are not fixed numbers: they follow what the operator chooses.
 
 - The data lives in `preflight/requirements.yml` (compiled to committed, drift-checked JSON like the matrix): per component (base system, PostgreSQL, observability, OPA, Incus and each running target, vLLM with the selected model, a training job, the installer, bootstrap itself) its memory, CPU and disk need, the source of each number, and whether it is `measured` or `estimated`. Every number is an estimate until real-machine test 4.15 of the test specification measures it.
-- Preflight takes the choices as `--plan <choices.json>` (features, `node_role`, the selected model, the Incus pool source and size, the number of concurrent targets, the golden images to build, the retention settings), as bootstrap and the installer write them; without `--plan` it uses the configured defaults. It prints the breakdown, and the host profile records it (`requirements`). Bootstrap, the installer and doctor use this one computation, so they show the same numbers.
-- **Memory:** below the floor (8 GiB nominal: the core stack with no target running) the outcome is `unsupported`. Above it, the required and recommended values are computed from `gpu_inference`, `gpu_training`, `node_role`, the number of concurrent targets and the selected model's size: below required → `unsupported`, with the breakdown and the choices that would fit; between required and recommended → `degraded` (consent as for any degraded outcome).
+- Preflight takes the choices as `--plan <choices.json>` (the feature switches, `node_role`, the selected model, the Incus pool source and size, the number of concurrent targets, the golden images to build, the training caps, the retention settings), as bootstrap and the installer write them; without `--plan` it uses the configured defaults. It prints the breakdown, and the host profile records it (`requirements`). Bootstrap, the installer and doctor use this one computation, so they show the same numbers.
+- **Feature switches.** Inference and training are switches, in `host_vars` (`inference: auto | off`, `training: auto | cpu | off`, §8.1) and in the installer's answers, so a small lab does not pay for what it does not run. `auto` keeps the detected feature as the default where it applies: vLLM, its images and the selected model where `gpu_inference` is detected on a `full` or `inference` node; training jobs where `gpu_training` is detected on a `full` node. `training: cpu` also runs the jobs' CPU-only variant (§7.18) on a `full` node without a usable GPU. A switched-off feature counts nothing in memory or disk, and its services, images and models are not installed: with `inference: off` no vLLM, inference images or model; with training off the arbiter refuses every run and no job image is pulled. A host that lacks a feature its switch turns off is not `degraded` for it (a note instead). An `inference` node needs `inference: auto`.
+- **Memory:** below the floor (8 GiB nominal: the core stack with no target running) the outcome is `unsupported`. Above it, the required and recommended values are computed from the features in use after the switches (`gpu_inference`, `gpu_training`, `training: cpu`), `node_role`, the number of concurrent targets, the selected model's size and the training cap: below required → `unsupported`, with the breakdown and the choices that would fit; between required and recommended → `degraded` (consent as for any degraded outcome).
+- **Training cap.** A training job counts in the recommended memory, at `training_caps.memory_max`, only when training is on and possible on the host (a usable GPU, or `training: cpu`). `memory_max: auto` (the default) computes the cap from the host: `MemTotal` minus the recommended memory of everything else that runs (the core stack, the targets and vLLM with the selected model), rounded down to whole GiB, within a floor of 4 GiB and a ceiling of 24 GiB. An explicit `memory_max` wins. The host profile records the cap and how it was computed; the GPU arbiter, the platform's validation and doctor use it.
 - **Disk, checked at install:** per mount point, the sum of the selected models' files (sizes in `models.lock.yml`, §7.12), the container images of the enabled features (each image's compressed size from `versions.lock.yml` × 2.5 as an estimate; once an image is pulled on a host, preflight and doctor use its real size there), the Incus pool (a loop file counts fully on its mount point, a dedicated device on none), the golden images to build (each blueprint's estimated size in its `image.yaml`, §7.13) and 5 GiB for pinka itself. A shortfall is refused and listed item by item (for example `model qwen3-8b-awq: 5.7 GiB, missing 2.1 GiB on /srv`).
 - **Disk, growth:** the pool size and every retention setting are configurable (Prometheus by time and size, Loki, Tempo, backups, artifacts); the installer shows the expected growth per day and week, and doctor warns before a disk fills (§9).
 - The Incus `bench` project's `limits.memory` follows the chosen number of concurrent targets (§7.7).
@@ -972,6 +974,8 @@ pinka_root: /srv/pinka
 docker_data_root: /var/lib/docker
 
 node_role: full                    # full | lab | inference (§19.10)
+inference: auto                    # auto | off: vLLM, its images and the model where gpu_inference applies (§2.3)
+training: auto                     # auto | cpu | off: jobs where gpu_training applies; cpu also runs the CPU-only variant (§2.3)
 firewall_backend: auto             # auto | nftables | firewalld | ufw (§19.6)
 install_nvidia_driver: auto        # auto | manual | skip (baremetal/vm; ignored on wsl2) (§19.8)
 allow_community_repos: false       # COPR / OBS / RPM Fusion need explicit consent (§19.4)
@@ -993,7 +997,7 @@ platform_settings: {}              # per service; checked against the service's 
 gpu_arbiter:
   after_boot: serve                # serve (the default deployment) | idle
   restore_after_training: true
-training_caps: {timeout_seconds: 86400, memory_max: 24G, cpus: 8}   # jobs' limits must stay within these
+training_caps: {timeout_seconds: 86400, memory_max: auto, cpus: 8}  # jobs' limits must stay within these; memory_max auto = computed from the host (§2.3)
 
 grafana_tailscale_serve: false
 docs_release: null                 # {url: "<docs release tarball URL or path>", sha256: "<hex>"}; null = no docs service (§7.19)

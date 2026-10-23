@@ -7,10 +7,17 @@ argument_specs:
         type: dict
         required: true
         description: after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1).
-      training_caps:
+      pinka_training_caps:
         type: dict
         required: true
-        description: Caps on a training job's timeout_seconds, memory_max and cpus (group_vars).
+        description: >-
+          Caps on a training job's timeout_seconds, memory_max and cpus (training_caps, with
+          memory_max auto replaced by the cap preflight computed; preflight_gate).
+      pinka_training:
+        type: str
+        required: true
+        choices: [gpu, cpu, "off"]
+        description: Where training jobs run (preflight_gate, BUILD_PROMPT §2.3); off makes the arbiter refuse every run.
       gpu_arbiter_peer:
         type: str
         description: >-

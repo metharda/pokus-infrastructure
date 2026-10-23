@@ -166,6 +166,9 @@ def test_split_inference_rules(repo: Paths) -> None:
     found = "\n".join(answers_mod.problems(answers, context))
     assert "the other node, not this machine" in found
     assert "platform: an inference node runs no platform" in found
+    # The CI answers switch inference off (§2.3); an inference node needs it.
+    assert "features/inference: an inference node runs only the inference stack" in found
+    answers.features.inference = "auto"
     answers.platform = answers_mod.Source()
     answers.content = {}
     answers.platform_settings = {}

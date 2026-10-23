@@ -12,9 +12,9 @@ description: How preflight computes the memory and disk a lab needs from the ope
 The lab does not decide its own scale. A machine with 8 GiB of memory can
 run a small lab with one target at a time; a workstation with a GPU can serve
 a model and run training jobs. What decides is what you choose: the node role,
-the number of targets that run at once, the model vLLM serves, the golden
-images, the Incus pool, the retention of the telemetry stores and the caps on
-training jobs. Preflight adds up what these choices need and checks that this
+whether the lab serves inference and runs training jobs, the number of
+targets that run at once, the model vLLM serves, the golden images, the Incus
+pool, the retention of the telemetry stores and the caps on training jobs. Preflight adds up what these choices need and checks that this
 machine has it, before anything is installed.
 
 ## Where the numbers come from
@@ -34,10 +34,11 @@ yourself (the pool) are marked `configured`.
 ## The choices: the plan
 
 Preflight reads the choices from a plan (`pinka-preflight --plan FILE`,
-format in `preflight/schema/plan.schema.json`): the node role, the research
-space, Docker's data root, the pool's source and size, the concurrent
-targets, the model to serve with its files' sizes, the golden images to
-build, the GPU exporter, the training caps and the retention settings.
+format in `preflight/schema/plan.schema.json`): the node role, the inference
+and training switches, the research space, Docker's data root, the pool's
+source and size, the concurrent targets, the model to serve with its files'
+sizes, the golden images to build, the GPU exporter, the training caps and
+the retention settings.
 
 - Bootstrap writes the plan of the machine on every run, from its
   `host_vars`, `group_vars` and `models.lock.yml` (`pinka-installer plan`),
@@ -48,8 +49,33 @@ build, the GPU exporter, the training caps and the retention settings.
 - Without a plan, preflight takes the configured defaults (what the Ansible
   defaults set).
 
-The features (`gpu_inference`, `vm_targets` and the others) are not part of
-the plan: preflight detects them on the machine.
+The features (`gpu_inference`, `gpu_training`, `vm_targets` and the others)
+are not part of the plan: preflight detects them on the machine. The plan's
+switches decide which of the GPU features the lab uses.
+
+## Switching inference and training
+
+Inference and training are switches, so a small lab does not pay for what it
+does not run:
+
+| Setting (host_vars) | Installer answers | Values |
+| --- | --- | --- |
+| `inference` | `features.inference` | `auto` (the default): vLLM, its images and the selected model where preflight detects `gpu_inference` on a `full` or `inference` node; `off`: none of them |
+| `training` | `features.training` | `auto` (the default): training jobs where preflight detects `gpu_training` (a usable GPU) on a `full` node; `cpu`: also the jobs' CPU-only variant on a host without one; `off`: none |
+
+A switched-off feature counts nothing in memory or disk, and its services,
+images and models are not installed. With `inference: off` the GPU arbiter
+serves nothing (a deployment served before stops at the next bootstrap run);
+with training off it refuses every run and every dataset publication, and
+the platform's job images are not pulled. A host that lacks a feature its
+switch turns off is not `degraded` for it: preflight notes it instead. An
+`inference` node needs `inference: auto`.
+
+The summary and the host profile (`requirements.switches`) say what each
+switch leaves on and why, for example `training off (no usable GPU for
+training; training: cpu would run the CPU-only variant)`. The installer
+writes `off` quoted (`"off"`): YAML 1.1, which Ansible reads, takes a plain
+`off` for `false`.
 
 ## Memory
 
@@ -67,8 +93,8 @@ for the parts the node role runs:
 | OPA | 0.1 / 0.2 | full, lab |
 | bootstrap and the installer | 0.5 / 0.8 | every node |
 | concurrent targets | each a container (1 GiB) / a VM (2 GiB) with `vm_targets`, plus a 0.5 GiB probe client; at least the 2 GiB build instance when golden images are built | full, lab |
-| vLLM serving the model | the model's files + 3 / + 5 | full, inference, with `gpu_inference` and a model |
-| a training job | 0 / `training_caps.memory_max` | full |
+| vLLM serving the model | the model's files + 3 / + 5 | full, inference, with `gpu_inference`, `inference: auto` and a model |
+| a training job | 0 / the training cap | full, where training runs: a usable GPU (`gpu_training`), or `training: cpu` |
 
 The GPU arbiter runs vLLM or a training job, never both, so on a node that
 serves a model the larger of the two counts. A training job counts only in
@@ -88,11 +114,36 @@ memory (a nominal 16 GiB machine reports about 15.1 to 15.6 GiB and passes
 - below the recommended sum it is `degraded`: the install continues only with
   your consent (`--accept-degraded`, or the installer's checkbox), and the
   message names the largest parts and what would fit, such as a lower
-  `training_caps.memory_max`.
+  `training_caps.memory_max` or `training: off`.
 
-With the defaults (a full node, two targets, no model, a training cap of
-24G), the lab requires 8 GiB and recommends 37.2 GiB, most of it the training
-cap. A 16 GiB machine installs degraded unless the cap is lowered.
+With the defaults (a full node, two targets, no model), the lab requires
+8 GiB. On a host without a usable GPU training is off and it recommends
+13.2 GiB with VM targets (11.2 GiB with containers only); with one, a
+training job at the computed cap comes on top.
+
+## The training cap
+
+A training job counts at `training_caps.memory_max`, the most the GPU
+arbiter lets a job take. With `memory_max: auto` (the default), preflight
+computes the cap from the host: `MemTotal` minus the recommended memory of
+everything else that runs on the node (the core stack, the targets, vLLM
+with the selected model), rounded down to whole GiB, within a floor of 4 GiB
+and a ceiling of 24 GiB (`training_cap` in `preflight/requirements.yml`). An
+explicit `memory_max`, such as `12G`, wins. The host profile records the cap
+and how it was computed (`requirements.switches.training`); the GPU arbiter,
+the platform's validation and doctor use it.
+
+Above the floor, the computed cap fits the host by construction. Below it,
+the floor still counts, and the message names what would fit. With the
+defaults and a usable GPU:
+
+| Host | `MemTotal` | VM targets, no model | containers only, no model | VM targets, a 5.7 GiB model |
+| --- | --- | --- | --- | --- |
+| nominal 16 GiB | 15.0-15.7 GiB | cap 4G; recommends 17.2 GiB: `degraded` (fits: one target, a cap of 2-3G, or `training: off`) | cap 4G; recommends 15.2 GiB: fits | cap 4G; vLLM itself recommends 10.7 GiB, 23.9 GiB in all: `degraded` |
+| nominal 32 GiB | 30.1-31.4 GiB | cap 16-18G; recommends 29.2-31.2 GiB: fits | cap 18-20G: fits | cap 6-7G: fits |
+
+The cap leaves vLLM's share out, although the GPU arbiter stops vLLM for a
+job, so the computed value stays on the safe side.
 
 The Incus `bench` project's `limits.memory` follows the same choice: the
 concurrent targets, each with its probe client.
@@ -151,7 +202,8 @@ one within 7 days ([`disk.free_space`](../how-to/fix-doctor-checks.md#check-disk
 | pool | `incus_pool_source`, `incus_pool_size` | `storage` |
 | model | `vllm_default_deployment` | `gpu.default_model` |
 | golden images | `images_blueprints` | `images.build` |
-| training caps | `training_caps` | `training_caps` |
+| inference, training | `inference`, `training` | `features` |
+| training caps | `training_caps` (`memory_max: auto`: computed) | `training_caps` |
 | retention | `observability_*_retention`, `observability_prometheus_retention_size`, `backup_pgdump_keep` | `telemetry_retention`, `backups.pg_dumps_kept` |
 
 Run `sudo pinka preflight` after a change to see the new breakdown; bootstrap

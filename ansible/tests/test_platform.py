@@ -30,6 +30,8 @@ def variables(**extra: Any) -> dict[str, Any]:
         "node_role": "full",
         "lab_mode": "production",
         "pinka_features": {"gpu_inference": True, "vm_targets": False},
+        "pinka_training": "gpu",
+        "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},
         "ansible_facts": {"architecture": "x86_64"},
     }
     base.update(extra)
@@ -454,7 +456,7 @@ def test_tool_settings_for_https_and_bootstrap_options() -> None:
         "scripted_api_url": "",
         "vm_collector_address": "198.18.0.1",
         "cpuset_targets": "",
-        "training_caps": evaluate("training_caps", scope),
+        "training_caps": evaluate("pinka_training_caps", scope),
     }
     assert settings["vault_keys"] == []
     assert settings["platform_settings"] == {}

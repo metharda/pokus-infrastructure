@@ -3,7 +3,9 @@ argument_specs:
   main:
     short_description: Re-run preflight and stop if the host changed.
     description:
-      - Sets pinka_host_profile (the fresh profile) and pinka_features (its feature flags).
+      - Sets pinka_host_profile (the fresh profile), pinka_features (its feature flags after the
+        plan's switches), pinka_training (gpu, cpu or off) and pinka_training_caps (training_caps
+        with memory_max auto replaced by the cap preflight computed).
     options:
       host_profile:
         type: dict
@@ -22,6 +24,10 @@ argument_specs:
         type: path
         default: "{{ pinka_dir }}/preflight/pinka-preflight"
         description: Preflight wrapper of this checkout.
+      training_caps:
+        type: dict
+        required: true
+        description: The caps on training jobs; memory_max auto takes the cap preflight computed (§2.3).
       preflight_gate_profile_path:
         type: path
         default: /etc/pinka/host-profile.json

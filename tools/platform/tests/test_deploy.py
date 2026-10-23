@@ -231,8 +231,13 @@ def test_jobs_over_the_hosts_training_caps_are_warnings(repo: Path, paths: deplo
     assert (
         prepare(paths, settings(repo, lab={"training_caps": roomy}), inspect=True)["warnings"] == []
     )
-    # Without caps (a host without the setting) nothing is compared.
+    # Without caps (a host without the setting) nothing is compared, nor is
+    # memory_max auto, which preflight computes on the host (§2.3).
     assert prepare(paths, settings(repo), inspect=True)["warnings"] == []
+    auto = {"memory_max": "auto", "cpus": 8, "timeout_seconds": 86400}
+    assert (
+        prepare(paths, settings(repo, lab={"training_caps": auto}), inspect=True)["warnings"] == []
+    )
 
 
 def test_settings_problems_refuse_before_fetching(repo: Path, paths: deploy.Paths) -> None:

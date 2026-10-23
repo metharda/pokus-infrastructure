@@ -6234,3 +6234,92 @@ retention, and the smaller test VMs. Also:
   free-space check watches the file system).
 - VRAM is left to B (the capacity plan screen's VRAM bar); A computes RAM
   and disk.
+
+## Inference and training switches, the computed training cap (A follow-up, 3f-1)
+
+Built after `00ff2c4` with the owner's decisions 1 and 2 on A ("features
+must be switchable, otherwise small-scale use pays for what it does not
+run"; verbatim in PROGRESS.md), before B, whose capacity screen needs them.
+The owner authorized the small spec edit it needs (§2.3 and the
+variables): the bullets "Feature switches" and "Training cap" of §2.3, the
+features and the cap in its Memory bullet, the `gpu_training` comment of
+its matrix, a host not degraded for a switched-off feature, and
+`inference`, `training` and `memory_max: auto` in §8.1. Spec master and
+`docs/BUILD_PROMPT.md` stay byte-identical (checksums in PROGRESS.md).
+
+### What was built
+
+- **Switches** in group_vars (`inference: auto | off`, `training: auto | cpu
+  | off`), the example machine, the answers (`features.inference`,
+  `features.training`, with schema descriptions, a problem for an inference
+  node with inference off, and the review screen showing both) and the plan
+  (`inference`, `training.mode`); `pinka-installer plan` writes them.
+- **`training_caps.memory_max: auto`** (the new default in group_vars, the
+  example and the answers; the plan's `memory_max_gib: null`; a
+  `training_caps` without `memory_max` is auto, as host_vars replace the
+  whole value). Preflight computes the cap: `MemTotal` minus the
+  recommended memory of every other part of the node (the core stack, the
+  targets, vLLM with the selected model), rounded down to whole GiB, within
+  `training_cap.floor_gib` 4 and `ceiling_gib` 24 of `requirements.yml`. An
+  explicit size wins.
+- **Preflight** computes what the switches leave on (`switches()`), records
+  it in the host profile (`requirements.switches`: mode, whether vLLM
+  serves, where training runs, the reason, the cap with its basis and how
+  it was computed) and prints it in the summary. vLLM, its model and its
+  image count only where inference is on; a training job counts only where
+  training runs (a usable GPU, or `training: cpu`), at the cap; the GPU
+  exporter and the CUDA test image only where the GPU is in use (`gpu:
+  true` in `requirements.yml`). The hints add `training: off`. A feature
+  the switch turns off is no longer a disabled feature that makes the host
+  degraded: it becomes a note (`apply_requirements`).
+- **`gpu_training`** joined the support matrix as the spec's §2.3 defines
+  it (usable NVIDIA GPU, 8 GiB, compute capability 7.0; on missing:
+  degrade). The repository's matrix lacked it, although the docker role,
+  doctor and O5 (the toolkit also for `gpu_training`) already read it.
+  Fixtures without a usable GPU now list it as disabled; the old-driver
+  and compute-capability-7.0 fixtures keep it.
+- **The play** takes everything from the fresh profile (`preflight_gate`):
+  `pinka_features` after the switches (`gpu_inference` only where vLLM
+  serves, `gpu_training` only where jobs run on the GPU), `pinka_training`
+  (`gpu`, `cpu` or `off`) and `pinka_training_caps` (the computed cap
+  where `memory_max` is auto). The toolkit, the GPU exporter, doctor's GPU
+  container and the lab session's GPU check follow GPU use (inference or
+  training); models and vLLM follow `gpu_inference`. The arbiter's settings
+  get `training` and the resolved caps; it refuses a run or a dataset when
+  training is off ("training is off on this host"), and a new root command
+  `idle --unless-training` stops a deployment served before inference was
+  switched off. The platform role passes the resolved caps to the
+  deployment tool and pulls no job image where training is off; the tool
+  compares no `memory_max: auto` (the installer's review, before preflight
+  computed it). Doctor's lab.json and `training.availability` say when the
+  switch turned training off.
+- **YAML 1.1 and `off`.** Ansible reads host_vars as YAML 1.1, where a
+  plain `off` is `false`. The installer's writer (`yamlio`) now quotes
+  every string YAML 1.1 reads as a boolean (`off`, `on`, `yes`, `no`), and
+  the play never reads the two variables itself (they reach it through the
+  plan and the profile, read as YAML 1.2 by the installer).
+- **The CI answers** (`tests/answers/ci.yml`) set `inference: "off"` and
+  `training: cpu`: the reference platform's training flow runs its
+  CPU-only job, which asks for 4G, the computed cap's floor on the test
+  VMs.
+
+### The cap on nominal 16 and 32 GiB hosts
+
+Defaults (full node, two targets), with a usable GPU; a nominal machine
+reports about 0.94 to 0.98 of it as `MemTotal`:
+
+| `MemTotal` | VM targets, no model | containers, no model | VM targets, 5.7 GiB model | containers, 5.7 GiB model |
+| --- | --- | --- | --- | --- |
+| 15.04-15.68 GiB (16) | 4G (floor), recommends 17.2: degraded | 4G, recommends 15.2: fits | 4G, recommends 23.9 (vLLM): degraded | 4G, 21.9: degraded |
+| 30.08 GiB (32) | 16G, 29.2: fits | 18G: fits | 6G: fits | 8G: fits |
+| 31.2-31.36 GiB (32) | 18G, 31.2: fits | 20G: fits | 7G: fits | 9G: fits |
+
+Without a usable GPU (`training: auto`) training is off and nothing is
+counted for it: 13.2 GiB recommended with VM targets fits both.
+
+### Found while building
+
+- `restore.yml` reads `pinka_features`, which only `preflight_gate` of
+  `site.yml` sets; restore runs as its own `ansible-playbook`, so the model
+  re-verification and the re-render of the restored deployment never run.
+  Recorded as an open item (not fixed here: no side work).

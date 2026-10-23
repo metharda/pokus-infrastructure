@@ -1,0 +1,7 @@
+{
+  "outcome": "supported",
+  "switches": {
+    "training.memory_max": "18G",
+    "training.runs": "gpu"
+  }
+}

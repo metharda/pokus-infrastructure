@@ -1,7 +1,11 @@
 {
   "degraded_contains": [
-    "below the 37.2 GiB recommended",
-    "a training job 24.0 GiB"
+    "below the 17.2 GiB recommended",
+    "a training job 4.0 GiB"
   ],
-  "outcome": "degraded"
+  "outcome": "degraded",
+  "switches": {
+    "training.memory_max": "4G",
+    "training.memory_max_basis": "computed"
+  }
 }

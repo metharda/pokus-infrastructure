@@ -26,7 +26,16 @@ argument_specs:
       pinka_features:
         type: dict
         required: true
-        description: Feature flags of the host profile (gpu_inference, vm_targets).
+        description: Feature flags after the switches (gpu_inference, gpu_training, vm_targets; preflight_gate).
+      pinka_training:
+        type: str
+        required: true
+        choices: [gpu, cpu, "off"]
+        description: Where training jobs run (preflight_gate); lab.json tells the CLI whether this host trains.
+      pinka_training_caps:
+        type: dict
+        required: true
+        description: The training caps with memory_max auto replaced by the computed cap (preflight_gate); in lab.json.
       pinka_versions:
         type: dict
         required: true

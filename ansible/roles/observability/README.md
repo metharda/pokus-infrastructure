@@ -20,8 +20,8 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
 - **Prometheus** (retention `observability_prometheus_retention`, and by size
   `observability_prometheus_retention_size`), scraping
   the collectors, node_exporter, cAdvisor, the Postgres exporter, Loki,
-  Tempo, Grafana, Incus (metrics-only certificate) and, with `gpu_inference`,
-  the GPU exporter and vLLM.
+  Tempo, Grafana, Incus (metrics-only certificate) and, where the lab uses the
+  GPU, the GPU exporter and, with `gpu_inference`, vLLM.
 - **Loki** and **Tempo**, single binaries with filesystem storage under
   `/srv/pinka/state/` and retention by their compactors; rings in memory, so no
   cluster port opens.
@@ -38,7 +38,7 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   vault; researchers with `grafana: false` and removed researchers are
   disabled.
 - **node_exporter** (host PID namespace, textfile collector directory
-  `/var/lib/pinka/node-exporter`), **cAdvisor** and, with `gpu_inference`, the
+  `/var/lib/pinka/node-exporter`), **cAdvisor** and, where the lab uses the GPU, the
   nvidia-smi based **GPU exporter** (Compose profile `gpu-cdi` or
   `gpu-runtime`, after the method in `/etc/docker/daemon.json`). The DCGM
   exporter is refused while its image is unverified.
@@ -53,7 +53,8 @@ See `meta/argument_specs.yml`; derived values are in `vars/main.yml`.
 
 ## Feature flags
 
-`gpu_inference` (GPU exporter; vLLM scrape job on `full` and `inference`
+`gpu_inference` or `gpu_training` after the switches (BUILD_PROMPT §2.3: the
+GPU exporter), `gpu_inference` (vLLM scrape job on `full` and `inference`
 nodes), `vm_targets` (VM listener).
 
 ## Idempotency

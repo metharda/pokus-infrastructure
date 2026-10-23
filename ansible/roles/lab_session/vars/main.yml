@@ -22,8 +22,11 @@ lab_session_window_record: /etc/pinka/maintenance-window.json
 # window has ended (pinka window expire, every minute).
 lab_session_window_expiry: "{{ lab_mode == 'staging' and staging_shared_hardware | bool }}"
 lab_session_expiry_units: [pinka-window-expiry.service, pinka-window-expiry.timer]
-# GPU check: when the lab serves inference, a container from the pinned CUDA
-# image (pulled by the nvidia_container_toolkit role) must see the GPU.
-lab_session_gpu: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
+# GPU check: when the lab uses the GPU (vLLM serves, or training jobs run on
+# it), a container from the pinned CUDA image (pulled by the
+# nvidia_container_toolkit role) must see the GPU.
+lab_session_gpu: >-
+  {{ ((pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'])
+     or (pinka_features.gpu_training | default(false)) }}
 lab_session_gpu_image: >-
   {{ pinka_versions.containers.images.cuda_base_test.image }}@{{ pinka_versions.containers.images.cuda_base_test.digest }}

@@ -9,7 +9,7 @@ OS and kernel
   PID 1 systemd, system state running
 Hardware
   CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
-  memory 35.0 GiB, swap 8.0 GiB
+  memory 16.2 GiB, swap 8.0 GiB
   disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
   disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
 GPU
@@ -19,11 +19,13 @@ Capabilities
   cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
   MAC apparmor (enabled), firewall backend nftables, storage btrfs
 Features
-  gpu_inference on, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics on
+  gpu_inference on, gpu_training on, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics on
 Access
   dedicated host, firewall manager none, install session: the console
 Requirements
-  plan defaults; memory 35.0 GiB: floor 8, required 8, recommended 37.2 GiB (each compared at 0.94 times the nominal value)
+  plan defaults; memory 16.2 GiB: floor 8, required 8, recommended 17.2 GiB (each compared at 0.94 times the nominal value)
+  inference on (gpu_inference on a full node, inference: auto); training gpu (gpu_training on this host, training: auto)
+  training cap 4G (computed: MemTotal 16.18 GiB - 13.2 GiB recommended for the rest = 3.0 GiB, rounded down to whole GiB within 4 and 24 GiB)
     host services: 1 / 1.5 GiB (estimated)
     Incus daemon: 0.2 / 0.4 GiB (estimated)
     PostgreSQL: 0.5 / 1.5 GiB (estimated)
@@ -32,7 +34,7 @@ Requirements
     OPA: 0.1 / 0.2 GiB (estimated)
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
-    a training job: 0 / 24 GiB (estimated; training_caps.memory_max 24.0 GiB)
+    a training job: 0 / 4 GiB (estimated; training_caps.memory_max 4G (auto, computed from this host))
   CPU estimate 5.1 threads
   disk / (ext4): 400.0 GiB free, 332.3 GiB needed at install
     pinka itself: 5.0 GiB (estimated)

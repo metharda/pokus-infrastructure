@@ -53,6 +53,12 @@ docker_data_root: /var/lib/docker
 
 # full | lab | inference (docs/node-roles.md).
 node_role: full
+# Inference: auto (vLLM, its images and the model where the host has a usable
+# GPU) | off (none installed, nothing counted). An inference node needs auto.
+inference: auto
+# Training jobs, on a full node: auto (where the host has a usable GPU) | cpu
+# (also the CPU-only variant without one) | off.
+training: auto
 
 # auto | nftables | firewalld | ufw. auto: firewalld if active, else ufw if
 # active, else nftables.
@@ -79,9 +85,11 @@ gpu_arbiter:
   after_boot: serve
   restore_after_training: true
 # Caps on training jobs; the GPU arbiter refuses every run of a job over them.
+# memory_max: auto computes the cap from this host's memory (see the capacity
+# planning explanation); a size such as 12G sets it.
 training_caps:
   timeout_seconds: 86400
-  memory_max: 24G
+  memory_max: auto
   cpus: 8
   dataset_max: 8G
   run_storage_max: 16G

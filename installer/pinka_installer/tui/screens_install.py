@@ -283,6 +283,7 @@ def summary(
         (
             "gpu",
             "GPU & inference",
+            f"inference {a.features.inference} · training {a.features.training} · "
             f"driver {g.install_driver} · profile {g.vllm_profile or '-'} · "
             f"model {g.default_model}\n"
             f"arbiter after boot {a.gpu_arbiter.after_boot}, serving again after training "

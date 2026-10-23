@@ -20,11 +20,13 @@ Capabilities
   cgroup2 yes, tun yes, KVM usable no, btrfs yes, dm_thin_pool yes, Secure Boot disabled
   MAC apparmor (enabled), firewall backend nftables, storage btrfs
 Features
-  gpu_inference off, vm_targets off, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+  gpu_inference off, gpu_training off, vm_targets off, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
 Access
   dedicated host, firewall manager none, install session: the console
 Requirements
-  plan defaults; memory 64.0 GiB: floor 8, required 8, recommended 35.2 GiB (each compared at 0.94 times the nominal value)
+  plan defaults; memory 64.0 GiB: floor 8, required 8, recommended 11.2 GiB (each compared at 0.94 times the nominal value)
+  inference off (gpu_inference is not available on this host); training off (no usable GPU for training; training: cpu would run the CPU-only variant)
+  training cap 24G (computed: MemTotal 64.00 GiB - 11.2 GiB recommended for the rest = 52.8 GiB, rounded down to whole GiB within 4 and 24 GiB)
     host services: 1 / 1.5 GiB (estimated)
     Incus daemon: 0.2 / 0.4 GiB (estimated)
     PostgreSQL: 0.5 / 1.5 GiB (estimated)
@@ -33,7 +35,6 @@ Requirements
     OPA: 0.1 / 0.2 GiB (estimated)
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 3 GiB (estimated; 2 x (a 1.0 GiB container + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
-    a training job: 0 / 24 GiB (estimated; training_caps.memory_max 24.0 GiB)
   CPU estimate 5.1 threads
   disk / (ext4): 400.0 GiB free, 310.9 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
@@ -53,6 +54,7 @@ Network: skipped (--offline)
 
 Disabled features
   - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.
+  - gpu_training: No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs.
   - vm_targets: No KVM: VM-class scenarios (kernel-level faults) cannot run on this host.
 
 Warnings

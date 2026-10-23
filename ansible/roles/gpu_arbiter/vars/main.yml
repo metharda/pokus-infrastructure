@@ -4,8 +4,9 @@ gpu_arbiter_program: /usr/local/libexec/pinka/gpu-arbiter
 gpu_arbiter_config: /etc/pinka/gpu/arbiter.json
 gpu_arbiter_state_dir: /var/lib/pinka/gpu
 gpu_arbiter_socket: /run/pinka/gpu.sock
-# vLLM runs here (gpu_inference on a full or inference node); elsewhere the
-# arbiter serves nothing and a full node trains CPU-only jobs (§7.18).
+# vLLM runs here (gpu_inference after the inference switch, on a full or
+# inference node); elsewhere the arbiter serves nothing, and a full node
+# trains as pinka_training says (§2.3, §7.18).
 gpu_arbiter_serves: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
 # The units of the arbiter; the socket is enabled, the start unit is wanted
 # by pinka-lab.target.

@@ -4,7 +4,7 @@
 # collector gateway and the journald collector, Prometheus, Loki, Tempo,
 # Grafana (with the active platform's dashboards in a folder of its name and
 # a read-only datasource on its Grafana role), node_exporter, cAdvisor and,
-# with gpu_inference, the GPU exporter.
+# where the lab uses the GPU (gpu_inference or gpu_training), the GPU exporter.
 # Every container uses the host network and binds 127.0.0.1; the VM listener
 # address (C4) exists only with vm_targets. An inference node runs no stores
 # (Prometheus, Loki, Tempo, Grafana): its gateway forwards everything to the

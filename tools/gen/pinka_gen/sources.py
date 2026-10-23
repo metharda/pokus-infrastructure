@@ -272,9 +272,11 @@ def plan_defaults(root: Path) -> dict[str, Any]:
     if vllm["vllm_default_deployment"] is not None:
         raise ValueError("the default plan has no model: vllm_default_deployment must be null")
     caps = group_vars["training_caps"]
+    memory_max = str(caps["memory_max"])
     return {
         "schema_version": 1,
         "node_role": str(group_vars["node_role"]),
+        "inference": str(group_vars["inference"]),
         "srv_path": str(group_vars["pinka_root"]),
         "docker_data_root": str(docker["docker_data_root"]),
         "pool": {
@@ -286,7 +288,8 @@ def plan_defaults(root: Path) -> dict[str, Any]:
         "images": [str(name) for name in images["images_blueprints"]],
         "gpu_exporter": str(observability["observability_gpu_exporter"]),
         "training": {
-            "memory_max_gib": size_gib(caps["memory_max"]),
+            "mode": str(group_vars["training"]),
+            "memory_max_gib": None if memory_max == "auto" else size_gib(memory_max),
             "run_storage_max_gib": size_gib(caps["run_storage_max"]),
         },
         "retention": {

@@ -130,6 +130,20 @@ class Gpu:
 
 
 @dataclass
+class Features:
+    """The feature switches (BUILD_PROMPT §2.3): what the lab installs and counts.
+
+    ``inference``: ``auto`` (vLLM, its images and the model where the host
+    has a usable GPU) or ``off``. ``training``: ``auto`` (jobs where the host
+    has a usable GPU), ``cpu`` (also the CPU-only variant without one) or
+    ``off``.
+    """
+
+    inference: str = "auto"
+    training: str = "auto"
+
+
+@dataclass
 class Repository:
     """Screen 10: the restic repository (``type`` decides which fields count)."""
 
@@ -218,7 +232,7 @@ class TrainingCaps:
     """Screen 9: this host's caps on training jobs (§7.18, §8.1)."""
 
     timeout_seconds: int = 86400
-    memory_max: str = "24G"
+    memory_max: str = "auto"
     cpus: int = 8
     dataset_max: str = "8G"
     run_storage_max: str = "16G"
@@ -252,6 +266,7 @@ class Answers:
     remote_access: RemoteAccess = field(default_factory=RemoteAccess)
     split_inference_peer: str = ""
     gpu: Gpu = field(default_factory=Gpu)
+    features: Features = field(default_factory=Features)
     backups: Backups = field(default_factory=Backups)
     restore_snapshot: str = "latest"
     platform: Source = field(default_factory=Source)
@@ -346,6 +361,7 @@ class Answers:
         if not gpu["accept_mok_enrollment"]:
             del gpu["accept_mok_enrollment"]
         data["gpu"] = gpu
+        data["features"] = asdict(clean.features)
         backups = asdict(clean.backups)
         backups["repository"] = _repository_dict(clean.backups.repository)
         data["backups"] = backups
@@ -387,6 +403,7 @@ class Answers:
         answers.remote_access = _build(RemoteAccess, data.get("remote_access", {}))
         answers.split_inference_peer = str((data.get("split_inference") or {}).get("peer", ""))
         answers.gpu = _build(Gpu, data.get("gpu", {}))
+        answers.features = _build(Features, data.get("features") or {})
         backups = dict(data.get("backups", {}))
         repository = _build(Repository, backups.pop("repository", {}))
         retention = _build(Retention, backups.pop("retention", {}))
@@ -596,6 +613,10 @@ def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
         )
     if answers.machine.node_role == "lab" and gpu.default_model != "none":
         found.append("gpu/default_model: a lab node serves no model (the inference node does)")
+    if answers.machine.node_role == "inference" and answers.features.inference == "off":
+        found.append(
+            "features/inference: an inference node runs only the inference stack; it needs auto"
+        )
 
 
 def _backup_problems(found: list[str], answers: Answers) -> None:
@@ -631,7 +652,8 @@ def _retention_problems(found: list[str], answers: Answers) -> None:
 
 def _source_problems(found: list[str], answers: Answers) -> None:
     caps = answers.training_caps
-    for name in ("memory_max", "dataset_max", "run_storage_max", "tmp_max"):
+    _check(found, "training_caps/memory_max", validators.memory_max(caps.memory_max))
+    for name in ("dataset_max", "run_storage_max", "tmp_max"):
         _check(found, f"training_caps/{name}", validators.cap_size(getattr(caps, name)))
     if not answers.has_platform:
         if answers.content or answers.platform_settings or answers.secrets.platform:

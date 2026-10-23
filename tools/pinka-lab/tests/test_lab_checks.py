@@ -1961,6 +1961,9 @@ class TrainingRecordsTest(Base):
         for role in ("lab", "inference"):
             outcome = run(checks.check_training_availability, FakeSystem(), node_role=role)
             self.assertOutcome(outcome, "pass", f"unavailable on this host (node_role {role})")
+        # The training switch (§2.3): the doctor role writes whether the arbiter trains.
+        outcome = run(checks.check_training_availability, FakeSystem(), gpu_arbiter__training=False)
+        self.assertOutcome(outcome, "pass", "training is off on this host")
 
 
 class SplitGuardTest(Base):

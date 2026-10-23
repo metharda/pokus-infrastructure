@@ -376,6 +376,21 @@ def cap_size(value: str) -> str | None:
     return None if CAP_SIZE_RE.fullmatch(value) else "a whole number of K, M or G, such as 24G"
 
 
+def memory_max(value: str) -> str | None:
+    """``training_caps.memory_max``: ``auto`` (computed from the host, §2.3) or a cap size.
+
+    Args:
+        value: The setting.
+
+    Returns:
+        The error, or None.
+    """
+    if value == "auto":
+        return None
+    problem = cap_size(value)
+    return f"auto, or {problem}" if problem else None
+
+
 def cap_size_gib(value: str) -> float:
     """The GiB of a valid training cap size (Docker's K, M and G are powers of 2).
 

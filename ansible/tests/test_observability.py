@@ -54,12 +54,24 @@ PLATFORM = {
 
 
 def obs_vars(
-    vm: bool = False, gpu: bool = False, node_role: str = "full", platform: bool = True
+    vm: bool = False,
+    gpu: bool = False,
+    node_role: str = "full",
+    platform: bool = True,
+    training: bool | None = None,
 ) -> dict[str, Any]:
     profile = fixture_profile("ubuntu2404-baremetal-nvidia-driver-loaded")
+    # The flags after the switches (§2.3): training on the GPU follows gpu
+    # unless a test sets it.
+    features = {
+        **profile["features"],
+        "vm_targets": vm,
+        "gpu_inference": gpu,
+        "gpu_training": gpu if training is None else training,
+    }
     variables: dict[str, Any] = {
         "host_profile": profile,
-        "pinka_features": {**profile["features"], "vm_targets": vm, "gpu_inference": gpu},
+        "pinka_features": features,
         "node_role": node_role,
         "vault_postgres_passwords": {"demo_grafana": "test"},
         "vault_grafana_admin_password": "test-admin",
@@ -159,7 +171,7 @@ def test_loki_and_tempo_bind_loopback() -> None:
     ],
 )
 def test_prometheus_targets_are_loopback(gpu: bool, node_role: str, jobs: set[str]) -> None:
-    config = rendered("prometheus/prometheus.yml", gpu=gpu, node_role=node_role)
+    config = rendered("prometheus/prometheus.yml", gpu=gpu, node_role=node_role, training=False)
     names = {job["job_name"] for job in config["scrape_configs"]}
     base = {
         "prometheus", "otlp", "otel-collector", "node", "cadvisor", "postgres",

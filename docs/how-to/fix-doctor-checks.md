@@ -384,8 +384,12 @@ dataset is published, and on hosts that do not train.
 A warning: a job of the active platform asks for more memory, CPUs or run
 time than this host's `training_caps` allow, so the GPU arbiter refuses
 every run of it (bootstrap printed the same warning when the platform was
-deployed). Either raise the caps in the machine's host_vars and apply them,
-or deploy a release whose jobs ask for less:
+deployed). With `memory_max: auto` (the default) the memory cap follows this
+host's memory and what else runs on it (`sudo pinka preflight` shows how,
+[Capacity planning](../explanation/capacity-planning.md)). Either set the
+caps in the machine's host_vars (an explicit `memory_max` such as `12G` wins
+over the computed one) and apply them, or deploy a release whose jobs ask for
+less:
 
 <!-- qa:skip reason="changes the lab host" -->
 ```bash
@@ -402,6 +406,13 @@ A notice, not an error: training runs only on a `full` node. On a `lab` or
 `inference` node the arbiter refuses `train` and `publish-dataset`, and
 `pinka status` says so. Training on a lab and inference pair is future work;
 to train, use a `full` node ([Node roles](../node-roles.md)).
+
+On a `full` node training is off where the training switch says so:
+`training: off`, or `training: auto` on a host without a usable GPU
+(`sudo pinka preflight` names the reason). To run the jobs' CPU-only
+variant there, set `training: cpu` in the machine's host_vars and run
+bootstrap again ([Capacity planning](../explanation/capacity-planning.md)
+shows what it adds to the recommended memory).
 
 ## `inference.isolation`: the inference guard admits the wrong accounts {#check-inference-isolation}
 

@@ -8,6 +8,7 @@ from typing import Any
 
 import jsonschema
 import pytest
+import yaml
 
 from pinka_installer import hostvars, models, validators
 from pinka_installer import plan as plan_mod
@@ -49,7 +50,14 @@ def test_the_installers_capacity_defaults_are_ansibles() -> None:
     # (golden images and the model are the operator's choice in the TUI).
     answers = Answers(machine=Machine(name="lab1"))
     written = make(**hostvars.host_vars(answers))
-    for key in ("node_role", "srv_path", "docker_data_root", "pool", "concurrent_targets"):
+    for key in (
+        "node_role",
+        "inference",
+        "srv_path",
+        "docker_data_root",
+        "pool",
+        "concurrent_targets",
+    ):
         assert written[key] == DEFAULTS[key], key
     assert written["training"] == DEFAULTS["training"]
     assert written["retention"] == DEFAULTS["retention"]
@@ -78,7 +86,7 @@ def test_settings_become_the_plan() -> None:
     assert found["pool"] == {"source": "device", "size_gib": 500.0}
     assert (found["concurrent_targets"], found["images"]) == (4, ["_base"])
     assert found["gpu_exporter"] == "dcgm"
-    assert found["training"] == {"memory_max_gib": 12.0, "run_storage_max_gib": 0.5}
+    assert found["training"] == {"mode": "auto", "memory_max_gib": 12.0, "run_storage_max_gib": 0.5}
     assert found["retention"] == {
         "prometheus_days": 14,
         "prometheus_size_gib": 50.0,  # Prometheus reads GB as a power of 2
@@ -86,6 +94,34 @@ def test_settings_become_the_plan() -> None:
         "tempo_days": 2,
         "pg_dumps": 3,
     }
+
+
+def test_the_switches_and_the_computed_cap() -> None:
+    # BUILD_PROMPT §2.3: the switches, and memory_max auto (null: preflight computes it).
+    assert (DEFAULTS["inference"], DEFAULTS["training"]["mode"]) == ("auto", "auto")
+    assert DEFAULTS["training"]["memory_max_gib"] is None
+    found = make(inference="off", training="cpu", training_caps={"memory_max": "auto"})
+    assert (found["inference"], found["training"]["mode"]) == ("off", "cpu")
+    assert found["training"]["memory_max_gib"] is None
+    # A training_caps without memory_max replaces the whole value: auto.
+    assert make(training_caps={"cpus": 4})["training"]["memory_max_gib"] is None
+    answers = Answers(machine=Machine(name="lab1"))
+    answers.features.inference, answers.features.training = "off", "off"
+    written = make(**hostvars.host_vars(answers))
+    assert (written["inference"], written["training"]["mode"]) == ("off", "off")
+
+
+def test_off_stays_off_for_ansible() -> None:
+    # Ansible reads host_vars as YAML 1.1, where a plain off is false: the
+    # installer quotes it (yamlio), so every reader sees the string.
+    answers = Answers(machine=Machine(name="lab1"))
+    answers.features.inference = answers.features.training = "off"
+    example = (INFRA / "ansible" / "inventory" / "host_vars" / "example-machine.yml").read_text()
+    text = hostvars.render(answers, None, example)
+    assert 'inference: "off"' in text
+    loaded = yaml.safe_load(text)
+    assert (loaded["inference"], loaded["training"]) == ("off", "off")
+    assert hostvars.render(answers, text, example) == text
 
 
 def test_the_selected_model_with_its_size() -> None:
@@ -111,6 +147,9 @@ def test_the_selected_model_with_its_size() -> None:
         ({"observability_tempo_retention": "30d"}, "observability_tempo_retention"),
         ({"observability_prometheus_retention_size": "50G"}, "retention_size"),
         ({"training_caps": {"memory_max": "24GiB"}}, "training_caps.memory_max"),
+        ({"inference": "on"}, "auto or off"),
+        ({"training": "gpu"}, "auto, cpu or off"),
+        ({"node_role": "inference", "inference": "off"}, "needs inference: auto"),
         ({"backup_pgdump_keep": 0}, "backup_pgdump_keep"),
     ],
 )
@@ -189,6 +228,9 @@ def test_retention_validators() -> None:
     assert validators.prometheus_size("1T")
     assert validators.prometheus_size_gib("512MB") == 0.5
     assert validators.cap_size_gib("512M") == 0.5
+    assert validators.memory_max("auto") is None
+    assert validators.memory_max("12G") is None
+    assert validators.memory_max("12GiB") == "auto, or a whole number of K, M or G, such as 24G"
     assert validators.concurrent_targets(40) is None
     assert validators.concurrent_targets(41)
     assert validators.concurrent_targets(True)

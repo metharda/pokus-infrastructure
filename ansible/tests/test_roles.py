@@ -151,6 +151,8 @@ RUNTIME_VARIABLES = {
     "machine": "bootstrap's -e machine=",
     "pinka_dir": "the plays' vars",
     "pinka_features": "set by preflight_gate",
+    "pinka_training": "set by preflight_gate",
+    "pinka_training_caps": "set by preflight_gate",
     "pinka_provider": "set by platform_facts",
     "active_platform": "set by the active_platform helper role",
     "bootstrap_signal_code": "the including task's vars",

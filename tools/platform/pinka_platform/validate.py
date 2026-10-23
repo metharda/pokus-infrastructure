@@ -185,17 +185,18 @@ def caps_warnings(manifest: Mapping[str, Any], caps: Mapping[str, Any]) -> list[
     Args:
         manifest: A valid manifest.
         caps: The host's ``training_caps`` (``memory_max``, ``cpus``,
-            ``timeout_seconds``); a cap left out is not compared.
+            ``timeout_seconds``); a cap left out is not compared, nor is
+            ``memory_max: auto``, which preflight computes on the host (§2.3;
+            the play passes the computed value).
 
     Returns:
         One line per job and resource over the host's cap.
     """
     out = []
+    memory = str(caps.get("memory_max", "auto"))
     for job in manifest.get("jobs", []):
         res, name = job["resources"], job["name"]
-        if "memory_max" in caps and size_bytes(res["memory_max"]) > size_bytes(
-            str(caps["memory_max"])
-        ):
+        if memory != "auto" and size_bytes(res["memory_max"]) > size_bytes(memory):
             out.append(f"job {name}: memory_max {res['memory_max']} > {caps['memory_max']}")
         if "cpus" in caps and float(res["cpus"]) > float(caps["cpus"]):
             out.append(f"job {name}: cpus {res['cpus']} > {caps['cpus']}")

@@ -1,7 +1,8 @@
 # nvidia_container_toolkit
 
 NVIDIA Container Toolkit for GPU access from containers (BUILD_PROMPT §7.6),
-applied only on hosts with the `gpu_inference` feature:
+applied only where the lab uses the GPU (`gpu_inference` or `gpu_training`
+after the switches, BUILD_PROMPT §2.3):
 
 - installed from NVIDIA's repositories (or the distribution's package on Arch)
   as `ansible/component-sources.yml` selects, pinned and held;
@@ -24,7 +25,8 @@ See `meta/argument_specs.yml`.
 
 ## Feature flags
 
-`gpu_inference`: the role is applied only when it is on.
+`gpu_inference`, `gpu_training` (after the switches): the role is applied
+only when one of them is on.
 
 ## Idempotency
 

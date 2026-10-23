@@ -18,13 +18,24 @@ from helpers import TempRootCase, runner
 
 from pinka_preflight import matrix
 from pinka_preflight import requirements as reqs
+from pinka_preflight.requirements import MemoryItem
 
 GIB = 1024**3
 MINIMUMS = matrix.load_matrix()["minimums"]
 DATA = reqs.load_requirements()
 DEFAULTS = DATA["defaults"]
-GPU = {"gpu_inference": True, "vm_targets": True}
-NO_GPU = {"gpu_inference": False, "vm_targets": True}
+GPU = {"gpu_inference": True, "gpu_training": True, "vm_targets": True}
+NO_GPU = {"gpu_inference": False, "gpu_training": False, "vm_targets": True}
+# The other parts' recommended memory with the defaults and VM targets: the
+# core stack 8.2 GiB and two VM targets with their probe clients 5 GiB.
+REST = 13.2
+
+
+def caps(mode: str = "auto", memory_max_gib: float | None = None) -> dict[str, Any]:
+    """The plan's training: the switch and the caps."""
+    return {"mode": mode, "memory_max_gib": memory_max_gib, "run_storage_max_gib": 16}
+
+
 MODEL = {
     "id": "example-model",
     "hf_repo": "example-org/example-model",
@@ -80,16 +91,18 @@ class MemoryTest(ComputeCase):
 
     def test_defaults_on_a_full_node(self) -> None:
         req = self.compute(GPU)
-        # 7.1 GiB summed stays below the floor; the training cap sets recommended.
+        # 7.1 GiB summed stays below the floor; the training cap sets recommended:
+        # 64 GiB leave 50.8 GiB, so the computed cap is its ceiling.
         self.assertEqual((req.floor_gib, req.required_gib, req.recommended_gib), (8, 8, 37.2))
         self.assertEqual(self.items(req)["targets"], (3.0, 5.0))
         self.assertEqual(self.items(req)["training"], (0.0, 24.0))
+        self.assertEqual((req.switches.runs, req.switches.memory_max_basis), ("gpu", "computed"))
         self.assertNotIn("vllm", self.items(req))
         self.assertIn("no model selected", " ".join(req.notes))
         self.assertEqual((req.unsupported, req.degraded), ([], []))
 
     def test_without_vm_targets_the_targets_are_containers(self) -> None:
-        req = self.compute({"vm_targets": False})
+        req = self.compute({"gpu_training": True, "vm_targets": False})
         self.assertEqual(self.items(req)["targets"], (3.0, 3.0))
         self.assertEqual(req.recommended_gib, 35.2)
 
@@ -117,11 +130,16 @@ class MemoryTest(ComputeCase):
         self.assertEqual(inference["vllm"], (8.7, 10.7))  # no training on an inference node
 
     def test_thresholds_at_the_tolerance(self) -> None:
+        # With a GPU: below 17.2 GiB the cap is its floor of 4 GiB, so the
+        # defaults recommend 17.2 GiB there: 16.168 GiB at 0.94. Above it the
+        # computed cap always fits.
         cases = [
             (7.51, "unsupported", "floor"),
             (7.53, "degraded", ""),
-            (34.95, "degraded", ""),
-            (34.98, "", ""),
+            (16.16, "degraded", ""),
+            (16.18, "", ""),
+            (17.5, "", ""),
+            (64.0, "", ""),
         ]
         for memory, kind, needle in cases:
             with self.subTest(memory=memory):
@@ -143,8 +161,10 @@ class MemoryTest(ComputeCase):
         self.assertIn("These would fit: incus_concurrent_targets 3", text)
         text = " ".join(self.compute(GPU, memory_gib=12.0, model=MODEL).unsupported)
         self.assertIn("a model of at most 2.7 GiB", text)
-        text = " ".join(self.compute(GPU, memory_gib=30.0).degraded)
-        self.assertIn("training_caps.memory_max 18G", text)
+        text = " ".join(self.compute(GPU, memory_gib=30.0, training=caps("auto", 24)).degraded)
+        self.assertIn("These would fit: training_caps.memory_max 18G, training: off", text)
+        text = " ".join(self.compute(GPU, memory_gib=15.5).degraded)
+        self.assertIn("training_caps.memory_max 3G, training: off", text)
 
     def test_no_training_hint_when_vllm_itself_does_not_fit(self) -> None:
         # 15 GiB: 15.96 GiB nominal, 13.2 GiB for the rest, vLLM recommends 10.7 GiB.
@@ -155,6 +175,112 @@ class MemoryTest(ComputeCase):
         req = self.compute(GPU, memory_gib=None)
         self.assertEqual(req.unsupported, [])
         self.assertIn("MemTotal could not be read", req.warnings[0])
+        self.assertEqual(req.switches.memory_max_gib, 4)  # the floor
+
+
+class SwitchTest(ComputeCase):
+    """The inference and training switches (§2.3)."""
+
+    def items(self, req: reqs.Requirements) -> dict[str, MemoryItem]:
+        return {i.id: i for i in req.memory_items}
+
+    def test_inference_off_counts_no_vllm_image_or_model(self) -> None:
+        req = self.compute(GPU, inference="off", model=MODEL, training=caps("off"))
+        self.assertEqual(set(self.items(req)) & {"vllm", "training"}, set())
+        disk = {i.id for m in req.disks for i in m.items}
+        self.assertEqual({i for i in disk if "vllm" in i or "model:" in i or "gpu" in i}, set())
+        self.assertNotIn("image:cuda_base_test", disk)
+        self.assertEqual(req.recommended_gib, REST)
+        sw = req.switches.as_dict()
+        self.assertEqual(sw["inference"], {
+            "mode": "off", "serves": False, "reason": "switched off, inference: off",
+        })  # fmt: skip
+        self.assertEqual(sw["training"]["runs"], "off")
+
+    def test_training_on_the_gpu_without_inference_keeps_the_gpu_images(self) -> None:
+        req = self.compute(GPU, inference="off", model=MODEL)
+        disk = {i.id for m in req.disks for i in m.items}
+        self.assertLessEqual({"image:gpu_exporter", "image:cuda_base_test"}, disk)
+        self.assertNotIn("image:vllm", disk)
+        self.assertEqual(self.items(req)["training"].recommended_gib, 24)
+
+    def test_training_counts_only_where_it_runs(self) -> None:
+        # No usable GPU: auto leaves training off, cpu chooses the CPU-only variant.
+        self.assertNotIn("training", self.items(self.compute(NO_GPU)))
+        self.assertEqual(self.compute(NO_GPU).switches.runs, "off")
+        cpu = self.compute(NO_GPU, training=caps("cpu"))
+        self.assertEqual(cpu.switches.runs, "cpu")
+        self.assertEqual(self.items(cpu)["training"].title, "a training job (CPU-only variant)")
+        self.assertEqual(self.items(cpu)["training"].recommended_gib, 24)
+        # Switched off, or a node that does not train.
+        self.assertNotIn("training", self.items(self.compute(GPU, training=caps("off"))))
+        lab = self.compute(GPU, node_role="lab", training=caps("cpu"))
+        self.assertEqual(lab.switches.training_reason, "only a full node trains, node_role lab")
+
+    def test_the_effective_features(self) -> None:
+        sw = reqs.switches({**DEFAULTS, "inference": "off"}, GPU)
+        self.assertEqual(
+            sw.effective(GPU), {"gpu_inference": False, "gpu_training": True, "vm_targets": True}
+        )
+        self.assertEqual(sw.unwanted(), {"gpu_inference": "inference: off"})
+        cpu = reqs.switches({**DEFAULTS, "training": caps("cpu")}, NO_GPU)
+        self.assertEqual(cpu.unwanted(), {"gpu_training": "training: cpu"})
+        self.assertEqual(cpu.effective(NO_GPU)["gpu_training"], False)  # no job gets a GPU
+
+    def test_an_inference_node_needs_inference(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "plan.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {"schema_version": 1, "node_role": "inference", "inference": "off"}, handle
+                )
+            with self.assertRaisesRegex(reqs.PlanError, "needs inference: auto"):
+                reqs.load_plan(path, DEFAULTS)
+
+
+class TrainingCapTest(ComputeCase):
+    """training_caps.memory_max: auto follows the host (§2.3)."""
+
+    def cap(self, memory: float, **plan: Any) -> float:
+        return self.compute(GPU, memory_gib=memory, **plan).switches.memory_max_gib
+
+    def test_nominal_16_and_32_gib(self) -> None:
+        # A nominal machine reports about 0.94 to 0.98 of it (§2.2).
+        for memory in (15.04, 15.1, 15.6):
+            with self.subTest(memory=memory):
+                self.assertEqual(self.cap(memory), 4)  # 1.8-2.4 GiB left: the floor
+        for memory, cap in ((30.08, 16), (31.2, 18), (31.36, 18)):
+            with self.subTest(memory=memory):
+                self.assertEqual(self.cap(memory), cap)
+        # With the 5.7 GiB model, vLLM's 10.7 GiB counts among the rest (23.9 GiB).
+        self.assertEqual(self.cap(15.6, model=MODEL), 4)
+        self.assertEqual(self.cap(31.2, model=MODEL), 7)
+        # Container targets (no vm_targets) leave 2 GiB more.
+        req = self.compute({"gpu_training": True, "vm_targets": False}, memory_gib=31.2)
+        self.assertEqual(req.switches.memory_max_gib, 20)
+
+    def test_floor_ceiling_and_the_setting(self) -> None:
+        self.assertEqual(self.cap(8.0), 4)
+        self.assertEqual(self.cap(128.0), 24)
+        req = self.compute(GPU, memory_gib=128.0, training=caps("auto", 48))
+        self.assertEqual(
+            (req.switches.memory_max_gib, req.switches.memory_max_basis), (48, "configured")
+        )
+        self.assertEqual(req.switches.as_dict()["training"]["memory_max"], "48G")
+        self.assertEqual(reqs.size_text(0.5), "512M")
+
+    def test_the_computed_cap_fits_the_recommended_value(self) -> None:
+        for memory in (17.5, 20.0, 31.2, 37.2, 64.0):
+            with self.subTest(memory=memory):
+                req = self.compute(GPU, memory_gib=memory)
+                self.assertLessEqual(req.recommended_gib, memory)
+                self.assertEqual(req.degraded, [])
+        detail = self.compute(GPU, memory_gib=31.2).switches.memory_max_detail
+        self.assertEqual(
+            detail,
+            "MemTotal 31.20 GiB - 13.2 GiB recommended for the rest = 18.0 GiB, rounded down to "
+            "whole GiB within 4 and 24 GiB",
+        )
 
 
 class DiskTest(ComputeCase):

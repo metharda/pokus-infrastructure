@@ -217,14 +217,14 @@ class GpuScreen(StepScreen):
                 problems.append((field_id, f"a whole number of at least {minimum}"))
             else:
                 setattr(caps, name, int(text))
-        for field_id, name in (
-            ("cap-memory", "memory_max"),
-            ("cap-dataset", "dataset_max"),
-            ("cap-storage", "run_storage_max"),
-            ("cap-tmp", "tmp_max"),
+        for field_id, name, check in (
+            ("cap-memory", "memory_max", validators.memory_max),
+            ("cap-dataset", "dataset_max", validators.cap_size),
+            ("cap-storage", "run_storage_max", validators.cap_size),
+            ("cap-tmp", "tmp_max", validators.cap_size),
         ):
             value = _input(self, f"#{field_id}")
-            if error := validators.cap_size(value):
+            if error := check(value):
                 problems.append((field_id, error))
             else:
                 setattr(caps, name, value)

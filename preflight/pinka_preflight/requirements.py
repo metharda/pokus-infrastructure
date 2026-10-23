@@ -44,6 +44,8 @@ HORIZON_DAYS = 3650
 LAB_ROLES = ("full", "lab")
 # How many of the largest parts a degraded message names.
 LARGEST = 3
+# Below this a size is whole GiB (float sums of tenths).
+EPSILON = 1e-9
 
 
 class PlanError(ValueError):
@@ -170,6 +172,89 @@ class Growth:
 
 
 @dataclass
+class Switches:
+    """The feature switches of the plan on this host (§2.3).
+
+    Attributes:
+        inference: The inference switch: ``auto`` or ``off``.
+        serves: vLLM, its images and the selected model are installed and counted.
+        inference_reason: Why inference is on or off here.
+        training: The training switch: ``auto``, ``cpu`` or ``off``.
+        runs: Where training jobs run: ``gpu``, ``cpu`` (the CPU-only variant) or ``off``.
+        training_reason: Why.
+        memory_max_gib: The training cap (``training_caps.memory_max``).
+        memory_max_basis: ``computed`` (``memory_max: auto``) or ``configured``.
+        memory_max_detail: How the cap follows from the host or the setting.
+    """
+
+    inference: str
+    serves: bool
+    inference_reason: str
+    training: str
+    runs: str
+    training_reason: str
+    memory_max_gib: float = 0.0
+    memory_max_basis: str = "configured"
+    memory_max_detail: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        """The host profile's ``requirements.switches``.
+
+        Returns:
+            JSON-compatible data.
+        """
+        return {
+            "inference": {
+                "mode": self.inference,
+                "serves": self.serves,
+                "reason": self.inference_reason,
+            },
+            "training": {
+                "mode": self.training,
+                "runs": self.runs,
+                "reason": self.training_reason,
+                "memory_max": size_text(self.memory_max_gib),
+                "memory_max_gib": gib(self.memory_max_gib),
+                "memory_max_basis": self.memory_max_basis,
+                "memory_max_detail": self.memory_max_detail,
+            },
+        }
+
+    def unwanted(self) -> dict[str, str]:
+        """The GPU features the switches turn off, with the switch.
+
+        Returns:
+            Feature name to the setting that turns it off: ``gpu_inference``
+            with ``inference: off``, ``gpu_training`` with ``training: off``
+            or ``cpu`` (the CPU-only variant was chosen).
+        """
+        found = {}
+        if self.inference == "off":
+            found["gpu_inference"] = "inference: off"
+        if self.training in ("off", "cpu"):
+            found["gpu_training"] = f"training: {self.training}"
+        return found
+
+    def effective(self, features: Mapping[str, bool]) -> dict[str, bool]:
+        """The feature flags after the switches: what the lab uses on this node.
+
+        ``gpu_inference`` only where vLLM serves, ``gpu_training`` only where
+        jobs run on the GPU; the play applies the same flags (preflight gate).
+
+        Args:
+            features: The detected feature flags.
+
+        Returns:
+            The flags with the two GPU features switched.
+        """
+        return {
+            **features,
+            "gpu_inference": self.serves,
+            "gpu_training": self.runs == "gpu",
+        }
+
+
+@dataclass
 class Requirements:
     """The requirements of the plan on this host.
 
@@ -181,6 +266,7 @@ class Requirements:
         required_gib: The required memory (nominal; never below the floor).
         recommended_gib: The recommended memory (nominal).
         tolerance: The fraction of each nominal threshold ``MemTotal`` is compared with.
+        switches: The feature switches on this host and the training cap.
         memory_items: The memory breakdown.
         cpu_threads: The CPU estimate of the running parts (information).
         disks: The disk known at install, per mount point.
@@ -199,6 +285,7 @@ class Requirements:
     required_gib: float
     recommended_gib: float
     tolerance: float
+    switches: Switches
     memory_items: list[MemoryItem] = field(default_factory=list)
     cpu_threads: float = 0.0
     disks: list[MountCheck] = field(default_factory=list)
@@ -217,6 +304,7 @@ class Requirements:
         return {
             "plan": self.plan,
             "choices": self.choices,
+            "switches": self.switches.as_dict(),
             "memory_gib": {
                 "total": None if self.memory_total_gib is None else gib(self.memory_total_gib),
                 "floor": self.floor_gib,
@@ -254,6 +342,20 @@ def text_gib(value: float) -> str:
         Such as ``5.7 GiB``.
     """
     return f"{value:.1f} GiB"
+
+
+def size_text(value: float) -> str:
+    """A size as ``training_caps`` writes it.
+
+    Args:
+        value: GiB.
+
+    Returns:
+        Such as ``17G``, or ``512M`` for a size that is not whole GiB.
+    """
+    if abs(value - round(value)) < EPSILON:
+        return f"{round(value)}G"
+    return f"{round(value * 1024)}M"
 
 
 def load_requirements(path: str = REQUIREMENTS_JSON) -> dict[str, Any]:
@@ -305,7 +407,81 @@ def load_plan(
     errors = schema_check.validate(plan, schema)
     if errors:
         raise PlanError(f"plan ({label}): " + "; ".join(errors))
+    if plan["node_role"] == "inference" and plan["inference"] == "off":
+        raise PlanError(
+            f"plan ({label}): an inference node runs only the inference stack; "
+            "it needs inference: auto"
+        )
     return plan, label
+
+
+def switches(plan: Mapping[str, Any], features: Mapping[str, bool]) -> Switches:
+    """What the switches leave on, on this node with these features (§2.3).
+
+    Args:
+        plan: The effective plan.
+        features: The detected feature flags.
+
+    Returns:
+        The switches; the training cap is filled by :func:`compute`.
+    """
+    role = str(plan["node_role"])
+    inference = str(plan["inference"])
+    if role == "lab":
+        serves, why = False, "a lab node serves no inference"
+    elif inference == "off":
+        serves, why = False, "switched off, inference: off"
+    elif not features.get("gpu_inference"):
+        serves, why = False, "gpu_inference is not available on this host"
+    else:
+        serves, why = True, f"gpu_inference on a {role} node, inference: auto"
+    training = str(plan["training"]["mode"])
+    if role != "full":
+        runs, reason = "off", f"only a full node trains, node_role {role}"
+    elif training == "off":
+        runs, reason = "off", "switched off, training: off"
+    elif features.get("gpu_training"):
+        runs, reason = "gpu", f"gpu_training on this host, training: {training}"
+    elif training == "cpu":
+        runs, reason = "cpu", "the CPU-only variant without a usable GPU, training: cpu"
+    else:
+        runs, reason = (
+            "off",
+            "no usable GPU for training; training: cpu would run the CPU-only variant",
+        )
+    return Switches(inference, serves, why, training, runs, reason)
+
+
+def _training_cap(
+    data: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    others: Sequence[MemoryItem],
+    memory_gib: float | None,
+    sw: Switches,
+) -> None:
+    """Fill the training cap: the configured one, or computed from the host (§2.3)."""
+    configured = plan["training"]["memory_max_gib"]
+    if configured is not None:
+        sw.memory_max_gib = float(configured)
+        sw.memory_max_basis = "configured"
+        sw.memory_max_detail = f"training_caps.memory_max {size_text(float(configured))}"
+        return
+    spec = data["training_cap"]
+    low, high = int(spec["floor_gib"]), int(spec["ceiling_gib"])
+    sw.memory_max_basis = "computed"
+    if memory_gib is None:
+        sw.memory_max_gib = float(low)
+        sw.memory_max_detail = f"MemTotal could not be read: the floor of {low} GiB"
+        return
+    # Rounded: the parts are tenths, and Python 3.12's sum() is compensated
+    # where 3.9's is not.
+    rest = gib(sum(i.recommended_gib for i in others))
+    left = memory_gib - rest
+    sw.memory_max_gib = float(min(high, max(low, math.floor(left + EPSILON))))
+    sw.memory_max_detail = (
+        f"MemTotal {memory_gib:.2f} GiB - {text_gib(rest)} recommended for the rest = "
+        f"{text_gib(left)}, rounded down to whole GiB within {low} and {high} GiB"
+    )
 
 
 def _memory_items(
@@ -313,11 +489,16 @@ def _memory_items(
     plan: Mapping[str, Any],
     features: Mapping[str, bool],
     notes: list[str],
+    *,
+    sw: Switches,
+    memory_gib: float | None,
 ) -> list[MemoryItem]:
+    """The memory breakdown; ``features`` are the flags after the switches."""
     role = str(plan["node_role"])
     targets = data["target_memory_gib"]
     items: list[MemoryItem] = []
     vllm: MemoryItem | None = None
+    training: Mapping[str, Any] | None = None
     for comp in data["components"]:
         if role not in comp["roles"]:
             continue
@@ -382,25 +563,41 @@ def _memory_items(
             )
             items.append(vllm)
         elif kind == "training":
-            cap = float(plan["training"]["memory_max_gib"])
-            if vllm is not None:
-                vllm.recommended_gib = max(vllm.recommended_gib, cap)
-                vllm.title += " or a training job"
-                vllm.detail += (
-                    f"; or a training job at training_caps.memory_max ({text_gib(cap)}): "
-                    "the GPU arbiter runs one at a time"
-                )
-                vllm.source += f"; {comp['source']}"
-                continue
-            items.append(
-                MemoryItem(
-                    required_gib=0.0,
-                    recommended_gib=cap,
-                    detail=f"training_caps.memory_max {text_gib(cap)}",
-                    **common,
-                )
-            )
+            training = comp
+    # The cap follows what else runs, so it comes after every other part.
+    _training_cap(data, plan, items, memory_gib, sw)
+    if training is not None and sw.runs != "off":
+        _add_training(items, vllm, training, sw)
     return items
+
+
+def _add_training(
+    items: list[MemoryItem], vllm: MemoryItem | None, training: Mapping[str, Any], sw: Switches
+) -> None:
+    """A training job at the cap; with vLLM, the larger of the two (one at a time)."""
+    cap = sw.memory_max_gib
+    how = f"training_caps.memory_max {size_text(cap)}" + (
+        " (auto, computed from this host)" if sw.memory_max_basis == "computed" else ""
+    )
+    variant = " (CPU-only variant)" if sw.runs == "cpu" else ""
+    if vllm is not None:
+        vllm.recommended_gib = max(vllm.recommended_gib, cap)
+        vllm.title += " or a training job"
+        vllm.detail += f"; or a training job{variant} at {how}: the GPU arbiter runs one at a time"
+        vllm.source += f"; {training['source']}"
+        return
+    items.append(
+        MemoryItem(
+            id=str(training["id"]),
+            title=str(training["title"]) + variant,
+            required_gib=0.0,
+            recommended_gib=cap,
+            cpu_threads=float(training["cpu_threads"]),
+            detail=how,
+            basis=str(training["basis"]),
+            source=str(training["source"]),
+        )
+    )
 
 
 def _fits(
@@ -411,12 +608,14 @@ def _fits(
     features: Mapping[str, bool],
     *,
     recommended: bool,
+    cap: float | None,
     serving_gib: float = 0.0,
 ) -> list[str]:
     """The choices that would fit ``available`` nominal GiB.
 
-    ``serving_gib`` is what vLLM itself recommends: below it a lower training
-    cap does not help.
+    ``cap`` is the training cap of a job that counts, None when training is
+    off here; ``serving_gib`` is what vLLM itself recommends: below it a lower
+    training cap does not help.
     """
 
     def total(skip: str) -> float:
@@ -437,14 +636,16 @@ def _fits(
         hints.append(
             f"a model of at most {text_gib(room)}" if room > 0 else "no model (default_model none)"
         )
-    if recommended:
-        cap = float(plan["training"]["memory_max_gib"])
+    if recommended and cap is not None:
         other = by_id.get("vllm") or by_id.get("training")
         # Only where the training cap is what sets the recommended value.
         if other is not None and abs(other.recommended_gib - cap) < 0.01:  # noqa: PLR2004
             room = available - total(other.id)
-            if max(1.0, serving_gib) <= room < cap:
-                hints.append(f"training_caps.memory_max {math.floor(room)}G")
+            # Both hints only where the rest fits without the job.
+            if room >= serving_gib:
+                if max(1.0, serving_gib) <= room < cap:
+                    hints.append(f"training_caps.memory_max {math.floor(room)}G")
+                hints.append("training: off")
     return hints
 
 
@@ -475,7 +676,13 @@ def _memory_checks(
         return
     if total < tol * req.required_gib:
         hints = _fits(
-            req.memory_items, available, req.choices, targets, features, recommended=False
+            req.memory_items,
+            available,
+            req.choices,
+            targets,
+            features,
+            recommended=False,
+            cap=None,
         )
         req.unsupported.append(
             f"{have} is below the {req.required_gib:g} GiB these choices require "
@@ -496,6 +703,7 @@ def _memory_checks(
             targets,
             features,
             recommended=True,
+            cap=None if req.switches.runs == "off" else req.switches.memory_max_gib,
             serving_gib=serving,
         )
         largest = sorted(
@@ -527,6 +735,8 @@ def _image_items(
         if plan["node_role"] not in spec["roles"]:
             continue
         if not all(features.get(f) for f in spec.get("features", [])):
+            continue
+        if spec.get("gpu") and not (features.get("gpu_inference") or features.get("gpu_training")):
             continue
         if spec.get("gpu_exporter") not in (None, plan["gpu_exporter"]):
             continue
@@ -801,7 +1011,7 @@ def compute(
         plan: The effective plan (:func:`load_plan`).
         label: ``defaults`` or the plan file's path.
         minimums: The support matrix's ``minimums`` (memory floor and tolerance).
-        features: The host's feature flags.
+        features: The host's detected feature flags (the plan's switches apply).
         memory_gib: ``MemTotal``.
         fs: Filesystem view.
         runner: Command runner.
@@ -814,7 +1024,9 @@ def compute(
         PlanError: If the plan names an unknown golden image blueprint.
     """
     notes: list[str] = []
-    items = _memory_items(data, plan, features, notes)
+    sw = switches(plan, features)
+    features = sw.effective(features)
+    items = _memory_items(data, plan, features, notes, sw=sw, memory_gib=memory_gib)
     floor = float(minimums["memory_gib"]["floor"])
     required = max(floor, sum(i.required_gib for i in items))
     recommended = max(required, sum(i.recommended_gib for i in items))
@@ -828,6 +1040,7 @@ def compute(
         required_gib=gib(required),
         recommended_gib=gib(recommended),
         tolerance=float(minimums["memory_gib"]["tolerance"]),
+        switches=sw,
         memory_items=items,
         cpu_threads=gib(sum(i.cpu_threads for i in items)),
         notes=notes,

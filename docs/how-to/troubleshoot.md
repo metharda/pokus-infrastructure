@@ -85,10 +85,12 @@ consequence for research, and the memory reason with its largest parts and
 the choices that would fit.
 
 - If the missing feature can be provided (a driver, nested virtualization),
-  provide it and run bootstrap again.
+  provide it and run bootstrap again. A GPU feature the lab is not meant to
+  use can be switched off (`inference: "off"`, `training: "off"` or `cpu`):
+  a host is not degraded for a feature its switch turns off.
 - If memory is the reason, change a choice the message names (fewer
-  `incus_concurrent_targets`, a lower `training_caps.memory_max`) in the
-  machine's host_vars, or add memory
+  `incus_concurrent_targets`, a lower `training_caps.memory_max`,
+  `training: "off"`) in the machine's host_vars, or add memory
   ([Capacity planning](../explanation/capacity-planning.md)).
 - If the lab is useful without it, run bootstrap again with
   `--accept-degraded`, or answer `y` when bootstrap asks. The consent is

@@ -706,13 +706,22 @@ def apply_requirements(d: Decision, req: Requirements) -> None:
     """Add the requirements computed from the choices to the decision (§2.3).
 
     Memory below the floor or the required value and a disk shortfall make the
-    host unsupported; memory below the recommended value makes it degraded.
+    host unsupported; memory below the recommended value makes it degraded. A
+    feature the plan's switches turn off is not wanted, so its absence does not
+    make the host degraded: it becomes a note.
 
     Args:
         d: The decision of :func:`evaluate`.
         req: The requirements.
     """
     d.requirements = req
+    unwanted = req.switches.unwanted()
+    for entry in [e for e in d.disabled_features if e["feature"] in unwanted]:
+        d.disabled_features.remove(entry)
+        d.notes.append(
+            f"{entry['feature']} disabled (unmet: {entry['unmet']}); not used: "
+            f"{unwanted[entry['feature']]}"
+        )
     total = req.memory_total_gib
     if total is not None:
         d.minimums.append(

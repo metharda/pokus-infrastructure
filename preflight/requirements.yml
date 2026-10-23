@@ -128,8 +128,10 @@ components:
       model's file size from models.lock.yml while it loads
   # A training job at the host's cap (training_caps.memory_max): the GPU
   # arbiter refuses a job over it, so the cap is what a job may take. Counted
-  # in recommended only, since the lab runs without one; on a node with vLLM
-  # the arbiter stops vLLM for the job.
+  # in recommended only, since the lab runs without one, and only where
+  # training is on and possible (the plan's training mode: a usable GPU, or
+  # the CPU-only variant with training: cpu); on a node with vLLM the arbiter
+  # stops vLLM for the job.
   - id: training
     title: a training job
     kind: training
@@ -137,6 +139,18 @@ components:
     cpu_threads: 0
     basis: estimated
     source: training_caps.memory_max (§7.18); the arbiter refuses a job over it
+
+# training_caps.memory_max: auto (§2.3): MemTotal minus the recommended memory
+# of every other part that runs on the node (the core stack, the targets, vLLM
+# with the selected model), rounded down to whole GiB, within floor_gib and
+# ceiling_gib. An explicit memory_max wins.
+training_cap:
+  floor_gib: 4
+  ceiling_gib: 24
+  source: >-
+    floor: the least a job needs besides its model, a data loader and a small
+    batch in host memory (estimate); ceiling: the fixed default before the cap
+    was computed (§8.1, 24G)
 
 # Disk known at install time is computed from these and the choices: the
 # images below, the selected model's files (models.lock.yml), the Incus pool
@@ -158,8 +172,10 @@ disk:
 
 # The container images each node pulls (keys of versions.lock.yml
 # containers.images). roles: the node roles that run it; features: features
-# that must be on; gpu_exporter: the observability_gpu_exporter it belongs to.
-# An image no node pulls (roles: []) is used by the tests only.
+# that must be on after the switches (§2.3); gpu: only where the GPU is in use
+# (vLLM serves or training jobs run on it); gpu_exporter: the
+# observability_gpu_exporter it belongs to. An image no node pulls (roles: [])
+# is used by the tests only.
 images:
   postgres: {roles: [full, lab]}
   postgres_exporter: {roles: [full, lab]}
@@ -172,9 +188,9 @@ images:
   node_exporter: {roles: [full, lab, inference]}
   cadvisor: {roles: [full, lab, inference]}
   opa: {roles: [full, lab]}
-  gpu_exporter: {roles: [full, inference], features: [gpu_inference], gpu_exporter: nvidia_smi}
-  dcgm_exporter: {roles: [full, inference], features: [gpu_inference], gpu_exporter: dcgm}
-  cuda_base_test: {roles: [full, inference], features: [gpu_inference]}
+  gpu_exporter: {roles: [full, inference], gpu: true, gpu_exporter: nvidia_smi}
+  dcgm_exporter: {roles: [full, inference], gpu: true, gpu_exporter: dcgm}
+  cuda_base_test: {roles: [full, inference], gpu: true}
   vllm: {roles: [full, inference], features: [gpu_inference]}
   refplat_job: {roles: []}
 

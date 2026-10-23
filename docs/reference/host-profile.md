@@ -128,6 +128,19 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `requirements.minimums` | array | yes | — |
 | `requirements.plan` | string | yes | defaults, or the plan file given with --plan (§2.3). |
 | `requirements.choices` | object | yes | The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json). |
+| `requirements.switches` | object | yes | The feature switches of the plan on this host (§2.3): what they leave on, and the training cap. |
+| `requirements.switches.inference` | object | yes | — |
+| `requirements.switches.inference.mode` | one of `auto`, `off` | yes | The inference switch. |
+| `requirements.switches.inference.serves` | boolean | yes | vLLM, its images and the selected model are installed and counted on this node. |
+| `requirements.switches.inference.reason` | string | yes | — |
+| `requirements.switches.training` | object | yes | — |
+| `requirements.switches.training.mode` | one of `auto`, `cpu`, `off` | yes | The training switch. |
+| `requirements.switches.training.runs` | one of `gpu`, `cpu`, `off` | yes | Where training jobs run on this node: on the GPU, the CPU-only variant, or none (the GPU arbiter refuses every run). |
+| `requirements.switches.training.reason` | string | yes | — |
+| `requirements.switches.training.memory_max` | string | yes | The training cap as training_caps.memory_max writes it; the play uses it where memory_max is auto. |
+| `requirements.switches.training.memory_max_gib` | number | yes | — |
+| `requirements.switches.training.memory_max_basis` | one of `computed`, `configured` | yes | computed: memory_max auto, from MemTotal and what else runs; configured: the setting. |
+| `requirements.switches.training.memory_max_detail` | string | yes | — |
 | `requirements.memory_gib` | object | yes | MemTotal against the floor and the required and recommended memory computed from the choices; each nominal threshold is compared at the tolerance. |
 | `requirements.memory_gib.total` | number or null | yes | — |
 | `requirements.memory_gib.floor` | number | yes | — |
@@ -154,6 +167,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `requirements.notes` | array | yes | — |
 | `features` | object | yes | — |
 | `features.gpu_inference` | boolean | yes | — |
+| `features.gpu_training` | boolean | yes | — |
 | `features.vm_targets` | boolean | yes | — |
 | `features.btrfs_pool` | boolean | yes | — |
 | `features.lvm_thin_pool` | boolean | yes | — |

@@ -797,6 +797,7 @@
         "minimums",
         "plan",
         "choices",
+        "switches",
         "memory_gib",
         "cpu_threads",
         "disk",
@@ -823,6 +824,95 @@
         "choices": {
           "type": "object",
           "description": "The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json)."
+        },
+        "switches": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inference",
+            "training"
+          ],
+          "description": "The feature switches of the plan on this host (\u00a72.3): what they leave on, and the training cap.",
+          "properties": {
+            "inference": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "serves",
+                "reason"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "auto",
+                    "off"
+                  ],
+                  "description": "The inference switch."
+                },
+                "serves": {
+                  "type": "boolean",
+                  "description": "vLLM, its images and the selected model are installed and counted on this node."
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            },
+            "training": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "runs",
+                "reason",
+                "memory_max",
+                "memory_max_gib",
+                "memory_max_basis",
+                "memory_max_detail"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "auto",
+                    "cpu",
+                    "off"
+                  ],
+                  "description": "The training switch."
+                },
+                "runs": {
+                  "enum": [
+                    "gpu",
+                    "cpu",
+                    "off"
+                  ],
+                  "description": "Where training jobs run on this node: on the GPU, the CPU-only variant, or none (the GPU arbiter refuses every run)."
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "memory_max": {
+                  "type": "string",
+                  "pattern": "^[0-9]+[MG]$",
+                  "description": "The training cap as training_caps.memory_max writes it; the play uses it where memory_max is auto."
+                },
+                "memory_max_gib": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "memory_max_basis": {
+                  "enum": [
+                    "computed",
+                    "configured"
+                  ],
+                  "description": "computed: memory_max auto, from MemTotal and what else runs; configured: the setting."
+                },
+                "memory_max_detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         },
         "memory_gib": {
           "type": "object",
@@ -995,6 +1085,7 @@
       "additionalProperties": false,
       "required": [
         "gpu_inference",
+        "gpu_training",
         "vm_targets",
         "btrfs_pool",
         "lvm_thin_pool",
@@ -1002,6 +1093,9 @@
       ],
       "properties": {
         "gpu_inference": {
+          "type": "boolean"
+        },
+        "gpu_training": {
           "type": "boolean"
         },
         "vm_targets": {

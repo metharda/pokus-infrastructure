@@ -337,6 +337,28 @@
       },
       "description": "NVIDIA driver, vLLM serving profile and default model."
     },
+    "features": {
+      "description": "The feature switches (BUILD_PROMPT §2.3): a switched-off feature is not installed and counts nothing in the requirements. host_vars: inference and training.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inference": {
+          "description": "auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node; off: none of them. An inference node needs auto.",
+          "enum": [
+            "auto",
+            "off"
+          ]
+        },
+        "training": {
+          "description": "auto: training jobs where the host has a usable GPU (gpu_training), on a full node; cpu: also the jobs' CPU-only variant without one; off: the GPU arbiter refuses every run.",
+          "enum": [
+            "auto",
+            "cpu",
+            "off"
+          ]
+        }
+      }
+    },
     "backups": {
       "type": "object",
       "additionalProperties": false,
@@ -578,8 +600,15 @@
           "description": "A run's longest run time."
         },
         "memory_max": {
-          "$ref": "#/$defs/cap_size",
-          "description": "A job's memory."
+          "anyOf": [
+            {
+              "const": "auto"
+            },
+            {
+              "$ref": "#/$defs/cap_size"
+            }
+          ],
+          "description": "A job's memory; auto: computed from the host, MemTotal minus what else runs, 4 to 24 GiB (§2.3)."
         },
         "cpus": {
           "type": "integer",

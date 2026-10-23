@@ -267,12 +267,12 @@
             'peer': inference_control_account if node_role == 'inference' else '',
             'state': '/var/lib/pinka/gpu/state.json',
             'transitions': '/var/lib/pinka/gpu/transitions.jsonl',
-            'training': node_role == 'full',
+            'training': node_role == 'full' and pinka_training != 'off',
             'models': pinka_root ~ '/models',
             'datasets': pinka_root ~ '/training/datasets',
             'jobs': pinka_root ~ '/training/jobs',
             'adapters': pinka_root ~ '/models/adapters',
-            'caps': training_caps}
+            'caps': pinka_training_caps}
            if node_role in ['full', 'inference'] else {} }}
       # The inference guard (§7.11, ADR-0016): infra's clients for this node
       # role; the platform's come from rendered.json at run time.

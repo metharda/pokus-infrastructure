@@ -37,8 +37,9 @@ See `meta/argument_specs.yml`.
 
 ## Feature flags
 
-`gpu_inference` adds the GPU exporter container and the GPU checks on `full`
-and `inference` nodes; `vm_targets` adds the `target-vm` profile, the VM
+`gpu_inference` adds the GPU checks on `full` and `inference` nodes, and
+`gpu_inference` or `gpu_training` (after the switches, BUILD_PROMPT §2.3) the
+GPU exporter container; `vm_targets` adds the `target-vm` profile, the VM
 telemetry listener address and the `/dev/kvm` expectation on WSL.
 
 ## Idempotency

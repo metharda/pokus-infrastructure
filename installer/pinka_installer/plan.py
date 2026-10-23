@@ -90,6 +90,7 @@ def plan(  # noqa: PLR0912 - one branch per setting
         if role not in ("full", "lab", "inference"):
             raise PlanError(f"node_role must be full, lab or inference (got {role!r})")
         result["node_role"] = role
+    _switches(result, variables)
     for name, key in (("pinka_root", "srv_path"), ("docker_data_root", "docker_data_root")):
         if name in variables:
             result[key] = _checked(name, variables[name], validators.absolute_path)
@@ -120,15 +121,36 @@ def plan(  # noqa: PLR0912 - one branch per setting
         result["gpu_exporter"] = exporter
     caps = variables.get("training_caps")
     if isinstance(caps, Mapping):
-        for name, key in (
-            ("memory_max", "memory_max_gib"),
-            ("run_storage_max", "run_storage_max_gib"),
-        ):
-            if name in caps:
-                value = _checked(f"training_caps.{name}", caps[name], validators.cap_size)
-                result["training"][key] = validators.cap_size_gib(value)
+        # A top-level key replaces the whole value: a memory_max left out is auto.
+        memory = _checked(
+            "training_caps.memory_max", caps.get("memory_max", "auto"), validators.memory_max
+        )
+        result["training"]["memory_max_gib"] = (
+            None if memory == "auto" else validators.cap_size_gib(memory)
+        )
+        if "run_storage_max" in caps:
+            value = _checked(
+                "training_caps.run_storage_max", caps["run_storage_max"], validators.cap_size
+            )
+            result["training"]["run_storage_max_gib"] = validators.cap_size_gib(value)
     _retention(result["retention"], variables)
     return result
+
+
+def _switches(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
+    """The inference and training switches (§2.3) into ``result``."""
+    if "inference" in variables:
+        inference = _plain("inference", variables["inference"])
+        if inference not in ("auto", "off"):
+            raise PlanError(f"inference must be auto or off (got {inference!r})")
+        result["inference"] = inference
+    if result["node_role"] == "inference" and result["inference"] == "off":
+        raise PlanError("an inference node runs only the inference stack: it needs inference: auto")
+    if "training" in variables:
+        training = _plain("training", variables["training"])
+        if training not in ("auto", "cpu", "off"):
+            raise PlanError(f"training must be auto, cpu or off (got {training!r})")
+        result["training"]["mode"] = training
 
 
 def _retention(retention: dict[str, Any], variables: Mapping[str, Any]) -> None:

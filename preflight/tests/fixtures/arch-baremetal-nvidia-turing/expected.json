@@ -1,6 +1,7 @@
 {
   "disabled": [
-    "gpu_inference"
+    "gpu_inference",
+    "gpu_training"
   ],
   "family": "archlinux",
   "install_driver": "auto",

@@ -388,6 +388,19 @@
         }
       }
     },
+    "gpu_training": {
+      "requires": [
+        "nvidia_gpu_usable",
+        {
+          "gpu_vram_gib_min": 8
+        },
+        {
+          "gpu_compute_capability_min": "7.0"
+        }
+      ],
+      "on_missing": "degrade",
+      "impact": "No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs."
+    },
     "vm_targets": {
       "requires": [
         "kvm_usable"

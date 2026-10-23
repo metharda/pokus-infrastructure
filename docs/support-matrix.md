@@ -108,6 +108,7 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 | Feature | Requires | When missing | Only matters without | Impact |
 | --- | --- | --- | --- | --- |
 | `gpu_inference` | nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: 7.5, driver_cuda_min: 13.0.2 | degrade | — | No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. |
+| `gpu_training` | nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: 7.0 | degrade | — | No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs. |
 | `vm_targets` | kvm_usable | degrade | — | No KVM: VM-class scenarios (kernel-level faults) cannot run on this host. |
 | `btrfs_pool` | btrfs_available | fallback | — | No btrfs: the Incus pool falls back to LVM thin provisioning. |
 | `lvm_thin_pool` | dm_thin_pool_available | degrade | btrfs_pool | No LVM thin provisioning. |

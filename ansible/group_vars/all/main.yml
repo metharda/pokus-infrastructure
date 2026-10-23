@@ -26,6 +26,16 @@ power_policy: lab_session_inhibit
 # What this host runs: full (everything), lab (everything except vLLM) or
 # inference (only the inference stack).
 node_role: full
+# The inference switch (BUILD_PROMPT §2.3): auto (vLLM, its images and the
+# selected model where preflight detects gpu_inference on a full or inference
+# node) or off (none of them is installed or counted in the requirements). An
+# inference node needs auto.
+inference: auto
+# The training switch (§2.3, §7.18), on a full node only: auto (training jobs
+# where preflight detects gpu_training), cpu (also without a usable GPU: the
+# jobs' CPU-only variant) or off (the GPU arbiter refuses every run, no job
+# image is pulled, nothing is counted in the requirements).
+training: auto
 # Firewall backend: auto (firewalld if active, else ufw if active, else
 # nftables), nftables, firewalld or ufw.
 firewall_backend: auto
@@ -47,10 +57,13 @@ gpu_arbiter:
 # the size of a published dataset (dataset_max), the combined size of a run's
 # output and checkpoints (run_storage_max: the free space a run needs to
 # start, and the run is stopped and failed beyond it) and the job's /tmp
-# (tmp_max: a tmpfs, counted against the job's memory).
+# (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto
+# computes the cap from the host (§2.3): MemTotal minus the recommended memory
+# of everything else that runs, in whole GiB within 4 and 24 GiB (preflight
+# records it in the host profile); a size such as 12G sets it.
 training_caps:
   timeout_seconds: 86400
-  memory_max: 24G
+  memory_max: auto
   cpus: 8
   dataset_max: 8G
   run_storage_max: 16G

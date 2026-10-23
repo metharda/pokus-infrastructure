@@ -1438,7 +1438,7 @@ def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) 
         plan,
         "ci",
         minimums=matrix["minimums"],
-        features={"gpu_inference": False, "vm_targets": True},
+        features={"gpu_inference": False, "gpu_training": False, "vm_targets": True},
         memory_gib=None,
         fs=FileSystem(str(tmp_path)),
         runner=runner,
@@ -1452,3 +1452,6 @@ def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) 
         assert _gib(target.disk) >= disk.required_gib + SYSTEM_GIB, target.id
     # The defaults sit at these values: a change of the estimates shows here.
     assert (needed.required_gib, disk.required_gib) == (8.0, 37.2)
+    # The CPU-only training flow runs: its job fits the computed cap's floor.
+    assert (needed.switches.serves, needed.switches.runs) == (False, "cpu")
+    assert needed.switches.memory_max_gib == data["training_cap"]["floor_gib"] == 4

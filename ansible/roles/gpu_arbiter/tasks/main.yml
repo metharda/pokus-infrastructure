@@ -105,6 +105,17 @@
     - vllm_target | default('') | length > 0
     - vllm_start | default(false) | bool
 
+# Inference switched off (BUILD_PROMPT §2.3): vLLM stops now rather than at
+# the next boot; a training run is left alone.
+- name: Stop serving where this host serves no inference
+  ansible.builtin.command:
+    argv: [/usr/local/libexec/pinka/gpu-arbiter, idle, --unless-training]
+  register: gpu_arbiter_idle
+  changed_when: (gpu_arbiter_idle.stdout | from_json).changed | default(false)
+  when:
+    - not ansible_check_mode
+    - not gpu_arbiter_serves | bool
+
 - name: Render the chosen deployment without serving it
   ansible.builtin.command:
     argv: [/usr/local/libexec/pinka/gpu-arbiter, prepare, "{{ vllm_target }}"]

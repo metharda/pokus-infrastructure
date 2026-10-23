@@ -336,6 +336,14 @@ opens a pull request and never merges.
   accepted) 11, 50, 60, 64, 70, and for uninstall (§5.4) 80 (refused or
   not confirmed) and 81 (items kept that could not be removed).
 - Storage must be `btrfs` or LVM thin; no `dir` backend.
+- Inference and training are switches (`inference: auto | off`, `training:
+  auto | cpu | off`, §2.3). Preflight computes what they leave on and the
+  training cap (`training_caps.memory_max: auto`) into the host profile's
+  `requirements.switches`; the play takes `pinka_features` (after the
+  switches), `pinka_training` and `pinka_training_caps` from it
+  (`preflight_gate`, the only role that reads `training_caps`). No role
+  reads `inference` or `training` itself (YAML 1.1 reads a plain `off` as
+  `false`).
 - The `preflight_gate` role fails if outcome, provider or features differ from
   `/etc/pinka/host-profile.json` without `--refresh-profile`.
 - Memory above the floor (8 GiB nominal, every memory threshold compared at
@@ -643,7 +651,8 @@ opens a pull request and never merges.
   It is a front-end only: it writes files and runs `bootstrap.sh
   --non-interactive --no-tui`; it never provisions anything itself.
 - Every file the installer writes with ruamel.yaml's round-trip mode comes
-  from `yamlio.round_trip()`, which writes `null` out. Never register a
+  from `yamlio.round_trip()`, which writes `null` out and quotes the strings
+  YAML 1.1 reads as booleans (`off`, `on`, `yes`, `no`). Never register a
   representer on a ruamel class: `add_representer` is a class method and
   changes every later dump in the process. An answers replay writes the
   TUI's files byte for byte (`test_fresh_wsl2_with_gpu` replays in a

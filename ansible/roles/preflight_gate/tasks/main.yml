@@ -80,10 +80,26 @@
     - preflight_gate_diff.rc == 1
     - not (pinka_bootstrap.refresh_profile | default(false))
 
-- name: Expose the host profile and the feature flags
+# The feature flags after the plan's switches (BUILD_PROMPT §2.3), as
+# preflight computed them: gpu_inference only where vLLM serves, gpu_training
+# only where training jobs run on the GPU. Every role reads these.
+- name: Expose the host profile, the feature flags and the training settings
   ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - lab-wide facts read by every role
-    pinka_host_profile: "{{ preflight_gate_fresh.content | b64decode | from_json }}"
-    pinka_features: "{{ (preflight_gate_fresh.content | b64decode | from_json).features }}"
+    pinka_host_profile: "{{ preflight_gate_profile }}"
+    pinka_features: >-
+      {{ preflight_gate_profile.features | combine({
+           'gpu_inference': preflight_gate_switches.inference.serves,
+           'gpu_training': preflight_gate_switches.training.runs == 'gpu'}) }}
+    # Where training jobs run: gpu, cpu (the CPU-only variant) or off.
+    pinka_training: "{{ preflight_gate_switches.training.runs }}"
+    # training_caps with memory_max: auto (or left out) replaced by the cap
+    # preflight computed from this host.
+    pinka_training_caps: >-
+      {{ training_caps | combine({'memory_max': preflight_gate_switches.training.memory_max})
+         if (training_caps.memory_max | default('auto') | string) == 'auto' else training_caps }}
+  vars:
+    preflight_gate_profile: "{{ preflight_gate_fresh.content | b64decode | from_json }}"
+    preflight_gate_switches: "{{ preflight_gate_profile.requirements.switches }}"
 
 - name: Check the preflight outcome against the recorded consent
   ansible.builtin.assert:

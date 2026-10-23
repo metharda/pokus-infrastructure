@@ -16,7 +16,8 @@ boot (BUILD_PROMPT §7.16, `docs/contracts.md`); tag `lab_session`.
   - postgres: the container `pinka-postgres` is healthy (`full`, `lab`);
   - collector: the gateway's health endpoint answers 200;
   - incus: `incus query /1.0` succeeds (`full`, `lab`);
-  - gpu: with `gpu_inference` on `full` and `inference` nodes, a container of
+  - gpu: with `gpu_inference` on `full` and `inference` nodes, or with
+    `gpu_training` (after the switches, BUILD_PROMPT §2.3), a container of
     the pinned CUDA image lists a GPU, with the GPU method of
     `/etc/docker/daemon.json` (CDI or the NVIDIA runtime).
   The result goes to `/run/pinka/health-gate.json`. Platform services
@@ -37,7 +38,7 @@ See `meta/argument_specs.yml`.
 
 ## Feature flags
 
-`gpu_inference` adds the GPU check; `node_role` selects the PostgreSQL and
+`gpu_inference` or `gpu_training` adds the GPU check; `node_role` selects the PostgreSQL and
 Incus checks.
 
 ## Idempotency

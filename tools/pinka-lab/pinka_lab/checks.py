@@ -1773,11 +1773,16 @@ def check_training_caps(ctx: Context) -> Outcome:
 
 
 def check_training_availability(ctx: Context) -> Outcome:
-    """Whether this host trains: only a full node does (§19.10)."""
+    """Whether this host trains: only a full node does (§19.10), where training is on (§2.3)."""
     if ctx.config.node_role in ("lab", "inference"):
         return passed(
             f"training is unavailable on this host (node_role {ctx.config.node_role}); it runs "
             "only on a full node, split-node training is future work"
+        )
+    if not _arbiter(ctx).get("training", True):
+        return passed(
+            "training is off on this host (training: off, or auto without a usable GPU; "
+            "pinka preflight shows why)"
         )
     return passed("training runs on this host through the GPU arbiter")
 

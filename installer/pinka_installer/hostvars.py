@@ -19,6 +19,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from pinka_installer import yamlio
 from pinka_installer.answers import (
     Answers,
+    Features,
     GpuArbiter,
     Retention,
     Source,
@@ -73,6 +74,8 @@ COMMENTS = {
     "firewall_close_listeners": "Pre-existing listeners closed with the owner's consent.",
     "firewall_close_install_path": "Close the install's access path once tailnet SSH works.",
     "incus_concurrent_targets": "Targets that run at once: the bench project's memory.",
+    "inference": "Inference: auto (vLLM where the GPU is usable) | off.",
+    "training": "Training jobs: auto (where the GPU is usable) | cpu | off.",
     "backup_pgdump_keep": "Local PostgreSQL dumps kept (one a day).",
     "observability_prometheus_retention": "Prometheus's retention by time.",
     "observability_prometheus_retention_size": "Prometheus's retention by size; 0: by time only.",
@@ -134,6 +137,8 @@ def _storage(answers: Answers) -> dict[str, Any]:
         "pinka_root": machine.srv_path,
         "docker_data_root": machine.docker_data_root,
         "node_role": machine.node_role,
+        "inference": answers.features.inference,
+        "training": answers.features.training,
         "firewall_backend": machine.firewall_backend,
         "install_nvidia_driver": answers.gpu.install_driver,
         "allow_community_repos": machine.allow_community_repos,
@@ -377,6 +382,10 @@ def _machine_from(values: Mapping[str, Any], answers: Answers) -> None:
     machine.srv_path = str(values.get("pinka_root", machine.srv_path))
     machine.docker_data_root = str(values.get("docker_data_root", machine.docker_data_root))
     machine.node_role = str(values.get("node_role", machine.node_role))
+    answers.features = Features(
+        inference=str(values.get("inference", answers.features.inference)),
+        training=str(values.get("training", answers.features.training)),
+    )
     machine.firewall_backend = str(values.get("firewall_backend", machine.firewall_backend))
     machine.allow_community_repos = bool(values.get("allow_community_repos", False))
 

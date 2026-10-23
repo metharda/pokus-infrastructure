@@ -27,12 +27,16 @@
           {{ (platform_build.stdout | from_json).problems_text | join('; ') }}
       when: platform_build.rc == 65
 
+    # Not where training is off (BUILD_PROMPT §2.3): the arbiter refuses
+    # every run, and the next deployment after the switch is on pulls them.
     - name: Pull the training job images by digest (§7.14 step 5)
       ansible.builtin.command:
         argv: ["{{ platform_tool }}", deploy, pull, --run, "{{ platform_plan.run_dir }}"]
       register: platform_pull
       changed_when: (platform_pull.stdout | from_json).changed
-      when: platform_plan.jobs | length > 0
+      when:
+        - platform_plan.jobs | length > 0
+        - pinka_training != 'off'
 
     - name: Install the optional tools of the manifest
       ansible.builtin.include_tasks: quarto.yml

@@ -28,6 +28,11 @@ remote_access:
 gpu:
   install_driver: skip
   default_model: none
+# No GPU in the VMs: no inference; the reference platform's training flow runs
+# its CPU-only job (BUILD_PROMPT §2.3, §7.18).
+features:
+  inference: "off"
+  training: cpu
 backups:
   repository: {type: local, path: /var/backups/pinka-ci}
   password: generate

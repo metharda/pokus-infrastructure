@@ -328,7 +328,11 @@ def test_constants_match_the_contract() -> None:
     assert paths.vllm == Path("/etc/pinka/vllm")
     assert paths.state == Path("/var/lib/pinka/gpu")
     assert paths.training == Path(variables["pinka_root"]) / "training"
-    assert config.caps == variables["training_caps"]
+    # memory_max: auto in group_vars; the play writes the computed cap, and the
+    # program's own default is that cap's ceiling (preflight/requirements.yml).
+    ceiling = json.loads((INFRA / "preflight" / "requirements.json").read_text())["training_cap"]
+    assert config.caps == {**variables["training_caps"], "memory_max": f"{ceiling['ceiling_gib']}G"}
+    assert variables["training_caps"]["memory_max"] == "auto"
     assert arb.JOB_UNIT == "pinka-gpu-job@{run}.service"
     assert arb.JOB_CONTAINER == "pinka-job-{run}"
 
@@ -666,6 +670,34 @@ def test_training_only_on_a_full_node(tmp_path: Path) -> None:
         with pytest.raises(arb.ArbiterError, match="training is unavailable on this host"):
             arbiter.publish_dataset("/x", {"instances": [], "source_runs": []}, CTL)
         assert arbiter.status()["training_available"] is False
+
+
+def test_training_switched_off(tmp_path: Path) -> None:
+    # BUILD_PROMPT §2.3: training: off, or auto without a usable GPU.
+    arbiter, _ = make(tmp_path, training=False)
+    with pytest.raises(arb.ArbiterError, match="training is off on this host"):
+        arbiter.train("tune", submission("0" * 64), CTL)
+    with pytest.raises(arb.ArbiterError, match="training is off on this host"):
+        arbiter.publish_dataset("/x", {"instances": [], "source_runs": []}, CTL)
+    assert arbiter.status()["training_available"] is False
+
+
+def test_root_idles_when_inference_is_switched_off(
+    lab: tuple[arb.Arbiter, FakeSystem], capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The play asks for idle where the host no longer serves (§2.3); a
+    # training run is left alone.
+    arbiter, _ = lab
+    assert arb.main(["idle", "--unless-training"], lambda: arbiter) == 0
+    assert json.loads(capsys.readouterr().out)["changed"] is False
+    arbiter.serve("dep-test@1", CTL)
+    assert arb.main(["idle", "--unless-training"], lambda: arbiter) == 0
+    assert json.loads(capsys.readouterr().out) == {"changed": True, "mode": "idle", "ok": True}
+    assert arbiter.state()["mode"] == "idle"
+    run = arbiter.train("tune", submission(build_dataset(arbiter)), CTL)["run"]
+    assert arb.main(["idle", "--unless-training"], lambda: arbiter) == 0
+    assert json.loads(capsys.readouterr().out)["skipped"] is True
+    assert arbiter.state() == {**arbiter.state(), "mode": "training", "run": run}
 
 
 @pytest.mark.parametrize(
@@ -1430,12 +1462,17 @@ def test_admin_commands(
 
 def role_scope(**extra: Any) -> dict[str, Any]:
     role = ROLES / "gpu_arbiter"
+    # What preflight_gate sets from the host profile's switches (§2.3).
+    gate = {
+        "pinka_training": "gpu",
+        "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},
+    }
     return ansible_vars(
         GROUP_VARS,
         role / "defaults" / "main.yml",
         role / "vars" / "main.yml",
         gpu_arbiter_gpu_args=["--device", "nvidia.com/gpu=all"],
-        **extra,
+        **{**gate, **extra},
     )
 
 
@@ -1516,15 +1553,18 @@ def test_the_settings_file_fits_the_program() -> None:
     # Every setting but the fixed unit name of the inference project.
     assert set(config) == {f.name for f in dataclasses.fields(arb.Config)} - {"vllm_unit"}
     assert config["default_deployment"] == "default-ada-12g@1"
-    assert config["serves"] is True
-    assert config["caps"] == variables["training_caps"]
+    assert (config["serves"], config["training"]) == (True, True)
+    assert config["caps"] == variables["pinka_training_caps"]
     assert (config["after_boot"], config["restore_after_training"]) == ("serve", True)
     assert config["gpu_args"] == ["--device", "nvidia.com/gpu=all"]
     path = Path(variables["gpu_arbiter_config"])
     assert path == arb.Paths().config
-    without = role_scope(pinka_features={"gpu_inference": False})
+    without = role_scope(pinka_features={"gpu_inference": False}, pinka_training="off")
     config = json.loads(render_template("gpu_arbiter", "arbiter.json.j2", without))
     assert (config["serves"], config["default_deployment"]) == (False, None)
+    assert config["training"] is False
+    cpu = role_scope(pinka_features={"gpu_inference": False}, pinka_training="cpu")
+    assert json.loads(render_template("gpu_arbiter", "arbiter.json.j2", cpu))["training"] is True
 
 
 def test_bootstrap_serves_through_the_arbiter() -> None:

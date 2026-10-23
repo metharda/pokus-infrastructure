@@ -1,6 +1,6 @@
 {
   "degraded_contains": [
-    "vLLM serving example-model or a training job 24.0 GiB"
+    "vLLM serving example-model or a training job 10.7 GiB"
   ],
   "outcome": "degraded"
 }

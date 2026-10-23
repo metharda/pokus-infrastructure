@@ -30,12 +30,16 @@ A, B, C, E and F with these decisions. [...] Specs are read-only for you
 again after that commit."), and the small spec edit after D1 (owner, with
 the "commit" for `74377ec`: "Decisions on points 1 and 4, for the small
 spec edit I authorized", limited to the GPU guard and the pre-existing
-access). After the commit of each, the specs are read-only again.
+access), and the small spec edit for A's follow-up (owner, with the
+"commit" for A: "This touches §2.3 and the variables; I authorize the small
+spec edit it needs.", limited to the inference and training switches and
+the computed training cap). After the commit of each, the specs are
+read-only again.
 Component copies are byte-identical.
 
 | File | Title | sha256 |
 | --- | --- | --- |
-| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `e01ad3d75a8b3d2792d6ee56c2e4c7cda281cf817d4ac178b5e356b82e732492` |
+| `specs/pokus-infrastructure-claude-code-prompt.md` | Build Prompt: pokus-infrastructure (Pokus Infrastructure, pinka) | `bc7f11e96894eafe93c02e71177dd31d3f582b6d6f4a5eab5e85dac08cc91a99` |
 | `specs/pokus-docs-specification.md` | Pokus Documentation Specification | `5cd75c355eaf3b7d237e87f6260e61080672a8b328b3276828d1a3601b9711f8` |
 | `specs/pokus-infrastructure-qa-spec.md` | Pokus Infrastructure — Real-Machine Test Specification | `79bcb4fc75343b736a1f5e728cbee12d12574a2d2524530a4efff79bfaf936cc` |
 
@@ -55,8 +59,11 @@ are unchanged), and the platform prompt's master
 repository; the owner keeps it for `pokus-platform` (section J). The 3f-1
 spec edit changed the infra prompt from `a07bbc3b…` to `a661077c…`
 (sections listed in `docs/IMPLEMENTATION_NOTES.md`, "3f-1 spec edit"), and
-the small spec edit after D1 from `a661077c…` to the checksum above
-(`docs/IMPLEMENTATION_NOTES.md`, "Spec edit after D1"); its copy
+the small spec edit after D1 from `a661077c…` to `e01ad3d7…`
+(`docs/IMPLEMENTATION_NOTES.md`, "Spec edit after D1"), and the small spec
+edit for A's follow-up from `e01ad3d7…` to the checksum above
+(`docs/IMPLEMENTATION_NOTES.md`, "Inference and training switches, the
+computed training cap (A follow-up, 3f-1)"); its copy
 `docs/BUILD_PROMPT.md` has the same checksum.
 
 The real-machine test specification (`specs/pokus-infrastructure-qa-spec.md`)
@@ -477,7 +484,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) committed after the CI commit (`6bab38b`); A (requirements computed from the choices) built after `8696cb3`, waiting for the owner's "commit" (record: `docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A, 3f-1)") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access), `6bab38b` (one CI run per commit), `8696cb3` (D2) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) committed after the CI commit (`6bab38b`); A (requirements computed from the choices) committed (record: `docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A, 3f-1)"); its follow-up, the inference and training switches with the computed training cap and their small spec edit (owner's decisions 1 and 2 on A), built after `00ff2c4`, waiting for the owner's "commit" (record: `docs/IMPLEMENTATION_NOTES.md`, "Inference and training switches, the computed training cap (A follow-up, 3f-1)") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access), `6bab38b` (one CI run per commit), `8696cb3` (D2), `00ff2c4` (A) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), published as the fresh repository `pokus-infrastructure` instead of the rename (owner, after the rewrite) and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions, the rewrite (owner's "rewrite") and the commit after it done; the owner created the fresh repository and pushed `main` and `moving/on` to it; then making it public | `a716eae` (the commit after the rewrite) |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -1339,6 +1346,52 @@ its checks green and a commit proposal, and waits for the owner's
   last lines, the installer's report, the README in `/var/lib/pinka-kept`
   and `docs/how-to/uninstall.md` ("Take the kept secrets off the host") say
   it; a later dry run says it again while the copy is there.
+
+  CI of the two pushes, every job on its first attempt: `6bab38b`
+  (infra-ci run 39930292097): changes, privacy, lint, test, docs, all six
+  check-mode lanes and `required` passed, `links` skipped (weekly),
+  `lock-check` the known red (24 marker errors); test-isolated, all six
+  check-mode-extended lanes, release-package and lock-collections passed.
+  `8696cb3` (infra-ci run 39933780672): the same jobs passed, `lock-check`
+  the known red; test-isolated, all six check-mode-extended lanes and
+  release-package passed (lock-collections did not run).
+- **A and its follow-up** (owner, with the "commit" for A, verbatim):
+
+  > commit
+  >
+  > Decisions:
+  > 1 and 2 together: features must be switchable, otherwise small-scale use pays
+  > for what it does not run. As an A follow-up, before B (B's capacity screen needs
+  > them):
+  > - inference and training become switches in host_vars and the answers file
+  >   (detected features stay the default where they apply); a switched-off feature
+  >   counts nothing in memory or disk, and its services, images and models are not
+  >   installed;
+  > - a training job counts in the recommended memory only when training is on and
+  >   possible on that host (a usable GPU, or the CPU training path if it is
+  >   chosen);
+  > - the default training cap is computed from the host: what is left after the
+  >   core stack, the targets and inference, within a floor and a ceiling you
+  >   propose; an explicit training_caps.memory_max still wins. Show me what the
+  >   default becomes on a nominal 16 GiB and a nominal 32 GiB host.
+  > This touches §2.3 and the variables; I authorize the small spec edit it needs.
+  > 3\. Artifacts retention: approved as you describe.
+  > 4\. Smaller test VMs: approved; if a test shows an estimate is too low, the
+  >    estimate changes, not the VMs.
+
+  A is `00ff2c4`. Its CI, every job on its first attempt: infra-ci (run
+  39987332225): changes, privacy, lint, test, docs, all six check-mode
+  lanes and `required` passed, `links` skipped (weekly), `lock-check` the
+  known red (24 marker errors; tag warnings for postgres, refplat_job,
+  ubuntu_2404 and debian_13; no image size finding); test-isolated (run
+  39987332292), all six check-mode-extended lanes (run 39987332194),
+  release-package (run 39987332230) and lock-collections (run
+  39987332353) passed. The follow-up (decisions 1 and 2) is built with its
+  small spec edit, waiting for the owner's "commit"; its record, with the
+  cap on nominal 16 and 32 GiB hosts, is in `docs/IMPLEMENTATION_NOTES.md`,
+  "Inference and training switches, the computed training cap (A
+  follow-up, 3f-1)". The proposed floor and ceiling of the computed cap are
+  4 and 24 GiB.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -1651,7 +1704,12 @@ Raised by the pre-existing access follow-up, for the owner (decided with the "co
 Raised by A of 3f-1 (requirements computed from the choices), for the owner;
 recorded as open items while B, C, E, F and G follow (details in
 `docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A,
-3f-1)"):
+3f-1)"). Decided with the "commit" for A (verbatim under "A and its
+follow-up" in the remaining plan): the first two together, as switches and a
+computed training cap (the A follow-up); "artifacts" retention approved as
+described; the smaller test VMs approved ("if a test shows an estimate is
+too low, the estimate changes, not the VMs"). The records as they were
+raised:
 
 - **The training cap sets the recommended memory.** A training job counts
   at `training_caps.memory_max` in the recommended value (not in required),
@@ -1673,6 +1731,31 @@ recorded as open items while B, C, E, F and G follow (details in
   kernel's and the system's margins as before), down from 18 GiB and
   300 GiB. If a run shows the estimates too low, the estimates change, not
   the VMs.
+
+Raised by A's follow-up (the switches and the computed training cap), for
+the owner; built as described, open for the owner's confirmation (details
+in `docs/IMPLEMENTATION_NOTES.md`, "Inference and training switches, the
+computed training cap (A follow-up, 3f-1)"):
+
+- **The cap's floor and ceiling: 4 and 24 GiB.** The floor is the least a
+  job needs besides its model (and what the reference platform's job asks
+  for); the ceiling is the former fixed default. On a nominal 16 GiB host
+  with a usable GPU and VM targets the floor still counts: it recommends
+  17.2 GiB and installs `degraded` (fits: one target, a cap of 2-3G, or
+  `training: "off"`); with containers only it fits. On a nominal 32 GiB host
+  the cap is 16-18G (6-7G with a 5.7 GiB model, whose 10.7 GiB stays
+  reserved for vLLM although the arbiter stops vLLM for a job, as decided).
+- **A host is not degraded for a feature its switch turns off.** Built into
+  §2.3 with the spec edit: `inference: "off"` or `training: "off"`/`cpu`
+  turns the missing GPU feature into a note, so a small lab without a GPU
+  can install `supported` without consent.
+- **`gpu_training` joined the support matrix** as §2.3 defines it; the
+  repository's matrix lacked it although the docker role, doctor and O5
+  read it. Hosts without a usable GPU now list two disabled features.
+- **The arbiter stays with both switches off** on full and inference nodes:
+  socket-activated, it serves nothing, refuses every run and answers
+  `status` (`training_available: false`) to the platform's controller,
+  rather than leaving it a missing socket.
 
 ## Owner deliverables pending
 
@@ -1807,6 +1890,15 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
   (`preflight/pinka_preflight/detect/components.py`).
 
 ## Known issues
+
+- **`restore.yml` without the feature flags** (found while building A's
+  follow-up; open item, not fixed under the rule against side work).
+  `restore.yml` reads `pinka_features`, which only `preflight_gate` of
+  `site.yml` sets; restore runs as its own `ansible-playbook` after
+  provisioning, so `pinka_features` is undefined there and the model
+  re-verification and the re-render of the restored vLLM deployment never
+  run. Fix: derive the flags (after the switches) from the host profile
+  bootstrap passes, as `preflight_gate` does.
 
 - **NVIDIA driver pins outside Ubuntu** (open item, owner, with the
   "commit" for the GPU guard). The driver packages of Debian 13, Fedora 43
@@ -1998,8 +2090,9 @@ pushes (step 4; the owner created the fresh repository
 6; merged as `6ea7468`, and `moving/on` fast-forwarded to it); then, on
 `moving/on`, the commit for one CI run per commit (`6bab38b`) and D2 with
 the owner's five fixes and the kept secrets' follow-up (its report with the
-table of what uninstall removes, restores or keeps), then A (built, waiting
-for the owner's "commit"), B, C, E, F and
+table of what uninstall removes, restores or keeps), then A (`00ff2c4`) and its follow-up (the inference and training
+switches with the computed training cap, built, waiting for the owner's
+"commit"), B, C, E, F and
 G, each its own step with the full gate, waiting for the owner's "commit",
 its CI reported after the push, no side work in between (anything that
 comes up is an open item), then the feature-complete checkpoint (under

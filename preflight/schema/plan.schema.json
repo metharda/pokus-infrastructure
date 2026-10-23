@@ -9,6 +9,7 @@
   "properties": {
     "schema_version": {"const": 1},
     "node_role": {"enum": ["full", "lab", "inference"], "description": "node_role: full, lab or inference (§19.10)."},
+    "inference": {"enum": ["auto", "off"], "description": "The inference switch (inference): auto serves where gpu_inference is detected on a full or inference node; off installs and counts no vLLM, inference image or model."},
     "srv_path": {"type": "string", "pattern": "^/", "description": "The research space (pinka_root)."},
     "docker_data_root": {"type": "string", "pattern": "^/", "description": "Docker's data root, where the container images go."},
     "pool": {
@@ -39,10 +40,11 @@
     "training": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["memory_max_gib", "run_storage_max_gib"],
-      "description": "The training caps (training_caps.memory_max and run_storage_max).",
+      "required": ["mode", "memory_max_gib", "run_storage_max_gib"],
+      "description": "The training switch (training) and caps (training_caps.memory_max and run_storage_max).",
       "properties": {
-        "memory_max_gib": {"type": "number", "minimum": 0},
+        "mode": {"enum": ["auto", "cpu", "off"], "description": "auto trains where gpu_training is detected on a full node; cpu also runs the CPU-only variant without a usable GPU; off runs no job."},
+        "memory_max_gib": {"type": ["number", "null"], "minimum": 0, "description": "training_caps.memory_max; null: auto, computed from the host."},
         "run_storage_max_gib": {"type": "number", "minimum": 0}
       }
     },

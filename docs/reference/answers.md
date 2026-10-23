@@ -63,6 +63,9 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `gpu.vllm_profile` | string | no | A profile of vllm/profiles/; empty: chosen from the GPU. |
 | `gpu.default_model` | string | yes | An id of models.lock.yml, or none (vLLM installed, nothing served). |
 | `gpu.start_serving` | boolean | no | Start serving the default model after the install. |
+| `features` | object | no | The feature switches (BUILD_PROMPT §2.3): a switched-off feature is not installed and counts nothing in the requirements. host_vars: inference and training. |
+| `features.inference` | one of `auto`, `off` | no | auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node; off: none of them. An inference node needs auto. |
+| `features.training` | one of `auto`, `cpu`, `off` | no | auto: training jobs where the host has a usable GPU (gpu_training), on a full node; cpu: also the jobs' CPU-only variant without one; off: the GPU arbiter refuses every run. |
 | `backups` | object | yes | restic backups. |
 | `backups.repository` | any | yes | The restic repository by type: sftp (host, user, path), rest (url), local (path; not a real backup) or later (doctor warns until it is set). |
 | `backups.password` | one of `generate`, `provided` | yes | The restic password: generated (shown once) or provided (PINKA_SECRET_RESTIC_PASSWORD). |
@@ -90,7 +93,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `gpu_arbiter.restore_after_training` | boolean | no | Bring the deployment served before a training run back when the run ends. |
 | `training_caps` | object | no | This host's caps on training jobs (BUILD_PROMPT §7.18); the GPU arbiter refuses a run of a job over them. |
 | `training_caps.timeout_seconds` | integer | no | A run's longest run time. |
-| `training_caps.memory_max` | see `cap_size` | no | A job's memory. |
+| `training_caps.memory_max` | any | no | A job's memory; auto: computed from the host, MemTotal minus what else runs, 4 to 24 GiB (§2.3). |
 | `training_caps.cpus` | integer | no | A job's CPUs. |
 | `training_caps.dataset_max` | see `cap_size` | no | The size of a published dataset. |
 | `training_caps.run_storage_max` | see `cap_size` | no | A run's output and checkpoints together. |

@@ -111,12 +111,14 @@
         name: docker
       tags: [docker]
 
+    # Where the lab uses the GPU: vLLM or training jobs on it (the flags after
+    # the switches, BUILD_PROMPT §2.3).
     - name: NVIDIA Container Toolkit
       ansible.builtin.include_role:
         name: nvidia_container_toolkit
         apply:
           tags: [nvidia_container_toolkit]
-      when: pinka_features.gpu_inference | default(false)
+      when: (pinka_features.gpu_inference | default(false)) or (pinka_features.gpu_training | default(false))
       tags: [nvidia_container_toolkit]
 
     # An inference node runs only the inference stack (BUILD_PROMPT §19.10).
@@ -168,8 +170,8 @@
       when: *pinka_serves_inference
       tags: [vllm]
 
-    # After vLLM, which it serves; on a full node without a GPU it runs
-    # CPU-only training jobs (BUILD_PROMPT §7.18).
+    # After vLLM, which it serves; on a full node it runs the training jobs
+    # the training switch allows (BUILD_PROMPT §2.3, §7.18).
     - name: GPU arbiter
       ansible.builtin.include_role:
         name: gpu_arbiter

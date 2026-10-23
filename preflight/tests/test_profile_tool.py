@@ -71,7 +71,7 @@ class ProfileToolTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn("optional features are disabled", out)
         self.assertIn("below what these choices recommend", out)
-        self.assertIn("  - memory: MemTotal 34.95 GiB is below the 37.2 GiB recommended", out)
+        self.assertIn("  - memory: MemTotal 16.16 GiB is below the 17.2 GiB recommended", out)
 
     def test_consent_experimental_names_the_tier(self) -> None:
         path = self.profile("linuxmint22-baremetal")

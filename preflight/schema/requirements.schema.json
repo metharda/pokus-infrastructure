@@ -5,7 +5,7 @@
   "description": "What each part of the lab needs, for the requirements computed from the operator's choices (BUILD_PROMPT §2.3). Every number carries its basis (estimated or measured) and its source.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "image_unpack_factor", "components", "disk", "images", "growth"],
+  "required": ["schema_version", "image_unpack_factor", "components", "training_cap", "disk", "images", "growth"],
   "properties": {
     "schema_version": {"const": 1},
     "image_unpack_factor": {"type": "number", "minimum": 1},
@@ -33,6 +33,17 @@
         ]
       }
     },
+    "training_cap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["floor_gib", "ceiling_gib", "source"],
+      "description": "training_caps.memory_max: auto: MemTotal minus the recommended memory of every other part that runs, rounded down to whole GiB, within floor_gib and ceiling_gib (BUILD_PROMPT §2.3).",
+      "properties": {
+        "floor_gib": {"type": "integer", "minimum": 1},
+        "ceiling_gib": {"type": "integer", "minimum": 1},
+        "source": {"type": "string", "minLength": 1}
+      }
+    },
     "disk": {
       "type": "object",
       "additionalProperties": false,
@@ -54,6 +65,7 @@
         "properties": {
           "roles": {"$ref": "#/$defs/roles"},
           "features": {"type": "array", "items": {"type": "string"}},
+          "gpu": {"type": "boolean", "description": "Only where the GPU is in use: vLLM serves or training jobs run on it (after the switches)."},
           "gpu_exporter": {"enum": ["nvidia_smi", "dcgm"]}
         }
       }

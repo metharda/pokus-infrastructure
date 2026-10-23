@@ -54,6 +54,9 @@ def variables(**facts: Any) -> dict[str, Any]:
         "pinka_dir": str(INFRA),
         "pinka_provider": "baremetal",
         "pinka_features": {"gpu_inference": True, "vm_targets": False},
+        # What preflight_gate sets from the host profile's switches (§2.3).
+        "pinka_training": "gpu",
+        "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},
         "pinka_firewall_backend": "nftables",
         "pinka_bootstrap": {},
         "host_profile": {"schema_version": 1, "storage_backend": "btrfs"},
