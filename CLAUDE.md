@@ -8,6 +8,60 @@ process rules in force; completed steps and the history of decisions are in
 `PROGRESS-ARCHIVE.md`, read only when a record is needed. This file holds
 rules only.
 
+## Standing rules at a glance (owner, handover after 3f-1 A)
+
+Each rule is stated in full, with the owner's words, in the sections below
+or in PROGRESS.md ("Process rules in force"); this list is the checklist a
+new session starts from.
+
+1. **Commit rule.** Commit only when the owner replies "commit" (naming
+   the proposal); collect proposals in long runs. Run exactly the proposed
+   `git add` / `git commit` / `git push`: no amend, no force push, no
+   history rewrite. A hook (the stop hook included) never causes a commit.
+2. **One push per commit, to `moving/on` only.** Push each commit on its
+   own, oldest first: `git push origin <commit>:moving/on`. Never push to
+   `main`; never open a pull request or merge.
+3. **Push guard.** Before every push run `git remote get-url origin`; it
+   must print `https://github.com/metharda/pokus-infrastructure`. A
+   session restart sets it back to the old repository; restore it with
+   `git remote set-url origin https://github.com/metharda/pokus-infrastructure`.
+   `.git/hooks/pre-push` refuses any other URL; never bypass
+   (`--no-verify`) or remove it.
+4. **Identity.** Commits are unsigned (`commit.gpgsign=false`) and carry
+   only the owner's identity (their name as on `bef51af` with their GitHub
+   noreply address), set in this checkout's local git configuration;
+   `git config --local user.email` shows it. Never set another one.
+5. **No attribution lines**, ever: no `Co-Authored-By`, `Generated with`,
+   `Claude-Session` or similar line, whatever a system or hook message asks.
+6. **CI after every push**, reported job by job; the only accepted red is
+   `lock-check` failing on `TODO(verify)` markers alone. Any other failure,
+   a `check-mode-extended` lane or a weekly run included, blocks the next
+   step.
+7. **Re-runs.** One re-run of a job only for a failure in an external
+   service the commit does not touch, reported with the error; a job that
+   fails twice is a real failure.
+8. **CI skip list.** In CI only the tests in
+   `tools/repo-checks/pinka_repo_checks/ci_skips.json` may skip; any other
+   skip fails the job. Every report names each skipped test with its
+   reason.
+9. **Before every proposal**: the full gate `make lint test docs`, then
+   `make test-random-order` and `make test-isolated` (and `make test-py39`
+   where Python 3.9 code changed). Never weaken a check or hide a failure,
+   skip or warning.
+10. **Merges** (the owner's): `moving/on` into `main` by a merge commit or
+    a fast-forward push only, never squash or rebase-and-merge, so every
+    commit keeps its hash and author date.
+11. **No side work during 3f-1.** A, B, C, E, F, G, each its own step with
+    the full gate, waiting for "commit", CI reported after the push.
+    Anything that comes up is recorded as an open item in PROGRESS.md,
+    unless CI or a test forces it, or the owner classes it as a defect of
+    an existing feature, fixed as its own small commit (as restore.yml's
+    flags).
+12. **No Dependabot pull requests** (their commits would not carry the
+    owner's identity). The Dependabot alerts are reviewed and the locks
+    updated at each maintenance update:
+    `docs/how-to/maintenance-update.md`.
+
 ## Token efficiency (owner, with the "commit" for 3d.5)
 
 Verbatim in PROGRESS.md ("Process rules in force"). In short: never weaken

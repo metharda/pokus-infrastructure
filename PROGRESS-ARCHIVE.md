@@ -1299,3 +1299,44 @@ Not in this repository: they live later in the separate repository
   copy for `pokus-platform`); the infra spec master is renamed per Q13.
   Gate: `make lint test docs` green, CI green on the branch, residue check
   clean.
+
+## Next step before the handover after 3f-1 A
+
+Moved unchanged from PROGRESS.md with the handover (2026-10-24).
+
+Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
+and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
+(`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
+edit after D1 (`0378425`), the installer fix of the written files
+(`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
+green but the known red. Then (owner, after `37c062e`): the CI skip list
+with the nft checks and the root test in CI (`006c40d`) and the per-file
+process run (`2f27132`), JUnit XML of every test job (`fc7cc3b`), the
+Galaxy retry with the re-run rule and the action pin check (`5fc33c1`) and
+the pre-existing access with the SSH `Match` block as a D1 follow-up
+(`16bf749`), all green but the known red; then, each waiting for "commit",
+the owner's decisions after `16bf749` (DL1, AG1, the login detection)
+with AG1's correction and the CI minutes (`6aa6eab`, not pushed). Then the
+owner's new plan after `16bf749` (verbatim in the remaining plan): the
+public-readiness audit (reported) and the owner's decisions on it, as
+commits without a push (the machine classes, the privacy scan's additions,
+the project files), the history rewrite (done with the owner's "rewrite";
+the commit after it waits for "commit"), then the commands for the owner's
+pushes (step 4; the owner created the fresh repository
+`pokus-infrastructure` instead of the rename and pushed `main` and
+`moving/on` to it), the checklist for making the repository public (step
+5), and the pull request `moving/on` -> `main`, which the owner opens (step
+6; merged as `6ea7468`, and `moving/on` fast-forwarded to it); then, on
+`moving/on`, the commit for one CI run per commit (`6bab38b`) and D2 with
+the owner's five fixes and the kept secrets' follow-up (its report with the
+table of what uninstall removes, restores or keeps), then A (`00ff2c4`) and its follow-up (the inference and training
+switches with the computed training cap, built, waiting for the owner's
+"commit"), B, C, E, F and
+G, each its own step with the full gate, waiting for the owner's "commit",
+its CI reported after the push, no side work in between (anything that
+comes up is an open item), then the feature-complete checkpoint (under
+"Process rules in force"), the real-machine tests on the owner's computers (4.1 and 4.2 first) and
+3h. The owner runs
+`make lock-pins` on their machine and pastes the output separately. Still
+open: the remaining `TODO(verify)` items (103), which need network access or
+reference hardware.

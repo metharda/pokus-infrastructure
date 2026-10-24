@@ -19,6 +19,89 @@ archive and `docs/IMPLEMENTATION_NOTES.md` hold the record of each.
 This file is part of the public repository and follows the privacy invariant:
 no personal or installation-specific data.
 
+## Handover (end of the session after 3f-1 A, 2026-10-24)
+
+The owner's handover request is verbatim under "The follow-up and four
+more commits" in the remaining plan. A new session starts B from the
+repository alone; read this section, then `CLAUDE.md` ("Standing rules at
+a glance" first), then the step's spec sections.
+
+**Where 3f-1 stands.** On `moving/on`, each commit pushed on its own, its
+CI reported job by job, green but the known red `lock-check` (24
+`TODO(verify)` marker errors, 103 markers in the repository):
+
+| Part of 3f-1 | Commit | Record |
+| --- | --- | --- |
+| D1 (install record, pre-existing components) with its follow-ups | `8558bee` to `16bf749` (status table) | `docs/IMPLEMENTATION_NOTES.md` |
+| One CI run per commit | `6bab38b` | idem |
+| D2 (uninstall) with the owner's five fixes | `8696cb3` | idem |
+| A (requirements computed from the choices) | `00ff2c4` | "Requirements computed from the choices (A, 3f-1)" |
+| A's follow-up (inference and training switches, computed training cap) | `a9bb439` | "Inference and training switches, the computed training cap" |
+| Item 1: the cap leaves vLLM out | `1a8b18b` | "Correction: vLLM and a job never add up" |
+| Item 2: the Incus pool's default size is computed | `5fb3fe8` | "The computed Incus pool size" |
+| Item 3: restore.yml gets the feature flags | `d9a98b0` | "restore.yml without the gate" |
+| Item 4: the Dependabot alerts, every lock at a fixed version | `ac157ad` | "Dependabot alerts and the locks" |
+
+Nothing of 3f-1 is verified end to end until `make test-distros` and the
+real-machine tests pass (4.4, 4.7, 4.8 and 4.14 above all).
+
+**Next step: B**, the capacity plan screen in the installer (definition
+verbatim as "3f-1.B" in the remaining plan; the decision logic stays in
+preflight, which already computes everything the screen shows:
+`requirements` of the host profile, with the switches, the training cap
+and the pool). **Then, in this order:** C (Ubuntu 26.04 LTS), E (DCGM
+wiring), F (Zabbly version per architecture), G (review of the
+real-machine test specification, last), each its own step with the full
+gate, waiting for the owner's "commit", its CI reported after the push;
+then the **feature-complete checkpoint** the owner asked for (verbatim
+under "Order within 3f-1, and the checkpoint before the tests" in the
+process rules); then the real-machine tests (4.1 and 4.2 first) and 3h.
+
+**Open items and open decisions** (each with its details where it is
+recorded):
+
+- For the owner's confirmation, built as proposed: the training cap's
+  floor and ceiling (4 and 24 GiB), a host not degraded for a feature its
+  switch turns off, `gpu_training` in the support matrix, the arbiter
+  staying with both switches off ("Open questions", A's follow-up); the
+  pool's floor of 30 GiB and its 50 % margin (approved deviation PL1,
+  item 2); the two updates beyond the 16 alerts, filelock in the shipped
+  models lock and zod (item 4).
+- For the next spec edit: approved deviations PL1 (the computed pool
+  size) and V1, and the others marked so in "Approved deviations".
+- Still open from step 1: the reference agents for scenario validation,
+  the QA results schema, the page-ownership table (H5) ("Open questions").
+- Known issues: NVIDIA driver pins outside Ubuntu and the rest of "Known
+  issues" (`restore.yml`'s flags are fixed, item 3); Tailscale on the rpm
+  releases stays unverified until it is closed before an rpm family is
+  claimed as tested ("Open questions").
+- To remove when possible: the uv override of pytest (`pyproject.toml`),
+  once pytest-textual-snapshot or syrupy allows pytest 9; the npm
+  `overrides` (`package.json`), once markdownlint-cli2 and mermaid require
+  the fixed versions.
+- Owner deliverables: `make lock-pins` on the owner's machine (GitHub's
+  SSH host keys among them), the real-machine tests, the test tailnet's
+  policy for the uninstall lane's variant ("Owner deliverables pending").
+- After the owner merges `moving/on` into `main`: check that the
+  Dependabot alerts on `main` close (this session cannot read them: the
+  API answers 403), and the weekly runs, which run only from `main`.
+- Candidates for the next maintenance update: the tags `lock-check` warns
+  about (postgres, refplat_job, ci_images ubuntu_2404 and debian_13), by
+  "How to run a maintenance update of the locks".
+
+**Rules the owner gave in this session**, all now in `CLAUDE.md`
+("Standing rules at a glance" and the sections it names): each commit
+pushed on its own and its CI reported job by job; no side work during
+3f-1 (an open item instead; a defect in an existing feature is fixed as
+its own small commit when the owner says so, as item 3); the push guard
+with the command that restores `origin` after a restart; the CI skip
+list; the local random-order and per-file runs before every proposal;
+the re-run rule; unsigned commits under the owner's noreply identity; no
+attribution lines; merges by fast-forward or merge commit only; no
+Dependabot pull requests, and the alerts reviewed and the locks updated
+at each maintenance update. "Do not start B in this session" applied to
+this session only.
+
 ## Specifications
 
 `specs/` holds the master copies, read-only for the assistant. The
@@ -486,7 +569,7 @@ and keep it read-only."); the previous checksum was `65e2ac38…`.
 | 3e | Infra self-test without provisioning | done without provisioning; the VM, host, Incus, Docker and GPU runs wait for the owner (after 3f) | `5ea9b82` |
 | 3f | Move infra to the repository root | done | `68967e9` |
 | After 3f | `make lock-pins` and the vendor-source pins; test VMs sized to preflight's minimums | done | `1a46f64`, `b7be7ff` |
-| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) committed after the CI commit (`6bab38b`); A (requirements computed from the choices) committed (record: `docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A, 3f-1)"); its follow-up, the inference and training switches with the computed training cap and their small spec edit (owner's decisions 1 and 2 on A), built after `00ff2c4`, waiting for the owner's "commit" (record: `docs/IMPLEMENTATION_NOTES.md`, "Inference and training switches, the computed training cap (A follow-up, 3f-1)") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access), `6bab38b` (one CI run per commit), `8696cb3` (D2), `00ff2c4` (A) |
+| 3f-1 | Features before 3g: D uninstall, A computed requirements, B capacity plan screen, C Ubuntu 26.04, E DCGM wiring, F Zabbly version per architecture, G review of the real-machine test specification | spec edit, D1 and its CI fix, the small spec edit after D1, the installer fix of the written files, the GPU guard, the CI skip list, the per-file process run, the JUnit XML, the Galaxy retry and the pre-existing access follow-up (with the SSH `Match` block) done; the decisions after it (DL1, AG1 with its correction, the login detection) and the CI minutes built; not verified end to end until `make test-distros` and real-machine tests 4.4, 4.7, 4.8 and 4.14 pass; then (owner's new plan after `16bf749`) the public-readiness audit, the rewrite and the rename, then D2, A, B, C, E, F, G on `moving/on`; D2 (uninstall) committed after the CI commit (`6bab38b`); A (requirements computed from the choices) committed (record: `docs/IMPLEMENTATION_NOTES.md`, "Requirements computed from the choices (A, 3f-1)"); its follow-up, the inference and training switches with the computed training cap and their small spec edit (owner's decisions 1 and 2 on A), committed, then the owner's four items after it (the cap without vLLM, the computed pool size, restore's flags, the Dependabot alerts); next B (see "Handover") | `eb02d37` (records), `4591db9` (spec edit), `8558bee` (D1), `74377ec` (CI fix), `0378425` (spec edit after D1), `32b2c95` (installer fix), `37c062e` (GPU guard), `006c40d` (CI skip list), `2f27132` (per-file run), `fc7cc3b` (JUnit XML), `5fc33c1` (Galaxy retry), `16bf749` (pre-existing access), `6bab38b` (one CI run per commit), `8696cb3` (D2), `00ff2c4` (A), `a9bb439` (A follow-up), `1a8b18b`, `5fb3fe8`, `d9a98b0`, `ac157ad` (items 1-4) |
 | Real-machine tests | The specification's tests on the owner's computers A and B; with `make test-distros`, 4.4, 4.7, 4.8 and 4.14 are the only end-to-end verification of the firewall, privilege profiles, isolation and the install record (3f-1 is not verified until they pass) | after 3f-1 | — |
 | 3g | History rewrite (identities and trailers), published as the fresh repository `pokus-infrastructure` instead of the rename (owner, after the rewrite) and made public; moved before D2 by the owner's new plan after `16bf749` | the audit and its decisions, the rewrite (owner's "rewrite") and the commit after it done; the owner created the fresh repository and pushed `main` and `moving/on` to it; then making it public | `a716eae` (the commit after the rewrite) |
 | 3h | `TEST_REPORT.md`, `HANDOFF.md` | not started | — |
@@ -1515,6 +1598,18 @@ its checks green and a commit proposal, and waits for the owner's
   (`docs/how-to/maintenance-update.md`). Record,
   with the alert-by-alert table and why GitHub names `/infra`:
   `docs/IMPLEMENTATION_NOTES.md`, "Dependabot alerts and the locks".
+
+  Item 4 is `ac157ad`, pushed on its own. Its CI, every job on its first
+  attempt: infra-ci (run 40083928647): changes, privacy, lint, test (on
+  pytest 9.1.1), docs, all six check-mode lanes and `required` passed,
+  `links` skipped (weekly), `lock-check` the known red (24 marker errors;
+  the same four tag warnings); test-isolated (run 40083928622) and all six
+  check-mode-extended lanes (run 40083928664) passed; release-package and
+  lock-collections did not run (their inputs are unchanged). The release
+  package built locally from `ac157ad` (`make release-package REF=HEAD`)
+  carries filelock 4.2.4 with both PyPI hashes in the models lock, and
+  `make release-package-check` reports 0 problems. With that, the four
+  items are pushed and green; the handover is the next commit.
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -2194,39 +2289,7 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
 
 ## Next step
 
-Order after 3f (owner): commits 1 and 2 are done (`1a46f64`, `b7be7ff`),
-and 3f-1 is recorded (`eb02d37`). The spec edit (`4591db9`), D1
-(`8558bee`) and its CI fix (`74377ec`) are committed, then the small spec
-edit after D1 (`0378425`), the installer fix of the written files
-(`32b2c95`) and the GPU support guard (`37c062e`), pushed together and
-green but the known red. Then (owner, after `37c062e`): the CI skip list
-with the nft checks and the root test in CI (`006c40d`) and the per-file
-process run (`2f27132`), JUnit XML of every test job (`fc7cc3b`), the
-Galaxy retry with the re-run rule and the action pin check (`5fc33c1`) and
-the pre-existing access with the SSH `Match` block as a D1 follow-up
-(`16bf749`), all green but the known red; then, each waiting for "commit",
-the owner's decisions after `16bf749` (DL1, AG1, the login detection)
-with AG1's correction and the CI minutes (`6aa6eab`, not pushed). Then the
-owner's new plan after `16bf749` (verbatim in the remaining plan): the
-public-readiness audit (reported) and the owner's decisions on it, as
-commits without a push (the machine classes, the privacy scan's additions,
-the project files), the history rewrite (done with the owner's "rewrite";
-the commit after it waits for "commit"), then the commands for the owner's
-pushes (step 4; the owner created the fresh repository
-`pokus-infrastructure` instead of the rename and pushed `main` and
-`moving/on` to it), the checklist for making the repository public (step
-5), and the pull request `moving/on` -> `main`, which the owner opens (step
-6; merged as `6ea7468`, and `moving/on` fast-forwarded to it); then, on
-`moving/on`, the commit for one CI run per commit (`6bab38b`) and D2 with
-the owner's five fixes and the kept secrets' follow-up (its report with the
-table of what uninstall removes, restores or keeps), then A (`00ff2c4`) and its follow-up (the inference and training
-switches with the computed training cap, built, waiting for the owner's
-"commit"), B, C, E, F and
-G, each its own step with the full gate, waiting for the owner's "commit",
-its CI reported after the push, no side work in between (anything that
-comes up is an open item), then the feature-complete checkpoint (under
-"Process rules in force"), the real-machine tests on the owner's computers (4.1 and 4.2 first) and
-3h. The owner runs
-`make lock-pins` on their machine and pastes the output separately. Still
-open: the remaining `TODO(verify)` items (103), which need network access or
-reference hardware.
+B, the capacity plan screen ("Handover" at the top of this file: where
+3f-1 stands, the order after B, the open items). The previous text of
+this section is in the
+[archive](PROGRESS-ARCHIVE.md#next-step-before-the-handover-after-3f-1-a).
