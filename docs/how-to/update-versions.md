@@ -15,6 +15,10 @@ repository keys, Python packages, Ansible collections) is pinned in
 by hand, verify it, and regenerate the files derived from the lock. The
 current pins are listed in [Pinned versions](../reference/versions.md).
 
+At each maintenance update, also go through every other lock of the
+repository and its security alerts:
+[How to run a maintenance update of the locks](maintenance-update.md).
+
 !!! note "Prerequisites"
     - A development checkout of the repository with `make setup` done.
     - Network access to the upstream source of the artifact you change.

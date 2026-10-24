@@ -106,6 +106,7 @@ nav:
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
+      - Run a maintenance update of the locks: how-to/maintenance-update.md
       - Pin the Ansible collections: how-to/pin-ansible-collections.md
       - Pin the vendor sources: how-to/pin-vendor-sources.md
       - Publish a release package: how-to/publish-a-release-package.md

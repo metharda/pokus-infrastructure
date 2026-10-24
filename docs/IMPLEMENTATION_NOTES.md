@@ -6443,3 +6443,80 @@ own small commit, with a test that runs restore without site.yml's gate."
   fails.
 - `rotate.yml` was checked: its platform and incus entry points
   (`rotate_signing`, `rotate_certificates`) read none of the flags.
+
+## Dependabot alerts and the locks (owner, item 4 after `a9bb439`)
+
+The owner listed the 16 open Dependabot alerts on `main` and asked for each
+its lock, whether that lock is shipped, why GitHub names "uv in /infra",
+an update to a fixed version (certifi first), no Dependabot pull requests
+(their commits would not carry the owner's identity) and a maintenance
+checklist entry.
+
+### Which locks are shipped
+
+A lab host installs Python packages only from `bootstrap/requirements.lock`
+(the Ansible environment, bootstrap), `installer/requirements.lock` (the
+installer, bootstrap) and `ansible/roles/models/files/requirements.lock`
+(the model download tool, the models role); the reference platform's
+`tests/reference-platform/uv.lock` is deployed only by the distribution
+test lanes. `uv.lock` (the development tools) and `package-lock.json` (the
+documentation linters, "never installed on lab hosts") are development
+only. The release package is a `git archive` of every tracked file, so it
+carries all of them, but nothing installs from the two development locks.
+None of the 16 alerts is in a shipped lock.
+
+### The alerts
+
+| Alerts | Package | Lock | Shipped | Before → after | How |
+| --- | --- | --- | --- | --- | --- |
+| #22 (critical) | certifi (`requests`) | `uv.lock` | no | 2026.7.22 → 2026.10.23 | `uv lock --upgrade-package certifi`, first |
+| #23, #24 (high), #25, #26, #28 (moderate) | virtualenv (`pre-commit`) | `uv.lock` | no | 21.14.5 → 21.14.13 | `--upgrade-package` |
+| #27 (high) | black (`ansible-lint`) | `uv.lock` | no | 26.10.0 → 26.10.1 | `--upgrade-package`; the advisory is about Black's GitHub Action, which no workflow uses |
+| #21 (moderate) | pytest (direct) | `uv.lock` | no | 8.4.2 → 9.1.1 | the pin, and `override-dependencies = ["pytest==9.1.1"]`: pytest-textual-snapshot 1.1.0 (its latest) pins syrupy 4.8.0, which declares `pytest<9`; the 96 TUI snapshots pass on 9.1.1 |
+| #18, #19, #20 (#20 critical) | dompurify (mermaid) | `package-lock.json` | no | 3.4.16 → 3.4.17 | `npm update dompurify`, within mermaid's `^3.4.12` |
+| #15, #16, #17 | markdown-it (markdownlint-cli2) | `package-lock.json` | no | 15.0.1 → 15.0.3 | `overrides`: markdownlint-cli2 0.23.3 pins 15.0.1 exactly |
+| #14 | smol-toml (markdownlint-cli2) | `package-lock.json` | no | 1.8.0 (nested) → 1.9.1 | `overrides`: markdownlint-cli2 pins 1.8.0 exactly; the root copy (cspell, `^1.8.0`) moved from 1.9.0 to 1.9.1 with it |
+| #13 | katex (mermaid, mermaid-cli, micromark-extension-math) | `package-lock.json` | no | 0.16.47 → 0.18.11 | `overrides`: every parent asks for `^0.16`, the fix is 0.18.2 |
+
+Two more, found by the checks of the new maintenance list (not Dependabot
+alerts):
+
+- **filelock** (CVE-2026-112940, -112913, -112907, fixed in 4.2.1; the
+  first concerns the SQLite-backed `ReadWriteLock` on Linux, the others
+  Windows): in the **shipped** models lock (via huggingface-hub) 4.0.12 →
+  4.2.4 and in `uv.lock` 4.0.11 → 4.2.4. The models lock was recompiled
+  with the `make models-lock` command plus `--upgrade-package filelock`,
+  so no other pin moved; both pinned hashes are PyPI's sha256 of
+  `filelock-4.2.4.tar.gz` and `filelock-4.2.4-py3-none-any.whl`. The models
+  role copies the lock into `/opt/pinka/models-venv` and installs from it,
+  so a host picks it up with the play; the release package carries the
+  file.
+- **zod** (`GHSA-mrhx-c7xc-m3w5`, high, `npm audit`): 3.25.76 → 4.6.7, by
+  `npm update puppeteer` within mermaid-cli's range (25.12.0 → 25.16.0),
+  whose chromium-bidi 157 requires `zod ^4.6.5`.
+
+After the change `npm audit` finds 0 vulnerabilities, and PyPI's JSON API
+lists no advisory for any pin of the five Python locks.
+
+### Why GitHub says "uv in /infra"
+
+The fresh repository's `main` was first pushed at `4915ce1`, which still
+had the infrastructure below `infra/` (`infra/uv.lock`,
+`infra/package-lock.json`); the move to the repository root (`68967e9`)
+reached `main` only with the merge of the pull request (`6ea7468`).
+An alert keeps the manifest path where Dependabot found the package, so
+alerts opened while `main` had that layout name `/infra`. The root locks
+had the same versions, so the alerts stayed true. Once this commit
+reaches `main`, the next scan should mark them fixed (or the manifest
+gone); this session cannot see it, since GitHub's Dependabot API answers
+403 here, so the owner checks the alert list after the merge.
+
+### The maintenance checklist
+
+`docs/how-to/maintenance-update.md` (linked from "How to update pinned
+versions"): every lock of
+the repository with whether a host installs from it and how to update it;
+review the Dependabot alerts and update the locks at each maintenance
+update; look for what GitHub has not flagged (`npm audit`, PyPI's
+advisories); gate, `make lock-check`, and for a shipped lock the release
+package.

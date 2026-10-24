@@ -1497,6 +1497,24 @@ its checks green and a commit proposal, and waits for the owner's
   gate's own `facts.yml`; a test runs `restore.yml` without the gate (a
   real check-mode run of its always-tagged tasks). Record:
   `docs/IMPLEMENTATION_NOTES.md`, "restore.yml without the gate".
+
+  Item 3 is `d9a98b0`, pushed on its own. Its CI, every job on its first
+  attempt: infra-ci (run 40081668579): changes, privacy, lint, test, docs,
+  all six check-mode lanes and `required` passed, `links` skipped (weekly),
+  `lock-check` the known red (24 marker errors; the same four tag
+  warnings); test-isolated (run 40081668541) and all six
+  check-mode-extended lanes (run 40081668552) passed. Item 4: every alerted package is
+  at a fixed version, certifi first (2026.10.23); none of the 16 alerts is
+  in a lock a host installs from (`uv.lock` and `package-lock.json` are
+  development only). pytest 9.1.1 needs a uv override of syrupy 4.8.0's
+  `pytest<9`; markdown-it, smol-toml and katex need npm `overrides`. Two
+  findings beyond the alerts, from the new checklist's checks: filelock in
+  the shipped models lock (and `uv.lock`), 4.2.4, and zod (`npm audit`),
+  4.6.7. Dependabot pull requests stay off (owner); the alerts are
+  reviewed and the locks updated at each maintenance update
+  (`docs/how-to/maintenance-update.md`). Record,
+  with the alert-by-alert table and why GitHub names `/infra`:
+  `docs/IMPLEMENTATION_NOTES.md`, "Dependabot alerts and the locks".
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness

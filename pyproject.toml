@@ -28,8 +28,10 @@ dev = [
   "ansible-lint==26.9.0",
   # git hooks (local hooks only, see .pre-commit-config.yaml)
   "pre-commit==4.6.2",
-  # tests (pytest 8: pytest-textual-snapshot 1.1.0 pins syrupy 4.8.0, which needs pytest<9)
-  "pytest==8.4.2",
+  # tests (pytest 9.0.3 or later fixes CVE-2025-71176; pytest-textual-snapshot
+  # 1.1.0, its latest, pins syrupy 4.8.0, which declares pytest<9: overridden
+  # below, the snapshot tests run on it)
+  "pytest==9.1.1",
   "pytest-textual-snapshot==1.1.0",
   # installer TUI (the pins of python.installer in versions.lock.yml)
   "textual==8.2.8",
@@ -49,6 +51,9 @@ dev = [
 [tool.uv]
 package = false
 required-version = "==0.12.23"
+# syrupy 4.8.0 (pinned by pytest-textual-snapshot 1.1.0) declares pytest<9;
+# pytest 9.0.3 fixes CVE-2025-71176 (Dependabot alert, owner's item 4).
+override-dependencies = ["pytest==9.1.1"]
 
 [tool.ruff]
 line-length = 100
