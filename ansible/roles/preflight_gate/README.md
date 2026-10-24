@@ -30,6 +30,12 @@ The switches and the cap come from the fresh profile's
 `requirements.switches`, so every role follows what preflight checked with
 the same plan.
 
+The entry point `facts` (`tasks/facts.yml`) sets them from the profile in
+`preflight_gate_profile`. `main` passes its fresh profile; `restore.yml`,
+which runs as its own play without the gate, imports `facts` with the
+profile bootstrap passes (`host_profile`), so a restore re-verifies the
+model and re-renders the vLLM deployment exactly where vLLM serves.
+
 ## Variables
 
 See `meta/argument_specs.yml`.

@@ -15,12 +15,21 @@ DETECTED = {"gpu_inference": True, "gpu_training": True, "vm_targets": True}
 def facts(switches: dict[str, Any], **extra: Any) -> dict[str, Any]:
     """The gate's facts for a fresh profile with these switches."""
     tasks = load_yaml(ROLES / "preflight_gate" / "tasks" / "main.yml")
-    expose = next(t for t in tasks if t.get("name") == EXPOSE)
+    imported = next(t for t in tasks if t.get("ansible.builtin.import_tasks") == "facts.yml")
+    expose = next(
+        t
+        for t in load_yaml(ROLES / "preflight_gate" / "tasks" / "facts.yml")
+        if t.get("name") == EXPOSE
+    )
     profile = {"features": DETECTED, "requirements": {"switches": switches}}
     content = base64.b64encode(json.dumps(profile).encode()).decode()
     scope = ansible_vars(GROUP_VARS, preflight_gate_fresh={"content": content}, **extra)
-    for name in ("preflight_gate_profile", "preflight_gate_switches"):
-        scope[name] = template_value(expose["vars"][name], scope)
+    scope["preflight_gate_profile"] = template_value(
+        imported["vars"]["preflight_gate_profile"], scope
+    )
+    scope["preflight_gate_switches"] = template_value(
+        expose["vars"]["preflight_gate_switches"], scope
+    )
     found: dict[str, Any] = template_value(expose["ansible.builtin.set_fact"], scope)
     return found
 

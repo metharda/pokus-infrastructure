@@ -41,6 +41,17 @@
         name: platform_facts
       tags: [always]
 
+    # restore.yml runs without site.yml's preflight gate: the feature flags
+    # after the switches and the training settings come from the profile
+    # bootstrap passes, as the gate's come from its fresh one.
+    - name: Expose the feature flags and the training settings
+      ansible.builtin.import_role:
+        name: preflight_gate
+        tasks_from: facts
+      vars:
+        preflight_gate_profile: "{{ host_profile }}"
+      tags: [always]
+
     - name: Check that a backup repository is configured
       ansible.builtin.stat:
         path: /etc/pinka/secrets/backup/repository

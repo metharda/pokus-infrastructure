@@ -32,3 +32,18 @@ argument_specs:
         type: path
         default: /etc/pinka/host-profile.json
         description: Profile to compare with; bootstrap passes the profile it validated (pinka_bootstrap.profile_path).
+  facts:
+    short_description: Expose a host profile's feature flags after the switches and the training settings.
+    description:
+      - Sets pinka_host_profile, pinka_features, pinka_training and pinka_training_caps from
+        preflight_gate_profile; main passes its fresh profile, restore.yml the profile bootstrap
+        passes, since it runs without the gate.
+    options:
+      preflight_gate_profile:
+        type: dict
+        required: true
+        description: The host profile whose requirements.switches decide the flags.
+      training_caps:
+        type: dict
+        required: true
+        description: The caps on training jobs; memory_max auto takes the cap preflight computed (§2.3).

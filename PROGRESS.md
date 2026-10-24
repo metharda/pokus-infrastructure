@@ -1483,6 +1483,20 @@ its checks green and a commit proposal, and waits for the owner's
   system it is 66 GiB with VM targets and 42 GiB with containers on both
   144 and 386 GiB free; the table is in `docs/IMPLEMENTATION_NOTES.md`,
   "The computed Incus pool size".
+
+  Item 2 is `5fb3fe8`, pushed on its own. Its CI, every job on its first
+  attempt: infra-ci (run 40035463027): changes, privacy, lint, test, docs,
+  all six check-mode lanes and `required` passed, `links` skipped (weekly),
+  `lock-check` the known red (24 marker errors; tag warnings for postgres,
+  refplat_job, ubuntu_2404 and debian_13); test-isolated (run 40035463074)
+  and all six check-mode-extended lanes (run 40035462953) passed;
+  release-package and lock-collections did not run (their inputs are
+  unchanged). Item 3: `restore.yml` sets the
+  feature flags (after the switches), `pinka_training` and
+  `pinka_training_caps` from the profile bootstrap passes, through the
+  gate's own `facts.yml`; a test runs `restore.yml` without the gate (a
+  real check-mode run of its always-tagged tasks). Record:
+  `docs/IMPLEMENTATION_NOTES.md`, "restore.yml without the gate".
 - **Real-machine tests** (owner, after 3f, verbatim; after 3f-1 and before
   the rewrite). The descriptions of the two computers are generalized to
   machine classes, in brackets (owner, decision 2 after the public-readiness
@@ -1991,7 +2005,11 @@ through "after step 13", and "Pins of the vendor sources (make lock-pins)"):
   provisioning, so `pinka_features` is undefined there and the model
   re-verification and the re-render of the restored vLLM deployment never
   run. Fix: derive the flags (after the switches) from the host profile
-  bootstrap passes, as `preflight_gate` does.
+  bootstrap passes, as `preflight_gate` does. **Fixed** (the owner's item 3
+  after `a9bb439`, "a defect in an existing feature, not side work", its
+  own commit after `5fb3fe8`): `preflight_gate/tasks/facts.yml` sets the
+  flags and the training settings for the gate and for `restore.yml`;
+  `ansible/tests/test_restore_run.py` runs `restore.yml` on its own.
 
 - **NVIDIA driver pins outside Ubuntu** (open item, owner, with the
   "commit" for the GPU guard). The driver packages of Debian 13, Fedora 43

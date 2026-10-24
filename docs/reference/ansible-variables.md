@@ -2258,7 +2258,7 @@ Role of the metrics exporter (pg_monitor).
 
 Re-run preflight and stop if the host changed.
 
-Entry points: `main` (Re-run preflight and stop if the host changed). Role README: `ansible/roles/preflight_gate/README.md`.
+Entry points: `main` (Re-run preflight and stop if the host changed), `facts` (Expose a host profile's feature flags after the switches and the training settings). Role README: `ansible/roles/preflight_gate/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -2275,6 +2275,7 @@ Preflight wrapper of this checkout.
 
 - Type: `path`
 - Default: `{{ pinka_dir }}/preflight/pinka-preflight`
+- Entry points: `main`
 
 ### `preflight_gate_profile_path`
 
@@ -2282,6 +2283,15 @@ Profile to compare with; bootstrap passes the profile it validated (pinka_bootst
 
 - Type: `path`
 - Default: `{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}`
+- Entry points: `main`
+
+### `preflight_gate_profile`
+
+The host profile whose requirements.switches decide the flags.
+
+- Type: `dict`
+- Required, no default
+- Entry points: `facts`
 
 ## provider_baremetal
 

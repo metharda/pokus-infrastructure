@@ -6409,3 +6409,37 @@ an operator who wants a larger pool sets one.
 - The spec's §8.1 example shows `incus_pool_size: 300GiB`; recorded as the
   approved deviation PL1 (the owner's item 2), for the next spec edit, rather
   than edited in `specs/`.
+
+## restore.yml without the gate (owner, item 3 after `a9bb439`)
+
+The owner, verbatim: "The restore.yml bug (pinka_features missing on
+restore) is a defect in an existing feature, not side work: fix it as its
+own small commit, with a test that runs restore without site.yml's gate."
+
+- The defect: `restore.yml` runs as its own `ansible-playbook` after
+  `site.yml`, and only `preflight_gate` (in `site.yml`) set
+  `pinka_features`. Restore's conditions use
+  `pinka_features.gpu_inference | default(false)`, so the model
+  re-verification and the re-render of the restored vLLM deployment were
+  skipped without an error. Since `a9bb439` the platform role's settings
+  also need `pinka_training` and `pinka_training_caps`, which restore did
+  not have either.
+- The fix: `preflight_gate/tasks/facts.yml` (entry point `facts`) sets
+  `pinka_host_profile`, `pinka_features` (after the switches),
+  `pinka_training` and `pinka_training_caps` from `preflight_gate_profile`.
+  The gate imports it with its fresh profile; `restore.yml` imports it
+  right after `platform_facts`, tagged `always`, with the profile
+  bootstrap passes (`host_profile`, the profile of this run's preflight).
+  One definition for both.
+- The test (`ansible/tests/test_restore_run.py`): a real
+  `ansible-playbook restore.yml --check --tags always` against localhost,
+  which runs only the variable checks, `platform_facts` and the facts
+  (nothing on the host changes), with the JSON callback; for a host whose
+  vLLM serves and one with both switches off, the flags follow the
+  switches and the conditions of the re-verification and the re-render
+  evaluate to whether vLLM serves. A second test checks that the gate and
+  restore import the same file and that restore does so before any task
+  reads the flags. Run against the old `restore.yml`, the first test
+  fails.
+- `rotate.yml` was checked: its platform and incus entry points
+  (`rotate_signing`, `rotate_certificates`) read none of the flags.
