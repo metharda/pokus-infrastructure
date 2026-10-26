@@ -20,9 +20,10 @@ never in an issue or a pull request.
 - `make test-random-order` and `make test-isolated` pass: no test relies on
   the order of the tests or on what another test file left in the process.
 - Never weaken a check, skip a test or hide a warning to get green.
-- Documentation changes with the code, following `docs/DOCS_SPEC.md`.
-  Generated files (the references, the support matrix and the files listed
-  in `CLAUDE.md`) change only through `make generate`.
+- Documentation changes with the code, following the conventions that
+  `make lint` and `make docs` check. Generated files (the references, the
+  support matrix and the other files `tools/gen` writes, which `make docs`
+  checks for drift) change only through `make generate`.
 - The tests never provision the machine they run on. Bootstrap and the full
   play run only on a lab host or in the disposable VMs of
   `make test-distros`.

@@ -34,13 +34,6 @@ from pinka_lockcheck import bundle, checks, devsetup, net
 CATEGORIES = ("containers", "binaries", "keys", "images", "gpus")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
 TODO_EXCLUDES = (
-    "CLAUDE.md",
-    "PROGRESS.md",
-    "PROGRESS-ARCHIVE.md",
-    "specs/",
-    "docs/BUILD_PROMPT.md",
-    "docs/DOCS_SPEC.md",
-    "docs/IMPLEMENTATION_NOTES.md",
     "docs/how-to/update-versions.md",
     "docs/reference/versions.md",
     "docs/reference/component-sources.md",

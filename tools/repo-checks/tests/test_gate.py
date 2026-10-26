@@ -259,6 +259,7 @@ def test_the_makefile_runs_the_same_steps_in_both_modes() -> None:
         "lint-ansible",
         "lint-portability",
         "lint-neutral",
+        "lint-references",
         "lint-markdown",
         "lint-spelling",
         "lint-docs",

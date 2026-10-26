@@ -128,7 +128,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 
 | Path | Content |
 | --- | --- |
-| `docs/` | Documentation (MkDocs). `docs/BUILD_PROMPT.md` is the binding build specification, `docs/DOCS_SPEC.md` the documentation specification, `docs/contracts.md` the interface to pokus-platform. |
+| `docs/` | Documentation (MkDocs). `docs/contracts.md` is the interface to pokus-platform. |
 | `bootstrap/` | `bootstrap.sh`, the single entry point that provisions a lab host, its shell libraries, the hash-locked Ansible requirements and tests. |
 | `preflight/` | Host detection and the support decision (`pinka-preflight`), the support matrix, the host profile schema, fixtures and tests. |
 | `installer/` | The installer TUI and the answers replay that `bootstrap.sh` runs (`pinka_installer`), the answers schema, its hash-locked requirements and tests. |

@@ -9,12 +9,6 @@ site_dir: site
 strict: true
 copyright: Documentation licensed under CC-BY-4.0; code under Apache-2.0.
 
-# Verbatim specifications and working notes are not site pages.
-exclude_docs: |
-  BUILD_PROMPT.md
-  DOCS_SPEC.md
-  IMPLEMENTATION_NOTES.md
-
 theme:
   name: material
   features:

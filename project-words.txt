@@ -1,7 +1,6 @@
 # Project dictionary for cspell (one word per line, case-insensitive).
 akmod
 akmods
-albattani
 almalinux
 archlinux
 ausearch
@@ -90,7 +89,6 @@ prefs
 prepreflight
 preseed
 procps
-qfwwps
 qwen
 recompiles
 refplat

@@ -14,9 +14,12 @@ from pinka_repo_checks import changes
     ("paths", "only_docs"),
     [
         (["docs/how-to/connect.md"], True),
-        (["PROGRESS.md", "docs/IMPLEMENTATION_NOTES.md", "ansible/roles/ssh/README.md"], True),
+        (
+            ["SECURITY.md", "docs/explanation/capacity-planning.md", "ansible/roles/ssh/README.md"],
+            True,
+        ),
         (["docs/assets/installer/remote.svg", "mkdocs.yml", "project-words.txt"], True),
-        (["specs/qa-spec.md"], True),
+        (["installer-answers/README.md"], True),
         (["docs/how-to/connect.md", "ansible/roles/ssh/defaults/main.yml"], False),
         (["Makefile"], False),
         (["tools/gen/pinka_gen/pages.py"], False),

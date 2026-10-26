@@ -231,11 +231,11 @@ def test_run_and_extract_mermaid(tmp_path: Path, capsys: pytest.CaptureFixture[s
         front() + "```mermaid\ngraph TD\n  A-->B\n```\n", encoding="utf-8"
     )
     (docs / "sub" / "x.md").write_text(front() + "# X\n", encoding="utf-8")
-    (docs / "BUILD_PROMPT.md").write_text("# not a site page\n", encoding="utf-8")
-    assert docs_lint.run(docs, excludes=["BUILD_PROMPT.md"], component="infra", release=False) == 0
+    (docs / "verbatim.md").write_text("# not a site page\n", encoding="utf-8")
+    assert docs_lint.run(docs, excludes=["verbatim.md"], component="infra", release=False) == 0
     assert "2 pages, 0 errors, 2 warnings" in capsys.readouterr().err
     out = tmp_path / "mmd"
-    assert docs_lint.extract_mermaid(docs, excludes=["BUILD_PROMPT.md"], out=out) == 0
+    assert docs_lint.extract_mermaid(docs, excludes=["verbatim.md"], out=out) == 0
     assert (out / "index__1.mmd").read_text(encoding="utf-8") == "graph TD\n  A-->B\n"
     assert (out / "index.tsv").read_text(encoding="utf-8").startswith("index__1.mmd\t")
 

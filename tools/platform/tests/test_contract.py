@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 import shutil
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -152,32 +151,6 @@ def test_exactly_the_eight_profiles() -> None:
         CONTRACT.schema["properties"]["services"]["items"]["properties"]["profile"]["enum"]
     )
     assert service_enum == SERVICE_PROFILES
-
-
-def spec_profile_table() -> tuple[list[str], list[list[str]]]:
-    """The header and the rows of the profile table in BUILD_PROMPT §12.2."""
-    text = (INFRA / "docs" / "BUILD_PROMPT.md").read_text(encoding="utf-8")
-    section = text.split("\n### 12.2 Privilege profiles\n", 1)[1].split("\n### ", 1)[0]
-    lines = [line for line in section.splitlines() if line.startswith("|")]
-    rows = [[cell.strip() for cell in line.strip("|").split(" | ")] for line in lines]
-    assert set("".join(rows[1])) <= set("-|"), "the second line is the delimiter row"
-    return rows[0], rows[2:]
-
-
-def test_profiles_match_the_spec_table_cell_by_cell() -> None:
-    # Owner decision on 3d.1: profiles.yml is the single source of §12.2's table.
-    header, rows = spec_profile_table()
-    data = yaml.safe_load((contract_mod.DEFAULT_DIR / "profiles.yml").read_text(encoding="utf-8"))
-    assert header == ["Profile", *data["columns"].values()]
-    assert len(rows) == len(data["profiles"])
-    for row, (name, profile) in zip(rows, data["profiles"].items(), strict=True):
-        match = re.fullmatch(r"`([a-z-]+)`( \(jobs only\))?", row[0])
-        assert match, row[0]
-        assert match.group(1) == name
-        assert (profile["kind"] == "job") == bool(match.group(2)), name
-        assert len(row) == len(header), name
-        for column, cell in zip(data["columns"], row[1:], strict=True):
-            assert profile["table"][column] == cell, f"{name}.{column}"
 
 
 def test_profile_tables_are_complete() -> None:

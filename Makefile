@@ -40,9 +40,7 @@ RELEASE_OUT ?= $(BUILD)/release
 # package builder, preflight), for every target that runs it.
 TEST_DISTROS_PATH := tools/test-distros:tools/platform:tools/lockcheck:preflight
 
-# Pages under docs/ that are kept verbatim or are working notes, not site pages.
-DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
-DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
+DOCS_LINT_ARGS := --docs-dir docs --component infra
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
   ansible/roles/incus/library ansible/roles/install_record/library ansible/roles/uninstall/library \
@@ -101,7 +99,7 @@ help: ## List targets
 VERBOSE ?= 0
 GATE = PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks gate --make "$(MAKE)" --log-dir $(BUILD)/gate
 LINT_STEPS := lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral \
-  lint-markdown lint-spelling lint-docs lint-mermaid privacy
+  lint-references lint-markdown lint-spelling lint-docs lint-mermaid privacy
 TEST_STEPS := test-py39 test-pytest
 DOCS_STEPS := drift-check docs-coverage docs-build
 
@@ -212,6 +210,10 @@ lint-portability: ## Only platform_facts may read distribution facts (BUILD_PROM
 lint-neutral: ## Infra's code names no particular platform (BUILD_PROMPT §11)
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks neutrality --root .
 
+.PHONY: lint-references
+lint-references: ## No references to working material kept outside the repository (budget in references.json)
+	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks references --root .
+
 .PHONY: lint-markdown
 lint-markdown: setup ## markdownlint
 	$(NODE_BIN)/markdownlint-cli2
@@ -227,7 +229,7 @@ lint-docs: setup ## Front matter, code blocks and qa markers of every docs page
 .PHONY: lint-mermaid
 lint-mermaid: setup ## Validate Mermaid diagram syntax with mermaid-cli
 	@rm -rf $(BUILD)/mermaid
-	@$(REPO_CHECKS) mermaid-extract --docs-dir docs $(addprefix --exclude ,$(DOCS_EXCLUDES)) --out $(BUILD)/mermaid
+	@$(REPO_CHECKS) mermaid-extract --docs-dir docs --out $(BUILD)/mermaid
 	@status=0; \
 	while IFS=$$'\t' read -r name where; do \
 	  if ! $(NODE_BIN)/mmdc -q -p tools/repo-checks/puppeteer.json \

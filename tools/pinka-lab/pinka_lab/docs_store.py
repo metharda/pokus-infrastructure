@@ -1,6 +1,6 @@
 """Installed documentation releases (BUILD_PROMPT §7.19).
 
-A release is a docs site tarball (``docs/DOCS_SPEC.md`` §B.4) with its
+A release is a docs site tarball with its
 sha256. Each installed version is a directory ``<base>/<version>/``; the
 symbolic link ``<base>/current`` names the one the docs service serves and
 switches in one step (a new link renamed over the old one). ``versions.json``

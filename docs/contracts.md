@@ -35,9 +35,9 @@ and `contract/` in the same commit, describe the change in the changelog,
 and let platforms adapt before they pin the new release. A platform never
 works around a missing item; it requests a contract change instead. The
 changes against contract v1 are listed in
-[Changes from contract v1](#changes-from-contract-v1); where the build
-prompt left gaps or was changed by an owner decision, the resolution IDs in
-[Resolutions](#resolutions) apply (for example V2).
+[Changes from contract v1](#changes-from-contract-v1); the resolutions in
+[Resolutions](#resolutions) apply, and each is cited by its ID (for example
+V2).
 
 ## The manifest
 
@@ -430,9 +430,7 @@ address and firewalled; none is public.
 
 ## Resolutions
 
-Resolutions of gaps and owner decisions that this contract relies on; the
-full list of approved deviations is in `PROGRESS.md` at the repository
-root.
+This contract relies on the following resolutions.
 
 | ID | Resolution | Status in contract v2 |
 | --- | --- | --- |

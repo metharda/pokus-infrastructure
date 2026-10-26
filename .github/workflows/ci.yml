@@ -129,7 +129,7 @@ jobs:
         run: command -v ssh-keygen
       # PostgreSQL 18, the major the lab pins, from PGDG with the signing key that
       # Ubuntu's postgresql-common ships; its fingerprint was verified from that
-      # package (docs/IMPLEMENTATION_NOTES.md, "Verified in 3d.4").
+      # package.
       - name: PostgreSQL 18 from PGDG (the restricted-schema SQL tests run on it) and nftables
         run: |
           set -euo pipefail

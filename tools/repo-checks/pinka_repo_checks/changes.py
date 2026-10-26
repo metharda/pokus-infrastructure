@@ -17,9 +17,9 @@ import subprocess
 import sys
 from collections.abc import Iterable, Sequence
 
-# Docs and records: pages, specifications, Markdown anywhere (the role READMEs
-# and the records at the root included) and the docs' own tooling.
-DOC_DIRS = ("docs/", "specs/")
+# Docs: pages, Markdown anywhere (the role READMEs and the files at the root
+# included) and the docs' own tooling.
+DOC_DIRS = ("docs/",)
 DOC_FILES = frozenset({"mkdocs.yml", "cspell.json", "project-words.txt", "LICENSE-docs"})
 NO_COMMIT = "0" * 40
 COMMIT_RE = re.compile(r"[0-9a-f]{7,64}")
