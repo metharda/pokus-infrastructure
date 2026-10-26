@@ -191,3 +191,29 @@ def test_the_evaluator_reads_github_expressions_as_github_does() -> None:
     assert evaluate("!(github.event_name == 'push')", context) is False
     assert evaluate("always() && github.ref == 'refs/heads/moving/on'", context) is True
     assert render("a-${{ github.sha }}", context) == "a-" + "a" * 40
+
+
+def test_the_references_budget_compares_every_commit_of_a_push_or_pull_request() -> None:
+    jobs = workflow("ci.yml")["jobs"]
+    steps = jobs["lint"]["steps"]
+    (step,) = [s for s in steps if str(s.get("run", "")).startswith("make lint-references-budget")]
+    assert steps.index(step) > steps.index({"run": "make lint VERBOSE=1"})
+    assert step["run"] == (
+        'make lint-references-budget BUDGET_BASE="$BASE" BUDGET_HEAD="$HEAD"'
+        " BUDGET_FALLBACK=origin/main"
+    )
+    assert step["if"] == "${{ !cancelled() }}"  # also after a failing lint step
+    # The same range as the changes job: the push's or the pull request's.
+    assert step["env"]["BASE"] == jobs["changes"]["steps"][1]["env"]["BASE"]
+    base, head = (
+        str(step["env"][k]).removeprefix("${{").removesuffix("}}") for k in ("BASE", "HEAD")
+    )
+    push = event("push")
+    push["github"]["event"] = {"before": "b" * 40}
+    assert (evaluate(base, push), evaluate(head, push)) == ("b" * 40, "a" * 40)
+    fork = event("pull_request_fork")
+    fork["github"]["event"]["pull_request"].update(base={"sha": "c" * 40}, head={"sha": "d" * 40})
+    assert (evaluate(base, fork), evaluate(head, fork)) == ("c" * 40, "d" * 40)
+    manual = event("workflow_dispatch")
+    assert not evaluate(base, manual)  # no base: the range starts after main
+    assert evaluate(head, manual) == "a" * 40

@@ -7,6 +7,7 @@ library alone.
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 
@@ -115,6 +116,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--root", type=Path, default=Path(), help="the repository root (default: current)"
     )
 
+    budget = sub.add_parser(
+        "references-budget",
+        help="check that the references lint lets no more through than at the parent commit",
+        description=(
+            "Compare the references lint's budget and allowlist (references.json), the paths "
+            "it does not read and the names it takes as conventional (EXCLUDED and "
+            "CONVENTIONAL in references.py) and the identifiers of the contract's Resolutions "
+            "table (docs/contracts.md) with the parent commit: fail when the budget goes up, "
+            "an allowlist entry, excluded path, conventional name or identifier is added, "
+            "references.json or references.py is gone or cannot be read, one of the three "
+            "files or a directory above one is a symbolic link, or git cannot compare. Without "
+            "--head the work tree is compared with --base; with --head every commit of "
+            "--base..--head is compared with each of its parents, and --head with the merge "
+            "base of --base and --head. An empty, all-zero or unknown --base is replaced by "
+            "--fallback-base; when that is missing or unknown too, --head is compared with its "
+            "parents alone."
+        ),
+    )
+    budget.add_argument(
+        "--root", type=Path, default=Path(), help="the repository root (default: current)"
+    )
+    budget.add_argument(
+        "--base", default="HEAD", help="the commit compared with, or before the range (HEAD)"
+    )
+    budget.add_argument("--head", help="the range's last commit (default: the work tree)")
+    budget.add_argument(
+        "--fallback-base",
+        default="",
+        help="the range's base when --base is no known commit (only with --head)",
+    )
+
     gate = sub.add_parser(
         "gate",
         help="run a gate target's steps quietly: one summary line, every failure in full",
@@ -183,6 +215,13 @@ def main(argv: list[str]) -> int:  # noqa: PLR0911 - one return per check
         from pinka_repo_checks import references  # noqa: PLC0415 - stdlib-only path
 
         return references.run(args.root)
+    if args.command == "references-budget":
+        from pinka_repo_checks import references_budget  # noqa: PLC0415 - stdlib-only path
+
+        if args.fallback_base and args.head is None:
+            print("references-budget: --fallback-base needs --head", file=sys.stderr)
+            return 2
+        return references_budget.run(args.root, args.base, args.head, args.fallback_base)
     if args.command == "gate":
         from pinka_repo_checks import gate  # noqa: PLC0415 - stdlib-only path
 

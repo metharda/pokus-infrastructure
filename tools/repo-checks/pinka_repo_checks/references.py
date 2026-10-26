@@ -27,11 +27,14 @@ malformed ``references.json`` stop it with an error.
 While matches remain, their number must equal the budget in ``references.json``:
 more fails (a new reference), fewer fails until the budget is lowered to the
 count. Its configuration decides what it sees: the budget and the allowlist,
-the skips above, :data:`EXCLUDED`, :data:`PATTERNS`, and the contract's
-Resolutions table (an identifier the table defines is exempt in parentheses
-and in lists everywhere). A change to any of them, or a file moved where the
-lint does not read, can let a reference pass; review of such changes keeps the
-budget going down.
+the skips above, :data:`EXCLUDED`, :data:`CONVENTIONAL`, :data:`PATTERNS`, and
+the contract's Resolutions table (an identifier the table defines is exempt in
+parentheses and in lists everywhere). A change to any of them, or a file moved
+where the lint does not read, can let a reference pass.
+:mod:`pinka_repo_checks.references_budget` fails when the budget goes up or an
+allowlist entry, an :data:`EXCLUDED` path, a :data:`CONVENTIONAL` name or a
+Resolutions identifier is added, compared with the parent commits; review of
+changes to the rest keeps the budget from going up.
 Within the budget the lint passes with one warning; at zero it prints none.
 
 Every pattern is assembled so that this file does not match it. This module
@@ -55,6 +58,8 @@ from typing import Any
 from pinka_repo_checks.trees import in_third_party_tree
 
 DATA = Path(__file__).parent / "references.json"
+# The contract, relative to the repository root: its Resolutions table.
+CONTRACT = Path("docs") / "contracts.md"
 SECTION_SIGN = chr(0xA7)  # the section sign
 # All-caps Markdown files that are ordinary in any repository.
 CONVENTIONAL = frozenset(
@@ -331,13 +336,13 @@ def scan(root: Path) -> list[Finding]:
     Returns:
         Every finding, allowed ones included.
     """
-    contracts = root / "docs" / "contracts.md"
+    contracts = root / CONTRACT
     resolutions: frozenset[str] = frozenset()
     try:
         if contracts.is_file():
             resolutions = resolution_ids(contracts.read_text(encoding="utf-8", errors="replace"))
     except OSError as err:
-        raise RuntimeError(f"cannot read docs/contracts.md: {err}") from err
+        raise RuntimeError(f"cannot read {CONTRACT.as_posix()}: {err}") from err
     findings: list[Finding] = []
     for relative in files(root):
         path = root / relative
