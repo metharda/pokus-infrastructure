@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.6)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
@@ -39,10 +39,10 @@ the lab's Linux host.
 - On WSL2 the GPU comes from the Windows driver through CDI in WSL mode, not
   through Docker Desktop.
 
-## Amendment (plan item 3f-1)
+## Amendment
 
-A Docker Engine that was on the machine before pinka is used as it is (owner
-decision on 3f-1; BUILD_PROMPT §7.6): pinka never writes its `daemon.json`,
+A Docker Engine that was on the machine before pinka is used as it is: pinka
+never writes its `daemon.json`,
 never restarts it and never pins, holds or replaces its packages. The docker
 role writes `daemon.json` only on a Docker it installed, with only
 `live-restore`, `data-root`, `selinux-enabled` on SELinux hosts and, on a

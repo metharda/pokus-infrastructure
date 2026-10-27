@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.5, §19.6)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
@@ -32,7 +32,7 @@ distribution's tooling and break whatever else the operator configured.
    the `pinka-tailnet` firewalld zone, or ufw rules commented `pinka`.
    It never flushes or rewrites tables, zones or rules owned by Docker, Incus,
    firewalld or ufw, and never edits a distribution's nftables configuration
-   file. (Added with the pre-existing access of §7.5: what the owner
+   file. (Added with the handling of pre-existing access: what the owner
    consents to close is dropped by one more table of pinka's own,
    `inet pinka_access_guard`, which `pinka-nftables.service` loads on every
    backend, so closing never changes the owner's zones or rules either.)

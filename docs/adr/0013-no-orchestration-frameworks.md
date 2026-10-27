@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-07
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §1)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 

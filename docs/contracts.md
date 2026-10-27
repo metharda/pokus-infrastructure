@@ -105,10 +105,11 @@ every flag, socket rule and cap.
 
 "Never" means infra refuses the manifest and also revokes the grant at run
 time; "none" means the profile has no such access to begin with. Every
-service gets the hardening baseline of the build prompt (§7.14), which a
-manifest cannot override; `untrusted-agent` gets the additions listed there,
-and a `gpu-trainer` container gets options fixed by the GPU arbiter. Why
-the profiles are cut this way is explained in
+service gets infra's hardening baseline, which a manifest cannot override
+beyond the `wx-memory` relaxation; `untrusted-agent` gets additions to it,
+and a `gpu-trainer` container gets options fixed by the GPU arbiter. The
+baseline, the agent's additions and why the profiles are cut this way are
+explained in
 [Privilege profiles and restricted data](explanation/privilege-profiles.md).
 
 From the manifest, infra renders:
@@ -435,8 +436,8 @@ This contract relies on the following resolutions.
 | ID | Resolution | Status in contract v2 |
 | --- | --- | --- |
 | B2 | Deploy from a root-only bare mirror with `git archive` of one subtree; `DEPLOYED_FROM.json`; no `.git` in deployed paths | in force, for the release and every content package |
-| B3 | Bootstrap records the repository commit and the `infra/` tree hash; the dirty check covers `infra/` only | ended with the move to the repository root (3f): the tree hash and the dirty check cover the whole repository; a release package records the same from `release/RELEASE.json` |
-| B4 | Component tag prefixes (`infra-v`; a platform's prefixes are its sources' `tag_prefix`) | ended with the move to the repository root (3f): this repository's release tags are `vX.Y.Z`; a platform's tags still follow its sources' `tag_prefix` |
+| B3 | Bootstrap records the repository commit and the `infra/` tree hash; the dirty check covers `infra/` only | ended with the move to the repository root: the tree hash and the dirty check cover the whole repository; a release package records the same from `release/RELEASE.json` |
+| B4 | Component tag prefixes (`infra-v`; a platform's prefixes are its sources' `tag_prefix`) | ended with the move to the repository root: this repository's release tags are `vX.Y.Z`; a platform's tags still follow its sources' `tag_prefix` |
 | C2, C7, C8 | one platform's socket set, short names, socket groups with ACLs and peercred | replaced by the manifest's sockets, the connection rules and `principals.json` |
 | C3 | deployment switching through a socket-activated root helper | replaced by the GPU arbiter |
 | C4 | telemetry for VM targets through a dedicated collector listener | in force |

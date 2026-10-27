@@ -1,6 +1,6 @@
 # platform
 
-Generic platform deployment (BUILD_PROMPT §7.14, contract v2); tag
+Generic platform deployment (contract v2); tag
 `platform`. At most one platform per lab, only on `full` and `lab` nodes, and
 only when the host variables set a platform source (`platform`). The role
 names no platform: everything comes from the release's
@@ -49,35 +49,38 @@ command `/usr/local/libexec/pinka/pinka-platform`):
    `/srv/pinka/platforms/<platform>/content/<package>/<name>/`, each with
    `DEPLOYED_FROM.json`. `<name>` is the release tag, or the full commit of a
    branch or commit.
-7. **Replace** (`--replace-platform <old>` only): the old platform's units
-   and sockets, socket directories, configuration files, CLI link and
+7. **Replace** (`--replace-platform <old>` only): the old platform is
+   drained (its `drain` hook) and stopped if it runs; then its units and
+   sockets, socket directories, configuration files, CLI link and
    wrapper go (from what was rendered for it, `rendered.json`), its accounts
    are locked, its database roles become `NOLOGIN` and its Incus
    certificates leave the trust store. Its releases, state, restricted area
    and database stay until `pinka platform purge <old>`.
 8. **Render** (`tasks/render.yml`): `pinka-platform deploy render` computes
-   everything the profiles grant, and the role applies it with ordinary
-   modules:
+   everything the profiles grant. For a new release or new content, the
+   running release is drained (its `drain` hook) and stopped next, before
+   the role changes anything it uses; then the role applies the rendering
+   with ordinary modules:
    - groups (the database socket group `<platform>-db`, one client group per
      socket) and system accounts `<platform>-<service>`,
      `<platform>-<job>` and `<platform>-migrate` with exactly the groups
-     their profiles allow (the tool refuses any membership §12.4 forbids:
-     the agent and training jobs never join `pinka-restricted`, the
-     database socket group or `pinka-query`);
+     their profiles allow (whatever the manifest and the profile data say,
+     the tool refuses to let the agent or a training job join
+     `pinka-restricted`, the database socket group or `pinka-query`);
    - directories (state 0700 per service, secrets 0750 `root:<account>`, the
      signing directory, the QA directories), the services' configuration
      (`/etc/pinka/platform/config/<service>.json`, 0640 `root:<account>`) and
      secrets from the vault (`vault_platform_secrets`, 0640);
-   - one hardened service unit per service (the baseline of §7.14 in spec
+   - one hardened service unit per service (the hardening baseline in its fixed
      order, the profile's network rules, the agent's empty lab directories
      with only its allowlist bound in) and one socket unit per socket
      (`<platform>-<service>-<socket>.socket`: owner the serving account,
      group the client group, 0660, passed to the service by socket
      activation under the socket's name, POSIX ACL entries for `pinka` and
      `pinka-admin` where humans may connect), grouped in
-     `pinka-platform.target`; installed, not started (the switch with the
-     hooks follows in plan step 3d.4); units of the previous release that
-     the new one lacks are stopped and removed;
+     `pinka-platform.target`; installed, not started (`start.yml` starts
+     them after the lab session); units of the previous release that the
+     new one lacks are stopped and removed;
    - `principals.json` and `endpoints.toml` (`deploy principals`, once the
      accounts exist), the signing key, the Incus certificates, the database
      (roles, schemas, passwords, the closed `restricted` schema and its
@@ -88,9 +91,16 @@ command `/usr/local/libexec/pinka/pinka-platform`):
    The roles after this one (`opa`, `observability`, `vllm`, `backup`,
    `doctor`) read the same rendering from `/etc/pinka/platform/rendered.json`
    through the `active_platform` role.
-9. **Switch**: the `current` links, `/etc/pinka/platform/active.json`,
-   `/etc/pinka/platform/rendered.json` (without the configuration contents)
-   and the deployment record in `/var/lib/pinka/platforms/<platform>/`.
+9. **Switch** (`tasks/switch.yml`): a running release is drained and
+   stopped now if step 8 changed its accounts, configuration, secrets,
+   `principals.json` and `endpoints.toml` or units; a new release's
+   `migrate` hook runs and, with a database, schema `restricted` is checked
+   (a failure of either ends the deployment with the platform stopped);
+   then `deploy activate` writes the `current` links,
+   `/etc/pinka/platform/active.json`, `/etc/pinka/platform/rendered.json`
+   (without the configuration contents) and the deployment record in
+   `/var/lib/pinka/platforms/<platform>/`, and enables the units in
+   `pinka-platform.target`.
 
 `tasks_from: rotate_signing` (used by `rotate.yml --tags signing`) replaces the
 signing key and publishes the new public key; old ones stay.

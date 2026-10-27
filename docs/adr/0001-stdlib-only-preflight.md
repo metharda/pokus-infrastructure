@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infrastructure maintainers (owner answer E10 for the matrix format)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
@@ -47,7 +47,7 @@ real hardware.
 
 ## Alternatives considered
 
-- **A bundled YAML subset parser** (explicitly allowed by BUILD_PROMPT §4):
+- **A bundled YAML subset parser**:
   rejected because a hand-written parser is a new source of subtle bugs in
   the component that gates installation.
 - **Third-party libraries in a bootstrap environment** (PyYAML, jsonschema):

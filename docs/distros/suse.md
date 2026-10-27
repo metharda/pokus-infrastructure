@@ -59,5 +59,5 @@ Boot uses the MOK flow.
 
 ## Known issues
 
-- Several package names on this family could not be verified from the build
-  environment; the play refuses unverified entries rather than guessing.
+- Several package names on this family have not been verified yet; the play
+  refuses unverified entries rather than guessing.

@@ -8,9 +8,9 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0010: PostgreSQL on Unix sockets only
 
-- **Status:** accepted (Grafana and the exporter on sockets: awaiting owner confirmation)
+- **Status:** accepted (resolution E13)
 - **Date:** 2026-10-06
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.8, owner answer E13)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
@@ -18,9 +18,8 @@ The database holds every run, including the ground truth in schema `gt`,
 which the agent and researchers must never read. A TCP listener can be
 reached by anything that can open a connection to its address; a Unix socket
 is gated by the permissions of its directory before PostgreSQL sees a
-connection. The specification asks for sockets for the platform and a
-separate path for the researchers' read-only role, and lets Grafana connect
-over an internal Docker network.
+connection. The platform needs sockets and the researchers' read-only role a
+separate path; Grafana could also connect over an internal Docker network.
 
 ## Decision
 
@@ -58,13 +57,13 @@ over an internal Docker network.
   reader credential to `~/.pgpass` (mode 0600) or let a client read it.
 - Grafana joins the host group `pinka` inside its container
   (`group_add`); the exporter joins `potka-svc`.
-- The integration contract's socket table lists Grafana and the exporter as
-  peers; this is a proposed contract change.
+- The contract lists Grafana among the peers of the reader socket directory
+  and names the exporter's role, `pinka_monitor`.
 
 ## Alternatives considered
 
-- **TCP on an internal Docker network for Grafana and the exporter**, as the
-  specification allows: Grafana and the exporter would need a Docker network
+- **TCP on an internal Docker network for Grafana and the exporter**:
+  Grafana and the exporter would need a Docker network
   next to the host network the rest of the observability stack uses, and the
   database would have a TCP listener after all.
 - **A separate cluster or proxy for the reader socket**, so that `pg_hba`

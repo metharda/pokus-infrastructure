@@ -14,7 +14,7 @@ model, and the platform's training jobs, which turn benchmark data into
 adapters. Both must never hold the GPU at the same time, a training run must
 never see data it must not learn from, and every adapter the lab serves must
 be traceable to the data, code and settings that produced it. One root-owned
-program, the GPU arbiter (`pinka-gpu-arbiter`, BUILD_PROMPT §7.18), takes
+program, the GPU arbiter (`pinka-gpu-arbiter`), takes
 care of all three. It replaces contract v1's deploy helper.
 
 ## Three modes, one at a time

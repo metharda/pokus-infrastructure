@@ -1,6 +1,6 @@
 # base
 
-Base system for every host (BUILD_PROMPT §7.2):
+Base system for every host:
 
 - packages requested by logical name (`base_packages`) and mapped to real
   names per family in `vars/<family>.yml` (an empty name skips a package on
@@ -11,7 +11,7 @@ Base system for every host (BUILD_PROMPT §7.2):
 - time sync: keeps the service the distribution uses (systemd-timesyncd or
   chronyd), installs the family default only if neither exists, and warns if
   the clock is not synchronized yet;
-- automatic security updates per family (BUILD_PROMPT §19.5): unattended-upgrades
+- automatic security updates per family: unattended-upgrades
   (Debian family), dnf-automatic (Red Hat family), a `zypper patch --category
   security` timer (SUSE family); never an automatic reboot; packages pinned by
   Pokus Infrastructure (pinka) and, on bare metal, the kernel are excluded; none on rolling releases;

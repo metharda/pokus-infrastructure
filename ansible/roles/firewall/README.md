@@ -1,6 +1,6 @@
 # firewall
 
-One effective firewall policy with three backends (BUILD_PROMPT §7.5, §19.6),
+One effective firewall policy with three backends,
 selected by `platform_facts` (`firewall_backend: auto`: firewalld if active,
 else ufw if active, else nftables):
 
@@ -37,14 +37,14 @@ address from `/etc/pinka/inference/peer.json`, nobody before a pairing;
 `pinka pair show` opens the pairing port for the pairing only (a set element
 with a timeout), and `pinka pair` loads the guard again with the new peer.
 
-Pre-existing access (§7.5), from the install record: on a shared host the
+Pre-existing access, from the install record: on a shared host the
 listeners preflight found stay reachable as they were (the nftables backend
 accepts each one's protocol and port on the address it listened on; with
 firewalld or ufw the owner's zones and rules stay as they are). What the
 owner consented to close (`firewall_close_listeners`) and, once the safeguard
 held, the install's access path are dropped by the access guard, table
 `inet pinka_access_guard` in `/etc/pinka/nftables/access-guard.nft`, the same
-on every backend (approved deviation AG1); each of its drop rules matches
+on every backend; each of its drop rules matches
 only a new connection and never one on loopback; on `tailscale0` only SSH
 is spared (accepted first), so what was closed is closed over the tailnet
 as well; SSH on the extra interfaces is accepted first too, and it refers to

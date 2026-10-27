@@ -1,6 +1,6 @@
 # provider_wsl2
 
-WSL2 provider (BUILD_PROMPT §3.1).
+WSL2 provider.
 
 - Manages `/etc/wsl.conf`: systemd on, Windows drive automount and interop
   off, `appendWindowsPath` off, the machine name as host name. If the file

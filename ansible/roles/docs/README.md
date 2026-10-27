@@ -1,10 +1,10 @@
 # docs
 
-The documentation service (BUILD_PROMPT §7.19):
+The documentation service:
 
 - `pinka-docs.service` runs `pinka docs serve` on `127.0.0.1:18706` (the
-  `docs_serve` port of `pinka_ports`) as a dynamic user with the hardening
-  baseline of §7.14, read-only access to `docs_dir` and no other network
+  `docs_serve` port of `pinka_ports`) as a dynamic user with infra's
+  hardening baseline, read-only access to `docs_dir` and no other network
   access; it serves the release that `docs_dir/current` names and follows
   the link on every request;
 - with `docs_release` (`{url, sha256}`) set, the role downloads the tarball

@@ -1,6 +1,6 @@
 # inference_control
 
-Split inference (BUILD_PROMPT §19.10, contracts.md#inference); tag
+Split inference (contracts.md#inference); tag
 `inference_control`. Runs on `node_role: lab` and `node_role: inference`
 only; a `full` node serves vLLM locally and needs none of it.
 
@@ -16,7 +16,7 @@ then trusts exactly the other's certificate. The role checks that
 `peer.json`.
 
 No platform account reads the key: platform services never hold the
-inference node's keys (BUILD_PROMPT §12.8).
+inference node's keys.
 
 On a lab node the role installs `pinka-inference-forwarder.service`
 (`/usr/local/libexec/pinka/inference-forwarder`, root, hardened, reaching

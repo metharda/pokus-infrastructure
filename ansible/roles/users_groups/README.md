@@ -1,6 +1,6 @@
 # users_groups
 
-Groups and accounts (BUILD_PROMPT §6.1, `docs/contracts.md`).
+Groups and accounts (`docs/contracts.md`).
 
 - Groups from `pinka_groups`.
 - Infra accounts from `infra_accounts` (`pinka-build`, which runs platform

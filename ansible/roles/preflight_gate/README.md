@@ -1,6 +1,6 @@
 # preflight_gate
 
-First role after `platform_facts` (BUILD_PROMPT §2.6, §7.1). It runs
+First role after `platform_facts`. It runs
 preflight again, read-only (`--no-write`), and compares outcome, provider and
 feature flags with the host profile that bootstrap validated for this run. If
 anything differs and bootstrap was not run with `--refresh-profile`, the play
@@ -13,7 +13,7 @@ around bootstrap's gate.
 
 Preflight runs with the same choices as bootstrap's: `--nvidia-driver` with
 the machine's `install_nvidia_driver`, and `--accept-mok-enrollment` when the
-host profile records that consent (approved deviation I1). If
+host profile records that consent. If
 `install_nvidia_driver` differs from what bootstrap gave preflight (for
 example a templated value bootstrap cannot read), the play stops with signal 77.
 
@@ -22,7 +22,7 @@ example a templated value bootstrap cannot read), the play stops with signal 77.
 | Fact | Content |
 | --- | --- |
 | `pinka_host_profile` | the fresh host profile |
-| `pinka_features` | its feature flags (`gpu_inference`, `gpu_training`, `vm_targets`, `btrfs_pool`, `lvm_thin_pool`, `dcgm_metrics`) after the plan's switches (BUILD_PROMPT §2.3): `gpu_inference` only where vLLM serves, `gpu_training` only where training jobs run on the GPU |
+| `pinka_features` | its feature flags (`gpu_inference`, `gpu_training`, `vm_targets`, `btrfs_pool`, `lvm_thin_pool`, `dcgm_metrics`) after the plan's switches: `gpu_inference` only where vLLM serves, `gpu_training` only where training jobs run on the GPU |
 | `pinka_training` | where training jobs run: `gpu`, `cpu` (the CPU-only variant, `training: cpu`) or `off` |
 | `pinka_training_caps` | `training_caps` with `memory_max: auto` (or left out) replaced by the cap preflight computed from this host |
 

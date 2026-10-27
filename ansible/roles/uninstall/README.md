@@ -1,9 +1,9 @@
 # uninstall
 
-Removes what pinka installed and keeps the lab's data (BUILD_PROMPT §5.4).
+Removes what pinka installed and keeps the lab's data.
 Applied only by `ansible/uninstall.yml`, which `bootstrap.sh --uninstall`
 runs twice: in mode `plan` the module `pinka_uninstall` reads the install
-record (§7.21), the lab description, the active and retired platforms and
+record, the lab description, the active and retired platforms and
 the host, and writes the plan (JSON for the installer and `--json`, text
 for people); nothing changes, and `--dry-run` stops there. In mode `apply`
 it removes the plan the operator confirmed, phase by phase:

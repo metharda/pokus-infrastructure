@@ -26,7 +26,7 @@ images' sizes of `versions.lock.yml`, the golden images' estimates in their
 `image.yaml`, the target profiles of the incus role and the configured
 defaults, into `preflight/requirements.json`, which preflight reads.
 
-Every number is an estimate until real-machine test 4.15 measures a lab at
+Every number is an estimate until a lab on a real machine is measured at
 idle and during a run; the measured numbers then replace them, marked
 `measured`. The breakdown always shows which kind a number is. Sizes you set
 yourself (the pool) are marked `configured`.

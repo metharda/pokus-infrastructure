@@ -1,8 +1,8 @@
 # tailscale
 
-Tailscale (BUILD_PROMPT §7.4).
+Tailscale.
 
-**A node logged in before pinka** (preflight's `components`, §2.2) is
+**A node logged in before pinka** (preflight's `components`) is
 adopted as it is: no repository, package, pin, hold, login, host name, tag or
 setting changes. Preflight has already refused one with Funnel or Tailscale
 SSH on (`needs_action`). Doctor compares it with what preflight recorded, and
@@ -29,7 +29,7 @@ Otherwise:
   publishes Grafana (and the docs service) on the tailnet only (`tailscale
   serve`).
 
-The install record (§7.21) notes the join before `tailscale up` and every
+The install record notes the join before `tailscale up` and every
 serve entry before pinka adds it; uninstall logs out only a node pinka
 joined and removes only those serve entries.
 

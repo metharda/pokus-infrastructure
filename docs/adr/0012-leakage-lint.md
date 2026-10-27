@@ -10,12 +10,12 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-06
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.13)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
-A golden image must not tell an agent what it is being tested on. The build
-prompt asks for a leakage lint that fails the build on scenario identifiers
+A golden image must not tell an agent what it is being tested on. A leakage
+lint must fail the build on scenario identifiers
 (`[A-Z]+-[0-9]{3}`) and on the strings `fault`, `inject`, `ground_truth` and
 `scenario` in `/etc`, `/opt`, `/srv`, `/usr/local`, unit names, host names
 and environment files, and on repository checkouts, with a configurable

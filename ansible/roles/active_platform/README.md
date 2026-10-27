@@ -2,7 +2,7 @@
 
 Reads what infra rendered for the active platform
 (`/etc/pinka/platform/rendered.json`, written by the platform role when a
-deployment is switched on, BUILD_PROMPT §7.14) and sets the fact
+deployment is switched on) and sets the fact
 `active_platform`: its name, accounts, units, database plan, Incus
 certificates, controller account, OPA bundle, dashboards and telemetry
 labels; `{}` without an active platform. The file holds no secrets and is

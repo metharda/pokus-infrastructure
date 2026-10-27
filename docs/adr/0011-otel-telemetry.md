@@ -8,9 +8,10 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0011: OpenTelemetry as the single telemetry entry point
 
-- **Status:** accepted (host networking of the observability stack: awaiting owner confirmation)
+- **Status:** accepted; who may query the stores on the host network is
+  limited as [ADR-0016](0016-telemetry-query-isolation.md) records
 - **Date:** 2026-10-06
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.9, §12, owner answer E14)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
@@ -28,7 +29,7 @@ are Loki, Prometheus and Tempo, shown in Grafana.
    address that only run networks reach, and only on the OTLP ports (C4).
 2. The gateway adds `pinka.machine` and `pinka.lab_mode`, then sends logs to
    Loki's native OTLP endpoint, traces to Tempo, and metrics to a Prometheus
-   exporter that Prometheus scrapes (E14); resource attributes such as
+   exporter that Prometheus scrapes; resource attributes such as
    `potka.run_id` become labels or structured metadata.
 3. The host journal is read by a **second collector instance** with the
    host's `journalctl` in a chroot. Only that instance can read host files;
@@ -54,8 +55,8 @@ are Loki, Prometheus and Tempo, shown in Grafana.
 ## Alternatives considered
 
 - **Prometheus remote write or Prometheus's own OTLP receiver** for metrics:
-  fewer moving parts, but the owner chose the scraped exporter (E14), which
-  keeps Prometheus pulling and the gateway stateless.
+  fewer moving parts, but the scraped exporter keeps Prometheus pulling and
+  the gateway stateless.
 - **Bridge networks with published loopback ports**: Prometheus could not
   reach the Incus API and node_exporter would report the container's network
   interfaces; a helper that copies Incus metrics into node_exporter's textfile

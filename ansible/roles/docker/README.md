@@ -1,10 +1,10 @@
 # docker
 
-Docker Engine with the Compose v2 plugin and buildx (BUILD_PROMPT §7.6), for
+Docker Engine with the Compose v2 plugin and buildx, for
 the lab services that run as Compose projects.
 
-**A Docker Engine that existed before pinka** (preflight's `components`,
-§2.2) is used as it is: pinka never installs, pins, holds, configures or
+**A Docker Engine that existed before pinka** (preflight's `components`)
+is used as it is: pinka never installs, pins, holds, configures or
 restarts it, and never writes its `/etc/docker/daemon.json`. Preflight has
 already stopped (`needs_action`) where the lab could not run with it
 unchanged: `docker.service` not running, the Compose or buildx plugin
@@ -12,7 +12,7 @@ missing, or CDI off on a host with a GPU feature.
 
 **A Docker Engine pinka installs** (`tasks/install.yml`):
 
-- the install record notes the component first (§7.21);
+- the install record notes the component first;
 - installed from the source of `ansible/component-sources.yml` (Docker's
   repositories on Ubuntu, Debian, Fedora and RHEL-compatible releases, the
   distribution's packages on openSUSE and Arch), pinned to

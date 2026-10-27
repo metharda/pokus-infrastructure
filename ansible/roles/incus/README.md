@@ -1,6 +1,6 @@
 # incus
 
-Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
+Incus for benchmark targets and personal sandboxes:
 
 - **Install:** the LTS line (6.0) from the source of
   `ansible/component-sources.yml` (Zabbly's repository on Debian and Ubuntu,

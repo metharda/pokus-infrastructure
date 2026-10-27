@@ -43,7 +43,7 @@ driver is older, naming the update; doctor repeats the comparison
 ([`gpu.driver_cuda`](../how-to/fix-doctor-checks.md#check-gpu-driver_cuda)).
 
 The GPU needs compute capability 7.5 or newer, the oldest the pinned vLLM
-image has kernels for (approved deviation V7 from the build prompt's 7.0).
+image has kernels for ([V7](../contracts.md#resolutions)).
 Preflight refuses GPU inference on an older GPU: `gpu_inference` stays off,
 and no option turns it on.
 

@@ -8,16 +8,16 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0002: Bootstrap exit codes and error handling
 
-- **Status:** accepted (the owner approved the additional codes after the contract v2 spec update)
+- **Status:** accepted
 - **Date:** 2026-10-05
 - **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
-BUILD_PROMPT §2.4 and §5.2 define the codes bootstrap must use for the
-preflight outcomes (0, 10, 20, 30, 40), for conditions signalled by the play
-(75, 76, 77), and that bootstrap exits with the exit code of
-`pinka doctor` (0, 1, 2). They leave open how bootstrap ends when the
+Bootstrap's codes are fixed for the preflight outcomes (0, 10, 20, 30, 40),
+for conditions signalled by the play (75, 76, 77), and for the end of a run,
+which exits with the exit code of `pinka doctor` (0, 1, 2). That leaves
+open how bootstrap ends when the
 operator declines the experimental tier, when installing the pinned tooling
 fails, when the play fails without a signal, when the command line is
 invalid, and when bootstrap itself fails unexpectedly. Reusing an existing
@@ -27,7 +27,7 @@ printed.
 
 ## Decision
 
-1. Bootstrap adds five codes, all outside the ranges BUILD_PROMPT assigns:
+1. Bootstrap adds five codes, all outside the ranges already assigned:
 
     | Code | Meaning |
     | --- | --- |
@@ -44,8 +44,7 @@ printed.
    documented code; an error trap passes documented codes through and turns
    every other failure into 70, naming the command and its `file:line`.
 4. Signals from the play use the file `/run/pinka/bootstrap-signal.json`
-   (`{code, message}`), as BUILD_PROMPT §5.2 step 9 prescribes; only 75, 76
-   and 77 are accepted from it.
+   (`{code, message}`); only 75, 76 and 77 are accepted from it.
 
 ## Consequences
 

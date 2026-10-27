@@ -132,7 +132,7 @@ A warning. The install came over SSH from outside the tailnet (from the LAN,
 for example), and that path is still open: pinka closes it only with the
 owner's consent (`firewall_close_install_path: true`, or the checkbox on the
 installer's Remote access screen) and only after a researcher logged in with
-a key over the tailnet in the same run (the safeguard of BUILD_PROMPT §7.5).
+a key over the tailnet in the same run.
 Give the consent if it is missing, run bootstrap again and, while it runs,
 log in as a researcher with their key from another device on the tailnet
 (`ssh researcher1@<machine name>`); a login from before the run, from the

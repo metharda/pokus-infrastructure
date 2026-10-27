@@ -1,6 +1,6 @@
 # images
 
-Golden image pipeline (BUILD_PROMPT §7.13, `docs/contracts.md`, golden
+Golden image pipeline (`docs/contracts.md`, golden
 images), applied on `full` and `lab` nodes; tag `images`, skippable.
 
 - Input: the blueprints `images/<blueprint>/` (`image.yaml`, schema

@@ -25,7 +25,7 @@ through the same helper during campaigns
       bootstrap runs from.
     - The model approved by the lab's owner: candidates from
       `models.catalog.yml`, which lists permissive licenses first and gated or
-      custom-license models separately (owner answer E7).
+      custom-license models separately.
     - For a gated model, a Hugging Face token in `vault_hf_token`.
 
 !!! warning "The catalog is a proposal"
@@ -84,7 +84,7 @@ through the same helper during campaigns
 
     `<model-id>` is the id vLLM serves the model under (the catalog's `id`),
     `<hf_repo>` and `<revision>` come from step 1, each `<sha256>` from steps 1
-    and 2, and `<date>` is the day of the owner's approval. `quantization` is
+    and 2, and `<date>` is the day the lab owner approved it. `quantization` is
     the vLLM weight format and must be one the serving profile allows
     (`vllm/profiles/<profile>.yml`, `quantizations`).
 

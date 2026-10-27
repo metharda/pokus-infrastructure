@@ -14,7 +14,7 @@ can still be a lab host if another Pokus host serves the model: the lab node
 (`node_role: lab`) runs everything except vLLM, and the inference node
 (`node_role: inference`) runs only the inference stack. There are no external
 model APIs in either case: an inference node is a pinka-provisioned machine
-you control (BUILD_PROMPT §19.10).
+you control.
 [How to run inference on a separate GPU node](how-to/pair-inference-node.md)
 has the steps.
 

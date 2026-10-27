@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -221,6 +222,65 @@ def test_every_service_unit_carries_the_baseline(fixture: str) -> None:
         assert settings["Group"] == [account]
         assert settings["MemoryMax"] and settings["TasksMax"]
         assert settings["Restart"] == ["on-failure"]
+
+
+# What a service unit gets besides the baseline the explanation page lists: its
+# identity, start and ordering, its limits, its paths and the profile's
+# allowances (described elsewhere on the page). A new setting of a service unit
+# goes onto the page's list or here.
+NOT_BASELINE = frozenset(
+    {
+        "Description", "PartOf", "Requires", "After", "Wants", "WantedBy",
+        "Type", "ExecStart", "WorkingDirectory", "Restart", "RestartSec",
+        "User", "Group", "SupplementaryGroups", "MemoryMax", "TasksMax",
+        "RuntimeDirectory", "RuntimeDirectoryMode", "ReadOnlyPaths", "ReadWritePaths",
+        "BindPaths", "BindReadOnlyPaths", "InaccessiblePaths", "TemporaryFileSystem",
+        "IPAddressAllow", "SocketBindAllow", "PrivateNetwork",
+    }
+)  # fmt: skip
+
+
+def test_the_explanation_page_lists_the_whole_baseline() -> None:
+    # The contract sends platform authors to this page for the baseline: its
+    # list must hold every setting of it, each once, with the value every
+    # service unit gets, and the two exceptions as the code applies them.
+    page = Path(__file__).resolve().parents[3] / "docs/explanation/privilege-profiles.md"
+    found = re.search(
+        r"on every platform service's unit:\n\n(.*?)\n\n", page.read_text(encoding="utf-8"), re.S
+    )
+    assert found, "the list of the baseline is missing"
+    section = " ".join(found.group(1).split())
+    spans = re.findall(r"`([^`]*)`", section)
+    pairs = [span.split("=", 1) for span in spans if "=" in span]
+    listed = dict(pairs)
+    assert len(listed) == len(pairs), "a setting is listed twice"
+    assert all(re.fullmatch(r"[A-Za-z]+", key) for key in listed), sorted(listed)
+    assert {span for span in spans if "=" not in span} <= {
+        "no", "wx-memory", "untrusted-agent", "AF_UNIX",
+    }  # fmt: skip
+    assert "=" not in re.sub(r"`[^`]*`", "", section), "a setting outside a code span"
+    mdwe = "MemoryDenyWriteExecute"
+    families = "RestrictAddressFamilies"
+    never = "(`no` only with `wx-memory`, which `untrusted-agent` never gets)"
+    assert f"`{mdwe}={listed[mdwe]}` {never}" in section
+    assert f"`{families}={listed[families]}` (only `AF_UNIX` for `untrusted-agent`)" in section
+    assert {key for key, _ in units.BASELINE} <= set(listed)
+    keys: set[str] = set()
+    for fixture in VALID:
+        data = manifest(fixture)
+        document = render(fixture)
+        for service in data["services"]:
+            settings = unit(document, f"{names.account(data['name'], service['name'])}.service")
+            agent = service["profile"] == "untrusted-agent"
+            expected = dict(listed)
+            if agent:
+                expected[families] = "AF_UNIX"
+            elif "wx-memory" in service.get("relaxations", []):
+                expected[mdwe] = "no"
+            for key, value in expected.items():
+                assert settings.get(key) == [value], f"{fixture} {service['name']}: {key}"
+            keys |= set(settings)
+    assert keys - set(listed) == NOT_BASELINE
 
 
 @pytest.mark.parametrize("fixture", VALID)

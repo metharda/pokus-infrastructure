@@ -59,13 +59,13 @@ then `batch`:
   them with `| potka_run_id="<run_id>"`.
 - **Traces** go to Tempo over OTLP gRPC.
 - **Metrics** go to a Prometheus exporter on the gateway, which Prometheus
-  scrapes (owner answer E14). Resource attributes become labels, so target
+  scrapes. Resource attributes become labels, so target
   metrics carry `potka_run_id` and `potka_node`.
 
 ## Who may send and who may query
 
-Sending and querying are separate ways in (BUILD_PROMPT §7.9,
-[ADR-0016](../adr/0016-telemetry-query-isolation.md)):
+Sending and querying are separate ways in
+([ADR-0016](../adr/0016-telemetry-query-isolation.md)):
 
 - Platform services send OTLP to the collector. The `untrusted-agent`, which
   has no network, sends OTLP/HTTP to `/run/pinka/otlp/agent.sock`; systemd's

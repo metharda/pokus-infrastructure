@@ -1,6 +1,6 @@
 # gpu_arbiter
 
-The GPU arbiter (BUILD_PROMPT §7.18, `docs/explanation/gpu-arbiter.md`),
+The GPU arbiter (`docs/explanation/gpu-arbiter.md`),
 applied on `full` and `inference` nodes. It replaces contract v1's vLLM
 deploy helper and decides whether the GPU serves, trains or idles:
 
@@ -35,7 +35,7 @@ See `meta/argument_specs.yml`.
 ## Feature flags
 
 Applied on `node_role` `full` and `inference` in `site.yml`, with the
-flags after the switches (BUILD_PROMPT §2.3, `preflight_gate`). Without
+flags after the switches (`preflight_gate`). Without
 `gpu_inference` (no usable GPU, or `inference: off`) the arbiter serves
 nothing, and a deployment served before is stopped (`idle
 --unless-training`). Training runs only on `full` nodes where

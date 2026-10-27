@@ -1,7 +1,7 @@
 # platform_facts
 
 Runs first and derives every distribution-specific fact from the host profile
-that preflight wrote (BUILD_PROMPT §19.1). It is the only role that interprets
+that preflight wrote. It is the only role that interprets
 the distribution: no other role branches on `ansible_distribution` or similar
 facts (`make lint` enforces this).
 
@@ -19,7 +19,7 @@ facts (`make lint` enforces this).
 | `pinka_pkg_manager` | `apt`, `dnf`, `zypper` or `pacman` |
 | `pinka_service_names` | `ssh` service name and the time sync candidates |
 | `pinka_initramfs_tool` | `update-initramfs`, `dracut` or `mkinitcpio` |
-| `pinka_version_hold_method` | how versions are held (§19.5) |
+| `pinka_version_hold_method` | how versions are held |
 | `pinka_provider` | `wsl2`, `baremetal` or `vm` |
 | `pinka_mac` | `selinux`, `apparmor` or `none` |
 | `pinka_firewall_backend` | `nftables`, `firewalld` or `ufw` |

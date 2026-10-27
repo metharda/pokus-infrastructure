@@ -39,7 +39,7 @@ A platform is code that infra deploys but does not write.
 | Risk | Mechanism |
 | --- | --- |
 | A release asks for more than it needs | Its manifest names one of eight fixed profiles per service and job; infra renders exactly that profile's grants, and a manifest that asks for anything else is refused before the host changes (exit 65, [ADR-0014](adr/0014-platforms-through-manifests.md)). |
-| A release's code runs as root | Never: a release is built as `pinka-build` in a `systemd-run` sandbox, from locked wheels, with the second phase offline; its services and hooks run under their own accounts with the hardening baseline, which a manifest cannot override. |
+| A release's code runs as root | Never: a release is built as `pinka-build` in a `systemd-run` sandbox, from locked wheels, with the second phase offline; its services and hooks run under their own accounts with the hardening baseline, which a manifest cannot override beyond the `wx-memory` relaxation. |
 | A release names infra's accounts, units or paths | Every name the manifest would create is checked against the reserved names and against what already exists on the host. |
 | A moved or forged tag | Sources come from root-only bare mirrors; a moved tag is refused, and with `require_signed_tags` only tags signed by an allowed signer are deployed. |
 | A training job escapes | Jobs run as containers with options fixed by the GPU arbiter: no network, a read-only root file system, only the base model, its published datasets and its output mounted, the GPU only while it trains ([ADR-0015](adr/0015-gpu-training-container-jobs.md)). Datasets that list an instance of the `test` split are never published or mounted. |

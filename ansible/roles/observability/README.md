@@ -1,7 +1,7 @@
 # observability
 
-Telemetry, metrics, logs, traces and dashboards of the lab (BUILD_PROMPT
-§7.9, `docs/contracts.md#telemetry`), in the `observability` Compose project.
+Telemetry, metrics, logs, traces and dashboards of the lab
+(`docs/contracts.md#telemetry`), in the `observability` Compose project.
 Every container uses the host network and binds `127.0.0.1` (ports in
 `contracts.md#ports` and `pinka_internal_ports`), so Prometheus scrapes the
 Incus API and the exporters on loopback and nothing listens elsewhere:
@@ -10,9 +10,8 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   (services, targets through their proxy devices) and, with `vm_targets`, on
   the VM listener address (C4); `memory_limiter` → `resource` (`pinka.machine`,
   `pinka.lab_mode`) → `batch`; logs to Loki's native OTLP endpoint, traces to
-  Tempo, metrics to a Prometheus exporter that Prometheus scrapes (owner
-  answer E14), with resource attributes (such as a platform's run
-  identifiers) as labels.
+  Tempo, metrics to a Prometheus exporter that Prometheus scrapes, with
+  resource attributes (such as a platform's run identifiers) as labels.
 - **Journald collector**: a second collector instance that reads the host
   journal with the host's `journalctl` (chroot into the read-only host root)
   and forwards it to the gateway; separate so that the instance that accepts
@@ -53,9 +52,9 @@ See `meta/argument_specs.yml`; derived values are in `vars/main.yml`.
 
 ## Feature flags
 
-`gpu_inference` or `gpu_training` after the switches (BUILD_PROMPT §2.3: the
-GPU exporter), `gpu_inference` (vLLM scrape job on `full` and `inference`
-nodes), `vm_targets` (VM listener).
+`gpu_inference` or `gpu_training` after the switches (the GPU exporter),
+`gpu_inference` (vLLM scrape job on `full` and `inference` nodes),
+`vm_targets` (VM listener).
 
 ## Idempotency
 
