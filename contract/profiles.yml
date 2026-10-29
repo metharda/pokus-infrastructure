@@ -1,14 +1,14 @@
 # Managed by pinka (contract/profiles.yml). Local changes will be overwritten.
 #
-# The eight privilege profiles of contract v2 (BUILD_PROMPT §12.2): the single
-# source of the profile table, of the socket connection rules (§12.3) and of
+# The eight privilege profiles of contract v2: the single
+# source of the profile table, of the socket connection rules and of
 # infra's caps on manifest values. The manifest validator and the renderer
 # read it, and tools/gen turns it into
 # docs/reference/platform-profiles.md. Published with every release in
 # contract/; it changes only with a contract version bump.
 contract_version: 2
 
-# Upper bounds for the values a manifest may set (§12.1, §12.9, §7.18).
+# Upper bounds for the values a manifest may set.
 # Sizes are systemd-style: a positive integer with the suffix K, M or G.
 caps:
   service_memory_max: 16G
@@ -39,8 +39,7 @@ human_classes:
 # What makes a manifest need a facility in `requires`: a service or job with
 # one of `profiles`, or one of `fields` set (present, and not false or
 # empty). The health gate checks exactly the declared facilities, so a
-# manifest that uses an undeclared one is refused (owner decision on 3d.1,
-# an approved deviation).
+# manifest that uses an undeclared one is refused.
 facilities:
   postgres:
     description: the platform database, its roles and the socket directories
@@ -79,7 +78,7 @@ columns:
 
 # Per profile:
 #   kind               service or job
-#   table              the cells of the profile table, verbatim from §12.2
+#   table              the cells of the profile table
 #   database_role      a login role of its own (true) or none
 #   restricted_schema  allowed, never or none (no role at all)
 #   restricted_data    read or never: membership in pinka-restricted
@@ -100,21 +99,21 @@ columns:
 #   uses_sockets       may be a socket client
 #   own_package        names its own package in the manifest and sees only that
 #                      package and its own environment of the release, never the
-#                      rest of it (V6, approved with the "commit" for 3d.4)
+#                      rest of it (V6)
 profiles:
   controller:
     kind: service
     summary: runs the platform; the only service that drives the GPU arbiter and the run networks
     table:
       database: own login role; table grants from migrations, `restricted` schema allowed
-      incus: restricted certificate for projects `bench` and `build`; run networks only through the run-network helper (§7.7)
+      incus: restricted certificate for projects `bench` and `build`; run networks only through the run-network helper
       telemetry: send; query Prometheus, Loki, Tempo through the query proxy only
       inference: inference API; the only service that may request GPU arbiter transitions (serve, train, idle, publish a dataset); never GPU devices
       restricted_data: read
       filesystem: >-
         release (read); own config, secrets and state; signing key (0400); attestations and trusted keys, session records, fingerprint, models,
         adapter lineage (read)
-      network: loopback only, also with remote inference (§12.8); no listening TCP port
+      network: loopback only, also with remote inference; no listening TCP port
     database_role: true
     restricted_schema: allowed
     restricted_data: read
@@ -147,7 +146,7 @@ profiles:
       inference: inference API
       restricted_data: never
       filesystem: release; own config, secrets, state
-      network: loopback only, also with remote inference (§12.8); may listen on exactly one port, the researcher endpoint `127.0.0.1:18705`
+      network: loopback only, also with remote inference; may listen on exactly one port, the researcher endpoint `127.0.0.1:18705`
     database_role: true
     restricted_schema: never
     restricted_data: never

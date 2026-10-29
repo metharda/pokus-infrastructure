@@ -1,19 +1,19 @@
 # Managed by pinka (compose/observability/compose.yml). Local changes will be overwritten.
 #
-# Observability services (BUILD_PROMPT §7.9, contracts.md#telemetry). Every
+# Observability services (contracts.md#telemetry). Every
 # service uses the host network and binds 127.0.0.1 only (Prometheus scrapes
 # Incus's loopback API and the exporters; the platform's services and the
 # researchers' SSH forwards reach the contract ports); the gateway collector
 # also binds the VM listener address when the vm_targets feature is on.
 # Variables come from .env (compose role): images pinned by digest, ports,
 # paths, configuration hashes and the profiles: "stores" (Prometheus, Loki,
-# Tempo and Grafana; full and lab nodes, not inference nodes, BUILD_PROMPT
-# §19.10) and the GPU profile.
+# Tempo and Grafana; full and lab nodes, not inference nodes)
+# and the GPU profile.
 name: pinka-observability
 
 # Settings every lab container gets here rather than from the Docker daemon,
-# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
-# §7.6): the local log driver with size limits and the lab services' slice.
+# so they are the same on a Docker that existed before pinka:
+# the local log driver with size limits and the lab services' slice.
 x-logging: &logging
   driver: local
   options:
@@ -113,7 +113,7 @@ services:
       - ./config/tempo:/etc/tempo:ro
       - ${PINKA_ROOT:?}/state/tempo:/var/tempo
 
-  # The only way to query telemetry (BUILD_PROMPT §7.9): forwards only the
+  # The only way to query telemetry: forwards only the
   # query endpoints of Prometheus, Loki and Tempo and answers 403 to
   # everything else. Platform services reach it through
   # /run/pinka/query.sock (a link to query/query.sock, 0660, group

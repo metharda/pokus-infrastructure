@@ -11,7 +11,7 @@ description: Every field of the host profile written by pinka-preflight.
 
 # Host profile schema
 
-Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT §2). generated_at is the only volatile field. Schema file: `preflight/schema/host-profile.schema.json` (JSON Schema draft 2020-12).
+Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at is the only volatile field. Schema file: `preflight/schema/host-profile.schema.json` (JSON Schema draft 2020-12).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -19,7 +19,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `generated_at` | string | yes | Report time, UTC ISO 8601. |
 | `preflight_version` | string | yes | Version of pinka-preflight. |
 | `repo_commit` | string or null | yes | Commit of the pokus-infrastructure checkout that ran preflight, if known. |
-| `outcome` | one of `supported`, `degraded`, `unsupported`, `needs_action` | yes | Decision (BUILD_PROMPT §2.4). |
+| `outcome` | one of `supported`, `degraded`, `unsupported`, `needs_action` | yes | Decision. |
 | `exit_code` | one of `0`, `10`, `20`, `30` | yes | Exit code that belongs to the outcome. |
 | `tier` | see `tier` | yes | Worst of the OS, architecture and environment tiers. |
 | `os_tier` | see `tier` | yes | Tier of the matched OS rule. |
@@ -91,7 +91,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `gpu.notes` | array | yes | — |
 | `gpu.install_driver` | one of `auto`, `manual`, `skip` | yes | The host's install_nvidia_driver setting given to preflight (--nvidia-driver): auto, manual or skip. |
 | `gpu.pci_device` | string or null | yes | PCI vendor and device ID of the first NVIDIA GPU on the PCI bus (bare metal, VM passthrough); null elsewhere. |
-| `gpu.open_module_drivers` | array | yes | The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them (BUILD_PROMPT §2.2, §10.1). |
+| `gpu.open_module_drivers` | array | yes | The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them. |
 | `gpu.proprietary_only_drivers` | array | yes | The pinned NVIDIA driver releases that support this GPU only with their proprietary kernel module (Maxwell, Pascal, Volta: below compute capability 7.5), so no driver is installed for it; empty for a GPU only a legacy branch supports or the list does not name. |
 | `capabilities` | object | yes | — |
 | `capabilities.cgroup2` | boolean | yes | — |
@@ -126,9 +126,9 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `requirements` | object | yes | — |
 | `requirements.core` | array | yes | — |
 | `requirements.minimums` | array | yes | — |
-| `requirements.plan` | string | yes | defaults, or the plan file given with --plan (§2.3). |
+| `requirements.plan` | string | yes | defaults, or the plan file given with --plan. |
 | `requirements.choices` | object | yes | The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json). |
-| `requirements.switches` | object | yes | The feature switches of the plan on this host (§2.3): what they leave on, and the training cap. |
+| `requirements.switches` | object | yes | The feature switches of the plan on this host: what they leave on, and the training cap. |
 | `requirements.switches.inference` | object | yes | — |
 | `requirements.switches.inference.mode` | one of `auto`, `off` | yes | The inference switch. |
 | `requirements.switches.inference.serves` | boolean | yes | vLLM, its images and the selected model are installed and counted on this node. |
@@ -164,7 +164,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `requirements.growth.gib_per_week` | number | yes | — |
 | `requirements.growth.days_until_full` | integer or null | yes | The day the disk fills at this rate; null if the retention keeps it below the free space for ten years. |
 | `requirements.growth.items` | array | yes | — |
-| `requirements.pool` | object or null | yes | The Incus pool's size (§2.3): a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node. |
+| `requirements.pool` | object or null | yes | The Incus pool's size: a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node. |
 | `requirements.pool.source` | one of `loop`, `device` | yes | — |
 | `requirements.pool.size_gib` | number or null | yes | — |
 | `requirements.pool.basis` | one of `computed`, `configured` | yes | — |
@@ -183,7 +183,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `disabled_features[].unmet` | string | yes | — |
 | `disabled_features[].remediation` | string | no | What makes the feature available, when the matrix names it (for example the driver update of gpu_inference). |
 | `storage_backend` | one of `btrfs`, `lvm`, `null` | yes | Backend for the Incus pool; null means no quota-capable storage. |
-| `components` | object | yes | Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks (BUILD_PROMPT §2.2, §7.21). |
+| `components` | object | yes | Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks. |
 | `components.install_record` | boolean | yes | The host has an install record. |
 | `components.docker` | object | yes | — |
 | `components.docker.installed` | boolean | yes | The component is on the host. |
@@ -221,7 +221,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `components.podman.docker_compat` | string or null | no | How Podman provides Docker's command or socket, if it does. |
 | `components.incus` | see `component` | yes | — |
 | `components.nvidia_driver` | see `component` | yes | — |
-| `access` | object | yes | The access to the host that existed before the install (BUILD_PROMPT §2.2 "Pre-existing access", §7.5): the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found. |
+| `access` | object | yes | The access to the host that existed before the install: the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found. |
 | `access.host` | one of `dedicated`, `shared` | yes | dedicated: no listener besides sshd and the admitted ones, and every login account is a configured researcher; shared otherwise. |
 | `access.firewall_manager` | one of `firewalld`, `ufw`, `none` | yes | The active firewall manager. |
 | `access.session` | object | yes | The access path of the install: SSH (the server address and port of SSH_CONNECTION of the nearest process up the tree that has it, its login account, and whether the address is on the tailnet) or the console. |
@@ -241,7 +241,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrast
 | `access.reasons` | array | yes | What makes the host shared; empty on a dedicated host. |
 | `conflicts` | array | yes | — |
 | `unsupported_reasons` | array | yes | — |
-| `degraded_reasons` | array | yes | Why the host is degraded besides disabled features: memory below the recommended value for the choices (§2.3). |
+| `degraded_reasons` | array | yes | Why the host is degraded besides disabled features: memory below the recommended value for the choices. |
 | `needs_action` | array | yes | — |
 | `needs_action[].id` | string | yes | — |
 | `needs_action[].action` | string | yes | — |
@@ -274,7 +274,7 @@ one of `supported`, `tested`, `experimental`, `unsupported`
 | `disk.fstype` | string or null | yes | — |
 | `disk.size_gib` | number or null | yes | — |
 | `disk.free_gib` | number or null | yes | — |
-| `disk.free_bytes` | integer or null | yes | The free space in bytes, which the requirements compare (§2.3). |
+| `disk.free_bytes` | integer or null | yes | The free space in bytes, which the requirements compare. |
 
 ### block_device
 

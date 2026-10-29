@@ -1,6 +1,6 @@
 # Managed by pinka (config/prometheus/prometheus.yml.j2). Local changes will be overwritten.
 #
-# Prometheus (BUILD_PROMPT §7.9): host network, listening on
+# Prometheus: host network, listening on
 # 127.0.0.1:{{ pinka_ports.prometheus }}; every target is on 127.0.0.1.
 # Retention is a command-line flag (compose/observability/compose.yml).
 global:
@@ -13,7 +13,7 @@ scrape_configs:
       - targets: ["127.0.0.1:{{ pinka_ports.prometheus }}"]
 
   # OTLP metrics of services and targets, through the gateway's Prometheus
-  # exporter (owner answer E14). Labels come from the resource attributes.
+  # exporter. Labels come from the resource attributes.
   - job_name: otlp
     honor_labels: true
     static_configs:
@@ -50,7 +50,7 @@ scrape_configs:
     static_configs:
       - targets: ["127.0.0.1:{{ pinka_ports.grafana }}"]
 
-  # Incus metrics with the metrics-only client certificate (BUILD_PROMPT §7.7);
+  # Incus metrics with the metrics-only client certificate;
   # the Incus server certificate lists 127.0.0.1 among its addresses.
   - job_name: incus
     scheme: https

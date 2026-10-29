@@ -15,7 +15,7 @@ Infra writes two files for the active platform at every deployment, in `/etc/pin
 
 ## principals.json
 
-The principals of the active platform, /etc/pinka/platform/principals.json (contract v2, BUILD_PROMPT §12.3): every service and job with its account and UID, every socket with its path and allowed clients, and the groups of the human classes. Written by infra at every deployment, 0644 root. The platform builds its per-endpoint peer allowlists from this file instead of hard-coding names. Schema file: `contract/principals.schema.json`.
+The principals of the active platform, /etc/pinka/platform/principals.json (contract v2): every service and job with its account and UID, every socket with its path and allowed clients, and the groups of the human classes. Written by infra at every deployment, 0644 root. The platform builds its per-endpoint peer allowlists from this file instead of hard-coding names. Schema file: `contract/principals.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -184,7 +184,7 @@ Example:
 
 ## endpoints.toml
 
-The addresses and paths infra provides to the active platform, /etc/pinka/platform/endpoints.toml (contract v2, BUILD_PROMPT §12.3), with the effective ports (§12.11). Written by infra at every deployment, 0644 root; the schema describes the parsed TOML document. A facility's table is present only when the manifest's `requires` names it; the platform reads names and addresses from here instead of hard-coding them. Schema file: `contract/endpoints.schema.json`.
+The addresses and paths infra provides to the active platform, /etc/pinka/platform/endpoints.toml (contract v2), with the effective ports. Written by infra at every deployment, 0644 root; the schema describes the parsed TOML document. A facility's table is present only when the manifest's `requires` names it; the platform reads names and addresses from here instead of hard-coding them. Schema file: `contract/endpoints.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

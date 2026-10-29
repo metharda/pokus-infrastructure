@@ -1,6 +1,6 @@
 # Managed by pinka (images/_base/provision.yml). Local changes will be overwritten.
 #
-# Provisioning of `_base` inside the build instance (BUILD_PROMPT §7.13),
+# Provisioning of `_base` inside the build instance,
 # run by the images role through the community.general.incus connection.
 # Variables: image (image.yaml), otel_agent (versions.lock.yml
 # binaries.otelcol_contrib with this architecture's asset). The agent is

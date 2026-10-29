@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/pinka/contract/v2/principals.schema.json",
   "title": "principals.json",
-  "description": "The principals of the active platform, /etc/pinka/platform/principals.json (contract v2, BUILD_PROMPT \u00a712.3): every service and job with its account and UID, every socket with its path and allowed clients, and the groups of the human classes. Written by infra at every deployment, 0644 root. The platform builds its per-endpoint peer allowlists from this file instead of hard-coding names.",
+  "description": "The principals of the active platform, /etc/pinka/platform/principals.json (contract v2): every service and job with its account and UID, every socket with its path and allowed clients, and the groups of the human classes. Written by infra at every deployment, 0644 root. The platform builds its per-endpoint peer allowlists from this file instead of hard-coding names.",
   "type": "object",
   "additionalProperties": false,
   "required": [

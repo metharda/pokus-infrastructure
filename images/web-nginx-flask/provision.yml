@@ -1,6 +1,6 @@
 # Managed by pinka (images/web-nginx-flask/provision.yml). Local changes will be overwritten.
 #
-# nginx, gunicorn and the application (BUILD_PROMPT §7.13), on top of `_base`.
+# nginx, gunicorn and the application, on top of `_base`.
 - name: Provision the web blueprint
   hosts: all
   gather_facts: false

@@ -1,9 +1,9 @@
 # Managed by pinka (ansible/roles/docs/templates/pinka-docs.service.j2). Local changes will be overwritten.
 #
-# The documentation service (BUILD_PROMPT §7.19): the installed docs release
+# The documentation service: the installed docs release
 # that `current` names, read-only on 127.0.0.1 only, as a dynamic user with
-# the hardening baseline of §7.14. `pinka docs install` and `rollback` switch
-# `current`; the server follows the link on every request.
+# the platform services' hardening baseline. `pinka docs install` and
+# `rollback` switch `current`; the server follows the link on every request.
 [Unit]
 Description=Pokus lab documentation on 127.0.0.1:{{ pinka_ports.docs_serve }}
 PartOf=pinka-lab.target

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pokus host profile",
-  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT \u00a72). generated_at is the only volatile field.",
+  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at is the only volatile field.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -68,7 +68,7 @@
       ]
     },
     "outcome": {
-      "description": "Decision (BUILD_PROMPT \u00a72.4).",
+      "description": "Decision.",
       "enum": [
         "supported",
         "degraded",
@@ -580,7 +580,7 @@
           "items": {
             "type": "string"
           },
-          "description": "The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them (BUILD_PROMPT \u00a72.2, \u00a710.1)."
+          "description": "The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them."
         },
         "proprietary_only_drivers": {
           "type": "array",
@@ -820,7 +820,7 @@
         },
         "plan": {
           "type": "string",
-          "description": "defaults, or the plan file given with --plan (\u00a72.3)."
+          "description": "defaults, or the plan file given with --plan."
         },
         "choices": {
           "type": "object",
@@ -833,7 +833,7 @@
             "inference",
             "training"
           ],
-          "description": "The feature switches of the plan on this host (\u00a72.3): what they leave on, and the training cap.",
+          "description": "The feature switches of the plan on this host: what they leave on, and the training cap.",
           "properties": {
             "inference": {
               "type": "object",
@@ -1085,7 +1085,7 @@
             "basis",
             "detail"
           ],
-          "description": "The Incus pool's size (\u00a72.3): a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node.",
+          "description": "The Incus pool's size: a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node.",
           "properties": {
             "source": {
               "enum": [
@@ -1188,7 +1188,7 @@
       ]
     },
     "components": {
-      "description": "Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks (BUILD_PROMPT \u00a72.2, \u00a77.21).",
+      "description": "Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1437,7 +1437,7 @@
       }
     },
     "access": {
-      "description": "The access to the host that existed before the install (BUILD_PROMPT \u00a72.2 \"Pre-existing access\", \u00a77.5): the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found.",
+      "description": "The access to the host that existed before the install: the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1592,7 +1592,7 @@
       "items": {
         "type": "string"
       },
-      "description": "Why the host is degraded besides disabled features: memory below the recommended value for the choices (\u00a72.3)."
+      "description": "Why the host is degraded besides disabled features: memory below the recommended value for the choices."
     },
     "needs_action": {
       "type": "array",
@@ -1744,7 +1744,7 @@
             "null"
           ],
           "minimum": 0,
-          "description": "The free space in bytes, which the requirements compare (\u00a72.3)."
+          "description": "The free space in bytes, which the requirements compare."
         }
       }
     },

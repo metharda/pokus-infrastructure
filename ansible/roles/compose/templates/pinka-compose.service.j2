@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/compose/templates/pinka-compose.service.j2). Local changes will be overwritten.
 #
-# Compose project pinka-{{ compose_project }} (BUILD_PROMPT §7.6, owner answer
-# E15): oneshot with RemainAfterExit, `up --wait` to start and `down` to stop.
+# Compose project pinka-{{ compose_project }}:
+# oneshot with RemainAfterExit, `up --wait` to start and `down` to stop.
 [Unit]
 Description=pinka {{ compose_project }} services ({{ compose_description }})
 Requires=docker.service

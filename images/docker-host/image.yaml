@@ -1,6 +1,6 @@
 # Managed by pinka (images/docker-host/image.yaml). Local changes will be overwritten.
 #
-# Golden image blueprint `docker-host` (BUILD_PROMPT §7.13): Docker Engine
+# Golden image blueprint `docker-host`: Docker Engine
 # inside the target (needs security.nesting) running one containerized web
 # service from an image preloaded by digest.
 schema_version: 1
@@ -11,7 +11,7 @@ base: {blueprint: _base}
 type: container
 nesting: true
 # Space one build takes below /srv/pinka/images (the exported image),
-# estimated until a build measures it (BUILD_PROMPT §2.3, §7.13).
+# estimated until a build measures it.
 estimated_size_gib: 0.8
 packages: [docker.io]
 # Keys of versions.lock.yml containers.target_images, pulled by digest.

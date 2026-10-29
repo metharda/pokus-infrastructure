@@ -1,6 +1,6 @@
 # Managed by pinka (images/redis-cache/provision.yml). Local changes will be overwritten.
 #
-# Redis (BUILD_PROMPT §7.13), on top of `_base`.
+# Redis, on top of `_base`.
 - name: Provision the Redis blueprint
   hosts: all
   gather_facts: false

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/pinka/contract/v2/records/session-record.schema.json",
   "title": "session record",
-  "description": "One lab session: `/var/lib/pinka/sessions/<boot_id>.json`, 0644 root, written once per boot by pinka-session-start.service (BUILD_PROMPT §7.16) and read by the platform's controller. A field that could not be computed is null, with the reason under errors.",
+  "description": "One lab session: `/var/lib/pinka/sessions/<boot_id>.json`, 0644 root, written once per boot by pinka-session-start.service and read by the platform's controller. A field that could not be computed is null, with the reason under errors.",
   "type": "object",
   "additionalProperties": false,
   "required": [

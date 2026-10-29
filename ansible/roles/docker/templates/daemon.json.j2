@@ -1,7 +1,7 @@
 {#- Managed by pinka (ansible/roles/docker/templates/daemon.json.j2). Local changes will be overwritten.
     JSON has no comments and dockerd rejects unknown keys, so the managed
     header is written as an engine label (preflight looks for it). Written
-    only for a Docker Engine pinka installed (BUILD_PROMPT §7.6): the log
+    only for a Docker Engine pinka installed: the log
     driver, cgroup parent and networks live in pinka's Compose projects. -#}
 {%- set base = {
   "labels": ["org.pinka.managed=Managed by pinka (ansible/roles/docker/templates/daemon.json.j2). Local changes will be overwritten."],

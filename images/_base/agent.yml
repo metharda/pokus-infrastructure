@@ -1,6 +1,6 @@
 # Managed by pinka (images/_base/agent.yml). Local changes will be overwritten.
 #
-# Configuration of the in-image OpenTelemetry agent (BUILD_PROMPT §7.13),
+# Configuration of the in-image OpenTelemetry agent,
 # installed by _base/provision.yml. The images role runs it after the
 # provisioning of every blueprint, so that a blueprint's own telemetry
 # settings (image.yaml `telemetry`) apply. Variables: image, otlp_endpoint.

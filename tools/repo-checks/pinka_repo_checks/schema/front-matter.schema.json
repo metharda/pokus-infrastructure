@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pokus documentation page front matter",
-  "description": "Front matter required on every documentation page (Pokus Documentation Specification, A.2 and A.4). Dates are ISO 8601 calendar dates (UTC).",
+  "description": "Front matter required on every documentation page. Dates are ISO 8601 calendar dates (UTC).",
   "type": "object",
   "additionalProperties": false,
   "required": ["title", "type", "audience", "applies_to", "last_verified"],

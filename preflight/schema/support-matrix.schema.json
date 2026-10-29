@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pinka support matrix",
-  "description": "preflight/support-matrix.yml (pokus-infrastructure BUILD_PROMPT §2.3), validated by `make lint` before it is compiled to JSON. Only the keys the evaluator understands are allowed.",
+  "description": "preflight/support-matrix.yml, validated by `make lint` before it is compiled to JSON. Only the keys the evaluator understands are allowed.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pinka versions lock",
-  "description": "versions.lock.yml (pokus-infrastructure BUILD_PROMPT \u00a710.1, \u00a719.4). Every pinned value is either verified (and matches its pattern) or the marker TODO(verify), which `make lock-check` reports as a failure.",
+  "description": "versions.lock.yml. Every pinned value is either verified (and matches its pattern) or the marker TODO(verify), which `make lock-check` reports as a failure.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -175,7 +175,7 @@
         },
         "target_images": {
           "type": "object",
-          "description": "Images preloaded inside golden images (BUILD_PROMPT \u00a77.13), never run by the lab itself.",
+          "description": "Images preloaded inside golden images, never run by the lab itself.",
           "propertyNames": {
             "$ref": "#/$defs/identifier"
           },
@@ -185,7 +185,7 @@
         },
         "ci_images": {
           "type": "object",
-          "description": "Base images of the CI fast lane's systemd containers (BUILD_PROMPT \u00a719.9), never run on a lab host.",
+          "description": "Base images of the CI fast lane's systemd containers, never run on a lab host.",
           "propertyNames": {
             "$ref": "#/$defs/identifier"
           },
@@ -299,7 +299,7 @@
     },
     "nvidia_driver_gpus": {
       "$ref": "#/$defs/section",
-      "description": "The PCI device IDs each NVIDIA driver release pinned for automatic installs supports with its open kernel module, and those it supports only with its proprietary module, from NVIDIA's supported-gpus.json of the release (BUILD_PROMPT \u00a72.2, \u00a710.1).",
+      "description": "The PCI device IDs each NVIDIA driver release pinned for automatic installs supports with its open kernel module, and those it supports only with its proprietary module, from NVIDIA's supported-gpus.json of the release.",
       "required": [
         "releases"
       ],
@@ -726,7 +726,7 @@
           }
         },
         "cuda": {
-          "description": "The CUDA version the image is built on (its CUDA_VERSION); preflight and doctor compare it with the driver (BUILD_PROMPT \u00a72.2).",
+          "description": "The CUDA version the image is built on (its CUDA_VERSION); preflight and doctor compare it with the driver.",
           "oneOf": [
             {
               "type": "string",
@@ -738,7 +738,7 @@
           ]
         },
         "sizes": {
-          "description": "The compressed size in bytes of each platform's image (the sum of its manifest's layers); the requirements computation estimates the unpacked size as 2.5 times that until the image is pulled on a host (BUILD_PROMPT \u00a72.3, \u00a710.1).",
+          "description": "The compressed size in bytes of each platform's image (the sum of its manifest's layers); the requirements computation estimates the unpacked size as 2.5 times that until the image is pulled on a host.",
           "type": "object",
           "minProperties": 1,
           "propertyNames": {

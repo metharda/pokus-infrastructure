@@ -1,6 +1,6 @@
 # Managed by pinka (images/web-nginx-flask/image.yaml). Local changes will be overwritten.
 #
-# Golden image blueprint `web-nginx-flask` (BUILD_PROMPT §7.13): nginx on port
+# Golden image blueprint `web-nginx-flask`: nginx on port
 # 80 in front of gunicorn serving a small Flask application on 127.0.0.1:8000.
 schema_version: 1
 name: web-nginx-flask
@@ -10,7 +10,7 @@ base: {blueprint: _base}
 type: container
 nesting: false
 # Space one build takes below /srv/pinka/images (the exported image),
-# estimated until a build measures it (BUILD_PROMPT §2.3, §7.13).
+# estimated until a build measures it.
 estimated_size_gib: 0.6
 packages: [nginx, gunicorn, python3-flask]
 docker_images: []

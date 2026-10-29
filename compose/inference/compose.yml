@@ -1,6 +1,6 @@
 # Managed by pinka (compose/inference/compose.yml). Local changes will be overwritten.
 #
-# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the OpenAI-compatible API
+# vLLM (contracts.md#inference): the OpenAI-compatible API
 # on 127.0.0.1 only (host network; vLLM binds the address of the rendered
 # configuration), models read-only from /srv/pinka/models, no Hub access.
 # /etc/pinka/vllm/current.yaml (the `vllm serve --config` file) and
@@ -10,8 +10,8 @@
 name: pinka-inference
 
 # Settings every lab container gets here rather than from the Docker daemon,
-# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
-# §7.6): the local log driver with size limits and the lab services' slice.
+# so they are the same on a Docker that existed before pinka:
+# the local log driver with size limits and the lab services' slice.
 x-logging: &logging
   driver: local
   options:

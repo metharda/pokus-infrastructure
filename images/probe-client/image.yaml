@@ -1,6 +1,6 @@
 # Managed by pinka (images/probe-client/image.yaml). Local changes will be overwritten.
 #
-# Golden image blueprint `probe-client` (BUILD_PROMPT §7.13): the client side
+# Golden image blueprint `probe-client`: the client side
 # of probes and load: curl, dig and the ab load generator.
 schema_version: 1
 name: probe-client
@@ -10,7 +10,7 @@ base: {blueprint: _base}
 type: container
 nesting: false
 # Space one build takes below /srv/pinka/images (the exported image),
-# estimated until a build measures it (BUILD_PROMPT §2.3, §7.13).
+# estimated until a build measures it.
 estimated_size_gib: 0.6
 packages: [apache2-utils, postgresql-client, redis-tools]
 docker_images: []
