@@ -39,8 +39,8 @@
     label: "{{ item.name }}"
 
 # incus_pool_size: auto takes the size preflight computed for this host
-# (requirements.pool of the host profile bootstrap passes, BUILD_PROMPT
-# §2.3); Incus creates the pool once and never resizes it.
+# (requirements.pool of the host profile bootstrap passes);
+# Incus creates the pool once and never resizes it.
 - name: Decide the loop pool's size
   ansible.builtin.set_fact:
     incus_pool_loop_size: >-

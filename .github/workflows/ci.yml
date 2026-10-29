@@ -7,7 +7,7 @@
 #
 # GitHub Actions minutes: the test
 # job runs the pytest suites in the random order of the Makefile's seed; a
-# push that changes only docs or records skips the Ansible lanes (job
+# push that changes only docs skips the Ansible lanes (job
 # changes); test-isolated (isolated.yml), check-mode-extended
 # (check-mode-extended.yml) and release-package run weekly, on
 # workflow_dispatch and on pushes that touch their inputs. The required job
@@ -48,7 +48,7 @@ env:
 
 jobs:
   changes:
-    # Whether the Ansible lanes are needed: not for a change of docs or records
+    # Whether the Ansible lanes are needed: not for a change of docs
     # only (pinka_repo_checks.changes). A new branch, a force push, a schedule
     # or a manual run needs them.
     if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
@@ -220,7 +220,7 @@ jobs:
     # Required CI fast lane: the provider-agnostic
     # roles (install_record, base, users_groups, ssh, layout) with --check in a disposable
     # systemd container per family, nothing skipped; never a host. Blocking;
-    # skipped for a change of docs or records only.
+    # skipped for a change of docs only.
     needs: changes
     if: >-
       github.event_name != 'schedule' && (github.event_name != 'pull_request' ||
@@ -252,7 +252,7 @@ jobs:
 
   required:
     # The blocking jobs in one check for branch protection: every one passed,
-    # or check-mode was skipped for a change of docs or records only. (A
+    # or check-mode was skipped for a change of docs only. (A
     # matrix job skipped as a whole reports one check under its own name, not
     # one per lane, so the lanes cannot be required one by one.) It runs
     # always in a real run, also a cancelled one, and fails unless every job

@@ -1,4 +1,4 @@
-"""The invariant checks of contract v2 beyond the schema (§12.1-§12.4, §13 items 13-16)."""
+"""The invariant checks of contract v2 beyond the schema."""
 
 from __future__ import annotations
 
@@ -216,7 +216,7 @@ def _allowed_clients(served_by: str, contract: Contract) -> set[str]:
 
 
 def check_sockets(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
-    """The connection rules of §12.3, dedicated agent sockets included.
+    """The contract's connection rules, dedicated agent sockets included.
 
     Args:
         manifest: A manifest that passed the schema.
@@ -329,7 +329,7 @@ def _inside_dir(path: str, directory: str) -> bool:
 
 
 def check_agent_package(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
-    """The agent's own package (V6, owner decision with the "commit" for 3d.4).
+    """The agent's own package (V6).
 
     A service whose profile has ``own_package`` (``untrusted-agent``) names
     the directory of its own package; no other service does. Its start
@@ -539,8 +539,8 @@ def check_sources(release: SourceRef, packages: Mapping[str, SourceRef]) -> list
 
     Paths overlap when one is a prefix of the other by path segments; an empty
     path (the repository root) overlaps every path. A content package may not
-    overlap the release (§12.1, §7.14 step 4) nor, an approved deviation of
-    3d.1, another content package, so no package is ever extracted as part of
+    overlap the release nor
+    another content package, so no package is ever extracted as part of
     another source.
 
     Args:
@@ -591,7 +591,7 @@ def _field_used(manifest: Mapping[str, Any], field: str) -> bool:
 def check_requires(manifest: Mapping[str, Any], contract: Contract) -> list[Problem]:
     """Refuse a manifest that uses a facility it does not declare in ``requires``.
 
-    An approved deviation of 3d.1: the health gate checks exactly the declared
+    The health gate checks exactly the declared
     facilities, so everything the platform uses must be declared.
     ``profiles.yml`` (``facilities``) names the profiles and fields that need each.
 

@@ -1,4 +1,4 @@
-"""pinka, the operator CLI of a Pokus lab host (BUILD_PROMPT §9).
+"""pinka, the operator CLI of a Pokus lab host.
 
 Standard library only and compatible with Python 3.9, so it works with the
 pinned CPython or the host's python3 even when a virtual environment is

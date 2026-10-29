@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/uninstall/tasks/phase.yml). Local changes will be overwritten.
 #
-# One phase of the confirmed plan (BUILD_PROMPT §5.4). An item that cannot be
+# One phase of the confirmed plan. An item that cannot be
 # removed is a result ("failed", bootstrap exits 81), not a failed task; a
 # failed task stops the phases after it, and the report notes them.
 - name: Remove {{ uninstall_phase }}

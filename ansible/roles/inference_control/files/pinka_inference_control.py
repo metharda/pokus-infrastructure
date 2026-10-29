@@ -1,6 +1,6 @@
 #!/opt/pinka/python/bin/python3 -I
 # Managed by pinka (ansible/roles/inference_control/files/pinka_inference_control.py). Local changes will be overwritten.
-"""The inference control endpoint of an inference node (BUILD_PROMPT §19.10).
+"""The inference control endpoint of an inference node.
 
 Installed as ``/usr/local/libexec/pinka/inference-control`` and run as
 ``pinka-inference-control.service`` (user pinka-inference) on ``node_role:
@@ -59,7 +59,7 @@ class Config:
         cert: This node's certificate.
         key: This node's private key.
         peer: The paired lab node's certificate (the only accepted client).
-        gpu_socket: The GPU arbiter's socket (§7.18).
+        gpu_socket: The GPU arbiter's socket.
         activate_timeout: Seconds ``POST /activate`` waits for the arbiter.
         gpu_metrics: URL of the GPU exporter's metrics.
         current: The current deployment spec (``current.yml``).
@@ -311,7 +311,7 @@ def fingerprint_summary(config: Config) -> dict[str, Any] | None:
 
 
 def ask_arbiter(config: Config, deployment: str) -> dict[str, Any]:
-    """Serve a deployment through the GPU arbiter (§7.18, §19.10).
+    """Serve a deployment through the GPU arbiter.
 
     The arbiter answers when the deployment answers on /health or failed.
 

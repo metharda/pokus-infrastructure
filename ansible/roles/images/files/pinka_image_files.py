@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/images/files/pinka_image_files.py). Local changes will be overwritten.
-"""Check the files of an exported Incus image (BUILD_PROMPT §7.13, §7.15).
+"""Check the files of an exported Incus image.
 
 ``incus image export <fingerprint> <dir>/`` writes either one unified tarball
 ``<fingerprint>.<ext>`` or a split image, the metadata tarball

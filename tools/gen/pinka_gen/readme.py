@@ -1,4 +1,4 @@
-"""Generated sections of ``README.md`` (BUILD_PROMPT §15).
+"""Generated sections of ``README.md``.
 
 The README carries an excerpt of the support matrix and the bootstrap exit
 codes between ``generated:<name>`` markers; the rest of the file is written

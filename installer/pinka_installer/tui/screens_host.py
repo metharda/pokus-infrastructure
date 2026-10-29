@@ -1,4 +1,4 @@
-"""Screens 4-6: Machine, Resources, Storage (BUILD_PROMPT §18.4)."""
+"""Screens 4-6: Machine, Resources, Storage."""
 
 from __future__ import annotations
 
@@ -312,7 +312,7 @@ def disk_row(disk: Disk) -> tuple[str, ...]:
 
 
 class StorageScreen(StepScreen):
-    """Screen 6: the Incus pool on a loop file or a dedicated disk (safety invariant 1)."""
+    """Screen 6: the Incus pool on a loop file or a dedicated disk."""
 
     STEP = "storage"
     HELP = (

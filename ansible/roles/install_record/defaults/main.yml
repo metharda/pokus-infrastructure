@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/install_record/defaults/main.yml). Local changes will be overwritten.
 
-# The install record (BUILD_PROMPT §7.21).
+# The install record.
 install_record_path: /var/lib/pinka/install-record.json
 # Files outside pinka's own names that roles write or edit; the record keeps
 # the content of each that existed before pinka, so uninstall can restore it.
@@ -24,6 +24,6 @@ install_record_managed_files:
   - /etc/wsl.conf
   - /etc/ld.so.conf.d/pinka-wsl.conf
 # Managed files bootstrap changes before the record exists, and where it keeps
-# their original (BUILD_PROMPT §5.4): pre-preflight's /etc/wsl.conf on WSL.
+# their original: pre-preflight's /etc/wsl.conf on WSL.
 install_record_originals:
   /etc/wsl.conf: /var/lib/pinka/originals/etc/wsl.conf

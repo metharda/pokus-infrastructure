@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034 # constants read by the scripts that source this file
 # Managed by pinka (bootstrap/lib/exitcodes.sh). Local changes will be overwritten.
 #
-# Exit codes of bootstrap.sh (BUILD_PROMPT §2.4, §5.2). One constant per line in
+# Exit codes of bootstrap.sh. One constant per line in
 # the form `readonly EXIT_NAME=<code> # <title>: <meaning>`; tools/gen renders
 # docs/reference/exit-codes.md from these lines and the docs coverage check
 # requires every code to be documented.

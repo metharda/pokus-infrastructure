@@ -1,4 +1,4 @@
-"""The base of every wizard screen (BUILD_PROMPT §18.4): header, body, navigation, help."""
+"""The base of every wizard screen: header, body, navigation, help."""
 
 from __future__ import annotations
 

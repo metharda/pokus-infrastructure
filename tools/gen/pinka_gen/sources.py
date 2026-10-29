@@ -114,12 +114,12 @@ def endpoints_json(root: Path) -> str:
     return dump_json(data, "preflight/endpoints.yml")
 
 
-# The tailnet range a VM collector address must not fall into (BUILD_PROMPT §2.2).
+# The tailnet range a VM collector address must not fall into.
 TAILNET_RANGE = "100.64.0.0/10"
 
 
 def nvidia_gpus_json(root: Path) -> str:
-    """Compile the GPU lists of the pinned NVIDIA driver releases for preflight (§2.2, §10.1).
+    """Compile the GPU lists of the pinned NVIDIA driver releases for preflight.
 
     Args:
         root: Component root.
@@ -144,7 +144,7 @@ def nvidia_gpus_json(root: Path) -> str:
 
 
 def lab_defaults_json(root: Path) -> str:
-    """Compile the lab's default ports and addresses for preflight (§2.2, §12.11).
+    """Compile the lab's default ports and addresses for preflight.
 
     Args:
         root: Component root.
@@ -154,10 +154,9 @@ def lab_defaults_json(root: Path) -> str:
         collector address and interface, the Docker address pools, the
         tailnet range, the Tailscale tags pinka gives a node it joins and
         the names of the Incus bridges pinka creates (exact names and
-        prefixes, for the clash check against LXD, §7.7), and the UDP ports
+        prefixes, for the clash check against LXD), and the UDP ports
         pinka's strict input policy accepts on every interface besides the
-        DHCP clients' (Tailscale's WireGuard port; the pre-existing access of
-        §2.2).
+        DHCP clients' (Tailscale's WireGuard port; the pre-existing access).
     """
     group_vars = load_yaml(root / "ansible/group_vars/all/main.yml")
     docker = load_yaml(root / "ansible/roles/docker/defaults/main.yml")
@@ -252,7 +251,7 @@ def days(value: Any) -> float:  # noqa: ANN401 - YAML value
 
 
 def plan_defaults(root: Path) -> dict[str, Any]:
-    """The requirements plan of the configured defaults (§2.3).
+    """The requirements plan of the configured defaults.
 
     Args:
         root: Component root.
@@ -309,7 +308,7 @@ def plan_defaults(root: Path) -> dict[str, Any]:
 
 
 def requirements_json(root: Path) -> str:
-    """Compile ``preflight/requirements.yml`` for the requirements computation (§2.3).
+    """Compile ``preflight/requirements.yml`` for the requirements computation.
 
     Args:
         root: Component root.

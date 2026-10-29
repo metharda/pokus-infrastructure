@@ -1,4 +1,4 @@
-"""The installer's state between screens (BUILD_PROMPT §18.1, §18.4).
+"""The installer's state between screens.
 
 :class:`Wizard` holds the answers and everything that must not reach a file
 or the resume state: entered secrets, the vault password, pasted keys. Only
@@ -22,7 +22,7 @@ from pinka_installer import release as release_mod
 from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
 
-# The wizard's screens (BUILD_PROMPT §18.4, screens 1-16); 17-19 follow the install.
+# The wizard's screens (screens 1-16); 17-19 follow the install.
 STEPS = (
     ("welcome", "Welcome"),
     ("preflight", "Preflight"),
@@ -143,14 +143,14 @@ class Wizard:
 
     @property
     def access(self) -> dict[str, Any]:
-        """The access to the host before pinka, as preflight saw it (BUILD_PROMPT §7.5)."""
+        """The access to the host before pinka, as preflight saw it."""
         return dict(self.profile.get("access") or {})
 
     @property
     def tailscale_adopted(self) -> dict[str, Any]:
         """A Tailscale node logged in before pinka, as preflight saw it; empty otherwise.
 
-        pinka uses such a node as it is (BUILD_PROMPT §7.4): no login, no new
+        pinka uses such a node as it is: no login, no new
         host name, tags or settings, and tailscale serve only with consent.
         """
         node = (self.profile.get("components") or {}).get("tailscale") or {}
@@ -186,7 +186,7 @@ class Wizard:
 
     @property
     def gpu_unsupported(self) -> bool:
-        """Whether no driver would be installed for the NVIDIA GPU (BUILD_PROMPT §2.2).
+        """Whether no driver would be installed for the NVIDIA GPU.
 
         A GPU without a loaded driver that the open kernel module of the pinned
         driver does not support (preflight's ``open_module_drivers`` is empty)
@@ -204,7 +204,7 @@ class Wizard:
 
     @property
     def mok_enrollment_needed(self) -> bool:
-        """Whether Secure Boot is on and the NVIDIA driver is missing (approved deviation I1).
+        """Whether Secure Boot is on and the NVIDIA driver is missing.
 
         The driver can then only be installed with a Machine Owner Key enrolled
         at the next boot, which needs the operator's consent; never for a GPU
@@ -299,7 +299,7 @@ class Wizard:
 
 
 def existing_answers(paths: Paths, machine: str) -> Answers:
-    """The answers of an installed machine (modify mode, BUILD_PROMPT §18.1).
+    """The answers of an installed machine (modify mode).
 
     The answers file is the base; host_vars and the researchers of
     ``group_vars/all/main.yml`` win where they differ, since an operator may
@@ -554,7 +554,7 @@ def acl_snippet(tag: str) -> str:
 
 
 def adopted_text(node: Mapping[str, Any], tag: str) -> str:
-    """What screen 8 says about a Tailscale node logged in before pinka (BUILD_PROMPT §7.4).
+    """What screen 8 says about a Tailscale node logged in before pinka.
 
     Args:
         node: The node as preflight saw it (``components.tailscale``).
@@ -591,7 +591,7 @@ DOCKER_PROXY = "docker-proxy"
 
 
 def install_path(access: Mapping[str, Any]) -> dict[str, Any] | None:
-    """The install's access path: an SSH session from outside the tailnet (BUILD_PROMPT §7.5).
+    """The install's access path: an SSH session from outside the tailnet.
 
     Args:
         access: The host profile's ``access``.
@@ -607,7 +607,7 @@ def install_path(access: Mapping[str, Any]) -> dict[str, Any] | None:
 
 
 def closable_listeners(access: Mapping[str, Any]) -> list[tuple[str, str]]:
-    """The pre-existing listeners screen 8 offers to close, on a shared host (§7.5).
+    """The pre-existing listeners screen 8 offers to close, on a shared host.
 
     The ones the strict policy admits anyway (DHCP clients, Tailscale's port)
     and the ports Docker publishes for containers (forwarded to the container,
@@ -656,7 +656,7 @@ def closable_listeners(access: Mapping[str, Any]) -> list[tuple[str, str]]:
 
 
 def published_ports(access: Mapping[str, Any]) -> list[str]:
-    """The ports Docker publishes for containers, which pinka's firewall cannot close (§7.5).
+    """The ports Docker publishes for containers, which pinka's firewall cannot close.
 
     Args:
         access: The host profile's ``access``.

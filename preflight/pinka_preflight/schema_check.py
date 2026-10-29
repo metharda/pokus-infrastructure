@@ -1,7 +1,7 @@
 """A small JSON Schema (draft 2020-12) validator for the host profile.
 
 Preflight is standard-library only, yet must emit a profile that validates
-against ``host-profile.schema.json`` (BUILD_PROMPT §2.1). This validator
+against ``host-profile.schema.json``. This validator
 implements exactly the keywords that schema uses; any other keyword raises an
 error, so the schema cannot silently grow beyond what is checked. The test
 suite also validates every fixture's profile with the reference

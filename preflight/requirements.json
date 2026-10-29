@@ -155,13 +155,13 @@
       ],
       "cpu_threads": 0,
       "basis": "estimated",
-      "source": "training_caps.memory_max (§7.18); the arbiter refuses a job over it"
+      "source": "training_caps.memory_max; the arbiter refuses a job over it"
     }
   ],
   "training_cap": {
     "floor_gib": 4,
     "ceiling_gib": 24,
-    "source": "floor: the least a job needs besides its model, a data loader and a small batch in host memory (estimate); ceiling: the fixed default before the cap was computed (§8.1, 24G)"
+    "source": "floor: the least a job needs besides its model, a data loader and a small batch in host memory (estimate); ceiling: the fixed default before the cap was computed (24G)"
   },
   "disk": {
     "pinka_gib": 5,
@@ -453,7 +453,7 @@
       "gib_per_day": 0,
       "per_run": "run_storage_max_gib",
       "basis": "estimated",
-      "source": "training_caps.run_storage_max (§7.18), the most one run may write"
+      "source": "training_caps.run_storage_max, the most one run may write"
     }
   ],
   "blueprints": {

@@ -26,7 +26,7 @@
       {{ images_base_fingerprint in (images_list.stdout | from_json | map(attribute='fingerprint') | list) }}
 
 # Uninstall removes the base images pinka brought into an Incus it did not
-# install, and only those (§5.4): noted before the image arrives.
+# install, and only those: noted before the image arrives.
 - name: Record the upstream base image as pinka's
   pinka_install_record:
     state: add

@@ -225,7 +225,7 @@ class System:
         raise NotImplementedError
 
     def port_conflicts(self, ports: dict[str, int]) -> list[str]:
-        """Lab ports another program listens on, as preflight reports them (§12.11)."""
+        """Lab ports another program listens on, as preflight reports them."""
         raise NotImplementedError
 
     def docs_install(self, base: str, tarball: str, sha256: str, version: str | None) -> str:

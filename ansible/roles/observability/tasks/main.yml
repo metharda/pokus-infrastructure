@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/observability/tasks/main.yml). Local changes will be overwritten.
 #
-# Observability stack (BUILD_PROMPT §7.9, contracts.md#telemetry): the
+# Observability stack (contracts.md#telemetry): the
 # collector gateway and the journald collector, Prometheus, Loki, Tempo,
 # Grafana (with the active platform's dashboards in a folder of its name and
 # a read-only datasource on its Grafana role), node_exporter, cAdvisor and,
@@ -8,7 +8,7 @@
 # Every container uses the host network and binds 127.0.0.1; the VM listener
 # address (C4) exists only with vm_targets. An inference node runs no stores
 # (Prometheus, Loki, Tempo, Grafana): its gateway forwards everything to the
-# paired lab node over mutual TLS (BUILD_PROMPT §19.10, pairing.yml).
+# paired lab node over mutual TLS (pairing.yml).
 - name: Read the active platform
   ansible.builtin.include_role:
     name: active_platform

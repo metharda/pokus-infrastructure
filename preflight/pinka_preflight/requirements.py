@@ -1,4 +1,4 @@
-"""Requirements computed from the operator's choices (BUILD_PROMPT §2.3).
+"""Requirements computed from the operator's choices.
 
 ``requirements.json`` (compiled from ``requirements.yml`` by ``make generate``)
 says what each part of the lab needs; the plan (``--plan``, else the configured
@@ -173,7 +173,7 @@ class Growth:
 
 @dataclass
 class Switches:
-    """The feature switches of the plan on this host (§2.3).
+    """The feature switches of the plan on this host.
 
     Attributes:
         inference: The inference switch: ``auto`` or ``off``.
@@ -420,7 +420,7 @@ def load_plan(
 
 
 def switches(plan: Mapping[str, Any], features: Mapping[str, bool]) -> Switches:
-    """What the switches leave on, on this node with these features (§2.3).
+    """What the switches leave on, on this node with these features.
 
     Args:
         plan: The effective plan.
@@ -463,7 +463,7 @@ def _training_cap(
     memory_gib: float | None,
     sw: Switches,
 ) -> None:
-    """Fill the training cap: the configured one, or computed from the host (§2.3).
+    """Fill the training cap: the configured one, or computed from the host.
 
     ``others`` are the parts that run next to a job: the core stack and the
     targets, never vLLM, which the arbiter stops for a job.
@@ -917,7 +917,7 @@ def _pool(
     measured: dict[str, DiskInfo],
     warnings: list[str],
 ) -> dict[str, Any]:
-    """The pool's size, and for incus_pool_size: auto its loop file item (§2.3).
+    """The pool's size, and for incus_pool_size: auto its loop file item.
 
     The computed size: the golden images and the concurrent targets' root
     disks (or the build instance's, when larger) with the margin, rounded up

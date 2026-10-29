@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/uninstall/library/pinka_uninstall.py). Local changes will be overwritten.
-"""Ansible module: uninstall's plan, its removal and its report (BUILD_PROMPT §5.4).
+"""Ansible module: uninstall's plan, its removal and its report.
 
-* ``state: plan`` reads the install record (§7.21), the lab description, the
+* ``state: plan`` reads the install record, the lab description, the
   active and retired platforms and the host, and writes the plan: every item
   pinka would remove, restore or keep, in removal order, with the reason. It
   changes nothing; ``--dry-run`` stops after it.
@@ -42,7 +42,7 @@ module: pinka_uninstall
 short_description: Plan, carry out and report uninstall
 description:
   - Computes uninstall's plan from the install record and the host, removes
-    one phase of a confirmed plan, or writes the report (BUILD_PROMPT §5.4).
+    one phase of a confirmed plan, or writes the report.
 options:
   state:
     description: plan computes and writes the plan; apply removes one phase; report writes the report.
@@ -151,7 +151,7 @@ RECORD_COMPONENT = {
 }
 
 # What uninstall knows of pinka: the paths, names and objects it removes or
-# keeps (§5.4). ansible/tests/test_uninstall.py keeps them in step with the
+# keeps. ansible/tests/test_uninstall.py keeps them in step with the
 # roles that create each item.
 NAMES: dict[str, Any] = {
     "record": "/var/lib/pinka/install-record.json",
@@ -179,11 +179,11 @@ NAMES: dict[str, Any] = {
     "links": ["/usr/local/bin/restic", "/usr/local/bin/quarto"],
     "link_targets": ["/opt/pinka/", "/usr/local/lib/pinka/"],
     "logs": ["/var/log/pinka-bootstrap", "/var/log/pinka-uninstall"],
-    # What uninstall keeps outside pinka's paths, root only (owner, D2 review):
+    # What uninstall keeps outside pinka's paths, root only:
     # copied there before the paths go. "always": also with --purge-data,
     # because the backups, which are never deleted, need it. "secret": what
     # grants access to the backups; the first follow-up says to take it off
-    # the host and delete it (owner, with the "commit" for D2).
+    # the host and delete it.
     "keep_dir": "/var/lib/pinka-kept",
     "kept_copies": [
         {
@@ -257,7 +257,7 @@ NAMES: dict[str, Any] = {
         },
     ],
     # Read-only while packages are removed, so that no package script can
-    # delete kept data (owner, D2 review): which bind mounts are in place.
+    # delete kept data: which bind mounts are in place.
     "guard_state": "/run/pinka-uninstall-guards",
     # The units of a component, stopped before its packages go and its data
     # directory is guarded.
@@ -686,7 +686,7 @@ COMPONENT_COMMANDS = {
 
 
 def kept_component(ctx: Context, phase: str, component: str, title: str) -> list[Item]:
-    """The keep item of a shared component uninstall leaves (§5.4), when it is there."""
+    """The keep item of a shared component uninstall leaves, when it is there."""
     if not ctx.host.has(COMPONENT_COMMANDS[component]):
         return []
     origin = ctx.origin(component)
@@ -739,7 +739,7 @@ def plan_keep(ctx: Context) -> list[Item]:
 
 
 def plan_platform(ctx: Context) -> list[Item]:
-    """Drain the platform and stop the lab: ``pinka stop`` (§5.4, §7.14)."""
+    """Drain the platform and stop the lab: ``pinka stop``."""
     if not (ctx.active or ctx.host.exists(ctx.unit_file("pinka-lab.target"))):
         return []
     what = f"drain the platform {ctx.active['name']}, " if ctx.active else ""
@@ -771,7 +771,7 @@ def platform_units(ctx: Context) -> list[str]:
 
 
 def plan_units(ctx: Context) -> list[Item]:
-    """Pinka's units, timers, sockets, slices and targets, and the platforms' (§5.4)."""
+    """Pinka's units, timers, sockets, slices and targets, and the platforms'."""
     prefix = ctx.names["unit_prefix"]
     pinka = [
         Path(p).name
@@ -828,7 +828,7 @@ def is_pinka_container(ctx: Context, container: Mapping[str, Any]) -> bool:
 
 
 def plan_compose(ctx: Context) -> list[Item]:
-    """Pinka's containers, Compose networks and images (§5.4); nobody else's."""
+    """Pinka's containers, Compose networks and images; nobody else's."""
     host = ctx.host
     if not host.has("docker") or not host.ok(["docker", "info", "--format", "{{.ID}}"]):
         return []
@@ -897,7 +897,7 @@ def incus_scope(ctx: Context) -> tuple[str, set[str]]:
 
 
 def plan_incus(ctx: Context) -> list[Item]:  # noqa: PLR0912, PLR0915 - one pass over Incus's objects in removal order
-    """The Incus objects pinka created, in removal order, the pool last (§5.4)."""
+    """The Incus objects pinka created, in removal order, the pool last."""
     host, names = ctx.host, ctx.names["incus"]
     if not host.has("incus") or incus_query(ctx, "/1.0") is None:
         return []
@@ -921,7 +921,7 @@ def plan_incus(ctx: Context) -> list[Item]:  # noqa: PLR0912, PLR0915 - one pass
         for pool in pools
     }
     # A researcher's personal project with instances or volumes is their
-    # work: kept without --purge-data, and Incus with it (owner, D2 review).
+    # work: kept without --purge-data, and Incus with it.
     held = researchers_work(ctx, our_projects, instances, volumes)
     our_projects = [p for p in our_projects if p not in held]
     items: list[Item] = [
@@ -1157,7 +1157,7 @@ def kept_bridges(ctx: Context) -> set[str]:
 
 
 def docker_user_rules(ctx: Context) -> list[Item]:
-    """The DOCKER-USER rules pinka inserted for its Incus bridges (§7.5), nothing else."""
+    """The DOCKER-USER rules pinka inserted for its Incus bridges, nothing else."""
     items = []
     patterns = set(ctx.names["bridge_patterns"]) - kept_bridges(ctx)
     for tool in ("iptables", "ip6tables"):
@@ -1185,7 +1185,7 @@ def docker_user_rules(ctx: Context) -> list[Item]:
 
 
 def guard_reason(ctx: Context) -> str:
-    """Why the access guard goes: what it closed with consent is reachable again (§7.5)."""
+    """Why the access guard goes: what it closed with consent is reachable again."""
     closed = [
         "the install's access path" if str(c) == "install_path" else str(c)
         for c in ctx.added.get("closed_access") or []
@@ -1196,7 +1196,7 @@ def guard_reason(ctx: Context) -> str:
 
 
 def plan_firewall(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one branch per firewall
-    """The firewall objects pinka added, and what it changed in the owner's zones (§5.4, §7.5).
+    """The firewall objects pinka added, and what it changed in the owner's zones.
 
     After them the firewall is as it was before pinka: every listener closed
     with the owner's consent (the table ``inet pinka_access_guard``) and the
@@ -1273,7 +1273,7 @@ def plan_firewall(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one branch per
 
 
 def plan_tailscale(ctx: Context) -> list[Item]:
-    """The serve entries pinka added; a logout only when pinka joined the node (§5.4, §7.4)."""
+    """The serve entries pinka added; a logout only when pinka joined the node."""
     host = ctx.host
     if not host.has("tailscale"):
         return []
@@ -1360,7 +1360,7 @@ def guard_candidates(ctx: Context) -> list[str]:
 def plan_holds_and_repos(
     ctx: Context, removed_components: Sequence[str], kept_packages: set[str]
 ) -> list[Item]:
-    """Pinka's holds, repositories and keys; a component that stays keeps its own (D2 review)."""
+    """Pinka's holds, repositories and keys; a component that stays keeps its own."""
     host, family, items = ctx.host, ctx.family, []
     method = family["hold_method"]
     files_before = ctx.pre.get("files") or {}
@@ -1412,7 +1412,7 @@ def plan_holds_and_repos(
 
 
 def plan_packages(ctx: Context) -> list[Item]:
-    """Holds first, then repositories and keys, then pinka's packages, then their dependencies (§5.4)."""
+    """Holds first, then repositories and keys, then pinka's packages, then their dependencies."""
     host, family, items = ctx.host, ctx.family, []
     installed = installed_packages(ctx)
     removed_components = [
@@ -1502,7 +1502,7 @@ def plan_packages(ctx: Context) -> list[Item]:
 
 
 def plan_accounts(ctx: Context) -> list[Item]:  # noqa: PLR0912 - memberships, keys, platforms, accounts, groups
-    """Memberships and keys pinka added, then its accounts and groups, then the platforms' (§5.4, §6.1)."""
+    """Memberships and keys pinka added, then its accounts and groups, then the platforms'."""
     items: list[Item] = []
     passwd, groups = ctx.passwd, ctx.groups
     for entry in ctx.added.get("memberships") or []:
@@ -1649,7 +1649,7 @@ def file_mode_of(ctx: Context, path: str) -> dict[str, str]:
 
 
 def plan_dropin(ctx: Context, dropin: Mapping[str, Any]) -> list[Item]:  # noqa: PLR0911 - one case each
-    """Restore or remove one file pinka writes (§5.4, §7.21)."""
+    """Restore or remove one file pinka writes."""
     host, path = ctx.host, str(dropin["path"])
     reload = str(dropin.get("reload") or "")
     if dropin.get("component") and not ctx.removes(str(dropin["component"])):
@@ -1689,7 +1689,7 @@ def plan_dropin(ctx: Context, dropin: Mapping[str, Any]) -> list[Item]:  # noqa:
 
 
 def plan_dropins(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one kind of file or setting each
-    """Drop-in files and edits, and the settings pinka changed, set back (§5.4)."""
+    """Drop-in files and edits, and the settings pinka changed, set back."""
     host, names, items = ctx.host, ctx.names, []
     for dropin in names["dropins"]:
         items += plan_dropin(ctx, dropin)
@@ -1830,7 +1830,7 @@ def platform_links(ctx: Context) -> list[str]:
 
 
 def plan_paths(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one kind of path each
-    """Pinka's paths, the record last; the data, the logs and the remote side kept (§5.4)."""
+    """Pinka's paths, the record last; the data, the logs and the remote side kept."""
     host, names, items = ctx.host, ctx.names, []
     for link in sorted(set(names["links"]) | set(platform_links(ctx))):
         target = host.link_target(link)
@@ -1954,7 +1954,7 @@ def warnings_for(ctx: Context, items: Sequence[Item]) -> list[str]:
 
 
 def build_plan(ctx: Context) -> dict[str, Any]:
-    """The whole plan, in removal order (§5.4)."""
+    """The whole plan, in removal order."""
     items: list[Item] = ctx.planned
     for phase in PHASES:
         items += PLANNERS[phase](ctx)
@@ -2026,7 +2026,7 @@ def secrets_follow_up(keep: str, secrets: Sequence[str]) -> str:
 
 
 def follow_ups(ctx: Context, items: Sequence[Item]) -> list[str]:
-    """What the owner does afterwards, the kept secrets first (owner, D2 review and "commit")."""
+    """What the owner does afterwards, the kept secrets first."""
     found = []
     secrets = kept_secrets(ctx, items)
     if secrets:
@@ -2314,7 +2314,7 @@ def blocked_packages(ctx: Context, output: str, candidates: Sequence[str]) -> se
 
 
 def remove_packages(ctx: Context, names: Sequence[str]) -> dict[str, tuple[str, str]]:
-    """Remove packages exactly, never one another package still needs (§5.4).
+    """Remove packages exactly, never one another package still needs.
 
     A test removal names the candidates others depend on; they are kept and
     the rest is tested again, until the test passes or nothing is left.
@@ -2343,8 +2343,8 @@ def remove_packages(ctx: Context, names: Sequence[str]) -> dict[str, tuple[str, 
         candidates = [n for n in candidates if n not in blocked]
     if not candidates:
         return results
-    # A package whose purge deletes kept data is removed without purging
-    # (owner, D2 review): its data and configuration stay.
+    # A package whose purge deletes kept data is removed without purging:
+    # its data and configuration stay.
     deletes = {} if ctx.purge else dict(ctx.family.get("purge_deletes") or {})
     keeping = [n for n in candidates if n in deletes]
     purging = [n for n in candidates if n not in deletes]
@@ -2914,7 +2914,7 @@ def reboot_reasons(items: Sequence[Mapping[str, Any]]) -> list[str]:
 
 
 def build_report(params: Mapping[str, Any], plan: Mapping[str, Any]) -> dict[str, Any]:
-    """The report: every item of the plan with its result (§5.4)."""
+    """The report: every item of the plan with its result."""
     results = [r for r in params.get("results") or [] if isinstance(r, Mapping)]
     done = {(r["phase"], r["kind"], r["name"]) for r in results}
     missing = [

@@ -1,11 +1,11 @@
 # Managed by pinka (ansible/roles/models/tasks/main.yml). Local changes will be overwritten.
 #
-# The models of models.lock.yml (BUILD_PROMPT §7.12, contracts.md#paths): the
+# The models of models.lock.yml (contracts.md#paths): the
 # pinned huggingface_hub CLI in an isolated uv environment, then one
 # models-fetch run per entry, which downloads only what is missing, verifies
 # every sha256, makes the files 0444 and writes MANIFEST.json. Verified
 # entries are never downloaded again. Adapters are not downloaded: only the
-# GPU arbiter registers them (§7.18). Tag: models.
+# GPU arbiter registers them. Tag: models.
 - name: Read the model lock
   ansible.builtin.set_fact:
     models_lock: "{{ lookup('ansible.builtin.file', pinka_dir ~ '/models.lock.yml') | from_yaml }}"

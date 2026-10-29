@@ -1,4 +1,4 @@
-"""Uninstall from the installer (BUILD_PROMPT §5.4, §18.4 screen 3).
+"""Uninstall from the installer.
 
 The Install mode screen offers Uninstall when a lab is installed. These two
 screens show uninstall's own dry run, offer a backup when a restic

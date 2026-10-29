@@ -1,7 +1,7 @@
 # Managed by pinka (.github/workflows/release-package.yml).
 #
-# The release package from the real Galaxy artifacts (owner decision with
-# the "commit" for 3d.8): on every push that changes the release tooling,
+# The release package from the real Galaxy artifacts:
+# on every push that changes the release tooling,
 # the lock or tools/lockcheck/, and weekly, the package of the pushed commit
 # is built twice with make release-package (its pinned collections downloaded
 # from Galaxy and checked against the lock), checked with
@@ -33,7 +33,7 @@ on:
 permissions:
   contents: read
 
-# One run per commit (owner, after D2): on main and moving/on each commit's
+# One run per commit: on main and moving/on each commit's
 # run has a group of its own and always finishes; elsewhere (a pull request
 # from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:

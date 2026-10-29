@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/doctor/vars/main.yml). Local changes will be overwritten.
 
-# Installed CLI (BUILD_PROMPT §7.17, §9): the packages, the wrapper and the lab description.
+# Installed CLI: the packages, the wrapper and the lab description.
 doctor_lib: /usr/local/lib/pinka
 doctor_bin: /usr/local/bin/pinka
 doctor_config: /etc/pinka/lab.json
@@ -12,7 +12,7 @@ doctor_packages:
   - {src: tools/pinka-lab/pinka_lab, dest: pinka-lab/pinka_lab}
   - {src: preflight/pinka_preflight, dest: preflight/pinka_preflight}
 
-# What this node runs (BUILD_PROMPT §19.10).
+# What this node runs.
 doctor_runs_lab: "{{ node_role in ['full', 'lab'] }}"
 doctor_serves_inference: "{{ (pinka_features.gpu_inference | default(false)) and node_role in ['full', 'inference'] }}"
 
@@ -54,7 +54,7 @@ doctor_observability_containers:
   pinka-otel-journald: otel_collector
   pinka-node-exporter: node_exporter
   pinka-cadvisor: cadvisor
-# Not on inference nodes, which forward to their lab node (BUILD_PROMPT §19.10).
+# Not on inference nodes, which forward to their lab node.
 doctor_store_containers:
   pinka-prometheus: prometheus
   pinka-loki: loki
@@ -67,7 +67,7 @@ doctor_container_keys: >-
      | combine(doctor_observability_containers,
                doctor_store_containers if doctor_runs_lab else {},
                doctor_gpu_containers if doctor_uses_gpu | bool else {}) }}
-# The lab uses the GPU: vLLM serves or training jobs run on it (§2.3).
+# The lab uses the GPU: vLLM serves or training jobs run on it.
 doctor_uses_gpu: >-
   {{ (pinka_features.gpu_inference | default(false)) or (pinka_features.gpu_training | default(false)) }}
 # Container name -> pinned reference <image>@<digest>.

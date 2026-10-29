@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/backup/defaults/main.yml). Local changes will be overwritten.
 
-# restic repository and password (owner answer E4: SFTP to a host the deployer
+# restic repository and password (SFTP to a host the deployer
 # chooses, a rest-server second, a local path for tests only). An empty
 # repository means "configure later": no backup or prune timer, and the
 # metrics (and doctor) report that backups are not configured.
@@ -8,8 +8,8 @@ backup_repository: "{{ vault_restic_repository | default('') }}"
 backup_password: "{{ vault_restic_password | default('') }}"
 # SFTP repositories: known_hosts lines of the backup server, checked out of band.
 backup_sftp_known_hosts: []
-# Infra's own directories below pinka_root that are backed up (BUILD_PROMPT
-# §7.15). The restricted area, the training datasets, the adapters and the
+# Infra's own directories below pinka_root that are backed up.
+# The restricted area, the training datasets, the adapters and the
 # active platform's backup.paths are always backed up (backup_fixed).
 backup_include: [images, datasets, shared, users, backups/pg]
 # Model weights are re-downloaded and verified on restore, so they are left out.

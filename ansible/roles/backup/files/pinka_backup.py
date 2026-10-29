@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/backup/files/pinka_backup.py). Local changes will be overwritten.
-"""Backups of the lab (BUILD_PROMPT §7.15).
+"""Backups of the lab.
 
 Commands, all run as root by the backup role's units or by ``restore.yml``:
 

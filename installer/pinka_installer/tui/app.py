@@ -1,4 +1,4 @@
-"""The installer application (BUILD_PROMPT §18): navigation, resume state, themes.
+"""The installer application: navigation, resume state, themes.
 
 :class:`InstallerApp` shows one :class:`~pinka_installer.tui.base.StepScreen`
 at a time. ``goto`` saves the resume state before every screen change, so an
@@ -334,7 +334,7 @@ def build_context(
     """Collect what the screens need, and the answers to start from.
 
     An answers file is the starting point when given; otherwise an installed
-    lab opens in modify mode, pre-filled from its files (BUILD_PROMPT §18.1).
+    lab opens in modify mode, pre-filled from its files.
 
     Args:
         paths: Installer paths.

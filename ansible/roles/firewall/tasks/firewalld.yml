@@ -17,8 +17,8 @@
 - name: Reload firewalld so the new zone exists
   ansible.builtin.meta: flush_handlers
 
-# Uninstall sets back what pinka changes in zones it did not create
-# (BUILD_PROMPT §5.4): tailscale0's zone before pinka ("" when it had none),
+# Uninstall sets back what pinka changes in zones it did not create:
+# tailscale0's zone before pinka ("" when it had none),
 # and the zones where pinka opens SSH; noted before the first change only.
 - name: Find the zone of tailscale0
   ansible.builtin.command:

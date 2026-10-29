@@ -1,12 +1,12 @@
 # Managed by pinka (ansible/roles/users_groups/tasks/keys.yml). Local changes will be overwritten.
 #
-# authorized_keys comes exclusively from users/<name>.pub (BUILD_PROMPT §6.1):
+# authorized_keys comes exclusively from users/<name>.pub:
 # a key removed from the file is removed from the host. Key files are never
 # committed to the public project; a missing file is reported (doctor and the
 # TUI flag it) and leaves the account without keys.
 #
 # An account that existed before pinka keeps its own keys: pinka adds the
-# keys of users/<name>.pub, records them (§7.21), and never removes a key it
+# keys of users/<name>.pub, records them, and never removes a key it
 # did not add.
 - name: Install the SSH keys of each researcher (exclusive)
   ansible.posix.authorized_key:

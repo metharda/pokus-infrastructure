@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/platform/tasks/quarto.yml). Local changes will be overwritten.
 #
-# The pinned Quarto CLI for the evaluator's HTML and PDF reports (BUILD_PROMPT
-# §7.14); PDF goes through the Typst engine bundled with Quarto, no TeX.
+# The pinned Quarto CLI for the evaluator's HTML and PDF reports;
+# PDF goes through the Typst engine bundled with Quarto, no TeX.
 
 - name: Create the Quarto directory
   ansible.builtin.file:

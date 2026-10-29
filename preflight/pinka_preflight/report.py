@@ -1,4 +1,4 @@
-"""Host profile report: assembly, validation and storage (BUILD_PROMPT §2.1, §2.5).
+"""Host profile report: assembly, validation and storage.
 
 The report is the JSON document described by
 ``preflight/schema/host-profile.schema.json``. ``generated_at`` is the only
@@ -43,7 +43,7 @@ SCHEMA_PATH = os.path.join(
 
 @dataclass
 class Overrides:
-    """Operator overrides, recorded in the profile and every fingerprint (§13.11).
+    """Operator overrides, recorded in the profile and every fingerprint.
 
     Attributes:
         accept_degraded: ``--accept-degraded``.

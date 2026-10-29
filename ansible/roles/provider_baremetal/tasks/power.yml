@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/provider_baremetal/tasks/power.yml). Local changes will be overwritten.
 #
-# Power policy (BUILD_PROMPT §3.2): never_sleep masks the sleep targets;
+# Power policy: never_sleep masks the sleep targets;
 # lab_session_inhibit holds a sleep inhibitor while pinka-lab.target is up;
 # os_default changes nothing. Targets masked by pinka are unmasked again when
 # the policy changes.

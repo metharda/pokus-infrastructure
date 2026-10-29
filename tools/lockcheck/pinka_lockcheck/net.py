@@ -345,7 +345,7 @@ def image_sizes(image: str, digest: str, fetch: RegistryJson = registry_json) ->
     """The compressed size of a pinned image per platform: the sum of its layers' sizes.
 
     The requirements computation estimates the unpacked size from it until the
-    image is pulled on a host (BUILD_PROMPT §2.3, §10.1). A digest names its
+    image is pulled on a host. A digest names its
     content, so every source of :func:`size_sources` that holds it gives the
     same sizes; the next is read when one fails.
 

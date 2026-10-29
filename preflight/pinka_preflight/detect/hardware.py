@@ -1,4 +1,4 @@
-"""CPU, memory, disk and block device detection (BUILD_PROMPT §2.2)."""
+"""CPU, memory, disk and block device detection."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class DiskInfo:
         fstype: Filesystem type.
         size_gib: Filesystem size.
         free_gib: Available space as reported by ``df``, rounded to a tenth of a GiB.
-        free_bytes: The same in bytes, for the requirements (§2.3).
+        free_bytes: The same in bytes, for the requirements.
     """
 
     path: str
@@ -70,7 +70,7 @@ class Hardware:
         swap_gib: ``SwapTotal``.
         disks: Free space per role (``var_lib``, ``srv_pinka``).
         block_devices: Block devices (informational).
-        memory_bytes: ``MemTotal`` in bytes, for the memory thresholds (§2.3).
+        memory_bytes: ``MemTotal`` in bytes, for the memory thresholds.
     """
 
     cpu_model: str | None

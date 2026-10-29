@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/switch.yml). Local changes will be overwritten.
 #
-# §7.14 step 8 after the rendering is applied. A running release that only
+# The switch, after the rendering is applied. A running release that only
 # its rendering changes for (accounts, configuration, secrets, the principals
 # and endpoints files, units) is drained and stopped now; a new release or new
 # content stopped it before render.yml changed anything. Then the new
@@ -20,14 +20,14 @@
       or platform_secrets_written is changed or platform_principals is changed
       or platform_units_written is changed
 
-- name: Run the new release's migrate hook (§12.9)
+- name: Run the new release's migrate hook
   ansible.builtin.command:
     argv: ["{{ platform_tool }}", deploy, migrate, --run, "{{ platform_plan.run_dir }}"]
   register: platform_migrate
   changed_when: (platform_migrate.stdout | from_json).changed
   when: platform_switch.release_changed
 
-- name: Check schema restricted after the migration (§7.8)
+- name: Check schema restricted after the migration
   ansible.builtin.include_role:
     name: postgres
     tasks_from: restricted_check
@@ -35,7 +35,7 @@
     - platform_switch.release_changed
     - active_platform.database is truthy
 
-- name: Switch current to the release and record it (§7.14 steps 8-9)
+- name: Switch current to the release and record it
   ansible.builtin.command:
     argv: ["{{ platform_tool }}", deploy, activate, --run, "{{ platform_plan.run_dir }}"]
   register: platform_activate
@@ -50,7 +50,7 @@
     label: "{{ item.name }}"
 
 # The new release's controller and inference broker reach the inference API
-# from now on (§7.11, ADR-0016); the guard resolves their UIDs when it loads.
+# from now on (ADR-0016); the guard resolves their UIDs when it loads.
 - name: Load the inference guard with the platform's clients
   ansible.builtin.systemd_service:
     name: pinka-inference-guard.service

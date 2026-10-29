@@ -504,15 +504,13 @@ def restore_names() -> list[str]:
 
 def test_restore_drains_first_and_starts_the_platform_last() -> None:
     names = restore_names()
-    assert names.index("Drain and stop the platform (§12.9)") < names.index("Stop the lab")
+    assert names.index("Drain and stop the platform") < names.index("Stop the lab")
     assert names.index("Load the newest PostgreSQL dump") < names.index(
         "Redeploy the platform the snapshot recorded"
     )
-    assert names.index("Deploy the recorded release and content (§7.15)") < names.index(
-        "Start the lab"
-    )
+    assert names.index("Deploy the recorded release and content") < names.index("Start the lab")
     assert names[-1] == "Start the platform and wait for its health hook"
-    drain = play_task(ANSIBLE / "restore.yml", "Drain and stop the platform (§12.9)")
+    drain = play_task(ANSIBLE / "restore.yml", "Drain and stop the platform")
     assert drain["ansible.builtin.include_role"] == {"name": "platform", "tasks_from": "stop"}
 
 

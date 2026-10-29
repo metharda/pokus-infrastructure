@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/provider_vm/tasks/main.yml). Local changes will be overwritten.
 #
-# VM provider (BUILD_PROMPT §3.3): like bare metal for drivers and power, but
+# VM provider: like bare metal for drivers and power, but
 # the GPU only with passthrough; installs the hypervisor's guest agent.
 - name: Load the guest agents of this family
   ansible.builtin.include_vars:

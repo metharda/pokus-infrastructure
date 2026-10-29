@@ -1,4 +1,4 @@
-"""External link check for documentation (Pokus Documentation Specification §A.6).
+"""External link check for documentation.
 
 Runs weekly in CI as a non-blocking job: it reports broken external links in
 Markdown files but never gates a merge. Links to RFC 2606 example domains,

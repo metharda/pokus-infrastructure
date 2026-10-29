@@ -1,4 +1,4 @@
-"""The installer's round-trip YAML writer (BUILD_PROMPT §18.3).
+"""The installer's round-trip YAML writer.
 
 Every file the installer writes with ruamel.yaml's round-trip mode
 (host_vars, the researchers of ``group_vars/all/main.yml``, the answers file,

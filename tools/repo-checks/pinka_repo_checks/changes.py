@@ -1,10 +1,10 @@
-"""Which CI lanes a change needs: one that touches only docs or records skips the Ansible lanes.
+"""Which CI lanes a change needs: one that touches only docs skips the Ansible lanes.
 
 The ``changes`` job of ``.github/workflows/ci.yml`` runs this with the range
 of the push (``github.event.before``..``github.sha``) or of the pull request
 (its base..head) and writes ``ansible=true|false`` to ``$GITHUB_OUTPUT``. The
-``check-mode`` lanes run only with ``ansible=true`` (owner, with the new plan
-after ``16bf749``: GitHub Actions minutes). Anything it cannot decide, such as
+``check-mode`` lanes run only with ``ansible=true``
+(GitHub Actions minutes). Anything it cannot decide, such as
 a new branch, a range git does not know (after a force push), a schedule or a
 manual run, counts as a change that needs every lane.
 """
@@ -26,7 +26,7 @@ COMMIT_RE = re.compile(r"[0-9a-f]{7,64}")
 
 
 def docs_only(paths: Iterable[str]) -> bool:
-    """Whether every changed path is a doc or a record.
+    """Whether every changed path is a doc.
 
     Args:
         paths: Changed paths, relative to the repository root.
@@ -79,7 +79,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ansible = paths is None or not docs_only(paths)
     print(f"ansible={'true' if ansible else 'false'}")
     if paths is not None:
-        print(f"{len(paths)} changed path(s); only docs or records: {not ansible}", file=sys.stderr)
+        print(f"{len(paths)} changed path(s); only docs: {not ansible}", file=sys.stderr)
     return 0
 
 

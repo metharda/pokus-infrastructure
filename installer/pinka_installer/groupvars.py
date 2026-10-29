@@ -1,4 +1,4 @@
-"""The researchers section of ``group_vars/all/main.yml`` (BUILD_PROMPT §18.3).
+"""The researchers section of ``group_vars/all/main.yml``.
 
 Only ``researchers`` and ``researchers_removed`` change; ruamel.yaml's
 round-trip mode keeps every other key, the comments and the one-line style of

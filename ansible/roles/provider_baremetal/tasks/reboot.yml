@@ -1,8 +1,8 @@
 # Managed by pinka (ansible/roles/provider_baremetal/tasks/reboot.yml). Local changes will be overwritten.
 #
 # A driver or kernel change that needs a reboot stops the play with bootstrap
-# signal 76. Bootstrap reboots by itself only with --allow-reboot (BUILD_PROMPT
-# §3.2, §13.7): the play runs on this host, so it cannot reboot from inside.
+# signal 76. Bootstrap reboots by itself only with --allow-reboot:
+# the play runs on this host, so it cannot reboot from inside.
 - name: Check whether the distribution asks for a reboot
   ansible.builtin.include_tasks: "reboot_{{ pinka_family }}.yml"
 

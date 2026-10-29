@@ -1,4 +1,4 @@
-"""Network reachability of the endpoints a lab install needs (BUILD_PROMPT §2.2).
+"""Network reachability of the endpoints a lab install needs.
 
 The endpoint list comes from ``endpoints.yml`` (compiled to JSON). Each
 endpoint applies to the detected distribution through optional ``when``

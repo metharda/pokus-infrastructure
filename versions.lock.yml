@@ -607,7 +607,7 @@ ansible_collections:
     the version in ansible 14.4.0 (its MANIFEST.json in
     ansible-14.4.0-py3-none-any.whl from PyPI, sha256
     7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read
-    2026-10-15). Artifacts: make lock-collections run by the owner at
+    2026-10-15). Artifacts: make lock-collections run at
     2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256
     computed from the download and equal to Galaxy's; MANIFEST.json,
     FILES.json and every file checked; every dependency locked at a
@@ -665,7 +665,7 @@ github_ssh_host_keys:
   # Pinned in the managed known_hosts for SSH deploy keys (E3).
   # make lock-pins needs two agreeing sources (GitHub's meta API, its
   # documentation, ssh-keyscan); this build environment reaches only the
-  # documentation, so the owner's run pins them.
+  # documentation, so a run on another machine pins them.
   verified_on: 2026-10-05
   source: GitHub meta API, api.github.com/meta (ssh_keys, ssh_key_fingerprints); not read yet
   keys:

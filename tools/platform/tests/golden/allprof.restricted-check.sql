@@ -1,6 +1,6 @@
 -- Managed by pinka (platform allprof, contract v2). Local changes will be overwritten.
 --
--- The restricted-schema check of platform allprof (BUILD_PROMPT §7.8, §12.4): run
+-- The restricted-schema check of platform allprof: run
 -- after every migration. Each finding is revoked and reported as a violation.
 \set ON_ERROR_STOP on
 

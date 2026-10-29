@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/retire.yml). Local changes will be overwritten.
 #
-# --replace-platform (§7.14 "One platform per lab"): stop the replaced
+# --replace-platform: stop the replaced
 # platform, remove its units, sockets and CLI link, lock its accounts, make
 # its database roles NOLOGIN and remove its Incus certificates from the trust
 # store. Its state, database, restricted area and releases stay on disk until

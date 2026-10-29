@@ -66,7 +66,7 @@ import yaml
 
 from pinka_lockcheck import checks, net, nvidia_gpus, openpgp
 
-# The components and repository keys this tool pins (plan item 0 after 3f).
+# The components and repository keys this tool pins.
 COMPONENTS = ("incus", "tailscale")
 # Every URL of a key must carry the same single key; the first is the one the
 # pkg role downloads (Tailscale publishes the same key for every distribution).

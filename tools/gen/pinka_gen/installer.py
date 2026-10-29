@@ -1,4 +1,4 @@
-"""Reference pages and screenshots of the installer (BUILD_PROMPT §18, DOCS_SPEC A.3, A.4)."""
+"""Reference pages and screenshots of the installer."""
 
 from __future__ import annotations
 

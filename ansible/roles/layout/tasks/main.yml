@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/layout/tasks/main.yml). Local changes will be overwritten.
 #
-# The research space and the lab's host paths (BUILD_PROMPT §6.2), created
+# The research space and the lab's host paths, created
 # exactly from pinka_layout and pinka_system_layout in group_vars; the same
 # data renders the layout table of docs/architecture.md.
 - name: Create the host paths of the lab

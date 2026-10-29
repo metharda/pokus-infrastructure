@@ -3,7 +3,7 @@
 """Download one pinned model of models.lock.yml and verify it.
 
 Installed as ``/usr/local/libexec/pinka/models-fetch`` by the models role
-(BUILD_PROMPT §7.12, contracts.md#paths). Files come from the pinned
+(contracts.md#paths). Files come from the pinned
 ``hf download`` CLI of ``/opt/pinka/models-venv``; every file's sha256 must
 match the lock, files become 0444, and ``MANIFEST.json`` records what was
 verified. An entry whose manifest matches the lock and whose files have the
@@ -41,7 +41,7 @@ def target_dir(root: Path, entry: Mapping[str, Any]) -> Path:
     """Directory of an entry (contracts.md#paths).
 
     ``<root>/adapters/`` belongs to the GPU arbiter, which alone registers
-    adapters (BUILD_PROMPT §7.12, §7.18); no model may land there.
+    adapters; no model may land there.
 
     Args:
         root: Models root (``/srv/pinka/models``).

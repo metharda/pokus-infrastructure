@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/postgres/defaults/main.yml). Local changes will be overwritten.
 
 # shared_buffers: 1/16 of the host memory, between 128 MB and 4 GB; host_vars
-# may set a value such as 2GB (BUILD_PROMPT §8.1).
+# may set a value such as 2GB.
 postgres_shared_buffers: "{{ [[(host_profile.hardware.memory_gib * 64) | int, 128] | max, 4096] | min }}MB"
 # effective_cache_size: 1/4 of the host memory, between 512 MB and 16 GB.
 postgres_effective_cache_size: "{{ [[(host_profile.hardware.memory_gib * 256) | int, 512] | max, 16384] | min }}MB"

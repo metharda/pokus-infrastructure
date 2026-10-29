@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/uninstall.yml). Local changes will be overwritten.
 #
-# Uninstall (BUILD_PROMPT §5.4), run by bootstrap.sh --uninstall: in mode plan
+# Uninstall, run by bootstrap.sh --uninstall: in mode plan
 # it writes the plan and changes nothing; in mode apply it removes the
 # confirmed plan and writes the report. Bootstrap runs it without the group
 # and host variables (ANSIBLE_VARS_ENABLED empty), so it needs neither the

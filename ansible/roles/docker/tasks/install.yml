@@ -1,9 +1,9 @@
 # Managed by pinka (ansible/roles/docker/tasks/install.yml). Local changes will be overwritten.
 #
-# A Docker Engine pinka installs itself (BUILD_PROMPT §7.6): from the source
+# A Docker Engine pinka installs itself: from the source
 # the component source matrix selects, pinned and held, with a daemon.json
 # that holds only what such an install needs. The install record notes the
-# component before anything is installed (§7.21).
+# component before anything is installed.
 - name: Look up the Docker source
   ansible.builtin.set_fact:
     docker_source: "{{ pinka_component_sources | pinka_component_source('docker', pinka_source_group) }}"

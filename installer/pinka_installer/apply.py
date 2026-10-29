@@ -1,4 +1,4 @@
-"""From answers to files (BUILD_PROMPT §18.3): plan, review, write.
+"""From answers to files: plan, review, write.
 
 The TUI's Review screen shows a :class:`Plan` (every file, a diff for modified
 ones, only secret names for the vault) and writes it on Install; ``bootstrap.sh

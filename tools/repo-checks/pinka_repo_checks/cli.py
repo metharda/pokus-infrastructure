@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     neutrality = sub.add_parser(
         "neutrality",
-        help="fail if infra's code names a particular platform (BUILD_PROMPT §11)",
+        help="fail if infra's code names a particular platform",
         description=(
             "Scan infra's code for the Pokus Platform's names: its name anywhere, its "
             "service and unit names as whole tokens, and the project name outside the "

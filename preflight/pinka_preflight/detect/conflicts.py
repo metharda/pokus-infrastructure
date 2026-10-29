@@ -1,4 +1,4 @@
-"""Conflicting software and host state (BUILD_PROMPT §2.2).
+"""Conflicting software and host state.
 
 Each conflict has a severity: ``blocking`` (the host is unsupported),
 ``needs_action`` (the operator can fix it, then re-run) or ``warning``.
@@ -102,8 +102,8 @@ def _musl(fs: FileSystem, runner: Runner) -> bool:
 
 
 def _package_manager_busy(fs: FileSystem) -> str | None:
-    # TODO(verify): detection of an incomplete dnf transaction (BUILD_PROMPT
-    # §2.2 "dnf history incomplete") needs the current dnf/dnf5 history output
+    # TODO(verify): detection of an incomplete dnf transaction
+    # needs the current dnf/dnf5 history output
     # format; until verified, only running package-manager processes are found.
     if fs.listdir("/var/lib/dpkg/updates"):
         return "dpkg was interrupted (/var/lib/dpkg/updates is not empty)"
@@ -130,7 +130,7 @@ def detect_conflicts(
     gpu_linux_driver_in_wsl: bool,
     adopt_incus: bool,
 ) -> ConflictReport:
-    """Detect every conflict of the BUILD_PROMPT §2.2 table.
+    """Detect every conflict and informational finding.
 
     Args:
         fs: Filesystem view.

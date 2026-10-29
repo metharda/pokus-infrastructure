@@ -1,4 +1,4 @@
-"""``host_vars/<machine>.yml`` from the answers, and back (BUILD_PROMPT §18.3).
+"""``host_vars/<machine>.yml`` from the answers, and back.
 
 The first file of a machine starts from ``example-machine.yml``, so every
 setting keeps its explanation; later runs (modify mode) edit the existing file
@@ -28,7 +28,7 @@ from pinka_installer.answers import (
 )
 
 HEADER = (
-    "# Machine configuration of {machine} (BUILD_PROMPT §8.1), written by the pinka\n"
+    "# Machine configuration of {machine}, written by the pinka\n"
     "# installer from installer-answers/{machine}.yml. Run the installer again to\n"
     "# change it (modify mode), or edit it by hand: comments and order are kept.\n"
     "# Secrets are in group_vars/all/vault.yml, never here.\n"
@@ -169,7 +169,7 @@ def _remote(answers: Answers) -> dict[str, Any]:
         "tailscale_serve_consent": remote.tailscale_serve_consent,
         "ssh_extra_allowed_interfaces": list(remote.ssh_extra_allowed_interfaces),
     }
-    # Pre-existing access (BUILD_PROMPT §7.5): written only when consented, so
+    # Pre-existing access: written only when consented, so
     # group_vars' defaults (nothing closed) stand otherwise.
     if remote.close_listeners:
         values["firewall_close_listeners"] = list(remote.close_listeners)

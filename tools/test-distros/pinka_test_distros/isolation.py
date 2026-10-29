@@ -1,4 +1,4 @@
-"""The isolation probe per loopback-capable profile (BUILD_PROMPT §7.18, §11, §19.9).
+"""The isolation probe per loopback-capable profile.
 
 For every service profile with loopback access, the distribution tests run
 the reference platform's probe as a transient unit with that profile's

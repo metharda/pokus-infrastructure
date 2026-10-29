@@ -1,4 +1,4 @@
-"""The requirements plan of a machine (BUILD_PROMPT §2.3).
+"""The requirements plan of a machine.
 
 Preflight computes what the operator's choices need from a plan
 (``pinka-preflight --plan``, ``preflight/schema/plan.schema.json``).
@@ -138,7 +138,7 @@ def plan(  # noqa: PLR0912 - one branch per setting
 
 
 def _switches(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
-    """The inference and training switches (§2.3) into ``result``."""
+    """The inference and training switches into ``result``."""
     if "inference" in variables:
         inference = _plain("inference", variables["inference"])
         if inference not in ("auto", "off"):

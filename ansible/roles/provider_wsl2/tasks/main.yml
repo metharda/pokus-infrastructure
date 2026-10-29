@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/provider_wsl2/tasks/main.yml). Local changes will be overwritten.
 #
-# WSL2 provider (BUILD_PROMPT §3.1). Never installs a Linux NVIDIA kernel
+# WSL2 provider. Never installs a Linux NVIDIA kernel
 # driver and never touches the Windows side: the GPU comes from the Windows
 # driver through /dev/dxg and the libraries in /usr/lib/wsl/lib.
 - name: Manage /etc/wsl.conf

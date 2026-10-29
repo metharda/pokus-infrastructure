@@ -57,4 +57,4 @@ Requirements
 Network: skipped (--offline)
 
 Notes
-  - shared host (tcp/8080 on 0.0.0.0 (example-web); login account owner1 is not a researcher): the firewall keeps the pre-existing listeners reachable as found unless closed with consent (§7.5)
+  - shared host (tcp/8080 on 0.0.0.0 (example-web); login account owner1 is not a researcher): the firewall keeps the pre-existing listeners reachable as found unless closed with consent

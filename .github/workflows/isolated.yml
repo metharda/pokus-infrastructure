@@ -3,7 +3,7 @@
 # Each pytest file in a process of its own (make test-isolated), so a test
 # that passes only because another file ran first in the same process fails
 # here; the test job's setup (ci.yml), so nothing skips. To save GitHub
-# Actions minutes (owner, with the new plan after 16bf749) it runs weekly, on
+# Actions minutes it runs weekly, on
 # workflow_dispatch and on pushes that change the tests or what runs them;
 # make test-isolated runs locally before every proposal.
 name: infra-isolated
@@ -19,7 +19,7 @@ on:
       - "tools/repo-checks/**"
       - "Makefile"
       - ".github/workflows/isolated.yml"
-      - "!**.md"  # docs or records only: not an input
+      - "!**.md"  # docs only: not an input
   pull_request:  # a fork's only (the job's condition): one run per commit
     paths:
       - "**/tests/**"
@@ -29,7 +29,7 @@ on:
       - "tools/repo-checks/**"
       - "Makefile"
       - ".github/workflows/isolated.yml"
-      - "!**.md"  # docs or records only: not an input
+      - "!**.md"  # docs only: not an input
   schedule:
     - cron: "29 5 * * 1"  # weekly
   workflow_dispatch:
@@ -37,7 +37,7 @@ on:
 permissions:
   contents: read
 
-# One run per commit (owner, after D2): on main and moving/on each commit's
+# One run per commit: on main and moving/on each commit's
 # run has a group of its own and always finishes; elsewhere (a pull request
 # from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:

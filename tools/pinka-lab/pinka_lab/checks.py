@@ -837,7 +837,7 @@ def _set_elements(items: list[dict[str, Any]], name: str) -> list[Any] | None:
 
 
 def check_split_guard(ctx: Context) -> Outcome:
-    """Split inference: the tailnet ports admit only the paired peer's address (11.13)."""
+    """Split inference: the tailnet ports admit only the paired peer's address."""
     spec = ctx.config.get("split_guard", default={}) or {}
     ports = [int(p) for p in spec.get("ports", [])]
     if ctx.config.node_role not in ("lab", "inference") or not ports:

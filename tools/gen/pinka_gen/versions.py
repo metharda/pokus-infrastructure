@@ -1,7 +1,7 @@
-"""Files generated from ``versions.lock.yml`` beyond bootstrap's pins (BUILD_PROMPT §10.1).
+"""Files generated from ``versions.lock.yml`` beyond bootstrap's pins.
 
 * ``ansible/requirements.yml``: the pinned Ansible collections that bootstrap
-  installs (§5.2 step 6).
+  installs.
 * ``docs/reference/versions.md``: every pinned artifact, for readers.
 """
 
@@ -45,8 +45,7 @@ def requirements_yml(root: Path) -> str:
     lines = [
         "# Managed by pinka (ansible/requirements.yml). Local changes will be overwritten.",
         "# Generated from versions.lock.yml (ansible_collections) by tools/gen (make generate).",
-        "# Bootstrap installs these collections into /opt/pinka/ansible-collections",
-        "# (BUILD_PROMPT §5.2 step 6).",
+        "# Bootstrap installs these collections into /opt/pinka/ansible-collections.",
         "collections:",
     ]
     for name in sorted(collections):
@@ -125,12 +124,12 @@ def _containers(lock: dict[str, Any]) -> list[str]:
             ["Name", "Image", "Tag", "Digest", "Platforms", "Compressed GiB (per platform)"], rows
         ),
         "\nThe requirements computation estimates an image's unpacked size as 2.5 times its "
-        "compressed size until it is pulled on the host (BUILD_PROMPT §2.3).\n",
+        "compressed size until it is pulled on the host.\n",
     ]
     if built_on:
         parts.append(
             f"\n{'; '.join(built_on)}: preflight and doctor compare it with the CUDA version "
-            "the NVIDIA driver supports (BUILD_PROMPT §2.2).\n"
+            "the NVIDIA driver supports.\n"
         )
     if targets:
         parts += [

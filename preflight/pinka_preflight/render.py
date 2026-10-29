@@ -68,7 +68,7 @@ def _disk_lines(mount: Mapping[str, Any]) -> list[str]:
 
 
 def requirements_lines(req: Mapping[str, Any]) -> list[str]:
-    """The requirements computed from the choices (§2.3), for the summary and the log.
+    """The requirements computed from the choices, for the summary and the log.
 
     Args:
         req: The host profile's ``requirements``.

@@ -1,4 +1,4 @@
-"""Evaluation of the support matrix (BUILD_PROMPT §2.3, §2.4).
+"""Evaluation of the support matrix.
 
 The decision is data-driven: ``support-matrix.yml`` (compiled to
 ``support-matrix.json``) holds every rule; this module only interprets it.
@@ -16,7 +16,7 @@ The operator's choices given on the command line (``choices``: the
 ``install_nvidia_driver`` mode, consent to MOK enrollment) are facts too. A
 ``needs_action`` rule with ``planned_when`` becomes a *planned action* (a
 warning, recorded in the profile) when those conditions also hold: bootstrap
-then does the action itself (approved deviation I1).
+then does the action itself.
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ class Decision:
 
     Attributes:
         outcome: ``supported``, ``degraded``, ``unsupported`` or ``needs_action``.
-        exit_code: Exit code for the outcome (§2.4).
+        exit_code: Exit code for the outcome.
         tier: Worst of the OS, architecture and environment tiers.
         os_tier: Tier of the matched OS rule.
         arch_tier: Tier of the matched architecture rule.
@@ -126,13 +126,13 @@ class Decision:
             mount point once the requirements are applied).
         unsupported_reasons: Why the host is unsupported.
         degraded_reasons: Why the host is degraded besides disabled features
-            (memory below the recommended value for the choices, §2.3).
+            (memory below the recommended value for the choices).
         needs_action: Operator actions, as ``{"id", "action"}``.
         planned_actions: Actions bootstrap carries out with the operator's
             consent instead of stopping, as ``{"id", "action"}``.
         warnings: Warnings.
         notes: Informational notes.
-        requirements: The requirements computed from the choices (§2.3).
+        requirements: The requirements computed from the choices.
     """
 
     outcome: str
@@ -468,7 +468,7 @@ def _core_checks(matrix: Mapping[str, Any], facts: Facts, kernel: KernelInfo) ->
 
 
 def _minimum_checks(matrix: Mapping[str, Any], facts: Facts) -> list[Check]:
-    """The fixed minimums: CPU threads (memory and disk follow the choices, §2.3)."""
+    """The fixed minimums: CPU threads (memory and disk follow the choices)."""
     mins = matrix["minimums"]
     items: list[tuple[str, Any, Mapping[str, Any]]] = [
         ("cpu_threads", facts.get("cpu_threads"), mins["cpu_threads"]),
@@ -558,7 +558,7 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     facts.update(DEFAULT_CHOICES)
     facts.update(choices or {})
     # Who would install a missing driver: bootstrap only for a GPU the pinned
-    # release's open kernel module supports (§2.2), the operator with manual.
+    # release's open kernel module supports, the operator with manual.
     mode = facts["nvidia_driver_mode"]
     supported = facts["nvidia_gpu_open_module_supported"]
     facts["nvidia_driver_planned"] = (
@@ -703,7 +703,7 @@ def _set_outcome(d: Decision) -> None:
 
 
 def apply_requirements(d: Decision, req: Requirements) -> None:
-    """Add the requirements computed from the choices to the decision (§2.3).
+    """Add the requirements computed from the choices to the decision.
 
     Memory below the floor or the required value and a disk shortfall make the
     host unsupported; memory below the recommended value makes it degraded. A

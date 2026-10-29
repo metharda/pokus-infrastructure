@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/incus/tasks/pool_device.yml). Local changes will be overwritten.
 #
-# Safety invariant 1 (BUILD_PROMPT §13): a device is formatted only if
+# A device is formatted only if
 # incus_pool_device_confirm repeats incus_pool_device exactly, it is not
 # mounted, and it carries no filesystem, LVM or RAID signature (unless
 # incus_pool_device_force_wipe), and, when bootstrap runs interactively, the

@@ -1,4 +1,4 @@
-"""Screens 14-18: Secrets & vault, Review, Install progress, Doctor, Finish (BUILD_PROMPT §18.4)."""
+"""Screens 14-18: Secrets & vault, Review, Install progress, Doctor, Finish."""
 
 from __future__ import annotations
 

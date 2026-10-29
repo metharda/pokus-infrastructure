@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/uninstall/vars/archlinux.yml). Local changes will be overwritten.
 #
-# Arch Linux: what uninstall runs to take off holds and remove packages
-# (BUILD_PROMPT §5.4). pacman -R removes exactly the packages named and
+# Arch Linux: what uninstall runs to take off holds and remove packages.
+# pacman -R removes exactly the packages named and
 # refuses one another package still needs; pacman -Qdt names the
 # dependencies no package needs any more.
 # TODO(verify): pacman's message when a removal breaks a dependency.
@@ -10,7 +10,7 @@ uninstall_family:
   test_remove: [pacman, -R, --print, --noconfirm]
   remove: [pacman, -R, --noconfirm]
   # No purge: the removal keeps configuration and data alike; the guard keeps
-  # the kept data read-only while packages go (owner, D2 review).
+  # the kept data read-only while packages go.
   remove_keeping_config: [pacman, -R, --noconfirm]
   purge_deletes: {}
   masked_on_remove: {}

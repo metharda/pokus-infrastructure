@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/images/tasks/restore.yml). Local changes will be overwritten.
 #
-# Entry point of restore.yml (BUILD_PROMPT §7.15): re-import every exported
+# Entry point of restore.yml: re-import every exported
 # golden image whose alias is missing, keeping the alias and checking that the
 # image has the fingerprint its export recorded.
 

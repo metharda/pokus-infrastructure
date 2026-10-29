@@ -15,7 +15,7 @@ lab_session_platform_rendered: /etc/pinka/platform/rendered.json
 lab_session_platform_endpoints: /etc/pinka/platform/endpoints.toml
 # Units of the lab session.
 lab_session_units: [pinka-lab.target, pinka-health-gate.service, pinka-session-start.service]
-# The maintenance window record (BUILD_PROMPT §7.20, pinka window open); the
+# The maintenance window record (pinka window open); the
 # health gate reads it at every start.
 lab_session_window_record: /etc/pinka/maintenance-window.json
 # Staging on shared hardware: the timer that stops the staging lab once its

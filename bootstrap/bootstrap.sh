@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Managed by pinka (bootstrap/bootstrap.sh). Local changes will be overwritten.
 #
-# Single entry point that provisions a Pokus lab host (BUILD_PROMPT §5):
+# Single entry point that provisions a Pokus lab host:
 #   sudo ./bootstrap/bootstrap.sh --machine <name> [options]
 # Run with --help for the options; docs/reference/exit-codes.md lists the exit
 # codes and docs/how-to/troubleshoot.md what to do about each. Re-running after

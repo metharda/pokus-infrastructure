@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/install_record/tasks/main.yml). Local changes will be overwritten.
 #
-# The install record (BUILD_PROMPT §7.21): written once, at the first install
+# The install record: written once, at the first install
 # and before any change to the host, with what existed before pinka; the
 # roles add what they create (pinka_install_record state=add) and read the
 # record through pinka_preexisting. Check mode writes nothing and shows the
@@ -25,11 +25,11 @@
       {{ {} if install_record_init.record.legacy | default(false)
          else install_record_init.record.preexisting | default({}) }}
     # The pre-existing access already closed with the owner's consent
-    # (tcp/8080, install_path; BUILD_PROMPT §7.5).
+    # (tcp/8080, install_path).
     pinka_closed_access: "{{ install_record_init.record.added.closed_access | default([]) }}"
 
 # Before anything changes: every listener named in firewall_close_listeners is
-# one preflight recorded and one the firewall can close (§7.5); the filter
+# one preflight recorded and one the firewall can close; the filter
 # names what is wrong.
 - name: Check the listeners the owner consented to close
   ansible.builtin.assert:

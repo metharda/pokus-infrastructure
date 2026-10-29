@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/lab_session/tasks/main.yml). Local changes will be overwritten.
 #
-# pinka-lab.target with the health gate and the session record (BUILD_PROMPT
-# §7.16). Sleep inhibition belongs to the provider roles (power_policy).
+# pinka-lab.target with the health gate and the session record.
+# Sleep inhibition belongs to the provider roles (power_policy).
 
 - name: Create the directories of the helpers and the session records
   ansible.builtin.file:

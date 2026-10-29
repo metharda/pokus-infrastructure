@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/tailscale/tasks/funnel.yml). Local changes will be overwritten.
 #
-# Funnel publishes a port to the internet and is never allowed (BUILD_PROMPT
-# §13.3). TODO(verify): the JSON layout of `tailscale serve status --json`
+# Funnel publishes a port to the internet and is never allowed.
+# TODO(verify): the JSON layout of `tailscale serve status --json`
 # (AllowFunnel) in the pinned Tailscale version.
 - name: Read the serve and Funnel configuration
   ansible.builtin.command:
@@ -19,7 +19,7 @@
     quiet: true
 
 # On a node that existed before pinka, serve needs the owner's consent as
-# well (tailscale_serve_consent, §7.4); the install record notes each entry
+# well (tailscale_serve_consent); the install record notes each entry
 # pinka adds, and uninstall removes only those.
 - name: Decide which services to publish on the tailnet
   ansible.builtin.set_fact:

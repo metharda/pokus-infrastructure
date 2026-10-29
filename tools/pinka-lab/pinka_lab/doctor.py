@@ -1,4 +1,4 @@
-"""Doctor: the lab's health and security checks (BUILD_PROMPT §9).
+"""Doctor: the lab's health and security checks.
 
 Every check has an ID, a description, a severity (``error`` or
 ``warning``), a result (``pass``, ``fail`` or ``skip``), a detail and a

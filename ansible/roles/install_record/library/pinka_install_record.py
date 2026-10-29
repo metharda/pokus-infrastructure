@@ -1,16 +1,16 @@
 # Managed by pinka (ansible/roles/install_record/library/pinka_install_record.py). Local changes will be overwritten.
-"""Ansible module: the install record (BUILD_PROMPT §7.21).
+"""Ansible module: the install record.
 
 The record ``/var/lib/pinka/install-record.json`` says what existed on the host
 before pinka and what pinka added, so that no role changes a pre-existing
-component and uninstall removes only pinka's part (§5.4).
+component and uninstall removes only pinka's part.
 
 * ``state: init`` writes the record once, at the first install: the
   ``preexisting`` part (the components preflight found, the full package list
   with versions, the enabled and the masked units, the accounts and the groups
   with their members, and the content of each file pinka manages that already
   existed with its mode and owner, and the access to the host that existed:
-  preflight's ``access``, BUILD_PROMPT §2.2, §7.5) and an empty ``added`` part. On a host that pinka provisioned
+  preflight's ``access``) and an empty ``added`` part. On a host that pinka provisioned
   before the record existed (``/etc/pinka/bootstrap-state.json`` names a run
   that reached the play; a run that stopped before it changed nothing) the
   record is marked ``legacy``: its ``preexisting`` part then includes
@@ -23,10 +23,10 @@ component and uninstall removes only pinka's part (§5.4).
   pinka imported into the package manager's keyring (``repo_keys``), the
   Incus objects pinka created on an Incus it did not install
   (``incus_objects``), the pre-existing access closed with the owner's
-  consent (``closed_access``: ``tcp/8080``, ``install_path``; §7.5), and
+  consent (``closed_access``: ``tcp/8080``, ``install_path``), and
   ``changed``: a setting of the host as it was before pinka first changed it
   (the time zone, a sysctl value, a firewalld zone, Incus's server address),
-  for uninstall to set back (§5.4); the first value recorded for a setting
+  for uninstall to set back; the first value recorded for a setting
   stays. It writes only when something is new, so a second run reports no
   change.
 * ``state: remove`` takes listeners out of ``closed_access`` that are
@@ -55,8 +55,8 @@ DOCUMENTATION = r"""
 module: pinka_install_record
 short_description: Write and extend pinka's install record
 description:
-  - Records what existed before pinka's first install and what pinka added
-    (BUILD_PROMPT §7.21). Supports check mode.
+  - Records what existed before pinka's first install and what pinka added.
+    Supports check mode.
 options:
   path:
     description: The record file.
@@ -119,7 +119,7 @@ LIST_KEYS = (
     "incus_objects",
     "closed_access",
 )
-# Settings pinka changes, with their value before the first change (§5.4).
+# Settings pinka changes, with their value before the first change.
 CHANGED = "changed"
 PAIR_KEYS = {"memberships": ("user", "group"), "keys": ("user", "key")}
 PACKAGE_LIST = {
@@ -129,7 +129,7 @@ PACKAGE_LIST = {
     "pacman": ["pacman", "-Q"],
 }
 UNITS = ["systemctl", "list-unit-files", "--no-legend", "--plain", "--state"]
-# The only items state=remove takes out: listeners reachable again (§7.5).
+# The only items state=remove takes out: listeners reachable again.
 REMOVABLE = "closed_access"
 ONE_WAY = "install_path"
 MAX_FILE_BYTES = 65536
@@ -187,7 +187,7 @@ def file_mode(path: str) -> dict[str, str]:
     return {"mode": f"{stat.S_IMODE(info.st_mode):04o}", "owner": owner, "group": group}
 
 
-# Stages of a bootstrap run that ran the play, so changed the host (§5.2).
+# Stages of a bootstrap run that ran the play, so changed the host.
 PROVISIONED_STAGES = ("ansible", "restore", "doctor")
 
 

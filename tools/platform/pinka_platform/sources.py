@@ -1,4 +1,4 @@
-"""Where a platform release and its content packages come from (§7.14 step 1).
+"""Where a platform release and its content packages come from.
 
 The host settings name one source for the release (``platform``) and one per
 content package (``content``), each ``{repo, ref, path, tag_prefix}``. The
@@ -7,8 +7,7 @@ transports are SSH with pinned host keys, anonymous HTTPS and root-owned
 
 A source may also pin what its ref must resolve to: ``commit`` and ``tree``
 (full IDs). A restore sets both from the snapshot's record, so it deploys
-exactly the recorded commit and tree or nothing (owner decision with the
-"commit" for 3d.4).
+exactly the recorded commit and tree or nothing.
 """
 
 from __future__ import annotations
@@ -180,7 +179,7 @@ def parse(
 
     Returns:
         The release's source, the content packages' sources and the problems.
-        Overlapping paths in one repository are problems too (§12.1).
+        Overlapping paths in one repository are problems too.
     """
     problems: list[Problem] = []
     release, found = _source(None, RELEASE, platform or {})

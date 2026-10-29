@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/firewall/tasks/install_path.yml). Local changes will be overwritten.
 #
-# The safeguard of BUILD_PROMPT §7.5, at the end of the run: the install's
+# The install path's safeguard, at the end of the run: the install's
 # access path (an SSH session from outside the tailnet) closes only when SSH
 # over the tailnet was verified for at least one researcher in the same run
 # and the owner consented (firewall_close_install_path). Verified means a
@@ -61,7 +61,7 @@
          if not firewall_close_install_path | bool
          else 'no researcher logged in with a key over the tailnet during this run; run bootstrap again and,'
               ~ ' while it runs, log in as a researcher over the tailnet (ssh <researcher>@' ~ machine_name ~ ')' }}.
-      doctor reports it as a warning (BUILD_PROMPT §7.5).
+      doctor reports it as a warning.
   when:
     - firewall_install_path is not none
     - not firewall_install_path.closed

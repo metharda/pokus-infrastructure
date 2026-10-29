@@ -1,8 +1,8 @@
 # Managed by pinka (ansible/roles/vllm/tasks/main.yml). Local changes will be overwritten.
 #
-# vLLM (BUILD_PROMPT §7.11, contracts.md#inference): the pinka-inference
+# vLLM (contracts.md#inference): the pinka-inference
 # Compose project, the serving profiles, the default deployment and the
-# serving verification. The GPU arbiter (gpu_arbiter role, §7.18) renders and
+# serving verification. The GPU arbiter (gpu_arbiter role) renders and
 # serves deployments. Applied with gpu_inference on full and inference nodes.
 - name: Read the active platform
   ansible.builtin.include_role:

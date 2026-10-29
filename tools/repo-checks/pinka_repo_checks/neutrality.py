@@ -1,4 +1,4 @@
-"""Neutrality lint: infra's code names no particular platform (BUILD_PROMPT §11, §12).
+"""Neutrality lint: infra's code names no particular platform.
 
 Infra deploys any platform through contract v2, so its roles, tools and
 templates must not name the Pokus Platform, its services or its units. The
@@ -15,8 +15,8 @@ of ``neutrality.json``:
 * the project name (``project``) outside the allowed forms: the repository
   names and the display names (``allowed``, ``display``).
 
-Test fixtures, the documentation and the reserved-name list are excluded
-(§11), and each further exclusion in :data:`EXCLUDED` carries its reason; the
+Test fixtures, the documentation and the reserved-name list are excluded,
+and each further exclusion in :data:`EXCLUDED` carries its reason; the
 installer and its answers files are scanned like all other code. The
 allowed forms apply to this lint over repository code only: target images, the
 platform's trace-cleanup scan and its ticket lint allow none of these names.
@@ -45,33 +45,30 @@ PROJECT_ALLOWED: tuple[str, ...] = tuple(LISTS["allowed"])
 PROJECT_DISPLAY: str = LISTS["display"]
 # Excluded paths (fnmatch patterns relative to the repository root) and why.
 EXCLUDED: tuple[tuple[str, str], ...] = (
-    ("docs/*", "documentation (§11)"),
-    ("*.md", "documentation (§11): READMEs and notes"),
-    ("*/tests/fixtures/*", "test fixtures (§11)"),
-    ("*/tests/golden/*", "test fixtures (§11): expected output of the fixtures"),
-    ("*/__snapshots__/*", "test fixtures (§11): expected screens"),
-    ("contract/reserved-names.yml", "the reserved-name list (§11)"),
-    ("contract/platform-manifest.schema.json", "the reserved-name list (§11), generated into it"),
+    ("docs/*", "documentation"),
+    ("*.md", "documentation: READMEs and notes"),
+    ("*/tests/fixtures/*", "test fixtures"),
+    ("*/tests/golden/*", "test fixtures: expected output of the fixtures"),
+    ("*/__snapshots__/*", "test fixtures: expected screens"),
+    ("contract/reserved-names.yml", "the reserved-name list"),
+    ("contract/platform-manifest.schema.json", "the reserved-name list, generated into it"),
     (
         "ansible/roles/images/defaults/main.yml",
-        "the leakage lint's patterns, which must name the project and the platform (§7.13)",
+        "the leakage lint's patterns, which must name the project and the platform",
     ),
     (
         "ansible/roles/images/meta/argument_specs.yml",
-        "the leakage lint's default patterns, which must name the project and the platform (§7.13)",
+        "the leakage lint's default patterns, which must name the project and the platform",
     ),
     ("project-words.txt", "the spelling dictionary of the documentation"),
     ("tools/repo-checks/pinka_repo_checks/neutrality.json", "the neutrality lint's own lists"),
     (
         "tools/repo-checks/pinka_repo_checks/schema/front-matter.schema.json",
-        "the documentation specification's front matter, shared by every Pokus repository",
+        "the documentation's front matter, shared by every Pokus repository",
     ),
     ("*.lock", "generated lock files: third-party names and hashes"),
     ("package-lock.json", "generated lock file: third-party names and hashes"),
 )
-# V5, the one temporary exclusion (owner decision with the "commit" for 3d.3):
-# plan step 3d.7 rewrites the installer's sources screen and answers schema for
-# contract v2 and must delete this tuple; 3d.7 is not done while it exists.
 # Lines that may name the project or the platform, by file: a line that is
 # exactly one of the listed quoted words (``"word",``); the reasons are in
 # neutrality.json.
@@ -100,7 +97,7 @@ class Finding:
         """
         return (
             f"{self.path}:{self.line}: names a particular platform ({self.what}); infra "
-            "takes every platform name from the manifest (BUILD_PROMPT §11, §12)"
+            "takes every platform name from the manifest"
         )
 
 

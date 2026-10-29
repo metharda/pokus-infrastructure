@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/preflight_gate/tasks/facts.yml). Local changes will be overwritten.
 #
-# The feature flags after the plan's switches (BUILD_PROMPT §2.3), as
+# The feature flags after the plan's switches, as
 # preflight computed them in preflight_gate_profile: gpu_inference only where
 # vLLM serves, gpu_training only where training jobs run on the GPU. Every
 # role reads these. The gate passes its fresh profile; a play that runs

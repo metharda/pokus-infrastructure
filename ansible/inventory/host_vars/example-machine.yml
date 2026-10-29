@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/inventory/host_vars/example-machine.yml). Local changes will be overwritten.
 #
-# Example machine configuration (BUILD_PROMPT §8.1). Copy it to
+# Example machine configuration. Copy it to
 # host_vars/<machine>.yml, adapt it, and run
 #   sudo ./bootstrap/bootstrap.sh --machine <machine>
 # The installer TUI writes this file for you. Real host_vars files are excluded

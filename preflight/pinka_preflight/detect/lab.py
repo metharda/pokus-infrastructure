@@ -1,4 +1,4 @@
-"""Lab ports and the VM collector address (BUILD_PROMPT §2.2, §12.11).
+"""Lab ports and the VM collector address.
 
 * **Lab port in use.** A configured lab port (the defaults of
   ``lab-defaults.json`` with the ``ports:`` overrides bootstrap passes as

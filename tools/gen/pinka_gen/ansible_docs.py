@@ -2,12 +2,12 @@
 
 * ``docs/reference/ansible-variables.md``: every lab-wide variable of
   ``group_vars/all/main.yml`` (described by its comment) and every role
-  variable (from ``meta/argument_specs.yml``, DOCS_SPEC §A.5).
+  variable (from ``meta/argument_specs.yml``).
 * ``docs/reference/component-sources.md``: the component source matrix
-  (BUILD_PROMPT §19.4) with the repositories and what is still unverified.
-* ``docs/reference/accounts.md``: groups and service accounts (BUILD_PROMPT §6.1).
+  with the repositories and what is still unverified.
+* ``docs/reference/accounts.md``: groups and service accounts.
 * The layout table in ``docs/architecture.md`` between the
-  ``generated:layout`` markers, from ``pinka_layout`` (BUILD_PROMPT §6.2).
+  ``generated:layout`` markers, from ``pinka_layout``.
 """
 
 from __future__ import annotations
@@ -263,7 +263,7 @@ def component_sources_page(root: Path) -> str:
             "Where each host component comes from on each distribution, and what is unverified.",
         ),
         "# Component sources\n\n",
-        f"Generated from `{SOURCES}` (BUILD_PROMPT §19.4). A source group is the "
+        f"Generated from `{SOURCES}`. A source group is the "
         "distribution itself, or for derivatives their parent: `rhel_like` covers RHEL, "
         "AlmaLinux, Rocky Linux, CentOS Stream and Oracle Linux, `opensuse` covers Leap, "
         "Tumbleweed and SLES. `default` applies to every group without its own row. Package "
@@ -337,7 +337,7 @@ def accounts_page(root: Path) -> str:
                 "The groups and accounts the users_groups role creates.",
             ),
             "# Accounts and groups\n\n",
-            f"Generated from `{GROUP_VARS}` (BUILD_PROMPT §6.1); the directories they own "
+            f"Generated from `{GROUP_VARS}`; the directories they own "
             "are in the [layout table](../architecture.md#directory-layout). How to change "
             "the researcher list: "
             "[How to manage researchers](../how-to/manage-researchers.md).\n\n",

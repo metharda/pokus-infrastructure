@@ -1,6 +1,6 @@
 # Managed by pinka (preflight/endpoints.yml).
 #
-# Endpoints probed by preflight (BUILD_PROMPT §2.2 "Network reachability"):
+# Endpoints probed by preflight:
 # the distribution's package mirrors, the third-party repositories the
 # component source matrix selects, container registries, Hugging Face and
 # GitHub. Compiled to endpoints.json by `make generate`.

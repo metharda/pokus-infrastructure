@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/images/tasks/main.yml). Local changes will be overwritten.
 #
-# Golden image pipeline (BUILD_PROMPT §7.13): build every listed blueprint
+# Golden image pipeline: build every listed blueprint
 # that has no image yet, publish it as <blueprint>/<version> and export it
 # with its upstream base to images_export_root.
 

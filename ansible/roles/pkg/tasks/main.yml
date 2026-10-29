@@ -1,11 +1,11 @@
 # Managed by pinka (ansible/roles/pkg/tasks/main.yml). Local changes will be overwritten.
 #
-# Install packages, pinned to the versions from versions.lock.yml when given
-# (BUILD_PROMPT §19.3, §19.4). The family-specific module lives in
+# Install packages, pinned to the versions from versions.lock.yml when given.
+# The family-specific module lives in
 # install_<package manager>.yml; ansible-core respawns apt and dnf under the
 # system interpreter that has their bindings.
 #
-# The install record (§7.21) notes each package first: the module keeps only
+# The install record notes each package first: the module keeps only
 # those absent at the first install, so uninstall removes exactly pinka's.
 - name: Record the packages pinka adds ({{ pkg_packages | join(', ') }})
   pinka_install_record:

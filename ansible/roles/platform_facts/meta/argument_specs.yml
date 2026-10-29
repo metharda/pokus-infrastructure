@@ -8,7 +8,7 @@ argument_specs:
         pinka_service_names, pinka_initramfs_tool, pinka_version_hold_method, pinka_provider,
         pinka_mac, pinka_firewall_backend, pinka_repositories, pinka_component_sources and
         pinka_community_repos_allowed.
-      - The only role that interprets the distribution (BUILD_PROMPT §19.1).
+      - The only role that interprets the distribution.
     options:
       host_profile:
         type: dict

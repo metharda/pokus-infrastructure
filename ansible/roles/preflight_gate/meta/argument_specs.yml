@@ -27,7 +27,7 @@ argument_specs:
       training_caps:
         type: dict
         required: true
-        description: The caps on training jobs; memory_max auto takes the cap preflight computed (§2.3).
+        description: The caps on training jobs; memory_max auto takes the cap preflight computed.
       preflight_gate_profile_path:
         type: path
         default: /etc/pinka/host-profile.json
@@ -46,4 +46,4 @@ argument_specs:
       training_caps:
         type: dict
         required: true
-        description: The caps on training jobs; memory_max auto takes the cap preflight computed (§2.3).
+        description: The caps on training jobs; memory_max auto takes the cap preflight computed.

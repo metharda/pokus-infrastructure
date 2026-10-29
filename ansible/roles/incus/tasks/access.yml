@@ -1,9 +1,8 @@
 # Managed by pinka (ansible/roles/incus/tasks/access.yml). Local changes will be overwritten.
 #
 # Researchers reach their personal project through incus-user, whose socket
-# only the incus group may use; nobody is added to incus-admin
-# (BUILD_PROMPT §6.1, safety invariant 4).
-# Uninstall takes back only the memberships pinka added (§5.4): noted first.
+# only the incus group may use; nobody is added to incus-admin.
+# Uninstall takes back only the memberships pinka added: noted first.
 - name: Read the members of the Incus user group
   ansible.builtin.getent:
     database: group

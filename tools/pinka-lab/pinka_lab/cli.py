@@ -1,4 +1,4 @@
-"""Command line of pinka, the lab operator's CLI (BUILD_PROMPT §9)."""
+"""Command line of pinka, the lab operator's CLI."""
 
 from __future__ import annotations
 
@@ -210,7 +210,7 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
 
 
 def add_window_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``pinka window open``, ``close`` and ``expire`` (§7.20).
+    """Add ``pinka window open``, ``close`` and ``expire``.
 
     Args:
         sub: The subcommands of the parser.
@@ -241,7 +241,7 @@ def add_window_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
 
 def add_docs_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    """Add ``pinka docs serve``, ``install`` and ``rollback`` (§7.19).
+    """Add ``pinka docs serve``, ``install`` and ``rollback``.
 
     Args:
         sub: The subcommands of the parser.

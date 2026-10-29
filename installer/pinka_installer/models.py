@@ -1,11 +1,11 @@
-"""Pinning a model in ``models.lock.yml`` (BUILD_PROMPT §18.4 screen 9, docs/how-to/add-a-model.md).
+"""Pinning a model in ``models.lock.yml`` (docs/how-to/add-a-model.md).
 
 The TUI resolves an entry of models.catalog.yml or a custom repository to a full commit and
 the sha256 of every file vLLM needs, from the Hugging Face Hub's API: the tree
 of the commit gives the sha256 of files stored in Git LFS (the weights); the
 small files are downloaded at the pinned commit and hashed. Every file's size
-goes into the lock too, for the requirements computed from the choices
-(BUILD_PROMPT §2.3). Nothing is pinned
+goes into the lock too, for the requirements computed from the choices.
+Nothing is pinned
 from an unverified value. The network calls go through an injectable getter.
 """
 

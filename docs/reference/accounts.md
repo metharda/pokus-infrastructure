@@ -11,7 +11,7 @@ description: The groups and accounts the users_groups role creates.
 
 # Accounts and groups
 
-Generated from `ansible/group_vars/all/main.yml` (BUILD_PROMPT §6.1); the directories they own are in the [layout table](../architecture.md#directory-layout). How to change the researcher list: [How to manage researchers](../how-to/manage-researchers.md).
+Generated from `ansible/group_vars/all/main.yml`; the directories they own are in the [layout table](../architecture.md#directory-layout). How to change the researcher list: [How to manage researchers](../how-to/manage-researchers.md).
 
 ## Groups
 

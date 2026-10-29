@@ -1,4 +1,4 @@
-"""Maintenance windows (BUILD_PROMPT §7.20).
+"""Maintenance windows.
 
 A window lets a staging lab use the production lab's hardware for a fixed
 time. Each side keeps its own record, ``/etc/pinka/maintenance-window.json``

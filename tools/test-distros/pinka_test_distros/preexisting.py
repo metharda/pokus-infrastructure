@@ -1,4 +1,4 @@
-"""The uninstall lane's variant: Docker and Tailscale before pinka (BUILD_PROMPT §19.9).
+"""The uninstall lane's variant: Docker and Tailscale before pinka.
 
 On a target with ``preexisting`` (``tests/distros/targets.yml``), the
 harness sets up what a machine's owner would have had before pinka: Docker

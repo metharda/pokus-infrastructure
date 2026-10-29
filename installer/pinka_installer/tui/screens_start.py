@@ -1,4 +1,4 @@
-"""Screens 1-3: Welcome, Preflight, Install mode (BUILD_PROMPT §18.4)."""
+"""Screens 1-3: Welcome, Preflight, Install mode."""
 
 from __future__ import annotations
 

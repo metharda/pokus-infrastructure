@@ -1,4 +1,4 @@
-"""Researchers' SSH public keys in ``users/<name>.pub`` (BUILD_PROMPT §18.3, §18.4 screen 7).
+"""Researchers' SSH public keys in ``users/<name>.pub``.
 
 Keys are validated before anything is written: private keys are refused
 explicitly, every key is parsed and fingerprinted, and ``ssh-keygen -lf``

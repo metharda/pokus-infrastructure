@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/main.yml). Local changes will be overwritten.
 #
-# Generic platform deployment (BUILD_PROMPT §7.14, contract v2): at most one
+# Generic platform deployment (contract v2): at most one
 # platform per lab, from the release and the content packages the host
 # settings name (platform, content), validated against contract v2 before
 # anything on the host changes. The role names no platform: everything comes
@@ -9,8 +9,8 @@
 # validate (a refusal ends bootstrap with exit code 65), build in a sandbox,
 # pull job images by digest, publish read-only with provenance, replace the
 # previous platform, render from the profiles (accounts, units, sockets,
-# database roles, certificates), switch with the drain and migrate hooks
-# (§12.9). start.yml, imported by site.yml after the lab session, starts the
+# database roles, certificates), switch with the drain and migrate hooks.
+# start.yml, imported by site.yml after the lab session, starts the
 # platform and waits for its health hook.
 
 - name: Deploy the platform

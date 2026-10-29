@@ -1,6 +1,6 @@
 # Managed by pinka (tools/pinka-lab/ruff.toml).
 # pinka runs on the pinned CPython or any python3 >= 3.9 on the host
-# (BUILD_PROMPT §9: standard library only, works when a venv is broken), like
+# (standard library only, works when a venv is broken), like
 # preflight: ruff checks against 3.9 and `make test` runs the suite on 3.9.
 extend = "../../pyproject.toml"
 target-version = "py39"

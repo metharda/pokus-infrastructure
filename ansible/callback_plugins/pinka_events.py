@@ -1,5 +1,5 @@
 # Managed by pinka (ansible/callback_plugins/pinka_events.py). Local changes will be overwritten.
-"""Ansible progress as JSON lines for the installer TUI (BUILD_PROMPT §18.5).
+"""Ansible progress as JSON lines for the installer TUI.
 
 Appends one JSON object per line to ``$PINKA_EVENTS_FILE`` (or writes to the
 file descriptor ``$PINKA_EVENTS_FD``), the same stream bootstrap writes its

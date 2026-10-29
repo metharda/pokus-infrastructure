@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/uninstall/tasks/main.yml). Local changes will be overwritten.
 #
-# Uninstall (BUILD_PROMPT §5.4). Mode plan computes what goes, what is set
+# Uninstall. Mode plan computes what goes, what is set
 # back and what stays, from the install record and the host, and writes it
 # for bootstrap to show (changes nothing). Mode apply removes the plan the
 # operator confirmed, phase by phase in removal order, and always writes the

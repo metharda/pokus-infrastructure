@@ -18,7 +18,7 @@ from collections.abc import Iterator
 ARMOR_BEGIN = "-----BEGIN PGP PUBLIC" + " KEY BLOCK-----"
 ARMOR_END = "-----END PGP PUBLIC" + " KEY BLOCK-----"
 TAG_PUBLIC_KEY = 6
-# Packet lengths below are in octets (RFC 4880 §4.2).
+# Packet lengths below are in octets (RFC 4880, section 4.2).
 ONE_OCTET_MAX = 191
 TWO_OCTET_MAX = 223
 FIVE_OCTET_MARKER = 255

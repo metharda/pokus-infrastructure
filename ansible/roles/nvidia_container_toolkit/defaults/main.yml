@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/nvidia_container_toolkit/defaults/main.yml). Local changes will be overwritten.
 
-# Where the GPU checks are recorded (BUILD_PROMPT §7.6).
+# Where the GPU checks are recorded.
 nvidia_container_toolkit_verify_dir: /var/lib/pinka/verify
 # CDI device that containers request (services use nvidia.com/gpu=all).
 nvidia_container_toolkit_cdi_device: nvidia.com/gpu=all

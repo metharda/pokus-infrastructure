@@ -1,6 +1,6 @@
 #!/opt/pinka/python/bin/python3 -I
 # Managed by pinka (ansible/roles/vllm/files/pinka_vllm_verify.py). Local changes will be overwritten.
-"""Check that vLLM serves a deployment, including tool calls (BUILD_PROMPT §7.11).
+"""Check that vLLM serves a deployment, including tool calls.
 
 Installed as ``/usr/local/libexec/pinka/vllm-verify`` by the vllm role.
 Waits for ``/health``, lists ``/v1/models``, sends one deterministic chat

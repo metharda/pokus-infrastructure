@@ -1,4 +1,4 @@
-"""Running the installation, or uninstall, from the TUI (BUILD_PROMPT §5.4, §18.1, §18.4).
+"""Running the installation, or uninstall, from the TUI.
 
 The TUI is a front-end only: it runs ``bootstrap.sh`` again, non-interactively
 and without the TUI, exactly as an ``--answers`` run would after the files are
@@ -72,7 +72,7 @@ class RunRequest:
 
 @dataclass
 class UninstallRun:
-    """One ``bootstrap.sh --uninstall --json`` run (BUILD_PROMPT §5.4).
+    """One ``bootstrap.sh --uninstall --json`` run.
 
     Attributes:
         code: Bootstrap's exit code (0, 80, 81, ...).

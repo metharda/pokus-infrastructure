@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/prepare.yml). Local changes will be overwritten.
 #
-# §7.14 steps 1-4: fetch every repository into its mirror, stage each source
+# Prepare: fetch every repository into its mirror, stage each source
 # into a fresh run directory and validate the sources, the manifest, the
 # release and the one-platform rule. A refused release ends the play with
 # bootstrap exit code 65 and every reason; nothing else on the host changed.
@@ -24,7 +24,7 @@
     group: root
     mode: "0600"
 
-- name: Fetch, stage and validate the release (§7.14 steps 1-4)
+- name: Fetch, stage and validate the release
   ansible.builtin.command:
     argv: >-
       {{ [platform_tool, 'deploy', 'prepare', '--settings', platform_settings_file]
@@ -52,7 +52,7 @@
     msg: "{{ platform_plan.summary_text.splitlines() }}"
 
 # A job over this host's training_caps deploys, but the GPU arbiter refuses
-# every run of it (§7.18); doctor's training.caps reports the same.
+# every run of it; doctor's training.caps reports the same.
 - name: Warn about jobs over this host's training caps
   ansible.builtin.debug:
     msg: "{{ ['WARNING: a job exceeds training_caps'] + platform_plan.warnings }}"

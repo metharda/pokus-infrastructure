@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/doctor/tasks/main.yml). Local changes will be overwritten.
 #
-# The operator CLI pinka (BUILD_PROMPT §9): the pinka_lab package and a
+# The operator CLI pinka: the pinka_lab package and a
 # copy of preflight under /usr/local/lib/pinka, the wrapper
 # /usr/local/bin/pinka, and the lab description /etc/pinka/lab.json that
 # doctor, status and the fingerprint compare the host with. It runs before
@@ -182,7 +182,7 @@
       features: "{{ pinka_features }}"
       lab_mode: "{{ lab_mode }}"
       # The machine's port overrides and VM collector address, as bootstrap
-      # passes them to preflight (BUILD_PROMPT §2.2, §12.11).
+      # passes them to preflight.
       preflight_args: "{{ pinka_preflight_args }}"
       paths:
         preflight: "{{ doctor_lib }}/preflight/pinka-preflight"
@@ -226,7 +226,7 @@
         device_args: "{{ pinka_docker_gpu_args | default([]) }}"
         method: "{{ pinka_docker_gpu_method | default('none') }}"
         nvidia_smi: "{{ '/usr/lib/wsl/lib/nvidia-smi' if pinka_provider == 'wsl2' else 'nvidia-smi' }}"
-        # The CUDA version the pinned vLLM image is built on (BUILD_PROMPT §2.2).
+        # The CUDA version the pinned vLLM image is built on.
         vllm_cuda: "{{ pinka_versions.containers.images.vllm.cuda | string }}"
       inference:
         dir: "{{ inference_control_dir }}"
@@ -259,7 +259,7 @@
         privileged_groups: [docker, incus-admin]
         break_glass_docker: "{{ break_glass_docker }}"
       hardening: "{{ doctor_hardening }}"
-      # The GPU arbiter and training (§7.18): none on a lab node. The socket's
+      # The GPU arbiter and training: none on a lab node. The socket's
       # owner is the controller from rendered.json, or the control endpoint's
       # account on an inference node.
       gpu_arbiter: >-
@@ -274,7 +274,7 @@
             'adapters': pinka_root ~ '/models/adapters',
             'caps': pinka_training_caps}
            if node_role in ['full', 'inference'] else {} }}
-      # The inference guard (§7.11, ADR-0016): infra's clients for this node
+      # The inference guard (ADR-0016): infra's clients for this node
       # role; the platform's come from rendered.json at run time.
       inference_isolation:
         clients: >-
@@ -282,10 +282,10 @@
              | map(attribute='account') | list }}
         ports: "{{ [pinka_ports.vllm | int] }}"
         control_ports: "{{ [pinka_ports.inference_control | int] if node_role == 'lab' else [] }}"
-      # The split-inference guard (§19.10, interpretation 11.13): the tailnet
+      # The split-inference guard: the tailnet
       # ports only the paired peer reaches (firewall role).
       split_guard: "{{ firewall_split_guard if node_role in ['lab', 'inference'] else {} }}"
-      # The telemetry isolation (§7.9, ADR-0016): infra's clients of the stores
+      # The telemetry isolation (ADR-0016): infra's clients of the stores
       # and their ports, the query port's clients (Grafana's data sources), the
       # query socket's link with its target and directory.
       telemetry_isolation:
@@ -311,7 +311,7 @@
         max_age_hours: "{{ doctor_backup_max_age_hours | int }}"
       time:
         max_offset_seconds: "{{ doctor_max_clock_offset | float }}"
-      # Maintenance windows (BUILD_PROMPT §7.20) and the effective lab ports
+      # Maintenance windows and the effective lab ports
       # that staging on shared hardware needs free before it starts.
       window:
         record: /etc/pinka/maintenance-window.json
@@ -321,7 +321,7 @@
         dir: "{{ doctor_docs_dir }}"
         port: "{{ pinka_ports.docs_serve | int }}"
         unit: pinka-docs.service
-        # The docs service runs only with a configured release (§7.19).
+        # The docs service runs only with a configured release.
         configured: "{{ docs_release is not none }}"
       cpusets:
         services: "{{ cpuset_services }}"

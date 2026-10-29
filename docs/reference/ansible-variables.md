@@ -971,9 +971,9 @@ First Docker Engine version that enables CDI by default; daemon.json sets featur
 
 ## docs
 
-The documentation service on 127.0.0.1 serving the installed docs release (§7.19).
+The documentation service on 127.0.0.1 serving the installed docs release.
 
-Entry points: `main` (The documentation service on 127.0.0.1 serving the installed docs release (§7.19)). Role README: `ansible/roles/docs/README.md`.
+Entry points: `main` (The documentation service on 127.0.0.1 serving the installed docs release). Role README: `ansible/roles/docs/README.md`.
 
 ### `docs_release`
 
@@ -1260,8 +1260,8 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `gpu_arbiter` | [lab-wide](#gpu_arbiter) | after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1). |
-| `pinka_training` | host_vars | Where training jobs run (preflight_gate, BUILD_PROMPT §2.3); off makes the arbiter refuse every run. |
+| `gpu_arbiter` | [lab-wide](#gpu_arbiter) | after_boot (serve or idle) and restore_after_training (group_vars). |
+| `pinka_training` | host_vars | Where training jobs run (preflight_gate); off makes the arbiter refuse every run. |
 | `pinka_training_caps` | host_vars | Caps on a training job's timeout_seconds, memory_max and cpus (training_caps, with memory_max auto replaced by the cap preflight computed; preflight_gate). |
 
 ### `gpu_arbiter_peer`
@@ -1418,7 +1418,7 @@ A loop file in the root filesystem, or a dedicated device.
 
 ### `incus_pool_size`
 
-Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden images, the concurrent targets' root disks and the free space (host profile requirements.pool, BUILD_PROMPT §2.3). An existing pool keeps its size.
+Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden images, the concurrent targets' root disks and the free space (host profile requirements.pool). An existing pool keeps its size.
 
 - Type: `str`
 - Default: `auto`
@@ -2267,7 +2267,7 @@ Variables the role reads from elsewhere:
 | `host_profile` | bootstrap.sh | Host profile validated by bootstrap.sh for this run. |
 | `install_nvidia_driver` | [lab-wide](#install_nvidia_driver) | The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did. |
 | `pinka_root` | [lab-wide](#pinka_root) | Research space; preflight measures its free disk space. |
-| `training_caps` | [lab-wide](#training_caps) | The caps on training jobs; memory_max auto takes the cap preflight computed (§2.3). |
+| `training_caps` | [lab-wide](#training_caps) | The caps on training jobs; memory_max auto takes the cap preflight computed. |
 
 ### `preflight_gate_command`
 

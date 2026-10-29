@@ -3,7 +3,7 @@
 # The deployment tool: the pinka_platform package and the published contract
 # under /usr/local/lib/pinka/platform, run by the wrapper
 # /usr/local/libexec/pinka/pinka-platform with the Ansible environment's Python
-# (Python 3.12 with PyYAML; contract v2 step 1).
+# (Python 3.12 with PyYAML).
 
 - name: Create the directories of the deployment tool
   ansible.builtin.file:
@@ -47,7 +47,7 @@
     group: root
     mode: "0755"
 
-- name: Install the socket ACL helper of the platform's socket units (§12.3)
+- name: Install the socket ACL helper of the platform's socket units
   ansible.builtin.copy:
     src: pinka_socket_acl.py
     dest: "{{ platform_libexec }}/socket-acl"

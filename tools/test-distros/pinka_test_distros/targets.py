@@ -48,7 +48,7 @@ class Target:
         memory: Memory limit (Incus size).
         disk: Root disk size (Incus size).
         preexisting: Components the harness installs before bootstrap (the
-            uninstall lane's variant, BUILD_PROMPT §19.9): ``docker``,
+            uninstall lane's variant): ``docker``,
             ``tailscale``.
     """
 

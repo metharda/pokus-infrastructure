@@ -1,6 +1,6 @@
 {
   "_comment": "The references lint's budget and allowlist, read by references.py; the lint does not scan this file, which quotes what it allows. budget: the number of references that remain; the lint fails unless it equals their count. It may go down or stay, never up: make lint-references-budget fails when it goes up or an allowlist entry is added. allowed: matches that are not references, each with the files it covers (a glob), the pattern, a text on the line that contains the match, and the reason.",
-  "budget": 1835,
+  "budget": 513,
   "allowed": [
     {
       "path": "ansible/tests/test_group_vars.py",

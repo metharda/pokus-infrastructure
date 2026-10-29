@@ -2,8 +2,8 @@
 #
 # On an Incus that existed before pinka (--adopt-incus), the install record
 # notes the objects pinka is about to create and the server settings it is
-# about to change, before it acts (§7.21): uninstall removes only those
-# objects there and sets the settings back (§5.4). Pinka's own Incus goes as
+# about to change, before it acts: uninstall removes only those
+# objects there and sets the settings back. Pinka's own Incus goes as
 # a whole.
 - name: Read the Incus objects that exist
   ansible.builtin.command:

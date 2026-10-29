@@ -354,7 +354,7 @@ class GpuScreen(StepScreen):
         return problems + self._save_arbiter()
 
     def _secure_boot_problems(self) -> Problems:
-        # Secure Boot without a driver (approved deviation I1): auto needs the consent
+        # Secure Boot without a driver: auto needs the consent
         # given on the Preflight screen and the one-time MOK password; manual would stop
         # the installation at bootstrap's preflight (exit 30).
         gpu = self.answers.gpu

@@ -7,7 +7,7 @@ firewall_grafana_serve_port: 443
 # Port of `tailscale serve` for the docs service (docs_tailscale_serve).
 firewall_docs_serve_port: 10000
 # TCP ports open on the tailnet interface: SSH, the Grafana and docs serve ports, and for
-# split inference (BUILD_PROMPT §19.10) the forwarded vLLM API and the control
+# split inference the forwarded vLLM API and the control
 # endpoint on an inference node, OTLP gRPC from the paired inference node on a
 # lab node. Mutual TLS guards the split-inference ports.
 firewall_tailnet_tcp_ports: >-
@@ -28,7 +28,7 @@ firewall_incus_bridge_patterns: "{{ pinka_incus_bridge_patterns + pinka_incus_pe
 firewall_uplink_bridge_patterns: "{{ ['pinka-build0'] + pinka_incus_personal_bridge_patterns }}"
 # Bridges of an LXD that existed before pinka (preflight's components): pinka's
 # input policy admits DHCP and DNS on them, so LXD's guests keep the service of
-# LXD's dnsmasq (BUILD_PROMPT §7.7); forwarding is not filtered by pinka. Only
+# LXD's dnsmasq; forwarding is not filtered by pinka. Only
 # names that are valid interface names are used.
 firewall_preexisting_bridges: >-
   {{ (((host_profile | default({})).components | default({})).lxd | default({})).networks | default([])
@@ -39,8 +39,8 @@ firewall_preexisting_bridges: >-
 firewall_vm_otlp_ports: >-
   {{ [pinka_ports.otlp_grpc, pinka_ports.otlp_http]
      if (pinka_features.vm_targets | default(false)) and node_role in ['full', 'lab'] else [] }}
-# The access that existed before pinka's first install, from the install record
-# (BUILD_PROMPT §2.2, §7.5, §7.21). A record without it (a legacy one) keeps
+# The access that existed before pinka's first install, from the install record.
+# A record without it (a legacy one) keeps
 # nothing: pinka's strict policy was already in place.
 firewall_access: "{{ (pinka_preexisting | default({})).access | default({}) }}"
 # Shared host: the pre-existing listeners kept reachable as found and those
@@ -50,6 +50,6 @@ firewall_access: "{{ (pinka_preexisting | default({})).access | default({}) }}"
 firewall_listener_rules: >-
   {{ firewall_access | pinka_listener_rules(firewall_close_listeners, pinka_closed_access | default([])) }}
 # The install's access path (an SSH session from outside the tailnet), kept
-# open until closed under the safeguard of §7.5 (install_path.yml); none for an
+# open until closed under the safeguard of install_path.yml; none for an
 # install from the console or over the tailnet.
 firewall_install_path: "{{ firewall_access | pinka_install_path(pinka_closed_access | default([])) }}"

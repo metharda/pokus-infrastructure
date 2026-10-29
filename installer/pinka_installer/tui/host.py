@@ -1,4 +1,4 @@
-"""What the TUI asks the host, behind one interface the tests replace (BUILD_PROMPT §18.9).
+"""What the TUI asks the host, behind one interface the tests replace.
 
 Everything here reads; the only programs it starts are preflight (``--no-write``),
 ``lsblk``, ``git`` (read-only), ``ssh-keygen`` for a deploy key the operator
@@ -31,7 +31,7 @@ STATE_FILE = Path("/etc/pinka/bootstrap-state.json")
 
 @dataclass(frozen=True)
 class Disk:
-    """A whole disk the Storage screen offers (BUILD_PROMPT §18.4 screen 6).
+    """A whole disk the Storage screen offers.
 
     Attributes:
         name: Kernel name, such as ``nvme1n1``.

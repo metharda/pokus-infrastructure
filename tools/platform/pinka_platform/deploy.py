@@ -1,25 +1,25 @@
-"""Deploy a platform release and its content packages (BUILD_PROMPT §7.14).
+"""Deploy a platform release and its content packages.
 
 The steps, each a function the ``platform`` role calls through
 ``pinka-platform deploy <step>``:
 
-* :func:`prepare` (steps 1-4): read the source settings, fetch every
+* :func:`prepare`: read the source settings, fetch every
   repository into its root-only mirror, resolve and check the refs (signed
   tags when required), extract each source into a fresh run directory below
   ``/var/lib/pinka/staging`` and validate the sources, the manifest, the
   release and the one-platform rule. Any problem deletes the run directory
   and refuses the deployment (exit 65) with every reason; nothing else on
   the host has changed. ``inspect`` stops here.
-* :func:`build` (step 5): ``uv sync --frozen`` as ``pinka-build`` in a
+* :func:`build`: ``uv sync --frozen`` as ``pinka-build`` in a
   sandbox (``python-uv``), then the checks that need the build.
-* :func:`pull` (step 5): the training job images, by digest.
-* :func:`publish` (steps 6 and 9): the release to
+* :func:`pull`: the training job images, by digest.
+* :func:`publish`: the release to
   ``/srv/pinka/platforms/<platform>/releases/<name>/``, restricted content
   packages to ``/srv/pinka/restricted/<platform>/content/<package>/<name>/``
   only, other content to ``/srv/pinka/platforms/<platform>/content/...``,
   each with ``DEPLOYED_FROM.json``.
 * :func:`retire_plan`: what replacing the active platform takes away.
-* :func:`activate` (step 8's switch): the ``current`` links, the active
+* :func:`activate` (the switch): the ``current`` links, the active
   platform record ``/etc/pinka/platform/active.json`` and the deployment
   record.
 * :func:`purge`: remove a replaced platform's releases, state, restricted
@@ -142,7 +142,7 @@ class Refused(Exception):  # noqa: N818 - the outcome's name, like bootstrap's
 
 @dataclass(frozen=True)
 class Paths:
-    """The host paths of a deployment (BUILD_PROMPT §6.2).
+    """The host paths of a deployment.
 
     Attributes:
         git: Root-only mirrors.
@@ -333,7 +333,7 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-# --- prepare (steps 1-4) -------------------------------------------------------
+# --- prepare -------------------------------------------------------
 
 
 @dataclass
@@ -448,7 +448,7 @@ def _content_problems(
 def one_platform_problems(
     active: Mapping[str, Any] | None, platform: str, replace_name: str
 ) -> list[Problem]:
-    """The one-platform rule: another active platform needs ``--replace-platform`` (§7.14).
+    """The one-platform rule: another active platform needs ``--replace-platform``.
 
     Args:
         active: The active platform record, or None.
@@ -550,7 +550,7 @@ def inspect_release(
     host: Callable[[str], names.HostFacts | None] = names.host_facts,
     owner_uid: int | None = None,
 ) -> dict[str, Any]:
-    """Inspect the release alone, before its content and settings are known (§18.4 screen 12).
+    """Inspect the release alone, before its content and settings are known.
 
     The installer asks for the source of every content package, the secrets
     and each service's settings only after it knows the manifest: this fetches
@@ -654,7 +654,7 @@ def inspect_release(
         shutil.rmtree(run, ignore_errors=True)
 
 
-def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
+def prepare(  # noqa: PLR0912, PLR0915 - the whole prepare step
     settings: Settings,
     paths: Paths,
     contract: Contract,
@@ -665,7 +665,7 @@ def prepare(  # noqa: PLR0912, PLR0915 - the whole of steps 1-4
     inspect: bool = False,
     now: Callable[[], dt.datetime] = _now,
 ) -> dict[str, Any]:
-    """Fetch, stage and validate (§7.14 steps 1-4).
+    """Fetch, stage and validate.
 
     Args:
         settings: Host settings.
@@ -844,7 +844,7 @@ def load_plan(run: Path) -> dict[str, Any]:
     return plan
 
 
-# --- build (step 5) ------------------------------------------------------------
+# --- build ------------------------------------------------------------
 
 
 def _entries(top: Path, skip: Sequence[str]) -> Iterator[tuple[str, Path]]:
@@ -889,7 +889,7 @@ def sandbox_commands(
     build_group: bool,
     agents: Sequence[tuple[str, str]] = (),
 ) -> list[tuple[str, list[str]]]:
-    """The ``systemd-run`` commands of a ``python-uv`` build (§7.14 step 5).
+    """The ``systemd-run`` commands of a ``python-uv`` build.
 
     Phase 1 (``fetch``) may use the network and installs only the locked
     third-party wheels, checked against ``uv.lock``; it builds and compiles
@@ -1023,7 +1023,7 @@ def build(
     contract: Contract,
     runner: Runner,
 ) -> dict[str, Any]:
-    """Build a ``python-uv`` release in its sandbox and check it again (§7.14 step 5).
+    """Build a ``python-uv`` release in its sandbox and check it again.
 
     Args:
         plan: The deployment plan.
@@ -1079,7 +1079,7 @@ def build(
     return {"changed": True, "built": True}
 
 
-# --- pull (step 5) -------------------------------------------------------------
+# --- pull -------------------------------------------------------------
 
 
 def _has_image(runner: Runner, image: str) -> bool:
@@ -1095,7 +1095,7 @@ def _has_image(runner: Runner, image: str) -> bool:
 
 
 def pull(plan: Mapping[str, Any], runner: Runner) -> dict[str, Any]:
-    """Pull every training job image by its digest (§7.14 step 5, §7.18).
+    """Pull every training job image by its digest.
 
     Args:
         plan: The deployment plan.
@@ -1123,13 +1123,13 @@ def pull(plan: Mapping[str, Any], runner: Runner) -> dict[str, Any]:
     return {"changed": bool(pulled), "pulled": pulled}
 
 
-# --- publish (steps 6 and 9) -----------------------------------------------------
+# --- publish -----------------------------------------------------
 
 
 def provenance(
     plan: Mapping[str, Any], item: Mapping[str, Any], *, package: str | None, now: dt.datetime
 ) -> dict[str, Any]:
-    """The ``DEPLOYED_FROM.json`` record of the release or a content package (§12.10).
+    """The ``DEPLOYED_FROM.json`` record of the release or a content package.
 
     Args:
         plan: The deployment plan.
@@ -1209,7 +1209,7 @@ def publish(
     paths: Paths,
     now: Callable[[], dt.datetime] = _now,
 ) -> dict[str, Any]:
-    """Publish the release and the content packages read-only (§7.14 steps 6 and 9).
+    """Publish the release and the content packages read-only.
 
     Args:
         plan: The deployment plan.
@@ -1260,7 +1260,7 @@ def publish(
     return {"changed": changed, "release": plan["release"]["target"], "content": content}
 
 
-# --- render (§7.14 step 7) ---------------------------------------------------------
+# --- render ---------------------------------------------------------
 
 
 def published_manifest(plan: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
@@ -1306,7 +1306,7 @@ def rendered_lock(paths: Paths) -> Iterator[None]:
 
 
 def changes(plan: Mapping[str, Any], paths: Paths) -> dict[str, Any]:
-    """What the switch changes compared with the active platform (§7.14 step 8).
+    """What the switch changes compared with the active platform.
 
     Args:
         plan: The deployment plan.
@@ -1344,7 +1344,7 @@ def render_step(
     contract: Contract,
     users: Callable[[], Mapping[str, int]] = host_users,
 ) -> dict[str, Any]:
-    """Render everything the platform role applies (§7.14 step 7).
+    """Render everything the platform role applies.
 
     The accounts get their UIDs from the platform range here
     (:func:`pinka_platform.accounts.assign_uids`).
@@ -1440,7 +1440,7 @@ def principals_step(
     contract: Contract,
     uid: Callable[[str], int] = lambda name: pwd.getpwnam(name).pw_uid,
 ) -> dict[str, Any]:
-    """Write the principals and endpoints files once the accounts exist (§12.3).
+    """Write the principals and endpoints files once the accounts exist.
 
     Args:
         plan: The deployment plan (after the accounts were created).
@@ -1475,7 +1475,7 @@ def principals_step(
 
 
 def retire_plan(active: Mapping[str, Any], contract: Contract, paths: Paths) -> dict[str, Any]:
-    """What replacing the active platform takes away (§7.14 "One platform per lab").
+    """What replacing the active platform takes away.
 
     Its state, database, restricted area and releases stay until ``pinka
     platform purge``. What was rendered for it (``rendered.json``) names its
@@ -1559,7 +1559,7 @@ def activate(
     paths: Paths,
     now: Callable[[], dt.datetime] = _now,
 ) -> dict[str, Any]:
-    """Switch ``current``, record the active platform and the deployment (§7.14 steps 8-9).
+    """Switch ``current``, record the active platform and the deployment.
 
     Replacing a platform records it as retired, with what it had, so that
     ``pinka platform purge`` can remove it later.
@@ -1730,10 +1730,10 @@ def purge(
 ) -> dict[str, Any]:
     """Remove a replaced platform's releases, content, state, restricted area and database.
 
-    Its accounts stay locked and its published signing keys stay (§12.10:
-    kept forever); its secrets directories, database password files and
-    private signing key stay too unless ``remove_secrets`` (owner decision on
-    3d.2). The result lists everything that remains. Only a platform that
+    Its accounts stay locked and its published signing keys stay
+    (kept forever); its secrets directories, database password files and
+    private signing key stay too unless ``remove_secrets``.
+    The result lists everything that remains. Only a platform that
     was replaced can be purged, never the active one, and only with its name
     typed as confirmation.
 

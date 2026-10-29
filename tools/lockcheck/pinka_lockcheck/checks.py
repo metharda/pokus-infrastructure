@@ -1,4 +1,4 @@
-"""Checks of ``versions.lock.yml`` (BUILD_PROMPT §10.1 ``make lock-check``).
+"""Checks of ``versions.lock.yml`` (``make lock-check``).
 
 * ``schema_findings``: structure (``tools/lockcheck/schema/versions-lock.schema.json``).
 * ``marker_findings``: every remaining ``TODO(verify)`` or ``<verify>`` marker.
@@ -221,7 +221,7 @@ def container_findings(
 def size_findings(
     doc: Mapping[str, Any], sizes: Callable[[str, str], dict[str, int]] = net.image_sizes
 ) -> list[Finding]:
-    """Check every lab image's recorded compressed sizes against its manifests (§10.1).
+    """Check every lab image's recorded compressed sizes against its manifests.
 
     Args:
         doc: Lock document.

@@ -1,8 +1,8 @@
-"""Accounts, groups and memberships rendered from the profiles (§6.1, §12.2, §12.4).
+"""Accounts, groups and memberships rendered from the profiles.
 
 Every membership follows from a profile grant or a socket's clients; nothing
 in the manifest names a group. :func:`enforce` then re-checks the result
-against the rules that hold whatever the data says (§12.4): an
+against the rules that hold whatever the data says: an
 ``untrusted-agent`` or ``gpu-trainer`` account is never a member of
 ``pinka-restricted``, of the database socket group, of ``pinka-query`` or of
 an infra group that grants host access, and the agent has no group except the
@@ -38,7 +38,7 @@ HOST_GROUPS = frozenset(
         "pinka-admin",
     }
 )
-# Profiles that are trusted with nothing (§12.4).
+# Profiles that are trusted with nothing.
 UNTRUSTED = frozenset({"untrusted-agent", "gpu-trainer"})
 
 
@@ -160,7 +160,7 @@ def platform_groups(manifest: Mapping[str, Any]) -> list[str]:
 
 
 def enforce(manifest: Mapping[str, Any], accounts: list[Account]) -> None:
-    """Refuse memberships that no manifest may cause (§12.4).
+    """Refuse memberships that no manifest may cause.
 
     Args:
         manifest: The manifest the accounts were derived from.
@@ -221,7 +221,7 @@ def render(manifest: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
 
 
 def assign_uids(rendered: list[dict[str, Any]], users: Mapping[str, int]) -> list[dict[str, Any]]:
-    """Give every platform account a UID from the platform range (§7.9 option b).
+    """Give every platform account a UID from the platform range.
 
     An existing account keeps its UID; a new one gets the lowest UID of the
     range that no account on the host uses. The telemetry guard drops the

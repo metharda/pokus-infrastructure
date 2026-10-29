@@ -60,7 +60,7 @@ Example:
 
 ```json
 {
-  "_comment": "Managed by pinka (principals.json, contract v2 §12.3). Local changes will be overwritten.",
+  "_comment": "Managed by pinka (principals.json, contract v2). Local changes will be overwritten.",
   "schema_version": 1,
   "contract_version": 2,
   "platform": "refplat",
@@ -242,7 +242,7 @@ The addresses and paths infra provides to the active platform, /etc/pinka/platfo
 Example:
 
 ```toml
-# Managed by pinka (endpoints.toml, contract v2 §12.3). Local changes will be overwritten.
+# Managed by pinka (endpoints.toml, contract v2). Local changes will be overwritten.
 # The addresses and paths infra provides to the platform, with the effective ports.
 schema_version = 1
 platform = "refplat"

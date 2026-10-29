@@ -1,13 +1,13 @@
 # Managed by pinka (preflight/support-matrix.yml).
 #
-# Source of truth for the preflight decision (BUILD_PROMPT §2.3). `make generate`
+# Source of truth for the preflight decision. `make generate`
 # compiles it to support-matrix.json (the evaluator reads only the JSON, so
 # preflight needs no YAML parser) and renders docs/support-matrix.md; CI fails
 # if either is out of date. References of the form "@versions.lock:<dotted.key>"
 # are resolved from ../versions.lock.yml at generation time.
 #
 # Lifecycle data: `lifecycle` records the vendor's end of regular support and
-# where that date was verified. Policy (owner answer E8): only releases that
+# where that date was verified. Policy: only releases that
 # have not reached the end of regular support appear in a supporting tier.
 schema_version: 1
 
@@ -51,7 +51,7 @@ os:  # first match wins
     tier: supported
     release_model: fixed
     lifecycle: {released: "2025-08-09", end_of_support: "2028-08-09", source: distro-info-data}
-  # tested: full provisioning + doctor --smoke tested in VMs (§19.9); GPU paths not hardware-tested
+  # tested: full provisioning + doctor --smoke tested in VMs; GPU paths not hardware-tested
   - match: {id: ubuntu, version_id: "22.04"}
     family: debian
     tier: tested
@@ -59,7 +59,7 @@ os:  # first match wins
     lifecycle: {released: "2022-04-21", end_of_support: "2027-06-01", source: distro-info-data}
   # TODO(verify): Ubuntu 26.04 LTS (released 2026-04-23, end of support 2031-05-29 per
   # distro-info-data; Docker publishes packages for it) is added as `tested` once Incus,
-  # the NVIDIA Container Toolkit and Tailscale support for it is verified (owner answer E8).
+  # the NVIDIA Container Toolkit and Tailscale support for it is verified.
   - match: {id: fedora, version_id_in: "@versions.lock:fedora_supported_releases.releases"}
     family: redhat
     tier: tested
@@ -69,7 +69,7 @@ os:  # first match wins
     family: redhat
     tier: tested
     release_model: fixed
-  # TODO(verify): openSUSE Leap 15.6 end of support; drop the row if it has ended (owner answer E8).
+  # TODO(verify): openSUSE Leap 15.6 end of support; drop the row if it has ended.
   - match: {id: opensuse-leap, version_id_in: ["15.6", "16.0"]}
     family: suse
     tier: tested
@@ -86,8 +86,8 @@ os:  # first match wins
     family: archlinux
     tier: tested
     release_model: rolling
-  # Releases past their end of regular support (owner answer E8) and RHEL-compatible
-  # major 8 (owner answer E9) are explicitly unsupported, before the ID_LIKE rows.
+  # Releases past their end of regular support and RHEL-compatible
+  # major 8 are explicitly unsupported, before the ID_LIKE rows.
   - match: {id: debian, version_id: "12"}
     tier: unsupported
     lifecycle: {released: "2023-06-10", end_of_support: "2026-07-11", source: distro-info-data}
@@ -100,7 +100,7 @@ os:  # first match wins
       RHEL-compatible release 8: it predates the unified cgroup v2 default and is not a supported
       release. The cgroup v2 hierarchy can be enabled with the kernel argument
       'systemd.unified_cgroup_hierarchy=1', but install a supported release (9 or 10) instead.
-  # Approved deviation St2-3: a release of an implemented distribution that no row
+  # A release of an implemented distribution that no row
   # above lists is explicitly unsupported, so it never falls through to the
   # ID_LIKE rows below (Ubuntu's ID_LIKE is debian, Rocky's names rhel).
   - match: {id_in: [ubuntu, debian, fedora, rhel, almalinux, rocky, centos, opensuse-leap, sles]}
@@ -162,11 +162,11 @@ environment:
   unknown: {tier: unsupported, reason: "Could not determine the environment reliably"}
 
 # Nominal values. MemTotal is compared with tolerance × each memory threshold:
-# the firmware and the kernel keep part of the installed memory (§2.2; owner,
-# decision 6 on the 3f-1 proposal). The floor is the core stack with no
+# the firmware and the kernel keep part of the installed memory.
+# The floor is the core stack with no
 # target running: below it the host is unsupported. Above it, the required
 # and recommended memory and the free disk per mount point are computed from
-# the operator's choices (preflight/requirements.yml, §2.3).
+# the operator's choices (preflight/requirements.yml).
 minimums:
   memory_gib: {floor: 8, tolerance: 0.94}
   cpu_threads: {required: 8, recommended: 16}
@@ -187,7 +187,7 @@ core_requirements:  # failing any of these → unsupported (or needs_action when
   - id: no_blocking_conflicts
     remediation: "Resolve every blocking conflict listed above."
 
-storage:  # first available backend wins (BUILD_PROMPT §2.3 note: no `dir` backend)
+storage:  # first available backend wins (no `dir` backend)
   backends:
     - {feature: btrfs_pool, backend: btrfs}
     - {feature: lvm_thin_pool, backend: lvm}
@@ -198,14 +198,14 @@ storage:  # first available backend wins (BUILD_PROMPT §2.3 note: no `dir` back
 
 features:  # optional; each becomes a boolean feature flag
   gpu_inference:
-    # driver_cuda_min: the CUDA version the pinned vLLM image is built on
-    # (BUILD_PROMPT §2.2); its major.minor is compared with the CUDA version
+    # driver_cuda_min: the CUDA version the pinned vLLM image is built on;
+    # its major.minor is compared with the CUDA version
     # the loaded driver supports (`nvidia-smi --version`, on WSL2 the Windows
     # driver's).
     requires:
       - nvidia_gpu_usable
       - {gpu_vram_gib_min: 8}
-      # V7 (owner decision with the "commit" for 3d.4): the pinned vLLM image
+      # V7: the pinned vLLM image
       # has kernels from compute capability 7.5 on (its TORCH_CUDA_ARCH_LIST);
       # no override enables gpu_inference below it.
       - {gpu_compute_capability_min: "7.5"}
@@ -231,7 +231,7 @@ features:  # optional; each becomes a boolean feature flag
         unknown: >-
           nvidia-smi did not report the CUDA version the NVIDIA driver supports; the pinned vLLM
           image needs {required}: update the NVIDIA driver (on WSL2, on Windows).
-  # The GPU arbiter's training jobs (BUILD_PROMPT §2.3, §7.18): a job's image
+  # The GPU arbiter's training jobs: a job's image
   # brings its own CUDA, so the driver's CUDA version is not compared. Without
   # it no job gets the GPU; training: cpu runs the jobs' CPU-only variant.
   gpu_training:
@@ -274,12 +274,12 @@ provider_rules:
         message: "Windows drive automount is enabled; the wsl2 provider will disable it"
   baremetal:
     needs_action:
-      # Approved deviation I1: with install_nvidia_driver auto and the operator's
+      # With install_nvidia_driver auto and the operator's
       # consent (--accept-mok-enrollment, the installer, or the answers file),
       # the rule becomes a planned action and bootstrap does the work. manual
       # stays needs_action; skip leaves the GPU unused (degraded), and so does
       # auto for a GPU the pinned driver's open kernel module does not support
-      # (nvidia_driver_planned none, §2.2).
+      # (nvidia_driver_planned none).
       - id: secure_boot_mok
         when: {secure_boot: enabled, nvidia_driver_installed: false, nvidia_gpu_present: true, nvidia_driver_planned_in: [auto, manual]}
         action: >-

@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/postgres/tasks/restricted_check.yml). Local changes will be overwritten.
 #
-# The restricted-schema revoke and check (BUILD_PROMPT §7.8, §12.5): after the
+# The restricted-schema revoke and check: after the
 # bootstrap SQL and after every migrate hook (the platform role includes it
 # from its switch), infra revokes every privilege on schema restricted from
 # the roles outside the controller, restricted-operator and restricted-reader

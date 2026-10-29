@@ -1,4 +1,4 @@
-"""Installed documentation releases (BUILD_PROMPT §7.19).
+"""Installed documentation releases.
 
 A release is a docs site tarball with its
 sha256. Each installed version is a directory ``<base>/<version>/``; the

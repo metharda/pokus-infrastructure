@@ -6,7 +6,7 @@ argument_specs:
       gpu_arbiter:
         type: dict
         required: true
-        description: after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1).
+        description: after_boot (serve or idle) and restore_after_training (group_vars).
       pinka_training_caps:
         type: dict
         required: true
@@ -17,7 +17,7 @@ argument_specs:
         type: str
         required: true
         choices: [gpu, cpu, "off"]
-        description: Where training jobs run (preflight_gate, BUILD_PROMPT §2.3); off makes the arbiter refuse every run.
+        description: Where training jobs run (preflight_gate); off makes the arbiter refuse every run.
       gpu_arbiter_peer:
         type: str
         description: >-

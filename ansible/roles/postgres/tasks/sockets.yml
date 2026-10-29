@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/postgres/tasks/sockets.yml). Local changes will be overwritten.
 #
-# The socket directories (§7.8): /run/pinka/postgres for the platform's
+# The socket directories: /run/pinka/postgres for the platform's
 # service roles (group <platform>-db, or root without a platform) and
 # /run/pinka/postgres-reader for the researchers' reader role and Grafana
 # (group pinka), recreated by tmpfiles.d at every boot.

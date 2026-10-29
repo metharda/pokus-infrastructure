@@ -2,7 +2,7 @@
 #
 # Lifecycle and logging events of every project as JSON lines in the journal
 # (identifier pinka-incus-events), read by the collector's journald receiver;
-# the platform's integrity check uses them (BUILD_PROMPT §7.7).
+# the platform's integrity check uses them.
 - name: Install pinka-incus-events.service
   ansible.builtin.template:
     src: pinka-incus-events.service.j2

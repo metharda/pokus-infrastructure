@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/platform/files/pinka_socket_acl.py). Local changes will be overwritten.
-"""Give the human classes their ACL entries on a platform socket (§12.3).
+"""Give the human classes their ACL entries on a platform socket.
 
 Installed as ``/usr/local/libexec/pinka/socket-acl`` and run as root from the
 ``ExecStartPost=`` of a platform socket unit, after systemd has created the
@@ -16,8 +16,8 @@ classes: the socket becomes 0666 and a warning goes to the journal. Any other
 failure fails the socket unit, so the service does not start.
 
 Each run records the outcome in ``/etc/pinka/platform/rendered.json``: its
-``socket_acl_fallback`` lists the sockets that fell back to 0666 (owner
-decision with the "commit" for 3d.3), and doctor warns about each. The
+``socket_acl_fallback`` lists the sockets that fell back to 0666,
+and doctor warns about each. The
 deployment tool takes the same lock (``.rendered.json.lock`` next to it) when
 it writes the file.
 """

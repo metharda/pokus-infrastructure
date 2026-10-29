@@ -1,4 +1,4 @@
-/* The installer's look (BUILD_PROMPT §18.10). Colours come from the theme
+/* The installer's look. Colours come from the theme
    variables only, so the dark, light and high-contrast themes and NO_COLOR
    all work; nothing here assumes more than 80x24. */
 

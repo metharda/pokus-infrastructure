@@ -2,18 +2,17 @@
 
 The lab is bootstrapped twice (the second run must change nothing) and
 checked with ``pinka doctor --smoke``, from a release package of the tested
-commit (its pinned collections bundled, owner decision of 3d.7 and 3d.8);
+commit (its pinned collections bundled);
 on the ufw and firewalld lanes, what was closed with consent stays closed
-after the owner's firewall reloads, while SSH over the tailnet still works
-(approved deviation AG1);
-then the reference platform is deployed in it (BUILD_PROMPT §7.18, §19.9): its isolation probes, the
+after the owner's firewall reloads, while SSH over the tailnet still works;
+then the reference platform is deployed in it: its isolation probes, the
 training flow with the CPU-only job, a run interrupted by a reboot and
 resumed, a second deployment that changes nothing, the replacement by a
 renamed copy, and a backup and restore. Last, the uninstall lane: the host's
 snapshot before the install must equal the one after the uninstall, apart
 from what uninstall keeps on purpose; on the pre-existing variant, Docker
 with a workload and a logged-in Tailscale node exist before pinka and stay
-as they were through install and uninstall (BUILD_PROMPT §5.4, §19.9).
+as they were through install and uninstall.
 """
 
 from __future__ import annotations
@@ -75,7 +74,7 @@ UNINSTALL_REPORTS = "/var/log/pinka-uninstall"
 # (bootstrap/lib/stages.sh, uninstall_flow).
 NOTHING_LEFT = "nothing of pinka's is on this host; nothing was removed"
 # The kept data the uninstall lane marks before it uninstalls and finds again
-# afterwards (owner, D2 review): a package script or a removal that took one
+# afterwards: a package script or a removal that took one
 # fails the lane. Docker's data root is the one docker info names.
 KEPT_DATA = ("/srv/pinka", "/var/lib/containerd", "/var/lib/incus", "/var/lib/tailscale")
 KEPT_MARK = ".pinka-uninstall-lane"
@@ -122,7 +121,7 @@ DISABLE_MANAGERS = (
     "for unit in firewalld ufw; do"
     ' if systemctl is-active --quiet "$unit"; then systemctl disable --now "$unit"; fi; done'
 )
-# The ufw and firewalld lanes (approved deviation AG1): two services of the
+# The ufw and firewalld lanes: two services of the
 # machine's owner listen before the install, the owner's firewall admits
 # both, and the answers close the first with consent.
 ACCESS_FIREWALLS = ("ufw", "firewalld")
@@ -393,7 +392,7 @@ class Test:
             )
 
     def _preexisting_setup(self) -> None:
-        """The variant's components, set up as their owner would have (BUILD_PROMPT §19.9)."""
+        """The variant's components, set up as their owner would have."""
         t = self.target
         install = INSTALL[t.family]
         if "docker" in t.preexisting:
@@ -466,7 +465,7 @@ class Test:
         return problems
 
     def _preexisting_unchanged(self, stage: str, when: str) -> None:
-        """The pre-existing components are as they were before the install (§19.9).
+        """The pre-existing components are as they were before the install.
 
         The Tailscale node keeps its identity, state and preferences (the
         snapshot's ``tailscale`` section), the components' packages keep
@@ -495,7 +494,7 @@ class Test:
             raise StageError(f"{when}: {'; '.join(problems)}")
 
     def snapshot(self) -> None:
-        """After a reboot, the host as it is before the install (the uninstall lane, §19.9).
+        """After a reboot, the host as it is before the install (the uninstall lane).
 
         On the pre-existing variant, the node must be running and the
         workload reachable: the baseline the later stages compare with.
@@ -575,9 +574,9 @@ class Test:
     def access(self) -> None:
         """What existed before the install is still there and reachable.
 
-        On the pre-existing variant (§19.9): the Tailscale node, the
+        On the pre-existing variant: the Tailscale node, the
         components' versions and the workload's connectivity are unchanged.
-        On the ufw and firewalld lanes (AG1), before and after ``ufw reload``
+        On the ufw and firewalld lanes, before and after ``ufw reload``
         or ``firewall-cmd --reload``: the access guard drops new connections
         to the closed listener; the harness host reaches the kept one and
         not the closed one, and so does a second node over the tailnet; and
@@ -807,7 +806,7 @@ class Test:
     # --- the uninstall lane --------------------------------------------------------------------
 
     def uninstall(self) -> None:
-        """Uninstall; after a reboot the host equals its snapshot before the install (§19.9).
+        """Uninstall; after a reboot the host equals its snapshot before the install.
 
         The harness first removes what it added itself (the inference
         stand-in). Bootstrap uninstalls non-interactively with the typed

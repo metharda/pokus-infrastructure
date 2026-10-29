@@ -1,4 +1,4 @@
-"""Validation rules of the installer (BUILD_PROMPT §18.8).
+"""Validation rules of the installer.
 
 Every rule is a function that takes the raw value and returns an error message,
 or ``None`` when the value is valid. The TUI shows the message next to the
@@ -91,8 +91,8 @@ RESERVED_USERNAMES = frozenset(
     }
 )
 # Prefixes of infra's and the platform's accounts; the old project prefix stays refused.
-# Infra's own accounts and groups start with pinka- (§6.1); the platform's are
-# checked against the host when it is deployed (§12.1).
+# Infra's own accounts and groups start with pinka-; the platform's are
+# checked against the host when it is deployed.
 SERVICE_ACCOUNT_PREFIXES = ("pinka-",)
 
 # Key types accepted for researchers (ssh-keygen -t; the sk- variants are FIDO keys).
@@ -345,7 +345,7 @@ def https_url(value: str) -> str | None:
 
 
 def platform_sources(platform: Mapping[str, Any], content: Mapping[str, Any]) -> list[str]:
-    """The sources of the platform release and its content packages (BUILD_PROMPT §8.1).
+    """The sources of the platform release and its content packages.
 
     The rules are the platform tool's own (``pinka_platform.sources``), so the
     installer refuses exactly what a deployment would: SSH, anonymous HTTPS
@@ -377,7 +377,7 @@ def cap_size(value: str) -> str | None:
 
 
 def pool_size(value: str) -> str | None:
-    """``incus_pool_size``: ``auto`` (computed by preflight, §2.3) or a size.
+    """``incus_pool_size``: ``auto`` (computed by preflight) or a size.
 
     Args:
         value: The setting.
@@ -392,7 +392,7 @@ def pool_size(value: str) -> str | None:
 
 
 def memory_max(value: str) -> str | None:
-    """``training_caps.memory_max``: ``auto`` (computed from the host, §2.3) or a cap size.
+    """``training_caps.memory_max``: ``auto`` (computed from the host) or a cap size.
 
     Args:
         value: The setting.
@@ -421,7 +421,7 @@ def cap_size_gib(value: str) -> float:
 
 
 def concurrent_targets(value: int) -> str | None:
-    """The targets that run at once (the capacity plan, BUILD_PROMPT §2.3).
+    """The targets that run at once (the capacity plan).
 
     Args:
         value: The number.
@@ -526,7 +526,7 @@ def tailscale_tag(value: str) -> str | None:
 
 
 def listener_name(value: str) -> str | None:
-    """A pre-existing listener to close: ``tcp/<port>`` or ``udp/<port>`` (BUILD_PROMPT §7.5).
+    """A pre-existing listener to close: ``tcp/<port>`` or ``udp/<port>``.
 
     Whether preflight recorded it, and whether the firewall can close it, is
     checked against the host's install record when bootstrap runs.
@@ -544,7 +544,7 @@ def listener_name(value: str) -> str | None:
 
 
 def serve_consent(adopted: bool, serve: bool, consent: bool) -> str | None:
-    """Publishing with tailscale serve on a node logged in before pinka (BUILD_PROMPT §7.4).
+    """Publishing with tailscale serve on a node logged in before pinka.
 
     Args:
         adopted: The node was logged in before pinka (pinka uses it as it is).
@@ -792,7 +792,7 @@ def ssh_keygen_fingerprint(line: str) -> str | None:
 
 
 def uninstall_confirmation(typed: str, machine: str) -> str | None:
-    """The machine name typed to confirm uninstall, or to delete the lab's data too (§5.4).
+    """The machine name typed to confirm uninstall, or to delete the lab's data too.
 
     Args:
         typed: What the operator typed.

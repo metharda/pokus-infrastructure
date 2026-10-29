@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/check-mode.yml). Local changes will be overwritten.
 #
-# Required CI fast lane (BUILD_PROMPT §11, §19.9; approved deviation I2): the
+# Required CI fast lane: the
 # provider-agnostic roles install_record, base, users_groups, ssh and layout
 # in check mode, against a systemd container of one distribution family, with
 # the host profile that preflight wrote inside the container. Nothing is skipped.

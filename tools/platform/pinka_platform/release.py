@@ -1,4 +1,4 @@
-"""Checks of a staged release directory (§7.14 step 4, §12.1)."""
+"""Checks of a staged release directory."""
 
 from __future__ import annotations
 
@@ -17,9 +17,9 @@ from pinka_platform.problems import ManifestError, Problem
 UV_LOCK = "uv.lock"
 PYPROJECT = "pyproject.toml"
 # The dependency group that locks a python-uv release's build backend, so the
-# build's second phase runs without network (§7.14 step 5; proposed V3).
+# build's second phase runs without network (V3).
 BUILD_GROUP = "build"
-# OPA namespaces of infra (§7.10): OPA's own authorization and the placeholder.
+# OPA namespaces of infra: OPA's own authorization and the placeholder.
 RESERVED_POLICY_ROOTS = frozenset({"system", "pinka"})
 RESERVED_PACKAGE = re.compile(r"^\s*package\s+(system|pinka)\b", re.MULTILINE)
 SPECIAL_KINDS = {
@@ -82,7 +82,7 @@ def check_special_files(release: Path, lstat: Lstat | None = None) -> list[Probl
     """Refuse device files, FIFOs, sockets and any setuid or setgid bit.
 
     Checks every entry, the built environment included: neither a source nor
-    a build may bring them in (owner decision on 3d.2).
+    a build may bring them in.
 
     Args:
         release: The staged release (or a content package).
@@ -306,7 +306,7 @@ def _check_directories(release: Path, manifest: Mapping[str, Any]) -> list[Probl
 
 
 def check_policy_bundle(release: Path, bundle: str) -> list[Problem]:
-    """Refuse a policy bundle that reaches into infra's OPA namespaces (§7.10).
+    """Refuse a policy bundle that reaches into infra's OPA namespaces.
 
     OPA's own authorization lives in ``package system.authz`` and infra's
     placeholder in ``package pinka.placeholder``; OPA merges every file of a

@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/signing.yml). Local changes will be overwritten.
 #
-# The platform's signing key (§12.10): ed25519, PEM PKCS#8, generated on this
+# The platform's signing key: ed25519, PEM PKCS#8, generated on this
 # host, readable only by the controller account (0400). Its public key
 # (SubjectPublicKeyInfo) is published as
 # <pinka_root>/shared/signing-keys/<platform>-<machine>-<YYYYMMDD>.pub and kept

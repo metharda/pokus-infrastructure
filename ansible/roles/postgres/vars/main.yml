@@ -3,13 +3,13 @@
 # Contract paths (contracts.md#paths, #sockets); compose/core/compose.yml
 # mounts the same paths.
 # Socket directory of the platform's service roles (group <platform>-db, whose
-# members are the platform accounts with a database role, §12.5).
+# members are the platform accounts with a database role).
 postgres_service_socket_dir: /run/pinka/postgres
 # Socket directory of the researchers' reader role (group pinka may connect).
 postgres_reader_socket_dir: /run/pinka/postgres-reader
 # Password files of the platform roles (0711: each file is 0640 root:<account>).
 postgres_password_dir: /etc/pinka/secrets/postgres
-# Researchers' reader credential in pgpass format (owner answer E13).
+# Researchers' reader credential in pgpass format (E13).
 postgres_reader_credential: /etc/pinka/postgres-reader/pgpass
 # Secrets mounted into containers: directory 0700 root, each file 0400 owned
 # by the UID of the container that reads it.
@@ -35,7 +35,7 @@ postgres_all_roles: "{{ postgres_platform_logins + [postgres_monitor_role] }}"
 postgres_secrets_query: >-
   SELECT coalesce(json_object_agg(rolname, rolpassword), '{}') FROM pg_authid
   WHERE rolname = ANY (string_to_array('{{ postgres_all_roles | join(',') }}', ','))
-# Durability settings that must all be on (BUILD_PROMPT §7.8).
+# Durability settings that must all be on.
 postgres_durability_query: >-
   SELECT json_object_agg(name, setting) FROM pg_settings
   WHERE name IN ('fsync', 'synchronous_commit', 'full_page_writes', 'data_checksums')

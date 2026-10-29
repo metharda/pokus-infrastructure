@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/tailscale/defaults/main.yml). Local changes will be overwritten.
 
-# Tag of this host (owner answer E2): tag:pinka-lab, or tag:pinka-qa on staging hosts.
+# Tag of this host: tag:pinka-lab, or tag:pinka-qa on staging hosts.
 tailscale_tag: "{{ pinka_tailscale_tags[lab_mode] }}"
 # MagicDNS must not change host name resolution.
 tailscale_accept_dns: false

@@ -1,4 +1,4 @@
-"""Files generated for bootstrap (BUILD_PROMPT §5.2, §10.1) and its reference pages.
+"""Files generated for bootstrap and its reference pages.
 
 ``versions.lock.yml`` is the single source of truth. From it come
 ``bootstrap/lib/pins.sh`` (the uv and CPython pins bootstrap reads before any
@@ -56,22 +56,21 @@ BOOTSTRAP_REQUIREMENTS = RequirementSet(
     ("packages",),
     "bootstrap/requirements.in",
     "bootstrap/requirements.lock",
-    "Python packages of /opt/pinka/ansible-venv (BUILD_PROMPT §5.2 step 5);",
+    "Python packages of /opt/pinka/ansible-venv;",
     "bootstrap-lock",
 )
 MODEL_REQUIREMENTS = RequirementSet(
     ("model_tools",),
     "ansible/roles/models/files/requirements.in",
     "ansible/roles/models/files/requirements.lock",
-    "Python packages of /opt/pinka/models-venv, the models role's download tool "
-    "(BUILD_PROMPT §7.12);",
+    "Python packages of /opt/pinka/models-venv, the models role's download tool;",
     "models-lock",
 )
 INSTALLER_REQUIREMENTS = RequirementSet(
     ("installer", "packages"),
     "installer/requirements.in",
     "installer/requirements.lock",
-    "Python packages of /opt/pinka/installer-venv, the installer TUI (BUILD_PROMPT §18.2),",
+    "Python packages of /opt/pinka/installer-venv, the installer TUI,",
     "installer-lock",
 )
 
@@ -220,7 +219,7 @@ def versions_yml(root: Path) -> str:
         "Local changes will be overwritten.\n"
         "# Generated from versions.lock.yml by tools/gen (make generate); do not edit.\n"
         "# bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of\n"
-        "# versions.lock.yml (BUILD_PROMPT §5.2 step 7).\n"
+        "# versions.lock.yml.\n"
         f'pinka_versions_lock_sha256: "{lock_sha256(root)}"\n'
         f"{body}"
     )

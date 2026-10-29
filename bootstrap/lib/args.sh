@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034 # OPT_* values are read by the scripts that source this file
 # Managed by pinka (bootstrap/lib/args.sh). Local changes will be overwritten.
 #
-# Command-line interface of bootstrap.sh (BUILD_PROMPT §5.1). The usage text is
+# Command-line interface of bootstrap.sh. The usage text is
 # the source of docs/reference/cli/bootstrap.md (tools/gen runs --help).
 
 usage() {
@@ -95,7 +95,7 @@ OPT_JSON=false
 readonly MACHINE_RE='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
 readonly TAGS_RE='^[a-z0-9_]+(,[a-z0-9_]+)*$'
 readonly PLATFORM_NAME_RE='^[a-z][a-z0-9]{1,11}$'
-# The shared components --remove-component may name (BUILD_PROMPT §5.4).
+# The shared components --remove-component may name.
 readonly REMOVABLE_COMPONENTS=' docker incus tailscale nvidia '
 
 # usage_error MESSAGE: print the message and a hint, return EXIT_USAGE.
@@ -208,7 +208,7 @@ parse_args() {
   validate_args
 }
 
-# validate_uninstall_args: the options of --uninstall (§5.4) and what it excludes.
+# validate_uninstall_args: the options of --uninstall and what it excludes.
 validate_uninstall_args() {
   local component option
   local -a components=()
@@ -316,8 +316,8 @@ is_interactive() {
   ! "$OPT_NON_INTERACTIVE" && [[ -t 0 && -t 1 ]]
 }
 
-# use_tui: true if the installer TUI should take over (BUILD_PROMPT §5.3);
-# never for --uninstall, which asks its own questions (§5.4).
+# use_tui: true if the installer TUI should take over;
+# never for --uninstall, which asks its own questions.
 use_tui() {
   "$OPT_UNINSTALL" && return 1
   case $OPT_TUI in

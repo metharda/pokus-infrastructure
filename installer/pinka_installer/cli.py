@@ -7,13 +7,13 @@ Bootstrap runs these commands with the installer environment
   snapshot to restore and the consent to MOK enrollment of an answers file as
   ``key=value`` lines;
 - ``apply --answers FILE --vault-password-file FILE`` writes host_vars, the
-  researchers, the vault and the answers file (BUILD_PROMPT §18.6); with a
+  researchers, the vault and the answers file; with a
   platform it first inspects the release with the platform tool (its checks,
   and the database roles and secrets it needs in the vault);
 - ``plan --machine NAME --output FILE`` writes the machine's requirements plan
-  (BUILD_PROMPT §2.3) from host_vars, group_vars and models.lock.yml, which
+  from host_vars, group_vars and models.lock.yml, which
   bootstrap passes to preflight (``--plan``) and to the play;
-- ``tui`` starts the installer TUI on the terminal (BUILD_PROMPT §18).
+- ``tui`` starts the installer TUI on the terminal.
 
 Exit status: 0 done, 1 operator action needed (the reason is printed), 2 usage.
 """

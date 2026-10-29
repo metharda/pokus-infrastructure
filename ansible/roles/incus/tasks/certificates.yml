@@ -1,8 +1,8 @@
 # Managed by pinka (ansible/roles/incus/tasks/certificates.yml). Local changes will be overwritten.
 #
 # One client certificate per platform service whose profile has Incus access,
-# generated on this host and trusted as restricted to its projects
-# (BUILD_PROMPT §7.7, §12.6), in /etc/pinka/incus/<account>/ owned by the
+# generated on this host and trusted as restricted to its projects,
+# in /etc/pinka/incus/<account>/ owned by the
 # service's account; plus a metrics-only certificate for Prometheus. Keys
 # never leave the host. The platform role includes this file with the
 # certificates of a fresh rendering.

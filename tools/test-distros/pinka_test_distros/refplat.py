@@ -1,4 +1,4 @@
-"""The reference platform in a test VM (BUILD_PROMPT §7.18, §19.9): what its stages run.
+"""The reference platform in a test VM: what its stages run.
 
 The platform is deployed from the VM's clone of the repository
 (``file:///root/pinka`` at the tested commit), its content package

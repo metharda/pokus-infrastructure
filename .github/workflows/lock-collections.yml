@@ -1,7 +1,7 @@
 # Managed by pinka (.github/workflows/lock-collections.yml).
 #
-# The pins of the Ansible collections against Galaxy (owner decision, with
-# the "commit" for the symbolic-link fix of make lock-collections): on every
+# The pins of the Ansible collections against Galaxy:
+# on every
 # change of versions.lock.yml or tools/lockcheck/, and weekly, Galaxy's
 # artifact of every locked collection is downloaded and checked as
 # make lock-collections checks it, and any difference from the lock's
@@ -22,7 +22,7 @@ on:
 permissions:
   contents: read
 
-# One run per commit (owner, after D2): on main and moving/on each commit's
+# One run per commit: on main and moving/on each commit's
 # run has a group of its own and always finishes; elsewhere (a pull request
 # from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:

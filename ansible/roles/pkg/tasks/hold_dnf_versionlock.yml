@@ -4,7 +4,7 @@
 # ships it as python3-dnf-plugin-versionlock).
 
 # Installed here, not through main.yml, so noted here: uninstall removes it
-# unless it was there before pinka (§5.4).
+# unless it was there before pinka.
 - name: Record the dnf versionlock plugin as pinka's
   pinka_install_record:
     state: add

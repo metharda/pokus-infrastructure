@@ -1,4 +1,4 @@
-"""The CI skip list (owner, after 37c062e): which tests may skip in CI, and why.
+"""The CI skip list: which tests may skip in CI, and why.
 
 ``ci_skips.json`` names every test that may skip in CI, with the run it skips
 in (``pytest``, or ``py39`` for the unittest runs of ``make test-py39``) and its

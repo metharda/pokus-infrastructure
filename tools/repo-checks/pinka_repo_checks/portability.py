@@ -1,6 +1,6 @@
 """Portability check: only ``platform_facts`` may branch on the distribution.
 
-BUILD_PROMPT §19.1 lets distribution differences live in the support matrix,
+Distribution differences live in the support matrix,
 the component source matrix, per-family ``vars/<family>.yml`` files and small
 ``tasks/<family>.yml`` files selected through the facts ``platform_facts``
 sets. No other role may read Ansible's distribution facts directly. This
@@ -49,7 +49,7 @@ class Finding:
         """
         return (
             f"{self.path}:{self.line}: reads the distribution fact '{self.fact}'; "
-            "use the pinka_* facts of platform_facts instead (BUILD_PROMPT §19.1)"
+            "use the pinka_* facts of platform_facts instead"
         )
 
 

@@ -1,4 +1,4 @@
-"""Command-line interface of ``pinka-preflight`` (BUILD_PROMPT §2).
+"""Command-line interface of ``pinka-preflight``.
 
 The JSON host profile goes to stdout (or ``--output``); the human summary goes
 to stderr. On a real run as root the profile is also stored in
@@ -180,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="a configured researcher; a host whose login accounts are all researchers and "
-        "that has no listener besides sshd is dedicated (§2.2); repeat for each",
+        "that has no listener besides sshd is dedicated; repeat for each",
     )
     parser.add_argument(
         "--allow-dirty",
@@ -247,7 +247,7 @@ def lab_conflicts(
     *,
     kvm_usable: bool,
 ) -> list[Conflict]:
-    """Ports in use and VM collector address conflicts (§2.2, §12.11).
+    """Ports in use and VM collector address conflicts.
 
     Args:
         args: Parsed arguments.
@@ -355,7 +355,7 @@ def run_preflight(
     if access.host == "shared":
         conflicts.infos.append(
             "shared host (" + "; ".join(access.reasons) + "): the firewall keeps the "
-            "pre-existing listeners reachable as found unless closed with consent (§7.5)"
+            "pre-existing listeners reachable as found unless closed with consent"
         )
     timesync = detect_timesync(runner)
     matrix = load_matrix(args.matrix)

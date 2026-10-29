@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/preflight_gate/tasks/main.yml). Local changes will be overwritten.
 #
-# BUILD_PROMPT §2.6, §7.1: re-run preflight (read-only) and stop if the
+# Re-run preflight (read-only) and stop if the
 # outcome, provider or feature flags differ from the host profile bootstrap
 # validated for this run, unless --refresh-profile was given. A changed host
 # is an operator decision, so the play stops with bootstrap signal 77.

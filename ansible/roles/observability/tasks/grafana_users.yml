@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/observability/tasks/grafana_users.yml). Local changes will be overwritten.
 #
-# Grafana accounts (BUILD_PROMPT §7.9): the admin password from the vault and
+# Grafana accounts: the admin password from the vault and
 # one account per researcher with the role of observability_grafana_user_role
 # (GF_USERS_AUTO_ASSIGN_ORG_ROLE), named after display_name; researchers with
 # grafana: false and removed researchers are disabled. A password is only

@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/observability/tasks/platform_dashboards.yml). Local changes will be overwritten.
 #
-# The active platform's dashboards (BUILD_PROMPT §7.9): the JSON files of the
+# The active platform's dashboards: the JSON files of the
 # manifest's dashboards directory in its published release, copied read-only
 # into grafana/platform-dashboards/ and provisioned into a Grafana folder
 # named after the platform. Files the release no longer has are removed.

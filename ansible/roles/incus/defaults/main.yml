@@ -1,17 +1,17 @@
 # Managed by pinka (ansible/roles/incus/defaults/main.yml). Local changes will be overwritten.
 
-# Storage pool of all instances (BUILD_PROMPT §7.7), btrfs or LVM thin as
+# Storage pool of all instances, btrfs or LVM thin as
 # preflight decided (host profile storage_backend).
 incus_pool_name: pinka-targets
 # loop (a file inside the root filesystem) or device (a dedicated disk).
 incus_pool_source: loop
 # Size of a loop pool: auto (computed by preflight from the golden images,
 # the concurrent targets' root disks and a margin, limited by the free space
-# where the loop file goes; BUILD_PROMPT §2.3) or a size such as 300GiB. An
+# where the loop file goes) or a size such as 300GiB. An
 # existing pool keeps its size.
 incus_pool_size: auto
 # Dedicated device (use /dev/disk/by-id/...). Nothing is formatted unless
-# incus_pool_device_confirm repeats it exactly (BUILD_PROMPT §13.1).
+# incus_pool_device_confirm repeats it exactly.
 incus_pool_device: ""
 incus_pool_device_confirm: ""
 # Format a device even though it carries a filesystem, RAID or LVM signature.
@@ -35,7 +35,7 @@ incus_run_acl_egress: >-
 # Most VMs at once in a project, when the vm_targets feature is on.
 incus_max_virtual_machines: 4
 
-# Targets that run at once (BUILD_PROMPT §2.3, §7.7): they size the bench
+# Targets that run at once: they size the bench
 # project's memory and the memory preflight requires.
 incus_concurrent_targets: 2
 # Limits of the bench project (the sum over all its instances). Its memory is
@@ -67,7 +67,7 @@ incus_user_limits:
   limits.disk: 60GiB
 incus_user_instance: {cpu: "1", memory: 1GiB, root_size: 10GiB}
 
-# Client certificates of the platform services (§12.6): those of the active
+# Client certificates of the platform services: those of the active
 # platform's rendering, {account, short (the directory), name, projects}.
 incus_cert_dir: /etc/pinka/incus
 incus_service_certificates: "{{ (active_platform | default({}, true)).incus_certificates | default([]) }}"
@@ -78,7 +78,7 @@ incus_certificate_days: 3650
 # Journal identifier of the lifecycle and logging events (collector input).
 incus_events_identifier: pinka-incus-events
 
-# The run-network helper (§7.7): its socket belongs to the active platform's
+# The run-network helper: its socket belongs to the active platform's
 # controller account, or to root without a platform.
 incus_run_network_owner: >-
   {{ ((active_platform | default({}, true)).run_network | default({}, true)).socket_owner

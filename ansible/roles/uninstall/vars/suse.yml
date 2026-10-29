@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/uninstall/vars/suse.yml). Local changes will be overwritten.
 #
-# SUSE family: what uninstall runs to take off holds and remove packages
-# (BUILD_PROMPT §5.4). rpm -e removes exactly the packages named and refuses
+# SUSE family: what uninstall runs to take off holds and remove packages.
+# rpm -e removes exactly the packages named and refuses
 # one another package still needs; zypper names the dependencies no package
 # needs any more.
 # TODO(verify): the table of zypper packages --unneeded on Leap and Tumbleweed.
@@ -10,7 +10,7 @@ uninstall_family:
   test_remove: [rpm, -e, --test]
   remove: [rpm, -e]
   # No purge: the removal keeps configuration and data alike; the guard keeps
-  # the kept data read-only while packages go (owner, D2 review).
+  # the kept data read-only while packages go.
   remove_keeping_config: [rpm, -e]
   purge_deletes: {}
   masked_on_remove: {}

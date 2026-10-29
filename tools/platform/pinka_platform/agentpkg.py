@@ -1,4 +1,4 @@
-"""The agent's own package and environment (V6, owner decision with the "commit" for 3d.4).
+"""The agent's own package and environment (V6).
 
 An ``untrusted-agent`` service names the directory of its own package, the
 only part of the release it sees. For ``python-uv`` that directory is a

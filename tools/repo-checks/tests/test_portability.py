@@ -72,7 +72,7 @@ def test_cli_exit_codes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     make_tree(tmp_path)
     assert cli.main(["portability", "--ansible-dir", str(tmp_path)]) == 1
     out = capsys.readouterr()
-    assert "BUILD_PROMPT §19.1" in out.out
+    assert "use the pinka_* facts of platform_facts instead" in out.out
     assert "portability: 2 finding(s)" in out.err
     (tmp_path / "roles/base/tasks/main.yml").write_text("- name: x\n", encoding="utf-8")
     (tmp_path / "roles/base/templates/a.conf.j2").write_text("{{ pinka_distro }}\n", "utf-8")

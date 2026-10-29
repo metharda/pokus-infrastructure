@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/vllm/tasks/verify.yml). Local changes will be overwritten.
 #
-# Serving verification (BUILD_PROMPT §7.11): /health, /v1/models, one
+# Serving verification: /health, /v1/models, one
 # deterministic chat completion and one get_time tool call; the report is
 # /var/lib/pinka/verify/vllm-<deployment>.json.
 - name: Read the current deployment

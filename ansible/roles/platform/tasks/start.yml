@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/platform/tasks/start.yml). Local changes will be overwritten.
 #
-# Start the active platform and wait for its health hook (BUILD_PROMPT §7.14
-# step 8, §12.9). Imported by site.yml after the lab session, so the platform
+# Start the active platform and wait for its health hook.
+# Imported by site.yml after the lab session, so the platform
 # starts once OPA serves its policy bundle and the lab is up; also with
 # --tags platform. Starting pinka-platform.target runs the reconcile unit
 # before the services. An unhealthy platform is reported, not fatal: doctor

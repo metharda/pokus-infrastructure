@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/vars/main.yml). Local changes will be overwritten.
 
-# --- Deployment (BUILD_PROMPT §7.14, contract v2) ---------------------------------
+# --- Deployment (contract v2) ---------------------------------
 
 # The deployment tool: the package and the contract, and its command.
 platform_tool_lib: /usr/local/lib/pinka/platform
@@ -34,7 +34,7 @@ platform_ssh_hosts: >-
      | map('regex_replace', '^ssh://([^@/]+@)?([^:/]+)(:([0-9]+))?/.*$', '[\2]:\4')
      | map('regex_replace', '^\[([^]]+)\]:$', '\1')
      | map('regex_replace', '^[^@/]+@([^:/]+):.*$', '\1') | unique | list }}
-# GitHub's published host keys (owner answer E3) whose values are verified.
+# GitHub's published host keys (E3) whose values are verified.
 platform_github_keys: >-
   {{ pinka_versions.github_ssh_host_keys['keys'] | dict2items
      | rejectattr('value.public_key', 'search', 'TODO')
@@ -91,13 +91,13 @@ platform_psql:
     --username=postgres --dbname=postgres "$@"
   - psql
 
-# --- Rendering (§7.14 step 7) ------------------------------------------------------
+# --- Rendering ------------------------------------------------------
 
-# The socket ACL helper the platform's socket units run (§12.3).
+# The socket ACL helper the platform's socket units run.
 platform_libexec: /usr/local/libexec/pinka
 # Where systemd units live.
 platform_systemd_dir: /etc/systemd/system
-# Published signing keys (§12.10), kept forever.
+# Published signing keys, kept forever.
 platform_signing_published: "{{ pinka_root }}/shared/signing-keys"
 
 # Quarto CLI, an optional tool a manifest may request (pinned in versions.lock.yml).
@@ -107,7 +107,7 @@ platform_quarto_dir: "/opt/pinka/quarto/{{ pinka_versions.binaries.quarto.versio
 platform_quarto_link: /usr/local/bin/quarto
 
 # The inference backend of endpoints.toml: local where this node serves
-# inference, otherwise remote (through the inference forwarder, §12.8).
+# inference, otherwise remote (through the inference forwarder).
 platform_inference: >-
   {{ platform_inference_mode if platform_inference_mode != 'auto'
      else ('local' if (pinka_features.gpu_inference | default(false)) and node_role == 'full'

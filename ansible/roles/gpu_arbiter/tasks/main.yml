@@ -1,12 +1,12 @@
 # Managed by pinka (ansible/roles/gpu_arbiter/tasks/main.yml). Local changes will be overwritten.
 #
-# The GPU arbiter (BUILD_PROMPT §7.18): /usr/local/libexec/pinka/gpu-arbiter
+# The GPU arbiter: /usr/local/libexec/pinka/gpu-arbiter
 # behind pinka-gpu-arbiter.socket (/run/pinka/gpu.sock, 0600, owned by the
 # controller; on an inference node by the control endpoint's account), its
 # start unit in pinka-lab.target and the training run units. It replaces
 # contract v1's deploy helper and is the only way vLLM starts. Applied on full
 # and inference nodes; bootstrap ends with the chosen deployment served
-# (§7.11) unless a training run holds the GPU.
+# unless a training run holds the GPU.
 - name: Read the active platform
   ansible.builtin.include_role:
     name: active_platform
@@ -91,7 +91,7 @@
     state: "{{ 'restarted' if gpu_arbiter_unit_files.changed else 'started' }}"
   when: not ansible_check_mode or 'pinka-gpu-arbiter.socket' in pinka_present.units
 
-# Bootstrap ends with vLLM serving the chosen deployment (§7.11): the
+# Bootstrap ends with vLLM serving the chosen deployment: the
 # platform's current one, else the default, through the arbiter; a training
 # run is never interrupted by a bootstrap run.
 - name: Serve the chosen deployment
@@ -105,7 +105,7 @@
     - vllm_target | default('') | length > 0
     - vllm_start | default(false) | bool
 
-# Inference switched off (BUILD_PROMPT §2.3): vLLM stops now rather than at
+# Inference switched off: vLLM stops now rather than at
 # the next boot; a training run is left alone.
 - name: Stop serving where this host serves no inference
   ansible.builtin.command:

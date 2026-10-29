@@ -71,9 +71,9 @@ Every image is used by digest; the tag is informational. Verified on 2026-10-05.
 | cuda_base_test | `docker.io/nvidia/cuda` | `13.0.2-base-ubuntu24.04` | `sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701` | linux/amd64, linux/arm64 | 0.13, 0.12 |
 | refplat_job | `public.ecr.aws/docker/library/python` | `3.12-slim-trixie` | `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1` | linux/amd64, linux/arm64 | 0.04, 0.04 |
 
-The requirements computation estimates an image's unpacked size as 2.5 times its compressed size until it is pulled on the host (BUILD_PROMPT §2.3).
+The requirements computation estimates an image's unpacked size as 2.5 times its compressed size until it is pulled on the host.
 
-`vllm` is built on CUDA `13.0.2`: preflight and doctor compare it with the CUDA version the NVIDIA driver supports (BUILD_PROMPT §2.2).
+`vllm` is built on CUDA `13.0.2`: preflight and doctor compare it with the CUDA version the NVIDIA driver supports.
 
 Pulled inside golden images by blueprints with a container engine (`docker_images` of `images/<blueprint>/image.yaml`), never on the host:
 
@@ -235,7 +235,7 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 
 ## Ansible collections
 
-Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1, required (&gt;=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read 2026-10-15). Artifacts: make lock-collections run by the owner at 2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy's; MANIFEST.json, FILES.json and every file checked; every dependency locked at a satisfying version)
+Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1, required (&gt;=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read 2026-10-15). Artifacts: make lock-collections run at 2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy's; MANIFEST.json, FILES.json and every file checked; every dependency locked at a satisfying version)
 
 | Collection | Version |
 | --- | --- |

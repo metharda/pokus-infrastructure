@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform_facts/tasks/family.yml). Local changes will be overwritten.
 #
-# The family facts alone, for uninstall.yml (BUILD_PROMPT §5.4), which runs
+# The family facts alone, for uninstall.yml, which runs
 # without the group and host variables that main.yml checks: the same facts,
 # from the same host profile, as main.yml sets them.
 - name: Check that the host profile is available
@@ -16,7 +16,7 @@
     file: "{{ host_profile.family }}.yml"
 
 - name: Set the family facts
-  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - fact names defined by BUILD_PROMPT §19.1
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - the pinka_* facts every role reads
     pinka_family: "{{ host_profile.family }}"
     pinka_pkg_manager: "{{ host_profile.pkg_manager }}"
     pinka_service_names: "{{ platform_facts_family.service_names }}"

@@ -1,4 +1,4 @@
-"""Generated documentation pages (DOCS_SPEC §A.3 reference pages marked ⚙)."""
+"""Generated documentation pages: the reference pages."""
 
 from __future__ import annotations
 

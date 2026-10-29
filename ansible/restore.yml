@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/restore.yml). Local changes will be overwritten.
 #
-# Restore play run by `bootstrap.sh --restore` after site.yml (BUILD_PROMPT
-# §5.2 step 10, §7.15): drain the platform (its drain hook) and stop the lab,
+# Restore play run by `bootstrap.sh --restore` after site.yml:
+# drain the platform (its drain hook) and stop the lab,
 # restore a chosen restic snapshot of this host, load the newest PostgreSQL
 # dump, re-import the golden images from their exports (aliases kept,
 # fingerprints checked), re-verify the model hashes (re-downloading what is
@@ -130,8 +130,7 @@
         quiet: true
 
     # Before anything changes: the platform the snapshot records must still be
-    # deployable exactly, its commits and trees (owner decision with the
-    # "commit" for 3d.4).
+    # deployable exactly, its commits and trees.
     - name: Check the platform the snapshot records
       when:
         - not ansible_check_mode
@@ -148,8 +147,8 @@
           ansible.builtin.set_fact:
             restore_record: "{{ restore_platform_record.stdout | from_json }}"
 
-        # Exactly the recorded commit and tree (owner decision with the
-        # "commit" for 3d.4): the deployment refuses if the mirror no longer
+        # Exactly the recorded commit and tree:
+        # the deployment refuses if the mirror no longer
         # has the commit or the tree differs. With signed tags required the
         # ref is the recorded tag, which must still point to that commit.
         - name: Pin the platform source to the recorded commit and tree
@@ -199,7 +198,7 @@
             path: /etc/pinka/platform/active.json
           register: restore_active_platform
 
-        - name: Drain and stop the platform (§12.9)
+        - name: Drain and stop the platform
           ansible.builtin.include_role:
             name: platform
             tasks_from: stop
@@ -298,7 +297,7 @@
             - node_role in ['full', 'lab']
             - (platform | default({}, true)).repo | default('') | length > 0
           block:
-            - name: Deploy the recorded release and content (§7.15)
+            - name: Deploy the recorded release and content
               ansible.builtin.include_role:
                 name: platform
               vars:

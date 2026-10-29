@@ -4,7 +4,7 @@
 doctor_max_clock_offset: 1.0
 # Free space of the Incus pool below which doctor warns, in GiB.
 doctor_min_pool_free_gib: 20
-# Free space per mount point the lab uses (BUILD_PROMPT §9): warn below this
+# Free space per mount point the lab uses: warn below this
 # share, or when the trend of the recorded runs fills it within these days.
 doctor_disk_warn_free_percent: 15
 doctor_disk_full_within_days: 7

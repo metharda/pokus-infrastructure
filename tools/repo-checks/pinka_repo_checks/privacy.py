@@ -1,7 +1,7 @@
 """Privacy scan: no personal or installation-specific data in the repository.
 
-Implements the CI privacy scan required by the privacy invariant (infra §13.12,
-platform §16.9, docs spec §A.4 and §A.6). The scanner reports:
+Implements the CI privacy scan required by the privacy invariant.
+The scanner reports:
 
 * e-mail addresses outside the RFC 2606 example domains;
 * public (globally routable) IPv4 and IPv6 addresses;
@@ -15,13 +15,13 @@ platform §16.9, docs spec §A.4 and §A.6). The scanner reports:
   (newline- or comma-separated, matched case-insensitively as whole words, so a
   term inside a longer word or a hash does not match). The denylist comes from
   a CI secret and is never committed; findings never print the term;
-* in the commit messages of the history: attribution lines (owner rule: no
+* in the commit messages of the history: attribution lines (no
   commit carries a ``Co-Authored-By`` trailer or any other attribution line),
   e-mail addresses outside the example domains and denylist terms;
 * the author and committer e-mail of every commit, which must be a GitHub
   noreply address (``<id>+<user>``, ``<user>`` or a bot's name at GitHub's
   noreply domain) or GitHub's own address, which commits made on github.com
-  carry as committer (owner decision 3 after the public-readiness audit).
+  carry as committer.
 
 Inside a git work tree every commit reachable from ``HEAD`` is checked; a
 shallow clone is a finding, because its history cannot be checked. In CI
@@ -106,8 +106,8 @@ ATTRIBUTION_RES = (
     ("session-trailer", re.compile(r"^\s*[A-Za-z0-9][A-Za-z0-9-]*-session\s*:", re.IGNORECASE)),
     ("generated-with", re.compile(r"^[^A-Za-z0-9]*generated (?:with|by)\b", re.IGNORECASE)),
 )
-# Commits whose attribution lines are allowed: none since the owner's
-# one-time rewrite removed the only two trailers. Nothing is ever added.
+# Commits whose attribution lines are allowed: none.
+# Nothing is ever added.
 KNOWN_ATTRIBUTION_COMMITS: frozenset[str] = frozenset()
 ATTRIBUTION_RULES = frozenset(rule for rule, _ in ATTRIBUTION_RES)
 

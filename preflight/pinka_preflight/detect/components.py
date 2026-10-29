@@ -1,4 +1,4 @@
-"""Components that may exist before pinka (BUILD_PROMPT §2.2, §7.4, §7.6, §7.7, §7.21).
+"""Components that may exist before pinka.
 
 Docker Engine, Tailscale, LXD, Podman, Incus and the NVIDIA driver are
 detected with their version and state. The install record
@@ -409,7 +409,7 @@ def lxd_clashes(
     pool_device: str | None,
     docker_preexisting: bool,
 ) -> list[str]:
-    """What would clash if Incus were installed next to this LXD (§7.7).
+    """What would clash if Incus were installed next to this LXD.
 
     Args:
         fs: Filesystem view.
@@ -462,7 +462,7 @@ def component_conflicts(
     gpu_usable: bool,
     lxd_clash_args: Mapping[str, Any],
 ) -> tuple[list[Conflict], list[str]]:
-    """Conflicts and notes about pre-existing components (§2.2).
+    """Conflicts and notes about pre-existing components.
 
     Args:
         fs: Filesystem view.

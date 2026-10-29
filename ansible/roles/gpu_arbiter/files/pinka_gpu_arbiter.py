@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/gpu_arbiter/files/pinka_gpu_arbiter.py). Local changes will be overwritten.
-"""The GPU arbiter: whether the GPU serves, trains or idles (BUILD_PROMPT §7.18).
+"""The GPU arbiter: whether the GPU serves, trains or idles.
 
 Installed as ``/usr/local/libexec/pinka/gpu-arbiter`` by the gpu_arbiter
 role and run as root, never through sudo. It replaces contract v1's vLLM
@@ -101,7 +101,7 @@ SUBMISSION_KEYS = {
     "restore",
 }
 REQUESTS = ("status", "serve", "idle", "train", "publish-dataset")
-# What the control endpoint of an inference node may ask (§19.10).
+# What the control endpoint of an inference node may ask.
 SERVING_ONLY = ("status", "serve")
 MAX_REQUEST = 1 << 20
 CONTAINER_MODELS = "/models"
@@ -126,11 +126,11 @@ JOB_OUTPUT = "/output"
 JOB_CHECKPOINTS = "/checkpoints"
 # The adapter a job leaves in its output directory.
 JOB_ADAPTER = "adapter"
-# Infra's caps on training (``training_caps``, §7.18, §8.1): the job's run time,
+# Infra's caps on training (``training_caps``): the job's run time,
 # memory and CPUs (the manifest's values must stay within them), the size of a
 # published dataset, the combined size of a run's output and checkpoints, and
 # the job's /tmp (a tmpfs, counted against the job's memory). The play always
-# writes memory_max, the cap preflight computed for memory_max: auto (§2.3) or
+# writes memory_max, the cap preflight computed for memory_max: auto or
 # the configured one; the default here is the computed cap's ceiling.
 DEFAULT_CAPS: Mapping[str, Any] = {
     "timeout_seconds": 86400,
@@ -186,8 +186,8 @@ class Config:
         node_role: ``full``, ``lab`` or ``inference``; only ``full`` trains.
         peer: The account allowed besides root.
         serves: vLLM runs on this host (``gpu_inference`` after the inference switch).
-        training: Training jobs run on a full node (the training switch,
-            §2.3: off with ``training: off``, or ``auto`` without a usable GPU).
+        training: Training jobs run on a full node (the training switch:
+            off with ``training: off``, or ``auto`` without a usable GPU).
         after_boot: ``serve`` (the default deployment) or ``idle``.
         restore_after_training: Default of a submission's ``restore``.
         default_deployment: ``<id>@<version>`` served after boot, or None.
@@ -196,7 +196,7 @@ class Config:
             takes its default (:data:`DEFAULT_CAPS`).
         gpu_args: Docker arguments that give a container the GPU (as for vLLM).
         container_args: Docker arguments every lab container gets per container
-            rather than from the Docker daemon (§7.6): the lab services' slice
+            rather than from the Docker daemon: the lab services' slice
             as cgroup parent and the local log driver with size limits.
         vllm_port: vLLM's port on 127.0.0.1.
         otlp: OTLP gRPC endpoint of the collector.
@@ -234,7 +234,7 @@ class Config:
 
     @property
     def trains(self) -> bool:
-        """Training runs only on a full node (§19.10) where it is on (§2.3)."""
+        """Training runs only on a full node where it is on."""
         return self.node_role == "full" and self.training
 
     def refuse_training(self) -> None:
@@ -658,7 +658,7 @@ class Arbiter:
         return path
 
     def load_deployment(self, deployment: str) -> dict[str, Any]:
-        """Load and check a deployment spec (§7.11).
+        """Load and check a deployment spec.
 
         Args:
             deployment: ``<id>@<version>``.
@@ -1760,7 +1760,7 @@ class Arbiter:
         return 0
 
 
-# Infra's options of every job container (§7.18), never taken from the manifest:
+# Infra's options of every job container, never taken from the manifest:
 # no network, a read-only root file system with a private /tmp (a tmpfs of
 # ``tmp_max``, see Arbiter._tmp_bytes), no capabilities, no new privileges,
 # Docker's default seccomp profile (nothing overrides it), and no host PID,

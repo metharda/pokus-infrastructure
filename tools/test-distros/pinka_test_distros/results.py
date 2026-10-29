@@ -14,7 +14,7 @@ HEADER = (
     "# The latest result per target of tests/distros/targets.yml; commit it after a\n"
     "# run. docs/support-matrix.md is generated from it (make generate).\n"
 )
-# A result counts for this many days (BUILD_PROMPT §19.9).
+# A result counts for this many days.
 VALID_DAYS = 90
 
 

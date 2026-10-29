@@ -1,4 +1,4 @@
-"""The answers file (BUILD_PROMPT §18.6): model, loading, checks and serialization.
+"""The answers file: model, loading, checks and serialization.
 
 An answers file holds every non-secret choice of the installer. The TUI builds
 one screen by screen; ``bootstrap.sh --answers`` replays one. JSON Schema
@@ -30,7 +30,7 @@ GENERATE = "generate"
 PROVIDED = "provided"
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schema" / "answers.schema.json"
 ANSWERS_HEADER = (
-    "# Installer answers for {machine} (BUILD_PROMPT §18.6), written by the pinka installer.\n"
+    "# Installer answers for {machine}, written by the pinka installer.\n"
     "# Replay: sudo ./bootstrap/bootstrap.sh --answers installer-answers/{machine}.yml \\\n"
     "#   --non-interactive --vault-password-file <file>\n"
     "# No secret values: provided secrets come from PINKA_SECRET_<NAME> variables.\n"
@@ -83,7 +83,7 @@ class Storage:
 
     source: str = "loop"
     # auto: computed by preflight from the targets, the golden images and the
-    # free space (BUILD_PROMPT §2.3); or whole GiB.
+    # free space; or whole GiB.
     loop_size_gib: int | str = "auto"
     device: str = ""
     device_confirm: str = ""
@@ -114,7 +114,7 @@ class RemoteAccess:
     grafana_tailscale_serve: bool = False
     tailscale_serve_consent: bool = False
     ssh_extra_allowed_interfaces: list[str] = field(default_factory=list)
-    # Pre-existing access (BUILD_PROMPT §7.5): listeners to close with consent,
+    # Pre-existing access: listeners to close with consent,
     # and consent to close the install's access path under the safeguard.
     close_listeners: list[str] = field(default_factory=list)
     close_install_path: bool = False
@@ -133,7 +133,7 @@ class Gpu:
 
 @dataclass
 class Features:
-    """The feature switches (BUILD_PROMPT §2.3): what the lab installs and counts.
+    """The feature switches: what the lab installs and counts.
 
     ``inference``: ``auto`` (vLLM, its images and the model where the host
     has a usable GPU) or ``off``. ``training``: ``auto`` (jobs where the host
@@ -194,7 +194,7 @@ class Backups:
 
 @dataclass
 class TelemetryRetention:
-    """How long the telemetry stores keep their data (BUILD_PROMPT §2.3, §7.9)."""
+    """How long the telemetry stores keep their data."""
 
     prometheus: str = "90d"
     prometheus_size: str = "0"
@@ -204,7 +204,7 @@ class TelemetryRetention:
 
 @dataclass
 class Source:
-    """Screen 12: a Git source of the platform release or of a content package (§8.1)."""
+    """Screen 12: a Git source of the platform release or of a content package."""
 
     repo: str = ""
     ref: str = ""
@@ -223,7 +223,7 @@ class SourceTrust:
 
 @dataclass
 class GpuArbiter:
-    """Screen 9: the GPU arbiter (§7.18, §8.1)."""
+    """Screen 9: the GPU arbiter."""
 
     after_boot: str = "serve"
     restore_after_training: bool = True
@@ -231,7 +231,7 @@ class GpuArbiter:
 
 @dataclass
 class TrainingCaps:
-    """Screen 9: this host's caps on training jobs (§7.18, §8.1)."""
+    """Screen 9: this host's caps on training jobs."""
 
     timeout_seconds: int = 86400
     memory_max: str = "auto"

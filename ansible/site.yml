@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/site.yml). Local changes will be overwritten.
 #
-# Provisioning play run by bootstrap.sh (BUILD_PROMPT §5.2 step 8) with
+# Provisioning play run by bootstrap.sh with
 # `-e machine=<name>` and the variables host_profile and pinka_bootstrap.
 # Every role is tagged with its name; platform_facts and preflight_gate always
 # run, so `--tags <role>` still works on the validated facts.
@@ -23,7 +23,7 @@
         quiet: true
       tags: [always]
 
-    # The safeguard of BUILD_PROMPT §7.5 accepts SSH logins over the tailnet
+    # The install path's safeguard accepts SSH logins over the tailnet
     # since this moment only: seconds since the epoch, for journalctl's
     # --since=@ (a naive local time's timestamp(), right in every time zone).
     - name: Note when the run began
@@ -42,7 +42,7 @@
         name: preflight_gate
       tags: [preflight_gate, always]
 
-    # Before any change to the host: what existed before pinka (§7.21).
+    # Before any change to the host: what existed before pinka.
     - name: Record what existed before pinka
       ansible.builtin.import_role:
         name: install_record
@@ -112,7 +112,7 @@
       tags: [docker]
 
     # Where the lab uses the GPU: vLLM or training jobs on it (the flags after
-    # the switches, BUILD_PROMPT §2.3).
+    # the switches).
     - name: NVIDIA Container Toolkit
       ansible.builtin.include_role:
         name: nvidia_container_toolkit
@@ -121,7 +121,7 @@
       when: (pinka_features.gpu_inference | default(false)) or (pinka_features.gpu_training | default(false))
       tags: [nvidia_container_toolkit]
 
-    # An inference node runs only the inference stack (BUILD_PROMPT §19.10).
+    # An inference node runs only the inference stack.
     - name: Incus
       ansible.builtin.import_role:
         name: incus
@@ -171,7 +171,7 @@
       tags: [vllm]
 
     # After vLLM, which it serves; on a full node it runs the training jobs
-    # the training switch allows (BUILD_PROMPT §2.3, §7.18).
+    # the training switch allows.
     - name: GPU arbiter
       ansible.builtin.include_role:
         name: gpu_arbiter
@@ -208,7 +208,7 @@
         name: lab_session
       tags: [lab_session]
 
-    # After the lab is up and OPA serves the new policy bundle (§7.14 step 8):
+    # After the lab is up and OPA serves the new policy bundle:
     # start the active platform and wait for its health hook.
     - name: Start the platform
       ansible.builtin.import_role:
@@ -218,7 +218,7 @@
       tags: [platform, lab_session]
 
     # Last: the install's access path closes only when SSH over the tailnet was
-    # verified in this run and the owner consented (BUILD_PROMPT §7.5).
+    # verified in this run and the owner consented.
     - name: Close the install's access path under the safeguard
       ansible.builtin.import_role:
         name: firewall

@@ -1,4 +1,4 @@
-"""Inside a test VM: the harness's helpers for the reference platform (BUILD_PROMPT §19.9).
+"""Inside a test VM: the harness's helpers for the reference platform.
 
 Run by the harness with the Ansible venv's Python, as a script, never
 imported by the lab: ``python -I guest.py

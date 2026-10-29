@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/uninstall/vars/debian.yml). Local changes will be overwritten.
 #
-# Debian family: what uninstall runs to take off holds and remove packages
-# (BUILD_PROMPT §5.4). dpkg removes exactly the packages named and refuses
+# Debian family: what uninstall runs to take off holds and remove packages.
+# dpkg removes exactly the packages named and refuses
 # one another package still depends on; apt's autoremove names the
 # dependencies no package needs any more.
 # TODO(verify): the messages of dpkg --dry-run --purge and apt-get --simulate
@@ -11,7 +11,7 @@ uninstall_family:
   test_remove: [dpkg, --dry-run, --purge]
   remove: [dpkg, --purge]
   # Without --purge-data, a package whose purge deletes kept data is removed
-  # without purging (owner, D2 review). Read from the packages' postrm on
+  # without purging. Read from the packages' postrm on
   # 2026-10-23: Zabbly's incus-base (Ubuntu 24.04, 22.04, Debian 13) and
   # Tailscale's tailscale (the same releases); Docker CE, containerd.io,
   # their plugins and the NVIDIA container toolkit delete no data.

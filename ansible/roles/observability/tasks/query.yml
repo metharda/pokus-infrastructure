@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/observability/tasks/query.yml). Local changes will be overwritten.
 #
-# The query proxy's socket directory and the agent OTLP socket (BUILD_PROMPT
-# §7.9), on the nodes that run Prometheus, Loki and Tempo. The proxy's
+# The query proxy's socket directory and the agent OTLP socket,
+# on the nodes that run Prometheus, Loki and Tempo. The proxy's
 # container creates its socket in /run/pinka/query (owned by its account,
 # group pinka-query); /run/pinka/query.sock links to it, both recreated by
 # tmpfiles.d at every boot.

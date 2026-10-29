@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/sources.yml). Local changes will be overwritten.
 #
-# Access to the sources (§7.14 steps 1-2): the root-only mirror directory, a
+# Access to the sources: the root-only mirror directory, a
 # read-only deploy key generated on the host and the pinned host keys for SSH
 # sources (GitHub's from versions.lock.yml, others from
 # pinka_source_known_hosts), and the allowed signers of signed tags.

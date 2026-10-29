@@ -1,4 +1,4 @@
-"""Host profile helper for bootstrap and the ``preflight_gate`` role (BUILD_PROMPT §2.6, §5.2).
+"""Host profile helper for bootstrap and the ``preflight_gate`` role.
 
 ``python -m pinka_preflight.profile_tool`` reads a profile written by
 ``pinka-preflight --no-write --output FILE`` and offers what the shell side
@@ -120,7 +120,7 @@ def consent_text(profile: dict[str, Any], kind: str) -> list[str]:
             ]
         reasons = profile.get("degraded_reasons") or []
         if reasons:
-            lines.append("The host is below what these choices recommend (BUILD_PROMPT §2.3):")
+            lines.append("The host is below what these choices recommend:")
             lines += [f"  - {reason}" for reason in reasons]
         return lines
     lines = [
@@ -132,7 +132,7 @@ def consent_text(profile: dict[str, Any], kind: str) -> list[str]:
 
 
 def differences(stored: dict[str, Any], new: dict[str, Any]) -> list[str]:
-    """Compare the fields that must not change silently (§2.6).
+    """Compare the fields that must not change silently.
 
     Args:
         stored: Profile stored by the last bootstrap.

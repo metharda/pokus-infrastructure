@@ -8,8 +8,8 @@
     group: root
     mode: "0644"
 
-# Uninstall removes from rpm's keyring only the keys pinka imported
-# (BUILD_PROMPT §5.4): note the key first unless rpm had it already. rpm
+# Uninstall removes from rpm's keyring only the keys pinka imported:
+# note the key first unless rpm had it already. rpm
 # names a key gpg-pubkey-<version>, the last 8 hex digits of the fingerprint
 # (TODO(verify): rpm 6 names v6 keys by their whole fingerprint; both count).
 - name: Read the keys rpm has

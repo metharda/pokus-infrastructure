@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/base/tasks/main.yml). Local changes will be overwritten.
 #
-# Base system (BUILD_PROMPT §7.2): packages by logical name, UTC, persistent
+# Base system: packages by logical name, UTC, persistent
 # journald with limits, time sync, automatic security updates, sysctl.
 - name: Load the package names of this family
   ansible.builtin.include_vars:
@@ -15,8 +15,8 @@
          | map('extract', base_package_names | combine(base_package_overrides[pinka_source_group] | default({})))
          | select | list }}
 
-# Uninstall sets the time zone and the kernel settings back (BUILD_PROMPT
-# §5.4): the values before pinka first changes them, noted first.
+# Uninstall sets the time zone and the kernel settings back:
+# the values before pinka first changes them, noted first.
 - name: Read the time zone and the kernel settings
   ansible.builtin.shell:
     cmd: |

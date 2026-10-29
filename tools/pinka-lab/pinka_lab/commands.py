@@ -1,4 +1,4 @@
-"""The pinka commands other than doctor and fingerprint (BUILD_PROMPT §9, §19.5).
+"""The pinka commands other than doctor and fingerprint.
 
 Commands that change the host (start, stop, backup now, restore, images
 build, update-host) need root. The ``user`` commands never change the host:
@@ -35,15 +35,15 @@ UPDATE_COMMANDS = {
 }
 
 
-# Documentation (owner answer H9): loopback only, the port of contracts.md.
+# Documentation: loopback only, the port of contracts.md.
 DOCS_ADDRESS = "127.0.0.1"
 DOCS_DIR = "/usr/local/share/pinka/docs"
 DOCS_PORT = 18706
 DOCS_UNIT = "pinka-docs.service"
 
 
-# The deployment tool (platform role): purges a replaced platform (BUILD_PROMPT
-# §7.14) and runs the active platform's hooks in their units (§12.9).
+# The deployment tool (platform role): purges a replaced platform
+# and runs the active platform's hooks in their units.
 PLATFORM_TOOL = "/usr/local/libexec/pinka/pinka-platform"
 PLATFORM_NAME_RE = re.compile(r"^[a-z][a-z0-9]{1,11}$")
 # Seconds `pinka start` waits for the health hook, unless lab.json says otherwise.
@@ -97,7 +97,7 @@ def bootstrap_argv(config: LabConfig, *extra: str) -> list[str]:
 # --- preflight, start, stop, status --------------------------------------------------------
 
 
-# The requirements plan bootstrap stored with the host profile (BUILD_PROMPT §2.3).
+# The requirements plan bootstrap stored with the host profile.
 PLAN_FILE = "/etc/pinka/plan.json"
 
 
@@ -149,7 +149,7 @@ def _platform_tool(config: LabConfig) -> str:
 
 
 def hook(system: System, config: LabConfig, name: str, *extra: str, timeout: float) -> Any:  # noqa: ANN401 - JSON
-    """Run a hook of the active platform through the deployment tool (§12.9).
+    """Run a hook of the active platform through the deployment tool.
 
     Args:
         system: Host access.
@@ -257,7 +257,7 @@ def gpu_processes(system: System, config: LabConfig) -> list[str]:
 
 
 def may_start(system: System, config: LabConfig) -> None:
-    """Refuse a start a maintenance window forbids (§7.20).
+    """Refuse a start a maintenance window forbids.
 
     Production does not start while its record exists. Staging on shared
     hardware starts only inside its own open window, with the GPU idle and
@@ -296,7 +296,7 @@ def may_start(system: System, config: LabConfig) -> None:
 
 
 def window_open(system: System, config: LabConfig, start: str, end: str) -> int:
-    """Open a maintenance window (§7.20).
+    """Open a maintenance window.
 
     On production the lab is drained and stopped first, exactly like
     ``pinka stop``; it stays stopped until ``pinka window close``.
@@ -345,7 +345,7 @@ def window_open(system: System, config: LabConfig, start: str, end: str) -> int:
 
 
 def window_close(system: System, config: LabConfig) -> int:
-    """Close a maintenance window (§7.20).
+    """Close a maintenance window.
 
     Args:
         system: Host access.
@@ -398,7 +398,7 @@ def window_expire(system: System, config: LabConfig) -> int:
 
 
 def drain(system: System, config: LabConfig, timeout: float) -> str:
-    """Drain the active platform before its services stop (contract v2 §12.9).
+    """Drain the active platform before its services stop (contract v2).
 
     Args:
         system: Host access.
@@ -562,7 +562,7 @@ def status(system: System, config: LabConfig) -> int:
     return 0
 
 
-# --- the GPU arbiter (§7.18) ------------------------------------------------------------------
+# --- the GPU arbiter ------------------------------------------------------------------
 
 # A serve request waits for the deployment, an idle request for the running job.
 GPU_REQUEST_TIMEOUT = 1800.0
@@ -575,7 +575,7 @@ def _arbiter(config: LabConfig) -> dict[str, Any] | None:
 
 
 def training_line(config: LabConfig) -> str:
-    """Whether this host trains (§19.10).
+    """Whether this host trains.
 
     Args:
         config: The lab description.
@@ -666,7 +666,7 @@ def gpu(
     job: str | None = None,
     submission: str | None = None,
 ) -> int:
-    """The GPU arbiter's requests for admins: status, serve, train, idle (§7.18).
+    """The GPU arbiter's requests for admins: status, serve, train, idle.
 
     Root reaches the arbiter's socket like the controller does; the arbiter
     checks the request.
@@ -800,7 +800,7 @@ def uninstall(
     flags: Sequence[str],
     extra: Sequence[str],
 ) -> int:
-    """Run ``bootstrap.sh --uninstall`` from the checkout bootstrap last ran from (§5.4).
+    """Run ``bootstrap.sh --uninstall`` from the checkout bootstrap last ran from.
 
     The checkout is the one ``/etc/pinka/bootstrap-state.json`` records, else
     the lab description's. Uninstall works without the lab description, so
@@ -1123,7 +1123,7 @@ def _remind(config: LabConfig, tags: str) -> None:
     out(f"and apply it: sudo {' '.join(bootstrap_argv(config, '--tags', tags))}")
 
 
-# --- pairing (BUILD_PROMPT §19.10) ------------------------------------------------------------
+# --- pairing ------------------------------------------------------------
 
 
 def _identity(system: System, config: LabConfig) -> tuple[str, Any]:
@@ -1136,7 +1136,7 @@ def _identity(system: System, config: LabConfig) -> tuple[str, Any]:
     return directory, pairing.Identity(config.machine, str(config.get("lab_mode")), cert)
 
 
-# The split-inference guard (firewall role, §19.10, interpretation 11.13).
+# The split-inference guard (firewall role).
 SPLIT_GUARD_TABLE = "pinka_split_guard"
 SPLIT_GUARD_UNIT = "pinka-split-guard.service"
 # Seconds the pairing port stays open beyond the pairing's own timeout, should
@@ -1205,7 +1205,7 @@ def pair_show(
     if not settings.get("listen"):
         raise CommandError(f"{directory}/control.json has no tailnet address; run bootstrap first")
     port = int(settings.get("control_port", 18710))
-    # The pairing port is open to the tailnet only while this waits (11.13).
+    # The pairing port is open to the tailnet only while this waits.
     _pairing_window(system, port, int(timeout) + PAIRING_WINDOW_SLACK)
     try:
         system.run(["systemctl", "stop", CONTROL_UNIT])
@@ -1370,7 +1370,7 @@ def update_host(system: System, config: LabConfig, yes: bool, extra: Sequence[st
 def docs_serve(
     system: System, config: LabConfig | None, directory: str | None, port: int | None
 ) -> int:
-    """Serve the lab's documentation on the loopback address (owner answer H9).
+    """Serve the lab's documentation on the loopback address.
 
     Args:
         system: Host access.
@@ -1417,7 +1417,7 @@ def _restart_docs_service(system: System, config: LabConfig | None) -> None:
 def docs_install(
     system: System, config: LabConfig | None, tarball: str, sha256: str, version: str | None
 ) -> int:
-    """Install a documentation release and make it current (§7.19).
+    """Install a documentation release and make it current.
 
     Args:
         system: Host access.
@@ -1444,7 +1444,7 @@ def docs_install(
 
 
 def docs_rollback(system: System, config: LabConfig | None) -> int:
-    """Switch the documentation back to the previous release (§7.19).
+    """Switch the documentation back to the previous release.
 
     Args:
         system: Host access.
@@ -1464,7 +1464,7 @@ def docs_rollback(system: System, config: LabConfig | None) -> int:
     return 0
 
 
-# The inference guard (firewall role, §7.11, ADR-0016): loading it resolves the
+# The inference guard (firewall role, ADR-0016): loading it resolves the
 # clients that may reach the inference API from infra's list and the active
 # platform's rendering.
 INFERENCE_GUARD_UNIT = "pinka-inference-guard.service"

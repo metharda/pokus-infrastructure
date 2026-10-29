@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/lab_session/files/pinka_session_start.py). Local changes will be overwritten.
-"""Record the lab session of this boot (BUILD_PROMPT §7.16, contracts.md).
+"""Record the lab session of this boot (contracts.md).
 
 ``pinka-session-start.service`` runs this once per boot. It writes
 ``/var/lib/pinka/sessions/<boot_id>.json`` (0644 root) with the boot ID, the
@@ -83,7 +83,7 @@ def build_record(boot_id: str, started_at: str, pinka_lab: str, runner: Runner) 
     if error:
         errors["fingerprint"] = error
     # Preflight exits 10/20/30 for degraded, unsupported and needs_action; its
-    # report is valid in every case (BUILD_PROMPT §2.5).
+    # report is valid in every case.
     report, error = json_of([pinka_lab, "preflight", "--json"], runner, [0, 10, 20, 30])
     if error:
         errors["preflight"] = error

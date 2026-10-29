@@ -1,19 +1,19 @@
 # Managed by pinka (ansible/roles/provider_baremetal/tasks/nvidia.yml). Local changes will be overwritten.
 #
-# NVIDIA driver per family (BUILD_PROMPT §19.8). Only the Ubuntu and Debian
+# NVIDIA driver per family. Only the Ubuntu and Debian
 # methods are `supported`; elsewhere the TUI recommends install_nvidia_driver:
 # manual. Never on WSL2 (provider_wsl2 has no driver tasks at all).
 - name: Look up the NVIDIA driver source
   ansible.builtin.set_fact:
     provider_baremetal_driver: "{{ pinka_component_sources | pinka_component_source('nvidia_driver', pinka_source_group) }}"
-    # A driver that existed before pinka is never replaced or removed (§7.21);
+    # A driver that existed before pinka is never replaced or removed;
     # preflight has judged it (a driver too old for the vLLM image leaves the
     # GPU unused, with the remediation).
     provider_baremetal_driver_preexisting: >-
       {{ ((host_profile.components | default({})).nvidia_driver | default({})).origin | default(none)
          == 'pre-existing' }}
     # A driver is installed automatically only for a GPU the open kernel
-    # module of the release's pinned driver supports (§2.2, §10.1): preflight
+    # module of the release's pinned driver supports: preflight
     # names the pinned driver versions whose list has the GPU, and a GPU below
     # compute capability 7.5 is in none of them.
     provider_baremetal_gpu_supported: >-
@@ -116,7 +116,7 @@
     - name: Rebuild the initramfs now
       ansible.builtin.meta: flush_handlers
 
-# Secure Boot (approved deviation I1): the driver's DKMS module is signed with
+# Secure Boot: the driver's DKMS module is signed with
 # a key that must be enrolled as a Machine Owner Key. A pending enrollment only
 # needs the reboot. A signing key that is neither enrolled nor pending is named
 # in the signal, and bootstrap imports it (mokutil --import, with the

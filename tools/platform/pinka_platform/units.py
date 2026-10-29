@@ -1,6 +1,6 @@
-"""systemd units of a platform: its target, services and sockets (§7.14, §12.3).
+"""systemd units of a platform: its target, services and sockets.
 
-Every service unit carries the hardening baseline of §7.14, rendered from the
+Every service unit carries infra's hardening baseline, rendered from the
 profile; a manifest can add only its state directories, limits within infra's
 caps and the one fixed relaxation. Sockets are socket units: infra creates
 each socket with its owner, client group and mode, adds the ACL entries of
@@ -8,7 +8,7 @@ the human classes, and hands it to the service by socket activation
 (``LISTEN_FDS``; ``LISTEN_FDNAMES`` carries the socket names). Services never
 bind their sockets themselves.
 
-Deviation V4 from the baseline (approved with the "commit" for 3d.3): the
+Deviation V4 from the baseline: the
 socket directory ``/run/pinka/platform/<service>/`` is no ``RuntimeDirectory=``.
 systemd removes a runtime directory at stop and chowns it recursively to the
 service account at start, which would delete the sockets or reset their
@@ -31,7 +31,7 @@ HEADER = "# Managed by pinka (platform {platform}, contract v2). Local changes w
 TARGET = "pinka-platform.target"
 SLICE = "pinka-services.slice"
 HEALTH_GATE = "pinka-health-gate.service"
-# Infra's agent OTLP socket (§7.9), bound into the agent's file system.
+# Infra's agent OTLP socket, bound into the agent's file system.
 AGENT_OTLP_UNIT = "pinka-otlp-agent.socket"
 # The units of the facilities a manifest may require (ordering only).
 FACILITY_UNITS = {
@@ -41,7 +41,7 @@ FACILITY_UNITS = {
     "inference": "pinka-inference.service",
 }
 _PLAIN = re.compile(r"^[A-Za-z0-9_./:=@+,-]+$")
-# The fixed part of the hardening baseline (§7.14), in the order of the spec.
+# The fixed part of the hardening baseline.
 BASELINE = (
     ("NoNewPrivileges", "yes"),
     ("ProtectSystem", "strict"),
@@ -69,7 +69,7 @@ BASELINE = (
     ("IPAddressDeny", "any"),
     ("SocketBindDeny", "any"),
 )
-# The lab directories the agent sees only through its allowlist (§7.14).
+# The lab directories the agent sees only through its allowlist.
 AGENT_HIDDEN = (layout.SRV, layout.ETC, layout.VAR_LIB, layout.RUN)
 
 
@@ -186,7 +186,7 @@ def human_groups(socket: Mapping[str, Any], contract: Contract) -> list[str]:
 
 
 def socket_unit_text(platform: str, socket: Mapping[str, Any], contract: Contract) -> str:
-    """A socket unit (§12.3).
+    """A socket unit.
 
     The socket is owned by the serving account, its group is the client
     group, mode 0660; the human classes get ACL entries from the helper,
@@ -296,7 +296,7 @@ def service_sections(
     *,
     release: str | None = None,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """The [Unit] and [Service] entries of a service with the baseline of §7.14.
+    """The [Unit] and [Service] entries of a service with the baseline.
 
     The hook units reuse the [Service] entries of the account they run as
     (:mod:`pinka_platform.hooks`).
@@ -398,7 +398,7 @@ def service_sections(
         if state:
             entries.append(("ReadWritePaths", " ".join(state)))
         entries.append(("ReadOnlyPaths", " ".join([current, *config])))
-    # Infra's internals are hidden from every profile (§7.14), the agent
+    # Infra's internals are hidden from every profile, the agent
     # included: some lie outside the lab directories its empty file systems cover.
     entries.append(
         ("InaccessiblePaths", " ".join(f"-{path}" for path in _internals(profile, contract, p)))
@@ -415,7 +415,7 @@ def service_unit_text(
     *,
     release: str | None = None,
 ) -> str:
-    """A service unit with the hardening baseline of §7.14.
+    """A service unit with the hardening baseline.
 
     Args:
         manifest: A valid manifest.
@@ -436,7 +436,7 @@ def service_unit_text(
 
 
 def reconcile_unit(platform: str) -> str:
-    """Name of the platform's reconcile unit (§12.9)."""
+    """Name of the platform's reconcile unit."""
     return f"{platform}-reconcile.service"
 
 
@@ -479,7 +479,7 @@ def reconcile_unit_text(
     accounts: Mapping[str, Mapping[str, Any]],
     ports: Mapping[str, int],
 ) -> str:
-    """The reconcile hook as a oneshot unit before every service (§12.9).
+    """The reconcile hook as a oneshot unit before every service.
 
     It runs at every start of the platform under the controller's account and
     hardening, through the hook wrapper, which requires the hook's one JSON
@@ -532,7 +532,7 @@ def reconcile_unit_text(
 
 # [Service] entries that `systemctl show` prints as the unit file writes them
 # (booleans as yes/no, the other values as strings; systemd v252 and v255).
-# Doctor compares them per unit (systemd.hardening, §7.17).
+# Doctor compares them per unit (systemd.hardening).
 SHOWN_AS_WRITTEN = frozenset(
     {
         "User",
@@ -568,7 +568,7 @@ def hardening(
     *,
     release: str | None = None,
 ) -> list[dict[str, Any]]:
-    """What doctor expects of each service unit: the hardening of its profile (§7.17).
+    """What doctor expects of each service unit: the hardening of its profile.
 
     Args:
         manifest: A valid manifest.

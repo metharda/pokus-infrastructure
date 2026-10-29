@@ -1,6 +1,6 @@
 -- Managed by pinka (platform potka, contract v2). Local changes will be overwritten.
 --
--- Bootstrap of the database of platform potka (BUILD_PROMPT §7.8, §12.5).
+-- Bootstrap of the database of platform potka.
 \set ON_ERROR_STOP on
 
 DO $roles$

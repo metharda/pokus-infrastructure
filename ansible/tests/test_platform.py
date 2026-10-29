@@ -194,10 +194,10 @@ def test_the_helper_records_each_outcome(
 def test_render_runs_between_retire_and_the_switch() -> None:
     names = [t["name"] for t in flat(tasks("deploy.yml"))]
     assert names.index("Retire the platform this release replaces") < names.index(
-        "Render the platform from its profiles (§7.14 step 7)"
+        "Render the platform from its profiles"
     )
-    assert names.index("Render the platform from its profiles (§7.14 step 7)") < names.index(
-        "Switch to the release (§7.14 step 8)"
+    assert names.index("Render the platform from its profiles") < names.index(
+        "Switch to the release"
     )
 
 
@@ -293,9 +293,9 @@ def test_the_switch_migrates_checks_and_then_switches() -> None:
     names = [t["name"] for t in entries]
     order = [
         "Drain and stop the running release when its rendering changed",
-        "Run the new release's migrate hook (§12.9)",
-        "Check schema restricted after the migration (§7.8)",
-        "Switch current to the release and record it (§7.14 steps 8-9)",
+        "Run the new release's migrate hook",
+        "Check schema restricted after the migration",
+        "Switch current to the release and record it",
         "Enable the platform's units in pinka-platform.target",
     ]
     assert [n for n in names if n in order] == order

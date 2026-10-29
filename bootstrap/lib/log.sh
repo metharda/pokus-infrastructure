@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # Managed by pinka (bootstrap/lib/log.sh). Local changes will be overwritten.
 #
-# Logging with UTC timestamps (BUILD_PROMPT §14) and the JSON event stream for
-# the installer TUI (BUILD_PROMPT §18.5): when PINKA_EVENTS_FILE is set, every
+# Logging with UTC timestamps and the JSON event stream for
+# the installer TUI: when PINKA_EVENTS_FILE is set, every
 # stage start, stage end and bootstrap signal is appended as one JSON line.
 
 utc_now() {
