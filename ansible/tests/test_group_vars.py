@@ -90,7 +90,7 @@ def test_infra_accounts() -> None:
         {
             "name": "pinka-query-proxy",
             "groups": [],
-            "description": "the telemetry query proxy's container user (§7.9)",
+            "description": "the telemetry query proxy's container user",
         },
         # ADR-0016 (with the "commit" for 3d.4): every container that reaches
         # the telemetry stores runs as an account of its own, never as its
@@ -99,16 +99,16 @@ def test_infra_accounts() -> None:
         {
             "name": "pinka-otelcol",
             "groups": [],
-            "description": "the gateway collector's container user (§7.9)",
+            "description": "the gateway collector's container user",
         },
         {
             "name": "pinka-prometheus",
             "groups": [],
-            "description": "Prometheus's container user (§7.9)",
+            "description": "Prometheus's container user",
         },
-        {"name": "pinka-loki", "groups": [], "description": "Loki's container user (§7.9)"},
-        {"name": "pinka-tempo", "groups": [], "description": "Tempo's container user (§7.9)"},
-        {"name": "pinka-grafana", "groups": [], "description": "Grafana's container user (§7.9)"},
+        {"name": "pinka-loki", "groups": [], "description": "Loki's container user"},
+        {"name": "pinka-tempo", "groups": [], "description": "Tempo's container user"},
+        {"name": "pinka-grafana", "groups": [], "description": "Grafana's container user"},
     ]
 
 

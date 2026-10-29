@@ -1,4 +1,4 @@
-"""Jinja filters of pokus-infrastructure (BUILD_PROMPT §19.1, §19.4, §7.8).
+"""Jinja filters of pokus-infrastructure.
 
 Pure functions, unit-tested in ansible/tests/. Only the platform_facts role
 calls the distribution filters (``pinka_release_identity``); every other role
@@ -135,7 +135,7 @@ def component_source(matrix: Mapping[str, Any], component: str, group: str) -> d
 
 
 def component_packages(components: Iterable[str], matrix: Mapping[str, Any]) -> list[str]:
-    """Every package of some components, whatever the source group (§5.4).
+    """Every package of some components, whatever the source group.
 
     Uninstall's ``--remove-component`` on a host without an install record
     removes those of them that are installed.
@@ -163,7 +163,7 @@ def component_repos(components: Iterable[str], matrix: Mapping[str, Any]) -> lis
     """Every vendor repository of some components, whatever the source group.
 
     Uninstall keeps a component's repository (``pinka-<repo>`` files) when the
-    component stays because it holds kept data (owner, D2 review).
+    component stays because it holds kept data.
 
     Args:
         components: Component names, for example ``incus``.
@@ -216,7 +216,7 @@ def driver_supports_gpu(
     """Whether bootstrap may install the NVIDIA driver automatically for this host's GPU.
 
     Only for a GPU the open kernel module of the release's pinned driver
-    supports (BUILD_PROMPT §2.2, §10.1): preflight lists the pinned driver
+    supports: preflight lists the pinned driver
     releases that support the GPU (``host_profile.gpu.open_module_drivers``).
     Where the release has no verified driver pin, any of them counts; the play
     then stops for a manual install as before.
@@ -604,7 +604,7 @@ def socket_specs(sockets: Iterable[Mapping[str, Any]], acls: bool) -> list[dict[
     return specs
 
 
-# systemd hardening every platform service unit carries (BUILD_PROMPT §7.14), as
+# systemd hardening every platform service unit carries, as
 # `systemctl show` reports it; doctor compares them (systemd.hardening).
 UNIT_HARDENING = {
     "NoNewPrivileges": "yes",
@@ -744,7 +744,7 @@ def cpuset_cpus(spec: str | None) -> list[int]:
 def researcher_memberships(
     researchers: Sequence[Mapping[str, Any]], existing: Sequence[str]
 ) -> list[dict[str, str]]:
-    """The lab groups pinka adds to researcher accounts that existed before it (§6.1, §7.21).
+    """The lab groups pinka adds to researcher accounts that existed before it.
 
     Args:
         researchers: The ``researchers`` list (``name``, ``admin``).
@@ -766,7 +766,7 @@ def researcher_memberships(
 def new_memberships(
     users: Iterable[str], group: str, members: Iterable[str]
 ) -> list[dict[str, str]]:
-    """The memberships of ``group`` pinka is about to add, for the install record (§7.21).
+    """The memberships of ``group`` pinka is about to add, for the install record.
 
     Args:
         users: Accounts pinka puts in the group.
@@ -781,7 +781,7 @@ def new_memberships(
 
 
 def settings_before(lines: Iterable[str], wanted: Mapping[str, Any]) -> dict[str, str]:
-    """The settings pinka is about to change, with their values now (§5.4, §7.21).
+    """The settings pinka is about to change, with their values now.
 
     Args:
         lines: ``name=value`` lines as the host reports them.
@@ -817,7 +817,7 @@ def _incus_names(text: str) -> set[str]:
 
 
 def incus_new_objects(found: Mapping[str, str], desired: Mapping[str, Any]) -> list[str]:
-    """The Incus objects pinka is about to create on an Incus it did not install (§7.21).
+    """The Incus objects pinka is about to create on an Incus it did not install.
 
     Args:
         found: Each listing's ``incus query`` output (JSON, empty when the query
@@ -851,7 +851,7 @@ def incus_new_objects(found: Mapping[str, str], desired: Mapping[str, Any]) -> l
 
 
 def incus_config_before(server: str, wanted: Mapping[str, Any]) -> dict[str, str]:
-    """The server settings pinka is about to change, as they are (§5.4, §7.21).
+    """The server settings pinka is about to change, as they are.
 
     Args:
         server: ``incus query /1.0`` (JSON).
@@ -873,7 +873,7 @@ def incus_config_before(server: str, wanted: Mapping[str, Any]) -> dict[str, str
 
 
 def key_entries(text: str, user: str) -> list[dict[str, str]]:
-    """The keys of a ``users/<name>.pub`` file as install record entries (§7.21).
+    """The keys of a ``users/<name>.pub`` file as install record entries.
 
     Args:
         text: The file's content.
@@ -887,7 +887,7 @@ def key_entries(text: str, user: str) -> list[dict[str, str]]:
 
 
 def subnet(pools: Sequence[Mapping[str, Any]], index: int) -> str:
-    """The ``index``-th subnet of the first Docker address pool (§7.6).
+    """The ``index``-th subnet of the first Docker address pool.
 
     pinka's Compose networks take explicit subnets from its own pool, the
     same on every install, instead of Docker's ``default-address-pools``.
@@ -929,7 +929,7 @@ def _family(address: str) -> str:
 def listener_rules(
     access: Mapping[str, Any], close: Sequence[str], closed: Sequence[str] = ()
 ) -> dict[str, list[Any]]:
-    """The pre-existing listeners the firewall keeps and closes (BUILD_PROMPT §7.5).
+    """The pre-existing listeners the firewall keeps and closes.
 
     On a shared host every listener preflight found stays reachable as it was,
     unless the owner consented to close it; the strict policy already admits
@@ -1011,7 +1011,7 @@ def listener_rules(
 
 
 def install_path(access: Mapping[str, Any], closed: Sequence[str]) -> dict[str, Any] | None:
-    """The access path of the install, while it is pinka's to keep (§7.5).
+    """The access path of the install, while it is pinka's to keep.
 
     Args:
         access: The install record's (or the host profile's) ``access``.
@@ -1067,7 +1067,7 @@ def tailnet_logins(
 ) -> list[dict[str, str]]:
     """The researchers' SSH key logins over the tailnet, from sshd's journal.
 
-    The safeguard of §7.5: the install's access path closes only after a
+    The safeguard: the install's access path closes only after a
     successful key login of a researcher from a tailnet address in the same
     run. A line counts only when journald attributes it to root and to sshd
     (``_UID`` 0, ``_COMM`` ``sshd`` or ``sshd-session``: fields the sender

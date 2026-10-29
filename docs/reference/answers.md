@@ -11,7 +11,7 @@ description: Every field of installer-answers/<machine>.yml, written by the TUI 
 
 # Installer answers file
 
-Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin, the platform tool's source rules) are checked by pinka_installer.answers. Schema file: `installer/schema/answers.schema.json` (JSON Schema draft 2020-12).
+Every non-secret choice of the installer TUI, replayed with bootstrap.sh --answers. Records which secrets are generated and which are provided, never their values. Cross-field rules that JSON Schema cannot express (the device confirmation, disjoint cpusets, unique researchers, at least one admin, the platform tool's source rules) are checked by pinka_installer.answers. Schema file: `installer/schema/answers.schema.json` (JSON Schema draft 2020-12).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -33,10 +33,10 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `resources.cpuset_services` | see `cpuset` | no | CPUs of the lab services (Linux cpuset list, such as 0-5). |
 | `resources.cpuset_targets` | see `cpuset` | no | CPUs of the Incus targets; must not overlap cpuset_services. |
 | `resources.postgres_shared_buffers` | string | no | Postgres shared_buffers, such as 2048MB; empty derives it from the memory. |
-| `resources.concurrent_targets` | integer | no | Targets that run at once (incus_concurrent_targets): they size the bench project's memory and the memory preflight requires (BUILD_PROMPT §2.3). |
+| `resources.concurrent_targets` | integer | no | Targets that run at once (incus_concurrent_targets): they size the bench project's memory and the memory preflight requires. |
 | `storage` | object | yes | The Incus storage pool of the targets. |
 | `storage.source` | one of `loop`, `device` | yes | loop: a loop file inside the system; device: a dedicated disk, formatted. |
-| `storage.loop_size_gib` | any | no | Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space, BUILD_PROMPT §2.3), or whole GiB, at least 20. |
+| `storage.loop_size_gib` | any | no | Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space), or whole GiB, at least 20. |
 | `storage.device` | string | no | The pool disk by its /dev/disk/by-id path (source device). |
 | `storage.device_confirm` | string | no | Must equal device exactly; the pool disk is formatted only then (safety invariant 1). |
 | `storage.force_wipe` | boolean | no | Wipe a device that carries signatures (typed WIPE confirmation in the TUI). |
@@ -59,11 +59,11 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `split_inference.peer` | see `hostname` | yes | Machine name of the paired node. |
 | `gpu` | object | yes | NVIDIA driver, vLLM serving profile and default model. |
 | `gpu.install_driver` | one of `auto`, `manual`, `skip` | yes | install_nvidia_driver: auto (the pinned branch of versions.lock.yml), manual or skip. |
-| `gpu.accept_mok_enrollment` | boolean | no | Consent that bootstrap installs the NVIDIA driver and imports a Machine Owner Key on a Secure Boot host (install_driver auto only; approved deviation I1). Bootstrap reads the one-time MOK password from standard input (--mok-password-stdin); this file never holds it. |
+| `gpu.accept_mok_enrollment` | boolean | no | Consent that bootstrap installs the NVIDIA driver and imports a Machine Owner Key on a Secure Boot host (install_driver auto only). Bootstrap reads the one-time MOK password from standard input (--mok-password-stdin); this file never holds it. |
 | `gpu.vllm_profile` | string | no | A profile of vllm/profiles/; empty: chosen from the GPU. |
 | `gpu.default_model` | string | yes | An id of models.lock.yml, or none (vLLM installed, nothing served). |
 | `gpu.start_serving` | boolean | no | Start serving the default model after the install. |
-| `features` | object | no | The feature switches (BUILD_PROMPT §2.3): a switched-off feature is not installed and counts nothing in the requirements. host_vars: inference and training. |
+| `features` | object | no | The feature switches: a switched-off feature is not installed and counts nothing in the requirements. host_vars: inference and training. |
 | `features.inference` | one of `auto`, `off` | no | auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node; off: none of them. An inference node needs auto. |
 | `features.training` | one of `auto`, `cpu`, `off` | no | auto: training jobs where the host has a usable GPU (gpu_training), on a full node; cpu: also the jobs' CPU-only variant without one; off: the GPU arbiter refuses every run. |
 | `backups` | object | yes | restic backups. |
@@ -79,7 +79,7 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `backups.pg_dumps_kept` | integer | no | Local PostgreSQL dumps kept below the research space, one a day (backup_pgdump_keep). |
 | `restore` | object | no | Restore mode only. |
 | `restore.snapshot` | string | yes | latest, or a snapshot id. |
-| `platform` | any | yes | The platform release to deploy (BUILD_PROMPT §7.14, §8.1), or null for a standalone lab without a platform. |
+| `platform` | any | yes | The platform release to deploy, or null for a standalone lab without a platform. |
 | `content` | object | no | One source per content package the platform's manifest declares, by package name (lower-case letters, digits and '-'). A package from the release's repository must not overlap the release path or another package. |
 | `content.*` | see `source` | no | any key; value as described |
 | `source_trust` | object | no | How the platform's Git sources are trusted. |
@@ -88,17 +88,17 @@ Every non-secret choice of the installer TUI (BUILD_PROMPT §18.6), replayed wit
 | `source_trust.allowed_signers` | array | no | allowed_signers lines (ssh-keygen -Y) of the tag signers. |
 | `platform_settings` | object | no | Non-secret settings per service of the platform, checked against the service's config schema when the release is inspected and deployed. |
 | `platform_settings.*` | object | no | any key; value as described |
-| `gpu_arbiter` | object | no | The GPU arbiter (BUILD_PROMPT §7.18). |
+| `gpu_arbiter` | object | no | The GPU arbiter. |
 | `gpu_arbiter.after_boot` | one of `serve`, `idle` | no | serve: the default deployment after boot; idle: nothing until asked. |
 | `gpu_arbiter.restore_after_training` | boolean | no | Bring the deployment served before a training run back when the run ends. |
-| `training_caps` | object | no | This host's caps on training jobs (BUILD_PROMPT §7.18); the GPU arbiter refuses a run of a job over them. |
+| `training_caps` | object | no | This host's caps on training jobs; the GPU arbiter refuses a run of a job over them. |
 | `training_caps.timeout_seconds` | integer | no | A run's longest run time. |
-| `training_caps.memory_max` | any | no | A job's memory; auto: computed from the host, MemTotal minus what else runs, 4 to 24 GiB (§2.3). |
+| `training_caps.memory_max` | any | no | A job's memory; auto: computed from the host, MemTotal minus what else runs, 4 to 24 GiB. |
 | `training_caps.cpus` | integer | no | A job's CPUs. |
 | `training_caps.dataset_max` | see `cap_size` | no | The size of a published dataset. |
 | `training_caps.run_storage_max` | see `cap_size` | no | A run's output and checkpoints together. |
 | `training_caps.tmp_max` | see `cap_size` | no | A job's /tmp (a tmpfs counted against its memory). |
-| `telemetry_retention` | object | no | How long the telemetry stores keep their data (BUILD_PROMPT §2.3, §7.9); the capacity plan shows the growth they allow. |
+| `telemetry_retention` | object | no | How long the telemetry stores keep their data; the capacity plan shows the growth they allow. |
 | `telemetry_retention.prometheus` | string | no | Prometheus's retention by time (observability_prometheus_retention), such as 90d. |
 | `telemetry_retention.prometheus_size` | string | no | Prometheus's retention by size (observability_prometheus_retention_size; powers of 2), such as 50GB; 0: by time only. |
 | `telemetry_retention.loki` | string | no | Loki's retention of logs (observability_loki_retention), such as 2160h. |

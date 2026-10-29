@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml (BUILD_PROMPT §5.2 step 7).
-pinka_versions_lock_sha256: "9d712ff7a43b89d60a8317c7f8c8c46ee3c7f2c54052132fb654e7d524256b1f"
+pinka_versions_lock_sha256: "c1f77a1fe38e8a2a5eeebf226ed96d400dafacb994048f938dd37ad662419e2b"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'

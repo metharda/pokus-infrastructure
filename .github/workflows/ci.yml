@@ -5,7 +5,7 @@
 # no bootstrap, no Ansible without --check, no distro VM harness, no real-host
 # tests.
 #
-# GitHub Actions minutes (owner, with the new plan after 16bf749): the test
+# GitHub Actions minutes: the test
 # job runs the pytest suites in the random order of the Makefile's seed; a
 # push that changes only docs or records skips the Ansible lanes (job
 # changes); test-isolated (isolated.yml), check-mode-extended
@@ -13,7 +13,7 @@
 # workflow_dispatch and on pushes that touch their inputs. The required job
 # stands for every blocking job, so branch protection requires that one.
 #
-# One real run per commit (owner, after D2): every commit pushed to a branch
+# One real run per commit: every commit pushed to a branch
 # of this repository runs here once, on its push, whether or not a pull
 # request is open; a pull request runs the jobs only when it comes from a
 # fork, whose commits have no push run here. In the pull request run of a
@@ -34,7 +34,7 @@ on:
 permissions:
   contents: read
 
-# One run per commit (owner, after D2): on main and moving/on each commit's
+# One run per commit: on main and moving/on each commit's
 # run has a group of its own and always finishes; elsewhere (a pull request
 # from a fork, another branch, a manual run) a newer run cancels the older.
 concurrency:
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # The maintainer's denylist, a secret: only for the two jobs that scan
-      # with it (owner decision 3 after the public-readiness audit).
+      # with it.
       PINKA_PRIVACY_DENYLIST: ${{ secrets.PINKA_PRIVACY_DENYLIST }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -200,7 +200,7 @@ jobs:
 
   lock-check:
     # Re-verifies every pin over the network and fails while any unverified
-    # marker remains in versions.lock.yml (BUILD_PROMPT §10.1).
+    # marker remains in versions.lock.yml.
     if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     steps:
@@ -217,7 +217,7 @@ jobs:
       - run: make lock-check
 
   check-mode:
-    # Required CI fast lane (BUILD_PROMPT §11, §19.9): the provider-agnostic
+    # Required CI fast lane: the provider-agnostic
     # roles (install_record, base, users_groups, ssh, layout) with --check in a disposable
     # systemd container per family, nothing skipped; never a host. Blocking;
     # skipped for a change of docs or records only.
@@ -286,7 +286,7 @@ jobs:
   links:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    continue-on-error: true  # reported, never blocking (DOCS_SPEC §A.6)
+    continue-on-error: true  # reported, never blocking
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

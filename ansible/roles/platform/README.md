@@ -93,14 +93,14 @@ command `/usr/local/libexec/pinka/pinka-platform`):
    through the `active_platform` role.
 9. **Switch** (`tasks/switch.yml`): a running release is drained and
    stopped now if step 8 changed its accounts, configuration, secrets,
-   `principals.json` and `endpoints.toml` or units; a new release's
+   units, or its `principals.json` and `endpoints.toml`; a new release's
    `migrate` hook runs and, with a database, schema `restricted` is checked
    (a failure of either ends the deployment with the platform stopped);
    then `deploy activate` writes the `current` links,
    `/etc/pinka/platform/active.json`, `/etc/pinka/platform/rendered.json`
    (without the configuration contents) and the deployment record in
-   `/var/lib/pinka/platforms/<platform>/`, and enables the units in
-   `pinka-platform.target`.
+   `/var/lib/pinka/platforms/<platform>/`, and the role enables the units
+   in `pinka-platform.target`.
 
 `tasks_from: rotate_signing` (used by `rotate.yml --tags signing`) replaces the
 signing key and publishes the new public key; old ones stay.

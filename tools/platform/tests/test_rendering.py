@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -225,9 +226,9 @@ def test_every_service_unit_carries_the_baseline(fixture: str) -> None:
 
 
 # What a service unit gets besides the baseline the explanation page lists: its
-# identity, start and ordering, its limits, its paths and the profile's
-# allowances (described elsewhere on the page). A new setting of a service unit
-# goes onto the page's list or here.
+# description, ordering and start, its runtime directory, its identity and
+# limits, its paths, the agent's confinement and its profile's network
+# allowances. A new setting of a service unit goes onto the page's list or here.
 NOT_BASELINE = frozenset(
     {
         "Description", "PartOf", "Requires", "After", "Wants", "WantedBy",
@@ -245,19 +246,23 @@ def test_the_explanation_page_lists_the_whole_baseline() -> None:
     # list must hold every setting of it, each once, with the value every
     # service unit gets, and the two exceptions as the code applies them.
     page = Path(__file__).resolve().parents[3] / "docs/explanation/privilege-profiles.md"
-    found = re.search(
-        r"on every platform service's unit:\n\n(.*?)\n\n", page.read_text(encoding="utf-8"), re.S
-    )
-    assert found, "the list of the baseline is missing"
-    section = " ".join(found.group(1).split())
+    paragraphs = [
+        " ".join(part.split()) for part in re.split(r"\n[ \t]*\n", page.read_text(encoding="utf-8"))
+    ]
+    intro = [
+        i for i, part in enumerate(paragraphs) if part.endswith("every platform service's unit:")
+    ]
+    assert len(intro) == 1, "the list of the baseline is missing"
+    section = paragraphs[intro[0] + 1]
     spans = re.findall(r"`([^`]*)`", section)
     pairs = [span.split("=", 1) for span in spans if "=" in span]
     listed = dict(pairs)
     assert len(listed) == len(pairs), "a setting is listed twice"
     assert all(re.fullmatch(r"[A-Za-z]+", key) for key in listed), sorted(listed)
-    assert {span for span in spans if "=" not in span} <= {
-        "no", "wx-memory", "untrusted-agent", "AF_UNIX",
-    }  # fmt: skip
+    # The words of the two exceptions, each where it belongs and nowhere else.
+    assert Counter(span for span in spans if "=" not in span) == Counter(
+        {"untrusted-agent": 2, "no": 1, "wx-memory": 1, "AF_UNIX": 1}
+    ), "an exception the list should not state, or one it lacks"
     assert "=" not in re.sub(r"`[^`]*`", "", section), "a setting outside a code span"
     mdwe = "MemoryDenyWriteExecute"
     families = "RestrictAddressFamilies"
@@ -266,20 +271,26 @@ def test_the_explanation_page_lists_the_whole_baseline() -> None:
     assert f"`{families}={listed[families]}` (only `AF_UNIX` for `untrusted-agent`)" in section
     assert {key for key, _ in units.BASELINE} <= set(listed)
     keys: set[str] = set()
+    branches: Counter[str] = Counter()
     for fixture in VALID:
         data = manifest(fixture)
         document = render(fixture)
         for service in data["services"]:
             settings = unit(document, f"{names.account(data['name'], service['name'])}.service")
-            agent = service["profile"] == "untrusted-agent"
             expected = dict(listed)
-            if agent:
+            if service["profile"] == "untrusted-agent":
                 expected[families] = "AF_UNIX"
+                branches["untrusted-agent"] += 1
             elif "wx-memory" in service.get("relaxations", []):
                 expected[mdwe] = "no"
+                branches["wx-memory"] += 1
+            else:
+                branches["neither"] += 1
             for key, value in expected.items():
                 assert settings.get(key) == [value], f"{fixture} {service['name']}: {key}"
             keys |= set(settings)
+    # Every exception and the plain case are met by some service of the fixtures.
+    assert set(branches) == {"untrusted-agent", "wx-memory", "neither"}, branches
     assert keys - set(listed) == NOT_BASELINE
 
 

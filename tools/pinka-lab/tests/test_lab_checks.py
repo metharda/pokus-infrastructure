@@ -1495,7 +1495,9 @@ class TimeBackupSessionTest(Base):
         )
         self.assertOutcome(run(checks.check_backup, FakeSystem()), "fail", "no backup has")
         self.assertOutcome(
-            run(checks.check_backup, FakeSystem(), backup__configured=False), "fail", "E4"
+            run(checks.check_backup, FakeSystem(), backup__configured=False),
+            "fail",
+            "no backup repository is configured",
         )
 
     def test_health_gate(self) -> None:

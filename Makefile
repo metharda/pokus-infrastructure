@@ -23,7 +23,7 @@ NODE_BIN := node_modules/.bin
 REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks
 GEN := PYTHONPATH=tools/gen:preflight:tools/pinka-lab:tools/test-distros:installer:tools/platform $(BIN)/python -m pinka_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pinka_lockcheck
-# YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
+# YAML sources validated against their JSON Schemas.
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
   preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
   preflight/requirements.yml=preflight/schema/requirements.schema.json \
@@ -31,7 +31,7 @@ SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.js
   models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json \
   tests/answers/ci.yml=installer/schema/answers.schema.json \
   $(foreach f,$(sort $(wildcard images/*/image.yaml)),$(f)=tools/lockcheck/schema/image-blueprint.schema.json)
-# Oldest Python preflight must run on (BUILD_PROMPT §2.1).
+# Oldest Python preflight must run on.
 PREFLIGHT_MIN_PYTHON := 3.9
 BUILD := build
 # Where make release-package writes the package and its .sha256.
@@ -170,7 +170,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/firewall/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
 	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform
-	@# The reference platform (BUILD_PROMPT §7.18): its two packages and its job script.
+	@# The reference platform: its two packages and its job script.
 	$(BIN)/mypy tests/reference-platform/src/refplat \
 	  tests/reference-platform/packages/refplat-agent/src/refplat_agent tests/reference-platform/jobs/tune.py
 	@# A run of its own: installer/tests has a conftest module too.
@@ -203,11 +203,11 @@ lint-ansible: setup ## ansible-lint (production profile) and --syntax-check of e
 	done
 
 .PHONY: lint-portability
-lint-portability: ## Only platform_facts may read distribution facts (BUILD_PROMPT §19.1)
+lint-portability: ## Only platform_facts may read distribution facts
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks portability --ansible-dir ansible
 
 .PHONY: lint-neutral
-lint-neutral: ## Infra's code names no particular platform (BUILD_PROMPT §11)
+lint-neutral: ## Infra's code names no particular platform
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks neutrality --root .
 
 .PHONY: lint-references
@@ -293,11 +293,11 @@ test-isolated: setup ## Each pytest file in a process of its own (CI: weekly and
 	  --junit-dir $(JUNIT)/isolated $(if $(filter 1,$(VERBOSE)),--verbose)
 
 .PHONY: test-distros
-test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
+test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution; TEST_DISTROS_ARGS="--target ID ..."
 	PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
-check-mode: setup ## Required CI fast lane (§11, §19.9): base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
+check-mode: setup ## Required CI fast lane: base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
 	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: check-mode-extended

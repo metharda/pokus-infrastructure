@@ -1,7 +1,7 @@
 # Managed by pinka (versions.lock.yml).
 #
-# Single source of truth for every external artifact (BUILD_PROMPT §10.1,
-# §19.4). Every value is verified at build time and its section records
+# Single source of truth for every external artifact.
+# Every value is verified at build time and its section records
 # `verified_on` and `source`. A value that could not be verified is the
 # unverified-value marker of docs/how-to/update-versions.md; `make lock-check`
 # fails while any marker remains (on any line, comments included) and
@@ -19,7 +19,7 @@ schema_version: 1
 verified_on: 2026-10-05
 
 fedora_supported_releases:
-  # "current and previous" Fedora releases (BUILD_PROMPT §19.2). Fedora 42
+  # "current and previous" Fedora releases. Fedora 42
   # reached its end of life on 2026-05-13. Fedora 45 is not in the osinfo-db
   # snapshot used (2026-07-10); re-verify when Fedora 45 is released.
   releases: ["43", "44"]
@@ -32,7 +32,7 @@ fedora_supported_releases:
 
 binaries:
   uv:
-    # Installed to /opt/pinka/bin/uv by bootstrap (BUILD_PROMPT §5.2, §19.3).
+    # Installed to /opt/pinka/bin/uv by bootstrap.
     version: "0.12.23"
     verified_on: 2026-10-05
     source: >-
@@ -49,7 +49,7 @@ binaries:
         sha256: 6524bd338177ed50d035d39354e12545e993bbeba2ecbddf0480c5b3a81d313f
 
   restic:
-    # Backups (BUILD_PROMPT §7.15); the release ships bzip2-compressed binaries.
+    # Backups; the release ships bzip2-compressed binaries.
     version: "0.19.1"
     verified_on: 2026-10-05
     source: >-
@@ -64,7 +64,7 @@ binaries:
         url: https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_arm64.bz2
         sha256: a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465
   quarto:
-    # Evaluator reports, HTML and Typst PDF (BUILD_PROMPT §7.14). 1.11.5 is a
+    # Evaluator reports, HTML and Typst PDF. 1.11.5 is a
     # pre-release; 1.10.18 is the current stable release.
     version: "1.10.18"
     verified_on: 2026-10-05
@@ -83,7 +83,7 @@ binaries:
         sha256: f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c
 
   otelcol_contrib:
-    # Installed inside golden images, never on the host (BUILD_PROMPT §7.13):
+    # Installed inside golden images, never on the host:
     # the in-target OpenTelemetry agent, the release of the lab's collector.
     version: "0.162.0"
     verified_on: 2026-10-06
@@ -129,14 +129,14 @@ python:
   packages:
     ansible-core: "2.21.5"
     jmespath: "1.1.0"      # json_query filter
-    cryptography: "50.0.2"  # community.crypto modules (owner answer E12)
+    cryptography: "50.0.2"  # community.crypto modules
   # Packages of /opt/pinka/models-venv, the models role's download tool
   # (hash-locked in ansible/roles/models/files/requirements.lock).
   model_tools:
-    huggingface-hub: "2.1.1"  # the `hf download` CLI (BUILD_PROMPT §7.12)
-  # Packages of /opt/pinka/installer-venv, the installer TUI (BUILD_PROMPT
-  # §18.2), on top of the `packages` above (ansible-core for the vault API);
-  # hash-locked in installer/requirements.lock (owner answer E11).
+    huggingface-hub: "2.1.1"  # the `hf download` CLI
+  # Packages of /opt/pinka/installer-venv, the installer TUI,
+  # on top of the `packages` above (ansible-core for the vault API);
+  # hash-locked in installer/requirements.lock.
   installer:
     textual: "8.2.8"
     ruamel.yaml: "0.19.1"  # round-trip edits of host_vars and group_vars
@@ -151,12 +151,12 @@ python:
     uv 0.12.23 for the CPython build
 
 containers:
-  # Every lab service image, pinned by the digest of its multi-platform index
-  # (BUILD_PROMPT §7.6-§7.11). `platforms` lists the platforms pinka needs and
+  # Every lab service image, pinned by the digest of its multi-platform index.
+  # `platforms` lists the platforms pinka needs and
   # that the index was verified to contain; `sizes` is each platform's
   # compressed size in bytes (the sum of its layers), which the requirements
-  # computation estimates at 2.5 x unpacked until the image is pulled (§2.3,
-  # §10.1). Tags are informational: only the digest is used.
+  # computation estimates at 2.5 x unpacked until the image is pulled.
+  # Tags are informational: only the digest is used.
   verified_on: 2026-10-05
   source: >-
     Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and
@@ -244,7 +244,7 @@ containers:
       platforms: [linux/amd64, linux/arm64]
       sizes: {linux/amd64: 30513355, linux/arm64: 28078584}
     vllm:
-      # cuda: the CUDA version the image is built on (BUILD_PROMPT §2.2), read
+      # cuda: the CUDA version the image is built on, read
       # from CUDA_VERSION in the configuration of both platform images (also
       # NVIDIA_REQUIRE_CUDA "cuda>=13.0"); re-verified on 2026-10-10 with the
       # registry API. Preflight and doctor compare its major.minor with the
@@ -256,7 +256,7 @@ containers:
       sizes: {linux/amd64: 9035211086, linux/arm64: 10134470647}
       cuda: "13.0.2"
     query_proxy:
-      # The telemetry query proxy (BUILD_PROMPT §7.9): the nginx release and
+      # The telemetry query proxy: the nginx release and
       # digest of target_images.docker_host_web below (stable line, verified
       # on 2026-10-06 with the registry API).
       image: docker.io/library/nginx
@@ -265,27 +265,27 @@ containers:
       platforms: [linux/amd64, linux/arm64]
       sizes: {linux/amd64: 26073522, linux/arm64: 25966398}
     cuda_base_test:
-      # GPU smoke test (BUILD_PROMPT §7.6); same CUDA version as the vLLM image.
+      # GPU smoke test; same CUDA version as the vLLM image.
       image: docker.io/nvidia/cuda
       tag: "13.0.2-base-ubuntu24.04"
       digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
       platforms: [linux/amd64, linux/arm64]
       sizes: {linux/amd64: 139444203, linux/arm64: 133135420}
     refplat_job:
-      # The reference platform's training job image (tests only; BUILD_PROMPT
-      # §7.18): Python's official image through the ECR Public mirror of
+      # The reference platform's training job image (tests only):
+      # Python's official image through the ECR Public mirror of
       # Docker's official images, because Docker Hub answered 429 on
       # 2026-10-14. Verified that day with the registry API (index digest of
       # the tag; the index lists linux/amd64 and linux/arm64); on 2026-10-15
       # Docker Hub's library/python served the same digest, and its tag
-      # 3.12-slim-trixie pointed to it (owner condition with the "commit" for
-      # 3d.6). Platform job images are pinned in their manifests, not here.
+      # 3.12-slim-trixie pointed to it. Platform job images are pinned in their
+      # manifests, not here.
       image: public.ecr.aws/docker/library/python
       tag: "3.12-slim-trixie"
       digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
       platforms: [linux/amd64, linux/arm64]
       sizes: {linux/amd64: 43259288, linux/arm64: 43533362}
-  # Images preloaded inside golden images (BUILD_PROMPT §7.13), never run by
+  # Images preloaded inside golden images, never run by
   # the lab itself. Verified on 2026-10-06 with the registry API (index digest
   # of the tag).
   target_images:
@@ -296,7 +296,7 @@ containers:
       tag: "1.30.5-alpine"
       digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
       platforms: [linux/amd64, linux/arm64]
-  # Base images of the CI fast lane (BUILD_PROMPT §19.9): one systemd container
+  # Base images of the CI fast lane: one systemd container
   # per family runs the provisioning play in check mode. Verified on
   # 2026-10-06 with the registry API (index digest of the tag). openSUSE Leap
   # rather than Tumbleweed, whose only Docker Hub tag is "latest".
@@ -333,7 +333,7 @@ containers:
       platforms: [linux/amd64]
 
 repository_keys:
-  # OpenPGP keys of the vendor package repositories (BUILD_PROMPT §7.2, §19.4).
+  # OpenPGP keys of the vendor package repositories.
   # Roles download a key from one of `urls`, check its primary key
   # fingerprint, and only then install it. Base URLs and package names live in
   # ansible/component-sources.yml.
@@ -384,9 +384,9 @@ repository_keys:
 
 packages:
   # Package versions per component and distribution release
-  # (`packages.<component>.<distro>-<release>`, BUILD_PROMPT §19.4). Rolling
+  # (`packages.<component>.<distro>-<release>`). Rolling
   # releases (openSUSE Tumbleweed, Arch Linux) are not pinned: their packages
-  # are held after installation and the installed versions are recorded (§19.5).
+  # are held after installation and the installed versions are recorded.
   # `el-9`/`el-10` cover RHEL, AlmaLinux, Rocky Linux and CentOS Stream.
   verified_on: 2026-10-05
   source: >-
@@ -463,7 +463,7 @@ packages:
     opensuse-leap-15.6: *nvidia_ctk_rpm
     opensuse-leap-16.0: *nvidia_ctk_rpm
   incus:
-    # Incus 6.0 LTS (BUILD_PROMPT §7.7). Ubuntu's own packages are 6.0.0
+    # Incus 6.0 LTS. Ubuntu's own packages are 6.0.0
     # (24.04: 6.0.0-1ubuntu0.3) or missing (22.04), so Debian and Ubuntu use the
     # Zabbly LTS repository (lts-6.0). Its versions: make lock-pins on
     # 2026-10-17, the newest in each release's index, whose InRelease carries
@@ -483,8 +483,8 @@ packages:
     opensuse-leap-15.6: "TODO(verify)"
     opensuse-leap-16.0: "TODO(verify)"
   nvidia_driver:
-    # Bare-metal and VM hosts with install_nvidia_driver: auto (BUILD_PROMPT
-    # §19.8). Branch 580 is the one that provides CUDA 13.0, which the pinned
+    # Bare-metal and VM hosts with install_nvidia_driver: auto.
+    # Branch 580 is the one that provides CUDA 13.0, which the pinned
     # vLLM image needs; Ubuntu's restricted pocket (-updates) read on
     # 2026-10-05. The other families are not reachable from the build environment.
     ubuntu-24.04: {nvidia-driver-580-open: "580.178.04-0ubuntu0.24.04.1"}
@@ -513,8 +513,8 @@ packages:
     opensuse-leap-16.0: "TODO(verify)"
 
 nvidia_driver_gpus:
-  # The GPUs each NVIDIA driver release pinned for automatic installs supports
-  # (BUILD_PROMPT §2.2, §10.1): with install_nvidia_driver: auto a driver is
+  # The GPUs each NVIDIA driver release pinned for automatic installs supports:
+  # with install_nvidia_driver: auto a driver is
   # installed only for the PCI device IDs of open_module, which NVIDIA states
   # are Turing or later (compute capability 7.5 and up); proprietary_only names
   # the GPUs the release supports only with its proprietary module, so
@@ -641,7 +641,7 @@ ansible_collections:
       size: 36002
 
 incus_base_images:
-  # Base images of the golden image pipeline (BUILD_PROMPT §7.13), pinned by
+  # Base images of the golden image pipeline, pinned by
   # fingerprint per architecture. The server keeps only its newest builds (a
   # few days): renew the pins with make lock-pins right before a new lab's
   # first golden image build; a lab that exported the base imports it from
@@ -662,7 +662,7 @@ incus_base_images:
         aarch64: "f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a"
 
 github_ssh_host_keys:
-  # Pinned in the managed known_hosts for SSH deploy keys (owner answer E3).
+  # Pinned in the managed known_hosts for SSH deploy keys (E3).
   # make lock-pins needs two agreeing sources (GitHub's meta API, its
   # documentation, ssh-keyscan); this build environment reaches only the
   # documentation, so the owner's run pins them.

@@ -29,7 +29,7 @@ production, or staging for QA environments (own vault, Tailscale tag and signing
 
 ### `staging_shared_hardware`
 
-Staging only: this staging host runs on production's hardware, so it starts only inside an open maintenance window with the GPU idle and its ports free (BUILD_PROMPT §7.20, pinka window open).
+Staging only: this staging host runs on production's hardware, so it starts only inside an open maintenance window with the GPU idle and its ports free (pinka window open).
 
 - Default: `false`
 
@@ -53,13 +53,13 @@ What this host runs: full (everything), lab (everything except vLLM) or inferenc
 
 ### `inference`
 
-The inference switch (BUILD_PROMPT §2.3): auto (vLLM, its images and the selected model where preflight detects gpu_inference on a full or inference node) or off (none of them is installed or counted in the requirements). An inference node needs auto.
+The inference switch: auto (vLLM, its images and the selected model where preflight detects gpu_inference on a full or inference node) or off (none of them is installed or counted in the requirements). An inference node needs auto.
 
 - Default: `auto`
 
 ### `training`
 
-The training switch (§2.3, §7.18), on a full node only: auto (training jobs where preflight detects gpu_training), cpu (also without a usable GPU: the jobs' CPU-only variant) or off (the GPU arbiter refuses every run, no job image is pulled, nothing is counted in the requirements).
+The training switch, on a full node only: auto (training jobs where preflight detects gpu_training), cpu (also without a usable GPU: the jobs' CPU-only variant) or off (the GPU arbiter refuses every run, no job image is pulled, nothing is counted in the requirements).
 
 - Default: `auto`
 
@@ -83,13 +83,13 @@ Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded in 
 
 ### `gpu_arbiter`
 
-The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default deployment) or idle; restore_after_training brings the deployment served before a training run back when the run ends, unless the submission says otherwise.
+The GPU arbiter: after_boot serve (the default deployment) or idle; restore_after_training brings the deployment served before a training run back when the run ends, unless the submission says otherwise.
 
 - Default: `{after_boot: serve, restore_after_training: true}`
 
 ### `training_caps`
 
-Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto computes the cap from the host (§2.3): MemTotal minus the recommended memory of the core stack and the targets, in whole GiB within 4 and 24 GiB (preflight records it in the host profile); a size such as 12G sets it.
+Infra's caps on training: a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto computes the cap from the host: MemTotal minus the recommended memory of the core stack and the targets, in whole GiB within 4 and 24 GiB (preflight records it in the host profile); a size such as 12G sets it.
 
 - Default:
 
@@ -106,7 +106,7 @@ Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
 
 ### `docs_release`
 
-The documentation release the docs service serves (BUILD_PROMPT §7.19): {url, sha256} of a release's documentation tarball (an https:// URL or an absolute path); null: no docs service.
+The documentation release the docs service serves: {url, sha256} of a release's documentation tarball (an https:// URL or an absolute path); null: no docs service.
 
 - Default: `null`
 
@@ -118,13 +118,13 @@ Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
 
 ### `tailscale_serve_consent`
 
-On a Tailscale node that existed before pinka (adopted, BUILD_PROMPT §7.4): the owner's consent to publish Grafana or the docs with tailscale serve.
+On a Tailscale node that existed before pinka (adopted): the owner's consent to publish Grafana or the docs with tailscale serve.
 
 - Default: `false`
 
 ### `pinka_tailscale_serve_allowed`
 
-Whether pinka may publish with tailscale serve at all: always on a node it joined, only with tailscale_serve_consent on an adopted node (§7.4).
+Whether pinka may publish with tailscale serve at all: always on a node it joined, only with tailscale_serve_consent on an adopted node.
 
 - Default:
 
@@ -141,19 +141,19 @@ Interfaces besides tailscale0 on which sshd accepts connections.
 
 ### `firewall_close_listeners`
 
-Shared host: pre-existing listeners to close, as protocol/port such as [tcp/8080] (BUILD_PROMPT §2.2, §7.5); every other one stays reachable as preflight found it. The installer's Remote access screen sets it.
+Shared host: pre-existing listeners to close, as protocol/port such as [tcp/8080]; every other one stays reachable as preflight found it. The installer's Remote access screen sets it.
 
 - Default: `[]`
 
 ### `firewall_close_install_path`
 
-Close the install's access path (for example SSH from the LAN) once SSH over the tailnet was verified for a researcher in the same run (§7.5); without both it stays open and doctor warns.
+Close the install's access path (for example SSH from the LAN) once SSH over the tailnet was verified for a researcher in the same run; without both it stays open and doctor warns.
 
 - Default: `false`
 
 ### `pinka_root`
 
-Root of the research space (BUILD_PROMPT §6.2).
+Root of the research space.
 
 - Default: `/srv/pinka`
 
@@ -177,7 +177,7 @@ Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
 
 ### `pinka_container_log_max_size`
 
-Size limit of one log file of the `local` log driver of every lab container (Docker's own default), set per container by the Compose projects and the GPU arbiter rather than in the Docker daemon (BUILD_PROMPT §7.6).
+Size limit of one log file of the `local` log driver of every lab container (Docker's own default), set per container by the Compose projects and the GPU arbiter rather than in the Docker daemon.
 
 - Default: `20m`
 
@@ -195,7 +195,7 @@ Let automatic security updates update the kernel on bare metal (held by default)
 
 ### `pinka_tailscale_tags`
 
-Tailscale tag of the host per lab_mode (owner answer E2).
+Tailscale tag of the host per lab_mode.
 
 - Default: `{production: 'tag:pinka-lab', staging: 'tag:pinka-qa'}`
 
@@ -208,17 +208,17 @@ Groups created by users_groups.
     ```yaml
     - {name: pinka, system: false, description: all researchers}
     - {name: pinka-admin, system: false, description: researchers with sudo}
-    - {name: pinka-restricted, system: true, description: "restricted data: only accounts of restricted-capable\
-        \ profiles (\xA712.4)"}
-    - {name: pinka-datasets, system: true, description: "published training datasets: no human\
-        \ members (\xA77.18)"}
-    - {name: pinka-query, system: true, description: "the telemetry query proxy: exactly the accounts\
-        \ of the profiles that query (\xA77.9)"}
+    - {name: pinka-restricted, system: true, description: 'restricted data: only accounts of restricted-capable
+        profiles'}
+    - {name: pinka-datasets, system: true, description: 'published training datasets: no human
+        members'}
+    - {name: pinka-query, system: true, description: 'the telemetry query proxy: exactly the accounts
+        of the profiles that query'}
     ```
 
 ### `researchers`
 
-Placeholders (owner answer E1). keys_file is relative to the repository root; key files are never committed (users/*.pub is excluded by .gitignore). Optional per researcher: display_name (Grafana) and grafana: false (no Grafana account). The installer TUI edits this list.
+Placeholders. keys_file is relative to the repository root; key files are never committed (users/*.pub is excluded by .gitignore). Optional per researcher: display_name (Grafana) and grafana: false (no Grafana account). The installer TUI edits this list.
 
 - Default:
 
@@ -242,7 +242,7 @@ Admins that are explicitly allowed into the docker group (logged loudly).
 
 ### `infra_accounts`
 
-Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5); pinka-inference runs the inference control endpoint of an inference node (§19.10) and holds its mutual-TLS key.
+Infra's own system accounts: no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox; pinka-inference runs the inference control endpoint of an inference node and holds its mutual-TLS key.
 
 - Default:
 
@@ -255,22 +255,22 @@ Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH 
       description: the inference control endpoint of an inference node
     - name: pinka-query-proxy
       groups: []
-      description: "the telemetry query proxy's container user (\xA77.9)"
+      description: the telemetry query proxy's container user
     - name: pinka-otelcol
       groups: []
-      description: "the gateway collector's container user (\xA77.9)"
+      description: the gateway collector's container user
     - name: pinka-prometheus
       groups: []
-      description: "Prometheus's container user (\xA77.9)"
+      description: Prometheus's container user
     - name: pinka-loki
       groups: []
-      description: "Loki's container user (\xA77.9)"
+      description: Loki's container user
     - name: pinka-tempo
       groups: []
-      description: "Tempo's container user (\xA77.9)"
+      description: Tempo's container user
     - name: pinka-grafana
       groups: []
-      description: "Grafana's container user (\xA77.9)"
+      description: Grafana's container user
     ```
 
 ### `inference_control_account`
@@ -281,13 +281,13 @@ The account of the inference control endpoint.
 
 ### `pinka_platform_uids`
 
-The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles (§6.1, §12.2). Their UIDs come from this range (ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use.
+The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles. Their UIDs come from this range (ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use.
 
 - Default: `{min: 60578, max: 61183}`
 
 ### `pinka_telemetry_clients`
 
-The only accounts that reach the telemetry stores directly (§7.9, ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b): infra's own clients, each by name. The telemetry guard resets every other account's connection to the stores' ports on the host loopback: researchers, Grafana, the platform's services and everyone else query through the read-only query proxy and send through the collector's OTLP receivers. The guard matches UIDs only, never groups.
+The only accounts that reach the telemetry stores directly (ADR-0016): infra's own clients, each by name. The telemetry guard resets every other account's connection to the stores' ports on the host loopback: researchers, Grafana, the platform's services and everyone else query through the read-only query proxy and send through the collector's OTLP receivers. The guard matches UIDs only, never groups.
 
 - Default:
 
@@ -313,7 +313,7 @@ The only accounts that reach the query proxy's loopback port: Grafana, whose dat
 
 ### `pinka_telemetry_guard_ports`
 
-The stores' ports the telemetry guard closes to every other account (§7.9): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the collector's metrics exporter. The collector's OTLP receivers stay open.
+The stores' ports the telemetry guard closes to every other account: Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the collector's metrics exporter. The collector's OTLP receivers stay open.
 
 - Default:
 
@@ -325,7 +325,7 @@ The stores' ports the telemetry guard closes to every other account (§7.9): Pro
 
 ### `pinka_inference_clients`
 
-Infra's own clients of the inference API on the host loopback (BUILD_PROMPT §7.11, ADR-0016), per node role: the inference guard adds the active platform's accounts whose profile reaches the API (controller, inference broker) and resets every other account's connection to vLLM, or to the inference forwarder of a lab node. UIDs only, never groups.
+Infra's own clients of the inference API on the host loopback (ADR-0016), per node role: the inference guard adds the active platform's accounts whose profile reaches the API (controller, inference broker) and resets every other account's connection to vLLM, or to the inference forwarder of a lab node. UIDs only, never groups.
 
 - Default:
 
@@ -353,7 +353,7 @@ Parent of the infra and platform account homes (/var/lib/pinka/&lt;account&gt;).
 
 ### `pinka_python`
 
-Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
+Pinned CPython installed by bootstrap.
 
 - Default: `/opt/pinka/python/bin/python3`
 
@@ -435,7 +435,7 @@ Host paths outside pinka_root (absolute).
 
 ### `pinka_default_ports`
 
-Default listener ports of the lab services (contracts.md#ports, BUILD_PROMPT §12.11). Override them per machine with `ports:`; read the effective values from pinka_ports.
+Default listener ports of the lab services (contracts.md#ports). Override them per machine with `ports:`; read the effective values from pinka_ports.
 
 - Default:
 
@@ -472,7 +472,7 @@ The preflight options of the machine's port overrides, VM collector address and 
 
 ### `pinka_internal_ports`
 
-Loopback ports of lab-internal listeners: exporters, the collectors' own metrics and health checks, Loki's and Tempo's internal servers. Not part of the contract; every observability container uses the host network and binds 127.0.0.1 (BUILD_PROMPT §7.9).
+Loopback ports of lab-internal listeners: exporters, the collectors' own metrics and health checks, Loki's and Tempo's internal servers. Not part of the contract; every observability container uses the host network and binds 127.0.0.1.
 
 - Default:
 
@@ -485,7 +485,7 @@ Loopback ports of lab-internal listeners: exporters, the collectors' own metrics
 
 ### `vm_collector_address`
 
-Address of the collector listener for VM targets (BUILD_PROMPT §12.11) on the dummy interface of pinka_vm_otlp. Preflight reports it when it is already assigned or routed on the host, or overlaps the Docker pools, an Incus network or the tailnet range; choose another one in host_vars.
+Address of the collector listener for VM targets on the dummy interface of pinka_vm_otlp. Preflight reports it when it is already assigned or routed on the host, or overlaps the Docker pools, an Incus network or the tailnet range; choose another one in host_vars.
 
 - Default: `198.18.0.1`
 
@@ -527,7 +527,7 @@ Extra known_hosts lines for SSH sources (GitHub's keys come from versions.lock.y
 
 ### `require_signed_tags`
 
-Deploy only tags carrying a valid SSH signature of an allowed signer (owner answer E16).
+Deploy only tags carrying a valid SSH signature of an allowed signer.
 
 - Default: `false`
 
@@ -539,7 +539,7 @@ Allowed signers for signed tags, ssh-keygen allowed_signers lines ("&lt;principa
 
 ### `inference_remote_node`
 
-Tailnet name of the paired inference node of a lab node (node_role: lab, BUILD_PROMPT §19.10); set when the nodes are paired.
+Tailnet name of the paired inference node of a lab node (node_role: lab); set when the nodes are paired.
 
 - Default: `''`
 
@@ -551,7 +551,7 @@ Tailnet name of the paired lab node of an inference node (node_role: inference),
 
 ### `qa_trusted_keys`
 
-QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of {name: &lt;file name without .pem&gt;, pem: &lt;PEM public key&gt;}.
+QA public keys trusted for attestations: a list of {name: &lt;file name without .pem&gt;, pem: &lt;PEM public key&gt;}.
 
 - Default: `[]`
 

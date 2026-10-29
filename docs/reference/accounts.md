@@ -19,9 +19,9 @@ Generated from `ansible/group_vars/all/main.yml` (BUILD_PROMPT §6.1); the direc
 | --- | --- | --- |
 | `pinka` | no | all researchers |
 | `pinka-admin` | no | researchers with sudo |
-| `pinka-restricted` | yes | restricted data: only accounts of restricted-capable profiles (§12.4) |
-| `pinka-datasets` | yes | published training datasets: no human members (§7.18) |
-| `pinka-query` | yes | the telemetry query proxy: exactly the accounts of the profiles that query (§7.9) |
+| `pinka-restricted` | yes | restricted data: only accounts of restricted-capable profiles |
+| `pinka-datasets` | yes | published training datasets: no human members |
+| `pinka-query` | yes | the telemetry query proxy: exactly the accounts of the profiles that query |
 
 ## Researchers
 
@@ -35,12 +35,12 @@ System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`
 | --- | --- | --- |
 | `pinka-build` | unprivileged platform builds | — |
 | `pinka-inference` | the inference control endpoint of an inference node | — |
-| `pinka-query-proxy` | the telemetry query proxy's container user (§7.9) | — |
-| `pinka-otelcol` | the gateway collector's container user (§7.9) | — |
-| `pinka-prometheus` | Prometheus's container user (§7.9) | — |
-| `pinka-loki` | Loki's container user (§7.9) | — |
-| `pinka-tempo` | Tempo's container user (§7.9) | — |
-| `pinka-grafana` | Grafana's container user (§7.9) | — |
+| `pinka-query-proxy` | the telemetry query proxy's container user | — |
+| `pinka-otelcol` | the gateway collector's container user | — |
+| `pinka-prometheus` | Prometheus's container user | — |
+| `pinka-loki` | Loki's container user | — |
+| `pinka-tempo` | Tempo's container user | — |
+| `pinka-grafana` | Grafana's container user | — |
 
 ## Platform accounts
 

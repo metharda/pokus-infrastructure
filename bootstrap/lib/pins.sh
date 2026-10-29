@@ -3,7 +3,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # shellcheck disable=SC2034 # read by tooling.sh
 
-readonly PINKA_LOCK_SHA256=9d712ff7a43b89d60a8317c7f8c8c46ee3c7f2c54052132fb654e7d524256b1f
+readonly PINKA_LOCK_SHA256=c1f77a1fe38e8a2a5eeebf226ed96d400dafacb994048f938dd37ad662419e2b
 readonly PINKA_UV_VERSION=0.12.23
 readonly PINKA_UV_URL_X86_64=https://github.com/astral-sh/uv/releases/download/0.12.23/uv-x86_64-unknown-linux-gnu.tar.gz
 readonly PINKA_UV_SHA256_X86_64=9167d72b3319674b6303c4cbe071854bba13ebdf3d76b1a7cbdc175471fb66d6

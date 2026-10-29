@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034 # run-time state is read by the traps in bootstrap.sh
 # Managed by pinka (bootstrap/lib/stages.sh). Local changes will be overwritten.
 #
-# The stages of bootstrap.sh (BUILD_PROMPT §5.2) and the decisions between
+# The stages of bootstrap.sh and the decisions between
 # them. A stage either returns normally or ends bootstrap with an exit code
 # from exitcodes.sh: deliberate failures call `fail CODE MESSAGE`, library
 # functions return their code and the ERR trap in bootstrap.sh passes it on.
@@ -21,7 +21,7 @@ readonly LOG_DIR=/var/log/pinka-bootstrap
 readonly LOCK_FILE=/run/lock/pinka-bootstrap.lock
 readonly PINKA_LAB=/usr/local/bin/pinka
 readonly SIGNAL_CODES=' 65 75 76 77 '
-# Uninstall (§5.4): its working files, outside pinka's paths that it removes,
+# Uninstall: its working files, outside pinka's paths that it removes,
 # and its reports, which it keeps.
 readonly UNINSTALL_DIR=/run/pinka-uninstall
 readonly UNINSTALL_REPORT_DIR=/var/log/pinka-uninstall
@@ -40,7 +40,7 @@ SIGNAL_CODE=''
 SIGNAL_MESSAGE=''
 FINAL_RC=0
 GRANTED_OVERRIDES=()
-# The one-time MOK password (approved deviation I1): memory only, never
+# The one-time MOK password: memory only, never
 # exported, logged or written; cleared once mokutil has it.
 MOK_PASSWORD=''
 
@@ -81,7 +81,7 @@ confirm() {
   [[ $answer == [yY] || $answer == [yY][eE][sS] ]]
 }
 
-# gate_check OUTCOME TIER NEEDS_ACTION PROFILE: apply BUILD_PROMPT §2.4 to a
+# gate_check OUTCOME TIER NEEDS_ACTION PROFILE: decide whether to continue on a
 # preflight result. NEEDS_ACTION is the profile's needs_action list as JSON.
 # Interactive consent is added to GRANTED_OVERRIDES. Returns 0 to continue,
 # otherwise the bootstrap exit code (the reason is logged).
@@ -146,7 +146,7 @@ except (OSError, ValueError, AttributeError):
 # profile_change_accepted STATE_FILE: true if the host profile may change
 # without --refresh-profile: the previous run ended with a bootstrap signal
 # (WSL restart, reboot or operator action requested by the play), so the
-# change is the expected result of that action (BUILD_PROMPT §5.2: re-runs
+# change is the expected result of that action (re-runs
 # after 75/76/77 resume cleanly).
 profile_change_accepted() {
   [[ -f $1 && $(state_result "$1") == signal ]]
@@ -213,8 +213,8 @@ read_mok_password_stdin() {
   fi
 }
 
-# require_mok_password PROFILE: when the profile plans the MOK enrollment
-# (approved deviation I1), make sure the one-time password is at hand before
+# require_mok_password PROFILE: when the profile plans the MOK enrollment,
+# make sure the one-time password is at hand before
 # the play installs the driver; EXIT_OPERATOR if it cannot be had.
 require_mok_password() {
   local planned
@@ -227,7 +227,7 @@ require_mok_password() {
 }
 
 # import_mok KEY: import the module signing key for enrollment at the next
-# boot (approved deviation I1). The one-time password reaches mokutil on its
+# boot. The one-time password reaches mokutil on its
 # standard input only, never on a command line or on disk. Returns 0 when the
 # key is imported (or in check mode), otherwise EXIT_OPERATOR with what to do.
 import_mok() {
@@ -254,8 +254,8 @@ import_mok() {
 }
 
 # schedule_reboot: after a reboot signal (76) with --allow-reboot, reboot in one
-# minute, so that bootstrap still writes its state file and exits with 76
-# (BUILD_PROMPT §3.2, §13.7). Never in check mode.
+# minute, so that bootstrap still writes its state file and exits with 76.
+# Never in check mode.
 schedule_reboot() {
   if "$OPT_CHECK"; then
     log_info "check mode: not rebooting"
@@ -269,7 +269,7 @@ schedule_reboot() {
 }
 
 # playbook_result RC SIGNAL_FILE: map an ansible-playbook exit status and the
-# bootstrap signal file to a bootstrap exit code (BUILD_PROMPT §5.2 step 9).
+# bootstrap signal file to a bootstrap exit code.
 # Sets SIGNAL_CODE and SIGNAL_MESSAGE for a valid signal.
 playbook_result() {
   local rc=$1 file=$2 text code key
@@ -347,7 +347,7 @@ result_name() {
   esac
 }
 
-# state_json RC FINISHED_AT: print /etc/pinka/bootstrap-state.json (BUILD_PROMPT §5.2 step 12).
+# state_json RC FINISHED_AT: print /etc/pinka/bootstrap-state.json.
 state_json() {
   local rc=$1 finished=$2 signal=null
   if [[ -n $SIGNAL_CODE ]]; then
@@ -433,7 +433,7 @@ EOF
 # Stages (called in order by bootstrap.sh)
 # ---------------------------------------------------------------------------
 
-# stage_root: bootstrap changes the host, so it needs root (§5.2 step 1).
+# stage_root: bootstrap changes the host, so it needs root.
 stage_root() {
   if [[ $(id -u) != 0 ]]; then
     log_error "bootstrap must run as root; re-run it with sudo:"
@@ -466,8 +466,8 @@ stage_logging() {
   log_info "bootstrap started; log: $LOG_FILE"
 }
 
-# stage_git: record the checkout or the release package (owner's choice in
-# 3d.8) and refuse a dirty tree (§5.2 step 1).
+# stage_git: record the checkout or the release package and refuse a dirty
+# tree.
 stage_git() {
   local rc=0
   enter_stage git
@@ -521,7 +521,7 @@ stage_git() {
   leave_stage
 }
 
-# stage_prepreflight: minimal sanity checks in POSIX sh (§5.2 step 2).
+# stage_prepreflight: minimal sanity checks in POSIX sh.
 stage_prepreflight() {
   local rc=0 mode=--non-interactive
   enter_stage prepreflight
@@ -535,7 +535,7 @@ stage_prepreflight() {
   leave_stage
 }
 
-# stage_tooling: pinned uv and CPython under /opt/pinka (§5.2 steps 2 and 4, §19.3).
+# stage_tooling: pinned uv and CPython under /opt/pinka.
 stage_tooling() {
   enter_stage tooling
   install -d -m 0755 "$PINKA_OPT"
@@ -555,7 +555,7 @@ answers_field() {
   sed -n "s/^$1=//p" <<<"$2"
 }
 
-# apply_answers: replay an answers file (§18.6): take the machine name, the
+# apply_answers: replay an answers file: take the machine name, the
 # mode and the snapshot from it, and write host_vars, the researchers, the
 # vault and the answers file before preflight runs.
 apply_answers() {
@@ -602,7 +602,7 @@ tui_bootstrap_args() {
   return 0
 }
 
-# run_tui: hand the terminal to the installer TUI (§5.3, §18). The lock is
+# run_tui: hand the terminal to the installer TUI. The lock is
 # released and the output no longer goes through the log writer: the TUI runs
 # bootstrap again, non-interactively, for the installation itself, and that
 # run writes its own log, state file and events. When the TUI ends, the
@@ -631,7 +631,7 @@ run_tui() {
 
 # finish_tooling_handoff FILE DIR: after the TUI ended, remove DIR (/opt/pinka)
 # when an uninstall the TUI ran left it (FILE names that uninstall's report),
-# and close the report's pending item (§5.4). False when DIR stays.
+# and close the report's pending item. False when DIR stays.
 finish_tooling_handoff() {
   [[ -f $1 ]] || return 0
   UNINSTALL_REPORT=$(head -n 1 -- "$1")
@@ -657,12 +657,12 @@ terminal_problem() {
   fi
 }
 
-# stage_frontend: the installer (§5.3, §18): replay an answers file, or hand
+# stage_frontend: the installer: replay an answers file, or hand
 # over to the TUI on a suitable terminal; otherwise continue without it.
 stage_frontend() {
   local problem
   enter_stage frontend
-  # Also without the TUI or answers: the installer writes the requirements plan (§2.3).
+  # Also without the TUI or answers: the installer writes the requirements plan.
   setup_venv "$INSTALLER_VENV" "$INFRA_DIR/installer/requirements.lock"
   if "$USE_TUI"; then
     problem=$(terminal_problem)
@@ -769,7 +769,7 @@ researcher_names() {
   ' "$1"
 }
 
-# write_plan FILE: the machine's requirements plan (§2.3), from host_vars,
+# write_plan FILE: the machine's requirements plan, from host_vars,
 # group_vars and models.lock.yml, for preflight --plan and the play's
 # preflight gate; doctor and pinka preflight read the stored copy.
 write_plan() {
@@ -779,8 +779,7 @@ write_plan() {
 
 # lab_preflight_args: the preflight options of the machine's port overrides,
 # VM collector address and pool device in host_vars, and of the configured
-# researchers (host_vars when it lists them, else group_vars), one per line
-# (§2.2, §7.7, §12.11).
+# researchers (host_vars when it lists them, else group_vars), one per line.
 lab_preflight_args() {
   local host_vars="$INFRA_DIR/ansible/inventory/host_vars/$OPT_MACHINE.yml" overrides entry address
   local source device names
@@ -807,7 +806,7 @@ lab_preflight_args() {
 }
 
 # stage_preflight: run preflight, apply the gate, check for a changed host
-# profile and store the profile (§2.4, §2.6, §5.2 step 3).
+# profile and store the profile.
 stage_preflight() {
   local rc=0 outcome tier needs_action changes mode lab
   local -a args=(--no-write --output "$RUN_DIR/host-profile.json" --repo-commit "$GIT_COMMIT")
@@ -868,7 +867,7 @@ stage_preflight() {
 }
 
 # stage_ansible_env: the hash-locked Ansible environment, the pinned
-# collections, and the versions.yml sync check (§5.2 steps 5-7).
+# collections, and the versions.yml sync check.
 stage_ansible_env() {
   enter_stage ansible-env
   setup_venv "$ANSIBLE_VENV" "$BOOTSTRAP_DIR/requirements.lock"
@@ -892,7 +891,7 @@ vault_args() {
   fi
 }
 
-# run_playbook PLAYBOOK: run one playbook and map its result (§5.2 steps 8-9).
+# run_playbook PLAYBOOK: run one playbook and map its result.
 run_playbook() {
   local playbook=$1 rc=0 vars=$RUN_DIR/extra-vars.json profile=$RUN_DIR/host-profile.json text
   local -a vault=() cmd=()
@@ -917,7 +916,7 @@ run_playbook() {
   playbook_result "$rc" "$SIGNAL_FILE" || exit "$?"
 }
 
-# stage_ansible: the provisioning play (§5.2 step 8).
+# stage_ansible: the provisioning play.
 stage_ansible() {
   enter_stage ansible
   run_playbook site.yml
@@ -926,7 +925,7 @@ stage_ansible() {
 
 # stage_inspect_platform: --inspect-platform runs only the platform role, which
 # fetches, stages and validates the release, prints its summary and ends the
-# play (§7.14 step 4). No bootstrap state is written: nothing was provisioned.
+# play. No bootstrap state is written: nothing was provisioned.
 stage_inspect_platform() {
   enter_stage inspect-platform
   STATE_ENABLED=false
@@ -936,14 +935,14 @@ stage_inspect_platform() {
   leave_stage
 }
 
-# stage_restore: restore.yml after provisioning (§5.2 step 10).
+# stage_restore: restore.yml after provisioning.
 stage_restore() {
   enter_stage restore
   run_playbook restore.yml
   leave_stage
 }
 
-# stage_doctor: run doctor and use its exit code (§5.2 step 11).
+# stage_doctor: run doctor and use its exit code.
 stage_doctor() {
   local rc=0
   enter_stage doctor
@@ -966,7 +965,7 @@ stage_doctor() {
 }
 
 # ---------------------------------------------------------------------------
-# Uninstall (§5.4): bootstrap.sh --uninstall
+# Uninstall: bootstrap.sh --uninstall
 # ---------------------------------------------------------------------------
 
 # Whether /opt/pinka existed when this run began: a dry run removes the
@@ -1061,7 +1060,7 @@ uninstall_confirmed() {
 # offer_backup PLAN PINKA: before anything is removed, take a backup with
 # 'pinka backup now' when the plan says one can be taken (a restic repository
 # is configured and pinka is installed), unless --skip-backup or the operator
-# declines (§5.4). Returns EXIT_UNINSTALL_REFUSED when the backup fails.
+# declines. Returns EXIT_UNINSTALL_REFUSED when the backup fails.
 offer_backup() {
   "$OPT_SKIP_BACKUP" && return 0
   [[ $(json_field "$1" backup) == true ]] || return 0
@@ -1101,7 +1100,7 @@ JSON
 # run_uninstall_play MODE DIR: run uninstall.yml in MODE (plan or apply)
 # with its working files in DIR. It runs without the group and host variables
 # (ANSIBLE_VARS_ENABLED empty), so it needs neither the machine's files nor
-# the vault (§5.4).
+# the vault.
 run_uninstall_play() {
   local rc=0 vars=$2/vars-$1.json
   local -a cmd=()
@@ -1131,7 +1130,7 @@ print(", ".join(f"{n} {name}" for name, n in sorted(counts.items())) or "nothing
 
 # report_notes REPORT: what the owner needs after the uninstall, one line
 # each: where the kept backups' key is, why to reboot, what to do afterwards,
-# taking the kept secrets off the host first (owner, D2 review).
+# taking the kept secrets off the host first.
 report_notes() {
   pinka_python -c '
 import json, sys
@@ -1148,7 +1147,7 @@ for step in report.get("follow_ups") or []:
 }
 
 # remove_tooling DIR: remove /opt/pinka last, after the play that ran from
-# it, and close the report's pending item with the result (§5.4).
+# it, and close the report's pending item with the result.
 remove_tooling() {
   local result=removed reason='removed last, after the play'
   if ! rm -rf -- "$1"; then
@@ -1193,8 +1192,8 @@ stage_uninstall_profile() {
 
 # uninstall_flow DIR REPORT_DIR STATE_FILE: compute and show the plan (in
 # DIR); with --dry-run stop there; then offer a backup, take the typed
-# confirmation, remove, remove /opt/pinka last and report in REPORT_DIR
-# (§5.4). Sets FINAL_RC; a refusal ends bootstrap with 80.
+# confirmation, remove, remove /opt/pinka last and report in REPORT_DIR.
+# Sets FINAL_RC; a refusal ends bootstrap with 80.
 uninstall_flow() {
   local dir=$1 plan=$1/plan.json refusal count summary notes line failed
   UNINSTALL_REPORT=$2/$(date -u +%Y%m%dT%H%M%SZ).json
@@ -1245,7 +1244,7 @@ uninstall_flow() {
   fi
 }
 
-# stage_uninstall: bootstrap.sh --uninstall after its tooling (§5.4).
+# stage_uninstall: bootstrap.sh --uninstall after its tooling.
 stage_uninstall() {
   enter_stage uninstall
   uninstall_flow "$UNINSTALL_DIR" "$UNINSTALL_REPORT_DIR" "$STATE_FILE"
