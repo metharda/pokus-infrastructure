@@ -61,7 +61,7 @@ def obs_vars(
     training: bool | None = None,
 ) -> dict[str, Any]:
     profile = fixture_profile("ubuntu2404-baremetal-nvidia-driver-loaded")
-    # The flags after the switches (§2.3): training on the GPU follows gpu
+    # The flags after the switches: training on the GPU follows gpu
     # unless a test sets it.
     features = {
         **profile["features"],
@@ -203,7 +203,7 @@ def test_grafana_datasources() -> None:
     config = rendered("grafana/provisioning/datasources/pinka.yaml")
     sources = {d["uid"]: d for d in config["datasources"]}
     assert set(sources) == {"prometheus", "loki", "tempo", "platform-postgres"}
-    # Through the query proxy's loopback port, never to the stores directly (§7.9).
+    # Through the query proxy's loopback port, never to the stores directly.
     for uid in ("prometheus", "loki", "tempo"):
         assert sources[uid]["url"] == f"http://127.0.0.1:18733/{uid}", uid
     postgres = sources["platform-postgres"]
@@ -242,7 +242,7 @@ def test_platform_dashboards_get_a_folder_of_the_platform() -> None:
 @pytest.mark.parametrize("path", DASHBOARDS, ids=lambda p: p.name)
 def test_dashboards_use_provisioned_datasources(path: Path) -> None:
     dashboard = json.loads(path.read_text(encoding="utf-8"))
-    # Infra's own dashboards; a platform's ship with its release (§7.9).
+    # Infra's own dashboards; a platform's ship with its release.
     assert dashboard["uid"] == f"pinka-{path.stem}"
     assert dashboard["description"].startswith(
         f"Managed by pinka (config/grafana/dashboards/{path.name})."
@@ -426,7 +426,7 @@ def test_stores_by_node_role() -> None:
 
 
 def test_the_stores_run_as_infra_accounts() -> None:
-    # ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b: the telemetry
+    # ADR-0016: the telemetry
     # guard names exactly infra's accounts, so no container that reaches the
     # stores or the query port runs as its image's default user (nobody,
     # 10001, 472); Grafana is a client of the query port only.
@@ -456,7 +456,7 @@ def test_the_stores_run_as_infra_accounts() -> None:
     assert '"472"' not in secrets and '"65534"' not in secrets
 
 
-# --- the agent OTLP socket and the query proxy (§7.9) ------------------------------------
+# --- the agent OTLP socket and the query proxy ------------------------------------
 
 
 def test_the_agent_socket_telemetry_is_stamped_untrusted() -> None:

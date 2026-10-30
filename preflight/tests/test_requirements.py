@@ -1,4 +1,4 @@
-"""The requirements computed from the choices (BUILD_PROMPT §2.3).
+"""The requirements computed from the choices.
 
 The numbers follow preflight/requirements.yml and the incus role's target
 profiles; the fixtures of fixture_defs.py sit just above and just below the
@@ -153,7 +153,7 @@ class MemoryTest(ComputeCase):
         self.assertFalse(self.compute(GPU, memory_gib=9.50, concurrent_targets=4).unsupported)
 
     def test_a_nominal_16_gib_machine_serves_the_model(self) -> None:
-        # 16 GiB machines report about 15.1-15.6 GiB (§2.2).
+        # 16 GiB machines report about 15.1-15.6 GiB.
         req = self.compute(GPU, memory_gib=15.1, model=MODEL)
         self.assertEqual(req.unsupported, [])
 
@@ -180,7 +180,7 @@ class MemoryTest(ComputeCase):
 
 
 class PoolTest(ComputeCase):
-    """incus_pool_size: auto (§2.3): the targets and golden images, limited by the free space."""
+    """incus_pool_size: auto: the targets and golden images, limited by the free space."""
 
     def pool(self, req: reqs.Requirements) -> tuple[float, bool]:
         item = next(i for m in req.disks for i in m.items if i.id == "pool")
@@ -254,7 +254,7 @@ class PoolTest(ComputeCase):
 
 
 class SwitchTest(ComputeCase):
-    """The inference and training switches (§2.3)."""
+    """The inference and training switches."""
 
     def items(self, req: reqs.Requirements) -> dict[str, MemoryItem]:
         return {i.id: i for i in req.memory_items}
@@ -314,13 +314,13 @@ class SwitchTest(ComputeCase):
 
 
 class TrainingCapTest(ComputeCase):
-    """training_caps.memory_max: auto follows the host (§2.3)."""
+    """training_caps.memory_max: auto follows the host."""
 
     def cap(self, memory: float, **plan: Any) -> float:
         return self.compute(GPU, memory_gib=memory, **plan).switches.memory_max_gib
 
     def test_nominal_16_and_32_gib(self) -> None:
-        # A nominal machine reports about 0.94 to 0.98 of it (§2.2).
+        # A nominal machine reports about 0.94 to 0.98 of it.
         for memory in (15.04, 15.1, 15.6):
             with self.subTest(memory=memory):
                 self.assertEqual(self.cap(memory), 4)  # 1.8-2.4 GiB left: the floor

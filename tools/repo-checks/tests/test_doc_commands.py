@@ -1,6 +1,6 @@
 """Every documented ``PYTHONPATH=... python -m <package>`` command starts.
 
-Found by the infra self-test (plan item 3e): the command of "How to test the
+The command of "How to test the
 distributions" lacked ``tools/lockcheck``, which the harness imports, the
 same gap the CI of e525a1e showed in the Makefile. Each documented command
 line runs here with ``--help`` and its own ``PYTHONPATH``.

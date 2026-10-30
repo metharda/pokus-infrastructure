@@ -1,4 +1,4 @@
-"""The reference platform (BUILD_PROMPT §7.18, §16 step 20) without a lab.
+"""The reference platform without a lab.
 
 The distribution tests deploy refplat on real systems (``tools/test-distros``).
 These tests prove what holds without one: the release passes validation, its

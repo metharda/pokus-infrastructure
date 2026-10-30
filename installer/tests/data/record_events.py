@@ -1,4 +1,4 @@
-"""Record the event streams the installer's runner tests replay (BUILD_PROMPT §18.9).
+"""Record the event streams the installer's runner tests replay.
 
 Run from the repository root with the development environment::
 
@@ -181,7 +181,7 @@ def record(name: str, scenario: str) -> None:
                 ],
             )
         else:
-            # signal75: WSL restart; signal76: Secure Boot MOK import and reboot (I1)
+            # signal75: WSL restart; signal76: Secure Boot MOK import and reboot
             code, provider, message = (
                 ("75", "wsl2", SIGNAL_MESSAGE)
                 if scenario == "signal75"

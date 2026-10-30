@@ -1,4 +1,4 @@
-"""refplat: the reference platform of Pokus Infrastructure's tests (BUILD_PROMPT §7.18).
+"""refplat: the reference platform of Pokus Infrastructure's tests.
 
 A platform written with the Python standard library only, deployed by infra's
 own deployment code like any other platform: the controller ``ctl``

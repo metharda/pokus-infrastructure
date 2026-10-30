@@ -815,7 +815,7 @@ def test_a_refused_artifact_from_galaxy_installs_nothing(
 def test_the_collection_artifacts_are_checked_by_lock_check(lock: dict[str, Any]) -> None:
     # make lock-check downloads every locked collection's artifact like the
     # binaries. Galaxy's artifact and its sha256 are the only pins: no
-    # GitHub-archive fallback is left (owner decision with the 3d.7 commit).
+    # GitHub-archive fallback is left.
     wheres = [where for where, _, _ in checks._binary_assets(lock)]
     section = lock["ansible_collections"]
     assert [w for w in wheres if w.startswith("ansible_collections.")] == [

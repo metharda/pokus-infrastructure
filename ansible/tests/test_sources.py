@@ -1,6 +1,6 @@
 """The component source matrix agrees with versions.lock.yml and the support matrix.
 
-BUILD_PROMPT §19.4: every ``vendor_repo`` entry references a repository
+Every ``vendor_repo`` entry references a repository
 definition whose key URL and fingerprint are in versions.lock.yml, and the lock
 pins packages per release for every fixed release the support matrix accepts.
 """

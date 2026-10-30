@@ -150,7 +150,7 @@ def test_gated_entries_get_the_token(tmp_path: Path) -> None:
 
 def test_no_model_lands_in_the_adapters_area(tmp_path: Path) -> None:
     # models/adapters/ belongs to the GPU arbiter, which alone registers
-    # adapters (BUILD_PROMPT §7.12, §7.18).
+    # adapters.
     with pytest.raises(fetch.FetchError, match="belongs to the GPU arbiter"):
         run_fetch(tmp_path, FakeHub(), entry(hf_repo="adapters/style"))
     assert not (tmp_path / "adapters").exists()
@@ -176,7 +176,7 @@ def test_lock_and_candidates() -> None:
     lock = load_yaml(INFRA / "models.lock.yml")
     assert lock == {"schema_version": 1, "models": []}
     candidates = load_yaml(INFRA / "models.catalog.yml")
-    assert candidates["status"] == "proposed"  # owner answer E7: not final without approval
+    assert candidates["status"] == "proposed"  # not final without approval
     permissive = {"apache-2.0", "mit"}
     assert 3 <= len(candidates["models"]) <= 5
     for model in candidates["models"]:

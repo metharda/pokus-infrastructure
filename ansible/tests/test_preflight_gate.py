@@ -1,4 +1,4 @@
-"""The preflight gate's facts after the plan's switches (BUILD_PROMPT §2.3, §2.6)."""
+"""The preflight gate's facts after the plan's switches."""
 
 from __future__ import annotations
 

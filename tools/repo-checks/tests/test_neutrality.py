@@ -1,4 +1,4 @@
-"""The neutrality lint (BUILD_PROMPT §11, §12): infra's code names no platform.
+"""The neutrality lint: infra's code names no platform.
 
 The forbidden names are built from the lint's own lists, so this file names
 none of them itself.

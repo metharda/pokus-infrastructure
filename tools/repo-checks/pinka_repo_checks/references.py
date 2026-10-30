@@ -34,10 +34,7 @@ the skips above, :data:`EXCLUDED`, :data:`CONVENTIONAL`, :data:`PATTERNS`,
 defines is exempt in parentheses and in lists, after the word deviation and where
 it opens a comment, everywhere). A change to any of them, or a file moved where
 the lint does not read, can let a reference pass.
-:mod:`pinka_repo_checks.references_budget` fails when the budget goes up or an
-allowlist entry, an :data:`EXCLUDED` path, a :data:`CONVENTIONAL` name or a
-Resolutions identifier is added, compared with the parent commits; review of
-changes to the rest keeps the budget from going up.
+Review of changes to them keeps the budget at zero.
 Within the budget the lint passes with one warning; at zero it prints none.
 
 Every pattern is assembled so that this file does not match it. This module

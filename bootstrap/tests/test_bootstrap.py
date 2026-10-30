@@ -1,4 +1,4 @@
-"""Tests for bootstrap.sh and its libraries (BUILD_PROMPT §5).
+"""Tests for bootstrap.sh and its libraries.
 
 Nothing here provisions anything. ``bootstrap.sh`` itself only runs as an
 unprivileged user (it stops at the root check), and ``main`` only runs with
@@ -374,7 +374,7 @@ def test_reboot_only_with_allow_reboot(
         assert "reboots in one minute" in res.stderr
 
 
-# --- Secure Boot: MOK password and import (approved deviation I1) ---------------------
+# --- Secure Boot: MOK password and import ---------------------
 
 
 def mok_run(
@@ -600,7 +600,7 @@ def test_state_json(tmp_path: Path) -> None:
     assert state["repo_commit"].startswith("0123")
     assert state["infra_dirty"] is True
     assert state["ref"] == "HEAD"
-    # pinka uninstall runs bootstrap from this checkout (BUILD_PROMPT §5.4).
+    # pinka uninstall runs bootstrap from this checkout.
     assert state["infra_dir"] == str(INFRA)
     assert state["tags"] == ["base", "ssh"]
     assert state["skip_tags"] == []
@@ -679,7 +679,7 @@ def test_vault_args(tmp_path: Path) -> None:
     assert lines[1:] == ["--ask-vault-pass", "no-password"]
 
 
-# --- installer front-end (BUILD_PROMPT §5.3, §18) -----------------------------------
+# --- installer front-end -----------------------------------
 
 
 FAKE_INSTALLER = """
@@ -730,7 +730,7 @@ def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
 
 
 def test_the_installer_is_set_up_without_answers_or_tui(tmp_path: Path) -> None:
-    # It writes the requirements plan of every run (BUILD_PROMPT §2.3).
+    # It writes the requirements plan of every run.
     code, out, calls = frontend(tmp_path, "OPT_ANSWERS=''; OPT_MACHINE=lab1")
     assert code == 0, out
     assert "venv /opt/pinka/installer-venv" in calls
@@ -1298,7 +1298,7 @@ def test_ref_matches_head(repo: Path) -> None:
     assert res.stdout.split() == ["tag", "head", "missing"]
 
 
-# --- running from a release package (owner's choice in 3d.8) ------------------------------
+# --- running from a release package ------------------------------
 
 
 def release_package(tmp_path: Path, repo: Path, tag: str | None = "v1.0.0") -> Path:
@@ -1551,7 +1551,7 @@ def test_bootstrap_sh_is_executable() -> None:
 
 
 def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
-    # BUILD_PROMPT §2.2: a host is dedicated when its login accounts are all
+    # A host is dedicated when its login accounts are all
     # researchers; bootstrap passes their names from group_vars, or from
     # host_vars when the machine lists its own.
     group_vars = tmp_path / "ansible" / "group_vars" / "all"
@@ -1583,7 +1583,7 @@ def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
 
 
 def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
-    # BUILD_PROMPT §2.2, §12.11: preflight checks the ports and the VM collector
+    # Preflight checks the ports and the VM collector
     # address the machine configures, not only the defaults.
     host_vars = tmp_path / "ansible" / "inventory" / "host_vars"
     host_vars.mkdir(parents=True)
@@ -1598,7 +1598,7 @@ def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
             "--port=grafana=18750\n--port=loki=18752\n"
         ),
         "vm_collector_address: 198.19.0.1\nports: {}\n": "--vm-collector-address=198.19.0.1\n",
-        # §7.7: the pool device is checked against LXD's storage, a loop file is not.
+        # The pool device is checked against LXD's storage, a loop file is not.
         "incus_pool_source: device\nincus_pool_device: /dev/disk/by-id/nvme-example\n": (
             "--pool-device=/dev/disk/by-id/nvme-example\n"
         ),
@@ -1618,7 +1618,7 @@ def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
     assert bash(script).stdout == ""
 
 
-# --- uninstall (BUILD_PROMPT §5.4) ----------------------------------------------
+# --- uninstall ----------------------------------------------
 
 
 def test_help_lists_the_uninstall_options() -> None:

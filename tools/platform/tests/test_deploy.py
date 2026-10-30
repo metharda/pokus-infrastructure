@@ -1,4 +1,4 @@
-"""Deployment (§7.14): prepare, build, pull, publish, activate, replace and purge."""
+"""Deployment: prepare, build, pull, publish, activate, replace and purge."""
 
 from __future__ import annotations
 
@@ -104,7 +104,6 @@ def pinned(repo: Path, **pins: str) -> deploy.Settings:
 def test_a_restore_deploys_exactly_the_recorded_commit_and_tree(
     repo: Path, paths: deploy.Paths
 ) -> None:
-    # Owner decision with the "commit" for 3d.4.
     plan = prepare(paths, pinned(repo))
     assert plan["release"]["commit"] == git(repo, "rev-parse", "HEAD")
     assert plan["release"]["tree"] == git(repo, "rev-parse", "HEAD:platform")
@@ -153,7 +152,7 @@ def inspected(paths: deploy.Paths, s: deploy.Settings) -> dict[str, Any]:
 
 
 def test_the_release_alone_tells_what_it_needs(repo: Path, paths: deploy.Paths) -> None:
-    # The installer knows nothing but the release source yet (§18.4 screen 12).
+    # The installer knows nothing but the release source yet.
     found = inspected(paths, settings(repo, content={}, platform_settings={"nope": {}}))
     data = manifest("allprof")
     assert found["platform"]["name"] == "allprof"
@@ -232,7 +231,7 @@ def test_jobs_over_the_hosts_training_caps_are_warnings(repo: Path, paths: deplo
         prepare(paths, settings(repo, lab={"training_caps": roomy}), inspect=True)["warnings"] == []
     )
     # Without caps (a host without the setting) nothing is compared, nor is
-    # memory_max auto, which preflight computes on the host (§2.3).
+    # memory_max auto, which preflight computes on the host.
     assert prepare(paths, settings(repo), inspect=True)["warnings"] == []
     auto = {"memory_max": "auto", "cpus": 8, "timeout_seconds": 86400}
     assert (
@@ -408,7 +407,7 @@ def test_publish_places_release_and_content(repo: Path, paths: deploy.Paths) -> 
     assert mode(restricted / "scenarios" / "s1.yml") == 0o640
     assert mode(restricted / "run.sh") == 0o750
     assert mode(paths.srv / "restricted" / "allprof") == 0o750
-    # Restricted content is only in the restricted area (§12.4).
+    # Restricted content is only in the restricted area.
     assert not list((paths.srv / "platforms").rglob("s1.yml"))
     guides = paths.content_dir(
         "allprof", "guides", restricted=False, name=plan["content"]["guides"]["name"]
@@ -606,7 +605,7 @@ def test_purge_removes_secrets_on_request(repo: Path, paths: deploy.Paths) -> No
     assert not any(path.exists() for path in planted)
     assert {str(p) for p in planted} <= set(result["removed"])
     assert result["remaining"]["secrets"] == []
-    # Published public keys are kept forever (§12.10).
+    # Published public keys are kept forever.
     assert result["remaining"]["published_signing_keys"]
     assert (paths.srv / "shared" / "signing-keys" / "allprof-lab-20260101.pub").exists()
 
@@ -804,7 +803,7 @@ def test_a_build_that_changes_the_release_is_refused(repo: Path, paths: deploy.P
 def test_special_files_and_setid_bits_from_the_build_are_refused(
     repo: Path, paths: deploy.Paths, monkeypatch: pytest.MonkeyPatch, kind: str, code: str
 ) -> None:
-    # Owner decision on 3d.2: none in the build output, .venv included.
+    # None in the build output, .venv included.
     plan = prepare(paths, uv_release(repo))
     monkeypatch.setattr(release, "_lstat", fake_devices(kind))
     with pytest.raises(deploy.Refused) as exc:

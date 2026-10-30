@@ -73,7 +73,7 @@ separate path; Grafana could also connect over an internal Docker network.
 ## Names in contract v2
 
 This record keeps the names of contract v1, under which it was decided. In
-contract v2 the service socket directory's group `potka-svc` is
-`<platform>-db`, and the roles `potka_reader` and `potka_grafana` are
+contract v2 the service socket directory's group, `potka-svc` in contract v1,
+is `<platform>-db`, and the roles `potka_reader` and `potka_grafana` are
 `<platform>_reader` and `<platform>_grafana`, named after the active platform
 ([integration contract](../contracts.md#postgresql)).

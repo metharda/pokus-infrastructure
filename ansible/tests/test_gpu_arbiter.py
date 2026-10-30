@@ -1,4 +1,4 @@
-"""The GPU arbiter (BUILD_PROMPT §7.18): rendering, modes, runs, datasets, adapters.
+"""The GPU arbiter: rendering, modes, runs, datasets, adapters.
 
 The state machine runs against a fake host: a fake Docker (the job's exit
 status and what it leaves in its output directory) and a fake vLLM (its
@@ -673,7 +673,7 @@ def test_training_only_on_a_full_node(tmp_path: Path) -> None:
 
 
 def test_training_switched_off(tmp_path: Path) -> None:
-    # BUILD_PROMPT §2.3: training: off, or auto without a usable GPU.
+    # training: off, or auto without a usable GPU.
     arbiter, _ = make(tmp_path, training=False)
     with pytest.raises(arb.ArbiterError, match="training is off on this host"):
         arbiter.train("tune", submission("0" * 64), CTL)
@@ -685,7 +685,7 @@ def test_training_switched_off(tmp_path: Path) -> None:
 def test_root_idles_when_inference_is_switched_off(
     lab: tuple[arb.Arbiter, FakeSystem], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # The play asks for idle where the host no longer serves (§2.3); a
+    # The play asks for idle where the host no longer serves; a
     # training run is left alone.
     arbiter, _ = lab
     assert arb.main(["idle", "--unless-training"], lambda: arbiter) == 0
@@ -775,7 +775,7 @@ def test_container_options_are_fixed_by_infra(lab: tuple[arb.Arbiter, FakeSystem
     assert value("--cpus") == ["2"]
     assert value("--pids-limit") == ["4096"]
     assert value("--device") == ["nvidia.com/gpu=all"]
-    # Per container, not from the Docker daemon (BUILD_PROMPT §7.6).
+    # Per container, not from the Docker daemon.
     assert value("--cgroup-parent") == ["pinka-services.slice"]
     assert value("--log-driver") == ["local"]
     assert value("--log-opt") == ["max-size=20m", "max-file=5"]
@@ -1462,7 +1462,7 @@ def test_admin_commands(
 
 def role_scope(**extra: Any) -> dict[str, Any]:
     role = ROLES / "gpu_arbiter"
-    # What preflight_gate sets from the host profile's switches (§2.3).
+    # What preflight_gate sets from the host profile's switches.
     gate = {
         "pinka_training": "gpu",
         "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},

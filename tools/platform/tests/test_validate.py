@@ -1,4 +1,4 @@
-"""Manifest schema and invariant tests: valid fixtures, one invalid case per rule (§11)."""
+"""Manifest schema and invariant tests: valid fixtures, one invalid case per rule."""
 
 from __future__ import annotations
 
@@ -202,7 +202,7 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
     ("service and job share a name", "refplat", _set("jobs.0.name", "ctl"), "duplicate-name"),
     ("duplicate content package", "allprof", _set("content.1.name", "cases"), "duplicate-name"),
     ("agent secrets", "refplat", _set("services.1.secrets", ["key"]), "secrets-forbidden"),
-    # V6: the agent's own package (owner decision with the "commit" for 3d.4).
+    # V6: the agent's own package.
     ("agent without its package", "refplat", _drop("services.1.package"), "agent-package-missing"),
     (
         "package of a service that is not the agent",
@@ -426,7 +426,7 @@ INVALID: list[tuple[str, str, Mutation, str]] = [
         ),
         "name-too-long",
     ),
-    # Owner decision on 3d.1: everything a manifest uses is declared in requires.
+    # Everything a manifest uses is declared in requires.
     (
         "inference broker without inference",
         FIRST_PLATFORM,
@@ -638,7 +638,7 @@ def test_release_and_content_paths_must_not_overlap_in_one_repository(
 def test_content_packages_must_not_overlap_each_other_in_one_repository(
     first: str, second: str, same_repo: bool, overlaps: bool
 ) -> None:
-    # Owner decision on 3d.1, an approved deviation: package against package too.
+    # Package against package too.
     repo = "https://git.example.com/example-org/content.git"
     problems = checks.check_sources(
         checks.SourceRef("https://git.example.com/example-org/platform.git", ""),

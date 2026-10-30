@@ -1,4 +1,4 @@
-"""Lab-wide data in group_vars/all/main.yml (BUILD_PROMPT §6, contracts.md)."""
+"""Lab-wide data in group_vars/all/main.yml (contracts.md)."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ ROOT_ONLY_SECRETS = {"pinka-restricted", "docker", "incus", "incus-admin"}
 
 
 def test_groups_and_accounts() -> None:
-    # BUILD_PROMPT §6.1: infra's groups; the platform's accounts and groups are
+    # Infra's groups; the platform's accounts and groups are
     # rendered from its manifest (platform role), never listed here.
     groups = {g["name"]: g["system"] for g in DATA["pinka_groups"]}
     assert groups == {
@@ -39,7 +39,7 @@ def test_researchers_are_placeholders() -> None:
 
 
 def test_layout_matches_the_spec() -> None:
-    # BUILD_PROMPT §6.2; state/<service>/ and users/<name>/ are created per service
+    # state/<service>/ and users/<name>/ are created per service
     # and per researcher.
     expected = {
         "": ("root", "pinka", "2775"),
@@ -69,7 +69,7 @@ def test_layout_matches_the_spec() -> None:
     system = {e["path"]: (e["owner"], e["group"], e["mode"]) for e in DATA["pinka_system_layout"]}
     assert system["/etc/pinka"] == ("root", "root", "0755")
     assert system["/etc/pinka/secrets"] == ("root", "root", "0711")
-    # Deployment (BUILD_PROMPT §6.2, §7.14): root-only mirrors, staging and records.
+    # Deployment: root-only mirrors, staging and records.
     assert system["/etc/pinka/platform"] == ("root", "root", "0755")
     for root_only in ("/var/lib/pinka/git", "/var/lib/pinka/staging", "/var/lib/pinka/platforms"):
         assert system[root_only] == ("root", "root", "0700"), root_only
@@ -77,8 +77,8 @@ def test_layout_matches_the_spec() -> None:
 
 
 def test_infra_accounts() -> None:
-    # BUILD_PROMPT §6.1: pinka-build runs platform builds; pinka-inference the
-    # inference control endpoint (§19.10). Neither belongs to a group.
+    # pinka-build runs platform builds; pinka-inference the
+    # inference control endpoint. Neither belongs to a group.
     assert DATA["infra_accounts"] == [
         {"name": "pinka-build", "groups": [], "description": "unprivileged platform builds"},
         {
@@ -86,13 +86,13 @@ def test_infra_accounts() -> None:
             "groups": [],
             "description": "the inference control endpoint of an inference node",
         },
-        # §7.9: the query proxy's container runs as this account's UID.
+        # The query proxy's container runs as this account's UID.
         {
             "name": "pinka-query-proxy",
             "groups": [],
             "description": "the telemetry query proxy's container user",
         },
-        # ADR-0016 (with the "commit" for 3d.4): every container that reaches
+        # ADR-0016: every container that reaches
         # the telemetry stores runs as an account of its own, never as its
         # image's default user, so the telemetry guard's allowlist names only
         # infra's accounts.
@@ -172,7 +172,7 @@ def _holds(that: list[str], **changes: Any) -> bool:
 
 
 def test_port_overrides_make_the_effective_ports() -> None:
-    # BUILD_PROMPT §12.11: overrides by name; endpoints.toml gets pinka_ports.
+    # Overrides by name; endpoints.toml gets pinka_ports.
     variables = ansible_vars(GROUP_VARS, ports={"grafana": 18750})
     effective = evaluate("pinka_ports", variables)
     assert effective["grafana"] == 18750
@@ -199,7 +199,7 @@ def test_vm_collector_address_is_checked() -> None:
 
 
 def test_the_preflight_arguments_carry_the_pool_device() -> None:
-    # BUILD_PROMPT §7.7: a dedicated pool device is checked against LXD's storage;
+    # A dedicated pool device is checked against LXD's storage;
     # bootstrap passes the same options (bootstrap/lib/stages.sh).
     device = "/dev/disk/by-id/nvme-example"
     args = evaluate("pinka_preflight_args", ansible_vars(GROUP_VARS, ports={"grafana": 18750}))

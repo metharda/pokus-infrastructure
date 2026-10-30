@@ -1,4 +1,4 @@
-"""Uninstall's data against the roles that create each item (BUILD_PROMPT §5.4).
+"""Uninstall's data against the roles that create each item.
 
 The module ``pinka_uninstall`` keeps pinka's names itself (it runs without
 the group variables); these tests keep them in step with what the roles,
@@ -137,7 +137,7 @@ def test_drop_in_reloads_are_known() -> None:
 
 
 def test_the_kept_copies_are_where_the_roles_write() -> None:
-    """Uninstall copies out what the backups and the kept records need (owner, D2 review)."""
+    """Uninstall copies out what the backups and the kept records need."""
     sources = {c["source"]: c for c in NAMES["kept_copies"]}
     backup = load_yaml(ROLES / "backup" / "vars" / "main.yml")
     always = {
@@ -190,7 +190,7 @@ def test_the_kept_copies_are_where_the_roles_write() -> None:
 
 
 def test_pinkas_containers_keep_their_data_below_the_research_space() -> None:
-    """Removing pinka's containers (docker rm --volumes) takes no data (owner, D2 review).
+    """Removing pinka's containers (docker rm --volumes) takes no data.
 
     Every store is a bind mount: below the research space, or a host path
     that is no data; no Compose project has a named volume.
@@ -303,7 +303,7 @@ def test_the_guard_stops_a_package_script_on_a_real_mount(tmp_path: Path) -> Non
     assert (root / "srv/pinka/after").read_text() == "writable again"
 
 
-# Boot-time state (owner, D2 review): where a file pinka writes takes effect at
+# Boot-time state: where a file pinka writes takes effect at
 # boot, and what uninstall runs after it removes or restores it there.
 BOOT_LOCATIONS = {
     "/etc/modprobe.d/": "initramfs",

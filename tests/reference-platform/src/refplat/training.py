@@ -1,4 +1,4 @@
-"""Datasets, training runs and lineage through infra's GPU arbiter (§7.18).
+"""Datasets, training runs and lineage through infra's GPU arbiter.
 
 The controller builds a dataset from the ``train``-split cases of its
 restricted content package, asks the arbiter to publish it, submits a job and

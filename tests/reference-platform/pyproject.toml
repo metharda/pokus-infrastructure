@@ -1,4 +1,4 @@
-# The reference platform (BUILD_PROMPT §7.18): standard library only. The build
+# The reference platform: standard library only. The build
 # backend is locked in the build group, so the offline build installs the
 # console scripts without network.
 [project]

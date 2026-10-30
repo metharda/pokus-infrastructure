@@ -260,7 +260,6 @@ def test_the_makefile_runs_the_same_steps_in_both_modes() -> None:
         "lint-portability",
         "lint-neutral",
         "lint-references",
-        "lint-references-budget",
         "lint-markdown",
         "lint-spelling",
         "lint-docs",

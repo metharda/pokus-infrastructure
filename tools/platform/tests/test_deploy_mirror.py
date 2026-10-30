@@ -1,4 +1,4 @@
-"""Mirrors, refs, signed tags and extraction (§7.14 steps 2-3; ported from contract v1)."""
+"""Mirrors, refs, signed tags and extraction (ported from contract v1)."""
 
 from __future__ import annotations
 
@@ -144,10 +144,7 @@ def test_verify_tag_needs_signers_and_a_signature(tmp_path: Path, bare: Path) ->
 
 
 def require_ssh_keygen() -> None:
-    """Skip without ssh-keygen locally; in CI (CI=true) it must be there.
-
-    Owner decision on 3d.2.
-    """
+    """Skip without ssh-keygen locally; in CI (CI=true) it must be there."""
     if shutil.which("ssh-keygen") is not None:
         return
     if os.environ.get("CI", "").lower() == "true":

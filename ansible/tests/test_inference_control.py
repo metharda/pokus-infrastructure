@@ -1,4 +1,4 @@
-"""The inference_control role and the inference control endpoint (BUILD_PROMPT §19.10).
+"""The inference_control role and the inference control endpoint.
 
 The endpoint runs here for real: mutual TLS 1.3 with certificates shaped like
 the role's (P-256, the tailnet name as subject alternative name, server and
@@ -52,7 +52,7 @@ def test_expected_peer_by_node_role() -> None:
 
 
 def test_the_private_key_is_root_only_on_a_lab_node() -> None:
-    # Owner decision with the "commit" for 3d.5: the lab node's forwarder runs
+    # The lab node's forwarder runs
     # as root; only an inference node's endpoint account reads the key.
     inference = scope(node_role="inference")
     assert evaluate("inference_control_key_group", inference) == "pinka-inference"
@@ -457,7 +457,7 @@ def test_units_carry_what_doctor_checks() -> None:
             assert f"{key}={value}" in lines, (key, text.splitlines()[2])
 
 
-# --- the inference forwarder of a lab node (§12.8) ---------------------------------------
+# --- the inference forwarder of a lab node ---------------------------------------
 
 FORWARDER_HOST = "127.0.0.3"
 

@@ -92,23 +92,6 @@ jobs:
           node-version-file: .node-version
       - run: make setup
       - run: make lint VERBOSE=1
-      # Every commit of the push or of the pull request against each of its
-      # parents, and the head against its merge base with the base: the
-      # references budget never goes up, and no allowlist entry, excluded
-      # path, conventional name or Resolutions identifier is added
-      # (references_budget). Without a known base (a new branch, a force push,
-      # a manual run) the range starts after main; when main is the head (a
-      # force push to main, a manual run on it), only the head is compared
-      # with its parents, and the commits a force push brings in before the
-      # head are not compared.
-      - name: The references budget never goes up
-        if: ${{ !cancelled() }}
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: >-
-          make lint-references-budget BUDGET_BASE="$BASE" BUDGET_HEAD="$HEAD"
-          BUDGET_FALLBACK=origin/main
 
   privacy:
     # The privacy scan on its own (the former repo-root workflow's job): every

@@ -1,4 +1,4 @@
-"""Complete installer flows driven with Textual's pilot (BUILD_PROMPT §18.9).
+"""Complete installer flows driven with Textual's pilot.
 
 Each flow starts the real application on a copy of the repository files, a
 fake host whose profile preflight produced from one of its fixtures, and a
@@ -480,7 +480,7 @@ KEPLER = "ubuntu2404-baremetal-nvidia-kepler-secureboot"
 
 
 def test_a_gpu_no_driver_is_installed_for(repo: Paths) -> None:
-    # BUILD_PROMPT §2.2: no MOK consent and no driver for a GPU the pinned driver's
+    # No MOK consent and no driver for a GPU the pinned driver's
     # open kernel module does not support, even with "Install the pinned driver".
     host = FakeHost(preflight(KEPLER), fixture=KEPLER)
     installer = app(context(repo, host, machine="pinka-lab"))
@@ -686,7 +686,7 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
 
 
 def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
-    # BUILD_PROMPT §7.4, §18.4 screen 7: name, tag and login read-only; serve needs consent.
+    # Name, tag and login read-only; serve needs consent.
     host = FakeHost(preflight("ubuntu2404-baremetal-tailscale-adopted"))
     installer = app(context(repo, host), first="remote")
     installer.ctx.wizard.profile = host.preflight([]).profile
@@ -713,7 +713,7 @@ def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
 
 
 def test_a_shared_host_closes_only_what_the_owner_ticks(repo: Paths) -> None:
-    # BUILD_PROMPT §7.5: a checkbox per pre-existing listener and the consent to
+    # A checkbox per pre-existing listener and the consent to
     # close the install's session, on a shared host installed over SSH from the LAN.
     host = FakeHost(preflight("ubuntu2404-access-shared", ["--researcher", "researcher1"]))
     installer = app(context(repo, host), first="remote")
@@ -1051,7 +1051,7 @@ REFPLAT_REPO = "file:///srv/git/refplat.git"
 
 
 def test_a_platform_release_is_inspected_reviewed_and_approved(repo: Paths) -> None:
-    # The reference platform's manifest (§18.9): the Platform screen inspects the
+    # The reference platform's manifest: the Platform screen inspects the
     # release alone, the review runs the deployment's checks and needs approval.
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
     runner = FakeRunner([("events-success.jsonl", 0)])
@@ -1159,7 +1159,7 @@ def test_a_changed_platform_answer_asks_for_a_new_review(repo: Paths) -> None:
 
 
 def test_the_active_platform_is_replaced_only_after_its_name_is_typed(repo: Paths) -> None:
-    # Owner decision with the "commit" for 3d.7: the TUI offers replacing the
+    # The TUI offers replacing the
     # active platform behind a confirmation that names it and asks for its
     # name, exactly like pinka platform purge; without the name nothing changes.
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), active_platform="oldplat")
@@ -1289,7 +1289,7 @@ class patched_environ:  # noqa: N801 - used like a function
 
 
 def test_uninstall_shows_the_plan_and_needs_the_machine_name(repo: Paths) -> None:
-    # BUILD_PROMPT §5.4, §18.4 screen 3: the dry run, the backup offer, the
+    # The dry run, the backup offer, the
     # typed confirmations, then the same command as bootstrap.sh --uninstall.
     installed(repo)
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")

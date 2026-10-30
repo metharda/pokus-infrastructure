@@ -1,4 +1,4 @@
-"""Installed documentation releases (BUILD_PROMPT §7.19)."""
+"""Installed documentation releases."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Definitions of the preflight fixture roots (BUILD_PROMPT §11).
+"""Definitions of the preflight fixture roots.
 
 Each fixture is a fake root (``etc/``, ``proc/``, ``sys/``, ``dev/`` ...) plus
 ``fixture.json`` (device and link metadata), ``commands.json`` (command,
@@ -585,7 +585,7 @@ def passwd(*accounts: tuple[str, int, str]) -> Layer:
 
 
 def ssh_session(client: str, server: str, port: int, uid: str) -> Layer:
-    """Preflight under sudo, started from an SSH login of ``uid`` (§2.2)."""
+    """Preflight under sudo, started from an SSH login of ``uid``."""
     connection = f"SSH_CONNECTION={client} 51234 {server} {port}".encode()
     return chain(
         process("self", "pinka-preflight", "session-3.scope", ppid="3100"),
@@ -619,7 +619,7 @@ def routed(network: str, dev: str = "eth0") -> Layer:
     return apply
 
 
-# ----------------------------------------------- pre-existing components (§2.2)
+# ----------------------------------------------- pre-existing components
 
 
 def docker_engine(
@@ -1013,7 +1013,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "features": {"gpu_inference": True, "vm_targets": True, "btrfs_pool": True},
         },
     )
-    # BUILD_PROMPT §2.2: a driver whose CUDA version is below the pinned vLLM
+    # A driver whose CUDA version is below the pinned vLLM
     # image's makes gpu_inference unavailable; WSL2 points to Windows.
     fx["ubuntu2404-wsl2-gpu-old-driver"] = build(
         *base_ubuntu,
@@ -1314,7 +1314,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "conflicts": [],
         },
     )
-    # BUILD_PROMPT §2.2, §12.11: a lab port taken by another program, and a VM
+    # A lab port taken by another program, and a VM
     # collector address another network already routes.
     fx["ubuntu2404-lab-port-in-use"] = build(
         *base_ubuntu,
@@ -1377,7 +1377,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("loaded"),
         expected={"outcome": "unsupported", "unsupported_contains": ["cgroup2_unified"]},
     )
-    # Memory thresholds (BUILD_PROMPT §2.3), each just below and just above
+    # Memory thresholds, each just below and just above
     # 0.94 times its nominal value. The numbers follow preflight/requirements.yml and
     # the incus role's profiles; test_requirements.py checks them.
     fx["ubuntu2404-low-memory"] = build(
@@ -1517,7 +1517,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "degraded_contains": ["vLLM serving example-model or a training job 10.7 GiB"],
         },
     )
-    # The switches (§2.3): a GPU host with inference and training off counts
+    # The switches: a GPU host with inference and training off counts
     # neither, and a host without a GPU is not degraded for features switched off.
     switched_off = {
         "inference": "off",
@@ -1584,7 +1584,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             ],
         },
     )
-    # incus_pool_size: auto (§2.3) on one file system: the golden images and two
+    # incus_pool_size: auto on one file system: the golden images and two
     # VM targets with their probe clients, + 50 %, is 66 GiB with 144 or 386 GiB
     # free; with 60 GiB free the space left after pinka's other needs (14.6 GiB
     # at install, 15.3 GiB of stores at their retention) sets the 30 GiB floor.
@@ -1602,7 +1602,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
                 "pool": {"size_gib": size, "basis": "computed"},
             },
         )
-    # BUILD_PROMPT §2.2, §7.4, §7.6, §7.7: components that existed before pinka
+    # Components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with
     # them unchanged.
     host = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("loaded")]
@@ -1632,7 +1632,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "notes_contain": ["pinka uses the node as it is"],
         },
     )
-    # BUILD_PROMPT §2.2 "Pre-existing access", §7.5, §11: what was reachable
+    # Pre-existing access: what was reachable
     # before the install, the access path of the session, dedicated or shared.
     lan_sshd = [
         sockets(("tcp", "00000000", 22, "50001"), ("tcp6", "0" * 32, 22, "50002")),

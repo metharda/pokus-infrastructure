@@ -50,7 +50,7 @@ def access_record(
     host: str = "",
     components: dict[str, bool] | None = None,
 ) -> str:
-    """An install record noting the access to the host before pinka (§7.5)."""
+    """An install record noting the access to the host before pinka."""
     access = {
         "host": host or ("shared" if listeners else "dedicated"),
         "firewall_manager": "none",
@@ -129,7 +129,7 @@ class PreflightTest(Base):
         self.assertEqual(sum(1 for c in system.calls if c[0].endswith("pinka-preflight")), 1)
 
     def test_the_stored_plan_is_used(self) -> None:
-        # BUILD_PROMPT §2.3: doctor computes the requirements of the configured choices.
+        # Doctor computes the requirements of the configured choices.
         plan = PREFLIGHT.replace(" --quiet", f" --plan {PLAN_PATH} --quiet")
         system = FakeSystem(
             {plan: (0, dict(PROFILE, outcome="supported"))},
@@ -476,7 +476,7 @@ class NetworkTest(Base):
         self.assertOutcome(
             run(checks.check_firewall, system, firewall__backend="ufw"), "fail", "not active"
         )
-        # The access guard (§7.5) on every backend.
+        # The access guard on every backend.
         for backend, commands in (
             ("ufw", {"ufw status": (0, "Status: active\n")}),
             ("firewalld", zones),
@@ -524,7 +524,7 @@ class NetworkTest(Base):
         self.assertOutcome(run(checks.check_tailscale, system), "fail", "Tailscale SSH is on")
 
     def test_an_adopted_node_is_compared_with_the_install_record(self) -> None:
-        # BUILD_PROMPT §7.4: a node logged in before pinka keeps its own name and tags.
+        # A node logged in before pinka keeps its own name and tags.
         mine = {
             "BackendState": "Running",
             "Self": {"HostName": "workstation", "Tags": [], "KeyExpiry": "2027-04-01T00:00:00Z"},
@@ -563,7 +563,7 @@ class NetworkTest(Base):
 
 class InstallRecordTest(Base):
     def test_install_record(self) -> None:
-        # BUILD_PROMPT §7.21: present, readable, and only root can change it.
+        # Present, readable, and only root can change it.
         good = FakeSystem(files={RECORD: install_record()})
         self.assertOutcome(run(checks.check_install_record, good), "pass", "first install")
         legacy = FakeSystem(files={RECORD: install_record(legacy=True)})
@@ -597,7 +597,7 @@ class GpuTest(Base):
         self.assertOutcome(run(checks.check_gpu, FakeSystem(), node_role="lab"), "skip")
 
     def test_docker_cdi(self) -> None:
-        # BUILD_PROMPT §7.6: CDI, Docker's default from 28.2.
+        # CDI, Docker's default from 28.2.
         on = FakeSystem({CDI_INFO: (0, '["/etc/cdi","/var/run/cdi"]\n')})
         self.assertOutcome(run(checks.check_docker_cdi, on), "pass", "/etc/cdi, /var/run/cdi")
         for answer in ("null\n", "[]\n"):
@@ -635,7 +635,7 @@ class GpuTest(Base):
         self.assertOutcome(run(checks.check_driver_cuda, FakeSystem(), node_role="lab"), "skip")
 
     def test_docs_service(self) -> None:
-        # §7.19: the service is checked only with a configured release.
+        # The service is checked only with a configured release.
         self.assertOutcome(run(checks.check_docs, FakeSystem()), "skip", "docs_release")
         docs = {
             "dir": "/usr/local/share/pinka/docs",
@@ -662,7 +662,7 @@ class GpuTest(Base):
 
 
 class DiskTest(Base):
-    """Free space per mount point and its trend (BUILD_PROMPT §9)."""
+    """Free space per mount point and its trend."""
 
     HISTORY = "/var/lib/pinka/doctor/disk-history.json"
     DF = "df --output=target,size,avail -B1 / /srv"
@@ -931,7 +931,7 @@ class LayoutAccountsTest(Base):
         self.assertIn("InaccessiblePaths lacks /srv/pinka/restricted", outcome.detail)
 
     def test_platform_hardening_comes_from_its_rendering(self) -> None:
-        # §7.17: per profile, from rendered.json, never from platform names.
+        # Per profile, from rendered.json, never from platform names.
         agent = {
             "unit": "demo-agt.service",
             "profile": "untrusted-agent",
@@ -1265,7 +1265,7 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(self.check(self.system()), "pass", "admits only infra's clients")
 
     def test_the_guard_admits_exactly_infras_clients(self) -> None:
-        # ADR-0016 as decided with the "commit" for 3d.4: an allowlist, no more.
+        # ADR-0016: an allowlist, no more.
         wider = self.system(guard=guard_json([0, 991, 992, 1000], [18701, 18702, 18703]))
         self.assertOutcome(self.check(wider), "fail", "telemetry_clients also admits UIDs 1000")
         narrower = self.system(guard=guard_json([0, 991], [18701, 18702, 18703]))
@@ -1293,7 +1293,7 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(self.check(loose), "fail", "query.sock is pinka 0666")
 
     def test_grafana_reaches_only_the_query_port(self) -> None:
-        # ADR-0016 as decided with the "commit" for 3d.4b: Grafana's data
+        # ADR-0016: Grafana's data
         # sources go through the query proxy, so Grafana is not a store client.
         on_the_stores = self.system(guard=guard_json([0, 991, 992, 995], [18701, 18702, 18703]))
         self.assertOutcome(
@@ -1711,7 +1711,7 @@ class CpusetTest(Base):
         self.assertOutcome(outcome, "pass")
 
 
-# --- the GPU arbiter, training and the inference guard (§7.11, §7.18) ---------------------
+# --- the GPU arbiter, training and the inference guard ---------------------
 
 STATE = "/var/lib/pinka/gpu/state.json"
 TRANSITIONS = "/var/lib/pinka/gpu/transitions.jsonl"
@@ -1962,7 +1962,7 @@ class TrainingRecordsTest(Base):
         for role in ("lab", "inference"):
             outcome = run(checks.check_training_availability, FakeSystem(), node_role=role)
             self.assertOutcome(outcome, "pass", f"unavailable on this host (node_role {role})")
-        # The training switch (§2.3): the doctor role writes whether the arbiter trains.
+        # The training switch: the doctor role writes whether the arbiter trains.
         outcome = run(checks.check_training_availability, FakeSystem(), gpu_arbiter__training=False)
         self.assertOutcome(outcome, "pass", "training is off on this host")
 

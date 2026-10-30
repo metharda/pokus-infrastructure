@@ -1,4 +1,4 @@
-"""Unit tests for the pre-existing access (BUILD_PROMPT §2.2, §7.5)."""
+"""Unit tests for the pre-existing access."""
 
 from __future__ import annotations
 

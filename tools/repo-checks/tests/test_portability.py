@@ -1,4 +1,4 @@
-"""Tests for the distribution-fact check (BUILD_PROMPT §19.1)."""
+"""Tests for the distribution-fact check."""
 
 from __future__ import annotations
 

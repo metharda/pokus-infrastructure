@@ -1,4 +1,4 @@
-"""Tests for the pinka_install_record module (BUILD_PROMPT §7.21).
+"""Tests for the pinka_install_record module.
 
 The module runs on the target's Python, which is 3.9 in the check-mode
 containers of the Red Hat family, so these tests are unittest-style and also
@@ -20,7 +20,7 @@ import pinka_install_record as mod
 DPKG = "bash\t5.2.21-2ubuntu4\ncurl\t8.5.0-2ubuntu10.6\n"
 ENABLED = "ssh.service enabled enabled\ndocker.service enabled enabled\n"
 MASKED = "sleep.target masked enabled\n"
-# The host profile's access (BUILD_PROMPT §2.2, §7.5).
+# The host profile's access.
 ACCESS = {
     "host": "shared",
     "firewall_manager": "none",
@@ -126,7 +126,7 @@ class InstallRecordTest(unittest.TestCase):
 
     def test_an_original_kept_before_the_record_is_recorded(self) -> None:
         # Pre-preflight edits /etc/wsl.conf before the record exists and keeps
-        # the original, or notes that there was none (BUILD_PROMPT §5.4).
+        # the original, or notes that there was none.
         conf = self.tmp / "wsl.conf"
         conf.write_text("[boot]\nsystemd=true\n")
         kept = self.tmp / "originals" / "wsl.conf"
@@ -191,7 +191,7 @@ class InstallRecordTest(unittest.TestCase):
         self.assertEqual(read["record"]["added"], added)
 
     def test_changed_settings_keep_their_first_value(self) -> None:
-        # Uninstall sets back what pinka changed (BUILD_PROMPT §5.4): the value
+        # Uninstall sets back what pinka changed: the value
         # before pinka's first change, never one pinka set itself.
         record_path = self.tmp / "r.json"
         mod.run_module(params(record_path), check_mode=False, run=fake_run())

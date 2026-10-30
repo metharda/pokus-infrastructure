@@ -1,4 +1,4 @@
-"""The published contract files: schema, profiles and reserved names (§12, §13)."""
+"""The published contract files: schema, profiles and reserved names."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def schema_nodes(node: Any) -> Iterator[Mapping[str, Any]]:
 
 
 def test_schema_uses_only_keywords_the_validator_implements() -> None:
-    # Owner decision on 3d.1: a schema change can never be silently ignored.
+    # A schema change can never be silently ignored.
     used = {key for node in schema_nodes(CONTRACT.schema) for key in node}
     assert used <= SUPPORTED, sorted(used - SUPPORTED)
     assert check_keywords(CONTRACT.schema) == []

@@ -126,7 +126,7 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(matrix._remediation(spec, {**facts, "nvidia_gpu_usable": False}), "")
 
     def test_compute_capability_minimum(self) -> None:
-        # V7 (owner decision with the "commit" for 3d.4): 7.5, the oldest the
+        # V7: 7.5, the oldest the
         # pinned vLLM image has kernels for.
         spec = self.m["features"]["gpu_inference"]
         (required,) = [

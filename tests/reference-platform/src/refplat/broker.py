@@ -1,4 +1,4 @@
-"""refplat's inference broker ``broker`` (profile ``inference-broker``, BUILD_PROMPT §7.18).
+"""refplat's inference broker ``broker`` (profile ``inference-broker``).
 
 The smallest service of its profile: it answers on the socket ``infer``
 (researchers and root, through ``refplat infer``) and asks the inference API

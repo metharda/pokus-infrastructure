@@ -1,4 +1,4 @@
-"""The platform role (BUILD_PROMPT §7.14, contract v2): its data, the socket ACL helper
+"""The platform role (contract v2): its data, the socket ACL helper
 and the tasks that apply what pinka-platform renders from the profiles."""
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def flat(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-# --- the socket ACL helper (§12.3) ------------------------------------------------------
+# --- the socket ACL helper ------------------------------------------------------
 
 
 class Setfacl:
@@ -188,7 +188,7 @@ def test_the_helper_records_each_outcome(
     assert fallback(rendered) is None
 
 
-# --- the tasks that apply the rendering (§7.14 step 7) --------------------------------
+# --- the tasks that apply the rendering --------------------------------
 
 
 def test_render_runs_between_retire_and_the_switch() -> None:
@@ -248,7 +248,7 @@ def test_render_applies_every_part_of_the_rendering() -> None:
     ]
 
 
-# --- the switch with the hooks (§7.14 step 8, §12.9) -----------------------------------
+# --- the switch with the hooks -----------------------------------
 
 
 def names_of(name: str) -> list[str]:

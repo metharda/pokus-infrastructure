@@ -1,4 +1,4 @@
-"""Rendering from the profiles (§7.14 step 7): golden files, units, accounts, isolation."""
+"""Rendering from the profiles: golden files, units, accounts, isolation."""
 
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def agent_unit(document: dict[str, Any]) -> dict[str, list[str]]:
     return unit(document, f"{names.account(p, agent['member'])}.service")
 
 
-# --- golden files (§11: units, sockets, ACLs, accounts, groups, SQL, Incus) ---------
+# --- golden files (units, sockets, ACLs, accounts, groups, SQL, Incus) ---------
 
 
 @pytest.mark.parametrize("fixture", VALID)
@@ -128,7 +128,7 @@ def test_rendered_json_drops_the_configuration_contents() -> None:
     assert json.loads(render("allprof")["config_files"][0]["content"]) == {"workers": 2}
 
 
-# --- systemd-analyze verify on every unit (§11) ---------------------------------------
+# --- systemd-analyze verify on every unit ---------------------------------------
 
 
 def fake_root(tmp: Path, document: dict[str, Any], data: dict[str, Any]) -> Path:
@@ -208,7 +208,7 @@ def test_systemd_analyze_verifies_every_unit(tmp_path: Path, fixture: str) -> No
     assert done.stderr == "", done.stderr
 
 
-# --- the hardening baseline (§7.14) -------------------------------------------------
+# --- the hardening baseline -------------------------------------------------
 
 
 @pytest.mark.parametrize("fixture", VALID)
@@ -367,7 +367,7 @@ def test_loopback_profiles_reach_only_localhost() -> None:
 
 def test_infra_internals_are_hidden() -> None:
     document = render("allprof")
-    for name in document["service_units"]:  # the agent included (§7.14)
+    for name in document["service_units"]:  # the agent included
         hidden = unit(document, name)["InaccessiblePaths"][0].split()
         for path in layout.INFRA_INTERNALS:
             assert f"-{path}" in hidden, (name, path)
@@ -412,7 +412,7 @@ def test_ordering_follows_after_and_the_facilities() -> None:
     assert brk["WantedBy"] == ["pinka-platform.target"]
 
 
-# --- sockets (§12.3) ------------------------------------------------------------------
+# --- sockets ------------------------------------------------------------------
 
 
 def test_socket_units_create_the_sockets_with_owner_group_and_mode() -> None:
@@ -448,7 +448,7 @@ def test_brk_api_acl_names_only_researchers() -> None:
     ]
 
 
-# --- the agent: no IP access, no database socket group (§16 step 17) ----------------
+# --- the agent: no IP access, no database socket group ----------------
 
 
 @pytest.mark.parametrize("fixture", VALID)
@@ -521,7 +521,7 @@ def test_the_agent_sees_only_its_allowlist(fixture: str) -> None:
 
 
 def agent_view(settings: dict[str, list[str]]) -> Callable[[str], bool]:
-    """Whether the agent's unit lets it see a path (§7.14, §12.2).
+    """Whether the agent's unit lets it see a path.
 
     The lab directories are empty, read-only file systems in its namespace
     except for what it binds; everywhere else, its inaccessible paths are
@@ -683,7 +683,7 @@ def test_enforce_refuses(profile: str, group: str, message: str) -> None:
         accounts.enforce(data, changed)
 
 
-# --- memberships from the profiles (§6.1, §12.2) -------------------------------------
+# --- memberships from the profiles -------------------------------------
 
 
 def test_memberships_follow_the_profiles() -> None:
@@ -877,7 +877,7 @@ def test_command_line_needs_an_absolute_executable() -> None:
         units.command_line(["bin/x"])
 
 
-# --- the database plan (§12.5) -------------------------------------------------------
+# --- the database plan -------------------------------------------------------
 
 
 def test_database_plan() -> None:
@@ -911,7 +911,7 @@ def test_database_plan() -> None:
 
 
 def test_the_gpu_arbiter_reads_jobs_and_dataset_sources() -> None:
-    # §7.18: the controller publishes datasets only from its own state; a
+    # The controller publishes datasets only from its own state; a
     # job's container options are infra's, so none is rendered.
     data = render("allprof")
     training = data["training"]
@@ -930,7 +930,7 @@ def test_the_gpu_arbiter_reads_jobs_and_dataset_sources() -> None:
 
 
 def test_only_the_inference_api_profiles_are_its_clients() -> None:
-    # §7.11: the inference guard admits the controller and the inference broker.
+    # The inference guard admits the controller and the inference broker.
     data = render("allprof")
     by_name = {a["name"]: a for a in data["accounts"]}
     profiles = {by_name[a]["profile"] for a in data["inference_clients"]}

@@ -1,4 +1,4 @@
-"""The TUI's pure parts: event replay, runner, suggestions and helpers (BUILD_PROMPT §18.9)."""
+"""The TUI's pure parts: event replay, runner, suggestions and helpers."""
 
 from __future__ import annotations
 

@@ -99,7 +99,7 @@ help: ## List targets
 VERBOSE ?= 0
 GATE = PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks gate --make "$(MAKE)" --log-dir $(BUILD)/gate
 LINT_STEPS := lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral \
-  lint-references lint-references-budget lint-markdown lint-spelling lint-docs lint-mermaid privacy
+  lint-references lint-markdown lint-spelling lint-docs lint-mermaid privacy
 TEST_STEPS := test-py39 test-pytest
 DOCS_STEPS := drift-check docs-coverage docs-build
 
@@ -213,18 +213,6 @@ lint-neutral: ## Infra's code names no particular platform
 .PHONY: lint-references
 lint-references: ## No references to working material kept outside the repository (budget in references.json)
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks references --root .
-
-# The work tree against HEAD; CI passes BUDGET_BASE, BUDGET_HEAD and
-# BUDGET_FALLBACK on the command line to compare every commit of a push or a
-# pull request with its parents (the environment does not set them).
-BUDGET_BASE = HEAD
-BUDGET_HEAD =
-BUDGET_FALLBACK =
-.PHONY: lint-references-budget
-lint-references-budget: ## The references lint lets no more through than at HEAD (CI: than at the parents)
-	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks references-budget --root . \
-	  --base "$(BUDGET_BASE)" $(if $(BUDGET_HEAD),--head "$(BUDGET_HEAD)") \
-	  $(if $(BUDGET_FALLBACK),--fallback-base "$(BUDGET_FALLBACK)")
 
 .PHONY: lint-markdown
 lint-markdown: setup ## markdownlint

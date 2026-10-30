@@ -228,7 +228,7 @@ def test_no_vms_without_vm_targets() -> None:
 def test_bench_memory_follows_the_concurrent_targets(
     targets: int, vm_targets: bool, memory: str
 ) -> None:
-    """The bench project holds the chosen targets, not a share of the host (§2.3)."""
+    """The bench project holds the chosen targets, not a share of the host."""
     facts = run_set_facts(
         ROLES / "incus" / "tasks" / "desired.yml",
         incus_vars(vm_targets=vm_targets, researchers=[], incus_concurrent_targets=targets),
@@ -279,7 +279,7 @@ def test_events_unit() -> None:
     ],
 )
 def test_docker_daemon_json(setting: str, mac: str, extra: set[str]) -> None:
-    # BUILD_PROMPT §7.6: only for a Docker pinka installed, and only what it
+    # Only for a Docker pinka installed, and only what it
     # needs; the log driver, cgroup parent and networks are in the Compose
     # projects, and CDI is Docker's default from 28.2 (setting "none").
     variables = role_vars("docker", docker_gpu_setting=setting, pinka_mac=mac)
@@ -359,7 +359,7 @@ def inner(value: str) -> str:
 def test_daemon_json_sets_the_gpu_only_below_cdis_default(
     version: str, gpu: bool, setting: str
 ) -> None:
-    # BUILD_PROMPT §7.6: Docker 28.2 and later enable CDI unless features.cdi is false.
+    # Docker 28.2 and later enable CDI unless features.cdi is false.
     spec = docker_task("Decide what the daemon configuration needs for the GPU", "install.yml")
     variables = role_vars(
         "docker",

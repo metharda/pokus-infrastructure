@@ -1,4 +1,4 @@
-"""A fake host and a fake bootstrap for the TUI tests (BUILD_PROMPT §18.9).
+"""A fake host and a fake bootstrap for the TUI tests.
 
 Host profiles are real: preflight runs read-only on its own synthetic fixtures
 (``preflight/tests/fixtures``). Bootstrap runs are recorded event streams

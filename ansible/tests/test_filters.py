@@ -348,7 +348,7 @@ def test_size_mib() -> None:
 
 
 def test_memberships_and_keys_of_pre_existing_accounts() -> None:
-    # BUILD_PROMPT §6.1, §7.21: pinka records what it adds to an account it did not create.
+    # pinka records what it adds to an account it did not create.
     researchers: list[dict[str, Any]] = [
         {"name": "researcher1", "admin": True},
         {"name": "researcher2", "admin": False},
@@ -401,7 +401,7 @@ def test_the_driver_is_installed_only_for_a_supported_gpu() -> None:
     assert not supports(packages, "", [])
 
 
-# --- pre-existing access (BUILD_PROMPT §2.2, §7.5) ----------------------------
+# --- pre-existing access ----------------------------
 
 ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
 ACCESS = {
@@ -574,7 +574,7 @@ def test_new_memberships_leave_out_the_members_already_there() -> None:
 
 
 def test_settings_before_are_the_values_pinka_changes() -> None:
-    # Uninstall sets these back (BUILD_PROMPT §5.4).
+    # Uninstall sets these back.
     lines = [
         "timezone=Europe/Example",
         "sysctl:net.ipv4.ip_forward=0",

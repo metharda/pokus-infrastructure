@@ -1,4 +1,4 @@
-"""Secure Boot MOK flow and the GPU guard of the Ansible side (approved deviation I1, §2.2).
+"""Secure Boot MOK flow and the GPU guard of the Ansible side.
 
 The expressions are taken from the task files themselves and evaluated with
 Ansible's templating, so the tests follow the code: the signal file names the

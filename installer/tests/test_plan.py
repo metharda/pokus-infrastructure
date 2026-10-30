@@ -1,4 +1,4 @@
-"""The requirements plan bootstrap passes to preflight (BUILD_PROMPT §2.3)."""
+"""The requirements plan bootstrap passes to preflight."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def test_settings_become_the_plan() -> None:
 
 
 def test_the_switches_and_the_computed_cap() -> None:
-    # BUILD_PROMPT §2.3: the switches, and memory_max auto (null: preflight computes it).
+    # The switches, and memory_max auto (null: preflight computes it).
     assert (DEFAULTS["inference"], DEFAULTS["training"]["mode"]) == ("auto", "auto")
     assert DEFAULTS["training"]["memory_max_gib"] is None
     found = make(inference="off", training="cpu", training_caps={"memory_max": "auto"})

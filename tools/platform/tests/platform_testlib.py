@@ -14,11 +14,11 @@ from pinka_platform import contract as contract_mod
 
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures" / "manifests"
-# The reference platform (§7.18): its real release, deployed by the
+# The reference platform: its real release, deployed by the
 # distribution tests, is also the manifest fixture "refplat".
 REFERENCE_PLATFORM = HERE.parents[2] / "tests" / "reference-platform"
 GOLDEN = HERE / "golden"
-# The Pokus Platform's manifest, as infra's tests keep it (§12.1).
+# The Pokus Platform's manifest, as infra's tests keep it.
 FIRST_PLATFORM = "pokus-platform"
 VALID = ("refplat", FIRST_PLATFORM, "allprof")
 # A python-uv release's pyproject.toml with its build backend locked in the

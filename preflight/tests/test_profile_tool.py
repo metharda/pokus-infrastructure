@@ -65,7 +65,7 @@ class ProfileToolTest(unittest.TestCase):
             self.assertIn(f"  - {item['feature']}: {item['impact']}", out)
 
     def test_consent_degraded_lists_the_memory_reason(self) -> None:
-        # BUILD_PROMPT §2.3: memory below the recommended value needs the same consent.
+        # Memory below the recommended value needs the same consent.
         path = self.profile("ubuntu2404-memory-below-recommended")
         code, out, _ = run_tool("consent", path, "degraded")
         self.assertEqual(code, 0)

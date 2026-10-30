@@ -1,6 +1,6 @@
 """No formatter or linter reaches the third-party and generated trees.
 
-Owner decision with the "commit" for 3d.3, after `ruff format` run on a wrong
+After `ruff format` run on a wrong
 path list reformatted the vendored lint collections: every tool names the
 trees of `pinka_repo_checks.trees` explicitly, and `make setup` verifies the
 collections against the lock and installs them again when they differ.
@@ -158,7 +158,7 @@ LOCKS = {
 
 @pytest.mark.parametrize(("target", "lock"), LOCKS.items())
 def test_a_lock_recompile_keeps_the_committed_pins(target: str, lock: str) -> None:
-    # Found by the infra self-test (3e): uv pip compile keeps the pins of the
+    # uv pip compile keeps the pins of the
     # file it writes. A lock compiled into build/ on a fresh clone started from
     # nothing and moved every transitive pin the change did not touch. The
     # compile's output must hold the committed lock (without its header) first.

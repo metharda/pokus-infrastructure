@@ -4,8 +4,8 @@ Templates are rendered like ``ansible.builtin.template`` with the variables
 the role sees. Where a validator exists it is used: ``nft -c`` (in a new,
 empty network namespace, so the check never touches the host's firewall),
 ShellCheck and ``sh -n`` for scripts, ``visudo -c`` for the sudoers drop-in;
-systemd units and INI-style files are parsed. Expected values come from
-BUILD_PROMPT §3.1 (wsl.conf), §7.2 (updates), §7.3 (sshd) and §7.5 (firewall).
+systemd units and INI-style files are parsed. Expected values cover
+wsl.conf, the updates, sshd and the firewall.
 """
 
 from __future__ import annotations
@@ -203,7 +203,7 @@ def test_nft_vm_listener_rule() -> None:
 
 
 def test_nft_ruleset_leaves_lxds_guests_their_dhcp_and_dns() -> None:
-    # BUILD_PROMPT §7.7: pinka's rules must not break an LXD that existed before
+    # pinka's rules must not break an LXD that existed before
     # pinka; its guests keep DHCP and DNS from LXD's dnsmasq, and pinka's
     # forward chain filters only run networks.
     def rules(networks: list[dict[str, Any]]) -> list[str]:
@@ -233,7 +233,7 @@ def test_nft_ruleset_options() -> None:
 
 
 ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
-# A shared host (BUILD_PROMPT §2.2): sshd and a web server reachable from the LAN,
+# A shared host: sshd and a web server reachable from the LAN,
 # a DHCP client the strict policy admits anyway, installed over SSH from the LAN.
 SHARED_ACCESS = {
     "host": "shared",
@@ -263,7 +263,7 @@ def access_rules(access: dict[str, Any], **extra: Any) -> list[str]:
 
 
 def test_a_shared_host_keeps_its_listeners_and_the_install_path() -> None:
-    # §7.5: every listener stays reachable as it was; the install's access path
+    # Every listener stays reachable as it was; the install's access path
     # stays open until the safeguard closes it.
     assert access_rules(SHARED_ACCESS) == [
         "tcp dport 22 accept",
@@ -288,7 +288,7 @@ def test_a_dedicated_host_keeps_only_the_install_path() -> None:
 
 
 def access_guard(**extra: Any) -> list[str]:
-    """The rules of the access guard (BUILD_PROMPT §7.5)."""
+    """The rules of the access guard."""
     variables = firewall_vars(pinka_preexisting={"access": SHARED_ACCESS}, **extra)
     text = render_template("firewall", "pinka-access-guard.nft.j2", variables)
     return [
@@ -603,7 +603,7 @@ def test_telemetry_guard_allows_only_infras_clients() -> None:
 
 
 def test_the_telemetry_clients_are_infras_own_accounts() -> None:
-    # ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b: an explicit
+    # ADR-0016: an explicit
     # allowlist of infra's accounts, without Grafana, whose data sources go
     # through the query proxy; no image's default user (nobody, 10001, 472),
     # which other host processes may share.
@@ -751,7 +751,7 @@ def test_telemetry_guard_per_account_class(tmp_path: Path) -> None:
         assert reached[str(query)] is (name in query_clients), name
 
 
-# --- the inference guard (§7.11, ADR-0016) ------------------------------------------
+# --- the inference guard (ADR-0016) ------------------------------------------
 
 INFERENCE_UIDS = {
     "root": 0,
@@ -842,7 +842,7 @@ def test_inference_guard_main_prints_the_ruleset(
 
 
 def test_inference_guard_per_account_class(tmp_path: Path) -> None:
-    # One connection per account class against the kernel's rules (§7.11):
+    # One connection per account class against the kernel's rules:
     # only the controller and the inference broker of the platform reach the
     # inference API, besides root and infra's scrapers; only root and the
     # controller reach the forwarder's control port of a lab node. A group,
@@ -1163,7 +1163,7 @@ def test_firewall_units() -> None:
     assert compat["Unit"]["After"] == "docker.service incus.service"
     assert compat["Service"]["ExecStart"] == "/usr/local/libexec/pinka/docker-incus-compat"
     # pinka's firewall tables: inet pinka_filter on the nftables backend, the
-    # access guard on every backend (BUILD_PROMPT §7.5).
+    # access guard on every backend.
     for backend, files, tables in (
         ("nftables", ["pinka.nft", "access-guard.nft"], ["pinka_filter", "pinka_access_guard"]),
         ("ufw", ["access-guard.nft"], ["pinka_access_guard"]),
@@ -1191,7 +1191,7 @@ def sshd_drop_in(**extra: Any) -> list[str]:
 
 
 def test_sshd_drop_in_on_a_shared_host_is_a_match_block() -> None:
-    # BUILD_PROMPT §7.3, approved deviation SSH1: on a shared host pinka's
+    # On a shared host pinka's
     # settings apply to group pinka only; every other account keeps the host's
     # own policy. The block ends with the file (sshd restores the including
     # file's Match state).
@@ -1205,7 +1205,7 @@ def test_sshd_drop_in_on_a_shared_host_is_a_match_block() -> None:
 def test_sshd_drop_in_on_a_dedicated_host() -> None:
     dedicated = {**SHARED_ACCESS, "host": "dedicated"}
     # Installed over SSH as an account that is not a researcher: it keeps the
-    # host's policy until the safeguard of §7.5 closes the install's path.
+    # host's policy until the safeguard closes the install's path.
     assert sshd_drop_in(pinka_preexisting={"access": dedicated})[0] == "Match Group pinka"
     closed = sshd_drop_in(
         pinka_preexisting={"access": dedicated}, pinka_closed_access=["install_path"]

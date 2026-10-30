@@ -1,4 +1,4 @@
-"""Role structure and conventions (BUILD_PROMPT §7, §14, §19.1).
+"""Role structure and conventions.
 
 Every role has a README, documented defaults, meta and argument specs; every
 managed file carries the managed header with its own path; family-specific
@@ -434,7 +434,7 @@ class CheckModeWalk:
 
 
 def test_site_roles_skip_in_check_mode_what_the_run_would_create() -> None:
-    """bootstrap.sh --check and the CI fast lane run site.yml on fresh hosts (§17, §19.9)."""
+    """bootstrap.sh --check and the CI fast lane run site.yml on fresh hosts."""
     walk = CheckModeWalk()
     for play in load_yaml(ANSIBLE / "site.yml"):
         walk.tasks("", ANSIBLE / "site.yml", play["tasks"], False)

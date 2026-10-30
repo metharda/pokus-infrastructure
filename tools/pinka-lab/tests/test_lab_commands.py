@@ -46,7 +46,7 @@ class LabTest(unittest.TestCase):
         )
 
     def test_preflight_takes_the_machines_options_and_plan(self) -> None:
-        # BUILD_PROMPT §2.3: the same run as doctor's, with the plan bootstrap stored.
+        # The same run as doctor's, with the plan bootstrap stored.
         command = "/usr/local/lib/pinka/preflight/pinka-preflight *"
         config = lab(preflight_args=["--port=grafana=18750"])
         stored = FakeSystem({command: (0, "{}")}, files={"/etc/pinka/plan.json": "{}"})
@@ -173,7 +173,7 @@ class LabTest(unittest.TestCase):
         self.assertEqual(out.splitlines()[0], "platform demo drained")
 
     def test_stop_asks_the_gpu_arbiter_for_idle_after_the_drain(self) -> None:
-        # §7.18: after the drain hook, before the targets stop.
+        # After the drain hook, before the targets stop.
         answers = [
             ({"ok": True, "mode": "idle"}, "the GPU is idle"),
             ({"ok": True, "mode": "idle", "run": "tune-1"}, "the GPU is idle; run tune-1 stopped"),
@@ -608,7 +608,7 @@ class WslUpdateTest(unittest.TestCase):
 
 class DocsTest(unittest.TestCase):
     BASE = "/usr/local/share/pinka/docs"
-    # §7.19: the service serves the release the current link names.
+    # The service serves the release the current link names.
     SITE = f"{BASE}/current"
 
     def test_serve_from_the_lab_description(self) -> None:
@@ -703,7 +703,7 @@ class PlatformPurgeTest(unittest.TestCase):
         self.assertIn("--remove-secrets", out)
 
     def test_purge_loads_the_inference_guard_again(self) -> None:
-        # Owner decision with the "commit" for 3d.5: no purged platform's UID
+        # No purged platform's UID
         # stays on the inference guard's allowlist.
         guard = {commands.INFERENCE_GUARD_UNIT_FILE: info("root", "root", 0o644)}
         system = FakeSystem(

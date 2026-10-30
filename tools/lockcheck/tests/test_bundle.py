@@ -423,7 +423,7 @@ def test_ci_builds_the_package_twice_from_galaxy_and_uploads_nothing() -> None:
 
 
 def test_no_tarball_and_no_release_directory_is_committed() -> None:
-    # Owner decision: the bundled artifacts live only in release packages.
+    # The bundled artifacts live only in release packages.
     tracked = subprocess.run(  # noqa: S603 - git with fixed arguments
         ["git", "-C", str(INFRA), "ls-files", "*.tar.gz", "*.tgz", "release"],  # noqa: S607
         capture_output=True,

@@ -1,6 +1,6 @@
 # Managed by pinka (tests/answers/ci.yml). Local changes will be overwritten.
 #
-# Installer answers for the distribution tests (BUILD_PROMPT §19.9, §18.6):
+# Installer answers for the distribution tests:
 # a staging lab without GPU, platform or golden images, with a loop file pool
 # and a local backup repository, so that one VM runs the whole
 # bootstrap. The harness copies it to installer-answers/<vm>.yml with the VM's
@@ -29,7 +29,7 @@ gpu:
   install_driver: skip
   default_model: none
 # No GPU in the VMs: no inference; the reference platform's training flow runs
-# its CPU-only job (BUILD_PROMPT §2.3, §7.18).
+# its CPU-only job.
 features:
   inference: "off"
   training: cpu

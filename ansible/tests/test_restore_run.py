@@ -1,4 +1,4 @@
-"""restore.yml runs without site.yml's preflight gate (BUILD_PROMPT §5.2 step 10, §7.15).
+"""restore.yml runs without site.yml's preflight gate.
 
 A real ansible-playbook run of restore.yml on its own, in check mode against
 localhost and limited to its always-tagged tasks, which change nothing: the

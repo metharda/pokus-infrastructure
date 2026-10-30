@@ -1,6 +1,6 @@
 """What every part of refplat shares: infra's paths and the socket protocol.
 
-The paths are the ones contract v2 gives every platform (§12.3, §12.4): the
+The paths are the ones contract v2 gives every platform: the
 endpoints and principals files, the state, config and secrets of a service,
 the restricted content and the arbiter's socket. Paths that hold the
 platform's name are built from the name ``endpoints.toml`` gives, so a copy
@@ -150,5 +150,5 @@ def request(path: Path, value: Mapping[str, Any], timeout: float = TIMEOUT) -> d
 
 
 def hook_output(value: Mapping[str, Any]) -> None:
-    """A hook's one JSON line on standard output (contract v2 §12.9)."""
+    """A hook's one JSON line on standard output (contract v2)."""
     print(json.dumps(value, sort_keys=True), flush=True)

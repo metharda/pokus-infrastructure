@@ -1,4 +1,4 @@
-"""The uninstall lane's snapshot of a host (BUILD_PROMPT §19.9).
+"""The uninstall lane's snapshot of a host.
 
 Before the install and after the uninstall, both right after a reboot (so
 the comparison is about what persists), the harness records in the VM: the
@@ -219,7 +219,7 @@ class Kept:
         return section == self.section and re.search(self.pattern, line) is not None
 
 
-# What uninstall leaves on purpose (BUILD_PROMPT §5.4).
+# What uninstall leaves on purpose.
 KEPT = (
     Kept("files", r"^/srv/pinka(/|$)", "the lab's data, kept without --purge-data"),
     Kept(

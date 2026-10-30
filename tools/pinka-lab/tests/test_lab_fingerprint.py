@@ -13,7 +13,7 @@ from labfakes import DIGEST, PROFILE, FakeSystem, lab
 from pinka_lab import fingerprint
 from pinka_preflight.schema_check import validate
 
-# The fingerprint's schema is published with the contract (BUILD_PROMPT §12.10).
+# The fingerprint's schema is published with the contract.
 SCHEMA_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
     "contract",

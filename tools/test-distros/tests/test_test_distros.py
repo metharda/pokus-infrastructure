@@ -133,7 +133,7 @@ def test_changed_tasks() -> None:
 # --- the pipeline ---------------------------------------------------------------------------------
 
 
-# The access guard as nft lists it on a ufw or firewalld lane (approved deviation AG1).
+# The access guard as nft lists it on a ufw or firewalld lane.
 GUARD = (
     "table inet pinka_access_guard {\n\tchain input {\n"
     '\t\tiifname != { "lo", "tailscale0" } ct state new tcp dport 8080 drop\n\t}\n}\n'
@@ -356,7 +356,7 @@ class FakeIncus:
         return (int(b[answers[script]]), "") if script in answers else None
 
     def access(self, script: str) -> tuple[int, str] | None:
-        """The access stage's commands (approved deviation AG1); None for any other."""
+        """The access stage's commands; None for any other."""
         b = self.behaviour
         if script == harness.LAN_ADDRESS:
             return 0, f"{b['address']}\n"
@@ -458,7 +458,7 @@ def make_test(
 
 
 def test_the_vm_bootstraps_from_the_release_package(tmp_path: Path) -> None:
-    # Owner decisions of 3d.7 and 3d.8: make test-distros checks the bundled
+    # make test-distros checks the bundled
     # collections by bootstrapping from a release package of the commit.
     test, fake = make_test(tmp_path, "debian-13")
     test.run()
@@ -774,7 +774,7 @@ def test_a_failed_launch_leaves_nothing_to_clean(tmp_path: Path) -> None:
     assert [c[1] for c in fake.calls] == ["launch"]
 
 
-# --- the uninstall lane (BUILD_PROMPT §19.9) ------------------------------------------------------
+# --- the uninstall lane ------------------------------------------------------
 
 
 def changed(**sections: list[str]) -> dict[str, list[str]]:
@@ -1213,7 +1213,7 @@ def test_check_mode_run(tmp_path: Path) -> None:
 
 
 def test_required_play_is_the_provider_agnostic_roles() -> None:
-    """BUILD_PROMPT §11: base, users_groups, ssh and layout, in check mode only."""
+    """The roles base, users_groups, ssh and layout, in check mode only."""
     plays = yaml.safe_load(checkmode.REQUIRED_PLAYBOOK.read_text())
     assert len(plays) == 1
     roles = [task["ansible.builtin.import_role"]["name"] for task in plays[0]["tasks"]]
@@ -1230,7 +1230,7 @@ FEDORA_PROFILE = {
 
 
 def test_check_mode_extended_skips_nothing_where_every_source_is_verified() -> None:
-    # make lock-pins after 3f verified Tailscale and Incus on the apt releases.
+    # make lock-pins verified Tailscale and Incus on the apt releases.
     assert checkmode.unverified_roles(PROFILE) == {}
     ubuntu = {**PROFILE, "os": {"id": "ubuntu", "version_id": "24.04", "codename": "noble"}}
     assert checkmode.unverified_roles(ubuntu) == {}
@@ -1415,9 +1415,9 @@ def _gib(size: str) -> float:
 
 
 def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) -> None:
-    # BUILD_PROMPT §2.3, §19.9: the VMs are sized to the requirement preflight
-    # computes for the CI answers, never below its minimums (owner decision
-    # after 3f: preflight's thresholds are never lowered for tests).
+    # The VMs are sized to the requirement preflight
+    # computes for the CI answers, never below its minimums
+    # (preflight's thresholds are never lowered for tests).
     matrix = yaml.safe_load((INFRA / "preflight" / "support-matrix.yml").read_text())
     data = requirements.load_requirements()
     ci = answers_mod.Answers.from_dict(yaml.safe_load((INFRA / "tests/answers/ci.yml").read_text()))

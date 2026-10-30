@@ -1,4 +1,4 @@
-"""The installer environment's pins (owner answer E11, BUILD_PROMPT §18.2)."""
+"""The installer environment's pins."""
 
 from __future__ import annotations
 

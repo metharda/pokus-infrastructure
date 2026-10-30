@@ -171,7 +171,7 @@ def schema(name: str) -> dict[str, Any]:
 
 
 # The kinds of entry a release and its build output must never contain, with
-# the problem code each one raises (owner decision on 3d.2).
+# the problem code each one raises.
 SPECIAL_CASES = {
     "chardev": "special-file",
     "blockdev": "special-file",

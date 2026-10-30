@@ -1,4 +1,4 @@
-# The reference platform (BUILD_PROMPT §7.18, the example of §12.1): the
+# The reference platform: the
 # controller ctl, the inference broker broker, the agent with its own package,
 # the toy training job tune and its CPU-only variant tunecpu (the same script,
 # jobs/tune.py, which the tests keep identical; the image is the lock's

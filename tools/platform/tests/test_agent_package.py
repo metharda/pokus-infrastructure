@@ -1,4 +1,4 @@
-"""The agent's own package and environment (V6, owner decision with the "commit" for 3d.4).
+"""The agent's own package and environment (V6).
 
 The lock tests read hand-written ``uv.lock`` files. The environment tests
 build a small workspace with uv, running exactly the uv commands of the
@@ -102,8 +102,8 @@ def test_a_dependency_from_the_release_or_another_source_is_refused(
 
 
 def test_a_transitive_dependency_on_the_release_is_refused(tmp_path: Path) -> None:
-    # The agent -> an index package -> the release's injector (owner: "directly
-    # or transitively").
+    # The agent -> an index package -> the release's injector (directly
+    # or transitively).
     agent_package(tmp_path)
     write_lock(
         tmp_path,
@@ -318,7 +318,7 @@ def test_the_forbidden_modules_cannot_be_imported_by_the_agent(built: Path, tmp_
 
 def test_uv_refuses_nothing_that_validation_must_refuse(uv: str, tmp_path: Path) -> None:
     # An agent package depending on the release's core: uv locks it happily,
-    # so the refusal must come from the validation (owner decision on V6).
+    # so the refusal must come from the validation (V6).
     release = make_workspace(tmp_path / "release", agent_members=["demo-core"])
     lock(release, uv, sys.executable, tmp_path / "cache")
     messages = [p.message for p in agentpkg.dependency_problems(release, AGENT_DIR, "x")]
@@ -329,7 +329,7 @@ def test_uv_refuses_nothing_that_validation_must_refuse(uv: str, tmp_path: Path)
     assert any(m.startswith("demo-agent -> sockio: ") for m in messages), messages
 
 
-# --- the CI rule for these tests (owner decision with the "commit" for 3d.4b) -----------
+# --- the CI rule for these tests -----------
 
 CI_PROBE = """
 import pytest

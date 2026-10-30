@@ -1,4 +1,4 @@
-"""Snapshots of every installer screen at 80x24 and 120x40, dark and light (BUILD_PROMPT §18.9).
+"""Snapshots of every installer screen at 80x24 and 120x40, dark and light.
 
 The screens show a WSL2 host with a GPU (preflight's own fixture) and a
 filled-in wizard, the Remote access screen also a shared host installed over
@@ -28,10 +28,9 @@ PASSWORD = "correct horse battery staple 42"  # noqa: S105 - test fixture
 SIZES = {"80x24": (80, 24), "120x40": (120, 40)}
 THEMES = {"dark": "textual-dark", "light": "textual-light"}
 # "replace": the Platform review of a release that would replace the active
-# platform, with the confirmation that asks for its name (owner decision with
-# the "commit" for 3d.7).
+# platform, with the confirmation that asks for its name.
 # "shared": the Remote access screen on a shared host installed over SSH from
-# the LAN (preflight's fixture), with what may close with consent (§7.5).
+# the LAN (preflight's fixture), with what may close with consent.
 SCREEN_NAMES = [*SCREENS, "signal", "replace", "shared"]
 
 

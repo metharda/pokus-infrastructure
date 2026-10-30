@@ -4,7 +4,7 @@ The tests never run a play: they check the data files, call the filter
 plugin's functions directly, and render role templates the way
 ``ansible.builtin.template`` does (trusted template text, backslashes kept,
 ``trim_blocks``), with variables loaded the way Ansible loads vars files.
-Host profiles come from the preflight fixtures (BUILD_PROMPT §11).
+Host profiles come from the preflight fixtures.
 """
 
 from __future__ import annotations

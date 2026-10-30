@@ -1,4 +1,4 @@
-"""The run-network helper (BUILD_PROMPT §7.7, §11) against a fake Incus.
+"""The run-network helper against a fake Incus.
 
 Create and delete with the fixed settings; refusal of another name, request,
 setting or peer; the operation log; reconcile removing an orphaned network;

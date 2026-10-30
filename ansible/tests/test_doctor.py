@@ -54,7 +54,7 @@ def variables(**facts: Any) -> dict[str, Any]:
         "pinka_dir": str(INFRA),
         "pinka_provider": "baremetal",
         "pinka_features": {"gpu_inference": True, "vm_targets": False},
-        # What preflight_gate sets from the host profile's switches (§2.3).
+        # What preflight_gate sets from the host profile's switches.
         "pinka_training": "gpu",
         "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},
         "pinka_firewall_backend": "nftables",
@@ -197,7 +197,7 @@ def test_node_roles(node_role: str, gpu: bool, expected: set[str]) -> None:
     assert expected <= set(data["containers"])
     if node_role == "inference":
         assert "pinka-postgres" not in data["containers"]
-        # Only the inference stack; telemetry goes to the paired lab node (§19.10).
+        # Only the inference stack; telemetry goes to the paired lab node.
         stores = {"pinka-prometheus", "pinka-loki", "pinka-tempo", "pinka-grafana"}
         assert not stores & set(data["containers"])
         assert data["observability"] == {}
@@ -248,7 +248,7 @@ def test_split_inference_pairing() -> None:
 
 
 def test_platform_checks_read_the_rendering() -> None:
-    # §7.17: the platform's units, sockets and hardening come from the profiles
+    # The platform's units, sockets and hardening come from the profiles
     # and the manifest through rendered.json, which doctor reads at run time;
     # the lab description carries no platform names.
     rendered = {"accounts": [{"name": "demo-ctl"}, {"name": "demo-agt"}], "service_units": []}
@@ -401,7 +401,7 @@ def test_firewall_check_knows_the_zones_of_the_firewall_role() -> None:
 
 
 def test_the_telemetry_guard_check_knows_both_sets() -> None:
-    # ADR-0016 as decided with the "commit" for 3d.4b: Grafana reaches only the
+    # ADR-0016: Grafana reaches only the
     # query proxy's loopback port, never the stores.
     from pinka_lab import checks  # noqa: PLC0415 - next to the role data it is compared with
 

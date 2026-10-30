@@ -1,4 +1,4 @@
-"""Every fixture root produces the expected decision (BUILD_PROMPT §11).
+"""Every fixture root produces the expected decision.
 
 Also checks that the committed fixture tree equals ``fixture_defs.py``, that
 every report validates against the host profile schema, and that the human
@@ -119,7 +119,7 @@ class FixtureTreeTest(unittest.TestCase):
             "ubuntu2404-cgroup-v1",
             "ubuntu2404-low-memory",
             "conflicting-signals",
-            # Pre-existing components (BUILD_PROMPT §2.2, §11).
+            # Pre-existing components.
             "ubuntu2404-baremetal-docker-preexisting",
             "ubuntu2404-baremetal-docker-cdi-off",
             "ubuntu2404-baremetal-tailscale-adopted",

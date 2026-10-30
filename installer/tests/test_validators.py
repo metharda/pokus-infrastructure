@@ -1,4 +1,4 @@
-"""Validation rules (BUILD_PROMPT §18.8)."""
+"""Validation rules."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def test_cap_sizes_and_secret_keys() -> None:
 
 
 def test_serve_on_an_adopted_node_needs_consent() -> None:
-    # BUILD_PROMPT §7.4: off by default on a node logged in before pinka.
+    # Off by default on a node logged in before pinka.
     assert validators.serve_consent(adopted=True, serve=True, consent=False)
     assert validators.serve_consent(adopted=True, serve=True, consent=True) is None
     assert validators.serve_consent(adopted=True, serve=False, consent=False) is None

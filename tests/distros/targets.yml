@@ -1,6 +1,6 @@
 # Managed by pinka (tests/distros/targets.yml). Local changes will be overwritten.
 #
-# Distribution tests of `make test-distros` (BUILD_PROMPT §19.9): one
+# Distribution tests of `make test-distros`: one
 # disposable Incus VM per entry. Every `supported` and `tested` release of
 # preflight/support-matrix.yml has an entry (a test checks it), plus the
 # firewall-backend and SELinux variants. `firewall` is the backend the harness
@@ -14,7 +14,7 @@
 schema_version: 1
 verify: "TODO(verify): VM image aliases on images.linuxcontainers.org (not reachable from the build environment)"
 # Every VM is sized to the requirement preflight computes for what it installs
-# (BUILD_PROMPT §2.3: tests/answers/ci.yml, no GPU, no golden images, a 30 GiB
+# (tests/answers/ci.yml, no GPU, no golden images, a 30 GiB
 # loop pool), never below preflight's minimums; a test computes it with the
 # installer's plan and preflight's requirements and keeps these in step:
 # 8 CPU threads (the matrix's cpu_threads); 10 GiB of memory, the required
@@ -30,7 +30,7 @@ defaults:
 targets:
   - {id: ubuntu-24.04, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables}
   - {id: ubuntu-24.04-ufw, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: ufw}
-  # The uninstall lane's variant (BUILD_PROMPT §19.9): Docker with a workload
+  # The uninstall lane's variant: Docker with a workload
   # and a logged-in Tailscale node exist before pinka; both stay as they were.
   - {id: ubuntu-24.04-preexisting, image: ubuntu/24.04/cloud, os: {id: ubuntu, version_id: "24.04"}, firewall: nftables, preexisting: [docker, tailscale]}
   - {id: debian-13, image: debian/13/cloud, os: {id: debian, version_id: "13"}, firewall: nftables}

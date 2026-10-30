@@ -276,7 +276,7 @@ NOON = 1767268800.0
 
 
 def test_window_rules_of_the_gate(tmp_path: Path) -> None:
-    # BUILD_PROMPT §7.20: production does not start while its record exists;
+    # Production does not start while its record exists;
     # staging on shared hardware only inside its open window.
     missing = tmp_path / "none.json"
     open_now = window_record(tmp_path, "2026-01-01T11:00:00Z", "2026-01-01T15:00:00Z")
@@ -435,7 +435,7 @@ def test_one_record_per_boot(tmp_path: Path) -> None:
 
 
 def test_records_follow_the_published_schema(tmp_path: Path) -> None:
-    # BUILD_PROMPT §7.16, §12.10: the schema in contract/records/ describes
+    # The schema in contract/records/ describes
     # every record, complete or with the nulls of a failed collection.
     schema = json.loads(
         (INFRA / "contract" / "records" / "session-record.schema.json").read_text(encoding="utf-8")

@@ -1,4 +1,4 @@
-"""Tests for the pinka_uninstall module (BUILD_PROMPT §5.4).
+"""Tests for the pinka_uninstall module.
 
 The module runs on the target's Python, which is 3.9 in the check-mode
 containers of the Red Hat family, so these tests are unittest-style and also
@@ -854,7 +854,7 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(results["pinka-core_default"]["result"], "already_gone")
 
 
-# Data a package script could delete, with the script that would (owner, D2 review).
+# Data a package script could delete, with the script that would.
 DATA = {
     "/var/lib/docker/volumes/owner-db/_data/PG_VERSION": "18\n",
     "/var/lib/containerd/io.containerd.content.v1.content/blob": "x",
@@ -1240,7 +1240,7 @@ class FollowUpTest(unittest.TestCase):
 
 
 class BootTimeTest(unittest.TestCase):
-    """What takes effect at boot comes back and is regenerated (owner, D2 review)."""
+    """What takes effect at boot comes back and is regenerated."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()

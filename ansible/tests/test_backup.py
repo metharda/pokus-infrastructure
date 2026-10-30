@@ -515,7 +515,7 @@ def test_restore_drains_first_and_starts_the_platform_last() -> None:
 
 
 def test_restore_checks_the_recorded_platform_before_it_changes_anything() -> None:
-    # Owner decision with the "commit" for 3d.4: a commit the mirror lost, a
+    # A commit the mirror lost, a
     # moved tag or another tree refuses the restore before the drain.
     plays = load_yaml(ANSIBLE / "restore.yml")
     top = [t["name"] for play in plays for t in play.get("tasks", [])]
@@ -535,8 +535,8 @@ def test_restore_checks_the_recorded_platform_before_it_changes_anything() -> No
 @pytest.mark.parametrize(
     ("release", "signed", "ref"),
     [
-        # Exactly the recorded commit and tree (owner decision with the "commit"
-        # for 3d.4); the recorded tag only where signed tags are required.
+        # Exactly the recorded commit and tree;
+        # the recorded tag only where signed tags are required.
         ({"tag": "v1.2.0", "commit": "a" * 40, "tree": "c" * 40}, False, "a" * 40),
         ({"tag": None, "commit": "a" * 40, "tree": "c" * 40}, False, "a" * 40),
         ({"tag": "v1.2.0", "commit": "a" * 40, "tree": "c" * 40}, True, "v1.2.0"),

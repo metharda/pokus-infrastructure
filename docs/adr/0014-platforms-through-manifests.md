@@ -192,5 +192,6 @@ group `potka-svc` has no counterpart (the database socket directory's group is
 are each socket's own client group, `<platform>-<service>-<socket>`; the v1
 agent runner is a service with the profile `untrusted-agent`; and
 `deploy_source` and `catalog`, infra's roles rather than names of the contract,
-are the `platform` role, which deploys a release and the content packages its
-manifest declares ([integration contract](../contracts.md)).
+are the `platform` role and `pinka-platform deploy`, which deploy a release and
+the content packages its manifest declares
+([integration contract](../contracts.md)).
