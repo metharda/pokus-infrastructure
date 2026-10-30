@@ -183,3 +183,14 @@ and why they are cut this way in
 [Privilege profiles and restricted data](../explanation/privilege-profiles.md),
 and replacing a platform in
 [How to replace or purge a platform](../how-to/replace-platform.md).
+
+## Names in contract v2
+
+This record keeps the names of contract v1. In contract v2 the shared service
+group `potka-svc` has no counterpart (the database socket directory's group is
+`<platform>-db`); the client groups `potka-exec-clients` and `potka-gw-clients`
+are each socket's own client group, `<platform>-<service>-<socket>`; the v1
+agent runner is a service with the profile `untrusted-agent`; and
+`deploy_source` and `catalog`, infra's roles rather than names of the contract,
+are the `platform` role, which deploys a release and the content packages its
+manifest declares ([integration contract](../contracts.md)).

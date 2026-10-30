@@ -666,7 +666,7 @@ def test_variant_preparation(tmp_path: Path) -> None:
 
 
 def test_the_access_stage_on_a_ufw_lane(tmp_path: Path) -> None:
-    # Approved deviation AG1: the owner's services listen and the owner's
+    # The owner's services listen and the owner's
     # firewall admits them before the install; the answers close tcp/8080.
     tried: list[tuple[str, int]] = []
 

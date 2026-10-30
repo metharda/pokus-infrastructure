@@ -69,3 +69,11 @@ separate path; Grafana could also connect over an internal Docker network.
 - **A separate cluster or proxy for the reader socket**, so that `pg_hba`
   could restrict that directory to `potka_reader`: more moving parts for a
   guarantee the password files already give.
+
+## Names in contract v2
+
+This record keeps the names of contract v1, under which it was decided. In
+contract v2 the service socket directory's group `potka-svc` is
+`<platform>-db`, and the roles `potka_reader` and `potka_grafana` are
+`<platform>_reader` and `<platform>_grafana`, named after the active platform
+([integration contract](../contracts.md#postgresql)).

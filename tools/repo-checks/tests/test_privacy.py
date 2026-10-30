@@ -293,7 +293,7 @@ def test_known_exceptions_are_allowed(repo: Path) -> None:
 
 
 def test_no_commit_is_a_known_exception_since_the_rewrite() -> None:
-    # The owner's one-time rewrite removed the only two trailers.
+    # A one-time rewrite of the history removed the only two trailers.
     assert not privacy.KNOWN_ATTRIBUTION_COMMITS
 
 

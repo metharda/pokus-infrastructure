@@ -168,7 +168,7 @@
           "description": "The pool disk by its /dev/disk/by-id path (source device)."
         },
         "device_confirm": {
-          "description": "Must equal device exactly; the pool disk is formatted only then (safety invariant 1).",
+          "description": "Must equal device exactly; the pool disk is formatted only then.",
           "type": "string"
         },
         "force_wipe": {

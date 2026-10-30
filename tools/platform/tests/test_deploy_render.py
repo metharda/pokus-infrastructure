@@ -1,4 +1,4 @@
-"""Deployment step 7 (§7.14): configuration, vault keys, render, principals, rendered.json."""
+"""Deployment: configuration, vault keys, render, principals, rendered.json."""
 
 from __future__ import annotations
 

@@ -314,7 +314,7 @@ def differences(
         after: The snapshot after the uninstall.
         platforms: The platform names deployed in the test.
         fixed: Packages of pre-existing components, whose version must not
-            change either (BUILD_PROMPT §13 invariant 24).
+            change either.
 
     Returns:
         ``(failing, kept)``: lines ``<section>: <difference>``; kept ones

@@ -371,7 +371,7 @@ class GpuTest(TempRootCase):
         self.assertIn("nvidia-smi did not report the CUDA version the driver supports", info.notes)
 
     def test_the_device_is_looked_up_in_the_pinned_driver_lists(self) -> None:
-        # Decision 1 after D1: auto installs a driver only for a GPU the pinned
+        # With auto, a driver is installed only for a GPU the pinned
         # release's open kernel module supports (versions.lock.yml nvidia_driver_gpus).
         self.put("/sys/bus/pci/devices/0000:01:00.0/vendor", "0x10de\n")
         self.put("/sys/bus/pci/devices/0000:01:00.0/class", "0x030000\n")

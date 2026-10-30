@@ -5,9 +5,11 @@ outside this repository. Its files stand on their own: no file, comment or test
 points to that material, cites its sections, or names the steps of its plans,
 its decision identifiers or who decided what. The lint scans every file git
 tracks or would track (untracked files that are not ignored included) for the
-patterns of :data:`PATTERNS` and reports every match that ``references.json``
-does not allow, each allowed match with its reason. An allowed entry covers a
-match only when the match lies inside the entry's text on the line.
+patterns of :data:`PATTERNS` and for the names of a specification that a line
+break splits (:data:`SPLIT`, found on the first line), and reports every match
+that ``references.json`` does not allow, each allowed match with its reason. An
+allowed entry covers a match only when the match lies inside the entry's text on
+the line.
 
 It reads the files git lists: the tracked ones (also those that match
 ``.gitignore``) and the untracked ones git does not ignore. Of these it skips
@@ -27,10 +29,11 @@ malformed ``references.json`` stop it with an error.
 While matches remain, their number must equal the budget in ``references.json``:
 more fails (a new reference), fewer fails until the budget is lowered to the
 count. Its configuration decides what it sees: the budget and the allowlist,
-the skips above, :data:`EXCLUDED`, :data:`CONVENTIONAL`, :data:`PATTERNS`, and
-the contract's Resolutions table (an identifier the table defines is exempt in
-parentheses and in lists everywhere). A change to any of them, or a file moved
-where the lint does not read, can let a reference pass.
+the skips above, :data:`EXCLUDED`, :data:`CONVENTIONAL`, :data:`PATTERNS`,
+:data:`SPLIT`, and the contract's Resolutions table (an identifier the table
+defines is exempt in parentheses and in lists, after the word deviation and where
+it opens a comment, everywhere). A change to any of them, or a file moved where
+the lint does not read, can let a reference pass.
 :mod:`pinka_repo_checks.references_budget` fails when the budget goes up or an
 allowlist entry, an :data:`EXCLUDED` path, a :data:`CONVENTIONAL` name or a
 Resolutions identifier is added, compared with the parent commits; review of
@@ -84,7 +87,14 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ),
     (
         "section-citation",
-        re.compile(SECTION_SIGN + r"+\s?(?:\d|[A-Z]\.\d)"),
+        re.compile(
+            SECTION_SIGN + r"+\s?(?:\d|[A-Z]\.\d)"
+            # The sign escaped as in JSON.
+            r"|\\u00[aA]7\s?(?:\d|[A-Z]\.\d)"
+            # A numbered invariant of a specification; the contract numbers none.
+            r"|\b(?i:safety\s+)?(?i:invariants?)"
+            r"\s+\d+"
+        ),
         "cites a section of a specification",
     ),
     (
@@ -103,7 +113,9 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
             r"|(?<![\w./-])spec"
             r"s/"
             r"|\b[\w-]+-"
-            r"(?:prompt|specification|spec)\.md\b",
+            r"(?:prompt|specification|spec)\.md\b"
+            r"|\bprivate"
+            r"\s+specifications?\b",
             re.IGNORECASE,
         ),
         "names a specification kept outside the repository",
@@ -123,18 +135,34 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
             r"|e(?:(?:\.\d+)+[a-z]?)?(?:-[a-z]{1,2})?(?![\w/+]|[.-]\w))"
             r"|\bsection"
             r"\s+J\b"
+            r"|\b(?i:deployment|implementation)"
+            r"\s+(?i:steps?)\s+\d"
+            r"|\b(?i:contract)"
+            r"\s+(?i:v)\d+\s+(?i:steps?)\b"
         ),
         "names a step of a plan",
     ),
     (
         "decision-id",
         re.compile(
-            r"\bapproved"
-            r"\s+deviations?\b"
-            r"|\bdeviations?"
-            r"\s+[A-Z]{1,3}\d+[a-z]?\b"
+            r"\b(?i:approved)"
+            r"\s+(?i:deviations?)\b"
+            # A deviation by its identifier, unless the contract's Resolutions
+            # table defines it (scan_line's resolutions).
+            r"|\b(?i:deviations?)"
+            r"\s+(?P<deviation>[A-Z]{1,3}\d+[a-z]?)\b"
             r"|\binterpretations?"
             r"\s+for\s+the\s+owner\b"
+            r"|\b(?i:interpretations?)"
+            r"\s+\d+\.\d+"
+            # A decision's number before what it was decided after or on.
+            r"|\b(?i:decisions?)"
+            r"\s+\d+(?=\s+(?i:after|on|before|with)\b)"
+            r"|\b(?i:proposed)"
+            r"\s+(?:AG|SSH|PL|TE|[ABDEHINPQV])\d{1,2}[a-z]?\b"
+            # An identifier that opens a comment, before a colon, unless the
+            # contract defines it (scan_line checks what comes before it).
+            r"|(?<![\w.$/-])(?P<lead>(?:AG|SSH|PL|TE|[ABDEHINPQV])\d{1,2}[a-z]?)(?=:(?:\s|$))"
             # An identifier in parentheses or a list in them, unless the
             # contract's Resolutions table defines it (scan_line's resolutions).
             r"|(?:(?<=\()|(?<=[,;] ))(?P<id>(?:AG|SSH|PL|TE|[ABDEHINPQV])\d{1,2}[a-z]?)(?=\s*[,;)])"
@@ -151,12 +179,22 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
         "attribution",
         re.compile(
             r"\bowner"
-            r"(?:'s)?\s+(?:decisions?|answers?|approvals?|items?|choices?)\b"
+            r"(?:'s)?\s+(?:decisions?|answers?|approvals?|items?|choices?|confirmations?"
+            r"|conditions?)\b"
             r"|(?<![\w.])\("
             r"owner(?:'s)?"
             r"(?=[,:;)]|\s*$|\s+(?:decisions?|answers?|rules?|conditions?|choices?|approvals?|items?)\b)"
             r"|\bthe\s+owner"
-            r"\s+(?:approved|decided|chose|asked|answered)\b"
+            r"\s+(?:approved|decided|chose|asked|answered|approves|decides|chooses|asks|answers"
+            r"|confirms)\b"
+            r"|\bthe\s+owner"
+            r"'s\s+(?:new\s+plan|plan|one-time\s+rewrite|rewrite|words)\b"
+            # Capitalised: it opens a comment or a sentence; a file's owner
+            # comes mid-sentence.
+            r"|\b(?-i:Owner),"
+            r"(?=\s+(?:with|after|before|on)\b)"
+            r"|\bnew\s+plan"
+            r"\s+after\b"
             r'|with\s+the\s+"commit'
             r'"\s+for',
             re.IGNORECASE,
@@ -170,6 +208,30 @@ PATTERNS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ),
 )
 _MOVED_STEMS = re.compile(_KEPT_FILES)
+# What an identifier that opens a comment follows: the opening of a comment
+# line (indentation, a comment marker, perhaps a list bullet), the quotes that
+# open a docstring, or code and a comment marker. Indentation alone does not
+# do: a YAML key, a list item or a paragraph opens a line the same way.
+_COMMENT_OPENING = re.compile(
+    r"^[ \t]*(?:#+|//+|--+|/?\*+|;+|<!--|\{#-?|\"\"\"|''')[ \t]*(?:[-*][ \t]+)?$"
+    r"|\S[ \t]+(?:#+|//|--|<!--|\{#-?)[ \t]*$"
+)
+# The two-word names of a specification that a line break can split: the
+# first word ends a line, the second opens the next one, after its comment
+# marker (scan_text). Each is the spec-name pattern's form on one line.
+_SPLIT_NAMES = (
+    ("build", "prompts?"),
+    ("docs?", "spec(?:ification)?s?"),
+    ("documentation", "specifications?"),
+    ("qa", "spec(?:ification)?s?"),
+)
+SPLIT: tuple[tuple[re.Pattern[str], re.Pattern[str]], ...] = tuple(
+    (
+        re.compile(r"\b(" + first + r")\s*$", re.IGNORECASE),
+        re.compile(r"\s*(?:#+|//|--|;+|\*|\{#|<!--)?\s*(" + second + r")\b", re.IGNORECASE),
+    )
+    for first, second in _SPLIT_NAMES
+)
 
 
 @dataclass(frozen=True)
@@ -262,9 +324,37 @@ def scan_line(
                 stem = match.group(1)
                 if stem in CONVENTIONAL or _MOVED_STEMS.fullmatch(stem):
                     continue
-            if name == "decision-id" and match.group("id") in resolutions:
-                continue
+            if name == "decision-id":
+                identifier = match.group("id") or match.group("deviation") or match.group("lead")
+                if identifier in resolutions:
+                    continue
+                if match.group("lead") and not _opens_comment(line[: match.start()]):
+                    continue
             yield name, match.group(0), match.start()
+
+
+def _opens_comment(before: str) -> bool:
+    """Tell whether what comes after ``before`` on a line opens a comment or a docstring."""
+    return _COMMENT_OPENING.search(before) is not None
+
+
+def split_names(line: str, following: str) -> Iterator[tuple[str, str, int]]:
+    """Find the names of a specification that a line break splits.
+
+    Args:
+        line: A line.
+        following: The line after it.
+
+    Yields:
+        ``("spec-name", the two words, column of the first word)`` for every
+        name whose first word ends ``line`` and whose second word opens
+        ``following``.
+    """
+    for first, second in SPLIT:
+        head = first.search(line)
+        tail = second.match(following) if head else None
+        if head and tail:
+            yield "spec-name", f"{head.group(1)} {tail.group(1)}", head.start(1)
 
 
 def scan_text(relative: str, text: str, resolutions: frozenset[str] = frozenset()) -> list[Finding]:
@@ -276,13 +366,17 @@ def scan_text(relative: str, text: str, resolutions: frozenset[str] = frozenset(
         resolutions: Identifiers the contract defines (:func:`resolution_ids`).
 
     Returns:
-        One finding per match.
+        One finding per match; a name split over two lines is found on the
+        first.
     """
-    return [
-        Finding(relative, number, name, matched, line, column)
-        for number, line in enumerate(text.removesuffix("\n").split("\n"), start=1)
-        for name, matched, column in scan_line(line, resolutions)
-    ]
+    lines = text.removesuffix("\n").split("\n")
+    findings: list[Finding] = []
+    for number, line in enumerate(lines, start=1):
+        found = list(scan_line(line, resolutions))
+        if number < len(lines):
+            found.extend(split_names(line, lines[number]))
+        findings.extend(Finding(relative, number, n, matched, line, c) for n, matched, c in found)
+    return findings
 
 
 def excluded(relative: str) -> str | None:

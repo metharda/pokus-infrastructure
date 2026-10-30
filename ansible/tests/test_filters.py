@@ -382,7 +382,7 @@ def test_subnets_of_the_docker_pool() -> None:
 
 
 def test_the_driver_is_installed_only_for_a_supported_gpu() -> None:
-    # Decision 1 after D1 (BUILD_PROMPT §2.2): the release's pinned driver must
+    # The release's pinned driver must
     # support the GPU with its open kernel module.
     packages = {
         "nvidia_driver": {

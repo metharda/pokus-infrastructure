@@ -99,10 +99,16 @@ def found(line: str, resolutions: frozenset[str] = frozenset()) -> list[tuple[st
         (_join("the deviation", " ", "AG1"), [("decision-id", _join("deviation", " ", "AG1"))]),
         (_join("scraped (", "E14)"), [("decision-id", "E14")]),
         (_join("(C5, ", "D3)"), [("decision-id", "D3")]),
-        (_join("Decision 1 after ", "D1:"), [("decision-id", _join("after ", "D1"))]),
+        (
+            _join("Decision", " 1 after ", "D1:"),
+            [("decision-id", _join("Decision", " 1")), ("decision-id", _join("after ", "D1"))],
+        ),
         (_join("an answer ", "E7 says"), [("decision-id", _join("answer ", "E7"))]),
         (_join("since the ", "D2", " review"), [("decision-id", _join("D2", " review"))]),
-        (_join("Decision 1 After ", "D1."), [("decision-id", _join("After ", "D1"))]),
+        (
+            _join("Decision", " 1 After ", "D1."),
+            [("decision-id", _join("Decision", " 1")), ("decision-id", _join("After ", "D1"))],
+        ),
         (_join("Answer ", "E7 said"), [("decision-id", _join("Answer ", "E7"))]),
         (
             _join("(", OWNER, ", after ", "D2)"),
@@ -121,6 +127,78 @@ def found(line: str, resolutions: frozenset[str] = frozenset()) -> list[tuple[st
         (_join("exporter (", OWNER), [("attribution", "(" + OWNER)]),
         (_join("the commit", " rule applies"), [("workflow-term", _join("commit", " rule"))]),
         (_join("the stop", " hook fires"), [("workflow-term", _join("stop", " hook"))]),
+        # A specification named as kept elsewhere.
+        (
+            _join("the private", " specification"),
+            [("spec-name", _join("private", " specification"))],
+        ),
+        # The section sign escaped as in JSON, in either case.
+        (_join("(\\u00", "a7", "2.3)"), [("section-citation", _join("\\u00", "a72"))]),
+        (_join("(\\u00", "A7 ", "A.6)"), [("section-citation", _join("\\u00", "A7 ", "A.6"))]),
+        # A numbered invariant of a specification.
+        (
+            _join("only under safety", " invariant", " 1 (exact"),
+            [("section-citation", _join("safety", " invariant", " 1"))],
+        ),
+        (_join("Invariants", " 21 and 22."), [("section-citation", _join("Invariants", " 21"))]),
+        # A numbered interpretation, and a decision's number before what it
+        # was decided after or on.
+        (
+            _join("ports (interpretation", " 11.13)"),
+            [("decision-id", _join("interpretation", " 11.13"))],
+        ),
+        (
+            _join("Interpretation", " 11.13 against"),
+            [("decision-id", _join("Interpretation", " 11.13"))],
+        ),
+        (
+            _join("decision", " 3 on ", "3", "f-1:"),
+            [("decision-id", _join("decision", " 3")), ("plan-id", _join("3", "f-1"))],
+        ),
+        # An identifier proposed, a deviation in any case, an identifier that
+        # opens a comment.
+        (_join("(proposed", " V3)"), [("decision-id", _join("proposed", " V3"))]),
+        (_join("Deviation", " AG1 holds"), [("decision-id", _join("Deviation", " AG1"))]),
+        (
+            _join("# Approved", " deviation St2-3."),
+            [("decision-id", _join("Approved", " deviation"))],
+        ),
+        (_join("    # ", "Q7", ": exactly two"), [("decision-id", _join("Q", "7"))]),
+        (_join('"""', "V5", ": the"), [("decision-id", _join("V", "5"))]),
+        (_join("x = 1  # ", "V5", ": the"), [("decision-id", _join("V", "5"))]),
+        (_join("// ", "V5", ": the"), [("decision-id", _join("V", "5"))]),
+        (_join("-- ", "Q7", ":"), [("decision-id", _join("Q", "7"))]),
+        # Who decided, in the forms beside the parenthesised ones.
+        (
+            _join("the ", OWNER, "'s condition for"),
+            [("attribution", _join(OWNER, "'s condition"))],
+        ),
+        (_join("an ", OWNER, " confirmation"), [("attribution", _join(OWNER, " confirmation"))]),
+        (
+            _join("until the ", OWNER, " approves it"),
+            [("attribution", _join("the ", OWNER, " approves"))],
+        ),
+        (
+            _join("The ", OWNER, "'s one-time", " rewrite"),
+            [("attribution", _join("The ", OWNER, "'s one-time", " rewrite"))],
+        ),
+        (
+            _join("with the ", OWNER, "'s new", " plan"),
+            [("attribution", _join("the ", OWNER, "'s new", " plan"))],
+        ),
+        (
+            _join("# Own", "er, with the new", " plan after x"),
+            [("attribution", _join("Own", "er,")), ("attribution", _join("new", " plan after"))],
+        ),
+        (
+            _join("# Own", "er, ", COMMIT_FOR, " x"),
+            [("attribution", _join("Own", "er,")), ("attribution", COMMIT_FOR)],
+        ),
+        # A step of a plan or of a specification.
+        (_join("Deployment", " step 7 does"), [("plan-id", _join("Deployment", " step 7"))]),
+        (_join("Deployment", " Step 7 does"), [("plan-id", _join("Deployment", " Step 7"))]),
+        (_join("Contract", " V2 Steps"), [("plan-id", _join("Contract", " V2 Steps"))]),
+        (_join("later contract", " v2 steps"), [("plan-id", _join("contract", " v2 steps"))]),
     ],
 )
 def test_each_kind_of_reference(line: str, expected: list[tuple[str, str]]) -> None:
@@ -148,24 +226,126 @@ def test_each_kind_of_reference(line: str, expected: list[tuple[str, str]]) -> N
         "a resolution of the contract (C9c)",
         "tools/specs/x.md and specs.md",
         _join("the cell (V", "6)"),
+        "the CDI specification; so the specification changes",
+        "an allowlist (option b, decision 6); as in decision 2. A kernel test",
+        "checks the invariants the schema cannot express; the invariant checks",
+        "the "
+        + OWNER
+        + "'s consent, the "
+        + OWNER
+        + "'s zones and rules, the "
+        + OWNER
+        + "'s services",
+        "the file " + OWNER + ", with mode 0644",
+        "the role README's step 9; Step 2 of the tutorial",
+        "status: proposed until reviewed",
+        _join("Deviation", " V6 from the baseline"),
+        _join("    # ", "V6", ": the agent's own package"),
+        _join('{"E2', '": 1}'),
+        _join("a = ", "V5", ": b"),
+        # An identifier's shape opening a line that is no comment: a YAML key,
+        # a list item, a string.
+        _join("E", "2: 1"),
+        _join("  A", "10: 24 GiB"),
+        _join("- A", "10: 24 GiB"),
+        _join('    "D', '1: x",'),
+        _join("{E", "2: 1}"),
+        "the sign \\u00a7 alone",
     ],
 )
 def test_product_language_is_no_reference(line: str) -> None:
     assert found(line, frozenset({"V6"})) == []
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (_join("# the build\n", "# prompt says\n"), [(1, _join("build", " prompt"))]),
+        (_join("    the docs\n", "    specification of\n"), [(1, _join("docs", " specification"))]),
+        (_join("// the QA\n", "// spec\n"), [(1, _join("QA", " spec"))]),
+        (
+            _join("x\n", "-- documentation\n", "-- specifications\n"),
+            [(2, _join("documentation", " specifications"))],
+        ),
+        (_join("; the build\n", "; prompt\n"), [(1, _join("build", " prompt"))]),
+        (_join(" * the docs\n", " * spec\n"), [(1, _join("docs", " spec"))]),
+        (_join("{# the build\n", "{# prompts #}\n"), [(1, _join("build", " prompts"))]),
+        (
+            _join("<!-- the docs\n", "<!-- specification -->\n"),
+            [(1, _join("docs", " specification"))],
+        ),
+        (_join("# a build\n", "# promptly\n"), []),
+        (_join("# build\n", "x = prompt\n"), []),
+        (_join("# build\n", "\n", "# prompt\n"), []),
+        (_join("# the build", " prompt\n"), [(1, _join("build", " prompt"))]),
+    ],
+)
+def test_a_name_split_over_two_lines(text: str, expected: list[tuple[int, str]]) -> None:
+    findings = references.scan_text("a.py", text)
+    assert [(f.line, f.text) for f in findings] == expected
+    assert all(f.pattern == "spec-name" for f in findings)
+
+
+# What may stand before an identifier that opens a comment, and what may not.
+@pytest.mark.parametrize(
+    ("before", "counted"),
+    [
+        ("# ", True),
+        ("    ## ", True),  # a Markdown heading opens the same way and counts
+        ("// ", True),
+        ("-- ", True),
+        ("/* ", True),
+        ("/** ", True),
+        (" * ", True),
+        ("; ", True),
+        ("<!-- ", True),
+        ("{# ", True),
+        ("{#- ", True),
+        ('"""', True),
+        ("    '''", True),
+        ("# - ", True),
+        ("// * ", True),
+        ("x = 1  # ", True),
+        ("SELECT 1 -- ", True),
+        ("", False),
+        ("    ", False),
+        ("- ", False),
+        ("  - ", False),
+        ('    "', False),
+        ("{", False),
+        ("x = 1; ", False),
+        ("the first; ", False),
+        ("&amp; ", False),
+        ("a = ", False),
+    ],
+)
+def test_an_identifier_counts_where_it_opens_a_comment(before: str, counted: bool) -> None:
+    line = _join(before, "V", "5: the step")
+    assert found(line) == ([("decision-id", _join("V", "5"))] if counted else [])
+
+
 def test_resolution_ids_come_from_the_contract_s_table() -> None:
     contracts = (
         "# Contract\n\n## Resolutions\n\nText.\n\n"
         "| ID | Resolution | Status |\n| --- | --- | --- |\n"
-        "| B2 | a | b |\n| C2, C3 | c | d |\n| V6 | e | f |\n\n## Next\n\n| X9 | not | this |\n"
+        "| B2 | a | b |\n| C2, C3 | c | d |\n| V6 | e | f |\n| P3a | g | h |\n| V7 | i | j |\n"
+        "\n## Next\n\n| X9 | not | this |\n"
     )
     ids = references.resolution_ids(contracts)
-    assert ids == {"B2", "C2", "C3", "V6"}
+    assert ids == {"B2", "C2", "C3", "V6", "P3a", "V7"}
     assert found(_join("the agent (V", "6)"), ids) == []
     assert found(_join("the agent (V", "5)"), ids) == [("decision-id", _join("V", "5"))]
     # A defined identifier after a word that makes it a decision still counts.
     assert found(_join("as decided after ", "V6"), ids) == [("decision-id", _join("after ", "V6"))]
+    # So does one proposed; one after the word deviation or opening a comment
+    # does not.
+    assert found(_join("(proposed ", "V6)"), ids) == [("decision-id", _join("proposed ", "V6"))]
+    assert found(_join("Deviation ", "V6 from it"), ids) == []
+    assert found(_join("the deviation ", "V6 holds"), ids) == []
+    assert found(_join("# ", "P3a", ": cpu<n>"), ids) == []
+    assert found(_join("# ", "V7", ": compute capability"), ids) == []
+    assert found(_join("# ", "V6", ": the agent"), ids) == []
+    assert found(_join("# ", "V5", ": the agent"), ids) == [("decision-id", _join("V", "5"))]
     assert references.resolution_ids("# no table\n") == frozenset()
 
 

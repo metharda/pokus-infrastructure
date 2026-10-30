@@ -30,7 +30,7 @@ def test_every_action_is_pinned_to_a_commit_with_its_version() -> None:
 
 
 def test_only_the_scans_get_the_denylist_and_they_check_a_pull_requests_own_commits() -> None:
-    # Owner decision 3 after the public-readiness audit: the secret reaches only
+    # The secret reaches only
     # the two jobs that scan with it, and both check out a pull request's head,
     # whose commits are its author's, not GitHub's test merge commit.
     secret = "${{ secrets.PINKA_PRIVACY_DENYLIST }}"  # noqa: S105 - the secret's name, no value

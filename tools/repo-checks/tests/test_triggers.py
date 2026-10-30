@@ -146,7 +146,7 @@ def test_the_required_check_comes_only_from_a_real_run() -> None:
         assert not condition(required, context), kind
         assert render(str(required["name"]), context) != REQUIRED, kind
     # Its verdict fails on anything but success, cancelled and skipped jobs
-    # included (check-mode may skip only for a change of docs or records).
+    # included (check-mode may skip only for a change of docs).
     step = required["steps"][0]["run"]
     assert 'r not in allowed.get(n, {"success"})' in step
 

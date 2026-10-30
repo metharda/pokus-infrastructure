@@ -365,7 +365,7 @@ def test_the_access_guard_drops_only_what_the_owner_consented_to_close() -> None
 
 
 def test_every_drop_of_the_access_guard_is_new_only_and_spares_ssh_over_the_tailnet() -> None:
-    # Approved deviation AG1 (corrected with the owner's new plan): the guard
+    # The guard
     # drops only new connections, never one on loopback; on tailscale0 only
     # SSH is spared, and it refers to no table but its own.
     variables = firewall_vars(
@@ -520,7 +520,7 @@ def test_the_run_start_is_the_epoch_in_every_time_zone() -> None:
 
 
 def test_forwarded_traffic_of_lxd_guests_and_docker_containers_is_left_alone() -> None:
-    # Owner decision 2 after D1: pinka's rules leave the forwarded traffic of
+    # pinka's rules leave the forwarded traffic of
     # LXD's guests and Docker's containers as it was. The forward chain accepts
     # by default and every rule in it names the run networks only, whatever the
     # host keeps or closes.
@@ -1043,7 +1043,7 @@ print(json.dumps(results))
 
 
 def test_split_guard_admits_only_the_paired_peer(tmp_path: Path) -> None:
-    # Interpretation 11.13 against the kernel's rules: before a pairing nobody
+    # Checked against the kernel's rules: before a pairing nobody
     # reaches the split-inference ports; while pinka pair show waits, the
     # pairing (control) port is open to every tailnet address and nothing
     # else is; once paired, only the peer's address gets in and an unpaired
@@ -1140,7 +1140,7 @@ def test_docker_incus_compat_script(tmp_path: Path) -> None:
 
 
 def test_docker_user_rules_touch_only_incus_bridges() -> None:
-    # Owner decision 3 on 3f-1 (real-machine test 4.4): the rules pinka adds to
+    # The rules pinka adds to
     # DOCKER-USER must not change the networking of containers that were there
     # before; every rule matches an Incus bridge, none matches Docker's or LXD's.
     variables = firewall_vars()

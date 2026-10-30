@@ -228,7 +228,7 @@ def test_split_inference_pairing() -> None:
         "key_group": "pinka-inference",
         "key_mode": "0640",
     }
-    # The split guard's ports (interpretation 11.13), checked by doctor.
+    # The split guard's ports, checked by doctor.
     assert unpaired["split_guard"] == {
         "interface": "tailscale0",
         "ports": [18704, 18710],

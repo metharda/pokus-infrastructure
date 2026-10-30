@@ -358,7 +358,7 @@ def test_the_lock_s_artifacts_are_galaxy_s_files_of_the_locked_versions() -> Non
 
 
 def test_ci_compares_the_pins_on_every_change_and_weekly() -> None:
-    # Owner, with the "commit" for the symbolic-link fix: approved, weekly run
+    # The weekly run is
     # kept; a difference the weekly run finds blocks like any CI failure.
     workflow = yaml.safe_load(
         (INFRA / ".github" / "workflows" / "lock-collections.yml").read_text()

@@ -160,7 +160,7 @@ def test_profile_tables_are_complete() -> None:
 
 
 def test_restricted_data_is_closed_to_the_agent_and_the_trainer() -> None:
-    # §12.4, invariant 15: restricted data only for three profiles.
+    # Restricted data only for three profiles.
     readers = {n for n, p in CONTRACT.profiles.items() if p.data["restricted_data"] == "read"}
     assert readers == {"controller", "restricted-operator", "restricted-reader"}
     schema_access = {
@@ -170,7 +170,7 @@ def test_restricted_data_is_closed_to_the_agent_and_the_trainer() -> None:
 
 
 def test_the_agent_gets_nothing() -> None:
-    # Invariant 4: no network, database, Incus, restricted data, secrets or relaxation.
+    # No network, database, Incus, restricted data, secrets or relaxation.
     agent = CONTRACT.profile("untrusted-agent")
     assert agent.data["network"] == "none"
     assert not agent.flag("database_role")
@@ -185,13 +185,11 @@ def test_the_agent_gets_nothing() -> None:
 
 
 def test_only_the_trainer_gets_gpu_devices() -> None:
-    # Invariant 17.
     assert {n for n, p in CONTRACT.profiles.items() if p.flag("gpu_devices")} == {"gpu-trainer"}
     assert {n for n, p in CONTRACT.profiles.items() if p.flag("gpu_arbiter")} == {"controller"}
 
 
 def test_inference_api_and_query_access() -> None:
-    # Invariants 21 and 22, §12.2.
     assert {n for n, p in CONTRACT.profiles.items() if p.flag("inference_api")} == {
         "controller",
         "inference-broker",
@@ -228,7 +226,7 @@ def test_listening_ports() -> None:
 
 
 def test_socket_rules() -> None:
-    # §12.3: restricted-* sockets accept only the controller and root (invariant 16).
+    # restricted-* sockets accept only the controller and root.
     for name in ("restricted-operator", "restricted-reader"):
         rules = CONTRACT.profile(name).socket_clients
         assert rules == {"profiles": ["controller"], "humans": [], "root": True, "agent": "never"}

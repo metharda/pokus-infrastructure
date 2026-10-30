@@ -117,7 +117,7 @@ def test_ci_runs_it_with_the_test_jobs_setup() -> None:
 
 
 def test_the_heavy_lanes_run_weekly_on_demand_and_when_their_inputs_change() -> None:
-    # Owner, with the new plan after 16bf749 (GitHub Actions minutes).
+    # To spend fewer GitHub Actions minutes.
     for name in ("isolated.yml", "check-mode-extended.yml", "release-package.yml"):
         on = workflow(name)[True]  # YAML 1.1 reads the key "on" as True
         # A fork's pull request runs them as a push would (test_triggers.py).

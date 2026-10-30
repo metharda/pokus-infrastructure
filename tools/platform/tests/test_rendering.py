@@ -296,7 +296,7 @@ def test_the_explanation_page_lists_the_whole_baseline() -> None:
 
 @pytest.mark.parametrize("fixture", VALID)
 def test_every_service_has_a_runtime_directory_without_sockets(fixture: str) -> None:
-    # V4 and its condition (owner decision with the "commit" for 3d.3).
+    # V4 and its condition.
     data = manifest(fixture)
     document = render(fixture)
     sockets = {layout.socket_path(s["service"], s["name"]) for s in data.get("sockets", [])}
@@ -550,8 +550,8 @@ def agent_view(settings: dict[str, list[str]]) -> Callable[[str], bool]:
 
 @pytest.mark.parametrize("fixture", VALID)
 def test_nothing_outside_the_agents_set_is_visible(fixture: str) -> None:
-    # Ground-truth blindness (owner, before 3d.4 and V6 with the "commit" for
-    # 3d.4): of the active release the agent sees only its own package and
+    # Ground-truth blindness (V6):
+    # of the active release the agent sees only its own package and
     # environment; besides, its configuration, its dedicated sockets, the
     # agent telemetry socket and its own runtime and state directories.
     data = manifest(fixture)

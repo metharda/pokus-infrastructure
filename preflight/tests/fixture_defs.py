@@ -861,7 +861,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "install_driver": "auto",
         },
     )
-    # Decision 1 after D1: with install_nvidia_driver auto, a driver is installed
+    # With install_nvidia_driver auto, a driver is installed
     # only for a GPU the pinned release's open kernel module supports.
     no_driver = [*base_ubuntu, baremetal(), kvm()]
     unsupported_gpu = {
@@ -936,7 +936,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             nvidia_pci("none", devid=RTX_2080_TI_DEVID),
             expected={**supported_gpu, "provider": "baremetal", "family": family},
         )
-    # Approved deviation I1: the same host with the operator's choices.
+    # The same host with the operator's choices.
     secureboot = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("none"), secure_boot_enabled]
     fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent"] = build(
         *secureboot,

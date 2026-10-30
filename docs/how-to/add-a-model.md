@@ -29,7 +29,7 @@ through the same helper during campaigns
     - For a gated model, a Hugging Face token in `vault_hf_token`.
 
 !!! warning "The catalog is a proposal"
-    Every catalog entry is `status: proposed` until the owner approves it, and
+    Every catalog entry is `status: proposed` until it is approved, and
     its `revision` is `TODO(verify)`: the candidates were chosen without
     access to the Hub. Resolve the revision and the hashes yourself as below;
     never copy an unverified value into `models.lock.yml`.

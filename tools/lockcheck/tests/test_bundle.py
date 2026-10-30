@@ -395,9 +395,9 @@ def test_ci_builds_checks_and_attaches_the_package_of_each_release_tag() -> None
 
 
 def test_ci_builds_the_package_twice_from_galaxy_and_uploads_nothing() -> None:
-    # Owner, with the "commit" for 3d.8: on pushes that touch the release
-    # tooling, the lock or tools/lockcheck/, and weekly; and on demand (owner,
-    # with the new plan after 16bf749: GitHub Actions minutes).
+    # On pushes that touch the release
+    # tooling, the lock or tools/lockcheck/, and weekly; and on demand
+    # (GitHub Actions minutes).
     workflow = yaml.safe_load((INFRA / ".github" / "workflows" / "release-package.yml").read_text())
     triggers = workflow[True]  # YAML 1.1 reads the key "on" as true
     # A fork's pull request runs it too; a branch here runs it once, on its

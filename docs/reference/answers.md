@@ -38,7 +38,7 @@ Every non-secret choice of the installer TUI, replayed with bootstrap.sh --answe
 | `storage.source` | one of `loop`, `device` | yes | loop: a loop file inside the system; device: a dedicated disk, formatted. |
 | `storage.loop_size_gib` | any | no | Size of the loop file (source loop): auto (computed by preflight from the golden images, the concurrent targets' root disks and the free space), or whole GiB, at least 20. |
 | `storage.device` | string | no | The pool disk by its /dev/disk/by-id path (source device). |
-| `storage.device_confirm` | string | no | Must equal device exactly; the pool disk is formatted only then (safety invariant 1). |
+| `storage.device_confirm` | string | no | Must equal device exactly; the pool disk is formatted only then. |
 | `storage.force_wipe` | boolean | no | Wipe a device that carries signatures (typed WIPE confirmation in the TUI). |
 | `researchers` | array | yes | The lab's researchers: Linux accounts, research space directories, Grafana accounts. |
 | `researchers[].name` | see `username` | yes | Linux user name. |

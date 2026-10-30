@@ -261,7 +261,6 @@ class NetworkTest(Base):
             run(checks.check_listeners, system, listeners__tailnet_ports=ports), "fail", "18710"
         )
 
-    # Approved deviation DL1 (owner, with the "commit" for 16bf749).
     WEB = {
         "proto": "tcp",
         "address": "::",
@@ -1321,7 +1320,7 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(self.check(moved), "fail", "query_port_clients leaves ports open: 18733")
 
     def test_the_query_link_and_its_directory(self) -> None:
-        # The owner's condition for the link (with the "commit" for 3d.4).
+        # The condition for the link.
         elsewhere = self.system(target="/tmp/query.sock")
         self.assertOutcome(
             self.check(elsewhere),
