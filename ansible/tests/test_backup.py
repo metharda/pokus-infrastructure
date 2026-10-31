@@ -318,7 +318,7 @@ def role_variables(**extra: Any) -> dict[str, Any]:
     )
 
 
-def test_backed_up_paths_follow_the_specification() -> None:
+def test_an_sftp_repository_backs_up_exactly_the_lab_paths_without_the_secrets() -> None:
     variables = role_variables(
         vault_restic_repository="sftp:backup@backup.example.com:/srv/restic/lab"
     )

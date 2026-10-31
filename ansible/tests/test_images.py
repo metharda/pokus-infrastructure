@@ -253,7 +253,7 @@ def test_docker_host_unit_runs_the_pinned_image() -> None:
         "org.pinka.managed",
     ],
 )
-def test_default_patterns_cover_the_specification(token: str) -> None:
+def test_default_patterns_catch_the_leakage_tokens(token: str) -> None:
     assert added(f"x = {token}\n") != []
 
 

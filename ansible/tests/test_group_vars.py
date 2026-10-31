@@ -38,7 +38,7 @@ def test_researchers_are_placeholders() -> None:
     assert DATA["researchers_removed"] == []
 
 
-def test_layout_matches_the_spec() -> None:
+def test_the_lab_and_system_layouts_have_their_owners_groups_modes_and_acls() -> None:
     # state/<service>/ and users/<name>/ are created per service
     # and per researcher.
     expected = {
