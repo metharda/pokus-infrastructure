@@ -1,7 +1,7 @@
 #!/usr/sbin/nft -f
 # Managed by pinka (ansible/roles/firewall/templates/pinka-telemetry-guard.nft.j2). Local changes will be overwritten.
 #
-# The telemetry guard (BUILD_PROMPT §7.9, ADR-0016): only infra's own clients
+# The telemetry guard (ADR-0016): only infra's own clients
 # of the telemetry stores ({{ pinka_telemetry_clients | map(attribute='account') | join(', ') }})
 # connect to Prometheus, Loki, Tempo and the collector's metrics exporter on
 # the host loopback, and only {{ pinka_query_port_clients | map(attribute='account') | join(' and ') }}

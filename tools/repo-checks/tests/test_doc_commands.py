@@ -1,6 +1,6 @@
 """Every documented ``PYTHONPATH=... python -m <package>`` command starts.
 
-Found by the infra self-test (plan item 3e): the command of "How to test the
+The command of "How to test the
 distributions" lacked ``tools/lockcheck``, which the harness imports, the
 same gap the CI of e525a1e showed in the Makefile. Each documented command
 line runs here with ``--help`` and its own ``PYTHONPATH``.
@@ -17,14 +17,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-# The spec copies quote commands of other repositories; they are not pages.
-NOT_PAGES = {"BUILD_PROMPT.md", "DOCS_SPEC.md", "IMPLEMENTATION_NOTES.md"}
 COMMAND = re.compile(r"PYTHONPATH=(\S+) \S*python\S* -m ([A-Za-z_][\w.]*)")
 
 
 def documented_commands() -> list[tuple[str, str, str]]:
     """(page, PYTHONPATH, module) for every such command of the docs and the README."""
-    pages = [p for p in sorted((ROOT / "docs").rglob("*.md")) if p.name not in NOT_PAGES]
+    pages = sorted((ROOT / "docs").rglob("*.md"))
     found = []
     for page in [*pages, ROOT / "README.md"]:
         for match in COMMAND.finditer(page.read_text(encoding="utf-8")):

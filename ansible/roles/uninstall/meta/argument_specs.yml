@@ -1,0 +1,21 @@
+# Managed by pinka (ansible/roles/uninstall/meta/argument_specs.yml). Local changes will be overwritten.
+argument_specs:
+  main:
+    short_description: Remove what pinka installed and keep the lab's data.
+    description:
+      - Run by uninstall.yml (bootstrap.sh --uninstall); mode plan writes the plan, mode apply removes it and writes the report.
+    options:
+      pinka_uninstall:
+        type: dict
+        required: true
+        description: >-
+          The options bootstrap passes: mode (plan or apply), machine, purge_data, remove_components,
+          opt_existed, plan_file, plan_text, report_file, started_at, repo_commit and log_file.
+      host_profile:
+        type: dict
+        required: true
+        description: The host profile preflight wrote for this run; its access names the install's session.
+      uninstall_component_sources:
+        type: dict
+        default: {}
+        description: For --remove-component, each component's entries in the component source matrix.

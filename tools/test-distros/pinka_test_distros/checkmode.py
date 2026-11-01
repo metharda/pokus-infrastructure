@@ -8,13 +8,13 @@ through Ansible's docker connection, with the variables bootstrap would pass
 and the example vault. Nothing runs on the host itself; the container is
 removed afterwards.
 
-Two modes (approved deviation I2):
+Two modes:
 
-- required: ``ansible/check-mode.yml``, the provider-agnostic roles of
-  BUILD_PROMPT §11 (base, users_groups, ssh, layout), with nothing skipped;
+- required: ``ansible/check-mode.yml``, the provider-agnostic roles
+  (base, users_groups, ssh, layout), with nothing skipped;
   the blocking CI job.
 - extended (``make check-mode-extended``): the whole ``ansible/site.yml``
-  with the reference platform enabled (BUILD_PROMPT §19.9): the platform
+  with the reference platform enabled: the platform
   role's engine and source steps run; fetching, building and deploying the
   release need a real host (``make test-distros``).
   Roles whose component source or pins are not verified for the container's
@@ -48,7 +48,7 @@ CONTAINERS = INFRA / "tests" / "distros" / "containers"
 # The required job's play (provider-agnostic roles only) and the extended job's play.
 REQUIRED_PLAYBOOK = ANSIBLE / "check-mode.yml"
 EXTENDED_PLAYBOOK = ANSIBLE / "site.yml"
-# The roles of the required job, in play order (BUILD_PROMPT §11).
+# The roles of the required job, in play order.
 REQUIRED_ROLES = ("install_record", "base", "users_groups", "ssh", "layout")
 MACHINE = "example-machine"
 # Read on the target by preflight_gate and doctor: copied into the container at

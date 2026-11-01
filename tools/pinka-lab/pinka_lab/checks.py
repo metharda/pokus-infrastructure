@@ -1,4 +1,4 @@
-"""The doctor checks (BUILD_PROMPT §9, contracts.md).
+"""The doctor checks (contracts.md).
 
 Each check reads what it compares against from the lab description
 (``/etc/pinka/lab.json``) and asks the host through :class:`System`. Checks
@@ -8,6 +8,7 @@ provider) are skipped, not passed.
 
 from __future__ import annotations
 
+import datetime as dt
 import ipaddress
 import json
 import re
@@ -17,7 +18,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pinka_lab import window
+from pinka_lab import commands, window
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
 from pinka_preflight.detect import access as access_detect
 from pinka_preflight.detect import gpu
@@ -40,10 +41,10 @@ PID_RE = re.compile(r"pid=([0-9]+)")
 LOOPBACK_V4 = "127."
 # What infra rendered for the active platform (pinka_platform, contract v2).
 RENDERED_PLATFORM = "/etc/pinka/platform/rendered.json"
-# The key the socket-ACL helper keeps in it (owner decision with the "commit" for 3d.3).
+# The key the socket-ACL helper keeps in it.
 SOCKET_ACL_FALLBACK = "socket_acl_fallback"
 FALLBACK_MODE = 0o666
-# The install record (BUILD_PROMPT §7.21), written by the install_record role.
+# The install record, written by the install_record role.
 INSTALL_RECORD = "/var/lib/pinka/install-record.json"
 WRITABLE_BY_OTHERS = 0o022
 # ss shows a dual-stack socket on every address as "*"; preflight reads it as "::".
@@ -92,7 +93,7 @@ def _adopted_tailscale(ctx: Context) -> dict[str, Any] | None:
 
 
 def _preexisting_access(ctx: Context) -> tuple[dict[str, Any], list[str]] | None:
-    """The access to the host before pinka and what of it was closed with consent (§7.5).
+    """The access to the host before pinka and what of it was closed with consent.
 
     Returns:
         The record's ``preexisting.access`` and ``added.closed_access``; None
@@ -162,7 +163,7 @@ def _recorded_listener(
 ) -> bool:
     """Whether a listener is one the install record notes, exactly, and not pinka's own.
 
-    Approved deviation DL1 (owner, with the "commit" for ``16bf749``): only on a
+    The exception for a recorded listener holds only on a
     shared host; protocol, address, port, owning unit and process all equal the
     record's; pinka's own services and the daemons of components pinka
     installed never use the exception.
@@ -200,11 +201,8 @@ def _tailscale_status(ctx: Context) -> dict[str, Any]:
 def _preflight(ctx: Context) -> dict[str, Any] | None:
     """Run preflight once (read-only) and keep its report."""
     if "preflight" not in ctx.memo:
-        command = str(ctx.config.get("paths", "preflight"))
-        extra = [str(arg) for arg in ctx.config.get("preflight_args", default=[])]
         done = ctx.system.run(
-            [command, "--no-write", "--quiet", "--srv-path", ctx.config.pinka_root, *extra],
-            timeout=300,
+            [*commands.preflight_argv(ctx.system, ctx.config), "--quiet"], timeout=300
         )
         parsed = done.json() if done.returncode in (0, 10, 20, 30) else None
         ctx.memo["preflight"] = parsed if isinstance(parsed, dict) else None
@@ -435,8 +433,8 @@ def check_listeners(ctx: Context) -> Outcome:
     """Nothing listens outside loopback but sshd, host services and listeners from before pinka.
 
     On a shared host, a listener the install record notes as the host's before
-    pinka is expected when it matches the record exactly (approved deviation
-    DL1), whether the firewall keeps it reachable or closed it with the owner's
+    pinka is expected when it matches the record exactly,
+    whether the firewall keeps it reachable or closed it with the owner's
     consent: pinka never stops a pre-existing service. A record that someone
     other than root can change is not trusted for it.
     """
@@ -485,7 +483,7 @@ def check_listeners(ctx: Context) -> Outcome:
 
 
 def check_install_path(ctx: Context) -> Outcome:
-    """The access path of the install from outside the tailnet is closed (§7.5).
+    """The access path of the install from outside the tailnet is closed.
 
     It closes only with the owner's consent and after a researcher logged in
     over the tailnet in the same run; until then it stays open and this check
@@ -523,7 +521,7 @@ def check_firewall(ctx: Context) -> Outcome:
         status = ctx.system.run(["ufw", "status"])
         if "Status: active" not in status.stdout:
             problems.append("ufw is not active")
-    # What the owner consented to close (§7.5), on every backend.
+    # What the owner consented to close, on every backend.
     if not ctx.system.run(["nft", "list", "table", "inet", "pinka_access_guard"]).ok:
         problems.append("nftables table inet pinka_access_guard is missing")
     problems += _docker_user_rules(ctx)
@@ -557,7 +555,7 @@ def check_tailscale(ctx: Context) -> Outcome:
     """Tailscale is logged in with the expected name and tags; Funnel and Tailscale SSH are off.
 
     On a node pinka joined, the expected name and tag are the configured ones;
-    on a node adopted as it was (BUILD_PROMPT §7.4), the ones the install record
+    on a node adopted as it was, the ones the install record
     noted. Tailscale SSH is read from ``tailscale debug prefs`` (``RunSSH``),
     the query of preflight's components detector, whose output format is
     still to be verified there.
@@ -599,7 +597,7 @@ def check_tailscale(ctx: Context) -> Outcome:
 def check_tailscale_identity(ctx: Context) -> Outcome:
     """A node adopted as it was carries the lab's tag and a key that does not expire.
 
-    Both are warnings (owner decision on 3f-1): the tailnet ACL can name the
+    Both are warnings: the tailnet ACL can name the
     node another way, and an expired key only takes the lab off the tailnet
     until the owner signs in again (docs/security.md).
     """
@@ -651,7 +649,7 @@ def check_gpu(ctx: Context) -> Outcome:
 
 
 def check_docker_cdi(ctx: Context) -> Outcome:
-    """Docker gives containers the GPU through CDI (BUILD_PROMPT §7.6).
+    """Docker gives containers the GPU through CDI.
 
     The NVIDIA runtime passes only where bootstrap recorded it as the method,
     on a Docker pinka installed that has no CDI support.
@@ -671,7 +669,7 @@ def check_docker_cdi(ctx: Context) -> Outcome:
 
 
 def check_driver_cuda(ctx: Context) -> Outcome:
-    """The driver supports the CUDA version of the pinned vLLM image (§2.2)."""
+    """The driver supports the CUDA version of the pinned vLLM image."""
     if not ctx.config.serves_inference:
         return skipped("this node serves no inference")
     smi = str(ctx.config.get("gpu", "nvidia_smi", default="nvidia-smi"))
@@ -703,7 +701,7 @@ WINDOW_RECORD = "/etc/pinka/maintenance-window.json"
 
 
 def check_window(ctx: Context) -> Outcome:
-    """Whether a maintenance window is recorded, and with which end (§7.20)."""
+    """Whether a maintenance window is recorded, and with which end."""
     path = str(ctx.config.get("window", "record", default=WINDOW_RECORD))
     text = ctx.system.read_text(path)
     staging = ctx.config.get("lab_mode", default="production") == "staging"
@@ -731,7 +729,7 @@ DOCS_DIR = "/usr/local/share/pinka/docs"
 
 
 def check_docs(ctx: Context) -> Outcome:
-    """The docs service serves the installed release (§7.19)."""
+    """The docs service serves the installed release."""
     if not ctx.config.get("docs", "configured", default=False):
         return skipped("no documentation release is configured (docs_release)")
     base = str(ctx.config.get("docs", "dir", default=DOCS_DIR))
@@ -839,7 +837,7 @@ def _set_elements(items: list[dict[str, Any]], name: str) -> list[Any] | None:
 
 
 def check_split_guard(ctx: Context) -> Outcome:
-    """Split inference: the tailnet ports admit only the paired peer's address (11.13)."""
+    """Split inference: the tailnet ports admit only the paired peer's address."""
     spec = ctx.config.get("split_guard", default={}) or {}
     ports = [int(p) for p in spec.get("ports", [])]
     if ctx.config.node_role not in ("lab", "inference") or not ports:
@@ -906,6 +904,86 @@ def check_incus_pool(ctx: Context) -> Outcome:
     if free_gib < minimum:
         return failed(f"pool {pool} has {free_gib:.1f} GiB free, less than {minimum:g} GiB")
     return passed(f"pool {pool} ({driver}), {free_gib:.1f} GiB free")
+
+
+# Free space per mount point: the runs kept, the trend's window.
+DISK_HISTORY_DEFAULT = "/var/lib/pinka/doctor/disk-history.json"
+DISK_HISTORY_KEEP = 60
+DISK_TREND_DAYS = 7
+DISK_TREND_MIN_HOURS = 6
+
+
+def _df(ctx: Context, paths: Sequence[str]) -> dict[str, tuple[int, int]]:
+    """Size and free bytes per mount point of ``paths`` (df's target)."""
+    done = ctx.system.run(["df", "--output=target,size,avail", "-B1", *paths])
+    found: dict[str, tuple[int, int]] = {}
+    for line in done.stdout.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 3 and parts[-1].isdigit() and parts[-2].isdigit():  # noqa: PLR2004
+            found[" ".join(parts[:-2])] = (int(parts[-2]), int(parts[-1]))
+    return found
+
+
+def _disk_history(ctx: Context, path: str) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(ctx.system.read_text(path) or "{}")
+    except ValueError:
+        return []
+    runs = data.get("runs") if isinstance(data, dict) else None
+    return [r for r in runs or [] if isinstance(r, dict) and isinstance(r.get("free"), dict)]
+
+
+def _days_until_full(
+    runs: Sequence[Mapping[str, Any]], mount: str, free: int, now: dt.datetime
+) -> float | None:
+    """Days until ``mount`` is full at the rate since the oldest run of the trend window."""
+    since = now - dt.timedelta(days=DISK_TREND_DAYS)
+    for run_ in runs:
+        at = dt.datetime.strptime(str(run_.get("at")), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=dt.timezone.utc
+        )
+        before = run_["free"].get(mount)
+        if at < since or not isinstance(before, int):
+            continue
+        hours = (now - at).total_seconds() / 3600
+        if hours < DISK_TREND_MIN_HOURS or before <= free:
+            return None
+        return free / ((before - free) / (hours / 24))
+    return None
+
+
+def check_disk_free_space(ctx: Context) -> Outcome:
+    """Each mount point the lab uses keeps free space, and its trend does not fill it soon."""
+    report = _preflight(ctx) or {}
+    mounts = sorted({str(m["mount"]) for m in (report.get("requirements") or {}).get("disk", [])})
+    if not mounts:
+        mounts = [ctx.config.pinka_root]
+    measured = _df(ctx, mounts)
+    if not measured:
+        return failed("df measured none of " + ", ".join(mounts))
+    history = str(ctx.config.get("disk", "history", default=DISK_HISTORY_DEFAULT))
+    warn_percent = float(ctx.config.get("disk", "warn_free_percent", default=15))
+    full_days = float(ctx.config.get("disk", "full_within_days", default=DISK_TREND_DAYS))
+    now = ctx.system.now()
+    runs = _disk_history(ctx, history)
+    problems, states = [], []
+    for mount, (size, free) in sorted(measured.items()):
+        percent = 100 * free / size if size else 0.0
+        days = _days_until_full(runs, mount, free, now)
+        states.append(f"{mount} {free / 2**30:.1f} GiB free ({percent:.1f} %)")
+        if percent < warn_percent:
+            problems.append(f"{mount} has {percent:.1f} % free, below {warn_percent:g} %")
+        if days is not None and days < full_days:
+            problems.append(f"{mount} fills in about {days:.1f} days at its recent rate")
+    if ctx.system.euid() == 0:
+        stamp = now.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        entry = {"at": stamp, "free": {m: free for m, (_, free) in measured.items()}}
+        kept = [*runs, entry][-DISK_HISTORY_KEEP:]
+        text = json.dumps({"schema_version": 1, "runs": kept}, indent=2, sort_keys=True)
+        ctx.system.write_text(history, text + "\n", 0o644)
+    if problems:
+        return failed("; ".join(problems))
+    return passed("; ".join(states))
 
 
 def check_incus_objects(ctx: Context) -> Outcome:
@@ -1020,7 +1098,7 @@ def check_accounts(ctx: Context) -> Outcome:
 
 
 def check_deployed_paths(ctx: Context) -> Outcome:
-    """No .git in deployed paths, no restricted package outside the restricted area (§12.4)."""
+    """No .git in deployed paths, no restricted package outside the restricted area."""
     root = ctx.config.pinka_root
     problems = []
     for top in (f"{root}/platforms", f"{root}/restricted"):
@@ -1044,7 +1122,7 @@ PROVENANCE_FILE = "DEPLOYED_FROM.json"
 
 
 def check_platform_manifest(ctx: Context) -> Outcome:
-    """The active release's manifest is valid and its SHA-256 matches the records (§7.17)."""
+    """The active release's manifest is valid and its SHA-256 matches the records."""
     path = str(ctx.config.get("paths", "active_platform", default=ACTIVE_PLATFORM))
     text = ctx.system.read_text(path)
     if not text:
@@ -1084,7 +1162,7 @@ def check_platform_manifest(ctx: Context) -> Outcome:
 
 
 def check_hardening(ctx: Context) -> Outcome:
-    """Units carry the hardening of their profile (§7.17): `systemctl show` against rendering."""
+    """Units carry the hardening of their profile: `systemctl show` against rendering."""
     rendered = _rendered_platform(ctx)
     units = [
         *ctx.config.get("hardening", default=[]),
@@ -1122,7 +1200,7 @@ def check_hardening(ctx: Context) -> Outcome:
 
 
 def check_sockets(ctx: Context) -> Outcome:
-    """Platform sockets have the owners, modes and ACLs of their rendering (§7.17, §12.3)."""
+    """Platform sockets have the owners, modes and ACLs of their rendering."""
     rendered = _rendered_platform(ctx)
     sockets = [s for s in (rendered or {}).get("sockets", []) if isinstance(s, dict)]
     if not sockets:
@@ -1194,7 +1272,7 @@ def _release_view_problems(
 
 
 def check_agent_view(ctx: Context) -> Outcome:
-    """The running agent sees no socket beyond its allowlist in its mount namespace (§7.17).
+    """The running agent sees no socket beyond its allowlist in its mount namespace.
 
     Of the release it sees only its own package and environment (V6).
     """
@@ -1375,7 +1453,7 @@ def _guard_problems(ctx: Context, spec: Mapping[str, Any]) -> list[str]:
 
 
 def _query_link_problems(ctx: Context, spec: Mapping[str, Any]) -> list[str]:
-    """The query socket's link, its target and the target directory's owner (§7.9)."""
+    """The query socket's link, its target and the target directory's owner."""
     link = str(spec.get("query_link") or "")
     if not link:
         return []
@@ -1431,7 +1509,7 @@ def check_telemetry_isolation(ctx: Context) -> Outcome:
     )
 
 
-# --- the GPU arbiter, training and the inference guard (§7.11, §7.18) --------------------------
+# --- the GPU arbiter, training and the inference guard --------------------------
 
 INFERENCE_GUARD_TABLE = "pinka_inference_guard"
 GPU_MODES = ("idle", "serving", "training")
@@ -1519,7 +1597,7 @@ def _expected_mounts(arbiter: Mapping[str, Any], run: str) -> tuple[list[str], l
 
 
 def _host_option_problems(host: Mapping[str, Any]) -> list[str]:
-    """A job container's HostConfig against infra's fixed options (§7.18)."""
+    """A job container's HostConfig against infra's fixed options."""
     problems = []
     if host.get("NetworkMode") != "none":
         problems.append(f"network {host.get('NetworkMode')}")
@@ -1548,7 +1626,7 @@ def _host_option_problems(host: Mapping[str, Any]) -> list[str]:
 def _container_problems(
     arbiter: Mapping[str, Any], name: str, inspect: Mapping[str, Any]
 ) -> list[str]:
-    """A running job container's options against infra's fixed ones (§7.18)."""
+    """A running job container's options against infra's fixed ones."""
     problems = _host_option_problems(inspect.get("HostConfig") or {})
     user = str((inspect.get("Config") or {}).get("User") or "")
     if user.split(":", maxsplit=1)[0] in ("", "0", "root"):
@@ -1565,7 +1643,7 @@ def _container_problems(
 
 
 def check_training_containers(ctx: Context) -> Outcome:
-    """A running training job's container has exactly infra's options and mounts (§7.18)."""
+    """A running training job's container has exactly infra's options and mounts."""
     arbiter = _arbiter(ctx)
     if not arbiter or not arbiter.get("training"):
         return skipped("this host does not train")
@@ -1668,7 +1746,7 @@ def _size(value: object) -> int:
 
 
 def check_training_caps(ctx: Context) -> Outcome:
-    """The active platform's jobs stay within this host's training_caps (§7.18, §8.1)."""
+    """The active platform's jobs stay within this host's training_caps."""
     arbiter = _arbiter(ctx)
     if not arbiter or not arbiter.get("training"):
         return skipped("this host does not train")
@@ -1695,17 +1773,22 @@ def check_training_caps(ctx: Context) -> Outcome:
 
 
 def check_training_availability(ctx: Context) -> Outcome:
-    """Whether this host trains: only a full node does (§19.10)."""
+    """Whether this host trains: only a full node does, where training is on."""
     if ctx.config.node_role in ("lab", "inference"):
         return passed(
             f"training is unavailable on this host (node_role {ctx.config.node_role}); it runs "
             "only on a full node, split-node training is future work"
         )
+    if not _arbiter(ctx).get("training", True):
+        return passed(
+            "training is off on this host (training: off, or auto without a usable GPU; "
+            "pinka preflight shows why)"
+        )
     return passed("training runs on this host through the GPU arbiter")
 
 
 def check_inference_isolation(ctx: Context) -> Outcome:
-    """Only the inference API's clients reach vLLM or the forwarder on the loopback (§7.11)."""
+    """Only the inference API's clients reach vLLM or the forwarder on the loopback."""
     spec = ctx.config.get("inference_isolation", default={}) or {}
     if not spec.get("ports"):
         return skipped("this host has no inference guard to check")
@@ -1959,7 +2042,7 @@ class _PreflightRunner(Runner):
 def check_backup(ctx: Context) -> Outcome:
     """Backups are configured, the last one succeeded recently, and the repository answers."""
     if not ctx.config.get("backup", "configured", default=False):
-        return failed("no backup repository is configured (owner answer E4: configure later)")
+        return failed("no backup repository is configured (configure later)")
     text = ctx.system.read_text(
         str(ctx.config.get("backup", "state", default="/var/lib/pinka/backup/state.json"))
     )
@@ -1987,7 +2070,7 @@ def _rendered_platform(ctx: Context) -> Any:  # noqa: ANN401 - JSON
 
 
 def check_backup_platform_state(ctx: Context) -> Outcome:
-    """Every platform state directory is in the manifest's backup.paths (§7.15)."""
+    """Every platform state directory is in the manifest's backup.paths."""
     rendered = _rendered_platform(ctx)
     if not isinstance(rendered, dict):
         return skipped("the platform is not deployed")
@@ -2184,7 +2267,7 @@ def check_wsl(ctx: Context) -> Outcome:
 
 
 def check_install_record(ctx: Context) -> Outcome:
-    """The install record is present, readable and only root can change it (§7.21)."""
+    """The install record is present, readable and only root can change it."""
     path = str(ctx.config.get("paths", "install_record", default=INSTALL_RECORD))
     if ctx.system.read_text(path) is None:
         return failed(f"{path} is missing")
@@ -2402,6 +2485,13 @@ CHECKS: tuple[Check, ...] = (
         check_split_guard,
     ),
     Check(
+        "disk.free_space",
+        "Each mount point the lab uses has free space left, and its trend does not fill it soon.",
+        "warning",
+        "Free space or lower the retention settings; `pinka preflight` shows the growth.",
+        check_disk_free_space,
+    ),
+    Check(
         "incus.pool",
         "The storage pool has the chosen backend and enough free space.",
         "warning",
@@ -2452,7 +2542,7 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "deploy.provenance",
-        "No .git in deployed paths; restricted packages only in the restricted area (§12.4).",
+        "No .git in deployed paths; restricted packages only in the restricted area.",
         "error",
         "Remove the deployment and deploy again from the mirror.",
         check_deployed_paths,

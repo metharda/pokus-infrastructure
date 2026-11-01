@@ -1,4 +1,4 @@
-"""Root-only bare mirrors, refs, signed tags and staging extraction (§7.14 steps 2-3).
+"""Root-only bare mirrors, refs, signed tags and staging extraction.
 
 One bare mirror per repository URL under ``/var/lib/pinka/git`` (0700). A
 source's ref is resolved there, its signed tag checked when required, and

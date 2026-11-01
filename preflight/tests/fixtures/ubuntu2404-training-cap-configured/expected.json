@@ -1,0 +1,11 @@
+{
+  "degraded_contains": [
+    "training_caps.memory_max 19G",
+    "training: off"
+  ],
+  "outcome": "degraded",
+  "switches": {
+    "training.memory_max": "24G",
+    "training.memory_max_basis": "configured"
+  }
+}

@@ -110,11 +110,27 @@ the result with ordinary Ansible modules. What each grant becomes:
 | Network | loopback only for the service profiles that have network | `IPAddressDeny=any` with `IPAddressAllow=localhost`; `SocketBindDeny=any`, except the inference broker's one TCP port, the researcher endpoint (`127.0.0.1:18705` by default) |
 
 Each service becomes the unit `<platform>-<service>.service` in
-`pinka-platform.target`, with the hardening baseline of infra's
-specification (no new privileges, no capabilities, `ProtectSystem=strict`,
-private `/tmp` and devices, a system call filter, `UMask=0077` and more).
-A manifest cannot override any of it; the only change it can ask for is
-`wx-memory`.
+`pinka-platform.target`, with infra's hardening baseline. A manifest cannot
+override any of it; the only change it can ask for is `wx-memory`. The
+baseline sets these properties on every platform service's unit:
+
+- no privileges: `NoNewPrivileges=yes`, an empty `CapabilityBoundingSet=`
+  and `AmbientCapabilities=`, `RestrictSUIDSGID=yes`,
+  `RestrictNamespaces=yes`, `LockPersonality=yes`, `RestrictRealtime=yes`
+  and `MemoryDenyWriteExecute=yes` (`no` only with `wx-memory`, which
+  `untrusted-agent` never gets);
+- a protected system: `ProtectSystem=strict`, `ProtectHome=yes`,
+  `PrivateTmp=yes`, `PrivateDevices=yes`, `ProtectKernelTunables=yes`,
+  `ProtectKernelModules=yes`, `ProtectKernelLogs=yes`,
+  `ProtectControlGroups=yes`, `ProtectClock=yes`, `ProtectHostname=yes`,
+  `ProtectProc=invisible` and `ProcSubset=pid`;
+- system calls: `SystemCallArchitectures=native` and
+  `SystemCallFilter=@system-service`;
+- the network: `IPAddressDeny=any` and `SocketBindDeny=any`, with the
+  allowances of the table above, and
+  `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6` (only `AF_UNIX` for
+  `untrusted-agent`);
+- `UMask=0077` and `Slice=pinka-services.slice`.
 
 The two telemetry and inference guards match the socket's UID, never its
 group: a group can be shared (Grafana's container runs with group 0), a UID
@@ -284,8 +300,8 @@ Two things are beyond what infra can see:
   the separation between the two happens in the platform's own code. Infra
   makes these sockets visible (the installer's review screen,
   `--inspect-platform` and doctor's `sockets.permissions` list each one) but
-  cannot inspect what they return. The platform's specification obliges it,
-  and a platform test must prove it.
+  cannot inspect what they return. The platform must guarantee it, and a
+  platform test must prove it.
 - **Dataset provenance is complete and truthful.** The arbiter checks the
   `PROVENANCE.json` it is given (hashes, no `test` instance) but cannot verify
   it against the restricted data the platform derived it from.

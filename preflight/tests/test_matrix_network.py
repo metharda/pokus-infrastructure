@@ -88,7 +88,6 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(matrix.match_os(self.m, None)["tier"], "unsupported")
 
     def test_unlisted_releases_never_fall_through_to_id_like(self) -> None:
-        # Approved deviation St2-3.
         for release in (
             osr(id="ubuntu", id_like=["debian"], version_id="20.04"),
             osr(id="debian", version_id="11"),
@@ -127,7 +126,7 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(matrix._remediation(spec, {**facts, "nvidia_gpu_usable": False}), "")
 
     def test_compute_capability_minimum(self) -> None:
-        # V7 (owner decision with the "commit" for 3d.4): 7.5, the oldest the
+        # V7: 7.5, the oldest the
         # pinned vLLM image has kernels for.
         spec = self.m["features"]["gpu_inference"]
         (required,) = [
@@ -151,7 +150,7 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(matrix._remediation(spec, {**facts, "gpu_compute_capability": "7.5"}), "")
 
     def test_the_open_module_list_keeps_the_minimum(self) -> None:
-        # Decision 1 after D1: automatic driver installs go only to GPUs of the
+        # Automatic driver installs go only to GPUs of the
         # pinned release's open kernel module, which NVIDIA states is Turing or
         # later (compute capability 7.5). No GPU below the minimum gets a driver
         # automatically only while the minimum is at most 7.5; a higher minimum

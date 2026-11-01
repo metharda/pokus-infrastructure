@@ -11,7 +11,7 @@ description: Every field of platform-manifest.yaml and the reserved names (contr
 
 # Platform manifest
 
-The manifest every platform release carries at its root as platform-manifest.yaml (BUILD_PROMPT §12.1). Unknown fields are errors. Infra validates it, derives every name it would create and checks the invariants of contract v2 before anything on the host changes. Schema file: `contract/platform-manifest.schema.json` (JSON Schema draft 2020-12). Check a release with [pinka-platform](cli/pinka-platform.md); the profiles are in [Platform privilege profiles](platform-profiles.md).
+The manifest every platform release carries at its root as platform-manifest.yaml. Unknown fields are errors. Infra validates it, derives every name it would create and checks the invariants of contract v2 before anything on the host changes. Schema file: `contract/platform-manifest.schema.json` (JSON Schema draft 2020-12). Check a release with [pinka-platform](cli/pinka-platform.md); the profiles are in [Platform privilege profiles](platform-profiles.md).
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -49,12 +49,12 @@ The manifest every platform release carries at its root as platform-manifest.yam
 | `jobs[].resources.cpus` | integer | yes | CPUs of the container; within infra's cap. |
 | `jobs[].timeout_seconds` | integer | yes | Run time limit; within infra's cap. |
 | `jobs[].resumable` | boolean | yes | Whether the job resumes from its checkpoints. |
-| `sockets` | array | no | Unix sockets infra creates for the services (connection rules of §12.3). |
+| `sockets` | array | no | Unix sockets infra creates for the services, under the contract's connection rules. |
 | `sockets[].name` | string | yes | Socket name: 1-16 lowercase letters, digits and hyphens. |
 | `sockets[].service` | string | yes | The serving service. |
 | `sockets[].clients` | array | yes | Client profiles, the human classes researchers and admins, and root. |
 | `sockets[].untrusted_clients` | boolean | no | A socket dedicated to the agent: untrusted-agent is its only client. |
-| `hooks` | object | yes | The four hooks infra drives the platform through (§12.9); health is required. |
+| `hooks` | object | yes | The four hooks infra drives the platform through; health is required. |
 | `hooks.migrate` | see `hook` | no | At deployment, before the new release starts. |
 | `hooks.drain` | see `hook` | no | Before stopping; argument --timeout &lt;seconds&gt;. |
 | `hooks.health` | see `hook` | yes | After start until healthy; pinka status; doctor. |

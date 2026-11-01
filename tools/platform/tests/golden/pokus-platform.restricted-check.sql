@@ -1,6 +1,6 @@
 -- Managed by pinka (platform potka, contract v2). Local changes will be overwritten.
 --
--- The restricted-schema check of platform potka (BUILD_PROMPT §7.8, §12.4): run
+-- The restricted-schema check of platform potka: run
 -- after every migration. Each finding is revoked and reported as a violation.
 \set ON_ERROR_STOP on
 

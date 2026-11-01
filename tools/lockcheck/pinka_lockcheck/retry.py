@@ -3,8 +3,7 @@
 Every path that downloads Ansible collections (``make setup``, ``make
 lock-collections``, ``make lock-check``'s collection artifacts, ``make
 release-package``; bootstrap from a checkout applies the same rule in
-``bootstrap/lib/tooling.sh``) runs each request through :class:`Policy`
-(owner decision after ``fc7cc3b``):
+``bootstrap/lib/tooling.sh``) runs each request through :class:`Policy`:
 
 * a transport error (:class:`pinka_lockcheck.net.FetchError` with
   ``transient``: no connection, a timeout, a connection that broke off, HTTP

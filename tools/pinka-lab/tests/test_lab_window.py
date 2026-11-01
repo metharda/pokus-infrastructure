@@ -1,4 +1,4 @@
-"""Maintenance windows (BUILD_PROMPT §7.20)."""
+"""Maintenance windows."""
 
 from __future__ import annotations
 

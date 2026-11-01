@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/firewall/tasks/inference_guard.yml). Local changes will be overwritten.
 #
-# The inference guard (BUILD_PROMPT §7.11, ADR-0016) on every backend: its own
+# The inference guard (ADR-0016) on every backend: its own
 # nftables table, loaded by its own unit, which resolves the UIDs of infra's
 # clients (pinka_inference_clients for this node role) and of the active
 # platform's accounts that reach the inference API (rendered.json) each time

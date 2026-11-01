@@ -1,4 +1,4 @@
-"""Source settings (§7.14 step 1): transports, paths, refs, packages and overlaps."""
+"""Source settings: transports, paths, refs, packages and overlaps."""
 
 from __future__ import annotations
 

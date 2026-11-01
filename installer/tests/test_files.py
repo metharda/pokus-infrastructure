@@ -1,4 +1,4 @@
-"""The files the installer writes (BUILD_PROMPT §18.3, §18.7, §18.9)."""
+"""The files the installer writes."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def test_host_vars_modify_keeps_comments_and_drops_unanswered(repo: Paths) -> No
 
 
 def test_host_vars_close_only_with_consent(repo: Paths) -> None:
-    # Pre-existing access (BUILD_PROMPT §7.5): the keys are written only when
+    # Pre-existing access: the keys are written only when
     # the owner consented, so group_vars' defaults (nothing closed) apply.
     answers = full_answers()
     first = hostvars.render(answers, None, repo.example_host_vars.read_text(encoding="utf-8"))
@@ -138,7 +138,7 @@ def test_group_vars_round_trip_keeps_everything_else(repo: Paths) -> None:
 
 
 def test_postgres_roles_come_from_the_release(repo: Paths) -> None:
-    # The platform's roles are known only from its release (§12.5): the vault
+    # The platform's roles are known only from its release: the vault
     # example shows their shape with placeholders, and the installer generates
     # them only from the release's inspection (release.Needs).
     example = YAML(typ="safe").load(repo.vault_example.read_text(encoding="utf-8"))

@@ -1,6 +1,6 @@
 -- Managed by pinka (platform refplat, contract v2). Local changes will be overwritten.
 --
--- The restricted-schema check of platform refplat (BUILD_PROMPT §7.8, §12.4): run
+-- The restricted-schema check of platform refplat: run
 -- after every migration. Each finding is revoked and reported as a violation.
 \set ON_ERROR_STOP on
 

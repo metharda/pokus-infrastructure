@@ -1,4 +1,4 @@
-"""Screens 12-13: Platform and Platform review (BUILD_PROMPT §18.4, contract v2).
+"""Screens 12-13: Platform and Platform review (contract v2).
 
 The Platform screen takes the release's source and how it is trusted, then
 inspects the release alone with the platform tool: only then does it know

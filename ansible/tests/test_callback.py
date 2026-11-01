@@ -1,4 +1,4 @@
-"""The pinka_events callback (BUILD_PROMPT §18.5).
+"""The pinka_events callback.
 
 A real ansible-playbook run in check mode against localhost with tasks that
 touch nothing (debug, set_fact, fail); the events must describe it and must

@@ -51,8 +51,8 @@ whether the lab is supported there and what would be missing.
     | Exit code | Outcome | What to do |
     | --- | --- | --- |
     | 0 | `supported` | Nothing; the host is ready for bootstrap. |
-    | 10 | `degraded` | Read *Disabled features*; decide whether the lab is still useful without them. |
-    | 20 | `unsupported` | Read *Unsupported*; fix the cause or use a supported distribution in a VM. |
+    | 10 | `degraded` | Read *Disabled features* and *Degraded*; decide whether the lab is still useful without them. |
+    | 20 | `unsupported` | Read *Unsupported*; fix the cause, change a choice, or use a supported distribution in a VM. |
     | 30 | `needs_action` | Do what *Action needed* says, then run the check again. |
     | 40 | `preflight_error` | Detection failed; the traceback shows where. |
 
@@ -62,7 +62,13 @@ whether the lab is supported there and what would be missing.
     action then appears as a planned action among the *Warnings*
     ([Bare-metal hosts](../providers/baremetal.md#secure-boot-and-reboots)).
 
-4. To see every detail, open the JSON report; the fields are described in the
+4. Read *Requirements*: the memory each part needs with your choices, the
+   disk per mount point and the expected growth. Without `--plan` preflight
+   takes the configured defaults; on an installed lab, `sudo pinka preflight`
+   uses the plan bootstrap stored, and `--plan FILE` checks other choices
+   ([Capacity planning](../explanation/capacity-planning.md)).
+
+5. To see every detail, open the JSON report; the fields are described in the
    [host profile schema](../reference/host-profile.md).
 
 ## Verify the result

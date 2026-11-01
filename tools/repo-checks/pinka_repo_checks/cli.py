@@ -88,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     neutrality = sub.add_parser(
         "neutrality",
-        help="fail if infra's code names a particular platform (BUILD_PROMPT §11)",
+        help="fail if infra's code names a particular platform",
         description=(
             "Scan infra's code for the Pokus Platform's names: its name anywhere, its "
             "service and unit names as whole tokens, and the project name outside the "
@@ -97,6 +97,21 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     neutrality.add_argument(
+        "--root", type=Path, default=Path(), help="the repository root (default: current)"
+    )
+
+    references = sub.add_parser(
+        "references",
+        help="report references to working material kept outside the repository",
+        description=(
+            "Scan the text files git tracks or would track for references to the maintainers' "
+            "working material kept outside the repository (its files, section citations, the "
+            "steps of its plans, decision identifiers and attributions); fail when their number "
+            "differs from the budget in references.json, an allowed entry matches nothing, or "
+            "the files or references.json cannot be read."
+        ),
+    )
+    references.add_argument(
         "--root", type=Path, default=Path(), help="the repository root (default: current)"
     )
 
@@ -164,6 +179,10 @@ def main(argv: list[str]) -> int:  # noqa: PLR0911 - one return per check
         from pinka_repo_checks import neutrality  # noqa: PLC0415 - stdlib-only path
 
         return neutrality.run(args.root)
+    if args.command == "references":
+        from pinka_repo_checks import references  # noqa: PLC0415 - stdlib-only path
+
+        return references.run(args.root)
     if args.command == "gate":
         from pinka_repo_checks import gate  # noqa: PLC0415 - stdlib-only path
 

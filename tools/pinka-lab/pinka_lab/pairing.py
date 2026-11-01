@@ -1,4 +1,4 @@
-"""Pairing a lab node with an inference node (BUILD_PROMPT §19.10).
+"""Pairing a lab node with an inference node.
 
 ``pinka pair show`` on the inference node prints a one-time code and
 listens on its tailnet address (the control port, while the control endpoint

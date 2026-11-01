@@ -1,4 +1,4 @@
-"""The OPA policies of config/opa/ with the pinned OPA release (BUILD_PROMPT §7.10).
+"""The OPA policies of config/opa/ with the pinned OPA release.
 
 ``make setup`` installs the OPA CLI of ``versions.lock.yml`` (binaries.opa,
 the release of the pinned container image) after checking its sha256. The

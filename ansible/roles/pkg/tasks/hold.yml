@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/pkg/tasks/hold.yml). Local changes will be overwritten.
 #
-# Hold packages at their installed versions (BUILD_PROMPT §19.5) with the
+# Hold packages at their installed versions with the
 # family's method: apt preferences pins, dnf versionlock, zypper locks, or
 # pacman IgnorePkg. Automatic updates then leave them alone.
 - name: Record the holds pinka adds ({{ pkg_hold_name }})

@@ -1,6 +1,6 @@
 # postgres
 
-PostgreSQL for the lab (BUILD_PROMPT §7.8, `docs/contracts.md#postgresql`),
+PostgreSQL for the lab (`docs/contracts.md#postgresql`),
 in the `core` Compose project with `postgres_exporter`:
 
 - image pinned by digest, data in `/srv/pinka/state/postgres` (999:999 0700),

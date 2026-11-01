@@ -4,7 +4,7 @@
 ``ansible-galaxy collection verify --offline`` (every file against its
 ``FILES.json``) and, when anything differs, installs them again with
 :func:`install_collections`. Galaxy's artifact and its sha256 are the only
-pins (owner decision with the "commit" for 3d.7): from Galaxy when it answers
+pins: from Galaxy when it answers
 (exactly the locked versions, asked from Galaxy's v3 API the way
 ``ansible-galaxy`` does, by :mod:`pinka_lockcheck.lockcollections`, each
 artifact's sha256 equal to Galaxy's and its sha256 and size compared with

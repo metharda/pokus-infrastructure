@@ -1,4 +1,4 @@
-"""Validation rules of the installer (BUILD_PROMPT §18.8).
+"""Validation rules of the installer.
 
 Every rule is a function that takes the raw value and returns an error message,
 or ``None`` when the value is valid. The TUI shows the message next to the
@@ -34,6 +34,13 @@ TIME_RE = re.compile(r"^([01][0-9]|2[0-3]):([0-5][0-9])$")
 INTERFACE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$")
 SNAPSHOT_RE = re.compile(r"^(latest|[0-9a-f]{8,64})$")
 CAP_SIZE_RE = re.compile(r"^[1-9][0-9]*[KMG]$")
+RETENTION_RE = re.compile(r"^([1-9][0-9]*)([a-z])$")
+PROMETHEUS_SIZE_RE = re.compile(r"^(?:0|([1-9][0-9]*)(KB|MB|GB|TB|KiB|MiB|GiB|TiB))$")
+# Days per unit of a retention period (Prometheus and Loki take h, d, w and y;
+# Tempo, a Go duration, takes hours only).
+RETENTION_DAYS = {"h": 1 / 24, "d": 1, "w": 7, "y": 365}
+CAP_FACTORS = {"K": 2**10, "M": 2**20, "G": 2**30}
+MAX_CONCURRENT_TARGETS = 40
 SERVICE_SECRET_RE = re.compile(r"^[a-z][a-z0-9]{0,9}\.[a-z][a-z0-9_-]{0,63}$")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 LISTENER_RE = re.compile(r"^(tcp|udp)/([1-9][0-9]{0,4})$")
@@ -84,8 +91,8 @@ RESERVED_USERNAMES = frozenset(
     }
 )
 # Prefixes of infra's and the platform's accounts; the old project prefix stays refused.
-# Infra's own accounts and groups start with pinka- (§6.1); the platform's are
-# checked against the host when it is deployed (§12.1).
+# Infra's own accounts and groups start with pinka-; the platform's are
+# checked against the host when it is deployed.
 SERVICE_ACCOUNT_PREFIXES = ("pinka-",)
 
 # Key types accepted for researchers (ssh-keygen -t; the sk- variants are FIDO keys).
@@ -338,7 +345,7 @@ def https_url(value: str) -> str | None:
 
 
 def platform_sources(platform: Mapping[str, Any], content: Mapping[str, Any]) -> list[str]:
-    """The sources of the platform release and its content packages (BUILD_PROMPT §8.1).
+    """The sources of the platform release and its content packages.
 
     The rules are the platform tool's own (``pinka_platform.sources``), so the
     installer refuses exactly what a deployment would: SSH, anonymous HTTPS
@@ -367,6 +374,127 @@ def cap_size(value: str) -> str | None:
         The error, or None.
     """
     return None if CAP_SIZE_RE.fullmatch(value) else "a whole number of K, M or G, such as 24G"
+
+
+def pool_size(value: str) -> str | None:
+    """``incus_pool_size``: ``auto`` (computed by preflight) or a size.
+
+    Args:
+        value: The setting.
+
+    Returns:
+        The error, or None.
+    """
+    if value == "auto":
+        return None
+    problem = size(value)
+    return f"auto, or {problem}" if problem else None
+
+
+def memory_max(value: str) -> str | None:
+    """``training_caps.memory_max``: ``auto`` (computed from the host) or a cap size.
+
+    Args:
+        value: The setting.
+
+    Returns:
+        The error, or None.
+    """
+    if value == "auto":
+        return None
+    problem = cap_size(value)
+    return f"auto, or {problem}" if problem else None
+
+
+def cap_size_gib(value: str) -> float:
+    """The GiB of a valid training cap size (Docker's K, M and G are powers of 2).
+
+    Args:
+        value: A size accepted by :func:`cap_size`.
+
+    Returns:
+        GiB.
+    """
+    if not CAP_SIZE_RE.fullmatch(value):
+        raise ValueError(value)
+    return int(value[:-1]) * CAP_FACTORS[value[-1]] / 2**30
+
+
+def concurrent_targets(value: int) -> str | None:
+    """The targets that run at once (the capacity plan).
+
+    Args:
+        value: The number.
+
+    Returns:
+        The error, or None.
+    """
+    if isinstance(value, bool) or not 1 <= value <= MAX_CONCURRENT_TARGETS:
+        return f"a whole number from 1 to {MAX_CONCURRENT_TARGETS}"
+    return None
+
+
+def retention_period(value: str, units: str = "hdwy") -> str | None:
+    """A retention period of the telemetry stores, such as ``90d`` or ``720h``.
+
+    Args:
+        value: The period.
+        units: The units the store accepts (Tempo: ``h`` only).
+
+    Returns:
+        The error, or None.
+    """
+    match = RETENTION_RE.fullmatch(value)
+    if not match or match.group(2) not in units:
+        return f"a whole number with one unit of {', '.join(units)}, such as 90{units[-1]}"
+    return None
+
+
+def retention_days(value: str) -> float:
+    """The days of a valid retention period.
+
+    Args:
+        value: A period accepted by :func:`retention_period`.
+
+    Returns:
+        Days.
+    """
+    match = RETENTION_RE.fullmatch(value)
+    if match is None or match.group(2) not in RETENTION_DAYS:
+        raise ValueError(value)
+    return int(match.group(1)) * RETENTION_DAYS[match.group(2)]
+
+
+def prometheus_size(value: str) -> str | None:
+    """Prometheus's retention by size: ``0`` (by time only) or a size such as ``50GB``.
+
+    Args:
+        value: The size.
+
+    Returns:
+        The error, or None.
+    """
+    if not PROMETHEUS_SIZE_RE.fullmatch(value):
+        return "0, or a whole number with a unit: KB, MB, GB, TB, KiB, MiB, GiB or TiB"
+    return None
+
+
+def prometheus_size_gib(value: str) -> float:
+    """The GiB of a valid Prometheus size; Prometheus reads every unit as a power of 2.
+
+    Args:
+        value: A size accepted by :func:`prometheus_size`.
+
+    Returns:
+        GiB.
+    """
+    match = PROMETHEUS_SIZE_RE.fullmatch(value)
+    if match is None:
+        raise ValueError(value)
+    if value == "0":
+        return 0.0
+    power = 10 * ("KMGT".index(match.group(2)[0]) + 1)
+    return float(int(match.group(1)) * 2**power / 2**30)
 
 
 def platform_secret_key(value: str) -> str | None:
@@ -398,7 +526,7 @@ def tailscale_tag(value: str) -> str | None:
 
 
 def listener_name(value: str) -> str | None:
-    """A pre-existing listener to close: ``tcp/<port>`` or ``udp/<port>`` (BUILD_PROMPT §7.5).
+    """A pre-existing listener to close: ``tcp/<port>`` or ``udp/<port>``.
 
     Whether preflight recorded it, and whether the firewall can close it, is
     checked against the host's install record when bootstrap runs.
@@ -416,7 +544,7 @@ def listener_name(value: str) -> str | None:
 
 
 def serve_consent(adopted: bool, serve: bool, consent: bool) -> str | None:
-    """Publishing with tailscale serve on a node logged in before pinka (BUILD_PROMPT §7.4).
+    """Publishing with tailscale serve on a node logged in before pinka.
 
     Args:
         adopted: The node was logged in before pinka (pinka uses it as it is).
@@ -661,3 +789,20 @@ def ssh_keygen_fingerprint(line: str) -> str | None:
         raise ValueError(done.stderr.strip() or "ssh-keygen rejected the key")
     fields = done.stdout.split()
     return fields[1] if len(fields) > 1 else None
+
+
+def uninstall_confirmation(typed: str, machine: str) -> str | None:
+    """The machine name typed to confirm uninstall, or to delete the lab's data too.
+
+    Args:
+        typed: What the operator typed.
+        machine: This host's machine name.
+
+    Returns:
+        A problem, or None when it is the machine name exactly.
+    """
+    if not typed:
+        return f"type the machine name, {machine}, to confirm"
+    if typed != machine:
+        return f"not the machine name: type {machine} exactly"
+    return None

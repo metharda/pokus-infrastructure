@@ -1,4 +1,4 @@
-"""Command-line interface of ``pinka-preflight`` (BUILD_PROMPT §2).
+"""Command-line interface of ``pinka-preflight``.
 
 The JSON host profile goes to stdout (or ``--output``); the human summary goes
 to stderr. On a real run as root the profile is also stored in
@@ -47,6 +47,7 @@ from pinka_preflight.matrix import (
     MATRIX_JSON,
     NVIDIA_DRIVER_MODES,
     Decision,
+    apply_requirements,
     evaluate,
     load_matrix,
     match_os,
@@ -58,6 +59,13 @@ from pinka_preflight.report import (
     load_schema,
     to_json,
     write_profile,
+)
+from pinka_preflight.requirements import (
+    REQUIREMENTS_JSON,
+    PlanError,
+    compute,
+    load_plan,
+    load_requirements,
 )
 from pinka_preflight.runner import FixtureRunner, RealRunner, Runner
 
@@ -99,8 +107,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--srv-path",
         metavar="PATH",
-        default=DEFAULT_SRV_PATH,
-        help=f"configured location of the research space (default: {DEFAULT_SRV_PATH})",
+        help="configured location of the research space (default: the plan's srv_path, "
+        f"else {DEFAULT_SRV_PATH})",
+    )
+    parser.add_argument(
+        "--plan",
+        metavar="FILE",
+        help="the operator's choices that size the lab, as bootstrap and the installer write "
+        "them (JSON, preflight/schema/plan.schema.json); without it, the configured defaults",
     )
     parser.add_argument(
         "--accept-degraded",
@@ -166,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="a configured researcher; a host whose login accounts are all researchers and "
-        "that has no listener besides sshd is dedicated (§2.2); repeat for each",
+        "that has no listener besides sshd is dedicated; repeat for each",
     )
     parser.add_argument(
         "--allow-dirty",
@@ -195,6 +209,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--endpoints", metavar="FILE", default=ENDPOINTS_JSON, help="compiled endpoint list (JSON)"
+    )
+    parser.add_argument(
+        "--requirements",
+        metavar="FILE",
+        default=REQUIREMENTS_JSON,
+        help="compiled requirements of the lab's parts (JSON)",
     )
     parser.add_argument(
         "--lab-defaults",
@@ -227,7 +247,7 @@ def lab_conflicts(
     *,
     kvm_usable: bool,
 ) -> list[Conflict]:
-    """Ports in use and VM collector address conflicts (§2.2, §12.11).
+    """Ports in use and VM collector address conflicts.
 
     Args:
         args: Parsed arguments.
@@ -264,7 +284,10 @@ def _repo_commit(args: argparse.Namespace, fs: FileSystem, runner: Runner) -> st
 
 
 def run_preflight(
-    args: argparse.Namespace, fs: FileSystem, runner: Runner
+    args: argparse.Namespace,
+    fs: FileSystem,
+    runner: Runner,
+    plan: tuple[dict[str, Any], str] | None = None,
 ) -> tuple[dict[str, Any], Decision]:
     """Detect, decide and assemble the report.
 
@@ -272,6 +295,8 @@ def run_preflight(
         args: Parsed arguments.
         fs: Filesystem view.
         runner: Command runner.
+        plan: The effective plan and its label (:func:`load_plan`); None loads
+            it from ``args``.
 
     Returns:
         ``(report, decision)``.
@@ -279,10 +304,12 @@ def run_preflight(
     Raises:
         RuntimeError: If the report does not validate against the schema.
     """
+    data = load_requirements(args.requirements)
+    choices, label = plan or load_plan(args.plan, data["defaults"], args.srv_path)
     osr = detect_os_release(fs)
     env = detect_environment(fs, runner)
     kernel = detect_kernel(fs, runner)
-    hw = detect_hardware(fs, runner, args.srv_path)
+    hw = detect_hardware(fs, runner, str(choices["srv_path"]))
     gpu = detect_gpu(fs, runner, env.env_class)
     conflicts = detect_conflicts(
         fs,
@@ -328,7 +355,7 @@ def run_preflight(
     if access.host == "shared":
         conflicts.infos.append(
             "shared host (" + "; ".join(access.reasons) + "): the firewall keeps the "
-            "pre-existing listeners reachable as found unless closed with consent (§7.5)"
+            "pre-existing listeners reachable as found unless closed with consent"
         )
     timesync = detect_timesync(runner)
     matrix = load_matrix(args.matrix)
@@ -368,6 +395,20 @@ def run_preflight(
             "nvidia_driver_mode": args.nvidia_driver,
             "mok_enrollment_accepted": args.accept_mok_enrollment,
         },
+    )
+    apply_requirements(
+        decision,
+        compute(
+            data,
+            choices,
+            label,
+            minimums=matrix["minimums"],
+            features=decision.features,
+            memory_gib=None if hw.memory_bytes is None else hw.memory_bytes / 2**30,
+            fs=fs,
+            runner=runner,
+            machine=machine,
+        ),
     )
     overrides = Overrides(
         accept_degraded=args.accept_degraded,
@@ -417,12 +458,16 @@ def main(argv: Sequence[str]) -> int:
             f"--port: unknown lab ports {', '.join(unknown)} (known: {', '.join(sorted(known))})"
         )
     try:
+        plan = load_plan(args.plan, load_requirements(args.requirements)["defaults"], args.srv_path)
+    except PlanError as exc:
+        parser.error(str(exc))
+    try:
         if args.root:
             fs = FileSystem(args.root)
             runner: Runner = FixtureRunner.from_file(os.path.join(fs.root, "commands.json"))
         else:
             fs, runner = FileSystem("/"), RealRunner()
-        report, decision = run_preflight(args, fs, runner)
+        report, decision = run_preflight(args, fs, runner, plan)
     except Exception:
         sys.stderr.write("pinka-preflight: detection failed (preflight_error)\n")
         traceback.print_exc()

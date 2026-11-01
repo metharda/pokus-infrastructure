@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform_facts/tasks/main.yml). Local changes will be overwritten.
 #
-# The only place that interprets the distribution (BUILD_PROMPT §19.1). Every
+# The only place that interprets the distribution. Every
 # fact comes from the host profile that preflight wrote, so Ansible and
 # preflight never disagree about the host.
 - name: Check that the host profile is available
@@ -34,7 +34,7 @@
     quiet: true
 
 - name: Set the platform facts
-  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - fact names defined by BUILD_PROMPT §19.1
+  ansible.builtin.set_fact:  # noqa: var-naming[no-role-prefix] - the pinka_* facts every role reads
     pinka_family: "{{ host_profile.family }}"
     pinka_distro: "{{ platform_facts_identity.distro }}"
     pinka_release: "{{ platform_facts_identity.release }}"
@@ -61,7 +61,7 @@
     fail_msg: "firewall_backend must be auto, nftables, firewalld or ufw."
     quiet: true
 
-# BUILD_PROMPT §12.11: ports are overridden by name; the effective ports must
+# Ports are overridden by name; the effective ports must
 # stay distinct from each other and from the lab's internal listeners.
 - name: Check the port overrides
   ansible.builtin.assert:

@@ -1,4 +1,4 @@
-"""The environment fingerprint (BUILD_PROMPT §10.2, contracts.md C9c).
+"""The environment fingerprint (contracts.md C9c).
 
 The fingerprint describes everything that can change a measurement: the host
 profile's essentials, the hardware, the installed and running software, the

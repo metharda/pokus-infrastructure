@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/component-sources.yml). Local changes will be overwritten.
 #
-# Component source matrix (BUILD_PROMPT §19.4): where each host component
+# Component source matrix: where each host component
 # comes from on each distribution, and which packages make it up. Versions are
 # NOT here: they are pinned per release in versions.lock.yml
 # (`packages.<component>.<release key>`); repository keys (URLs and
@@ -50,7 +50,7 @@ repositories:
     components: []
   nvidia-container-toolkit-rpm:
     # NVIDIA's own .repo file sets gpgcheck=0 with repo_gpgcheck=1; pinka
-    # requires gpgcheck=1 (BUILD_PROMPT §7.2). The packages are signed: the
+    # requires gpgcheck=1. The packages are signed: the
     # 1.20.1 RPMs carry an RSA header signature by the key pinned in
     # versions.lock.yml (repository_keys.keys.nvidia-container-toolkit).
     type: rpm
@@ -122,7 +122,7 @@ components:
     arch: {source: distro, packages: [nvidia-container-toolkit], verify: "TODO(verify): package name"}
 
   incus:
-    # Incus 6.0 LTS where it exists (BUILD_PROMPT §7.7); `channel` is recorded
+    # Incus 6.0 LTS where it exists; `channel` is recorded
     # in the host profile facts and the fingerprint.
     default: {source: distro, packages: [incus], channel: non_lts, verify: "TODO(verify): package name"}
     ubuntu: &incus_zabbly
@@ -146,7 +146,7 @@ components:
 
   nvidia_driver:
     # Installed only by provider_baremetal and provider_vm with
-    # install_nvidia_driver: auto (BUILD_PROMPT §19.8). Only the Ubuntu and
+    # install_nvidia_driver: auto. Only the Ubuntu and
     # Debian methods are `supported`; the TUI recommends `manual` elsewhere.
     default: {source: distro, packages: [], method: manual}
     ubuntu: {source: distro, packages: [nvidia-driver-580-open], method: dkms, tier: supported}

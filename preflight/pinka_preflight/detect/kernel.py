@@ -1,4 +1,4 @@
-"""Kernel, init system and kernel capability detection (BUILD_PROMPT §2.2)."""
+"""Kernel, init system and kernel capability detection."""
 
 from __future__ import annotations
 

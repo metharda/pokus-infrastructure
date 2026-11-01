@@ -111,7 +111,7 @@ def test_env_pins_every_image_by_digest() -> None:
         assert env[f"{name.upper()}_IMAGE"] == f"{image['image']}@{image['digest']}"
     assert env["OPA_PORT"] == "8181"
     assert env["GRAFANA_PORT"] == "18700"
-    # BUILD_PROMPT §7.6: per service, not from the Docker daemon.
+    # Per service, not from the Docker daemon.
     assert env["LOG_MAX_SIZE"] == "20m"
     assert env["LOG_MAX_FILE"] == "5"
     assert env["CGROUP_PARENT"] == "pinka-services.slice"
@@ -201,7 +201,7 @@ def test_compose_config_is_valid(project: str, gpu_method: str, tmp_path: Path) 
     for name, service in config["services"].items():
         assert "@sha256:" in service["image"], name
         assert service.get("network_mode") in ("host", "none") or "ports" in service, name
-        # BUILD_PROMPT §7.6: the same on a Docker that existed before pinka.
+        # The same on a Docker that existed before pinka.
         assert service["cgroup_parent"] == "pinka-services.slice", name
         logging = service["logging"]
         if logging["driver"] != "journald":  # OPA's decision logs go to the collector

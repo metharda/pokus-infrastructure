@@ -1,7 +1,7 @@
 # layout
 
 Creates the research space (`pinka_root`, default `/srv/pinka`) and the lab's
-host paths (BUILD_PROMPT §6.2) from one data structure in
+host paths from one data structure in
 `group_vars/all/main.yml`: `pinka_layout` (relative to `pinka_root`),
 `pinka_system_layout` (absolute paths) and `pinka_layout_user_mode` for
 `users/<name>/`. The same data renders the layout table of

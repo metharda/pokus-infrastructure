@@ -30,6 +30,7 @@ LAB: dict[str, Any] = {
     "lab_mode": "production",
     "paths": {
         "preflight": "/usr/local/lib/pinka/preflight/pinka-preflight",
+        "plan": "/etc/pinka/plan.json",
         "host_profile": "/etc/pinka/host-profile.json",
         "bootstrap_state": "/etc/pinka/bootstrap-state.json",
         "health_gate_status": "/run/pinka/health-gate.json",

@@ -23,14 +23,15 @@ NODE_BIN := node_modules/.bin
 REPO_CHECKS := PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks
 GEN := PYTHONPATH=tools/gen:preflight:tools/pinka-lab:tools/test-distros:installer:tools/platform $(BIN)/python -m pinka_gen
 LOCKCHECK := PYTHONPATH=tools/lockcheck $(BIN)/python -m pinka_lockcheck
-# YAML sources validated against their JSON Schemas (BUILD_PROMPT §11).
+# YAML sources validated against their JSON Schemas.
 SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.json \
   preflight/support-matrix.yml=preflight/schema/support-matrix.schema.json \
+  preflight/requirements.yml=preflight/schema/requirements.schema.json \
   models.lock.yml=tools/lockcheck/schema/models-lock.schema.json \
   models.catalog.yml=tools/lockcheck/schema/models-catalog.schema.json \
   tests/answers/ci.yml=installer/schema/answers.schema.json \
   $(foreach f,$(sort $(wildcard images/*/image.yaml)),$(f)=tools/lockcheck/schema/image-blueprint.schema.json)
-# Oldest Python preflight must run on (BUILD_PROMPT §2.1).
+# Oldest Python preflight must run on.
 PREFLIGHT_MIN_PYTHON := 3.9
 BUILD := build
 # Where make release-package writes the package and its .sha256.
@@ -39,12 +40,11 @@ RELEASE_OUT ?= $(BUILD)/release
 # package builder, preflight), for every target that runs it.
 TEST_DISTROS_PATH := tools/test-distros:tools/platform:tools/lockcheck:preflight
 
-# Pages under docs/ that are kept verbatim or are working notes, not site pages.
-DOCS_EXCLUDES := BUILD_PROMPT.md DOCS_SPEC.md IMPLEMENTATION_NOTES.md
-DOCS_LINT_ARGS := --docs-dir docs --component infra $(addprefix --exclude ,$(DOCS_EXCLUDES))
+DOCS_LINT_ARGS := --docs-dir docs --component infra
 
 PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/tests ansible/filter_plugins \
-  ansible/roles/incus/library ansible/roles/install_record/library ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
+  ansible/roles/incus/library ansible/roles/install_record/library ansible/roles/uninstall/library \
+	  ansible/roles/incus/files ansible/roles/models/files ansible/roles/vllm/files ansible/roles/images/files \
   ansible/roles/lab_session/files ansible/roles/backup/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/roles/gpu_arbiter/files ansible/roles/firewall/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins tools/platform tests/reference-platform
@@ -99,7 +99,7 @@ help: ## List targets
 VERBOSE ?= 0
 GATE = PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks gate --make "$(MAKE)" --log-dir $(BUILD)/gate
 LINT_STEPS := lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral \
-  lint-markdown lint-spelling lint-docs lint-mermaid privacy
+  lint-references lint-markdown lint-spelling lint-docs lint-mermaid privacy
 TEST_STEPS := test-py39 test-pytest
 DOCS_STEPS := drift-check docs-coverage docs-build
 
@@ -170,7 +170,7 @@ lint-python: setup ## ruff, ruff format, mypy --strict
 	  ansible/roles/firewall/files \
 	  ansible/tests tools/test-distros/pinka_test_distros tools/test-distros/tests \
 	  installer/pinka_installer installer/tests ansible/callback_plugins tools/platform/pinka_platform
-	@# The reference platform (BUILD_PROMPT §7.18): its two packages and its job script.
+	@# The reference platform: its two packages and its job script.
 	$(BIN)/mypy tests/reference-platform/src/refplat \
 	  tests/reference-platform/packages/refplat-agent/src/refplat_agent tests/reference-platform/jobs/tune.py
 	@# A run of its own: installer/tests has a conftest module too.
@@ -203,12 +203,16 @@ lint-ansible: setup ## ansible-lint (production profile) and --syntax-check of e
 	done
 
 .PHONY: lint-portability
-lint-portability: ## Only platform_facts may read distribution facts (BUILD_PROMPT §19.1)
+lint-portability: ## Only platform_facts may read distribution facts
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks portability --ansible-dir ansible
 
 .PHONY: lint-neutral
-lint-neutral: ## Infra's code names no particular platform (BUILD_PROMPT §11)
+lint-neutral: ## Infra's code names no particular platform
 	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks neutrality --root .
+
+.PHONY: lint-references
+lint-references: ## No references to working material kept outside the repository (budget in references.json)
+	PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks references --root .
 
 .PHONY: lint-markdown
 lint-markdown: setup ## markdownlint
@@ -225,7 +229,7 @@ lint-docs: setup ## Front matter, code blocks and qa markers of every docs page
 .PHONY: lint-mermaid
 lint-mermaid: setup ## Validate Mermaid diagram syntax with mermaid-cli
 	@rm -rf $(BUILD)/mermaid
-	@$(REPO_CHECKS) mermaid-extract --docs-dir docs $(addprefix --exclude ,$(DOCS_EXCLUDES)) --out $(BUILD)/mermaid
+	@$(REPO_CHECKS) mermaid-extract --docs-dir docs --out $(BUILD)/mermaid
 	@status=0; \
 	while IFS=$$'\t' read -r name where; do \
 	  if ! $(NODE_BIN)/mmdc -q -p tools/repo-checks/puppeteer.json \
@@ -277,11 +281,11 @@ test-isolated: setup ## Each pytest file in a process of its own (CI: weekly and
 	  --junit-dir $(JUNIT)/isolated $(if $(filter 1,$(VERBOSE)),--verbose)
 
 .PHONY: test-distros
-test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution (§19.9); TEST_DISTROS_ARGS="--target ID ..."
+test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution; TEST_DISTROS_ARGS="--target ID ..."
 	PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros run $(TEST_DISTROS_ARGS)
 
 .PHONY: check-mode
-check-mode: setup ## Required CI fast lane (§11, §19.9): base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
+check-mode: setup ## Required CI fast lane: base, users_groups, ssh, layout in check mode in a systemd container, nothing skipped; CI_IMAGE=<containers.ci_images key>
 	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --image $(CI_IMAGE)
 
 .PHONY: check-mode-extended
@@ -289,7 +293,7 @@ check-mode-extended: setup ## Extended, non-blocking: the whole site.yml in chec
 	$(ANSIBLE_ENV) PYTHONPATH=$(TEST_DISTROS_PATH) $(BIN)/python -m pinka_test_distros check-mode --extended --image $(CI_IMAGE)
 
 .PHONY: test-py39
-test-py39: ## Preflight, pinka and install record module tests with plain unittest on CPython 3.9 (stdlib only)
+test-py39: ## Preflight, pinka, install record and uninstall module tests with plain unittest on CPython 3.9 (stdlib only)
 	@# unittest_run: python -m unittest plus the CI skip list (it names every skipped test).
 	cd preflight && PYTHONPATH=.:tests:../tools/repo-checks $(UV) run --no-project \
 	  --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
@@ -303,6 +307,10 @@ test-py39: ## Preflight, pinka and install record module tests with plain unitte
 	  --no-project --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
 	  --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-install-record.xml \
 	  test_install_record_module
+	cd ansible/tests && PYTHONPATH=../roles/uninstall/library:../../tools/repo-checks $(UV) run \
+	  --no-project --python $(PREFLIGHT_MIN_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-uninstall.xml \
+	  test_uninstall_module
 
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)
@@ -335,7 +343,7 @@ lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing wh
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml --check
 
 .PHONY: lock-pins
-lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
+lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the lab images' sizes, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
 	@$(LOCKCHECK).lockpins --lock versions.lock.yml
 
 .PHONY: lock-update

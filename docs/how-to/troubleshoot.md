@@ -79,11 +79,19 @@ bootstrap again (see
 ## Exit code 10: degraded {#exit-code-10}
 
 Preflight found that optional features are unavailable, for example no usable
-GPU or no KVM, and nobody consented to continue without them. Bootstrap
-printed each disabled feature with its consequence for research.
+GPU or no KVM, or that the memory is below what your choices recommend, and
+nobody consented to continue. Bootstrap printed each disabled feature with its
+consequence for research, and the memory reason with its largest parts and
+the choices that would fit.
 
 - If the missing feature can be provided (a driver, nested virtualization),
-  provide it and run bootstrap again.
+  provide it and run bootstrap again. A GPU feature the lab is not meant to
+  use can be switched off (`inference: "off"`, `training: "off"` or `cpu`):
+  a host is not degraded for a feature its switch turns off.
+- If memory is the reason, change a choice the message names (fewer
+  `incus_concurrent_targets`, a lower `training_caps.memory_max`,
+  `training: "off"`) in the machine's host_vars, or add memory
+  ([Capacity planning](../explanation/capacity-planning.md)).
 - If the lab is useful without it, run bootstrap again with
   `--accept-degraded`, or answer `y` when bootstrap asks. The consent is
   recorded in the host profile.
@@ -98,10 +106,17 @@ answer `y` when it asks); the consent is recorded in the host profile.
 ## Exit code 20: unsupported {#exit-code-20}
 
 A core requirement failed, or the operating system, architecture or
-environment is unsupported, or a blocking conflict exists. The reasons are
+environment is unsupported, or a blocking conflict exists, or the memory or a
+disk is below what your choices require. The reasons are
 printed above the exit line and stored in `unsupported_reasons` of the host
 profile. Fix the cause, for example by installing a supported distribution or
-by running the lab in a VM on this machine. Only if you accept running
+by running the lab in a VM on this machine. A memory reason lists the parts
+and the choices that would fit; a disk reason lists, per mount point, the
+items that do not fit, the largest first: shrink one (for example
+`incus_pool_size`), choose a smaller model, or free space
+([Capacity planning](../explanation/capacity-planning.md)). A plan bootstrap
+cannot write (a template value, a model not pinned in `models.lock.yml`)
+stops it with exit code 77 and the setting's name. Only if you accept running
 outside the support matrix, run bootstrap again with `--force-unsupported`;
 this is recorded in the host profile and in every environment fingerprint.
 
@@ -289,6 +304,48 @@ Bootstrap stopped and printed what to do. Common messages:
 
 `<machine>` is the name you pass with `--machine`; `<file>` is a file that
 contains the vault password; `<key>` is the key file the message names.
+
+## Exit code 80: uninstall refused {#exit-code-80}
+
+`bootstrap.sh --uninstall` removed nothing. The message above the exit code
+says why:
+
+| Message | What to do |
+| --- | --- |
+| uninstall not confirmed | Type the machine name exactly as the plan shows it, or pass it with `--confirm-machine <machine>` when there is no terminal (`--non-interactive`). With `--purge-data` the name is asked a second time. |
+| --confirm-machine ... is not this host's machine name | Pass the name the plan shows, the one `/etc/pinka/bootstrap-state.json` records. |
+| --machine ... is not this host's machine | Leave out `--machine`, or pass the recorded name. |
+| ... is missing, so the machine name is unknown | The state file is gone; pass `--machine <machine>`, the name this host was installed as. |
+| the backup failed ... nothing was removed | Fix the backup (`sudo pinka backup now` shows the error), or add `--skip-backup` to uninstall without one. |
+| uninstall refused: --remove-component applies only on a host without a usable install record | Leave out `--remove-component`: the install record already says which components pinka installed. |
+
+Then run the same `--uninstall` command again. See
+[How to uninstall pinka](uninstall.md).
+
+## Exit code 81: uninstall kept items {#exit-code-81}
+
+Uninstall ran to the end, but some items it should have removed are still
+there. The report names each with the reason:
+
+<!-- qa:run env=E2 -->
+```bash
+sudo ls -t /var/log/pinka-uninstall/
+sudo grep -B3 -A2 '"result": "failed"' "/var/log/pinka-uninstall/<report>"
+```
+
+`<report>` is the first name the `ls` command lists. Deal with each reason
+(for example a package another package still needs, or a path that is
+busy), then run `sudo ./bootstrap/bootstrap.sh --uninstall` again: what is
+already gone is reported as such, and uninstall continues with the rest.
+Two reasons keep the lab's data safe and need you first: `the kept data
+could not be guarded` (no package was removed, because a kept data directory
+could not be mounted read-only; the guard's item names the `mount` error)
+and `the kept copy of ... is missing` (a path that holds the backups' key or
+a record was not removed, because its copy in `/var/lib/pinka-kept` failed;
+the `keep` item names why).
+When it ran from the installer, `/opt/pinka` is removed after the installer
+has ended; if that fails, the report names it as well, and `sudo rm -rf
+/opt/pinka` removes it.
 
 ## Verify the fix
 

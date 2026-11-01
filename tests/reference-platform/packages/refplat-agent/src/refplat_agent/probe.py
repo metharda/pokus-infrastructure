@@ -1,4 +1,4 @@
-"""The reference platform's isolation probe (BUILD_PROMPT §7.18).
+"""The reference platform's isolation probe.
 
 It tries every action a platform account must not be able to do and reports
 what it could do; it never relies on being stopped, it only measures. It
@@ -31,7 +31,7 @@ from typing import Any
 ENDPOINTS = Path("/etc/pinka/platform/endpoints.toml")
 PRINCIPALS = Path("/etc/pinka/platform/principals.json")
 TIMEOUT = 3.0
-# Infra's paths no platform account may read (BUILD_PROMPT §7.18, §12.4).
+# Infra's paths no platform account may read.
 INFRA_SECRETS = "/etc/pinka/secrets"
 GIT_MIRRORS = "/var/lib/pinka/git"
 DATASETS = "/srv/pinka/training/datasets"
@@ -50,7 +50,7 @@ def default_endpoints(platform: str = PLATFORM) -> dict[str, Any]:
     """What refplat knows of the contract when ``endpoints.toml`` is out of sight.
 
     The agent sees none of /etc/pinka: contract v2's default ports and paths
-    (§12.3, §12.4) stand in for the file.
+    stand in for the file.
 
     Args:
         platform: The platform's deployed name (the session's hello says it).

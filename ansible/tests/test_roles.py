@@ -1,4 +1,4 @@
-"""Role structure and conventions (BUILD_PROMPT §7, §14, §19.1).
+"""Role structure and conventions.
 
 Every role has a README, documented defaults, meta and argument specs; every
 managed file carries the managed header with its own path; family-specific
@@ -28,6 +28,8 @@ REQUIRED_FILES = (
 )
 # Roles that are only included by other roles, never applied by site.yml.
 HELPER_ROLES = {"pkg", "bootstrap_signal", "compose", "active_platform"}
+# Roles of other plays than site.yml.
+OTHER_PLAY_ROLES = {"uninstall": "uninstall.yml"}
 HOLD_METHODS = sorted(
     {
         load_yaml(ROLES / "platform_facts" / "vars" / f"{f}.yml")["platform_facts_family"][
@@ -47,7 +49,12 @@ VALUES = {
     "pkg_repo.type": ("apt", "rpm"),
 }
 EXPRESSION_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
-PLAYS = [ANSIBLE / "site.yml", ANSIBLE / "restore.yml", ANSIBLE / "rotate.yml"]
+PLAYS = [
+    ANSIBLE / "site.yml",
+    ANSIBLE / "restore.yml",
+    ANSIBLE / "rotate.yml",
+    ANSIBLE / "uninstall.yml",
+]
 INCLUDE_TASKS = ("ansible.builtin.include_tasks", "ansible.builtin.import_tasks")
 INCLUDE_ROLE = ("ansible.builtin.include_role", "ansible.builtin.import_role")
 
@@ -140,13 +147,17 @@ def test_defaults_are_prefixed_and_documented(role: str) -> None:
 RUNTIME_VARIABLES = {
     "host_profile": "bootstrap's extra vars",
     "pinka_bootstrap": "bootstrap's extra vars",
+    "pinka_uninstall": "bootstrap's extra vars for uninstall.yml",
     "machine": "bootstrap's -e machine=",
     "pinka_dir": "the plays' vars",
-    "pinka_features": "set by preflight_gate",
+    "pinka_features": "set by preflight_gate (facts.yml; restore.yml too)",
+    "pinka_training": "set by preflight_gate (facts.yml; restore.yml too)",
+    "pinka_training_caps": "set by preflight_gate (facts.yml; restore.yml too)",
     "pinka_provider": "set by platform_facts",
     "active_platform": "set by the active_platform helper role",
     "bootstrap_signal_code": "the including task's vars",
     "bootstrap_signal_message": "the including task's vars",
+    "preflight_gate_profile": "the including task's vars",
     "vault_grafana_admin_password": "the vault",
     "vault_postgres_passwords": "the vault",
 }
@@ -293,7 +304,9 @@ def test_site_applies_every_role_tagged_with_its_name() -> None:
             if module in task:
                 for name in expand(task[module]["name"]):
                     applied.setdefault(name, []).extend(task.get("tags", []))
-    assert sorted(set(ROLE_NAMES) - HELPER_ROLES - set(applied)) == []
+    assert sorted(set(ROLE_NAMES) - HELPER_ROLES - set(OTHER_PLAY_ROLES) - set(applied)) == []
+    for role, play in OTHER_PLAY_ROLES.items():
+        assert f"name: {role}" in (ANSIBLE / play).read_text(), (role, play)
     for name, tags in applied.items():
         assert name in tags, name
 
@@ -421,7 +434,7 @@ class CheckModeWalk:
 
 
 def test_site_roles_skip_in_check_mode_what_the_run_would_create() -> None:
-    """bootstrap.sh --check and the CI fast lane run site.yml on fresh hosts (§17, §19.9)."""
+    """bootstrap.sh --check and the CI fast lane run site.yml on fresh hosts."""
     walk = CheckModeWalk()
     for play in load_yaml(ANSIBLE / "site.yml"):
         walk.tasks("", ANSIBLE / "site.yml", play["tasks"], False)

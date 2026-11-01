@@ -1,4 +1,4 @@
-"""``pinka doctor --smoke``: one throwaway target per golden image (BUILD_PROMPT §9).
+"""``pinka doctor --smoke``: one throwaway target per golden image.
 
 For every blueprint the lab knows, the newest image is launched in the
 project ``bench`` on a fresh run network without NAT (named ``r-<12 chars>``

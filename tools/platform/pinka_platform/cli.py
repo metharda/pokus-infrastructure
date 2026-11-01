@@ -2,9 +2,9 @@
 
 ``validate`` is for platform developers and the installer; ``deploy`` and
 ``purge`` are the deployment steps the ``platform`` role and ``pinka platform
-purge`` run as root on the lab host (BUILD_PROMPT §7.14). ``hook`` runs a hook
+purge`` run as root on the lab host. ``hook`` runs a hook
 of the active platform for ``pinka``, doctor, restore and the platform role;
-``hook-exec`` is the wrapper inside each hook's unit (§12.9).
+``hook-exec`` is the wrapper inside each hook's unit.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         "deploy",
         help="one step of a deployment on the lab host (run by the platform role, as root)",
         description=(
-            "One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one "
+            "One step of a platform deployment. Each step prints one "
             "JSON object. inspect-release fetches and validates the release alone and reports "
             "what it needs (content packages, secrets, settings; the installer asks for them); "
             "prepare fetches, stages and validates and writes a run directory below the staging "
@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a hook of the active platform (as root)",
         description=(
             "Run the active platform's drain or health hook in its own transient unit (an "
-            "instance of pinka-hook@, §12.9) and print the result as JSON. "
+            "instance of pinka-hook@) and print the result as JSON. "
             "Without an active platform, or when the manifest declares no such hook, the "
             "result is skipped."
         ),
@@ -176,7 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="the wrapper inside a hook's unit (not for direct use)",
         description=(
             "Run a release's hook command, capture the one JSON line it prints on stdout "
-            "and print the judged result (§12.9). The hook's stderr goes to the journal."
+            "and print the judged result. The hook's stderr goes to the journal."
         ),
     )
     wrap.add_argument("--hook", required=True, choices=hooks.HOOKS, help="the hook")

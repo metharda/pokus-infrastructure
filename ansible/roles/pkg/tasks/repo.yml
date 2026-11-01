@@ -2,7 +2,7 @@
 #
 # Add a vendor repository from ansible/component-sources.yml. Its key is
 # downloaded, its primary key fingerprint is compared with versions.lock.yml,
-# and only then is it installed the family's way (BUILD_PROMPT §7.2, §19.4):
+# and only then is it installed the family's way:
 # signed-by keyrings for apt, rpm --import plus gpgcheck=1 for dnf and zypper.
 # Never apt-key, never --gpg-auto-import-keys, never gpgcheck=0.
 - name: Look up repository {{ pkg_repo_name }}

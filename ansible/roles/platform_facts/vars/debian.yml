@@ -8,8 +8,7 @@ platform_facts_family:
   initramfs_tool: update-initramfs
   version_hold_method: apt_preferences
   # Release codename -> distribution and version, for the release keys of
-  # versions.lock.yml and for derivatives (Debian/Ubuntu distro-info-data,
-  # verified in implementation step 2).
+  # versions.lock.yml and for derivatives (Debian/Ubuntu distro-info-data).
   codenames:
     jammy: {distro: ubuntu, version: "22.04"}
     noble: {distro: ubuntu, version: "24.04"}

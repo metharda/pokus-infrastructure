@@ -18,7 +18,7 @@
          and (tailscale_status_raw.stdout | from_json).Self.HostName | default('') == machine_name
          and tailscale_tag in ((tailscale_status_raw.stdout | from_json).Self.Tags | default([])) }}
 
-# The install record notes the join before it happens (§7.21): uninstall
+# The install record notes the join before it happens: uninstall
 # logs out only a node pinka joined.
 - name: Record that pinka joins the node
   pinka_install_record:

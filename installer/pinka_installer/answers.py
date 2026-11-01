@@ -1,4 +1,4 @@
-"""The answers file (BUILD_PROMPT §18.6): model, loading, checks and serialization.
+"""The answers file: model, loading, checks and serialization.
 
 An answers file holds every non-secret choice of the installer. The TUI builds
 one screen by screen; ``bootstrap.sh --answers`` replays one. JSON Schema
@@ -30,7 +30,7 @@ GENERATE = "generate"
 PROVIDED = "provided"
 SCHEMA_FILE = Path(__file__).resolve().parents[1] / "schema" / "answers.schema.json"
 ANSWERS_HEADER = (
-    "# Installer answers for {machine} (BUILD_PROMPT §18.6), written by the pinka installer.\n"
+    "# Installer answers for {machine}, written by the pinka installer.\n"
     "# Replay: sudo ./bootstrap/bootstrap.sh --answers installer-answers/{machine}.yml \\\n"
     "#   --non-interactive --vault-password-file <file>\n"
     "# No secret values: provided secrets come from PINKA_SECRET_<NAME> variables.\n"
@@ -74,6 +74,7 @@ class Resources:
     cpuset_services: str = ""
     cpuset_targets: str = ""
     postgres_shared_buffers: str = ""
+    concurrent_targets: int = 2
 
 
 @dataclass
@@ -81,7 +82,9 @@ class Storage:
     """Screen 6: the Incus storage pool."""
 
     source: str = "loop"
-    loop_size_gib: int = 300
+    # auto: computed by preflight from the targets, the golden images and the
+    # free space; or whole GiB.
+    loop_size_gib: int | str = "auto"
     device: str = ""
     device_confirm: str = ""
     force_wipe: bool = False
@@ -111,7 +114,7 @@ class RemoteAccess:
     grafana_tailscale_serve: bool = False
     tailscale_serve_consent: bool = False
     ssh_extra_allowed_interfaces: list[str] = field(default_factory=list)
-    # Pre-existing access (BUILD_PROMPT §7.5): listeners to close with consent,
+    # Pre-existing access: listeners to close with consent,
     # and consent to close the install's access path under the safeguard.
     close_listeners: list[str] = field(default_factory=list)
     close_install_path: bool = False
@@ -126,6 +129,20 @@ class Gpu:
     default_model: str = "none"
     vllm_profile: str = ""
     start_serving: bool = True
+
+
+@dataclass
+class Features:
+    """The feature switches: what the lab installs and counts.
+
+    ``inference``: ``auto`` (vLLM, its images and the model where the host
+    has a usable GPU) or ``off``. ``training``: ``auto`` (jobs where the host
+    has a usable GPU), ``cpu`` (also the CPU-only variant without one) or
+    ``off``.
+    """
+
+    inference: str = "auto"
+    training: str = "auto"
 
 
 @dataclass
@@ -172,11 +189,22 @@ class Backups:
     retention: Retention = field(default_factory=Retention)
     include_models: bool = False
     include_secrets: bool = False
+    pg_dumps_kept: int = 7
+
+
+@dataclass
+class TelemetryRetention:
+    """How long the telemetry stores keep their data."""
+
+    prometheus: str = "90d"
+    prometheus_size: str = "0"
+    loki: str = "2160h"
+    tempo: str = "720h"
 
 
 @dataclass
 class Source:
-    """Screen 12: a Git source of the platform release or of a content package (§8.1)."""
+    """Screen 12: a Git source of the platform release or of a content package."""
 
     repo: str = ""
     ref: str = ""
@@ -195,7 +223,7 @@ class SourceTrust:
 
 @dataclass
 class GpuArbiter:
-    """Screen 9: the GPU arbiter (§7.18, §8.1)."""
+    """Screen 9: the GPU arbiter."""
 
     after_boot: str = "serve"
     restore_after_training: bool = True
@@ -203,10 +231,10 @@ class GpuArbiter:
 
 @dataclass
 class TrainingCaps:
-    """Screen 9: this host's caps on training jobs (§7.18, §8.1)."""
+    """Screen 9: this host's caps on training jobs."""
 
     timeout_seconds: int = 86400
-    memory_max: str = "24G"
+    memory_max: str = "auto"
     cpus: int = 8
     dataset_max: str = "8G"
     run_storage_max: str = "16G"
@@ -240,6 +268,7 @@ class Answers:
     remote_access: RemoteAccess = field(default_factory=RemoteAccess)
     split_inference_peer: str = ""
     gpu: Gpu = field(default_factory=Gpu)
+    features: Features = field(default_factory=Features)
     backups: Backups = field(default_factory=Backups)
     restore_snapshot: str = "latest"
     platform: Source = field(default_factory=Source)
@@ -248,6 +277,7 @@ class Answers:
     platform_settings: dict[str, Any] = field(default_factory=dict)
     gpu_arbiter: GpuArbiter = field(default_factory=GpuArbiter)
     training_caps: TrainingCaps = field(default_factory=TrainingCaps)
+    telemetry_retention: TelemetryRetention = field(default_factory=TelemetryRetention)
     images_build: list[str] = field(default_factory=list)
     secrets: Secrets = field(default_factory=Secrets)
 
@@ -333,6 +363,7 @@ class Answers:
         if not gpu["accept_mok_enrollment"]:
             del gpu["accept_mok_enrollment"]
         data["gpu"] = gpu
+        data["features"] = asdict(clean.features)
         backups = asdict(clean.backups)
         backups["repository"] = _repository_dict(clean.backups.repository)
         data["backups"] = backups
@@ -345,6 +376,7 @@ class Answers:
             data["platform_settings"] = copy.deepcopy(clean.platform_settings)
         data["gpu_arbiter"] = asdict(clean.gpu_arbiter)
         data["training_caps"] = asdict(clean.training_caps)
+        data["telemetry_retention"] = asdict(clean.telemetry_retention)
         data["images"] = {"build": list(clean.images_build)}
         secrets = asdict(clean.secrets)
         if not secrets["platform"]:
@@ -373,6 +405,7 @@ class Answers:
         answers.remote_access = _build(RemoteAccess, data.get("remote_access", {}))
         answers.split_inference_peer = str((data.get("split_inference") or {}).get("peer", ""))
         answers.gpu = _build(Gpu, data.get("gpu", {}))
+        answers.features = _build(Features, data.get("features") or {})
         backups = dict(data.get("backups", {}))
         repository = _build(Repository, backups.pop("repository", {}))
         retention = _build(Retention, backups.pop("retention", {}))
@@ -388,6 +421,9 @@ class Answers:
         answers.platform_settings = copy.deepcopy(dict(data.get("platform_settings") or {}))
         answers.gpu_arbiter = _build(GpuArbiter, data.get("gpu_arbiter") or {})
         answers.training_caps = _build(TrainingCaps, data.get("training_caps") or {})
+        answers.telemetry_retention = _build(
+            TelemetryRetention, data.get("telemetry_retention") or {}
+        )
         answers.images_build = list((data.get("images") or {}).get("build", []))
         secrets = {k: v for k, v in (data.get("secrets") or {}).items() if k != "generate"}
         answers.secrets = _build(Secrets, secrets)
@@ -510,6 +546,7 @@ def problems(answers: Answers, context: Context) -> list[str]:
     if answers.mode == "restore":
         _check(found, "restore/snapshot", validators.snapshot(answers.restore_snapshot))
     _source_problems(found, answers)
+    _retention_problems(found, answers)
     for name in answers.images_build:
         if context.blueprints and name not in context.blueprints:
             found.append(f"images/build: no blueprint {name!r} in images/")
@@ -521,6 +558,11 @@ def _resource_problems(found: list[str], resources: Resources, context: Context)
         value = getattr(resources, name)
         if value:
             _check(found, f"resources/{name}", validators.cpuset(value, context.cpu_count))
+    _check(
+        found,
+        "resources/concurrent_targets",
+        validators.concurrent_targets(resources.concurrent_targets),
+    )
     if resources.cpuset_services and resources.cpuset_targets:
         _check(
             found,
@@ -573,6 +615,10 @@ def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
         )
     if answers.machine.node_role == "lab" and gpu.default_model != "none":
         found.append("gpu/default_model: a lab node serves no model (the inference node does)")
+    if answers.machine.node_role == "inference" and answers.features.inference == "off":
+        found.append(
+            "features/inference: an inference node runs only the inference stack; it needs auto"
+        )
 
 
 def _backup_problems(found: list[str], answers: Answers) -> None:
@@ -589,9 +635,27 @@ def _backup_problems(found: list[str], answers: Answers) -> None:
         found.append("backups/repository: restore mode needs the repository to restore from")
 
 
+def _retention_problems(found: list[str], answers: Answers) -> None:
+    retention = answers.telemetry_retention
+    for name, units in (("prometheus", "hdwy"), ("loki", "hdwy"), ("tempo", "h")):
+        _check(
+            found,
+            f"telemetry_retention/{name}",
+            validators.retention_period(getattr(retention, name), units),
+        )
+    _check(
+        found,
+        "telemetry_retention/prometheus_size",
+        validators.prometheus_size(retention.prometheus_size),
+    )
+    if answers.backups.pg_dumps_kept < 1:
+        found.append("backups/pg_dumps_kept: keep at least one dump")
+
+
 def _source_problems(found: list[str], answers: Answers) -> None:
     caps = answers.training_caps
-    for name in ("memory_max", "dataset_max", "run_storage_max", "tmp_max"):
+    _check(found, "training_caps/memory_max", validators.memory_max(caps.memory_max))
+    for name in ("dataset_max", "run_storage_max", "tmp_max"):
         _check(found, f"training_caps/{name}", validators.cap_size(getattr(caps, name)))
     if not answers.has_platform:
         if answers.content or answers.platform_settings or answers.secrets.platform:

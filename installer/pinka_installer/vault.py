@@ -1,4 +1,4 @@
-"""The lab's secrets in ``group_vars/all/vault.yml`` (BUILD_PROMPT §18.3, §18.7).
+"""The lab's secrets in ``group_vars/all/vault.yml``.
 
 Secrets stay in memory until they are encrypted here with Ansible's own vault
 code (the installer environment holds the same ansible-core as the Ansible
@@ -62,7 +62,7 @@ class Provided:
     def from_environment(
         cls, environ: Mapping[str, str], platform_secrets: Sequence[str] = ()
     ) -> Provided:
-        """Read the ``PINKA_SECRET_<NAME>`` variables (BUILD_PROMPT §18.6).
+        """Read the ``PINKA_SECRET_<NAME>`` variables.
 
         Args:
             environ: The environment.

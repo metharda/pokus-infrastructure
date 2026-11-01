@@ -1,6 +1,6 @@
 """Tests that need the pinned uv (V6): the ``uv`` fixture and its marker.
 
-Owner decision with the "commit" for 3d.4b: in CI a skipped uv test fails
+In CI a skipped uv test fails
 the job. Every test that uses the ``uv`` fixture, directly or through
 another fixture, carries the ``uv`` marker. The CI skip list
 (``pinka_repo_checks.skip_policy``) names no uv test, so in CI (``CI=true``)

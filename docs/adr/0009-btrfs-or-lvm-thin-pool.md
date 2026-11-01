@@ -10,7 +10,7 @@ last_verified: {date: null, rc: null, by: null}
 
 - **Status:** accepted
 - **Date:** 2026-10-05
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §2, §7.7)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
@@ -26,7 +26,7 @@ cannot enforce disk quotas for containers.
    have neither.
 2. The pool lives on a dedicated device when one is configured, otherwise on a
    loop file of a fixed size inside the root filesystem.
-3. A device is formatted only under safety invariant 1 (exact confirmation
+3. A device is formatted only after these checks (exact confirmation
    variable, not mounted, no signature unless forced, interactive
    confirmation after showing model, size and serial).
 

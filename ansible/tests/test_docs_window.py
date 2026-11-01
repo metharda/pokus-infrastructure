@@ -1,4 +1,4 @@
-"""The docs service (BUILD_PROMPT §7.19) and maintenance windows (§7.20)."""
+"""The docs service and maintenance windows."""
 
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ def test_docs_on_the_tailnet_only_on_request() -> None:
 
 
 def test_serve_on_an_adopted_node_needs_consent() -> None:
-    # BUILD_PROMPT §7.4: a node that existed before pinka is published only with
+    # A node that existed before pinka is published only with
     # the owner's consent; the firewall opens the serve ports only then.
     adopted = {"components": {"tailscale": {"origin": "pre-existing"}}}
     joined = {"components": {"tailscale": {"origin": "pinka"}}}

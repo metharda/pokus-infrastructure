@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/backup/tasks/main.yml). Local changes will be overwritten.
 #
-# Backups (BUILD_PROMPT §7.15): the pinned restic, local PostgreSQL dumps and
+# Backups: the pinned restic, local PostgreSQL dumps and
 # restic backups of pinka_root and /etc/pinka on timers, retention, and
 # metrics for the node exporter's textfile collector.
 

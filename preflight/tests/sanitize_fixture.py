@@ -1,4 +1,4 @@
-"""Sanitize a fixture root captured from a real host (privacy invariant, §13.12).
+"""Sanitize a fixture root captured from a real host (privacy invariant).
 
 Real hosts leak identity: host names, serial numbers, UUIDs, MAC and IP
 addresses, user names and e-mail addresses. Before a captured root may become

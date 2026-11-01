@@ -1,15 +1,15 @@
 # Managed by pinka (models.catalog.yml). Local changes will be overwritten.
 #
-# Curated candidate models for the serving profiles (BUILD_PROMPT §7.12):
+# Curated candidate models for the serving profiles:
 # open-weight instruct models with tool calling in vLLM 0.31.0 that fit the
 # profile. Permissive licenses first; gated or custom-license models only in
-# `restricted`, each needing the owner's approval (owner answer E7).
+# `restricted`, each needing approval.
 #
 # STATUS: proposed. Hugging Face was not reachable from the build environment,
 # so no revision, license file or size below has been checked against the
 # Hub; every `revision` is TODO(verify) and `expected_vram_gib` is an estimate
 # (weights plus a KV cache for max_model_len at the profile's memory
-# utilization). The list is not final until the owner approves it; only then
+# utilization). The list is not final until it is approved; only then
 # are revisions and file hashes resolved and an entry can enter models.lock.yml.
 # Schema: tools/lockcheck/schema/models-catalog.schema.json.
 schema_version: 1
@@ -72,7 +72,7 @@ models:
       is less reliable: the serving verification shows whether it works.
 
 # Gated or custom-license candidates: listed separately, never selected
-# without the owner's explicit approval (owner answer E7).
+# without explicit approval.
 restricted:
   - id: llama-3.1-8b-instruct-awq
     status: proposed

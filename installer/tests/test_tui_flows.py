@@ -1,4 +1,4 @@
-"""Complete installer flows driven with Textual's pilot (BUILD_PROMPT §18.9).
+"""Complete installer flows driven with Textual's pilot.
 
 Each flow starts the real application on a copy of the repository files, a
 fake host whose profile preflight produced from one of its fixtures, and a
@@ -180,7 +180,7 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
             pilot.app.screen.query(".banner.warn").results(Static).__next__().content
         )
         await forward(pilot, "storage")
-        await forward(pilot, "researchers")  # loop file of 300 GiB fits 500 GiB free
+        await forward(pilot, "researchers")  # auto: preflight sizes the loop file
         await add_researcher(pilot, "researcher2", key)
         await forward(pilot, "remote")
         assert pilot.app.screen.query_one("#ifaces").disabled  # WSL: Windows owns the network
@@ -480,7 +480,7 @@ KEPLER = "ubuntu2404-baremetal-nvidia-kepler-secureboot"
 
 
 def test_a_gpu_no_driver_is_installed_for(repo: Paths) -> None:
-    # BUILD_PROMPT §2.2: no MOK consent and no driver for a GPU the pinned driver's
+    # No MOK consent and no driver for a GPU the pinned driver's
     # open kernel module does not support, even with "Install the pinned driver".
     host = FakeHost(preflight(KEPLER), fixture=KEPLER)
     installer = app(context(repo, host, machine="pinka-lab"))
@@ -649,7 +649,7 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         await forward(pilot, "storage")
         fill(pilot, loop_size="10")
         await forward(pilot, "storage")
-        assert shown_errors(pilot) == ["✖ at least 20 GiB"]
+        assert shown_errors(pilot) == ["✖ auto, or at least 20 GiB"]
         fill(pilot, loop_size="460")
         await forward(pilot, "storage")
         assert shown_errors(pilot) == ["✖ at most 450 GiB fits here"]
@@ -686,7 +686,7 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
 
 
 def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
-    # BUILD_PROMPT §7.4, §18.4 screen 7: name, tag and login read-only; serve needs consent.
+    # Name, tag and login read-only; serve needs consent.
     host = FakeHost(preflight("ubuntu2404-baremetal-tailscale-adopted"))
     installer = app(context(repo, host), first="remote")
     installer.ctx.wizard.profile = host.preflight([]).profile
@@ -713,7 +713,7 @@ def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
 
 
 def test_a_shared_host_closes_only_what_the_owner_ticks(repo: Paths) -> None:
-    # BUILD_PROMPT §7.5: a checkbox per pre-existing listener and the consent to
+    # A checkbox per pre-existing listener and the consent to
     # close the install's session, on a shared host installed over SSH from the LAN.
     host = FakeHost(preflight("ubuntu2404-access-shared", ["--researcher", "researcher1"]))
     installer = app(context(repo, host), first="remote")
@@ -1051,7 +1051,7 @@ REFPLAT_REPO = "file:///srv/git/refplat.git"
 
 
 def test_a_platform_release_is_inspected_reviewed_and_approved(repo: Paths) -> None:
-    # The reference platform's manifest (§18.9): the Platform screen inspects the
+    # The reference platform's manifest: the Platform screen inspects the
     # release alone, the review runs the deployment's checks and needs approval.
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
     runner = FakeRunner([("events-success.jsonl", 0)])
@@ -1159,7 +1159,7 @@ def test_a_changed_platform_answer_asks_for_a_new_review(repo: Paths) -> None:
 
 
 def test_the_active_platform_is_replaced_only_after_its_name_is_typed(repo: Paths) -> None:
-    # Owner decision with the "commit" for 3d.7: the TUI offers replacing the
+    # The TUI offers replacing the
     # active platform behind a confirmation that names it and asks for its
     # name, exactly like pinka platform purge; without the name nothing changes.
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), active_platform="oldplat")
@@ -1286,3 +1286,88 @@ class patched_environ:  # noqa: N801 - used like a function
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+
+
+def test_uninstall_shows_the_plan_and_needs_the_machine_name(repo: Paths) -> None:
+    # The dry run, the backup offer, the
+    # typed confirmations, then the same command as bootstrap.sh --uninstall.
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    runner.plan["backup"] = True
+    installer = app(context(repo, host, runner), first="mode")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        pick(pilot, "mode-uninstall")
+        await forward(pilot, "uninstall")
+        screen = pilot.app.screen
+        assert runner.uninstall_calls == [["--dry-run"]]
+        assert "Uninstall plan for pinka-lab" in str(screen.query_one("#plan", Static).content)
+        assert screen.query_one("#backup", Checkbox).display
+        # Nothing is typed: nothing runs.
+        await forward(pilot, "uninstall")
+        assert any("type the machine name, pinka-lab" in e for e in shown_errors(pilot))
+        fill(pilot, confirm="pinka-lab")
+        tick(pilot, "purge")
+        await settle(pilot)
+        assert screen.query_one("#field-confirm-data").display
+        fill(pilot, confirm_data="pinka")
+        await forward(pilot, "uninstall")
+        assert any("not the machine name" in e for e in shown_errors(pilot))
+        assert len(runner.uninstall_calls) == 1
+        fill(pilot, confirm_data="pinka-lab")
+        tick(pilot, "backup", on=False)
+        await forward(pilot, "uninstall_run")
+        report = str(pilot.app.screen.query_one("#report", Static).content)
+        assert "1 failed" in report
+        assert "researcher1 is logged in" in report
+        assert "/opt/pinka goes when you close the installer" in report
+        assert "Reboot the host: uninstall never reboots.\n  the initramfs was rebuilt" in report
+        # The kept secrets come first: what grants access to the backups, and
+        # how to take it off the host.
+        assert "Afterwards:\n  - /var/lib/pinka-kept holds the restic repository's" in report
+        assert "grant access to the backups" in report
+        assert "shred -u" in report
+        assert report.index("/var/lib/pinka-kept holds") < report.index("Delete the node pinka-lab")
+        assert "key and settings in /var/lib/pinka-kept/backup/secrets" in report
+        # What to do comes before the long list of what was kept.
+        assert report.index("Afterwards") < report.index("Kept:")
+        await pilot.press("ctrl+n")
+
+    code = drive(installer, flow)
+    assert runner.uninstall_calls[1] == [
+        "--confirm-machine",
+        "pinka-lab",
+        "--purge-data",
+        "--skip-backup",
+    ]
+    assert code == 81
+    assert runner.requests == []  # no install ran
+
+
+def test_uninstall_is_offered_only_on_an_installed_host(repo: Paths) -> None:
+    host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
+    installer = app(context(repo, host), first="mode")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        assert pilot.app.screen.query_one("#mode-uninstall", RadioButton).disabled
+
+    drive(installer, flow)
+
+
+def test_a_refused_plan_offers_no_uninstall(repo: Paths) -> None:
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    runner.plan["refusal"] = "the record says what pinka installed"
+    installer = app(context(repo, host, runner), first="uninstall")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        status = str(pilot.app.screen.query_one("#uninstall-status", Static).content)
+        assert "refused here: the record says what pinka installed" in status
+        assert pilot.app.screen.query_one("#next").disabled
+        await pilot.press("ctrl+b")
+        await settle(pilot)
+        assert at(pilot) == "mode"
+
+    drive(installer, flow)

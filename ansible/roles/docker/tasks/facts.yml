@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/docker/tasks/facts.yml). Local changes will be overwritten.
 #
 # What the lab needs to know of the running Docker Engine, whoever installed
-# it (BUILD_PROMPT §7.6): how containers reach the GPU (CDI when `docker info`
+# it: how containers reach the GPU (CDI when `docker info`
 # lists CDI spec directories, the NVIDIA runtime when it lists that runtime,
 # otherwise none) and its data root. The compose, gpu_arbiter, lab_session,
 # doctor and nvidia_container_toolkit roles include this file

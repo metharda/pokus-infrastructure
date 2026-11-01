@@ -1,7 +1,7 @@
 # Managed by pinka (versions.lock.yml).
 #
-# Single source of truth for every external artifact (BUILD_PROMPT §10.1,
-# §19.4). Every value is verified at build time and its section records
+# Single source of truth for every external artifact.
+# Every value is verified at build time and its section records
 # `verified_on` and `source`. A value that could not be verified is the
 # unverified-value marker of docs/how-to/update-versions.md; `make lock-check`
 # fails while any marker remains (on any line, comments included) and
@@ -19,7 +19,7 @@ schema_version: 1
 verified_on: 2026-10-05
 
 fedora_supported_releases:
-  # "current and previous" Fedora releases (BUILD_PROMPT §19.2). Fedora 42
+  # "current and previous" Fedora releases. Fedora 42
   # reached its end of life on 2026-05-13. Fedora 45 is not in the osinfo-db
   # snapshot used (2026-07-10); re-verify when Fedora 45 is released.
   releases: ["43", "44"]
@@ -32,7 +32,7 @@ fedora_supported_releases:
 
 binaries:
   uv:
-    # Installed to /opt/pinka/bin/uv by bootstrap (BUILD_PROMPT §5.2, §19.3).
+    # Installed to /opt/pinka/bin/uv by bootstrap.
     version: "0.12.23"
     verified_on: 2026-10-05
     source: >-
@@ -49,7 +49,7 @@ binaries:
         sha256: 6524bd338177ed50d035d39354e12545e993bbeba2ecbddf0480c5b3a81d313f
 
   restic:
-    # Backups (BUILD_PROMPT §7.15); the release ships bzip2-compressed binaries.
+    # Backups; the release ships bzip2-compressed binaries.
     version: "0.19.1"
     verified_on: 2026-10-05
     source: >-
@@ -64,7 +64,7 @@ binaries:
         url: https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_arm64.bz2
         sha256: a5f64aaab53d51e311fa3829124c5b703f2d14cf187d8640b6be3b2b49376465
   quarto:
-    # Evaluator reports, HTML and Typst PDF (BUILD_PROMPT §7.14). 1.11.5 is a
+    # Evaluator reports, HTML and Typst PDF. 1.11.5 is a
     # pre-release; 1.10.18 is the current stable release.
     version: "1.10.18"
     verified_on: 2026-10-05
@@ -83,7 +83,7 @@ binaries:
         sha256: f6a07df68e25330b5df34f65d3df66bca605acce3b830c593a58e91884d4cf6c
 
   otelcol_contrib:
-    # Installed inside golden images, never on the host (BUILD_PROMPT §7.13):
+    # Installed inside golden images, never on the host:
     # the in-target OpenTelemetry agent, the release of the lab's collector.
     version: "0.162.0"
     verified_on: 2026-10-06
@@ -129,14 +129,14 @@ python:
   packages:
     ansible-core: "2.21.5"
     jmespath: "1.1.0"      # json_query filter
-    cryptography: "50.0.2"  # community.crypto modules (owner answer E12)
+    cryptography: "50.0.2"  # community.crypto modules
   # Packages of /opt/pinka/models-venv, the models role's download tool
   # (hash-locked in ansible/roles/models/files/requirements.lock).
   model_tools:
-    huggingface-hub: "2.1.1"  # the `hf download` CLI (BUILD_PROMPT §7.12)
-  # Packages of /opt/pinka/installer-venv, the installer TUI (BUILD_PROMPT
-  # §18.2), on top of the `packages` above (ansible-core for the vault API);
-  # hash-locked in installer/requirements.lock (owner answer E11).
+    huggingface-hub: "2.1.1"  # the `hf download` CLI
+  # Packages of /opt/pinka/installer-venv, the installer TUI,
+  # on top of the `packages` above (ansible-core for the vault API);
+  # hash-locked in installer/requirements.lock.
   installer:
     textual: "8.2.8"
     ruamel.yaml: "0.19.1"  # round-trip edits of host_vars and group_vars
@@ -151,15 +151,19 @@ python:
     uv 0.12.23 for the CPython build
 
 containers:
-  # Every lab service image, pinned by the digest of its multi-platform index
-  # (BUILD_PROMPT §7.6-§7.11). `platforms` lists the platforms pinka needs and
-  # that the index was verified to contain. Tags are informational: only the
-  # digest is used.
+  # Every lab service image, pinned by the digest of its multi-platform index.
+  # `platforms` lists the platforms pinka needs and
+  # that the index was verified to contain; `sizes` is each platform's
+  # compressed size in bytes (the sum of its layers), which the requirements
+  # computation estimates at 2.5 x unpacked until the image is pulled.
+  # Tags are informational: only the digest is used.
   verified_on: 2026-10-05
   source: >-
     Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and
     the Docker Hub tag API); latest stable releases on 2026-10-05. The DCGM
-    exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z
+    exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z. The sizes:
+    each platform manifest's layers, read on 2026-10-23 with the registry API
+    (Docker Hub's images through mirror.gcr.io, which holds the same digests)
   images:
     postgres:
       # PostgreSQL 18 is the newest stable major (19 is in beta).
@@ -167,53 +171,63 @@ containers:
       tag: "18.6-trixie"
       digest: sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 162473560, linux/arm64: 161088536}
     otel_collector:
       image: docker.io/otel/opentelemetry-collector-contrib
       tag: "0.162.0"
       digest: sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 112744572, linux/arm64: 102592160}
     prometheus:
       image: docker.io/prom/prometheus
       tag: "v3.15.0"
       digest: sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 114035258, linux/arm64: 104810464}
     loki:
       image: docker.io/grafana/loki
       tag: "3.7.8"
       digest: sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 48003511, linux/arm64: 42737611}
     tempo:
       image: docker.io/grafana/tempo
       tag: "2.10.8"
       digest: sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 37423831, linux/arm64: 33831008}
     grafana:
       image: docker.io/grafana/grafana
       tag: "13.0.10"
       digest: sha256:c8f326efdb7be9be52047edaab34cf8dadb5152c1244af102eb0a517a7797068
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 357327283, linux/arm64: 333133702}
     node_exporter:
       image: docker.io/prom/node-exporter
       tag: "v1.12.1"
       digest: sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 13404971, linux/arm64: 12466898}
     cadvisor:
       image: ghcr.io/google/cadvisor
       tag: "v0.60.6"
       digest: sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 30686694, linux/arm64: 27661931}
     postgres_exporter:
       # The same digest is published on GHCR (ghcr.io/prometheus-community/postgres-exporter).
       image: docker.io/prometheuscommunity/postgres-exporter
       tag: "v0.20.1"
       digest: sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 11780276, linux/arm64: 10960510}
     gpu_exporter:
       # nvidia-smi based exporter (used where DCGM is not available, e.g. WSL2).
       image: docker.io/utkuozdemir/nvidia_gpu_exporter
       tag: "1.15.1"
       digest: sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 11522084, linux/arm64: 11049290}
     dcgm_exporter:
       # make lock-pins on 2026-10-17: the newest release tag on nvcr.io, the
       # digest of its image index; the release's hack/versions.env on GitHub
@@ -222,13 +236,15 @@ containers:
       tag: "4.8.4"
       digest: sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 62787403, linux/arm64: 59314654}
     opa:
       image: docker.io/openpolicyagent/opa
       tag: "1.21.1-static"
       digest: sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 30513355, linux/arm64: 28078584}
     vllm:
-      # cuda: the CUDA version the image is built on (BUILD_PROMPT §2.2), read
+      # cuda: the CUDA version the image is built on, read
       # from CUDA_VERSION in the configuration of both platform images (also
       # NVIDIA_REQUIRE_CUDA "cuda>=13.0"); re-verified on 2026-10-10 with the
       # registry API. Preflight and doctor compare its major.minor with the
@@ -237,35 +253,39 @@ containers:
       tag: "v0.31.0"
       digest: sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 9035211086, linux/arm64: 10134470647}
       cuda: "13.0.2"
     query_proxy:
-      # The telemetry query proxy (BUILD_PROMPT §7.9): the nginx release and
+      # The telemetry query proxy: the nginx release and
       # digest of target_images.docker_host_web below (stable line, verified
       # on 2026-10-06 with the registry API).
       image: docker.io/library/nginx
       tag: "1.30.5-alpine"
       digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 26073522, linux/arm64: 25966398}
     cuda_base_test:
-      # GPU smoke test (BUILD_PROMPT §7.6); same CUDA version as the vLLM image.
+      # GPU smoke test; same CUDA version as the vLLM image.
       image: docker.io/nvidia/cuda
       tag: "13.0.2-base-ubuntu24.04"
       digest: sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701
       platforms: [linux/amd64, linux/arm64]
+      sizes: {linux/amd64: 139444203, linux/arm64: 133135420}
     refplat_job:
-      # The reference platform's training job image (tests only; BUILD_PROMPT
-      # §7.18): Python's official image through the ECR Public mirror of
+      # The reference platform's training job image (tests only):
+      # Python's official image through the ECR Public mirror of
       # Docker's official images, because Docker Hub answered 429 on
       # 2026-10-14. Verified that day with the registry API (index digest of
       # the tag; the index lists linux/amd64 and linux/arm64); on 2026-10-15
       # Docker Hub's library/python served the same digest, and its tag
-      # 3.12-slim-trixie pointed to it (owner condition with the "commit" for
-      # 3d.6). Platform job images are pinned in their manifests, not here.
+      # 3.12-slim-trixie pointed to it. Platform job images are pinned in their
+      # manifests, not here.
       image: public.ecr.aws/docker/library/python
       tag: "3.12-slim-trixie"
       digest: sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
       platforms: [linux/amd64, linux/arm64]
-  # Images preloaded inside golden images (BUILD_PROMPT §7.13), never run by
+      sizes: {linux/amd64: 43259288, linux/arm64: 43533362}
+  # Images preloaded inside golden images, never run by
   # the lab itself. Verified on 2026-10-06 with the registry API (index digest
   # of the tag).
   target_images:
@@ -276,7 +296,7 @@ containers:
       tag: "1.30.5-alpine"
       digest: sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
       platforms: [linux/amd64, linux/arm64]
-  # Base images of the CI fast lane (BUILD_PROMPT §19.9): one systemd container
+  # Base images of the CI fast lane: one systemd container
   # per family runs the provisioning play in check mode. Verified on
   # 2026-10-06 with the registry API (index digest of the tag). openSUSE Leap
   # rather than Tumbleweed, whose only Docker Hub tag is "latest".
@@ -313,7 +333,7 @@ containers:
       platforms: [linux/amd64]
 
 repository_keys:
-  # OpenPGP keys of the vendor package repositories (BUILD_PROMPT §7.2, §19.4).
+  # OpenPGP keys of the vendor package repositories.
   # Roles download a key from one of `urls`, check its primary key
   # fingerprint, and only then install it. Base URLs and package names live in
   # ansible/component-sources.yml.
@@ -364,9 +384,9 @@ repository_keys:
 
 packages:
   # Package versions per component and distribution release
-  # (`packages.<component>.<distro>-<release>`, BUILD_PROMPT §19.4). Rolling
+  # (`packages.<component>.<distro>-<release>`). Rolling
   # releases (openSUSE Tumbleweed, Arch Linux) are not pinned: their packages
-  # are held after installation and the installed versions are recorded (§19.5).
+  # are held after installation and the installed versions are recorded.
   # `el-9`/`el-10` cover RHEL, AlmaLinux, Rocky Linux and CentOS Stream.
   verified_on: 2026-10-05
   source: >-
@@ -443,7 +463,7 @@ packages:
     opensuse-leap-15.6: *nvidia_ctk_rpm
     opensuse-leap-16.0: *nvidia_ctk_rpm
   incus:
-    # Incus 6.0 LTS (BUILD_PROMPT §7.7). Ubuntu's own packages are 6.0.0
+    # Incus 6.0 LTS. Ubuntu's own packages are 6.0.0
     # (24.04: 6.0.0-1ubuntu0.3) or missing (22.04), so Debian and Ubuntu use the
     # Zabbly LTS repository (lts-6.0). Its versions: make lock-pins on
     # 2026-10-17, the newest in each release's index, whose InRelease carries
@@ -463,8 +483,8 @@ packages:
     opensuse-leap-15.6: "TODO(verify)"
     opensuse-leap-16.0: "TODO(verify)"
   nvidia_driver:
-    # Bare-metal and VM hosts with install_nvidia_driver: auto (BUILD_PROMPT
-    # §19.8). Branch 580 is the one that provides CUDA 13.0, which the pinned
+    # Bare-metal and VM hosts with install_nvidia_driver: auto.
+    # Branch 580 is the one that provides CUDA 13.0, which the pinned
     # vLLM image needs; Ubuntu's restricted pocket (-updates) read on
     # 2026-10-05. The other families are not reachable from the build environment.
     ubuntu-24.04: {nvidia-driver-580-open: "580.178.04-0ubuntu0.24.04.1"}
@@ -493,8 +513,8 @@ packages:
     opensuse-leap-16.0: "TODO(verify)"
 
 nvidia_driver_gpus:
-  # The GPUs each NVIDIA driver release pinned for automatic installs supports
-  # (BUILD_PROMPT §2.2, §10.1): with install_nvidia_driver: auto a driver is
+  # The GPUs each NVIDIA driver release pinned for automatic installs supports:
+  # with install_nvidia_driver: auto a driver is
   # installed only for the PCI device IDs of open_module, which NVIDIA states
   # are Turing or later (compute capability 7.5 and up); proprietary_only names
   # the GPUs the release supports only with its proprietary module, so
@@ -587,7 +607,7 @@ ansible_collections:
     the version in ansible 14.4.0 (its MANIFEST.json in
     ansible-14.4.0-py3-none-any.whl from PyPI, sha256
     7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read
-    2026-10-15). Artifacts: make lock-collections run by the owner at
+    2026-10-15). Artifacts: make lock-collections run at
     2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256
     computed from the download and equal to Galaxy's; MANIFEST.json,
     FILES.json and every file checked; every dependency locked at a
@@ -621,7 +641,7 @@ ansible_collections:
       size: 36002
 
 incus_base_images:
-  # Base images of the golden image pipeline (BUILD_PROMPT §7.13), pinned by
+  # Base images of the golden image pipeline, pinned by
   # fingerprint per architecture. The server keeps only its newest builds (a
   # few days): renew the pins with make lock-pins right before a new lab's
   # first golden image build; a lab that exported the base imports it from
@@ -642,10 +662,10 @@ incus_base_images:
         aarch64: "f6bdcce5fbceabcc7bcc3f66b30d299cf42d49b46df3a29cc317206956c63d1a"
 
 github_ssh_host_keys:
-  # Pinned in the managed known_hosts for SSH deploy keys (owner answer E3).
+  # Pinned in the managed known_hosts for SSH deploy keys (E3).
   # make lock-pins needs two agreeing sources (GitHub's meta API, its
   # documentation, ssh-keyscan); this build environment reaches only the
-  # documentation, so the owner's run pins them.
+  # documentation, so a run on another machine pins them.
   verified_on: 2026-10-05
   source: GitHub meta API, api.github.com/meta (ssh_keys, ssh_key_fingerprints); not read yet
   keys:

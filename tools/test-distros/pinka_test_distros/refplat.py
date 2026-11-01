@@ -1,4 +1,4 @@
-"""The reference platform in a test VM (BUILD_PROMPT §7.18, §19.9): what its stages run.
+"""The reference platform in a test VM: what its stages run.
 
 The platform is deployed from the VM's clone of the repository
 (``file:///root/pinka`` at the tested commit), its content package
@@ -185,6 +185,15 @@ def standin_script(port: int, python: str = deploy.PYTHON) -> str:
         f" && systemctl daemon-reload && systemctl enable --now --quiet {STANDIN_UNIT}"
         f" && for _ in $(seq 50); do (exec 3<>/dev/tcp/127.0.0.1/{port}) 2>/dev/null && break;"
         " sleep 0.2; done && echo started; fi"
+    )
+
+
+def standin_removal() -> str:
+    """Bash: the stand-in goes again, before uninstall (it is the harness's, not pinka's)."""
+    unit = f"/etc/systemd/system/{STANDIN_UNIT}.service"
+    return (
+        f"systemctl disable --now --quiet {STANDIN_UNIT} 2>/dev/null;"
+        f" rm -f {unit} && systemctl daemon-reload"
     )
 
 

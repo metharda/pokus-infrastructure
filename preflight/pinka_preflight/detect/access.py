@@ -1,7 +1,7 @@
-"""Pre-existing access (BUILD_PROMPT §2.2 "Pre-existing access", §7.5).
+"""Pre-existing access.
 
 Preflight records the access to the host that existed before the install, so
-the firewall keeps it as found (§7.5):
+the firewall keeps it as found:
 
 * **Listeners.** Every non-loopback TCP and UDP listener that is not the
   lab's (``/proc/net/tcp*`` in state LISTEN, ``/proc/net/udp*`` unconnected):
@@ -59,7 +59,7 @@ SSHD_UNITS = frozenset({"ssh.service", "sshd.service", "ssh.socket", "sshd.socke
 # pinka.nft.j2 admits the replies of the host's own DHCP and DHCPv6 clients on
 # every interface (udp sport 67 dport 68, udp sport 547 dport 546).
 DHCP_CLIENT_PORTS = (68, 546)
-# Daemons of components pinka installs or joins, by component (§7.21).
+# Daemons of components pinka installs or joins, by component.
 COMPONENT_UNITS = {
     "tailscale": ("tailscaled.service",),
     "docker": ("docker.service",),
@@ -383,7 +383,7 @@ def detect_session(fs: FileSystem, tailnet_v4: str) -> dict[str, Any]:
 def classify(
     listeners: Sequence[Listener], accounts: Sequence[str], researchers: Iterable[str]
 ) -> tuple[str, list[str]]:
-    """Dedicated or shared (§2.2).
+    """Dedicated or shared.
 
     Args:
         listeners: The listeners outside the lab.

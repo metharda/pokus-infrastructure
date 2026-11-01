@@ -5,6 +5,7 @@
   "features": {
     "dcgm_metrics": true,
     "gpu_inference": false,
+    "gpu_training": true,
     "vm_targets": true
   },
   "outcome": "degraded",

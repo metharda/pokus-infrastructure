@@ -1,4 +1,4 @@
-"""The platform role (BUILD_PROMPT §7.14, contract v2): its data, the socket ACL helper
+"""The platform role (contract v2): its data, the socket ACL helper
 and the tasks that apply what pinka-platform renders from the profiles."""
 
 from __future__ import annotations
@@ -30,6 +30,8 @@ def variables(**extra: Any) -> dict[str, Any]:
         "node_role": "full",
         "lab_mode": "production",
         "pinka_features": {"gpu_inference": True, "vm_targets": False},
+        "pinka_training": "gpu",
+        "pinka_training_caps": {"timeout_seconds": 86400, "memory_max": "18G", "cpus": 8},
         "ansible_facts": {"architecture": "x86_64"},
     }
     base.update(extra)
@@ -56,7 +58,7 @@ def flat(entries: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-# --- the socket ACL helper (§12.3) ------------------------------------------------------
+# --- the socket ACL helper ------------------------------------------------------
 
 
 class Setfacl:
@@ -186,16 +188,16 @@ def test_the_helper_records_each_outcome(
     assert fallback(rendered) is None
 
 
-# --- the tasks that apply the rendering (§7.14 step 7) --------------------------------
+# --- the tasks that apply the rendering --------------------------------
 
 
 def test_render_runs_between_retire_and_the_switch() -> None:
     names = [t["name"] for t in flat(tasks("deploy.yml"))]
     assert names.index("Retire the platform this release replaces") < names.index(
-        "Render the platform from its profiles (§7.14 step 7)"
+        "Render the platform from its profiles"
     )
-    assert names.index("Render the platform from its profiles (§7.14 step 7)") < names.index(
-        "Switch to the release (§7.14 step 8)"
+    assert names.index("Render the platform from its profiles") < names.index(
+        "Switch to the release"
     )
 
 
@@ -246,7 +248,7 @@ def test_render_applies_every_part_of_the_rendering() -> None:
     ]
 
 
-# --- the switch with the hooks (§7.14 step 8, §12.9) -----------------------------------
+# --- the switch with the hooks -----------------------------------
 
 
 def names_of(name: str) -> list[str]:
@@ -291,9 +293,9 @@ def test_the_switch_migrates_checks_and_then_switches() -> None:
     names = [t["name"] for t in entries]
     order = [
         "Drain and stop the running release when its rendering changed",
-        "Run the new release's migrate hook (§12.9)",
-        "Check schema restricted after the migration (§7.8)",
-        "Switch current to the release and record it (§7.14 steps 8-9)",
+        "Run the new release's migrate hook",
+        "Check schema restricted after the migration",
+        "Switch current to the release and record it",
         "Enable the platform's units in pinka-platform.target",
     ]
     assert [n for n in names if n in order] == order
@@ -454,7 +456,7 @@ def test_tool_settings_for_https_and_bootstrap_options() -> None:
         "scripted_api_url": "",
         "vm_collector_address": "198.18.0.1",
         "cpuset_targets": "",
-        "training_caps": evaluate("training_caps", scope),
+        "training_caps": evaluate("pinka_training_caps", scope),
     }
     assert settings["vault_keys"] == []
     assert settings["platform_settings"] == {}

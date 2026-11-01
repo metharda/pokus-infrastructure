@@ -1,4 +1,4 @@
-"""Every name a manifest would create, and the reserved-name and host checks (§12.1)."""
+"""Every name a manifest would create, and the reserved-name and host checks."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pinka_platform.problems import Problem
 
 MAX_ACCOUNT = 32
 MAX_POSTGRES = 63
-# The namespaces whose names the host may already use (§12.1).
+# The namespaces whose names the host may already use.
 HOST_NAMESPACES = ("accounts_groups", "commands")
 
 

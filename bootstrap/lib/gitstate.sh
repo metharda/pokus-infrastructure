@@ -2,14 +2,14 @@
 # shellcheck disable=SC2034 # GIT_* values are read by the scripts that source this file
 # Managed by pinka (bootstrap/lib/gitstate.sh). Local changes will be overwritten.
 #
-# Git provenance of the checkout (BUILD_PROMPT §5.2 step 1): the repository
+# Git provenance of the checkout: the repository
 # commit, the tree hash of the whole repository, and whether the repository
 # has uncommitted changes. Bootstrap runs only from the root of its own
 # checkout; a directory inside another repository is no checkout of
 # pokus-infrastructure.
 #
-# Bootstrap also runs from an unpacked release package (owner's choice in
-# 3d.8): its release/RELEASE.json records the tag, the commit and the tree
+# Bootstrap also runs from an unpacked release package:
+# its release/RELEASE.json records the tag, the commit and the tree
 # hash; the tree hash of the unpacked files is computed here with git (a
 # temporary index with the tree's own .gitignore and .gitattributes, release/
 # left out, no user or system configuration), the same computation as

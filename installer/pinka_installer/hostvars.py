@@ -1,4 +1,4 @@
-"""``host_vars/<machine>.yml`` from the answers, and back (BUILD_PROMPT §18.3).
+"""``host_vars/<machine>.yml`` from the answers, and back.
 
 The first file of a machine starts from ``example-machine.yml``, so every
 setting keeps its explanation; later runs (modify mode) edit the existing file
@@ -17,10 +17,18 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from pinka_installer import yamlio
-from pinka_installer.answers import Answers, GpuArbiter, Retention, Source, TrainingCaps
+from pinka_installer.answers import (
+    Answers,
+    Features,
+    GpuArbiter,
+    Retention,
+    Source,
+    TelemetryRetention,
+    TrainingCaps,
+)
 
 HEADER = (
-    "# Machine configuration of {machine} (BUILD_PROMPT §8.1), written by the pinka\n"
+    "# Machine configuration of {machine}, written by the pinka\n"
     "# installer from installer-answers/{machine}.yml. Run the installer again to\n"
     "# change it (modify mode), or edit it by hand: comments and order are kept.\n"
     "# Secrets are in group_vars/all/vault.yml, never here.\n"
@@ -65,6 +73,14 @@ COMMENTS = {
     "restore_snapshot": "restic snapshot that restore.yml restores (an ID or latest).",
     "firewall_close_listeners": "Pre-existing listeners closed with the owner's consent.",
     "firewall_close_install_path": "Close the install's access path once tailnet SSH works.",
+    "incus_concurrent_targets": "Targets that run at once: the bench project's memory.",
+    "inference": "Inference: auto (vLLM where the GPU is usable) | off.",
+    "training": "Training jobs: auto (where the GPU is usable) | cpu | off.",
+    "backup_pgdump_keep": "Local PostgreSQL dumps kept (one a day).",
+    "observability_prometheus_retention": "Prometheus's retention by time.",
+    "observability_prometheus_retention_size": "Prometheus's retention by size; 0: by time only.",
+    "observability_loki_retention": "Loki's retention of logs.",
+    "observability_tempo_retention": "Tempo's retention of traces (hours).",
 }
 ONCALENDAR_RE = re.compile(r"^\*-\*-\* ([0-2][0-9]):([0-5][0-9]):00$")
 
@@ -113,13 +129,18 @@ def _storage(answers: Answers) -> dict[str, Any]:
     device = storage.source == "device"
     return {
         "incus_pool_source": storage.source,
-        "incus_pool_size": f"{storage.loop_size_gib}GiB",
+        "incus_pool_size": (
+            "auto" if storage.loop_size_gib == "auto" else f"{storage.loop_size_gib}GiB"
+        ),
         "incus_pool_device": storage.device if device else "",
         "incus_pool_device_confirm": storage.device_confirm if device else "",
         "incus_pool_device_force_wipe": storage.force_wipe if device else False,
+        "incus_concurrent_targets": answers.resources.concurrent_targets,
         "pinka_root": machine.srv_path,
         "docker_data_root": machine.docker_data_root,
         "node_role": machine.node_role,
+        "inference": answers.features.inference,
+        "training": answers.features.training,
         "firewall_backend": machine.firewall_backend,
         "install_nvidia_driver": answers.gpu.install_driver,
         "allow_community_repos": machine.allow_community_repos,
@@ -148,7 +169,7 @@ def _remote(answers: Answers) -> dict[str, Any]:
         "tailscale_serve_consent": remote.tailscale_serve_consent,
         "ssh_extra_allowed_interfaces": list(remote.ssh_extra_allowed_interfaces),
     }
-    # Pre-existing access (BUILD_PROMPT §7.5): written only when consented, so
+    # Pre-existing access: written only when consented, so
     # group_vars' defaults (nothing closed) stand otherwise.
     if remote.close_listeners:
         values["firewall_close_listeners"] = list(remote.close_listeners)
@@ -177,6 +198,11 @@ def _backups(answers: Answers) -> dict[str, Any]:
         "backup_include_models": backups.include_models,
         "backup_include_secrets": backups.include_secrets,
         "backup_secrets_acknowledged": backups.include_secrets,
+        "backup_pgdump_keep": backups.pg_dumps_kept,
+        "observability_prometheus_retention": answers.telemetry_retention.prometheus,
+        "observability_prometheus_retention_size": answers.telemetry_retention.prometheus_size,
+        "observability_loki_retention": answers.telemetry_retention.loki,
+        "observability_tempo_retention": answers.telemetry_retention.tempo,
     }
 
 
@@ -358,6 +384,10 @@ def _machine_from(values: Mapping[str, Any], answers: Answers) -> None:
     machine.srv_path = str(values.get("pinka_root", machine.srv_path))
     machine.docker_data_root = str(values.get("docker_data_root", machine.docker_data_root))
     machine.node_role = str(values.get("node_role", machine.node_role))
+    answers.features = Features(
+        inference=str(values.get("inference", answers.features.inference)),
+        training=str(values.get("training", answers.features.training)),
+    )
     machine.firewall_backend = str(values.get("firewall_backend", machine.firewall_backend))
     machine.allow_community_repos = bool(values.get("allow_community_repos", False))
 
@@ -370,13 +400,18 @@ def _resources_from(values: Mapping[str, Any], answers: Answers) -> None:
     resources.cpuset_services = str(values.get("cpuset_services", ""))
     resources.cpuset_targets = str(values.get("cpuset_targets", ""))
     resources.postgres_shared_buffers = str(values.get("postgres_shared_buffers", ""))
+    resources.concurrent_targets = int(
+        values.get("incus_concurrent_targets", resources.concurrent_targets)
+    )
 
 
 def _storage_from(values: Mapping[str, Any], answers: Answers) -> None:
     storage = answers.storage
     storage.source = str(values.get("incus_pool_source", storage.source))
-    size = str(values.get("incus_pool_size", f"{storage.loop_size_gib}GiB"))
-    if size.endswith("GiB") and size[:-3].isdigit():
+    size = str(values.get("incus_pool_size", "auto"))
+    if size == "auto":
+        storage.loop_size_gib = "auto"
+    elif size.endswith("GiB") and size[:-3].isdigit():
         storage.loop_size_gib = int(size[:-3])
     storage.device = str(values.get("incus_pool_device", ""))
     storage.device_confirm = str(values.get("incus_pool_device_confirm", ""))
@@ -417,6 +452,16 @@ def _backups_from(values: Mapping[str, Any], answers: Answers) -> None:
     )
     backups.include_models = bool(values.get("backup_include_models", False))
     backups.include_secrets = bool(values.get("backup_include_secrets", False))
+    backups.pg_dumps_kept = int(values.get("backup_pgdump_keep", backups.pg_dumps_kept))
+    default = answers.telemetry_retention
+    answers.telemetry_retention = TelemetryRetention(
+        prometheus=str(values.get("observability_prometheus_retention", default.prometheus)),
+        prometheus_size=str(
+            values.get("observability_prometheus_retention_size", default.prometheus_size)
+        ),
+        loki=str(values.get("observability_loki_retention", default.loki)),
+        tempo=str(values.get("observability_tempo_retention", default.tempo)),
+    )
 
 
 def _platform_from(values: Mapping[str, Any], answers: Answers) -> None:

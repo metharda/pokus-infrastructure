@@ -1,4 +1,4 @@
-"""Shared widgets of the installer screens (BUILD_PROMPT §18.4, §18.10)."""
+"""Shared widgets of the installer screens."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ class Card(Static):
 
 
 class TypedConfirm(ModalScreen[bool]):
-    """A red danger dialog that needs an exact text typed (BUILD_PROMPT §18.4 screens 2, 6)."""
+    """A red danger dialog that needs an exact text typed."""
 
     def __init__(self, title: str, text: str, expected: str) -> None:
         """Build the dialog.
@@ -179,7 +179,7 @@ class TextView(ModalScreen[None]):
 
 
 class ShownOnce(ModalScreen[bool]):
-    """A generated secret, shown once until the operator confirms storing it (§18.7)."""
+    """A generated secret, shown once until the operator confirms storing it."""
 
     def __init__(self, name: str, value: str) -> None:
         """Build the dialog.

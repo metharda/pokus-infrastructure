@@ -15,6 +15,10 @@ repository keys, Python packages, Ansible collections) is pinned in
 by hand, verify it, and regenerate the files derived from the lock. The
 current pins are listed in [Pinned versions](../reference/versions.md).
 
+At each maintenance update, also go through every other lock of the
+repository and its security alerts:
+[How to run a maintenance update of the locks](maintenance-update.md).
+
 !!! note "Prerequisites"
     - A development checkout of the repository with `make setup` done.
     - Network access to the upstream source of the artifact you change.
@@ -39,7 +43,7 @@ current pins are listed in [Pinned versions](../reference/versions.md).
 
     | Artifact | Where to verify |
     | --- | --- |
-    | Container image | The registry: the digest of the image index for the tag, and that it contains `linux/amd64` (and `linux/arm64`). The DCGM exporter: `make lock-pins` ([How to pin the vendor sources](pin-vendor-sources.md)). |
+    | Container image | The registry: the digest of the image index for the tag, and that it contains `linux/amd64` (and `linux/arm64`); for a lab image also each platform's compressed size (`sizes`, the sum of its layers), which `make lock-pins` prints for every image of the lock. The DCGM exporter: `make lock-pins` ([How to pin the vendor sources](pin-vendor-sources.md)). |
     | Binary | The release page: download each archive, hash it with `sha256sum`, and compare with the checksum file of the release. |
     | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. Incus from Zabbly and Tailscale on the apt releases: `make lock-pins`. |
     | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. The Zabbly and Tailscale keys: `make lock-pins`. |
@@ -72,8 +76,8 @@ current pins are listed in [Pinned versions](../reference/versions.md).
 
 1. Run the lock check. It validates the lock against its schema, fails on any
    remaining `TODO(verify)`, and re-verifies every pin over the network: each
-   image digest exists in its registry, each binary has the pinned sha256, and
-   each repository key has the pinned fingerprint:
+   image digest exists in its registry with the recorded sizes, each binary
+   has the pinned sha256, and each repository key has the pinned fingerprint:
 
     <!-- qa:run env=E0 -->
     ```bash

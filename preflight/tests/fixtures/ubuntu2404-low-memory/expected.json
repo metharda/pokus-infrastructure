@@ -1,6 +1,6 @@
 {
   "outcome": "unsupported",
   "unsupported_contains": [
-    "memory_gib"
+    "below the floor of 8 GiB"
   ]
 }

@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/lab_session/files/pinka_health_gate.py). Local changes will be overwritten.
-"""Startup gate of the lab (BUILD_PROMPT §7.16, contracts.md, C9h).
+"""Startup gate of the lab (contracts.md, C9h).
 
 ``pinka-health-gate.service`` runs this once per start of ``pinka-lab.target``;
 the platform's services require that unit, so none starts before every check
@@ -14,7 +14,7 @@ told in ``endpoints.toml``), ``opa`` (its health endpoint) and ``gpu`` (a
 container sees the GPU). A facility the platform requires that this node does
 not run fails the gate. Without a platform only the clock is checked. Checks
 are repeated until all pass or the timeout expires. A maintenance window
-(§7.20) fails the gate at once: on production while its record exists, on
+fails the gate at once: on production while its record exists, on
 staging with shared hardware unless its window is open now. The result is
 written as JSON for doctor and operators. Standard library only.
 """
@@ -40,7 +40,7 @@ from typing import Any
 NTP_EPOCH_OFFSET = 2208988800  # seconds from 1900-01-01 to 1970-01-01
 NTP_PORT = 123
 COMMAND_TIMEOUT = 60
-# The facilities a manifest may require (BUILD_PROMPT §12.2 `requires`), in
+# The facilities a manifest may require (`requires`), in
 # the order the gate checks them.
 FACILITIES = ("postgres", "incus", "telemetry", "inference", "opa", "gpu")
 HTTP_OK = 200
@@ -348,7 +348,7 @@ def read_window(path: Path) -> tuple[str, str, float, float] | None:
 
 
 def check_window(config: Mapping[str, Any] | None, now: float) -> Result | None:
-    """A maintenance window that keeps the lab stopped (§7.20).
+    """A maintenance window that keeps the lab stopped.
 
     Args:
         config: ``record`` (the window record), ``mode`` (``production`` or

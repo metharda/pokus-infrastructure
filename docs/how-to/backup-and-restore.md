@@ -23,8 +23,8 @@ the metric `pinka_backup_configured` is 0. Restoring is part of bootstrap:
 !!! note "Prerequisites"
     - An admin account on the lab host (member of `pinka-admin`) and the infra
       directory bootstrap runs from.
-    - A backup server you control with an SFTP account for the lab (owner
-      answer E4; a restic rest-server works too), reachable from the lab host,
+    - A backup server you control with an SFTP account for the lab
+      (a restic rest-server works too), reachable from the lab host,
       for example over the tailnet.
     - The lab's vault (`ansible/group_vars/all/vault.yml`) and its password.
 

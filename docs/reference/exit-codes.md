@@ -33,6 +33,8 @@ description: Exit codes of the pokus-infrastructure tools.
 | 75 | `EXIT_WSL_RESTART` | WSL restart required | Run 'wsl --terminate &lt;distro&gt;' on the Windows side, then re-run bootstrap | [Exit code 75](../how-to/troubleshoot.md#exit-code-75) |
 | 76 | `EXIT_REBOOT` | Reboot required | Reboot (and enroll the MOK if asked), then re-run bootstrap | [Exit code 76](../how-to/troubleshoot.md#exit-code-76) |
 | 77 | `EXIT_OPERATOR` | Operator action required | The printed message says what to do (for example run as root, commit the changes, accept a changed host profile) | [Exit code 77](../how-to/troubleshoot.md#exit-code-77) |
+| 80 | `EXIT_UNINSTALL_REFUSED` | Uninstall refused | Uninstall was not confirmed (the typed machine name was missing or differed), the backup offered first failed, or an option did not apply to this host; nothing was removed | [Exit code 80](../how-to/troubleshoot.md#exit-code-80) |
+| 81 | `EXIT_UNINSTALL_KEPT` | Uninstall kept items | Uninstall finished, but items it should have removed are still there; the report in /var/log/pinka-uninstall names each and why | [Exit code 81](../how-to/troubleshoot.md#exit-code-81) |
 
 ## pinka-preflight
 
@@ -41,8 +43,8 @@ The exit code is the outcome of the support-matrix decision (see [Support matrix
 | Code | Outcome | Meaning | Bootstrap behavior |
 | --- | --- | --- | --- |
 | 0 | `supported` | All core requirements met; features computed. | Bootstrap continues. |
-| 10 | `degraded` | Core requirements met, one or more optional features unavailable. | Bootstrap continues only with --accept-degraded or interactive confirmation that lists every disabled feature and its research impact. |
-| 20 | `unsupported` | A core requirement failed, the OS, architecture or environment is unsupported, or a blocking conflict exists. | Bootstrap aborts; --force-unsupported continues and records overrides.force_unsupported in the host profile and every environment fingerprint. |
+| 10 | `degraded` | Core requirements met; one or more optional features unavailable, or memory between the required and the recommended value for the choices. | Bootstrap continues only with --accept-degraded or interactive confirmation that lists every disabled feature and its research impact. |
+| 20 | `unsupported` | A core requirement failed, the OS, architecture or environment is unsupported, a blocking conflict exists, or memory or disk is below what the choices require. | Bootstrap aborts; --force-unsupported continues and records overrides.force_unsupported in the host profile and every environment fingerprint. |
 | 30 | `needs_action` | Fixable by operator action (reboot, wsl --terminate, enroll MOK, remove a conflict). | Bootstrap prints the exact remediation steps and aborts; re-run after the action. |
 | 40 | `preflight_error` | Detection itself failed unexpectedly. | Bootstrap aborts with the traceback in the log. |
 

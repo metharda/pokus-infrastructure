@@ -1,12 +1,12 @@
 # Managed by pinka (config/loki/loki.yaml.j2). Local changes will be overwritten.
 #
-# Loki single binary (BUILD_PROMPT §7.9): host network, HTTP and gRPC on
+# Loki single binary: host network, HTTP and gRPC on
 # 127.0.0.1, filesystem storage under /srv/pinka/state/loki, native OTLP
 # ingestion at /otlp (resource attributes that are not labels become
 # structured metadata, such as a platform's run identifier), retention by the compactor.
 # Besides Loki's default resource labels, pinka.trust (untrusted for the agent
 # socket's telemetry) and the active platform's telemetry.labels (at most
-# four, §7.9) become index labels (limits_config.otlp_config, verified in the
+# four) become index labels (limits_config.otlp_config, verified in the
 # Loki 3.7.8 source, pkg/loghttp/push/otlp_config.go).
 auth_enabled: false
 

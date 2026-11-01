@@ -2,7 +2,7 @@
 #
 # Unix sockets only: the superuser (maintenance inside the container), infra's
 # metrics exporter on database postgres, and the active platform's login roles
-# on its own database (§12.5). pg_hba cannot tell the socket directories
+# on its own database. pg_hba cannot tell the socket directories
 # apart: their groups decide who reaches a socket, the password files decide
 # the role. Everything else is rejected.
 # TYPE  DATABASE  USER  METHOD

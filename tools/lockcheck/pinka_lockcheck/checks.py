@@ -1,4 +1,4 @@
-"""Checks of ``versions.lock.yml`` (BUILD_PROMPT §10.1 ``make lock-check``).
+"""Checks of ``versions.lock.yml`` (``make lock-check``).
 
 * ``schema_findings``: structure (``tools/lockcheck/schema/versions-lock.schema.json``).
 * ``marker_findings``: every remaining ``TODO(verify)`` or ``<verify>`` marker.
@@ -215,6 +215,44 @@ def container_findings(
                     WARNING, where, f"tag {tag} now points to {current}; the pin stays {digest}"
                 )
             )
+    return findings
+
+
+def size_findings(
+    doc: Mapping[str, Any], sizes: Callable[[str, str], dict[str, int]] = net.image_sizes
+) -> list[Finding]:
+    """Check every lab image's recorded compressed sizes against its manifests.
+
+    Args:
+        doc: Lock document.
+        sizes: ``(image, digest) -> {platform: bytes}``.
+
+    Returns:
+        Errors for a size that differs from the registry or a platform without one.
+    """
+    findings: list[Finding] = []
+    for name, entry in doc["containers"]["images"].items():
+        where = f"containers.images.{name}.sizes"
+        if not _verified(entry["digest"]):
+            continue
+        try:
+            found = sizes(entry["image"], entry["digest"])
+        except net.FetchError as exc:
+            findings.append(Finding(ERROR, where, f"registry request failed: {exc}"))
+            continue
+        recorded = dict(entry.get("sizes") or {})
+        for target in entry["platforms"]:
+            if target not in found:
+                findings.append(Finding(ERROR, where, f"the index has no {target} image"))
+            elif recorded.get(target) != found[target]:
+                findings.append(
+                    Finding(
+                        ERROR,
+                        where,
+                        f"{target}: recorded {recorded.get(target)}, "
+                        f"the manifest says {found[target]}",
+                    )
+                )
     return findings
 
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Pokus host profile",
-  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json (pokus-infrastructure BUILD_PROMPT \u00a72). generated_at is the only volatile field.",
+  "description": "Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at is the only volatile field.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -38,6 +38,7 @@
     "access",
     "conflicts",
     "unsupported_reasons",
+    "degraded_reasons",
     "needs_action",
     "planned_actions",
     "warnings",
@@ -67,7 +68,7 @@
       ]
     },
     "outcome": {
-      "description": "Decision (BUILD_PROMPT \u00a72.4).",
+      "description": "Decision.",
       "enum": [
         "supported",
         "degraded",
@@ -579,7 +580,7 @@
           "items": {
             "type": "string"
           },
-          "description": "The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them (BUILD_PROMPT \u00a72.2, \u00a710.1)."
+          "description": "The pinned NVIDIA driver releases whose open kernel module supports this GPU (versions.lock.yml nvidia_driver_gpus); with install_nvidia_driver: auto a driver is installed only for one of them."
         },
         "proprietary_only_drivers": {
           "type": "array",
@@ -793,7 +794,16 @@
       "additionalProperties": false,
       "required": [
         "core",
-        "minimums"
+        "minimums",
+        "plan",
+        "choices",
+        "switches",
+        "memory_gib",
+        "cpu_threads",
+        "disk",
+        "growth",
+        "pool",
+        "notes"
       ],
       "properties": {
         "core": {
@@ -807,6 +817,305 @@
           "items": {
             "$ref": "#/$defs/check"
           }
+        },
+        "plan": {
+          "type": "string",
+          "description": "defaults, or the plan file given with --plan."
+        },
+        "choices": {
+          "type": "object",
+          "description": "The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json)."
+        },
+        "switches": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inference",
+            "training"
+          ],
+          "description": "The feature switches of the plan on this host: what they leave on, and the training cap.",
+          "properties": {
+            "inference": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "serves",
+                "reason"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "auto",
+                    "off"
+                  ],
+                  "description": "The inference switch."
+                },
+                "serves": {
+                  "type": "boolean",
+                  "description": "vLLM, its images and the selected model are installed and counted on this node."
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            },
+            "training": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "mode",
+                "runs",
+                "reason",
+                "memory_max",
+                "memory_max_gib",
+                "memory_max_basis",
+                "memory_max_detail"
+              ],
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "auto",
+                    "cpu",
+                    "off"
+                  ],
+                  "description": "The training switch."
+                },
+                "runs": {
+                  "enum": [
+                    "gpu",
+                    "cpu",
+                    "off"
+                  ],
+                  "description": "Where training jobs run on this node: on the GPU, the CPU-only variant, or none (the GPU arbiter refuses every run)."
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "memory_max": {
+                  "type": "string",
+                  "pattern": "^[0-9]+[MG]$",
+                  "description": "The training cap as training_caps.memory_max writes it; the play uses it where memory_max is auto."
+                },
+                "memory_max_gib": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "memory_max_basis": {
+                  "enum": [
+                    "computed",
+                    "configured"
+                  ],
+                  "description": "computed: memory_max auto, from MemTotal and what else runs; configured: the setting."
+                },
+                "memory_max_detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "memory_gib": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "floor",
+            "required",
+            "recommended",
+            "tolerance",
+            "items"
+          ],
+          "description": "MemTotal against the floor and the required and recommended memory computed from the choices; each nominal threshold is compared at the tolerance.",
+          "properties": {
+            "total": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "floor": {
+              "type": "number",
+              "minimum": 0
+            },
+            "required": {
+              "type": "number",
+              "minimum": 0
+            },
+            "recommended": {
+              "type": "number",
+              "minimum": 0
+            },
+            "tolerance": {
+              "type": "number",
+              "minimum": 0
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/memory_item"
+              }
+            }
+          }
+        },
+        "cpu_threads": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "estimated"
+          ],
+          "description": "The estimated CPU use of the running parts (information; the threshold is the matrix's cpu_threads).",
+          "properties": {
+            "estimated": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "disk": {
+          "type": "array",
+          "description": "The disk known at install, per mount point, item by item.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "mount",
+              "fstype",
+              "free_gib",
+              "required_gib",
+              "shortfall_gib",
+              "items"
+            ],
+            "properties": {
+              "mount": {
+                "type": "string"
+              },
+              "fstype": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "free_gib": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "required_gib": {
+                "type": "number",
+                "minimum": 0
+              },
+              "shortfall_gib": {
+                "type": "number",
+                "minimum": 0
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/disk_item"
+                }
+              }
+            }
+          }
+        },
+        "growth": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "mount",
+            "free_after_install_gib",
+            "gib_per_day",
+            "gib_per_week",
+            "days_until_full",
+            "items"
+          ],
+          "description": "What grows with use below the research space; never a reason to refuse.",
+          "properties": {
+            "mount": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "free_after_install_gib": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "gib_per_day": {
+              "type": "number",
+              "minimum": 0
+            },
+            "gib_per_week": {
+              "type": "number",
+              "minimum": 0
+            },
+            "days_until_full": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "The day the disk fills at this rate; null if the retention keeps it below the free space for ten years."
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/growth_item"
+              }
+            }
+          }
+        },
+        "pool": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "size_gib",
+            "basis",
+            "detail"
+          ],
+          "description": "The Incus pool's size: a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node.",
+          "properties": {
+            "source": {
+              "enum": [
+                "loop",
+                "device"
+              ]
+            },
+            "size_gib": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "basis": {
+              "enum": [
+                "computed",
+                "configured"
+              ]
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -815,6 +1124,7 @@
       "additionalProperties": false,
       "required": [
         "gpu_inference",
+        "gpu_training",
         "vm_targets",
         "btrfs_pool",
         "lvm_thin_pool",
@@ -822,6 +1132,9 @@
       ],
       "properties": {
         "gpu_inference": {
+          "type": "boolean"
+        },
+        "gpu_training": {
           "type": "boolean"
         },
         "vm_targets": {
@@ -875,7 +1188,7 @@
       ]
     },
     "components": {
-      "description": "Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks (BUILD_PROMPT \u00a72.2, \u00a77.21).",
+      "description": "Components that may exist before pinka, with their origin from the install record (/var/lib/pinka/install-record.json) or, without one, from pinka's marks.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1124,7 +1437,7 @@
       }
     },
     "access": {
-      "description": "The access to the host that existed before the install (BUILD_PROMPT \u00a72.2 \"Pre-existing access\", \u00a77.5): the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found.",
+      "description": "The access to the host that existed before the install: the listeners outside the lab, the firewall manager, the login accounts that are not pinka's and the access path of the install's session. The firewall keeps it as found.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1274,6 +1587,13 @@
         "type": "string"
       }
     },
+    "degraded_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Why the host is degraded besides disabled features: memory below the recommended value for the choices."
+    },
     "needs_action": {
       "type": "array",
       "items": {
@@ -1378,9 +1698,11 @@
       "required": [
         "path",
         "checked_path",
+        "mount",
         "fstype",
         "size_gib",
-        "free_gib"
+        "free_gib",
+        "free_bytes"
       ],
       "properties": {
         "path": {
@@ -1388,6 +1710,13 @@
         },
         "checked_path": {
           "type": "string"
+        },
+        "mount": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The mount point of its filesystem (df's target)."
         },
         "fstype": {
           "type": [
@@ -1408,6 +1737,14 @@
             "null"
           ],
           "minimum": 0
+        },
+        "free_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "The free space in bytes, which the requirements compare."
         }
       }
     },
@@ -1582,6 +1919,153 @@
             null
           ],
           "description": "pinka: pinka installed or joined it; pre-existing: it was there before pinka, which uses it as it is and never changes it; null: not installed."
+        }
+      }
+    },
+    "memory_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "required_gib",
+        "recommended_gib",
+        "cpu_threads",
+        "detail",
+        "basis",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "required_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "recommended_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cpu_threads": {
+          "type": "number",
+          "minimum": 0
+        },
+        "detail": {
+          "type": "string",
+          "description": "How the numbers follow from the choices."
+        },
+        "basis": {
+          "enum": [
+            "estimated",
+            "measured"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "disk_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "path",
+        "mount",
+        "size_gib",
+        "present",
+        "missing_gib",
+        "basis",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "mount": {
+          "type": "string"
+        },
+        "size_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "present": {
+          "type": "boolean",
+          "description": "Already on the host: it needs no more space."
+        },
+        "missing_gib": {
+          "type": "number",
+          "minimum": 0
+        },
+        "basis": {
+          "enum": [
+            "estimated",
+            "measured",
+            "configured"
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "growth_item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "gib_per_day",
+        "cap_gib",
+        "per_run_gib",
+        "basis",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "gib_per_day": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cap_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Where its retention stops it; null if nothing does."
+        },
+        "per_run_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "basis": {
+          "enum": [
+            "estimated",
+            "measured"
+          ]
+        },
+        "source": {
+          "type": "string"
         }
       }
     }

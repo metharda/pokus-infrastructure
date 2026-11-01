@@ -1,0 +1,9 @@
+{
+  "inference": "off",
+  "schema_version": 1,
+  "training": {
+    "memory_max_gib": null,
+    "mode": "off",
+    "run_storage_max_gib": 16
+  }
+}

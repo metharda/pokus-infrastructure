@@ -9,12 +9,6 @@ site_dir: site
 strict: true
 copyright: Documentation licensed under CC-BY-4.0; code under Apache-2.0.
 
-# Verbatim specifications and working notes are not site pages.
-exclude_docs: |
-  BUILD_PROMPT.md
-  DOCS_SPEC.md
-  IMPLEMENTATION_NOTES.md
-
 theme:
   name: material
   features:
@@ -93,6 +87,7 @@ nav:
       - Build, test and export golden images: how-to/build-golden-images.md
       - Back up, restore and run a restore drill: how-to/backup-and-restore.md
       - Migrate the lab to a new machine: how-to/migrate-lab.md
+      - Uninstall pinka: how-to/uninstall.md
       - Rotate secrets and certificates: how-to/rotate-secrets.md
       - Run a QA maintenance window on staging: how-to/staging-window.md
       - Serve a documentation release on the lab: how-to/install-docs-release.md
@@ -105,6 +100,7 @@ nav:
       - Troubleshoot a bootstrap run: how-to/troubleshoot.md
       - Fix a failed doctor check: how-to/fix-doctor-checks.md
       - Update pinned versions: how-to/update-versions.md
+      - Run a maintenance update of the locks: how-to/maintenance-update.md
       - Pin the Ansible collections: how-to/pin-ansible-collections.md
       - Pin the vendor sources: how-to/pin-vendor-sources.md
       - Publish a release package: how-to/publish-a-release-package.md
@@ -136,6 +132,7 @@ nav:
       - How the preflight gate decides: explanation/preflight-gate.md
       - How bootstrap works: explanation/bootstrap.md
       - Components that existed before pinka: explanation/pre-existing-components.md
+      - Capacity planning: explanation/capacity-planning.md
       - Portability: explanation/portability.md
       - How benchmark targets are isolated: explanation/target-isolation.md
       - How telemetry, metrics and logs flow: explanation/telemetry.md

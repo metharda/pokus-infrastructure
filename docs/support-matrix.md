@@ -73,14 +73,13 @@ Lifecycle sources:
 
 ## Minimum hardware
 
-Below *required* the host is unsupported; below *recommended* preflight warns.
+Below *required* the host is unsupported; below *recommended* preflight warns. Memory has a floor: below it the host is unsupported. Above the floor, the required and recommended memory and the free disk per mount point are computed from the operator's choices ([Capacity planning](explanation/capacity-planning.md)). Every memory threshold compares `MemTotal` with 0.94 times its nominal value, so a machine with the nominal amount passes.
 
 | Resource | Required | Recommended |
 | --- | --- | --- |
-| Memory (GiB) | 16 | 24 |
+| Memory (GiB) | floor 8; above it computed | computed |
 | CPU threads | 8 | 16 |
-| Free disk for /var/lib (GiB) | 150 | 400 |
-| Free disk for /srv/pinka (GiB) | 100 | 500 |
+| Free disk | computed per mount point | - |
 
 ## Core requirements
 
@@ -109,6 +108,7 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 | Feature | Requires | When missing | Only matters without | Impact |
 | --- | --- | --- | --- | --- |
 | `gpu_inference` | nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: 7.5, driver_cuda_min: 13.0.2 | degrade | — | No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host. |
+| `gpu_training` | nvidia_gpu_usable, gpu_vram_gib_min: 8, gpu_compute_capability_min: 7.0 | degrade | — | No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs. |
 | `vm_targets` | kvm_usable | degrade | — | No KVM: VM-class scenarios (kernel-level faults) cannot run on this host. |
 | `btrfs_pool` | btrfs_available | fallback | — | No btrfs: the Incus pool falls back to LVM thin provisioning. |
 | `lvm_thin_pool` | dm_thin_pool_available | degrade | btrfs_pool | No LVM thin provisioning. |
@@ -131,23 +131,24 @@ No quota-capable storage: neither btrfs nor LVM thin provisioning (dm_thin_pool)
 
 ## Last test results
 
-`make test-distros` ([How to test the distributions](how-to/test-distributions.md)) bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which must change nothing, and then `pinka doctor --smoke`. Then it deploys the reference platform: the isolation probes of its agent and of every loopback-capable profile, the training flow with the CPU-only job, a run interrupted by a reboot and resumed, a second deployment that must change nothing, the replacement by a renamed copy, and a backup and restore. A result counts for 90 days after its test date (*Valid until*); a target whose last result failed or has expired counts as untested.
+`make test-distros` ([How to test the distributions](how-to/test-distributions.md)) bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which must change nothing, and then `pinka doctor --smoke`. Then it deploys the reference platform: the isolation probes of its agent and of every loopback-capable profile, the training flow with the CPU-only job, a run interrupted by a reboot and resumed, a second deployment that must change nothing, the replacement by a renamed copy, and a backup and restore. Last, it uninstalls the lab: after a reboot, the host must equal its snapshot from before the install, apart from what uninstall keeps on purpose. A result counts for 90 days after its test date (*Valid until*); a target whose last result failed or has expired counts as untested.
 
-| Target | Release | Variant | Tested on | Commit | Launch | Prepare | Bootstrap | Second run | Doctor --smoke | Access | Platform | Isolation | Training | Resume | Redeploy | Replace | Restore | Valid until | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `ubuntu-24.04` | ubuntu 24.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `ubuntu-24.04-ufw` | ubuntu 24.04 | ufw | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `debian-13` | debian 13 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `ubuntu-22.04` | ubuntu 22.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `fedora-43` | fedora 43 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `fedora-44` | fedora 44 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `almalinux-9` | almalinux 9 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `almalinux-10` | almalinux 10 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `rockylinux-9` | rocky 9 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `rockylinux-10` | rocky 10 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `centos-stream-9` | centos 9 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `centos-stream-10` | centos 10 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `opensuse-leap-15.6` | opensuse-leap 15.6 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `opensuse-leap-16.0` | opensuse-leap 16.0 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `opensuse-tumbleweed` | opensuse-tumbleweed | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
-| `archlinux` | arch | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| Target | Release | Variant | Tested on | Commit | Launch | Prepare | Snapshot | Bootstrap | Second run | Doctor --smoke | Access | Platform | Isolation | Training | Resume | Redeploy | Replace | Restore | Uninstall | Valid until | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ubuntu-24.04` | ubuntu 24.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `ubuntu-24.04-ufw` | ubuntu 24.04 | ufw | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `ubuntu-24.04-preexisting` | ubuntu 24.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `debian-13` | debian 13 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `ubuntu-22.04` | ubuntu 22.04 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `fedora-43` | fedora 43 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `fedora-44` | fedora 44 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `almalinux-9` | almalinux 9 | firewalld, SELinux enforcing | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `almalinux-10` | almalinux 10 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `rockylinux-9` | rocky 9 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `rockylinux-10` | rocky 10 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `centos-stream-9` | centos 9 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `centos-stream-10` | centos 10 | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `opensuse-leap-15.6` | opensuse-leap 15.6 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `opensuse-leap-16.0` | opensuse-leap 16.0 | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `opensuse-tumbleweed` | opensuse-tumbleweed | firewalld | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |
+| `archlinux` | arch | nftables | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | not tested |

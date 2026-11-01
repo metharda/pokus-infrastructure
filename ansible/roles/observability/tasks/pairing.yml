@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/observability/tasks/pairing.yml). Local changes will be overwritten.
 #
-# Split inference (BUILD_PROMPT §19.10): the collector gateway gets a copy of
+# Split inference: the collector gateway gets a copy of
 # the pairing material (/etc/pinka/inference, inference_control role) that its
 # container user can read. An inference node exports to the paired lab node's
 # tailnet address; a lab node receives the paired inference node's telemetry

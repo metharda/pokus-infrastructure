@@ -1,5 +1,5 @@
 # Managed by pinka (ansible/roles/active_platform/defaults/main.yml). Local changes will be overwritten.
 
 # What infra rendered for the active platform (infra-internal; written when a
-# deployment is switched on, BUILD_PROMPT §7.14).
+# deployment is switched on).
 active_platform_file: /etc/pinka/platform/rendered.json

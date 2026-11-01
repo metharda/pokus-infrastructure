@@ -47,7 +47,7 @@ pinka-platform deploy [-h] [--settings SETTINGS] [--run RUN]
                              {inspect-release,prepare,build,pull,publish,retire-plan,render,principals,migrate,activate,clean}
 ```
 
-One step of a platform deployment (BUILD_PROMPT §7.14). Each step prints one JSON object. inspect-release fetches and validates the release alone and reports what it needs (content packages, secrets, settings; the installer asks for them); prepare fetches, stages and validates and writes a run directory below the staging directory; the other steps work on that run directory.
+One step of a platform deployment. Each step prints one JSON object. inspect-release fetches and validates the release alone and reports what it needs (content packages, secrets, settings; the installer asks for them); prepare fetches, stages and validates and writes a run directory below the staging directory; the other steps work on that run directory.
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
@@ -89,7 +89,7 @@ pinka-platform hook [-h] [--timeout SECONDS] [--until-healthy SECONDS]
                            {drain,health}
 ```
 
-Run the active platform's drain or health hook in its own transient unit (an instance of pinka-hook@, §12.9) and print the result as JSON. Without an active platform, or when the manifest declares no such hook, the result is skipped.
+Run the active platform's drain or health hook in its own transient unit (an instance of pinka-hook@) and print the result as JSON. Without an active platform, or when the manifest declares no such hook, the result is skipped.
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
@@ -107,7 +107,7 @@ pinka-platform hook-exec [-h] --hook {migrate,reconcile,drain,health}
                                 ...
 ```
 
-Run a release's hook command, capture the one JSON line it prints on stdout and print the judged result (§12.9). The hook's stderr goes to the journal.
+Run a release's hook command, capture the one JSON line it prints on stdout and print the judged result. The hook's stderr goes to the journal.
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |

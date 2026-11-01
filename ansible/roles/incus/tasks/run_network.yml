@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/incus/tasks/run_network.yml). Local changes will be overwritten.
 #
-# The run-network helper (BUILD_PROMPT §7.7): root-run, one instance per
+# The run-network helper: root-run, one instance per
 # connection on /run/pinka/run-network.sock, which belongs to the active
 # platform's controller account (0600; root can always connect). It creates
 # and deletes run networks r-<short> with fixed settings and logs every

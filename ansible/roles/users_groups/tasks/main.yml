@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/users_groups/tasks/main.yml). Local changes will be overwritten.
 #
-# Groups and accounts (BUILD_PROMPT §6.1, contracts.md). Researchers are
+# Groups and accounts (contracts.md). Researchers are
 # members of pinka (and of Incus's per-user group, added by the incus role);
 # admins also of pinka-admin with sudo. Nobody is added to docker or
 # incus-admin implicitly. Infra accounts are system users without login.
@@ -19,7 +19,7 @@
     quiet: true
 
 # An account or group with a reserved name that pinka did not create would
-# make it pinka's; refuse before anything changes (§6.1, §12.1).
+# make it pinka's; refuse before anything changes.
 - name: Refuse accounts and groups of the lab's names that existed before pinka
   ansible.builtin.assert:
     that: users_groups_reserved_existing | length == 0
@@ -28,7 +28,7 @@
       account or group of the lab; rename or remove it, then re-run bootstrap
     quiet: true
 
-# The install record (§7.21) notes what pinka creates before it creates it.
+# The install record notes what pinka creates before it creates it.
 - name: Record the accounts and groups pinka creates
   pinka_install_record:
     state: add

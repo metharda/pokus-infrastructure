@@ -1,7 +1,7 @@
 #!/usr/sbin/nft -f
 # Managed by pinka (ansible/roles/firewall/templates/pinka.nft.j2). Local changes will be overwritten.
 #
-# pinka input and forward policy (BUILD_PROMPT §7.5, §19.6). Only the table
+# pinka input and forward policy. Only the table
 # inet pinka_filter is replaced; tables of Docker, Incus and others are not touched.
 table inet pinka_filter
 delete table inet pinka_filter
@@ -33,14 +33,14 @@ table inet pinka_filter {
 {% endif %}
 {% if firewall_listener_rules.kept | length > 0 %}
 		# Shared host: what was reachable before pinka stays reachable as found,
-		# unless the owner consented to close it (BUILD_PROMPT §7.5).
+		# unless the owner consented to close it.
 {% for rule in firewall_listener_rules.kept %}
 		{{ (rule.family ~ ' daddr ' ~ rule.address ~ ' ') if rule.family else '' }}{{ rule.proto }} dport {{ rule.port }} accept
 {% endfor %}
 {% endif %}
 {% if firewall_install_path is not none and not firewall_install_path.closed %}
 		# The install's access path stays open until SSH over the tailnet was
-		# verified for a researcher in the same run and the owner consented (§7.5).
+		# verified for a researcher in the same run and the owner consented.
 		{{ firewall_install_path.family }} daddr {{ firewall_install_path.address }} tcp dport {{ firewall_install_path.port }} accept
 {% endif %}
 		# DHCP and DNS from Incus instances to Incus's dnsmasq on the host.

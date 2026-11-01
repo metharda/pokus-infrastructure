@@ -44,7 +44,7 @@ a lab host, `pinka docs serve` serves it on `127.0.0.1` for offline use.
 | wsl2 | supported |
 | vm | supported |
 
-At least 16 GiB of memory and 8 CPU threads. Derivatives are experimental; everything else, and the full rules, are in [docs/support-matrix.md](docs/support-matrix.md).
+At least 8 GiB of memory, more as the choices require (features, node role, concurrent targets, the model), and 8 CPU threads; the disk follows the choices too. Derivatives are experimental; everything else, and the full rules, are in [docs/support-matrix.md](docs/support-matrix.md).
 <!-- generated:environments:end -->
 
 ## Prerequisites
@@ -105,6 +105,8 @@ walk through a complete installation.
 | 75 | WSL restart required | run 'wsl --terminate &lt;distro&gt;' on the Windows side, then re-run bootstrap |
 | 76 | reboot required | reboot (and enroll the MOK if asked), then re-run bootstrap |
 | 77 | operator action required | the printed message says what to do (for example run as root, commit the changes, accept a changed host profile) |
+| 80 | uninstall refused | uninstall was not confirmed (the typed machine name was missing or differed), the backup offered first failed, or an option did not apply to this host; nothing was removed |
+| 81 | uninstall kept items | uninstall finished, but items it should have removed are still there; the report in /var/log/pinka-uninstall names each and why |
 
 Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoot.md); the codes of `pinka-preflight` and `pinka` are in [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
 <!-- generated:exit-codes:end -->
@@ -126,7 +128,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 
 | Path | Content |
 | --- | --- |
-| `docs/` | Documentation (MkDocs). `docs/BUILD_PROMPT.md` is the binding build specification, `docs/DOCS_SPEC.md` the documentation specification, `docs/contracts.md` the interface to pokus-platform. |
+| `docs/` | Documentation (MkDocs). `docs/contracts.md` is the interface to pokus-platform. |
 | `bootstrap/` | `bootstrap.sh`, the single entry point that provisions a lab host, its shell libraries, the hash-locked Ansible requirements and tests. |
 | `preflight/` | Host detection and the support decision (`pinka-preflight`), the support matrix, the host profile schema, fixtures and tests. |
 | `installer/` | The installer TUI and the answers replay that `bootstrap.sh` runs (`pinka_installer`), the answers schema, its hash-locked requirements and tests. |

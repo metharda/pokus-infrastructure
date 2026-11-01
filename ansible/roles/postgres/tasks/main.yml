@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/postgres/tasks/main.yml). Local changes will be overwritten.
 #
-# PostgreSQL in the core Compose project (BUILD_PROMPT §7.8, §12.5): Unix
+# PostgreSQL in the core Compose project: Unix
 # socket directories only (the container has no network), data checksums,
 # fixed durability settings and infra's own role for the exporter. The active
 # platform's database, roles, schemas, password files and the restricted

@@ -26,13 +26,13 @@ backup_secret_paths:
 backup_configured: "{{ backup_repository | length > 0 }}"
 backup_sftp: "{{ backup_repository is match('sftp:') }}"
 # The active platform's database, dumped on full and lab nodes when its
-# manifest sets backup.database (§7.15).
+# manifest sets backup.database.
 backup_database: >-
   {{ ((active_platform | default({}, true)).database | default({}, true)).database | default('', true) }}
 backup_has_postgres: >-
   {{ node_role in ['full', 'lab'] and backup_database | length > 0
      and ((active_platform | default({}, true)).backup | default({}, true)).database | default(false) }}
-# Always backed up (§7.15): the restricted area, the training datasets and the
+# Always backed up: the restricted area, the training datasets and the
 # adapters with their lineage, and the platform state directories the active
 # platform's manifest lists in backup.paths (absolute, from its rendering). A
 # state directory it does not list is not backed up; doctor lists those.

@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/inference_control/tasks/forwarder.yml). Local changes will be overwritten.
 #
-# pinka-inference-forwarder on a lab node (BUILD_PROMPT §12.8, §19.10): the
+# pinka-inference-forwarder on a lab node: the
 # program, its settings with the paired inference node's tailnet name, and
 # the unit. It starts only once peer.crt exists; the inference guard decides
 # which accounts reach its loopback ports.

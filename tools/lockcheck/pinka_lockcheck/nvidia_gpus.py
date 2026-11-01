@@ -1,4 +1,4 @@
-"""The GPU list of the NVIDIA driver release pinned for automatic installs (BUILD_PROMPT §10.1).
+"""The GPU list of the NVIDIA driver release pinned for automatic installs.
 
 NVIDIA ships ``supported-gpus.json`` with every driver release: one entry per
 GPU (``devid``, optional ``subvendorid``/``subdevid``, ``name``,

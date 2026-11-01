@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/compose/tasks/main.yml). Local changes will be overwritten.
 #
-# One Compose project of the lab services (BUILD_PROMPT §7.6): the project
+# One Compose project of the lab services: the project
 # file from compose/<project>/compose.yml, an .env file with the pinned image
 # digests, ports and paths, and pinka-<project>.service (oneshot,
 # RemainAfterExit) that runs `docker compose up -d --wait` and `down`. The
@@ -53,7 +53,7 @@
     compose_pinka_gid: "{{ (ansible_facts.getent_group['pinka'] | default(none) or ['', ''])[1] }}"
     compose_db_socket_gid: >-
       {{ (ansible_facts.getent_group[compose_db_socket_group] | default(none) or ['', ''])[1] }}
-    # The query proxy's socket group (§7.9).
+    # The query proxy's socket group.
     compose_query_gid: "{{ (ansible_facts.getent_group['pinka-query'] | default(none) or ['', ''])[1] }}"
 
 - name: Check that the GPU method is known

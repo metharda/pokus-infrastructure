@@ -1,4 +1,4 @@
-"""refplat's controller ``ctl`` (profile ``controller``, BUILD_PROMPT §7.18).
+"""refplat's controller ``ctl`` (profile ``controller``).
 
 It answers on the two sockets infra hands it by socket activation: ``api``
 for researchers and root (the ``refplat`` CLI and the hooks) and ``session``,

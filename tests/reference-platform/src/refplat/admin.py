@@ -1,4 +1,4 @@
-"""refplat's hooks (contract v2 §12.9): ``refplat-admin migrate|reconcile|drain|health``.
+"""refplat's hooks (contract v2): ``refplat-admin migrate|reconcile|drain|health``.
 
 Each prints exactly one JSON line and exits 0 on success.
 

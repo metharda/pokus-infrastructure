@@ -1,4 +1,4 @@
-"""Screens 14-18: Secrets & vault, Review, Install progress, Doctor, Finish (BUILD_PROMPT §18.4)."""
+"""Screens 14-18: Secrets & vault, Review, Install progress, Doctor, Finish."""
 
 from __future__ import annotations
 
@@ -237,7 +237,8 @@ def summary(
     a = answers.normalized()
     m, r, s, g, b = a.machine, a.resources, a.storage, a.gpu, a.backups
     caps = a.training_caps
-    pool = f"loop file of {s.loop_size_gib} GiB" if s.source == "loop" else f"disk {s.device}"
+    size = "auto size" if s.loop_size_gib == "auto" else f"{s.loop_size_gib} GiB"
+    pool = f"loop file of {size}" if s.source == "loop" else f"disk {s.device}"
     return [
         ("mode", "Install mode", a.mode),
         (
@@ -283,6 +284,7 @@ def summary(
         (
             "gpu",
             "GPU & inference",
+            f"inference {a.features.inference} · training {a.features.training} · "
             f"driver {g.install_driver} · profile {g.vllm_profile or '-'} · "
             f"model {g.default_model}\n"
             f"arbiter after boot {a.gpu_arbiter.after_boot}, serving again after training "

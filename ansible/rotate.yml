@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/rotate.yml). Local changes will be overwritten.
 #
-# Rotation of the secrets and certificates the host holds (BUILD_PROMPT §4,
-# docs/how-to/rotate-secrets.md). Run it as root with the pinned Ansible and
+# Rotation of the secrets and certificates the host holds
+# (docs/how-to/rotate-secrets.md). Run it as root with the pinned Ansible and
 # the lab's vault, during a maintenance window (it restarts the lab):
 #
 #   ansible-playbook ansible/rotate.yml -e machine=<machine> [--tags postgres,incus,restic,signing]

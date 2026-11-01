@@ -2,7 +2,7 @@
 #
 {% if ssh_policy_scope == 'group' %}
 # Key-only login for researchers (group {{ ssh_allow_groups | join(', ') }}); every other account keeps
-# the host's own policy (BUILD_PROMPT §7.3, approved deviation SSH1). The block
+# the host's own policy. The block
 # ends with this file: sshd restores the including file's Match state.
 Match Group {{ ssh_allow_groups | join(',') }}
 	PasswordAuthentication no

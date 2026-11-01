@@ -1,4 +1,4 @@
-"""Host profile report: assembly, validation and storage (BUILD_PROMPT §2.1, §2.5).
+"""Host profile report: assembly, validation and storage.
 
 The report is the JSON document described by
 ``preflight/schema/host-profile.schema.json``. ``generated_at`` is the only
@@ -43,7 +43,7 @@ SCHEMA_PATH = os.path.join(
 
 @dataclass
 class Overrides:
-    """Operator overrides, recorded in the profile and every fingerprint (§13.11).
+    """Operator overrides, recorded in the profile and every fingerprint.
 
     Attributes:
         accept_degraded: ``--accept-degraded``.
@@ -240,6 +240,7 @@ def build_report(
         "requirements": {
             "core": [dataclasses.asdict(c) for c in decision.core_requirements],
             "minimums": [dataclasses.asdict(c) for c in decision.minimums],
+            **(decision.requirements.as_dict() if decision.requirements else {}),
         },
         "features": dict(decision.features),
         "disabled_features": list(decision.disabled_features),
@@ -248,6 +249,7 @@ def build_report(
         "access": det.access.as_dict(),
         "conflicts": [dataclasses.asdict(c) for c in det.conflicts.conflicts],
         "unsupported_reasons": list(decision.unsupported_reasons),
+        "degraded_reasons": list(decision.degraded_reasons),
         "needs_action": list(decision.needs_action),
         "planned_actions": list(decision.planned_actions),
         "warnings": list(decision.warnings),

@@ -4,7 +4,7 @@ The tests never run a play: they check the data files, call the filter
 plugin's functions directly, and render role templates the way
 ``ansible.builtin.template`` does (trusted template text, backslashes kept,
 ``trim_blocks``), with variables loaded the way Ansible loads vars files.
-Host profiles come from the preflight fixtures (BUILD_PROMPT §11).
+Host profiles come from the preflight fixtures.
 """
 
 from __future__ import annotations
@@ -73,6 +73,8 @@ def _fixture_profile(name: str) -> str:
 
     args_file = FIXTURES / name / "args.json"
     args = json.loads(args_file.read_text(encoding="utf-8")) if args_file.exists() else []
+    if (FIXTURES / name / "plan.json").exists():
+        args += ["--plan", str(FIXTURES / name / "plan.json")]
     out = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
         cli.main(["--root", str(FIXTURES / name), "--offline", "--quiet", *args])
@@ -80,7 +82,7 @@ def _fixture_profile(name: str) -> str:
 
 
 def fixture_profile(name: str) -> dict[str, Any]:
-    """Run preflight on a fixture root (with its ``args.json``) and return the host profile.
+    """Run preflight on a fixture root (with its ``args.json`` and ``plan.json``).
 
     Args:
         name: Fixture directory name under preflight/tests/fixtures.
@@ -202,3 +204,27 @@ def evaluate(expression: str, variables: Mapping[str, Any]) -> Any:
     from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
 
     return _templar(variables).template(trust_as_template("{{ " + expression + " }}"))
+
+
+def template_value(text: Any, variables: Mapping[str, Any]) -> Any:
+    """Template a task's value (text with ``{{ }}``) as Ansible does, to a native value.
+
+    Args:
+        text: The value as the task file has it.
+        variables: Variables.
+
+    Returns:
+        The native result.
+    """
+    from ansible.template import trust_as_template  # noqa: PLC0415 - heavy import
+
+    def trusted(value: Any) -> Any:
+        if isinstance(value, str):
+            return trust_as_template(value)
+        if isinstance(value, Mapping):
+            return {k: trusted(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [trusted(v) for v in value]
+        return value
+
+    return _templar(variables).template(trusted(text))

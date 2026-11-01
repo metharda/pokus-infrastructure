@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/vllm/tasks/default_deployment.yml). Local changes will be overwritten.
 #
-# The default deployment from host_vars (BUILD_PROMPT §7.11, contracts.md#inference):
+# The default deployment from host_vars (contracts.md#inference):
 # /etc/pinka/vllm/deployments/<id>@<version>.yml. Deployment files are
 # immutable: a different spec under an existing id and version is refused.
 - name: Read the model lock and the starter list of models

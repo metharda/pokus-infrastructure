@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/gpu_arbiter/files/pinka_gpu_arbiter.py). Local changes will be overwritten.
-"""The GPU arbiter: whether the GPU serves, trains or idles (BUILD_PROMPT §7.18).
+"""The GPU arbiter: whether the GPU serves, trains or idles.
 
 Installed as ``/usr/local/libexec/pinka/gpu-arbiter`` by the gpu_arbiter
 role and run as root, never through sudo. It replaces contract v1's vLLM
@@ -101,7 +101,7 @@ SUBMISSION_KEYS = {
     "restore",
 }
 REQUESTS = ("status", "serve", "idle", "train", "publish-dataset")
-# What the control endpoint of an inference node may ask (§19.10).
+# What the control endpoint of an inference node may ask.
 SERVING_ONLY = ("status", "serve")
 MAX_REQUEST = 1 << 20
 CONTAINER_MODELS = "/models"
@@ -126,10 +126,12 @@ JOB_OUTPUT = "/output"
 JOB_CHECKPOINTS = "/checkpoints"
 # The adapter a job leaves in its output directory.
 JOB_ADAPTER = "adapter"
-# Infra's caps on training (``training_caps``, §7.18, §8.1): the job's run time,
+# Infra's caps on training (``training_caps``): the job's run time,
 # memory and CPUs (the manifest's values must stay within them), the size of a
 # published dataset, the combined size of a run's output and checkpoints, and
-# the job's /tmp (a tmpfs, counted against the job's memory).
+# the job's /tmp (a tmpfs, counted against the job's memory). The play always
+# writes memory_max, the cap preflight computed for memory_max: auto or
+# the configured one; the default here is the computed cap's ceiling.
 DEFAULT_CAPS: Mapping[str, Any] = {
     "timeout_seconds": 86400,
     "memory_max": "24G",
@@ -183,7 +185,9 @@ class Config:
     Attributes:
         node_role: ``full``, ``lab`` or ``inference``; only ``full`` trains.
         peer: The account allowed besides root.
-        serves: vLLM runs on this host (``gpu_inference``).
+        serves: vLLM runs on this host (``gpu_inference`` after the inference switch).
+        training: Training jobs run on a full node (the training switch:
+            off with ``training: off``, or ``auto`` without a usable GPU).
         after_boot: ``serve`` (the default deployment) or ``idle``.
         restore_after_training: Default of a submission's ``restore``.
         default_deployment: ``<id>@<version>`` served after boot, or None.
@@ -192,7 +196,7 @@ class Config:
             takes its default (:data:`DEFAULT_CAPS`).
         gpu_args: Docker arguments that give a container the GPU (as for vLLM).
         container_args: Docker arguments every lab container gets per container
-            rather than from the Docker daemon (§7.6): the lab services' slice
+            rather than from the Docker daemon: the lab services' slice
             as cgroup parent and the local log driver with size limits.
         vllm_port: vLLM's port on 127.0.0.1.
         otlp: OTLP gRPC endpoint of the collector.
@@ -205,6 +209,7 @@ class Config:
     node_role: str = "full"
     peer: str = "root"
     serves: bool = True
+    training: bool = True
     after_boot: str = "serve"
     restore_after_training: bool = True
     default_deployment: str | None = None
@@ -229,8 +234,22 @@ class Config:
 
     @property
     def trains(self) -> bool:
-        """Training runs only on a full node (§19.10)."""
-        return self.node_role == "full"
+        """Training runs only on a full node where it is on."""
+        return self.node_role == "full" and self.training
+
+    def refuse_training(self) -> None:
+        """Raise unless this host trains.
+
+        Raises:
+            ArbiterError: With why it does not.
+        """
+        if self.node_role != "full":
+            raise ArbiterError(f"training is unavailable on this host (node_role {self.node_role})")
+        if not self.training:
+            raise ArbiterError(
+                "training is off on this host (training: off, or auto without a usable GPU; "
+                "pinka preflight shows why)"
+            )
 
     def cap(self, name: str) -> Any:  # noqa: ANN401 - a number or a size
         """One of ``training_caps``, its default when the settings leave it out.
@@ -639,7 +658,7 @@ class Arbiter:
         return path
 
     def load_deployment(self, deployment: str) -> dict[str, Any]:
-        """Load and check a deployment spec (§7.11).
+        """Load and check a deployment spec.
 
         Args:
             deployment: ``<id>@<version>``.
@@ -1026,10 +1045,7 @@ class Arbiter:
             ArbiterError: If the host does not train, the submission or its
                 inputs do not validate, or inference is still active.
         """
-        if not self.config.trains:
-            raise ArbiterError(
-                f"training is unavailable on this host (node_role {self.config.node_role})"
-            )
+        self.config.refuse_training()
         job = self._job(job_name)
         clean = check_submission(job, submission)
         if job["base_model"]:
@@ -1226,10 +1242,7 @@ class Arbiter:
                 the controller's state, holds anything but regular files and
                 directories, or lists an instance of the ``test`` split.
         """
-        if not self.config.trains:
-            raise ArbiterError(
-                f"training is unavailable on this host (node_role {self.config.node_role})"
-            )
+        self.config.refuse_training()
         if not isinstance(provenance, Mapping) or set(provenance) != {"instances", "source_runs"}:
             raise ArbiterError("provenance must have exactly instances and source_runs")
         instances = check_instances(provenance["instances"])
@@ -1747,7 +1760,7 @@ class Arbiter:
         return 0
 
 
-# Infra's options of every job container (§7.18), never taken from the manifest:
+# Infra's options of every job container, never taken from the manifest:
 # no network, a read-only root file system with a private /tmp (a tmpfs of
 # ``tmp_max``, see Arbiter._tmp_bytes), no capabilities, no new privileges,
 # Docker's default seccomp profile (nothing overrides it), and no host PID,
@@ -2228,6 +2241,12 @@ def main(argv: Sequence[str], make: Callable[[], Arbiter] | None = None) -> int:
                 action="store_true",
                 help="leave a training run alone and change nothing",
             )
+    idle_cmd = sub.add_parser("idle", help="stop serving as root (Ansible: inference is off)")
+    idle_cmd.add_argument(
+        "--unless-training",
+        action="store_true",
+        help="leave a training run alone and change nothing",
+    )
     sub.add_parser("status", help="print the mode and the last transitions")
     args = parser.parse_args(list(argv))
     try:
@@ -2248,14 +2267,21 @@ def main(argv: Sequence[str], make: Callable[[], Arbiter] | None = None) -> int:
     return 0 if answer.get("ok") else 1
 
 
+# The answer of serve and idle with --unless-training while a run trains.
+UNTOUCHED = {"ok": True, "mode": "training", "changed": False, "skipped": True}
+
+
 def _admin(arbiter: Arbiter, args: argparse.Namespace) -> dict[str, Any]:
     """The commands for root that answer with one JSON object."""
     if args.command == "status":
         return arbiter.status()
-    if args.command == "serve":
-        if args.unless_training and arbiter.state()["mode"] == "training":
-            return {"ok": True, "mode": "training", "changed": False, "skipped": True}
-        return arbiter.serve(args.deployment, "root")
+    if args.command in ("serve", "idle"):
+        before = arbiter.state()["mode"]
+        if args.unless_training and before == "training":
+            return dict(UNTOUCHED)
+        if args.command == "serve":
+            return arbiter.serve(args.deployment, "root")
+        return {**arbiter.idle("root"), "changed": before != "idle"}
     if args.command == "prepare":
         with arbiter.lock():
             if arbiter.state()["mode"] == "training":

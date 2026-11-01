@@ -1,0 +1,658 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-22T12:00:00Z",
+  "machine": "pinka-lab",
+  "record": "present",
+  "purge_data": false,
+  "remove_components": [],
+  "refusal": "",
+  "warnings": [
+    "A reboot is needed afterwards; uninstall never reboots."
+  ],
+  "backup": true,
+  "to_remove": 65,
+  "keep_for_data": {},
+  "kept_dir": "/var/lib/pinka-kept",
+  "backup_access": "/var/lib/pinka-kept/backup/secrets",
+  "follow_ups": [
+    "/var/lib/pinka-kept holds the restic repository's password and location and the SFTP key of the backup server: they grant access to the backups. Copy it off this host, then delete it securely, as root: tar -C /var/lib -cf - pinka-kept | ssh <you>@<safe-host> 'umask 077; cat > pinka-kept.tar' (or copy it to removable media), then find /var/lib/pinka-kept -type f -exec shred -u {} + && rm -rf /var/lib/pinka-kept. On an SSD or a copy-on-write file system (btrfs) shred cannot reach every old copy: then also change the repository's password (restic key passwd, from the copy) and replace the SFTP key on the backup server.",
+    "Delete the node pinka-lab (192.0.2.20) in the Tailscale admin console (Machines): uninstall logs it out, which does not take it off the tailnet.",
+    "Revoke the platform's read-only deploy key SHA256:examplefingerprint on the Git host of the platform's repository: uninstall removes its private half from this host."
+  ],
+  "items": [
+    {
+      "phase": "platform",
+      "kind": "stop",
+      "name": "pinka stop",
+      "action": "remove",
+      "reason": "drain the platform refplat, idle the GPU arbiter, stop pinka-platform.target and pinka-lab.target",
+      "platform": "refplat"
+    },
+    {
+      "phase": "keep",
+      "kind": "keep_copy",
+      "name": "/etc/pinka/secrets/backup",
+      "action": "keep",
+      "reason": "the restic repository's location, its password and the SFTP key: copied to /var/lib/pinka-kept/backup/secrets (root only) before the path goes",
+      "dest": "/var/lib/pinka-kept/backup/secrets"
+    },
+    {
+      "phase": "keep",
+      "kind": "keep_copy",
+      "name": "/etc/pinka/backup",
+      "action": "keep",
+      "reason": "the backup helper's settings and the backup server's host keys: copied to /var/lib/pinka-kept/backup/config (root only) before the path goes",
+      "dest": "/var/lib/pinka-kept/backup/config"
+    },
+    {
+      "phase": "keep",
+      "kind": "keep_copy",
+      "name": "/var/lib/pinka/backup",
+      "action": "keep",
+      "reason": "the state of the last backup: copied to /var/lib/pinka-kept/backup/state (root only) before the path goes",
+      "dest": "/var/lib/pinka-kept/backup/state"
+    },
+    {
+      "phase": "keep",
+      "kind": "keep_copy",
+      "name": "/etc/pinka/qa",
+      "action": "keep",
+      "reason": "the QA trusted keys and the attestations: copied to /var/lib/pinka-kept/qa (root only) before the path goes",
+      "dest": "/var/lib/pinka-kept/qa"
+    },
+    {
+      "phase": "keep",
+      "kind": "keep_copy",
+      "name": "/var/lib/pinka/gpu",
+      "action": "keep",
+      "reason": "the GPU arbiter's run records and transition log: copied to /var/lib/pinka-kept/records/gpu (root only) before the path goes",
+      "dest": "/var/lib/pinka-kept/records/gpu"
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "pinka-lab.target",
+      "action": "remove",
+      "reason": "pinka's unit",
+      "template": false
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "pinka-platform.target",
+      "action": "remove",
+      "reason": "pinka's unit",
+      "template": false
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "pinka-backup.timer",
+      "action": "remove",
+      "reason": "pinka's unit",
+      "template": false
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "pinka-core.service",
+      "action": "remove",
+      "reason": "pinka's unit",
+      "template": false
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "pinka-gpu-job@.service",
+      "action": "remove",
+      "reason": "pinka's unit",
+      "template": true
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "refplat-api.service",
+      "action": "remove",
+      "reason": "the platform's unit",
+      "template": false
+    },
+    {
+      "phase": "units",
+      "kind": "unit",
+      "name": "pinka-services.slice",
+      "action": "remove",
+      "reason": "pinka's unit",
+      "template": false
+    },
+    {
+      "phase": "compose",
+      "kind": "container",
+      "name": "pinka-postgres",
+      "action": "remove",
+      "reason": "pinka's container"
+    },
+    {
+      "phase": "compose",
+      "kind": "network",
+      "name": "pinka-core_default",
+      "action": "remove",
+      "reason": "pinka's network"
+    },
+    {
+      "phase": "compose",
+      "kind": "image",
+      "name": "docker.io/library/postgres@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "action": "remove",
+      "reason": "pulled by pinka"
+    },
+    {
+      "phase": "compose",
+      "kind": "image",
+      "name": "docker.io/nvidia/cuda@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "action": "keep",
+      "reason": "the container owner-web, which is not pinka's, uses it"
+    },
+    {
+      "phase": "incus",
+      "kind": "instance",
+      "name": "bench/t1",
+      "action": "remove",
+      "reason": "an instance in pinka's project",
+      "project": "bench",
+      "object": "t1"
+    },
+    {
+      "phase": "incus",
+      "kind": "image",
+      "name": "default/base/1",
+      "action": "remove",
+      "reason": "an image pinka built or brought in",
+      "project": "default",
+      "object": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "phase": "incus",
+      "kind": "profile",
+      "name": "bench/target-container",
+      "action": "remove",
+      "reason": "a profile of pinka's project",
+      "project": "bench",
+      "object": "target-container"
+    },
+    {
+      "phase": "incus",
+      "kind": "project",
+      "name": "bench",
+      "action": "remove",
+      "reason": "pinka's project",
+      "object": "bench"
+    },
+    {
+      "phase": "incus",
+      "kind": "project",
+      "name": "user-1001",
+      "action": "remove",
+      "reason": "pinka's project",
+      "object": "user-1001"
+    },
+    {
+      "phase": "incus",
+      "kind": "network",
+      "name": "r-abc",
+      "action": "remove",
+      "reason": "pinka's network",
+      "object": "r-abc"
+    },
+    {
+      "phase": "incus",
+      "kind": "network",
+      "name": "incusbr-1001",
+      "action": "remove",
+      "reason": "pinka's network",
+      "object": "incusbr-1001"
+    },
+    {
+      "phase": "incus",
+      "kind": "network",
+      "name": "pinka-build0",
+      "action": "remove",
+      "reason": "pinka's network",
+      "object": "pinka-build0"
+    },
+    {
+      "phase": "incus",
+      "kind": "acl",
+      "name": "pinka-run-default",
+      "action": "remove",
+      "reason": "pinka's network ACL",
+      "object": "pinka-run-default"
+    },
+    {
+      "phase": "incus",
+      "kind": "certificate",
+      "name": "pinka-metrics",
+      "action": "remove",
+      "reason": "a client certificate pinka trusted",
+      "object": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "phase": "incus",
+      "kind": "pool",
+      "name": "pinka-targets",
+      "action": "remove",
+      "reason": "pinka's storage pool, removed last",
+      "object": "pinka-targets"
+    },
+    {
+      "phase": "firewall",
+      "kind": "nft_table",
+      "name": "inet pinka_filter",
+      "action": "remove",
+      "reason": "pinka's table"
+    },
+    {
+      "phase": "firewall",
+      "kind": "nft_table",
+      "name": "inet pinka_access_guard",
+      "action": "remove",
+      "reason": "the access guard: tcp/8080, closed with consent, reachable again"
+    },
+    {
+      "phase": "firewall",
+      "kind": "docker_user_rule",
+      "name": "iptables DOCKER-USER -i r-+ -j ACCEPT",
+      "action": "remove",
+      "reason": "pinka's rule for its Incus bridges",
+      "tool": "iptables",
+      "rule": [
+        "-i",
+        "r-+",
+        "-j",
+        "ACCEPT"
+      ]
+    },
+    {
+      "phase": "firewall",
+      "kind": "docker_user_rule",
+      "name": "iptables DOCKER-USER -o r-+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT",
+      "action": "remove",
+      "reason": "pinka's rule for its Incus bridges",
+      "tool": "iptables",
+      "rule": [
+        "-o",
+        "r-+",
+        "-m",
+        "conntrack",
+        "--ctstate",
+        "RELATED,ESTABLISHED",
+        "-j",
+        "ACCEPT"
+      ]
+    },
+    {
+      "phase": "tailscale",
+      "kind": "serve",
+      "name": "https:443",
+      "action": "remove",
+      "reason": "pinka added this serve entry",
+      "entry": "https:443"
+    },
+    {
+      "phase": "tailscale",
+      "kind": "logout",
+      "name": "the tailnet node",
+      "action": "remove",
+      "reason": "pinka joined it: log it out"
+    },
+    {
+      "phase": "packages",
+      "kind": "guard",
+      "name": "the kept data",
+      "action": "keep",
+      "reason": "mounted read-only while packages are removed, so that no package script can delete it: /srv/pinka, /var/lib/pinka-kept, /var/log/pinka-bootstrap, /var/log/pinka-uninstall, /var/lib/docker, /var/lib/containerd, /var/lib/incus, /var/lib/tailscale",
+      "paths": [
+        "/srv/pinka",
+        "/var/lib/pinka-kept",
+        "/var/log/pinka-bootstrap",
+        "/var/log/pinka-uninstall",
+        "/var/lib/docker",
+        "/var/lib/containerd",
+        "/var/lib/incus",
+        "/var/lib/tailscale"
+      ]
+    },
+    {
+      "phase": "packages",
+      "kind": "hold_file",
+      "name": "/etc/apt/preferences.d/pinka-pins",
+      "action": "remove",
+      "reason": "pinka's holds: docker",
+      "path": "/etc/apt/preferences.d/pinka-pins",
+      "blocks": [
+        "docker"
+      ],
+      "delete_if_empty": true
+    },
+    {
+      "phase": "packages",
+      "kind": "repo_file",
+      "name": "/etc/apt/sources.list.d/pinka-docker-deb.sources",
+      "action": "remove",
+      "reason": "pinka's repository or key file"
+    },
+    {
+      "phase": "packages",
+      "kind": "repo_file",
+      "name": "/etc/apt/keyrings/pinka-docker-deb.asc",
+      "action": "remove",
+      "reason": "pinka's repository or key file"
+    },
+    {
+      "phase": "packages",
+      "kind": "package",
+      "name": "/usr/bin/curl",
+      "action": "keep",
+      "reason": "a file requirement, not a package name"
+    },
+    {
+      "phase": "packages",
+      "kind": "package",
+      "name": "containerd.io",
+      "action": "remove",
+      "reason": "pinka installed it"
+    },
+    {
+      "phase": "packages",
+      "kind": "package",
+      "name": "docker-ce",
+      "action": "remove",
+      "reason": "pinka installed it"
+    },
+    {
+      "phase": "packages",
+      "kind": "package",
+      "name": "incus",
+      "action": "remove",
+      "reason": "pinka installed it"
+    },
+    {
+      "phase": "packages",
+      "kind": "package",
+      "name": "jq",
+      "action": "remove",
+      "reason": "pinka installed it"
+    },
+    {
+      "phase": "packages",
+      "kind": "package",
+      "name": "tailscale",
+      "action": "remove",
+      "reason": "pinka installed it; removed, not purged: its purge deletes /var/lib/tailscale, which stays (--purge-data purges it)",
+      "keep_config": true
+    },
+    {
+      "phase": "packages",
+      "kind": "dependencies",
+      "name": "dependencies of pinka's packages",
+      "action": "remove",
+      "reason": "only those absent at the first install that no package needs any more"
+    },
+    {
+      "phase": "accounts",
+      "kind": "membership",
+      "name": "owner1 in pinka",
+      "action": "remove",
+      "reason": "pinka added it",
+      "user": "owner1",
+      "group": "pinka"
+    },
+    {
+      "phase": "accounts",
+      "kind": "key",
+      "name": "owner1: ssh-ed25519 AAAAC3Nz example-key-1...",
+      "action": "remove",
+      "reason": "pinka added this key",
+      "user": "owner1",
+      "key": "ssh-ed25519 AAAAC3Nz example-key-1",
+      "home": "/home/owner1"
+    },
+    {
+      "phase": "accounts",
+      "kind": "account",
+      "name": "pinka-build",
+      "action": "remove",
+      "reason": "pinka created it",
+      "home": "/var/lib/pinka/pinka-build",
+      "remove_home": false
+    },
+    {
+      "phase": "accounts",
+      "kind": "account",
+      "name": "refplat-api",
+      "action": "remove",
+      "reason": "the platform refplat's account",
+      "home": "/var/lib/pinka/refplat-api",
+      "remove_home": false
+    },
+    {
+      "phase": "accounts",
+      "kind": "account",
+      "name": "researcher1",
+      "action": "remove",
+      "reason": "pinka created it; its home /home/researcher1 is kept (--purge-data removes it)",
+      "home": "/home/researcher1",
+      "remove_home": false
+    },
+    {
+      "phase": "accounts",
+      "kind": "group",
+      "name": "pinka",
+      "action": "remove",
+      "reason": "pinka created it"
+    },
+    {
+      "phase": "accounts",
+      "kind": "group",
+      "name": "pinka-admin",
+      "action": "remove",
+      "reason": "pinka created it"
+    },
+    {
+      "phase": "accounts",
+      "kind": "group",
+      "name": "pinka-build",
+      "action": "remove",
+      "reason": "the primary group of an account pinka created"
+    },
+    {
+      "phase": "accounts",
+      "kind": "group",
+      "name": "refplat-api",
+      "action": "remove",
+      "reason": "the platform refplat's group"
+    },
+    {
+      "phase": "accounts",
+      "kind": "group",
+      "name": "refplat-db",
+      "action": "remove",
+      "reason": "the platform refplat's group"
+    },
+    {
+      "phase": "accounts",
+      "kind": "group",
+      "name": "researcher1",
+      "action": "remove",
+      "reason": "the primary group of an account pinka created"
+    },
+    {
+      "phase": "dropins",
+      "kind": "file",
+      "name": "/etc/ssh/sshd_config.d/10-pinka.conf",
+      "action": "remove",
+      "reason": "pinka wrote it",
+      "reload": "sshd"
+    },
+    {
+      "phase": "dropins",
+      "kind": "file",
+      "name": "/etc/sudoers.d/90-pinka-admin",
+      "action": "remove",
+      "reason": "pinka wrote it",
+      "reload": "sudoers"
+    },
+    {
+      "phase": "dropins",
+      "kind": "file",
+      "name": "/etc/modprobe.d/pinka-blacklist-nouveau.conf",
+      "action": "remove",
+      "reason": "pinka wrote it",
+      "reload": "initramfs"
+    },
+    {
+      "phase": "dropins",
+      "kind": "edited_line",
+      "name": "/etc/ssh/sshd_config",
+      "action": "restore",
+      "reason": "the line pinka added goes: Include /etc/ssh/sshd_config.d/*.conf",
+      "line": "Include /etc/ssh/sshd_config.d/*.conf",
+      "reload": "sshd",
+      "mode": "0600",
+      "owner": "root",
+      "group": "root"
+    },
+    {
+      "phase": "dropins",
+      "kind": "file",
+      "name": "/etc/systemd/system/nvidia-cdi-refresh.service.d/50-pinka.conf",
+      "action": "remove",
+      "reason": "pinka wrote it",
+      "reload": "daemon-reload"
+    },
+    {
+      "phase": "dropins",
+      "kind": "sysctl",
+      "name": "net.ipv4.ip_forward",
+      "action": "restore",
+      "reason": "back to 0 now",
+      "key": "net.ipv4.ip_forward",
+      "value": "0"
+    },
+    {
+      "phase": "dropins",
+      "kind": "timezone",
+      "name": "the time zone",
+      "action": "restore",
+      "reason": "back to Europe/Example",
+      "value": "Europe/Example"
+    },
+    {
+      "phase": "dropins",
+      "kind": "unit_state",
+      "name": "docker.service",
+      "action": "restore",
+      "reason": "disabled and stopped, as before pinka"
+    },
+    {
+      "phase": "dropins",
+      "kind": "initramfs",
+      "name": "the initramfs",
+      "action": "restore",
+      "reason": "rebuilt without pinka's nouveau blacklist; reboot to load it"
+    },
+    {
+      "phase": "paths",
+      "kind": "path",
+      "name": "/usr/local/bin/refplat",
+      "action": "remove",
+      "reason": "pinka's link to /usr/local/lib/pinka/platform/cli/refplat"
+    },
+    {
+      "phase": "paths",
+      "kind": "path",
+      "name": "/usr/local/bin/restic",
+      "action": "remove",
+      "reason": "pinka's link to /opt/pinka/restic/0.18.0/restic"
+    },
+    {
+      "phase": "paths",
+      "kind": "path",
+      "name": "/usr/local/bin/pinka",
+      "action": "remove",
+      "reason": "pinka's path"
+    },
+    {
+      "phase": "paths",
+      "kind": "path",
+      "name": "/usr/local/lib/pinka",
+      "action": "remove",
+      "reason": "pinka's path"
+    },
+    {
+      "phase": "paths",
+      "kind": "path",
+      "name": "/etc/pinka",
+      "action": "remove",
+      "reason": "pinka's path"
+    },
+    {
+      "phase": "paths",
+      "kind": "state_dir",
+      "name": "/var/lib/pinka",
+      "action": "remove",
+      "reason": "pinka's state; the install record goes last",
+      "keep": "/var/lib/pinka/install-record.json"
+    },
+    {
+      "phase": "paths",
+      "kind": "data",
+      "name": "/srv/pinka",
+      "action": "keep",
+      "reason": "the lab's data: the database files, models, datasets, images, backups; --purge-data removes it"
+    },
+    {
+      "phase": "paths",
+      "kind": "log",
+      "name": "/var/log/pinka-bootstrap",
+      "action": "keep",
+      "reason": "the logs of the install and of this uninstall"
+    },
+    {
+      "phase": "paths",
+      "kind": "kept",
+      "name": "/var/lib/pinka-kept",
+      "action": "keep",
+      "reason": "what uninstall kept outside pinka's paths (root only); --purge-data keeps it too: the backups need its key"
+    },
+    {
+      "phase": "paths",
+      "kind": "remote",
+      "name": "the restic repository",
+      "action": "keep",
+      "reason": "uninstall never deletes the backups, wherever the repository is"
+    },
+    {
+      "phase": "paths",
+      "kind": "remote",
+      "name": "the platform's deploy key",
+      "action": "keep",
+      "reason": "its public half stays registered on the Git host: remove it there"
+    },
+    {
+      "phase": "paths",
+      "kind": "record",
+      "name": "/var/lib/pinka/install-record.json",
+      "action": "remove",
+      "reason": "the install record, last of all"
+    },
+    {
+      "phase": "paths",
+      "kind": "tooling",
+      "name": "/opt/pinka",
+      "action": "remove",
+      "reason": "bootstrap removes it after the play",
+      "counted": true
+    }
+  ],
+  "text": "Uninstall plan for pinka-lab (install record: present; the lab's data: kept)\n\nplatform: the platform\n  remove   pinka stop                        drain the platform refplat, idle the GPU arbiter, stop pinka-platform.target and pinka-lab.target\nunits: pinka's units\n  remove   pinka-lab.target                  pinka's unit\n  remove   pinka-platform.target             pinka's unit\n  remove   pinka-backup.timer                pinka's unit\n  remove   pinka-core.service                pinka's unit\n  remove   pinka-gpu-job@.service            pinka's unit\n  remove   refplat-api.service               the platform's unit\n  remove   pinka-services.slice              pinka's unit\ncompose: containers, networks and images\n  remove   pinka-postgres                    pinka's container\n  remove   pinka-core_default                pinka's network\n  remove   docker.io/library/postgres@sha256:1111111111111111111111111111111111111111111111111111111111111111  pulled by pinka\nincus: Incus objects\n  remove   bench/t1                          an instance in pinka's project\n  remove   default/base/1                    an image pinka built or brought in\n  remove   bench/target-container            a profile of pinka's project\n  remove   bench                             pinka's project\n  remove   user-1001                         pinka's project\n  remove   r-abc                             pinka's network\n  remove   incusbr-1001                      pinka's network\n  remove   pinka-build0                      pinka's network\n  remove   pinka-run-default                 pinka's network ACL\n  remove   pinka-metrics                     a client certificate pinka trusted\n  remove   pinka-targets                     pinka's storage pool, removed last\nfirewall: firewall\n  remove   inet pinka_filter                 pinka's table\n  remove   inet pinka_access_guard           the access guard: tcp/8080, closed with consent, reachable again\n  remove   iptables DOCKER-USER -i r-+ -j ACCEPT  pinka's rule for its Incus bridges\n  remove   iptables DOCKER-USER -o r-+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT  pinka's rule for its Incus bridges\ntailscale: Tailscale\n  remove   https:443                         pinka added this serve entry\n  remove   the tailnet node                  pinka joined it: log it out\npackages: packages, holds, repositories and keys\n  remove   /etc/apt/preferences.d/pinka-pins  pinka's holds: docker\n  remove   /etc/apt/sources.list.d/pinka-docker-deb.sources  pinka's repository or key file\n  remove   /etc/apt/keyrings/pinka-docker-deb.asc  pinka's repository or key file\n  remove   containerd.io                     pinka installed it\n  remove   docker-ce                         pinka installed it\n  remove   incus                             pinka installed it\n  remove   jq                                pinka installed it\n  remove   tailscale                         pinka installed it; removed, not purged: its purge deletes /var/lib/tailscale, which stays (--purge-data purges it)\n  remove   dependencies of pinka's packages  only those absent at the first install that no package needs any more\naccounts: accounts, groups, memberships and keys\n  remove   owner1 in pinka                   pinka added it\n  remove   owner1: ssh-ed25519 AAAAC3Nz example-key-1...  pinka added this key\n  remove   pinka-build                       pinka created it\n  remove   refplat-api                       the platform refplat's account\n  remove   researcher1                       pinka created it; its home /home/researcher1 is kept (--purge-data removes it)\n  remove   pinka                             pinka created it\n  remove   pinka-admin                       pinka created it\n  remove   pinka-build                       the primary group of an account pinka created\n  remove   refplat-api                       the platform refplat's group\n  remove   refplat-db                        the platform refplat's group\n  remove   researcher1                       the primary group of an account pinka created\ndropins: drop-in files and settings\n  remove   /etc/ssh/sshd_config.d/10-pinka.conf  pinka wrote it\n  remove   /etc/sudoers.d/90-pinka-admin     pinka wrote it\n  remove   /etc/modprobe.d/pinka-blacklist-nouveau.conf  pinka wrote it\n  restore  /etc/ssh/sshd_config              the line pinka added goes: Include /etc/ssh/sshd_config.d/*.conf\n  remove   /etc/systemd/system/nvidia-cdi-refresh.service.d/50-pinka.conf  pinka wrote it\n  restore  net.ipv4.ip_forward               back to 0 now\n  restore  the time zone                     back to Europe/Example\n  restore  docker.service                    disabled and stopped, as before pinka\n  restore  the initramfs                     rebuilt without pinka's nouveau blacklist; reboot to load it\npaths: pinka's paths\n  remove   /usr/local/bin/refplat            pinka's link to /usr/local/lib/pinka/platform/cli/refplat\n  remove   /usr/local/bin/restic             pinka's link to /opt/pinka/restic/0.18.0/restic\n  remove   /usr/local/bin/pinka              pinka's path\n  remove   /usr/local/lib/pinka              pinka's path\n  remove   /etc/pinka                        pinka's path\n  remove   /var/lib/pinka                    pinka's state; the install record goes last\n  remove   /var/lib/pinka/install-record.json  the install record, last of all\n  remove   /opt/pinka                        bootstrap removes it after the play\n\nKept:\n  keep     /etc/pinka/secrets/backup         the restic repository's location, its password and the SFTP key: copied to /var/lib/pinka-kept/backup/secrets (root only) before the path goes\n  keep     /etc/pinka/backup                 the backup helper's settings and the backup server's host keys: copied to /var/lib/pinka-kept/backup/config (root only) before the path goes\n  keep     /var/lib/pinka/backup             the state of the last backup: copied to /var/lib/pinka-kept/backup/state (root only) before the path goes\n  keep     /etc/pinka/qa                     the QA trusted keys and the attestations: copied to /var/lib/pinka-kept/qa (root only) before the path goes\n  keep     /var/lib/pinka/gpu                the GPU arbiter's run records and transition log: copied to /var/lib/pinka-kept/records/gpu (root only) before the path goes\n  keep     docker.io/nvidia/cuda@sha256:2222222222222222222222222222222222222222222222222222222222222222  the container owner-web, which is not pinka's, uses it\n  keep     the kept data                     mounted read-only while packages are removed, so that no package script can delete it: /srv/pinka, /var/lib/pinka-kept, /var/log/pinka-bootstrap, /var/log/pinka-uninstall, /var/lib/docker, /var/lib/containerd, /var/lib/incus, /var/lib/tailscale\n  keep     /usr/bin/curl                     a file requirement, not a package name\n  keep     /srv/pinka                        the lab's data: the database files, models, datasets, images, backups; --purge-data removes it\n  keep     /var/log/pinka-bootstrap          the logs of the install and of this uninstall\n  keep     /var/lib/pinka-kept               what uninstall kept outside pinka's paths (root only); --purge-data keeps it too: the backups need its key\n  keep     the restic repository             uninstall never deletes the backups, wherever the repository is\n  keep     the platform's deploy key         its public half stays registered on the Git host: remove it there\n\nThe kept backups open with the key and settings in /var/lib/pinka-kept/backup/secrets (root only; /var/lib/pinka-kept/README.txt says how).\n\nAfterwards:\n  - /var/lib/pinka-kept holds the restic repository's password and location and the SFTP key of the backup server: they grant access to the backups. Copy it off this host, then delete it securely, as root: tar -C /var/lib -cf - pinka-kept | ssh <you>@<safe-host> 'umask 077; cat > pinka-kept.tar' (or copy it to removable media), then find /var/lib/pinka-kept -type f -exec shred -u {} + && rm -rf /var/lib/pinka-kept. On an SSD or a copy-on-write file system (btrfs) shred cannot reach every old copy: then also change the repository's password (restic key passwd, from the copy) and replace the SFTP key on the backup server.\n  - Delete the node pinka-lab (192.0.2.20) in the Tailscale admin console (Machines): uninstall logs it out, which does not take it off the tailnet.\n  - Revoke the platform's read-only deploy key SHA256:examplefingerprint on the Git host of the platform's repository: uninstall removes its private half from this host.\n\nWarnings:\n  - A reboot is needed afterwards; uninstall never reboots.\n\n60 to remove, 5 to restore, 13 kept.\n"
+}

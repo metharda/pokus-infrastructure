@@ -105,8 +105,8 @@ every entry it adds, so only those are ever removed.
 
 A machine that already does other work is reachable in ways the lab did not
 choose: a web server on the LAN, the owner's SSH logins with their own
-policy, the SSH session the install runs in. Preflight records this access
-(BUILD_PROMPT §2.2): the listeners outside loopback that are not the lab's
+policy, the SSH session the install runs in. Preflight records this access:
+the listeners outside loopback that are not the lab's
 or a component pinka installed, the login accounts that are not pinka's, and
 the install's session. A host where only sshd listens (DHCP clients and
 Tailscale's port aside) and every login account is a researcher is

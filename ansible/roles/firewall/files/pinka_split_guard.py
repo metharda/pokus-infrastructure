@@ -1,6 +1,6 @@
 #!/opt/pinka/python/bin/python3 -I
 # Managed by pinka (ansible/roles/firewall/files/pinka_split_guard.py). Local changes will be overwritten.
-"""Load the split-inference guard (BUILD_PROMPT §19.10, interpretation 11.13).
+"""Load the split-inference guard.
 
 Installed as ``/usr/local/libexec/pinka/split-guard`` by the firewall role on
 lab and inference nodes and run by ``pinka-split-guard.service``. The

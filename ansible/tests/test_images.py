@@ -1,4 +1,4 @@
-"""Tests for the golden image pipeline (BUILD_PROMPT §7.13).
+"""Tests for the golden image pipeline.
 
 Blueprints are checked against their schema, the lock and each other; the
 in-image templates are rendered; the leakage lint and the export helper run
@@ -153,7 +153,7 @@ def test_recipe_files_carry_the_managed_header(path: Path) -> None:
     ids=lambda p: p.relative_to(IMAGES).as_posix(),
 )
 def test_installed_files_carry_no_managed_header(path: Path) -> None:
-    # Images name none of the project's names (owner decision 3c2, BUILD_PROMPT §7.13).
+    # Images name none of the project's names.
     assert "Managed by" not in path.read_text(encoding="utf-8"), path
 
 
@@ -253,7 +253,7 @@ def test_docker_host_unit_runs_the_pinned_image() -> None:
         "org.pinka.managed",
     ],
 )
-def test_default_patterns_cover_the_specification(token: str) -> None:
+def test_default_patterns_catch_the_leakage_tokens(token: str) -> None:
     assert added(f"x = {token}\n") != []
 
 

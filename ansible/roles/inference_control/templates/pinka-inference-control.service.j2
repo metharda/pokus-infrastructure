@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/inference_control/templates/pinka-inference-control.service.j2). Local changes will be overwritten.
 #
-# Inference control endpoint of an inference node (BUILD_PROMPT §19.10,
-# contracts.md#inference): mutual TLS 1.3 on the tailnet address, the vLLM
+# Inference control endpoint of an inference node
+# (contracts.md#inference): mutual TLS 1.3 on the tailnet address, the vLLM
 # API forwarded on {{ pinka_ports.vllm }} and the control API on
 # {{ pinka_ports.inference_control }}. Skipped until the node is paired.
 [Unit]

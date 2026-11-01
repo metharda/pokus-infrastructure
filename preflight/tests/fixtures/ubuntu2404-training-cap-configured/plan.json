@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "training": {
+    "memory_max_gib": 24,
+    "mode": "auto",
+    "run_storage_max_gib": 16
+  }
+}

@@ -1,6 +1,6 @@
 # Managed by pinka (images/probe-client/provision.yml). Local changes will be overwritten.
 #
-# Probe and load tools (BUILD_PROMPT §7.13), on top of `_base`.
+# Probe and load tools, on top of `_base`.
 - name: Provision the probe client blueprint
   hosts: all
   gather_facts: false

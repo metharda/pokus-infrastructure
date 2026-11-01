@@ -132,7 +132,7 @@ A warning. The install came over SSH from outside the tailnet (from the LAN,
 for example), and that path is still open: pinka closes it only with the
 owner's consent (`firewall_close_install_path: true`, or the checkbox on the
 installer's Remote access screen) and only after a researcher logged in with
-a key over the tailnet in the same run (the safeguard of BUILD_PROMPT §7.5).
+a key over the tailnet in the same run.
 Give the consent if it is missing, run bootstrap again and, while it runs,
 log in as a researcher with their key from another device on the tailnet
 (`ssh researcher1@<machine name>`); a login from before the run, from the
@@ -384,8 +384,12 @@ dataset is published, and on hosts that do not train.
 A warning: a job of the active platform asks for more memory, CPUs or run
 time than this host's `training_caps` allow, so the GPU arbiter refuses
 every run of it (bootstrap printed the same warning when the platform was
-deployed). Either raise the caps in the machine's host_vars and apply them,
-or deploy a release whose jobs ask for less:
+deployed). With `memory_max: auto` (the default) the memory cap follows this
+host's memory and what else runs on it (`sudo pinka preflight` shows how,
+[Capacity planning](../explanation/capacity-planning.md)). Either set the
+caps in the machine's host_vars (an explicit `memory_max` such as `12G` wins
+over the computed one) and apply them, or deploy a release whose jobs ask for
+less:
 
 <!-- qa:skip reason="changes the lab host" -->
 ```bash
@@ -402,6 +406,13 @@ A notice, not an error: training runs only on a `full` node. On a `lab` or
 `inference` node the arbiter refuses `train` and `publish-dataset`, and
 `pinka status` says so. Training on a lab and inference pair is future work;
 to train, use a `full` node ([Node roles](../node-roles.md)).
+
+On a `full` node training is off where the training switch says so:
+`training: off`, or `training: auto` on a host without a usable GPU
+(`sudo pinka preflight` names the reason). To run the jobs' CPU-only
+variant there, set `training: cpu` in the machine's host_vars and run
+bootstrap again ([Capacity planning](../explanation/capacity-planning.md)
+shows what it adds to the recommended memory).
 
 ## `inference.isolation`: the inference guard admits the wrong accounts {#check-inference-isolation}
 
@@ -426,6 +437,19 @@ the restart does not help. `systemctl status pinka-inference-guard.service`
 shows why the guard did not load. See
 [ADR-0016](../adr/0016-telemetry-query-isolation.md) for why accounts, not
 vLLM's API key, decide.
+
+## `disk.free_space`: a mount point is filling up {#check-disk-free_space}
+
+A file system the lab uses (the research space, Docker's data root, the
+Incus pool's loop file, `/opt/pinka`) has less than
+`doctor_disk_warn_free_percent` (15 %) free, or the free space doctor
+recorded on its runs over the last week shrinks fast enough to fill it within
+`doctor_disk_full_within_days` (7 days). Doctor keeps the record in
+`/var/lib/pinka/doctor/disk-history.json`. `sudo pinka preflight` shows what
+grows and how much the retention settings allow; lower them
+(`observability_prometheus_retention` and `_size`, `observability_loki_retention`,
+`observability_tempo_retention`, `backup_pgdump_keep`), delete training runs
+or datasets that are no longer needed, or give the file system more space.
 
 ## `incus.pool`: wrong backend or little free space {#check-incus-pool}
 

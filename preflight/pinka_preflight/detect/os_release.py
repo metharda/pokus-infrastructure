@@ -1,4 +1,4 @@
-"""Operating system identification from ``os-release`` (BUILD_PROMPT §2.2)."""
+"""Operating system identification from ``os-release``."""
 
 from __future__ import annotations
 

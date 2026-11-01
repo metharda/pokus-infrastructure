@@ -9,17 +9,17 @@ ssh_server_package:
   redhat: openssh-server
   suse: openssh-server
   archlinux: openssh
-# The access that existed before pinka's first install, from the install record
-# (BUILD_PROMPT §2.2, §7.5): dedicated or shared, and the install's session.
+# The access that existed before pinka's first install, from the install record:
+# dedicated or shared, and the install's session.
 ssh_access: "{{ (pinka_preexisting | default({})).access | default({}) }}"
-# The install's access path while it is pinka's to keep (§7.5), or none.
+# The install's access path while it is pinka's to keep, or none.
 ssh_install_path: "{{ ssh_access | pinka_install_path(pinka_closed_access | default([])) }}"
-# Where pinka's settings apply (§7.3, approved deviation SSH1): host (the
+# Where pinka's settings apply: host (the
 # whole host, with AllowGroups) on a dedicated host; group (a Match Group
 # block, so every other account keeps the host's own policy) on a shared host,
 # and on a dedicated host while the install's access path is open for an
 # account that is not a researcher, so it keeps its access until the
-# safeguard of §7.5 closes that path.
+# install path's safeguard closes that path.
 ssh_policy_scope: >-
   {{ 'group' if ssh_access.host | default('dedicated') == 'shared'
      or (ssh_install_path is not none and not ssh_install_path.closed

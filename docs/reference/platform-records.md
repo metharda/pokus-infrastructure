@@ -15,7 +15,7 @@ A platform deployment records where every deployed directory came from, which pl
 
 ## DEPLOYED_FROM.json
 
-Provenance of a deployed platform release or content package (contract v2, BUILD_PROMPT §12.10). Written by infra at the root of every deployed release and content package, root-owned and read-only. Schema file: `contract/records/deployed-from.schema.json`.
+Provenance of a deployed platform release or content package (contract v2). Written by infra at the root of every deployed release and content package, root-owned and read-only. Schema file: `contract/records/deployed-from.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -44,7 +44,7 @@ Provenance of a deployed platform release or content package (contract v2, BUILD
 
 ## active.json
 
-The active platform of the lab, /etc/pinka/platform/active.json (contract v2, BUILD_PROMPT §7.14 "One platform per lab", §12.10). Written by infra when a deployment is switched on; 0644 root. Schema file: `contract/records/active-platform.schema.json`.
+The active platform of the lab, /etc/pinka/platform/active.json (contract v2). Written by infra when a deployment is switched on; 0644 root. Schema file: `contract/records/active-platform.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -86,7 +86,7 @@ A platform replaced by another (--replace-platform), `/var/lib/pinka/platforms/<
 
 ## session record
 
-One lab session: `/var/lib/pinka/sessions/<boot_id>.json`, 0644 root, written once per boot by pinka-session-start.service (BUILD_PROMPT §7.16) and read by the platform's controller. A field that could not be computed is null, with the reason under errors. Schema file: `contract/records/session-record.schema.json`.
+One lab session: `/var/lib/pinka/sessions/<boot_id>.json`, 0644 root, written once per boot by pinka-session-start.service and read by the platform's controller. A field that could not be computed is null, with the reason under errors. Schema file: `contract/records/session-record.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -102,7 +102,7 @@ One lab session: `/var/lib/pinka/sessions/<boot_id>.json`, 0644 root, written on
 
 ## PROVENANCE.json
 
-Provenance of a published training dataset: `/srv/pinka/training/datasets/<sha256>/PROVENANCE.json`, written by the GPU arbiter when the controller publishes the dataset (`publish-dataset`, BUILD_PROMPT §7.18), root:pinka-datasets 0640. The arbiter refuses to publish or mount a dataset that lists an instance of the `test` split; that the list is complete and truthful is the platform's obligation. Schema file: `contract/records/dataset-provenance.schema.json`.
+Provenance of a published training dataset: `/srv/pinka/training/datasets/<sha256>/PROVENANCE.json`, written by the GPU arbiter when the controller publishes the dataset (`publish-dataset`), root:pinka-datasets 0640. The arbiter refuses to publish or mount a dataset that lists an instance of the `test` split; that the list is complete and truthful is the platform's obligation. Schema file: `contract/records/dataset-provenance.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -124,7 +124,7 @@ Provenance of a published training dataset: `/srv/pinka/training/datasets/<sha25
 
 ## adapter MANIFEST.json
 
-A registered adapter: `/srv/pinka/models/adapters/<name>/<sha256>/MANIFEST.json`, written by the GPU arbiter when a training run succeeds (BUILD_PROMPT §7.18), root-owned and read-only. Deployment specs name the adapter as `<name>@<sha256>` in `adapter_ids`. Schema file: `contract/records/adapter-manifest.schema.json`.
+A registered adapter: `/srv/pinka/models/adapters/<name>/<sha256>/MANIFEST.json`, written by the GPU arbiter when a training run succeeds, root-owned and read-only. Deployment specs name the adapter as `<name>@<sha256>` in `adapter_ids`. Schema file: `contract/records/adapter-manifest.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -141,7 +141,7 @@ A registered adapter: `/srv/pinka/models/adapters/<name>/<sha256>/MANIFEST.json`
 
 ## adapter LINEAGE.json
 
-Where a registered adapter came from: `/srv/pinka/models/adapters/<name>/<sha256>/LINEAGE.json`, written by the GPU arbiter with MANIFEST.json (BUILD_PROMPT §7.18), root-owned and read-only; the controller imports it. Schema file: `contract/records/adapter-lineage.schema.json`.
+Where a registered adapter came from: `/srv/pinka/models/adapters/<name>/<sha256>/LINEAGE.json`, written by the GPU arbiter with MANIFEST.json, root-owned and read-only; the controller imports it. Schema file: `contract/records/adapter-lineage.schema.json`.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |

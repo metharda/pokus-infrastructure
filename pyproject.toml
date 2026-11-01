@@ -28,8 +28,10 @@ dev = [
   "ansible-lint==26.9.0",
   # git hooks (local hooks only, see .pre-commit-config.yaml)
   "pre-commit==4.6.2",
-  # tests (pytest 8: pytest-textual-snapshot 1.1.0 pins syrupy 4.8.0, which needs pytest<9)
-  "pytest==8.4.2",
+  # tests (pytest 9.0.3 or later fixes CVE-2025-71176; pytest-textual-snapshot
+  # 1.1.0, its latest, pins syrupy 4.8.0, which declares pytest<9: overridden
+  # below, the snapshot tests run on it)
+  "pytest==9.1.1",
   "pytest-textual-snapshot==1.1.0",
   # installer TUI (the pins of python.installer in versions.lock.yml)
   "textual==8.2.8",
@@ -49,6 +51,9 @@ dev = [
 [tool.uv]
 package = false
 required-version = "==0.12.23"
+# syrupy 4.8.0 (pinned by pytest-textual-snapshot 1.1.0) declares pytest<9;
+# pytest 9.0.3 fixes CVE-2025-71176 (Dependabot alert).
+override-dependencies = ["pytest==9.1.1"]
 
 [tool.ruff]
 line-length = 100
@@ -98,7 +103,7 @@ convention = "google"
 
 [tool.mypy]
 strict = true
-mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:tools/lockcheck/tests:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/install_record/library:ansible/roles/incus/files:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pinka-lab:tools/pinka-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins:tools/platform:tools/platform/tests:ansible/roles/gpu_arbiter/files:tests/reference-platform/src:tests/reference-platform/packages/refplat-agent/src"
+mypy_path = "preflight:preflight/tests:tools/gen:tools/repo-checks:tools/lockcheck:tools/lockcheck/tests:bootstrap/tests:ansible/filter_plugins:ansible/roles/incus/library:ansible/roles/install_record/library:ansible/roles/uninstall/library:ansible/roles/incus/files:ansible/roles/models/files:ansible/roles/vllm/files:ansible/roles/images/files:ansible/roles/lab_session/files:ansible/roles/backup/files:ansible/roles/platform/files:ansible/roles/inference_control/files:ansible/tests:tools/pinka-lab:tools/pinka-lab/tests:tools/test-distros:tools/test-distros/tests:installer:installer/tests:ansible/callback_plugins:tools/platform:tools/platform/tests:ansible/roles/gpu_arbiter/files:tests/reference-platform/src:tests/reference-platform/packages/refplat-agent/src"
 python_version = "3.12"
 warn_unreachable = true
 
@@ -136,6 +141,7 @@ pythonpath = [
   "ansible/filter_plugins",
   "ansible/roles/incus/library",
   "ansible/roles/install_record/library",
+  "ansible/roles/uninstall/library",
   "ansible/roles/incus/files",
   "ansible/roles/models/files",
   "ansible/roles/vllm/files",

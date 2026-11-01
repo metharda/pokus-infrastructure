@@ -1,4 +1,4 @@
-"""Host profile helper for bootstrap and the ``preflight_gate`` role (BUILD_PROMPT §2.6, §5.2).
+"""Host profile helper for bootstrap and the ``preflight_gate`` role.
 
 ``python -m pinka_preflight.profile_tool`` reads a profile written by
 ``pinka-preflight --no-write --output FILE`` and offers what the shell side
@@ -111,11 +111,17 @@ def consent_text(profile: dict[str, Any], kind: str) -> list[str]:
         Text lines.
     """
     if kind == "degraded":
-        lines = ["The following optional features are disabled on this host:"]
-        lines += [
-            f"  - {d['feature']}: {d['impact']} {d.get('remediation', '')}".rstrip()
-            for d in profile["disabled_features"]
-        ]
+        lines: list[str] = []
+        if profile["disabled_features"]:
+            lines.append("The following optional features are disabled on this host:")
+            lines += [
+                f"  - {d['feature']}: {d['impact']} {d.get('remediation', '')}".rstrip()
+                for d in profile["disabled_features"]
+            ]
+        reasons = profile.get("degraded_reasons") or []
+        if reasons:
+            lines.append("The host is below what these choices recommend:")
+            lines += [f"  - {reason}" for reason in reasons]
         return lines
     lines = [
         f"This host is on the experimental tier (OS tier: {profile['os_tier']}, "
@@ -126,7 +132,7 @@ def consent_text(profile: dict[str, Any], kind: str) -> list[str]:
 
 
 def differences(stored: dict[str, Any], new: dict[str, Any]) -> list[str]:
-    """Compare the fields that must not change silently (§2.6).
+    """Compare the fields that must not change silently.
 
     Args:
         stored: Profile stored by the last bootstrap.

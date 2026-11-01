@@ -3,9 +3,9 @@
 A throwaway cluster in a temporary directory (Unix socket only, no TCP) runs
 the rendered postgresql.conf and pg_hba.conf, infra's bootstrap SQL, the
 platform database rendered from a manifest fixture (database, login and group
-roles, schemas, revokes; BUILD_PROMPT §7.8, §12.5), the password handling of
+roles, schemas, revokes), the password handling of
 the postgres role, and the restricted-schema check: every kind of forbidden
-access a migration could grant is reported and revoked (§12.4). Every test runs on
+access a migration could grant is reported and revoked. Every test runs on
 each PostgreSQL major installed on the machine; CI installs 18, the major the
 lab pins, from PGDG next to the runner's own and requires it
 (``PINKA_POSTGRES_REQUIRED``).

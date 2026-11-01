@@ -29,7 +29,7 @@ production, or staging for QA environments (own vault, Tailscale tag and signing
 
 ### `staging_shared_hardware`
 
-Staging only: this staging host runs on production's hardware, so it starts only inside an open maintenance window with the GPU idle and its ports free (BUILD_PROMPT §7.20, pinka window open).
+Staging only: this staging host runs on production's hardware, so it starts only inside an open maintenance window with the GPU idle and its ports free (pinka window open).
 
 - Default: `false`
 
@@ -51,6 +51,18 @@ What this host runs: full (everything), lab (everything except vLLM) or inferenc
 
 - Default: `full`
 
+### `inference`
+
+The inference switch: auto (vLLM, its images and the selected model where preflight detects gpu_inference on a full or inference node) or off (none of them is installed or counted in the requirements). An inference node needs auto.
+
+- Default: `auto`
+
+### `training`
+
+The training switch, on a full node only: auto (training jobs where preflight detects gpu_training), cpu (also without a usable GPU: the jobs' CPU-only variant) or off (the GPU arbiter refuses every run, no job image is pulled, nothing is counted in the requirements).
+
+- Default: `auto`
+
 ### `firewall_backend`
 
 Firewall backend: auto (firewalld if active, else ufw if active, else nftables), nftables, firewalld or ufw.
@@ -71,18 +83,18 @@ Allow community repositories (COPR, OBS home projects, RPM Fusion); recorded in 
 
 ### `gpu_arbiter`
 
-The GPU arbiter (BUILD_PROMPT §7.18, §8.1): after_boot serve (the default deployment) or idle; restore_after_training brings the deployment served before a training run back when the run ends, unless the submission says otherwise.
+The GPU arbiter: after_boot serve (the default deployment) or idle; restore_after_training brings the deployment served before a training run back when the run ends, unless the submission says otherwise.
 
 - Default: `{after_boot: serve, restore_after_training: true}`
 
 ### `training_caps`
 
-Infra's caps on training (§7.18): a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory).
+Infra's caps on training: a job's run time, memory and CPUs (the arbiter refuses a run whose job exceeds them; validation and doctor warn), the size of a published dataset (dataset_max), the combined size of a run's output and checkpoints (run_storage_max: the free space a run needs to start, and the run is stopped and failed beyond it) and the job's /tmp (tmp_max: a tmpfs, counted against the job's memory). memory_max: auto computes the cap from the host: MemTotal minus the recommended memory of the core stack and the targets, in whole GiB within 4 and 24 GiB (preflight records it in the host profile); a size such as 12G sets it.
 
 - Default:
 
     ```yaml
-    {timeout_seconds: 86400, memory_max: 24G, cpus: 8, dataset_max: 8G, run_storage_max: 16G,
+    {timeout_seconds: 86400, memory_max: auto, cpus: 8, dataset_max: 8G, run_storage_max: 16G,
       tmp_max: 1G}
     ```
 
@@ -94,7 +106,7 @@ Publish Grafana to the tailnet with `tailscale serve` (never Funnel).
 
 ### `docs_release`
 
-The documentation release the docs service serves (BUILD_PROMPT §7.19): {url, sha256} of a release's documentation tarball (an https:// URL or an absolute path); null: no docs service.
+The documentation release the docs service serves: {url, sha256} of a release's documentation tarball (an https:// URL or an absolute path); null: no docs service.
 
 - Default: `null`
 
@@ -106,13 +118,13 @@ Publish the docs service to the tailnet with `tailscale serve` (never Funnel).
 
 ### `tailscale_serve_consent`
 
-On a Tailscale node that existed before pinka (adopted, BUILD_PROMPT §7.4): the owner's consent to publish Grafana or the docs with tailscale serve.
+On a Tailscale node that existed before pinka (adopted): the owner's consent to publish Grafana or the docs with tailscale serve.
 
 - Default: `false`
 
 ### `pinka_tailscale_serve_allowed`
 
-Whether pinka may publish with tailscale serve at all: always on a node it joined, only with tailscale_serve_consent on an adopted node (§7.4).
+Whether pinka may publish with tailscale serve at all: always on a node it joined, only with tailscale_serve_consent on an adopted node.
 
 - Default:
 
@@ -129,19 +141,19 @@ Interfaces besides tailscale0 on which sshd accepts connections.
 
 ### `firewall_close_listeners`
 
-Shared host: pre-existing listeners to close, as protocol/port such as [tcp/8080] (BUILD_PROMPT §2.2, §7.5); every other one stays reachable as preflight found it. The installer's Remote access screen sets it.
+Shared host: pre-existing listeners to close, as protocol/port such as [tcp/8080]; every other one stays reachable as preflight found it. The installer's Remote access screen sets it.
 
 - Default: `[]`
 
 ### `firewall_close_install_path`
 
-Close the install's access path (for example SSH from the LAN) once SSH over the tailnet was verified for a researcher in the same run (§7.5); without both it stays open and doctor warns.
+Close the install's access path (for example SSH from the LAN) once SSH over the tailnet was verified for a researcher in the same run; without both it stays open and doctor warns.
 
 - Default: `false`
 
 ### `pinka_root`
 
-Root of the research space (BUILD_PROMPT §6.2).
+Root of the research space.
 
 - Default: `/srv/pinka`
 
@@ -165,7 +177,7 @@ Systemd slice of every lab service and container (AllowedCPUs=cpuset_services).
 
 ### `pinka_container_log_max_size`
 
-Size limit of one log file of the `local` log driver of every lab container (Docker's own default), set per container by the Compose projects and the GPU arbiter rather than in the Docker daemon (BUILD_PROMPT §7.6).
+Size limit of one log file of the `local` log driver of every lab container (Docker's own default), set per container by the Compose projects and the GPU arbiter rather than in the Docker daemon.
 
 - Default: `20m`
 
@@ -183,7 +195,7 @@ Let automatic security updates update the kernel on bare metal (held by default)
 
 ### `pinka_tailscale_tags`
 
-Tailscale tag of the host per lab_mode (owner answer E2).
+Tailscale tag of the host per lab_mode.
 
 - Default: `{production: 'tag:pinka-lab', staging: 'tag:pinka-qa'}`
 
@@ -196,17 +208,17 @@ Groups created by users_groups.
     ```yaml
     - {name: pinka, system: false, description: all researchers}
     - {name: pinka-admin, system: false, description: researchers with sudo}
-    - {name: pinka-restricted, system: true, description: "restricted data: only accounts of restricted-capable\
-        \ profiles (\xA712.4)"}
-    - {name: pinka-datasets, system: true, description: "published training datasets: no human\
-        \ members (\xA77.18)"}
-    - {name: pinka-query, system: true, description: "the telemetry query proxy: exactly the accounts\
-        \ of the profiles that query (\xA77.9)"}
+    - {name: pinka-restricted, system: true, description: 'restricted data: only accounts of restricted-capable
+        profiles'}
+    - {name: pinka-datasets, system: true, description: 'published training datasets: no human
+        members'}
+    - {name: pinka-query, system: true, description: 'the telemetry query proxy: exactly the accounts
+        of the profiles that query'}
     ```
 
 ### `researchers`
 
-Placeholders (owner answer E1). keys_file is relative to the repository root; key files are never committed (users/*.pub is excluded by .gitignore). Optional per researcher: display_name (Grafana) and grafana: false (no Grafana account). The installer TUI edits this list.
+Placeholders. keys_file is relative to the repository root; key files are never committed (users/*.pub is excluded by .gitignore). Optional per researcher: display_name (Grafana) and grafana: false (no Grafana account). The installer TUI edits this list.
 
 - Default:
 
@@ -230,7 +242,7 @@ Admins that are explicitly allowed into the docker group (logged loudly).
 
 ### `infra_accounts`
 
-Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox (§7.14 step 5); pinka-inference runs the inference control endpoint of an inference node (§19.10) and holds its mutual-TLS key.
+Infra's own system accounts: no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox; pinka-inference runs the inference control endpoint of an inference node and holds its mutual-TLS key.
 
 - Default:
 
@@ -243,22 +255,22 @@ Infra's own system accounts (BUILD_PROMPT §6.1): no login, no password, no SSH 
       description: the inference control endpoint of an inference node
     - name: pinka-query-proxy
       groups: []
-      description: "the telemetry query proxy's container user (\xA77.9)"
+      description: the telemetry query proxy's container user
     - name: pinka-otelcol
       groups: []
-      description: "the gateway collector's container user (\xA77.9)"
+      description: the gateway collector's container user
     - name: pinka-prometheus
       groups: []
-      description: "Prometheus's container user (\xA77.9)"
+      description: Prometheus's container user
     - name: pinka-loki
       groups: []
-      description: "Loki's container user (\xA77.9)"
+      description: Loki's container user
     - name: pinka-tempo
       groups: []
-      description: "Tempo's container user (\xA77.9)"
+      description: Tempo's container user
     - name: pinka-grafana
       groups: []
-      description: "Grafana's container user (\xA77.9)"
+      description: Grafana's container user
     ```
 
 ### `inference_control_account`
@@ -269,13 +281,13 @@ The account of the inference control endpoint.
 
 ### `pinka_platform_uids`
 
-The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles (§6.1, §12.2). Their UIDs come from this range (ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use.
+The platform's accounts and groups are not listed here: the platform role renders them from the active platform's manifest and profiles. Their UIDs come from this range (ADR-0016): systemd's table of UID and GID allocations (v255) lists it as unused; the deployment tool never takes a UID that is already in use.
 
 - Default: `{min: 60578, max: 61183}`
 
 ### `pinka_telemetry_clients`
 
-The only accounts that reach the telemetry stores directly (§7.9, ADR-0016 as decided with the "commit" for 3d.4 and 3d.4b): infra's own clients, each by name. The telemetry guard resets every other account's connection to the stores' ports on the host loopback: researchers, Grafana, the platform's services and everyone else query through the read-only query proxy and send through the collector's OTLP receivers. The guard matches UIDs only, never groups.
+The only accounts that reach the telemetry stores directly (ADR-0016): infra's own clients, each by name. The telemetry guard resets every other account's connection to the stores' ports on the host loopback: researchers, Grafana, the platform's services and everyone else query through the read-only query proxy and send through the collector's OTLP receivers. The guard matches UIDs only, never groups.
 
 - Default:
 
@@ -301,7 +313,7 @@ The only accounts that reach the query proxy's loopback port: Grafana, whose dat
 
 ### `pinka_telemetry_guard_ports`
 
-The stores' ports the telemetry guard closes to every other account (§7.9): Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the collector's metrics exporter. The collector's OTLP receivers stay open.
+The stores' ports the telemetry guard closes to every other account: Prometheus, Loki and Tempo (HTTP and gRPC, Tempo's OTLP receiver) and the collector's metrics exporter. The collector's OTLP receivers stay open.
 
 - Default:
 
@@ -313,7 +325,7 @@ The stores' ports the telemetry guard closes to every other account (§7.9): Pro
 
 ### `pinka_inference_clients`
 
-Infra's own clients of the inference API on the host loopback (BUILD_PROMPT §7.11, ADR-0016), per node role: the inference guard adds the active platform's accounts whose profile reaches the API (controller, inference broker) and resets every other account's connection to vLLM, or to the inference forwarder of a lab node. UIDs only, never groups.
+Infra's own clients of the inference API on the host loopback (ADR-0016), per node role: the inference guard adds the active platform's accounts whose profile reaches the API (controller, inference broker) and resets every other account's connection to vLLM, or to the inference forwarder of a lab node. UIDs only, never groups.
 
 - Default:
 
@@ -341,7 +353,7 @@ Parent of the infra and platform account homes (/var/lib/pinka/&lt;account&gt;).
 
 ### `pinka_python`
 
-Pinned CPython installed by bootstrap (BUILD_PROMPT §19.3).
+Pinned CPython installed by bootstrap.
 
 - Default: `/opt/pinka/python/bin/python3`
 
@@ -423,7 +435,7 @@ Host paths outside pinka_root (absolute).
 
 ### `pinka_default_ports`
 
-Default listener ports of the lab services (contracts.md#ports, BUILD_PROMPT §12.11). Override them per machine with `ports:`; read the effective values from pinka_ports.
+Default listener ports of the lab services (contracts.md#ports). Override them per machine with `ports:`; read the effective values from pinka_ports.
 
 - Default:
 
@@ -460,7 +472,7 @@ The preflight options of the machine's port overrides, VM collector address and 
 
 ### `pinka_internal_ports`
 
-Loopback ports of lab-internal listeners: exporters, the collectors' own metrics and health checks, Loki's and Tempo's internal servers. Not part of the contract; every observability container uses the host network and binds 127.0.0.1 (BUILD_PROMPT §7.9).
+Loopback ports of lab-internal listeners: exporters, the collectors' own metrics and health checks, Loki's and Tempo's internal servers. Not part of the contract; every observability container uses the host network and binds 127.0.0.1.
 
 - Default:
 
@@ -473,7 +485,7 @@ Loopback ports of lab-internal listeners: exporters, the collectors' own metrics
 
 ### `vm_collector_address`
 
-Address of the collector listener for VM targets (BUILD_PROMPT §12.11) on the dummy interface of pinka_vm_otlp. Preflight reports it when it is already assigned or routed on the host, or overlaps the Docker pools, an Incus network or the tailnet range; choose another one in host_vars.
+Address of the collector listener for VM targets on the dummy interface of pinka_vm_otlp. Preflight reports it when it is already assigned or routed on the host, or overlaps the Docker pools, an Incus network or the tailnet range; choose another one in host_vars.
 
 - Default: `198.18.0.1`
 
@@ -515,7 +527,7 @@ Extra known_hosts lines for SSH sources (GitHub's keys come from versions.lock.y
 
 ### `require_signed_tags`
 
-Deploy only tags carrying a valid SSH signature of an allowed signer (owner answer E16).
+Deploy only tags carrying a valid SSH signature of an allowed signer.
 
 - Default: `false`
 
@@ -527,7 +539,7 @@ Allowed signers for signed tags, ssh-keygen allowed_signers lines ("&lt;principa
 
 ### `inference_remote_node`
 
-Tailnet name of the paired inference node of a lab node (node_role: lab, BUILD_PROMPT §19.10); set when the nodes are paired.
+Tailnet name of the paired inference node of a lab node (node_role: lab); set when the nodes are paired.
 
 - Default: `''`
 
@@ -539,7 +551,7 @@ Tailnet name of the paired lab node of an inference node (node_role: inference),
 
 ### `qa_trusted_keys`
 
-QA public keys trusted for attestations (BUILD_PROMPT §13.10): a list of {name: &lt;file name without .pem&gt;, pem: &lt;PEM public key&gt;}.
+QA public keys trusted for attestations: a list of {name: &lt;file name without .pem&gt;, pem: &lt;PEM public key&gt;}.
 
 - Default: `[]`
 
@@ -959,9 +971,9 @@ First Docker Engine version that enables CDI by default; daemon.json sets featur
 
 ## docs
 
-The documentation service on 127.0.0.1 serving the installed docs release (§7.19).
+The documentation service on 127.0.0.1 serving the installed docs release.
 
-Entry points: `main` (The documentation service on 127.0.0.1 serving the installed docs release (§7.19)). Role README: `ansible/roles/docs/README.md`.
+Entry points: `main` (The documentation service on 127.0.0.1 serving the installed docs release). Role README: `ansible/roles/docs/README.md`.
 
 ### `docs_release`
 
@@ -1012,8 +1024,10 @@ Variables the role reads from elsewhere:
 | `machine_name` | [lab-wide](#machine_name) | Machine name; the Tailscale host name doctor expects. |
 | `node_role` | [lab-wide](#node_role) | full, lab or inference; selects the units, containers and Incus, PostgreSQL and image checks. |
 | `pinka_dir` | host_vars | Infra directory of the checkout bootstrap runs from; the sources of the CLI and the blueprints. |
-| `pinka_features` | host_vars | Feature flags of the host profile (gpu_inference, vm_targets). |
+| `pinka_features` | host_vars | Feature flags after the switches (gpu_inference, gpu_training, vm_targets; preflight_gate). |
 | `pinka_provider` | host_vars | Provider of this host (WSL checks, sleep inhibitor, nvidia-smi path). |
+| `pinka_training` | host_vars | Where training jobs run (preflight_gate); lab.json tells the CLI whether this host trains. |
+| `pinka_training_caps` | host_vars | The training caps with memory_max auto replaced by the computed cap (preflight_gate); in lab.json. |
 | `pinka_versions` | host_vars | The pinned versions (the image and digest every lab container must run). |
 
 ### `doctor_max_clock_offset`
@@ -1029,6 +1043,20 @@ Free space of the Incus pool below which doctor warns, in GiB.
 
 - Type: `int`
 - Default: `20`
+
+### `doctor_disk_warn_free_percent`
+
+Free share of a mount point the lab uses below which doctor warns.
+
+- Type: `int`
+- Default: `15`
+
+### `doctor_disk_full_within_days`
+
+Doctor warns when the trend of its recorded runs fills a mount point within these days.
+
+- Type: `int`
+- Default: `7`
 
 ### `doctor_backup_max_age_hours`
 
@@ -1232,8 +1260,9 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `gpu_arbiter` | [lab-wide](#gpu_arbiter) | after_boot (serve or idle) and restore_after_training (group_vars, BUILD_PROMPT §8.1). |
-| `training_caps` | [lab-wide](#training_caps) | Caps on a training job's timeout_seconds, memory_max and cpus (group_vars). |
+| `gpu_arbiter` | [lab-wide](#gpu_arbiter) | after_boot (serve or idle) and restore_after_training (group_vars). |
+| `pinka_training` | host_vars | Where training jobs run (preflight_gate); off makes the arbiter refuse every run. |
+| `pinka_training_caps` | host_vars | Caps on a training job's timeout_seconds, memory_max and cpus (training_caps, with memory_max auto replaced by the cap preflight computed; preflight_gate). |
 
 ### `gpu_arbiter_peer`
 
@@ -1366,7 +1395,7 @@ Variables the role reads from elsewhere:
 
 | Variable | Set by | Description |
 | --- | --- | --- |
-| `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware) passed by bootstrap. |
+| `host_profile` | bootstrap.sh | Host profile (storage_backend, hardware, requirements.pool) passed by bootstrap. |
 | `pinka_bootstrap` | bootstrap.sh | Bootstrap options (adopt_incus, interactive). |
 | `pinka_dir` | host_vars | Infra directory of the checkout (incus/ templates). |
 | `pinka_vm_otlp` | [lab-wide](#pinka_vm_otlp) | Interface and address of the collector listener for VM targets (C4). |
@@ -1389,10 +1418,10 @@ A loop file in the root filesystem, or a dedicated device.
 
 ### `incus_pool_size`
 
-Size of a loop pool.
+Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden images, the concurrent targets' root disks and the free space (host profile requirements.pool). An existing pool keeps its size.
 
 - Type: `str`
-- Default: `300GiB`
+- Default: `auto`
 
 ### `incus_pool_device`
 
@@ -1458,17 +1487,26 @@ Most VMs at once in the bench and build projects (with the vm_targets feature).
 - Type: `int`
 - Default: `4`
 
+### `incus_concurrent_targets`
+
+Targets that run at once; they size the bench project's memory and the memory preflight requires.
+
+- Type: `int`
+- Default: `2`
+
 ### `incus_bench_limits`
 
-Project limits of bench (derived from the host's memory and CPUs, or from cpuset_targets).
+Project limits of bench (memory from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
 
 - Type: `dict`
 - Default:
 
     ```yaml
-    {limits.memory: '{{ [((host_profile.hardware.memory_gib | float) * 0.6) | int, 1] | max }}GiB',
-      limits.cpu: "{{ (cpuset_targets | pinka_cpuset_cpus | length) if cpuset_targets\n   else\
-        \ [(host_profile.hardware.cpu_threads_effective | int) - 2, 1] | max }}", limits.instances: '40'}
+    {limits.memory: "{{ (incus_concurrent_targets | int)\n   * (((incus_target_vm if pinka_features.vm_targets\
+        \ | default(false) else incus_target_container).memory\n       | pinka_size_mib)\n   \
+        \   + (incus_probe_client.memory | pinka_size_mib)) }}MiB", limits.cpu: "{{ (cpuset_targets\
+        \ | pinka_cpuset_cpus | length) if cpuset_targets\n   else [(host_profile.hardware.cpu_threads_effective\
+        \ | int) - 2, 1] | max }}", limits.instances: '40'}
     ```
 
 ### `incus_target_container`
@@ -1627,6 +1665,13 @@ Files roles write or edit; the record keeps the content of each that existed bef
       /etc/systemd/journald.conf.d/60-pinka.conf, /etc/modprobe.d/pinka-blacklist-nouveau.conf,
       /etc/sudoers.d/90-pinka-admin, /etc/docker/daemon.json, /etc/wsl.conf, /etc/ld.so.conf.d/pinka-wsl.conf]
     ```
+
+### `install_record_originals`
+
+Managed files bootstrap changes before the record exists, mapped to the copy it keeps of the original.
+
+- Type: `dict`
+- Default: `{/etc/wsl.conf: /var/lib/pinka/originals/etc/wsl.conf}`
 
 ## lab_session
 
@@ -1835,6 +1880,13 @@ Prometheus retention.
 
 - Type: `str`
 - Default: `90d`
+
+### `observability_prometheus_retention_size`
+
+Prometheus retention by size (such as 50GB, powers of 2); 0 is by time only.
+
+- Type: `raw`
+- Default: `0`
 
 ### `observability_loki_retention`
 
@@ -2206,7 +2258,7 @@ Role of the metrics exporter (pg_monitor).
 
 Re-run preflight and stop if the host changed.
 
-Entry points: `main` (Re-run preflight and stop if the host changed). Role README: `ansible/roles/preflight_gate/README.md`.
+Entry points: `main` (Re-run preflight and stop if the host changed), `facts` (Expose a host profile's feature flags after the switches and the training settings). Role README: `ansible/roles/preflight_gate/README.md`.
 
 Variables the role reads from elsewhere:
 
@@ -2215,6 +2267,7 @@ Variables the role reads from elsewhere:
 | `host_profile` | bootstrap.sh | Host profile validated by bootstrap.sh for this run. |
 | `install_nvidia_driver` | [lab-wide](#install_nvidia_driver) | The machine's driver setting; preflight judges a missing NVIDIA driver with it, as bootstrap did. |
 | `pinka_root` | [lab-wide](#pinka_root) | Research space; preflight measures its free disk space. |
+| `training_caps` | [lab-wide](#training_caps) | The caps on training jobs; memory_max auto takes the cap preflight computed. |
 
 ### `preflight_gate_command`
 
@@ -2222,6 +2275,7 @@ Preflight wrapper of this checkout.
 
 - Type: `path`
 - Default: `{{ pinka_dir }}/preflight/pinka-preflight`
+- Entry points: `main`
 
 ### `preflight_gate_profile_path`
 
@@ -2229,6 +2283,15 @@ Profile to compare with; bootstrap passes the profile it validated (pinka_bootst
 
 - Type: `path`
 - Default: `{{ pinka_bootstrap.profile_path | default('/etc/pinka/host-profile.json') }}`
+- Entry points: `main`
+
+### `preflight_gate_profile`
+
+The host profile whose requirements.switches decide the flags.
+
+- Type: `dict`
+- Required, no default
+- Entry points: `facts`
 
 ## provider_baremetal
 
@@ -2512,6 +2575,33 @@ HTTPS port of the docs service's serve.
 
 - Type: `int`
 - Default: `10000`
+
+## uninstall
+
+Remove what pinka installed and keep the lab's data.
+
+Entry points: `main` (Remove what pinka installed and keep the lab's data). Role README: `ansible/roles/uninstall/README.md`.
+
+Variables the role reads from elsewhere:
+
+| Variable | Set by | Description |
+| --- | --- | --- |
+| `host_profile` | bootstrap.sh | The host profile preflight wrote for this run; its access names the install's session. |
+| `pinka_uninstall` | bootstrap.sh | The options bootstrap passes: mode (plan or apply), machine, purge_data, remove_components, opt_existed, plan_file, plan_text, report_file, started_at, repo_commit and log_file. |
+
+### `uninstall_component_sources`
+
+For --remove-component, each component's entries in the component source matrix.
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    docker: [docker]
+    incus: [incus]
+    tailscale: [tailscale]
+    nvidia: [nvidia_driver, nvidia_container_toolkit]
+    ```
 
 ## users_groups
 

@@ -1,0 +1,7 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /",
+    "model example-model: 5.7 GiB, missing 5.7 GiB on /srv"
+  ]
+}

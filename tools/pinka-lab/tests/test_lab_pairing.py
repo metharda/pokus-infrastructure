@@ -157,7 +157,7 @@ class PairingTest(unittest.TestCase):
         self.assertEqual(peer.cert_pem, self.inference.cert_pem)
         self.assertEqual(result["peer"].cert_pem, self.lab.cert_pem)
         # Each side records the other's address as the connection saw it: the
-        # split guard admits only that address (interpretation 11.13).
+        # split guard admits only that address.
         self.assertEqual((peer.address, result["peer"].address), ("127.0.0.1", "127.0.0.1"))
         self.assertEqual(peer.record("2026-10-14T00:00:00Z")["address"], "127.0.0.1")
 

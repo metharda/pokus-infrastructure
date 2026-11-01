@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/tailscale/tasks/install.yml). Local changes will be overwritten.
 #
-# Tailscale from the component source matrix, pinned and held (BUILD_PROMPT
-# §7.4); only when no Tailscale package existed before pinka.
+# Tailscale from the component source matrix, pinned and held;
+# only when no Tailscale package existed before pinka.
 - name: Add the Tailscale repository
   ansible.builtin.include_role:
     name: pkg

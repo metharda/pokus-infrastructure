@@ -14,13 +14,29 @@ from typing import Any
 
 import pytest
 import yaml
-from pinka_test_distros import checkmode, cli, harness, isolation, refplat, results, targets
+from pinka_test_distros import (
+    checkmode,
+    cli,
+    harness,
+    isolation,
+    preexisting,
+    refplat,
+    results,
+    snapshot,
+    targets,
+)
 from pinka_test_distros.incus import Incus, Result
 
+from pinka_installer import answers as answers_mod
+from pinka_installer import hostvars
+from pinka_installer import plan as plan_mod
 from pinka_platform import contract as contract_mod
 from pinka_platform import render
+from pinka_preflight import requirements
 from pinka_preflight.detect.os_release import OsRelease
+from pinka_preflight.fs import FileSystem
 from pinka_preflight.matrix import load_matrix, match_os
+from pinka_preflight.runner import FixtureRunner
 
 INFRA = Path(__file__).resolve().parents[3]
 AUTHKEY = "placeholder-auth-key-for-tests"
@@ -80,7 +96,12 @@ def test_targets_file_is_checked(tmp_path: Path) -> None:
     assert loaded.targets[0].image_ref == "images:a/b"
     with pytest.raises(targets.TargetError, match="unknown"):
         loaded.select(["nope"])
-    for bad in ({**good, "firewall": "iptables"}, {**good, "os": {"id": "gentoo"}}):
+    for bad in (
+        {**good, "firewall": "iptables"},
+        {**good, "os": {"id": "gentoo"}},
+        {**good, "preexisting": ["lxd"]},
+        {**good, "os": {"id": "fedora"}, "preexisting": ["docker"]},
+    ):
         doc = {"schema_version": 1, "defaults": defaults, "targets": [bad]}
         path.write_text(yaml.safe_dump(doc))
         with pytest.raises(targets.TargetError, match="invalid"):
@@ -112,11 +133,48 @@ def test_changed_tasks() -> None:
 # --- the pipeline ---------------------------------------------------------------------------------
 
 
-# The access guard as nft lists it on a ufw or firewalld lane (approved deviation AG1).
+# The access guard as nft lists it on a ufw or firewalld lane.
 GUARD = (
     "table inet pinka_access_guard {\n\tchain input {\n"
     '\t\tiifname != { "lo", "tailscale0" } ct state new tcp dport 8080 drop\n\t}\n}\n'
 )
+
+
+# A host's snapshot (pinka_test_distros.snapshot), by section.
+SNAPSHOT: dict[str, list[str]] = {
+    "packages": [
+        "bash 5.2",
+        "containerd 1.7.28",
+        "docker-buildx 0.14.1",
+        "docker-compose-v2 2.27.1",
+        "docker.io 26.1.3-0ubuntu1",
+        "runc 1.3.0",
+        "tailscale 1.104.1",
+    ],
+    "holds": [],
+    "repositories": ["/etc/apt/sources.list.d/ubuntu.sources"],
+    "users": ["root:0:/root:/bin/bash", "ubuntu:1000:/home/ubuntu:/bin/bash"],
+    "groups": ["root:0:", "docker:990:"],
+    "units": ["ssh.service enabled"],
+    "nftables": [],
+    "listening": ["tcp 0.0.0.0:22", "udp 0.0.0.0:41641"],
+    "files": ["/etc/ssh/sshd_config"],
+    "settings": ["net.ipv4.ip_forward = 0"],
+    "tailscale": [
+        "state Running",
+        "node n1 ptd-ubuntu-24-04-preexisting-abcdef-owner",
+        "tags tag:pinka-qa,tag:pinka-qa-owner",
+    ],
+    "docker": [f"container {preexisting.WORKLOAD} python"],
+}
+UNINSTALL_REPORT = "/var/log/pinka-uninstall/20260101T120000Z.json"
+
+
+def snapshot_text(sections: dict[str, list[str]]) -> str:
+    return "".join(
+        f"{snapshot.MARK}{name}\n" + "".join(f"{x}\n" for x in lines)
+        for name, lines in sections.items()
+    )
 
 
 class FakeIncus:
@@ -146,8 +204,22 @@ class FakeIncus:
             "tailnet_ssh": 0,
             "tailnet_kept": 0,
             "tailnet_closed": 28,  # curl: timed out
+            "before": SNAPSHOT,
+            "after": SNAPSHOT,
+            "uninstall": 0,
+            "again": harness.NOTHING_LEFT,
+            "report_items": [{"name": "/etc/pinka", "result": "removed", "reason": "pinka's path"}],
+            "workload": 0,
+            "egress": 0,
+            "tailscale_now": SNAPSHOT["tailscale"],
+            "kept_marked": ["/srv/pinka", "/var/lib/docker"],
+            "kept_check": 0,
+            "kept_backup": 0,
+            "versions_now": SNAPSHOT["packages"][1:],
             **behaviour,
         }
+        self.snapshots = 0
+        self.uninstalls = 0
         self.infra_source = self.behaviour["infra_source"]
         self.runs = 0
         self.platform = "refplat"
@@ -206,6 +278,8 @@ class FakeIncus:
         elif remote == refplat.LAB[1:]:
             health = f"http://127.0.0.1:{PORTS['vllm']}/health"
             local.write_text(json.dumps({"vllm": {"health_url": health}}))
+        elif remote == UNINSTALL_REPORT[1:]:
+            local.write_text(json.dumps({"items": self.behaviour["report_items"]}, indent=2))
         elif remote == refplat.TRANSITIONS[1:]:
             lines = [
                 json.dumps({"run": "run-resume", "outcome": o})
@@ -235,6 +309,9 @@ class FakeIncus:
         access = self.access(script)
         if access is not None:
             return access
+        lane = self.uninstall_lane(script)
+        if lane is not None:
+            return lane
         if script == "getenforce":
             return 0, f"{b['getenforce']}\n"
         if script.startswith("setenforce"):
@@ -246,8 +323,40 @@ class FakeIncus:
             return int(b["doctor"]), ""
         return 0, ""
 
+    def uninstall_lane(self, script: str) -> tuple[int, str] | None:  # noqa: PLR0911 - one answer per command
+        """The uninstall lane's and the pre-existing variant's commands; None for any other."""
+        b = self.behaviour
+        if script.startswith(f"echo '{snapshot.MARK}packages'"):
+            self.snapshots += 1
+            return 0, snapshot_text(b["before"] if self.snapshots == 1 else b["after"])
+        if "bootstrap.sh --uninstall" in script:
+            self.uninstalls += 1
+            if self.uninstalls == 1:
+                return int(b["uninstall"]), "uninstall: 9 removed\n"
+            return 0, f"{b['again']}\n"
+        if script.startswith(f"ls -1t {harness.UNINSTALL_REPORTS}/"):
+            return 0, f"{UNINSTALL_REPORT}\n"
+        stamp = "kept-ptd-debian-13-abcdef"
+        if script == harness.mark_kept_data(stamp):
+            return 0, "".join(f"{d}\n" for d in b["kept_marked"])
+        if script == harness.check_kept_data(b["kept_marked"], stamp):
+            return int(b["kept_check"]), ""
+        if script == harness.KEPT_BACKUP:
+            return int(b["kept_backup"]), ""
+        if script == preexisting.CODENAME:
+            return 0, "noble\n"
+        if script == snapshot.section_script("tailscale"):
+            return 0, "".join(f"{line}\n" for line in b["tailscale_now"])
+        if script.startswith("dpkg-query -W -f '${Package} ${Version}"):
+            return 0, "".join(f"{line}\n" for line in b["versions_now"])
+        answers = {
+            preexisting.workload_answers(): "workload",
+            preexisting.workload_egress(): "egress",
+        }
+        return (int(b[answers[script]]), "") if script in answers else None
+
     def access(self, script: str) -> tuple[int, str] | None:
-        """The access stage's commands (approved deviation AG1); None for any other."""
+        """The access stage's commands; None for any other."""
         b = self.behaviour
         if script == harness.LAN_ADDRESS:
             return 0, f"{b['address']}\n"
@@ -349,7 +458,7 @@ def make_test(
 
 
 def test_the_vm_bootstraps_from_the_release_package(tmp_path: Path) -> None:
-    # Owner decisions of 3d.7 and 3d.8: make test-distros checks the bundled
+    # make test-distros checks the bundled
     # collections by bootstrapping from a release package of the commit.
     test, fake = make_test(tmp_path, "debian-13")
     test.run()
@@ -385,11 +494,12 @@ def test_a_passing_test(tmp_path: Path) -> None:
     }
     launch = next(c for c in fake.calls if c[1] == "launch")
     assert launch[2:5] == ("images:debian/13/cloud", "ptd-debian-13-abcdef", "--vm")
-    assert launch[-2:] == ("--device", "root,size=300GiB")
-    assert "limits.cpu=8" in launch and "limits.memory=18GiB" in launch
+    assert launch[-2:] == ("--device", "root,size=80GiB")
+    assert "limits.cpu=8" in launch and "limits.memory=10GiB" in launch
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
-    first, second, deploy, redeploy, replace, restore = [s for s in scripts if "bootstrap.sh" in s]
+    runs = [s for s in scripts if "bootstrap.sh" in s]
+    first, second, deploy, redeploy, replace, restore, uninstall, again = runs
     answers_option = (
         "--answers /root/pokus-infrastructure/installer-answers/ptd-debian-13-abcdef.yml"
     )
@@ -399,6 +509,11 @@ def test_a_passing_test(tmp_path: Path) -> None:
     # The platform is enabled, replaced and restored through the answers.
     assert deploy.endswith(answers_option) and restore.endswith(answers_option)
     assert replace.endswith(f"{answers_option} --replace-platform refplat")
+    # The uninstall lane: twice, with the typed machine name.
+    assert uninstall == again
+    assert uninstall.endswith(
+        "--uninstall --non-interactive --confirm-machine ptd-debian-13-abcdef"
+    )
     assert any(s == "pinka backup now" for s in scripts)
     # Secrets travel in 0600 files, never on a command line.
     assert all(AUTHKEY not in " ".join(c) for c in fake.calls)
@@ -462,7 +577,7 @@ def test_the_reference_platform_stages(tmp_path: Path) -> None:
     assert any(c[-2:] == (refplat.CLI, "infer") for c in fake.calls)
     reports = json.loads((tmp_path / "out" / "debian-13" / "isolation.json").read_text())
     assert [r["profile"] for r in reports] == isolation.loopback_profiles(CONTRACT)
-    assert fake.restarts == 1
+    assert fake.restarts == 3  # before the snapshot, in resume, after the uninstall
     assert any("--step-seconds" in c for c in fake.calls)
     record = "/srv/pinka/platforms/refplatb/state/ctl/records/datasets.json"
     assert scripts.index(f"rm -f {record}") < scripts.index(f"test -s {record}")
@@ -551,7 +666,7 @@ def test_variant_preparation(tmp_path: Path) -> None:
 
 
 def test_the_access_stage_on_a_ufw_lane(tmp_path: Path) -> None:
-    # Approved deviation AG1: the owner's services listen and the owner's
+    # The owner's services listen and the owner's
     # firewall admits them before the install; the answers close tcp/8080.
     tried: list[tuple[str, int]] = []
 
@@ -657,6 +772,288 @@ def test_a_failed_launch_leaves_nothing_to_clean(tmp_path: Path) -> None:
     assert record["stages"]["launch"] == "failed"
     assert record["image_fingerprint"] is None
     assert [c[1] for c in fake.calls] == ["launch"]
+
+
+# --- the uninstall lane ------------------------------------------------------
+
+
+def changed(**sections: list[str]) -> dict[str, list[str]]:
+    """SNAPSHOT with some sections replaced."""
+    return {**SNAPSHOT, **sections}
+
+
+def test_the_uninstall_lane(tmp_path: Path) -> None:
+    after = changed(
+        files=[*SNAPSHOT["files"], "/srv/pinka", "/var/log/pinka-uninstall/x.json"],
+        groups=[*SNAPSHOT["groups"], "_chrony:991:"],
+        packages=["bash 5.3", *SNAPSHOT["packages"][1:]],
+    )
+    test, fake = make_test(tmp_path, "debian-13", after=after)
+    record = test.run()
+    assert record["error"] is None
+    assert record["stages"]["snapshot"] == record["stages"]["uninstall"] == "passed"
+    scripts = fake.scripts()
+    # The snapshot is taken after a reboot and before the install; the second
+    # one after the uninstall and another reboot.
+    snapshots = [i for i, x in enumerate(scripts) if x.startswith(f"echo '{snapshot.MARK}")]
+    runs = [i for i, x in enumerate(scripts) if "bootstrap.sh" in x]
+    assert snapshots[0] < runs[0] and snapshots[1] > runs[-1]
+    settles = [i for i, x in enumerate(scripts) if x == snapshot.SETTLE]
+    assert settles[0] < snapshots[0] and runs[-1] < settles[-1] < snapshots[1]
+    assert "fs.inotify.max_user_watches" in scripts[snapshots[0]]
+    # The harness removes its own stand-in first.
+    removal = scripts.index(refplat.standin_removal())
+    assert (
+        runs[-2]
+        > removal
+        > max(i for i, x in enumerate(scripts) if refplat.STANDIN_UNIT in x and "enable" in x)
+    )
+    # The kept data is marked before the uninstall and checked after the
+    # reboot, with the backups opened by the kept key, before the snapshot.
+    mark = scripts.index(harness.mark_kept_data("kept-ptd-debian-13-abcdef"))
+    check = scripts.index(
+        harness.check_kept_data(["/srv/pinka", "/var/lib/docker"], "kept-ptd-debian-13-abcdef")
+    )
+    assert removal < mark < runs[-2] and runs[-1] < settles[-1] < check < snapshots[1]
+    assert scripts.index(harness.KEPT_BACKUP) == check + 1
+    out = tmp_path / "out" / "debian-13"
+    assert (out / "snapshot-before.txt").read_text() == snapshot_text(SNAPSHOT)
+    assert json.loads((out / "uninstall-report.json").read_text())["items"]
+    differences = (out / "uninstall-differences.txt").read_text().splitlines()
+    assert [d.split(" (kept: ")[0] for d in differences] == [
+        "kept: packages: ~bash 5.2 -> 5.3",
+        "kept: groups: +_chrony:991:",
+        "kept: files: +/srv/pinka",
+        "kept: files: +/var/log/pinka-uninstall/x.json",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "message"),
+    [
+        (
+            {
+                "uninstall": 81,
+                "report_items": [
+                    {"name": "/etc/pinka", "result": "removed", "reason": "pinka's path"},
+                    {"name": "incus", "result": "failed", "reason": "dpkg: busy"},
+                ],
+            },
+            "uninstall ended with exit 81; could not remove incus: dpkg: busy",
+        ),
+        ({"uninstall": 80, "report_items": []}, "uninstall ended with exit 80"),
+        ({"kept_check": 1}, "the kept data failed (exit 1)"),
+        ({"kept_backup": 1}, "opening the backups with the kept key failed (exit 1)"),
+        ({"again": "uninstall: 1 removed"}, "a second uninstall still found something"),
+        (
+            {"after": changed(units=[*SNAPSHOT["units"], "pinka-core.service enabled"])},
+            "unlike before the install: units: +pinka-core.service enabled",
+        ),
+        (
+            {
+                "after": changed(
+                    users=[*SNAPSHOT["users"], "pinka-build:998:/var/lib/pinka:/bin/false"]
+                )
+            },
+            "users: +pinka-build:998",
+        ),
+        (
+            {"after": changed(users=[*SNAPSHOT["users"], "refplatb-api:997:/:/bin/false"])},
+            "users: +refplatb-api:997",
+        ),
+        (
+            {"after": changed(listening=[*SNAPSHOT["listening"], "tcp 127.0.0.1:5432"])},
+            "listening: +tcp 127.0.0.1:5432",
+        ),
+    ],
+)
+def test_uninstall_lane_failures(tmp_path: Path, behaviour: dict[str, Any], message: str) -> None:
+    test, _ = make_test(tmp_path, "debian-13", keep="never", **behaviour)
+    record = test.run()
+    assert record["stages"]["uninstall"] == "failed"
+    assert message in record["error"], record["error"]
+
+
+def preexisting_reachable(address: str, port: int) -> bool:
+    return port == preexisting.WORKLOAD_PORT
+
+
+def test_the_preexisting_variant(tmp_path: Path) -> None:
+    tried: list[int] = []
+
+    def reachable(address: str, port: int) -> bool:
+        tried.append(port)
+        return preexisting_reachable(address, port)
+
+    test, fake = make_test(tmp_path, "ubuntu-24.04-preexisting", reachable=reachable)
+    record = test.run()
+    assert record["error"] is None, record["error"]
+    scripts = fake.scripts()
+    docker = next(x for x in scripts if "docker.io" in x and "docker run" in x)
+    assert "docker.io docker-compose-v2 docker-buildx" in docker
+    assert preexisting.workload_image() in docker and "@sha256:" in docker
+    tailscale = next(x for x in scripts if "tailscale up" in x)
+    pins = preexisting.tailscale_pins("ubuntu", "24.04", "noble")
+    assert pins.fingerprint in tailscale and f"tailscale={pins.version}" in tailscale
+    assert "--hostname=ptd-ubuntu-24-04-preexisting-abcdef-owner" in tailscale
+    assert "--advertise-tags=tag:pinka-qa,tag:pinka-qa-owner" in tailscale
+    # Both before pinka: the first bootstrap comes after them.
+    first = next(i for i, x in enumerate(scripts) if "bootstrap.sh" in x)
+    assert scripts.index(docker) < scripts.index(tailscale) < first
+    # The workload is reached before the install, after it and after the uninstall.
+    assert tried == [preexisting.WORKLOAD_PORT] * 3
+    assert scripts.count(preexisting.workload_egress()) == 3
+    assert all(AUTHKEY not in " ".join(c) for c in fake.calls)
+
+
+@pytest.mark.parametrize(
+    ("behaviour", "reachable", "stage", "message"),
+    [
+        ({"workload": 1}, preexisting_reachable, "snapshot", "before the install: the workload"),
+        ({}, owner_ports, "snapshot", "is not reachable from the harness host"),
+        ({"egress": 1}, preexisting_reachable, "snapshot", "does not reach pkgs.tailscale.com:443"),
+        (
+            {"before": changed(tailscale=["state NeedsLogin"])},
+            preexisting_reachable,
+            "snapshot",
+            "the owner's Tailscale node is not running",
+        ),
+        (
+            {
+                "tailscale_now": [
+                    "state Running",
+                    "node n1 ptd-ubuntu-24-04-preexisting-abcdef",
+                    "tags tag:pinka-qa",
+                ]
+            },
+            preexisting_reachable,
+            "access",
+            "after the install: the Tailscale node changed: -node n1",
+        ),
+        (
+            {
+                "versions_now": [
+                    "containerd 1.7.28",
+                    "docker-buildx 0.14.1",
+                    "docker-compose-v2 2.27.1",
+                    "docker.io 27.0",
+                    "runc 1.3.0",
+                    "tailscale 1.104.1",
+                ]
+            },
+            preexisting_reachable,
+            "access",
+            "after the install: docker.io 26.1.3-0ubuntu1 -> 27.0",
+        ),
+        (
+            {"after": changed(packages=[*SNAPSHOT["packages"][:-1], "tailscale 1.106.0"])},
+            preexisting_reachable,
+            "uninstall",
+            "packages: ~tailscale 1.104.1 -> 1.106.0",
+        ),
+    ],
+)
+def test_preexisting_variant_failures(
+    tmp_path: Path, behaviour: dict[str, Any], reachable: Any, stage: str, message: str
+) -> None:
+    test, _ = make_test(
+        tmp_path, "ubuntu-24.04-preexisting", keep="never", reachable=reachable, **behaviour
+    )
+    record = test.run()
+    assert record["stages"][stage] == "failed"
+    assert message in record["error"], record["error"]
+
+
+def test_snapshot_script_and_parse() -> None:
+    keys = snapshot.sysctl_keys()
+    assert "net.ipv4.ip_forward" in keys
+    text = snapshot.script(keys)
+    marks = [x.split("'")[1] for x in text.splitlines() if x.startswith(f"echo '{snapshot.MARK}")]
+    assert marks == [f"{snapshot.MARK}{name}" for name in snapshot.SECTIONS]
+    assert subprocess.run(["bash", "-n"], input=text, text=True, check=False).returncode == 0
+    nft = next(line for line in text.splitlines() if "nft list ruleset" in line)
+    assert "sort" not in nft  # the ruleset's order means something
+    parsed = snapshot.parse(snapshot_text(SNAPSHOT) + "\n")
+    assert parsed == SNAPSHOT
+    with pytest.raises(ValueError, match="lacks docker"):
+        snapshot.parse(snapshot_text({k: v for k, v in SNAPSHOT.items() if k != "docker"}))
+
+
+def test_snapshot_differences() -> None:
+    before = changed(listening=["tcp 0.0.0.0:22", "tcp 100.64.0.1:41234"])
+    after = changed(
+        listening=["tcp 0.0.0.0:22", "tcp 100.64.0.1:52344", "tcp 0.0.0.0:8080"],
+        users=[
+            *SNAPSHOT["users"],
+            "_apt:105:/nonexistent:/usr/sbin/nologin",
+            "researcher1:1001:/home/researcher1:/bin/bash",
+        ],
+        groups=[*SNAPSHOT["groups"], "pinka:989:", "refplat-db:988:"],
+        packages=[*SNAPSHOT["packages"][:5], "runc 1.3.1", "tailscale 1.104.1", "jq 1.7"],
+        files=["/srv/pinka/models", "/var/log/pinka-bootstrap"],
+    )
+    failing, kept = snapshot.differences(SNAPSHOT | before, after, ["refplat"], ["runc"])
+    assert failing == [
+        "packages: +jq 1.7",
+        "packages: ~runc 1.3.0 -> 1.3.1",
+        "users: +researcher1:1001:/home/researcher1:/bin/bash",
+        "groups: +pinka:989:",
+        "groups: +refplat-db:988:",
+        "listening: +tcp 0.0.0.0:8080",
+        "files: -/etc/ssh/sshd_config",
+    ]
+    assert [k.split(" (kept: ")[0] for k in kept] == [
+        "users: +_apt:105:/nonexistent:/usr/sbin/nologin",
+        "files: +/srv/pinka/models",
+        "files: +/var/log/pinka-bootstrap",
+    ]
+    _, kept = snapshot.differences(
+        SNAPSHOT, changed(packages=["bash 5.3", *SNAPSHOT["packages"][1:]])
+    )
+    assert kept == [f"packages: ~bash 5.2 -> 5.3 (kept: {snapshot.VERSION_CHANGE})"]
+
+
+def test_the_lane_matches_bootstrap() -> None:
+    stages_sh = (INFRA / "bootstrap" / "lib" / "stages.sh").read_text()
+    assert f'log_info "{harness.NOTHING_LEFT}"' in stages_sh
+    assert f"UNINSTALL_REPORT_DIR={harness.UNINSTALL_REPORTS}" in stages_sh
+    # The uninstall module keeps the logs and the data the snapshot excuses.
+    module = (
+        INFRA / "ansible" / "roles" / "uninstall" / "library" / "pinka_uninstall.py"
+    ).read_text()
+    for path in ("/srv/pinka", "/var/log/pinka-bootstrap", "/var/log/pinka-uninstall"):
+        assert f'"{path}"' in module
+        assert any(k.matches("files", path) for k in snapshot.KEPT)
+
+
+def test_tailscale_pins(tmp_path: Path) -> None:
+    pins = preexisting.tailscale_pins("ubuntu", "24.04", "noble")
+    assert pins.key_url == "https://pkgs.tailscale.com/stable/ubuntu/noble.asc"
+    assert pins.repository == "https://pkgs.tailscale.com/stable/ubuntu noble main"
+    script = preexisting.tailscale_script(
+        harness.INSTALL["debian"], pins, "vm-owner", ["tag:a"], "/root/s.env"
+    )
+    assert subprocess.run(["bash", "-n"], input=script, text=True, check=False).returncode == 0
+    assert f'if [ "$found" != {pins.fingerprint} ]' in script
+    with pytest.raises(preexisting.PinError, match="no Tailscale key URL for ubuntu plucky"):
+        preexisting.tailscale_pins("ubuntu", "25.04", "plucky")
+    with pytest.raises(preexisting.PinError, match=r"no Tailscale version for ubuntu-20\.04"):
+        preexisting.tailscale_pins("ubuntu", "20.04", "noble")
+    sources = tmp_path / "sources.yml"
+    data = yaml.safe_load(preexisting.SOURCES.read_text())
+    data["repositories"]["tailscale-deb"]["verify"] = "the base URL is not checked yet"
+    sources.write_text(yaml.safe_dump(data))
+    with pytest.raises(preexisting.PinError, match="not verified"):
+        preexisting.tailscale_pins("ubuntu", "24.04", "noble", sources=sources)
+
+
+def test_the_preexisting_targets() -> None:
+    variants = [t for t in target_file().targets if t.preexisting]
+    assert [(t.id, t.preexisting) for t in variants] == [
+        ("ubuntu-24.04-preexisting", ("docker", "tailscale"))
+    ]
+    # The variant is a full lane of its own release.
+    assert all(t.firewall == "nftables" for t in variants)
 
 
 # --- results and the command line ---------------------------------------------------------------
@@ -816,7 +1213,7 @@ def test_check_mode_run(tmp_path: Path) -> None:
 
 
 def test_required_play_is_the_provider_agnostic_roles() -> None:
-    """BUILD_PROMPT §11: base, users_groups, ssh and layout, in check mode only."""
+    """The roles base, users_groups, ssh and layout, in check mode only."""
     plays = yaml.safe_load(checkmode.REQUIRED_PLAYBOOK.read_text())
     assert len(plays) == 1
     roles = [task["ansible.builtin.import_role"]["name"] for task in plays[0]["tasks"]]
@@ -833,7 +1230,7 @@ FEDORA_PROFILE = {
 
 
 def test_check_mode_extended_skips_nothing_where_every_source_is_verified() -> None:
-    # make lock-pins after 3f verified Tailscale and Incus on the apt releases.
+    # make lock-pins verified Tailscale and Incus on the apt releases.
     assert checkmode.unverified_roles(PROFILE) == {}
     ubuntu = {**PROFILE, "os": {"id": "ubuntu", "version_id": "24.04", "codename": "noble"}}
     assert checkmode.unverified_roles(ubuntu) == {}
@@ -1003,7 +1400,7 @@ def test_every_make_target_finds_the_packages_the_cli_imports(target: str) -> No
     assert done.returncode == 0, done.stderr
 
 
-# Sizes as Incus writes them (``18GiB``), in GiB.
+# Sizes as Incus writes them (``10GiB``), in GiB.
 SIZE_UNITS = {"GiB": 1.0, "TiB": 1024.0, "MiB": 1 / 1024}
 # The guest's MemTotal is below the assigned memory by what the kernel reserves
 # (its own image, page tables, a crash kernel); preflight compares MemTotal.
@@ -1017,15 +1414,44 @@ def _gib(size: str) -> float:
     return float(number) * SIZE_UNITS[unit]
 
 
-def test_every_target_meets_the_minimums_preflight_enforces() -> None:
-    # The VMs must pass preflight as a real host does; preflight's minimums are
-    # never lowered for tests (owner decision after 3f).
+def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) -> None:
+    # The VMs are sized to the requirement preflight
+    # computes for the CI answers, never below its minimums
+    # (preflight's thresholds are never lowered for tests).
     matrix = yaml.safe_load((INFRA / "preflight" / "support-matrix.yml").read_text())
-    minimums = matrix["minimums"]
-    memory = minimums["memory_gib"]["required"]
-    threads = minimums["cpu_threads"]["required"]
-    disk = sum(d["required"] for d in minimums["free_disk_gib"].values())
+    data = requirements.load_requirements()
+    ci = answers_mod.Answers.from_dict(yaml.safe_load((INFRA / "tests/answers/ci.yml").read_text()))
+    plan = plan_mod.plan(data["defaults"], hostvars.host_vars(ci), {"models": []})
+    for path in ("var/lib", "srv"):
+        (tmp_path / path).mkdir(parents=True)
+    df = f"Mounted on Type 1B-blocks Avail\n/ ext4 {2**50} {2**45}\n"
+    runner = FixtureRunner(
+        {
+            "commands": {
+                f"df --output=target,fstype,size,avail -B1 {path}": {"stdout": df}
+                for path in ("/", "/var/lib", "/srv")
+            }
+        }
+    )
+    needed = requirements.compute(
+        data,
+        plan,
+        "ci",
+        minimums=matrix["minimums"],
+        features={"gpu_inference": False, "gpu_training": False, "vm_targets": True},
+        memory_gib=None,
+        fs=FileSystem(str(tmp_path)),
+        runner=runner,
+        machine="x86_64",
+    )
+    (disk,) = needed.disks  # one file system in a VM
+    threads = matrix["minimums"]["cpu_threads"]["required"]
     for target in targets.load(cli.TARGETS).targets:
         assert target.cpus >= threads, target.id
-        assert _gib(target.memory) >= memory + KERNEL_RESERVE_GIB, target.id
-        assert _gib(target.disk) >= disk + SYSTEM_GIB, target.id
+        assert _gib(target.memory) >= needed.required_gib + KERNEL_RESERVE_GIB, target.id
+        assert _gib(target.disk) >= disk.required_gib + SYSTEM_GIB, target.id
+    # The defaults sit at these values: a change of the estimates shows here.
+    assert (needed.required_gib, disk.required_gib) == (8.0, 37.2)
+    # The CPU-only training flow runs: its job fits the computed cap's floor.
+    assert (needed.switches.serves, needed.switches.runs) == (False, "cpu")
+    assert needed.switches.memory_max_gib == data["training_cap"]["floor_gib"] == 4

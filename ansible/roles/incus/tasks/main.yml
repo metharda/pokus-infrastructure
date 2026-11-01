@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/incus/tasks/main.yml). Local changes will be overwritten.
 #
-# Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
+# Incus for benchmark targets and personal sandboxes:
 # the LTS line from the component source matrix, one storage pool, the build
 # bridge, the run network ACL, the projects build, bench and one per
 # researcher, the target profiles, restricted client certificates for the
@@ -17,6 +17,10 @@
 
 - name: Work out the desired configuration
   ansible.builtin.include_tasks: desired.yml
+
+- name: Record what pinka creates in an Incus that existed before it
+  ansible.builtin.include_tasks: record.yml
+  when: ((pinka_preexisting.components | default({})).incus | default({})).installed | default(false)
 
 - name: Initialize a new installation
   ansible.builtin.include_tasks: initialize.yml

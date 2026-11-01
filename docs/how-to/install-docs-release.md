@@ -17,8 +17,7 @@ one and switches in one step.
 
 !!! note "Prerequisites"
     - Root on the lab host.
-    - A release's documentation tarball and the SHA-256 published with it
-      (`docs/DOCS_SPEC.md` §B.4).
+    - A release's documentation tarball and the SHA-256 published with it.
 
 ## Let bootstrap install it
 

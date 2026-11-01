@@ -1,14 +1,14 @@
 # Managed by pinka (ansible/roles/tailscale/tasks/main.yml). Local changes will be overwritten.
 #
-# Tailscale (BUILD_PROMPT §7.4): pinned and held packages from the component
+# Tailscale: pinned and held packages from the component
 # source matrix, a tailnet join with the lab's tag, and a hard check that
 # Funnel is off. Lab services are never published to the internet.
 #
-# A node logged in before pinka (preflight's components, §2.2) is adopted as
+# A node logged in before pinka (preflight's components) is adopted as
 # it is: no repository, package, pin, hold, login, name, tag or setting
 # changes. A Tailscale that is installed but not logged in is not in use:
 # pinka joins it and leaves its package as it is. The install record notes
-# a join and every serve entry before pinka makes it (§7.21).
+# a join and every serve entry before pinka makes it.
 - name: Look up the Tailscale source
   ansible.builtin.set_fact:
     tailscale_source: "{{ pinka_component_sources | pinka_component_source('tailscale', pinka_source_group) }}"

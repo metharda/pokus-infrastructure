@@ -1,10 +1,10 @@
 # Managed by pinka (ansible/roles/firewall/tasks/access_guard.yml). Local changes will be overwritten.
 #
-# The access guard (BUILD_PROMPT §7.5) on every backend: its own table inet
+# The access guard on every backend: its own table inet
 # pinka_access_guard drops what the owner consented to close, so the owner's
 # tables, zones and rules stay as they are. pinka-nftables.service loads it
 # at boot, with pinka's table inet pinka_filter on the nftables backend. The
-# install record lists what is closed (§7.21): a listener the owner no longer
+# install record lists what is closed: a listener the owner no longer
 # wants closed is reachable again and leaves the record; the install's access
 # path, once closed, stays closed.
 - name: Record the pre-existing listeners closed with consent

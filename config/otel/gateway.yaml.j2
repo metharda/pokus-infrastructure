@@ -1,17 +1,17 @@
 # Managed by pinka (config/otel/gateway.yaml.j2). Local changes will be overwritten.
 #
-# OpenTelemetry Collector gateway (BUILD_PROMPT §7.9, contracts.md#telemetry).
+# OpenTelemetry Collector gateway (contracts.md#telemetry).
 # Host network, every listener on 127.0.0.1; with the vm_targets feature also
 # OTLP on the dedicated VM address (C4). Pipelines:
 #   logs:    otlp (services, targets, the journald collector) -> Loki (native OTLP)
-#   metrics: otlp -> Prometheus exporter, scraped by Prometheus (owner answer E14)
+#   metrics: otlp -> Prometheus exporter, scraped by Prometheus
 #   traces:  otlp -> Tempo
-# Split inference (BUILD_PROMPT §19.10): an inference node also scrapes its
+# Split inference: an inference node also scrapes its
 # exporters and vLLM and forwards every signal to the paired lab node over
 # mutual TLS (nothing leaves it before pairing); the lab node receives them
 # on its tailnet address and stores them with pinka.machine set to the
 # inference node.
-# The agent OTLP socket (BUILD_PROMPT §7.9): pinka-otlp-agent.socket forwards
+# The agent OTLP socket: pinka-otlp-agent.socket forwards
 # /run/pinka/otlp/agent.sock to the receiver otlp/agent (OTLP/HTTP on a
 # loopback port of its own); its pipelines stamp everything with
 # pinka.trust=untrusted, overwriting whatever the sender set.

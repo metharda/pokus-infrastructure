@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/ssh/tasks/main.yml). Local changes will be overwritten.
 #
-# sshd hardening (BUILD_PROMPT §7.3) through a drop-in that sorts before the
+# sshd hardening through a drop-in that sorts before the
 # distributions' own drop-ins (first value wins in sshd). Exposure is limited
 # by the firewall role: tailscale0 plus ssh_extra_allowed_interfaces only.
 - name: Install the OpenSSH server

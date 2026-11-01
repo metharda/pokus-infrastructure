@@ -1,4 +1,4 @@
-"""The platform's hooks (§12.9): judging, the wrapper, the transient units, the runs."""
+"""The platform's hooks: judging, the wrapper, the transient units, the runs."""
 
 from __future__ import annotations
 

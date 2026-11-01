@@ -1,4 +1,4 @@
-"""The principals and endpoints files infra writes for the active platform (§12.3)."""
+"""The principals and endpoints files infra writes for the active platform."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from pinka_platform.contract import Contract
 
 SCHEMA_VERSION = 1
 PRINCIPALS_HEADER = (
-    "Managed by pinka (principals.json, contract v2 §12.3). Local changes will be overwritten."
+    "Managed by pinka (principals.json, contract v2). Local changes will be overwritten."
 )
 ENDPOINTS_HEADER = (
-    "Managed by pinka (endpoints.toml, contract v2 §12.3). Local changes will be overwritten.\n"
+    "Managed by pinka (endpoints.toml, contract v2). Local changes will be overwritten.\n"
     "The addresses and paths infra provides to the platform, with the effective ports."
 )
 INFERENCE_MODES = ("local", "remote", "scripted")
@@ -118,7 +118,7 @@ class LabFacts:
         machine_name: The machine's name.
         lab_mode: ``production`` or ``staging``.
         node_role: ``full``, ``lab`` or ``inference``.
-        ports: Effective ports (§12.11), by the keys of ``pinka_ports``.
+        ports: Effective ports, by the keys of ``pinka_ports``.
         inference_mode: ``local``, ``remote`` or ``scripted``.
         scripted_api_url: The OpenAI-compatible endpoint for ``scripted``.
         vm_collector_address: Address of the collector listener for VM targets.
@@ -237,7 +237,7 @@ def _inference(facts: LabFacts) -> dict[str, Any]:
     if mode == "local":
         out["api_url"] = f"http://{loopback}:{ports['vllm']}"
     elif mode == "remote":
-        # The inference forwarder on this node's loopback (§12.8).
+        # The inference forwarder on this node's loopback.
         out["api_url"] = f"http://{loopback}:{ports['vllm']}"
         out["control_url"] = f"http://{loopback}:{ports['inference_control']}"
     else:

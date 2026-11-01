@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/images/tasks/build.yml). Local changes will be overwritten.
 #
-# Build flow of one blueprint (BUILD_PROMPT §7.13), in the Incus project
+# Build flow of one blueprint, in the Incus project
 # `build` on the NAT network pinka-build0: launch from the pinned base →
 # provision → tests → leakage lint → clean → stop → publish. A failed build
 # leaves its instance in the project for inspection; the next run replaces it.

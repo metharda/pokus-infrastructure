@@ -1,4 +1,4 @@
-"""Generated sections of ``README.md`` (BUILD_PROMPT §15).
+"""Generated sections of ``README.md``.
 
 The README carries an excerpt of the support matrix and the bootstrap exit
 codes between ``generated:<name>`` markers; the rest of the file is written
@@ -87,8 +87,10 @@ def environments(root: Path) -> str:
             table(["Architecture", "Tier"], architectures),
             "\n",
             table(["Environment", "Tier"], providers),
-            f"\nAt least {minimums['memory_gib']['required']} GiB of memory and "
-            f"{minimums['cpu_threads']['required']} CPU threads. Derivatives are experimental; "
+            f"\nAt least {minimums['memory_gib']['floor']} GiB of memory, more as the choices "
+            "require (features, node role, concurrent targets, the model), and "
+            f"{minimums['cpu_threads']['required']} CPU threads; the disk follows the choices "
+            "too. Derivatives are experimental; "
             "everything else, and the full rules, are in "
             "[docs/support-matrix.md](docs/support-matrix.md).\n",
         ]

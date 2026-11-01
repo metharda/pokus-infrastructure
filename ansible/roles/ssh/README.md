@@ -1,6 +1,6 @@
 # ssh
 
-sshd hardening (BUILD_PROMPT §7.3) through `/etc/ssh/sshd_config.d/10-pinka.conf`:
+sshd hardening through `/etc/ssh/sshd_config.d/10-pinka.conf`:
 key-only login, no root login, `AllowGroups pinka`, no X11 forwarding, local
 TCP forwarding only (researchers forward Grafana and the gateway's ad-hoc
 endpoint), `ClientAliveInterval 60`.
@@ -8,7 +8,7 @@ endpoint), `ClientAliveInterval 60`.
 The settings cover the whole host (`ssh_policy_scope: host`) on a dedicated
 host. On a shared host they apply in a `Match Group pinka` block without
 `AllowGroups` (`group`), so accounts outside `pinka` keep the host's own
-policy (approved deviation SSH1, §7.5). A dedicated host keeps the `group`
+policy. A dedicated host keeps the `group`
 form too while the install's access path is open for an account that is not
 a researcher, so that account is not locked out before the safeguard closes
 the path (firewall role, `tasks/install_path.yml`, which applies this role

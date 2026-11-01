@@ -9,7 +9,7 @@ description: The GPU arbiter's socket protocol, its files, the job container's f
 
 # GPU arbiter requests
 
-The GPU arbiter (BUILD_PROMPT §7.18, [explanation](../explanation/gpu-arbiter.md))
+The GPU arbiter ([explanation](../explanation/gpu-arbiter.md))
 answers on `/run/pinka/gpu.sock` (0600, owned by the active platform's
 controller; on an inference node by `pinka-inference`). Root uses the same
 socket through `pinka gpu`.
@@ -127,7 +127,7 @@ container is stopped) or a missing or empty adapter.
 
 ## Caps
 
-`training_caps` (host_vars, §8.1) bounds every job; a key left out takes
+`training_caps` (host_vars) bounds every job; a key left out takes
 the default shown.
 
 | Cap | Default | Checked |

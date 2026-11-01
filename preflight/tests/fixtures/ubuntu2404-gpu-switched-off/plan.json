@@ -1,0 +1,15 @@
+{
+  "inference": "off",
+  "model": {
+    "hf_repo": "example-org/example-model",
+    "id": "example-model",
+    "revision": "0000000000000000000000000000000000000000",
+    "size_bytes": 6120328396
+  },
+  "schema_version": 1,
+  "training": {
+    "memory_max_gib": null,
+    "mode": "off",
+    "run_storage_max_gib": 16
+  }
+}

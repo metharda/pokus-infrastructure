@@ -146,7 +146,9 @@ def test_the_isolated_run_writes_one_file_per_test_file(tmp_path: Path) -> None:
 def test_every_test_job_writes_and_keeps_junit_xml() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     block = makefile[makefile.index("\ntest-py39:") :].split("\n\n", 1)[0]
-    assert block.count("--junit-xml $(CURDIR)/$(JUNIT)/py39-") == 3
+    assert block.count("--junit-xml $(CURDIR)/$(JUNIT)/py39-") == 4
+    for run in ("preflight", "pinka-lab", "install-record", "uninstall"):
+        assert f"--junit-xml $(CURDIR)/$(JUNIT)/py39-{run}.xml" in block, run
     for line in (
         "--junitxml=$(JUNIT)/pytest.xml",
         "--junitxml=$(JUNIT)/random-order.xml",

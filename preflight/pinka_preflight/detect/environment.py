@@ -1,7 +1,7 @@
 """Environment class detection: baremetal, wsl2, wsl1, vm, container, unknown.
 
 Several independent signals are collected, recorded in the report, and
-cross-checked (BUILD_PROMPT §2.2). WSL detection runs first: recent systemd
+cross-checked. WSL detection runs first: recent systemd
 versions report ``wsl`` from ``systemd-detect-virt`` (also with
 ``--container``), and WSL must never be classified as a container.
 """

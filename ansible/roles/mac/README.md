@@ -1,6 +1,6 @@
 # mac
 
-Mandatory access control (BUILD_PROMPT §19.7).
+Mandatory access control.
 
 - **SELinux** (Fedora, RHEL-compatible, possibly openSUSE): never set to
   permissive or disabled. The role installs the management tools and the

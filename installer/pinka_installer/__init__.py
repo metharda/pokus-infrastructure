@@ -1,3 +1,3 @@
-"""The pinka installer: TUI, answers replay and the files it writes (BUILD_PROMPT §18)."""
+"""The pinka installer: TUI, answers replay and the files it writes."""
 
 __version__ = "0.1.0"

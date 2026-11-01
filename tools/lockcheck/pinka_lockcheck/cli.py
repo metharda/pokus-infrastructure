@@ -34,13 +34,6 @@ from pinka_lockcheck import bundle, checks, devsetup, net
 CATEGORIES = ("containers", "binaries", "keys", "images", "gpus")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
 TODO_EXCLUDES = (
-    "CLAUDE.md",
-    "PROGRESS.md",
-    "PROGRESS-ARCHIVE.md",
-    "specs/",
-    "docs/BUILD_PROMPT.md",
-    "docs/DOCS_SPEC.md",
-    "docs/IMPLEMENTATION_NOTES.md",
     "docs/how-to/update-versions.md",
     "docs/reference/versions.md",
     "docs/reference/component-sources.md",
@@ -85,6 +78,7 @@ def _check(lock: Path, *, offline: bool, only: Sequence[str]) -> int:
     if not offline and not any(f.where == "(root)" for f in findings):
         if "containers" in only:
             findings += checks.container_findings(doc)
+            findings += checks.size_findings(doc)
         if "binaries" in only:
             findings += checks.binary_findings(doc)
         if "keys" in only:

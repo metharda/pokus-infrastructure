@@ -1,12 +1,14 @@
-"""Rendering from the profiles (§7.14 step 7): golden files, units, accounts, isolation."""
+"""Rendering from the profiles: golden files, units, accounts, isolation."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -77,7 +79,7 @@ def agent_unit(document: dict[str, Any]) -> dict[str, list[str]]:
     return unit(document, f"{names.account(p, agent['member'])}.service")
 
 
-# --- golden files (§11: units, sockets, ACLs, accounts, groups, SQL, Incus) ---------
+# --- golden files (units, sockets, ACLs, accounts, groups, SQL, Incus) ---------
 
 
 @pytest.mark.parametrize("fixture", VALID)
@@ -126,7 +128,7 @@ def test_rendered_json_drops_the_configuration_contents() -> None:
     assert json.loads(render("allprof")["config_files"][0]["content"]) == {"workers": 2}
 
 
-# --- systemd-analyze verify on every unit (§11) ---------------------------------------
+# --- systemd-analyze verify on every unit ---------------------------------------
 
 
 def fake_root(tmp: Path, document: dict[str, Any], data: dict[str, Any]) -> Path:
@@ -206,7 +208,7 @@ def test_systemd_analyze_verifies_every_unit(tmp_path: Path, fixture: str) -> No
     assert done.stderr == "", done.stderr
 
 
-# --- the hardening baseline (§7.14) -------------------------------------------------
+# --- the hardening baseline -------------------------------------------------
 
 
 @pytest.mark.parametrize("fixture", VALID)
@@ -223,9 +225,78 @@ def test_every_service_unit_carries_the_baseline(fixture: str) -> None:
         assert settings["Restart"] == ["on-failure"]
 
 
+# What a service unit gets besides the baseline the explanation page lists: its
+# description, ordering and start, its runtime directory, its identity and
+# limits, its paths, the agent's confinement and its profile's network
+# allowances. A new setting of a service unit goes onto the page's list or here.
+NOT_BASELINE = frozenset(
+    {
+        "Description", "PartOf", "Requires", "After", "Wants", "WantedBy",
+        "Type", "ExecStart", "WorkingDirectory", "Restart", "RestartSec",
+        "User", "Group", "SupplementaryGroups", "MemoryMax", "TasksMax",
+        "RuntimeDirectory", "RuntimeDirectoryMode", "ReadOnlyPaths", "ReadWritePaths",
+        "BindPaths", "BindReadOnlyPaths", "InaccessiblePaths", "TemporaryFileSystem",
+        "IPAddressAllow", "SocketBindAllow", "PrivateNetwork",
+    }
+)  # fmt: skip
+
+
+def test_the_explanation_page_lists_the_whole_baseline() -> None:
+    # The contract sends platform authors to this page for the baseline: its
+    # list must hold every setting of it, each once, with the value every
+    # service unit gets, and the two exceptions as the code applies them.
+    page = Path(__file__).resolve().parents[3] / "docs/explanation/privilege-profiles.md"
+    paragraphs = [
+        " ".join(part.split()) for part in re.split(r"\n[ \t]*\n", page.read_text(encoding="utf-8"))
+    ]
+    intro = [
+        i for i, part in enumerate(paragraphs) if part.endswith("every platform service's unit:")
+    ]
+    assert len(intro) == 1, "the list of the baseline is missing"
+    section = paragraphs[intro[0] + 1]
+    spans = re.findall(r"`([^`]*)`", section)
+    pairs = [span.split("=", 1) for span in spans if "=" in span]
+    listed = dict(pairs)
+    assert len(listed) == len(pairs), "a setting is listed twice"
+    assert all(re.fullmatch(r"[A-Za-z]+", key) for key in listed), sorted(listed)
+    # The words of the two exceptions, each where it belongs and nowhere else.
+    assert Counter(span for span in spans if "=" not in span) == Counter(
+        {"untrusted-agent": 2, "no": 1, "wx-memory": 1, "AF_UNIX": 1}
+    ), "an exception the list should not state, or one it lacks"
+    assert "=" not in re.sub(r"`[^`]*`", "", section), "a setting outside a code span"
+    mdwe = "MemoryDenyWriteExecute"
+    families = "RestrictAddressFamilies"
+    never = "(`no` only with `wx-memory`, which `untrusted-agent` never gets)"
+    assert f"`{mdwe}={listed[mdwe]}` {never}" in section
+    assert f"`{families}={listed[families]}` (only `AF_UNIX` for `untrusted-agent`)" in section
+    assert {key for key, _ in units.BASELINE} <= set(listed)
+    keys: set[str] = set()
+    branches: Counter[str] = Counter()
+    for fixture in VALID:
+        data = manifest(fixture)
+        document = render(fixture)
+        for service in data["services"]:
+            settings = unit(document, f"{names.account(data['name'], service['name'])}.service")
+            expected = dict(listed)
+            if service["profile"] == "untrusted-agent":
+                expected[families] = "AF_UNIX"
+                branches["untrusted-agent"] += 1
+            elif "wx-memory" in service.get("relaxations", []):
+                expected[mdwe] = "no"
+                branches["wx-memory"] += 1
+            else:
+                branches["neither"] += 1
+            for key, value in expected.items():
+                assert settings.get(key) == [value], f"{fixture} {service['name']}: {key}"
+            keys |= set(settings)
+    # Every exception and the plain case are met by some service of the fixtures.
+    assert set(branches) == {"untrusted-agent", "wx-memory", "neither"}, branches
+    assert keys - set(listed) == NOT_BASELINE
+
+
 @pytest.mark.parametrize("fixture", VALID)
 def test_every_service_has_a_runtime_directory_without_sockets(fixture: str) -> None:
-    # V4 and its condition (owner decision with the "commit" for 3d.3).
+    # V4 and its condition.
     data = manifest(fixture)
     document = render(fixture)
     sockets = {layout.socket_path(s["service"], s["name"]) for s in data.get("sockets", [])}
@@ -296,7 +367,7 @@ def test_loopback_profiles_reach_only_localhost() -> None:
 
 def test_infra_internals_are_hidden() -> None:
     document = render("allprof")
-    for name in document["service_units"]:  # the agent included (§7.14)
+    for name in document["service_units"]:  # the agent included
         hidden = unit(document, name)["InaccessiblePaths"][0].split()
         for path in layout.INFRA_INTERNALS:
             assert f"-{path}" in hidden, (name, path)
@@ -341,7 +412,7 @@ def test_ordering_follows_after_and_the_facilities() -> None:
     assert brk["WantedBy"] == ["pinka-platform.target"]
 
 
-# --- sockets (§12.3) ------------------------------------------------------------------
+# --- sockets ------------------------------------------------------------------
 
 
 def test_socket_units_create_the_sockets_with_owner_group_and_mode() -> None:
@@ -377,7 +448,7 @@ def test_brk_api_acl_names_only_researchers() -> None:
     ]
 
 
-# --- the agent: no IP access, no database socket group (§16 step 17) ----------------
+# --- the agent: no IP access, no database socket group ----------------
 
 
 @pytest.mark.parametrize("fixture", VALID)
@@ -450,7 +521,7 @@ def test_the_agent_sees_only_its_allowlist(fixture: str) -> None:
 
 
 def agent_view(settings: dict[str, list[str]]) -> Callable[[str], bool]:
-    """Whether the agent's unit lets it see a path (§7.14, §12.2).
+    """Whether the agent's unit lets it see a path.
 
     The lab directories are empty, read-only file systems in its namespace
     except for what it binds; everywhere else, its inaccessible paths are
@@ -479,8 +550,8 @@ def agent_view(settings: dict[str, list[str]]) -> Callable[[str], bool]:
 
 @pytest.mark.parametrize("fixture", VALID)
 def test_nothing_outside_the_agents_set_is_visible(fixture: str) -> None:
-    # Ground-truth blindness (owner, before 3d.4 and V6 with the "commit" for
-    # 3d.4): of the active release the agent sees only its own package and
+    # Ground-truth blindness (V6):
+    # of the active release the agent sees only its own package and
     # environment; besides, its configuration, its dedicated sockets, the
     # agent telemetry socket and its own runtime and state directories.
     data = manifest(fixture)
@@ -612,7 +683,7 @@ def test_enforce_refuses(profile: str, group: str, message: str) -> None:
         accounts.enforce(data, changed)
 
 
-# --- memberships from the profiles (§6.1, §12.2) -------------------------------------
+# --- memberships from the profiles -------------------------------------
 
 
 def test_memberships_follow_the_profiles() -> None:
@@ -806,7 +877,7 @@ def test_command_line_needs_an_absolute_executable() -> None:
         units.command_line(["bin/x"])
 
 
-# --- the database plan (§12.5) -------------------------------------------------------
+# --- the database plan -------------------------------------------------------
 
 
 def test_database_plan() -> None:
@@ -840,7 +911,7 @@ def test_database_plan() -> None:
 
 
 def test_the_gpu_arbiter_reads_jobs_and_dataset_sources() -> None:
-    # §7.18: the controller publishes datasets only from its own state; a
+    # The controller publishes datasets only from its own state; a
     # job's container options are infra's, so none is rendered.
     data = render("allprof")
     training = data["training"]
@@ -859,7 +930,7 @@ def test_the_gpu_arbiter_reads_jobs_and_dataset_sources() -> None:
 
 
 def test_only_the_inference_api_profiles_are_its_clients() -> None:
-    # §7.11: the inference guard admits the controller and the inference broker.
+    # The inference guard admits the controller and the inference broker.
     data = render("allprof")
     by_name = {a["name"]: a for a in data["accounts"]}
     profiles = {by_name[a]["profile"] for a in data["inference_clients"]}

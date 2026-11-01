@@ -1,7 +1,6 @@
 # Project dictionary for cspell (one word per line, case-insensitive).
 akmod
 akmods
-albattani
 almalinux
 archlinux
 ausearch
@@ -30,6 +29,7 @@ DKMS
 dnsmasq
 docstrings
 dracut
+dropins
 EPEL
 fcontext
 FDNAMES
@@ -48,6 +48,7 @@ IOMMU
 iotop
 journalctl
 kaplan
+katex
 keyserver
 libdnf
 libexec
@@ -57,6 +58,7 @@ linuxcontainers
 lockcheck
 lockfiles
 logprobs
+lxcfs
 micromamba
 miniplat
 mkinitcpio
@@ -81,12 +83,12 @@ pgpass
 pids
 pinka
 pokus
+postrm
 potka
 prefs
 prepreflight
 preseed
 procps
-qfwwps
 qwen
 recompiles
 refplat
@@ -101,6 +103,7 @@ semanage
 setype
 simplestreams
 SLES
+smol
 SNTP
 splittable
 sysfs

@@ -1,4 +1,4 @@
-"""Definitions of the preflight fixture roots (BUILD_PROMPT §11).
+"""Definitions of the preflight fixture roots.
 
 Each fixture is a fake root (``etc/``, ``proc/``, ``sys/``, ``dev/`` ...) plus
 ``fixture.json`` (device and link metadata), ``commands.json`` (command,
@@ -51,6 +51,8 @@ class Fixture:
         data: Other ``commands.json`` sections (which, cpu_count, machine, ...).
         expected: ``expected.json`` content.
         args: Extra preflight arguments (``args.json``, written when not empty).
+        plan: The operator's choices (``plan.json``, passed as ``--plan``; written
+            when not empty), merged with the configured defaults.
     """
 
     files: dict[str, Content] = field(default_factory=dict)
@@ -62,6 +64,7 @@ class Fixture:
     data: dict[str, Any] = field(default_factory=dict)
     expected: dict[str, Any] = field(default_factory=dict)
     args: list[str] = field(default_factory=list)
+    plan: dict[str, Any] = field(default_factory=dict)
 
     def cmd(self, line: str, stdout: str = "", rc: int = 0, stderr: str = "") -> None:
         """Register a command answer."""
@@ -200,7 +203,7 @@ def system(
     *,
     kernel: str = "6.8.0-85-generic",
     threads: int = 24,
-    memory_gib: float = 32,
+    memory_gib: float = 64,
     swap_gib: float = 8,
     flags: str = "fpu vme de pse tsc msr pae mce cx8 apic sep sse sse2 ht syscall nx lm vmx",
     loaded: list[str] | None = None,
@@ -247,23 +250,28 @@ def system(
             "timedatectl timesync-status", "       Server: 192.0.2.123\n       Offset: +1.250ms\n"
         )
         f.data.update({"cpu_count": threads, "machine": "x86_64", "euid": 0, "now": NOW})
-        disks(var_lib_free=400, srv_free=500)(f)
+        disks(root_free=400, srv_free=500)(f)
 
     return apply
 
 
-def disks(var_lib_free: float, srv_free: float, fstype: str = "ext4") -> Layer:
-    """Answer ``df`` for /var/lib and /srv (free space in GiB)."""
+def disks(root_free: float, srv_free: float | None = None, fstype: str = "ext4") -> Layer:
+    """Answer ``df`` for the root file system (/, /var/lib) and /srv (free GiB).
+
+    /opt/pinka, Docker's data root and /var/lib/incus do not exist yet, so
+    preflight measures their nearest existing ancestors, / and /var/lib.
+    Without ``srv_free`` /srv is on the root file system too.
+    """
+    srv_mount = "/" if srv_free is None else "/srv"
 
     def apply(f: Fixture) -> None:
-        f.cmd(
-            "df --output=fstype,size,avail -B1 /var/lib",
-            f"Type 1B-blocks Avail\n{fstype} {1000 * GIB} {int(var_lib_free * GIB)}\n",
-        )
-        f.cmd(
-            "df --output=fstype,size,avail -B1 /srv",
-            f"Type 1B-blocks Avail\n{fstype} {1000 * GIB} {int(srv_free * GIB)}\n",
-        )
+        for path, mount, free in (("/", "/", root_free), ("/var/lib", "/", root_free),
+                                  ("/srv", srv_mount, root_free if srv_free is None else srv_free)):  # fmt: skip
+            f.cmd(
+                f"df --output=target,fstype,size,avail -B1 {path}",
+                f"Mounted on Type 1B-blocks Avail\n{mount} {fstype} {1000 * GIB} "
+                f"{int(free * GIB)}\n",
+            )
 
     return apply
 
@@ -577,7 +585,7 @@ def passwd(*accounts: tuple[str, int, str]) -> Layer:
 
 
 def ssh_session(client: str, server: str, port: int, uid: str) -> Layer:
-    """Preflight under sudo, started from an SSH login of ``uid`` (§2.2)."""
+    """Preflight under sudo, started from an SSH login of ``uid``."""
     connection = f"SSH_CONNECTION={client} 51234 {server} {port}".encode()
     return chain(
         process("self", "pinka-preflight", "session-3.scope", ppid="3100"),
@@ -611,7 +619,7 @@ def routed(network: str, dev: str = "eth0") -> Layer:
     return apply
 
 
-# ----------------------------------------------- pre-existing components (§2.2)
+# ----------------------------------------------- pre-existing components
 
 
 def docker_engine(
@@ -760,13 +768,19 @@ def listener(
     }
 
 
-def build(*layers: Layer, expected: dict[str, Any], args: list[str] | None = None) -> Fixture:
-    """Compose layers into a fixture run with the extra preflight ``args``."""
+def build(
+    *layers: Layer,
+    expected: dict[str, Any],
+    args: list[str] | None = None,
+    plan: dict[str, Any] | None = None,
+) -> Fixture:
+    """Compose layers into a fixture run with the extra preflight ``args`` and ``plan``."""
     f = Fixture()
     for layer in layers:
         layer(f)
     f.expected = expected
     f.args = list(args or [])
+    f.plan = dict(plan or {})
     return f
 
 
@@ -797,7 +811,12 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "degraded",
             "provider": "baremetal",
             "disabled": ["gpu_inference"],
-            "features": {"gpu_inference": False, "dcgm_metrics": True, "vm_targets": True},
+            "features": {
+                "gpu_inference": False,
+                "gpu_training": True,  # a job brings its own CUDA
+                "dcgm_metrics": True,
+                "vm_targets": True,
+            },
             "remediation_contains": [
                 "supports CUDA 12.8, the pinned vLLM image needs 13.0",
                 "install a driver branch that supports CUDA 13.0",
@@ -814,7 +833,12 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "degraded",
             "provider": "baremetal",
             "disabled": ["gpu_inference"],
-            "features": {"gpu_inference": False, "dcgm_metrics": True, "vm_targets": True},
+            "features": {
+                "gpu_inference": False,
+                "gpu_training": True,  # a job brings its own CUDA
+                "dcgm_metrics": True,
+                "vm_targets": True,
+            },
             "remediation_contains": [
                 "compute capability is 7.0, below 7.5",
                 "GPU inference is refused on this GPU",
@@ -837,14 +861,14 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "install_driver": "auto",
         },
     )
-    # Decision 1 after D1: with install_nvidia_driver auto, a driver is installed
+    # With install_nvidia_driver auto, a driver is installed
     # only for a GPU the pinned release's open kernel module supports.
     no_driver = [*base_ubuntu, baremetal(), kvm()]
     unsupported_gpu = {
         "outcome": "degraded",
         "provider": "baremetal",
         "needs_action": [],
-        "disabled": ["gpu_inference"],
+        "disabled": ["gpu_inference", "gpu_training"],
         "open_module_drivers": [],
         "install_driver": "auto",
     }
@@ -878,7 +902,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
     supported_gpu = {
         "outcome": "degraded",
         "needs_action": [],
-        "disabled": ["gpu_inference"],
+        "disabled": ["gpu_inference", "gpu_training"],
         "pci_device": "10de:1e04",
         "open_module_drivers": OPEN_DRIVERS,
         "proprietary_only_drivers": [],
@@ -912,7 +936,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             nvidia_pci("none", devid=RTX_2080_TI_DEVID),
             expected={**supported_gpu, "provider": "baremetal", "family": family},
         )
-    # Approved deviation I1: the same host with the operator's choices.
+    # The same host with the operator's choices.
     secureboot = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("none"), secure_boot_enabled]
     fx["ubuntu2404-baremetal-nvidia-no-driver-secureboot-consent"] = build(
         *secureboot,
@@ -923,7 +947,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "needs_action": [],
             "planned_actions": ["secure_boot_mok"],
             "warnings_contain": ["planned action secure_boot_mok"],
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference", "gpu_training"],
             "secure_boot": "enabled",
             "install_driver": "auto",
             "overrides_on": ["accept_mok_enrollment"],
@@ -949,7 +973,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "provider": "baremetal",
             "needs_action": [],
             "planned_actions": [],
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference", "gpu_training"],
             "install_driver": "skip",
         },
     )
@@ -960,7 +984,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         expected={
             "outcome": "degraded",
             "provider": "baremetal",
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference", "gpu_training"],
             "features": {"gpu_inference": False, "vm_targets": True},
         },
     )
@@ -989,7 +1013,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "features": {"gpu_inference": True, "vm_targets": True, "btrfs_pool": True},
         },
     )
-    # BUILD_PROMPT §2.2: a driver whose CUDA version is below the pinned vLLM
+    # A driver whose CUDA version is below the pinned vLLM
     # image's makes gpu_inference unavailable; WSL2 points to Windows.
     fx["ubuntu2404-wsl2-gpu-old-driver"] = build(
         *base_ubuntu,
@@ -1000,7 +1024,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "degraded",
             "provider": "wsl2",
             "env_class": "wsl2",
-            "disabled": ["gpu_inference"],
+            "disabled": ["gpu_inference"],  # the GPU still trains
             "features": {"gpu_inference": False, "vm_targets": True},
             "remediation_contains": [
                 "supports CUDA 12.7, the pinned vLLM image needs 13.0",
@@ -1290,7 +1314,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "conflicts": [],
         },
     )
-    # BUILD_PROMPT §2.2, §12.11: a lab port taken by another program, and a VM
+    # A lab port taken by another program, and a VM
     # collector address another network already routes.
     fx["ubuntu2404-lab-port-in-use"] = build(
         *base_ubuntu,
@@ -1353,16 +1377,232 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("loaded"),
         expected={"outcome": "unsupported", "unsupported_contains": ["cgroup2_unified"]},
     )
+    # Memory thresholds, each just below and just above
+    # 0.94 times its nominal value. The numbers follow preflight/requirements.yml and
+    # the incus role's profiles; test_requirements.py checks them.
     fx["ubuntu2404-low-memory"] = build(
         UBUNTU_2404,
-        system(memory_gib=8),
+        system(memory_gib=7.51),  # floor 8 GiB: 7.52 GiB
         apparmor,
         baremetal(),
         kvm(),
         nvidia_pci("loaded"),
-        expected={"outcome": "unsupported", "unsupported_contains": ["memory_gib"]},
+        expected={"outcome": "unsupported", "unsupported_contains": ["below the floor of 8 GiB"]},
     )
-    # BUILD_PROMPT §2.2, §7.4, §7.6, §7.7: components that existed before pinka
+    # The defaults require the floor; with a GPU they recommend 13.2 GiB for the
+    # rest and a training job at the computed cap, here its floor of 4 GiB.
+    fx["ubuntu2404-memory-above-floor"] = build(
+        UBUNTU_2404,
+        system(memory_gib=7.53),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["below the 17.2 GiB recommended", "a training job 4.0 GiB"],
+            "switches": {"training.memory_max": "4G", "training.memory_max_basis": "computed"},
+        },
+    )
+    # Four targets require 10.1 GiB: 9.49 GiB at the tolerance.
+    four_targets = {"concurrent_targets": 4}
+    fx["ubuntu2404-memory-below-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=9.48),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan=four_targets,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": ["below the 10.1 GiB these choices require",
+                                     "incus_concurrent_targets 3"],
+        },
+    )  # fmt: skip
+    fx["ubuntu2404-memory-above-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=9.51),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan=four_targets,
+        expected={"outcome": "degraded", "degraded_contains": ["recommended for these choices"]},
+    )
+    # With a GPU the defaults recommend 13.2 GiB for the rest (VM targets) and a
+    # training job at the computed cap (MemTotal minus the rest, 4 to 24 GiB):
+    # below 17.2 GiB the cap is its floor, 17.2 GiB at the tolerance is 16.17 GiB.
+    fx["ubuntu2404-memory-below-recommended"] = build(
+        UBUNTU_2404,
+        system(memory_gib=16.16),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["training_caps.memory_max 3G", "training: off"],
+        },
+    )
+    fx["ubuntu2404-memory-above-recommended"] = build(
+        UBUNTU_2404,
+        system(memory_gib=16.18),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={"outcome": "supported", "switches": {"training.memory_max": "4G"}},
+    )
+    # Above it the cap follows the host: 31.25 GiB (a nominal 32 GiB machine)
+    # leaves 18 GiB for a job, and the recommended value still fits.
+    fx["ubuntu2404-training-cap-computed"] = build(
+        UBUNTU_2404,
+        system(memory_gib=31.25),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={
+            "outcome": "supported",
+            "switches": {"training.runs": "gpu", "training.memory_max": "18G"},
+        },
+    )
+    # An explicit cap wins over the computed one.
+    fx["ubuntu2404-training-cap-configured"] = build(
+        UBUNTU_2404,
+        system(memory_gib=31.2),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan={"training": {"mode": "auto", "memory_max_gib": 24, "run_storage_max_gib": 16}},
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["training_caps.memory_max 19G", "training: off"],
+            "switches": {"training.memory_max": "24G", "training.memory_max_basis": "configured"},
+        },
+    )
+    # A served model of 5.7 GiB: vLLM needs its files and 3 GiB, 15.8 GiB in
+    # all (14.85 GiB at the tolerance); a nominal 16 GiB machine passes.
+    model = {
+        "model": {
+            "id": "example-model",
+            "hf_repo": "example-org/example-model",
+            "revision": "0" * 40,
+            "size_bytes": int(5.7 * GIB),
+        }
+    }
+    fx["ubuntu2404-gpu-model-below-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=14.84),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan=model,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": ["vLLM serving example-model", "a model of at most 5.7 GiB"],
+        },
+    )
+    fx["ubuntu2404-gpu-model-above-required"] = build(
+        UBUNTU_2404,
+        system(memory_gib=14.86),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan=model,
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": ["vLLM serving example-model or a training job 10.7 GiB"],
+        },
+    )
+    # The switches: a GPU host with inference and training off counts
+    # neither, and a host without a GPU is not degraded for features switched off.
+    switched_off = {
+        "inference": "off",
+        "training": {"mode": "off", "memory_max_gib": None, "run_storage_max_gib": 16},
+    }
+    fx["ubuntu2404-gpu-switched-off"] = build(
+        UBUNTU_2404,
+        system(memory_gib=13.0),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan={**switched_off, **model},
+        expected={
+            "outcome": "supported",
+            "features": {"gpu_inference": True, "gpu_training": True},
+            "switches": {"inference.serves": False, "training.runs": "off"},
+        },
+    )
+    fx["ubuntu2404-no-gpu-switched-off"] = build(
+        UBUNTU_2404,
+        system(memory_gib=13.0),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan=switched_off,
+        expected={
+            "outcome": "supported",
+            "disabled": [],
+            "notes_contain": ["not used: inference: off", "not used: training: off"],
+        },
+    )
+    # training: cpu runs the CPU-only variant without a GPU, and counts it.
+    fx["ubuntu2404-no-gpu-training-cpu"] = build(
+        UBUNTU_2404,
+        system(memory_gib=13.0),
+        apparmor,
+        baremetal(),
+        kvm(),
+        plan={"training": {"mode": "cpu", "memory_max_gib": None, "run_storage_max_gib": 16}},
+        expected={
+            "outcome": "degraded",
+            "disabled": ["gpu_inference"],
+            "degraded_contains": ["a training job (CPU-only variant) 4.0 GiB", "training: off"],
+            "switches": {"training.runs": "cpu", "training.memory_max": "4G"},
+        },
+    )
+    # Disk known at install: the 300 GiB loop pool on a root file system with
+    # 100 GiB free, and the model on a research space with 3 GiB free.
+    fx["ubuntu2404-disk-shortfall"] = build(
+        UBUNTU_2404,
+        system(),
+        disks(root_free=100, srv_free=3),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        plan={**model, "pool": {"source": "loop", "size_gib": 300}},
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /",
+                "model example-model: 5.7 GiB, missing 5.7 GiB on /srv",
+            ],
+        },
+    )
+    # incus_pool_size: auto on one file system: the golden images and two
+    # VM targets with their probe clients, + 50 %, is 66 GiB with 144 or 386 GiB
+    # free; with 60 GiB free the space left after pinka's other needs (14.6 GiB
+    # at install, 15.3 GiB of stores at their retention) sets the 30 GiB floor.
+    for free, size in ((144, 66), (386, 66), (60, 30)):
+        fx[f"ubuntu2404-pool-auto-{free}"] = build(
+            UBUNTU_2404,
+            system(),
+            disks(root_free=free),
+            apparmor,
+            baremetal(),
+            kvm(),
+            expected={
+                "outcome": "degraded",
+                "disabled": ["gpu_inference", "gpu_training"],
+                "pool": {"size_gib": size, "basis": "computed"},
+            },
+        )
+    # Components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with
     # them unchanged.
     host = [*base_ubuntu, baremetal(), kvm(), nvidia_pci("loaded")]
@@ -1392,7 +1632,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "notes_contain": ["pinka uses the node as it is"],
         },
     )
-    # BUILD_PROMPT §2.2 "Pre-existing access", §7.5, §11: what was reachable
+    # Pre-existing access: what was reachable
     # before the install, the access path of the session, dedicated or shared.
     lan_sshd = [
         sockets(("tcp", "00000000", 22, "50001"), ("tcp6", "0" * 32, 22, "50002")),
@@ -1567,6 +1807,8 @@ def write_fixture(name: str, f: Fixture, base: str = FIXTURES_DIR) -> None:
     ]
     if f.args:
         files.append(("args.json", f.args))
+    if f.plan:
+        files.append(("plan.json", {"schema_version": 1, **f.plan}))
     for fname, data in files:
         with open(os.path.join(root, fname), "w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=2, sort_keys=True)

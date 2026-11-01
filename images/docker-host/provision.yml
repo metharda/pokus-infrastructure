@@ -1,6 +1,6 @@
 # Managed by pinka (images/docker-host/provision.yml). Local changes will be overwritten.
 #
-# Docker Engine and the containerized web service (BUILD_PROMPT §7.13), on
+# Docker Engine and the containerized web service, on
 # top of `_base`. Variables: target_images (versions.lock.yml
 # containers.target_images of image.docker_images).
 - name: Provision the Docker host blueprint

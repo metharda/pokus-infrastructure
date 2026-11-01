@@ -1,6 +1,6 @@
 # vllm
 
-vLLM for the lab (BUILD_PROMPT §7.11, `docs/contracts.md#inference`),
+vLLM for the lab (`docs/contracts.md#inference`),
 applied with `gpu_inference` on `full` and `inference` nodes:
 
 - Compose project `inference` with the pinned `vllm/vllm-openai` image, host
@@ -14,7 +14,7 @@ applied with `gpu_inference` on `full` and `inference` nodes:
 - deployments `/etc/pinka/vllm/deployments/<id>@<version>.yml` (immutable;
   `adapter_ids` names registered adapters as `<name>@<sha256>`);
   `current.yml` links the active one; the GPU arbiter
-  (`ansible/roles/gpu_arbiter`, BUILD_PROMPT §7.18) renders `current.yaml`
+  (`ansible/roles/gpu_arbiter`) renders `current.yaml`
   (the `vllm serve --config` file) and `current.env` and is the only way
   vLLM starts: `pinka-inference.service` is installed disabled;
 - the default deployment from `vllm_default_deployment` (tool-call parser

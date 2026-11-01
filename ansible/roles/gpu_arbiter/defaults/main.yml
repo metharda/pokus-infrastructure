@@ -2,7 +2,7 @@
 
 # The account allowed besides root on the arbiter's socket: the control
 # endpoint's account on an inference node, the active platform's controller
-# elsewhere, root without one (BUILD_PROMPT §7.18).
+# elsewhere, root without one.
 gpu_arbiter_peer: >-
   {{ inference_control_account if node_role == 'inference'
      else ((active_platform | default({}, true)).controller | default('root', true)) }}

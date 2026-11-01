@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/docker/tasks/main.yml). Local changes will be overwritten.
 #
-# Docker Engine with the Compose v2 plugin and buildx (BUILD_PROMPT §7.6).
-# A Docker Engine that existed before pinka (preflight's components, §2.2) is
+# Docker Engine with the Compose v2 plugin and buildx.
+# A Docker Engine that existed before pinka (preflight's components) is
 # used as it is: pinka never installs, pins, holds, configures or restarts
 # it; preflight has stopped where the lab could not run with it unchanged
 # (not running, a plugin missing, CDI off with a GPU). Otherwise install.yml

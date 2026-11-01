@@ -23,6 +23,10 @@ argument_specs:
         type: str
         default: 90d
         description: Prometheus retention.
+      observability_prometheus_retention_size:
+        type: raw
+        default: 0
+        description: Prometheus retention by size (such as 50GB, powers of 2); 0 is by time only.
       observability_loki_retention:
         type: str
         default: 2160h

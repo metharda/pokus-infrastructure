@@ -15,15 +15,20 @@
       "stderr": "",
       "stdout": ""
     },
-    "df --output=fstype,size,avail -B1 /srv": {
+    "df --output=target,fstype,size,avail -B1 /": {
       "rc": 0,
       "stderr": "",
-      "stdout": "Type 1B-blocks Avail\next4 1073741824000 536870912000\n"
+      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 429496729600\n"
     },
-    "df --output=fstype,size,avail -B1 /var/lib": {
+    "df --output=target,fstype,size,avail -B1 /srv": {
       "rc": 0,
       "stderr": "",
-      "stdout": "Type 1B-blocks Avail\next4 1073741824000 429496729600\n"
+      "stdout": "Mounted on Type 1B-blocks Avail\n/srv ext4 1073741824000 536870912000\n"
+    },
+    "df --output=target,fstype,size,avail -B1 /var/lib": {
+      "rc": 0,
+      "stderr": "",
+      "stdout": "Mounted on Type 1B-blocks Avail\n/ ext4 1073741824000 429496729600\n"
     },
     "stat -f -c %T /sys/fs/cgroup": {
       "rc": 0,

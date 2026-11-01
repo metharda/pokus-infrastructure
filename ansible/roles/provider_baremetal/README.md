@@ -1,13 +1,13 @@
 # provider_baremetal
 
-Bare-metal provider (BUILD_PROMPT §3.2).
+Bare-metal provider.
 
 - **NVIDIA driver** (`install_nvidia_driver`): `auto` installs the pinned
   driver of the family (`component-sources.yml` `nvidia_driver`, versions from
   `versions.lock.yml`), blacklists nouveau and rebuilds the initramfs; `manual`
   expects a loaded driver and otherwise stops with signal 77; `skip` ignores
   the GPU. Community sources (RPM Fusion) need `--allow-community-repos`.
-- **Secure Boot** (approved deviation I1): a pending MOK enrollment stops the
+- **Secure Boot**: a pending MOK enrollment stops the
   play with signal 76 (reboot, enroll the MOK at the blue MOK Manager screen,
   re-run). When the driver is not usable and the module signing key
   (`provider_baremetal_mok_keys`, first that exists) is neither enrolled nor
@@ -23,7 +23,7 @@ Bare-metal provider (BUILD_PROMPT §3.2).
   `pinka-sleep-inhibit.service`, which `pinka-lab.target` pulls in;
   `os_default` changes nothing.
 
-The Incus storage device is handled by the incus role (BUILD_PROMPT §13.1).
+The Incus storage device is handled by the incus role.
 `provider_vm` reuses the `nvidia`, `power` and `reboot` task files.
 
 ## Variables

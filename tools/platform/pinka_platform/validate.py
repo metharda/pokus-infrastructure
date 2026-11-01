@@ -1,4 +1,4 @@
-"""Validate a platform release: manifest, names, invariants and files (§7.14 step 4)."""
+"""Validate a platform release: manifest, names, invariants and files."""
 
 from __future__ import annotations
 
@@ -176,7 +176,7 @@ def summary(manifest: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
 
 
 def caps_warnings(manifest: Mapping[str, Any], caps: Mapping[str, Any]) -> list[str]:
-    """The jobs whose resources exceed this host's ``training_caps`` (§7.18, §8.1).
+    """The jobs whose resources exceed this host's ``training_caps``.
 
     The contract's own caps refuse a manifest; the host's are lower and only
     warned about here, because the GPU arbiter refuses every run of such a
@@ -185,17 +185,18 @@ def caps_warnings(manifest: Mapping[str, Any], caps: Mapping[str, Any]) -> list[
     Args:
         manifest: A valid manifest.
         caps: The host's ``training_caps`` (``memory_max``, ``cpus``,
-            ``timeout_seconds``); a cap left out is not compared.
+            ``timeout_seconds``); a cap left out is not compared, nor is
+            ``memory_max: auto``, which preflight computes on the host
+            (the play passes the computed value).
 
     Returns:
         One line per job and resource over the host's cap.
     """
     out = []
+    memory = str(caps.get("memory_max", "auto"))
     for job in manifest.get("jobs", []):
         res, name = job["resources"], job["name"]
-        if "memory_max" in caps and size_bytes(res["memory_max"]) > size_bytes(
-            str(caps["memory_max"])
-        ):
+        if memory != "auto" and size_bytes(res["memory_max"]) > size_bytes(memory):
             out.append(f"job {name}: memory_max {res['memory_max']} > {caps['memory_max']}")
         if "cpus" in caps and float(res["cpus"]) > float(caps["cpus"]):
             out.append(f"job {name}: cpus {res['cpus']} > {caps['cpus']}")

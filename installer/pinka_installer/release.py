@@ -1,4 +1,4 @@
-"""The platform release of the answers, inspected with the platform tool (BUILD_PROMPT §18.4).
+"""The platform release of the answers, inspected with the platform tool.
 
 Screen 12 knows only the release's source at first: :func:`inspect` with
 ``full=False`` fetches and validates the release alone and reports what it

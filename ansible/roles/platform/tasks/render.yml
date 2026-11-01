@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/render.yml). Local changes will be overwritten.
 #
-# §7.14 step 7: everything rendered from the profiles, applied with ordinary
+# The render step: everything rendered from the profiles, applied with ordinary
 # modules. The deployment tool computes it (accounts, groups, directories,
 # configuration and secret files, units, the database plan with its SQL, the
 # Incus certificates, the signing key, the run-network helper's socket owner,
@@ -28,7 +28,7 @@
   changed_when: false
   failed_when: false
 
-# §7.14 step 8, before anything the running release uses changes: a new
+# The switch, before anything the running release uses changes: a new
 # release or new content drains and stops it first. A replaced platform was
 # drained by retire.yml; only its target is left to stop.
 - name: Drain and stop the running release before it changes
@@ -47,9 +47,9 @@
   loop: "{{ active_platform.groups }}"
 
 # The memberships follow from the profiles only; the tool refuses any that
-# §12.4 forbids (the agent and training jobs never join pinka-restricted,
+# the contract forbids (the agent and training jobs never join pinka-restricted,
 # the database socket group or pinka-query).
-# UIDs from the platform range (pinka_platform_uids, §7.9 option b): the
+# UIDs from the platform range (pinka_platform_uids): the
 # telemetry guard drops their connections to the telemetry backends.
 - name: Create the platform's accounts
   ansible.builtin.user:
@@ -106,7 +106,7 @@
   register: platform_secrets_written
   no_log: true
 
-- name: Install the QA keys trusted for attestations (§12.10)
+- name: Install the QA keys trusted for attestations
   ansible.builtin.copy:
     content: "{{ item.pem }}"
     dest: "/etc/pinka/qa/trusted-keys/{{ item.name }}.pem"
@@ -117,7 +117,7 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Write the principals and endpoints files (§12.3)
+- name: Write the principals and endpoints files
   ansible.builtin.command:
     argv: ["{{ platform_tool }}", deploy, principals, --run, "{{ platform_plan.run_dir }}"]
   register: platform_principals

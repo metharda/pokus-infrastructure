@@ -318,7 +318,7 @@ def role_variables(**extra: Any) -> dict[str, Any]:
     )
 
 
-def test_backed_up_paths_follow_the_specification() -> None:
+def test_an_sftp_repository_backs_up_exactly_the_lab_paths_without_the_secrets() -> None:
     variables = role_variables(
         vault_restic_repository="sftp:backup@backup.example.com:/srv/restic/lab"
     )
@@ -504,20 +504,18 @@ def restore_names() -> list[str]:
 
 def test_restore_drains_first_and_starts_the_platform_last() -> None:
     names = restore_names()
-    assert names.index("Drain and stop the platform (§12.9)") < names.index("Stop the lab")
+    assert names.index("Drain and stop the platform") < names.index("Stop the lab")
     assert names.index("Load the newest PostgreSQL dump") < names.index(
         "Redeploy the platform the snapshot recorded"
     )
-    assert names.index("Deploy the recorded release and content (§7.15)") < names.index(
-        "Start the lab"
-    )
+    assert names.index("Deploy the recorded release and content") < names.index("Start the lab")
     assert names[-1] == "Start the platform and wait for its health hook"
-    drain = play_task(ANSIBLE / "restore.yml", "Drain and stop the platform (§12.9)")
+    drain = play_task(ANSIBLE / "restore.yml", "Drain and stop the platform")
     assert drain["ansible.builtin.include_role"] == {"name": "platform", "tasks_from": "stop"}
 
 
 def test_restore_checks_the_recorded_platform_before_it_changes_anything() -> None:
-    # Owner decision with the "commit" for 3d.4: a commit the mirror lost, a
+    # A commit the mirror lost, a
     # moved tag or another tree refuses the restore before the drain.
     plays = load_yaml(ANSIBLE / "restore.yml")
     top = [t["name"] for play in plays for t in play.get("tasks", [])]
@@ -537,8 +535,8 @@ def test_restore_checks_the_recorded_platform_before_it_changes_anything() -> No
 @pytest.mark.parametrize(
     ("release", "signed", "ref"),
     [
-        # Exactly the recorded commit and tree (owner decision with the "commit"
-        # for 3d.4); the recorded tag only where signed tags are required.
+        # Exactly the recorded commit and tree;
+        # the recorded tag only where signed tags are required.
         ({"tag": "v1.2.0", "commit": "a" * 40, "tree": "c" * 40}, False, "a" * 40),
         ({"tag": None, "commit": "a" * 40, "tree": "c" * 40}, False, "a" * 40),
         ({"tag": "v1.2.0", "commit": "a" * 40, "tree": "c" * 40}, True, "v1.2.0"),

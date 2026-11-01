@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/mac/tasks/main.yml). Local changes will be overwritten.
 #
-# Mandatory access control (BUILD_PROMPT §19.7). SELinux is never set to
+# Mandatory access control. SELinux is never set to
 # permissive or disabled: the research space gets persistent file context
 # rules instead. AppArmor stays as shipped (Docker and Incus bring their own
 # profiles). The MAC system and mode are part of the fingerprint.

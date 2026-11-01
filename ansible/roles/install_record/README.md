@@ -1,7 +1,7 @@
 # install_record
 
-Runs right after `preflight_gate`, before any change to the host
-(BUILD_PROMPT §7.21). It writes `/var/lib/pinka/install-record.json` (0600
+Runs right after `preflight_gate`, before any change to the host.
+It writes `/var/lib/pinka/install-record.json` (0600
 root) once, at the first install, with what existed before pinka:
 
 - the components preflight found (`host_profile.components`: Docker Engine,
@@ -11,7 +11,7 @@ root) once, at the first install, with what existed before pinka:
   accounts and the groups with their members;
 - the content of every file in `install_record_managed_files` that already
   existed, so that uninstall can restore what pinka edited;
-- the access to the host (`host_profile.access`, BUILD_PROMPT §7.5): the
+- the access to the host (`host_profile.access`): the
   listeners outside loopback, the firewall manager, the login accounts that
   are not pinka's, dedicated or shared, and the install's session.
 
@@ -25,7 +25,7 @@ with the owner's consent (`closed_access`: `tcp/8080`, `install_path`).
 `state: remove` takes a listener out of `closed_access` when the owner no
 longer wants it closed, and nothing else. Preflight reads the record to
 tell a component pinka installed from one that was there before; uninstall
-(§5.4) removes only the added part.
+removes only the added part.
 
 On a host that pinka provisioned before the record existed
 (`/etc/pinka/bootstrap-state.json` is present) the record is marked

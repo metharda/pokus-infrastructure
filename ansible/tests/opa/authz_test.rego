@@ -46,7 +46,7 @@ test_paths_cannot_walk_out_of_the_tree if {
 	not authz.allow with input as {"method": "GET", "path": ["health", ".."]}
 }
 
-# Q7: exactly the two decision paths, nothing above, below or beside them.
+# Exactly the two decision paths, nothing above, below or beside them.
 test_only_the_two_decision_paths_are_allowed if {
 	not authz.allow with input as {"method": "GET", "path": ["v1", "data", "demo"]}
 	not authz.allow with input as {"method": "POST", "path": ["v1", "data", "demo", "action"]}

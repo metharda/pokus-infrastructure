@@ -1,6 +1,6 @@
 # Managed by pinka (compose/core/compose.yml). Local changes will be overwritten.
 #
-# Core services (BUILD_PROMPT §7.8, §7.10, contracts.md): PostgreSQL on Unix
+# Core services (contracts.md): PostgreSQL on Unix
 # sockets only (the container has no network; Grafana and the exporter use the
 # sockets too) and OPA on 127.0.0.1. Variables come from .env,
 # written by the compose role: images pinned by digest, ports, paths, and the
@@ -9,8 +9,8 @@
 name: pinka-core
 
 # Settings every lab container gets here rather than from the Docker daemon,
-# so they are the same on a Docker that existed before pinka (BUILD_PROMPT
-# §7.6): the local log driver with size limits and the lab services' slice.
+# so they are the same on a Docker that existed before pinka:
+# the local log driver with size limits and the lab services' slice.
 x-logging: &logging
   driver: local
   options:
@@ -81,7 +81,7 @@ services:
     container_name: pinka-opa
     restart: unless-stopped
     # Authorization on: /config/authz.rego (package system.authz) allows only
-    # the two decision queries and health checks (§7.10). The deny-all
+    # the two decision queries and health checks. The deny-all
     # placeholder is always loaded; ./policy is a symbolic link to the active
     # platform's policy bundle or to an empty directory (opa role); Docker
     # resolves it when the container starts.
@@ -110,7 +110,7 @@ services:
       options: {tag: pinka-opa}
 
 # OPA's network: an explicit subnet from pinka's own pool, not from the
-# Docker daemon's address pools (BUILD_PROMPT §7.6).
+# Docker daemon's address pools.
 networks:
   default:
     ipam:

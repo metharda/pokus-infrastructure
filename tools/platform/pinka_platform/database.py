@@ -1,4 +1,4 @@
-"""The platform database: roles, schemas and the restricted-schema check (§7.8, §12.5).
+"""The platform database: roles, schemas and the restricted-schema check.
 
 Two SQL scripts per platform, run by psql as the superuser:
 
@@ -17,7 +17,7 @@ Two SQL scripts per platform, run by psql as the superuser:
   functions of allowed roles outside it, and every role membership through
   which a role outside the allowed set reaches it; revokes all of them and
   prints one line per violation, ``pinka-violation: <what>``. A violation
-  fails the deployment (§7.8), even though it is revoked. ``PUBLIC``'s
+  fails the deployment, even though it is revoked. ``PUBLIC``'s
   default ``EXECUTE`` on functions in the schema is revoked as a change, not
   a violation.
 
@@ -41,7 +41,7 @@ HEADER = (
 SCHEMA = "restricted"
 CHANGED = "pinka-changed:"
 VIOLATION = "pinka-violation:"
-# Profiles whose roles may use schema restricted (§12.4).
+# Profiles whose roles may use schema restricted.
 RESTRICTED_PROFILES = ("controller", "restricted-operator", "restricted-reader")
 
 
@@ -143,7 +143,7 @@ def bootstrap_sql(db: Mapping[str, Any]) -> str:
     )
     return f"""{HEADER.format(platform=p)}
 --
--- Bootstrap of the database of platform {p} (BUILD_PROMPT §7.8, §12.5).
+-- Bootstrap of the database of platform {p}.
 \\set ON_ERROR_STOP on
 
 DO $roles$
@@ -255,7 +255,7 @@ def restricted_check_sql(db: Mapping[str, Any]) -> str:
     allowed = _array(db["restricted_allowed"])
     return f"""{HEADER.format(platform=p)}
 --
--- The restricted-schema check of platform {p} (BUILD_PROMPT §7.8, §12.4): run
+-- The restricted-schema check of platform {p}: run
 -- after every migration. Each finding is revoked and reported as a violation.
 \\set ON_ERROR_STOP on
 

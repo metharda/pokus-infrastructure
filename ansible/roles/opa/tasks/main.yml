@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/opa/tasks/main.yml). Local changes will be overwritten.
 #
-# OPA in the core Compose project (BUILD_PROMPT §7.10) on 127.0.0.1:8181 with
+# OPA in the core Compose project on 127.0.0.1:8181 with
 # --authorization=basic: authz.rego allows only the two decision paths (the
 # active platform's, from its manifest, and /v1/data/pinka/placeholder/active)
 # and health checks. The deny-all placeholder is always loaded (doctor's

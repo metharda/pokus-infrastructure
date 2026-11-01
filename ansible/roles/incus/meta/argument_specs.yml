@@ -11,7 +11,7 @@ argument_specs:
       host_profile:
         type: dict
         required: true
-        description: Host profile (storage_backend, hardware) passed by bootstrap.
+        description: Host profile (storage_backend, hardware, requirements.pool) passed by bootstrap.
       pinka_bootstrap:
         type: dict
         required: true
@@ -31,8 +31,11 @@ argument_specs:
         description: A loop file in the root filesystem, or a dedicated device.
       incus_pool_size:
         type: str
-        default: 300GiB
-        description: Size of a loop pool.
+        default: auto
+        description: >-
+          Size of a loop pool, such as 300GiB, or auto: the size preflight computed from the golden
+          images, the concurrent targets' root disks and the free space (host profile
+          requirements.pool). An existing pool keeps its size.
       incus_pool_device:
         type: str
         default: ""
@@ -69,9 +72,13 @@ argument_specs:
         type: int
         default: 4
         description: Most VMs at once in the bench and build projects (with the vm_targets feature).
+      incus_concurrent_targets:
+        type: int
+        default: 2
+        description: Targets that run at once; they size the bench project's memory and the memory preflight requires.
       incus_bench_limits:
         type: dict
-        description: Project limits of bench (derived from the host's memory and CPUs, or from cpuset_targets).
+        description: Project limits of bench (memory from the concurrent targets, CPUs from cpuset_targets or the host's CPUs).
       incus_target_container:
         type: dict
         default: {cpu: "1", memory: 1GiB, root_size: 8GiB}

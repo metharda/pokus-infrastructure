@@ -1,0 +1,11 @@
+{
+  "features": {
+    "gpu_inference": true,
+    "gpu_training": true
+  },
+  "outcome": "supported",
+  "switches": {
+    "inference.serves": false,
+    "training.runs": "off"
+  }
+}

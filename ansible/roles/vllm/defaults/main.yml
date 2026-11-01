@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/vllm/defaults/main.yml). Local changes will be overwritten.
 
-# Serving profile of this host (vllm/profiles/<name>.yml, BUILD_PROMPT §8.1).
+# Serving profile of this host (vllm/profiles/<name>.yml).
 vllm_profile: ada-12g
 # Deployment to serve after installation, or null to install vLLM without
 # serving (doctor then warns "inference: no deployment"). Keys: model_id (from

@@ -11,7 +11,7 @@ description: Where each host component comes from on each distribution, and what
 
 # Component sources
 
-Generated from `ansible/component-sources.yml` (BUILD_PROMPT §19.4). A source group is the distribution itself, or for derivatives their parent: `rhel_like` covers RHEL, AlmaLinux, Rocky Linux, CentOS Stream and Oracle Linux, `opensuse` covers Leap, Tumbleweed and SLES. `default` applies to every group without its own row. Package versions are pinned per release in [Pinned versions](versions.md); repository keys are fetched and checked against the fingerprints listed there. Entries marked *unverified* are refused by the play until someone verifies them.
+Generated from `ansible/component-sources.yml`. A source group is the distribution itself, or for derivatives their parent: `rhel_like` covers RHEL, AlmaLinux, Rocky Linux, CentOS Stream and Oracle Linux, `opensuse` covers Leap, Tumbleweed and SLES. `default` applies to every group without its own row. Package versions are pinned per release in [Pinned versions](versions.md); repository keys are fetched and checked against the fingerprints listed there. Entries marked *unverified* are refused by the play until someone verifies them.
 
 ## docker
 

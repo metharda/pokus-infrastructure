@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/pinka/contract/v2/records/active-platform.schema.json",
   "title": "active.json",
-  "description": "The active platform of the lab, /etc/pinka/platform/active.json (contract v2, BUILD_PROMPT \u00a77.14 \"One platform per lab\", \u00a712.10). Written by infra when a deployment is switched on; 0644 root.",
+  "description": "The active platform of the lab, /etc/pinka/platform/active.json (contract v2). Written by infra when a deployment is switched on; 0644 root.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -1,6 +1,6 @@
 # incus
 
-Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
+Incus for benchmark targets and personal sandboxes:
 
 - **Install:** the LTS line (6.0) from the source of
   `ansible/component-sources.yml` (Zabbly's repository on Debian and Ubuntu,
@@ -12,7 +12,7 @@ Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
   `--adopt-incus`; `/etc/pinka/managed-incus` marks a Pokus Infrastructure (pinka) installation.
 - **Storage:** one pool `pinka-targets`, btrfs or LVM thin as preflight
   decided, on a loop file (`incus_pool_size`) or a dedicated device. A device
-  is formatted only after the checks of safety invariant 1: the confirmation
+  is formatted only after these checks: the confirmation
   variable repeats the device, nothing is mounted, no signature
   (`wipefs --no-act`, `lsblk`) unless `incus_pool_device_force_wipe`, and an
   interactive confirmation after showing model, size and serial.
@@ -22,7 +22,8 @@ Incus for benchmark targets and personal sandboxes (BUILD_PROMPT §7.7):
   everything that leaves a run bridge (to the host, to other run networks, to
   the outside) is rejected except Incus's DHCP and DNS.
 - **Projects:** `bench` (restricted; nesting, proxy devices and snapshots
-  allowed; VMs only with `vm_targets`; limits from the host's size), `build`
+  allowed; VMs only with `vm_targets`; its memory from
+  `incus_concurrent_targets`, each target with a probe client), `build`
   (restricted to `pinka-build0`), and `user-<uid>` per researcher with the
   restrictions incus-user would set, resource limits and no GPU. Pokus Infrastructure creates
   the personal projects in advance because incus-user sets no limits and

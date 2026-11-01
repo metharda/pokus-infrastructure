@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # Managed by pinka (bootstrap/lib/log.sh). Local changes will be overwritten.
 #
-# Logging with UTC timestamps (BUILD_PROMPT §14) and the JSON event stream for
-# the installer TUI (BUILD_PROMPT §18.5): when PINKA_EVENTS_FILE is set, every
+# Logging with UTC timestamps and the JSON event stream for
+# the installer TUI: when PINKA_EVENTS_FILE is set, every
 # stage start, stage end and bootstrap signal is appended as one JSON line.
 
 utc_now() {
@@ -57,7 +57,8 @@ emit_event() {
   if [[ -n $message ]]; then
     line+=$(printf ',"message":"%s"' "$(json_escape "$message")")
   fi
-  printf '%s}\n' "$line" >>"$PINKA_EVENTS_FILE"
+  # An event that cannot be written never stops bootstrap.
+  printf '%s}\n' "$line" 2>/dev/null >>"$PINKA_EVENTS_FILE" || true
 }
 
 # stage_begin NAME / stage_end NAME STATUS [CODE] [MESSAGE]: log and emit.

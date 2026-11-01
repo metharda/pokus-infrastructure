@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/postgres/tasks/platform.yml). Local changes will be overwritten.
 #
-# The active platform's database (BUILD_PROMPT §7.8, §12.5), run by the
+# The active platform's database, run by the
 # platform role with a fresh rendering (active_platform.database): the socket
 # directory's group and pg_hba.conf for its roles, the password files from the
 # vault, the bootstrap SQL (database, login and group roles, the migrator as

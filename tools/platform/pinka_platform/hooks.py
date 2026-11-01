@@ -1,4 +1,4 @@
-"""The platform's hooks (BUILD_PROMPT §12.9).
+"""The platform's hooks.
 
 Infra drives a platform only through four hooks, commands inside its release:
 ``migrate`` (at deployment, before the new release starts), ``reconcile`` (at
@@ -268,7 +268,7 @@ def exec_hook(hook: str, argv: Sequence[str], *, out: TextIO | None = None) -> i
 
 
 def migrate_entries(manifest: Mapping[str, Any]) -> list[tuple[str, str]]:
-    """The [Service] entries of the migrate hook's account (§12.9).
+    """The [Service] entries of the migrate hook's account.
 
     ``<platform>-migrate`` has no profile: it gets the baseline, the
     database socket group, no network and nothing of the lab it does not
@@ -532,7 +532,7 @@ def wait_healthy(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> HookResult:
-    """Run the health hook until it answers ok or the deadline passes (§12.9).
+    """Run the health hook until it answers ok or the deadline passes.
 
     Args:
         run: One health hook run.
@@ -666,7 +666,7 @@ def migrate_step(
     runner: Runner = subprocess.run,
     results_dir: Path = Path(layout.HOOK_RESULTS_DIR),
 ) -> dict[str, Any]:
-    """The new release's ``migrate`` hook (§7.14 step 8), before it starts.
+    """The new release's ``migrate`` hook, before it starts.
 
     Args:
         plan: The deployment plan (after publish and render).

@@ -1,4 +1,4 @@
-"""Golden files of the principals and endpoints files (§12.3), and the TOML writer."""
+"""Golden files of the principals and endpoints files, and the TOML writer."""
 
 from __future__ import annotations
 

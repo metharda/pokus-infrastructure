@@ -1,4 +1,4 @@
-"""The install progress from the event stream (BUILD_PROMPT §18.4 screen 16, §18.5).
+"""The install progress from the event stream.
 
 Bootstrap writes its stage, signal and result events and the ``pinka_events``
 callback its play, role and task events to one JSON-lines file. A

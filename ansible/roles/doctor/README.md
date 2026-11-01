@@ -1,6 +1,6 @@
 # doctor
 
-The operator CLI `pinka` (BUILD_PROMPT §9) and the lab description its
+The operator CLI `pinka` and the lab description its
 commands read; tag `doctor`. It runs before `lab_session`, because the
 session record of every boot calls `pinka fingerprint` and
 `pinka preflight`.
@@ -37,8 +37,9 @@ See `meta/argument_specs.yml`.
 
 ## Feature flags
 
-`gpu_inference` adds the GPU exporter container and the GPU checks on `full`
-and `inference` nodes; `vm_targets` adds the `target-vm` profile, the VM
+`gpu_inference` adds the GPU checks on `full` and `inference` nodes, and
+`gpu_inference` or `gpu_training` (after the switches) the
+GPU exporter container; `vm_targets` adds the `target-vm` profile, the VM
 telemetry listener address and the `/dev/kvm` expectation on WSL.
 
 ## Idempotency

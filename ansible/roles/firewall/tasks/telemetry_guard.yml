@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/firewall/tasks/telemetry_guard.yml). Local changes will be overwritten.
 #
-# The telemetry guard (BUILD_PROMPT §7.9, ADR-0016) on every backend: its own
+# The telemetry guard (ADR-0016) on every backend: its own
 # nftables table, loaded by its own unit before the network comes up. Only the
 # accounts of pinka_telemetry_clients reach the stores on the loopback, and
 # only those of pinka_query_port_clients the query proxy's loopback port; the

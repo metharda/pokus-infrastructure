@@ -1,6 +1,6 @@
 # provider_vm
 
-VM provider (BUILD_PROMPT §3.3).
+VM provider.
 
 - Installs and enables the hypervisor's guest agent (`vars/<family>.yml`):
   `qemu-guest-agent` (KVM, QEMU), `open-vm-tools` (VMware), the Hyper-V

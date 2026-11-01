@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/gpu_arbiter/templates/pinka-gpu-arbiter@.service.j2). Local changes will be overwritten.
 #
-# One GPU arbiter per connection of pinka-gpu-arbiter.socket (BUILD_PROMPT
-# §7.18). Runs as root because it switches vLLM, starts training runs and
+# One GPU arbiter per connection of pinka-gpu-arbiter.socket.
+# Runs as root because it switches vLLM, starts training runs and
 # writes the datasets and adapters areas; it checks the peer itself. A serve
 # request waits until the deployment answers, an idle request until the
 # running job has stopped.

@@ -18,6 +18,8 @@ access that existed before the install
 ([The access stage](#the-access-stage)). Then it deploys the reference platform `refplat`
 (`tests/reference-platform/`) in the VM and tests it as described in
 [What the reference platform stages check](#what-the-reference-platform-stages-check).
+Last, it uninstalls the lab and compares the host with a snapshot taken
+before the install ([The uninstall lane](#the-uninstall-lane)).
 The CI fast lane runs instead, in a container per family: `make
 check-mode`, a required lane on every push that changes more than docs or
 records, checks the provider-agnostic roles in check mode, and `make
@@ -41,7 +43,9 @@ provisioning play with the reference platform enabled.
       tests, tagged `tag:pinka-qa`: the test VMs are staging labs and join
       it, and the `access` stage joins a second node with it. The tailnet
       policy lets `tag:pinka-qa` reach `tag:pinka-qa:22`, `:8080` and
-      `:8081`.
+      `:8081`, and makes `tag:pinka-qa` an owner of `tag:pinka-qa-owner`,
+      the own tag of the node the `ubuntu-24.04-preexisting` target logs in
+      before pinka.
 
 ## Run the distribution tests
 
@@ -95,7 +99,47 @@ once after the install and again after reloading the owner's firewall
   tcp/8081 answers and tcp/8080 does not (HTTP through the node's SOCKS5
   proxy); the node logs out again.
 
-On the nftables lanes the stage has nothing to do and passes.
+On `ubuntu-24.04-preexisting` the stage checks the components that
+existed before pinka ([The uninstall lane](#the-uninstall-lane)); on the
+other nftables lanes it has nothing to do and passes.
+
+## The uninstall lane
+
+Every target runs the uninstall lane around the rest of its test:
+
+- `snapshot`, after `prepare`: the VM reboots, and the harness records the
+  host as it is before the install (`snapshot-before.txt`): the installed
+  packages and their versions, holds, repositories and keys, accounts and
+  groups, enabled and masked units, `nft list ruleset`, the listening
+  ports, the files below pinka's paths, the settings pinka changes (its
+  kernel settings, the time zone, `sshd_config`, `daemon.json`), Tailscale's
+  state and preferences, and Docker's containers, networks and volumes.
+- `uninstall`, after `restore`: the harness removes its own inference
+  stand-in, then runs `bootstrap.sh --uninstall --non-interactive
+  --confirm-machine <vm>`, which backs up first and must exit 0 (its report
+  is kept as `uninstall-report.json`); a second run must find nothing of
+  pinka's left. After another reboot the same snapshot
+  (`snapshot-after.txt`) must equal the first, apart from what uninstall
+  keeps on purpose: the lab's data below `/srv/pinka`, the logs below
+  `/var/log/pinka-bootstrap` and `/var/log/pinka-uninstall`, system accounts
+  and groups that packages created, and newer versions of packages that
+  were there before (uninstall never downgrades). `uninstall-differences.txt`
+  lists every difference, each kept one with its reason; any other fails
+  the stage.
+
+The target `ubuntu-24.04-preexisting` is the lane's variant. Before pinka,
+`prepare` sets up what a machine's owner would have had: Docker Engine from
+Ubuntu (`docker.io`, with `docker-compose-v2` and `docker-buildx`, which
+preflight requires of an existing Docker) running a workload container (`example-workload`, the
+lock's `refplat_job` image by digest, publishing tcp/8090), and Tailscale
+from Tailscale's repository at the lock's version, its key checked against
+the lock's fingerprint, logged in with the test tailnet's key as
+`<vm>-owner` with the tags `tag:pinka-qa` and `tag:pinka-qa-owner`. The
+`snapshot` stage, the `access` stage (after the install) and the
+`uninstall` stage each check that the node's identity, state and
+preferences are unchanged, that the Docker packages, `containerd`, `runc`
+and `tailscale` keep their versions, and that the workload answers on tcp/8090
+in the VM and from the harness host and reaches `pkgs.tailscale.com:443`.
 
 ## What the reference platform stages check
 

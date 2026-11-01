@@ -1,6 +1,6 @@
 # Managed by pinka (.github/workflows/release.yml).
 #
-# The release package of every vX.Y.Z tag (owner decisions of 3d.7 and 3d.8):
+# The release package of every vX.Y.Z tag:
 # the repository's tree at the tag (git archive) with release/ holding the
 # five pinned Galaxy artifacts (the same bytes, checked against the lock's
 # sha256 and size), their NOTICE and RELEASE.json. The package is checked

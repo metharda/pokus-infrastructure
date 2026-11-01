@@ -1,4 +1,4 @@
-"""Distribution tests of pokus-infrastructure: ``make test-distros`` (BUILD_PROMPT §19.9).
+"""Distribution tests of pokus-infrastructure: ``make test-distros``.
 
 Launches one disposable Incus VM per test target, copies the repository in,
 runs bootstrap from the CI answers file, runs it a second time (which must

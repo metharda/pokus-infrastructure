@@ -1,4 +1,4 @@
-"""Deployment step 7 (§7.14): configuration, vault keys, render, principals, rendered.json."""
+"""Deployment: configuration, vault keys, render, principals, rendered.json."""
 
 from __future__ import annotations
 
@@ -225,7 +225,7 @@ def test_cli_render_and_principals(
     assert "does not exist" in json.loads(capsys.readouterr().out)["error"]
 
 
-# --- the switch (§7.14 step 8) and the hooks of the active platform ------------------
+# --- the switch and the hooks of the active platform ------------------
 
 
 def test_the_switch_knows_what_changes(repo: Path, paths: deploy.Paths) -> None:
@@ -352,7 +352,7 @@ def test_the_rendering_lists_each_socket_for_doctor(repo: Path, paths: deploy.Pa
     assert all(not s["acl"] for s in kept["sockets"] if s["untrusted_clients"])
 
 
-# --- UIDs from the platform range (§7.9 option b) ---------------------------------------
+# --- UIDs from the platform range ---------------------------------------
 
 
 def named(*names_: str) -> list[dict[str, Any]]:

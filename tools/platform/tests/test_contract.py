@@ -1,10 +1,9 @@
-"""The published contract files: schema, profiles and reserved names (§12, §13)."""
+"""The published contract files: schema, profiles and reserved names."""
 
 from __future__ import annotations
 
 import copy
 import json
-import re
 import shutil
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -71,7 +70,7 @@ def schema_nodes(node: Any) -> Iterator[Mapping[str, Any]]:
 
 
 def test_schema_uses_only_keywords_the_validator_implements() -> None:
-    # Owner decision on 3d.1: a schema change can never be silently ignored.
+    # A schema change can never be silently ignored.
     used = {key for node in schema_nodes(CONTRACT.schema) for key in node}
     assert used <= SUPPORTED, sorted(used - SUPPORTED)
     assert check_keywords(CONTRACT.schema) == []
@@ -154,32 +153,6 @@ def test_exactly_the_eight_profiles() -> None:
     assert service_enum == SERVICE_PROFILES
 
 
-def spec_profile_table() -> tuple[list[str], list[list[str]]]:
-    """The header and the rows of the profile table in BUILD_PROMPT §12.2."""
-    text = (INFRA / "docs" / "BUILD_PROMPT.md").read_text(encoding="utf-8")
-    section = text.split("\n### 12.2 Privilege profiles\n", 1)[1].split("\n### ", 1)[0]
-    lines = [line for line in section.splitlines() if line.startswith("|")]
-    rows = [[cell.strip() for cell in line.strip("|").split(" | ")] for line in lines]
-    assert set("".join(rows[1])) <= set("-|"), "the second line is the delimiter row"
-    return rows[0], rows[2:]
-
-
-def test_profiles_match_the_spec_table_cell_by_cell() -> None:
-    # Owner decision on 3d.1: profiles.yml is the single source of §12.2's table.
-    header, rows = spec_profile_table()
-    data = yaml.safe_load((contract_mod.DEFAULT_DIR / "profiles.yml").read_text(encoding="utf-8"))
-    assert header == ["Profile", *data["columns"].values()]
-    assert len(rows) == len(data["profiles"])
-    for row, (name, profile) in zip(rows, data["profiles"].items(), strict=True):
-        match = re.fullmatch(r"`([a-z-]+)`( \(jobs only\))?", row[0])
-        assert match, row[0]
-        assert match.group(1) == name
-        assert (profile["kind"] == "job") == bool(match.group(2)), name
-        assert len(row) == len(header), name
-        for column, cell in zip(data["columns"], row[1:], strict=True):
-            assert profile["table"][column] == cell, f"{name}.{column}"
-
-
 def test_profile_tables_are_complete() -> None:
     data = yaml.safe_load((contract_mod.DEFAULT_DIR / "profiles.yml").read_text(encoding="utf-8"))
     for name, profile in data["profiles"].items():
@@ -187,7 +160,7 @@ def test_profile_tables_are_complete() -> None:
 
 
 def test_restricted_data_is_closed_to_the_agent_and_the_trainer() -> None:
-    # §12.4, invariant 15: restricted data only for three profiles.
+    # Restricted data only for three profiles.
     readers = {n for n, p in CONTRACT.profiles.items() if p.data["restricted_data"] == "read"}
     assert readers == {"controller", "restricted-operator", "restricted-reader"}
     schema_access = {
@@ -197,7 +170,7 @@ def test_restricted_data_is_closed_to_the_agent_and_the_trainer() -> None:
 
 
 def test_the_agent_gets_nothing() -> None:
-    # Invariant 4: no network, database, Incus, restricted data, secrets or relaxation.
+    # No network, database, Incus, restricted data, secrets or relaxation.
     agent = CONTRACT.profile("untrusted-agent")
     assert agent.data["network"] == "none"
     assert not agent.flag("database_role")
@@ -212,13 +185,11 @@ def test_the_agent_gets_nothing() -> None:
 
 
 def test_only_the_trainer_gets_gpu_devices() -> None:
-    # Invariant 17.
     assert {n for n, p in CONTRACT.profiles.items() if p.flag("gpu_devices")} == {"gpu-trainer"}
     assert {n for n, p in CONTRACT.profiles.items() if p.flag("gpu_arbiter")} == {"controller"}
 
 
 def test_inference_api_and_query_access() -> None:
-    # Invariants 21 and 22, §12.2.
     assert {n for n, p in CONTRACT.profiles.items() if p.flag("inference_api")} == {
         "controller",
         "inference-broker",
@@ -255,7 +226,7 @@ def test_listening_ports() -> None:
 
 
 def test_socket_rules() -> None:
-    # §12.3: restricted-* sockets accept only the controller and root (invariant 16).
+    # restricted-* sockets accept only the controller and root.
     for name in ("restricted-operator", "restricted-reader"):
         rules = CONTRACT.profile(name).socket_clients
         assert rules == {"profiles": ["controller"], "humans": [], "root": True, "agent": "never"}

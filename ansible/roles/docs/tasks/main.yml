@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/docs/tasks/main.yml). Local changes will be overwritten.
 #
-# The documentation service (BUILD_PROMPT §7.19). With docs_release set,
+# The documentation service. With docs_release set,
 # bootstrap installs that release the way `pinka docs install` does (checksum,
 # safe unpacking, current switched in one step, three versions kept) and runs
 # pinka-docs.service; with docs_release null the service is off.

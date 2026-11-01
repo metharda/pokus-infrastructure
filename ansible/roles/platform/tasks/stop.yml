@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/platform/tasks/stop.yml). Local changes will be overwritten.
 #
-# Drain the active platform, then stop it (BUILD_PROMPT §7.14 step 8, §12.9):
+# Drain the active platform, then stop it:
 # the drain hook of the release that runs, from active.json and
 # rendered.json, then pinka-platform.target, which stops every unit that is
 # PartOf it (services, sockets, the reconcile unit). A drain that fails or

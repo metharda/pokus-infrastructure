@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/backup/templates/backup-job.service.j2). Local changes will be overwritten.
 #
-# {{ backup_job.description }} (BUILD_PROMPT §7.15), started by {{ backup_job.name }}.timer.
+# {{ backup_job.description }}, started by {{ backup_job.name }}.timer.
 [Unit]
 Description=pinka {{ backup_job.description }}
 After={{ backup_job.after }}

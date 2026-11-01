@@ -1,0 +1,14 @@
+{
+  "degraded_contains": [
+    "a training job (CPU-only variant) 4.0 GiB",
+    "training: off"
+  ],
+  "disabled": [
+    "gpu_inference"
+  ],
+  "outcome": "degraded",
+  "switches": {
+    "training.memory_max": "4G",
+    "training.runs": "cpu"
+  }
+}

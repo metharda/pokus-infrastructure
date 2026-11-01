@@ -91,7 +91,7 @@ def test_symlinks_inside_the_release_are_fine(tmp_path: Path) -> None:
 def test_special_files_and_setid_bits_are_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, code: str
 ) -> None:
-    # Owner decision on 3d.2: none in the staged sources.
+    # None in the staged sources.
     built = write_release(tmp_path, manifest("allprof"))
     make_special(built / "docs" / "planted", kind)
     monkeypatch.setattr(release, "_lstat", fake_devices(kind))
@@ -109,7 +109,7 @@ def test_special_files_and_setid_bits_are_refused(
 def test_a_policy_bundle_in_infra_namespaces_is_refused(
     tmp_path: Path, relative: str, text: str, code: str
 ) -> None:
-    # OPA's own authorization and infra's placeholder (§7.10).
+    # OPA's own authorization and infra's placeholder.
     built = write_release(tmp_path, manifest("allprof"))
     path = built / "policy" / relative
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,6 @@
 #!/opt/pinka/python/bin/python3 -I
 # Managed by pinka (ansible/roles/firewall/files/pinka_inference_guard.py). Local changes will be overwritten.
-"""Load the inference guard (BUILD_PROMPT §7.11, ADR-0016).
+"""Load the inference guard (ADR-0016).
 
 Installed as ``/usr/local/libexec/pinka/inference-guard`` by the firewall
 role and run by ``pinka-inference-guard.service``. Only infra's own clients

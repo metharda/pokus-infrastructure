@@ -1,8 +1,8 @@
 # Managed by pinka (ansible/roles/provider_baremetal/tasks/main.yml). Local changes will be overwritten.
 #
-# Bare-metal provider (BUILD_PROMPT §3.2): NVIDIA driver with the Secure Boot
+# Bare-metal provider: NVIDIA driver with the Secure Boot
 # MOK flow, reboot handling and the power policy. The Incus storage device is
-# handled by the incus role with the safety rules of §13.1.
+# handled by the incus role with its safety rules.
 - name: Install or check the NVIDIA driver
   ansible.builtin.include_tasks: nvidia.yml
   when:

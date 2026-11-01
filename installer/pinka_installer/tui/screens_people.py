@@ -1,4 +1,4 @@
-"""Screens 7-8: Researchers, Remote access (BUILD_PROMPT §18.4)."""
+"""Screens 7-8: Researchers, Remote access."""
 
 from __future__ import annotations
 
@@ -341,7 +341,7 @@ class RemoteScreen(StepScreen):
         yield Static(acl_snippet(tag), id="acl", classes="code", markup=False)
 
     def access_fields(self) -> ComposeResult:
-        """What existed before pinka and may close with consent (BUILD_PROMPT §7.5)."""
+        """What existed before pinka and may close with consent."""
         remote = self.answers.remote_access
         access = self.wizard.access
         closable = closable_listeners(access)

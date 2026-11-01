@@ -1,6 +1,6 @@
 #!/opt/pinka/python/bin/python3 -I
 # Managed by pinka (ansible/roles/inference_control/files/pinka_inference_forwarder.py). Local changes will be overwritten.
-"""The inference forwarder of a lab node (BUILD_PROMPT §12.8, §19.10).
+"""The inference forwarder of a lab node.
 
 Installed as ``/usr/local/libexec/pinka/inference-forwarder`` by the
 inference_control role and run as root by ``pinka-inference-forwarder``:

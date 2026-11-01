@@ -1,4 +1,4 @@
-"""Every fixture root produces the expected decision (BUILD_PROMPT §11).
+"""Every fixture root produces the expected decision.
 
 Also checks that the committed fixture tree equals ``fixture_defs.py``, that
 every report validates against the host profile schema, and that the human
@@ -31,12 +31,15 @@ except ImportError:  # plain `python3 -m unittest` run without the dev environme
 
 
 def fixture_args(name: str) -> list[str]:
-    """The extra preflight arguments of a fixture (``args.json``, if any)."""
+    """The extra preflight arguments of a fixture (``args.json``, and ``plan.json`` as ``--plan``)."""
+    args: list[str] = []
     path = os.path.join(FIXTURES_DIR, name, "args.json")
-    if not os.path.exists(path):
-        return []
-    with open(path, encoding="utf-8") as handle:
-        args: list[str] = json.load(handle)
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as handle:
+            args = json.load(handle)
+    plan = os.path.join(FIXTURES_DIR, name, "plan.json")
+    if os.path.exists(plan):
+        args += ["--plan", plan]
     return args
 
 
@@ -116,7 +119,7 @@ class FixtureTreeTest(unittest.TestCase):
             "ubuntu2404-cgroup-v1",
             "ubuntu2404-low-memory",
             "conflicting-signals",
-            # Pre-existing components (BUILD_PROMPT §2.2, §11).
+            # Pre-existing components.
             "ubuntu2404-baremetal-docker-preexisting",
             "ubuntu2404-baremetal-docker-cdi-off",
             "ubuntu2404-baremetal-tailscale-adopted",
@@ -180,6 +183,12 @@ class FixtureDecisionTest(unittest.TestCase):
                         any(needle in r for r in doc["unsupported_reasons"]),
                         f"{name}: reason {needle!r}",
                     )
+            elif key == "degraded_contains":
+                for needle in value:
+                    self.assertTrue(
+                        any(needle in r for r in doc["degraded_reasons"]),
+                        f"{name}: degraded reason {needle!r}",
+                    )
             elif key == "remediation_contains":
                 remediations = [d.get("remediation", "") for d in doc["disabled_features"]]
                 for needle in value:
@@ -196,6 +205,15 @@ class FixtureDecisionTest(unittest.TestCase):
             elif key == "access":
                 found = {field: doc["access"][field] for field in value}
                 self.assertEqual(found, value, f"{name}: access")
+            elif key == "pool":
+                pool = doc["requirements"]["pool"]
+                for field, wanted in value.items():
+                    self.assertEqual(pool[field], wanted, f"{name}: pool {field}")
+            elif key == "switches":
+                switches = doc["requirements"]["switches"]
+                for path, wanted in value.items():
+                    part, field = path.split(".")
+                    self.assertEqual(switches[part][field], wanted, f"{name}: switches {path}")
             elif key == "notes_contain":
                 for needle in value:
                     self.assertTrue(

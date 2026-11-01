@@ -1,6 +1,6 @@
 # backup
 
-Backups of the lab (BUILD_PROMPT §7.15, owner answer E4); tag `backup`.
+Backups of the lab; tag `backup`.
 
 - restic from `versions.lock.yml` (`binaries.restic`, bzip2-compressed,
   sha256-checked) in `/opt/pinka/restic/<version>/`, linked as

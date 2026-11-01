@@ -1,4 +1,4 @@
-"""The neutrality lint (BUILD_PROMPT §11, §12): infra's code names no platform.
+"""The neutrality lint: infra's code names no platform.
 
 The forbidden names are built from the lint's own lists, so this file names
 none of them itself.
@@ -129,7 +129,7 @@ def test_the_repository_is_neutral() -> None:
 
 
 def test_the_installer_and_its_answers_are_scanned() -> None:
-    # V5: the temporary exclusion of the installer ended with plan step 3d.7.
-    assert not hasattr(neutrality, "TEMPORARY_EXCLUSIONS_UNTIL_3D7")
+    # No temporary exclusion is left: the installer and the CI answers are scanned.
+    assert not [name for name in vars(neutrality) if name.startswith("TEMPORARY")]
     for path in ("installer/pinka_installer/app.py", "tests/answers/ci.yml"):
         assert neutrality.excluded(path) is None, path

@@ -1,4 +1,4 @@
-"""Tests for bootstrap.sh and its libraries (BUILD_PROMPT §5).
+"""Tests for bootstrap.sh and its libraries.
 
 Nothing here provisions anything. ``bootstrap.sh`` itself only runs as an
 unprivileged user (it stops at the root check), and ``main`` only runs with
@@ -16,6 +16,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import collection_testlib
 import pytest
@@ -373,7 +374,7 @@ def test_reboot_only_with_allow_reboot(
         assert "reboots in one minute" in res.stderr
 
 
-# --- Secure Boot: MOK password and import (approved deviation I1) ---------------------
+# --- Secure Boot: MOK password and import ---------------------
 
 
 def mok_run(
@@ -599,6 +600,8 @@ def test_state_json(tmp_path: Path) -> None:
     assert state["repo_commit"].startswith("0123")
     assert state["infra_dirty"] is True
     assert state["ref"] == "HEAD"
+    # pinka uninstall runs bootstrap from this checkout.
+    assert state["infra_dir"] == str(INFRA)
     assert state["tags"] == ["base", "ssh"]
     assert state["skip_tags"] == []
     assert state["overrides"]["accept_degraded"] is True  # granted interactively
@@ -676,7 +679,7 @@ def test_vault_args(tmp_path: Path) -> None:
     assert lines[1:] == ["--ask-vault-pass", "no-password"]
 
 
-# --- installer front-end (BUILD_PROMPT §5.3, §18) -----------------------------------
+# --- installer front-end -----------------------------------
 
 
 FAKE_INSTALLER = """
@@ -689,6 +692,7 @@ installer() {
       "${ANSWERS_MOK:-false}"
   fi
   if [[ " $* " == *" apply "* && -n ${APPLY_FAIL:-} ]]; then return 1; fi
+  if [[ " $* " == *" plan "* && -n ${PLAN_FAIL:-} ]]; then return 1; fi
   return 0
 }
 """
@@ -723,6 +727,34 @@ def test_answers_are_applied_before_preflight(tmp_path: Path) -> None:
     assert "machine=lab1 restore=false" in out
     assert "venv /opt/pinka/installer-venv" in calls
     assert "installer apply --answers" in calls and "--machine lab1" in calls
+
+
+def test_the_installer_is_set_up_without_answers_or_tui(tmp_path: Path) -> None:
+    # It writes the requirements plan of every run.
+    code, out, calls = frontend(tmp_path, "OPT_ANSWERS=''; OPT_MACHINE=lab1")
+    assert code == 0, out
+    assert "venv /opt/pinka/installer-venv" in calls
+    assert "installer apply" not in calls
+
+
+def test_the_plan_comes_from_the_installer(tmp_path: Path) -> None:
+    calls = tmp_path / "calls"
+    script = FAKE_INSTALLER + f"OPT_MACHINE=lab1; write_plan {q(tmp_path / 'plan.json')}"
+    res = bash(script, env={"CALLS": str(calls)})
+    assert res.returncode == 0, res.stderr
+    assert calls.read_text() == f"installer plan --machine lab1 --output {tmp_path}/plan.json\n"
+    res = bash(script, env={"CALLS": str(calls), "PLAN_FAIL": "1"})
+    assert res.returncode == 77
+    assert "the requirements plan of lab1 cannot be written" in res.stderr
+
+
+def test_the_play_gets_the_plan(tmp_path: Path) -> None:
+    profile = tmp_path / "profile.json"
+    profile.write_text("{}")
+    res = bash(f"OPT_MACHINE=lab1; extra_vars_json {q(profile)}")
+    assert res.returncode == 0, res.stderr
+    variables = json.loads(res.stdout)
+    assert variables["pinka_bootstrap"]["plan_path"] == "/run/pinka/bootstrap/plan.json"
 
 
 def test_answers_get_the_replace_option(tmp_path: Path) -> None:
@@ -1266,7 +1298,7 @@ def test_ref_matches_head(repo: Path) -> None:
     assert res.stdout.split() == ["tag", "head", "missing"]
 
 
-# --- running from a release package (owner's choice in 3d.8) ------------------------------
+# --- running from a release package ------------------------------
 
 
 def release_package(tmp_path: Path, repo: Path, tag: str | None = "v1.0.0") -> Path:
@@ -1519,7 +1551,7 @@ def test_bootstrap_sh_is_executable() -> None:
 
 
 def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
-    # BUILD_PROMPT §2.2: a host is dedicated when its login accounts are all
+    # A host is dedicated when its login accounts are all
     # researchers; bootstrap passes their names from group_vars, or from
     # host_vars when the machine lists its own.
     group_vars = tmp_path / "ansible" / "group_vars" / "all"
@@ -1551,7 +1583,7 @@ def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
 
 
 def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
-    # BUILD_PROMPT §2.2, §12.11: preflight checks the ports and the VM collector
+    # Preflight checks the ports and the VM collector
     # address the machine configures, not only the defaults.
     host_vars = tmp_path / "ansible" / "inventory" / "host_vars"
     host_vars.mkdir(parents=True)
@@ -1566,7 +1598,7 @@ def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
             "--port=grafana=18750\n--port=loki=18752\n"
         ),
         "vm_collector_address: 198.19.0.1\nports: {}\n": "--vm-collector-address=198.19.0.1\n",
-        # §7.7: the pool device is checked against LXD's storage, a loop file is not.
+        # The pool device is checked against LXD's storage, a loop file is not.
         "incus_pool_source: device\nincus_pool_device: /dev/disk/by-id/nvme-example\n": (
             "--pool-device=/dev/disk/by-id/nvme-example\n"
         ),
@@ -1584,3 +1616,393 @@ def test_lab_preflight_args_come_from_the_machine(tmp_path: Path) -> None:
         assert "must map port names to numbers" in res.stderr
     (host_vars / "lab1.yml").unlink()
     assert bash(script).stdout == ""
+
+
+# --- uninstall ----------------------------------------------
+
+
+def test_help_lists_the_uninstall_options() -> None:
+    res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), "--help"])
+    for option in (
+        "--uninstall",
+        "--dry-run",
+        "--purge-data",
+        "--confirm-machine",
+        "--skip-backup",
+        "--remove-component",
+        "--json",
+    ):
+        assert option in res.stdout
+    assert "80 uninstall refused or not confirmed" in res.stdout
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--machine", "lab1", "--dry-run"], "--dry-run applies only with --uninstall"),
+        (["--machine", "lab1", "--json"], "--json applies only with --uninstall"),
+        (["--machine", "lab1", "--confirm-machine", "lab1"], "apply only with --uninstall"),
+        (["--uninstall", "--restore"], "--uninstall excludes --restore"),
+        (["--uninstall", "--check"], "--uninstall excludes --check"),
+        (["--uninstall", "--tags", "base"], "--uninstall excludes --tags"),
+        (["--uninstall", "--answers", "/etc/hostname"], "--uninstall excludes --answers"),
+        (["--uninstall", "--tui"], "--uninstall excludes --tui"),
+        (
+            ["--uninstall", "--remove-component", "podman"],
+            "takes docker, incus, tailscale or nvidia",
+        ),
+        (["--uninstall", "--confirm-machine", "Bad_Name"], "invalid machine name"),
+        (["--uninstall", "--confirm-machine"], "needs a value"),
+    ],
+)
+def test_uninstall_usage_errors_exit_64(args: list[str], message: str) -> None:
+    res = run_unprivileged(["bash", str(BOOTSTRAP / "bootstrap.sh"), *args])
+    assert res.returncode == 64, res.stderr
+    assert message in res.stderr
+
+
+def test_uninstall_needs_no_machine_and_never_the_tui() -> None:
+    res = bash(
+        """
+        parse_args --uninstall --remove-component docker --remove-component=nvidia --dry-run --json
+        use_tui && echo tui || echo no-tui
+        echo "$OPT_UNINSTALL|$OPT_REMOVE_COMPONENTS|$OPT_DRY_RUN|$OPT_JSON|$OPT_MACHINE"
+        """
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.split() == ["no-tui", "true|docker,nvidia|true|true|"]
+
+
+def test_uninstall_runs_its_own_stages_and_writes_no_state(tmp_path: Path) -> None:
+    code, calls, _ = main_with_stubs(tmp_path, "--uninstall")
+    assert code == 0
+    assert calls == [
+        "stage_root",
+        "stage_logging",
+        "stage_git",
+        "stage_prepreflight",
+        "stage_tooling",
+        "stage_uninstall_profile",
+        "stage_ansible_env",
+        "stage_uninstall",
+    ]
+
+
+def write_state(path: Path, machine: str) -> Path:
+    path.write_text(json.dumps({"machine": machine, "stage": "doctor"}))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("recorded", "given", "machine", "code"),
+    [
+        ("lab1", "", "lab1", 0),
+        ("lab1", "lab1", "lab1", 0),
+        ("lab1", "lab2", "", 80),
+        ("", "lab2", "lab2", 0),
+    ],
+)
+def test_the_uninstalled_machine_is_the_recorded_one(
+    tmp_path: Path, recorded: str, given: str, machine: str, code: int
+) -> None:
+    state = tmp_path / "state.json"
+    if recorded:
+        write_state(state, recorded)
+    res = bash(
+        f"""
+        OPT_MACHINE={q(given)}
+        rc=0
+        uninstall_machine {q(state)} || rc=$?
+        echo "$rc|$UNINSTALL_MACHINE"
+        """
+    )
+    assert res.stdout.strip() == f"{code}|{machine}", res.stderr
+
+
+@pytest.mark.parametrize(
+    ("setup", "stdin", "confirmed"),
+    [
+        ("OPT_CONFIRM_MACHINE=lab1", "", True),
+        ("OPT_CONFIRM_MACHINE=lab2", "", False),
+        ("", "", False),
+        ("INTERACTIVE=true", "lab1\n", True),
+        ("INTERACTIVE=true", "lab2\n", False),
+        ("INTERACTIVE=true; OPT_PURGE_DATA=true", "lab1\nlab1\n", True),
+        ("INTERACTIVE=true; OPT_PURGE_DATA=true", "lab1\nlab\n", False),
+    ],
+)
+def test_uninstall_is_confirmed_with_the_typed_machine_name(
+    setup: str, stdin: str, confirmed: bool
+) -> None:
+    res = bash(
+        f"""
+        UNINSTALL_MACHINE=lab1
+        {setup}
+        if uninstall_confirmed; then echo yes; else echo no; fi
+        """,
+        stdin=stdin,
+    )
+    assert res.stdout.strip().splitlines()[-1] == ("yes" if confirmed else "no"), res.stderr
+
+
+def plan_file(tmp_path: Path, backup: bool) -> Path:
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps({"backup": backup, "refusal": "", "to_remove": 3}))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("setup", "stdin", "backup", "rc", "called"),
+    [
+        ("", "", True, 0, True),
+        ("OPT_SKIP_BACKUP=true", "", True, 0, False),
+        ("", "", False, 0, False),
+        ("INTERACTIVE=true", "n\n", True, 0, False),
+        ("INTERACTIVE=true", "\n", True, 0, True),
+        ("export BACKUP_RC=1", "", True, 80, True),
+    ],
+)
+def test_a_backup_is_offered_before_anything_is_removed(
+    tmp_path: Path, *, setup: str, stdin: str, backup: bool, rc: int, called: bool
+) -> None:
+    calls = tmp_path / "calls"
+    lab = tmp_path / "pinka"
+    lab.write_text(f'#!/bin/sh\necho "$@" >>{q(calls)}\nexit ${{BACKUP_RC:-0}}\n')
+    lab.chmod(0o755)
+    res = bash(
+        f"""
+        {setup}
+        rc=0
+        offer_backup {q(plan_file(tmp_path, backup))} {q(lab)} || rc=$?
+        echo "rc=$rc"
+        """,
+        stdin=stdin,
+    )
+    assert f"rc={rc}" in res.stdout, res.stderr
+    assert (calls.exists() and calls.read_text().strip() == "backup now") is called
+
+
+def test_the_play_gets_the_uninstall_options(tmp_path: Path) -> None:
+    (tmp_path / "host-profile.json").write_text('{"family": "debian"}')
+    res = bash(
+        f"""
+        UNINSTALL_MACHINE=lab1 OPT_PURGE_DATA=true OPT_REMOVE_COMPONENTS=docker,nvidia
+        OPT_EXISTED=true STARTED_AT=2026-10-22T10:00:00Z LOG_FILE=/var/log/x.log
+        UNINSTALL_REPORT=/var/log/pinka-uninstall/x.json GIT_COMMIT=abc
+        uninstall_vars_json apply {q(tmp_path)}
+        """
+    )
+    assert res.returncode == 0, res.stderr
+    data = json.loads(res.stdout)
+    options = data["pinka_uninstall"]
+    assert data["host_profile"] == {"family": "debian"}
+    assert options["mode"] == "apply"
+    assert options["machine"] == "lab1"
+    assert options["purge_data"] is True
+    assert options["remove_components"] == ["docker", "nvidia"]
+    assert options["opt_existed"] is True
+    assert options["report_file"] == "/var/log/pinka-uninstall/x.json"
+    assert options["plan_file"] == f"{tmp_path}/plan.json"
+    assert options["repo_commit"] == "abc"
+    # Only what the play reads (ansible/roles/uninstall/meta/argument_specs.yml).
+    spec = yaml.safe_load((INFRA / "ansible/roles/uninstall/meta/argument_specs.yml").read_text())
+    described = spec["argument_specs"]["main"]["options"]["pinka_uninstall"]["description"]
+    assert all(key in described for key in options)
+
+
+@pytest.mark.parametrize(
+    ("removed", "result", "reason"),
+    [(True, "removed", "removed last, after the play"), (False, "failed", "could not be removed")],
+)
+def test_the_tooling_goes_last_and_closes_the_report(
+    tmp_path: Path, removed: bool, result: str, reason: str
+) -> None:
+    report = tmp_path / "report.json"
+    items = [
+        {
+            "phase": "paths",
+            "kind": "path",
+            "name": "/etc/pinka",
+            "action": "remove",
+            "result": "removed",
+            "reason": "pinka's path",
+        },
+        {
+            "phase": "paths",
+            "kind": "tooling",
+            "name": "/opt/pinka",
+            "action": "remove",
+            "result": "pending",
+            "reason": "bootstrap removes it after the play",
+        },
+    ]
+    report.write_text(json.dumps({"items": items}, indent=2))
+    opt = tmp_path / "opt"
+    (opt / "bin").mkdir(parents=True)
+    stub = "" if removed else "rm() { return 1; }"
+    res = bash(
+        f"""
+        UNINSTALL_REPORT={q(report)}
+        {stub}
+        remove_tooling {q(opt)}
+        """
+    )
+    assert res.returncode == 0, res.stderr
+    tooling = json.loads(report.read_text())["items"][1]
+    assert tooling["result"] == result
+    assert reason in tooling["reason"]
+    assert opt.exists() is not removed
+
+
+def uninstall_flow(
+    tmp_path: Path,
+    setup: str,
+    plan: dict[str, Any],
+    failed: int = 0,
+    notes: dict[str, Any] | None = None,
+) -> tuple[int, str, list[str]]:
+    """Run uninstall_flow with the play stubbed: plan mode writes PLAN, apply mode a report."""
+    work, reports, calls = tmp_path / "work", tmp_path / "reports", tmp_path / "calls"
+    work.mkdir()
+    reports.mkdir()
+    state = write_state(tmp_path / "state.json", "lab1")
+    items = [{"result": "failed"}] * failed + [{"result": "removed"}, {"result": "pending"}]
+    report = json.dumps({**(notes or {}), "items": items}, indent=2)
+    res = bash(
+        f"""
+        OPT_EXISTED=true
+        {setup}
+        run_uninstall_play() {{
+          echo "play $1" >>{q(calls)}
+          if [[ $1 == plan ]]; then
+            printf '%s' {q(json.dumps(plan))} >"$2/plan.json"
+            echo "the plan" >"$2/plan.txt"
+          else
+            printf '%s\\n' {q(report)} >"$UNINSTALL_REPORT"
+          fi
+        }}
+        remove_tooling() {{ echo "tooling $1" >>{q(calls)}; }}
+        uninstall_flow {q(work)} {q(reports)} {q(state)}
+        echo "final=$FINAL_RC"
+        """
+    )
+    return (
+        res.returncode,
+        res.stdout + res.stderr,
+        calls.read_text().splitlines() if calls.exists() else [],
+    )
+
+
+PLAN = {"refusal": "", "to_remove": 4, "backup": False}
+
+
+def test_a_dry_run_shows_the_plan_and_removes_nothing(tmp_path: Path) -> None:
+    code, out, calls = uninstall_flow(tmp_path, "OPT_DRY_RUN=true", PLAN)
+    assert code == 0
+    assert "the plan" in out
+    assert "final=0" in out
+    assert calls == ["play plan"]
+
+
+def test_a_refused_plan_ends_with_80_even_as_a_dry_run(tmp_path: Path) -> None:
+    code, out, calls = uninstall_flow(tmp_path, "OPT_DRY_RUN=true", {**PLAN, "refusal": "no"})
+    assert code == 80
+    assert "uninstall refused: no" in out
+    assert calls == ["play plan"]
+
+
+def test_nothing_to_remove_needs_no_confirmation(tmp_path: Path) -> None:
+    code, out, calls = uninstall_flow(tmp_path, "", {**PLAN, "to_remove": 0})
+    assert code == 0
+    assert "nothing of pinka's is on this host" in out
+    assert calls == ["play plan"]
+
+
+def test_without_the_typed_name_nothing_is_removed(tmp_path: Path) -> None:
+    code, out, calls = uninstall_flow(tmp_path, "", PLAN)
+    assert code == 80
+    assert "--confirm-machine NAME" in out
+    assert calls == ["play plan"]
+
+
+@pytest.mark.parametrize(("failed", "final"), [(0, 0), (2, 81)])
+def test_a_confirmed_uninstall_removes_and_reports(tmp_path: Path, failed: int, final: int) -> None:
+    code, out, calls = uninstall_flow(tmp_path, "OPT_CONFIRM_MACHINE=lab1", PLAN, failed)
+    assert code == 0, out
+    assert f"final={final}" in out
+    assert calls == ["play plan", "play apply", "tooling /opt/pinka"]
+    if failed:
+        assert "2 item(s) could not be removed" in out
+
+
+def test_the_summary_says_where_the_backup_key_is_why_to_reboot_and_what_is_left(
+    tmp_path: Path,
+) -> None:
+    notes = {
+        "backup_access": "/var/lib/pinka-kept/backup/secrets",
+        "kept_dir": "/var/lib/pinka-kept",
+        "reboot_reasons": ["the initramfs was rebuilt without pinka's nouveau blacklist"],
+        "follow_ups": [
+            "/var/lib/pinka-kept holds the vault password: they grant access to the backups.",
+            "Delete the node lab1 in the Tailscale admin console (Machines).",
+        ],
+    }
+    code, out, _ = uninstall_flow(tmp_path, "OPT_CONFIRM_MACHINE=lab1", PLAN, notes=notes)
+    assert code == 0, out
+    assert (
+        "kept backups: their key and settings are in /var/lib/pinka-kept/backup/secrets "
+        "(root only; /var/lib/pinka-kept/README.txt says how)"
+    ) in out
+    assert "reboot needed: the initramfs was rebuilt" in out
+    assert "afterwards: /var/lib/pinka-kept holds the vault password" in out
+    assert out.index("afterwards: /var/lib/pinka-kept") < out.index("afterwards: Delete the node")
+    # Without them, no such line.
+    (tmp_path / "plain").mkdir()
+    code, out, _ = uninstall_flow(tmp_path / "plain", "OPT_CONFIRM_MACHINE=lab1", PLAN)
+    assert "reboot needed" not in out and "kept backups" not in out
+
+
+def test_without_a_state_file_the_machine_must_be_named(tmp_path: Path) -> None:
+    code, out, _ = uninstall_flow(
+        tmp_path, "OPT_CONFIRM_MACHINE=lab1; uninstall_machine() { UNINSTALL_MACHINE=''; }", PLAN
+    )
+    assert code == 80
+    assert "pass --machine NAME" in out
+
+
+def test_an_uninstall_from_the_tui_leaves_the_tooling_to_the_bootstrap_that_started_it(
+    tmp_path: Path,
+) -> None:
+    report = tmp_path / "report.json"
+    items = [
+        {
+            "kind": "tooling",
+            "name": "/opt/pinka",
+            "result": "pending",
+            "reason": "bootstrap removes it after the play",
+        }
+    ]
+    report.write_text(json.dumps({"items": items}, indent=2))
+    opt, handoff = tmp_path / "opt", tmp_path / "handoff"
+    opt.mkdir()
+    handoff.write_text(f"{report}\n")
+    res = bash(f"finish_tooling_handoff {q(handoff)} {q(opt)} && echo done")
+    assert res.stdout.strip() == "done", res.stderr
+    assert not opt.exists()
+    assert not handoff.exists()
+    assert json.loads(report.read_text())["items"][0]["result"] == "removed"
+    # Without a handoff (an installation, not an uninstall) nothing goes.
+    opt.mkdir()
+    res = bash(f"finish_tooling_handoff {q(handoff)} {q(opt)} && echo kept")
+    assert res.stdout.strip() == "kept"
+    assert opt.exists()
+
+
+def test_events_that_cannot_be_written_never_stop_bootstrap(tmp_path: Path) -> None:
+    gone = tmp_path / "removed" / "events.jsonl"
+    res = bash(
+        "emit_event bootstrap.stage uninstall started; echo still-here",
+        env={"PINKA_EVENTS_FILE": str(gone)},
+    )
+    assert res.returncode == 0
+    assert res.stdout.strip() == "still-here"

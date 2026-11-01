@@ -1,4 +1,4 @@
-"""Unit tests for the components that may exist before pinka (BUILD_PROMPT §2.2, §7.21)."""
+"""Unit tests for the components that may exist before pinka."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Time synchronization state (BUILD_PROMPT §2.2)."""
+"""Time synchronization state."""
 
 from __future__ import annotations
 

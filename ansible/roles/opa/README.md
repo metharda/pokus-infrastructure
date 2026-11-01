@@ -1,7 +1,7 @@
 # opa
 
-Open Policy Agent for the platform's action decisions (BUILD_PROMPT §7.10,
-`docs/contracts.md#policy-engine-opa`, resolution C6), in the `core` Compose
+Open Policy Agent for the platform's action decisions
+(`docs/contracts.md#policy-engine-opa`, resolution C6), in the `core` Compose
 project:
 
 - pinned image, published only on `127.0.0.1:8181`, read-only root
@@ -10,7 +10,7 @@ project:
   `config/opa/authz.rego.j2` (`package system.authz`): decision queries
   (`GET`/`POST`) at exactly the active platform's decision path from its
   manifest (`/v1/data/<policy.decision_path>`) and
-  `/v1/data/pinka/placeholder/active` (owner decision Q7), and health
+  `/v1/data/pinka/placeholder/active`, and health
   checks, are allowed; every policy or data write, the policy listing and
   every other API answer 401;
 - infra's placeholder (`config/opa/placeholder/`:

@@ -4,7 +4,7 @@ type: how-to
 audience: [developer]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: As a maintainer, pin the Zabbly and Tailscale repository keys and packages, the DCGM exporter image, the Incus base images, the GPU list of the NVIDIA driver and GitHub's SSH host keys with make lock-pins, review its output and land the change only after the full gate and CI pass.
+description: As a maintainer, pin the Zabbly and Tailscale repository keys and packages, the DCGM exporter image, the lab images' sizes, the Incus base images, the GPU list of the NVIDIA driver and GitHub's SSH host keys with make lock-pins, review its output and land the change only after the full gate and CI pass.
 ---
 
 # How to pin the vendor sources
@@ -36,6 +36,12 @@ and changes no file. It covers:
   of its image index and its platforms; the release's own
   `hack/versions.env` on GitHub must name the same exporter version, and its
   DCGM version is printed.
+- **The lab images' sizes.** For every image of `containers.images`, the
+  compressed size of each platform (the sum of its manifest's layers), read
+  by the pinned digest; Docker Hub's images are read from Google's mirror
+  `mirror.gcr.io` first, which holds the same digests, because Docker Hub
+  limits anonymous reads. The requirements computation estimates the
+  unpacked size from them.
 - **The Incus base images of the golden image pipeline.** The newest build
   of each pinned alias on images.linuxcontainers.org. Its fingerprint, the
   sha256 of the image's metadata and root file system together, is computed
@@ -99,7 +105,7 @@ pins; the run then exits 1, and the other sections are still printed.
 
 3. Paste each block under the key its header names in `versions.lock.yml`
    (`repository_keys.keys`, `packages.incus`, `packages.tailscale`,
-   `containers.images`, `incus_base_images.images`,
+   `containers.images`, each image's `sizes`, `incus_base_images.images`,
    `nvidia_driver_gpus.releases`, `github_ssh_host_keys`),
    set `verified_on` and `source` to the run, and remove the matching
    `verify` entries of `ansible/component-sources.yml` whose layout the run
@@ -111,7 +117,7 @@ pins; the run then exits 1, and the other sections are still printed.
 ## Verify the result
 
 The lock check accepts the new pins and re-verifies the keys, the image
-digest, that every pinned base image is still on its server, and the GPU
+digests and sizes, that every pinned base image is still on its server, and the GPU
 list (it downloads the pinned package again and recomputes the list):
 
 <!-- qa:skip reason="needs network access to the vendor sources and the registries" -->

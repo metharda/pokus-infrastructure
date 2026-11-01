@@ -1,4 +1,4 @@
-"""Documentation page lint (Pokus Documentation Specification §A.2, §A.4, §A.6).
+"""Documentation page lint.
 
 Rules, with stable codes:
 

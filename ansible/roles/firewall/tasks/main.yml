@@ -1,14 +1,14 @@
 # Managed by pinka (ansible/roles/firewall/tasks/main.yml). Local changes will be overwritten.
 #
-# One effective policy with three backends (BUILD_PROMPT §7.5, §19.6): SSH (and
+# One effective policy with three backends: SSH (and
 # the Grafana serve port, if enabled) only on tailscale0 plus
 # ssh_extra_allowed_interfaces; DHCP/DNS from Incus bridges to the host;
 # nothing forwarded out of run networks; on every backend, the telemetry
 # guard's, the inference guard's and on split nodes the split guard's own
-# tables (§7.9, §7.11, §19.10). pinka only ever changes its own
+# tables. pinka only ever changes its own
 # table, zone or rules and never flushes those of Docker, Incus, firewalld or ufw.
 # Shared host: the pre-existing listeners stay reachable as found; what the
-# owner consented to close, the access guard drops on every backend (§7.5).
+# owner consented to close, the access guard drops on every backend.
 - name: Apply the policy with the backend {{ pinka_firewall_backend }}
   ansible.builtin.include_tasks: "{{ pinka_firewall_backend }}.yml"
 

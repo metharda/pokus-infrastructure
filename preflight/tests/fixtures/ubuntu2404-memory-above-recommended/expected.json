@@ -1,0 +1,6 @@
+{
+  "outcome": "supported",
+  "switches": {
+    "training.memory_max": "4G"
+  }
+}

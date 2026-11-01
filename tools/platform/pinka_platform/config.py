@@ -1,4 +1,4 @@
-"""The services' configuration, checked against the release's schemas (§7.14 step 7).
+"""The services' configuration, checked against the release's schemas.
 
 ``platform_settings.<service>`` in the host settings is the non-secret
 configuration of a service. A service that names a ``config`` schema gets its

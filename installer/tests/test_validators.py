@@ -1,4 +1,4 @@
-"""Validation rules (BUILD_PROMPT §18.8)."""
+"""Validation rules."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def test_cap_sizes_and_secret_keys() -> None:
 
 
 def test_serve_on_an_adopted_node_needs_consent() -> None:
-    # BUILD_PROMPT §7.4: off by default on a node logged in before pinka.
+    # Off by default on a node logged in before pinka.
     assert validators.serve_consent(adopted=True, serve=True, consent=False)
     assert validators.serve_consent(adopted=True, serve=True, consent=True) is None
     assert validators.serve_consent(adopted=True, serve=False, consent=False) is None
@@ -203,3 +203,12 @@ def test_key_check_with_and_without_ssh_keygen() -> None:
         assert keys.check(line).keys == result.keys
     else:
         assert validators.ssh_keygen_fingerprint(line) is None
+
+
+def test_uninstall_confirmation() -> None:
+    assert validators.uninstall_confirmation("pinka-lab", "pinka-lab") is None
+    assert "type the machine name, pinka-lab" in str(
+        validators.uninstall_confirmation("", "pinka-lab")
+    )
+    for typed in ("pinka-lab ", "Pinka-lab", "pinka"):
+        assert "not the machine name" in str(validators.uninstall_confirmation(typed, "pinka-lab"))

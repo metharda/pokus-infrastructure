@@ -45,6 +45,28 @@ class LabTest(unittest.TestCase):
             ["--no-write", "--srv-path", "/srv/pinka", "--quiet"],
         )
 
+    def test_preflight_takes_the_machines_options_and_plan(self) -> None:
+        # The same run as doctor's, with the plan bootstrap stored.
+        command = "/usr/local/lib/pinka/preflight/pinka-preflight *"
+        config = lab(preflight_args=["--port=grafana=18750"])
+        stored = FakeSystem({command: (0, "{}")}, files={"/etc/pinka/plan.json": "{}"})
+        captured(lambda: commands.preflight(stored, config, True))
+        self.assertEqual(
+            stored.calls[0][1:],
+            [
+                "--no-write",
+                "--srv-path",
+                "/srv/pinka",
+                "--port=grafana=18750",
+                "--plan",
+                "/etc/pinka/plan.json",
+                "--quiet",
+            ],
+        )
+        given = FakeSystem({command: (0, "{}")}, files={"/etc/pinka/plan.json": "{}"})
+        captured(lambda: commands.preflight(given, config, True, "/tmp/other.json"))
+        self.assertEqual(given.calls[0][-3:], ["--plan", "/tmp/other.json", "--quiet"])
+
     def test_preflight_summary_runs_interactively(self) -> None:
         system = FakeSystem(interactive_rc=0)
         self.assertEqual(commands.preflight(system, lab(), False), 0)
@@ -151,7 +173,7 @@ class LabTest(unittest.TestCase):
         self.assertEqual(out.splitlines()[0], "platform demo drained")
 
     def test_stop_asks_the_gpu_arbiter_for_idle_after_the_drain(self) -> None:
-        # §7.18: after the drain hook, before the targets stop.
+        # After the drain hook, before the targets stop.
         answers = [
             ({"ok": True, "mode": "idle"}, "the GPU is idle"),
             ({"ok": True, "mode": "idle", "run": "tune-1"}, "the GPU is idle; run tune-1 stopped"),
@@ -358,6 +380,34 @@ class BackupTest(unittest.TestCase):
         )
 
 
+class UninstallTest(unittest.TestCase):
+    def test_uninstall_runs_bootstrap_from_the_recorded_checkout(self) -> None:
+        state = json.dumps({"machine": "pinka-lab", "infra_dir": "/srv/checkout"})
+        system = FakeSystem(interactive_rc=81, files={commands.BOOTSTRAP_STATE: state})
+        rc = commands.uninstall(system, None, ["--dry-run"], ["--non-interactive"])
+        self.assertEqual(rc, 81)
+        self.assertEqual(
+            system.interactive_calls[0][0],
+            [
+                "/srv/checkout/bootstrap/bootstrap.sh",
+                "--uninstall",
+                "--dry-run",
+                "--non-interactive",
+            ],
+        )
+
+    def test_without_a_state_file_the_lab_description_names_the_checkout(self) -> None:
+        system = FakeSystem(interactive_rc=0, files={commands.BOOTSTRAP_STATE: "not json"})
+        commands.uninstall(system, lab(), [], [])
+        self.assertEqual(
+            system.interactive_calls[0][0][0], f"{lab().infra_dir}/bootstrap/bootstrap.sh"
+        )
+        with self.assertRaisesRegex(commands.CommandError, "names no checkout"):
+            commands.uninstall(FakeSystem(), None, [], [])
+        with self.assertRaisesRegex(commands.CommandError, "needs root"):
+            commands.uninstall(FakeSystem(euid=1000), lab(), [], [])
+
+
 class ImagesTest(unittest.TestCase):
     def test_chain(self) -> None:
         self.assertEqual(
@@ -558,7 +608,7 @@ class WslUpdateTest(unittest.TestCase):
 
 class DocsTest(unittest.TestCase):
     BASE = "/usr/local/share/pinka/docs"
-    # §7.19: the service serves the release the current link names.
+    # The service serves the release the current link names.
     SITE = f"{BASE}/current"
 
     def test_serve_from_the_lab_description(self) -> None:
@@ -653,7 +703,7 @@ class PlatformPurgeTest(unittest.TestCase):
         self.assertIn("--remove-secrets", out)
 
     def test_purge_loads_the_inference_guard_again(self) -> None:
-        # Owner decision with the "commit" for 3d.5: no purged platform's UID
+        # No purged platform's UID
         # stays on the inference guard's allowlist.
         guard = {commands.INFERENCE_GUARD_UNIT_FILE: info("root", "root", 0o644)}
         system = FakeSystem(

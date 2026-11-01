@@ -1,6 +1,6 @@
 #!/opt/pinka/ansible-venv/bin/python3 -I
 # Managed by pinka (ansible/roles/incus/files/pinka_run_network.py). Local changes will be overwritten.
-"""The run-network helper (BUILD_PROMPT §7.7, §12.6).
+"""The run-network helper.
 
 Installed as ``/usr/local/libexec/pinka/run-network`` and run as root by
 ``pinka-run-network@.service``, one instance per connection on

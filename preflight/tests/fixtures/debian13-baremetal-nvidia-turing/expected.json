@@ -1,6 +1,7 @@
 {
   "disabled": [
-    "gpu_inference"
+    "gpu_inference",
+    "gpu_training"
   ],
   "family": "debian",
   "install_driver": "auto",

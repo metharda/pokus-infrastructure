@@ -2,7 +2,7 @@
 # shellcheck disable=SC2034 # paths are read by the scripts that source this file
 # Managed by pinka (bootstrap/lib/tooling.sh). Local changes will be overwritten.
 #
-# Pinned tooling under /opt/pinka (BUILD_PROMPT §5.2 steps 2, 4-7; §19.3):
+# Pinned tooling under /opt/pinka:
 # uv (checksum-verified), CPython installed by uv, the hash-locked Ansible
 # environment, the pinned Ansible collections, and the check that generated
 # version files match versions.lock.yml. Every function is idempotent.

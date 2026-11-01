@@ -1,7 +1,7 @@
 # pkg
 
-Package-manager abstraction used by every role that installs host packages
-(BUILD_PROMPT §19.3, §19.4). Roles never call apt, dnf, zypper or pacman
+Package-manager abstraction used by every role that installs host packages.
+Roles never call apt, dnf, zypper or pacman
 directly; they include this role with one of three entry points:
 
 | Entry point | Does |

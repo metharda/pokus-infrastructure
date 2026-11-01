@@ -1,4 +1,4 @@
-"""Generators for pokus-infrastructure (BUILD_PROMPT §2.3, §11; DOCS_SPEC §A.3, §A.6).
+"""Generators for pokus-infrastructure.
 
 ``python -m pinka_gen generate`` writes every generated file;
 ``check`` regenerates in memory and fails if a committed file differs (the
@@ -8,7 +8,7 @@ schema field has a reference entry.
 Generated files:
 
 * ``preflight/support-matrix.json`` and ``preflight/endpoints.json`` (the
-  preflight evaluator reads only JSON; owner answer E10), and
+  preflight evaluator reads only JSON), and
   ``preflight/lab-defaults.json`` (the default ports and addresses preflight
   checks, from group_vars), and ``preflight/nvidia-gpus.json`` (the GPU lists
   of the pinned NVIDIA driver releases, from versions.lock.yml);

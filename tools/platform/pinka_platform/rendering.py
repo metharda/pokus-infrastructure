@@ -1,4 +1,4 @@
-"""Everything infra renders for the active platform (§7.14 step 7).
+"""Everything infra renders for the active platform.
 
 :func:`render` turns a valid manifest, the contract and the host settings
 into one document that the platform role applies with ordinary Ansible
@@ -26,7 +26,7 @@ from pinka_platform.contract import Contract
 RENDER_VERSION = 1
 # The key of rendered.json that the socket-ACL helper keeps up to date at
 # every start of a socket: the sockets that fell back to mode 0666 because
-# /run has no ACL support (owner decision with the "commit" for 3d.3). It is
+# /run has no ACL support. It is
 # present only while the list is not empty; doctor warns about each socket.
 SOCKET_ACL_FALLBACK = "socket_acl_fallback"
 
@@ -67,7 +67,7 @@ def _directories(manifest: Mapping[str, Any], contract: Contract) -> list[dict[s
     controller = names.account(p, _controller(manifest))
     out += [
         {"path": f"{layout.SIGNING_DIR}/{p}", "owner": "root", "group": controller, "mode": "0750"},
-        # Attestations and the QA keys they are checked with (§12.10): the
+        # Attestations and the QA keys they are checked with: the
         # trusted keys are public, the attestations readable by the controller.
         {"path": f"{layout.ETC}/qa", **root},
         {"path": layout.QA_TRUSTED_KEYS_DIR, **root},
@@ -86,7 +86,7 @@ def _controller(manifest: Mapping[str, Any]) -> str:
 
 
 def _training(manifest: Mapping[str, Any]) -> dict[str, Any]:
-    """What the GPU arbiter reads (§7.18): the dataset sources and the jobs.
+    """What the GPU arbiter reads: the dataset sources and the jobs.
 
     The controller publishes datasets only from its own state directories;
     a job's container options are infra's own and not rendered here, only
@@ -118,7 +118,7 @@ def _training(manifest: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _socket(platform: str, socket: Mapping[str, Any], contract: Contract) -> dict[str, Any]:
-    # What doctor compares the bound socket with (§12.3). Without ACL support
+    # What doctor compares the bound socket with. Without ACL support
     # on /run the helper makes it 0666 and records that in rendered.json
     # (SOCKET_ACL_FALLBACK); doctor then warns.
     service, name = socket["service"], socket["name"]
@@ -183,7 +183,7 @@ def render(
         manifest: A valid manifest.
         contract: The contract.
         release_target: The published release directory.
-        ports: Effective ports (§12.11).
+        ports: Effective ports.
         settings: ``platform_settings``: configuration per service, checked
             against the release's config schemas before.
         machine_name: The machine's name (published signing keys).
@@ -320,8 +320,8 @@ def render(
         "cli": cli,
         "tools": list(manifest.get("tools", [])),
         "training": _training(manifest) if "gpu" in requires else None,
-        # The accounts the inference guard lets reach the inference API
-        # (§7.11): the profiles with inference_api (controller, inference-broker).
+        # The accounts the inference guard lets reach the inference API:
+        # the profiles with inference_api (controller, inference-broker).
         "inference_clients": sorted(
             names.account(p, s["name"])
             for s in manifest["services"]

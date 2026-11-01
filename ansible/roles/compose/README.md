@@ -1,8 +1,7 @@
 # compose
 
 Helper role (included by `postgres`, `opa`, `observability` and `vllm`) for
-the Compose projects of the lab services (BUILD_PROMPT §7.6, owner answer
-E15):
+the Compose projects of the lab services:
 
 - copies `compose/<project>/compose.yml` to `/srv/pinka/services/<project>/`
   and writes `.env` with every image pinned by digest (from

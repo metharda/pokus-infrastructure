@@ -1,4 +1,4 @@
-"""Where the installer reads and writes (BUILD_PROMPT §18.3).
+"""Where the installer reads and writes.
 
 Every path derives from the root of the checkout and a few host
 directories, so the tests run against a copy of the repository in a temporary
@@ -159,7 +159,7 @@ def invoking_user() -> tuple[int, int] | None:
 def write_file(path: Path, text: str, mode: int = 0o644, *, chown: bool = True) -> None:
     """Write a file of the checkout atomically, owned by the invoking user.
 
-    The repository never becomes root-owned (BUILD_PROMPT §18.2): files and
+    The repository never becomes root-owned: files and
     the directories created for them belong to SUDO_UID:SUDO_GID.
 
     Args:

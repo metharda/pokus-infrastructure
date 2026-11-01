@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/firewall/tasks/split_guard.yml). Local changes will be overwritten.
 #
-# The split-inference guard (BUILD_PROMPT §19.10, interpretation 11.13) on
+# The split-inference guard on
 # every backend of a lab or inference node: its own nftables table, loaded by
 # its own unit. Once paired, the split-inference ports on the tailnet
 # interface accept only the paired peer's tailnet address (from peer.json,

@@ -12,7 +12,7 @@ compose_profiles: []
 # gpu-runtime, after the method Docker offers, docker role facts.yml).
 compose_gpu: false
 # Log limits and cgroup parent of every lab container, set per service rather
-# than in the Docker daemon (BUILD_PROMPT §7.6).
+# than in the Docker daemon.
 compose_log_max_size: "{{ pinka_container_log_max_size }}"
 compose_log_max_file: "{{ pinka_container_log_max_file }}"
 compose_cgroup_parent: "{{ pinka_services_slice }}"
@@ -23,7 +23,7 @@ compose_core_subnet: "{{ docker_address_pools | default([{'base': '172.30.0.0/16
 compose_start: true
 # Seconds `docker compose up --wait` waits for healthy containers.
 compose_wait_timeout: 300
-# Directory of the rendered projects (BUILD_PROMPT §6.2 services/).
+# Directory of the rendered projects (services/).
 compose_root: "{{ pinka_root }}/services"
 # Images by service variable name, from versions.lock.yml (pinned by digest).
 compose_images: "{{ pinka_versions.containers.images }}"
@@ -31,7 +31,7 @@ compose_images: "{{ pinka_versions.containers.images }}"
 # project must pass the same values (the file is shared).
 compose_extra_env: {}
 # Group of the database socket directory: the active platform's <platform>-db,
-# or root without a platform (the exporter joins it, §7.8).
+# or root without a platform (the exporter joins it).
 compose_db_socket_group: >-
   {{ ((active_platform | default({}, true)).database | default({}, true)).socket_group
      | default('root', true) }}

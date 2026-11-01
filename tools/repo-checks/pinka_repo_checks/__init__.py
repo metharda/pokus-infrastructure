@@ -1,7 +1,7 @@
 """Repository quality checks shared by every Pokus component.
 
-The package implements the checks that the Pokus Documentation Specification
-(§A.4, §A.6) and the privacy invariant (infra §13.12, platform §16.9) require:
+The package implements the documentation checks
+and the privacy scan:
 
 * ``privacy``: scans files for personal or installation-specific data.
 * ``docs-lint``: validates page front matter, code-block conventions and

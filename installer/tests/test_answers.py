@@ -1,4 +1,4 @@
-"""The answers file: schema, checks, round trips (BUILD_PROMPT §18.6, §18.9)."""
+"""The answers file: schema, checks, round trips."""
 
 from __future__ import annotations
 
@@ -69,7 +69,7 @@ def test_round_trip_through_the_file(repo: Paths, tmp_path: Path) -> None:
     path = tmp_path / "answers.yml"
     path.write_text(answers_mod.dumps(answers), encoding="utf-8")
     assert answers_mod.load(path, apply.context(repo)) == answers.normalized()
-    assert answers.normalized().storage.loop_size_gib == 300  # not used with a device
+    assert answers.normalized().storage.loop_size_gib == "auto"  # not used with a device
     assert path.read_text().startswith("# Installer answers for pinka-lab")
 
 
@@ -149,7 +149,7 @@ def test_cross_field_problems(repo: Paths) -> None:
 
 
 def test_sources_follow_the_platform_tool_s_rules(repo: Paths) -> None:
-    # A package overlapping another in one repository (§12.1), a bad ref.
+    # A package overlapping another in one repository, a bad ref.
     answers = full_answers()
     answers.content["guides"] = answers_mod.Source(answers.content["cases"].repo, "main", "cases")
     answers.content["more"] = answers_mod.Source(answers.platform.repo, "a..b", "more")
@@ -166,6 +166,9 @@ def test_split_inference_rules(repo: Paths) -> None:
     found = "\n".join(answers_mod.problems(answers, context))
     assert "the other node, not this machine" in found
     assert "platform: an inference node runs no platform" in found
+    # The CI answers switch inference off; an inference node needs it.
+    assert "features/inference: an inference node runs only the inference stack" in found
+    answers.features.inference = "auto"
     answers.platform = answers_mod.Source()
     answers.content = {}
     answers.platform_settings = {}

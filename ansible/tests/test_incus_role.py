@@ -142,14 +142,20 @@ def test_server_and_pool(desired: dict[str, Any]) -> None:
         "name": "pinka-targets",
         "description": "pinka instances",
         "driver": "btrfs",
-        "config": {"size": "300GiB"},
+        "config": {"size": "66GiB"},  # incus_pool_size: auto, computed by preflight
     }
+
+
+def test_explicit_pool_size_wins() -> None:
+    variables = incus_vars(researchers=[], incus_pool_size="300GiB")
+    facts = run_set_facts(ROLES / "incus" / "tasks" / "desired.yml", variables)
+    assert facts["incus_pool"]["config"] == {"size": "300GiB"}
 
 
 @pytest.mark.parametrize(
     ("backend", "source", "driver", "config"),
     [
-        ("lvm", "loop", "lvm", {"size": "300GiB", "lvm.use_thinpool": "true"}),
+        ("lvm", "loop", "lvm", {"size": "66GiB", "lvm.use_thinpool": "true"}),
         ("btrfs", "device", "btrfs", {"source": "/dev/disk/by-id/example-disk"}),
     ],
 )
@@ -174,8 +180,9 @@ def test_projects(desired: dict[str, Any]) -> None:
     assert bench["features.images"] == "false"
     assert bench["restricted.devices.proxy"] == "allow"
     assert bench["limits.virtual-machines"] == "4"
-    memory = fixture_profile(FIXTURE)["hardware"]["memory_gib"]
-    assert bench["limits.memory"] == f"{max(int(memory * 0.6), 1)}GiB"
+    # Two concurrent targets (the default), each a VM (vm_targets) of 2 GiB
+    # with a probe client of 512 MiB.
+    assert bench["limits.memory"] == f"{2 * (2048 + 512)}MiB"
     assert by_name(projects, "build")["config"]["restricted.networks.access"] == "pinka-build0"
     user = by_name(projects, "user-1001")["config"]
     assert set(user) >= INCUS_USER_KEYS
@@ -213,6 +220,20 @@ def test_no_vms_without_vm_targets() -> None:
     )
     assert "target-vm" not in [p["name"] for p in facts["incus_profiles"]]
     assert all(p["config"]["limits.virtual-machines"] == "0" for p in facts["incus_projects"])
+
+
+@pytest.mark.parametrize(
+    ("targets", "vm_targets", "memory"), [(1, False, "1536MiB"), (5, True, "12800MiB")]
+)
+def test_bench_memory_follows_the_concurrent_targets(
+    targets: int, vm_targets: bool, memory: str
+) -> None:
+    """The bench project holds the chosen targets, not a share of the host."""
+    facts = run_set_facts(
+        ROLES / "incus" / "tasks" / "desired.yml",
+        incus_vars(vm_targets=vm_targets, researchers=[], incus_concurrent_targets=targets),
+    )
+    assert by_name(facts["incus_projects"], "bench")["config"]["limits.memory"] == memory
 
 
 def test_preseed_lists_everything(desired: dict[str, Any]) -> None:
@@ -258,7 +279,7 @@ def test_events_unit() -> None:
     ],
 )
 def test_docker_daemon_json(setting: str, mac: str, extra: set[str]) -> None:
-    # BUILD_PROMPT §7.6: only for a Docker pinka installed, and only what it
+    # Only for a Docker pinka installed, and only what it
     # needs; the log driver, cgroup parent and networks are in the Compose
     # projects, and CDI is Docker's default from 28.2 (setting "none").
     variables = role_vars("docker", docker_gpu_setting=setting, pinka_mac=mac)
@@ -338,7 +359,7 @@ def inner(value: str) -> str:
 def test_daemon_json_sets_the_gpu_only_below_cdis_default(
     version: str, gpu: bool, setting: str
 ) -> None:
-    # BUILD_PROMPT §7.6: Docker 28.2 and later enable CDI unless features.cdi is false.
+    # Docker 28.2 and later enable CDI unless features.cdi is false.
     spec = docker_task("Decide what the daemon configuration needs for the GPU", "install.yml")
     variables = role_vars(
         "docker",

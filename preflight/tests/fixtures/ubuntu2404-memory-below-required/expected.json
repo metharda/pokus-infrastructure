@@ -1,0 +1,7 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "below the 10.1 GiB these choices require",
+    "incus_concurrent_targets 3"
+  ]
+}

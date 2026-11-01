@@ -1,5 +1,5 @@
 # Managed by pinka (ansible/roles/images/files/pinka_leakage_lint.py). Local changes will be overwritten.
-"""Leakage lint of a golden image build (BUILD_PROMPT §7.13).
+"""Leakage lint of a golden image build.
 
 Runs inside the build instance with the image's own python3 (standard
 library only) and is removed again before the image is published. It looks

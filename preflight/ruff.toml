@@ -1,5 +1,5 @@
 # Managed by pinka (preflight/ruff.toml).
-# Preflight must stay source-compatible with Python 3.9 (BUILD_PROMPT §2.1):
+# Preflight must stay source-compatible with Python 3.9:
 # ruff checks syntax and suggestions against 3.9; mypy cannot target 3.9 any
 # more, so `make test` also runs the test suite on CPython 3.9.
 extend = "../pyproject.toml"

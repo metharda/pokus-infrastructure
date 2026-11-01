@@ -8,22 +8,17 @@ last_verified: {date: null, rc: null, by: null}
 
 # ADR-0015: GPU training as infra-run container jobs
 
-- **Status:** accepted: decision 7 (GPU training jobs, items 7.1 to 7.7 for
-  infra) and the new points N3 and N4 of the owner's decisions on contract
-  v2 after infra step 14, written into the build prompt by plan item 3b; the
-  arbiter's process model, the job interface, the run ID format and the
-  topology approved with the "commit" for 3d.5 (implemented in 3d.5); the
-  size caps and the resume after `pinka start` asked for with the same
-  "commit" (implemented in 3d.6)
-- **Date:** 2026-10-09, the spec update of plan item 3b that wrote the
-  owner's decision into the build prompt; the decision itself has no
-  recorded date
-- **Deciders:** pokus-infrastructure maintainers (BUILD_PROMPT §7.18, §12.8)
+- **Status:** accepted: GPU training jobs, with the arbiter's process model,
+  the job interface, the run ID format, the topology, the size caps and the
+  resume after `pinka start`
+- **Date:** 2026-10-09 (when the decision was written down; it has no
+  recorded date)
+- **Deciders:** pokus-infrastructure maintainers
 
 ## Context
 
 The research loop the lab supports is: test, train an adapter on the same
-GPU, serve the new model, re-test on the same benchmark (BUILD_PROMPT §1).
+GPU, serve the new model, re-test on the same benchmark.
 The reference machine has one NVIDIA GPU, and vLLM serves the agents' model
 from it. Contract v1 had no training or adapter-creation flow: the platform
 could only import adapters, and a root helper switched vLLM deployments for
@@ -35,10 +30,10 @@ Training adds four requirements:
   only one of them may hold it at a time.
 - **No GPU devices or root for platform code.** Every platform unit runs
   with `PrivateDevices=yes`, an empty capability bounding set and
-  `NoNewPrivileges=yes` (§7.14), and the controller's profile says "never
+  `NoNewPrivileges=yes`, and the controller's profile says "never
   GPU devices" ([ADR-0014](0014-platforms-through-manifests.md)).
 - **No contamination.** Training data is built from benchmark runs and
-  scenario data, and ground truth is restricted data (§12.4). A model trained
+  scenario data, and ground truth is restricted data. A model trained
   on instances of the `test` split would invalidate the benchmark it is
   tested on.
 - **Traceable results.** An adapter is a research result: it must be
@@ -131,7 +126,7 @@ Training adds four requirements:
   registered hashes, restore re-registers adapters and verifies their
   hashes, and the platform can flag test results whose scenario template is
   in an adapter's training data, read from the lineage (the contamination
-  flag, a platform-side addition of decision 7).
+  flag, a platform-side addition).
 - The split guard is only as good as the provenance: infra checks the
   instances and splits it is given, and that the list is complete and
   truthful is the platform's obligation, tested on the platform side.
@@ -150,7 +145,7 @@ Training adds four requirements:
   restricted data out of training and puts every dataset in front of the
   split guard.
 - **A second GPU for training**: the reference machine has one GPU, and the
-  research loop trains on the same GPU it serves from (§1); infra's cap on a
+  research loop trains on the same GPU it serves from; infra's cap on a
   job's GPUs is 1.
 - **A cluster or GPU scheduler** (Kubernetes, Slurm, Ray, Nomad):
   [ADR-0013](0013-no-orchestration-frameworks.md) rejects them for the lab

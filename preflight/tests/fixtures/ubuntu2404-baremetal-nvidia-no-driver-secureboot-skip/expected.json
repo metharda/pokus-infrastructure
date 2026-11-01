@@ -1,6 +1,7 @@
 {
   "disabled": [
-    "gpu_inference"
+    "gpu_inference",
+    "gpu_training"
   ],
   "install_driver": "skip",
   "needs_action": [],

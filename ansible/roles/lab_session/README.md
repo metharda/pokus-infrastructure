@@ -1,7 +1,7 @@
 # lab_session
 
 `pinka-lab.target`, the startup health gate and the session record of every
-boot (BUILD_PROMPT §7.16, `docs/contracts.md`); tag `lab_session`.
+boot (`docs/contracts.md`); tag `lab_session`.
 
 - `pinka-lab.target`: the lab is up while it is active. The lab's units
   (Compose projects, the sleep inhibitor of `power_policy:
@@ -16,7 +16,8 @@ boot (BUILD_PROMPT §7.16, `docs/contracts.md`); tag `lab_session`.
   - postgres: the container `pinka-postgres` is healthy (`full`, `lab`);
   - collector: the gateway's health endpoint answers 200;
   - incus: `incus query /1.0` succeeds (`full`, `lab`);
-  - gpu: with `gpu_inference` on `full` and `inference` nodes, a container of
+  - gpu: with `gpu_inference` on `full` and `inference` nodes, or with
+    `gpu_training` (after the switches), a container of
     the pinned CUDA image lists a GPU, with the GPU method of
     `/etc/docker/daemon.json` (CDI or the NVIDIA runtime).
   The result goes to `/run/pinka/health-gate.json`. Platform services
@@ -28,8 +29,7 @@ boot (BUILD_PROMPT §7.16, `docs/contracts.md`); tag `lab_session`.
   (`pinka preflight --json`). A failed command leaves its field `null`
   and its reason under `errors`; the record is written anyway.
 - The ordered shutdown (`pinka stop`, running the active platform's `drain`
-  hook first once infra runs hooks, plan step 3d.4) is part of the `pinka`
-  CLI.
+  hook first) is part of the `pinka` CLI.
 
 ## Variables
 
@@ -37,7 +37,7 @@ See `meta/argument_specs.yml`.
 
 ## Feature flags
 
-`gpu_inference` adds the GPU check; `node_role` selects the PostgreSQL and
+`gpu_inference` or `gpu_training` adds the GPU check; `node_role` selects the PostgreSQL and
 Incus checks.
 
 ## Idempotency

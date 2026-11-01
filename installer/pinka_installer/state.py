@@ -1,4 +1,4 @@
-"""Resume state (BUILD_PROMPT §18.1, §18.3).
+"""Resume state.
 
 ``/var/lib/pinka/installer/state.json`` (0600 root) records where the
 installer is: the screen, the answers so far (never secrets), the completed

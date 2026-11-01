@@ -1,6 +1,6 @@
 """A minimal PostgreSQL client over a Unix socket (standard library only).
 
-refplat keeps its tables in the platform's database like any platform (§12.5);
+refplat keeps its tables in the platform's database like any platform;
 being standard-library only, it speaks the protocol itself: the startup
 message, SCRAM-SHA-256 authentication (the only method infra's server offers
 on its sockets) and simple queries with text results. Values are passed as SQL

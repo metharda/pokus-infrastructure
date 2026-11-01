@@ -1,7 +1,7 @@
 # models
 
-Pinned model weights (BUILD_PROMPT §7.12,
-`docs/contracts.md#paths`), applied with `gpu_inference` on `full` and
+Pinned model weights
+(`docs/contracts.md#paths`), applied with `gpu_inference` on `full` and
 `inference` nodes; tag `models`, skippable.
 
 - Input: `models.lock.yml` (schema
@@ -9,7 +9,7 @@ Pinned model weights (BUILD_PROMPT §7.12,
   `{id, hf_repo, revision, files: [{path, sha256}], license, gated,
   quantization, notes}`. Revisions are full commit hashes; there is never an
   unverified value. Adapters are not pinned: only the GPU arbiter registers
-  them, under `/srv/pinka/models/adapters/` (§7.18), and no model may have
+  them, under `/srv/pinka/models/adapters/`, and no model may have
   `adapters` as its repository owner.
 - The `hf` CLI of the pinned `huggingface_hub` (`versions.lock.yml`
   `python.model_tools`, hash-locked in `files/requirements.lock`, `make
@@ -23,7 +23,7 @@ Pinned model weights (BUILD_PROMPT §7.12,
 - Gated entries use `vault_hf_token`, passed on stdin, never on a command line.
 
 The candidates for a lab come from `models.catalog.yml`; an entry is added to
-the lock only after the owner approved it and its revision and file hashes
+the lock only after the lab owner approved it and its revision and file hashes
 were resolved (`docs/how-to/add-a-model.md`).
 
 ## Variables

@@ -50,28 +50,30 @@ CPython installed by uv into `/opt/pinka/python` and the packages of its environ
 
 ## Container images
 
-Every image is used by digest; the tag is informational. Verified on 2026-10-05. Source: Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub tag API); latest stable releases on 2026-10-05. The DCGM exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z
+Every image is used by digest; the tag is informational. Verified on 2026-10-05. Source: Registry API of Docker Hub, GHCR and gcr.io (manifest requests by tag and the Docker Hub tag API); latest stable releases on 2026-10-05. The DCGM exporter: nvcr.io with make lock-pins at 2026-10-17T22:47:21Z. The sizes: each platform manifest's layers, read on 2026-10-23 with the registry API (Docker Hub's images through mirror.gcr.io, which holds the same digests)
 
-| Name | Image | Tag | Digest | Platforms |
-| --- | --- | --- | --- | --- |
-| postgres | `docker.io/library/postgres` | `18.6-trixie` | `sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722` | linux/amd64, linux/arm64 |
-| otel_collector | `docker.io/otel/opentelemetry-collector-contrib` | `0.162.0` | `sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6` | linux/amd64, linux/arm64 |
-| prometheus | `docker.io/prom/prometheus` | `v3.15.0` | `sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e` | linux/amd64, linux/arm64 |
-| loki | `docker.io/grafana/loki` | `3.7.8` | `sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193` | linux/amd64, linux/arm64 |
-| tempo | `docker.io/grafana/tempo` | `2.10.8` | `sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a` | linux/amd64, linux/arm64 |
-| grafana | `docker.io/grafana/grafana` | `13.0.10` | `sha256:c8f326efdb7be9be52047edaab34cf8dadb5152c1244af102eb0a517a7797068` | linux/amd64, linux/arm64 |
-| node_exporter | `docker.io/prom/node-exporter` | `v1.12.1` | `sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0` | linux/amd64, linux/arm64 |
-| cadvisor | `ghcr.io/google/cadvisor` | `v0.60.6` | `sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a` | linux/amd64, linux/arm64 |
-| postgres_exporter | `docker.io/prometheuscommunity/postgres-exporter` | `v0.20.1` | `sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e` | linux/amd64, linux/arm64 |
-| gpu_exporter | `docker.io/utkuozdemir/nvidia_gpu_exporter` | `1.15.1` | `sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087` | linux/amd64, linux/arm64 |
-| dcgm_exporter | `nvcr.io/nvidia/k8s/dcgm-exporter` | `4.8.4` | `sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003` | linux/amd64, linux/arm64 |
-| opa | `docker.io/openpolicyagent/opa` | `1.21.1-static` | `sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e` | linux/amd64, linux/arm64 |
-| vllm | `docker.io/vllm/vllm-openai` | `v0.31.0` | `sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3` | linux/amd64, linux/arm64 |
-| query_proxy | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 |
-| cuda_base_test | `docker.io/nvidia/cuda` | `13.0.2-base-ubuntu24.04` | `sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701` | linux/amd64, linux/arm64 |
-| refplat_job | `public.ecr.aws/docker/library/python` | `3.12-slim-trixie` | `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1` | linux/amd64, linux/arm64 |
+| Name | Image | Tag | Digest | Platforms | Compressed GiB (per platform) |
+| --- | --- | --- | --- | --- | --- |
+| postgres | `docker.io/library/postgres` | `18.6-trixie` | `sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722` | linux/amd64, linux/arm64 | 0.15, 0.15 |
+| otel_collector | `docker.io/otel/opentelemetry-collector-contrib` | `0.162.0` | `sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6` | linux/amd64, linux/arm64 | 0.11, 0.10 |
+| prometheus | `docker.io/prom/prometheus` | `v3.15.0` | `sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e` | linux/amd64, linux/arm64 | 0.11, 0.10 |
+| loki | `docker.io/grafana/loki` | `3.7.8` | `sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193` | linux/amd64, linux/arm64 | 0.04, 0.04 |
+| tempo | `docker.io/grafana/tempo` | `2.10.8` | `sha256:f0561deb1c68ec44d6e6e7e4487f30106c4e5e768642077695b37958b105812a` | linux/amd64, linux/arm64 | 0.03, 0.03 |
+| grafana | `docker.io/grafana/grafana` | `13.0.10` | `sha256:c8f326efdb7be9be52047edaab34cf8dadb5152c1244af102eb0a517a7797068` | linux/amd64, linux/arm64 | 0.33, 0.31 |
+| node_exporter | `docker.io/prom/node-exporter` | `v1.12.1` | `sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0` | linux/amd64, linux/arm64 | 0.01, 0.01 |
+| cadvisor | `ghcr.io/google/cadvisor` | `v0.60.6` | `sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a` | linux/amd64, linux/arm64 | 0.03, 0.03 |
+| postgres_exporter | `docker.io/prometheuscommunity/postgres-exporter` | `v0.20.1` | `sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e` | linux/amd64, linux/arm64 | 0.01, 0.01 |
+| gpu_exporter | `docker.io/utkuozdemir/nvidia_gpu_exporter` | `1.15.1` | `sha256:7aee2d42836ad29d4adb2722b7cfdc806ec9cc8d45fd0b8971ebbad2d9f3d087` | linux/amd64, linux/arm64 | 0.01, 0.01 |
+| dcgm_exporter | `nvcr.io/nvidia/k8s/dcgm-exporter` | `4.8.4` | `sha256:148b0c025e5f2850256816fa33754fbf4733b7a086697a95613fc0ba3db5b003` | linux/amd64, linux/arm64 | 0.06, 0.06 |
+| opa | `docker.io/openpolicyagent/opa` | `1.21.1-static` | `sha256:4675ab04ad1627f74741d2d9c5142698c79e18b7b09f192587d31d6dba20838e` | linux/amd64, linux/arm64 | 0.03, 0.03 |
+| vllm | `docker.io/vllm/vllm-openai` | `v0.31.0` | `sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3` | linux/amd64, linux/arm64 | 8.41, 9.44 |
+| query_proxy | `docker.io/library/nginx` | `1.30.5-alpine` | `sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94` | linux/amd64, linux/arm64 | 0.02, 0.02 |
+| cuda_base_test | `docker.io/nvidia/cuda` | `13.0.2-base-ubuntu24.04` | `sha256:2ab6381d970b211fb93853796dc6707eb8a72575a375c422b17cf4d8b2641701` | linux/amd64, linux/arm64 | 0.13, 0.12 |
+| refplat_job | `public.ecr.aws/docker/library/python` | `3.12-slim-trixie` | `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1` | linux/amd64, linux/arm64 | 0.04, 0.04 |
 
-`vllm` is built on CUDA `13.0.2`: preflight and doctor compare it with the CUDA version the NVIDIA driver supports (BUILD_PROMPT §2.2).
+The requirements computation estimates an image's unpacked size as 2.5 times its compressed size until it is pulled on the host.
+
+`vllm` is built on CUDA `13.0.2`: preflight and doctor compare it with the CUDA version the NVIDIA driver supports.
 
 Pulled inside golden images by blueprints with a container engine (`docker_images` of `images/<blueprint>/image.yaml`), never on the host:
 
@@ -233,7 +235,7 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 
 ## Ansible collections
 
-Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1, required (&gt;=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read 2026-10-15). Artifacts: make lock-collections run by the owner at 2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy's; MANIFEST.json, FILES.json and every file checked; every dependency locked at a satisfying version)
+Verified on 2026-10-15. Source: ansible-community/ansible-build-data 14/ansible-14.4.0.deps; each collection's git tag and its meta/runtime.yml requires_ansible (all allow ansible-core 2.21). community.library_inventory_filtering_v1, required (&gt;=1.0.0) by community.docker 5.3.0 and community.general 13.4.0: 1.1.5, the version in ansible 14.4.0 (its MANIFEST.json in ansible-14.4.0-py3-none-any.whl from PyPI, sha256 7aedc85a55a9d14933c155101d6ae2d8358e40142b0dba7eb42125a49222b0f4, read 2026-10-15). Artifacts: make lock-collections run at 2026-10-15T20:33:03Z against galaxy.ansible.com (each sha256 computed from the download and equal to Galaxy's; MANIFEST.json, FILES.json and every file checked; every dependency locked at a satisfying version)
 
 | Collection | Version |
 | --- | --- |

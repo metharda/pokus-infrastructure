@@ -1,5 +1,5 @@
-# The Pokus Platform's manifest, as its specification describes it (§3 there).
-# Infra keeps this copy as a test fixture (BUILD_PROMPT §12.1); the image
+# The Pokus Platform's manifest.
+# Infra keeps this copy as a test fixture; the image
 # digest is a placeholder.
 contract_version: 2
 name: potka

@@ -1,6 +1,6 @@
 """The release package: the repository's tree at a tag with its pinned collections.
 
-Owner decisions of 3d.7 and 3d.8 ("Full package"): a CI job on each
+A CI job on each
 ``vX.Y.Z`` tag builds a tarball of the repository's tree at the tag
 (``git archive``) and adds ``release/``:
 

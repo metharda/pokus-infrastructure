@@ -1,4 +1,4 @@
-"""GPU detection per environment class (BUILD_PROMPT §2.2, §19.8).
+"""GPU detection per environment class.
 
 NVIDIA is implemented behind a ``gpu_backend`` value (``nvidia`` or
 ``none``). AMD GPUs are reported as present but unsupported.
@@ -12,7 +12,7 @@ NVIDIA is implemented behind a ``gpu_backend`` value (``nvidia`` or
   GPU's PCI device ID is looked up in the GPU lists of the pinned driver
   releases (``nvidia-gpus.json``, generated from versions.lock.yml): with
   ``install_nvidia_driver: auto`` a driver is installed only for a GPU the
-  release's open kernel module supports (§2.2, §10.1).
+  release's open kernel module supports.
 * other classes: the GPU is not probed.
 """
 

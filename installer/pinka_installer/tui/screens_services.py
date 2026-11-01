@@ -217,14 +217,14 @@ class GpuScreen(StepScreen):
                 problems.append((field_id, f"a whole number of at least {minimum}"))
             else:
                 setattr(caps, name, int(text))
-        for field_id, name in (
-            ("cap-memory", "memory_max"),
-            ("cap-dataset", "dataset_max"),
-            ("cap-storage", "run_storage_max"),
-            ("cap-tmp", "tmp_max"),
+        for field_id, name, check in (
+            ("cap-memory", "memory_max", validators.memory_max),
+            ("cap-dataset", "dataset_max", validators.cap_size),
+            ("cap-storage", "run_storage_max", validators.cap_size),
+            ("cap-tmp", "tmp_max", validators.cap_size),
         ):
             value = _input(self, f"#{field_id}")
-            if error := validators.cap_size(value):
+            if error := check(value):
                 problems.append((field_id, error))
             else:
                 setattr(caps, name, value)
@@ -354,7 +354,7 @@ class GpuScreen(StepScreen):
         return problems + self._save_arbiter()
 
     def _secure_boot_problems(self) -> Problems:
-        # Secure Boot without a driver (approved deviation I1): auto needs the consent
+        # Secure Boot without a driver: auto needs the consent
         # given on the Preflight screen and the one-time MOK password; manual would stop
         # the installation at bootstrap's preflight (exit 30).
         gpu = self.answers.gpu

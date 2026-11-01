@@ -15,8 +15,9 @@ from pinka_lab.checks import CHECKS
 from pinka_lab.doctor import Check, Outcome
 
 PREFLIGHT = (
-    "/usr/local/lib/pinka/preflight/pinka-preflight --no-write --quiet --srv-path /srv/pinka"
+    "/usr/local/lib/pinka/preflight/pinka-preflight --no-write --srv-path /srv/pinka --quiet"
 )
+PLAN_PATH = "/etc/pinka/plan.json"
 PROFILE_PATH = "/etc/pinka/host-profile.json"
 BOOT_ID = "00000000-0000-0000-0000-000000000000"
 NOW_TS = NOW.timestamp()
@@ -49,7 +50,7 @@ def access_record(
     host: str = "",
     components: dict[str, bool] | None = None,
 ) -> str:
-    """An install record noting the access to the host before pinka (§7.5)."""
+    """An install record noting the access to the host before pinka."""
     access = {
         "host": host or ("shared" if listeners else "dedicated"),
         "firewall_manager": "none",
@@ -126,6 +127,15 @@ class PreflightTest(Base):
         checks.check_preflight_outcome(ctx)
         checks.check_preflight_drift(ctx)
         self.assertEqual(sum(1 for c in system.calls if c[0].endswith("pinka-preflight")), 1)
+
+    def test_the_stored_plan_is_used(self) -> None:
+        # Doctor computes the requirements of the configured choices.
+        plan = PREFLIGHT.replace(" --quiet", f" --plan {PLAN_PATH} --quiet")
+        system = FakeSystem(
+            {plan: (0, dict(PROFILE, outcome="supported"))},
+            files={PROFILE_PATH: json.dumps(PROFILE), PLAN_PATH: "{}"},
+        )
+        self.assertOutcome(run(checks.check_preflight_outcome, system), "pass")
 
     def test_drift(self) -> None:
         self.assertOutcome(run(checks.check_preflight_drift, self.report("supported")), "pass")
@@ -251,7 +261,6 @@ class NetworkTest(Base):
             run(checks.check_listeners, system, listeners__tailnet_ports=ports), "fail", "18710"
         )
 
-    # Approved deviation DL1 (owner, with the "commit" for 16bf749).
     WEB = {
         "proto": "tcp",
         "address": "::",
@@ -467,7 +476,7 @@ class NetworkTest(Base):
         self.assertOutcome(
             run(checks.check_firewall, system, firewall__backend="ufw"), "fail", "not active"
         )
-        # The access guard (§7.5) on every backend.
+        # The access guard on every backend.
         for backend, commands in (
             ("ufw", {"ufw status": (0, "Status: active\n")}),
             ("firewalld", zones),
@@ -515,7 +524,7 @@ class NetworkTest(Base):
         self.assertOutcome(run(checks.check_tailscale, system), "fail", "Tailscale SSH is on")
 
     def test_an_adopted_node_is_compared_with_the_install_record(self) -> None:
-        # BUILD_PROMPT §7.4: a node logged in before pinka keeps its own name and tags.
+        # A node logged in before pinka keeps its own name and tags.
         mine = {
             "BackendState": "Running",
             "Self": {"HostName": "workstation", "Tags": [], "KeyExpiry": "2027-04-01T00:00:00Z"},
@@ -554,7 +563,7 @@ class NetworkTest(Base):
 
 class InstallRecordTest(Base):
     def test_install_record(self) -> None:
-        # BUILD_PROMPT §7.21: present, readable, and only root can change it.
+        # Present, readable, and only root can change it.
         good = FakeSystem(files={RECORD: install_record()})
         self.assertOutcome(run(checks.check_install_record, good), "pass", "first install")
         legacy = FakeSystem(files={RECORD: install_record(legacy=True)})
@@ -588,7 +597,7 @@ class GpuTest(Base):
         self.assertOutcome(run(checks.check_gpu, FakeSystem(), node_role="lab"), "skip")
 
     def test_docker_cdi(self) -> None:
-        # BUILD_PROMPT §7.6: CDI, Docker's default from 28.2.
+        # CDI, Docker's default from 28.2.
         on = FakeSystem({CDI_INFO: (0, '["/etc/cdi","/var/run/cdi"]\n')})
         self.assertOutcome(run(checks.check_docker_cdi, on), "pass", "/etc/cdi, /var/run/cdi")
         for answer in ("null\n", "[]\n"):
@@ -626,7 +635,7 @@ class GpuTest(Base):
         self.assertOutcome(run(checks.check_driver_cuda, FakeSystem(), node_role="lab"), "skip")
 
     def test_docs_service(self) -> None:
-        # §7.19: the service is checked only with a configured release.
+        # The service is checked only with a configured release.
         self.assertOutcome(run(checks.check_docs, FakeSystem()), "skip", "docs_release")
         docs = {
             "dir": "/usr/local/share/pinka/docs",
@@ -650,6 +659,83 @@ class GpuTest(Base):
         self.assertOutcome(run(checks.check_vllm, system), "pass")
         system = FakeSystem(files=current, http={"GET http://127.0.0.1:18704/health": (503, "")})
         self.assertOutcome(run(checks.check_vllm, system), "fail", "503")
+
+
+class DiskTest(Base):
+    """Free space per mount point and its trend."""
+
+    HISTORY = "/var/lib/pinka/doctor/disk-history.json"
+    DF = "df --output=target,size,avail -B1 / /srv"
+
+    def system(
+        self, free: dict[str, float], runs: Sequence[tuple[float, dict[str, float]]] = (), **kw: Any
+    ) -> FakeSystem:
+        report = dict(
+            PROFILE,
+            outcome="supported",
+            requirements={"disk": [{"mount": "/srv"}, {"mount": "/"}, {"mount": "/"}]},
+        )
+        lines = "Mounted on 1B-blocks Avail\n" + "".join(
+            f"{m} {100 * 2**30} {int(f * 2**30)}\n" for m, f in free.items()
+        )
+        history = {
+            "runs": [
+                {
+                    "at": (NOW - dt.timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "free": {m: int(f * 2**30) for m, f in values.items()},
+                }
+                for hours, values in runs
+            ]
+        }
+        return FakeSystem(
+            {PREFLIGHT: (0, report), self.DF: (0, lines)},
+            files={self.HISTORY: json.dumps(history)},
+            **kw,
+        )
+
+    def test_free_space_and_the_record(self) -> None:
+        system = self.system({"/": 40, "/srv": 60})
+        self.assertOutcome(
+            run(checks.check_disk_free_space, system), "pass", "/ 40.0 GiB free (40.0 %)"
+        )
+        text, mode = system.written[self.HISTORY]
+        self.assertEqual(mode, 0o644)
+        self.assertEqual(
+            json.loads(text)["runs"][-1],
+            {"at": "2026-01-01T12:00:00Z", "free": {"/": 40 * 2**30, "/srv": 60 * 2**30}},
+        )
+
+    def test_below_15_percent(self) -> None:
+        outcome = run(checks.check_disk_free_space, self.system({"/": 14.9, "/srv": 60}))
+        self.assertOutcome(outcome, "fail", "/ has 14.9 % free, below 15 %")
+
+    def test_the_trend_fills_a_disk_within_7_days(self) -> None:
+        # 50 GiB two days ago, 40 now: 5 GiB a day, full in 8 days.
+        slow = self.system({"/": 40, "/srv": 60}, [(48.0, {"/": 50, "/srv": 60})])
+        self.assertOutcome(run(checks.check_disk_free_space, slow), "pass")
+        # 70 GiB two days ago: 15 GiB a day, full in 2.7 days.
+        fast = self.system({"/": 40, "/srv": 60}, [(48.0, {"/": 70, "/srv": 60})])
+        self.assertOutcome(run(checks.check_disk_free_space, fast), "fail", "/ fills in about 2.7")
+        # Runs older than the window and runs within 6 hours give no trend.
+        old = self.system({"/": 40, "/srv": 60}, [(24.0 * 8, {"/": 90}), (2.0, {"/": 90})])
+        self.assertOutcome(run(checks.check_disk_free_space, old), "pass")
+
+    def test_the_record_keeps_the_last_runs(self) -> None:
+        runs = [(1000.0 - i, {"/": 40.0}) for i in range(checks.DISK_HISTORY_KEEP)]
+        system = self.system({"/": 40, "/srv": 60}, runs)
+        run(checks.check_disk_free_space, system)
+        kept = json.loads(system.written[self.HISTORY][0])["runs"]
+        self.assertEqual(len(kept), checks.DISK_HISTORY_KEEP)
+        self.assertEqual(kept[-1]["at"], "2026-01-01T12:00:00Z")
+
+    def test_only_root_writes_the_record(self) -> None:
+        system = self.system({"/": 40, "/srv": 60}, euid=1000)
+        run(checks.check_disk_free_space, system)
+        self.assertNotIn(self.HISTORY, system.written)
+
+    def test_df_without_answers(self) -> None:
+        system = FakeSystem({PREFLIGHT: (0, dict(PROFILE, outcome="supported"))})
+        self.assertOutcome(run(checks.check_disk_free_space, system), "fail", "df measured none")
 
 
 class IncusTest(Base):
@@ -845,7 +931,7 @@ class LayoutAccountsTest(Base):
         self.assertIn("InaccessiblePaths lacks /srv/pinka/restricted", outcome.detail)
 
     def test_platform_hardening_comes_from_its_rendering(self) -> None:
-        # §7.17: per profile, from rendered.json, never from platform names.
+        # Per profile, from rendered.json, never from platform names.
         agent = {
             "unit": "demo-agt.service",
             "profile": "untrusted-agent",
@@ -1179,7 +1265,7 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(self.check(self.system()), "pass", "admits only infra's clients")
 
     def test_the_guard_admits_exactly_infras_clients(self) -> None:
-        # ADR-0016 as decided with the "commit" for 3d.4: an allowlist, no more.
+        # ADR-0016: an allowlist, no more.
         wider = self.system(guard=guard_json([0, 991, 992, 1000], [18701, 18702, 18703]))
         self.assertOutcome(self.check(wider), "fail", "telemetry_clients also admits UIDs 1000")
         narrower = self.system(guard=guard_json([0, 991], [18701, 18702, 18703]))
@@ -1207,7 +1293,7 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(self.check(loose), "fail", "query.sock is pinka 0666")
 
     def test_grafana_reaches_only_the_query_port(self) -> None:
-        # ADR-0016 as decided with the "commit" for 3d.4b: Grafana's data
+        # ADR-0016: Grafana's data
         # sources go through the query proxy, so Grafana is not a store client.
         on_the_stores = self.system(guard=guard_json([0, 991, 992, 995], [18701, 18702, 18703]))
         self.assertOutcome(
@@ -1234,7 +1320,7 @@ class TelemetryIsolationTest(Base):
         self.assertOutcome(self.check(moved), "fail", "query_port_clients leaves ports open: 18733")
 
     def test_the_query_link_and_its_directory(self) -> None:
-        # The owner's condition for the link (with the "commit" for 3d.4).
+        # The condition for the link.
         elsewhere = self.system(target="/tmp/query.sock")
         self.assertOutcome(
             self.check(elsewhere),
@@ -1408,7 +1494,9 @@ class TimeBackupSessionTest(Base):
         )
         self.assertOutcome(run(checks.check_backup, FakeSystem()), "fail", "no backup has")
         self.assertOutcome(
-            run(checks.check_backup, FakeSystem(), backup__configured=False), "fail", "E4"
+            run(checks.check_backup, FakeSystem(), backup__configured=False),
+            "fail",
+            "no backup repository is configured",
         )
 
     def test_health_gate(self) -> None:
@@ -1623,7 +1711,7 @@ class CpusetTest(Base):
         self.assertOutcome(outcome, "pass")
 
 
-# --- the GPU arbiter, training and the inference guard (§7.11, §7.18) ---------------------
+# --- the GPU arbiter, training and the inference guard ---------------------
 
 STATE = "/var/lib/pinka/gpu/state.json"
 TRANSITIONS = "/var/lib/pinka/gpu/transitions.jsonl"
@@ -1874,6 +1962,9 @@ class TrainingRecordsTest(Base):
         for role in ("lab", "inference"):
             outcome = run(checks.check_training_availability, FakeSystem(), node_role=role)
             self.assertOutcome(outcome, "pass", f"unavailable on this host (node_role {role})")
+        # The training switch: the doctor role writes whether the arbiter trains.
+        outcome = run(checks.check_training_availability, FakeSystem(), gpu_arbiter__training=False)
+        self.assertOutcome(outcome, "pass", "training is off on this host")
 
 
 class SplitGuardTest(Base):

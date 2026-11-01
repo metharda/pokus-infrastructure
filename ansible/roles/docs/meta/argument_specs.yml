@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/docs/meta/argument_specs.yml). Local changes will be overwritten.
 argument_specs:
   main:
-    short_description: The documentation service on 127.0.0.1 serving the installed docs release (§7.19).
+    short_description: The documentation service on 127.0.0.1 serving the installed docs release.
     options:
       docs_release:
         type: dict

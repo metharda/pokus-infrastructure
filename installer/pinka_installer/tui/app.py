@@ -1,4 +1,4 @@
-"""The installer application (BUILD_PROMPT §18): navigation, resume state, themes.
+"""The installer application: navigation, resume state, themes.
 
 :class:`InstallerApp` shows one :class:`~pinka_installer.tui.base.StepScreen`
 at a time. ``goto`` saves the resume state before every screen change, so an
@@ -43,6 +43,7 @@ from pinka_installer.tui.screens_services import (
     RestoreScreen,
 )
 from pinka_installer.tui.screens_start import ModeScreen, PreflightScreen, WelcomeScreen
+from pinka_installer.tui.screens_uninstall import UninstallRunScreen, UninstallScreen
 from pinka_installer.tui.widgets import Confirm, PasswordPrompt
 
 MIN_COLUMNS = 80
@@ -76,7 +77,11 @@ SCREENS: dict[str, type[StepScreen]] = {
     "progress": ProgressScreen,
     "doctor": DoctorScreen,
     "finish": FinishScreen,
+    "uninstall": UninstallScreen,
+    "uninstall_run": UninstallRunScreen,
 }
+# Uninstall removes the resume state with /var/lib/pinka: its screens never write it.
+STATELESS = ("welcome", "uninstall", "uninstall_run")
 
 # Black and white with saturated accents; for low-vision use and poor terminals.
 HIGH_CONTRAST = Theme(
@@ -159,19 +164,25 @@ class InstallerApp(App[int]):
             self.ask_vault_password(lambda: self.goto("progress"))
             return
         self.current = name
-        if name != "welcome":
+        if name not in STATELESS:
             self.save_state(name)
         self.show(SCREENS[name]())
 
     def forward(self) -> None:
-        """The next wizard screen."""
+        """The next wizard screen; after Install mode, Uninstall when it was chosen."""
+        if self.current == "mode" and self.ctx.wizard.uninstall:
+            self.goto("uninstall")
+            return
         if self.current in STEP_NAMES:
             index = STEP_NAMES.index(self.current)
             if index + 1 < len(STEP_NAMES):
                 self.goto(STEP_NAMES[index + 1])
 
     def back(self) -> None:
-        """The previous wizard screen."""
+        """The previous wizard screen (Install mode from Uninstall)."""
+        if self.current == "uninstall":
+            self.goto("mode")
+            return
         if self.current in STEP_NAMES:
             index = STEP_NAMES.index(self.current)
             if index > 0:
@@ -323,7 +334,7 @@ def build_context(
     """Collect what the screens need, and the answers to start from.
 
     An answers file is the starting point when given; otherwise an installed
-    lab opens in modify mode, pre-filled from its files (BUILD_PROMPT §18.1).
+    lab opens in modify mode, pre-filled from its files.
 
     Args:
         paths: Installer paths.

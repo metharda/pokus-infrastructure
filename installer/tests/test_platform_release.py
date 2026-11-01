@@ -1,4 +1,4 @@
-"""The installer's inspection of a platform release (BUILD_PROMPT §18.4 screens 12-13).
+"""The installer's inspection of a platform release.
 
 The inspection is the platform tool's own code; these tests run it on the
 tool's test repository (the allprof release and its content packages in a
