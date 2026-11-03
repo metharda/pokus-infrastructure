@@ -2,7 +2,10 @@
 
 Runs weekly in CI as a non-blocking job: it reports broken external links in
 Markdown files but never gates a merge. Links to RFC 2606 example domains,
-loopback addresses and URLs that contain ``<placeholders>`` are skipped.
+loopback addresses and URL templates (a ``<placeholder>`` after the URL, a
+``{placeholder}`` or a ``$variable`` in its host or path) are skipped. The
+URLs of :data:`CHECK_INSTEAD` are not pages: the URL named there is fetched
+in place of each, and each occurrence is printed with the reason.
 
 This module uses the Python standard library only.
 """
@@ -14,9 +17,10 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 
 from pinka_repo_checks.privacy import is_rfc2606_domain, list_files
 
@@ -26,6 +30,7 @@ LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 USER_AGENT = "pinka-link-check/0.1"
 HTTP_CLIENT_ERROR = 400
 HEAD_UNSUPPORTED = frozenset({403, 405, 501})
+TEMPLATE_RE = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}|\$\{?[A-Za-z_]")
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,30 @@ class Link:
     path: Path
     line: int
     url: str
+
+
+@dataclass(frozen=True)
+class Probe:
+    """The URL fetched in place of a URL that is not a page.
+
+    Attributes:
+        url: The URL fetched instead.
+        reason: Why the URL itself is not fetched.
+    """
+
+    url: str
+    reason: str
+
+
+CHECK_INSTEAD: Mapping[str, Probe] = MappingProxyType(
+    {
+        "https://pkgs.zabbly.com/incus/lts-6.0": Probe(
+            "https://pkgs.zabbly.com/incus/lts-6.0/dists/noble/InRelease",
+            "an apt repository root: it redirects to lts-6.0/, which has no index "
+            "page and answers 403; apt reads dists/<suite>/InRelease below it",
+        ),
+    }
+)
 
 
 def extract_links(path: Path, text: str) -> list[Link]:
@@ -64,7 +93,7 @@ def extract_links(path: Path, text: str) -> list[Link]:
 
 
 def is_skipped(url: str, next_char: str = "") -> bool:
-    """Tell whether a URL is a placeholder or local address.
+    """Tell whether a URL is a template or local address.
 
     Args:
         url: The URL.
@@ -73,9 +102,10 @@ def is_skipped(url: str, next_char: str = "") -> bool:
     Returns:
         True if the URL must not be fetched.
     """
-    if next_char == "<":
+    parts = urllib.parse.urlsplit(url)
+    if next_char == "<" or TEMPLATE_RE.search(parts.netloc + parts.path):
         return True
-    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    host = (parts.hostname or "").lower()
     return not host or host in LOOPBACK_HOSTS or is_rfc2606_domain(host)
 
 
@@ -123,12 +153,25 @@ def run(paths: Sequence[Path], *, timeout: float = 15.0) -> int:
     for f in list_files(paths):
         if f.suffix == ".md":
             links.extend(extract_links(f, f.read_text(encoding="utf-8", errors="replace")))
+    target = {
+        link.url: CHECK_INSTEAD[link.url].url if link.url in CHECK_INSTEAD else link.url
+        for link in links
+    }
     results: dict[str, str | None] = {}
-    for link in links:
-        if link.url not in results:
-            results[link.url] = check_url(link.url, timeout)
-    broken = [link for link in links if results[link.url] is not None]
+    for url in target.values():
+        if url not in results:
+            results[url] = check_url(url, timeout)
+    instead = [link for link in links if link.url in CHECK_INSTEAD]
+    broken = [link for link in links if results[target[link.url]] is not None]
+    for link in instead:
+        probe = CHECK_INSTEAD[link.url]
+        print(f"{link.path}:{link.line}: link {link.url} checked as {probe.url} ({probe.reason})")
     for link in broken:
-        print(f"{link.path}:{link.line}: broken link {link.url} ({results[link.url]})")
-    print(f"link check: {len(results)} unique links, {len(broken)} broken", file=sys.stderr)
+        via = f", checked as {target[link.url]}" if link.url in CHECK_INSTEAD else ""
+        print(f"{link.path}:{link.line}: broken link {link.url} ({results[target[link.url]]}{via})")
+    print(
+        f"link check: {len(results)} unique links, {len({link.url for link in broken})} broken, "
+        f"{len({link.url for link in instead})} checked through another URL",
+        file=sys.stderr,
+    )
     return 1 if broken else 0
