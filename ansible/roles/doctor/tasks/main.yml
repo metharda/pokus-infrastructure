@@ -163,6 +163,17 @@
     tasks_from: facts
   when: doctor_serves_inference
 
+# Doctor runs psql in the PostgreSQL container as the server's account
+# (postgres role), by its numeric IDs: the container's passwd lacks it.
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Find the IDs of PostgreSQL's account
+  ansible.builtin.set_fact:
+    doctor_postgres_ids: >-
+      {{ {'server': pinka_container_accounts.postgres} | pinka_account_ids(ansible_facts.getent_passwd) }}
+
 - name: Write the lab description
   ansible.builtin.copy:
     dest: "{{ doctor_config }}"
@@ -243,6 +254,7 @@
       incus: "{{ doctor_incus if doctor_runs_lab else {} }}"
       postgres:
         container: "{{ postgres_container }}"
+        user: "{{ doctor_postgres_ids.server.uid }}:{{ doctor_postgres_ids.server.gid }}"
         roles: "{{ postgres_all_roles if doctor_runs_lab else [] }}"
         database: "{{ postgres_platform.database | default('') if doctor_runs_lab else '' }}"
         restricted_roles: >-

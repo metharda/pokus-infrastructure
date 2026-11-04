@@ -304,6 +304,10 @@
       TEMPO_GID: "{{ observability_ids.tempo.gid }}"
       GRAFANA_UID: "{{ observability_ids.grafana.uid }}"
       QUERY_PROXY_UID: "{{ observability_ids.query_proxy.uid }}"
+      NODE_EXPORTER_UID: "{{ observability_ids.node_exporter.uid }}"
+      NODE_EXPORTER_GID: "{{ observability_ids.node_exporter.gid }}"
+      GPU_EXPORTER_UID: "{{ observability_ids.gpu_exporter.uid }}"
+      GPU_EXPORTER_GID: "{{ observability_ids.gpu_exporter.gid }}"
 
 - name: Wait until the services answer
   ansible.builtin.uri:

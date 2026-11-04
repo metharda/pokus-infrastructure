@@ -30,7 +30,12 @@ records and of the fingerprint document. A platform repository that keeps a
 copy of this page keeps it byte-identical to the copy of the infra release
 it pins.
 
-**Changing the contract** means: bump `contract_version`, change this page
+**Changing the contract.** Until the first infra release, contract v2 is a
+draft. Changes under `contract/` go in without a version bump, and each is
+listed in the contract's own list of changes
+([Changes to the draft of contract v2](#changes-to-the-draft-of-contract-v2)).
+From the first release on, every change under `contract/` bumps the version.
+Changing the contract then means: bump `contract_version`, change this page
 and `contract/` in the same commit, describe the change in the changelog,
 and let platforms adapt before they pin the new release. A platform never
 works around a missing item; it requests a contract change instead.
@@ -445,6 +450,15 @@ clarification.
 | --- | --- |
 | [PostgreSQL](#postgresql) | besides root and PostgreSQL itself, the service socket directory also admits the `migrate` hook's account (`<platform>-migrate`, a member of `<platform>-db` when the platform requires `postgres`) and infra's metrics exporter (`pinka_monitor`), which holds the directory's group in its container |
 | [PostgreSQL](#postgresql) | `pg_monitor`, which `pinka_monitor` is a member of, may read every session's query text; the exporter exports none of it, as a metric or a label |
+
+### Changes to the draft of contract v2
+
+The changes under `contract/` before the first infra release, which keep
+the version (see "Changing the contract" above).
+
+| Change | What a platform sees |
+| --- | --- |
+| reserved account names `pinka-postgres`, `pinka-otel-journald`, `pinka-node-exporter`, `pinka-gpu-exporter`, `pinka-opa` and `pinka-vllm` (`contract/reserved-names.yml` and the schema's `$defs.reserved_accounts_groups`): the accounts infra's containers run as, each its own; `pinka-monitor`, reserved already, is now the PostgreSQL exporter's | nothing: a platform's accounts start with its own name, and `pinka` is a reserved platform name, so no valid manifest becomes invalid |
 
 ## Resolutions
 

@@ -13,6 +13,11 @@ the Compose projects of the lab services:
   projects
   with `compose_gpu`, `COMPOSE_PROFILES` (`gpu-cdi` or `gpu-runtime`, after
   the GPU method the docker role wrote into `/etc/docker/daemon.json`);
+- adds the UID and GID of each container's account
+  (`compose_container_accounts`: `pinka-postgres`, `pinka-monitor` and
+  `pinka-opa` in `core`, `pinka-vllm` in `inference`; the observability
+  role passes its own) as `<PREFIX>_UID` and `<PREFIX>_GID`, read from the
+  host's accounts; it stops when one is missing, except in check mode;
 - checks the project with `docker compose config`;
 - installs `pinka-<project>.service`: `Type=oneshot`, `RemainAfterExit=yes`,
   `docker compose up --detach --wait` to start (and reload), `down` to stop,

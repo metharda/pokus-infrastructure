@@ -8,12 +8,31 @@
   ansible.builtin.include_role:
     name: active_platform
 
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+# vLLM runs as pinka-vllm (users_groups), the owner of its cache; only a
+# check-mode run on a fresh host may not find it yet.
+- name: Find the UID and GID of vLLM's account
+  ansible.builtin.set_fact:
+    vllm_ids: "{{ {'vllm': pinka_container_accounts.vllm} | pinka_account_ids(ansible_facts.getent_passwd) }}"
+
+- name: Check that vLLM's account exists
+  ansible.builtin.assert:
+    that: vllm_ids.vllm.uid != ''
+    fail_msg: >-
+      {{ pinka_container_accounts.vllm }} must exist; run bootstrap again (the users_groups
+      role creates it).
+    quiet: true
+  when: not ansible_check_mode
+
 - name: Create the vLLM directories
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ item.owner | default('root') or omit }}"
+    group: "{{ item.group | default('root') or omit }}"
     mode: "{{ item.mode }}"
   loop:
     - {path: /etc/pinka/vllm, mode: "0755"}
@@ -21,7 +40,11 @@
     - {path: /etc/pinka/vllm/profiles, mode: "0755"}
     - {path: /usr/local/libexec/pinka, mode: "0755"}
     - {path: /var/lib/pinka/verify, mode: "0755"}
-    - {path: "{{ pinka_root }}/state/vllm-cache", mode: "0700"}
+    - path: "{{ pinka_root }}/state/vllm-cache"
+      # Empty only in a check-mode run on a fresh host (omitted then).
+      owner: "{{ vllm_ids.vllm.uid }}"
+      group: "{{ vllm_ids.vllm.gid }}"
+      mode: "0700"
   loop_control:
     label: "{{ item.path }}"
 

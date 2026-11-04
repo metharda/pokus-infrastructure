@@ -42,6 +42,9 @@ are Loki, Prometheus and Tempo, shown in Grafana.
    container holds of the host only the journal's two directories, the
    machine ID, the host's program and library directories (`journalctl`
    and the libraries it loads) and the loader's cache, read-only.
+
+   Changed again on 2026-11-04: it runs as an account of its own,
+   `pinka-otel-journald`, no longer the gateway's `pinka-otelcol`.
 4. The observability containers use the **host network and bind
    `127.0.0.1`**. Prometheus can then scrape the Incus API (loopback only)
    with its metrics certificate and node_exporter sees the host's interfaces.

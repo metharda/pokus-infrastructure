@@ -113,14 +113,14 @@ Sending and querying are separate ways in
 - **The host journal** is read by a second collector instance, the journald
   collector. It runs the host's own `journalctl` on the persistent and the
   volatile journal and forwards to the gateway. It runs without root and
-  without capabilities, as the collectors' account with the host's
-  `systemd-journal` group. Besides its configuration and its state
-  directory, it sees of the host only the journal, the machine ID, the
-  host's program and library directories, which hold `journalctl` and what
-  it loads, and the loader's cache, read-only: no socket file and none of
-  pinka's other paths. It is a separate instance on purpose: the gateway,
-  which accepts data from targets an agent may have compromised, has no
-  access to the host's journal. The journal carries the Incus lifecycle events
+  without capabilities, as an account of its own (`pinka-otel-journald`) with
+  the host's `systemd-journal` group. Besides its configuration and its state
+  directory, it sees of the host only the journal, the machine ID, the host's
+  program and library directories, which hold `journalctl` and what it loads,
+  and the loader's cache, read-only: no socket file and none of pinka's other
+  paths. It is a separate instance on purpose: the gateway, which accepts data
+  from targets an agent may have compromised, has no access to the host's
+  journal. The journal carries the Incus lifecycle events
   (`pinka-incus-events`), OPA's decision logs (container tag `pinka-opa`) and
   every unit's output; with semantic conventions on, `SYSLOG_IDENTIFIER`
   becomes `syslog_identifier`.
@@ -163,7 +163,7 @@ name, so its data shows up with `pinka_machine="<inference-node>"` next to
 the lab node's own. The gateway's container user (`pinka-otelcol`) reads a
 private copy of the pairing material in
 `/etc/pinka/secrets/containers/otel-pairing`; the journald collector runs as
-the same account but does not mount it.
+an account of its own (`pinka-otel-journald`) and does not mount it.
 
 ## Why every service uses the host network on 127.0.0.1
 

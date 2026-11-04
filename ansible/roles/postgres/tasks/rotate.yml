@@ -6,6 +6,9 @@
 # and set while the current one still authenticates, so an interruption never
 # leaves the lab without a working superuser password.
 
+- name: Find the accounts' IDs
+  ansible.builtin.include_tasks: ids.yml
+
 - name: Start PostgreSQL
   ansible.builtin.systemd_service:
     name: pinka-core.service
@@ -33,7 +36,7 @@
       ansible.builtin.copy:
         content: "{{ postgres_new_passwords['postgres-superuser'] }}"
         dest: "{{ postgres_container_secrets_dir }}/postgres-superuser.new"
-        owner: "{{ postgres_container_uid }}"
+        owner: "{{ postgres_ids.server.uid }}"
         group: root
         mode: "0400"
       no_log: true
@@ -68,7 +71,7 @@
   ansible.builtin.copy:
     content: "{{ postgres_new_passwords['pinka-monitor'] }}"
     dest: "{{ postgres_container_secrets_dir }}/pinka-monitor"
-    owner: "{{ postgres_exporter_uid }}"
+    owner: "{{ postgres_ids.exporter.uid }}"
     group: root
     mode: "0400"
   no_log: true

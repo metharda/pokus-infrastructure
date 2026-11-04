@@ -5,5 +5,5 @@
 # who may connect; the sockets themselves are 0777.
 d /run/pinka 0755 root root -
 {% for dir in postgres_socket_dirs %}
-d {{ dir.path }} 0750 {{ postgres_container_uid }} {{ dir.group }} -
+d {{ dir.path }} 0750 {{ pinka_container_accounts.postgres }} {{ dir.group }} -
 {% endfor %}

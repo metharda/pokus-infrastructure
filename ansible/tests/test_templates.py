@@ -763,6 +763,7 @@ INFERENCE_UIDS = {
     "pinka-otelcol": 991,
     "pinka-prometheus": 992,
     "pinka-inference": 997,
+    "pinka-vllm": 990,
     "demo-ctl": 60578,
     "demo-brk": 60579,
     "demo-sbx": 60580,
@@ -786,9 +787,10 @@ def inference_spec(node_role: str) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("node_role", "clients", "control"),
     [
-        ("full", ["root", "pinka-prometheus", "pinka-otelcol"], []),
+        # pinka-vllm: vLLM's own health check, where vLLM serves.
+        ("full", ["root", "pinka-vllm", "pinka-prometheus", "pinka-otelcol"], []),
         ("lab", ["root"], [18710]),
-        ("inference", ["root", "pinka-otelcol", "pinka-inference"], []),
+        ("inference", ["root", "pinka-vllm", "pinka-otelcol", "pinka-inference"], []),
     ],
 )
 def test_inference_guard_clients_per_node_role(
@@ -824,9 +826,9 @@ def test_inference_guard_ruleset(tmp_path: Path) -> None:
     ) in lines
     full, _ = guard.build(inference_spec("full"), None, INFERENCE_UIDS.get)
     assert "inference_control_clients" not in full
-    assert "elements = { 0, 991, 992 }" in [line.strip() for line in full.splitlines()]
+    assert "elements = { 0, 990, 991, 992 }" in [line.strip() for line in full.splitlines()]
     _, missing = guard.build(inference_spec("full"), RENDERED, {"root": 0}.get)
-    assert missing == ["pinka-prometheus", "pinka-otelcol", "demo-brk", "demo-ctl"]
+    assert missing == ["pinka-vllm", "pinka-prometheus", "pinka-otelcol", "demo-brk", "demo-ctl"]
     path = tmp_path / "inference-guard.nft"
     path.write_text(text, encoding="utf-8")
     result = nft_check(path)
@@ -849,7 +851,7 @@ def test_inference_guard_main_prints_the_ruleset(
 def test_inference_guard_per_account_class(tmp_path: Path) -> None:
     # One connection per account class against the kernel's rules:
     # only the controller and the inference broker of the platform reach the
-    # inference API, besides root and infra's scrapers; only root and the
+    # inference API, besides root and infra's own clients; only root and the
     # controller reach the forwarder's control port of a lab node. A group,
     # GID 0 included, admits nothing.
     import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file

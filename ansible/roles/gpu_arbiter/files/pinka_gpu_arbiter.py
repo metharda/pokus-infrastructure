@@ -840,10 +840,12 @@ class Arbiter:
             "DO_NOT_TRACK": "1",
             "HF_HUB_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1",
-            # The root file system is read-only: every cache goes to the mounted state directory.
-            "XDG_CACHE_HOME": "/root/.cache",
-            "TRITON_CACHE_DIR": "/root/.cache/triton",
-            "TORCHINDUCTOR_CACHE_DIR": "/root/.cache/torchinductor",
+            # The root file system is read-only and vLLM runs as pinka-vllm, not
+            # root: every cache goes to the mounted state directory, a home to /tmp.
+            "HOME": "/tmp",  # noqa: S108 - the container's own tmpfs, not this host's /tmp
+            "XDG_CACHE_HOME": "/cache",
+            "TRITON_CACHE_DIR": "/cache/triton",
+            "TORCHINDUCTOR_CACHE_DIR": "/cache/torchinductor",
             "OTEL_SERVICE_NAME": "vllm",
             "OTEL_RESOURCE_ATTRIBUTES": (
                 f"pinka.deployment={deployment},pinka.model_id={spec['model_id']}"

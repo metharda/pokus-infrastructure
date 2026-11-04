@@ -242,7 +242,7 @@ Admins that are explicitly allowed into the docker group (logged loudly).
 
 ### `infra_accounts`
 
-Infra's own system accounts: no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox; pinka-inference runs the inference control endpoint of an inference node and holds its mutual-TLS key.
+Infra's own system accounts: no login, no password, no SSH keys. pinka-build runs platform builds in their sandbox; pinka-inference runs the inference control endpoint of an inference node and holds its mutual-TLS key. Every container of infra's runs as an account of its own (cadvisor aside, which runs as root), so none shares a UID with another container or with the host.
 
 - Default:
 
@@ -258,7 +258,10 @@ Infra's own system accounts: no login, no password, no SSH keys. pinka-build run
       description: the telemetry query proxy's container user
     - name: pinka-otelcol
       groups: []
-      description: the container user of both collectors
+      description: the gateway collector's container user
+    - name: pinka-otel-journald
+      groups: []
+      description: the journal collector's container user
     - name: pinka-prometheus
       groups: []
       description: Prometheus's container user
@@ -271,6 +274,24 @@ Infra's own system accounts: no login, no password, no SSH keys. pinka-build run
     - name: pinka-grafana
       groups: []
       description: Grafana's container user
+    - name: pinka-node-exporter
+      groups: []
+      description: node_exporter's container user
+    - name: pinka-gpu-exporter
+      groups: []
+      description: the GPU exporter's container user
+    - name: pinka-postgres
+      groups: []
+      description: 'PostgreSQL''s container user: the owner of the database files'
+    - name: pinka-monitor
+      groups: []
+      description: the PostgreSQL exporter's container user
+    - name: pinka-opa
+      groups: []
+      description: OPA's container user
+    - name: pinka-vllm
+      groups: []
+      description: vLLM's container user
     ```
 
 ### `inference_control_account`
@@ -278,6 +299,16 @@ Infra's own system accounts: no login, no password, no SSH keys. pinka-build run
 The account of the inference control endpoint.
 
 - Default: `pinka-inference`
+
+### `pinka_container_accounts`
+
+The infra account each container of the core and inference projects runs as (the compose role writes their IDs into .env), named once for every role that needs it: PostgreSQL's owns the database files and runs every psql, pg_dump and pg_restore under docker exec (by its numeric IDs: the container's passwd lacks it); the exporter's owns its password file; OPA's runs OPA; vLLM's owns its cache. Each is an entry of infra_accounts, which creates it, and pinka-platform looks up PostgreSQL's by the same name: not an operator setting. The observability role keeps its own (observability_container_accounts).
+
+- Default:
+
+    ```yaml
+    {postgres: pinka-postgres, postgres_exporter: pinka-monitor, opa: pinka-opa, vllm: pinka-vllm}
+    ```
 
 ### `pinka_platform_uids`
 
@@ -331,9 +362,11 @@ Infra's own clients of the inference API on the host loopback (ADR-0016), per no
 
     ```yaml
     - account: root
-      reason: doctor, the health gate, the serving verification and the GPU arbiter; vLLM's own
-        health check
+      reason: doctor, the health gate, the serving verification and the GPU arbiter
       node_roles: [full, lab, inference]
+    - account: pinka-vllm
+      reason: vLLM's own health check
+      node_roles: [full, inference]
     - account: pinka-prometheus
       reason: Prometheus scrapes vLLM's metrics
       node_roles: [full]
@@ -915,6 +948,19 @@ Further variables for the project's .env file (the same for every role of a proj
 
 - Type: `dict`
 - Default: `{}`
+
+### `compose_container_accounts`
+
+The containers' accounts (pinka_container_accounts) by project and the prefix of their .env variables (&lt;PREFIX&gt;_UID, &lt;PREFIX&gt;_GID).
+
+- Type: `dict`
+- Default:
+
+    ```yaml
+    core: {POSTGRES: '{{ pinka_container_accounts.postgres }}', POSTGRES_EXPORTER: '{{ pinka_container_accounts.postgres_exporter
+        }}', OPA: '{{ pinka_container_accounts.opa }}'}
+    inference: {VLLM: '{{ pinka_container_accounts.vllm }}'}
+    ```
 
 ### `compose_db_socket_group`
 
@@ -2196,30 +2242,6 @@ max_connections.
 
 - Type: `int`
 - Default: `100`
-- Entry points: `main`
-
-### `postgres_container_uid`
-
-UID of the postgres user in the pinned image.
-
-- Type: `int`
-- Default: `999`
-- Entry points: `main`
-
-### `postgres_container_gid`
-
-GID of the postgres user in the pinned image.
-
-- Type: `int`
-- Default: `999`
-- Entry points: `main`
-
-### `postgres_exporter_uid`
-
-UID of the exporter container (nobody).
-
-- Type: `int`
-- Default: `65534`
 - Entry points: `main`
 
 ### `postgres_container`

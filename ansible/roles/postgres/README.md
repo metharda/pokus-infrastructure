@@ -3,8 +3,17 @@
 PostgreSQL for the lab (`docs/contracts.md#postgresql`),
 in the `core` Compose project with `postgres_exporter`:
 
-- image pinned by digest, data in `/srv/pinka/state/postgres` (999:999 0700),
+- image pinned by digest, data in `/srv/pinka/state/postgres` (0700),
   `initdb --data-checksums` with SCRAM authentication;
+- the server runs as `pinka-postgres` (`pinka_container_accounts`), an
+  account of pinka's own that owns the data directory, the socket
+  directories and the superuser's password file, so the database files
+  belong to pinka whoever holds the image's UID 999 on the host; no
+  capabilities, no new privileges. The exporter runs as `pinka-monitor`,
+  which owns its password file. Every psql, `pg_dump` and `pg_restore`
+  under `docker exec` (this role's, the platform role's, doctor's, the
+  backup tool's and `pinka-platform purge`'s) runs as the server's numeric
+  UID and GID (the container's passwd has no entry for it);
 - Unix sockets only: `/run/pinka/postgres/` (group `<platform>-db`, the
   active platform's database socket group, whose members are exactly the
   accounts with a database role, the services' and the `migrate` hook's;

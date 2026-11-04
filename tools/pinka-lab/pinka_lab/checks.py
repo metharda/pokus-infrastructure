@@ -222,14 +222,19 @@ def psql(ctx: Context, query: str, database: str = "postgres") -> Any:  # noqa: 
         The parsed value.
 
     Raises:
-        RuntimeError: If psql fails.
+        RuntimeError: If the lab description gives the server's account
+            not as numeric ``UID:GID``, or psql fails.
     """
     container = str(ctx.config.get("postgres", "container", default="pinka-postgres"))
+    # The server's account by its numeric IDs: the container's passwd lacks it.
+    user = str(ctx.config.get("postgres", "user", default=""))
+    if not re.fullmatch(r"[0-9]+:[0-9]+", user):
+        raise RuntimeError(f"postgres.user {user!r} in the lab description is not UID:GID")
     argv = [
         "docker",
         "exec",
         "--user",
-        "postgres",
+        user,
         container,
         "sh",
         "-c",
@@ -2444,7 +2449,8 @@ CHECKS: tuple[Check, ...] = (
     ),
     Check(
         "inference.isolation",
-        "Only root, infra's scrapers and the platform's controller and inference broker reach "
+        "Only root, infra's own clients (the scrapers, vLLM's own health check, an inference "
+        "node's control endpoint) and the platform's controller and inference broker reach "
         "the inference API on the loopback; only the controller the forwarder's control port.",
         "error",
         "Run bootstrap with --tags firewall,platform (`systemctl restart "

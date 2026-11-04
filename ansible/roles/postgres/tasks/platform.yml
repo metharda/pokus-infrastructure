@@ -9,6 +9,11 @@
 # deployment; it is revoked either way. The SQL goes to psql on stdin, so no
 # file of the platform enters the container's configuration directory.
 
+# Also an entry point of its own (tasks_from): psql runs as the server's account.
+- name: Find the accounts' IDs
+  ansible.builtin.include_tasks: ids.yml
+  when: postgres_ids is not defined
+
 - name: Check the platform's database passwords in the vault
   ansible.builtin.assert:
     that:

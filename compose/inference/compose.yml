@@ -22,6 +22,9 @@ x-vllm: &vllm
   image: ${VLLM_IMAGE:?pinned image missing}
   container_name: pinka-vllm
   restart: unless-stopped
+  # Its own account (users_groups), not the image's root: the stores' and the
+  # inference API's guards let root through.
+  user: "${VLLM_UID:?}:${VLLM_GID:?}"
   logging: *logging
   cgroup_parent: ${CGROUP_PARENT:?}
   network_mode: host
@@ -39,7 +42,7 @@ x-vllm: &vllm
   volumes:
     - ${PINKA_ROOT:?}/models:/models:ro
     - /etc/pinka/vllm:/etc/pinka/vllm:ro
-    - ${PINKA_ROOT:?}/state/vllm-cache:/root/.cache
+    - ${PINKA_ROOT:?}/state/vllm-cache:/cache
   healthcheck:
     test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${VLLM_PORT:?}/health', timeout=5)"]
     interval: 15s

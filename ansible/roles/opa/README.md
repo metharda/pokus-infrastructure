@@ -5,7 +5,8 @@ Open Policy Agent for the platform's action decisions
 project:
 
 - pinned image, published only on `127.0.0.1:8181`, read-only root
-  filesystem, no capabilities;
+  filesystem, no capabilities; it runs as `pinka-opa`, an account of its
+  own, not as the image's 1000, which is often a person's UID on the host;
 - `--authorization=basic` with `authz.rego`, rendered from
   `config/opa/authz.rego.j2` (`package system.authz`): decision queries
   (`GET`/`POST`) at exactly the active platform's decision path from its

@@ -51,6 +51,8 @@ x-gpu-exporter: &gpu_exporter
   <<: *hardened
   image: ${GPU_EXPORTER_IMAGE:?pinned image missing}
   container_name: pinka-gpu-exporter
+  # Its own account instead of the image's nobody.
+  user: "${GPU_EXPORTER_UID:?}:${GPU_EXPORTER_GID:?}"
   command: ["--web.listen-address=127.0.0.1:${GPU_EXPORTER_PORT:?}"]
 
 services:
@@ -70,8 +72,8 @@ services:
       - /etc/pinka/secrets/containers/otel-pairing:/etc/pinka-pairing:ro
 
   # Reads the host's journal, the persistent and the volatile one, with the
-  # host's journalctl, as the collectors' account (pinka-otelcol) with the
-  # host's systemd-journal group as its only group, and forwards it to the
+  # host's journalctl, as an account of its own (pinka-otel-journald) with
+  # the host's systemd-journal group as its only group, and forwards it to the
   # gateway; it accepts nothing from targets. Besides its configuration and
   # its state directory, it sees of the host only, read-only and each at its
   # own path: the two journal directories, the machine ID (journalctl reads
@@ -212,8 +214,9 @@ services:
     <<: *hardened
     image: ${NODE_EXPORTER_IMAGE:?pinned image missing}
     container_name: pinka-node-exporter
-    # Its image's own user (nobody), stated here: it reads the host's root.
-    user: "65534:65534"
+    # An account of its own (not its image's nobody): it sees the host's
+    # processes, so it shares a UID with none of them.
+    user: "${NODE_EXPORTER_UID:?}:${NODE_EXPORTER_GID:?}"
     pid: host
     command:
       - --web.listen-address=127.0.0.1:${NODE_EXPORTER_PORT:?}

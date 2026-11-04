@@ -4,6 +4,11 @@
 # superuser password never leaves it), then its password: a role whose stored
 # SCRAM secret does not match its password gets a new secret, computed here,
 # so neither the password nor a change is reported on later runs.
+# Also an entry point of its own (tasks_from): psql runs as the server's account.
+- name: Find the accounts' IDs
+  ansible.builtin.include_tasks: ids.yml
+  when: postgres_ids is not defined
+
 - name: Wait until PostgreSQL accepts the superuser
   ansible.builtin.command:
     argv: "{{ postgres_psql + ['--tuples-only', '--no-align', '--command', 'SELECT 1'] }}"

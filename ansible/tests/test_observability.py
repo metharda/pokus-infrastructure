@@ -442,7 +442,12 @@ def test_the_stores_run_as_infra_accounts() -> None:
     clients = {c["account"] for c in evaluate("pinka_telemetry_clients", variables)}
     query = {c["account"] for c in evaluate("pinka_query_port_clients", variables)}
     assert set(accounts.values()) <= infra
-    assert set(accounts.values()) == (clients | query) - {"root"}
+    # One account per container: none shares a UID with another.
+    assert len(set(accounts.values())) == len(accounts)
+    stores = ("otel_gateway", "prometheus", "loki", "tempo", "query_proxy", "grafana")
+    assert {accounts[s] for s in stores} == (clients | query) - {"root"}
+    # The journal collector and the exporters reach no store directly.
+    assert not {accounts[s] for s in set(accounts) - set(stores)} & (clients | query)
     assert accounts["grafana"] == "pinka-grafana"
     assert "pinka-grafana" not in clients
     for service, account in accounts.items():

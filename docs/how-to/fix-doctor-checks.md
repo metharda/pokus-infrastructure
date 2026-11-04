@@ -416,15 +416,16 @@ shows what it adds to the recommended memory).
 
 ## `inference.isolation`: the inference guard admits the wrong accounts {#check-inference-isolation}
 
-Only root, infra's scrapers (`pinka_inference_clients`) and the active
-platform's controller and inference broker reach the inference API on
-`127.0.0.1` (vLLM, or on a lab node the inference forwarder); only root and
-the controller reach the forwarder's control port. Doctor checks that the
-nftables table `inet pinka_inference_guard` is loaded and that its sets
-`inference_clients` and `inference_control_clients` admit exactly the UIDs
-of those accounts on their ports. The guard resolves the platform's accounts
-when it loads, so a deployment that did not reload it leaves the old ones.
-Load the guard again:
+Only root, infra's own clients (`pinka_inference_clients`: the scrapers,
+vLLM's own health check as `pinka-vllm` and, on an inference node, the
+control endpoint) and the active platform's controller and inference broker
+reach the inference API on `127.0.0.1` (vLLM, or on a lab node the inference
+forwarder); only root and the controller reach the forwarder's control port.
+Doctor checks that the nftables table `inet pinka_inference_guard` is loaded
+and that its sets `inference_clients` and `inference_control_clients` admit
+exactly the UIDs of those accounts on their ports. The guard resolves the
+platform's accounts when it loads, so a deployment that did not reload it
+leaves the old ones. Load the guard again:
 
 <!-- qa:skip reason="changes the firewall of the lab host" -->
 ```bash

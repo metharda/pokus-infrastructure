@@ -106,6 +106,7 @@ LAB: dict[str, Any] = {
     },
     "postgres": {
         "container": "pinka-postgres",
+        "user": "981:975",
         "roles": ["demo_ctl", "demo_reader"],
         "database": "demo",
         "restricted_roles": ["demo_reader"],

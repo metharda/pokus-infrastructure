@@ -9,8 +9,7 @@ observability_forward_node: "{{ inference_lab_node if node_role == 'inference' e
 # Lab node: the paired inference node whose telemetry arrives over mutual TLS.
 observability_inference_node: "{{ inference_remote_node if node_role == 'lab' else '' }}"
 # The collector gateway's copy of the pairing material (/etc/pinka/inference),
-# readable by its container user only (pinka-otelcol, which the journal
-# collector shares, but only the gateway's container mounts it).
+# readable by its container user only (pinka-otelcol, the gateway's alone).
 observability_pairing_dir: "{{ observability_secrets_dir }}/otel-pairing"
 observability_pairing_files: [self.crt, self.key, peer.crt]
 # Researchers with grafana: false get no Grafana account; the accounts to keep
@@ -23,17 +22,20 @@ observability_grafana_disabled: "{{ observability_grafana_opted_out + researcher
 # The infra accounts the containers run as (compose/observability/compose.yml):
 # their UIDs are the host's, so the telemetry guard can name exactly these
 # (ADR-0016), and no image's default user (nobody, 10001, 472), which other
-# host processes may share, reaches the stores.
+# host processes may share, reaches the stores. Each container has an
+# account of its own, so none shares a UID with another.
 observability_container_accounts:
   otel_gateway: pinka-otelcol
-  otel_journald: pinka-otelcol
+  otel_journald: pinka-otel-journald
   prometheus: pinka-prometheus
   loki: pinka-loki
   tempo: pinka-tempo
   grafana: pinka-grafana
   query_proxy: pinka-query-proxy
-# The journal collector (otel_journald) runs as the collectors' account with
-# the host's systemd-journal group as its only group. Besides its
+  node_exporter: pinka-node-exporter
+  gpu_exporter: pinka-gpu-exporter
+# The journal collector (otel_journald) runs as its own account with the
+# host's systemd-journal group as its only group. Besides its
 # configuration and its state directory, it sees of the host only, read-only
 # and each at its own path, the persistent and the volatile journal, the
 # machine ID, the program and library directories that hold journalctl and

@@ -21,6 +21,7 @@ from ansible_testlib import (
     INFRA,
     ROLES,
     ansible_vars,
+    evaluate,
     load_yaml,
     render_template,
     template_value,
@@ -157,6 +158,35 @@ def compose_env() -> dict[str, str]:
     return env
 
 
+def id_variables(kind: str) -> dict[str, dict[str, str]]:
+    """Each project's `${<NAME>_UID:?}` (kind "uid") or `_GID` variables and their accounts.
+
+    The observability role passes its own (compose_extra_env, from
+    observability_ids); the compose role renders the other projects' from
+    compose_container_accounts.
+    """
+    accounts = ansible_vars(GROUP_VARS, ROLES / "observability" / "vars" / "main.yml")[
+        "observability_container_accounts"
+    ]
+    suffix = f"_{kind.upper()}"
+    found: dict[str, dict[str, str]] = {project: {} for project in PROJECTS}
+    for key, value in compose_env().items():
+        match = re.fullmatch(rf"\{{\{{ observability_ids\.([a-z_]+)\.{kind} \}}\}}", value)
+        if key.endswith(suffix) and match:
+            found["observability"][f"${{{key}:?}}"] = accounts[match.group(1)]
+    for project, prefixes in compose_container_accounts().items():
+        for prefix, account in prefixes.items():
+            found[project][f"${{{prefix}{suffix}:?}}"] = account
+    return found
+
+
+def compose_container_accounts() -> dict[str, dict[str, str]]:
+    """The compose role's accounts by project and prefix, as Ansible resolves them."""
+    variables = ansible_vars(GROUP_VARS, ROLES / "compose" / "defaults" / "main.yml")
+    accounts: dict[str, dict[str, str]] = evaluate("compose_container_accounts", variables)
+    return accounts
+
+
 def uid_of(service: dict[str, Any]) -> str:
     """The user part of `user`, a `${...}` variable kept whole."""
     match = re.match(r"(\$\{[^}]*\}|[^:]*)", str(service.get("user", "")))
@@ -164,35 +194,111 @@ def uid_of(service: dict[str, Any]) -> str:
     return match.group(1)
 
 
-def declares_a_non_root_user(service: dict[str, Any]) -> bool:
+def account_of(service: dict[str, Any], project: str) -> str:
+    """The infra account a container runs as, or "root" (no `user`: its image's root)."""
     uid = uid_of(service)
-    if uid in ("", "0", "root"):
-        return False
-    match = re.fullmatch(r"\$\{([A-Z_]+_UID):\?\}", uid)
-    if match:
-        # The UID of one of infra's accounts (test_the_uid_variables_are_infra_accounts).
-        return match.group(1) in compose_env()
-    return uid.isdigit() and int(uid) != 0
+    if not uid:
+        return "root"
+    # Only the variables of infra's accounts, never a number another
+    # process of the host may share (test_every_container_runs_as_an_account_of_its_own).
+    return id_variables("uid")[project][uid]
+
+
+def declares_a_non_root_user(service: dict[str, Any], project: str) -> bool:
+    return account_of(service, project) != "root"
 
 
 def test_the_uid_variables_are_infra_accounts() -> None:
     variables = ansible_vars(GROUP_VARS, ROLES / "observability" / "vars" / "main.yml")
-    accounts = variables["observability_container_accounts"]
     infra = {a["name"] for a in variables["infra_accounts"]}
-    uids = {key: value for key, value in compose_env().items() if key.endswith("_UID")}
-    assert {"OTELCOL_UID", "JOURNALD_UID"} <= set(uids)
-    for name, value in uids.items():
-        match = re.fullmatch(r"\{\{ observability_ids\.([a-z_]+)\.uid \}\}", value)
-        assert match, (name, value)
-        assert accounts[match.group(1)] in infra, name
+    uids = id_variables("uid")
+    assert {"${OTELCOL_UID:?}", "${JOURNALD_UID:?}"} <= set(uids["observability"])
+    for project, names in uids.items():
+        for name, account in names.items():
+            assert account in infra, (project, name)
+    # The observability role's UID variables are its accounts' UIDs.
+    for key, value in compose_env().items():
+        if key.endswith("_UID"):
+            assert re.fullmatch(r"\{\{ observability_ids\.[a-z_]+\.uid \}\}", value), key
     # The journal collector's user and its state directory's owner are the same account.
-    assert uids["JOURNALD_UID"] == "{{ observability_ids.otel_journald.uid }}"
+    assert compose_env()["JOURNALD_UID"] == "{{ observability_ids.otel_journald.uid }}"
     dirs = {d["name"]: d for d in variables["observability_state_dirs"]}
     assert dirs["otelcol-journald"] == {"name": "otelcol-journald", "container": "otel_journald"}
     services = load_yaml(OBSERVABILITY)["services"]
-    assert uid_of(services["otel_journald"]) == "${JOURNALD_UID:?}"
-    assert declares_a_non_root_user(services["otel_journald"])
-    assert not declares_a_non_root_user(services["cadvisor"])
+    assert account_of(services["otel_journald"], "observability") == "pinka-otel-journald"
+    assert not declares_a_non_root_user(services["cadvisor"], "observability")
+
+
+# Services that are one container in two Compose profiles (a GPU method each).
+PROFILE_TWINS = {
+    "inference/vllm_runtime": "inference/vllm",
+    "observability/gpu_exporter_runtime": "observability/gpu_exporter",
+}
+
+
+def test_every_container_runs_as_an_account_of_its_own() -> None:
+    # No container runs as the host's root (cAdvisor aside: it reads every
+    # container's cgroups and masks pinka's paths instead), and none shares
+    # a UID with another container or with a process of the host: each runs
+    # as an infra account (users_groups creates it, with a UID of its own),
+    # and its group is that account's own group, or one group it needs
+    # (the journal's, the query socket's, or Grafana's 0).
+    by_account: dict[str, list[str]] = {}
+    gids = id_variables("gid")
+    for project in PROJECTS:
+        services = load_yaml(INFRA / "compose" / project / "compose.yml")["services"]
+        for name, service in services.items():
+            container = PROFILE_TWINS.get(f"{project}/{name}", f"{project}/{name}")
+            account = account_of(service, project)
+            if container != f"{project}/{name}":
+                twin = services[container.split("/")[1]]
+                assert service["user"] == twin["user"], name
+                continue
+            by_account.setdefault(account, []).append(container)
+            if account == "root":
+                continue
+            match = re.fullmatch(r"(\$\{[^}]*\}|[^:]*):(\$\{[^}]*\}|[0-9]+)", service["user"])
+            assert match, (container, service["user"])
+            uid, gid = match.groups()
+            assert gids[project].get(gid) == account or (container, gid) in {
+                ("observability/otel_journald", "${SYSTEMD_JOURNAL_GID:?}"),
+                ("observability/query_proxy", "${PINKA_QUERY_GID:?}"),
+                ("observability/grafana", "0"),
+            }, (container, gid)
+            assert id_variables("uid")[project][uid] == account
+    assert by_account.pop("root") == ["observability/cadvisor"]
+    assert {a: c for a, c in by_account.items() if len(c) > 1} == {}
+    assert by_account == {
+        "pinka-postgres": ["core/postgres"],
+        "pinka-monitor": ["core/postgres_exporter"],
+        "pinka-opa": ["core/opa"],
+        "pinka-vllm": ["inference/vllm"],
+        "pinka-otelcol": ["observability/otel_gateway"],
+        "pinka-otel-journald": ["observability/otel_journald"],
+        "pinka-prometheus": ["observability/prometheus"],
+        "pinka-loki": ["observability/loki"],
+        "pinka-tempo": ["observability/tempo"],
+        "pinka-query-proxy": ["observability/query_proxy"],
+        "pinka-grafana": ["observability/grafana"],
+        "pinka-node-exporter": ["observability/node_exporter"],
+        "pinka-gpu-exporter": ["observability/gpu_exporter"],
+    }
+    # One source for the accounts that more roles than one need
+    # (pinka_container_accounts): the Compose files' users, the owners of the
+    # database files and of the vLLM cache, and every psql.
+    shared = ansible_vars(GROUP_VARS)["pinka_container_accounts"]
+    assert compose_container_accounts() == {
+        "core": {
+            "POSTGRES": shared["postgres"],
+            "POSTGRES_EXPORTER": shared["postgres_exporter"],
+            "OPA": shared["opa"],
+        },
+        "inference": {"VLLM": shared["vllm"]},
+    }
+    defaults = [ROLES / "compose" / "defaults" / "main.yml"]
+    defaults += [ROLES / role / "defaults" / "main.yml" for role in ("postgres", "vllm")]
+    for path in defaults:
+        assert not {k for k in load_yaml(path) if k.endswith("_account")}, path
 
 
 @pytest.mark.parametrize("layout", LAYOUTS, ids=lambda layout: str(sorted(layout.values())))
@@ -226,7 +332,7 @@ def test_a_root_container_that_mounts_a_parent_of_pinkas_paths_masks_each(
                         "${DOCKER_DATA_ROOT:?}",
                         "/rootfs${DOCKER_DATA_ROOT:?}",
                     )
-                    if not declares_a_non_root_user(service) and not data_root:
+                    if not declares_a_non_root_user(service, project) and not data_root:
                         for view in substitute(target, layout):
                             if any(within(view, m) for m in masks):
                                 assert not any(within(source_path, p) for p in pinka), (
@@ -239,7 +345,7 @@ def test_a_root_container_that_mounts_a_parent_of_pinkas_paths_masks_each(
                         if not within(path, source_path):
                             continue
                         seen.add(name)
-                        if declares_a_non_root_user(service):
+                        if declares_a_non_root_user(service, project):
                             continue
                         # Where the container would see it: masked there, or
                         # above it (the host's /var/lib for /var/lib/pinka),
@@ -260,8 +366,8 @@ def test_a_root_container_that_mounts_a_parent_of_pinkas_paths_masks_each(
 
 def test_the_journal_collector_mounts_only_the_journal_and_the_program_and_library_dirs() -> None:
     service = load_yaml(OBSERVABILITY)["services"]["otel_journald"]
-    # Its own UID variable (the collectors' account), with the host's
-    # systemd-journal group as its only group.
+    # Its own UID variable (its own account), with the host's systemd-journal
+    # group as its only group.
     assert service["user"] == "${JOURNALD_UID:?}:${SYSTEMD_JOURNAL_GID:?}"
     assert "cap_add" not in service and "group_add" not in service
     assert service["cap_drop"] == ["ALL"]
@@ -609,40 +715,33 @@ def test_the_journal_is_where_pinkas_settings_put_it_before_the_collector_starts
     assert "Restart journald" not in [h["name"] for h in handlers]
 
 
-# PostgreSQL's socket directories (postgres role): 0750, owned by the
-# container's postgres UID, with the group that may connect: the service
-# directory's is the platform's <platform>-db, or root without a platform.
+# PostgreSQL's socket directories (postgres role): 0750, owned by the server's
+# account (pinka_container_accounts.postgres), with the group that may
+# connect: the service directory's is the platform's <platform>-db, or root
+# without a platform.
 SOCKET_DIRS = {"/run/pinka/postgres": None, "/run/pinka/postgres-reader": "pinka"}
-POSTGRES_UID = "999"
-# PostgreSQL's container sets no user: its image's entrypoint runs the
-# server as postgres (postgres_container_uid).
-IMAGE_USERS = {"core/postgres": POSTGRES_UID}
 # The groups the Compose files' GID variables stand for (compose role).
 GROUPS = {
     "${PINKA_GID:?}": "pinka",
     "${PINKA_QUERY_GID:?}": "pinka-query",
     "${SYSTEMD_JOURNAL_GID:?}": "systemd-journal",
     "0": "root",
-    "65534": "nogroup",
-    "999": "postgres",
 }
 
 
-def account_groups() -> dict[str, str]:
-    """The observability role's GID variables of infra's accounts' own groups."""
+def account_groups(project: str) -> dict[str, str]:
+    """A project's GID variables of infra's accounts' own groups."""
     # Each infra account's primary group is a group of its own name.
     users = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
     (create,) = [t for t in users if t["name"] == "Create the infra accounts"]
     assert create["ansible.builtin.user"]["group"] == "{{ item.name }}"
-    found = {}
-    for key, value in compose_env().items():
-        match = re.fullmatch(r"\{\{ observability_ids\.([a-z_]+)\.gid \}\}", value)
-        if key.endswith("_GID") and match:
-            found[f"${{{key}:?}}"] = f"the own group of {match.group(1)}"
-    return found
+    return {
+        name: f"the own group of {account}"
+        for name, account in id_variables("gid")[project].items()
+    }
 
 
-def groups_of(service: dict[str, Any], service_group: str) -> set[str]:
+def groups_of(service: dict[str, Any], project: str, service_group: str) -> set[str]:
     """The groups a container's processes hold: its user's GID and group_add."""
     user = str(service.get("user", ""))
     match = re.fullmatch(r"(\$\{[^}]*\}|[^:]*)(?::(.*))?", user)
@@ -657,9 +756,11 @@ def groups_of(service: dict[str, Any], service_group: str) -> set[str]:
             found.add(GROUPS[name])
         else:
             # An infra account's own group, which opens nothing here; any
-            # other variable fails until this test knows what it stands for.
-            assert name in account_groups(), name
-            found.add(account_groups()[name])
+            # other variable or number fails until this test knows what it
+            # stands for.
+            own = account_groups(project)
+            assert name in own, name
+            found.add(own[name])
     return found
 
 
@@ -703,20 +804,23 @@ def test_exactly_the_containers_the_contract_names_reach_the_socket_directories(
     none (with Docker's default ones a root container would enter whatever
     the mode; the masks test covers root). A container without `user` counts
     as root:root, its image's; one that sets `user` names its group, so no
-    supplementary group of its image comes in. A new one fails here; the
-    contract's rows (test_core.py) must then name it.
+    supplementary group of its image comes in. Each container that sets
+    `user` runs as an infra account of its own, so two containers share a
+    UID only when they run as the same account
+    (test_every_container_runs_as_an_account_of_its_own). A new one fails
+    here; the contract's rows (test_core.py) must then name it.
     """
     service_group = "demo-db" if platform else "root"
-    defaults = ansible_vars(ROLES / "postgres" / "defaults" / "main.yml")
-    assert str(defaults["postgres_container_uid"]) == POSTGRES_UID
+    # The directories' owner: the server's account, which the tmpfiles entry names.
+    owner = ansible_vars(GROUP_VARS)["pinka_container_accounts"]["postgres"]
     reach: dict[str, set[str]] = {path: set() for path in SOCKET_DIRS}
-    own: dict[str, list[tuple[str, str]]] = {}  # UID: (container, directory) by own mount
+    own: dict[str, list[tuple[str, str]]] = {}  # account: (container, directory) by own mount
     host_pid: list[tuple[str, str, set[str]]] = []
     for project in PROJECTS:
         compose = load_yaml(INFRA / "compose" / project / "compose.yml")
         for name, service in compose["services"].items():
-            uid = uid_of(service) or IMAGE_USERS.get(f"{project}/{name}", "0")
-            groups = groups_of(service, service_group)
+            uid = account_of(service, project)
+            groups = groups_of(service, project, service_group)
             assert service.get("pid") in (None, "host"), (project, name)
             sources = [p for _, s, _ in binds(service) for p in host_path(s, project, layout)]
             if service.get("pid") == "host" or "/" in sources:
@@ -730,15 +834,15 @@ def test_exactly_the_containers_the_contract_names_reach_the_socket_directories(
                 how = sees(service, project, layout, directory)
                 if how == "own":
                     # Its own mount: it must also be able to enter.
-                    assert uid == POSTGRES_UID or group in groups, (name, directory)
+                    assert uid == owner or group in groups, (name, directory)
                 if how:
                     own.setdefault(uid, []).append((f"{project}/{name}", directory))
-                if how and (uid == POSTGRES_UID or group in groups):
+                if how and (uid == owner or group in groups):
                     reach[directory].add(f"{project}/{name}")
     for name, uid, groups in host_pid:
         for other, directory in own.get(uid, []):
             group = SOCKET_DIRS[directory] or service_group
-            if other != name and (uid == POSTGRES_UID or group in groups):
+            if other != name and (uid == owner or group in groups):
                 reach[directory].add(name)
     assert reach == {
         "/run/pinka/postgres": {"core/postgres", "core/postgres_exporter"},

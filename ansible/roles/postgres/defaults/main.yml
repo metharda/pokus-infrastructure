@@ -7,12 +7,6 @@ postgres_shared_buffers: "{{ [[(host_profile.hardware.memory_gib * 64) | int, 12
 postgres_effective_cache_size: "{{ [[(host_profile.hardware.memory_gib * 256) | int, 512] | max, 16384] | min }}MB"
 # max_connections of the server.
 postgres_max_connections: 100
-# UID and GID of the postgres user in the pinned image (the official
-# Debian-based image creates it with 999:999).
-postgres_container_uid: 999
-postgres_container_gid: 999
-# UID of the exporter container (nobody; the Compose file sets it).
-postgres_exporter_uid: 65534
 # Name of the PostgreSQL container (compose/core/compose.yml).
 postgres_container: pinka-postgres
 # Data directory on the host, mounted at /var/lib/postgresql.

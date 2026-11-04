@@ -16,7 +16,8 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   journal, the persistent and the volatile one, with the host's `journalctl`
   and forwards it to the gateway; separate so that the instance that accepts
   OTLP from targets has no access to the host's journal. It runs as
-  `pinka-otelcol` with the host's `systemd-journal` group as its only group,
+  `pinka-otel-journald`, an account of its own (the gateway's is
+  `pinka-otelcol`), with the host's `systemd-journal` group as its only group,
   without capabilities. Besides its configuration and its state directory,
   it sees of the host only, read-only: the two journal directories, the
   machine ID, the host's `/usr/bin`, `/usr/lib`, `/lib` and `lib64`
@@ -45,8 +46,9 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   vault; researchers with `grafana: false` and removed researchers are
   disabled.
 - **node_exporter** (host PID namespace, textfile collector directory
-  `/var/lib/pinka/node-exporter`, as `nobody`), **cAdvisor** and, where the
-  lab uses the GPU, the nvidia-smi based **GPU exporter** (Compose profile
+  `/var/lib/pinka/node-exporter`, as `pinka-node-exporter`), **cAdvisor**
+  and, where the lab uses the GPU, the nvidia-smi based **GPU exporter** (as
+  `pinka-gpu-exporter`; Compose profile
   `gpu-cdi` or `gpu-runtime`, after the method in `/etc/docker/daemon.json`).
   The DCGM exporter is refused while its image is unverified.
 - **cAdvisor runs as root**: its image sets no user, and it reads container

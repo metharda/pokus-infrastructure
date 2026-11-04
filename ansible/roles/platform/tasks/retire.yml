@@ -90,6 +90,12 @@
     shell: "{{ users_groups_nologin_shell | default('/usr/sbin/nologin') }}"
   loop: "{{ platform_retire.accounts | select('in', ansible_facts.getent_passwd) | list }}"
 
+- name: Find the IDs of PostgreSQL's account
+  ansible.builtin.include_role:
+    name: postgres
+    tasks_from: ids
+  when: postgres_ids is not defined
+
 - name: Make the replaced platform's database roles NOLOGIN
   ansible.builtin.command:
     argv: >-

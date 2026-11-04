@@ -8,6 +8,11 @@
 # migration made to such a role fails the deployment, and the release does
 # not start.
 
+# Also an entry point of its own (tasks_from): psql runs as the server's account.
+- name: Find the accounts' IDs
+  ansible.builtin.include_tasks: ids.yml
+  when: postgres_ids is not defined
+
 - name: Check schema restricted (revoke and report every forbidden access)
   ansible.builtin.command:
     argv: "{{ postgres_psql + ['--quiet', '--dbname=' ~ postgres_platform.database] }}"
