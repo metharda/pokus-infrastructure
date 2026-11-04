@@ -110,7 +110,8 @@ def substitute(text: str, layout: dict[str, str]) -> list[str]:
     for result in results:
         # Any other form ($X, ${X:-...}) would stay unresolved and unchecked.
         assert "$" not in result, f"a variable this test does not resolve: {text!r}"
-    return [posixpath.normpath(r) for r in results]
+    # Docker cleans a path; normpath keeps two leading slashes.
+    return [re.sub(r"^/+", "/", posixpath.normpath(r)) for r in results]
 
 
 def replace(text: str, name: str, value: str) -> str:
@@ -606,3 +607,140 @@ def test_the_journal_is_where_pinkas_settings_put_it_before_the_collector_starts
     )
     handlers = load_yaml(ROLES / "base" / "handlers" / "main.yml")
     assert "Restart journald" not in [h["name"] for h in handlers]
+
+
+# PostgreSQL's socket directories (postgres role): 0750, owned by the
+# container's postgres UID, with the group that may connect: the service
+# directory's is the platform's <platform>-db, or root without a platform.
+SOCKET_DIRS = {"/run/pinka/postgres": None, "/run/pinka/postgres-reader": "pinka"}
+POSTGRES_UID = "999"
+# PostgreSQL's container sets no user: its image's entrypoint runs the
+# server as postgres (postgres_container_uid).
+IMAGE_USERS = {"core/postgres": POSTGRES_UID}
+# The groups the Compose files' GID variables stand for (compose role).
+GROUPS = {
+    "${PINKA_GID:?}": "pinka",
+    "${PINKA_QUERY_GID:?}": "pinka-query",
+    "${SYSTEMD_JOURNAL_GID:?}": "systemd-journal",
+    "0": "root",
+    "65534": "nogroup",
+    "999": "postgres",
+}
+
+
+def account_groups() -> dict[str, str]:
+    """The observability role's GID variables of infra's accounts' own groups."""
+    # Each infra account's primary group is a group of its own name.
+    users = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
+    (create,) = [t for t in users if t["name"] == "Create the infra accounts"]
+    assert create["ansible.builtin.user"]["group"] == "{{ item.name }}"
+    found = {}
+    for key, value in compose_env().items():
+        match = re.fullmatch(r"\{\{ observability_ids\.([a-z_]+)\.gid \}\}", value)
+        if key.endswith("_GID") and match:
+            found[f"${{{key}:?}}"] = f"the own group of {match.group(1)}"
+    return found
+
+
+def groups_of(service: dict[str, Any], service_group: str) -> set[str]:
+    """The groups a container's processes hold: its user's GID and group_add."""
+    user = str(service.get("user", ""))
+    match = re.fullmatch(r"(\$\{[^}]*\}|[^:]*)(?::(.*))?", user)
+    assert match, user
+    gid = match.group(2) or "0"  # no user: the image's root (or root's group)
+    names = [gid, *service.get("group_add", [])]
+    found = set()
+    for name in names:
+        if name == "${POSTGRES_SOCKET_GID:?}":
+            found.add(service_group)
+        elif name in GROUPS:
+            found.add(GROUPS[name])
+        else:
+            # An infra account's own group, which opens nothing here; any
+            # other variable fails until this test knows what it stands for.
+            assert name in account_groups(), name
+            found.add(account_groups()[name])
+    return found
+
+
+def binds(service: dict[str, Any]) -> list[tuple[str, str, str]]:
+    return [m for m in mounts(service) if m[0] == "bind"]
+
+
+def sees(service: dict[str, Any], project: str, layout: dict[str, str], directory: str) -> str:
+    """How a container sees a host directory: "own" mount, unmasked "parent", or ""."""
+    found = mounts(service)
+    masks = {p for kind, _, target in found if kind == "tmpfs" for p in substitute(target, layout)}
+    how = ""
+    for kind, source, target in found:
+        if kind != "bind":
+            continue
+        for source_path in host_path(source, project, layout):
+            if within(source_path, directory):
+                return "own"
+            if within(directory, source_path):
+                rest = posixpath.relpath(directory, source_path)
+                for view in substitute(target, layout):
+                    shown = posixpath.normpath(posixpath.join(view, rest))
+                    if not any(within(shown, m) and within(m, view) and m != view for m in masks):
+                        how = "parent"
+    return how
+
+
+@pytest.mark.parametrize("layout", LAYOUTS, ids=lambda layout: str(sorted(layout.values())))
+@pytest.mark.parametrize("platform", [True, False], ids=["platform", "no-platform"])
+def test_exactly_the_containers_the_contract_names_reach_the_socket_directories(
+    platform: bool, layout: dict[str, str]
+) -> None:
+    """Who reaches PostgreSQL's two socket directories, as the contract lists them.
+
+    A container reaches a directory when it mounts it (or a part of it), or
+    when it can enter it, as its owner or by the directory's group, through
+    a parent it mounts unmasked or, where it sees the host's processes (the
+    host's PID namespace, or the host's /proc through a bind of /), through
+    /proc/<pid>/root of a container with its UID that sees the directory.
+    Every container that mounts a parent drops all capabilities and adds
+    none (with Docker's default ones a root container would enter whatever
+    the mode; the masks test covers root). A container without `user` counts
+    as root:root, its image's; one that sets `user` names its group, so no
+    supplementary group of its image comes in. A new one fails here; the
+    contract's rows (test_core.py) must then name it.
+    """
+    service_group = "demo-db" if platform else "root"
+    defaults = ansible_vars(ROLES / "postgres" / "defaults" / "main.yml")
+    assert str(defaults["postgres_container_uid"]) == POSTGRES_UID
+    reach: dict[str, set[str]] = {path: set() for path in SOCKET_DIRS}
+    own: dict[str, list[tuple[str, str]]] = {}  # UID: (container, directory) by own mount
+    host_pid: list[tuple[str, str, set[str]]] = []
+    for project in PROJECTS:
+        compose = load_yaml(INFRA / "compose" / project / "compose.yml")
+        for name, service in compose["services"].items():
+            uid = uid_of(service) or IMAGE_USERS.get(f"{project}/{name}", "0")
+            groups = groups_of(service, service_group)
+            assert service.get("pid") in (None, "host"), (project, name)
+            sources = [p for _, s, _ in binds(service) for p in host_path(s, project, layout)]
+            if service.get("pid") == "host" or "/" in sources:
+                host_pid.append((f"{project}/{name}", uid, groups))
+            for directory, own_group in SOCKET_DIRS.items():
+                group = own_group or service_group
+                if any(within(directory, p) and p != directory for p in sources):
+                    # A parent, masked or not: no capability to bypass the mode.
+                    assert service.get("cap_drop") == ["ALL"], (project, name)
+                    assert not service.get("cap_add") and not service.get("privileged"), name
+                how = sees(service, project, layout, directory)
+                if how == "own":
+                    # Its own mount: it must also be able to enter.
+                    assert uid == POSTGRES_UID or group in groups, (name, directory)
+                if how:
+                    own.setdefault(uid, []).append((f"{project}/{name}", directory))
+                if how and (uid == POSTGRES_UID or group in groups):
+                    reach[directory].add(f"{project}/{name}")
+    for name, uid, groups in host_pid:
+        for other, directory in own.get(uid, []):
+            group = SOCKET_DIRS[directory] or service_group
+            if other != name and (uid == POSTGRES_UID or group in groups):
+                reach[directory].add(name)
+    assert reach == {
+        "/run/pinka/postgres": {"core/postgres", "core/postgres_exporter"},
+        "/run/pinka/postgres-reader": {"core/postgres", "observability/grafana"},
+    }

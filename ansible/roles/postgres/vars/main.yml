@@ -17,8 +17,9 @@ postgres_container_secrets_dir: /etc/pinka/secrets/containers
 # The active platform's database plan (from its rendering), or {} without a
 # platform or without postgres in its requires.
 postgres_platform: "{{ (active_platform | default({}, true)).database | default({}, true) }}"
-# Socket directories with the group that may connect: without a platform the
-# service directory belongs to root, and only the exporter reaches it.
+# Socket directories with the group that may connect: without a platform
+# (or without postgres in its requires) the service directory has the group
+# root, and of the containers only PostgreSQL and the exporter reach it.
 postgres_service_group: "{{ postgres_platform.socket_group | default('root') }}"
 postgres_socket_dirs:
   - {path: "{{ postgres_service_socket_dir }}", group: "{{ postgres_service_group }}"}

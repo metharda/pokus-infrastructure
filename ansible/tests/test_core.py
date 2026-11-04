@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import configparser
 import ipaddress
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -27,6 +28,7 @@ from ansible_testlib import (
     load_yaml,
     render_file,
     render_template,
+    template_value,
 )
 
 # The database plan of a rendered platform (pinka-platform, database.py).
@@ -298,6 +300,223 @@ def test_pg_hba_admits_only_the_platform_roles_on_its_database() -> None:
     exporter = compose["postgres_exporter"]
     assert exporter["environment"]["DATA_SOURCE_URI"].startswith("/postgres?")
     assert exporter["group_add"] == ["${POSTGRES_SOCKET_GID:?}"]
+
+
+CONTRACT = INFRA / "docs" / "contracts.md"
+
+
+def contract_section(heading: str, level: str = "##") -> str:
+    """The text of one section of the contract page, up to the next of its level or above."""
+    text = CONTRACT.read_text(encoding="utf-8")
+    parts = text.split(f"\n{level} {heading}\n")
+    assert len(parts) == 2, heading
+    return re.split(rf"\n#{{2,{len(level)}}} ", parts[1], maxsplit=1)[0]
+
+
+def table_rows(section: str) -> list[str]:
+    return [line for line in section.splitlines() if line.startswith("| ")]
+
+
+def one_row(rows: list[str], item: str) -> str:
+    found = [row for row in rows if row.startswith(f"| {item} |")]
+    assert len(found) == 1, item
+    return found[0]
+
+
+def test_the_contract_names_infras_clients_of_the_socket_directories() -> None:
+    # Who reaches the two directories is tested against the Compose files in
+    # test_container_mounts.py; these rows must name exactly them.
+    rows = table_rows(contract_section("PostgreSQL"))
+    assert one_row(rows, "Service socket directory") == (
+        "| Service socket directory | `/run/pinka/postgres/`, group `<platform>-db`: besides "
+        "root and PostgreSQL itself, only the accounts with a database role (the platform's "
+        "services' and its `migrate` hook's, `<platform>-migrate`), and infra's metrics "
+        "exporter (`pinka_monitor`), which holds the group in its container; the agent never |"
+    )
+    assert one_row(rows, "Reader socket directory") == (
+        "| Reader socket directory | `/run/pinka/postgres-reader/`, group `pinka`: the "
+        "researchers' reader role and Grafana; the reader's password file "
+        "`/etc/pinka/postgres-reader/pgpass` is 0640 root:`pinka` |"
+    )
+    assert one_row(rows, "Infra's own role") == (
+        "| Infra's own role | `pinka_monitor` (member of `pg_monitor`) for the metrics "
+        "exporter; never used by a platform. `pg_monitor` may read every session's query "
+        "text (`pg_stat_activity.query`); the exporter exports none of it, as a metric or a "
+        "label |"
+    )
+
+
+def test_the_clarifications_have_a_section_and_a_rule() -> None:
+    # Clarifications change no field, value or permission a platform relies
+    # on, so they need no version bump, but they are never silent.
+    # In the contract's own list of changes, as a table of its own.
+    changes = contract_section("Changes from contract v1")
+    section = contract_section("Clarifications of contract v2", "###")
+    assert section.strip() in changes
+    intro = " ".join(section.split("\n\n| Section |")[0].split())
+    assert intro == (
+        "Each states what infra already does, without a version bump. None changes a field, a "
+        "value or a permission a platform relies on: no file infra renders for a platform "
+        "(such as `principals.json` and `endpoints.toml`), no schema and no reserved name "
+        "changes, only this page. A platform that keeps a copy of this page updates it when it "
+        "pins the release that brings the clarification."
+    )
+    assert table_rows(section) == [
+        "| Section | Clarification |",
+        "| --- | --- |",
+        "| [PostgreSQL](#postgresql) | besides root and PostgreSQL itself, the service socket "
+        "directory also admits the `migrate` hook's account (`<platform>-migrate`, a member of "
+        "`<platform>-db` when the platform "
+        "requires `postgres`) and infra's metrics exporter (`pinka_monitor`), which holds the "
+        "directory's group in its container |",
+        "| [PostgreSQL](#postgresql) | `pg_monitor`, which `pinka_monitor` is a member of, may "
+        "read every session's query text; the exporter exports none of it, as a metric or a "
+        "label |",
+    ]
+    # The rule, in the paragraph "Changing the contract".
+    text = CONTRACT.read_text(encoding="utf-8")
+    (paragraph,) = [p for p in text.split("\n\n") if p.startswith("**Changing the contract**")]
+    assert (
+        "Clarifications which change no field, value or permission a platform relies on go "
+        "into the Clarifications table ([Clarifications of contract "
+        "v2](#clarifications-of-contract-v2)) without a version bump."
+    ) in " ".join(paragraph.split())
+    # The v1 table holds no clarification.
+    v1_table = changes.split("\n### ", 1)[0].lower()
+    assert "clarif" not in v1_table
+
+
+def test_the_socket_group_of_the_exporter_is_the_directorys() -> None:
+    # The exporter's POSTGRES_SOCKET_GID (compose role) names the group the
+    # postgres role gives the service socket directory, with and without a
+    # platform.
+    for platform in (True, False):
+        variables = postgres_vars(platform=platform)
+        compose = ansible_vars(
+            GROUP_VARS,
+            ROLES / "compose" / "defaults" / "main.yml",
+            active_platform=variables["active_platform"],
+        )
+        group = evaluate("compose_db_socket_group", compose)
+        assert group == evaluate("postgres_service_group", variables)
+        assert group == ("demo-db" if platform else "root")
+        tmpfiles = render_template("postgres", "pinka-postgres.tmpfiles.conf.j2", variables)
+        assert f"d /run/pinka/postgres 0750 999 {group} -" in tmpfiles.splitlines()
+        # And the GID the exporter's container gets: the compose role's lookup
+        # of that group, rendered into the project's .env.
+        tasks = load_yaml(ROLES / "compose" / "tasks" / "main.yml")
+        (derive,) = [t for t in tasks if t["name"] == "Derive the settings the project needs"]
+        lookup = derive["ansible.builtin.set_fact"]["compose_db_socket_gid"]
+        facts = {"getent_group": {group: ["x", "4242", ""], "pinka": ["x", "1000", ""]}}
+        gid = str(template_value(lookup, compose | {"ansible_facts": facts})).strip()
+        assert gid == "4242"
+        env = env_lines(
+            render_template("compose", "env.j2", compose_vars("core", compose_db_socket_gid=gid))
+        )
+        assert env["POSTGRES_SOCKET_GID"] == "4242"
+
+
+PRELOAD = re.compile(
+    r"^\s*(shared_preload_libraries|session_preload_libraries|local_preload_libraries"
+    r"|include|include_dir|include_if_exists)\b",
+    re.IGNORECASE,
+)
+
+
+def test_the_exporter_reads_no_query_text() -> None:
+    # pinka_monitor (pg_monitor) may read every session's query text. The
+    # exporter v0.20.1 runs only its default collectors, none of which reads
+    # pg_stat_activity.query or pg_stat_statements.query (checked in its
+    # source). What could change that is pinned here: the image (a new tag
+    # or digest fails this test until the new version's collectors are
+    # checked in its source), its command and environment (a collector flag,
+    # extended queries, database discovery), its mounts, and PostgreSQL's
+    # preloaded libraries (pg_stat_statements needs them).
+    image = LOCK["containers"]["images"]["postgres_exporter"]
+    assert (image["image"], image["tag"], image["digest"]) == (
+        "docker.io/prometheuscommunity/postgres-exporter",
+        "v0.20.1",
+        "sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e",
+    )
+    services = load_yaml(INFRA / "compose/core/compose.yml")["services"]
+    exporter = services["postgres_exporter"]
+    assert exporter["image"] == "${POSTGRES_EXPORTER_IMAGE:?pinned image missing}"
+    assert set(exporter) == {
+        "logging",
+        "cgroup_parent",
+        "image",
+        "container_name",
+        "restart",
+        "depends_on",
+        "network_mode",
+        "user",
+        "group_add",
+        "command",
+        "environment",
+        "volumes",
+        "read_only",
+        "security_opt",
+        "cap_drop",
+    }
+    assert exporter["command"] == ["--web.listen-address=127.0.0.1:${POSTGRES_EXPORTER_PORT:?}"]
+    assert exporter["environment"] == {
+        "DATA_SOURCE_URI": "/postgres?host=/run/pinka/postgres&sslmode=disable",
+        "DATA_SOURCE_USER": "pinka_monitor",
+        "DATA_SOURCE_PASS_FILE": "/run/secrets/pinka-monitor",
+    }
+    assert exporter["volumes"] == [
+        "/run/pinka/postgres:/run/pinka/postgres",
+        "/etc/pinka/secrets/containers/pinka-monitor:/run/secrets/pinka-monitor:ro",
+    ]
+    # PostgreSQL itself: its configuration file only, no -c setting, no
+    # include, no preloaded library, in either syntax (name = value or name
+    # value), in any case; no initdb scripts (/docker-entrypoint-initdb.d) and
+    # no setting through its environment.
+    postgres = services["postgres"]
+    assert postgres["command"] == [
+        "postgres",
+        "-c",
+        "config_file=/etc/postgresql/postgresql.conf",
+    ]
+    assert set(postgres) == {
+        "cgroup_parent",
+        "command",
+        "container_name",
+        "environment",
+        "healthcheck",
+        "image",
+        "labels",
+        "logging",
+        "network_mode",
+        "restart",
+        "shm_size",
+        "stop_grace_period",
+        "volumes",
+    }
+    assert postgres["volumes"] == [
+        "${PINKA_ROOT:?}/state/postgres:/var/lib/postgresql",
+        "./config/postgres:/etc/postgresql:ro",
+        "/run/pinka/postgres:/run/pinka/postgres",
+        "/run/pinka/postgres-reader:/run/pinka/postgres-reader",
+        "/etc/pinka/secrets/containers/postgres-superuser:/run/secrets/postgres-superuser:ro",
+    ]
+    assert postgres["environment"] == {
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/postgres-superuser",
+        "POSTGRES_INITDB_ARGS": (
+            "--data-checksums --auth-local=scram-sha-256 --auth-host=scram-sha-256"
+        ),
+    }
+    for platform in (True, False):
+        conf = render_file(
+            INFRA / "config/postgres/postgresql.conf.j2", postgres_vars(platform=platform)
+        )
+        assert not [line for line in conf.splitlines() if PRELOAD.match(line)]
+    sql = " ".join(
+        (INFRA / "config/postgres/bootstrap.sql.j2").read_text(encoding="utf-8").lower().split()
+    )
+    assert "pg_stat_statements" not in sql and "alter system" not in sql
+    # The platform's SQL: tools/platform/tests/test_rendering.py.
 
 
 def test_socket_directories_and_reader_credential() -> None:
