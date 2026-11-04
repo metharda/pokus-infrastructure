@@ -184,14 +184,45 @@ def test_the_weekly_and_manual_runs_keep_working() -> None:
     assert release == {"push": {"tags": ["v*"]}}
 
 
+def gate_waits_for(jobs: dict[str, Any]) -> set[str]:
+    """The jobs of ci.yml the gate job waits for, directly or through another job."""
+    seen: set[str] = set()
+    todo = list(jobs[REQUIRED]["needs"])
+    while todo:
+        name = todo.pop()
+        if name not in seen:
+            seen.add(name)
+            needs = jobs[name].get("needs", [])
+            todo.extend([needs] if isinstance(needs, str) else needs)
+    return seen
+
+
+def assert_a_failure_fails_the_run(data: dict[str, Any], name: str, command: str) -> None:
+    """The job's check runs as its last step, and nothing lets it fail quietly.
+
+    No continue-on-error on the job or a step, no shell, defaults or condition
+    on the check's step, no ``||`` in a command, no MAKEFLAGS (``-i`` would
+    ignore the recipe's failure) in any environment.
+    """
+    job = data["jobs"][name]
+    assert "continue-on-error" not in job, name
+    assert all("continue-on-error" not in step for step in job["steps"]), name
+    assert "defaults" not in data and "defaults" not in job, name
+    runs = [step for step in job["steps"] if "run" in step]
+    assert runs[-1]["run"] == command, name
+    assert "if" not in runs[-1] and "shell" not in runs[-1], name
+    assert not any("||" in step["run"] for step in runs), name
+    envs = [data.get("env") or {}, job.get("env") or {}]
+    envs += [step.get("env") or {} for step in job["steps"]]
+    assert not any("MAKEFLAGS" in env for env in envs), name
+
+
 def test_a_broken_link_fails_its_run_which_no_push_or_pull_request_starts() -> None:
     data = workflow("ci.yml")
     jobs = data["jobs"]
     links = jobs["links"]
-    # No continue-on-error, on the job or a step, and the check's exit status is
-    # the step's: a broken link fails the run, so a scheduled run shows red.
-    assert "continue-on-error" not in links
-    assert all("continue-on-error" not in step for step in links["steps"])
+    # A broken link fails the run, so a scheduled run shows red.
+    assert_a_failure_fails_the_run(data, "links", "make links")
     assert [step["run"] for step in links["steps"] if "run" in step] == ["make links"]
     # Only the schedule and a manual run start it, whatever the triggers.
     for trigger in data[True]:  # YAML 1.1 reads the key "on" as True
@@ -206,15 +237,32 @@ def test_a_broken_link_fails_its_run_which_no_push_or_pull_request_starts() -> N
     }.items():
         assert not condition(links, context), kind
     # Nothing the gate job waits for waits for it, directly or through another job.
-    seen: set[str] = set()
-    todo = list(jobs["required"]["needs"])
-    while todo:
-        name = todo.pop()
-        if name not in seen:
-            seen.add(name)
-            needs = jobs[name].get("needs", [])
-            todo.extend([needs] if isinstance(needs, str) else needs)
-    assert "links" not in seen
+    assert "links" not in gate_waits_for(jobs)
+
+
+def test_a_failing_extended_lane_fails_its_run_and_blocks_no_merge() -> None:
+    data = workflow("check-mode-extended.yml")
+    # A failing lane fails the run, so a weekly run shows red.
+    for name in data["jobs"]:
+        assert_a_failure_fails_the_run(
+            data, name, "make check-mode-extended CI_IMAGE=${{ matrix.image }}"
+        )
+    # Branch protection requires only the required check of ci.yml. No lane
+    # carries that name, for any event or lane; nothing can call this
+    # workflow; and no job the gate waits for runs the extended play.
+    assert "workflow_call" not in data[True]
+    contexts = {**REAL, "the weekly run": event("schedule", "refs/heads/main")}
+    for name, job in data["jobs"].items():
+        for lane in job["strategy"]["matrix"]["include"]:
+            for kind, context in contexts.items():
+                rendered = render(str(job.get("name", name)), {**context, "matrix": lane})
+                assert rendered != REQUIRED, (name, lane, kind)
+    ci = workflow("ci.yml")["jobs"]
+    for name in gate_waits_for(ci):
+        job = ci[name]
+        steps = job.get("steps", [])
+        texts = [str(job.get("uses", ""))] + [str(s.get("run", s.get("uses", ""))) for s in steps]
+        assert not any("check-mode-extended" in text for text in texts), name
 
 
 def test_the_evaluator_reads_github_expressions_as_github_does() -> None:
