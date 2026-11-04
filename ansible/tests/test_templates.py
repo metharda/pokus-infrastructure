@@ -68,6 +68,8 @@ TESTED_TEMPLATES = {
     ("observability", "pinka-otlp-agent.socket.j2"),
     ("observability", "pinka-otlp-agent.service.j2"),
     ("observability", "pinka-query.tmpfiles.conf.j2"),
+    # Tested in test_container_mounts.py:
+    ("observability", "pinka-observability.tmpfiles.conf.j2"),
     # Tested in test_gpu_arbiter.py:
     ("gpu_arbiter", "arbiter.json.j2"),
     ("gpu_arbiter", "pinka-gpu-arbiter.socket.j2"),

@@ -131,6 +131,33 @@ def test_every_shared_file_the_record_keeps_is_restored() -> None:
         assert edit["line"] in ROLES_TEXT, path
 
 
+def test_every_tmpfiles_file_a_role_writes_is_one_uninstall_removes() -> None:
+    def tasks(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        found = []
+        for task in items:
+            found.append(task)
+            for key in ("block", "rescue", "always"):
+                found += tasks(task.get(key) or [])
+        return found
+
+    written = {
+        task[module]["dest"]
+        for path in sorted(ROLES.glob("*/tasks/**/*.yml"))
+        for task in tasks(load_yaml(path) or [])
+        for module in ("ansible.builtin.template", "ansible.builtin.copy")
+        if str((task.get(module) or {}).get("dest", "")).startswith("/etc/tmpfiles.d/")
+    }
+    assert written == {
+        "/etc/tmpfiles.d/pinka-postgres.conf",
+        "/etc/tmpfiles.d/pinka-query.conf",
+        "/etc/tmpfiles.d/pinka-observability.conf",
+    }
+    # No other way of writing one (a module, a command, a variable).
+    mentioned = set(re.findall(r"/etc/tmpfiles\.d/[\w.{}-]+", ROLES_TEXT))
+    assert mentioned == written
+    assert written <= {d["path"] for d in NAMES["dropins"]}
+
+
 def test_drop_in_reloads_are_known() -> None:
     known = {"", "sshd", "sudoers", "journald", "sysctl", "ldconfig", "initramfs", "daemon-reload"}
     assert {d["reload"] for d in NAMES["dropins"]} <= known
@@ -193,18 +220,29 @@ def test_pinkas_containers_keep_their_data_below_the_research_space() -> None:
     """Removing pinka's containers (docker rm --volumes) takes no data.
 
     Every store is a bind mount: below the research space, or a host path
-    that is no data; no Compose project has a named volume.
+    that is no data; no Compose project has a named volume. A tmpfs holds
+    nothing on the host.
     """
+    # The journal collector's sources: the host's journal and loader
+    # directories, or pinka's empty directory where the host lacks one.
+    host_dirs = tuple(
+        f"${{{name}:?}}"
+        for name in ("JOURNAL_PERSISTENT_DIR", "JOURNAL_VOLATILE_DIR", "LIB64_DIR", "USR_LIB64_DIR")
+    )
     for compose in sorted((INFRA / "compose").glob("*/compose.yml")):
         data = load_yaml(compose)
         assert "volumes" not in data, compose
         for name, service in data["services"].items():
             for volume in service.get("volumes", []):
+                if isinstance(volume, dict):
+                    assert volume["type"] in ("bind", "tmpfs"), (compose.parent.name, name, volume)
+                    if volume["type"] == "tmpfs":
+                        continue
                 spec = volume["source"] if isinstance(volume, dict) else str(volume)
                 source = re.match(r"(\$\{\w+:\?\}[^:]*|[^:]+)", spec)
                 assert source, spec
                 assert source[1].startswith(
-                    ("/", "./", "${PINKA_ROOT:?}/", "${DOCKER_DATA_ROOT")
+                    ("/", "./", "${PINKA_ROOT:?}/", "${DOCKER_DATA_ROOT", *host_dirs)
                 ), (
                     compose.parent.name,
                     name,

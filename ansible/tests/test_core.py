@@ -72,6 +72,26 @@ def compose_vars(project: str, **extra: Any) -> dict[str, Any]:
             for i, name in enumerate(
                 ["otel_gateway", "prometheus", "loki", "tempo", "grafana", "query_proxy"]
             )
+        }
+        | {"otel_journald": {"uid": "990", "gid": "990"}},
+        "observability_journal_gid": "101",
+        # A host without a lib64 directory (the empty directory stands in).
+        "observability_host_dirs": {
+            "/var/log/journal": "/var/log/journal",
+            "/run/log/journal": "/run/log/journal",
+            "/lib64": "/srv/pinka/services/observability/empty",
+            "/usr/lib64": "/srv/pinka/services/observability/empty",
+        },
+        # A lab root behind a link: cAdvisor's masks take the real paths.
+        "observability_mask_paths": {
+            "stdout_lines": [
+                "/data/pinka",
+                "/etc/pinka",
+                "/var/lib",
+                "/run/pinka",
+                "/var/lib/pinka",
+                "/var/lib/pinka-kept",
+            ]
         },
         **extra,
     }
@@ -206,6 +226,24 @@ def test_compose_config_is_valid(project: str, gpu_method: str, tmp_path: Path) 
         logging = service["logging"]
         if logging["driver"] != "journald":  # OPA's decision logs go to the collector
             assert logging == {"driver": "local", "options": {"max-size": "20m", "max-file": "5"}}
+        # Docker refuses two mounts at one place.
+        targets = [v["target"] for v in service.get("volumes", [])]
+        targets += [entry.split(":")[0] for entry in service.get("tmpfs", [])]
+        assert len(targets) == len(set(targets)), name
+    if project == "observability":
+        # cAdvisor's masks at the real paths (the lab's root behind a link here).
+        masks = [
+            v["target"] for v in config["services"]["cadvisor"]["volumes"] if v["type"] == "tmpfs"
+        ]
+        assert masks == [
+            "/rootfs/data/pinka",
+            "/rootfs/etc/pinka",
+            "/rootfs/var/lib",
+            "/rootfs/var/lib/pinka",
+            "/rootfs/var/lib/pinka-kept",
+            "/rootfs/run/pinka",
+            "/var/run/pinka",
+        ]
     networks = config.get("networks", {})
     for network in networks.values():
         # Explicit subnets from pinka's own pool, never Docker's default pools.

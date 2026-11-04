@@ -99,7 +99,7 @@ def test_infra_accounts() -> None:
         {
             "name": "pinka-otelcol",
             "groups": [],
-            "description": "the gateway collector's container user",
+            "description": "the container user of both collectors",
         },
         {
             "name": "pinka-prometheus",

@@ -36,7 +36,7 @@ System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`
 | `pinka-build` | unprivileged platform builds | — |
 | `pinka-inference` | the inference control endpoint of an inference node | — |
 | `pinka-query-proxy` | the telemetry query proxy's container user | — |
-| `pinka-otelcol` | the gateway collector's container user | — |
+| `pinka-otelcol` | the container user of both collectors | — |
 | `pinka-prometheus` | Prometheus's container user | — |
 | `pinka-loki` | Loki's container user | — |
 | `pinka-tempo` | Tempo's container user | — |

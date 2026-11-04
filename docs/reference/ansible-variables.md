@@ -258,7 +258,7 @@ Infra's own system accounts: no login, no password, no SSH keys. pinka-build run
       description: the telemetry query proxy's container user
     - name: pinka-otelcol
       groups: []
-      description: the gateway collector's container user
+      description: the container user of both collectors
     - name: pinka-prometheus
       groups: []
       description: Prometheus's container user

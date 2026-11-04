@@ -151,7 +151,7 @@ infra_accounts:
   - {name: pinka-build, groups: [], description: unprivileged platform builds}
   - {name: pinka-inference, groups: [], description: the inference control endpoint of an inference node}
   - {name: pinka-query-proxy, groups: [], description: "the telemetry query proxy's container user"}
-  - {name: pinka-otelcol, groups: [], description: "the gateway collector's container user"}
+  - {name: pinka-otelcol, groups: [], description: "the container user of both collectors"}
   - {name: pinka-prometheus, groups: [], description: "Prometheus's container user"}
   - {name: pinka-loki, groups: [], description: "Loki's container user"}
   - {name: pinka-tempo, groups: [], description: "Tempo's container user"}

@@ -34,6 +34,14 @@ are Loki, Prometheus and Tempo, shown in Grafana.
 3. The host journal is read by a **second collector instance** with the
    host's `journalctl` in a chroot. Only that instance can read host files;
    the gateway, which accepts data from targets, cannot.
+
+   Changed on 2026-11-04: the instance no longer runs `journalctl` in a
+   chroot of the host's root and no longer runs as root. It runs as the
+   collectors' account with the host's `systemd-journal` group, without
+   capabilities. Besides its configuration and its state directory, its
+   container holds of the host only the journal's two directories, the
+   machine ID, the host's program and library directories (`journalctl`
+   and the libraries it loads) and the loader's cache, read-only.
 4. The observability containers use the **host network and bind
    `127.0.0.1`**. Prometheus can then scrape the Incus API (loopback only)
    with its metrics certificate and node_exporter sees the host's interfaces.

@@ -337,6 +337,7 @@ NAMES: dict[str, Any] = {
         {"path": "/etc/ld.so.conf.d/pinka-wsl.conf", "reload": "ldconfig"},
         {"path": "/etc/tmpfiles.d/pinka-postgres.conf", "reload": ""},
         {"path": "/etc/tmpfiles.d/pinka-query.conf", "reload": ""},
+        {"path": "/etc/tmpfiles.d/pinka-observability.conf", "reload": ""},
     ],
     "dropin_modes": {
         "/etc/sudoers.d/90-pinka-admin": {"mode": "0440", "owner": "root", "group": "root"}

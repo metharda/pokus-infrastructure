@@ -54,10 +54,86 @@
   ansible.builtin.assert:
     that: observability_ids.values() | map(attribute='uid') | select('equalto', '') | list | length == 0
     fail_msg: >-
-      The containers' accounts ({{ observability_container_accounts.values() | join(', ') }})
+      The containers' accounts ({{ observability_container_accounts.values() | unique | join(', ') }})
       must exist; run bootstrap again (the users_groups role creates them).
     quiet: true
   when: not ansible_check_mode
+
+# The journal collector reads the journal with the host's systemd-journal
+# group (compose/observability/compose.yml, otel_journald).
+- name: Read the groups of the host
+  ansible.builtin.getent:
+    database: group
+
+- name: Find the journal's group
+  ansible.builtin.set_fact:
+    observability_journal_gid: >-
+      {{ (ansible_facts.getent_group[observability_journal_group] | default(none) or ['', ''])[1] }}
+
+- name: Check that the journal's group exists
+  ansible.builtin.assert:
+    that: observability_journal_gid | length > 0
+    fail_msg: >-
+      The host has no group {{ observability_journal_group }}, which reads the journal
+      (systemd's journald creates it); the journal collector needs it.
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Find the journal's and the loader's directories the host has
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: true
+    get_checksum: false
+  loop: "{{ observability_journal_optional_dirs }}"
+  register: observability_journal_dirs
+
+- name: Read where Docker keeps its data
+  ansible.builtin.include_role:
+    name: docker
+    tasks_from: facts
+
+# cAdvisor's masks lie over the real paths: a mask over a link in its view
+# of the host would land at the link's target in the container instead.
+- name: Find the real paths of what cAdvisor's view masks
+  ansible.builtin.command:
+    argv:
+      - realpath
+      - --canonicalize-missing
+      - --
+      - "{{ pinka_root }}"
+      - /etc/pinka
+      - /var/lib
+      - /run/pinka
+      - /var/lib/pinka
+      - /var/lib/pinka-kept
+  register: observability_mask_paths
+  changed_when: false
+  check_mode: false
+
+# Docker refuses two mounts at one place, and a mask of the whole root would
+# hide everything.
+- name: Check that cAdvisor's masks lie apart
+  ansible.builtin.assert:
+    that:
+      - observability_mask_paths.stdout_lines | length == 6
+      - observability_mask_paths.stdout_lines | unique | length == 6
+      - "'/' not in observability_mask_paths.stdout_lines"
+      - pinka_docker_data_root not in observability_mask_paths.stdout_lines
+    fail_msg: >-
+      cAdvisor masks the real paths of the lab's root, /etc/pinka, /var/lib,
+      /run/pinka, /var/lib/pinka and /var/lib/pinka-kept, which must be
+      distinct, none of them / or Docker's data root
+      ({{ pinka_docker_data_root }}): {{ observability_mask_paths.stdout_lines | join(', ') }}.
+    quiet: true
+
+- name: Mount the empty directory in place of each the host lacks
+  ansible.builtin.set_fact:
+    observability_host_dirs: >-
+      {{ observability_host_dirs | default({}) | combine({item.item:
+           item.item if item.stat.isdir | default(false) else observability_empty_dir}) }}
+  loop: "{{ observability_journal_dirs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
 
 - name: Prepare the forwarding between paired nodes
   ansible.builtin.include_tasks: pairing.yml
@@ -79,6 +155,35 @@
     observability_state_names: >-
       {{ ['prometheus', 'loki', 'tempo', 'grafana', 'otelcol-journald'] if observability_stores
          else ['otelcol-journald'] }}
+
+# Earlier versions ran the journal collector as root, so its stored position
+# may be root's. Only those regular files change owner, one by one and
+# without following links: the directory is the collector's, and a link it
+# made must never make root change a file elsewhere.
+- name: Find the journal collector's state directory
+  ansible.builtin.stat:
+    path: "{{ pinka_root }}/state/otelcol-journald"
+  register: observability_journald_dir
+
+- name: Find what the journal collector stored as root
+  ansible.builtin.find:
+    paths: "{{ pinka_root }}/state/otelcol-journald"
+    file_type: file
+    hidden: true
+    recurse: false
+  register: observability_journald_state
+  when: observability_journald_dir.stat.isdir | default(false)
+
+- name: Give it to the journal collector's account
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: file
+    follow: false
+    owner: "{{ observability_ids.otel_journald.uid or omit }}"
+    group: "{{ observability_journal_gid or omit }}"
+  loop: "{{ observability_journald_state.files | default([]) | selectattr('uid', 'equalto', 0) | list }}"
+  loop_control:
+    label: "{{ item.path }}"
 
 - name: Create the textfile collector directory
   ansible.builtin.file:
@@ -104,6 +209,7 @@
     mode: "{{ item.mode | default('0755') }}"
   loop:
     - {path: "{{ observability_config_dir | dirname }}", group: pinka-admin, mode: "0750"}
+    - {path: "{{ observability_empty_dir }}", mode: "0555"}
     - {path: "{{ observability_config_dir }}"}
     - {path: "{{ observability_config_dir }}/otel"}
     - {path: "{{ observability_config_dir }}/prometheus"}
@@ -146,6 +252,23 @@
   ansible.builtin.include_tasks: platform_dashboards.yml
   when: observability_stores
 
+# cAdvisor's view of the host masks /run/pinka, and a mask needs its mount
+# point, also at boot, before Docker starts the containers.
+- name: Recreate pinka's runtime directory at boot
+  ansible.builtin.template:
+    src: pinka-observability.tmpfiles.conf.j2
+    dest: /etc/tmpfiles.d/pinka-observability.conf
+    owner: root
+    group: root
+    mode: "0644"
+  register: observability_runtime_tmpfiles
+
+- name: Create pinka's runtime directory now
+  ansible.builtin.command:
+    argv: [systemd-tmpfiles, --create, /etc/tmpfiles.d/pinka-observability.conf]
+  changed_when: observability_runtime_tmpfiles is changed
+  when: not ansible_check_mode
+
 - name: Start the observability services
   ansible.builtin.include_role:
     name: compose
@@ -161,6 +284,18 @@
       OTEL_PAIRING_HASH: "{{ observability_pairing_hash | default('') }}"
       OTELCOL_UID: "{{ observability_ids.otel_gateway.uid }}"
       OTELCOL_GID: "{{ observability_ids.otel_gateway.gid }}"
+      JOURNALD_UID: "{{ observability_ids.otel_journald.uid }}"
+      SYSTEMD_JOURNAL_GID: "{{ observability_journal_gid }}"
+      PINKA_ROOT_REAL: "{{ observability_mask_paths.stdout_lines[0] }}"
+      ETC_PINKA_REAL: "{{ observability_mask_paths.stdout_lines[1] }}"
+      VAR_LIB_REAL: "{{ observability_mask_paths.stdout_lines[2] }}"
+      RUN_PINKA_REAL: "{{ observability_mask_paths.stdout_lines[3] }}"
+      VAR_LIB_PINKA_REAL: "{{ observability_mask_paths.stdout_lines[4] }}"
+      VAR_LIB_PINKA_KEPT_REAL: "{{ observability_mask_paths.stdout_lines[5] }}"
+      JOURNAL_PERSISTENT_DIR: "{{ observability_host_dirs['/var/log/journal'] }}"
+      JOURNAL_VOLATILE_DIR: "{{ observability_host_dirs['/run/log/journal'] }}"
+      LIB64_DIR: "{{ observability_host_dirs['/lib64'] }}"
+      USR_LIB64_DIR: "{{ observability_host_dirs['/usr/lib64'] }}"
       PROMETHEUS_UID: "{{ observability_ids.prometheus.uid }}"
       PROMETHEUS_GID: "{{ observability_ids.prometheus.gid }}"
       LOKI_UID: "{{ observability_ids.loki.uid }}"

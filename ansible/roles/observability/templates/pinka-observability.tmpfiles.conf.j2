@@ -1,0 +1,6 @@
+# Managed by pinka (ansible/roles/observability/templates/pinka-observability.tmpfiles.conf.j2). Local changes will be overwritten.
+#
+# pinka's runtime directory, on every node and before Docker starts the
+# observability containers at boot: cAdvisor's view of the host masks it, and
+# a mask needs its mount point.
+d /run/pinka 0755 root root -
