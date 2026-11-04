@@ -321,6 +321,14 @@ generate: setup ## Regenerate generated files (matrix JSON, pins, reference page
 lock-check: setup ## Verify versions.lock.yml: schema, no unverified markers, digests, checksums, key fingerprints (network)
 	$(LOCKCHECK) check
 
+.PHONY: lock-check-markers
+lock-check-markers: setup ## CI: the lines of versions.lock.yml with an unverified marker, at most the count in tools/lockcheck/marker-count (a test keeps it equal to the lock's; a release needs 0)
+	$(LOCKCHECK) markers --allowed tools/lockcheck/marker-count
+
+.PHONY: lock-check-without-markers
+lock-check-without-markers: setup ## CI: make lock-check without the markers (network); the warnings also into the job summary
+	$(LOCKCHECK) check --skip-markers $(if $(GITHUB_STEP_SUMMARY),--summary "$(GITHUB_STEP_SUMMARY)")
+
 .PHONY: verify-todos
 verify-todos: setup ## List every unverified marker in the repository; fails while any remains
 	$(LOCKCHECK) todos

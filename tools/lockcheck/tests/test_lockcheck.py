@@ -1003,6 +1003,95 @@ def test_offline_check_reports_markers(capsys: pytest.CaptureFixture[str]) -> No
     assert f"lock-check (offline): {len(markers)} error(s)" in out.err
 
 
+def test_the_check_without_markers_passes_the_committed_lock_offline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    summary = tmp_path / "summary.md"
+    lock = str(INFRA / "versions.lock.yml")
+    args = ["check", "--offline", "--skip-markers", "--summary", str(summary), "--lock", lock]
+    assert cli.main(args) == 0
+    out = capsys.readouterr()
+    line = "lock-check (offline; markers left to the marker check): 0 error(s), 0 warning(s)"
+    assert "unverified value" not in out.out
+    assert line in out.err
+    assert summary.read_text() == f"### lock-check warnings\n\n{line}\n\n- none\n\n"
+
+
+def test_the_job_summary_lists_the_warnings_and_errors_still_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    found = [
+        checks.Finding(
+            checks.WARNING, "containers.images.x", "tag 1.0 now points to another digest"
+        ),
+        checks.Finding(checks.ERROR, "binaries.y", "sha256 differs"),
+    ]
+    monkeypatch.setattr(checks, "gpu_coverage_findings", lambda doc: found)
+    summary = tmp_path / "summary.md"
+    summary.write_text("earlier steps' summary\n")
+    lock = str(INFRA / "versions.lock.yml")
+    args = ["check", "--offline", "--skip-markers", "--summary", str(summary), "--lock", lock]
+    assert cli.main(args) == 1
+    text = summary.read_text()
+    assert text.startswith("earlier steps' summary\n### lock-check warnings\n")
+    assert "- `warning: containers.images.x: tag 1.0 now points to another digest`" in text
+    assert "sha256 differs" not in text
+    assert ": 1 error(s), 1 warning(s)" in text
+
+
+def test_the_markers_pass_at_or_below_the_recorded_count(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock = tmp_path / "versions.lock.yml"
+    lock.write_text('a: "TODO(verify)"\nb: 1\nc: {x: "TODO(verify)", y: "TODO(verify)"}\n')
+    count = tmp_path / "marker-count"
+    results = {}
+    for allowed in (3, 2, 1):
+        count.write_text(f"# How many may remain.\n{allowed}\n")
+        results[allowed] = cli.main(["markers", "--lock", str(lock), "--allowed", str(count)])
+    assert results == {3: 0, 2: 0, 1: 1}
+    out = capsys.readouterr()
+    assert out.out.count("line 1: unverified value") == 3
+    assert out.out.count("line 3: unverified value") == 3
+    assert "error" not in out.out
+    assert f"lower the count in {count} to 2 in the same commit" in out.err
+    assert "more than 1: verify the new markers, or raise the count in the same commit" in out.err
+
+
+@pytest.mark.parametrize(
+    "text", ["", "# a comment only\n", "1\n2\n", "two\n", "-1\n", "1.5\n", "\u0662\u0664\n"]
+)
+def test_the_recorded_count_is_one_whole_number(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], text: str
+) -> None:
+    lock = tmp_path / "versions.lock.yml"
+    lock.write_text("a: 1\n")
+    count = tmp_path / "marker-count"
+    count.write_text(text)
+    with pytest.raises(ValueError, match="expected one line with the count"):
+        cli.read_allowed(count)
+    assert cli.main(["markers", "--lock", str(lock), "--allowed", str(count)]) == 2
+    assert "expected one line with the count" in capsys.readouterr().err
+
+
+def test_the_recorded_count_is_the_locks_marker_count() -> None:
+    # Verifying a marker lowers tools/lockcheck/marker-count in the same
+    # commit; adding one raises it, visibly.
+    allowed = cli.read_allowed(INFRA / "tools/lockcheck/marker-count")
+    markers = checks.marker_findings((INFRA / "versions.lock.yml").read_text(encoding="utf-8"))
+    assert allowed == len(markers)
+
+
+def test_a_missing_count_file_is_a_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock = tmp_path / "versions.lock.yml"
+    lock.write_text("a: 1\n")
+    missing = tmp_path / "marker-count"
+    assert cli.main(["markers", "--lock", str(lock), "--allowed", str(missing)]) == 2
+    assert "No such file" in capsys.readouterr().err
+
+
 def test_validate_pairs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     schema = INFRA / "preflight/schema/support-matrix.schema.json"
     good = f"{INFRA / 'preflight/support-matrix.yml'}={schema}"

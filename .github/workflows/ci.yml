@@ -182,8 +182,11 @@ jobs:
       - run: make docs VERBOSE=1
 
   lock-check:
-    # Re-verifies every pin over the network and fails while any unverified
-    # marker remains in versions.lock.yml.
+    # Two steps: the unverified markers of versions.lock.yml, at most the
+    # count recorded in tools/lockcheck/marker-count (a test keeps it equal to
+    # the lock's; a release needs 0), and every other check of the lock,
+    # which re-verifies every pin over the network and must pass; its
+    # warnings go into the job summary.
     if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-24.04
     steps:
@@ -197,7 +200,11 @@ jobs:
         with:
           node-version-file: .node-version
       - run: make setup
-      - run: make lock-check
+      - name: Unverified markers, at most the recorded count
+        run: make lock-check-markers
+      - name: Every other check of the lock, its warnings in the job summary
+        if: ${{ !cancelled() }}
+        run: make lock-check-without-markers
 
   check-mode:
     # Required CI fast lane: the provider-agnostic

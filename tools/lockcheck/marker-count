@@ -1,0 +1,6 @@
+# How many lines of versions.lock.yml carry an unverified marker. A test
+# requires this count to equal the lock's: verifying a marker lowers it in
+# the same commit, adding one raises it, visibly. CI's lock-check job passes
+# while the lock has at most this many (make lock-check-markers). A release
+# requires 0 (make lock-check passes only without any marker).
+24

@@ -36,6 +36,10 @@ CI failure.
       `galaxy.ansible.com`.
     - Every collection pin verified: `make lock-collections-check` passes
       ([How to pin the Ansible collections](pin-ansible-collections.md)).
+    - No unverified value left: `make lock-check` passes (no marker left in
+      the lock), and the count in `tools/lockcheck/marker-count` has been
+      lowered to 0. Between releases CI allows the recorded count; a release
+      allows none ([How to update pinned versions](update-versions.md)).
 
 ## Build and check a package locally
 
