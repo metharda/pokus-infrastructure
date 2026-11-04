@@ -73,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     links = sub.add_parser(
         "links",
-        help="check external links in Markdown files (weekly, non-blocking in CI)",
+        help="check external links in Markdown files (in CI only weekly and by hand)",
     )
     links.add_argument("paths", nargs="*", type=Path, default=[Path()])
     links.add_argument("--timeout", type=float, default=15.0, help="seconds per request")

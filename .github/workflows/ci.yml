@@ -267,9 +267,10 @@ jobs:
           CHECK
 
   links:
+    # Only on the schedule or by hand, so it never blocks a push or a pull
+    # request; a broken link fails the run, so the weekly run shows red.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    continue-on-error: true  # reported, never blocking
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

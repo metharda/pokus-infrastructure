@@ -184,6 +184,39 @@ def test_the_weekly_and_manual_runs_keep_working() -> None:
     assert release == {"push": {"tags": ["v*"]}}
 
 
+def test_a_broken_link_fails_its_run_which_no_push_or_pull_request_starts() -> None:
+    data = workflow("ci.yml")
+    jobs = data["jobs"]
+    links = jobs["links"]
+    # No continue-on-error, on the job or a step, and the check's exit status is
+    # the step's: a broken link fails the run, so a scheduled run shows red.
+    assert "continue-on-error" not in links
+    assert all("continue-on-error" not in step for step in links["steps"])
+    assert [step["run"] for step in links["steps"] if "run" in step] == ["make links"]
+    # Only the schedule and a manual run start it, whatever the triggers.
+    for trigger in data[True]:  # YAML 1.1 reads the key "on" as True
+        expected = trigger in ("schedule", "workflow_dispatch")
+        assert condition(links, event(trigger)) == expected, trigger
+    for kind, context in {
+        "push to moving/on": event("push"),
+        "push to main": event("push", "refs/heads/main"),
+        "push to another branch": event("push", "refs/heads/feature-1"),
+        "a fork's pull request": event("pull_request_fork"),
+        "a pull request of a branch of this repository": event("pull_request"),
+    }.items():
+        assert not condition(links, context), kind
+    # Nothing the gate job waits for waits for it, directly or through another job.
+    seen: set[str] = set()
+    todo = list(jobs["required"]["needs"])
+    while todo:
+        name = todo.pop()
+        if name not in seen:
+            seen.add(name)
+            needs = jobs[name].get("needs", [])
+            todo.extend([needs] if isinstance(needs, str) else needs)
+    assert "links" not in seen
+
+
 def test_the_evaluator_reads_github_expressions_as_github_does() -> None:
     context = event("push")
     assert evaluate("github.event_name == 'push' && 'x' || 'y'", context) == "x"

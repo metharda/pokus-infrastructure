@@ -1,8 +1,9 @@
 """External link check for documentation.
 
-Runs weekly in CI as a non-blocking job: it reports broken external links in
-Markdown files but never gates a merge. Links to RFC 2606 example domains,
-loopback addresses and URL templates (a ``<placeholder>`` after the URL, a
+Runs in CI only on the weekly schedule and by hand, never on a push or a
+pull request, so it never gates a merge; a broken external link in a
+Markdown file fails its run. Links to RFC 2606 example domains, loopback
+addresses and URL templates (a ``<placeholder>`` after the URL, a
 ``{placeholder}`` or a ``$variable`` in its host or path) are skipped. The
 URLs of :data:`CHECK_INSTEAD` are not pages: the URL named there is fetched
 in place of each, and each occurrence is printed with the reason.
