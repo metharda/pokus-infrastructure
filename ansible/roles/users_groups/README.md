@@ -27,7 +27,8 @@ Groups and accounts (`docs/contracts.md`).
   logged loudly.
 - Removed researchers (`researchers_removed`) are locked: password locked,
   shell `nologin`, account expired. They are never deleted and their data is
-  kept.
+  kept. A name that is no account is skipped and named in a message, never
+  created.
 
 ## Variables
 

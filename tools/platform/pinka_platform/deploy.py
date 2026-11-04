@@ -88,6 +88,7 @@ BUILD_HIDDEN = (
     "/srv/pinka/restricted",
     "/srv/pinka/backups",
     "/srv/pinka/training",
+    "/srv/pinka/state",
     "/var/lib/incus",
     "/var/lib/docker",
     "/run/docker.sock",

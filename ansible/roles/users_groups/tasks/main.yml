@@ -121,13 +121,26 @@
 - name: Keep researchers out of privileged groups
   ansible.builtin.include_tasks: privileged_groups.yml
 
+# The user module would create a name that is no account: lock only the
+# accounts that exist, and name the others.
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Warn about removed researchers that are no accounts
+  ansible.builtin.debug:
+    msg: >-
+      researchers_removed lists {{ researchers_removed | reject('in', ansible_facts.getent_passwd) | join(', ') }},
+      for which this host has no account (getent passwd): nothing is locked for them
+  when: researchers_removed | reject('in', ansible_facts.getent_passwd) | list | length > 0
+
 - name: Lock removed researchers (data is kept)
   ansible.builtin.user:
     name: "{{ item }}"
     password_lock: true
     shell: "{{ users_groups_nologin_shell }}"
     expires: 1
-  loop: "{{ researchers_removed }}"
+  loop: "{{ researchers_removed | select('in', ansible_facts.getent_passwd) | list }}"
 
 - name: Warn about break-glass Docker access
   ansible.builtin.debug:

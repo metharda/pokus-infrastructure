@@ -710,6 +710,8 @@ def test_build_runs_uv_in_sandboxed_phases(repo: Path, paths: deploy.Paths) -> N
         assert f"ReadWritePaths={paths.uv_cache}" in props
         assert "InaccessiblePaths=-/var/lib/pinka/git" in props
         assert "InaccessiblePaths=-/srv/pinka/restricted" in props
+        # Infra's state: PostgreSQL's database files and the telemetry stores.
+        assert "InaccessiblePaths=-/srv/pinka/state" in props
         assert "ProtectSystem=strict" in props
         assert "NoNewPrivileges=yes" in props
         assert f"WorkingDirectory={final}" in props
