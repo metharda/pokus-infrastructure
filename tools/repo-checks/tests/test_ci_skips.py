@@ -35,7 +35,7 @@ def skip_list(path: Path, *entries: tuple[str, str]) -> Path:
 
 
 def run_pytest(
-    tmp_path: Path, ci: bool, *, module_skip: bool = True
+    tmp_path: Path, ci: bool, *extra: str, module_skip: bool = True
 ) -> subprocess.CompletedProcess[str]:
     (tmp_path / "test_a.py").write_text(TESTS, encoding="utf-8")
     if module_skip:
@@ -64,6 +64,7 @@ def run_pytest(
             str(tmp_path),
             "-o",
             f"ci_skip_list={listed}",
+            *extra,
             str(tmp_path),
         ],
         cwd=tmp_path,
@@ -83,6 +84,23 @@ def test_every_skip_is_named_outside_ci(tmp_path: Path) -> None:
         "skipped test: test_a.py::test_unlisted (reason: needs a GPU)",
         "skipped test: test_gone.py (reason: module gone)",
     ]
+
+
+def test_with_pytest_xdist_every_skip_is_named_and_judged_too(tmp_path: Path) -> None:
+    # The workers run the tests; the main process prints the summary.
+    done = run_pytest(tmp_path, False, "-n", "2")
+    assert done.returncode == 0, done.stdout
+    lines = [line for line in done.stdout.splitlines() if line.startswith("skipped test: ")]
+    assert sorted(lines) == [
+        "skipped test: test_a.py::test_listed (reason: listed reason)",
+        "skipped test: test_a.py::test_unlisted (reason: needs a GPU)",
+        "skipped test: test_gone.py (reason: module gone)",
+    ]
+    done = run_pytest(tmp_path, True, "-n", "2", module_skip=False)
+    assert done.returncode == 1
+    assert "skipped test: test_a.py::test_listed (reason: listed reason)" in done.stdout
+    assert ci_skips.refusal("test_a.py::test_unlisted", "needs a GPU") in done.stdout
+    assert "1 failed, 1 passed, 1 skipped" in done.stdout
 
 
 def test_in_ci_only_the_listed_skip_passes(tmp_path: Path) -> None:

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -279,3 +281,144 @@ def test_ci_keeps_the_verbose_output() -> None:
     text = (INFRA / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     for target in ("lint", "test", "docs"):
         assert re.search(rf"run: make {target} VERBOSE=1( |\n)", text), target
+
+
+def test_a_skipped_step_does_not_run_and_is_named(tmp_path: Path) -> None:
+    out = io.StringIO()
+    status = gate.run(
+        "docs",
+        ["lint-ok", "docs-build"],
+        make=fake_make(tmp_path),
+        log_dir=tmp_path / "gate",
+        environ={"PATH": "/usr/bin:/bin"},
+        out=out,
+        skip={"docs-build": "no change of the docs"},
+    )
+    assert status == 0
+    logs = tmp_path / "gate" / "docs"
+    assert out.getvalue() == (
+        f"docs: 1 passed, 0 failed, 0 skipped, 0 warnings (1 steps; logs: {logs})\n"
+        "  skipped step: docs/docs-build (no change of the docs)\n"
+    )
+    assert sorted(p.name for p in logs.iterdir()) == ["lint-ok.log", "setup.log"]
+
+
+def test_counts_the_isolated_run_by_its_own_line() -> None:
+    output = (
+        "Makefile:1: warning: overriding recipe\n"
+        "----- t/test_a.py: exit status 1; complete output (build/isolated/t/test_a.py.log) -----\n"
+        "skipped test: t/test_a.py::test_y (reason: needs root)\n"
+        "========== 1 failed, 2 passed, 1 skipped, 3 warnings in 0.10s ==========\n"
+        "test-isolated: FAILED: 40 passed, 1 failed, 2 skipped, 3 warnings "
+        "(9 files, each in a process of its own, 4 at a time, in 7s; failing: t/test_a.py; "
+        "logs: build/isolated)\n"
+        "  skipped test: t/test_a.py::test_y (reason: needs root)\n"
+        "  skipped test: t/test_b.py::test_x (reason: needs a GPU)\n"
+    )
+    counts = gate.step_counts(output, 1, "test-isolated")
+    # Its own line, plus make's warning; the failing file's result and skips once.
+    assert (counts.passed, counts.failed, counts.skipped, counts.warnings) == (40, 1, 2, 4)
+    assert counts.skipped_tests == [
+        "skipped test: t/test_a.py::test_y (reason: needs root)",
+        "skipped test: t/test_b.py::test_x (reason: needs a GPU)",
+    ]
+    # In any other step such a line is only output.
+    other = gate.step_counts(output, 1, "lint-ok")
+    assert (other.passed, other.failed, other.skipped) == (2, 1, 1)
+
+
+def test_the_local_option_skips_only_outside_ci(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pinka_repo_checks import changes  # noqa: PLC0415 - the module cli imports
+
+    monkeypatch.setattr(changes, "local_changed", lambda base: ["ansible/site.yml"])
+    argv = ["gate", "docs", "lint-ok", "docs-build", "--local", "--base", "main"]
+    argv += ["--make", fake_make(tmp_path), "--log-dir", str(tmp_path)]
+    monkeypatch.delenv("CI", raising=False)
+    assert cli.main(argv) == 0
+    text = capsys.readouterr().out
+    assert "(1 steps; " in text
+    assert "; CI runs it on every push" in text
+    assert "  skipped step: docs/docs-build (no change of the docs or what checks them" in text
+    monkeypatch.setenv("CI", "true")  # CI runs every step
+    assert cli.main(argv) == 0
+    text = capsys.readouterr().out
+    assert "(2 steps; " in text
+    assert "skipped step" not in text
+    # When git cannot tell the changes, nothing is skipped, and the gate says so.
+    monkeypatch.delenv("CI")
+    monkeypatch.setattr(changes, "local_changed", lambda base: None)
+    assert cli.main(argv) == 0
+    text = capsys.readouterr().out
+    assert text.startswith("docs: nothing skipped: git cannot tell the changes against main\n")
+    assert "(2 steps; " in text
+    lint = ["gate", "lint", "lint-ok", "--local", "--base", "main", "--make", fake_make(tmp_path)]
+    assert cli.main([*lint, "--log-dir", str(tmp_path)]) == 0
+    assert "nothing skipped" not in capsys.readouterr().out
+
+
+def test_a_dry_run_names_the_skipped_steps(tmp_path: Path) -> None:
+    out = io.StringIO()
+    status = gate.run(
+        "docs",
+        ["lint-ok", "docs-build"],
+        make=fake_make(tmp_path),
+        log_dir=tmp_path / "gate",
+        environ={"PATH": "/usr/bin:/bin", "MAKEFLAGS": "n"},
+        out=out,
+        skip={"docs-build": "no change of the docs"},
+    )
+    assert status == 0
+    make = fake_make(tmp_path)
+    assert out.getvalue() == (
+        f"{make} --no-print-directory setup\n"
+        f"{make} --no-print-directory GATE_SETUP_DONE=1 lint-ok\n"
+        "  skipped step: docs/docs-build (no change of the docs)\n"
+    )
+
+
+# What make or a caller could pass down into the dry runs (make exports the
+# variables of its command line, so CI's make test TEST_ORDER=random would).
+INHERITED = frozenset(
+    {"MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "MAKELEVEL", "TEST_ORDER", "PYTEST_WORKERS"}
+    | {"ISOLATED_JOBS", "VERBOSE", "CI", "GATE_BASE"}
+)
+
+
+def make_dry_run(*argv: str) -> str:
+    env = {k: v for k, v in os.environ.items() if k not in INHERITED}
+    done = subprocess.run(
+        ["make", "-n", "--no-print-directory", "GATE_SETUP_DONE=1", *argv],
+        cwd=INFRA,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout
+
+
+def test_locally_the_suites_run_in_parallel_and_ci_runs_them_in_one_process() -> None:
+    assert " -n auto --junitxml=" in make_dry_run("test-pytest", "CI=")
+    for argv in (("CI=true",), ("CI=", "TEST_ORDER=random"), ("CI=", "PYTEST_WORKERS=")):
+        assert " -n " not in make_dry_run("test-pytest", *argv), argv
+    assert " --jobs 1 " in make_dry_run("test-isolated", "CI=true")
+    assert " --jobs 3 " in make_dry_run("test-isolated", "CI=", "ISOLATED_JOBS=3")
+    # make test-random-order: always one process.
+    assert " -n " not in make_dry_run("test-random-order", "CI=")
+
+
+def test_make_gate_runs_every_gate_locally() -> None:
+    makefile = (INFRA / "Makefile").read_text(encoding="utf-8")
+    block = makefile[makefile.index("\ngate: ## ") :].split("\n\n", 1)[0]
+    assert "for gate in lint test docs order; do" in block
+    assert '$(GATE) --local --base "$(GATE_BASE)" $$gate $$steps || status=1;' in block
+    assert "exit $$status" in block
+    assert makefile_list(makefile, "ORDER_STEPS") == ["test-random-order", "test-isolated"]
+    # CI never runs it, nor its local skips.
+    workflows = sorted((INFRA / ".github" / "workflows").glob("*.yml"))
+    assert len(workflows) > 5
+    for path in workflows:
+        text = path.read_text(encoding="utf-8")
+        assert "make gate" not in text and "--local" not in text, path.name

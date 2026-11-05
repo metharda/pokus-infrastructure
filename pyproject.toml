@@ -33,6 +33,9 @@ dev = [
   # below, the snapshot tests run on it)
   "pytest==9.1.1",
   "pytest-textual-snapshot==1.1.0",
+  # the local gate runs the pytest suites in parallel (make test-pytest; CI
+  # runs them in one process)
+  "pytest-xdist==3.8.0",
   # installer TUI (the pins of python.installer in versions.lock.yml)
   "textual==8.2.8",
   "ruamel.yaml==0.19.1",

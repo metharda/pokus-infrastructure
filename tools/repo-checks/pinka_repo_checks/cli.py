@@ -7,6 +7,7 @@ library alone.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 
@@ -117,20 +118,35 @@ def build_parser() -> argparse.ArgumentParser:
 
     gate = sub.add_parser(
         "gate",
-        help="run a gate target's steps quietly: one summary line, every failure in full",
+        help="run a gate's steps quietly: one summary line, every failure in full",
         description=(
-            "Run make setup once, then every step of a gate target (lint, test, docs) "
+            "Run make setup once, then every step of a gate (lint, test, docs, or order "
+            "for the random order and the isolated files in make gate) "
             "as its own make target, each step's output in <log-dir>/<gate>/<step>.log. "
             "On success print one line with the counts of passed, failed and skipped "
             "items and of warnings; on failure print the complete output of every "
-            "failing step first. The Makefile uses it unless VERBOSE=1."
+            "failing step first. The Makefile uses it unless VERBOSE=1; make gate always."
         ),
     )
-    gate.add_argument("name", help="the gate target (lint, test or docs)")
+    gate.add_argument("name", help="the gate (lint, test, docs or order)")
     gate.add_argument("steps", nargs="+", help="the make targets that make up the gate")
     gate.add_argument("--make", default="make", help="the make command ($(MAKE))")
     gate.add_argument(
         "--log-dir", type=Path, default=Path("build/gate"), help="parent of the step logs"
+    )
+    gate.add_argument(
+        "--local",
+        action="store_true",
+        help=(
+            "skip the steps the local tree does not need (the docs build and the Mermaid "
+            "check without a docs change, the random order and the isolated files without a "
+            "change of the tests); every skipped step is named; ignored with CI=true"
+        ),
+    )
+    gate.add_argument(
+        "--base",
+        default="origin/moving/on",
+        help="with --local: what the local tree is compared with (default: origin/moving/on)",
     )
 
     mermaid = sub.add_parser(
@@ -184,9 +200,17 @@ def main(argv: list[str]) -> int:  # noqa: PLR0911 - one return per check
 
         return references.run(args.root)
     if args.command == "gate":
-        from pinka_repo_checks import gate  # noqa: PLC0415 - stdlib-only path
+        from pinka_repo_checks import changes, gate  # noqa: PLC0415 - stdlib-only path
 
-        return gate.run(args.name, args.steps, make=args.make, log_dir=args.log_dir)
+        skip: dict[str, str] = {}
+        if args.local and os.environ.get("CI") != "true":
+            paths = changes.local_changed(args.base)
+            if paths is None and set(args.steps) & set(changes.LOCAL_STEPS):
+                print(
+                    f"{args.name}: nothing skipped: git cannot tell the changes against {args.base}"
+                )
+            skip = changes.local_skips(args.steps, paths, args.base)
+        return gate.run(args.name, args.steps, make=args.make, log_dir=args.log_dir, skip=skip)
     if args.command == "mermaid-extract":
         from pinka_repo_checks import docs_lint  # noqa: PLC0415 - needs dev dependencies
 
