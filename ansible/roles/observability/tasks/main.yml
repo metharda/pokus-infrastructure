@@ -156,35 +156,6 @@
       {{ ['prometheus', 'loki', 'tempo', 'grafana', 'otelcol-journald'] if observability_stores
          else ['otelcol-journald'] }}
 
-# Earlier versions ran the journal collector as root, so its stored position
-# may be root's. Only those regular files change owner, one by one and
-# without following links: the directory is the collector's, and a link it
-# made must never make root change a file elsewhere.
-- name: Find the journal collector's state directory
-  ansible.builtin.stat:
-    path: "{{ pinka_root }}/state/otelcol-journald"
-  register: observability_journald_dir
-
-- name: Find what the journal collector stored as root
-  ansible.builtin.find:
-    paths: "{{ pinka_root }}/state/otelcol-journald"
-    file_type: file
-    hidden: true
-    recurse: false
-  register: observability_journald_state
-  when: observability_journald_dir.stat.isdir | default(false)
-
-- name: Give it to the journal collector's account
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    state: file
-    follow: false
-    owner: "{{ observability_ids.otel_journald.uid or omit }}"
-    group: "{{ observability_journal_gid or omit }}"
-  loop: "{{ observability_journald_state.files | default([]) | selectattr('uid', 'equalto', 0) | list }}"
-  loop_control:
-    label: "{{ item.path }}"
-
 - name: Create the textfile collector directory
   ansible.builtin.file:
     path: "{{ observability_textfile_dir }}"

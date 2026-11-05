@@ -557,35 +557,15 @@ def test_a_directory_the_host_lacks_is_mounted_from_the_empty_directory(
     )
 
 
-def test_the_stored_position_changes_owner_without_following_a_link() -> None:
-    """The collector owns its state directory: no task recurses into it or follows its links."""
-    tasks = {t["name"]: t for t in load_yaml(TASKS)}
-    find = tasks["Find what the journal collector stored as root"]["ansible.builtin.find"]
-    assert find == {
-        "paths": "{{ pinka_root }}/state/otelcol-journald",
-        "file_type": "file",
-        "hidden": True,
-        "recurse": False,
-    }
-    # Not in check mode on a fresh host, where the directory is not there yet;
-    # a link in its place is no directory (stat does not follow it).
-    found = tasks["Find what the journal collector stored as root"]
-    assert found["when"] == "observability_journald_dir.stat.isdir | default(false)"
-    assert tasks["Find the journal collector's state directory"]["ansible.builtin.stat"] == {
-        "path": "{{ pinka_root }}/state/otelcol-journald"
-    }
-    give = tasks["Give it to the journal collector's account"]
-    assert give["ansible.builtin.file"] == {
-        "path": "{{ item.path }}",
-        "state": "file",
-        "follow": False,
-        "owner": "{{ observability_ids.otel_journald.uid or omit }}",
-        "group": "{{ observability_journal_gid or omit }}",
-    }
-    assert give["loop"] == (
-        "{{ observability_journald_state.files | default([])"
-        " | selectattr('uid', 'equalto', 0) | list }}"
-    )
+def test_no_task_changes_what_the_journal_collector_stored() -> None:
+    """The collector owns its state directory: the role creates it and changes nothing in it.
+
+    Of every task of the observability role, blocks included, exactly one
+    names a state directory: the one that creates them, without recursing.
+    No task runs chown, chgrp or setfacl, and no file task recurses. Not
+    seen: a path built from a variable whose name and text name no state
+    directory.
+    """
 
     def walk(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         found = []
@@ -595,9 +575,44 @@ def test_the_stored_position_changes_owner_without_following_a_link() -> None:
                 found += walk(task.get(key) or [])
         return found
 
+    naming = []
     for path in sorted((ROLES / "observability" / "tasks").rglob("*.yml")):
         for task in walk(load_yaml(path) or []):
+            text = str(task)
+            if any(s in text for s in ("/state/", "otelcol-journald", "observability_state_dirs")):
+                naming.append(f"{path.name}: {task['name']}")
+            for module in ("command", "shell", "raw", "script"):
+                body = str(task.get(f"ansible.builtin.{module}", ""))
+                assert not any(c in body for c in ("chown", "chgrp", "setfacl")), (path, task)
             assert not (task.get("ansible.builtin.file") or {}).get("recurse"), (path, task)
+    assert naming == ["main.yml: Create the data directories"]
+    (create,) = [t for t in load_yaml(TASKS) if t["name"] == "Create the data directories"]
+    owner = (
+        "{{ item.owner if item.owner is defined"
+        " else (observability_ids[item.container].uid or omit) }}"
+    )
+    group = (
+        "{{ item.group if item.group is defined"
+        " else (observability_ids[item.container].gid or omit) }}"
+    )
+    assert create["ansible.builtin.file"] == {
+        "path": "{{ pinka_root }}/state/{{ item.name }}",
+        "state": "directory",
+        "owner": owner,
+        "group": group,
+        "mode": "0700",
+    }
+    assert create["loop"] == (
+        "{{ observability_state_dirs | selectattr('name', 'in', observability_state_names) }}"
+    )
+    # On every node: the stores only where they run, the collector everywhere.
+    names = create["vars"]["observability_state_names"].strip("{} \n")
+    for stores in (True, False):
+        found = evaluate(names, {"observability_stores": stores})
+        assert "otelcol-journald" in found, stores
+    variables = ansible_vars(GROUP_VARS, ROLES / "observability" / "vars" / "main.yml")
+    dirs = {d["name"]: d for d in variables["observability_state_dirs"]}
+    assert dirs["otelcol-journald"] == {"name": "otelcol-journald", "container": "otel_journald"}
 
 
 def test_the_journal_group_is_the_hosts() -> None:
