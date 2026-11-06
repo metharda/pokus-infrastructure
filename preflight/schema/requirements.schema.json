@@ -58,12 +58,14 @@
     "pool": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["margin", "floor_gib", "source"],
-      "description": "incus_pool_size: auto for a loop pool: the golden images and the concurrent targets' root disks with the margin, limited by the free space on its mount point minus pinka's other needs there, never below floor_gib.",
+      "required": ["margin", "floor_gib", "source", "loop_reserve_gib", "loop_reserve_source"],
+      "description": "incus_pool_size: auto for a loop pool: the golden images and the concurrent targets' root disks with the margin, limited by the free space on its mount point minus pinka's other needs there (the loop reserve included), never below floor_gib. Every loop pool leaves loop_reserve_gib free on its mount point.",
       "properties": {
         "margin": {"type": "number", "minimum": 0},
         "floor_gib": {"type": "integer", "minimum": 1},
-        "source": {"type": "string", "minLength": 1}
+        "source": {"type": "string", "minLength": 1},
+        "loop_reserve_gib": {"type": "integer", "minimum": 50, "description": "Free space a loop pool's file leaves on its mount point, GiB; never below 50."},
+        "loop_reserve_source": {"type": "string", "minLength": 1}
       }
     },
     "images": {

@@ -8,12 +8,7 @@ from textual.widgets import DataTable, Input, RadioButton, RadioSet, Select, Sta
 from pinka_installer import validators
 from pinka_installer.tui.base import Problems, StepScreen
 from pinka_installer.tui.host import Disk
-from pinka_installer.tui.model import (
-    LOOP_RESERVE_GIB,
-    loop_size_limit,
-    suggest_cpusets,
-    suggest_postgres,
-)
+from pinka_installer.tui.model import suggest_cpusets, suggest_postgres
 from pinka_installer.tui.widgets import Field, TypedConfirm
 
 LAB_MODES = [("production", "production"), ("staging (QA: tag:pinka-qa, own vault)", "staging")]
@@ -327,7 +322,6 @@ class StorageScreen(StepScreen):
         """Build the screen."""
         super().__init__()
         self.disks: list[Disk] = []
-        self.free_gib: float | None = None
 
     def body(self) -> ComposeResult:  # noqa: D102
         storage = self.answers.storage
@@ -370,11 +364,10 @@ class StorageScreen(StepScreen):
             free, _ = self.ctx.host.free_gib("/var/lib")
         except OSError:
             return
-        self.free_gib = free
         self.query_one("#loop-check", Static).update(
-            f"{free:.0f} GiB free in /var/lib; at most {loop_size_limit(free)} GiB "
-            f"keeps {LOOP_RESERVE_GIB} GiB in reserve; auto: preflight sizes it from the "
-            "targets, the golden images and the free space"
+            f"{free:.0f} GiB free in /var/lib. When the installation starts, preflight checks "
+            "that the file, the space kept beside it and pinka's other needs fit there; auto: "
+            "preflight sizes the file"
         )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:  # noqa: D102
@@ -426,9 +419,6 @@ class StorageScreen(StepScreen):
                 problems.append(("loop_size", f"auto, or at least {MIN_LOOP_GIB} GiB"))
             else:
                 storage.loop_size_gib = int(text)
-                free = self.free_gib
-                if free is not None and storage.loop_size_gib > loop_size_limit(free):
-                    problems.append(("loop_size", f"at most {loop_size_limit(free)} GiB fits here"))
         elif not storage.device:
             problems.append(("device", "choose a disk in the table (Enter) and confirm it"))
         return problems

@@ -38,10 +38,11 @@ Requirements
     serving (inference: auto): off: the NVIDIA driver is installed in this run: serving is judged once it is loaded, by the next bootstrap run
     training (training: auto): off: the NVIDIA driver is installed in this run: training on the GPU is judged once it is loaded, by the next bootstrap run
   CPU estimate 5.1 threads
-  Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 389.1 GiB free on / after pinka's other needs there (10.9 GiB at install))
-  disk / (ext4): 400.0 GiB free, 76.9 GiB needed at install
+  Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 339.1 GiB free on / after pinka's other needs there (10.9 GiB at install, 50.0 GiB kept beside the file))
+  disk / (ext4): 400.0 GiB free, 126.9 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
     container images (11): 2.2 GiB (estimated)
+    the free space kept beside the Incus pool (loop file): 50.0 GiB (estimated)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
     the Incus pool (loop file): 66.0 GiB (estimated)
   disk /srv (ext4): 500.0 GiB free, 3.7 GiB needed at install

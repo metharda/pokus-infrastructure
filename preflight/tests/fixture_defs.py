@@ -32,6 +32,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES_DIR = os.path.join(HERE, "fixtures")
 GIB_KB = 1024 * 1024
 GIB = 1024**3
+# What a 30 GiB loop pool and the 50 GiB it leaves beside it need on one root
+# file system with the default images and golden images, GiB (the loop reserve
+# fixtures sit 0.01 GiB above and below it).
+LOOP_RESERVE_NEED = 94.6
 NOW = "2026-10-05T09:12:44Z"
 ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
 EFI_SB = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
@@ -2003,16 +2007,61 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         expected={
             "outcome": "unsupported",
             "unsupported_contains": [
-                "the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /",
+                "the Incus pool (loop file): 300.0 GiB, missing 282.3 GiB on /",
                 "model example-model: 5.7 GiB, missing 5.7 GiB on /srv",
             ],
         },
     )
+    # A 30 GiB loop pool leaves 50 GiB free beside it: with everything on one
+    # file system, LOOP_RESERVE_NEED GiB at install; 0.01 GiB above it fits,
+    # 0.01 GiB below it is refused, the shortfall on the reserve (the largest
+    # item).
+    for name, free, expected in (
+        ("above", LOOP_RESERVE_NEED + 0.01, {"outcome": "degraded"}),
+        (
+            "below",
+            LOOP_RESERVE_NEED - 0.01,
+            {
+                "outcome": "unsupported",
+                "unsupported_contains": [
+                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
+                    "missing 0.1 GiB on /"
+                ],
+            },
+        ),
+    ):
+        fx[f"ubuntu2404-loop-reserve-{name}"] = build(
+            UBUNTU_2404,
+            system(),
+            disks(root_free=free),
+            apparmor,
+            baremetal(),
+            kvm(),
+            plan={"pool": {"source": "loop", "size_gib": 30}},
+            expected=expected,
+        )
     # incus_pool_size: auto on one file system: the golden images and two
-    # VM targets with their probe clients, + 50 %, is 66 GiB with 144 or 386 GiB
-    # free; with 60 GiB free the space left after pinka's other needs (14.6 GiB
-    # at install, 15.3 GiB of stores at their retention) sets the 30 GiB floor.
-    for free, size in ((144, 66), (386, 66), (60, 30)):
+    # VM targets with their probe clients, + 50 %, is 66 GiB with 386 GiB free;
+    # the space left after pinka's other needs (14.6 GiB at install, the 50 GiB
+    # the loop file leaves beside it, 15.3 GiB of stores at their retention)
+    # makes it 64 GiB with 144 GiB free, and with 60 GiB free sets the 30 GiB
+    # floor, which does not fit with the 50 GiB beside it.
+    pool_auto = {"disabled": ["gpu_inference", "gpu_training"]}
+    for free, size, outcome in (
+        (144, 64, {"outcome": "degraded"}),
+        (386, 66, {"outcome": "degraded"}),
+        (
+            60,
+            30,
+            {
+                "outcome": "unsupported",
+                "unsupported_contains": [
+                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
+                    "missing 34.6 GiB on /"
+                ],
+            },
+        ),
+    ):
         fx[f"ubuntu2404-pool-auto-{free}"] = build(
             UBUNTU_2404,
             system(),
@@ -2020,11 +2069,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             apparmor,
             baremetal(),
             kvm(),
-            expected={
-                "outcome": "degraded",
-                "disabled": ["gpu_inference", "gpu_training"],
-                "pool": {"size_gib": size, "basis": "computed"},
-            },
+            expected={**outcome, **pool_auto, "pool": {"size_gib": size, "basis": "computed"}},
         )
     # Components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with

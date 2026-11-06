@@ -39,10 +39,11 @@ Requirements
     serving (inference: auto): off: gpu_inference is not available on this host (unmet: driver CUDA >= 13.0)
     training (training: auto): fits: the support matrix's minimum for gpu_training 8000 MiB (configured)
   CPU estimate 5.1 threads
-  Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 388.7 GiB free on / after pinka's other needs there (11.3 GiB at install))
-  disk / (ext4): 400.0 GiB free, 77.2 GiB needed at install
+  Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 338.7 GiB free on / after pinka's other needs there (11.3 GiB at install, 50.0 GiB kept beside the file))
+  disk / (ext4): 400.0 GiB free, 127.2 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
     container images (13): 2.5 GiB (estimated)
+    the free space kept beside the Incus pool (loop file): 50.0 GiB (estimated)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
     the Incus pool (loop file): 66.0 GiB (estimated)
   disk /srv (ext4): 500.0 GiB free, 3.7 GiB needed at install

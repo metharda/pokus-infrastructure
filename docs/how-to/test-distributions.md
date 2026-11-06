@@ -31,11 +31,14 @@ provisioning play with the reference platform enabled.
     - A developer machine with Incus and VM support (KVM), or a lab host whose
       lab is stopped (`sudo pinka stop`); the harness refuses to run while
       `pinka-lab.target` is active. The tests run one VM at a time, and each
-      VM gets what preflight requires of a lab host: 8 vCPUs, 18 GiB of
-      memory (preflight compares the guest's `MemTotal`, which the kernel's
-      reservations keep below the assigned size, with 16 GiB) and a 300 GiB
-      root disk (150 GiB free for `/var/lib` and 100 GiB for `/srv/pinka`).
-      The machine needs those 8 threads and 18 GiB besides its own, and an
+      VM gets what preflight computes for what it installs
+      (`tests/distros/targets.yml`): 8 vCPUs, 10 GiB of memory (preflight
+      compares the guest's `MemTotal`, which the kernel's reservations keep
+      below the assigned size, with the required 8 GiB) and a 130 GiB root
+      disk (the 87.2 GiB the install needs, the 50 GiB a loop pool's file
+      leaves beside it among them, the system's own 20 GiB and the growth of
+      a run).
+      The machine needs those 8 threads and 10 GiB besides its own, and an
       Incus storage pool that allocates disks thinly (`dir`, `btrfs`, `zfs`
       or LVM thin), so a VM takes only the space it writes.
     - A checkout of the repository with the development tools (`make setup`).

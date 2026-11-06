@@ -650,10 +650,9 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         fill(pilot, loop_size="10")
         await forward(pilot, "storage")
         assert shown_errors(pilot) == ["✖ auto, or at least 20 GiB"]
+        # No disk rule of the installer's own: preflight's disk budget judges the
+        # size with the free space a loop file leaves beside it (500 GiB free here).
         fill(pilot, loop_size="460")
-        await forward(pilot, "storage")
-        assert shown_errors(pilot) == ["✖ at most 450 GiB fits here"]
-        fill(pilot, loop_size="200")
         await forward(pilot, "researchers")
         table = pilot.app.screen.query_one("#people", DataTable)
         table.focus()

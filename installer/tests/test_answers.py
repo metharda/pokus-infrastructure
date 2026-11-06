@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,7 +14,7 @@ import pytest
 from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import apply, validators
+from pinka_installer import apply, hostvars, validators
 from pinka_installer import plan as plan_mod
 from pinka_installer.answers import Answers, Context, Researcher
 from pinka_installer.paths import INFRA, Paths
@@ -259,6 +261,69 @@ def test_one_text_per_plan_refusal(repo: Paths, tmp_path: Path, rule: str) -> No
     answers.gpu.vllm_profile = settings.get("vllm_profile", answers.gpu.vllm_profile)
     answers.images_build = settings.get("images", answers.images_build)
     assert f"{field}: {text}" in answers_mod.problems(answers, context)
+
+
+def _preflight_on(root: Path, plan_file: Path, free_gib: float, out: Path) -> tuple[int, Any]:
+    """pinka-preflight --plan on a fixture root whose / has ``free_gib`` free."""
+    commands = json.loads((root / "commands.json").read_text(encoding="utf-8"))
+    for path in ("/", "/var/lib", "/srv"):
+        commands["commands"][f"df --output=target,fstype,size,avail -B1 {path}"]["stdout"] = (
+            f"Mounted on Type 1B-blocks Avail\n/ ext4 {1000 * 2**30} {int(free_gib * 2**30)}\n"
+        )
+    (root / "commands.json").write_text(json.dumps(commands), encoding="utf-8")
+    preflight = INFRA / "preflight" / "pinka-preflight"
+    args = ["--root", str(root), "--no-write", "--offline", "--plan", str(plan_file)]
+    done = subprocess.run(
+        [str(preflight), *args, "--output", str(out)], capture_output=True, text=True, check=False
+    )
+    return done.returncode, json.loads(out.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("writer", ["by hand", "the installer"])
+def test_the_loop_reserve_holds_whoever_writes_host_vars(
+    repo: Paths, tmp_path: Path, writer: str
+) -> None:
+    """Preflight keeps 50 GiB free beside a 30 GiB loop file, whoever wrote host_vars.
+
+    The TUI and an answers file write host_vars with ``hostvars.render`` (the
+    CI answers file here); bootstrap writes the plan from host_vars with the
+    plan writer, and preflight alone judges the disk.
+    """
+    (repo.infra / "preflight").mkdir(exist_ok=True)
+    (repo.infra / "preflight" / "requirements.json").write_bytes(
+        (INFRA / "preflight" / "requirements.json").read_bytes()
+    )
+    if writer == "by hand":
+        text = "incus_pool_source: loop\nincus_pool_size: 30GiB\nvllm_default_deployment: null\n"
+    else:
+        ci = Answers.from_dict(YAML(typ="safe").load(CI.read_text(encoding="utf-8")))
+        assert (ci.storage.source, ci.storage.loop_size_gib) == ("loop", 30)
+        example = repo.example_host_vars.read_text(encoding="utf-8")
+        text = hostvars.render(ci, None, example)
+    repo.host_vars("lab9").write_text(text, encoding="utf-8")
+    found = plan_mod.machine_plan(repo, "lab9")
+    assert found["pool"] == {"source": "loop", "size_gib": 30.0}
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(found), encoding="utf-8")
+    root = tmp_path / "root"
+    fixtures = INFRA / "preflight" / "tests" / "fixtures"
+    shutil.copytree(fixtures / "ubuntu2404-loop-reserve-above", root)
+    _, roomy = _preflight_on(root, plan_file, 1000.0, tmp_path / "roomy.json")
+    (disk,) = roomy["requirements"]["disk"]
+    reserve = next(i for i in disk["items"] if i["id"] == "pool-reserve")
+    assert (reserve["size_gib"], reserve["mount"]) == (50.0, "/")
+    need = disk["required_gib"]
+    code, below = _preflight_on(root, plan_file, need - 0.01, tmp_path / "below.json")
+    assert code == 20
+    assert below["outcome"] == "unsupported"
+    assert any(
+        "the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /"
+        in reason
+        for reason in below["unsupported_reasons"]
+    ), below["unsupported_reasons"]
+    code, above = _preflight_on(root, plan_file, need + 0.01, tmp_path / "above.json")
+    assert code != 20
+    assert above["requirements"]["budgets"]["disk"][0]["status"] == "fits"
 
 
 def test_one_text_for_a_model_not_pinned(repo: Paths) -> None:

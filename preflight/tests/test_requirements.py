@@ -224,13 +224,15 @@ class PoolTest(ComputeCase):
         )
 
     def test_the_free_space_limits_it(self) -> None:
-        # / holds pinka (5 GiB), the images and the Incus image store; /srv is apart.
-        self.free["/"] = 60.0
+        # / holds pinka (5 GiB), the images, the Incus image store and the 50 GiB
+        # the loop file leaves beside it; /srv is apart.
+        self.free["/"] = 110.0
         req = self.compute(GPU, inference="off", training=caps("off"))
-        others = sum(
-            i.size_gib for m in req.disks for i in m.items if m.mount == "/" and i.id != "pool"
-        )
-        self.assertEqual(req.pool["size_gib"], math.floor(60.0 - others))
+        others = {i.id: i.size_gib for m in req.disks for i in m.items if m.mount == "/"}
+        del others["pool"]
+        self.assertEqual(others[reqs.RESERVE_ID], 50.0)
+        self.assertEqual(req.pool["size_gib"], math.floor(110.0 - sum(others.values())))
+        self.assertLess(req.pool["size_gib"], 66)
         self.assertIn("free on / after pinka's other needs there", req.pool["detail"])
         self.assertEqual(req.unsupported, [])
 
@@ -254,7 +256,9 @@ class PoolTest(ComputeCase):
         self.assertEqual((req.pool["size_gib"], req.pool["basis"]), (300, "configured"))
         device = self.compute(GPU, pool={"source": "device", "size_gib": None})
         self.assertEqual(device.pool["source"], "device")
-        self.assertNotIn("pool", {i.id for m in device.disks for i in m.items})
+        ids = {i.id for m in device.disks for i in m.items}
+        self.assertNotIn("pool", ids)
+        self.assertNotIn(reqs.RESERVE_ID, ids)  # a dedicated device leaves no reserve
         image = "/var/lib/incus/disks/pinka-targets.img"
         self.put(image)
         self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
@@ -453,6 +457,148 @@ class DiskTest(ComputeCase):
         )
         self.assertEqual(req.unsupported, [])
         self.assertIn("could not be measured", " ".join(req.warnings))
+
+
+class LoopReserveTest(ComputeCase):
+    """A loop pool's file leaves 50 GiB free on its mount point (pool loop_reserve_gib)."""
+
+    POOL = {"source": "loop", "size_gib": 30}
+    TITLE = "the free space kept beside the Incus pool (loop file)"
+
+    def reserve(self, req: reqs.Requirements) -> reqs.DiskItem:
+        return next(i for m in req.disks for i in m.items if i.id == reqs.RESERVE_ID)
+
+    def test_never_below_50_gib(self) -> None:
+        self.assertGreaterEqual(DATA["pool"]["loop_reserve_gib"], 50)
+        path = os.path.join(reqs.PREFLIGHT_DIR, "schema", "requirements.schema.json")
+        with open(path, encoding="utf-8") as handle:
+            schema = json.load(handle)
+        loop = schema["properties"]["pool"]["properties"]["loop_reserve_gib"]
+        self.assertEqual(loop["minimum"], 50)
+
+    def test_an_item_beside_the_loop_file(self) -> None:
+        for pool in (self.POOL, {"source": "loop", "size_gib": None}):
+            item = self.reserve(self.compute(GPU, pool=pool))
+            self.assertEqual(
+                (item.title, item.path, item.mount, item.size_gib, item.present, item.basis),
+                (
+                    self.TITLE,
+                    "/var/lib/incus/disks/pinka-targets.img",
+                    "/",
+                    50.0,
+                    False,
+                    "estimated",
+                ),
+            )
+            self.assertEqual(item.source, "loop_reserve_gib of preflight/requirements.yml pool")
+
+    def test_none_beside_a_device_or_without_a_pool(self) -> None:
+        device = self.compute(GPU, pool={"source": "device", "size_gib": None})
+        inference = self.compute(GPU, node_role="inference")
+        for req in (device, inference):
+            self.assertNotIn(reqs.RESERVE_ID, {i.id for m in req.disks for i in m.items})
+
+    def test_just_above_and_just_below(self) -> None:
+        # The loop file, the reserve and what else goes on /: the reserve is the
+        # largest item, so the shortfall falls on it first.
+        needed = {m.mount: m for m in self.compute(GPU, pool=self.POOL).disks}["/"].required_gib
+        others = needed - 30 - 50
+        self.free["/"] = needed + 0.01  # the loop file leaves 50.01 GiB beside the others
+        self.assertEqual(self.compute(GPU, pool=self.POOL).unsupported, [])
+        self.free["/"] = needed - 0.01
+        req = self.compute(GPU, pool=self.POOL)
+        self.assertEqual(
+            req.unsupported,
+            [
+                f"disk: / has {needed - 0.01:.2f} GiB free and these choices need "
+                f"{needed:.2f} GiB there: {self.TITLE}: 50.0 GiB, missing 0.1 GiB on /"
+            ],
+        )
+        self.assertGreater(others, 0)  # stricter than the free space less the file alone
+        root = next(d for d in req.budgets()["disk"] if d["mount"] == "/")
+        self.assertEqual((root["status"], root["shortfall_gib"]), ("does_not_fit", 0.01))
+
+    def test_an_existing_loop_file_needs_none(self) -> None:
+        # Like the file itself it counts nothing once the file exists: 1 GiB more
+        # than the other items fits then, and is refused before.
+        before = {m.mount: m for m in self.compute(GPU, pool=self.POOL).disks}["/"]
+        others = before.required_gib - 30 - 50
+        self.free["/"] = others + 1
+        self.assertIn(self.TITLE, " ".join(self.compute(GPU, pool=self.POOL).unsupported))
+        self.put("/var/lib/incus/disks/pinka-targets.img")
+        req = self.compute(GPU, pool=self.POOL)
+        self.assertTrue(self.reserve(req).present)
+        self.assertEqual(req.unsupported, [])
+
+    def test_auto_leaves_it_free(self) -> None:
+        self.free["/"] = 120.0
+        req = self.compute(GPU, inference="off", training=caps("off"))
+        root = next(m for m in req.disks if m.mount == "/")
+        self.assertEqual(req.unsupported, [])
+        self.assertGreaterEqual(120.0 - root.required_gib, 0)
+        others = sum(i.size_gib for i in root.items if i.id not in ("pool", reqs.RESERVE_ID))
+        self.assertEqual(req.pool["size_gib"], math.floor(120.0 - others - 50))
+        self.assertIn(
+            f"({others:.1f} GiB at install, 50.0 GiB kept beside the file)", req.pool["detail"]
+        )
+        # Where even the floor does not fit, the detail says by how much.
+        self.free["/"] = 60.0
+        short = self.compute(GPU, inference="off", training=caps("off"))
+        self.assertIn(
+            f"; pinka's other needs on / ({others:.1f} GiB at install, 50.0 GiB kept beside "
+            f"the file) exceed its free space by {others + 50 - 60:.1f} GiB, so 30 GiB "
+            "(the floor of 30 GiB)",
+            short.pool["detail"],
+        )
+        self.assertIn(self.TITLE, " ".join(short.unsupported))
+
+    def test_an_existing_file_of_auto_counts_neither(self) -> None:
+        image = "/var/lib/incus/disks/pinka-targets.img"
+        self.put(image)
+        self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
+        req = self.compute(GPU)
+        items = {i.id: i for m in req.disks for i in m.items}
+        self.assertTrue(items["pool"].present and items[reqs.RESERVE_ID].present)
+        self.assertIn("keeps its size", req.pool["detail"])
+
+    def test_on_the_mount_point_of_the_loop_file(self) -> None:
+        # /var/lib/incus on a file system of its own: the file and the reserve count there.
+        self.mkdir("/var/lib/incus/disks")
+        for path in ("/var/lib/incus", "/var/lib/incus/disks"):
+            self.extra[f"df --output=target,fstype,size,avail -B1 {path}"] = df(
+                "/var/lib/incus", 200.0
+            )
+        mounts = {m.mount: m for m in self.compute(GPU, pool=self.POOL).disks}
+        incus = {i.id for i in mounts["/var/lib/incus"].items}
+        self.assertLessEqual({"pool", reqs.RESERVE_ID}, incus)
+        self.assertFalse({"pool", reqs.RESERVE_ID} & {i.id for i in mounts["/"].items})
+        need = mounts["/var/lib/incus"].required_gib
+        for path in ("/var/lib/incus", "/var/lib/incus/disks"):
+            self.extra[f"df --output=target,fstype,size,avail -B1 {path}"] = df(
+                "/var/lib/incus", need - 0.01
+            )
+        text = " ".join(self.compute(GPU, pool=self.POOL).unsupported)
+        self.assertIn(f"{self.TITLE}: 50.0 GiB, missing 0.1 GiB on /var/lib/incus", text)
+
+    def test_the_growth_does_not_count_it_as_used(self) -> None:
+        # /srv on / too: the reserve stays free, so the stores may grow into it.
+        self.extra["df --output=target,fstype,size,avail -B1 /srv"] = df("/", 400.0)
+        req = self.compute(GPU, pool=self.POOL)
+        assert req.growth is not None
+        root = next(m for m in req.disks if m.mount == "/")
+        self.assertEqual(
+            req.growth.free_after_install_gib, round(400.0 - root.required_gib + 50, 2)
+        )
+        # Once the file exists, neither counts: nothing is added back.
+        image = "/var/lib/incus/disks/pinka-targets.img"
+        self.put(image)
+        self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
+        existing = self.compute(GPU, pool=self.POOL)
+        assert existing.growth is not None
+        root = next(m for m in existing.disks if m.mount == "/")
+        self.assertEqual(
+            existing.growth.free_after_install_gib, round(400.0 - root.required_gib, 2)
+        )
 
 
 class GrowthTest(ComputeCase):

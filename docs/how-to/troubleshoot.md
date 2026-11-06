@@ -121,7 +121,9 @@ profile. Fix the cause, for example by installing a supported distribution or
 by running the lab in a VM on this machine. A memory reason lists the parts
 and the choices that would fit; a disk reason lists, per mount point, the
 items that do not fit, the largest first: shrink one (for example
-`incus_pool_size`), choose a smaller model, or free space
+`incus_pool_size`), choose a smaller model, or free space; the free space
+kept beside a loop pool's file is never shrunk, so where it carries the
+shortfall, free space there or put the pool on a dedicated device
 ([Capacity planning](../explanation/capacity-planning.md)). A `vram:` reason
 names what does not fit the GPU, by how much, and the remedy: a GPU with
 more memory or another serving profile, or a smaller model. An `inference:`

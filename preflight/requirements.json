@@ -173,7 +173,9 @@
   "pool": {
     "margin": 0.5,
     "floor_gib": 30,
-    "source": "the incus role's root disk sizes (incus_target_container, incus_target_vm, incus_probe_client, incus_build_instance) and the blueprints' estimated_size_gib; margin (estimate): the instances' copy-on-write divergence from their images, snapshots and the targets' own data; floor: the pool the distribution test VMs install with (30 GiB)"
+    "source": "the incus role's root disk sizes (incus_target_container, incus_target_vm, incus_probe_client, incus_build_instance) and the blueprints' estimated_size_gib; margin (estimate): the instances' copy-on-write divergence from their images, snapshots and the targets' own data; floor: the pool the distribution test VMs install with (30 GiB)",
+    "loop_reserve_gib": 50,
+    "loop_reserve_source": "estimate: room the loop file's file system keeps beyond everything pinka puts there, for the host's own use (package updates, logs, temporary files) while the pool's file, which counts fully but grows only with use, fills; never lowered (the schema's minimum)"
   },
   "images": {
     "cadvisor": {

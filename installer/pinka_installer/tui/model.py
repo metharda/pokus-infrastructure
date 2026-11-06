@@ -51,7 +51,6 @@ AFTER_STEPS = {
     "uninstall_run": "Uninstall progress",
 }
 CONSENTS = ("accept_degraded", "accept_experimental", "force_unsupported", "accept_mok_enrollment")
-LOOP_RESERVE_GIB = 50
 MIN_VAULT_PASSWORD = 12
 # Strength meter: lengths and character classes (lower, upper, digit, other) that count.
 GOOD_LENGTH = 16
@@ -377,18 +376,6 @@ def suggest_postgres(memory_gib: float | None) -> str:
     if not memory_gib:
         return ""
     return f"{min(max(int(memory_gib * 64), 128), 4096)}MB"
-
-
-def loop_size_limit(free_gib: float) -> int:
-    """The largest loop file that leaves the reserve free.
-
-    Args:
-        free_gib: Free space where the loop file goes.
-
-    Returns:
-        GiB.
-    """
-    return max(int(free_gib) - LOOP_RESERVE_GIB, 0)
 
 
 def load_profiles(directory: Path) -> dict[str, dict[str, Any]]:

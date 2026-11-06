@@ -40,10 +40,11 @@ Requirements
     training (training: auto): fits: the support matrix's minimum for gpu_training 8000 MiB (configured)
   CPU estimate 7.1 threads
   Incus pool: loop file of 300 GiB (configured: incus_pool_size 300.0 GiB)
-  disk / (ext4): 100.0 GiB free, 332.3 GiB needed at install, 232.3 GiB missing
+  disk / (ext4): 100.0 GiB free, 382.3 GiB needed at install, 282.3 GiB missing
     pinka itself: 5.0 GiB (estimated)
     container images (14): 23.6 GiB (estimated)
     the Incus pool (loop file): 300.0 GiB (configured)
+    the free space kept beside the Incus pool (loop file): 50.0 GiB (estimated)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
   disk /srv (ext4): 3.0 GiB free, 9.4 GiB needed at install, 6.4 GiB missing
     model example-model: 5.7 GiB (measured)
@@ -59,5 +60,5 @@ Requirements
 Network: skipped (--offline)
 
 Unsupported
-  - disk: / has 100.00 GiB free and these choices need 332.29 GiB there: the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /
+  - disk: / has 100.00 GiB free and these choices need 382.29 GiB there: the Incus pool (loop file): 300.0 GiB, missing 282.3 GiB on /
   - disk: /srv has 3.00 GiB free and these choices need 9.40 GiB there: model example-model: 5.7 GiB, missing 5.7 GiB on /srv; golden image docker-host 1.0.0 (export): 0.8 GiB, missing 0.7 GiB on /srv

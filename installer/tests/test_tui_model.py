@@ -249,13 +249,11 @@ def test_reads_the_smt_siblings(tmp_path: Path) -> None:
     assert apply.read_smt_cores(tmp_path / "missing") == []
 
 
-def test_postgres_and_loop_suggestions() -> None:
+def test_postgres_suggestions() -> None:
     assert model.suggest_postgres(None) == ""
     assert model.suggest_postgres(1) == "128MB"
     assert model.suggest_postgres(32) == "2048MB"
     assert model.suggest_postgres(256) == "4096MB"
-    assert model.loop_size_limit(500) == 450
-    assert model.loop_size_limit(30) == 0
 
 
 def test_serving_profile_and_models_fit_the_gpu() -> None:

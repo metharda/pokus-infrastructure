@@ -513,7 +513,7 @@ def test_a_passing_test(tmp_path: Path) -> None:
     }
     launch = next(c for c in fake.calls if c[1] == "launch")
     assert launch[2:5] == ("images:debian/13/cloud", "ptd-debian-13-abcdef", "--vm")
-    assert launch[-2:] == ("--device", "root,size=80GiB")
+    assert launch[-2:] == ("--device", "root,size=130GiB")
     assert "limits.cpu=8" in launch and "limits.memory=10GiB" in launch
     scripts = fake.scripts()
     assert any(harness.DISABLE_MANAGERS in s for s in scripts)
@@ -1572,7 +1572,7 @@ def test_every_target_meets_the_requirement_of_what_it_installs(tmp_path: Path) 
         assert _gib(target.memory) >= needed.required_gib + KERNEL_RESERVE_GIB, target.id
         assert _gib(target.disk) >= disk.required_gib + SYSTEM_GIB, target.id
     # The defaults sit at these values: a change of the estimates shows here.
-    assert (needed.required_gib, disk.required_gib) == (8.0, 37.2)
+    assert (needed.required_gib, disk.required_gib) == (8.0, 87.2)
     # The CPU-only training flow runs: its job fits the computed cap's floor.
     assert (needed.switches.serves, needed.switches.runs) == (False, "cpu")
     assert needed.switches.memory_max_gib == data["training_cap"]["floor_gib"] == 4

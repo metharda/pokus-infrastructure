@@ -7,13 +7,15 @@ defaults) says what the operator chose. This module adds them up:
 - memory against the floor and the computed required and recommended values,
   each compared with ``MemTotal`` at the support matrix's tolerance;
 - the disk known at install, per mount point, item by item (a shortfall is
-  listed with what is missing where);
+  listed with what is missing where), with the free space a loop pool's file
+  leaves beside it as an item of its own;
 - the expected growth of what grows with use, which is never a reason to
   refuse.
 
 An item already on the host (a pulled image, a downloaded model, a built
 golden image, the pool's loop file) takes no more space: it is listed with its
-real size where that is known and counts nothing. Every host access goes
+real size where that is known and counts nothing; so does the free space
+beside a loop file that exists already. Every host access goes
 through the ``fs``/``runner`` abstractions.
 """
 
@@ -56,6 +58,9 @@ LAB_ROLES = ("full", "lab")
 LARGEST = 3
 # Below this a size is whole GiB (float sums of tenths).
 EPSILON = 1e-9
+# The disk item of the free space a loop pool's file leaves beside it: it
+# stays free, so the growth does not count it as used.
+RESERVE_ID = "pool-reserve"
 
 
 class PlanError(ValueError):
@@ -981,17 +986,28 @@ def _disk_items(
         )
     if role in LAB_ROLES:
         pool = plan["pool"]
-        # A loop pool of incus_pool_size: auto comes last (_auto_pool): it
-        # follows the free space left after every other item.
-        if pool["source"] == "loop" and pool["size_gib"] is not None:
+        # A loop pool of incus_pool_size: auto comes last (_pool): it follows
+        # the free space left after every other item, the reserve included.
+        if pool["source"] == "loop":
+            pool_file = str(disk["pool_file"])
+            if pool["size_gib"] is not None:
+                add(
+                    "pool",
+                    "the Incus pool (loop file)",
+                    pool_file,
+                    size=float(pool["size_gib"]),
+                    present=fs.exists(pool_file),
+                    basis="configured",
+                    source="incus_pool_size: a loop file counts fully",
+                )
             add(
-                "pool",
-                "the Incus pool (loop file)",
-                str(disk["pool_file"]),
-                size=float(pool["size_gib"]),
-                present=fs.exists(str(disk["pool_file"])),
-                basis="configured",
-                source="incus_pool_size: a loop file counts fully",
+                RESERVE_ID,
+                "the free space kept beside the Incus pool (loop file)",
+                pool_file,
+                size=float(data["pool"]["loop_reserve_gib"]),
+                present=fs.exists(pool_file),
+                basis="estimated",
+                source="loop_reserve_gib of preflight/requirements.yml pool",
             )
         elif pool["source"] == "device":
             notes.append("the Incus pool is a dedicated device: on no mount point")
@@ -1055,8 +1071,8 @@ def _pool(
     The computed size: the golden images and the concurrent targets' root
     disks (or the build instance's, when larger) with the margin, rounded up
     to whole GiB, limited by the free space on the loop file's mount point
-    minus pinka's other needs there, never below the floor. The item is
-    appended to ``entries``.
+    minus pinka's other needs there (the free space the file leaves beside it
+    among them), never below the floor. The item is appended to ``entries``.
     """
     pool = plan["pool"]
     if pool["source"] == "device":
@@ -1099,22 +1115,33 @@ def _pool(
         size = float(max(floor, wanted))
         warnings.append(f"disk: the free space of {mount} could not be measured for the pool")
     else:
-        others = sum(
-            item.size_gib
+        there = [
+            item
             for item, item_path in entries
             if not item.present
             and (_measure(fs, runner, item_path, measured).mount or item_path) == mount
-        )
+        ]
+        others = sum(item.size_gib for item in there)
+        reserve = sum(item.size_gib for item in there if item.id == RESERVE_ID)
         srv = _measure(fs, runner, str(plan["srv_path"]), measured)
         growth = _growth_caps(data, plan) if (srv.mount or srv.checked_path) == mount else 0.0
         available = info.free_bytes / GIB - others - growth
         size = float(max(floor, min(wanted, math.floor(available + EPSILON))))
-        detail += (
-            f"; {available:.1f} GiB free on {mount} after pinka's other needs there "
-            f"({text_gib(others)} at install"
-            + (f", {text_gib(growth)} the stores hold at their retention" if growth else "")
-            + ")"
-        )
+        needs = [f"{text_gib(others - reserve)} at install"]
+        if reserve:
+            needs.append(f"{text_gib(reserve)} kept beside the file")
+        if growth:
+            needs.append(f"{text_gib(growth)} the stores hold at their retention")
+        if available >= 0:
+            detail += (
+                f"; {available:.1f} GiB free on {mount} after pinka's other needs there "
+                f"({', '.join(needs)})"
+            )
+        else:
+            detail += (
+                f"; pinka's other needs on {mount} ({', '.join(needs)}) exceed its free space "
+                f"by {-available:.1f} GiB"
+            )
         if size < wanted:
             floored = f" (the floor of {floor} GiB)" if size == floor else ""
             detail += f", so {size:g} GiB{floored}"
@@ -1237,7 +1264,12 @@ def _growth(
     mount = srv_info.mount or srv_info.checked_path
     free_after: float | None = None
     if srv_info.free_gib is not None:
-        used = sum(m.required_gib for m in req.disks if m.mount == mount)
+        used = sum(
+            m.required_gib
+            - sum(i.size_gib for i in m.items if i.id == RESERVE_ID and not i.present)
+            for m in req.disks
+            if m.mount == mount
+        )
         free_after = gib(srv_info.free_gib - used)
     per_day = sum(i.gib_per_day for i in items)
     days: int | None = None
