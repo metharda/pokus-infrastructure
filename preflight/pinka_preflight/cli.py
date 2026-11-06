@@ -25,7 +25,7 @@ from typing import Any
 from pinka_preflight import __version__, render, schema_check
 from pinka_preflight.detect.access import detect_access
 from pinka_preflight.detect.components import component_conflicts, detect_components
-from pinka_preflight.detect.conflicts import Conflict, detect_conflicts
+from pinka_preflight.detect.conflicts import Conflict, detect_conflicts, kept_lab
 from pinka_preflight.detect.environment import detect_environment
 from pinka_preflight.detect.gpu import detect_gpu
 from pinka_preflight.detect.hardware import detect_hardware
@@ -322,6 +322,7 @@ def run_preflight(
     )
     defaults = load_lab_defaults(args.lab_defaults)
     conflicts.conflicts += lab_conflicts(args, fs, runner, defaults, kvm_usable=kernel.kvm_usable)
+    conflicts.conflicts += kept_lab(fs, str(choices["srv_path"]))
     components = detect_components(
         fs,
         runner,

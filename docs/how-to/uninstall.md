@@ -164,6 +164,22 @@ Deal with each failed item the report names, then run uninstall again; it
 takes the plan from these records and finishes. Only a run in which nothing
 before them failed removes them.
 
+Such a run has removed `/opt/pinka`, and with it the `pinka` command, so
+run uninstall again from the checkout, on the command line; it reads the
+machine name from the kept records:
+
+<!-- qa:skip reason="removes the lab from the host" -->
+```bash
+sudo ./bootstrap/bootstrap.sh --uninstall
+```
+
+Its preflight run only reads the host: no finding of it stops the
+uninstall. Do not use the installer for this run. Its *Preflight* screen
+checks the default research space, `/srv/pinka`, and stops there, before
+it offers *Uninstall pinka from this host*, while the kept lab root is
+that directory, lies inside it or holds it, also with symbolic links
+followed (`kept_lab`, see [Install again on this host](#install-again-on-this-host)).
+
 ## Take the kept secrets off the host
 
 `/var/lib/pinka-kept` holds the restic repository's password and location,
@@ -232,10 +248,52 @@ components pinka did not install.
 
 ## Install again on this host
 
-To bring the lab's data into a new lab, restore it from the backups. Before
-you install pinka on this host again, move the kept lab root away or delete
-it on purpose: nothing takes the kept data over yet. The install then
-takes the kept accounts and groups over from
+Nothing takes the kept data over yet: an install into the kept lab root
+would start on part of the old data with new secrets. Preflight refuses
+it (`kept_lab`, [exit code 30](troubleshoot.md#exit-code-30)) while the
+lab root that `/var/lib/pinka/kept-accounts.json` names exists and the
+research space the install would use (`pinka_root` in the machine's
+host_vars file, the installer's *Research space*) is that directory, lies
+inside it or holds it, also with symbolic links followed. A restore is
+refused the same way. Either way forward ends the refusal:
+
+- To bring the lab back from its backups, restore it into the research
+  space it had: a restore puts the files back below the research space it
+  is given, where the backups found them.
+
+    1. Move the kept lab root out of the way, for example
+       `sudo mv /srv/pinka /srv/pinka.kept`. When the lab root is a
+       symbolic link, move the directory it leads to and remove the link.
+       When it is a file system of its own, unmount it (and remove its line
+       from `/etc/fstab`) and remove the empty mount point. Preflight
+       refuses while anything is at the lab root's path, an empty directory
+       or a newly mounted file system included.
+    2. Check that `pinka_root` in the machine's host_vars file names the
+       kept lab root.
+    3. Restore as in [Restore a snapshot](backup-and-restore.md#restore-a-snapshot)
+       with that host_vars file
+       (`sudo ./bootstrap/bootstrap.sh --machine <machine> --restore`). The
+       restore writes the lab to the file system that holds the lab root's
+       parent directory: it needs room there for the whole lab, and for the
+       moved directory as well where that stayed on it. For an SFTP
+       repository the run creates a new key when the host has none: it
+       stops where it lists the snapshots; authorize the key it printed, as
+       in [Configure the repository](backup-and-restore.md#configure-the-repository),
+       then run the restore again.
+    4. Once the restored lab is verified, delete the moved directory.
+       Nothing names it any more; only its own lock (root:root 0700, where
+       uninstall could set it) keeps the accounts out of it.
+
+- To delete the kept data on purpose, uninstall again with `--purge-data`
+  from the checkout ([Also delete the lab's data](#also-delete-the-labs-data)):
+  that removes the lab root together with the kept accounts and groups.
+  For a lab root that is a symbolic link it removes the link: delete the
+  directory it leads to as well.
+
+If the uninstall did not finish, finish it first, from the command line
+([If uninstall did not finish](#if-uninstall-did-not-finish)).
+
+An install on this host takes the kept accounts and groups over from
 `/var/lib/pinka/kept-accounts.json` (each that still has its noted UID or
 GID): they are pinka's again, and the play names them. The lock of an
 account the lab names again is undone as noted, right before the account

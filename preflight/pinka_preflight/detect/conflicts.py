@@ -9,6 +9,8 @@ pinka (Docker Engine, Tailscale, LXD, Podman) are judged in ``components``.
 
 from __future__ import annotations
 
+import json
+import posixpath
 from dataclasses import dataclass, field
 
 from pinka_preflight.fs import FileSystem
@@ -19,6 +21,10 @@ VM_REMEDIATION = (
     "Run a supported distribution in a VM on this host (vm provider) and install the lab "
     "inside it; see docs/providers/vm.md."
 )
+# What an uninstall without --purge-data kept with the lab's data
+# (the uninstall module's NAMES["kept_accounts"]).
+KEPT_ACCOUNTS = "/var/lib/pinka/kept-accounts.json"
+PATH_MAX = 4096  # Linux: a longer path is not resolved
 PKG_PROCESSES = frozenset(
     {"apt", "apt-get", "dpkg", "unattended-upgr", "dnf", "dnf5", "yum", "rpm", "zypper", "pacman"}
 )
@@ -222,3 +228,164 @@ def detect_conflicts(
             )
         )
     return report
+
+
+def _within(path: str, root: str) -> bool:
+    """Tell whether a normalized path is ``root`` or lies below it."""
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+def _resolved(fs: FileSystem, path: str, max_links: int = 40) -> str:
+    """The path with every symbolic link in it followed, as far as the parts exist.
+
+    Args:
+        fs: Filesystem view.
+        path: Absolute target path.
+        max_links: Links followed at most (a loop ends there).
+
+    Returns:
+        The resolved path, or the normalized path when there are more links.
+    """
+    if len(path) > PATH_MAX:
+        return fs.normalize(path)
+    rest = [p for p in path.split("/") if p not in ("", ".")]
+    done, links = "/", 0
+    while rest:
+        here = fs.normalize(posixpath.join(done, rest.pop(0)))
+        target = fs.readlink(here) if fs.is_symlink(here) else None
+        if target is None:
+            done = here
+            continue
+        links += 1
+        if links > max_links:
+            return fs.normalize(path)
+        rest = [p for p in target.split("/") if p not in ("", ".")] + rest
+        if target.startswith("/"):
+            done = "/"
+    return done
+
+
+def _relation(kept: str, srv: str) -> str | None:
+    """How a research space lies to a kept lab root (both normalized), or None."""
+    if kept == srv:
+        return "is that directory"
+    if _within(srv, kept):
+        return "lies inside it"
+    if _within(kept, srv):
+        return "holds it"
+    return None
+
+
+def kept_lab(fs: FileSystem, srv_path: str) -> list[Conflict]:
+    """A lab an uninstall kept where this install would put its research space.
+
+    An uninstall without ``--purge-data`` keeps the lab's data and its
+    accounts, locks the lab root to root, and names it in the kept-accounts
+    file. An install into it would start on part of the old data
+    (PostgreSQL's data directory) with new secrets, and nothing takes kept
+    data over yet; a research space inside it or above it mixes the two
+    labs, and a later ``--purge-data`` of the new lab would delete the kept
+    one. The paths are compared as written and with their symbolic links
+    followed (uninstall locks a linked lab root where it leads).
+
+    Args:
+        fs: Filesystem view.
+        srv_path: The research space this install would use.
+
+    Returns:
+        A ``kept_lab`` conflict (needs action), or nothing.
+    """
+    text = fs.read_text(KEPT_ACCOUNTS)
+    try:
+        note = json.loads(text) if text is not None else None
+    except (ValueError, RecursionError):
+        return []
+    lab_root = note.get("lab_root") if isinstance(note, dict) else None
+    if not isinstance(lab_root, str) or not lab_root.startswith("/"):
+        return []
+    if not srv_path.startswith("/"):
+        return []
+    data = _resolved(fs, lab_root)  # uninstall locks a linked lab root where it leads
+    if not (fs.exists(lab_root) or fs.exists(data)):
+        return []
+    kept, srv = fs.normalize(lab_root), fs.normalize(srv_path)
+    where = _relation(kept, srv)
+    if where is None:
+        real_srv = _resolved(fs, srv_path)
+        where = _relation(data, real_srv)
+        if where is None:
+            return []
+        where += (
+            f" with symbolic links followed (the research space is {real_srv}, "
+            f"the kept lab root {data})"
+        )
+    message = _kept_lab_message(kept, srv, where)
+    link = None if not fs.is_symlink(lab_root) else (data if fs.exists(data) else "")
+    remediation = _kept_lab_remediation(kept, srv, link)
+    return [Conflict("kept_lab", "needs_action", message, remediation)]
+
+
+def _kept_lab_message(kept: str, srv: str, where: str) -> str:
+    """The ``kept_lab`` message.
+
+    Args:
+        kept: The kept lab root, as the note names it (normalized).
+        srv: The research space this install would use (normalized).
+        where: How the research space lies to the kept lab root.
+
+    Returns:
+        The message.
+    """
+    return (
+        f"An uninstall kept the lab's data in {kept}, and its accounts, and this install's "
+        f"research space {srv} {where}; a new install does not take kept data over"
+    )
+
+
+def _kept_lab_remediation(kept: str, srv: str, link: str | None) -> str:
+    """The two ways forward from a kept lab.
+
+    A restore puts the files back below the research space it is given, so
+    the lab comes back only into the one it had. The data of a lab root
+    that is a symbolic link lies where the link leads, and ``--purge-data``
+    removes only the link; a link above the lab root changes neither.
+
+    Args:
+        kept: The kept lab root, as the note names it (normalized).
+        srv: The research space this install would use (normalized).
+        link: Where the lab root leads when it is a symbolic link ("" when
+            nothing is there any more), else None.
+
+    Returns:
+        The remediation.
+    """
+    if link is None:
+        move, purged = f"move {kept} out of the way (for example to {kept}.kept)", ""
+    elif not link:
+        move, purged = f"remove the link {kept}", ""
+    else:
+        move = (
+            f"move {link}, where the link {kept} leads, out of the way (for example to "
+            f"{link}.kept) and remove the link"
+        )
+        purged = f" (it removes the link {kept}: delete {link} as well)"
+    space = (
+        ""
+        if srv == kept
+        else f", set pinka_root: {kept} in the machine's host_vars file (the research space "
+        "the kept lab had)"
+    )
+    moved = (
+        ""
+        if link == ""
+        else ", and delete the moved directory once the restored lab is verified (nothing "
+        "names it any more)"
+    )
+    return (
+        f"Restore the lab from its backups, into the research space it had: {move}{space}, "
+        f"run sudo ./bootstrap/bootstrap.sh --machine <machine> --restore{moved}. Or "
+        "delete the kept data on purpose: sudo ./bootstrap/bootstrap.sh --uninstall "
+        f"--purge-data --machine <machine>{purged}, then re-run preflight. If the uninstall "
+        "did not finish, run sudo ./bootstrap/bootstrap.sh --uninstall again first. See "
+        "docs/how-to/uninstall.md."
+    )

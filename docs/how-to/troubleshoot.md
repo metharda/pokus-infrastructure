@@ -137,6 +137,12 @@ printed the exact remediation, for example:
 - `lab_port_in_use` or `vm_collector_address_conflict`: another program uses
   a lab port or the VM collector address. Stop it, or
   [move the lab's port or address](move-a-lab-port.md).
+- `kept_lab`: an uninstall without `--purge-data` kept a lab's data, and its
+  accounts, in the research space this install would use, or in a
+  directory inside it or above it. Move the kept data out of the way and
+  restore the lab from its backups into the research space it had, or
+  delete the kept data on purpose; see
+  [Install again on this host](uninstall.md#install-again-on-this-host).
 
 Do what it says, then run bootstrap again. `--force-unsupported` does not skip
 a required action.

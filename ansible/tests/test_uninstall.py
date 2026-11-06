@@ -19,9 +19,11 @@ from typing import Any
 import pinka_install_record
 import pinka_uninstall as mod
 import pytest
-from test_uninstall_module import DEBIAN
+from test_uninstall_module import DEBIAN, FakeHost, full_install, params
 
 from ansible_testlib import ANSIBLE, FAMILIES, GROUP_VARS, INFRA, ROLES, load_yaml, template_value
+from pinka_preflight.detect import conflicts as preflight_conflicts
+from pinka_preflight.fs import FileSystem
 
 ROLE = ROLES / "uninstall"
 GROUP = load_yaml(GROUP_VARS)
@@ -439,6 +441,23 @@ def test_the_kept_accounts_are_where_the_next_install_reads_them() -> None:
     # Each phase gets the results so far: the records stay after a failure.
     phase = load_yaml(ROLE / "tasks" / "phase.yml")[0]["pinka_uninstall"]
     assert phase["results"] == "{{ uninstall_results | default([]) }}"
+
+
+def test_preflight_refuses_an_install_into_the_lab_root_uninstall_kept(tmp_path: Path) -> None:
+    """Preflight reads the note an uninstall without --purge-data wrote."""
+    assert NAMES["kept_accounts"] == preflight_conflicts.KEPT_ACCOUNTS
+    fake = FakeHost(tmp_path)
+    full_install(fake)
+    for command in ("gpasswd", "usermod"):
+        fake.answer(command, rc=0)
+    fake.answer("pgrep", rc=1)
+    p = params(fake)
+    mod.run_module(p, run=fake.run)
+    mod.run_module({**p, "state": "apply", "phase": "accounts"}, run=fake.run)
+    fs = FileSystem(str(tmp_path))
+    found = preflight_conflicts.kept_lab(fs, "/srv/pinka")
+    assert [(c.id, c.severity) for c in found] == [("kept_lab", "needs_action")]
+    assert preflight_conflicts.kept_lab(fs, "/srv/lab2") == []
 
 
 def test_the_roles_that_manage_kept_accounts_undo_their_lock_first() -> None:

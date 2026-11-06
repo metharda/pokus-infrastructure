@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-01-01T00:00:00Z",
+  "lab_root": "/srv/pinka",
+  "lock": {
+    "shell": "/usr/sbin/nologin",
+    "expire": "1"
+  },
+  "accounts": [
+    {
+      "name": "pinka-postgres",
+      "uid": "990",
+      "gid": "990",
+      "shell": "/usr/sbin/nologin",
+      "expire": "",
+      "password_locked": false
+    }
+  ],
+  "groups": [
+    {
+      "name": "pinka-postgres",
+      "gid": "990",
+      "component": false
+    }
+  ]
+}

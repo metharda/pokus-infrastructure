@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import unittest
 
 from helpers import TempRootCase, runner
@@ -18,6 +19,7 @@ from pinka_preflight.detect import (
     os_release,
     timesync,
 )
+from pinka_preflight.fs import FileSystem
 
 
 class OsReleaseTest(TempRootCase):
@@ -527,6 +529,199 @@ class ConflictsTest(TempRootCase):
             self.detect(gpu_linux_driver_in_wsl=True, env_class="wsl2"),
             [("linux_nvidia_driver_in_wsl", "blocking")],
         )
+
+
+class KeptLabTest(TempRootCase):
+    """A lab an uninstall kept where this install would put its research space."""
+
+    RESTORE = "run sudo ./bootstrap/bootstrap.sh --machine <machine> --restore"
+
+    def keep(self, lab_root: object = "/srv/pinka", *, exists: bool = True) -> None:
+        self.put(conflicts.KEPT_ACCOUNTS, json.dumps({"lab_root": lab_root, "accounts": []}))
+        if exists and isinstance(lab_root, str) and lab_root.startswith("/"):
+            self.mkdir(lab_root)
+
+    def found(self, srv_path: str = "/srv/pinka") -> list[tuple[str, str]]:
+        return [(c.id, c.severity) for c in conflicts.kept_lab(self.fs(), srv_path)]
+
+    def test_the_kept_lab_root_as_research_space_needs_action(self) -> None:
+        self.keep()
+        (found,) = conflicts.kept_lab(self.fs(), "/srv/pinka")
+        self.assertEqual((found.id, found.severity), ("kept_lab", "needs_action"))
+        self.assertEqual(
+            found.message,
+            "An uninstall kept the lab's data in /srv/pinka, and its accounts, and this "
+            "install's research space /srv/pinka is that directory; a new install does not "
+            "take kept data over",
+        )
+        # The two ways forward: the lab restored from its backups in place,
+        # once the kept data moved out of the way, or the kept data deleted
+        # on purpose; and an uninstall that did not finish run again first.
+        self.assertIn(
+            "into the research space it had: move /srv/pinka out of the way (for example to "
+            f"/srv/pinka.kept), {self.RESTORE}, and delete the moved directory",
+            found.remediation,
+        )
+        self.assertIn(
+            "--uninstall --purge-data --machine <machine>, then re-run preflight",
+            found.remediation,
+        )
+        self.assertIn(
+            "did not finish, run sudo ./bootstrap/bootstrap.sh --uninstall", found.remediation
+        )
+        self.assertNotIn("pinka_root", found.remediation)  # it names the kept lab root already
+        self.assertNotIn("--srv-path", found.remediation)  # bootstrap has no such option
+        # The same directory spelled another way, on either side: named as
+        # normalized, and found without following links.
+        for spelled in ("/srv/pinka/", "/srv//pinka", "/srv/other/../pinka"):
+            (again,) = conflicts.kept_lab(self.fs(), spelled)
+            self.assertEqual(
+                (again.message, again.remediation), (found.message, found.remediation), spelled
+            )
+        for spelled in ("/srv//pinka/", "/srv/other/../pinka"):
+            self.keep(spelled)
+            (again,) = conflicts.kept_lab(self.fs(), "/srv/pinka")
+            self.assertEqual(
+                (again.message, again.remediation), (found.message, found.remediation), spelled
+            )
+
+    def test_a_research_space_inside_or_above_the_kept_lab_root_needs_action(self) -> None:
+        self.keep()
+        back = "set pinka_root: /srv/pinka in the machine's host_vars file"
+        (inside,) = conflicts.kept_lab(self.fs(), "/srv/pinka/new")
+        self.assertIn("research space /srv/pinka/new lies inside it;", inside.message)
+        # A restore puts the files back below the research space it is given.
+        self.assertIn(f"/srv/pinka.kept), {back}", inside.remediation)
+        (above,) = conflicts.kept_lab(self.fs(), "/srv")
+        self.assertIn("research space /srv holds it;", above.message)
+        self.assertIn(f"/srv/pinka.kept), {back}", above.remediation)
+        self.assertEqual(self.found("/"), [("kept_lab", "needs_action")])
+        self.keep("/")  # a lab root at / holds every research space
+        self.assertEqual(self.found("/data/lab"), [("kept_lab", "needs_action")])
+
+    def test_another_research_space_installs(self) -> None:
+        self.keep()
+        for other in ("/srv/pinka2", "/srv/pink", "/data/pinka", "/srv/lab/pinka"):
+            self.assertEqual(self.found(other), [], other)
+
+    def test_symbolic_links_are_followed_on_both_sides(self) -> None:
+        # Uninstall locks a linked lab root where it leads, and notes the link.
+        self.keep("/srv/pinka", exists=False)
+        self.mkdir("/data/lab")
+        self.mkdir("/mnt")
+        self.meta(
+            symlinks={"/srv/pinka": "../data/lab", "/mnt/lab": "/data/lab", "/opt/d": "/data"}
+        )
+        (real,) = conflicts.kept_lab(self.fs(), "/data/lab")
+        self.assertIn(
+            "research space /data/lab is that directory with symbolic links followed (the "
+            "research space is /data/lab, the kept lab root /data/lab);",
+            real.message,
+        )
+        # The data is moved, not the link; --purge-data removes only the link.
+        self.assertIn(
+            "move /data/lab, where the link /srv/pinka leads, out of the way (for example to "
+            "/data/lab.kept) and remove the link, set pinka_root: /srv/pinka",
+            real.remediation,
+        )
+        self.assertIn(
+            "(it removes the link /srv/pinka: delete /data/lab as well)", real.remediation
+        )
+        (lexical,) = conflicts.kept_lab(self.fs(), "/srv/pinka")
+        self.assertIn("move /data/lab, where the link /srv/pinka leads", lexical.remediation)
+        self.assertNotIn("pinka_root", lexical.remediation)
+        self.assertEqual(self.found("/mnt/lab"), [("kept_lab", "needs_action")])
+        self.assertEqual(self.found("/mnt/lab/new"), [("kept_lab", "needs_action")])
+        self.assertEqual(self.found("/data"), [("kept_lab", "needs_action")])
+        self.assertEqual(self.found("/opt/d/lab"), [("kept_lab", "needs_action")])
+        self.assertEqual(self.found("/data/other"), [])
+        self.assertEqual(self.found("/opt/d/other"), [])
+
+    def test_a_kept_lab_root_below_a_link(self) -> None:
+        # The fixture view does not follow a link above a path by itself.
+        self.keep("/opt/d/lab", exists=False)
+        self.mkdir("/data/lab")
+        self.meta(symlinks={"/opt/d": "/data"})
+        (found,) = conflicts.kept_lab(self.fs(), "/opt/d/lab")
+        # Moved and purged through the link above it, like a directory.
+        self.assertIn(
+            "move /opt/d/lab out of the way (for example to /opt/d/lab.kept), run ",
+            found.remediation,
+        )
+        self.assertNotIn("link", found.remediation)
+        self.assertEqual(self.found("/data/lab"), [("kept_lab", "needs_action")])
+        self.assertEqual(self.found("/data/other"), [])
+
+    def test_links_are_resolved_like_the_kernel(self) -> None:
+        self.mkdir("/data/lab")
+        chain = {f"/l{n}": f"/l{n + 1}" for n in range(40)}
+        self.meta(
+            symlinks={
+                **chain,
+                "/l40": "/data",
+                "/opt/d": "/data",
+                "/srv/pinka": "/srv/loop",
+                "/srv/loop": "/srv/pinka",
+            }
+        )
+        fs = self.fs()
+        self.assertEqual(conflicts._resolved(fs, "/l1/lab"), "/data/lab")  # 40 links
+        self.assertEqual(conflicts._resolved(fs, "/l0/lab"), "/l0/lab")  # 41: given up
+        self.assertEqual(conflicts._resolved(fs, "/srv/pinka/x"), "/srv/pinka/x")  # a loop
+        self.assertEqual(conflicts._resolved(fs, "/opt/d/x/../lab"), "/data/lab")
+        # ".." after a link leaves where the link leads, as the kernel does.
+        self.assertEqual(conflicts._resolved(fs, "/opt/d/../x"), "/x")
+        self.assertEqual(conflicts._resolved(fs, "/opt/./d//lab/"), "/data/lab")
+        long = "/opt/d/" + "x/" * 2045  # longer than PATH_MAX: given back, not resolved
+        self.assertEqual(conflicts._resolved(fs, long), long.rstrip("/"))
+
+    def test_links_on_the_real_host(self) -> None:
+        base = os.path.realpath(self.root)
+        os.makedirs(os.path.join(base, "data", "lab"))
+        os.makedirs(os.path.join(base, "srv"))
+        os.symlink("../data/lab", os.path.join(base, "srv", "pinka"))
+        os.symlink(os.path.join(base, "data"), os.path.join(base, "d"))
+        host = FileSystem("/")
+        for path in ("srv/pinka", "srv/pinka/x/..", "srv/pinka/../other", "d/lab", "d/lab/new"):
+            given = os.path.join(base, path)
+            self.assertEqual(conflicts._resolved(host, given), os.path.realpath(given), path)
+
+    def test_a_link_loop_or_a_dangling_lab_root(self) -> None:
+        self.keep("/srv/pinka", exists=False)
+        self.meta(symlinks={"/srv/pinka": "/srv/loop", "/srv/loop": "/srv/pinka"})
+        self.assertEqual(self.found("/data/lab"), [])  # the loop ends, unresolved
+        self.assertEqual(self.found(), [("kept_lab", "needs_action")])
+        self.meta(symlinks={"/srv/pinka": "/gone"})  # the link is still there
+        (dangling,) = conflicts.kept_lab(self.fs(), "/srv/pinka")
+        self.assertIn(
+            "into the research space it had: remove the link /srv/pinka, run sudo "
+            "./bootstrap/bootstrap.sh --machine <machine> --restore. Or delete",
+            dangling.remediation,
+        )
+        self.assertNotIn("/gone", dangling.remediation)
+        self.assertEqual(self.found("/gone"), [("kept_lab", "needs_action")])
+
+    def test_a_kept_lab_root_moved_away_or_no_note_installs(self) -> None:
+        self.assertEqual(self.found(), [])
+        self.mkdir("/srv/pinka")
+        self.assertEqual(self.found(), [])  # a lab root without the note
+        self.keep(exists=False)
+        os.rmdir(os.path.join(self.root, "srv/pinka"))
+        self.assertEqual(self.found(), [])  # the note, its lab root moved away
+
+    def test_a_note_it_cannot_read_names_no_lab(self) -> None:
+        self.mkdir("/srv/pinka")
+        self.mkdir(conflicts.KEPT_ACCOUNTS)  # not a file: it cannot be read
+        self.assertEqual(self.found(), [])
+        os.rmdir(os.path.join(self.root, conflicts.KEPT_ACCOUNTS.lstrip("/")))
+        for text in ("{", "[]", '"/srv/pinka"', "{}", '{"lab_root": null}', "[" * 100000):
+            self.put(conflicts.KEPT_ACCOUNTS, text)
+            self.assertEqual(self.found(), [], text[:20])
+        for lab_root in (["/srv/pinka"], 7, "srv/pinka", ""):
+            self.keep(lab_root)
+            self.assertEqual(self.found(), [], lab_root)
+        self.keep()
+        self.assertEqual(self.found("srv/pinka"), [])  # a relative research space
 
 
 class TimeSyncTest(unittest.TestCase):
