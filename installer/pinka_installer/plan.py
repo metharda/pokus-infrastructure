@@ -112,6 +112,8 @@ def plan(  # noqa: PLR0912 - one branch per setting
         result["concurrent_targets"] = count
     if "vllm_default_deployment" in variables:
         result["model"] = _model(variables, lock)
+    if "vllm_profile" in variables:
+        result["vllm_profile"] = _plain("vllm_profile", variables["vllm_profile"])
     if "images_blueprints" in variables:
         result["images"] = [_plain("images_blueprints", b) for b in variables["images_blueprints"]]
     if "observability_gpu_exporter" in variables:
@@ -141,11 +143,15 @@ def _switches(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
     """The inference and training switches into ``result``."""
     if "inference" in variables:
         inference = _plain("inference", variables["inference"])
-        if inference not in ("auto", "off"):
-            raise PlanError(f"inference must be auto or off (got {inference!r})")
+        if inference not in ("auto", "on", "off"):
+            raise PlanError(f"inference must be auto, on or off (got {inference!r})")
         result["inference"] = inference
     if result["node_role"] == "inference" and result["inference"] == "off":
-        raise PlanError("an inference node runs only the inference stack: it needs inference: auto")
+        raise PlanError(
+            "an inference node runs only the inference stack: it needs inference: auto or on"
+        )
+    if result["node_role"] == "lab" and result["inference"] == "on":
+        raise PlanError(validators.LAB_ON)
     if "training" in variables:
         training = _plain("training", variables["training"])
         if training not in ("auto", "cpu", "off"):
@@ -204,4 +210,11 @@ def machine_plan(paths: Paths, machine: str) -> dict[str, Any]:
         (paths.infra / "preflight" / "requirements.json").read_text(encoding="utf-8")
     )
     variables = {**_yaml(paths.group_vars_main), **_yaml(host_vars)}
-    return plan(requirements["defaults"], variables, _yaml(paths.infra / "models.lock.yml"))
+    found = plan(requirements["defaults"], variables, _yaml(paths.infra / "models.lock.yml"))
+    profiles = sorted(requirements["serving"]["profiles"])
+    if found["vllm_profile"] not in profiles:
+        raise PlanError(
+            f"vllm_profile {found['vllm_profile']!r} is not a serving profile "
+            f"(vllm/profiles/: {', '.join(profiles)})"
+        )
+    return found

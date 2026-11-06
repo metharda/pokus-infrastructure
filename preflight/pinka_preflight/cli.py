@@ -51,6 +51,7 @@ from pinka_preflight.matrix import (
     evaluate,
     load_matrix,
     match_os,
+    vram_minimums,
 )
 from pinka_preflight.report import (
     Detection,
@@ -305,7 +306,9 @@ def run_preflight(
         RuntimeError: If the report does not validate against the schema.
     """
     data = load_requirements(args.requirements)
-    choices, label = plan or load_plan(args.plan, data["defaults"], args.srv_path)
+    choices, label = plan or load_plan(
+        args.plan, data["defaults"], args.srv_path, profiles=data["serving"]["profiles"]
+    )
     osr = detect_os_release(fs)
     env = detect_environment(fs, runner)
     kernel = detect_kernel(fs, runner)
@@ -409,6 +412,11 @@ def run_preflight(
             fs=fs,
             runner=runner,
             machine=machine,
+            gpu_vram_gib=gpu.vram_gib if gpu.usable else None,
+            gpu_compute_capability=gpu.compute_capability,
+            vram_minimums=vram_minimums(matrix),
+            gpu_unmet={str(e["feature"]): str(e["unmet"]) for e in decision.disabled_features},
+            driver_pending=decision.driver_pending,
         ),
     )
     overrides = Overrides(
@@ -459,7 +467,10 @@ def main(argv: Sequence[str]) -> int:
             f"--port: unknown lab ports {', '.join(unknown)} (known: {', '.join(sorted(known))})"
         )
     try:
-        plan = load_plan(args.plan, load_requirements(args.requirements)["defaults"], args.srv_path)
+        data = load_requirements(args.requirements)
+        plan = load_plan(
+            args.plan, data["defaults"], args.srv_path, profiles=data["serving"]["profiles"]
+        )
     except PlanError as exc:
         parser.error(str(exc))
     try:

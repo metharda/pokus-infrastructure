@@ -4,7 +4,7 @@ type: explanation
 audience: [operator, developer, reader]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: How preflight computes the memory and disk a lab needs from the operator's choices, what is estimated and what is measured, what grows with use, and where each choice is set.
+description: How preflight computes the memory, disk and GPU memory a lab needs from the operator's choices, what is estimated and what is measured, what grows with use, and where each choice is set.
 ---
 
 # Capacity planning
@@ -23,8 +23,10 @@ machine has it, before anything is installed.
 CPU it needs and the disk it takes, each with its source and whether it is
 `estimated` or `measured`. `make generate` compiles it, with the container
 images' sizes of `versions.lock.yml`, the golden images' estimates in their
-`image.yaml`, the target profiles of the incus role and the configured
-defaults, into `preflight/requirements.json`, which preflight reads.
+`image.yaml`, the target profiles of the incus role, the serving profiles'
+GPU minimums (`vllm/profiles/`), the models' VRAM estimates
+(`models.catalog.yml`) and the configured defaults, into
+`preflight/requirements.json`, which preflight reads.
 
 Every number is an estimate until a lab on a real machine is measured at
 idle and during a run; the measured numbers then replace them, marked
@@ -37,8 +39,8 @@ Preflight reads the choices from a plan (`pinka-preflight --plan FILE`,
 format in `preflight/schema/plan.schema.json`): the node role, the inference
 and training switches, the research space, Docker's data root, the pool's
 source and size, the concurrent targets, the model to serve with its files'
-sizes, the golden images to build, the GPU exporter, the training caps and
-the retention settings.
+sizes, the serving profile, the golden images to build, the GPU exporter, the
+training caps and the retention settings.
 
 - Bootstrap writes the plan of the machine on every run, from its
   `host_vars`, `group_vars` and `models.lock.yml` (`pinka-installer plan`),
@@ -60,7 +62,7 @@ does not run:
 
 | Setting (host_vars) | Installer answers | Values |
 | --- | --- | --- |
-| `inference` | `features.inference` | `auto` (the default): vLLM, its images and the selected model where preflight detects `gpu_inference` on a `full` or `inference` node; `off`: none of them |
+| `inference` | `features.inference` | `auto` (the default): vLLM, its images and the selected model where preflight detects `gpu_inference` on a `full` or `inference` node and the serving profile's minimum and the model's estimate fit the GPU; a `full` node that cannot serve serves nothing and is `degraded`; `on`: the same, but preflight refuses a host that cannot serve (`unsupported`); `off`: none of them |
 | `training` | `features.training` | `auto` (the default): training jobs where preflight detects `gpu_training` (a usable GPU) on a `full` node; `cpu`: also the jobs' CPU-only variant on a host without one; `off`: none |
 
 A switched-off feature counts nothing in memory or disk, and its services,
@@ -69,13 +71,61 @@ serves nothing (a deployment served before stops at the next bootstrap run);
 with training off it refuses every run and every dataset publication, and
 the platform's job images are not pulled. A host that lacks a feature its
 switch turns off is not `degraded` for it: preflight notes it instead. An
-`inference` node needs `inference: auto`.
+`inference` node needs `inference: auto` or `on`, and preflight refuses one
+that cannot serve, under either. A `lab` node serves nothing itself and
+refuses `on`: set `inference: on` on the paired inference node, whose
+preflight judges its GPU and model.
 
 The summary and the host profile (`requirements.switches`) say what each
 switch leaves on and why, for example `training off (no usable GPU for
 training; training: cpu would run the CPU-only variant)`. The installer
-writes `off` quoted (`"off"`): YAML 1.1, which Ansible reads, takes a plain
-`off` for `false`.
+writes `off` and `on` quoted (`"off"`, `"on"`): YAML 1.1, which Ansible reads,
+takes a plain `off` for `false` and a plain `on` for `true`.
+
+## The GPU's memory
+
+Serving and training take turns on the GPU (the GPU arbiter), so each has a
+line of its own, compared with the GPU's memory as `nvidia-smi` reports it:
+
+- **Serving**, on a `full` or `inference` node: the serving profile's minimum
+  (`vllm_profile`, `vllm/profiles/<name>.yml`) and the default model's
+  expected VRAM for that profile (`models.catalog.yml`; an estimate). A
+  model the catalog does not know adds nothing: only the profile's minimum
+  is checked for it.
+- **Training**, on a `full` node: the support matrix's minimum for
+  `gpu_training`. A training job declares only whether it uses the GPU, so
+  this is the only figure there is.
+
+Each line fits, or it does not, with the reason: switched off, training on
+the CPU (`training: cpu`), no usable GPU, a GPU the support matrix refuses
+(its memory, its compute capability or the driver's CUDA version), or, for
+serving, a profile or model that does not fit. Serving that does not fit
+installs nothing, under any switch. With `inference: auto` on a `full` node
+the line is `off` and the host `degraded`, with consent; with `inference: on`,
+and on an `inference` node, it is `does_not_fit` and the host `unsupported`,
+with the shortfall and the remedy, so nothing is installed that cannot
+start. The refusal names the remedy: a GPU with at least the memory serving
+needs, or another serving profile or a smaller model; the matrix's fix for
+the GPU's compute capability or the driver's CUDA version; and where the GPU
+is not usable, what makes it usable: an NVIDIA GPU, the driver installed,
+loaded or repaired by hand, consent to the MOK enrollment, another
+`install_nvidia_driver`, or the NVIDIA driver on Windows under WSL. The one
+exception is a GPU whose NVIDIA driver bootstrap installs in this run
+(`install_nvidia_driver: auto`, on a distribution where pinka installs the
+driver: see [component sources](../reference/component-sources.md#nvidia_driver)): it is
+judged once the driver is loaded, so run bootstrap again after it (after the
+reboot, where one is needed, and with `--refresh-profile` if bootstrap
+reports that the host profile changed); until then the host is `degraded` as
+with `auto`, and its lines are `off`. A usable GPU whose memory `nvidia-smi`
+does not report cannot meet the support matrix's minimum: its lines are
+`off` (or `does_not_fit`), and the summary says that the memory is not
+known.
+
+The summary prints the lines that apply under `VRAM`: serving and training on
+a `full` node, serving on an `inference` node, none on a `lab` node. The host
+profile has them in `requirements.budgets.vram`, next to the memory's and
+each disk's status, and which profiles and models of `models.catalog.yml` fit
+this GPU in `requirements.serving`, which the installer shows.
 
 ## Memory
 
@@ -93,7 +143,7 @@ for the parts the node role runs:
 | OPA | 0.1 / 0.2 | full, lab |
 | bootstrap and the installer | 0.5 / 0.8 | every node |
 | concurrent targets | each a container (1 GiB) / a VM (2 GiB) with `vm_targets`, plus a 0.5 GiB probe client; at least the 2 GiB build instance when golden images are built | full, lab |
-| vLLM serving the model | the model's files + 3 / + 5 | full, inference, with `gpu_inference`, `inference: auto` and a model |
+| vLLM serving the model | the model's files + 3 / + 5 | full, inference, with `gpu_inference`, a model, `inference: auto` or `on`, and the serving profile and the model fitting the GPU ([above](#the-gpus-memory)) |
 | a training job | 0 / the training cap | full, where training runs: a usable GPU (`gpu_training`), or `training: cpu` |
 
 The GPU arbiter runs vLLM or a training job, never both, so on a node that
@@ -236,6 +286,7 @@ one within 7 days ([`disk.free_space`](../how-to/fix-doctor-checks.md#check-disk
 | concurrent targets | `incus_concurrent_targets` | `resources.concurrent_targets` |
 | pool | `incus_pool_source`, `incus_pool_size` (`auto`: computed) | `storage` |
 | model | `vllm_default_deployment` | `gpu.default_model` |
+| serving profile | `vllm_profile` | `gpu.vllm_profile` |
 | golden images | `images_blueprints` | `images.build` |
 | inference, training | `inference`, `training` | `features` |
 | training caps | `training_caps` (`memory_max: auto`: computed) | `training_caps` |

@@ -35,6 +35,9 @@ Requirements
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
     vLLM serving example-model or a training job: 8.7 / 10.7 GiB (estimated; the model's files (5.7 GiB) + 3.0 GiB to 5.0 GiB; or a training job at training_caps.memory_max 4G (auto, computed from this host): the GPU arbiter runs one at a time)
+  VRAM: the GPU has 12.0 GiB (measured)
+    serving (inference: auto): fits: the serving profile ada-12g 11.3 GiB (configured)
+    training (training: auto): fits: the support matrix's minimum for gpu_training 8.0 GiB (configured)
   CPU estimate 7.1 threads
   Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 367.7 GiB free on / after pinka's other needs there (32.3 GiB at install))
   disk / (ext4): 400.0 GiB free, 98.3 GiB needed at install
@@ -52,6 +55,7 @@ Requirements
     local PostgreSQL dumps (backup staging): 0.05 GiB a day, up to 0.35 GiB
     the PostgreSQL database: 0.02 GiB a day, no retention
     training runs (output and checkpoints): up to 16 GiB per run
+  - the default model example-model has no VRAM estimate in models.catalog.yml: only the serving profile ada-12g's minimum is checked against the GPU's memory
 Network: skipped (--offline)
 
 Unsupported

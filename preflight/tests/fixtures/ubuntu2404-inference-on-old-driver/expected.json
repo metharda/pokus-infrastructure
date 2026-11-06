@@ -1,0 +1,11 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "inference: on must serve on this node. The NVIDIA driver supports CUDA",
+    "install a driver branch that supports CUDA"
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": "fits"
+  }
+}

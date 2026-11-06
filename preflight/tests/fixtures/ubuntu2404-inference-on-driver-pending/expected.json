@@ -1,0 +1,14 @@
+{
+  "disabled": [
+    "gpu_inference",
+    "gpu_training"
+  ],
+  "outcome": "degraded",
+  "vram": {
+    "serving": "off",
+    "training": "off"
+  },
+  "warnings_contain": [
+    "inference: on is judged once the NVIDIA driver this run installs is loaded: run bootstrap again after it, after the reboot where one is needed (with --refresh-profile if it reports that the host profile changed); that run refuses the host if the GPU still cannot serve"
+  ]
+}

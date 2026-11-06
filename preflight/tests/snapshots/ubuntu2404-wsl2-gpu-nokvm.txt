@@ -34,6 +34,9 @@ Requirements
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 3 GiB (estimated; 2 x (a 1.0 GiB container + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
     a training job: 0 / 24 GiB (estimated; training_caps.memory_max 24G (auto, computed from this host))
+  VRAM: the GPU has 12.0 GiB (measured)
+    serving (inference: auto): fits: the serving profile ada-12g 11.3 GiB (configured)
+    training (training: auto): fits: the support matrix's minimum for gpu_training 8.0 GiB (configured)
   CPU estimate 5.1 threads
   Incus pool: loop file of 42 GiB (computed: golden images 3.7 GiB + 2 x (8.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 42 GiB; 367.7 GiB free on / after pinka's other needs there (32.3 GiB at install))
   disk / (ext4): 400.0 GiB free, 74.3 GiB needed at install

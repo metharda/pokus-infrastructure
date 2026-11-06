@@ -135,10 +135,13 @@ class Gpu:
 class Features:
     """The feature switches: what the lab installs and counts.
 
-    ``inference``: ``auto`` (vLLM, its images and the model where the host
-    has a usable GPU) or ``off``. ``training``: ``auto`` (jobs where the host
-    has a usable GPU), ``cpu`` (also the CPU-only variant without one) or
-    ``off``.
+    ``inference``: ``auto`` (vLLM, its images and the model where the
+    host's GPU can serve them), ``on`` (the same, and preflight refuses a host
+    that cannot serve; never on a lab node) or ``off``; an inference node
+    needs ``auto`` or ``on`` and is refused when it cannot serve (judged once
+    a driver bootstrap installs is loaded). ``training``: ``auto``
+    (jobs where the host has a usable GPU), ``cpu`` (also the CPU-only variant
+    without one) or ``off``.
     """
 
     inference: str = "auto"
@@ -617,8 +620,11 @@ def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
         found.append("gpu/default_model: a lab node serves no model (the inference node does)")
     if answers.machine.node_role == "inference" and answers.features.inference == "off":
         found.append(
-            "features/inference: an inference node runs only the inference stack; it needs auto"
+            "features/inference: an inference node runs only the inference stack; it needs auto "
+            "or on"
         )
+    if answers.machine.node_role == "lab" and answers.features.inference == "on":
+        found.append(f"features/inference: {validators.LAB_ON}")
 
 
 def _backup_problems(found: list[str], answers: Answers) -> None:

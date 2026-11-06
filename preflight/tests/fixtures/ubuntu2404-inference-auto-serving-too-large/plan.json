@@ -1,0 +1,9 @@
+{
+  "model": {
+    "hf_repo": "Qwen/Qwen3-8B-AWQ",
+    "id": "qwen3-8b-awq",
+    "revision": "0000000000000000000000000000000000000000",
+    "size_bytes": 6442450944
+  },
+  "schema_version": 1
+}

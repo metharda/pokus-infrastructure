@@ -64,7 +64,7 @@ Every non-secret choice of the installer TUI, replayed with bootstrap.sh --answe
 | `gpu.default_model` | string | yes | An id of models.lock.yml, or none (vLLM installed, nothing served). |
 | `gpu.start_serving` | boolean | no | Start serving the default model after the install. |
 | `features` | object | no | The feature switches: a switched-off feature is not installed and counts nothing in the requirements. host_vars: inference and training. |
-| `features.inference` | one of `auto`, `off` | no | auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node; off: none of them. An inference node needs auto. |
+| `features.inference` | one of `auto`, `on`, `off` | no | auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node and the serving profile's minimum and the model's estimate fit it; a full node that cannot serve serves nothing and is degraded. on: the same, but preflight refuses a host that cannot serve. off: none of them. An inference node needs auto or on and is refused when it cannot serve; a lab node refuses on. |
 | `features.training` | one of `auto`, `cpu`, `off` | no | auto: training jobs where the host has a usable GPU (gpu_training), on a full node; cpu: also the jobs' CPU-only variant without one; off: the GPU arbiter refuses every run. |
 | `backups` | object | yes | restic backups. |
 | `backups.repository` | any | yes | The restic repository by type: sftp (host, user, path), rest (url), local (path; not a real backup) or later (doctor warns until it is set). |

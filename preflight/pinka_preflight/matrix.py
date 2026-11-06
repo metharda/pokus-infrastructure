@@ -27,6 +27,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from pinka_preflight import vram
 from pinka_preflight.detect.conflicts import ConflictReport
 from pinka_preflight.detect.environment import Environment
 from pinka_preflight.detect.gpu import GpuInfo
@@ -34,7 +35,7 @@ from pinka_preflight.detect.hardware import Hardware
 from pinka_preflight.detect.kernel import KernelInfo
 from pinka_preflight.detect.network import EndpointResult
 from pinka_preflight.detect.os_release import OsRelease
-from pinka_preflight.requirements import Requirements
+from pinka_preflight.requirements import Requirements, must_serve, serve_or_else
 
 MATRIX_JSON = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "support-matrix.json"
@@ -130,6 +131,16 @@ class Decision:
         needs_action: Operator actions, as ``{"id", "action"}``.
         planned_actions: Actions bootstrap carries out with the operator's
             consent instead of stopping, as ``{"id", "action"}``.
+        driver_pending: Bootstrap installs the NVIDIA driver in this run (a
+            GPU without a driver, ``install_nvidia_driver: auto``, the pinned
+            release's open kernel module supports the GPU, bootstrap installs
+            the driver on this release (its OS rule's
+            ``bootstrap_installs_nvidia_driver``), provider baremetal or vm,
+            MOK consent under Secure Boot): the GPU is judged once the driver
+            is loaded.
+        without_usable_gpu: What makes the GPU usable for ``gpu_inference``
+            when it is not (the feature's first ``without_usable_gpu`` rule
+            that holds); empty with a usable GPU.
         warnings: Warnings.
         notes: Informational notes.
         requirements: The requirements computed from the choices.
@@ -155,6 +166,8 @@ class Decision:
     degraded_reasons: list[str] = field(default_factory=list)
     needs_action: list[dict[str, str]] = field(default_factory=list)
     planned_actions: list[dict[str, str]] = field(default_factory=list)
+    driver_pending: bool = False
+    without_usable_gpu: str = ""
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     requirements: Requirements | None = None
@@ -441,6 +454,21 @@ def _remediation(spec: Mapping[str, Any], facts: Facts) -> str:
     return " ".join(texts)
 
 
+def without_usable_gpu(matrix: Mapping[str, Any], facts: Facts) -> str:
+    """What makes the GPU usable for ``gpu_inference``.
+
+    Args:
+        matrix: Support matrix.
+        facts: Host facts.
+
+    Returns:
+        The text of the feature's first ``without_usable_gpu`` rule that holds,
+        or empty when none does.
+    """
+    rules = matrix["features"].get("gpu_inference", {}).get("without_usable_gpu", [])
+    return next((str(r["text"]).strip() for r in rules if condition_holds(r["when"], facts)), "")
+
+
 def _core_checks(matrix: Mapping[str, Any], facts: Facts, kernel: KernelInfo) -> list[Check]:
     checks: list[Check] = []
     for req in matrix["core_requirements"]:
@@ -557,6 +585,10 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     facts = build_facts(env, kernel, hw, gpu, conflicts)
     facts.update(DEFAULT_CHOICES)
     facts.update(choices or {})
+    os_rule = match_os(matrix, osr)
+    facts["nvidia_driver_bootstrap_installs"] = bool(
+        os_rule.get("bootstrap_installs_nvidia_driver")
+    )
     # Who would install a missing driver: bootstrap only for a GPU the pinned
     # release's open kernel module supports, the operator with manual.
     mode = facts["nvidia_driver_mode"]
@@ -564,7 +596,6 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
     facts["nvidia_driver_planned"] = (
         "manual" if mode == "manual" else "auto" if mode == "auto" and supported else "none"
     )
-    os_rule = match_os(matrix, osr)
     arch_rule = match_arch(matrix, machine)
     env_rule = matrix["environment"].get(env.env_class, matrix["environment"]["unknown"])
     family = os_rule.get("family")
@@ -584,6 +615,15 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
         release=release,
         parent_release=parent,
         provider=env_rule.get("provider"),
+    )
+    d.driver_pending = bool(
+        facts["nvidia_gpu_present"]
+        and not facts["nvidia_gpu_usable"]
+        and not facts["nvidia_driver_installed"]
+        and facts["nvidia_driver_planned"] == "auto"
+        and facts["nvidia_driver_bootstrap_installs"]
+        and d.provider in ("baremetal", "vm")
+        and (facts["secure_boot"] != "enabled" or facts["mok_enrollment_accepted"])
     )
     for rule in (os_rule, arch_rule, env_rule):
         if rule["tier"] == "unsupported":
@@ -620,6 +660,8 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
 
     d.features, d.disabled_features, feature_notes = _features(matrix, facts)
     d.notes.extend(feature_notes)
+    if not facts["nvidia_gpu_usable"]:
+        d.without_usable_gpu = without_usable_gpu(matrix, facts)
     for backend in matrix["storage"]["backends"]:
         if d.features.get(backend["feature"]):
             d.storage_backend = str(backend["backend"])
@@ -702,19 +744,86 @@ def _set_outcome(d: Decision) -> None:
     d.exit_code = EXIT_CODES[d.outcome]
 
 
+def vram_minimums(matrix: Mapping[str, Any]) -> dict[str, float]:
+    """The VRAM minimum the support matrix sets for each GPU feature.
+
+    Args:
+        matrix: The compiled support matrix.
+
+    Returns:
+        Feature (``gpu_inference``, ``gpu_training``) to its ``gpu_vram_gib_min``.
+    """
+    found = {}
+    for name in ("gpu_inference", "gpu_training"):
+        for condition in matrix["features"][name]["requires"]:
+            if isinstance(condition, dict) and "gpu_vram_gib_min" in condition:
+                found[name] = float(condition["gpu_vram_gib_min"])
+    return found
+
+
+def _must_serve(d: Decision, req: Requirements) -> None:
+    """``inference: on``, or an inference node, without ``gpu_inference``: refused.
+
+    Except where bootstrap installs the NVIDIA driver in this run: the GPU is
+    judged by the next run, once the driver is loaded, and until then the
+    host is degraded as with ``auto``. The refusal names what to do: for a
+    GPU that is not usable, what makes it usable (the decision's
+    ``without_usable_gpu``); otherwise the matrix's remediation of each unmet
+    condition that has one, and a GPU with more memory where its memory is
+    below the minimum.
+    """
+    on = req.switches.inference == "on"
+    who = "inference: on" if on else "an inference node"
+    for entry in [e for e in d.disabled_features if e["feature"] == "gpu_inference"]:
+        if d.driver_pending:
+            d.warnings.append(
+                f"{who} is judged once the NVIDIA driver this run installs is loaded: run "
+                "bootstrap again after it, after the reboot where one is needed (with "
+                "--refresh-profile if it reports that the host profile changed); that run "
+                "refuses the host if the GPU still cannot serve"
+            )
+            continue
+        d.disabled_features.remove(entry)
+        unmet = str(entry["unmet"])
+        parts = [part.strip() for part in unmet.split(",")]
+        what = "inference: on must serve on this node" if on else "an inference node must serve"
+        remedies: list[str] = []
+        if "nvidia_gpu_usable" in parts:
+            remedies.append(d.without_usable_gpu)
+        else:
+            remedies.append(str(entry.get("remediation") or ""))
+            line = req.vram_serving
+            if line and any(part.startswith("VRAM") for part in parts):
+                need = vram.at_least(line.needed_gib)
+                unreported = "nvidia-smi did not report the GPU's memory; serving needs at least"
+                remedies.append(
+                    f"Use a GPU with at least {need} of memory."
+                    if line.available_gib is not None
+                    else f"{unreported} {need}."
+                )
+        fix = " ".join(r.strip() for r in remedies if r.strip())
+        text = f"inference: gpu_inference is not available on this host (unmet: {unmet}); {what}."
+        alternative = serve_or_else(req.choices, after_remedy=bool(fix))
+        d.unsupported_reasons.append(" ".join(s for s in (text, fix, alternative) if s))
+
+
 def apply_requirements(d: Decision, req: Requirements) -> None:
     """Add the requirements computed from the choices to the decision.
 
     Memory below the floor or the required value and a disk shortfall make the
     host unsupported; memory below the recommended value makes it degraded. A
     feature the plan's switches turn off is not wanted, so its absence does not
-    make the host degraded: it becomes a note.
+    make the host degraded: it becomes a note. With ``inference: on``, and on
+    an inference node, a missing ``gpu_inference`` makes the host unsupported,
+    except while bootstrap installs the NVIDIA driver in this run.
 
     Args:
         d: The decision of :func:`evaluate`.
         req: The requirements.
     """
     d.requirements = req
+    if req.vram_serving is not None and must_serve(req.choices):
+        _must_serve(d, req)
     unwanted = req.switches.unwanted()
     for entry in [e for e in d.disabled_features if e["feature"] in unwanted]:
         d.disabled_features.remove(entry)

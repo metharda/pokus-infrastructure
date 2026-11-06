@@ -259,18 +259,37 @@ def test_postgres_and_loop_suggestions() -> None:
 
 
 def test_serving_profile_and_models_fit_the_gpu() -> None:
-    profiles = model.load_profiles(INFRA / "vllm" / "profiles")
-    gpu = preflight("ubuntu2404-wsl2-gpu-kvm").profile["gpu"]
-    name = model.suggest_profile(gpu, profiles)
+    """The installer shows preflight's answers and decides nothing itself."""
+    serving = preflight("ubuntu2404-wsl2-gpu-kvm").profile["requirements"]["serving"]
+    name = model.suggest_profile(serving)
     assert name == "ada-12g"
-    assert model.suggest_profile({"vram_gib": 2}, profiles) == ""
+    assert model.suggest_profile({"suggested_profile": None}) == ""
     known = YAML(typ="safe").load((INFRA / "models.catalog.yml").read_text(encoding="utf-8"))
-    choices = model.model_choices(known, {"qwen3-8b-awq"}, name, gpu["vram_gib"])
+    choices = model.model_choices(known, {"qwen3-8b-awq"}, name, serving)
+    assert [c.id for c in choices] == sorted(m["id"] for m in known["models"])  # never `restricted`
     assert choices and all(not c.fits for c in choices)
     assert [c.id for c in choices if c.pinned] == ["qwen3-8b-awq"]
-    small = model.model_choices(known, set(), name, 2.0)
-    assert all(c.fits.startswith("needs ") for c in small)
-    assert all(c.fits for c in model.model_choices(known, set(), "no-such-profile", 12.0))
+    # An 8 GiB GPU: preflight says no model fits ada-12g; the profile's minimum
+    # (11.23 GiB, rounded up as preflight rounds a need) decides, not the
+    # models' estimate (10.5 GiB).
+    small = preflight("ubuntu2404-inference-auto-serving-too-large").profile
+    small_choices = model.model_choices(known, set(), name, small["requirements"]["serving"])
+    assert {c.fits for c in small_choices} == {"needs 11.3 GiB"}
+    # Where the model's estimate is the larger need, it decides.
+    lean = {
+        "profiles": {name: {"min_vram_gib": 6.0}},
+        "models": {"qwen3-8b-awq": {name: {"expected_vram_gib": 10.5, "fits": False}}},
+    }
+    lean_choices = model.model_choices(known, set(), name, lean)
+    assert [c.fits for c in lean_choices if c.id == "qwen3-8b-awq"] == ["needs 10.5 GiB"]
+    assert model.suggest_profile(small["requirements"]["serving"]) == ""
+    # No driver yet: preflight does not know the GPU's memory, and neither does the screen.
+    driverless = preflight("ubuntu2404-inference-on-driver-pending").profile
+    unknown = model.model_choices(known, set(), name, driverless["requirements"]["serving"])
+    assert {c.fits for c in unknown} == {"GPU memory unknown"}
+    assert model.suggest_profile(driverless["requirements"]["serving"]) == ""
+    other = model.model_choices(known, set(), "no-such-profile", serving)
+    assert {c.fits for c in other} == {"no settings for profile no-such-profile"}
 
 
 def test_vault_password_rules() -> None:

@@ -39,21 +39,28 @@ lifecycle_sources:
     osinfo-db 0.20251212+git20260710.7306ae26 (archive.ubuntu.com, package sha256
     cb48ca157c25aacbec867581ea1f33a8494d7f7bface3cb6691dc68f141f48e2), verified 2026-10-05
 
+# source_group: the group of ansible/component-sources.yml whose sources the play
+# uses on the release (platform_facts' release identity; a test keeps the two
+# equal). make generate adds bootstrap_installs_nvidia_driver to each rule from
+# the group's nvidia_driver entry.
 os:  # first match wins
   # supported: full provisioning tested in VMs on every release AND on the reference GPU hardware
   - match: {id: ubuntu, version_id: "24.04"}
     family: debian
+    source_group: ubuntu
     tier: supported
     release_model: fixed
     lifecycle: {released: "2024-04-25", end_of_support: "2029-05-31", source: distro-info-data}
   - match: {id: debian, version_id: "13"}
     family: debian
+    source_group: debian
     tier: supported
     release_model: fixed
     lifecycle: {released: "2025-08-09", end_of_support: "2028-08-09", source: distro-info-data}
   # tested: full provisioning + doctor --smoke tested in VMs; GPU paths not hardware-tested
   - match: {id: ubuntu, version_id: "22.04"}
     family: debian
+    source_group: ubuntu
     tier: tested
     release_model: fixed
     lifecycle: {released: "2022-04-21", end_of_support: "2027-06-01", source: distro-info-data}
@@ -62,28 +69,34 @@ os:  # first match wins
   # the NVIDIA Container Toolkit and Tailscale support for it is verified.
   - match: {id: fedora, version_id_in: "@versions.lock:fedora_supported_releases.releases"}
     family: redhat
+    source_group: fedora
     tier: tested
     release_model: fast
     lifecycle: {source: osinfo-db}
   - match: {id_in: [rhel, almalinux, rocky, centos], version_major_in: ["9", "10"]}
     family: redhat
+    source_group: rhel_like
     tier: tested
     release_model: fixed
   # TODO(verify): openSUSE Leap 15.6 end of support; drop the row if it has ended.
   - match: {id: opensuse-leap, version_id_in: ["15.6", "16.0"]}
     family: suse
+    source_group: opensuse
     tier: tested
     release_model: fixed
   - match: {id: opensuse-tumbleweed}
     family: suse
+    source_group: opensuse
     tier: tested
     release_model: rolling
   - match: {id: sles, version_major_in: ["15", "16"]}
     family: suse
+    source_group: opensuse
     tier: experimental
     release_model: fixed
   - match: {id: arch}
     family: archlinux
+    source_group: arch
     tier: tested
     release_model: rolling
   # Releases past their end of regular support and RHEL-compatible
@@ -113,25 +126,30 @@ os:  # first match wins
   # PARENT release identity, never the derivative's own codename.
   - match: {id_like_contains: ubuntu}
     family: debian
+    source_group: ubuntu
     tier: experimental
     release_model: fixed
     parent_from: UBUNTU_CODENAME
   - match: {id_like_contains: debian}
     family: debian
+    source_group: debian
     tier: experimental
     release_model: fixed
     parent_from: DEBIAN_CODENAME
   - match: {id_like_contains_any: [rhel, fedora, centos]}
     family: redhat
+    source_group: rhel_like
     tier: experimental
     release_model: fixed
     parent_from: VERSION_ID
   - match: {id_like_contains: suse}
     family: suse
+    source_group: opensuse
     tier: experimental
     release_model: fixed
   - match: {id_like_contains: arch}
     family: archlinux
+    source_group: arch
     tier: experimental
     release_model: rolling
   - match: {any: true}
@@ -231,6 +249,61 @@ features:  # optional; each becomes a boolean feature flag
         unknown: >-
           nvidia-smi did not report the CUDA version the NVIDIA driver supports; the pinned vLLM
           image needs {required}: update the NVIDIA driver (on WSL2, on Windows).
+    # inference: on, and an inference node, refuse a host without a usable GPU
+    # (unless bootstrap installs the driver in this run): the first rule that
+    # holds says what makes the GPU usable.
+    without_usable_gpu:
+      # On WSL2 a GPU is seen only through the Windows driver's nvidia-smi.
+      - when: {environment: wsl2, nvidia_gpu_present: false}
+        text: >-
+          WSL reaches no NVIDIA GPU: it sees one only through the NVIDIA driver on Windows.
+          Install or update that driver on Windows (on a machine with an NVIDIA GPU that meets
+          them), then run bootstrap again.
+      - when: {nvidia_gpu_present: false}
+        text: Use an NVIDIA GPU that meets them.
+      - when: {environment: wsl2}
+        text: >-
+          In WSL the GPU is reached through the NVIDIA driver on Windows: install or update it
+          there and remove any Linux NVIDIA driver installed inside WSL, then run bootstrap again.
+      - when: {nvidia_driver_installed: true}
+        text: >-
+          An NVIDIA driver is installed but nvidia-smi does not reach the GPU: load or repair the
+          driver (a reboot may be needed after its installation), then run bootstrap again.
+      - when: {nvidia_driver_mode: manual}
+        text: >-
+          install_nvidia_driver is manual: install the NVIDIA driver following your distribution's
+          documentation, then run bootstrap again. Until then bootstrap stops at the driver,
+          whatever the inference setting; install_nvidia_driver: skip installs the lab without
+          the GPU.
+      - when: {nvidia_gpu_open_module_supported: false, nvidia_gpu_proprietary_only: true}
+        text: >-
+          No driver is installed for this GPU: the pinned NVIDIA driver supports it only with its
+          proprietary kernel module (below compute capability 7.5, which the vLLM image needs).
+          Use a GPU of compute capability 7.5 or newer (Turing or later).
+      - when: {nvidia_gpu_open_module_supported: false}
+        text: >-
+          No driver is installed for this GPU: the pinned NVIDIA driver does not list it (an older
+          GPU only a legacy branch supports, a GPU newer than the pinned driver, or a PCI device ID
+          that could not be read). Install a driver that supports it yourself
+          (install_nvidia_driver: manual), then run bootstrap again, or use a GPU the pinned driver
+          supports.
+      - when: {nvidia_driver_bootstrap_installs: false}
+        text: >-
+          pinka has no verified installation method for the NVIDIA driver on this distribution:
+          install it following your distribution's documentation, then run bootstrap again. Until
+          then bootstrap stops at the driver, whatever the inference setting;
+          install_nvidia_driver: skip installs the lab without the GPU.
+      - when: {nvidia_driver_mode: skip}
+        text: >-
+          install_nvidia_driver is skip: set it to auto so that bootstrap installs the driver (with
+          Secure Boot on, also consent to the MOK enrollment), or install the driver yourself, then
+          run bootstrap again.
+      - when: {secure_boot: enabled, mok_enrollment_accepted: false}
+        text: >-
+          Secure Boot is on: consent to the MOK enrollment (--accept-mok-enrollment, or in the
+          installer) so that bootstrap installs the NVIDIA driver, or install it yourself.
+      - when: {nvidia_gpu_present: true}
+        text: Make the GPU usable (an NVIDIA driver nvidia-smi reaches), then run bootstrap again.
   # The GPU arbiter's training jobs: a job's image
   # brings its own CUDA, so the driver's CUDA version is not compared. Without
   # it no job gets the GPU; training: cpu runs the jobs' CPU-only variant.

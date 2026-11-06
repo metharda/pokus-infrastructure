@@ -1,0 +1,10 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "inference: on must serve on this node. WSL reaches no NVIDIA GPU: it sees one only through the NVIDIA driver on Windows. Install or update that driver on Windows (on a machine with an NVIDIA GPU that meets them), then run bootstrap again. Or set inference: auto"
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": "off"
+  }
+}

@@ -803,6 +803,8 @@
         "disk",
         "growth",
         "pool",
+        "budgets",
+        "serving",
         "notes"
       ],
       "properties": {
@@ -847,6 +849,7 @@
                 "mode": {
                   "enum": [
                     "auto",
+                    "on",
                     "off"
                   ],
                   "description": "The inference switch."
@@ -1108,6 +1111,226 @@
             },
             "detail": {
               "type": "string"
+            }
+          }
+        },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "memory",
+            "disk",
+            "vram"
+          ],
+          "description": "One status per resource, with what is needed, what there is and the shortfall: memory, the disk per mount point and the GPU's memory (VRAM).",
+          "properties": {
+            "memory": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "status",
+                "total_gib",
+                "required_gib",
+                "recommended_gib",
+                "tolerance",
+                "shortfall_gib"
+              ],
+              "description": "Memory: does_not_fit below the required value (unsupported), degraded below the recommended value (consent), unknown when MemTotal could not be read.",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "fits",
+                    "degraded",
+                    "does_not_fit",
+                    "unknown"
+                  ],
+                  "description": "The memory's status."
+                },
+                "total_gib": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "MemTotal, GiB."
+                },
+                "required_gib": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The required value (nominal), GiB."
+                },
+                "recommended_gib": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "The recommended value (nominal), GiB."
+                },
+                "tolerance": {
+                  "type": "number",
+                  "description": "The fraction of each nominal value MemTotal is compared with."
+                },
+                "shortfall_gib": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "How much is missing at the tolerance, GiB: to the required value when does_not_fit, to the recommended value when degraded."
+                }
+              }
+            },
+            "disk": {
+              "type": "array",
+              "description": "The disk known at install, per mount point.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "mount",
+                  "status",
+                  "required_gib",
+                  "free_gib",
+                  "shortfall_gib"
+                ],
+                "properties": {
+                  "mount": {
+                    "type": "string",
+                    "description": "The mount point."
+                  },
+                  "status": {
+                    "enum": [
+                      "fits",
+                      "does_not_fit",
+                      "unknown"
+                    ],
+                    "description": "does_not_fit with a shortfall (unsupported); unknown when the free space could not be measured."
+                  },
+                  "required_gib": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "What the install puts there, GiB."
+                  },
+                  "free_gib": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "Its free space, GiB."
+                  },
+                  "shortfall_gib": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "How much is missing, GiB."
+                  }
+                }
+              }
+            },
+            "vram": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "gpu_gib",
+                "serving",
+                "training"
+              ],
+              "description": "The GPU's memory: serving and training never use it at once (the GPU arbiter). serving is null on a lab node, which serves nothing itself; training is null on a node that is not full.",
+              "properties": {
+                "gpu_gib": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "The GPU's memory (measured), GiB; null without a usable NVIDIA GPU or where no line applies."
+                },
+                "serving": {
+                  "$ref": "#/$defs/vram_line"
+                },
+                "training": {
+                  "$ref": "#/$defs/vram_line"
+                }
+              }
+            }
+          }
+        },
+        "serving": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "profile",
+            "suggested_profile",
+            "profiles",
+            "models"
+          ],
+          "description": "Which serving profiles (vllm/profiles/) and models (models.catalog.yml) fit this GPU's memory, for the installer, which decides nothing itself. fits is null when the GPU's memory is not known.",
+          "properties": {
+            "profile": {
+              "type": "string",
+              "description": "The plan's serving profile (vllm_profile)."
+            },
+            "suggested_profile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The profile with the largest minimum that fits the GPU's memory and names its compute capability; null when none fits."
+            },
+            "profiles": {
+              "type": "object",
+              "description": "Profile name to min_vram_gib (its stated minimum, GiB), compute_capability (the one it is for) and fits (its minimum fits the GPU's memory).",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "min_vram_gib",
+                  "compute_capability",
+                  "fits"
+                ],
+                "properties": {
+                  "min_vram_gib": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "The profile's minimum GPU memory, GiB."
+                  },
+                  "compute_capability": {
+                    "type": "string",
+                    "description": "The compute capability the profile is for."
+                  },
+                  "fits": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Its minimum fits the GPU's memory; null when that is not known."
+                  }
+                }
+              }
+            },
+            "models": {
+              "type": "object",
+              "description": "Model id to profile name to expected_vram_gib (models.catalog.yml's estimate, GiB) and fits (both the profile's minimum and the estimate fit the GPU's memory).",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "expected_vram_gib",
+                    "fits"
+                  ],
+                  "properties": {
+                    "expected_vram_gib": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "models.catalog.yml's estimate for the model with the profile, GiB."
+                    },
+                    "fits": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ],
+                      "description": "Both the profile's minimum and the estimate fit the GPU's memory; null when that is not known."
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -2066,6 +2289,103 @@
         },
         "source": {
           "type": "string"
+        }
+      }
+    },
+    "vram_line": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "use",
+        "switch",
+        "status",
+        "reason",
+        "needed_gib",
+        "available_gib",
+        "shortfall_gib",
+        "items"
+      ],
+      "description": "One use of the GPU's memory (null where it does not apply: serving on a lab node, training on a node that is not full).",
+      "properties": {
+        "use": {
+          "enum": [
+            "serving",
+            "training"
+          ],
+          "description": "Which use."
+        },
+        "switch": {
+          "enum": [
+            "auto",
+            "on",
+            "off",
+            "cpu"
+          ],
+          "description": "The switch's setting (inference, or training's mode)."
+        },
+        "status": {
+          "enum": [
+            "fits",
+            "does_not_fit",
+            "off",
+            "unknown"
+          ],
+          "description": "fits; does_not_fit (inference: on, or an inference node: the host is unsupported); off (switched off, training: cpu, auto on a full node whose GPU cannot serve or train, or any switch while bootstrap installs the NVIDIA driver in this run, with the reason); unknown (the GPU's memory could not be read)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why it is off, does not fit or is unknown; empty when it fits."
+        },
+        "needed_gib": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The largest item, GiB."
+        },
+        "available_gib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The GPU's memory (measured), GiB; null without a usable NVIDIA GPU."
+        },
+        "shortfall_gib": {
+          "type": "number",
+          "minimum": 0,
+          "description": "How much is missing, GiB (0 when it fits, and without a usable GPU)."
+        },
+        "items": {
+          "type": "array",
+          "description": "What needs the memory.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title",
+              "gib",
+              "basis"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "description": "What it is."
+              },
+              "gib": {
+                "type": "number",
+                "minimum": 0,
+                "description": "How much, GiB."
+              },
+              "basis": {
+                "enum": [
+                  "configured",
+                  "estimated"
+                ],
+                "description": "configured (a serving profile's or the support matrix's minimum) or estimated (models.catalog.yml's estimate for a model)."
+              }
+            }
+          }
         }
       }
     }

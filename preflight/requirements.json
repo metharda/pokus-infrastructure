@@ -1,5 +1,5 @@
 {
-  "_generated_from": "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml and the Ansible defaults by tools/gen (make generate); do not edit",
+  "_generated_from": "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml, vllm/profiles/*.yml, models.catalog.yml and the Ansible defaults by tools/gen (make generate); do not edit",
   "schema_version": 1,
   "image_unpack_factor": 2.5,
   "components": [
@@ -494,6 +494,31 @@
     "probe_client": 4.0,
     "build": 16.0
   },
+  "serving": {
+    "profiles": {
+      "ada-12g": {
+        "min_vram_gib": 11.23046875,
+        "compute_capability": "8.9"
+      }
+    },
+    "models": {
+      "qwen3-8b-awq": {
+        "ada-12g": 10.5
+      },
+      "qwen3-4b-awq": {
+        "ada-12g": 10.5
+      },
+      "qwen2.5-7b-instruct-awq": {
+        "ada-12g": 10.5
+      },
+      "phi-4-mini-instruct": {
+        "ada-12g": 10.5
+      },
+      "llama-3.1-8b-instruct-awq": {
+        "ada-12g": 10.5
+      }
+    }
+  },
   "defaults": {
     "schema_version": 1,
     "node_role": "full",
@@ -506,6 +531,7 @@
     },
     "concurrent_targets": 2,
     "model": null,
+    "vllm_profile": "ada-12g",
     "images": [
       "_base",
       "web-nginx-flask",

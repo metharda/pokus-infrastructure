@@ -111,6 +111,28 @@ def test_the_switches_and_the_computed_cap() -> None:
     assert (written["inference"], written["training"]["mode"]) == ("off", "off")
 
 
+EXAMPLE = (INFRA / "ansible" / "inventory" / "host_vars" / "example-machine.yml").read_text()
+
+
+def test_inference_on_and_the_serving_profile() -> None:
+    assert DEFAULTS["vllm_profile"] == "ada-12g"
+    found = make(inference="on", vllm_profile="other-profile")
+    assert (found["inference"], found["vllm_profile"]) == ("on", "other-profile")
+    assert make(node_role="inference", inference="on")["inference"] == "on"
+    with pytest.raises(plan_mod.PlanError) as caught:
+        make(node_role="lab", inference="on")
+    assert str(caught.value) == validators.LAB_ON
+    # The installer and preflight refuse a lab node's on with the same words.
+    from pinka_preflight import requirements  # noqa: PLC0415 - preflight only here
+
+    assert validators.LAB_ON == requirements.LAB_ON
+    answers = Answers(machine=Machine(name="lab1"))
+    answers.features.inference = "on"
+    text = hostvars.render(answers, None, EXAMPLE)
+    assert 'inference: "on"' in text  # YAML 1.1 would read a plain on as true
+    assert yaml.safe_load(text)["inference"] == "on"
+
+
 def test_off_stays_off_for_ansible() -> None:
     # Ansible reads host_vars as YAML 1.1, where a plain off is false: the
     # installer quotes it (yamlio), so every reader sees the string.
@@ -147,9 +169,11 @@ def test_the_selected_model_with_its_size() -> None:
         ({"observability_tempo_retention": "30d"}, "observability_tempo_retention"),
         ({"observability_prometheus_retention_size": "50G"}, "retention_size"),
         ({"training_caps": {"memory_max": "24GiB"}}, "training_caps.memory_max"),
-        ({"inference": "on"}, "auto or off"),
+        ({"inference": "yes"}, "auto, on or off"),
+        ({"inference": True}, "auto, on or off"),
         ({"training": "gpu"}, "auto, cpu or off"),
-        ({"node_role": "inference", "inference": "off"}, "needs inference: auto"),
+        ({"node_role": "inference", "inference": "off"}, "needs inference: auto or on"),
+        ({"node_role": "lab", "inference": "on"}, "set inference: on on the paired inference"),
         ({"backup_pgdump_keep": 0}, "backup_pgdump_keep"),
     ],
 )
@@ -172,7 +196,8 @@ def test_host_vars_win_over_group_vars(tmp_path: Path) -> None:
     group_vars.mkdir(parents=True)
     (tmp_path / "preflight").mkdir()
     (tmp_path / "preflight" / "requirements.json").write_text(
-        json.dumps({"defaults": DEFAULTS}), encoding="utf-8"
+        json.dumps({"defaults": DEFAULTS, "serving": {"profiles": {"ada-12g": {}}}}),
+        encoding="utf-8",
     )
     (group_vars / "main.yml").write_text("node_role: lab\npinka_root: /data\n", encoding="utf-8")
     (host_vars / "lab1.yml").write_text("node_role: full\n", encoding="utf-8")
@@ -180,6 +205,13 @@ def test_host_vars_win_over_group_vars(tmp_path: Path) -> None:
     assert (found["node_role"], found["srv_path"]) == ("full", "/data")
     with pytest.raises(plan_mod.PlanError, match="does not exist"):
         plan_mod.machine_plan(Paths(infra=tmp_path), "lab2")
+    # A serving profile vllm/profiles/ does not have: refused before preflight runs.
+    (host_vars / "lab3.yml").write_text("vllm_profile: ada-12gb\n", encoding="utf-8")
+    with pytest.raises(
+        plan_mod.PlanError,
+        match=r"^vllm_profile 'ada-12gb' is not a serving profile \(vllm/profiles/: ada-12g\)$",
+    ):
+        plan_mod.machine_plan(Paths(infra=tmp_path), "lab3")
 
 
 def test_the_checkouts_example_machine_needs_a_pinned_model() -> None:

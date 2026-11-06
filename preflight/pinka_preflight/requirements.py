@@ -22,11 +22,11 @@ from __future__ import annotations
 import json
 import math
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from pinka_preflight import schema_check
+from pinka_preflight import schema_check, vram
 from pinka_preflight.detect.hardware import DiskInfo, disk_info
 from pinka_preflight.fs import FileSystem
 from pinka_preflight.runner import Runner
@@ -34,6 +34,11 @@ from pinka_preflight.runner import Runner
 PREFLIGHT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REQUIREMENTS_JSON = os.path.join(PREFLIGHT_DIR, "requirements.json")
 PLAN_SCHEMA = os.path.join(PREFLIGHT_DIR, "schema", "plan.schema.json")
+# A lab node serves nothing itself (the installer's plan writer says the same).
+LAB_ON = (
+    "a lab node serves nothing itself and refuses inference: on; set inference: on on the "
+    "paired inference node instead, whose preflight judges its GPU and model"
+)
 GIB = 1024**3
 # Container image platforms by CPU architecture (platform.machine()).
 PLATFORMS = {"x86_64": "linux/amd64", "aarch64": "linux/arm64"}
@@ -274,8 +279,12 @@ class Requirements:
         pool: The Incus pool's size (``source``, ``size_gib``, ``basis``
             ``computed`` or ``configured``, ``detail``); empty on an inference node.
         unsupported: Why the plan does not fit (memory below the floor or the
-            required value, a disk shortfall).
-        degraded: Why it fits only with consent (memory below the recommended value).
+            required value, a disk shortfall, ``inference: on`` that cannot serve).
+        degraded: Why it fits only with consent (memory below the recommended
+            value, ``inference: auto`` that cannot serve).
+        vram_serving: The serving line (None on a lab node).
+        vram_training: The training line (None where training is unavailable).
+        serving: Which serving profiles and models of models.catalog.yml fit the GPU.
         warnings: What could not be checked.
         notes: Information about the plan.
     """
@@ -297,6 +306,64 @@ class Requirements:
     degraded: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    vram_serving: vram.VramLine | None = None
+    vram_training: vram.VramLine | None = None
+    serving: dict[str, Any] = field(default_factory=dict)
+
+    def budgets(self) -> dict[str, Any]:
+        """One status per resource: memory, disk per mount point, and VRAM.
+
+        Returns:
+            ``memory`` (``fits``, ``degraded``, ``does_not_fit`` or
+            ``unknown``), ``disk`` per mount point (``fits``,
+            ``does_not_fit`` or ``unknown``) and ``vram`` with its serving and
+            training lines (``fits``, ``does_not_fit``, ``off`` or ``unknown``);
+            each with what is needed, what there is and the shortfall.
+        """
+        total, tol = self.memory_total_gib, self.tolerance
+        short = 0.0
+        if total is None:
+            status = vram.UNKNOWN
+        elif any(r.startswith("memory:") for r in self.unsupported):
+            status, short = vram.DOES_NOT_FIT, tol * self.required_gib - total
+        elif any(r.startswith("memory:") for r in self.degraded):
+            status, short = "degraded", tol * self.recommended_gib - total
+        else:
+            status = vram.FITS
+        disks = [
+            {
+                "mount": m.mount,
+                "status": (
+                    vram.UNKNOWN
+                    if m.free_gib is None
+                    else vram.DOES_NOT_FIT
+                    if m.shortfall_gib > 0
+                    else vram.FITS
+                ),
+                "required_gib": m.required_gib,
+                "free_gib": m.free_gib,
+                "shortfall_gib": m.shortfall_gib,
+            }
+            for m in self.disks
+        ]
+        lines = [self.vram_serving, self.vram_training]
+        gpu = next((line.available_gib for line in lines if line is not None), None)
+        return {
+            "memory": {
+                "status": status,
+                "total_gib": None if total is None else gib(total),
+                "required_gib": self.required_gib,
+                "recommended_gib": self.recommended_gib,
+                "tolerance": tol,
+                "shortfall_gib": gib(max(0.0, short)),
+            },
+            "disk": disks,
+            "vram": {
+                "gpu_gib": gpu,
+                "serving": None if self.vram_serving is None else self.vram_serving.as_dict(),
+                "training": None if self.vram_training is None else self.vram_training.as_dict(),
+            },
+        }
 
     def as_dict(self) -> dict[str, Any]:
         """The host profile's view (``requirements`` without ``core`` and ``minimums``).
@@ -320,6 +387,8 @@ class Requirements:
             "disk": [asdict(m) for m in self.disks],
             "growth": asdict(self.growth) if self.growth else None,
             "pool": dict(self.pool) or None,
+            "budgets": self.budgets(),
+            "serving": dict(self.serving) or None,
             "notes": list(self.notes),
         }
 
@@ -377,7 +446,11 @@ def load_requirements(path: str = REQUIREMENTS_JSON) -> dict[str, Any]:
 
 
 def load_plan(
-    path: str | None, defaults: Mapping[str, Any], srv_path: str | None = None
+    path: str | None,
+    defaults: Mapping[str, Any],
+    srv_path: str | None = None,
+    *,
+    profiles: Collection[str] = (),
 ) -> tuple[dict[str, Any], str]:
     """The effective plan: the defaults, the research space given, then the file's keys.
 
@@ -385,12 +458,15 @@ def load_plan(
         path: The plan file (``--plan``), or None for the defaults.
         defaults: The configured defaults (``requirements.json`` ``defaults``).
         srv_path: The research space from ``--srv-path``, if given.
+        profiles: The serving profiles (``requirements.json`` ``serving``); the
+            plan's ``vllm_profile`` must be one of them where given.
 
     Returns:
         ``(plan, label)``; the label is ``defaults`` or the path.
 
     Raises:
-        PlanError: If the file is unreadable or the plan does not match its schema.
+        PlanError: If the file is unreadable, the plan does not match its
+            schema, or it names a serving profile that does not exist.
     """
     plan = json.loads(json.dumps(defaults))
     if srv_path:
@@ -414,17 +490,41 @@ def load_plan(
     if plan["node_role"] == "inference" and plan["inference"] == "off":
         raise PlanError(
             f"plan ({label}): an inference node runs only the inference stack; "
-            "it needs inference: auto"
+            "it needs inference: auto or on"
         )
+    if plan["node_role"] == "lab" and plan["inference"] == "on":
+        raise PlanError(f"plan ({label}): {LAB_ON}")
+    if profiles and str(plan["vllm_profile"]) not in profiles:
+        raise PlanError(f"plan ({label}): {unknown_profile(plan['vllm_profile'], profiles)}")
     return plan, label
 
 
-def switches(plan: Mapping[str, Any], features: Mapping[str, bool]) -> Switches:
+def unknown_profile(profile: object, profiles: Collection[str]) -> str:
+    """The refusal of a serving profile that does not exist.
+
+    Args:
+        profile: The plan's ``vllm_profile``.
+        profiles: The serving profiles.
+
+    Returns:
+        The message.
+    """
+    return (
+        f"vllm_profile {str(profile)!r} is not a serving profile "
+        f"(vllm/profiles/: {', '.join(sorted(profiles))})"
+    )
+
+
+def switches(plan: Mapping[str, Any], features: Mapping[str, bool], misfit: str = "") -> Switches:
     """What the switches leave on, on this node with these features.
 
     Args:
         plan: The effective plan.
         features: The detected feature flags.
+        misfit: Why the serving profile or the default model does not fit the
+            GPU's memory (empty when it fits). Nothing is served then, under
+            any switch: ``on`` (and an inference node) also makes preflight
+            refuse the host, ``auto`` on a full node leaves it degraded.
 
     Returns:
         The switches; the training cap is filled by :func:`compute`.
@@ -437,8 +537,10 @@ def switches(plan: Mapping[str, Any], features: Mapping[str, bool]) -> Switches:
         serves, why = False, "switched off, inference: off"
     elif not features.get("gpu_inference"):
         serves, why = False, "gpu_inference is not available on this host"
+    elif misfit:
+        serves, why = False, f"{misfit}, inference: {inference}"
     else:
-        serves, why = True, f"gpu_inference on a {role} node, inference: auto"
+        serves, why = True, f"gpu_inference on a {role} node, inference: {inference}"
     training = str(plan["training"]["mode"])
     if role != "full":
         runs, reason = "off", f"only a full node trains, node_role {role}"
@@ -1123,6 +1225,59 @@ def _growth(
     return Growth(mount, free_after, gib(per_day), gib(per_day * 7), days, items)
 
 
+def must_serve(plan: Mapping[str, Any]) -> bool:
+    """Whether preflight refuses a host that cannot serve: ``inference: on``, or an inference node.
+
+    Args:
+        plan: The effective plan.
+
+    Returns:
+        True where serving that cannot be done makes the host unsupported.
+    """
+    return str(plan["inference"]) == "on" or str(plan["node_role"]) == "inference"
+
+
+def serve_or_else(plan: Mapping[str, Any], *, after_remedy: bool = True) -> str:
+    """What else the operator can do where serving cannot be done and must be.
+
+    Args:
+        plan: The effective plan.
+        after_remedy: The sentence follows a remedy (it then starts with "Or").
+
+    Returns:
+        The alternative, as a sentence.
+    """
+    if str(plan["node_role"]) == "inference":
+        alternative = "use this machine as a full or lab node"
+    else:
+        alternative = (
+            "set inference: auto (this node then serves nothing, degraded with consent) or off"
+        )
+    return f"Or {alternative}." if after_remedy else f"{alternative[0].upper()}{alternative[1:]}."
+
+
+def _serving_misfit(req: Requirements, plan: Mapping[str, Any], why_not: vram.Misfit) -> None:
+    """A serving profile or default model that does not fit: refused, or degraded."""
+    if must_serve(plan):
+        line = req.vram_serving
+        short = (
+            f" ({vram.at_least(line.shortfall_gib)} short)" if line and line.shortfall_gib else ""
+        )
+        who = (
+            "inference: on must serve on this node"
+            if str(plan["inference"]) == "on"
+            else "an inference node must serve"
+        )
+        req.unsupported.append(
+            f"vram: {why_not.reason}{short}; {who}. Use {why_not.remedy}. {serve_or_else(plan)}"
+        )
+        return
+    req.degraded.append(
+        f"vram: {why_not.reason}, so this node serves nothing (inference: auto). To serve, "
+        f"use {why_not.remedy}; set inference: off to go on without consent"
+    )
+
+
 def compute(
     data: Mapping[str, Any],
     plan: Mapping[str, Any],
@@ -1134,6 +1289,11 @@ def compute(
     fs: FileSystem,
     runner: Runner,
     machine: str,
+    gpu_vram_gib: float | None = None,
+    gpu_compute_capability: str | None = None,
+    vram_minimums: Mapping[str, float] | None = None,
+    gpu_unmet: Mapping[str, str] | None = None,
+    driver_pending: bool = False,
 ) -> Requirements:
     """Compute the requirements of a plan on this host.
 
@@ -1147,15 +1307,38 @@ def compute(
         fs: Filesystem view.
         runner: Command runner.
         machine: CPU architecture.
+        gpu_vram_gib: The GPU's memory (None without a usable NVIDIA GPU).
+        gpu_compute_capability: The GPU's compute capability.
+        vram_minimums: The support matrix's VRAM minimum of ``gpu_inference``
+            and ``gpu_training`` (:func:`pinka_preflight.matrix.vram_minimums`).
+        gpu_unmet: The support matrix's unmet conditions of each GPU feature
+            it turned off (the decision's ``disabled_features``).
+        driver_pending: Bootstrap installs the NVIDIA driver in this run (the
+            decision's ``driver_pending``).
 
     Returns:
         The requirements, with what does not fit.
 
     Raises:
-        PlanError: If the plan names an unknown golden image blueprint.
+        PlanError: If the plan names an unknown golden image blueprint or
+            serving profile.
     """
     notes: list[str] = []
-    sw = switches(plan, features)
+    serving = data["serving"]
+    profile = str(plan["vllm_profile"])
+    if profile not in serving["profiles"]:
+        raise PlanError(f"plan: {unknown_profile(profile, serving['profiles'])}")
+    minimum = {"gpu_inference": 0.0, "gpu_training": 0.0, **(vram_minimums or {})}
+    unmet = dict(gpu_unmet or {})
+    needs, unusable, unknown_model = vram.serving_needs(serving, plan)
+    could_serve = str(plan["node_role"]) != "lab" and str(plan["inference"]) != "off"
+    why_not = None
+    if could_serve and features.get("gpu_inference"):
+        why_not = vram.misfit(needs, unusable, gpu_vram_gib)
+    if could_serve and unknown_model and features.get("gpu_inference"):
+        notes.append(unknown_model)
+    detected = features
+    sw = switches(plan, features, why_not.reason if why_not else "")
     features = sw.effective(features)
     items = _memory_items(data, plan, features, notes, sw=sw, memory_gib=memory_gib)
     floor = float(minimums["memory_gib"]["floor"])
@@ -1176,6 +1359,28 @@ def compute(
         cpu_threads=gib(sum(i.cpu_threads for i in items)),
         notes=notes,
     )
+    req.vram_serving = vram.serving_line(
+        plan,
+        detected,
+        needs,
+        why_not,
+        vram_gib=gpu_vram_gib,
+        minimum=minimum["gpu_inference"],
+        unmet=unmet.get("gpu_inference", ""),
+        driver_pending=driver_pending,
+    )
+    req.vram_training = vram.training_line(
+        plan,
+        sw.runs,
+        sw.training_reason,
+        vram_gib=gpu_vram_gib,
+        minimum=minimum["gpu_training"],
+        unmet=unmet.get("gpu_training", ""),
+        driver_pending=driver_pending,
+    )
+    req.serving = vram.fits_for_installer(serving, plan, gpu_vram_gib, gpu_compute_capability)
+    if why_not:
+        _serving_misfit(req, plan, why_not)
     _memory_checks(req, data, features)
     entries = _disk_items(
         data,

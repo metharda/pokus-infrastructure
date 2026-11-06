@@ -137,9 +137,7 @@ class GpuScreen(StepScreen):
                 yield Field("MOK password again", Input(password=True, id="mok2"))
         self.profiles = load_profiles(self.ctx.paths.vllm_profiles)
         profile = (
-            gpu.vllm_profile
-            or suggest_profile(info, self.profiles)
-            or next(iter(self.profiles), "")
+            gpu.vllm_profile or suggest_profile(self._serving()) or next(iter(self.profiles), "")
         )
         yield Field(
             "Serving profile",
@@ -237,6 +235,11 @@ class GpuScreen(StepScreen):
         table.add_columns("model", "repository", "license", "gated", "fits", "pinned")
         self._fill_models()
 
+    def _serving(self) -> dict[str, Any]:
+        """Preflight's answer on which serving profiles and models fit the GPU."""
+        found: dict[str, Any] = (self.wizard.profile.get("requirements") or {}).get("serving") or {}
+        return found
+
     def _lock_ids(self) -> set[str]:
         text = self.wizard.extra_files.get(
             "models.lock.yml"
@@ -246,9 +249,7 @@ class GpuScreen(StepScreen):
     def _fill_models(self) -> None:
         known = SAFE.load(self.ctx.paths.models_catalog.read_text(encoding="utf-8")) or {}
         profile = self.query_one("#profile", Select).value
-        self.choices = model_choices(
-            known, self._lock_ids(), str(profile), self.wizard.gpu.get("vram_gib")
-        )
+        self.choices = model_choices(known, self._lock_ids(), str(profile), self._serving())
         table = self.query_one("#models", DataTable)
         table.clear()
         table.add_row("none", "-", "-", "-", "-", "-", key="none")

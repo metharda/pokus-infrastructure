@@ -56,6 +56,8 @@ def test_check_and_generate_detect_drift(tmp_path: Path) -> None:
         "installer/tests/__snapshots__",
         "contract",
         "compose",
+        "vllm/profiles",
+        "models.catalog.yml",
     ):
         src = ROOT / rel
         if src.is_dir():
@@ -195,3 +197,87 @@ def test_requirements_lock_must_match_requirements_in(tmp_path: Path) -> None:
     assert len(problems) == 1
     assert "jmespath" in problems[0]
     assert "make bootstrap-lock" in problems[0]
+
+
+def test_serving_data_comes_from_the_profiles_and_the_catalog() -> None:
+    data = sources.serving_data(ROOT)
+    assert data["profiles"]["ada-12g"] == {
+        "min_vram_gib": 11500 / 1024,
+        "compute_capability": "8.9",
+    }
+    # Both lists of models.catalog.yml, each model's estimate per profile.
+    assert data["models"]["qwen3-8b-awq"] == {"ada-12g": 10.5}
+    assert "llama-3.1-8b-instruct-awq" in data["models"]
+    assert sources.plan_defaults(ROOT)["vllm_profile"] == "ada-12g"
+
+
+@pytest.mark.parametrize(
+    ("profile", "known", "message"),
+    [
+        (
+            "name: a",
+            "models:\n  - id: m\n    profiles: {b: {expected_vram_gib: 1}}\n",
+            r"m names unknown profiles \['b'\]",
+        ),
+        ("name: other", "models: []\n", "its name 'other' must be 'a'"),
+        (
+            "name: a",
+            "models:\n  - {id: m, profiles: {a: {expected_vram_gib: 1}}}\n"
+            "restricted:\n  - {id: m, profiles: {a: {expected_vram_gib: 2}}}\n",
+            "m appears twice",
+        ),
+    ],
+)
+def test_inconsistent_serving_data_is_refused(
+    tmp_path: Path, profile: str, known: str, message: str
+) -> None:
+    (tmp_path / "vllm" / "profiles").mkdir(parents=True)
+    (tmp_path / "vllm" / "profiles" / "a.yml").write_text(
+        f"{profile}\ngpu: {{min_memory_mib: 1024, compute_capability: '8.9'}}\n", encoding="utf-8"
+    )
+    (tmp_path / "models.catalog.yml").write_text(known, encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        sources.serving_data(tmp_path)
+
+
+def test_preflight_knows_where_bootstrap_installs_the_nvidia_driver() -> None:
+    """Each OS rule carries what the play does for its source group's driver."""
+    data = json.loads(sources.support_matrix_json(ROOT))
+    installs = {
+        r["source_group"]: r["bootstrap_installs_nvidia_driver"]
+        for r in data["os"]
+        if "source_group" in r
+    }
+    # Only Ubuntu's and Arch's methods name packages and are verified.
+    assert installs == {
+        "ubuntu": True,
+        "debian": False,
+        "fedora": False,
+        "rhel_like": False,
+        "opensuse": False,
+        "arch": True,
+    }
+    others = [r for r in data["os"] if "source_group" not in r]
+    assert others and all("bootstrap_installs_nvidia_driver" not in r for r in others)
+
+
+def test_bootstrap_installs_nvidia_driver_on_hand_made_entries() -> None:
+    """The rule on entries; ansible/tests/test_filters.py compares it with the play."""
+    drivers = {
+        "default": {"source": "distro", "packages": []},
+        "listed": {"source": "distro", "packages": ["nvidia-driver"]},
+        "unverified": {"source": "distro", "packages": ["nvidia-driver"], "verify": "x"},
+        "community_unverified": {
+            "source": "community",
+            "packages": ["akmod-nvidia"],
+            "verify": "x",
+        },
+        "community": {"source": "community", "packages": ["akmod-nvidia"]},
+    }
+    install = sources.bootstrap_installs_nvidia_driver
+    assert install(drivers, "listed")
+    assert not install(drivers, "unverified")
+    assert not install(drivers, "community_unverified")
+    assert not install(drivers, "unknown-group")  # the default entry, as the play's filter
+    with pytest.raises(ValueError, match="community repository: preflight cannot tell"):
+        install(drivers, "community")

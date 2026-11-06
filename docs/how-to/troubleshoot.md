@@ -88,6 +88,10 @@ the choices that would fit.
   provide it and run bootstrap again. A GPU feature the lab is not meant to
   use can be switched off (`inference: "off"`, `training: "off"` or `cpu`):
   a host is not degraded for a feature its switch turns off.
+- If a `vram:` reason says the node serves nothing (`inference: auto`), the
+  serving profile or the default model does not fit the GPU's memory: use a
+  smaller model or another serving profile to serve, or set
+  `inference: "off"` to go on without consent.
 - If memory is the reason, change a choice the message names (fewer
   `incus_concurrent_targets`, a lower `training_caps.memory_max`,
   `training: "off"`) in the machine's host_vars, or add memory
@@ -107,14 +111,27 @@ answer `y` when it asks); the consent is recorded in the host profile.
 
 A core requirement failed, or the operating system, architecture or
 environment is unsupported, or a blocking conflict exists, or the memory or a
-disk is below what your choices require. The reasons are
+disk is below what your choices require, or the node must serve and cannot
+(`inference: on`, or any `inference` node): no usable GPU, a GPU the support
+matrix refuses for `gpu_inference` (its memory, compute capability or the
+driver's CUDA version), or a serving profile or default model that does not
+fit its memory. The reasons are
 printed above the exit line and stored in `unsupported_reasons` of the host
 profile. Fix the cause, for example by installing a supported distribution or
 by running the lab in a VM on this machine. A memory reason lists the parts
 and the choices that would fit; a disk reason lists, per mount point, the
 items that do not fit, the largest first: shrink one (for example
 `incus_pool_size`), choose a smaller model, or free space
-([Capacity planning](../explanation/capacity-planning.md)). A plan bootstrap
+([Capacity planning](../explanation/capacity-planning.md)). A `vram:` reason
+names what does not fit the GPU, by how much, and the remedy: a GPU with
+more memory or another serving profile, or a smaller model. An `inference:`
+reason names the unmet condition and its fix (a driver that supports the
+vLLM image's CUDA, a newer GPU, a GPU with more memory, or what makes a GPU
+that is not usable usable: an NVIDIA GPU, the driver installed, loaded or
+repaired by hand, consent to the MOK enrollment, another
+`install_nvidia_driver`, or the driver on Windows under WSL). Either says
+what else there is:
+`inference: auto` or `off`, or another node role for an inference node. A plan bootstrap
 cannot write (a template value, a model not pinned in `models.lock.yml`)
 stops it with exit code 77 and the setting's name. Only if you accept running
 outside the support matrix, run bootstrap again with `--force-unsupported`;

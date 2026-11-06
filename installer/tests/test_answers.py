@@ -11,7 +11,7 @@ import pytest
 from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import apply
+from pinka_installer import apply, validators
 from pinka_installer.answers import Answers, Context, Researcher
 from pinka_installer.paths import INFRA, Paths
 
@@ -175,6 +175,20 @@ def test_split_inference_rules(repo: Paths) -> None:
     answers.secrets.platform = {}
     answers.split_inference_peer = "pinka-lab-main"
     assert answers_mod.problems(answers, context) == []
+
+
+def test_inference_on_by_node_role(repo: Paths) -> None:
+    context = apply.context(repo)
+    answers = full_answers()
+    answers.features.inference = "on"
+    assert not any("features/inference" in p for p in answers_mod.problems(answers, context))
+    answers.machine.node_role = "lab"
+    found = answers_mod.problems(answers, context)
+    assert f"features/inference: {validators.LAB_ON}" in found
+    answers.machine.node_role = "inference"
+    answers.features.inference = "off"
+    text = "\n".join(answers_mod.problems(answers, context))
+    assert "an inference node runs only the inference stack; it needs auto or on" in text
 
 
 def test_restore_needs_a_repository(repo: Paths) -> None:

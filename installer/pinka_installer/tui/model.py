@@ -9,6 +9,7 @@ pure functions so the tests can check them.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -405,31 +406,19 @@ def load_profiles(directory: Path) -> dict[str, dict[str, Any]]:
     }
 
 
-def suggest_profile(gpu: Mapping[str, Any], profiles: Mapping[str, Mapping[str, Any]]) -> str:
-    """The serving profile that fits the GPU best (largest memory requirement that fits).
+def suggest_profile(serving: Mapping[str, Any]) -> str:
+    """The serving profile preflight suggests for the GPU.
+
+    Preflight decides it (the largest minimum that fits the GPU's memory, with
+    the GPU's compute capability); the installer only shows it.
 
     Args:
-        gpu: The profile's GPU section.
-        profiles: From :func:`load_profiles`.
+        serving: The host profile's ``requirements.serving``.
 
     Returns:
         The profile name, or empty when none fits.
     """
-    vram_mib = float(gpu.get("vram_gib") or 0) * 1024
-    capability = str(gpu.get("compute_capability") or "")
-    fitting = []
-    for name, profile in profiles.items():
-        need = profile.get("gpu") or {}
-        if vram_mib < float(need.get("min_memory_mib", 0)):
-            continue
-        if (
-            capability
-            and need.get("compute_capability")
-            and capability != str(need["compute_capability"])
-        ):
-            continue
-        fitting.append((float(need.get("min_memory_mib", 0)), name))
-    return max(fitting)[1] if fitting else ""
+    return str(serving.get("suggested_profile") or "")
 
 
 @dataclass(frozen=True)
@@ -459,27 +448,37 @@ def model_choices(
     known: Mapping[str, Any],
     lock_ids: Iterable[str],
     profile: str,
-    vram_gib: float | None,
+    serving: Mapping[str, Any],
 ) -> list[ModelChoice]:
     """The models of models.catalog.yml with whether they fit the profile and the GPU.
+
+    Whether a model fits is preflight's answer (``requirements.serving``);
+    models.catalog.yml gives what the screen shows of each model.
 
     Args:
         known: ``models.catalog.yml`` (the models the GPU screen offers).
         lock_ids: Ids already in ``models.lock.yml``.
         profile: The chosen serving profile.
-        vram_gib: GPU memory.
+        serving: The host profile's ``requirements.serving``.
 
     Returns:
         Fitting, non-gated models first.
     """
     pinned = set(lock_ids)
+    fits_by_model = serving.get("models") or {}
     choices = []
     for entry in known.get("models") or []:
-        fit = (entry.get("profiles") or {}).get(profile)
+        fit = (fits_by_model.get(str(entry["id"])) or {}).get(profile)
         if fit is None:
             reason = f"no settings for profile {profile}"
-        elif vram_gib and float(fit.get("expected_vram_gib", 0)) > vram_gib:
-            reason = f"needs {fit['expected_vram_gib']} GiB"
+        elif fit["fits"] is None:
+            reason = "GPU memory unknown"
+        elif not fit["fits"]:
+            # The deciding need, the model's estimate or the profile's minimum,
+            # rounded up as preflight's messages round it.
+            minimum = ((serving.get("profiles") or {}).get(profile) or {}).get("min_vram_gib", 0)
+            need = max(float(fit["expected_vram_gib"]), float(minimum))
+            reason = f"needs {math.ceil(round(need * 10, 6)) / 10:.1f} GiB"
         else:
             reason = ""
         choices.append(

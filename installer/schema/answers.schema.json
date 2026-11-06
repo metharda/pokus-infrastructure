@@ -350,9 +350,10 @@
       "additionalProperties": false,
       "properties": {
         "inference": {
-          "description": "auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node; off: none of them. An inference node needs auto.",
+          "description": "auto: vLLM, its images and the default model where the host has a usable GPU (gpu_inference) on a full or inference node and the serving profile's minimum and the model's estimate fit it; a full node that cannot serve serves nothing and is degraded. on: the same, but preflight refuses a host that cannot serve. off: none of them. An inference node needs auto or on and is refused when it cannot serve; a lab node refuses on.",
           "enum": [
             "auto",
+            "on",
             "off"
           ]
         },

@@ -121,6 +121,14 @@ SIZE_FACTORS = {
 }
 
 
+# A lab node serves nothing itself (preflight's requirements.LAB_ON says the same;
+# installer/tests/test_plan.py keeps the two equal).
+LAB_ON = (
+    "a lab node serves nothing itself and refuses inference: on; set inference: on on the "
+    "paired inference node instead, whose preflight judges its GPU and model"
+)
+
+
 def hostname(value: str) -> str | None:
     """A machine name: a lower-case DNS label (it becomes the tailnet host name).
 

@@ -125,6 +125,69 @@ class MatchTest(unittest.TestCase):
         # No usable GPU: the driver is not the reason, so no driver remediation.
         self.assertEqual(matrix._remediation(spec, {**facts, "nvidia_gpu_usable": False}), "")
 
+    def test_what_makes_the_gpu_usable(self) -> None:
+        # A GPU bootstrap would install the driver for (judged after the driver).
+        base: dict[str, Any] = {
+            "nvidia_gpu_present": True,
+            "environment": "baremetal",
+            "nvidia_driver_installed": False,
+            "nvidia_driver_mode": "auto",
+            "nvidia_gpu_open_module_supported": True,
+            "nvidia_gpu_proprietary_only": False,
+            "nvidia_driver_bootstrap_installs": True,
+            "secure_boot": "disabled",
+            "mok_enrollment_accepted": False,
+        }
+        cases: list[tuple[dict[str, Any], str]] = [
+            ({"nvidia_gpu_present": False}, "Use an NVIDIA GPU that meets them."),
+            (
+                {"nvidia_gpu_present": False, "environment": "wsl2"},
+                "WSL reaches no NVIDIA GPU: it sees one only through the NVIDIA driver on Windows",
+            ),
+            (
+                {"environment": "wsl2"},
+                "In WSL the GPU is reached through the NVIDIA driver on Windows",
+            ),
+            (
+                {"nvidia_driver_installed": True},
+                "An NVIDIA driver is installed but nvidia-smi does not",
+            ),
+            (
+                {"nvidia_driver_mode": "manual"},
+                "install_nvidia_driver is manual: install the NVIDIA",
+            ),
+            (
+                {"nvidia_gpu_open_module_supported": False, "nvidia_gpu_proprietary_only": True},
+                "No driver is installed for this GPU: the pinned NVIDIA driver supports it only",
+            ),
+            (
+                {"nvidia_gpu_open_module_supported": False, "nvidia_gpu_proprietary_only": False},
+                "No driver is installed for this GPU: the pinned NVIDIA driver does not list it",
+            ),
+            (
+                {"nvidia_driver_bootstrap_installs": False},
+                "pinka has no verified installation method for the NVIDIA driver on this",
+            ),
+            ({"nvidia_driver_mode": "skip"}, "install_nvidia_driver is skip: set it to auto"),
+            (
+                {"secure_boot": "enabled"},
+                "Secure Boot is on: consent to the MOK enrollment (--accept-mok-enrollment",
+            ),
+            # Consent given, everything in place: the catch-all.
+            ({"secure_boot": "enabled", "mok_enrollment_accepted": True}, "Make the GPU usable"),
+            ({}, "Make the GPU usable (an NVIDIA driver nvidia-smi reaches)"),
+            # Earlier rules win: skip where bootstrap would not install it anyway.
+            (
+                {"nvidia_driver_mode": "skip", "nvidia_driver_bootstrap_installs": False},
+                "pinka has no verified installation method",
+            ),
+        ]
+        for change, start in cases:
+            with self.subTest(change=change):
+                self.assertTrue(
+                    matrix.without_usable_gpu(self.m, {**base, **change}).startswith(start)
+                )
+
     def test_compute_capability_minimum(self) -> None:
         # V7: 7.5, the oldest the
         # pinned vLLM image has kernels for.

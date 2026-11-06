@@ -1,0 +1,13 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "inference: on must serve on this node. pinka has no verified installation method for the NVIDIA driver on this distribution: install it following your distribution's documentation, then run bootstrap again. Until then bootstrap stops at the driver, whatever the inference setting; install_nvidia_driver: skip installs the lab without the GPU. Or set inference: auto"
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": "off"
+  },
+  "warnings_lack": [
+    "is judged once the NVIDIA driver this run installs is loaded"
+  ]
+}

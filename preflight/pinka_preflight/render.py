@@ -11,6 +11,8 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
+from pinka_preflight.vram import at_least
+
 RESET = "\033[0m"
 COLORS = {
     "supported": "\033[1;32m",
@@ -67,11 +69,53 @@ def _disk_lines(mount: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def requirements_lines(req: Mapping[str, Any]) -> list[str]:
+STATUS_TEXT = {"fits": "fits", "does_not_fit": "does not fit", "off": "off", "unknown": "unknown"}
+
+
+def vram_lines(req: Mapping[str, Any], *, gpu_usable: bool = False) -> list[str]:
+    """The GPU memory's serving and training lines.
+
+    Args:
+        req: The host profile's ``requirements``.
+        gpu_usable: The host profile's ``gpu.usable``.
+
+    Returns:
+        Text lines; none on a lab node, where neither line applies.
+    """
+    vram = (req.get("budgets") or {}).get("vram") or {}
+    uses = [line for line in (vram.get("serving"), vram.get("training")) if line]
+    if not uses:
+        return []
+    gpu = vram["gpu_gib"]
+    if gpu is not None:
+        have = f"the GPU has {gpu:.1f} GiB (measured)"
+    elif gpu_usable:
+        have = "the GPU's memory is not known"
+    else:
+        have = "no usable NVIDIA GPU"
+    lines = [f"  VRAM: {have}"]
+    for line in uses:
+        switch = "inference" if line["use"] == "serving" else "training"
+        status = STATUS_TEXT[line["status"]]
+        if line["status"] == "does_not_fit" and line["shortfall_gib"]:
+            status += f", {at_least(line['shortfall_gib'])} short"
+        needs = "; ".join(
+            f"{i['title']} {at_least(i['gib'])} ({i['basis']})" for i in line["items"]
+        )
+        detail = line["reason"] or needs
+        lines.append(
+            f"    {line['use']} ({switch}: {line['switch']}): {status}"
+            + (f": {detail}" if detail else "")
+        )
+    return lines
+
+
+def requirements_lines(req: Mapping[str, Any], *, gpu_usable: bool = False) -> list[str]:
     """The requirements computed from the choices, for the summary and the log.
 
     Args:
         req: The host profile's ``requirements``.
+        gpu_usable: The host profile's ``gpu.usable``.
 
     Returns:
         Text lines.
@@ -98,6 +142,7 @@ def requirements_lines(req: Mapping[str, Any]) -> list[str]:
             f"    {item['title']}: {item['required_gib']:g} / {item['recommended_gib']:g} GiB"
             f" ({item['basis']}{detail})"
         )
+    lines.extend(vram_lines(req, gpu_usable=gpu_usable))
     lines.append(f"  CPU estimate {req['cpu_threads']['estimated']:g} threads")
     pool = req.get("pool")
     if pool and pool["source"] == "loop":
@@ -246,7 +291,9 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
             f"  listener {item['proto']}/{item['port']} on {item['address']} ({owner}){admitted}"
         )
     lines.append(paint("Requirements", "bold"))
-    lines.extend(requirements_lines(report["requirements"]))
+    lines.extend(
+        requirements_lines(report["requirements"], gpu_usable=bool(report["gpu"]["usable"]))
+    )
     network = report["network"]
     if network["offline"]:
         lines.append(paint("Network", "bold") + ": skipped (--offline)")

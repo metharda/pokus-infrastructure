@@ -1,0 +1,48 @@
+pinka preflight: UNSUPPORTED (exit 20)
+  tier supported (os supported, arch supported) · release model fixed · provider baremetal
+
+Environment
+  class baremetal, confidence high
+OS and kernel
+  Ubuntu 24.04.3 LTS [ubuntu 24.04, family debian, parent release noble]
+  arch x86_64, kernel 6.8.0-85-generic
+  PID 1 systemd, system state running
+Hardware
+  CPU x86-64 test CPU: 24 threads (vmx yes, svm no)
+  memory 64.0 GiB, swap 8.0 GiB
+  disk srv_pinka: /srv ext4, 500.0 GiB free of 1000.0 GiB
+  disk var_lib: /var/lib ext4, 400.0 GiB free of 1000.0 GiB
+GPU
+  none
+  - no NVIDIA GPU on the PCI bus
+Capabilities
+  cgroup2 yes, tun yes, KVM usable yes, btrfs yes, dm_thin_pool yes, Secure Boot disabled
+  MAC apparmor (enabled), firewall backend nftables, storage btrfs
+Features
+  gpu_inference off, gpu_training off, vm_targets on, btrfs_pool on, lvm_thin_pool on, dcgm_metrics off
+Access
+  dedicated host, firewall manager none, install session: the console
+Requirements
+  plan plan.json; memory 64.0 GiB: floor 8, required 8, recommended 8 GiB (each compared at 0.94 times the nominal value)
+  inference off (gpu_inference is not available on this host); training off (only a full node trains, node_role inference)
+  training cap 24G (computed: MemTotal 64.00 GiB - 3.1 GiB recommended for the core stack and the targets = 60.9 GiB, rounded down to whole GiB within 4 and 24 GiB)
+    host services: 1 / 1.5 GiB (estimated)
+    collectors and exporters: 0.3 / 0.8 GiB (estimated)
+    bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
+  VRAM: no usable NVIDIA GPU
+    serving (inference: auto): does not fit: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0)
+  CPU estimate 1.8 threads
+  disk / (ext4): 400.0 GiB free, 5.4 GiB needed at install
+    pinka itself: 5.0 GiB (estimated)
+    container images (3): 0.4 GiB (estimated)
+  growth on /srv: 0 GiB a day, 0 GiB a week; not full within ten years at this rate
+Network: skipped (--offline)
+
+Unsupported
+  - inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0); an inference node must serve. Use an NVIDIA GPU that meets them. Or use this machine as a full or lab node.
+
+Disabled features
+  - gpu_training: No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs.
+
+Notes
+  - dcgm_metrics disabled (unmet: nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.
