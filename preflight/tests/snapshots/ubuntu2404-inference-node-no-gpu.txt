@@ -30,7 +30,7 @@ Requirements
     collectors and exporters: 0.3 / 0.8 GiB (estimated)
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
   VRAM: no usable NVIDIA GPU
-    serving (inference: auto): does not fit: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0)
+    serving (inference: auto): does not fit: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0)
   CPU estimate 1.8 threads
   disk / (ext4): 400.0 GiB free, 5.4 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
@@ -39,7 +39,7 @@ Requirements
 Network: skipped (--offline)
 
 Unsupported
-  - inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0); an inference node must serve. Use an NVIDIA GPU that meets them. Or use this machine as a full or lab node.
+  - inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0); an inference node must serve. Use an NVIDIA GPU that meets them. Or use this machine as a full or lab node.
 
 Disabled features
   - gpu_training: No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs.

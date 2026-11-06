@@ -29,7 +29,7 @@ Requirements
     host services: 1 / 1.5 GiB (estimated)
     collectors and exporters: 0.3 / 0.8 GiB (estimated)
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
-  VRAM: the GPU has 8.0 GiB (measured)
+  VRAM: the GPU has 8188 MiB, 8.0 GiB (measured)
     serving (inference: auto): does not fit, 3.3 GiB short: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 8.0 GiB
   CPU estimate 1.8 threads
   disk / (ext4): 400.0 GiB free, 5.4 GiB needed at install

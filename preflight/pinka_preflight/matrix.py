@@ -3,7 +3,7 @@
 The decision is data-driven: ``support-matrix.yml`` (compiled to
 ``support-matrix.json``) holds every rule; this module only interprets it.
 Detection results are first flattened into *facts* (``kvm_usable``,
-``gpu_vram_gib``, ``wsl_conf_systemd`` ...); matrix conditions and feature
+``gpu_vram_mib``, ``wsl_conf_systemd`` ...); matrix conditions and feature
 requirements refer to facts by name.
 
 Outcome precedence: ``unsupported`` > ``needs_action`` > ``degraded`` >
@@ -72,6 +72,21 @@ OUTCOME_MEANINGS = {
     "preflight_error": (
         "Detection itself failed unexpectedly.",
         "Bootstrap aborts with the traceback in the log.",
+    ),
+}
+# Exit codes of pinka-preflight that are no outcome of the decision: code to
+# (name, meaning, bootstrap behavior). The exit-codes reference lists them
+# with the outcomes.
+OTHER_EXIT_CODES: dict[int, tuple[str, str, str]] = {
+    2: (
+        "usage_error",
+        "An option preflight cannot use, or a requirements plan (--plan) it refuses: unreadable, "
+        "not matching its schema, an inference node with inference: off, a lab node with "
+        "inference: on, or a vllm_profile or golden image blueprint that does not exist. The "
+        "message names it; nothing is detected.",
+        "Bootstrap writes the plan with pinka-installer plan first, which refuses the last four "
+        "itself (exit code 77, the reason above it); any other refusal of its options or the plan "
+        "by preflight aborts bootstrap with exit code 40 and preflight's message above it.",
     ),
 }
 
@@ -338,7 +353,7 @@ def build_facts(
         ),
         "nvidia_driver_installed": gpu.driver_installed,
         "nvidia_driver_loaded": gpu.driver_loaded,
-        "gpu_vram_gib": gpu.vram_gib,
+        "gpu_vram_mib": gpu.vram_mib,
         "gpu_compute_capability": gpu.compute_capability,
         "gpu_driver_cuda": gpu.driver_cuda,
         "wsl_conf_systemd": wsl.systemd if wsl else None,
@@ -374,7 +389,8 @@ def requirement_met(req: Any, facts: Facts) -> tuple[bool, str]:  # noqa: ANN401
 
     Args:
         req: A fact name (must be true) or a one-key mapping:
-            ``gpu_vram_gib_min``, ``gpu_compute_capability_min``, ``environment_in``,
+            ``gpu_vram_mib_min`` (the memory in MiB as ``nvidia-smi`` reports it,
+            compared unrounded), ``gpu_compute_capability_min``, ``environment_in``,
             ``driver_cuda_min`` (major.minor compared, as ``nvidia-smi`` reports it).
         facts: Host facts.
 
@@ -384,9 +400,9 @@ def requirement_met(req: Any, facts: Facts) -> tuple[bool, str]:  # noqa: ANN401
     if isinstance(req, str):
         return bool(facts.get(req)), req
     ((key, value),) = req.items()
-    if key == "gpu_vram_gib_min":
-        vram = facts.get("gpu_vram_gib")
-        return vram is not None and float(vram) >= float(value), f"VRAM >= {value} GiB"
+    if key == "gpu_vram_mib_min":
+        vram = facts.get("gpu_vram_mib")
+        return vram is not None and float(vram) >= float(value), f"VRAM >= {value} MiB"
     if key == "gpu_compute_capability_min":
         cap = facts.get("gpu_compute_capability")
         ok = cap is not None and _version_tuple(str(cap)) >= _version_tuple(str(value))
@@ -751,13 +767,14 @@ def vram_minimums(matrix: Mapping[str, Any]) -> dict[str, float]:
         matrix: The compiled support matrix.
 
     Returns:
-        Feature (``gpu_inference``, ``gpu_training``) to its ``gpu_vram_gib_min``.
+        Feature (``gpu_inference``, ``gpu_training``) to its ``gpu_vram_mib_min``,
+        in GiB (exact: MiB / 1024).
     """
     found = {}
     for name in ("gpu_inference", "gpu_training"):
         for condition in matrix["features"][name]["requires"]:
-            if isinstance(condition, dict) and "gpu_vram_gib_min" in condition:
-                found[name] = float(condition["gpu_vram_gib_min"])
+            if isinstance(condition, dict) and "gpu_vram_mib_min" in condition:
+                found[name] = float(condition["gpu_vram_mib_min"]) / 1024
     return found
 
 

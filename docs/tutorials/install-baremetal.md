@@ -21,8 +21,10 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
       (`MemTotal`; a machine with 16 GiB installed reports less, so plan for
       more) and 8 CPU threads (24 GiB and 16 threads recommended), 150 GiB
       free for `/var/lib` and 100 GiB for `/srv/pinka`.
-    - An NVIDIA GPU with at least 8 GiB of memory for local inference. No
-      driver needs to be installed: the lab installs a pinned one.
+    - An NVIDIA GPU with at least 8000 MiB of memory as `nvidia-smi`
+      reports it (an 8 GB card) for training, and 11500 MiB (a 12 GB card)
+      for local inference with the default serving profile. No driver needs
+      to be installed: the lab installs a pinned one.
     - A second, empty disk for the storage pool (without one, choose a loop
       file in step 3 and skip what is said about the disk).
     - Physical access or a remote console for reboots: with Secure Boot on, a

@@ -57,5 +57,5 @@ Network: skipped (--offline)
 
 Notes
   - dcgm_metrics disabled (unmet: nvidia_driver_loaded): No DCGM: GPU metrics come from the nvidia-smi exporter.
-  - gpu_inference disabled (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0); not used: inference: off
-  - gpu_training disabled (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.0); not used: training: off
+  - gpu_inference disabled (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0); not used: inference: off
+  - gpu_training disabled (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.0); not used: training: off

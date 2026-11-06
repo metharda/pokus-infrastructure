@@ -63,7 +63,10 @@ class GpuInfo:
         backend: ``nvidia`` or ``none``.
         name: GPU name from ``nvidia-smi``.
         count: Number of GPUs reported by ``nvidia-smi``.
-        vram_gib: Memory of the first GPU.
+        vram_mib: Memory of the first GPU as ``nvidia-smi`` reports it (MiB);
+            every comparison uses it, unrounded.
+        vram_gib: The same in GiB, rounded to 0.1, for display and the records
+            (the host profile, the fingerprint); no comparison uses it.
         driver: Driver version.
         compute_capability: CUDA compute capability, e.g. ``8.9``.
         driver_cuda: Highest CUDA version the loaded driver supports, e.g.
@@ -93,6 +96,7 @@ class GpuInfo:
     backend: str = "none"
     name: str | None = None
     count: int = 0
+    vram_mib: float | None = None
     vram_gib: float | None = None
     driver: str | None = None
     compute_capability: str | None = None
@@ -151,7 +155,8 @@ def parse_nvidia_smi(stdout: str) -> list[tuple[str, float | None, str, str]]:
             ``NVIDIA GeForce RTX 4070, 12282 MiB, 560.94, 8.9``.
 
     Returns:
-        ``(name, vram_gib, driver, compute_capability)`` per GPU.
+        ``(name, vram_mib, driver, compute_capability)`` per GPU, the memory
+        in MiB as reported (None when not reported).
     """
     gpus: list[tuple[str, float | None, str, str]] = []
     for line in stdout.strip().splitlines():
@@ -159,7 +164,7 @@ def parse_nvidia_smi(stdout: str) -> list[tuple[str, float | None, str, str]]:
         if len(parts) != QUERY_FIELDS:
             continue
         mem = parts[1].split()
-        vram = round(float(mem[0]) / MIB_PER_GIB, 1) if mem and _is_number(mem[0]) else None
+        vram = float(mem[0]) if mem and _is_number(mem[0]) else None
         gpus.append((parts[0], vram, parts[2], parts[3]))
     return gpus
 
@@ -196,7 +201,9 @@ def _apply_query(info: GpuInfo, runner: Runner, program: str) -> bool:
     if not gpus:
         info.notes.append(f"{program} did not report a GPU")
         return False
-    info.name, info.vram_gib, info.driver, info.compute_capability = gpus[0]
+    info.name, info.vram_mib, info.driver, info.compute_capability = gpus[0]
+    if info.vram_mib is not None:
+        info.vram_gib = round(info.vram_mib / MIB_PER_GIB, 1)
     info.count = len(gpus)
     info.driver_cuda = _driver_cuda(runner, program)
     if info.driver_cuda is None:

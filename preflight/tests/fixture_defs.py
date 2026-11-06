@@ -1449,7 +1449,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         expected={
             "outcome": "unsupported",
             "unsupported_contains": [
-                "inference: gpu_inference is not available on this host (unmet: VRAM >= 8 GiB); "
+                "inference: gpu_inference is not available on this host (unmet: VRAM >= 8000 MiB); "
                 "inference: on must serve on this node. Use a GPU with at least 11.3 GiB of "
                 "memory. Or set inference: auto (this node then serves nothing, degraded with "
                 "consent) or off.",
@@ -1487,7 +1487,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             "outcome": "unsupported",
             "unsupported_contains": [
                 "inference: gpu_inference is not available on this host (unmet: "
-                "nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= "
+                "nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= "
                 "13.0); inference: on must serve on this node. Use an NVIDIA GPU that meets them. "
                 "Or set inference: auto",
             ],
@@ -1647,13 +1647,47 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         expected={
             "outcome": "unsupported",
             "unsupported_contains": [
-                "(unmet: VRAM >= 8 GiB); inference: on must serve on this node. nvidia-smi did "
+                "(unmet: VRAM >= 8000 MiB); inference: on must serve on this node. nvidia-smi did "
                 "not report the GPU's memory; serving needs at least 11.3 GiB. Or set inference: "
                 "auto",
             ],
             "vram": {"serving": "does_not_fit", "training": "off"},
         },
         plan={"inference": "on"},
+    )
+    # The support matrix's VRAM minimum, 8000 MiB as nvidia-smi reports it, at
+    # the boundary: exactly the minimum passes (the serving profile still does
+    # not fit), one MiB less does not. Both read 7.8 GiB rounded.
+    fx["ubuntu2404-vram-at-the-minimum"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci(
+            "loaded", gpu=("NVIDIA RTX Example", "8000 MiB", "8.9"), devid=RTX_4060_TI_DEVID
+        ),
+        expected={
+            "outcome": "degraded",
+            "features": {"gpu_inference": True, "gpu_training": True},
+            "degraded_contains": [
+                "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 7.8 GiB, "
+                "so this node serves nothing (inference: auto)",
+            ],
+            "vram": {"serving": "off", "training": "fits"},
+        },
+    )
+    fx["ubuntu2404-vram-below-the-minimum"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci(
+            "loaded", gpu=("NVIDIA RTX Example", "7999 MiB", "8.9"), devid=RTX_4060_TI_DEVID
+        ),
+        expected={
+            "outcome": "degraded",
+            "features": {"gpu_inference": False, "gpu_training": False},
+            "disabled": ["gpu_inference", "gpu_training"],
+            "vram": {"serving": "off", "training": "off"},
+        },
     )
     # An inference node exists only to serve: refused when it cannot, under auto.
     fx["ubuntu2404-inference-node-serving-too-large"] = build(

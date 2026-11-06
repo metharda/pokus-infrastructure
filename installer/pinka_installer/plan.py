@@ -53,10 +53,7 @@ def _model(variables: Mapping[str, Any], lock: Mapping[str, Any]) -> dict[str, A
     model_id = _plain("vllm_default_deployment.model_id", deployment["model_id"])
     entry = next((m for m in lock.get("models") or [] if m.get("id") == model_id), None)
     if entry is None:
-        raise PlanError(
-            f"vllm_default_deployment.model_id {model_id!r} is not in models.lock.yml "
-            "(pin it with the installer, docs/how-to/add-a-model.md)"
-        )
+        raise PlanError(f"vllm_default_deployment.model_id {validators.unpinned_model(model_id)}")
     sizes = [f.get("size") for f in entry.get("files") or []]
     if not sizes or not all(isinstance(s, int) and s >= 0 for s in sizes):
         raise PlanError(f"models.lock.yml: {model_id} has a file without its size; pin it again")
@@ -147,9 +144,7 @@ def _switches(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
             raise PlanError(f"inference must be auto, on or off (got {inference!r})")
         result["inference"] = inference
     if result["node_role"] == "inference" and result["inference"] == "off":
-        raise PlanError(
-            "an inference node runs only the inference stack: it needs inference: auto or on"
-        )
+        raise PlanError(validators.INFERENCE_NODE_OFF)
     if result["node_role"] == "lab" and result["inference"] == "on":
         raise PlanError(validators.LAB_ON)
     if "training" in variables:
@@ -211,10 +206,11 @@ def machine_plan(paths: Paths, machine: str) -> dict[str, Any]:
     )
     variables = {**_yaml(paths.group_vars_main), **_yaml(host_vars)}
     found = plan(requirements["defaults"], variables, _yaml(paths.infra / "models.lock.yml"))
-    profiles = sorted(requirements["serving"]["profiles"])
+    profiles = requirements["serving"]["profiles"]
     if found["vllm_profile"] not in profiles:
-        raise PlanError(
-            f"vllm_profile {found['vllm_profile']!r} is not a serving profile "
-            f"(vllm/profiles/: {', '.join(profiles)})"
-        )
+        raise PlanError(validators.unknown_profile(found["vllm_profile"], profiles))
+    blueprints = requirements["blueprints"]
+    for name in found["images"]:
+        if name not in blueprints:
+            raise PlanError(validators.unknown_blueprint(name, blueprints))
     return found

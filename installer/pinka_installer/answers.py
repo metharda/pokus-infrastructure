@@ -552,7 +552,7 @@ def problems(answers: Answers, context: Context) -> list[str]:
     _retention_problems(found, answers)
     for name in answers.images_build:
         if context.blueprints and name not in context.blueprints:
-            found.append(f"images/build: no blueprint {name!r} in images/")
+            found.append(f"images/build: {validators.unknown_blueprint(name, context.blueprints)}")
     return found
 
 
@@ -605,12 +605,10 @@ def _researcher_problems(found: list[str], answers: Answers, context: Context) -
 def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
     gpu = answers.gpu
     if gpu.default_model != "none" and gpu.default_model not in context.model_ids:
-        found.append(
-            f"gpu/default_model: {gpu.default_model!r} is not in models.lock.yml "
-            "(add it there first, docs/how-to/add-a-model.md)"
-        )
+        found.append(f"gpu/default_model: {validators.unpinned_model(gpu.default_model)}")
     if gpu.vllm_profile and context.vllm_profiles and gpu.vllm_profile not in context.vllm_profiles:
-        found.append(f"gpu/vllm_profile: no profile {gpu.vllm_profile!r} in vllm/profiles/")
+        unknown = validators.unknown_profile(gpu.vllm_profile, context.vllm_profiles)
+        found.append(f"gpu/vllm_profile: {unknown}")
     if gpu.accept_mok_enrollment and gpu.install_driver != "auto":
         found.append(
             "gpu/accept_mok_enrollment: bootstrap installs the driver only with "
@@ -619,10 +617,7 @@ def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
     if answers.machine.node_role == "lab" and gpu.default_model != "none":
         found.append("gpu/default_model: a lab node serves no model (the inference node does)")
     if answers.machine.node_role == "inference" and answers.features.inference == "off":
-        found.append(
-            "features/inference: an inference node runs only the inference stack; it needs auto "
-            "or on"
-        )
+        found.append(f"features/inference: {validators.INFERENCE_NODE_OFF}")
     if answers.machine.node_role == "lab" and answers.features.inference == "on":
         found.append(f"features/inference: {validators.LAB_ON}")
 

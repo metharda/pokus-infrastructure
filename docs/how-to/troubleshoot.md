@@ -166,7 +166,11 @@ a required action.
 
 ## Exit code 40: preflight error {#exit-code-40}
 
-Host detection failed unexpectedly; the Python traceback is in the log. Run
+Host detection failed unexpectedly, or preflight refused its options or
+the requirements plan. A refusal says so above the exit line ("preflight
+refused its options or the requirements plan (exit status 2)"), after
+preflight's own message, which names the setting: correct it in host_vars
+and run bootstrap again. Otherwise the Python traceback is in the log. Run
 preflight alone to reproduce it without changing anything:
 
 <!-- qa:run env=E2 -->

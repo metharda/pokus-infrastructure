@@ -1,0 +1,14 @@
+{
+  "degraded_contains": [
+    "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 7.8 GiB, so this node serves nothing (inference: auto)"
+  ],
+  "features": {
+    "gpu_inference": true,
+    "gpu_training": true
+  },
+  "outcome": "degraded",
+  "vram": {
+    "serving": "off",
+    "training": "fits"
+  }
+}

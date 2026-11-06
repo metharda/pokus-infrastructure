@@ -55,8 +55,10 @@ At least 8 GiB of memory, more as the choices require (features, node role, conc
 - `git` and `sudo`; bootstrap installs its own pinned Python and Ansible.
 - A Tailscale account for the lab's remote access and the researchers' SSH
   public keys.
-- For local inference: an NVIDIA GPU with at least 8 GiB of memory (on WSL2
-  the Windows driver; on Linux the lab installs a pinned driver).
+- For the GPU: an NVIDIA GPU with at least 8000 MiB of memory as `nvidia-smi`
+  reports it (an 8 GB card) for training, and 11500 MiB (a 12 GB card) for
+  local inference with the default serving profile (on WSL2 the Windows
+  driver; on Linux the lab installs a pinned driver).
 
 ## Quickstart
 
@@ -96,7 +98,7 @@ walk through a complete installation.
 | 11 | experimental | the host is on an experimental tier and there was no consent (--accept-experimental or interactive confirmation) |
 | 20 | unsupported | preflight or pre-preflight found the host unsupported and --force-unsupported was not given |
 | 30 | needs action | an operator action is needed before bootstrap can continue; the remediation is printed |
-| 40 | preflight error | host detection failed unexpectedly; the traceback is in the log |
+| 40 | preflight error | host detection failed unexpectedly (the traceback is in the log), or preflight refused its options or the requirements plan (the reason is in the log) |
 | 50 | tooling failed | installing uv, CPython, the Ansible environment or the Ansible collections failed, or a checksum did not match |
 | 60 | play failed | an Ansible play failed without a bootstrap signal, or a later stage is not installed yet |
 | 64 | usage error | invalid command-line options |

@@ -291,7 +291,7 @@
           "minProperties": 1,
           "maxProperties": 1,
           "properties": {
-            "gpu_vram_gib_min": {"type": "number", "minimum": 0},
+            "gpu_vram_mib_min": {"type": "integer", "minimum": 0},
             "gpu_compute_capability_min": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
             "environment_in": {"$ref": "#/$defs/strings"},
             "driver_cuda_min": {

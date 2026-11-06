@@ -41,11 +41,13 @@ class VramItem:
         gib: How much (GiB).
         basis: ``configured`` (a profile's or the support matrix's minimum) or
             ``estimated`` (models.catalog.yml's estimate for a model).
+        mib: A configured minimum as stated, in MiB; None for an estimate.
     """
 
     title: str
     gib: float
     basis: str
+    mib: int | None = None
 
 
 @dataclass
@@ -59,6 +61,7 @@ class VramLine:
         reason: Why it is off, does not fit or is unknown; empty when it fits.
         needed_gib: The largest item (0 when off by its switch).
         available_gib: The GPU's memory (measured), or None without a GPU.
+        available_mib: The same in MiB, as nvidia-smi reports it.
         shortfall_gib: How much is missing (0 when it fits, and without a GPU).
         items: What needs the memory.
     """
@@ -69,6 +72,7 @@ class VramLine:
     reason: str = ""
     needed_gib: float = 0.0
     available_gib: float | None = None
+    available_mib: float | None = None
     shortfall_gib: float = 0.0
     items: list[VramItem] = field(default_factory=list)
 
@@ -97,6 +101,11 @@ class Misfit:
 def _round(value: float) -> float:
     """GiB to two decimals."""
     return round(value + 1e-9, 2)
+
+
+def _mib(gib: float) -> int:
+    """A configured size back in MiB (exact: it was MiB / 1024)."""
+    return round(gib * 1024)
 
 
 def _up(gib: float, digits: int) -> float:
@@ -143,7 +152,8 @@ def serving_needs(
     """
     name = str(plan["vllm_profile"])
     profile = serving["profiles"][name]
-    items = [VramItem(f"the serving profile {name}", float(profile["min_vram_gib"]), "configured")]
+    minimum = float(profile["min_vram_gib"])
+    items = [VramItem(f"the serving profile {name}", minimum, "configured", _mib(minimum))]
     model = plan.get("model")
     if not model:
         return items, "", ""
@@ -210,8 +220,9 @@ def _line(
         reason=reason,
         needed_gib=_round(needed),
         available_gib=None if vram_gib is None else _round(vram_gib),
+        available_mib=None if vram_gib is None else round(vram_gib * 1024, 3),
         shortfall_gib=short,
-        items=[VramItem(i.title, _round(i.gib), i.basis) for i in items],
+        items=[VramItem(i.title, _round(i.gib), i.basis, i.mib) for i in items],
     )
 
 
@@ -246,7 +257,11 @@ def _unavailable(
     if driver_pending:
         return _line("serving", switch, OFF, _pending("serving"), items=items, vram_gib=vram_gib)
     reason = _not_available("gpu_inference", unmet, vram_gib)
-    need = [VramItem("the support matrix's minimum for gpu_inference", minimum, "configured")]
+    need = [
+        VramItem(
+            "the support matrix's minimum for gpu_inference", minimum, "configured", _mib(minimum)
+        )
+    ]
     return _line("serving", switch, status, reason, items=[*need, *items], vram_gib=vram_gib)
 
 
@@ -327,7 +342,11 @@ def training_line(
     switch = str(plan["training"]["mode"])
     if str(plan["node_role"]) != "full":
         return None
-    need = [VramItem("the support matrix's minimum for gpu_training", minimum, "configured")]
+    need = [
+        VramItem(
+            "the support matrix's minimum for gpu_training", minimum, "configured", _mib(minimum)
+        )
+    ]
     if runs == "gpu":
         if vram_gib is None:
             unknown = "the GPU's memory is not known"

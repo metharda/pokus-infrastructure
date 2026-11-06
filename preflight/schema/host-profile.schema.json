@@ -1225,6 +1225,7 @@
               "additionalProperties": false,
               "required": [
                 "gpu_gib",
+                "gpu_mib",
                 "serving",
                 "training"
               ],
@@ -1236,6 +1237,13 @@
                     "null"
                   ],
                   "description": "The GPU's memory (measured), GiB; null without a usable NVIDIA GPU or where no line applies."
+                },
+                "gpu_mib": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "The GPU's memory as nvidia-smi reports it, MiB, unrounded (the summary prints it); null without a usable NVIDIA GPU, where nvidia-smi does not report the memory, or where no line applies."
                 },
                 "serving": {
                   "$ref": "#/$defs/vram_line"
@@ -2305,6 +2313,7 @@
         "reason",
         "needed_gib",
         "available_gib",
+        "available_mib",
         "shortfall_gib",
         "items"
       ],
@@ -2351,6 +2360,13 @@
           ],
           "description": "The GPU's memory (measured), GiB; null without a usable NVIDIA GPU."
         },
+        "available_mib": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The GPU's memory as nvidia-smi reports it, MiB, unrounded; null without a usable NVIDIA GPU or where nvidia-smi does not report the memory."
+        },
         "shortfall_gib": {
           "type": "number",
           "minimum": 0,
@@ -2365,7 +2381,8 @@
             "required": [
               "title",
               "gib",
-              "basis"
+              "basis",
+              "mib"
             ],
             "properties": {
               "title": {
@@ -2383,6 +2400,13 @@
                   "estimated"
                 ],
                 "description": "configured (a serving profile's or the support matrix's minimum) or estimated (models.catalog.yml's estimate for a model)."
+              },
+              "mib": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "A configured minimum as stated, MiB (the summary prints it so); null for an estimate."
               }
             }
           }

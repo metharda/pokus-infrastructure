@@ -35,8 +35,8 @@ Requirements
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
   VRAM: no usable NVIDIA GPU
-    serving (inference: on): does not fit: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0)
-    training (training: auto): off: gpu_training is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.0); training: cpu would run the CPU-only variant
+    serving (inference: on): does not fit: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0)
+    training (training: auto): off: gpu_training is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.0); training: cpu would run the CPU-only variant
   CPU estimate 5.1 threads
   Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 389.1 GiB free on / after pinka's other needs there (10.9 GiB at install))
   disk / (ext4): 400.0 GiB free, 76.9 GiB needed at install
@@ -56,7 +56,7 @@ Requirements
 Network: skipped (--offline)
 
 Unsupported
-  - inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0); inference: on must serve on this node. No driver is installed for this GPU: the pinned NVIDIA driver does not list it (an older GPU only a legacy branch supports, a GPU newer than the pinned driver, or a PCI device ID that could not be read). Install a driver that supports it yourself (install_nvidia_driver: manual), then run bootstrap again, or use a GPU the pinned driver supports. Or set inference: auto (this node then serves nothing, degraded with consent) or off.
+  - inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0); inference: on must serve on this node. No driver is installed for this GPU: the pinned NVIDIA driver does not list it (an older GPU only a legacy branch supports, a GPU newer than the pinned driver, or a PCI device ID that could not be read). Install a driver that supports it yourself (install_nvidia_driver: manual), then run bootstrap again, or use a GPU the pinned driver supports. Or set inference: auto (this node then serves nothing, degraded with consent) or off.
 
 Disabled features
   - gpu_training: No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs.

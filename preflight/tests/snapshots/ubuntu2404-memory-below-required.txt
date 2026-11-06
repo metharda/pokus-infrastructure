@@ -35,8 +35,8 @@ Requirements
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 6 / 10 GiB (estimated; 4 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
   VRAM: no usable NVIDIA GPU
-    serving (inference: auto): off: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0)
-    training (training: auto): off: gpu_training is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.0); training: cpu would run the CPU-only variant
+    serving (inference: auto): off: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0)
+    training (training: auto): off: gpu_training is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.0); training: cpu would run the CPU-only variant
   CPU estimate 7.1 threads
   Incus pool: loop file of 126 GiB (computed: golden images 3.7 GiB + 4 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 126 GiB; 389.1 GiB free on / after pinka's other needs there (10.9 GiB at install))
   disk / (ext4): 400.0 GiB free, 136.9 GiB needed at install

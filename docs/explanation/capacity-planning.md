@@ -85,7 +85,10 @@ takes a plain `off` for `false` and a plain `on` for `true`.
 ## The GPU's memory
 
 Serving and training take turns on the GPU (the GPU arbiter), so each has a
-line of its own, compared with the GPU's memory as `nvidia-smi` reports it:
+line of its own, compared with the GPU's memory as `nvidia-smi` reports it
+(MiB, unrounded). The summary's `VRAM` heading prints that memory in MiB, and
+the items of a line that fits print each configured minimum as stated, in
+MiB; reasons and remedies give sizes in GiB, a need rounded up:
 
 - **Serving**, on a `full` or `inference` node: the serving profile's minimum
   (`vllm_profile`, `vllm/profiles/<name>.yml`) and the default model's
@@ -93,8 +96,10 @@ line of its own, compared with the GPU's memory as `nvidia-smi` reports it:
   model the catalog does not know adds nothing: only the profile's minimum
   is checked for it.
 - **Training**, on a `full` node: the support matrix's minimum for
-  `gpu_training`. A training job declares only whether it uses the GPU, so
-  this is the only figure there is.
+  `gpu_training`, 8000 MiB (the same as for `gpu_inference`: an 8 GB card,
+  which reports a little less than 8192 MiB, meets it). A training job
+  declares only whether it uses the GPU, so this is the only figure there
+  is.
 
 Each line fits, or it does not, with the reason: switched off, training on
 the CPU (`training: cpu`), no usable GPU, a GPU the support matrix refuses

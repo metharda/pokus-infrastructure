@@ -512,7 +512,8 @@ class VramTest(ComputeCase):
         return data
 
     def test_the_support_matrix_minimums(self) -> None:
-        self.assertEqual(VRAM_MINIMUMS, {"gpu_inference": 8.0, "gpu_training": 8.0})
+        # 8000 MiB, exactly.
+        self.assertEqual(VRAM_MINIMUMS, {"gpu_inference": 7.8125, "gpu_training": 7.8125})
 
     def test_the_default_profile_fits_a_12_gib_gpu(self) -> None:
         req = self.compute(GPU, vram=12.0)
@@ -520,13 +521,22 @@ class VramTest(ComputeCase):
         serving = self.line(req, "serving")
         self.assertEqual(
             serving["items"],
-            [{"title": "the serving profile ada-12g", "gib": 11.23, "basis": "configured"}],
+            [
+                {
+                    "title": "the serving profile ada-12g",
+                    "gib": 11.23,
+                    "basis": "configured",
+                    "mib": 11500,
+                }
+            ],
         )
         self.assertEqual(
             (serving["needed_gib"], serving["available_gib"], serving["shortfall_gib"]),
             (11.23, 12.0, 0.0),
         )
-        self.assertEqual(self.line(req, "training")["needed_gib"], 8.0)
+        training = self.line(req, "training")
+        self.assertEqual((training["needed_gib"], training["items"][0]["mib"]), (7.81, 8000))
+        self.assertEqual(self.line(req, "serving")["available_mib"], 12288.0)
         self.assertTrue(req.switches.serves)
         self.assertEqual((req.unsupported, req.degraded), ([], []))
 
@@ -666,14 +676,14 @@ class VramTest(ComputeCase):
         self.assertFalse(any("no VRAM estimate" in n for n in no_gpu.notes))
 
     def test_a_gpu_that_cannot_serve_or_train(self) -> None:
-        small = {"gpu_inference": "VRAM >= 8 GiB", "gpu_training": "VRAM >= 8 GiB"}
+        small = {"gpu_inference": "VRAM >= 8000 MiB", "gpu_training": "VRAM >= 8000 MiB"}
         on = self.compute(NO_GPU, vram=6.0, inference="on", unmet=small)
         serving = self.line(on, "serving")
         self.assertEqual(
             (serving["status"], serving["reason"], serving["needed_gib"], serving["shortfall_gib"]),
             (
                 "does_not_fit",
-                "gpu_inference is not available on this host (unmet: VRAM >= 8 GiB)",
+                "gpu_inference is not available on this host (unmet: VRAM >= 8000 MiB)",
                 11.23,
                 5.23,
             ),
@@ -687,7 +697,7 @@ class VramTest(ComputeCase):
             (training["status"], training["reason"]),
             (
                 "off",
-                "gpu_training is not available on this host (unmet: VRAM >= 8 GiB); training: cpu "
+                "gpu_training is not available on this host (unmet: VRAM >= 8000 MiB); training: cpu "
                 "would run the CPU-only variant",
             ),
         )
@@ -810,7 +820,15 @@ class VramTest(ComputeCase):
         )
         self.assertEqual(render.vram_lines(unknown)[0], "  VRAM: no usable NVIDIA GPU")
         short = render.vram_lines(self.compute(GPU, vram=10.0, inference="on").as_dict())
-        self.assertEqual(short[0], "  VRAM: the GPU has 10.0 GiB (measured)")
+        self.assertEqual(short[0], "  VRAM: the GPU has 10240 MiB, 10.0 GiB (measured)")
+        # A configured minimum prints as stated, in MiB; an estimate in GiB, rounded up.
+        model = self.bigger_model({"ada-12g": 10.47})
+        fits = render.vram_lines(self.compute(GPU, vram=12.0, data=model, model=MODEL).as_dict())
+        self.assertEqual(
+            fits[1],
+            "    serving (inference: auto): fits: the serving profile ada-12g 11500 MiB "
+            "(configured); the model example-model 10.5 GiB (estimated)",
+        )
         self.assertTrue(
             short[1].startswith("    serving (inference: on): does not fit, 1.3 GiB short: ")
         )

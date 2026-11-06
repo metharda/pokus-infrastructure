@@ -127,6 +127,63 @@ LAB_ON = (
     "a lab node serves nothing itself and refuses inference: on; set inference: on on the "
     "paired inference node instead, whose preflight judges its GPU and model"
 )
+# An inference node exists only to serve (preflight's requirements.INFERENCE_NODE_OFF
+# says the same; installer/tests/test_plan.py keeps the two equal).
+INFERENCE_NODE_OFF = (
+    "an inference node runs only the inference stack; it needs inference: auto or on"
+)
+
+
+def unknown_blueprint(name: object, blueprints: Iterable[str]) -> str:
+    """The refusal of a golden image blueprint that does not exist.
+
+    Preflight's ``requirements.unknown_blueprint`` says the same
+    (installer/tests/test_plan.py keeps the two equal).
+
+    Args:
+        name: The blueprint named.
+        blueprints: The blueprints (``images/``).
+
+    Returns:
+        The message.
+    """
+    return (
+        f"golden image blueprint {str(name)!r} does not exist "
+        f"(images/: {', '.join(sorted(blueprints))})"
+    )
+
+
+def unpinned_model(model_id: object) -> str:
+    """The refusal of a default model that models.lock.yml does not pin.
+
+    The plan writer and the answers check say the same.
+
+    Args:
+        model_id: The model named.
+
+    Returns:
+        The message.
+    """
+    return f"{str(model_id)!r} is not in models.lock.yml; pin it first (docs/how-to/add-a-model.md)"
+
+
+def unknown_profile(profile: object, profiles: Iterable[str]) -> str:
+    """The refusal of a serving profile that does not exist.
+
+    Preflight's ``requirements.unknown_profile`` says the same
+    (installer/tests/test_plan.py keeps the two equal).
+
+    Args:
+        profile: The ``vllm_profile`` given.
+        profiles: The serving profiles (``vllm/profiles/``).
+
+    Returns:
+        The message.
+    """
+    return (
+        f"vllm_profile {str(profile)!r} is not a serving profile "
+        f"(vllm/profiles/: {', '.join(sorted(profiles))})"
+    )
 
 
 def hostname(value: str) -> str | None:

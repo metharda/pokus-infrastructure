@@ -86,9 +86,9 @@ def vram_lines(req: Mapping[str, Any], *, gpu_usable: bool = False) -> list[str]
     uses = [line for line in (vram.get("serving"), vram.get("training")) if line]
     if not uses:
         return []
-    gpu = vram["gpu_gib"]
+    gpu, gpu_mib = vram["gpu_gib"], vram.get("gpu_mib")
     if gpu is not None:
-        have = f"the GPU has {gpu:.1f} GiB (measured)"
+        have = f"the GPU has {gpu_mib:g} MiB, {gpu:.1f} GiB (measured)"
     elif gpu_usable:
         have = "the GPU's memory is not known"
     else:
@@ -99,8 +99,12 @@ def vram_lines(req: Mapping[str, Any], *, gpu_usable: bool = False) -> list[str]
         status = STATUS_TEXT[line["status"]]
         if line["status"] == "does_not_fit" and line["shortfall_gib"]:
             status += f", {at_least(line['shortfall_gib'])} short"
+        # A configured minimum as stated (MiB), an estimate rounded up (GiB).
         needs = "; ".join(
-            f"{i['title']} {at_least(i['gib'])} ({i['basis']})" for i in line["items"]
+            f"{i['title']} {i['mib']} MiB ({i['basis']})"
+            if i.get("mib") is not None
+            else f"{i['title']} {at_least(i['gib'])} ({i['basis']})"
+            for i in line["items"]
         )
         detail = line["reason"] or needs
         lines.append(

@@ -39,6 +39,11 @@ LAB_ON = (
     "a lab node serves nothing itself and refuses inference: on; set inference: on on the "
     "paired inference node instead, whose preflight judges its GPU and model"
 )
+# An inference node exists only to serve (the installer's plan writer and its
+# answers check say the same).
+INFERENCE_NODE_OFF = (
+    "an inference node runs only the inference stack; it needs inference: auto or on"
+)
 GIB = 1024**3
 # Container image platforms by CPU architecture (platform.machine()).
 PLATFORMS = {"x86_64": "linux/amd64", "aarch64": "linux/arm64"}
@@ -348,6 +353,7 @@ class Requirements:
         ]
         lines = [self.vram_serving, self.vram_training]
         gpu = next((line.available_gib for line in lines if line is not None), None)
+        gpu_mib = next((line.available_mib for line in lines if line is not None), None)
         return {
             "memory": {
                 "status": status,
@@ -360,6 +366,7 @@ class Requirements:
             "disk": disks,
             "vram": {
                 "gpu_gib": gpu,
+                "gpu_mib": gpu_mib,
                 "serving": None if self.vram_serving is None else self.vram_serving.as_dict(),
                 "training": None if self.vram_training is None else self.vram_training.as_dict(),
             },
@@ -451,6 +458,7 @@ def load_plan(
     srv_path: str | None = None,
     *,
     profiles: Collection[str] = (),
+    blueprints: Collection[str] = (),
 ) -> tuple[dict[str, Any], str]:
     """The effective plan: the defaults, the research space given, then the file's keys.
 
@@ -460,13 +468,16 @@ def load_plan(
         srv_path: The research space from ``--srv-path``, if given.
         profiles: The serving profiles (``requirements.json`` ``serving``); the
             plan's ``vllm_profile`` must be one of them where given.
+        blueprints: The golden image blueprints (``requirements.json``
+            ``blueprints``); each of the plan's ``images`` must be one where given.
 
     Returns:
         ``(plan, label)``; the label is ``defaults`` or the path.
 
     Raises:
         PlanError: If the file is unreadable, the plan does not match its
-            schema, or it names a serving profile that does not exist.
+            schema, or it names a serving profile or a blueprint that does not
+            exist.
     """
     plan = json.loads(json.dumps(defaults))
     if srv_path:
@@ -488,19 +499,39 @@ def load_plan(
     if errors:
         raise PlanError(f"plan ({label}): " + "; ".join(errors))
     if plan["node_role"] == "inference" and plan["inference"] == "off":
-        raise PlanError(
-            f"plan ({label}): an inference node runs only the inference stack; "
-            "it needs inference: auto or on"
-        )
+        raise PlanError(f"plan ({label}): {INFERENCE_NODE_OFF}")
     if plan["node_role"] == "lab" and plan["inference"] == "on":
         raise PlanError(f"plan ({label}): {LAB_ON}")
     if profiles and str(plan["vllm_profile"]) not in profiles:
         raise PlanError(f"plan ({label}): {unknown_profile(plan['vllm_profile'], profiles)}")
+    for name in plan["images"] if blueprints else ():
+        if str(name) not in blueprints:
+            raise PlanError(f"plan ({label}): {unknown_blueprint(name, blueprints)}")
     return plan, label
+
+
+def unknown_blueprint(name: object, blueprints: Collection[str]) -> str:
+    """The refusal of a golden image blueprint that does not exist.
+
+    The installer's ``validators.unknown_blueprint`` says the same.
+
+    Args:
+        name: The blueprint named.
+        blueprints: The blueprints (``images/``).
+
+    Returns:
+        The message.
+    """
+    return (
+        f"golden image blueprint {str(name)!r} does not exist "
+        f"(images/: {', '.join(sorted(blueprints))})"
+    )
 
 
 def unknown_profile(profile: object, profiles: Collection[str]) -> str:
     """The refusal of a serving profile that does not exist.
+
+    The installer's ``validators.unknown_profile`` says the same.
 
     Args:
         profile: The plan's ``vllm_profile``.
@@ -967,7 +998,7 @@ def _disk_items(
         for name in plan["images"]:
             blueprint = data["blueprints"].get(name)
             if blueprint is None:
-                raise PlanError(f"plan: unknown golden image blueprint {name!r}")
+                raise PlanError(f"plan: {unknown_blueprint(name, data['blueprints'])}")
             built = fs.exists(f"{srv}/images/{name}/{blueprint['version']}")
             size = float(blueprint["estimated_size_gib"])
             source = f"estimated_size_gib of images/{name}/image.yaml"

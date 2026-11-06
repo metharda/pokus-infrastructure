@@ -222,7 +222,12 @@ features:  # optional; each becomes a boolean feature flag
     # driver's).
     requires:
       - nvidia_gpu_usable
-      - {gpu_vram_gib_min: 8}
+      # The memory nvidia-smi reports (memory.total, MiB), compared unrounded.
+      # An 8 GB card reports a little less than 8192 MiB (8188 MiB for an
+      # RTX 4060 Ti 8 GB), a 6 GB card 6144 MiB: 8000 MiB admits the first by
+      # the rule itself, with room below 8188 for a card that reserves a little
+      # more, and refuses the second.
+      - {gpu_vram_mib_min: 8000}
       # V7: the pinned vLLM image
       # has kernels from compute capability 7.5 on (its TORCH_CUDA_ARCH_LIST);
       # no override enables gpu_inference below it.
@@ -310,7 +315,7 @@ features:  # optional; each becomes a boolean feature flag
   gpu_training:
     requires:
       - nvidia_gpu_usable
-      - {gpu_vram_gib_min: 8}
+      - {gpu_vram_mib_min: 8000}  # as gpu_inference's
       - {gpu_compute_capability_min: "7.0"}
     on_missing: degrade
     impact: "No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs."

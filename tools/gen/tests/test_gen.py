@@ -99,11 +99,18 @@ def test_coverage_is_complete_and_detects_gaps(
     manifest_page.write_text(
         manifest_page.read_text(encoding="utf-8").replace("`cli.run`", "cli run"), encoding="utf-8"
     )
+    codes = tmp_path / "docs/reference/exit-codes.md"
+    codes.write_text(
+        codes.read_text(encoding="utf-8").replace("| 2 | `usage_error` |", "| 2 | usage |"),
+        encoding="utf-8",
+    )
     assert cli.coverage(tmp_path) == 1
     out = capsys.readouterr().out
     assert "manifest field `cli.run`" in out
     assert "pinka-preflight option --offline" in out
     assert "troubleshooting section for doctor check time.sync" in out
+    # Every exit code of pinka-preflight, the outcomes' and the usage error's.
+    assert "pinka-preflight exit code 2 (usage_error)" in out
 
 
 def test_lab_pages_cover_every_command() -> None:
@@ -281,3 +288,12 @@ def test_bootstrap_installs_nvidia_driver_on_hand_made_entries() -> None:
     assert not install(drivers, "unknown-group")  # the default entry, as the play's filter
     with pytest.raises(ValueError, match="community repository: preflight cannot tell"):
         install(drivers, "community")
+
+
+def test_the_exit_codes_page_refuses_a_code_both_outcome_and_other() -> None:
+    from pinka_gen import pages  # noqa: PLC0415 - only here
+
+    with pytest.raises(ValueError, match=r"both outcomes and others: \[2\]"):
+        pages.exit_codes_page(
+            {"supported": ("m", "b")}, {"supported": 2}, {2: ("usage_error", "x: y", "z")}, [], []
+        )

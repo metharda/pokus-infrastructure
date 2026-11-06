@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
 from pinka_installer import apply, validators
+from pinka_installer import plan as plan_mod
 from pinka_installer.answers import Answers, Context, Researcher
 from pinka_installer.paths import INFRA, Paths
 
@@ -134,8 +136,8 @@ def test_cross_field_problems(repo: Paths) -> None:
         "at least one researcher must be an admin",
         "still active: researcher2",
         "not in models.lock.yml",
-        "no profile 'no-such-profile'",
-        "no blueprint 'no-such-blueprint'",
+        "gpu/vllm_profile: vllm_profile 'no-such-profile' is not a serving profile",
+        "images/build: golden image blueprint 'no-such-blueprint' does not exist (images/: ",
         "platform/repo: use an SSH URL",
         "source_trust/allowed_signers",
         "platform_settings/ctl: must be a mapping",
@@ -188,7 +190,90 @@ def test_inference_on_by_node_role(repo: Paths) -> None:
     answers.machine.node_role = "inference"
     answers.features.inference = "off"
     text = "\n".join(answers_mod.problems(answers, context))
-    assert "an inference node runs only the inference stack; it needs auto or on" in text
+    assert f"features/inference: {validators.INFERENCE_NODE_OFF}" in text
+
+
+@pytest.mark.parametrize(
+    "rule", ["lab node on", "inference node off", "unknown profile", "unknown blueprint"]
+)
+def test_one_text_per_plan_refusal(repo: Paths, tmp_path: Path, rule: str) -> None:
+    """Bootstrap (the plan writer), pinka-preflight and the answers check refuse with one text.
+
+    Each path prints it after its own prefix: ``pinka-installer: the requirements
+    plan:``, ``pinka-preflight: error:`` and the answers field.
+    """
+    from pinka_preflight import requirements  # noqa: PLC0415 - preflight only here
+
+    context = apply.context(repo)
+    profiles = sorted(context.vllm_profiles)
+    answers = full_answers()
+    if rule == "lab node on":
+        settings: dict[str, Any] = {"node_role": "lab", "inference": "on"}
+        text, field = validators.LAB_ON, "features/inference"
+        assert text == requirements.LAB_ON
+    elif rule == "inference node off":
+        settings = {"node_role": "inference", "inference": "off"}
+        text, field = validators.INFERENCE_NODE_OFF, "features/inference"
+        assert text == requirements.INFERENCE_NODE_OFF
+    elif rule == "unknown profile":
+        settings = {"vllm_profile": "ada-12gb"}
+        text, field = validators.unknown_profile("ada-12gb", profiles), "gpu/vllm_profile"
+        assert text == requirements.unknown_profile("ada-12gb", profiles)
+        assert text == "vllm_profile 'ada-12gb' is not a serving profile (vllm/profiles/: ada-12g)"
+    else:
+        settings = {"images": ["no-such-blueprint"]}
+        blueprints = sorted(context.blueprints)
+        text, field = validators.unknown_blueprint("no-such-blueprint", blueprints), "images/build"
+        assert text == requirements.unknown_blueprint("no-such-blueprint", blueprints)
+        assert text.startswith(
+            "golden image blueprint 'no-such-blueprint' does not exist (images/: "
+        )
+    # Bootstrap: the plan writer refuses host_vars (pinka-installer: the requirements plan: ...).
+    (repo.infra / "preflight").mkdir(exist_ok=True)
+    (repo.infra / "preflight" / "requirements.json").write_bytes(
+        (INFRA / "preflight" / "requirements.json").read_bytes()
+    )
+    host_vars = repo.host_vars("lab9")
+    host_settings = {("images_blueprints" if k == "images" else k): v for k, v in settings.items()}
+    host_vars.write_text(
+        "".join(f"{k}: {v!r}\n" for k, v in host_settings.items())
+        + "vllm_default_deployment: null\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(plan_mod.PlanError) as caught:
+        plan_mod.machine_plan(repo, "lab9")
+    assert str(caught.value) == text
+    # pinka-preflight --plan (pinka-preflight: error: plan (<file>): ...).
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps({"schema_version": 1, **settings}), encoding="utf-8")
+    defaults = json.loads((INFRA / "preflight" / "requirements.json").read_text())["defaults"]
+    data = json.loads((INFRA / "preflight" / "requirements.json").read_text())
+    with pytest.raises(requirements.PlanError) as refused:
+        requirements.load_plan(
+            str(plan_file), defaults, profiles=profiles, blueprints=data["blueprints"]
+        )
+    assert str(refused.value) == f"plan ({plan_file}): {text}"
+    # The installer's answers.
+    answers.machine.node_role = settings.get("node_role", answers.machine.node_role)
+    answers.features.inference = settings.get("inference", answers.features.inference)
+    answers.gpu.vllm_profile = settings.get("vllm_profile", answers.gpu.vllm_profile)
+    answers.images_build = settings.get("images", answers.images_build)
+    assert f"{field}: {text}" in answers_mod.problems(answers, context)
+
+
+def test_one_text_for_a_model_not_pinned(repo: Paths) -> None:
+    """The plan writer and the answers check refuse an unpinned default model alike."""
+    text = validators.unpinned_model("example-unpinned")
+    assert text == (
+        "'example-unpinned' is not in models.lock.yml; pin it first (docs/how-to/add-a-model.md)"
+    )
+    with pytest.raises(plan_mod.PlanError) as caught:
+        defaults = json.loads((INFRA / "preflight" / "requirements.json").read_text())["defaults"]
+        plan_mod.plan(defaults, {"vllm_default_deployment": {"model_id": "example-unpinned"}}, {})
+    assert str(caught.value) == f"vllm_default_deployment.model_id {text}"
+    answers = full_answers()
+    answers.gpu.default_model = "example-unpinned"
+    assert f"gpu/default_model: {text}" in answers_mod.problems(answers, apply.context(repo))
 
 
 def test_restore_needs_a_repository(repo: Paths) -> None:

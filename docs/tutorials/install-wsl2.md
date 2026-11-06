@@ -25,9 +25,11 @@ this tutorial is one you run yourself.
       what `.wslconfig` gives by what the kernel reserves. Room
       for the WSL virtual disk: preflight wants 150 GiB free for `/var/lib`
       and 100 GiB for `/srv/pinka` (400 GiB and 500 GiB recommended).
-    - For local inference: an NVIDIA GPU with at least 8 GiB of memory and the
-      current NVIDIA driver for Windows. Inside WSL nothing else is installed
-      for the GPU.
+    - For the GPU: an NVIDIA GPU with at least 8000 MiB of memory as
+      `nvidia-smi` reports it (an 8 GB card) for training, and 11500 MiB (a
+      12 GB card) for local inference with the default serving profile, and
+      the current NVIDIA driver for Windows. Inside WSL nothing else is
+      installed for the GPU.
     - A Tailscale account for the lab, and the SSH public keys of the
       researchers.
     - The address of the pokus-infrastructure repository (or of your lab's private fork).

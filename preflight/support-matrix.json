@@ -393,7 +393,7 @@
       "requires": [
         "nvidia_gpu_usable",
         {
-          "gpu_vram_gib_min": 8
+          "gpu_vram_mib_min": 8000
         },
         {
           "gpu_compute_capability_min": "7.5"
@@ -491,7 +491,7 @@
       "requires": [
         "nvidia_gpu_usable",
         {
-          "gpu_vram_gib_min": 8
+          "gpu_vram_mib_min": 8000
         },
         {
           "gpu_compute_capability_min": "7.0"

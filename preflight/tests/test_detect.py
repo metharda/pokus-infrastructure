@@ -324,8 +324,9 @@ class HardwareTest(TempRootCase):
 
 class GpuTest(TempRootCase):
     def test_parse_nvidia_smi(self) -> None:
-        gpus = gpu.parse_nvidia_smi("A, 8192 MiB, 1.0, 8.6\nB, [N/A], 1.0, 7.5\nbroken\n")
-        self.assertEqual(gpus[0], ("A", 8.0, "1.0", "8.6"))
+        gpus = gpu.parse_nvidia_smi("A, 8188 MiB, 1.0, 8.6\nB, [N/A], 1.0, 7.5\nbroken\n")
+        # The memory as reported, in MiB, not rounded.
+        self.assertEqual(gpus[0], ("A", 8188.0, "1.0", "8.6"))
         self.assertIsNone(gpus[1][1])
         self.assertEqual(len(gpus), 2)
 

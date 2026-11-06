@@ -126,6 +126,20 @@ def test_inference_on_and_the_serving_profile() -> None:
     from pinka_preflight import requirements  # noqa: PLC0415 - preflight only here
 
     assert validators.LAB_ON == requirements.LAB_ON
+    assert validators.INFERENCE_NODE_OFF == requirements.INFERENCE_NODE_OFF
+    for name in ("no-such-blueprint", 12):
+        assert validators.unknown_blueprint(name, ["b", "a"]) == requirements.unknown_blueprint(
+            name, ["b", "a"]
+        )
+    # The same text for any value YAML gives, a number among them.
+    for value in ("ada-12gb", 12, None):
+        assert validators.unknown_profile(value, ["b", "a"]) == requirements.unknown_profile(
+            value, ["b", "a"]
+        )
+    assert (
+        validators.unknown_profile(12, ["a"])
+        == "vllm_profile '12' is not a serving profile (vllm/profiles/: a)"
+    )
     answers = Answers(machine=Machine(name="lab1"))
     answers.features.inference = "on"
     text = hostvars.render(answers, None, EXAMPLE)
@@ -196,7 +210,13 @@ def test_host_vars_win_over_group_vars(tmp_path: Path) -> None:
     group_vars.mkdir(parents=True)
     (tmp_path / "preflight").mkdir()
     (tmp_path / "preflight" / "requirements.json").write_text(
-        json.dumps({"defaults": DEFAULTS, "serving": {"profiles": {"ada-12g": {}}}}),
+        json.dumps(
+            {
+                "defaults": DEFAULTS,
+                "serving": {"profiles": {"ada-12g": {}}},
+                "blueprints": {name: {} for name in DEFAULTS["images"]},
+            }
+        ),
         encoding="utf-8",
     )
     (group_vars / "main.yml").write_text("node_role: lab\npinka_root: /data\n", encoding="utf-8")

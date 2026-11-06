@@ -34,9 +34,9 @@ Requirements
     OPA: 0.1 / 0.2 GiB (estimated)
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
-  VRAM: the GPU has 6.0 GiB (measured)
-    serving (inference: on): does not fit, 5.3 GiB short: gpu_inference is not available on this host (unmet: VRAM >= 8 GiB)
-    training (training: auto): off: gpu_training is not available on this host (unmet: VRAM >= 8 GiB); training: cpu would run the CPU-only variant
+  VRAM: the GPU has 6144 MiB, 6.0 GiB (measured)
+    serving (inference: on): does not fit, 5.3 GiB short: gpu_inference is not available on this host (unmet: VRAM >= 8000 MiB)
+    training (training: auto): off: gpu_training is not available on this host (unmet: VRAM >= 8000 MiB); training: cpu would run the CPU-only variant
   CPU estimate 5.1 threads
   Incus pool: loop file of 66 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 389.1 GiB free on / after pinka's other needs there (10.9 GiB at install))
   disk / (ext4): 400.0 GiB free, 76.9 GiB needed at install
@@ -56,7 +56,7 @@ Requirements
 Network: skipped (--offline)
 
 Unsupported
-  - inference: gpu_inference is not available on this host (unmet: VRAM >= 8 GiB); inference: on must serve on this node. Use a GPU with at least 11.3 GiB of memory. Or set inference: auto (this node then serves nothing, degraded with consent) or off.
+  - inference: gpu_inference is not available on this host (unmet: VRAM >= 8000 MiB); inference: on must serve on this node. Use a GPU with at least 11.3 GiB of memory. Or set inference: auto (this node then serves nothing, degraded with consent) or off.
 
 Disabled features
   - gpu_training: No usable GPU for training: no training job gets a GPU; with training: cpu the jobs' CPU-only variant runs.

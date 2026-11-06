@@ -1,7 +1,7 @@
 {
   "outcome": "unsupported",
   "unsupported_contains": [
-    "inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8 GiB, compute capability >= 7.5, driver CUDA >= 13.0); inference: on must serve on this node. Use an NVIDIA GPU that meets them. Or set inference: auto"
+    "inference: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0); inference: on must serve on this node. Use an NVIDIA GPU that meets them. Or set inference: auto"
   ],
   "vram": {
     "serving": "does_not_fit",

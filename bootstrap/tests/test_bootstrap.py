@@ -1550,6 +1550,39 @@ def test_bootstrap_sh_is_executable() -> None:
     assert shutil.which("bash")
 
 
+def test_a_plan_preflight_refuses_is_named_as_such(tmp_path: Path) -> None:
+    # Preflight ends with exit code 2 for a plan it cannot use; bootstrap says
+    # so, not that a traceback is above.
+    fake = tmp_path / "preflight" / "pinka-preflight"
+    fake.parent.mkdir()
+    fake.write_text(
+        "#!/bin/sh\necho 'pinka-preflight: error: plan (plan.json): refused' >&2\nexit 2\n"
+    )
+    fake.chmod(0o755)
+    script = (
+        f"INFRA_DIR={q(tmp_path)} OPT_MACHINE=lab1 GIT_COMMIT=0; install() {{ :; }}; "
+        "write_plan() { :; }; nvidia_driver_mode() { printf auto; }; lab_preflight_args() { :; }; "
+        "enter_stage() { :; }; stage_preflight"
+    )
+    res = bash(script)
+    assert res.returncode == 40, res.stderr
+    assert "pinka-preflight: error: plan (plan.json): refused" in res.stderr
+    assert (
+        "preflight refused its options or the requirements plan (exit status 2); the reason is "
+        "above and in the log"
+    ) in res.stderr
+    assert "traceback" not in res.stderr
+    # The uninstall run's preflight call says the same of its options.
+    uninstall = bash(
+        f"INFRA_DIR={q(tmp_path)} GIT_COMMIT=0; install() {{ :; }}; enter_stage() {{ :; }}; "
+        "stage_uninstall_profile"
+    )
+    assert uninstall.returncode == 40, uninstall.stderr
+    assert (
+        "preflight refused its options (exit status 2); the reason is above and in the log"
+    ) in uninstall.stderr
+
+
 def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
     # A host is dedicated when its login accounts are all
     # researchers; bootstrap passes their names from group_vars, or from

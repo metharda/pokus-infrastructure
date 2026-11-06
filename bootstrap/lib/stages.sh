@@ -830,6 +830,7 @@ stage_preflight() {
   "$INFRA_DIR/preflight/pinka-preflight" "${args[@]}" || rc=$?
   case $rc in
     0 | 10 | 20 | 30) ;;
+    2) fail "$EXIT_PREFLIGHT_ERROR" "preflight refused its options or the requirements plan (exit status 2); the reason is above and in the log" ;;
     *) fail "$EXIT_PREFLIGHT_ERROR" "preflight failed (exit status $rc); the traceback is above and in the log" ;;
   esac
   outcome=$(profile_tool get "$RUN_DIR/host-profile.json" outcome)
@@ -1185,6 +1186,7 @@ stage_uninstall_profile() {
     --output "$UNINSTALL_DIR/host-profile.json" --repo-commit "$GIT_COMMIT" || rc=$?
   case $rc in
     0 | 10 | 20 | 30) ;;
+    2) fail "$EXIT_PREFLIGHT_ERROR" "preflight refused its options (exit status 2); the reason is above and in the log" ;;
     *) fail "$EXIT_PREFLIGHT_ERROR" "preflight failed (exit status $rc); the traceback is above and in the log" ;;
   esac
   leave_stage

@@ -108,7 +108,7 @@ class MatchTest(unittest.TestCase):
         self.assertRegex(required, r"^[0-9]+\.[0-9]+\.[0-9]+$")
         facts = {
             "nvidia_gpu_usable": True,
-            "gpu_vram_gib": 12.0,
+            "gpu_vram_mib": 12282.0,
             "gpu_compute_capability": "8.9",
             "gpu_driver_cuda": "12.8",
             "environment": "baremetal",
@@ -200,7 +200,7 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(required, "7.5")
         facts = {
             "nvidia_gpu_usable": True,
-            "gpu_vram_gib": 12.0,
+            "gpu_vram_mib": 12282.0,
             "gpu_compute_capability": "7.0",
             "gpu_driver_cuda": "13.0",
             "environment": "baremetal",
@@ -231,15 +231,38 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(matrix.match_arch(self.m, "aarch64")["tier"], "experimental")
         self.assertEqual(matrix.match_arch(self.m, "riscv64")["tier"], "unsupported")
 
+    def test_the_vram_minimum_is_compared_in_mib_unrounded(self) -> None:
+        # The compiled matrix's minimum, for both GPU features.
+        for name in ("gpu_inference", "gpu_training"):
+            (minimum,) = [
+                r["gpu_vram_mib_min"]
+                for r in self.m["features"][name]["requires"]
+                if isinstance(r, dict) and "gpu_vram_mib_min" in r
+            ]
+            self.assertEqual(minimum, 8000, name)
+        rule = {"gpu_vram_mib_min": 8000}
+        # An 8 GB card (8188 MiB reported) passes by the rule itself, the
+        # minimum exactly passes, one MiB less does not (it read 7.8 GiB rounded,
+        # as 8000 MiB does), and a 6 GB card does not.
+        for reported, met in ((8188.0, True), (8000.0, True), (7999.0, False), (6144.0, False)):
+            with self.subTest(reported=reported):
+                self.assertEqual(
+                    matrix.requirement_met(rule, {"gpu_vram_mib": reported}),
+                    (met, "VRAM >= 8000 MiB"),
+                )
+        self.assertEqual(
+            matrix.vram_minimums(self.m), {"gpu_inference": 7.8125, "gpu_training": 7.8125}
+        )
+
     def test_requirements_and_conditions(self) -> None:
         facts = {
-            "gpu_vram_gib": 12.0,
+            "gpu_vram_mib": 12282.0,
             "gpu_compute_capability": "8.9",
             "environment": "wsl2",
             "kvm_usable": False,
         }
-        self.assertTrue(matrix.requirement_met({"gpu_vram_gib_min": 8}, facts)[0])
-        self.assertFalse(matrix.requirement_met({"gpu_vram_gib_min": 16}, facts)[0])
+        self.assertTrue(matrix.requirement_met({"gpu_vram_mib_min": 8000}, facts)[0])
+        self.assertFalse(matrix.requirement_met({"gpu_vram_mib_min": 16000}, facts)[0])
         self.assertTrue(matrix.requirement_met({"gpu_compute_capability_min": "7.5"}, facts)[0])
         volta = {**facts, "gpu_compute_capability": "7.0"}
         self.assertFalse(matrix.requirement_met({"gpu_compute_capability_min": "7.5"}, volta)[0])
@@ -252,7 +275,7 @@ class MatchTest(unittest.TestCase):
         self.assertFalse(matrix.requirement_met(cuda, {})[0])
         self.assertEqual(matrix.requirement_met(cuda, {})[1], "driver CUDA >= 13.0")
         self.assertFalse(matrix.requirement_met("kvm_usable", facts)[0])
-        self.assertFalse(matrix.requirement_met({"gpu_vram_gib_min": 8}, {})[0])
+        self.assertFalse(matrix.requirement_met({"gpu_vram_mib_min": 8000}, {})[0])
         with self.assertRaises(ValueError):
             matrix.requirement_met({"nope": 1}, facts)
         self.assertTrue(

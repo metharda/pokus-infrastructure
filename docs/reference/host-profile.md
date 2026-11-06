@@ -185,6 +185,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `requirements.budgets.disk[].shortfall_gib` | number | yes | How much is missing, GiB. |
 | `requirements.budgets.vram` | object | yes | The GPU's memory: serving and training never use it at once (the GPU arbiter). serving is null on a lab node, which serves nothing itself; training is null on a node that is not full. |
 | `requirements.budgets.vram.gpu_gib` | number or null | yes | The GPU's memory (measured), GiB; null without a usable NVIDIA GPU or where no line applies. |
+| `requirements.budgets.vram.gpu_mib` | number or null | yes | The GPU's memory as nvidia-smi reports it, MiB, unrounded (the summary prints it); null without a usable NVIDIA GPU, where nvidia-smi does not report the memory, or where no line applies. |
 | `requirements.budgets.vram.serving` | see `vram_line` | yes | — |
 | `requirements.budgets.vram.training` | see `vram_line` | yes | — |
 | `requirements.serving` | object or null | yes | Which serving profiles (vllm/profiles/) and models (models.catalog.yml) fit this GPU's memory, for the installer, which decides nothing itself. fits is null when the GPU's memory is not known. |
@@ -399,8 +400,10 @@ one of `supported`, `tested`, `experimental`, `unsupported`
 | `vram_line.reason` | string | yes | Why it is off, does not fit or is unknown; empty when it fits. |
 | `vram_line.needed_gib` | number | yes | The largest item, GiB. |
 | `vram_line.available_gib` | number or null | yes | The GPU's memory (measured), GiB; null without a usable NVIDIA GPU. |
+| `vram_line.available_mib` | number or null | yes | The GPU's memory as nvidia-smi reports it, MiB, unrounded; null without a usable NVIDIA GPU or where nvidia-smi does not report the memory. |
 | `vram_line.shortfall_gib` | number | yes | How much is missing, GiB (0 when it fits, and without a usable GPU). |
 | `vram_line.items` | array | yes | What needs the memory. |
 | `vram_line.items[].title` | string | yes | What it is. |
 | `vram_line.items[].gib` | number | yes | How much, GiB. |
 | `vram_line.items[].basis` | one of `configured`, `estimated` | yes | configured (a serving profile's or the support matrix's minimum) or estimated (models.catalog.yml's estimate for a model). |
+| `vram_line.items[].mib` | integer or null | yes | A configured minimum as stated, MiB (the summary prints it so); null for an estimate. |
