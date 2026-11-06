@@ -3,7 +3,7 @@ argument_specs:
   main:
     short_description: Record what existed before pinka and what pinka added.
     description:
-      - Writes /var/lib/pinka/install-record.json once, before any change to the host, and sets pinka_preexisting.
+      - Writes /var/lib/pinka/install-record.json at the first install, before any change to the host, and sets pinka_preexisting.
     options:
       host_profile:
         type: dict

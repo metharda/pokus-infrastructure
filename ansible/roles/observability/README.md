@@ -13,9 +13,18 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   Tempo, metrics to a Prometheus exporter that Prometheus scrapes, with
   resource attributes (such as a platform's run identifiers) as labels.
 - **Journald collector**: a second collector instance that reads the host
-  journal with the host's `journalctl` (chroot into the read-only host root)
+  journal, the persistent and the volatile one, with the host's `journalctl`
   and forwards it to the gateway; separate so that the instance that accepts
-  OTLP from targets has no access to the host's files.
+  OTLP from targets has no access to the host's journal. It runs as
+  `pinka-otel-journald`, an account of its own (the gateway's is
+  `pinka-otelcol`), with the host's `systemd-journal` group as its only group,
+  without capabilities. Besides its configuration and its state directory,
+  it sees of the host only, read-only: the two journal directories, the
+  machine ID, the host's `/usr/bin`, `/usr/lib`, `/lib` and `lib64`
+  directories (`journalctl` and the libraries it loads) and
+  `/etc/ld.so.cache`. A directory the host lacks is mounted from an empty
+  directory of pinka's, so Docker never creates one; one that appears later
+  is read after the next bootstrap.
 - **Prometheus** (retention `observability_prometheus_retention`, and by size
   `observability_prometheus_retention_size`), scraping
   the collectors, node_exporter, cAdvisor, the Postgres exporter, Loki,
@@ -37,10 +46,22 @@ Incus API and the exporters on loopback and nothing listens elsewhere:
   vault; researchers with `grafana: false` and removed researchers are
   disabled.
 - **node_exporter** (host PID namespace, textfile collector directory
-  `/var/lib/pinka/node-exporter`), **cAdvisor** and, where the lab uses the GPU, the
-  nvidia-smi based **GPU exporter** (Compose profile `gpu-cdi` or
-  `gpu-runtime`, after the method in `/etc/docker/daemon.json`). The DCGM
-  exporter is refused while its image is unverified.
+  `/var/lib/pinka/node-exporter`, as `pinka-node-exporter`), **cAdvisor**
+  and, where the lab uses the GPU, the nvidia-smi based **GPU exporter** (as
+  `pinka-gpu-exporter`; Compose profile
+  `gpu-cdi` or `gpu-runtime`, after the method in `/etc/docker/daemon.json`).
+  The DCGM exporter is refused while its image is unverified.
+- **cAdvisor runs as root**: its image sets no user, and it reads container
+  metadata through Docker's and containerd's sockets and the files of
+  Docker's data root, most of them root's. In its view of the host, empty
+  `tmpfs` mounts mask the lab's root, `/etc/pinka`, `/var/lib` (with
+  `/var/lib/pinka` and `/var/lib/pinka-kept`) and `/run/pinka`, at their real
+  paths, except Docker's data root, which stays visible: cAdvisor reads every
+  container's layer ID there and measures its writable layer and log
+  directory. The masks hide these paths only: a link below them, another
+  mount of the same files or a copy elsewhere on the host stays visible. A
+  mask needs its mount point, so `/run/pinka` exists on every node, also at
+  boot (`/etc/tmpfiles.d/pinka-observability.conf`).
 - **VM listener (C4)**: with `vm_targets`, `pinka-vm-otlp-address.service`
   puts `198.18.0.1/32` on the dummy interface `pinka-otlp0` before Docker
   starts; the gateway also listens there, the run ACL and the firewall admit

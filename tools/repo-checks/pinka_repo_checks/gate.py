@@ -1,8 +1,10 @@
 """The quiet gate: ``make lint``, ``make test`` and ``make docs`` in one line each.
 
-The Makefile runs these targets through this module unless ``VERBOSE=1``.
-The gate runs ``make setup`` once, then every step of the target (a make
-target of its own) with ``GATE_SETUP_DONE=1``, and writes each step's complete
+The Makefile runs these targets through this module unless ``VERBOSE=1``, and
+``make gate`` runs them and the ``order`` gate (the random order and the
+isolated files) through it always. The gate runs ``make setup`` once, then
+every step (a make target of its own) with ``GATE_SETUP_DONE=1``, and writes
+each step's complete
 output to ``<log-dir>/<gate>/<step>.log``. Every step runs, even after one
 failed, so one run reports every failure.
 
@@ -18,6 +20,7 @@ failed, so one run reports every failure.
 Nothing is filtered: the gate only decides which logs to print. Counting:
 
 * a step whose output holds a pytest or unittest result counts its tests;
+  ``test-isolated`` counts by its own line, which holds every file's;
 * any other step counts as one check, passed or failed by its exit status;
 * a step that exits non-zero counts at least one failure, whatever it printed,
   and so does a step whose output reports a failed test;
@@ -27,6 +30,11 @@ Nothing is filtered: the gate only decides which logs to print. Counting:
   warning``, ``<file>:<line>: <Category>Warning:`` or yamllint's
   ``<line>:<column>  warning``. A tool that prints a warning and also counts
   it may be counted twice, never fewer.
+
+With ``--local`` (``make gate``, never in CI) a step that the change
+classifier finds the local tree does not need (:mod:`pinka_repo_checks.changes`)
+does not run: the gate names it below its line (``skipped step: <gate>/<step>
+(<why>)``). With ``CI=true`` every step runs.
 
 Standard library only, like the privacy scan: the gate starts before setup.
 """
@@ -51,6 +59,10 @@ PYTEST_PART_RE = re.compile(
     r"(?P<n>\d+) (?P<kind>passed|failed|errors?|skipped|deselected|xfailed|xpassed|warnings?)\b"
 )
 UNITTEST_RAN_RE = re.compile(r"^Ran (?P<n>\d+) tests? in ")
+ISOLATED_RE = re.compile(  # pinka_repo_checks.isolated.summary
+    r"^test-isolated: (?:FAILED: )?(?P<passed>\d+) passed, (?P<failed>\d+) failed, "
+    r"(?P<skipped>\d+) skipped, (?P<warnings>\d+) warnings \("
+)
 UNITTEST_RESULT_RE = re.compile(r"^(?P<status>OK|FAILED)(?: \((?P<detail>[^)]*)\))?$")
 UNITTEST_PART_RE = re.compile(r"(?P<kind>[a-z ]+)=(?P<n>\d+)")
 ANSIBLE_LINT_RE = re.compile(r"\b(?P<n>\d+) warning\(s\)")
@@ -98,6 +110,22 @@ class Counts:
         self.skipped_tests += other.skipped_tests
 
 
+def _isolated(match: re.Match[str], counts: Counts) -> None:
+    """test-isolated's own total: its tests and their warnings.
+
+    It replaces the tests and the skipped-test lines its printed files'
+    output showed (their pytest results are in the total, and the complete
+    list of skipped tests follows the line). The warning lines counted
+    before it stay, so a warning line in a printed file's output counts
+    twice: never fewer (the module's rule).
+    """
+    counts.passed, counts.failed = int(match["passed"]), int(match["failed"])
+    counts.skipped = int(match["skipped"])
+    counts.warnings += int(match["warnings"])
+    counts.skipped_tests = []
+    counts.tests = True
+
+
 def _pytest(line: str, counts: Counts) -> bool:
     match = PYTEST_SUMMARY_RE.match(line)
     if not match:
@@ -131,11 +159,13 @@ def _unittest(ran: int, detail: str | None, counts: Counts) -> None:
     counts.skipped += skipped
 
 
-def parse(output: str) -> Counts:
+def parse(output: str, *, isolated: bool = False) -> Counts:
     """Count tests, skips and warnings in one step's output.
 
     Args:
         output: The step's complete output.
+        isolated: The output is test-isolated's: its own line counts, and the
+            pytest results of its failing files are part of it.
 
     Returns:
         The counts the output reports (``tests`` is False when it holds no
@@ -145,10 +175,15 @@ def parse(output: str) -> Counts:
     ran: int | None = None
     for raw in output.splitlines():
         line = ANSI_RE.sub("", raw).rstrip()
+        if isolated and (match := ISOLATED_RE.match(line)):
+            _isolated(match, counts)
+            continue
+        if isolated and PYTEST_SUMMARY_RE.match(line):
+            continue  # a failing file's result: in the run's own line
         if _pytest(line, counts):
             continue
-        if line.startswith(SKIPPED_TEST_PREFIX):
-            counts.skipped_tests.append(line)
+        if line.lstrip().startswith(SKIPPED_TEST_PREFIX):  # test-isolated indents them
+            counts.skipped_tests.append(line.lstrip())
             continue
         if match := UNITTEST_RAN_RE.match(line):
             ran = int(match.group("n"))
@@ -164,17 +199,18 @@ def parse(output: str) -> Counts:
     return counts
 
 
-def step_counts(output: str, status: int) -> Counts:
+def step_counts(output: str, status: int, step: str = "") -> Counts:
     """A step's counts, its exit status included.
 
     Args:
         output: The step's complete output.
         status: Its exit status.
+        step: Its name (``test-isolated`` reports its own counts).
 
     Returns:
         The counts; a failing step always counts at least one failure.
     """
-    counts = parse(output)
+    counts = parse(output, isolated=step == "test-isolated")
     if not counts.tests:
         if status == 0:
             counts.passed += 1
@@ -202,7 +238,7 @@ def summary(gate: str, counts: Counts, steps: int, logs: Path, failing: Sequence
     """The gate's one line.
 
     Args:
-        gate: The target's name.
+        gate: The gate's name.
         counts: The counts of all steps.
         steps: How many steps ran (setup not included).
         logs: The directory of the step logs.
@@ -241,28 +277,36 @@ def run(
     log_dir: Path,
     environ: Mapping[str, str] | None = None,
     out: TextIO | None = None,
+    skip: Mapping[str, str] | None = None,
 ) -> int:
     """Run a gate's steps quietly.
 
     Args:
-        gate: The target's name (``lint``, ``test``, ``docs``).
+        gate: The gate's name (``lint``, ``test``, ``docs``, or ``order`` for the random
+            order and the isolated files in ``make gate``).
         steps: Its steps, make targets run one by one after setup.
         make: The make command (``$(MAKE)``).
         log_dir: Parent of the gate's log directory.
         environ: The environment (default: this process's).
         out: Where the gate writes (default: standard output).
+        skip: Steps not to run, each with why (the local gate's); every one
+            is named below the gate's line.
 
     Returns:
         0 when every step passed, 1 otherwise.
     """
     out = sys.stdout if out is None else out
     env = dict(os.environ if environ is None else environ)
-    names = list(steps)
+    skip = dict(skip or {})
+    names = [s for s in steps if s not in skip]
+    skipped = [f"skipped step: {gate}/{s} ({why})" for s, why in skip.items()]
     base = [*shlex.split(make), "--no-print-directory"]
     if dry_run(env.get("MAKEFLAGS", "")):
         for step in [SETUP, *names]:
             extra = [] if step == SETUP else ["GATE_SETUP_DONE=1"]
             out.write(shlex.join([*base, *extra, step]) + "\n")
+        for line in skipped:
+            out.write(f"  {line}\n")
         return 0
     logs = log_dir / gate
     shutil.rmtree(logs, ignore_errors=True)
@@ -272,18 +316,20 @@ def run(
     if status != 0:
         _show(out, f"{gate}/{SETUP}", status, logs / f"{SETUP}.log", output)
         out.write(summary(gate, Counts(failed=1), 0, logs, [SETUP]) + "\n")
+        for line in skipped:
+            out.write(f"  {line}\n")
         return 1
     total = Counts(warnings=parse(output).warnings)
     failing = []
     for step in names:
         log = logs / f"{step}.log"
         status, output = _run([*base, "GATE_SETUP_DONE=1", step], log, env)
-        counts = step_counts(output, status)
+        counts = step_counts(output, status, step)
         total.add(counts)
         if status != 0 or counts.failed:
             failing.append(step)
             _show(out, f"{gate}/{step}", status, log, output)
     out.write(summary(gate, total, len(names), logs, failing) + "\n")
-    for line in total.skipped_tests:
+    for line in [*skipped, *total.skipped_tests]:
         out.write(f"  {line}\n")
     return 1 if failing else 0

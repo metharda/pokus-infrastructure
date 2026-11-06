@@ -14,6 +14,7 @@ import configparser
 import fnmatch
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,7 @@ import pytest
 
 from ansible_testlib import (
     GROUP_VARS,
+    INFRA,
     ROLES,
     ansible_vars,
     evaluate,
@@ -32,6 +34,7 @@ from ansible_testlib import (
     render_template,
     role_names,
     role_vars,
+    template_value,
 )
 
 TESTED_TEMPLATES = {
@@ -68,6 +71,8 @@ TESTED_TEMPLATES = {
     ("observability", "pinka-otlp-agent.socket.j2"),
     ("observability", "pinka-otlp-agent.service.j2"),
     ("observability", "pinka-query.tmpfiles.conf.j2"),
+    # Tested in test_container_mounts.py:
+    ("observability", "pinka-observability.tmpfiles.conf.j2"),
     # Tested in test_gpu_arbiter.py:
     ("gpu_arbiter", "arbiter.json.j2"),
     ("gpu_arbiter", "pinka-gpu-arbiter.socket.j2"),
@@ -758,6 +763,7 @@ INFERENCE_UIDS = {
     "pinka-otelcol": 991,
     "pinka-prometheus": 992,
     "pinka-inference": 997,
+    "pinka-vllm": 990,
     "demo-ctl": 60578,
     "demo-brk": 60579,
     "demo-sbx": 60580,
@@ -781,9 +787,10 @@ def inference_spec(node_role: str) -> dict[str, Any]:
 @pytest.mark.parametrize(
     ("node_role", "clients", "control"),
     [
-        ("full", ["root", "pinka-prometheus", "pinka-otelcol"], []),
+        # pinka-vllm: vLLM's own health check, where vLLM serves.
+        ("full", ["root", "pinka-vllm", "pinka-prometheus", "pinka-otelcol"], []),
         ("lab", ["root"], [18710]),
-        ("inference", ["root", "pinka-otelcol", "pinka-inference"], []),
+        ("inference", ["root", "pinka-vllm", "pinka-otelcol", "pinka-inference"], []),
     ],
 )
 def test_inference_guard_clients_per_node_role(
@@ -819,9 +826,9 @@ def test_inference_guard_ruleset(tmp_path: Path) -> None:
     ) in lines
     full, _ = guard.build(inference_spec("full"), None, INFERENCE_UIDS.get)
     assert "inference_control_clients" not in full
-    assert "elements = { 0, 991, 992 }" in [line.strip() for line in full.splitlines()]
+    assert "elements = { 0, 990, 991, 992 }" in [line.strip() for line in full.splitlines()]
     _, missing = guard.build(inference_spec("full"), RENDERED, {"root": 0}.get)
-    assert missing == ["pinka-prometheus", "pinka-otelcol", "demo-brk", "demo-ctl"]
+    assert missing == ["pinka-vllm", "pinka-prometheus", "pinka-otelcol", "demo-brk", "demo-ctl"]
     path = tmp_path / "inference-guard.nft"
     path.write_text(text, encoding="utf-8")
     result = nft_check(path)
@@ -844,7 +851,7 @@ def test_inference_guard_main_prints_the_ruleset(
 def test_inference_guard_per_account_class(tmp_path: Path) -> None:
     # One connection per account class against the kernel's rules:
     # only the controller and the inference broker of the platform reach the
-    # inference API, besides root and infra's scrapers; only root and the
+    # inference API, besides root and infra's own clients; only root and the
     # controller reach the forwarder's control port of a lab node. A group,
     # GID 0 included, admits nothing.
     import pinka_inference_guard as guard  # noqa: PLC0415 - the role's own file
@@ -1283,6 +1290,112 @@ def test_researchers_never_take_an_account_of_the_lab(name: str, clash: bool) ->
     assert names.index("Refuse researchers named like an account or group of the lab") < (
         names.index("Create the researchers")
     )
+
+
+# What creates an account: the tools, a sysusers.d file, and systemd's
+# DynamicUser (any value but a false one). pinka creates its accounts
+# through the user module (ansible.builtin.user); anything else in
+# ansible/, bootstrap/, tools/, installer/ and preflight/ fails here. Not
+# read: the tests, the test-distros harness (which creates a probe account
+# in its test VMs), images/ (accounts in the golden images, not the host's),
+# and comments (from a # at a line's start or after a blank, so a "#" after
+# a blank inside a quoted string also ends what is read). Not seen: a direct
+# write to /etc/passwd or /etc/shadow, a command built from parts, and what
+# packages do in their maintainer scripts and sysusers.d files.
+ACCOUNT_TOOLS = re.compile(
+    r"\b(l?useradd|adduser|newusers|systemd-sysusers)\b|sysusers\.d\b"
+    r"|\bDynamicUser\s*=\s*(?!(no|n|false|f|off|0)\b)\S",
+    re.IGNORECASE,
+)
+# Units whose account systemd allocates when they start (from 61184-65519)
+# and removes when they stop; the only exception.
+DYNAMIC_USERS = {
+    "ansible/roles/docs/templates/pinka-docs.service.j2",
+    "ansible/roles/observability/templates/pinka-otlp-agent.service.j2",
+}
+
+
+def code(line: str) -> str:
+    """A line without its comment: a # at its start or after a blank."""
+    return re.split(r"(?:^|\s)#", line, maxsplit=1)[0]
+
+
+def test_pinka_creates_accounts_only_through_the_user_module() -> None:
+    found, read = [], set()
+    for root in ("ansible", "bootstrap", "tools", "installer", "preflight"):
+        for path in sorted(p for p in (INFRA / root).rglob("*") if p.is_file()):
+            relative = path.relative_to(INFRA)
+            if {"tests", "test-distros"} & set(relative.parts) or path.suffix == ".pyc":
+                continue
+            read.add(str(relative))
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for number, line in enumerate(text.splitlines(), 1):
+                match = ACCOUNT_TOOLS.search(code(line))
+                if match and not (
+                    match.group(0).startswith("Dynamic") and str(relative) in DYNAMIC_USERS
+                ):
+                    found.append(f"{relative}:{number}: {match.group(0)}")
+    assert found == []
+    assert {
+        "ansible/roles/users_groups/tasks/main.yml",
+        "bootstrap/bootstrap.sh",
+        "tools/platform/pinka_platform/deploy.py",
+        "installer/pinka_installer/cli.py",
+        "preflight/pinka_preflight/cli.py",
+    } <= read
+    assert read >= DYNAMIC_USERS
+    for unit in sorted(DYNAMIC_USERS):
+        assert "DynamicUser=yes" in (INFRA / unit).read_text(encoding="utf-8").splitlines()
+    for line in (
+        "argv: [useradd, --system, x]",
+        "['useradd', '-r', name]",
+        '[[ $# -eq 1 ]] && useradd "$1"',
+        'n=${1#u-}; adduser --system "$n"',
+        "sysusers_dir: /usr/lib/sysusers.d",
+        "luseradd x",
+        "systemd-run -p DynamicUser=yes true",
+        "DynamicUser=t",
+        "DynamicUser={{ dynamic }}",
+        "dest: /etc/sysusers.d/x.conf",
+    ):
+        assert ACCOUNT_TOOLS.search(code(line)), line
+    for line in (
+        "  # useradd only creates one where USERGROUPS_ENAB is set",
+        "# Ubuntu's incus 6.0.0-1: sysusers.d/incus.conf",
+        "x: 1  # useradd is not used",
+        "DynamicUser=no",
+    ):
+        assert not ACCOUNT_TOOLS.search(code(line)), line
+
+
+def test_removed_researchers_are_locked_never_created() -> None:
+    tasks = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
+    names = [t["name"] for t in tasks]
+    lock = names.index("Lock removed researchers (data is kept)")
+    read, warn = tasks[lock - 2], tasks[lock - 1]
+    assert read["name"] == "Read the accounts of the host"
+    assert read["ansible.builtin.getent"] == {"database": "passwd"}
+    assert warn["name"] == "Warn about removed researchers that are no accounts"
+    assert set(read) == {"name", "ansible.builtin.getent"}
+    assert set(warn) == {"name", "ansible.builtin.debug", "when"}
+    assert set(tasks[lock]) == {"name", "ansible.builtin.user", "loop"}
+    assert tasks[lock]["ansible.builtin.user"] == {
+        "name": "{{ item }}",
+        "password_lock": True,
+        "shell": "{{ users_groups_nologin_shell }}",
+        "expires": 1,
+    }
+    variables = dict(
+        ansible_vars(GROUP_VARS),
+        ansible_facts={"getent_passwd": {"gone1": ["x", "1001", "1001", "", "/home/gone1", ""]}},
+        researchers_removed=["gone1", "never"],
+    )
+    assert template_value(tasks[lock]["loop"], variables) == ["gone1"]
+    assert evaluate(warn["when"], variables) is True
+    assert "researchers_removed lists never, for which" in template_value(
+        warn["ansible.builtin.debug"]["msg"], variables
+    )
+    assert evaluate(warn["when"], dict(variables, researchers_removed=["gone1"])) is False
 
 
 # --- providers -----------------------------------------------------------------

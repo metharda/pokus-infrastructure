@@ -1394,7 +1394,7 @@ class DatabasePolicyTest(Base):
         )
         self.assertOutcome(run(checks.check_postgres, good), "pass", "2 roles")
         argv = good.calls[0]
-        self.assertEqual(argv[:5], ["docker", "exec", "--user", "postgres", "pinka-postgres"])
+        self.assertEqual(argv[:5], ["docker", "exec", "--user", "981:975", "pinka-postgres"])
         bad = FakeSystem(
             {
                 "docker exec *": psql_answers(
@@ -1409,6 +1409,14 @@ class DatabasePolicyTest(Base):
         with self.assertRaises(RuntimeError):
             run(checks.check_postgres, FakeSystem())
         self.assertOutcome(run(checks.check_postgres, FakeSystem(), node_role="inference"), "skip")
+
+    def test_postgres_runs_psql_only_as_numeric_ids(self) -> None:
+        answers = {"docker exec *": psql_answers(["demo_ctl", "demo_reader"], {}, ON)}
+        for user in ["", "postgres", "981", "981:", ":975", "981:975 ", "-u:0", "0:0;id"]:
+            system = FakeSystem(dict(answers))
+            with self.assertRaisesRegex(RuntimeError, "is not UID:GID"):
+                run(checks.check_postgres, system, postgres__user=user)
+            self.assertEqual(system.calls, [], user)
 
     def test_opa(self) -> None:
         base = "http://127.0.0.1:8181"

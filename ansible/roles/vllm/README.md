@@ -6,8 +6,12 @@ applied with `gpu_inference` on `full` and `inference` nodes:
 - Compose project `inference` with the pinned `vllm/vllm-openai` image, host
   network, the API on `127.0.0.1:18704` only, models read-only from
   `/srv/pinka/models`, no Hub access (`HF_HUB_OFFLINE=1`), read-only root
-  file system with the caches in `/srv/pinka/state/vllm-cache`, the GPU
+  file system with the caches in `/srv/pinka/state/vllm-cache` (mounted at
+  `/cache`, owned by `pinka-vllm`) and a `tmpfs` `/tmp` as its home, the GPU
   through CDI or the NVIDIA runtime (Compose profile from `daemon.json`);
+- the container runs as `pinka-vllm` (`pinka_container_accounts`), an
+  account of its own, not as the image's root: the inference guard admits
+  it for vLLM's own health check only, and the telemetry guard not at all;
 - serving profiles from `vllm/profiles/` in `/etc/pinka/vllm/profiles/`
   (vLLM `serve` options, allowed weight formats, the keys a deployment may
   override);

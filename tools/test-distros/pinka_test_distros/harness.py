@@ -21,6 +21,7 @@ import datetime as dt
 import json
 import re
 import secrets
+import shlex
 import socket
 import tempfile
 import tomllib
@@ -72,7 +73,7 @@ UNINSTALL_TIMEOUT = 3600.0
 UNINSTALL_REPORTS = "/var/log/pinka-uninstall"
 # What bootstrap --uninstall logs when nothing of pinka's is left
 # (bootstrap/lib/stages.sh, uninstall_flow).
-NOTHING_LEFT = "nothing of pinka's is on this host; nothing was removed"
+NOTHING_LEFT = "nothing of pinka's is left to remove or lock on this host; nothing was removed"
 # The kept data the uninstall lane marks before it uninstalls and finds again
 # afterwards: a package script or a removal that took one
 # fails the lane. Docker's data root is the one docker info names.
@@ -101,6 +102,88 @@ def check_kept_data(marked: Sequence[str], stamp: str) -> str:
         f"lost=; for d in {' '.join(marked)}; do"
         f' test "$(cat "$d/{KEPT_MARK}" 2>/dev/null)" = {stamp} || lost="$lost $d"; done;'
         ' test -z "$lost" || { echo "lost:$lost" >&2; exit 1; }'
+    )
+
+
+# Without --purge-data uninstall keeps the accounts and groups that own the
+# lab's data, the accounts locked, and notes them; it locks the lab root to
+# root as an extra defense. The lane reads the note after the uninstall,
+# checks every noted account's lock and the lab root's, and that
+# PostgreSQL's kept account reads nothing below the lab root, not even the
+# database's own files.
+KEPT_NOTE = "/var/lib/pinka/kept-accounts.json"
+LOCKED_TOP = "/srv/pinka"
+PROBE_ACCOUNT = "pinka-postgres"
+
+
+def kept_note(text: str) -> dict[str, Any]:
+    """The note of the kept accounts, checked for what the lane reads from it.
+
+    Raises:
+        StageError: The note is not JSON, lacks the lock, or names no
+            account of PostgreSQL's with its IDs.
+    """
+    try:
+        note = json.loads(text)
+    except ValueError as exc:
+        raise StageError(f"the note of the kept accounts is not JSON: {exc}") from exc
+    lock = note.get("lock") if isinstance(note, dict) else None
+    accounts = note.get("accounts") if isinstance(note, dict) else None
+    if not isinstance(lock, dict) or not isinstance(accounts, list):
+        raise StageError("the note of the kept accounts has no lock or no accounts")
+    if not any(
+        isinstance(a, dict)
+        and a.get("name") == PROBE_ACCOUNT
+        and str(a.get("uid")).isdigit()
+        and str(a.get("gid")).isdigit()
+        for a in accounts
+    ):
+        raise StageError(f"the note of the kept accounts names no {PROBE_ACCOUNT} with its IDs")
+    return dict(note)
+
+
+def check_kept_locked(note: Mapping[str, Any]) -> str:
+    """The script that fails unless the kept accounts and the lab root are locked.
+
+    Args:
+        note: The note of the kept accounts (:func:`kept_note`).
+
+    Returns:
+        The script: every noted account has its UID and the lock's shell,
+        its password locked and the lock's expiry; the lab root is
+        root:root 0700 without ACL entries; the lane's mark and a file of
+        the database (owned by PostgreSQL's account) are refused to a
+        process with that account's UID and GID only, with "Permission
+        denied" (any other failure fails the check too).
+    """
+    shell, expire = str(note["lock"]["shell"]), str(note["lock"]["expire"])
+    probe = next(a for a in note["accounts"] if a["name"] == PROBE_ACCOUNT)
+    uid, gid = str(probe["uid"]), str(probe["gid"])
+    top = LOCKED_TOP
+    accounts = "".join(
+        f" n={shlex.quote(str(a['name']))};"
+        f' got=$(getent passwd "$n" | cut -d: -f3,7);'
+        f' test "$got" = {shlex.quote(f"{a['uid']}:{shell}")}'
+        ' || { echo "$n is $got" >&2; exit 1; };'
+        ' got=$(getent shadow "$n" | cut -d: -f2,8);'
+        f' case $got in "!"*{shlex.quote(f":{expire}")}) ;;'
+        ' *) echo "$n is not locked" >&2; exit 1;; esac;'
+        for a in note["accounts"]
+    )
+    return (
+        f"{accounts.strip()}"
+        f" test -d {top} || {{ echo 'no {top}' >&2; exit 1; }};"
+        f' got=$(stat -c "%u:%g %a" {top}); test "$got" = "0:0 700"'
+        f' || {{ echo "{top} is $got, not 0:0 700" >&2; exit 1; }};'
+        f" ! ls -ld {top} | cut -c11 | grep -q +"
+        f' || {{ echo "{top} still has ACL entries" >&2; exit 1; }};'
+        " command -v setpriv >/dev/null || { echo 'no setpriv' >&2; exit 1; };"
+        f" db=$(find {top}/state/postgres -type f -uid {uid} -print -quit);"
+        f' test -n "$db" || {{ echo "no file of UID {uid} in {top}/state/postgres" >&2; exit 1; }};'
+        f' for f in {top}/{KEPT_MARK} "$db"; do'
+        f' out=$(setpriv --reuid={uid} --regid={gid} --clear-groups cat "$f" 2>&1 >/dev/null);'
+        ' case $out in *"Permission denied"*) ;;'
+        f' *) echo "UID {uid} on $f: ${{out:-read it}}" >&2; exit 1;; esac; done'
     )
 
 
@@ -814,8 +897,11 @@ class Test:
         find nothing left. Every difference kept on purpose is listed with
         its reason in ``uninstall-differences.txt``; any other fails the
         stage. The kept data must keep the marks set before the uninstall,
-        and the backups must open with the kept key. On the pre-existing
-        variant the components are checked again.
+        the accounts uninstall noted as kept must be locked, the lab root
+        locked to root so that PostgreSQL's kept account reads nothing
+        inside, and the backups must open with the kept key; the snapshot
+        excuses the noted accounts and groups. On the pre-existing variant
+        the components are checked again.
         """
         self._require("uninstall", refplat.standin_removal(), "removing the inference stand-in")
         stamp = f"kept-{self.name}"
@@ -836,7 +922,11 @@ class Test:
             ]
             raise StageError(
                 f"uninstall ended with exit {result.returncode}"
-                + (f"; could not remove {'; '.join(failed[:SHOWN_PROBLEMS])}" if failed else "")
+                + (
+                    f"; could not remove or lock {'; '.join(failed[:SHOWN_PROBLEMS])}"
+                    if failed
+                    else ""
+                )
             )
         again = self._sh("uninstall", command, timeout=UNINSTALL_TIMEOUT)
         if again.returncode != 0 or NOTHING_LEFT not in again.stdout + again.stderr:
@@ -845,10 +935,19 @@ class Test:
             )
         self._reboot("uninstall")
         self._require("uninstall", check_kept_data(marked, stamp), "the kept data")
+        note = kept_note(
+            self._require(
+                "uninstall", f"cat {KEPT_NOTE}", "reading the note of the kept accounts"
+            ).stdout
+        )
+        (self.dir / "kept-accounts.json").write_text(json.dumps(note, indent=2), encoding="utf-8")
+        self._require(
+            "uninstall", check_kept_locked(note), "the kept accounts and the lab root locked"
+        )
         self._require("uninstall", KEPT_BACKUP, "opening the backups with the kept key")
         after = self._snapshot("uninstall", "after")
         platforms = [str(refplat.manifest()["name"]), refplat.RENAMED_NAME]
-        failing, kept = snapshot.differences(self.before, after, platforms, self._fixed())
+        failing, kept = snapshot.differences(self.before, after, platforms, self._fixed(), note)
         lines = [f"failing: {d}" for d in failing] + [f"kept: {d}" for d in kept]
         (self.dir / "uninstall-differences.txt").write_text(
             "".join(f"{line}\n" for line in lines), encoding="utf-8"

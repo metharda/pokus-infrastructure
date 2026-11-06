@@ -27,7 +27,7 @@ from pinka_installer.tui.widgets import Field, NavBar
 UNINSTALL_EXITS = {
     0: "Uninstall finished.",
     80: "Uninstall was refused or not confirmed; nothing was removed.",
-    81: "Uninstall finished, but kept items it could not remove; the report names each.",
+    81: "Uninstall finished, but kept items it could not remove or lock; the report names each.",
 }
 
 
@@ -97,8 +97,8 @@ class UninstallScreen(StepScreen):
             status.update(f"Uninstall is refused here: {refusal}")
             return
         status.update(
-            f"Machine {self.machine()}: {self.plan.get('to_remove', 0)} items to remove or "
-            "restore. Nothing is removed before you press Uninstall."
+            f"Machine {self.machine()}: {self.plan.get('to_remove', 0)} items to remove, "
+            "restore or lock. Nothing is removed before you press Uninstall."
         )
         self.query_one("#backup", Checkbox).display = bool(self.plan.get("backup"))
         self.query_one("#next").disabled = False
@@ -144,7 +144,7 @@ class UninstallRunScreen(StepScreen):
     STEP = "uninstall_run"
     HELP = (
         "Bootstrap removes the plan you confirmed, phase by phase, and writes a report in "
-        "/var/log/pinka-uninstall. Items it could not remove are named with the reason; "
+        "/var/log/pinka-uninstall. Items it could not remove or lock are named with the reason; "
         "running uninstall again continues where it stopped. /opt/pinka, where this "
         "installer runs from, goes when you close it."
     )

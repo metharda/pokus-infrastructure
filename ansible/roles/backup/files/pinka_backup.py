@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -502,12 +503,16 @@ def pg_command(
     )
     interactive = ["--interactive"] if stdin else []
     container = str(config["pgdump"]["container"])
+    # The server's account by its numeric IDs (the container's passwd lacks it).
+    user = str(config["pgdump"]["user"])
+    if not re.fullmatch(r"[0-9]+:[0-9]+", user):
+        raise ValueError(f"pgdump.user {user!r} is not UID:GID")
     return [
         "docker",
         "exec",
         *interactive,
         "--user",
-        "postgres",
+        user,
         container,
         "sh",
         "-c",
@@ -528,6 +533,16 @@ def cmd_pgdump(config: Mapping[str, Any], runner: Runner) -> int:
         0 on success, 1 on failure.
     """
     settings = config["pgdump"]
+    try:
+        dump_argv = pg_command(
+            config, "pg_dump", "--format=custom", f"--dbname={settings['database']}"
+        )
+        list_argv = pg_command(config, "pg_restore", "--list", stdin=True)
+    except ValueError as exc:
+        # Before any file exists: nothing to clean up.
+        print(f"backup: {exc}", file=sys.stderr)
+        write_metrics(config, "pgdump", ok=False, extra={})
+        return 1
     directory = Path(settings["dir"])
     directory.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -536,16 +551,13 @@ def cmd_pgdump(config: Mapping[str, Any], runner: Runner) -> int:
     started = time.monotonic()
     with partial.open("wb") as out:
         partial.chmod(0o600)
-        dumped = runner(
-            pg_command(config, "pg_dump", "--format=custom", f"--dbname={settings['database']}"),
-            stdout=out,
-        )
+        dumped = runner(dump_argv, stdout=out)
     error = None
     if dumped.returncode != 0:
         error = f"pg_dump: exit {dumped.returncode}: {dumped.stderr.strip()}"
     else:
         with partial.open("rb") as dump:
-            listed = runner(pg_command(config, "pg_restore", "--list", stdin=True), stdin=dump)
+            listed = runner(list_argv, stdin=dump)
         if listed.returncode != 0:
             error = f"pg_restore --list: exit {listed.returncode}: {listed.stderr.strip()}"
     if error:
@@ -575,19 +587,24 @@ def cmd_pgrestore(config: Mapping[str, Any], dump: Path, runner: Runner) -> int:
         runner: Command runner.
 
     Returns:
-        pg_restore's exit status.
+        pg_restore's exit status, or 1 when the configuration names no
+        numeric user.
     """
     database = str(config["pgdump"]["database"])
-    argv = pg_command(
-        config,
-        "pg_restore",
-        "--clean",
-        "--if-exists",
-        "--single-transaction",
-        "--exit-on-error",
-        f"--dbname={database}",
-        stdin=True,
-    )
+    try:
+        argv = pg_command(
+            config,
+            "pg_restore",
+            "--clean",
+            "--if-exists",
+            "--single-transaction",
+            "--exit-on-error",
+            f"--dbname={database}",
+            stdin=True,
+        )
+    except ValueError as exc:
+        print(f"backup: {exc}", file=sys.stderr)
+        return 1
     with dump.open("rb") as handle:
         done = runner(argv, stdin=handle)
     if done.returncode != 0:
@@ -603,7 +620,9 @@ def main(argv: Sequence[str], runner: Runner = run) -> int:
         runner: Command runner.
 
     Returns:
-        The command's exit status, 2 on usage or configuration errors.
+        The command's exit status, 2 on usage errors or a configuration it
+        cannot read; pgdump and pgrestore fail with 1 on a ``pgdump.user``
+        that is not ``UID:GID``.
     """
     parser = argparse.ArgumentParser(prog="backup", description=__doc__.splitlines()[0])
     parser.add_argument("--config", type=Path, default=Path("/etc/pinka/backup/backup.json"))

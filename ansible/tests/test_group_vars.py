@@ -102,6 +102,11 @@ def test_infra_accounts() -> None:
             "description": "the gateway collector's container user",
         },
         {
+            "name": "pinka-otel-journald",
+            "groups": [],
+            "description": "the journal collector's container user",
+        },
+        {
             "name": "pinka-prometheus",
             "groups": [],
             "description": "Prometheus's container user",
@@ -109,6 +114,32 @@ def test_infra_accounts() -> None:
         {"name": "pinka-loki", "groups": [], "description": "Loki's container user"},
         {"name": "pinka-tempo", "groups": [], "description": "Tempo's container user"},
         {"name": "pinka-grafana", "groups": [], "description": "Grafana's container user"},
+        # Every other container of infra's (cadvisor aside) runs as an
+        # account of its own too, so none shares a UID with another or with
+        # the host: not the image's 999 (PostgreSQL), nobody (the exporters),
+        # 1000 (OPA) or root (vLLM).
+        {
+            "name": "pinka-node-exporter",
+            "groups": [],
+            "description": "node_exporter's container user",
+        },
+        {
+            "name": "pinka-gpu-exporter",
+            "groups": [],
+            "description": "the GPU exporter's container user",
+        },
+        {
+            "name": "pinka-postgres",
+            "groups": [],
+            "description": "PostgreSQL's container user: the owner of the database files",
+        },
+        {
+            "name": "pinka-monitor",
+            "groups": [],
+            "description": "the PostgreSQL exporter's container user",
+        },
+        {"name": "pinka-opa", "groups": [], "description": "OPA's container user"},
+        {"name": "pinka-vllm", "groups": [], "description": "vLLM's container user"},
     ]
 
 

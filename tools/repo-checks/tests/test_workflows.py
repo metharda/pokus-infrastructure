@@ -29,6 +29,26 @@ def test_every_action_is_pinned_to_a_commit_with_its_version() -> None:
     assert found  # the workflows use actions, and every one was checked
 
 
+def test_lock_check_runs_the_markers_and_every_other_check_as_steps_of_their_own() -> None:
+    job = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))["jobs"]["lock-check"]
+    steps = [step for step in job["steps"] if "run" in step]
+    assert [step["run"] for step in steps] == [
+        "make setup",
+        "make lock-check-markers",
+        "make lock-check-without-markers",
+    ]
+    # The other checks run also when the marker step failed, so no error and no
+    # warning hides behind the markers; neither step may fail without failing
+    # the job.
+    assert steps[2]["if"] == "${{ !cancelled() }}"
+    assert "if" not in steps[1]
+    assert all("continue-on-error" not in step for step in job["steps"])
+    assert "continue-on-error" not in job
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "\t$(LOCKCHECK) markers --allowed tools/lockcheck/marker-count\n" in makefile
+    assert "\t$(LOCKCHECK) check --skip-markers $(if $(GITHUB_STEP_SUMMARY)," in makefile
+
+
 def test_only_the_scans_get_the_denylist_and_they_check_a_pull_requests_own_commits() -> None:
     # The secret reaches only
     # the two jobs that scan with it, and both check out a pull request's head,

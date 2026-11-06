@@ -64,6 +64,9 @@ argument_specs:
         type: dict
         default: {}
         description: Further variables for the project's .env file (the same for every role of a project).
+      compose_container_accounts:
+        type: dict
+        description: The containers' accounts (pinka_container_accounts) by project and the prefix of their .env variables (<PREFIX>_UID, <PREFIX>_GID).
       compose_db_socket_group:
         type: str
         description: Group of the database socket directory, which the exporter joins (the active platform's <platform>-db, or root).

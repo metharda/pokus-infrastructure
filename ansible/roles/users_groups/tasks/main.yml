@@ -28,6 +28,23 @@
       account or group of the lab; rename or remove it, then re-run bootstrap
     quiet: true
 
+# An uninstall without --purge-data kept these accounts locked with the lab's
+# data; this lab names them again: their lock is undone as the install record
+# noted it, before the tasks below change them. Kept researchers this lab no
+# longer names stay locked.
+- name: Undo uninstall's lock of the kept accounts this lab names
+  pinka_install_record:
+    state: unlock
+    accounts: "{{ (infra_accounts + researchers) | map(attribute='name') | list }}"
+  register: users_groups_unlocked
+
+- name: Show the kept accounts whose lock was undone
+  ansible.builtin.debug:
+    msg: >-
+      Uninstall's lock {{ 'would be' if ansible_check_mode else 'was' }} undone for
+      {{ users_groups_unlocked.unlocked | join(', ') }}.
+  when: users_groups_unlocked.unlocked | default([]) | length > 0
+
 # The install record notes what pinka creates before it creates it.
 - name: Record the accounts and groups pinka creates
   pinka_install_record:
@@ -121,13 +138,26 @@
 - name: Keep researchers out of privileged groups
   ansible.builtin.include_tasks: privileged_groups.yml
 
+# The user module would create a name that is no account: lock only the
+# accounts that exist, and name the others.
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Warn about removed researchers that are no accounts
+  ansible.builtin.debug:
+    msg: >-
+      researchers_removed lists {{ researchers_removed | reject('in', ansible_facts.getent_passwd) | join(', ') }},
+      for which this host has no account (getent passwd): nothing is locked for them
+  when: researchers_removed | reject('in', ansible_facts.getent_passwd) | list | length > 0
+
 - name: Lock removed researchers (data is kept)
   ansible.builtin.user:
     name: "{{ item }}"
     password_lock: true
     shell: "{{ users_groups_nologin_shell }}"
     expires: 1
-  loop: "{{ researchers_removed }}"
+  loop: "{{ researchers_removed | select('in', ansible_facts.getent_passwd) | list }}"
 
 - name: Warn about break-glass Docker access
   ansible.builtin.debug:

@@ -262,13 +262,20 @@ endif
 
 # The seed of the random test order; CI uses this one, so a failure repeats.
 SEED ?= 20261019
+# Locally the pytest suites run in parallel processes (pytest-xdist; auto: one
+# per CPU); CI (CI=true) and the random order run them in one process.
+# PYTEST_WORKERS= runs them in one process locally too.
+PYTEST_WORKERS ?= $(if $(filter true,$(CI)),,auto)
+# Locally test-isolated runs this many files at a time, each still in a
+# process of its own; CI one at a time.
+ISOLATED_JOBS ?= $(if $(filter true,$(CI)),1,$(shell nproc 2>/dev/null || echo 1))
 # TEST_ORDER=random: the pytest suites of make test in that random order, as
 # CI's test job runs them.
 RANDOM_ORDER_ARGS := -p pinka_repo_checks.random_order --order-seed=$(SEED)
 
-test-pytest: setup ## The pytest suites (TEST_ORDER=random: in the random order of SEED, as in CI)
+test-pytest: setup ## The pytest suites (TEST_ORDER=random: in the random order of SEED, as in CI; locally in PYTEST_WORKERS processes)
 	$(if $(filter random,$(TEST_ORDER)),PYTHONPATH=tools/repo-checks )$(BIN)/pytest \
-	  $(if $(filter random,$(TEST_ORDER)),$(RANDOM_ORDER_ARGS) )--junitxml=$(JUNIT)/pytest.xml
+	  $(if $(filter random,$(TEST_ORDER)),$(RANDOM_ORDER_ARGS) ,$(if $(PYTEST_WORKERS),-n $(PYTEST_WORKERS) ))--junitxml=$(JUNIT)/pytest.xml
 
 .PHONY: test-random-order
 test-random-order: setup ## The pytest suites in a random order (SEED, printed; CI's test job runs them so), so a test that depends on an earlier one fails
@@ -276,9 +283,9 @@ test-random-order: setup ## The pytest suites in a random order (SEED, printed; 
 	  --junitxml=$(JUNIT)/random-order.xml
 
 .PHONY: test-isolated
-test-isolated: setup ## Each pytest file in a process of its own (CI: weekly and on pushes that change tests), so a test that depends on what another file left in the process fails
+test-isolated: setup ## Each pytest file in a process of its own (CI: on every push), so a test that depends on what another file left in the process fails
 	PYTHONPATH=tools/repo-checks $(BIN)/python -m pinka_repo_checks.isolated --log-dir $(BUILD)/isolated \
-	  --junit-dir $(JUNIT)/isolated $(if $(filter 1,$(VERBOSE)),--verbose)
+	  --junit-dir $(JUNIT)/isolated --jobs $(ISOLATED_JOBS) $(if $(filter 1,$(VERBOSE)),--verbose)
 
 .PHONY: test-distros
 test-distros: setup ## Bootstrap in disposable Incus VMs per tested distribution; TEST_DISTROS_ARGS="--target ID ..."
@@ -320,6 +327,14 @@ generate: setup ## Regenerate generated files (matrix JSON, pins, reference page
 .PHONY: lock-check
 lock-check: setup ## Verify versions.lock.yml: schema, no unverified markers, digests, checksums, key fingerprints (network)
 	$(LOCKCHECK) check
+
+.PHONY: lock-check-markers
+lock-check-markers: setup ## CI: the lines of versions.lock.yml with an unverified marker, at most the count in tools/lockcheck/marker-count (a test keeps it equal to the lock's; a release needs 0)
+	$(LOCKCHECK) markers --allowed tools/lockcheck/marker-count
+
+.PHONY: lock-check-without-markers
+lock-check-without-markers: setup ## CI: make lock-check without the markers (network); the warnings also into the job summary
+	$(LOCKCHECK) check --skip-markers $(if $(GITHUB_STEP_SUMMARY),--summary "$(GITHUB_STEP_SUMMARY)")
 
 .PHONY: verify-todos
 verify-todos: setup ## List every unverified marker in the repository; fails while any remains
@@ -410,6 +425,26 @@ docs-build: setup ## Strict documentation build into site/
 
 .PHONY: check-all
 check-all: lint test docs ## What CI runs: lint, test, docs
+
+# The local gate before a pull request: every gate in one run, each quiet with
+# its own line. It skips the steps the local tree does not need against
+# GATE_BASE (pinka_repo_checks.changes: the docs build and the Mermaid check
+# without a docs change, the random order and the isolated files without a
+# change of the tests) and names each one; every gate runs, also after one
+# failed. CI runs every step on every push: lint, test (in the random order),
+# docs and the isolated files.
+GATE_BASE ?= origin/moving/on
+ORDER_STEPS := test-random-order test-isolated
+
+.PHONY: gate
+gate: ## The local gate: lint, test, docs, the random order and the isolated files; skips (and names) what the local tree does not need (GATE_BASE)
+	@status=0; \
+	for gate in lint test docs order; do \
+	  case $$gate in lint) steps="$(LINT_STEPS)";; test) steps="$(TEST_STEPS)";; \
+	    docs) steps="$(DOCS_STEPS)";; order) steps="$(ORDER_STEPS)";; esac; \
+	  $(GATE) --local --base "$(GATE_BASE)" $$gate $$steps || status=1; \
+	done; \
+	exit $$status
 
 .PHONY: clean
 clean: ## Remove build outputs (keeps the tool environments)

@@ -203,6 +203,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_size_mib",
         "pinka_vault_keys",
         "pinka_researcher_memberships",
+        "pinka_account_ids",
         "pinka_key_entries",
         "pinka_new_memberships",
         "pinka_component_packages",
@@ -345,6 +346,19 @@ def test_size_mib() -> None:
     for bad in ("", "1 GiB", "GiB", "1Gi", "1XB", "-1GiB"):
         with pytest.raises(pinka.PinkaFilterError):
             pinka.size_mib(bad)
+
+
+def test_account_ids_by_their_keys() -> None:
+    passwd = {"pinka-postgres": ["x", "981", "975", "", "/", ""], "short": ["x"]}
+    accounts = {"POSTGRES": "pinka-postgres", "OPA": "pinka-opa", "SHORT": "short"}
+    assert pinka.account_ids(accounts, passwd) == {
+        "POSTGRES": {"uid": "981", "gid": "975"},
+        "OPA": {"uid": "", "gid": ""},  # not created yet (check mode)
+        "SHORT": {"uid": "", "gid": ""},
+    }
+    assert evaluate("a | pinka_account_ids(p)", {"a": {"K": "pinka-postgres"}, "p": passwd}) == {
+        "K": {"uid": "981", "gid": "975"}
+    }
 
 
 def test_memberships_and_keys_of_pre_existing_accounts() -> None:

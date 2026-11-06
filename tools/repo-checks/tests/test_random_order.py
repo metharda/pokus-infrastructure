@@ -72,3 +72,27 @@ def test_the_plugin_reorders_a_run_and_names_the_seed(tmp_path: Path) -> None:
     collected = sorted(ran, key=lambda n: (n.split("::")[0], n))
     expected = [collected[i] for i in random_order.shuffled(collected, 3)]
     assert ran == expected
+
+
+def test_the_random_order_refuses_pytest_xdist(tmp_path: Path) -> None:
+    (tmp_path / "test_one.py").write_text("def test_a():\n    pass\n")
+    argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-c", os.devnull]
+    argv += ["-p", "pinka_repo_checks.random_order", "--order-seed", "3", "--rootdir"]
+    env = {**os.environ, "PYTHONPATH": str(REPO_CHECKS)}
+    cases = (
+        (["-n", "2"], True),
+        (["--dist", "load", "--tx", "2*popen"], True),
+        (["-n", "0"], False),
+    )
+    for options, refused in cases:
+        done = subprocess.run(
+            [*argv, str(tmp_path), *options, str(tmp_path)],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert done.returncode == (4 if refused else 0), done.stdout + done.stderr
+        message = "the random test order runs in one process: drop -n, or --dist and --tx"
+        assert (message in done.stderr) is refused, done.stderr

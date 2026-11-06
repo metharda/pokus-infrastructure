@@ -37,10 +37,17 @@ System users with the shell `/usr/sbin/nologin`, home `/var/lib/pinka/<account>`
 | `pinka-inference` | the inference control endpoint of an inference node | — |
 | `pinka-query-proxy` | the telemetry query proxy's container user | — |
 | `pinka-otelcol` | the gateway collector's container user | — |
+| `pinka-otel-journald` | the journal collector's container user | — |
 | `pinka-prometheus` | Prometheus's container user | — |
 | `pinka-loki` | Loki's container user | — |
 | `pinka-tempo` | Tempo's container user | — |
 | `pinka-grafana` | Grafana's container user | — |
+| `pinka-node-exporter` | node_exporter's container user | — |
+| `pinka-gpu-exporter` | the GPU exporter's container user | — |
+| `pinka-postgres` | PostgreSQL's container user: the owner of the database files | — |
+| `pinka-monitor` | the PostgreSQL exporter's container user | — |
+| `pinka-opa` | OPA's container user | — |
+| `pinka-vllm` | vLLM's container user | — |
 
 ## Platform accounts
 

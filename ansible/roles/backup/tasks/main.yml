@@ -166,6 +166,17 @@
     mode: "0644"
   when: backup_configured and backup_sftp
 
+# pg_dump and pg_restore run in the PostgreSQL container as the server's
+# account (postgres role), by its numeric IDs: the container's passwd lacks it.
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Find the IDs of PostgreSQL's account
+  ansible.builtin.set_fact:
+    backup_postgres_ids: >-
+      {{ {'server': pinka_container_accounts.postgres} | pinka_account_ids(ansible_facts.getent_passwd) }}
+
 - name: Write the helper's configuration
   ansible.builtin.copy:
     dest: "{{ backup_config_dir }}/backup.json"
@@ -176,7 +187,8 @@
           'textfile_dir': backup_textfile_dir,
           'paths': backup_paths, 'excludes': backup_excludes, 'retention': backup_retention,
           'pgdump': {'container': 'pinka-postgres', 'database': backup_database, 'dir': backup_pgdump_dir,
-                     'keep': backup_pgdump_keep | int}} | to_nice_json }}
+                     'keep': backup_pgdump_keep | int,
+                     'user': backup_postgres_ids.server.uid ~ ':' ~ backup_postgres_ids.server.gid}} | to_nice_json }}
     owner: root
     group: root
     mode: "0644"

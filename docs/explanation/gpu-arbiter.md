@@ -138,11 +138,12 @@ obligation; infra checks what it is given.
 
 vLLM listens on `127.0.0.1:18704`, and on a lab node the inference forwarder
 offers the paired node's API on the same address. Only root, infra's
-scrapers, and the platform's controller and inference broker reach that
-port: the inference guard (`inet pinka_inference_guard`, firewall role)
-resets every other account's connection, and only root and the controller
-reach the forwarder's control port. The guard resolves the platform's
-accounts when it loads and is reloaded after every deployment.
+scrapers, vLLM's own health check (as `pinka-vllm`, not root), the control
+endpoint of an inference node, and the platform's controller and inference
+broker reach that port: the inference guard (`inet pinka_inference_guard`,
+firewall role) resets every other account's connection, and only root and
+the controller reach the forwarder's control port. The guard resolves the
+platform's accounts when it loads and is reloaded after every deployment.
 [ADR-0016](../adr/0016-telemetry-query-isolation.md) records why a UID
 allowlist is used rather than vLLM's own options.
 

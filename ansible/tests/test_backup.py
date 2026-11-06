@@ -19,6 +19,7 @@ from ansible_testlib import (
     evaluate,
     load_yaml,
     render_template,
+    template_value,
 )
 
 ROLE = ROLES / "backup"
@@ -80,6 +81,8 @@ def config(tmp_path: Path) -> dict[str, Any]:
             "database": "demo",
             "dir": str(tmp_path / "pg"),
             "keep": 2,
+            # The server's account (pinka-postgres), by its numeric IDs.
+            "user": "981:975",
         },
     }
 
@@ -262,7 +265,7 @@ def test_pgdump_checks_and_keeps_the_newest(config: dict[str, Any]) -> None:
     assert newest.read_bytes() == b"PGDMP-test"
     assert newest.stat().st_mode & 0o777 == 0o600
     dump_call, list_call = runner.calls
-    assert dump_call["argv"][:6] == ["docker", "exec", "--user", "postgres", "pinka-postgres", "sh"]
+    assert dump_call["argv"][:6] == ["docker", "exec", "--user", "981:975", "pinka-postgres", "sh"]
     assert "/run/secrets/postgres-superuser" in dump_call["argv"][7]  # read inside the container
     assert dump_call["argv"][8:] == ["pg_dump", "--format=custom", "--dbname=demo"]
     assert list_call["argv"][2] == "--interactive"
@@ -276,6 +279,60 @@ def test_failed_dump_leaves_nothing(config: dict[str, Any], failing: str) -> Non
     assert backup.cmd_pgdump(config, FakeRunner({failing: (1, "")})) == 1
     assert list(Path(config["pgdump"]["dir"]).iterdir()) == []
     assert metrics(config, "pgdump")["pinka_backup_job_success"] == 0
+
+
+def test_pg_commands_run_as_the_servers_numeric_ids(config: dict[str, Any]) -> None:
+    assert backup.pg_command(config, "pg_dump")[2:5] == ["--user", "981:975", "pinka-postgres"]
+    for bad in ("postgres", "981", "981:975:1", "", "-1:0"):
+        config["pgdump"]["user"] = bad
+        with pytest.raises(ValueError, match="is not UID:GID"):
+            backup.pg_command(config, "pg_dump")
+
+
+def test_the_configuration_names_the_servers_ids() -> None:
+    # pgdump.user is PostgreSQL's account by its numeric UID and GID, as the
+    # role looks them up; ":" when the account is missing (the tool refuses it).
+    tasks = {t["name"]: t for t in load_yaml(ROLE / "tasks" / "main.yml") if "name" in t}
+    find = tasks["Find the IDs of PostgreSQL's account"]["ansible.builtin.set_fact"]
+    write = tasks["Write the helper's configuration"]["ansible.builtin.copy"]
+    for passwd, user in (
+        (
+            {"pinka-postgres": ["x", "981", "975", "", "/var/lib/pinka/pinka-postgres", ""]},
+            "981:975",
+        ),
+        ({}, ":"),
+    ):
+        variables = ansible_vars(
+            GROUP_VARS,
+            ROLE / "defaults" / "main.yml",
+            ROLE / "vars" / "main.yml",
+            ansible_facts={"getent_passwd": passwd},
+        )
+        variables["backup_postgres_ids"] = template_value(find["backup_postgres_ids"], variables)
+        rendered = json.loads(template_value(write["content"], variables))
+        assert rendered["pgdump"]["user"] == user
+        assert rendered["pgdump"]["container"] == "pinka-postgres"
+
+
+def test_a_bad_user_fails_the_jobs_before_any_file(
+    config: dict[str, Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The user comes from the role's lookup of PostgreSQL's account (":" when
+    # it was missing): the dump fails with its metric, the restore with a
+    # message, and nothing runs or is written.
+    config["pgdump"]["user"] = ":"
+    runner = FakeRunner({})
+    assert backup.cmd_pgdump(config, runner) == 1
+    assert runner.calls == []
+    assert not Path(config["pgdump"]["dir"]).exists() or not any(
+        Path(config["pgdump"]["dir"]).iterdir()
+    )
+    assert metrics(config, "pgdump")["pinka_backup_job_success"] == 0
+    dump = tmp_path / "demo-x.dump"
+    dump.write_bytes(b"PGDMP-x")
+    assert backup.cmd_pgrestore(config, dump, runner) == 1
+    assert runner.calls == []
+    assert capsys.readouterr().err.count("pgdump.user ':' is not UID:GID") == 2
 
 
 def test_pgrestore_replaces_the_dumped_objects(config: dict[str, Any], tmp_path: Path) -> None:

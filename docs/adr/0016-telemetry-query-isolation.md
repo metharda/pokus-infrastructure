@@ -56,6 +56,18 @@ Option (a) does not hold on this lab:
    `pinka-query-proxy`), so the allowlist names no image's default user
    (`nobody`, 10001, 472), which other host processes may share; Incus's
    dnsmasq, for one, can run as `nobody` and answers untrusted targets.
+
+   Changed on 2026-11-04: the journald collector, no client of the stores
+   (it sends to the gateway's OTLP receiver, which stays open), runs as
+   `pinka-otelcol` too, so the guards cannot tell it from the gateway: it
+   stays on the stores' allowlist and, on full and inference nodes, on
+   vLLM's, as it was when it ran as root.
+
+   Changed again on 2026-11-04: the journald collector runs as
+   `pinka-otel-journald`, an account of its own, so it is on neither
+   allowlist. vLLM runs as `pinka-vllm`, which the inference guard admits
+   for vLLM's own health check only; root keeps its entry for doctor, the
+   health gate, the serving verification and the GPU arbiter.
 2. **The telemetry guard.** Its own nftables table `inet
    pinka_telemetry_guard`, loaded by `pinka-telemetry-guard.service` on every
    firewall backend, holds the UIDs of the stores' clients in the set

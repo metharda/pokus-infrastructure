@@ -91,6 +91,14 @@ repository and its security alerts:
     A warning that a tag "now points to" another digest is expected over time:
     the pin keeps using its digest until you change it.
 
+    CI's `lock-check` job runs the markers as a step of their own
+    (`make lock-check-markers`): it passes while no more lines of the lock
+    carry a marker than `tools/lockcheck/marker-count` records, and a test
+    requires the two to be equal: when you verify a marked value, lower the
+    count in the same commit; a new marker raises it, visibly. Every other
+    check of the lock runs in the next step (`make lock-check-without-markers`),
+    which must pass, and lists its warnings in the job summary.
+
 2. Run the repository checks, then commit the lock together with the
    regenerated files:
 

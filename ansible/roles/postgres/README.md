@@ -3,11 +3,21 @@
 PostgreSQL for the lab (`docs/contracts.md#postgresql`),
 in the `core` Compose project with `postgres_exporter`:
 
-- image pinned by digest, data in `/srv/pinka/state/postgres` (999:999 0700),
+- image pinned by digest, data in `/srv/pinka/state/postgres` (0700),
   `initdb --data-checksums` with SCRAM authentication;
+- the server runs as `pinka-postgres` (`pinka_container_accounts`), an
+  account of pinka's own that owns the data directory, the socket
+  directories and the superuser's password file, so the database files
+  belong to pinka whoever holds the image's UID 999 on the host; no
+  capabilities, no new privileges. The exporter runs as `pinka-monitor`,
+  which owns its password file. Every psql, `pg_dump` and `pg_restore`
+  under `docker exec` (this role's, the platform role's, doctor's, the
+  backup tool's and `pinka-platform purge`'s) runs as the server's numeric
+  UID and GID (the container's passwd has no entry for it);
 - Unix sockets only: `/run/pinka/postgres/` (group `<platform>-db`, the
   active platform's database socket group, whose members are exactly the
-  accounts of the services with a database role; `root` without a platform)
+  accounts with a database role, the services' and the `migrate` hook's;
+  `root` without a platform or without `postgres` in its `requires`)
   and `/run/pinka/postgres-reader/` (group `pinka`, the researchers' reader
   role), created by `tmpfiles.d` at every boot. Grafana and the exporter use
   the sockets too; PostgreSQL has no TCP listener on the host;
@@ -16,13 +26,16 @@ in the `core` Compose project with `postgres_exporter`:
   `pg_hba` cannot tell two socket directories apart: the directory groups
   decide who reaches a socket, and the password files decide the role;
 - `config/postgres/bootstrap.sql.j2` creates only the exporter's role with
-  `pg_monitor`. The active platform's database is set up by the platform
-  role (`tasks_from: platform`) from SQL that `pinka-platform` renders from
-  the manifest: the database `<platform>`, one login role per service with a
-  database role (`<platform>_<service>`) in its NOLOGIN group role, the
-  migrator `<platform>_migrator` owning the database and the schemas
-  `public` and `restricted`, the researchers' `<platform>_reader` and
-  Grafana's `<platform>_grafana`, `CONNECT` only for these roles, schema
+  `pg_monitor`, which may read every session's query text; the exporter runs
+  only its default collectors, none of which reads it (checked for the
+  pinned version; a new version or digest fails `ansible/tests/test_core.py`
+  until it is checked again). The active platform's database is set up by the
+  platform role (`tasks_from: platform`) from SQL that `pinka-platform`
+  renders from the manifest: the database `<platform>`, one login role per
+  service with a database role (`<platform>_<service>`) in its NOLOGIN group
+  role, the migrator `<platform>_migrator` owning the database and the
+  schemas `public` and `restricted`, the researchers' `<platform>_reader`
+  and Grafana's `<platform>_grafana`, `CONNECT` only for these roles, schema
   `restricted` revoked from `PUBLIC`, the reader and Grafana; roles a
   previous release had and this one lacks become `NOLOGIN`. Every change is
   printed as a `pinka-changed:` notice, so a second run reports no change;

@@ -95,6 +95,24 @@ def test_accounts_golden(fixture: str) -> None:
 
 
 @pytest.mark.parametrize("fixture", VALID)
+def test_the_database_sql_loads_nothing_into_postgresql(fixture: str) -> None:
+    # Infra's metrics exporter (pg_monitor) exports no query text; a
+    # preloaded pg_stat_statements or a server setting could change what it
+    # sees (ansible/tests/test_core.py pins the rest).
+    db = render(fixture)["database"]
+    if db is None:
+        return
+    for sql in (db["bootstrap_sql"], db["restricted_check_sql"]):
+        text = " ".join(sql.lower().split())
+        for word in ("extension", "alter system", "preload", "pg_stat_statements", "set_config"):
+            assert word not in text, (fixture, word)
+        # No setting on a role or the database, no library loaded, no C function
+        # (also inside the dynamic SQL the renderer writes).
+        for pattern in (r"alter (role|database)\b[^;]*\bset\b", r"\bload\s+'", r"\blanguage\s+c\b"):
+            assert not re.search(pattern, text), (fixture, pattern)
+
+
+@pytest.mark.parametrize("fixture", VALID)
 def test_database_golden(fixture: str) -> None:
     db = render(fixture)["database"]
     if db is None:

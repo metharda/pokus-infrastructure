@@ -14,8 +14,12 @@ plan comes from the install record (`/var/lib/pinka/install-record.json`)
 and the host as it is now, and it is removed in this order: the platform,
 pinka's units, its containers and images, its Incus objects, its firewall
 tables, the Tailscale node pinka joined, the packages, holds, repositories
-and keys pinka added, its accounts, groups, memberships and keys, its
-drop-in files and settings, and its paths, with the install record last.
+and keys pinka added, the memberships and keys pinka added to accounts that
+were there before it, its drop-in files and settings, and its paths. Its
+own records go last: `/etc/pinka` (with the machine name and the lab's
+description) and pinka's state with the install record, and only when
+everything before them went, so that a run that did not finish can run
+again and finish.
 
 Uninstall keeps everything the record lists as there before pinka: Docker
 Engine, Tailscale, LXD, Podman, Incus, an NVIDIA driver, accounts, packages
@@ -31,6 +35,7 @@ Without `--purge-data` it also keeps the lab's data, wherever it lives:
 | Local backup staging (database dumps) | `/srv/pinka/backups/` |
 | The data of a Docker, Incus or Tailscale pinka installed | Docker's data root (what `docker info` names, `/var/lib/docker` by default) and `/var/lib/containerd`; `/var/lib/incus`; `/var/lib/tailscale` |
 | A researcher's personal Incus project with instances or volumes | the project, its network and its storage pool; Incus itself stays installed for it |
+| The accounts and groups that own the data: pinka's, the platforms', the researchers' | kept, the accounts locked: the password locked, a login shell that lets nobody in, expired; noted in `/var/lib/pinka/kept-accounts.json` (root only) |
 | The researchers' homes | `/home/<name>` |
 | Records, attestations, verification results | copied to `/var/lib/pinka-kept/qa/` and `/var/lib/pinka-kept/records/` before `/etc/pinka` and `/var/lib/pinka` go |
 | The backups' key and settings, the restic binary, the vault password bootstrap stored | copied to `/var/lib/pinka-kept/backup/` and `/var/lib/pinka-kept/vault-pass`, also with `--purge-data` |
@@ -40,6 +45,19 @@ While packages are removed, the kept data directories are mounted read-only,
 so that no package's removal script can delete them, and a package whose
 purge deletes data (Tailscale's, Incus's `incus-base`) is removed without
 purging. When a directory cannot be guarded, no package is removed.
+
+Because the accounts and groups stay with the data, no UID or GID that owns
+a kept file becomes free for another account: the data keeps its owners,
+and nobody logs in as them. The lab root is also locked to root
+(root:root 0700 without ACL entries) as an extra defense; the files inside
+keep their owners, groups, modes and ACLs. When the lab root cannot be
+locked (it is a system directory, or a directory above it is open to other
+accounts), the plan and the report say why, and uninstall goes on. If the
+lab root's file system was not mounted when uninstall ran, the lock is on
+the empty mount point: lock the lab root yourself once it is mounted
+(`chown root:root`, `chmod 0700`, `setfacl -b`). A lab root whose lock
+failed while uninstall ran (a read-only file system, for example) counts as
+`1 to lock` in every later plan, until it is locked.
 
 !!! note "Prerequisites"
     - Root on the lab host (`sudo`).
@@ -66,19 +84,26 @@ purging. When a directory cannot be guarded, no package is removed.
     firewall: firewall
       remove   inet pinka_filter                 pinka's table
       remove   inet pinka_access_guard           the access guard: listeners closed with consent are reachable again
+    accounts: accounts, groups, memberships and keys
+      lock     /srv/pinka                        the lab's data: its top locked to root (root:root 0700 without ACL entries) as an extra defense; ...
+      remove   owner1 in pinka                   pinka added it
+      lock     pinka-postgres                    pinka created it; kept with the lab's data, locked: ...
+      lock     researcher1                       pinka created it; kept with the lab's data, locked: ...
     dropins: drop-in files and settings
       remove   /etc/ssh/sshd_config.d/10-pinka.conf  pinka wrote it
       restore  /etc/ssh/sshd_config              the line pinka added goes: Include /etc/ssh/sshd_config.d/*.conf
     ...
     Kept:
+      keep     pinka                             pinka created it; kept with the lab's data, so its GID stays taken; ...
       keep     /srv/pinka                        the lab's data: ...; --purge-data removes it
 
-    59 to remove, 4 to restore, 6 kept.
+    59 to remove, 4 to restore, 20 to lock, 33 kept.
     ```
 
 2. Read each phase: `remove` items go, `restore` items are set back as they
    were before pinka (a file, a setting, a membership, a service's state),
-   and the `Kept:` list says why each item stays. A line `Refused:` means
+   `lock` items are the accounts that stay locked with the data and the
+   lab root locked to root, and the `Kept:` list says why each item stays. A line `Refused:` means
    uninstall would stop here; [exit code 80](troubleshoot.md#exit-code-80)
    says what to do.
 
@@ -119,11 +144,41 @@ purging. When a directory cannot be guarded, no package is removed.
    then, since uninstall never reboots. `kept backups:` names the kept key
    (see [Open the backups afterwards](#open-the-backups-afterwards)).
 
-4. Do what the lines `afterwards:` name, the first one first:
+4. Do what the lines `afterwards:` name, the first one first. When
+   uninstall did not finish, that line says so: see
+   [If uninstall did not finish](#if-uninstall-did-not-finish). Then
    [take the kept secrets off the host](#take-the-kept-secrets-off-the-host);
    delete the node in the Tailscale admin console (*Machines*) when pinka
    joined it, since a logout does not take it off the tailnet; and revoke
-   the platform's read-only deploy key on its Git host.
+   the platform's read-only deploy key on its Git host. A locked account
+   whose session was open before the lock still runs its processes: end
+   them (`sudo pkill -KILL -u <account>`); locking does not end a session.
+
+## If uninstall did not finish
+
+When an item could not be removed or locked (bootstrap ends with
+[exit code 81](troubleshoot.md#exit-code-81)), uninstall keeps its own
+records: `/etc/pinka` with the machine name and the lab's description, and
+`/var/lib/pinka` with the install record and the note of the kept accounts.
+Deal with each failed item the report names, then run uninstall again; it
+takes the plan from these records and finishes. Only a run in which nothing
+before them failed removes them.
+
+Such a run has removed `/opt/pinka`, and with it the `pinka` command, so
+run uninstall again from the checkout, on the command line; it reads the
+machine name from the kept records:
+
+<!-- qa:skip reason="removes the lab from the host" -->
+```bash
+sudo ./bootstrap/bootstrap.sh --uninstall
+```
+
+Its preflight run only reads the host: no finding of it stops the
+uninstall. Do not use the installer for this run. Its *Preflight* screen
+checks the default research space, `/srv/pinka`, and stops there, before
+it offers *Uninstall pinka from this host*, while the kept lab root is
+that directory, lies inside it or holds it, also with symbolic links
+followed (`kept_lab`, see [Install again on this host](#install-again-on-this-host)).
 
 ## Take the kept secrets off the host
 
@@ -162,15 +217,98 @@ usable; they should not stay on this host.
 
 ## Also delete the lab's data
 
-Add `--purge-data` to remove the lab's data as well: `/srv/pinka`, the data
-of the components pinka installed (for example `/var/lib/docker`), and the
-homes of the researchers pinka created. Uninstall asks for the machine name
-a second time. The backups stay.
+Add `--purge-data` to remove the lab's data as well, and with it the
+accounts and groups that own it: `/srv/pinka`, the data of the components
+pinka installed (for example `/var/lib/docker`), the accounts and groups
+pinka and the platforms created, and the homes of the researchers pinka
+created. Accounts, groups and data go only together. Uninstall asks for the
+machine name a second time. The backups stay.
 
 <!-- qa:skip reason="deletes the lab's data" -->
 ```bash
 sudo pinka uninstall --purge-data
 ```
+
+After an uninstall without it, `pinka` is gone; run it from the checkout,
+with the machine name the host was installed as (the state file that
+recorded it is gone). Uninstall reads the kept accounts, the groups and the
+lab root from `/var/lib/pinka/kept-accounts.json`. Without the install
+record it cannot tell which components pinka installed: name each with
+`--remove-component` (`docker`, `incus`, `tailscale`, `nvidia`), or it
+stays, with its data, and so do Docker's and Incus's groups (`docker`,
+`incus`, `incus-admin`):
+
+<!-- qa:skip reason="deletes the lab's data" -->
+```bash
+sudo ./bootstrap/bootstrap.sh --uninstall --purge-data --machine <machine> --remove-component docker --remove-component incus
+```
+
+`<machine>` is the name this host was installed as; leave out the
+components pinka did not install.
+
+## Install again on this host
+
+Nothing takes the kept data over yet: an install into the kept lab root
+would start on part of the old data with new secrets. Preflight refuses
+it (`kept_lab`, [exit code 30](troubleshoot.md#exit-code-30)) while the
+lab root that `/var/lib/pinka/kept-accounts.json` names exists and the
+research space the install would use (`pinka_root` in the machine's
+host_vars file, the installer's *Research space*) is that directory, lies
+inside it or holds it, also with symbolic links followed. A restore is
+refused the same way. Either way forward ends the refusal:
+
+- To bring the lab back from its backups, restore it into the research
+  space it had: a restore puts the files back below the research space it
+  is given, where the backups found them.
+
+    1. Move the kept lab root out of the way, for example
+       `sudo mv /srv/pinka /srv/pinka.kept`. When the lab root is a
+       symbolic link, move the directory it leads to and remove the link.
+       When it is a file system of its own, unmount it (and remove its line
+       from `/etc/fstab`) and remove the empty mount point. Preflight
+       refuses while anything is at the lab root's path, an empty directory
+       or a newly mounted file system included.
+    2. Check that `pinka_root` in the machine's host_vars file names the
+       kept lab root.
+    3. Restore as in [Restore a snapshot](backup-and-restore.md#restore-a-snapshot)
+       with that host_vars file
+       (`sudo ./bootstrap/bootstrap.sh --machine <machine> --restore`). The
+       restore writes the lab to the file system that holds the lab root's
+       parent directory: it needs room there for the whole lab, and for the
+       moved directory as well where that stayed on it. For an SFTP
+       repository the run creates a new key when the host has none: it
+       stops where it lists the snapshots; authorize the key it printed, as
+       in [Configure the repository](backup-and-restore.md#configure-the-repository),
+       then run the restore again.
+    4. Once the restored lab is verified, delete the moved directory.
+       Nothing names it any more; only its own lock (root:root 0700, where
+       uninstall could set it) keeps the accounts out of it.
+
+- To delete the kept data on purpose, uninstall again with `--purge-data`
+  from the checkout ([Also delete the lab's data](#also-delete-the-labs-data)):
+  that removes the lab root together with the kept accounts and groups.
+  For a lab root that is a symbolic link it removes the link: delete the
+  directory it leads to as well.
+
+If the uninstall did not finish, finish it first, from the command line
+([If uninstall did not finish](#if-uninstall-did-not-finish)).
+
+An install on this host takes the kept accounts and groups over from
+`/var/lib/pinka/kept-accounts.json` (each that still has its noted UID or
+GID): they are pinka's again, and the play names them. The lock of an
+account the lab names again is undone as noted, right before the account
+is managed: infra's accounts and the researchers in `researchers`
+(`users_groups`), and the accounts of the platform it deploys. The login
+shell and the expiry come back as they were, and the password is unlocked
+only where uninstall locked it. A kept account the lab no longer names (a
+researcher left out of `researchers`, a replaced platform's account)
+stays locked: add it again to bring it back, or remove it with a later
+uninstall with `--purge-data`. A researcher named again gets that account
+back as it was, with its home, its password and its keys: give a new
+person a new name. An account whose lock someone changed since is left as
+it is. The note counts only as a regular file of root's that
+nobody else can write: the install stops at another one, and uninstall
+ignores it with a warning.
 
 ## Open the backups afterwards
 
@@ -221,29 +359,29 @@ sudo ls -t /var/log/pinka-uninstall/
 ```
 
 The newest file lists every item of the plan with its result: `removed`,
-`restored`, `kept` (with the reason), `already_gone` or `failed`; and
+`restored`, `locked`, `kept` (with the reason), `already_gone` or `failed`; and
 `reboot_needed` with its `reboot_reasons`, `backup_access` (where the kept
 key is) and `follow_ups` (what to do outside the host). `--json`
 prints the plan (with `--dry-run`) or the report on standard output
 instead. Bootstrap ends with exit code 0 when everything went as planned,
 [80](troubleshoot.md#exit-code-80) when uninstall was refused or not
 confirmed (nothing was removed), and [81](troubleshoot.md#exit-code-81) when
-items could not be removed.
+items could not be removed or locked.
 
 ## Verify the result
 
 Uninstall can run again at any time: what is already gone is reported as
 such. After a complete uninstall, `pinka` itself is gone; from the checkout,
-a dry run finds nothing left to remove or restore:
+a dry run finds nothing left to remove, restore or lock:
 
 <!-- qa:skip reason="runs after the lab was removed" -->
 ```bash
 sudo ./bootstrap/bootstrap.sh --uninstall --dry-run
 ```
 
-```text title="Output (the plan's last line)"
-0 to remove, 0 to restore, 4 kept.
+```text title="Output (the plan's last line, for example)"
+0 to remove, 0 to restore, 0 to lock, 33 kept.
 ```
 
-The kept items are the lab's data, the two log directories and
-`/var/lib/pinka-kept`.
+The kept items are the lab's data, its locked accounts and groups and their
+note, the two log directories and `/var/lib/pinka-kept`.

@@ -146,18 +146,41 @@ break_glass_docker: []
 # Infra's own system accounts: no login, no password, no
 # SSH keys. pinka-build runs platform builds in their sandbox;
 # pinka-inference runs the inference control endpoint of an inference node
-# and holds its mutual-TLS key.
+# and holds its mutual-TLS key. Every container of infra's runs as an
+# account of its own (cadvisor aside, which runs as root), so none shares a
+# UID with another container or with the host.
 infra_accounts:
   - {name: pinka-build, groups: [], description: unprivileged platform builds}
   - {name: pinka-inference, groups: [], description: the inference control endpoint of an inference node}
   - {name: pinka-query-proxy, groups: [], description: "the telemetry query proxy's container user"}
   - {name: pinka-otelcol, groups: [], description: "the gateway collector's container user"}
+  - {name: pinka-otel-journald, groups: [], description: "the journal collector's container user"}
   - {name: pinka-prometheus, groups: [], description: "Prometheus's container user"}
   - {name: pinka-loki, groups: [], description: "Loki's container user"}
   - {name: pinka-tempo, groups: [], description: "Tempo's container user"}
   - {name: pinka-grafana, groups: [], description: "Grafana's container user"}
+  - {name: pinka-node-exporter, groups: [], description: "node_exporter's container user"}
+  - {name: pinka-gpu-exporter, groups: [], description: "the GPU exporter's container user"}
+  - {name: pinka-postgres, groups: [], description: "PostgreSQL's container user: the owner of the database files"}
+  - {name: pinka-monitor, groups: [], description: "the PostgreSQL exporter's container user"}
+  - {name: pinka-opa, groups: [], description: "OPA's container user"}
+  - {name: pinka-vllm, groups: [], description: "vLLM's container user"}
 # The account of the inference control endpoint.
 inference_control_account: pinka-inference
+# The infra account each container of the core and inference projects runs
+# as (the compose role writes their IDs into .env), named once for every role
+# that needs it: PostgreSQL's owns the database files and runs every psql,
+# pg_dump and pg_restore under docker exec (by its numeric IDs: the
+# container's passwd lacks it); the exporter's owns its password file; OPA's
+# runs OPA; vLLM's owns its cache. Each is an entry of infra_accounts, which
+# creates it, and pinka-platform looks up PostgreSQL's by the same name: not
+# an operator setting. The observability role keeps its own
+# (observability_container_accounts).
+pinka_container_accounts:
+  postgres: pinka-postgres
+  postgres_exporter: pinka-monitor
+  opa: pinka-opa
+  vllm: pinka-vllm
 
 # The platform's accounts and groups are not listed here: the platform role
 # renders them from the active platform's manifest and profiles.
@@ -200,8 +223,9 @@ pinka_telemetry_guard_ports: >-
 # inference forwarder of a lab node. UIDs only, never groups.
 pinka_inference_clients:
   - account: root
-    reason: "doctor, the health gate, the serving verification and the GPU arbiter; vLLM's own health check"
+    reason: "doctor, the health gate, the serving verification and the GPU arbiter"
     node_roles: [full, lab, inference]
+  - {account: pinka-vllm, reason: "vLLM's own health check", node_roles: [full, inference]}
   - {account: pinka-prometheus, reason: "Prometheus scrapes vLLM's metrics", node_roles: [full]}
   - {account: pinka-otelcol, reason: "the collector scrapes vLLM's metrics", node_roles: [full, inference]}
   - {account: pinka-inference, reason: the control endpoint forwards the API, node_roles: [inference]}

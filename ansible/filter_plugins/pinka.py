@@ -741,6 +741,28 @@ def cpuset_cpus(spec: str | None) -> list[int]:
     return sorted(cpus)
 
 
+def account_ids(
+    accounts: Mapping[str, str], passwd: Mapping[str, Sequence[Any]]
+) -> dict[str, dict[str, str]]:
+    """The UID and GID of each account, by the key it is listed under.
+
+    Args:
+        accounts: Key (such as a .env prefix) to account name.
+        passwd: ``getent passwd`` (name to fields; the UID is the second, the
+            GID the third).
+
+    Returns:
+        Key to ``{"uid": ..., "gid": ...}``, both empty for an account that
+        does not exist (yet: a check-mode run on a fresh host).
+    """
+    found = {}
+    for key, name in accounts.items():
+        fields = passwd.get(name) or []
+        uid, gid = (str(fields[1]), str(fields[2])) if len(fields) > 2 else ("", "")  # noqa: PLR2004
+        found[key] = {"uid": uid, "gid": gid}
+    return found
+
+
 def researcher_memberships(
     researchers: Sequence[Mapping[str, Any]], existing: Sequence[str]
 ) -> list[dict[str, str]]:
@@ -1145,6 +1167,7 @@ class FilterModule:
             "pinka_size_mib": size_mib,
             "pinka_vault_keys": vault_keys,
             "pinka_researcher_memberships": researcher_memberships,
+            "pinka_account_ids": account_ids,
             "pinka_key_entries": key_entries,
             "pinka_new_memberships": new_memberships,
             "pinka_incus_new_objects": incus_new_objects,

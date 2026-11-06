@@ -57,7 +57,88 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart journald
+  register: base_journald
+
+- name: Restart journald with these settings
+  # Not a handler: the observability role's journal collector, started
+  # later in the run, mounts the journal where these settings put it.
+  ansible.builtin.systemd_service:  # noqa: no-handler
+    name: systemd-journald
+    state: restarted
+  when: base_journald is changed
+
+- name: Find the persistent journal
+  ansible.builtin.stat:
+    path: /var/log/journal
+    follow: true
+  register: base_journal_before
+
+# A journal that was volatile becomes persistent at the next boot's flush.
+# This does now what that boot does: journald's flush creates
+# /var/log/journal and this machine's directory in it, then tmpfiles.d gives
+# that directory journald's group (systemd-journal) and the setgid bit that
+# gives new journal files the group, with which the journal collector reads
+# them. Where an operator's later drop-in keeps the journal volatile, the
+# flush creates nothing. The same where journald's restart or a person made
+# the directory without tmpfiles.d (root:root 0755); a rotation then starts
+# new files, since those journald made before keep root's group. Only this
+# machine's directory: tmpfiles.d does not follow a link at /var/log/journal
+# and fails on it, and the collector needs no more than that directory.
+- name: Move the journal to persistent storage
+  ansible.builtin.command:
+    argv: [journalctl, --flush]
+  changed_when: false  # what it changes, the next tasks find and report
+  when: not base_journal_before.stat.exists
+
+- name: Read the machine ID
+  ansible.builtin.slurp:
+    src: /etc/machine-id
+  register: base_machine_id
+
+- name: Name this machine's journal directory
+  ansible.builtin.set_fact:
+    base_journal_dir: "/var/log/journal/{{ base_machine_id.content | b64decode | trim }}"
+
+- name: Find this machine's persistent journal
+  ansible.builtin.stat:
+    path: "{{ base_journal_dir }}"
+    follow: true
+  register: base_journal
+
+- name: Give this machine's persistent journal journald's group and modes
+  ansible.builtin.command:
+    argv: "{{ item }}"
+  loop:
+    - [systemd-tmpfiles, --create, --prefix, "{{ base_journal_dir }}"]
+    - [journalctl, --rotate]
+  changed_when: true
+  when: >-
+    base_journal.stat.exists
+    and (base_journal.stat.gr_name | default('') != 'systemd-journal' or not base_journal.stat.isgid)
+
+- name: Find this machine's persistent journal again
+  ansible.builtin.stat:
+    path: "{{ base_journal_dir }}"
+    follow: true
+  register: base_journal_now
+  when: not ansible_check_mode
+
+# Where this host's tmpfiles.d does not give both, every run would try again
+# and the journal collector would read nothing.
+- name: Check that this machine's persistent journal has journald's group
+  ansible.builtin.assert:
+    that: >-
+      not base_journal_now.stat.exists
+      or (base_journal_now.stat.gr_name | default('') == 'systemd-journal' and base_journal_now.stat.isgid | bool)
+    fail_msg: >-
+      {{ base_journal_dir }} (group {{ base_journal_now.stat.gr_name | default('?') }}, mode
+      {{ base_journal_now.stat.mode | default('?') }}) needs the group systemd-journal and the
+      setgid bit, which systemd's tmpfiles.d (systemd.conf) gives it; this host's tmpfiles.d
+      does not give it both. Restore systemd's lines for /var/log/journal and run
+      systemd-tmpfiles --create --prefix {{ base_journal_dir }}, or give the directory the
+      group systemd-journal and the mode 2755 yourself.
+    quiet: true
+  when: not ansible_check_mode
 
 - name: Keep time synchronized
   ansible.builtin.include_tasks: timesync.yml

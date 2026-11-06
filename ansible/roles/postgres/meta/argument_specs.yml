@@ -21,18 +21,6 @@ argument_specs:
         type: int
         default: 100
         description: max_connections.
-      postgres_container_uid:
-        type: int
-        default: 999
-        description: UID of the postgres user in the pinned image.
-      postgres_container_gid:
-        type: int
-        default: 999
-        description: GID of the postgres user in the pinned image.
-      postgres_exporter_uid:
-        type: int
-        default: 65534
-        description: UID of the exporter container (nobody).
       postgres_container:
         type: str
         default: pinka-postgres

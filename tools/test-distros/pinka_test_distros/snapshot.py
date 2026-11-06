@@ -8,7 +8,8 @@ listening ports, the files below pinka's paths, the settings pinka changes
 (the kernel settings of the ``base`` role, the time zone, the files it
 edits in place), Tailscale's state and preferences, and Docker's
 containers, networks and volumes. Any difference fails the lane unless it
-is kept on purpose (:data:`KEPT`, :func:`system_account`), and every kept
+is kept on purpose (:data:`KEPT`, :func:`system_account`, and the accounts
+and groups uninstall's note names, :func:`kept_account`), and every kept
 one is reported with its reason.
 """
 
@@ -18,6 +19,7 @@ import re
 from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -232,12 +234,24 @@ KEPT = (
         r"^/var/lib/pinka-kept(/|$)",
         "what uninstall copies out of pinka's paths: the backups' key and settings, the records",
     ),
+    Kept(
+        "files",
+        r"^/var/lib/pinka(/kept-accounts\.json)?$",
+        "uninstall's note of the accounts and groups it keeps with the lab's data, which the "
+        "next install takes over",
+    ),
 )
+KEPT_ACCOUNT = (
+    "kept with the lab's data, locked: no password, no login shell, expired (the next install "
+    "takes it over; --purge-data removes it)"
+)
+KEPT_GROUP = "kept with the lab's data (the next install takes it over; --purge-data removes it)"
 VERSION_CHANGE = (
     "a package that existed before pinka, at another version now: uninstall never "
     "downgrades (a distribution update, or a newer version a package pinka installed needed)"
 )
-# Accounts and groups whose names are pinka's are never excused.
+# Accounts and groups whose names are pinka's are never excused as a
+# package's; only uninstall's note of what it kept excuses them (kept_account).
 PINKA_NAME = re.compile(r"^(pinka|researcher)")
 UID_MIN = 1000
 
@@ -264,6 +278,38 @@ def system_account(section: str, line: str, platforms: Iterable[str]) -> str | N
     if pinka or not ident.isdigit() or int(ident) >= UID_MIN:
         return None
     return "a system account or group a package created; distributions keep them after removal"
+
+
+def kept_account(section: str, line: str, note: Mapping[str, Any] | None) -> str | None:
+    """Why an account or group is there that uninstall noted as kept with the lab's data, or None.
+
+    Only with the noted UID or GID, and an account only with the lock's shell.
+
+    Args:
+        section: ``users`` or ``groups``.
+        line: ``+name:id:...``.
+        note: The note of the kept accounts, or None.
+
+    Returns:
+        The reason, or None when the note does not name it so.
+    """
+    if section not in ("users", "groups") or not line.startswith("+") or not note:
+        return None
+    fields = line[1:].split(":")
+    if section == "users":
+        shell = (note.get("lock") or {}).get("shell")
+        for entry in note.get("accounts") or []:
+            if (
+                isinstance(entry, Mapping)
+                and [entry.get("name"), str(entry.get("uid"))] == fields[:2]
+                and fields[-1] == shell
+            ):
+                return KEPT_ACCOUNT
+        return None
+    for entry in note.get("groups") or []:
+        if isinstance(entry, Mapping) and [entry.get("name"), str(entry.get("gid"))] == fields[:2]:
+            return KEPT_GROUP
+    return None
 
 
 def versions(lines: Iterable[str]) -> dict[str, str]:
@@ -306,6 +352,7 @@ def differences(
     after: Mapping[str, list[str]],
     platforms: Iterable[str] = (),
     fixed: Collection[str] = (),
+    note: Mapping[str, Any] | None = None,
 ) -> tuple[list[str], list[str]]:
     """The differences between two snapshots: those that fail and those kept on purpose.
 
@@ -315,6 +362,8 @@ def differences(
         platforms: The platform names deployed in the test.
         fixed: Packages of pre-existing components, whose version must not
             change either.
+        note: Uninstall's note of the accounts and groups it kept with the
+            lab's data; only these accounts and groups of pinka's are excused.
 
     Returns:
         ``(failing, kept)``: lines ``<section>: <difference>``; kept ones
@@ -329,8 +378,10 @@ def differences(
                 package = line[1:].split(" ", 1)[0]
                 reason = None if package in fixed else VERSION_CHANGE
             else:
-                reason = system_account(section, line, names) or next(
-                    (k.reason for k in KEPT if k.matches(section, line[1:])), None
+                reason = (
+                    system_account(section, line, names)
+                    or kept_account(section, line, note)
+                    or next((k.reason for k in KEPT if k.matches(section, line[1:])), None)
                 )
             if reason:
                 kept.append(f"{section}: {line} (kept: {reason})")

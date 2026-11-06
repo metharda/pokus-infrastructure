@@ -140,7 +140,11 @@ def test_collector_pipelines_use_defined_components(vm: bool) -> None:
     assert config["exporters"]["otlp_http/loki"]["endpoint"] == "http://127.0.0.1:18702/otlp"
     assert config["exporters"]["prometheus"]["resource_to_telemetry_conversion"]["enabled"]
     journald = rendered("otel/journald.yaml")
-    assert journald["receivers"]["journald"]["root_path"] == "/hostfs"
+    # No chroot, and no directory: journalctl reads the persistent and the
+    # volatile journal (test_container_mounts.py: what its container mounts).
+    receiver = journald["receivers"]["journald"]
+    assert "root_path" not in receiver and "directory" not in receiver
+    assert receiver["journalctl_path"] == "/usr/bin/journalctl"
     assert journald["exporters"]["otlp_grpc/gateway"]["endpoint"] == "127.0.0.1:4317"
     assert "otlp" not in journald["receivers"]  # accepts nothing from targets
 
@@ -281,11 +285,12 @@ def test_compose_services_bind_loopback() -> None:
         assert "ports" not in service, name
         assert service["read_only"] is True, name
         assert service["cap_drop"] == ["ALL"], name
+        assert service["security_opt"] == ["no-new-privileges:true"], name
     grafana = compose["services"]["grafana"]["environment"]
     assert grafana["GF_SERVER_HTTP_ADDR"] == "127.0.0.1"
     assert grafana["GF_AUTH_ANONYMOUS_ENABLED"] == "false"
-    journald = compose["services"]["otel_journald"]
-    assert journald["cap_add"] == ["SYS_CHROOT"]
+    # No observability container adds a capability.
+    assert [name for name, service in compose["services"].items() if "cap_add" in service] == []
     gateway = compose["services"]["otel_gateway"]
     # No host files besides the gateway's own read-only copy of the pairing material.
     assert gateway["volumes"] == [
@@ -437,7 +442,12 @@ def test_the_stores_run_as_infra_accounts() -> None:
     clients = {c["account"] for c in evaluate("pinka_telemetry_clients", variables)}
     query = {c["account"] for c in evaluate("pinka_query_port_clients", variables)}
     assert set(accounts.values()) <= infra
-    assert set(accounts.values()) == (clients | query) - {"root"}
+    # One account per container: none shares a UID with another.
+    assert len(set(accounts.values())) == len(accounts)
+    stores = ("otel_gateway", "prometheus", "loki", "tempo", "query_proxy", "grafana")
+    assert {accounts[s] for s in stores} == (clients | query) - {"root"}
+    # The journal collector and the exporters reach no store directly.
+    assert not {accounts[s] for s in set(accounts) - set(stores)} & (clients | query)
     assert accounts["grafana"] == "pinka-grafana"
     assert "pinka-grafana" not in clients
     for service, account in accounts.items():

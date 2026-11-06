@@ -42,6 +42,10 @@ def task(name: str) -> dict[str, Any]:
     return next(t for t in tasks() if t["name"] == name)
 
 
+# The server's account as getent passwd reads it, with IDs of its own.
+POSTGRES_PASSWD = {"pinka-postgres": ["x", "981", "975", "", "/var/lib/pinka/pinka-postgres", ""]}
+
+
 def variables(**facts: Any) -> dict[str, Any]:
     """What the role sees in site.yml: group vars, the imported roles' defaults and vars."""
     paths = [GROUP_VARS, GROUP_VARS.parent / "versions.yml"]
@@ -69,6 +73,8 @@ def variables(**facts: Any) -> dict[str, Any]:
         # What the docker role's facts.yml read from `docker info`.
         "pinka_docker_gpu_args": ["--device", "nvidia.com/gpu=all"],
         "pinka_docker_gpu_method": "cdi",
+        # What "Read the accounts of the host" reads (getent passwd).
+        "ansible_facts": {"getent_passwd": POSTGRES_PASSWD},
     }
     base.update(facts)
     return ansible_vars(*paths, **base)
@@ -93,6 +99,9 @@ def render(**facts: Any) -> dict[str, Any]:
         evaluate("pinka_system_layout + pinka_layout", scope),
         scope,
     )
+    ids = task("Find the IDs of PostgreSQL's account")
+    fact = ids["ansible.builtin.set_fact"]["doctor_postgres_ids"]
+    scope["doctor_postgres_ids"] = _templar(scope).template(fact)
     write = task("Write the lab description")
     local = dict(scope, **write["vars"])
     text = _templar(local).template(write["ansible.builtin.copy"]["content"])
@@ -171,6 +180,13 @@ def test_every_key_the_cli_reads_is_rendered() -> None:
     data = render()
     missing = sorted(".".join(k) for k in keys_read_by_the_cli() if not lookup(data, k))
     assert missing == []
+
+
+def test_psql_runs_as_the_ids_of_postgresqls_account() -> None:
+    # The UID, then the GID, of pinka_container_accounts.postgres (981 and 975
+    # in POSTGRES_PASSWD): the CLI refuses anything but UID:GID.
+    assert render()["postgres"]["user"] == "981:975"
+    assert evaluate("pinka_container_accounts.postgres", variables()) in POSTGRES_PASSWD
 
 
 def test_containers_carry_their_pinned_digests() -> None:
@@ -421,9 +437,10 @@ def test_the_telemetry_guard_check_knows_both_sets() -> None:
 @pytest.mark.parametrize(
     ("node_role", "arbiter", "clients", "control"),
     [
-        ("full", True, ["root", "pinka-prometheus", "pinka-otelcol"], []),
+        # pinka-vllm: vLLM's own health check, where vLLM serves.
+        ("full", True, ["root", "pinka-vllm", "pinka-prometheus", "pinka-otelcol"], []),
         ("lab", False, ["root"], [18710]),
-        ("inference", True, ["root", "pinka-otelcol", "pinka-inference"], []),
+        ("inference", True, ["root", "pinka-vllm", "pinka-otelcol", "pinka-inference"], []),
     ],
 )
 def test_the_gpu_arbiter_and_the_inference_guard(

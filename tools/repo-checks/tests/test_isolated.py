@@ -118,12 +118,18 @@ def test_ci_runs_it_with_the_test_jobs_setup() -> None:
 
 def test_the_heavy_lanes_run_weekly_on_demand_and_when_their_inputs_change() -> None:
     # To spend fewer GitHub Actions minutes.
-    for name in ("isolated.yml", "check-mode-extended.yml", "release-package.yml"):
+    for name in ("check-mode-extended.yml", "release-package.yml"):
         on = workflow(name)[True]  # YAML 1.1 reads the key "on" as True
         # A fork's pull request runs them as a push would (test_triggers.py).
         assert set(on) == {"push", "pull_request", "schedule", "workflow_dispatch"}, name
         assert on["push"]["paths"], name
         assert f".github/workflows/{name}" in on["push"]["paths"], name
+    # The isolated files run on every push (a change of the code alone can
+    # break a test's isolation), weekly and on demand.
+    on = workflow("isolated.yml")[True]
+    assert set(on) == {"push", "pull_request", "schedule", "workflow_dispatch"}
+    assert on["push"] == {"branches": ["**"]}
+    assert on["pull_request"] is None
     ci = workflow("ci.yml")
     assert not {"test-random-order", "test-isolated", "check-mode-extended"} & set(ci["jobs"])
     # One concurrency rule for every workflow that tests a commit: a newer run
@@ -140,7 +146,47 @@ def test_a_change_of_docs_only_skips_the_ansible_lanes() -> None:
     required = jobs["required"]
     assert set(required["needs"]) == {"changes", "privacy", "lint", "test", "docs", "check-mode"}
     assert "always()" in required["if"]
-    # The extended lanes and the isolated run skip such a push by their paths:
-    # Markdown is never an input, a role's README included.
-    for name in ("isolated.yml", "check-mode-extended.yml"):
-        assert workflow(name)[True]["push"]["paths"][-1] == "!**.md", name
+    # The extended lanes skip such a push by their paths: Markdown is never an
+    # input, a role's README included. The isolated run does not.
+    assert workflow("check-mode-extended.yml")[True]["push"]["paths"][-1] == "!**.md"
+    assert "paths" not in workflow("isolated.yml")[True]["push"]
+
+
+def test_jobs_run_files_at_a_time_and_report_them_in_collection_order(tmp_path: Path) -> None:
+    # Each file waits until every file has started: it passes only when they run at once.
+    started = tmp_path / "started"
+    started.mkdir()
+    wait = (
+        "import time, pathlib\n\ndef test_{n}():\n"
+        f"    d = pathlib.Path({str(started)!r})\n"
+        "    (d / '{n}').touch()\n"
+        "    for _ in range(300):\n"
+        "        if len(list(d.iterdir())) == 3:\n"
+        "            return\n"
+        "        time.sleep(0.1)\n"
+        "    raise AssertionError('not at once')\n"
+    )
+    cwd = project(tmp_path, {f"test_{n}.py": wait.format(n=n) for n in "abc"})
+    logs = tmp_path / "logs"
+    done = run(cwd, "-m", "pinka_repo_checks.isolated", "--log-dir", str(logs), "--jobs", "3")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert done.stdout.startswith(
+        "test-isolated: 3 passed, 0 failed, 0 skipped, 0 warnings "
+        "(3 files, each in a process of its own, 3 at a time, in "
+    ), done.stdout
+    assert sorted(p.name for p in logs.iterdir()) == [
+        "test_a.py.log",
+        "test_b.py.log",
+        "test_c.py.log",
+    ]
+    # A failing file is reported in full, in collection order, whatever finished first.
+    (cwd / "test_a.py").write_text(
+        "import time\n\ndef test_a():\n    time.sleep(1)\n    assert False\n"
+    )
+    (cwd / "test_b.py").write_text("def test_b():\n    assert False\n")
+    (cwd / "test_c.py").write_text("def test_c():\n    pass\n")
+    done = run(cwd, "-m", "pinka_repo_checks.isolated", "--log-dir", str(logs), "--jobs", "3")
+    assert done.returncode == 1
+    first, second = done.stdout.index("----- test_a.py: "), done.stdout.index("----- test_b.py: ")
+    assert first < second
+    assert "failing: test_a.py, test_b.py; " in done.stdout

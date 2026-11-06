@@ -19,8 +19,9 @@ import random
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
-    import pytest
     from _pytest.terminal import TerminalReporter
 
 
@@ -62,6 +63,17 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         required=True,
         help="the seed of the random test order (printed in the header and the summary)",
     )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Refuse pytest-xdist's distribution: the order is one process's (``-n 0`` runs in one)."""
+    distributed = getattr(config.option, "dist", "no") != "no" and getattr(
+        config.option, "tx", None
+    )
+    if distributed and not hasattr(config, "workerinput"):
+        raise pytest.UsageError(
+            "the random test order runs in one process: drop -n, or --dist and --tx"
+        )
 
 
 def pytest_report_header(config: pytest.Config) -> str:

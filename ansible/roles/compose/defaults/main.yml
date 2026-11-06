@@ -30,6 +30,17 @@ compose_images: "{{ pinka_versions.containers.images }}"
 # Further variables for the .env file; every role that includes the same
 # project must pass the same values (the file is shared).
 compose_extra_env: {}
+# The containers' accounts of each project (pinka_container_accounts), by
+# the prefix of their .env variables (<PREFIX>_UID, <PREFIX>_GID): the
+# users_groups role creates them, so no container shares a UID with another
+# or with the host. The observability role passes its own (compose_extra_env).
+compose_container_accounts:
+  core:
+    POSTGRES: "{{ pinka_container_accounts.postgres }}"
+    POSTGRES_EXPORTER: "{{ pinka_container_accounts.postgres_exporter }}"
+    OPA: "{{ pinka_container_accounts.opa }}"
+  inference:
+    VLLM: "{{ pinka_container_accounts.vllm }}"
 # Group of the database socket directory: the active platform's <platform>-db,
 # or root without a platform (the exporter joins it).
 compose_db_socket_group: >-

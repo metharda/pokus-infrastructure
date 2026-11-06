@@ -4,8 +4,9 @@ The usual run collects every test file into one pytest process, so a test can
 pass only because an earlier file left something in the process: a module's
 state, a class attribute, a registered representer (the installer's YAML
 writers did, until ``yamlio``). This runner collects the suites once, then
-runs each collected test file in a pytest process of its own, one after the
-other in collection order, so such a test fails here. Every process reads
+runs each collected test file in a pytest process of its own, so such a test
+fails here. ``--jobs N`` runs N such processes at a time (each file still in
+a process of its own); the report keeps the collection order. Every process reads
 ``pyproject.toml`` like ``make test-pytest`` (the CI skip list included) and
 uses no cache (``-p no:cacheprovider``), so nothing passes between them.
 
@@ -27,6 +28,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
@@ -121,7 +123,13 @@ def run_file(path: str, expected: int, logs: Path, junit: Path | None = None) ->
 
 
 def summary(
-    files: int, counts: gate.Counts, failing: Sequence[str], seconds: float, logs: Path
+    files: int,
+    counts: gate.Counts,
+    failing: Sequence[str],
+    seconds: float,
+    logs: Path,
+    *,
+    jobs: int = 1,
 ) -> str:
     """The run's one line.
 
@@ -131,16 +139,19 @@ def summary(
         failing: The files that failed.
         seconds: How long the run took.
         logs: The directory of the logs.
+        jobs: How many processes ran at a time.
 
     Returns:
         The line, without a newline.
     """
     state = "FAILED: " if failing else ""
     where = f"failing: {', '.join(failing)}; " if failing else ""
+    at_once = f", {jobs} at a time" if jobs > 1 else ""
     return (
         f"test-isolated: {state}{counts.passed} passed, {counts.failed} failed, "
         f"{counts.skipped} skipped, {counts.warnings} warnings "
-        f"({files} files, each in a process of its own, in {seconds:.0f}s; {where}logs: {logs})"
+        f"({files} files, each in a process of its own{at_once}, in {seconds:.0f}s; "
+        f"{where}logs: {logs})"
     )
 
 
@@ -153,8 +164,8 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     """Run every collected test file in a process of its own.
 
     Args:
-        argv: ``--log-dir DIR``, ``--junit-dir DIR``, ``--verbose`` and what
-            to collect.
+        argv: ``--log-dir DIR``, ``--junit-dir DIR``, ``--jobs N``, ``--verbose``
+            and what to collect.
         out: Where to write the report.
 
     Returns:
@@ -164,6 +175,9 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
     parser.add_argument("--log-dir", type=Path, default=Path("build/isolated"))
     parser.add_argument("--junit-dir", type=Path, help="write each file's JUnit XML here")
     parser.add_argument("--verbose", action="store_true", help="print every file's output")
+    parser.add_argument(
+        "--jobs", type=int, default=1, help="how many files run at a time (default: 1)"
+    )
     parser.add_argument("paths", nargs="*", help="what to collect (default: pytest's testpaths)")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     start = time.monotonic()
@@ -174,17 +188,25 @@ def main(argv: Sequence[str] | None = None, out: TextIO = sys.stdout) -> int:
         )
         return 1
     failing: list[str] = []
-    for path, expected in files.items():
-        file_run = run_file(path, expected, args.log_dir, args.junit_dir)
-        problem = file_run.problem
-        if problem is not None:
-            failing.append(path)
-            file_run.counts.failed = max(file_run.counts.failed, 1)
-        total.add(file_run.counts)
-        if args.verbose or problem is not None:
-            title = f"{path}: {problem or 'passed'}; complete output"
-            _show(out, f"{title} ({args.log_dir / path}.log)", file_run.output)
-    out.write(summary(len(files), total, failing, time.monotonic() - start, args.log_dir) + "\n")
+    jobs = max(args.jobs, 1)
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        runs = pool.map(
+            lambda item: run_file(item[0], item[1], args.log_dir, args.junit_dir),
+            files.items(),
+        )
+        # In collection order, each as soon as it and the files before it ended.
+        for path, file_run in zip(files, runs, strict=True):
+            problem = file_run.problem
+            if problem is not None:
+                failing.append(path)
+                file_run.counts.failed = max(file_run.counts.failed, 1)
+            total.add(file_run.counts)
+            if args.verbose or problem is not None:
+                title = f"{path}: {problem or 'passed'}; complete output"
+                _show(out, f"{title} ({args.log_dir / path}.log)", file_run.output)
+                out.flush()
+    seconds = time.monotonic() - start
+    out.write(summary(len(files), total, failing, seconds, args.log_dir, jobs=jobs) + "\n")
     for line in total.skipped_tests:
         out.write(f"  {line}\n")
     return 1 if failing else 0

@@ -283,7 +283,9 @@ migrations do:
   area, never into the release directory or the platform's state. A content
   package in the same repository as the release must not overlap the
   release's path, otherwise it could be extracted as part of the release.
-  The build sandbox never sees `/srv/pinka/restricted`.
+  The build sandbox never sees `/srv/pinka/restricted`, nor infra's state
+  in `/srv/pinka/state`, where the database files and the telemetry stores
+  lie.
 - **Backups.** The restricted area is always in the backup set; the local
   database dumps lie in a root-only directory (0700), and `/srv/pinka/backups`
   is inaccessible to every platform unit.

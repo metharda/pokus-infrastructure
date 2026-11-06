@@ -319,6 +319,26 @@ def test_render(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
     assert env["VLLM_DEPLOYMENT"] == "dep-test@1"
 
 
+def test_vllm_writes_only_below_its_writable_mounts(lab: tuple[arb.Arbiter, FakeSystem]) -> None:
+    # vLLM runs as pinka-vllm on a read-only root file system: its home and
+    # every cache it writes lie below the cache mount or the tmpfs /tmp, never
+    # below /root, which is root's.
+    arbiter, _ = lab
+    _, env_text = arbiter.render("dep-test@1")
+    env = dict(line.split("=", 1) for line in env_text.splitlines() if not line.startswith("#"))
+    compose = load_yaml(INFRA / "compose" / "inference" / "compose.yml")
+    for name in ("vllm", "vllm_runtime"):
+        service = compose["services"][name]
+        writable = [v.rsplit(":", 1)[1] for v in service["volumes"] if not v.endswith(":ro")]
+        writable += service["tmpfs"]
+        assert writable == ["/cache", "/tmp"], name  # noqa: S108 - the Compose file's value
+        for key in ("HOME", "XDG_CACHE_HOME", "TRITON_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR"):
+            assert any(env[key] == w or env[key].startswith(f"{w}/") for w in writable), key
+    assert env["HOME"] == "/tmp"  # noqa: S108 - the container's tmpfs
+    assert env["XDG_CACHE_HOME"] == "/cache"
+    assert not [value for value in env.values() if value.startswith("/root")]
+
+
 def test_constants_match_the_contract() -> None:
     variables = ansible_vars(GROUP_VARS)
     ports = variables["pinka_default_ports"]

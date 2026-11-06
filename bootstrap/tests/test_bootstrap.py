@@ -1914,7 +1914,7 @@ def test_a_refused_plan_ends_with_80_even_as_a_dry_run(tmp_path: Path) -> None:
 def test_nothing_to_remove_needs_no_confirmation(tmp_path: Path) -> None:
     code, out, calls = uninstall_flow(tmp_path, "", {**PLAN, "to_remove": 0})
     assert code == 0
-    assert "nothing of pinka's is on this host" in out
+    assert "nothing of pinka's is left to remove or lock on this host" in out
     assert calls == ["play plan"]
 
 

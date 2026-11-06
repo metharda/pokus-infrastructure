@@ -1,10 +1,12 @@
 # Managed by pinka (config/otel/journald.yaml.j2). Local changes will be overwritten.
 #
-# Journald collector: reads the host journal with the host's journalctl
-# (chroot into the read-only host root) and forwards it to the gateway's OTLP
-# receiver. It is a separate instance so that the collector that accepts OTLP
-# from targets has no access to the host's files; this one listens on nothing
-# but its health check and its own metrics on 127.0.0.1.
+# Journald collector: reads the host journal, the persistent and the
+# volatile one (no directory given, so journalctl reads both), with the
+# host's journalctl, which its container has at its own path with the
+# libraries it loads, and forwards it to the gateway's OTLP receiver. It is a
+# separate instance so that the collector that accepts OTLP from targets has
+# no access to the host's journal; this one listens on nothing but its health
+# check and its own metrics on 127.0.0.1.
 extensions:
   health_check:
     endpoint: 127.0.0.1:{{ pinka_internal_ports.journald_health }}
@@ -13,9 +15,7 @@ extensions:
 
 receivers:
   journald:
-    root_path: /hostfs
     journalctl_path: /usr/bin/journalctl
-    directory: /var/log/journal
     start_at: end
     priority: info
     convert_to_semantic_conventions: true

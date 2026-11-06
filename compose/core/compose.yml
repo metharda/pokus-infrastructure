@@ -27,6 +27,12 @@ services:
     image: ${POSTGRES_IMAGE:?pinned image missing}
     container_name: pinka-postgres
     restart: unless-stopped
+    # The server and its entrypoint run as pinka-postgres (users_groups), which
+    # owns the data directory, the sockets and the superuser's password: no
+    # step needs root, so the container has no capability.
+    user: "${POSTGRES_UID:?}:${POSTGRES_GID:?}"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     labels:
       org.pinka.config-hash: ${POSTGRES_CONFIG_HASH:-}
@@ -60,7 +66,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
     network_mode: host
-    user: "65534:65534"
+    user: "${POSTGRES_EXPORTER_UID:?}:${POSTGRES_EXPORTER_GID:?}"
     group_add: ["${POSTGRES_SOCKET_GID:?}"]
     command: ["--web.listen-address=127.0.0.1:${POSTGRES_EXPORTER_PORT:?}"]
     environment:
@@ -80,6 +86,8 @@ services:
     image: ${OPA_IMAGE:?pinned image missing}
     container_name: pinka-opa
     restart: unless-stopped
+    # Its own account instead of the image's 1000:1000, often a human's UID.
+    user: "${OPA_UID:?}:${OPA_GID:?}"
     # Authorization on: /config/authz.rego (package system.authz) allows only
     # the two decision queries and health checks. The deny-all
     # placeholder is always loaded; ./policy is a symbolic link to the active

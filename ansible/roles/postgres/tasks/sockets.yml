@@ -24,7 +24,7 @@
   ansible.builtin.file:
     path: "{{ item.path }}"
     state: directory
-    owner: "{{ postgres_container_uid }}"
+    owner: "{{ postgres_ids.server.uid or omit }}"
     group: "{{ item.group }}"
     mode: "0750"
   loop: "{{ postgres_socket_dirs }}"

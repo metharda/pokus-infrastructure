@@ -106,7 +106,7 @@ walk through a complete installation.
 | 76 | reboot required | reboot (and enroll the MOK if asked), then re-run bootstrap |
 | 77 | operator action required | the printed message says what to do (for example run as root, commit the changes, accept a changed host profile) |
 | 80 | uninstall refused | uninstall was not confirmed (the typed machine name was missing or differed), the backup offered first failed, or an option did not apply to this host; nothing was removed |
-| 81 | uninstall kept items | uninstall finished, but items it should have removed are still there; the report in /var/log/pinka-uninstall names each and why |
+| 81 | uninstall kept items | uninstall finished, but some items could not be removed or locked, and its records stay for the next run; the report in /var/log/pinka-uninstall names each and why |
 
 Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoot.md); the codes of `pinka-preflight` and `pinka` are in [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
 <!-- generated:exit-codes:end -->

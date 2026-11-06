@@ -2,34 +2,16 @@
 #
 # Each pytest file in a process of its own (make test-isolated), so a test
 # that passes only because another file ran first in the same process fails
-# here; the test job's setup (ci.yml), so nothing skips. To save GitHub
-# Actions minutes it runs weekly, on
-# workflow_dispatch and on pushes that change the tests or what runs them;
-# make test-isolated runs locally before every proposal.
+# here; the test job's setup (ci.yml), so nothing skips. It runs on every
+# push, weekly and on workflow_dispatch: a change of the code alone can
+# break a test's isolation too. The local gate runs it only when the tests
+# or what runs them changed.
 name: infra-isolated
 
 on:
   push:
     branches: ["**"]
-    paths:
-      - "**/tests/**"
-      - "**/conftest.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "tools/repo-checks/**"
-      - "Makefile"
-      - ".github/workflows/isolated.yml"
-      - "!**.md"  # docs only: not an input
   pull_request:  # a fork's only (the job's condition): one run per commit
-    paths:
-      - "**/tests/**"
-      - "**/conftest.py"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "tools/repo-checks/**"
-      - "Makefile"
-      - ".github/workflows/isolated.yml"
-      - "!**.md"  # docs only: not an input
   schedule:
     - cron: "29 5 * * 1"  # weekly
   workflow_dispatch:

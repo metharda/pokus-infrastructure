@@ -88,6 +88,7 @@ BUILD_HIDDEN = (
     "/srv/pinka/restricted",
     "/srv/pinka/backups",
     "/srv/pinka/training",
+    "/srv/pinka/state",
     "/var/lib/incus",
     "/var/lib/docker",
     "/run/docker.sock",
@@ -110,6 +111,9 @@ UV_BUILD = ("--offline", "--no-build-isolation", "--compile-bytecode")
 # a last pass without the build group removes the build backend again.
 UV_AGENT_PRUNE = ("--offline", "--no-build")
 POSTGRES_CONTAINER = "pinka-postgres"
+# The server's account (infra's users_groups role); psql runs as it, by its
+# numeric IDs, since the container's passwd lacks it.
+POSTGRES_ACCOUNT = "pinka-postgres"
 PSQL_SCRIPT = (
     'PGPASSWORD="$(cat /run/secrets/postgres-superuser)" exec psql --no-psqlrc '
     "--set=ON_ERROR_STOP=1 --host=/var/run/postgresql --username=postgres --dbname=postgres "
@@ -1667,13 +1671,21 @@ def clean(run: Path, paths: Paths) -> None:
     shutil.rmtree(run, ignore_errors=True)
 
 
-def _psql(runner: Runner, sql: str) -> None:
+def _postgres_user() -> str:
+    try:
+        entry = pwd.getpwnam(POSTGRES_ACCOUNT)
+    except KeyError as err:
+        raise DeployError(f"PostgreSQL's account {POSTGRES_ACCOUNT} does not exist") from err
+    return f"{entry.pw_uid}:{entry.pw_gid}"
+
+
+def _psql(runner: Runner, sql: str, user: str) -> None:
     done = runner(
         [
             "docker",
             "exec",
             "--user",
-            "postgres",
+            user,
             POSTGRES_CONTAINER,
             "sh",
             "-c",
@@ -1726,6 +1738,7 @@ def purge(
     *,
     remove_secrets: bool = False,
     account_exists: Callable[[str], bool] = _account_exists,
+    postgres_user: Callable[[], str] = _postgres_user,
     now: Callable[[], dt.datetime] = _now,
 ) -> dict[str, Any]:
     """Remove a replaced platform's releases, content, state, restricted area and database.
@@ -1744,6 +1757,7 @@ def purge(
         runner: Command runner (psql in the PostgreSQL container).
         remove_secrets: Also remove the secrets.
         account_exists: Whether an account exists (tests).
+        postgres_user: The server's account as ``UID:GID`` (tests).
         now: Clock.
 
     Returns:
@@ -1767,10 +1781,11 @@ def purge(
     recorded = record.get("names", {})
     databases = [d for d in recorded.get("postgresql_databases", []) if SQL_NAME_RE.match(d)]
     roles = [r for r in recorded.get("postgresql_roles", []) if SQL_NAME_RE.match(r)]
+    user = postgres_user() if databases or roles else ""
     for db_name in databases:
-        _psql(runner, f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)')
+        _psql(runner, f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)', user)
     for role_name in roles:
-        _psql(runner, f'DROP ROLE IF EXISTS "{role_name}"')
+        _psql(runner, f'DROP ROLE IF EXISTS "{role_name}"', user)
     removed = []
     for directory in (paths.srv / "platforms" / platform, paths.srv / "restricted" / platform):
         if directory.exists() or directory.is_symlink():

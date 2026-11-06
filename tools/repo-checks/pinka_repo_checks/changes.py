@@ -1,4 +1,4 @@
-"""Which CI lanes a change needs: one that touches only docs skips the Ansible lanes.
+"""Which CI lanes and local gate steps a change needs.
 
 The ``changes`` job of ``.github/workflows/ci.yml`` runs this with the range
 of the push (``github.event.before``..``github.sha``) or of the pull request
@@ -7,6 +7,13 @@ of the push (``github.event.before``..``github.sha``) or of the pull request
 (GitHub Actions minutes). Anything it cannot decide, such as
 a new branch, a range git does not know (after a force push), a schedule or a
 manual run, counts as a change that needs every lane.
+
+The local gate (``make gate``) asks it which of its slow steps a local tree
+needs (:func:`local_skips`): the docs build and the Mermaid check only with a
+change of the docs or of what builds them, the random order and the isolated
+files only with a change of the tests or of what runs them. CI runs every
+step on every push; anything the local classifier cannot decide needs every
+step.
 """
 
 from __future__ import annotations
@@ -21,6 +28,17 @@ from collections.abc import Iterable, Sequence
 # included) and the docs' own tooling.
 DOC_DIRS = ("docs/",)
 DOC_FILES = frozenset({"mkdocs.yml", "cspell.json", "project-words.txt", "LICENSE-docs"})
+# What the docs build (mkdocs, docs/ only) and the Mermaid check read besides
+# the docs: the tools' pins and the checks' own code.
+DOC_TOOLING = frozenset(
+    {"pyproject.toml", "uv.lock", "package.json", "package-lock.json", ".puppeteerrc.cjs"}
+)
+# Tests: test files, fixtures, conftest files and test helpers wherever they
+# are, and what runs them (the isolated workflow's inputs and more).
+TEST_TOOLING = frozenset({"pyproject.toml", "uv.lock", "Makefile"})
+TEST_NAME_RE = re.compile(r"(?:^|/)(?:test_[^/]*|[^/]*_test)\.py$")
+# Either: the gate's own tooling.
+CHECKS_DIRS = ("tools/repo-checks/",)
 NO_COMMIT = "0" * 40
 COMMIT_RE = re.compile(r"[0-9a-f]{7,64}")
 
@@ -38,6 +56,105 @@ def docs_only(paths: Iterable[str]) -> bool:
     return bool(found) and all(
         p.endswith(".md") or p.startswith(DOC_DIRS) or p in DOC_FILES for p in found
     )
+
+
+def touches_docs(paths: Iterable[str]) -> bool:
+    """Whether a path is a doc or something the docs build or the Mermaid check reads."""
+    return any(
+        p.endswith(".md")
+        or p.startswith(DOC_DIRS + CHECKS_DIRS)
+        or p in DOC_FILES
+        or p in DOC_TOOLING
+        or p == "Makefile"
+        for p in paths
+    )
+
+
+def touches_tests(paths: Iterable[str]) -> bool:
+    """Whether a path is a test file, a fixture, a conftest file, a test helper or their tooling."""
+    return any(
+        f"/{p}".find("/tests/") >= 0
+        or f"/{p}".find("/fixtures/") >= 0
+        or p.endswith("conftest.py")
+        or TEST_NAME_RE.search(p) is not None
+        or p.startswith(CHECKS_DIRS)
+        or p in TEST_TOOLING
+        for p in paths
+    )
+
+
+# The local gate's steps that a change may not need: what they need, and
+# where CI runs them (on every push).
+ON_EVERY_PUSH = "CI runs it on every push"
+LOCAL_STEPS = {
+    "docs-build": ("docs", touches_docs, ON_EVERY_PUSH),
+    "lint-mermaid": ("docs", touches_docs, ON_EVERY_PUSH),
+    "test-random-order": ("tests", touches_tests, ON_EVERY_PUSH + " (the test job)"),
+    "test-isolated": ("tests", touches_tests, ON_EVERY_PUSH + " (infra-isolated)"),
+}
+
+
+def _git(*argv: str, nul: bool = False) -> list[str] | None:
+    done = subprocess.run(  # noqa: S603 - git with fixed arguments
+        ["git", *argv],  # noqa: S607
+        capture_output=True,
+        text=True,
+        errors="surrogateescape",  # a name that is not UTF-8 is read, not refused
+        check=False,
+    )
+    if done.returncode != 0:
+        return None
+    return done.stdout.split("\0") if nul else done.stdout.splitlines()
+
+
+def local_changed(base: str) -> list[str] | None:
+    """The paths a local tree changes against a base branch.
+
+    Committed since the merge base, staged, unstaged and untracked (not
+    ignored); a renamed file counts with both names.
+
+    Args:
+        base: The branch or commit the change is to go onto (``origin/moving/on``).
+
+    Returns:
+        The paths, or None when git cannot tell.
+    """
+    if not base or base.startswith("-"):
+        return None  # not a branch or a commit: never an option of git's
+    merge = _git("merge-base", "HEAD", base)
+    if not merge:
+        return None
+    # NUL-separated: git quotes a name with other than plain ASCII otherwise.
+    diff = _git("diff", "--name-only", "--no-renames", "-z", merge[0], nul=True)
+    untracked = _git("ls-files", "--others", "--exclude-standard", "-z", nul=True)
+    if diff is None or untracked is None:
+        return None
+    return sorted({p for p in diff + untracked if p})
+
+
+def local_skips(steps: Iterable[str], paths: Sequence[str] | None, base: str) -> dict[str, str]:
+    """The local gate's steps a change does not need, each with why.
+
+    Args:
+        steps: The gate's steps.
+        paths: The changed paths (None: unknown, so every step runs).
+        base: What they were compared with, for the reason.
+
+    Returns:
+        Step to reason, for the steps to skip.
+    """
+    if paths is None:
+        return {}
+    skips = {}
+    for step in steps:
+        if step in LOCAL_STEPS:
+            what, needed, in_ci = LOCAL_STEPS[step]
+            if not needed(paths):
+                skips[step] = (
+                    f"no change of the {what} or what checks them against {base} "
+                    f"({len(paths)} changed path(s)); {in_ci}"
+                )
+    return skips
 
 
 def changed(base: str, head: str) -> list[str] | None:

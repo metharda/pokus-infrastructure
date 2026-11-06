@@ -76,12 +76,14 @@ platform_tool_settings:
   vault_keys: >-
     {{ vault_postgres_passwords | default({}, true)
        | pinka_vault_keys(vault_platform_secrets | default({}, true)) }}
-# psql as the superuser inside the PostgreSQL container (replacing a platform).
+# psql as the superuser inside the PostgreSQL container (replacing a platform),
+# as the server's account by its numeric IDs (the postgres role's ids.yml):
+# the container's passwd lacks it, and only it reads the password file.
 platform_psql:
   - docker
   - exec
   - --user
-  - postgres
+  - "{{ postgres_ids.server.uid }}:{{ postgres_ids.server.gid }}"
   - pinka-postgres
   - sh
   - -c

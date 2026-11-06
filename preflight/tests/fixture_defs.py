@@ -596,6 +596,30 @@ def ssh_session(client: str, server: str, port: int, uid: str) -> Layer:
     )
 
 
+def kept_lab(lab_root: str = "/srv/pinka") -> Layer:
+    """An uninstall without --purge-data kept a lab: its note and its locked lab root."""
+
+    def apply(f: Fixture) -> None:
+        note = {
+            "schema_version": 1,
+            "written_at": "2026-01-01T00:00:00Z",
+            "lab_root": lab_root,
+            "lock": {"shell": "/usr/sbin/nologin", "expire": "1"},
+            "accounts": [
+                {"name": "pinka-postgres", "uid": "990", "gid": "990", "shell": "/usr/sbin/nologin",
+                 "expire": "", "password_locked": False},
+            ],
+            "groups": [{"name": "pinka-postgres", "gid": "990", "component": False}],
+        }  # fmt: skip
+        f.files["/var/lib/pinka/kept-accounts.json"] = json.dumps(note, indent=2) + "\n"
+        f.dirs.append(lab_root)
+        # Preflight now measures the lab root itself, on the file system of /srv.
+        df = "df --output=target,fstype,size,avail -B1"
+        f.commands[f"{df} {lab_root}"] = dict(f.commands[f"{df} /srv"])
+
+    return apply
+
+
 def chain(*layers: Layer) -> Layer:
     """Several layers as one."""
 
@@ -1323,6 +1347,25 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("loaded"),
         port_in_use(18700),
         expected={"outcome": "needs_action", "needs_action": ["lab_port_in_use"]},
+    )
+    # An uninstall kept a lab where this install would put its research space.
+    fx["ubuntu2404-kept-lab"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        kept_lab(),
+        expected={"outcome": "needs_action", "needs_action": ["kept_lab"]},
+    )
+    # The same kept lab, and a plan that puts the research space elsewhere.
+    fx["ubuntu2404-kept-lab-other-space"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        kept_lab(),
+        expected={"outcome": "supported", "conflicts": []},
+        plan={"srv_path": "/data/lab"},
     )
     fx["ubuntu2404-vm-collector-address-routed"] = build(
         *base_ubuntu,

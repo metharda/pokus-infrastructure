@@ -30,11 +30,19 @@ records and of the fingerprint document. A platform repository that keeps a
 copy of this page keeps it byte-identical to the copy of the infra release
 it pins.
 
-**Changing the contract** means: bump `contract_version`, change this page
+**Changing the contract.** Until the first infra release, contract v2 is a
+draft. Changes under `contract/` go in without a version bump, and each is
+listed in the contract's own list of changes
+([Changes to the draft of contract v2](#changes-to-the-draft-of-contract-v2)).
+From the first release on, every change under `contract/` bumps the version.
+Changing the contract then means: bump `contract_version`, change this page
 and `contract/` in the same commit, describe the change in the changelog,
 and let platforms adapt before they pin the new release. A platform never
-works around a missing item; it requests a contract change instead. The
-changes against contract v1 are listed in
+works around a missing item; it requests a contract change instead.
+Clarifications which change no field, value or permission a platform relies
+on go into the Clarifications table
+([Clarifications of contract v2](#clarifications-of-contract-v2)) without a
+version bump. The changes against contract v1 are listed in
 [Changes from contract v1](#changes-from-contract-v1); the resolutions in
 [Resolutions](#resolutions) apply, and each is cited by its ID (for example
 V2).
@@ -235,10 +243,10 @@ against the restricted data.
 | Migrator | `<platform>_migrator`, owner of the schemas `public` and `restricted`, used only by the `migrate` hook |
 | Privileges | infra gives the service roles none on the schemas; the `migrate` hook grants its own services what they use |
 | Reader and Grafana roles | `<platform>_reader` (researchers) and `<platform>_grafana`; never `restricted` |
-| Service socket directory | `/run/pinka/postgres/`, group `<platform>-db`: only services with a role; the agent never |
+| Service socket directory | `/run/pinka/postgres/`, group `<platform>-db`: besides root and PostgreSQL itself, only the accounts with a database role (the platform's services' and its `migrate` hook's, `<platform>-migrate`), and infra's metrics exporter (`pinka_monitor`), which holds the group in its container; the agent never |
 | Reader socket directory | `/run/pinka/postgres-reader/`, group `pinka`: the researchers' reader role and Grafana; the reader's password file `/etc/pinka/postgres-reader/pgpass` is 0640 root:`pinka` |
 | Password files | `/etc/pinka/secrets/postgres/<role>`; the migrator's readable only by `<platform>-migrate` |
-| Infra's own role | `pinka_monitor` (member of `pg_monitor`) for the metrics exporter; never used by a platform |
+| Infra's own role | `pinka_monitor` (member of `pg_monitor`) for the metrics exporter; never used by a platform. `pg_monitor` may read every session's query text (`pg_stat_activity.query`); the exporter exports none of it, as a metric or a label |
 
 ## Incus
 
@@ -428,6 +436,29 @@ address and firewalled; none is public.
 | telemetry query APIs on loopback | the read-only query proxy; agent OTLP socket |
 | attestation format and official check in this contract | the platform's |
 | one signing key for the lab | one signing key per platform |
+
+### Clarifications of contract v2
+
+Each states what infra already does, without a version bump. None changes a
+field, a value or a permission a platform relies on: no file infra renders
+for a platform (such as `principals.json` and `endpoints.toml`), no schema
+and no reserved name changes, only this page. A platform that keeps a copy
+of this page updates it when it pins the release that brings the
+clarification.
+
+| Section | Clarification |
+| --- | --- |
+| [PostgreSQL](#postgresql) | besides root and PostgreSQL itself, the service socket directory also admits the `migrate` hook's account (`<platform>-migrate`, a member of `<platform>-db` when the platform requires `postgres`) and infra's metrics exporter (`pinka_monitor`), which holds the directory's group in its container |
+| [PostgreSQL](#postgresql) | `pg_monitor`, which `pinka_monitor` is a member of, may read every session's query text; the exporter exports none of it, as a metric or a label |
+
+### Changes to the draft of contract v2
+
+The changes under `contract/` before the first infra release, which keep
+the version (see "Changing the contract" above).
+
+| Change | What a platform sees |
+| --- | --- |
+| reserved account names `pinka-postgres`, `pinka-otel-journald`, `pinka-node-exporter`, `pinka-gpu-exporter`, `pinka-opa` and `pinka-vllm` (`contract/reserved-names.yml` and the schema's `$defs.reserved_accounts_groups`): the accounts infra's containers run as, each its own; `pinka-monitor`, reserved already, is now the PostgreSQL exporter's | nothing: a platform's accounts start with its own name, and `pinka` is a reserved platform name, so no valid manifest becomes invalid |
 
 ## Resolutions
 

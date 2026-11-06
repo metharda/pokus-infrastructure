@@ -4,9 +4,10 @@
 # it: how containers reach the GPU (CDI when `docker info`
 # lists CDI spec directories, the NVIDIA runtime when it lists that runtime,
 # otherwise none) and its data root. The compose, gpu_arbiter, lab_session,
-# doctor and nvidia_container_toolkit roles include this file
-# (tasks_from: facts). Without a running engine (check mode before Docker is
-# installed) the method is none and the data root docker_data_root.
+# doctor, nvidia_container_toolkit and observability roles and restore.yml
+# include this file (tasks_from: facts). Without a running engine (check
+# mode before Docker is installed) the method is none and the data root
+# docker_data_root.
 - name: Ask Docker how containers reach the GPU and where its data is
   ansible.builtin.command:
     argv:

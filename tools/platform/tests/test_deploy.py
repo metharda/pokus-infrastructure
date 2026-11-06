@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import stat
 from collections.abc import Sequence
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 
 import jsonschema
 import pytest
+import yaml
 from deploy_testlib import (
     ME,
     NOW,
@@ -521,6 +523,10 @@ def test_replace_retires_the_old_platform(repo: Path, paths: deploy.Paths) -> No
     assert paths.release_dir("allprof", "allprof-v1.2.3").is_dir()
 
 
+# The IDs of PostgreSQL's account on the fake host.
+SERVER_IDS = "981:975"
+
+
 class FakeRunner:
     def __init__(self, fail_on: str = "") -> None:
         self.calls: list[list[str]] = []
@@ -543,13 +549,15 @@ def test_purge(repo: Path, paths: deploy.Paths) -> None:
         deploy.purge("allprof", "allpro", paths, runner)
     with pytest.raises(deploy.DeployError, match="never replaced"):
         deploy.purge("nothere", "nothere", paths, runner)
-    result = deploy.purge("allprof", "allprof", paths, runner, now=lambda: NOW)
+    result = deploy.purge(
+        "allprof", "allprof", paths, runner, postgres_user=lambda: SERVER_IDS, now=lambda: NOW
+    )
     assert result["databases"] == ["allprof"]
     sql = [call[-1] for call in runner.calls]
     assert sql[0] == 'DROP DATABASE IF EXISTS "allprof" WITH (FORCE)'
     assert 'DROP ROLE IF EXISTS "allprof_ctl"' in sql
     assert all(
-        call[:5] == ["docker", "exec", "--user", "postgres", "pinka-postgres"]
+        call[:5] == ["docker", "exec", "--user", SERVER_IDS, "pinka-postgres"]
         for call in runner.calls
     )
     assert not (paths.srv / "platforms" / "allprof").exists()
@@ -583,7 +591,12 @@ def test_purge_keeps_secrets_and_says_what_remains(repo: Path, paths: deploy.Pat
     deployed(paths, other_platform(repo))
     planted = plant_secrets(paths)
     result = deploy.purge(
-        "allprof", "allprof", paths, FakeRunner(), account_exists=lambda a: a == "allprof-ctl"
+        "allprof",
+        "allprof",
+        paths,
+        FakeRunner(),
+        account_exists=lambda a: a == "allprof-ctl",
+        postgres_user=lambda: SERVER_IDS,
     )
     assert all(path.exists() for path in planted)
     assert result["remaining"] == {
@@ -600,7 +613,13 @@ def test_purge_removes_secrets_on_request(repo: Path, paths: deploy.Paths) -> No
     deployed(paths, other_platform(repo))
     planted = plant_secrets(paths)
     result = deploy.purge(
-        "allprof", "allprof", paths, FakeRunner(), remove_secrets=True, account_exists=bool
+        "allprof",
+        "allprof",
+        paths,
+        FakeRunner(),
+        remove_secrets=True,
+        account_exists=bool,
+        postgres_user=lambda: SERVER_IDS,
     )
     assert not any(path.exists() for path in planted)
     assert {str(p) for p in planted} <= set(result["removed"])
@@ -614,7 +633,40 @@ def test_purge_removes_nothing_when_the_database_fails(repo: Path, paths: deploy
     deployed(paths, settings(repo))
     deployed(paths, other_platform(repo))
     with pytest.raises(deploy.DeployError, match="psql failed"):
-        deploy.purge("allprof", "allprof", paths, FakeRunner(fail_on="DROP DATABASE"))
+        deploy.purge(
+            "allprof",
+            "allprof",
+            paths,
+            FakeRunner(fail_on="DROP DATABASE"),
+            postgres_user=lambda: SERVER_IDS,
+        )
+    assert (paths.srv / "platforms" / "allprof").is_dir()
+
+
+def test_purge_looks_up_the_account_the_roles_use() -> None:
+    # The roles take it from pinka_container_accounts in group_vars.
+    group_vars = Path(__file__).resolve().parents[3] / "ansible" / "group_vars" / "all" / "main.yml"
+    accounts = yaml.safe_load(group_vars.read_text(encoding="utf-8"))["pinka_container_accounts"]
+    assert accounts["postgres"] == deploy.POSTGRES_ACCOUNT
+
+
+def test_purge_removes_nothing_without_the_servers_account(
+    repo: Path, paths: deploy.Paths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    deployed(paths, settings(repo))
+    deployed(paths, other_platform(repo))
+    looked_up: list[str] = []
+
+    def getpwnam(name: str) -> object:
+        looked_up.append(name)
+        raise KeyError(name)
+
+    monkeypatch.setattr(pwd, "getpwnam", getpwnam)
+    runner = FakeRunner()
+    with pytest.raises(deploy.DeployError, match="account pinka-postgres does not exist"):
+        deploy.purge("allprof", "allprof", paths, runner)
+    assert looked_up == ["pinka-postgres"]
+    assert runner.calls == []
     assert (paths.srv / "platforms" / "allprof").is_dir()
 
 
@@ -710,6 +762,8 @@ def test_build_runs_uv_in_sandboxed_phases(repo: Path, paths: deploy.Paths) -> N
         assert f"ReadWritePaths={paths.uv_cache}" in props
         assert "InaccessiblePaths=-/var/lib/pinka/git" in props
         assert "InaccessiblePaths=-/srv/pinka/restricted" in props
+        # Infra's state: PostgreSQL's database files and the telemetry stores.
+        assert "InaccessiblePaths=-/srv/pinka/state" in props
         assert "ProtectSystem=strict" in props
         assert "NoNewPrivileges=yes" in props
         assert f"WorkingDirectory={final}" in props

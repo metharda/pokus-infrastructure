@@ -19,6 +19,16 @@ never in an issue or a pull request.
   logs are in `build/gate/<target>/`).
 - `make test-random-order` and `make test-isolated` pass: no test relies on
   the order of the tests or on what another test file left in the process.
+- `make gate` runs all of these in one go, quietly, one line per gate. It
+  skips, and names, the steps your change does not need against
+  `GATE_BASE` (default `origin/moving/on`; when git cannot tell the
+  changes, for example without that branch, nothing is skipped): the docs
+  build and the Mermaid check without a docs change, the random order and
+  the isolated files without a change of the tests or what runs them.
+  Locally the pytest suites run in parallel processes (`PYTEST_WORKERS`)
+  and the isolated files several at a time (`ISOLATED_JOBS`). CI runs every
+  step on every push: lint, test (in the random order, in one process), docs
+  and the isolated files (one at a time).
 - Never weaken a check, skip a test or hide a warning to get green.
 - Documentation changes with the code, following the conventions that
   `make lint` and `make docs` check. Generated files (the references, the

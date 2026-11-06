@@ -1,0 +1,26 @@
+# Managed by pinka (ansible/roles/postgres/tasks/ids.yml). Local changes will be overwritten.
+#
+# The UIDs and GIDs of the server's and the exporter's accounts
+# (postgres_ids), for every entry point of the role: main.yml and rotate.yml
+# include it, bootstrap.yml, platform.yml and restricted_check.yml when it has
+# not run yet. The users_groups role creates the accounts; only a check-mode
+# run on a fresh host may not find them yet (then the owners are left out).
+- name: Read the accounts of the host
+  ansible.builtin.getent:
+    database: passwd
+
+- name: Find the UIDs and GIDs of the server's and the exporter's accounts
+  ansible.builtin.set_fact:
+    postgres_ids: >-
+      {{ {'server': pinka_container_accounts.postgres,
+          'exporter': pinka_container_accounts.postgres_exporter}
+         | pinka_account_ids(ansible_facts.getent_passwd) }}
+
+- name: Check that the accounts exist
+  ansible.builtin.assert:
+    that: postgres_ids.values() | map(attribute='uid') | select('equalto', '') | list | length == 0
+    fail_msg: >-
+      {{ pinka_container_accounts.postgres }} and {{ pinka_container_accounts.postgres_exporter }}
+      must exist; run bootstrap again (the users_groups role creates them).
+    quiet: true
+  when: not ansible_check_mode

@@ -11,12 +11,15 @@
   ansible.builtin.include_role:
     name: active_platform
 
+- name: Find the accounts' IDs
+  ansible.builtin.include_tasks: ids.yml
+
 - name: Create the data directory
   ansible.builtin.file:
     path: "{{ postgres_state_dir }}"
     state: directory
-    owner: "{{ postgres_container_uid }}"
-    group: "{{ postgres_container_gid }}"
+    owner: "{{ postgres_ids.server.uid or omit }}"
+    group: "{{ postgres_ids.server.gid or omit }}"
     mode: "0700"
 
 - name: Create the socket directories

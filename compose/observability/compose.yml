@@ -29,10 +29,30 @@ x-hardened: &hardened
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
 
+# A read-only bind of a host path that must exist: Docker never creates it.
+x-host-ro: &host_ro
+  type: bind
+  read_only: true
+  bind:
+    create_host_path: false
+
+# An empty tmpfs over a host path a container must not see. It is mounted
+# writable, so that Docker can create a mount point inside it (a data root
+# under /var/lib); its mode 0555 leaves a process without capabilities no
+# write access, unless the process is root, its owner, and changes the mode
+# first: then what it writes stays in its own 4 KiB.
+x-mask: &mask
+  type: tmpfs
+  tmpfs:
+    size: 4096
+    mode: 365  # 0555
+
 x-gpu-exporter: &gpu_exporter
   <<: *hardened
   image: ${GPU_EXPORTER_IMAGE:?pinned image missing}
   container_name: pinka-gpu-exporter
+  # Its own account instead of the image's nobody.
+  user: "${GPU_EXPORTER_UID:?}:${GPU_EXPORTER_GID:?}"
   command: ["--web.listen-address=127.0.0.1:${GPU_EXPORTER_PORT:?}"]
 
 services:
@@ -51,22 +71,37 @@ services:
       # Split inference: mutual TLS to or from the paired node (empty otherwise).
       - /etc/pinka/secrets/containers/otel-pairing:/etc/pinka-pairing:ro
 
-  # Reads the host journal through the host's journalctl (chroot into the
-  # read-only host root, which needs root and CAP_SYS_CHROOT) and forwards it
-  # to the gateway; it accepts nothing from targets.
+  # Reads the host's journal, the persistent and the volatile one, with the
+  # host's journalctl, as an account of its own (pinka-otel-journald) with
+  # the host's systemd-journal group as its only group, and forwards it to the
+  # gateway; it accepts nothing from targets. Besides its configuration and
+  # its state directory, it sees of the host only, read-only and each at its
+  # own path: the two journal directories, the machine ID (journalctl reads
+  # the local machine's journal), the host's /usr/bin, /usr/lib, /lib and
+  # lib64 directories (journalctl and the libraries it loads; directories, so
+  # that a package update shows its new files) and /etc/ld.so.cache; where
+  # the host lacks one of the directories, an empty directory of pinka's
+  # stands in (observability role).
   otel_journald:
     <<: *hardened
     image: ${OTEL_COLLECTOR_IMAGE:?pinned image missing}
     container_name: pinka-otel-journald
     labels:
       org.pinka.config-hash: ${OTEL_CONFIG_HASH:-}
-    user: "0:0"
-    cap_add: [SYS_CHROOT]
+    user: "${JOURNALD_UID:?}:${SYSTEMD_JOURNAL_GID:?}"
     command: ["--config=/etc/otelcol/journald.yaml"]
     volumes:
       - ./config/otel:/etc/otelcol:ro
-      - /:/hostfs:ro,rslave
       - ${PINKA_ROOT:?}/state/otelcol-journald:/var/lib/otelcol/journald
+      - {<<: *host_ro, source: "${JOURNAL_PERSISTENT_DIR:?}", target: /var/log/journal}
+      - {<<: *host_ro, source: "${JOURNAL_VOLATILE_DIR:?}", target: /run/log/journal}
+      - {<<: *host_ro, source: /etc/machine-id, target: /etc/machine-id}
+      - {<<: *host_ro, source: /usr/bin, target: /usr/bin}
+      - {<<: *host_ro, source: /usr/lib, target: /usr/lib}
+      - {<<: *host_ro, source: "${USR_LIB64_DIR:?}", target: /usr/lib64}
+      - {<<: *host_ro, source: /lib, target: /lib}
+      - {<<: *host_ro, source: "${LIB64_DIR:?}", target: /lib64}
+      - {<<: *host_ro, source: /etc/ld.so.cache, target: /etc/ld.so.cache}
 
   prometheus:
     <<: *hardened
@@ -179,6 +214,9 @@ services:
     <<: *hardened
     image: ${NODE_EXPORTER_IMAGE:?pinned image missing}
     container_name: pinka-node-exporter
+    # An account of its own (not its image's nobody): it sees the host's
+    # processes, so it shares a UID with none of them.
+    user: "${NODE_EXPORTER_UID:?}:${NODE_EXPORTER_GID:?}"
     pid: host
     command:
       - --web.listen-address=127.0.0.1:${NODE_EXPORTER_PORT:?}
@@ -198,12 +236,30 @@ services:
       - -housekeeping_interval=30s
       - -store_container_labels=false
     tmpfs: [/tmp]
+    # It runs as root (its image sets no user), and reaches Docker's and
+    # containerd's sockets under /var/run, through which it reads container
+    # metadata. In its view of the host's root and of /var/run, pinka's paths
+    # are masked at their real paths (a link at one of the six resolved by
+    # the observability role), and so is the host's /var/lib, except Docker's
+    # data root, which stays visible: cAdvisor reads every container's layer
+    # ID there (or reports no metrics for the container) and measures its
+    # writable layer and log directory. The masks hide these paths only: a
+    # link below them, another mount of the same files or a copy elsewhere
+    # stays visible.
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - ${DOCKER_DATA_ROOT:?}:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
+      - {<<: *mask, target: "/rootfs${PINKA_ROOT_REAL:?}"}
+      - {<<: *mask, target: "/rootfs${ETC_PINKA_REAL:?}"}
+      - {<<: *mask, target: "/rootfs${VAR_LIB_REAL:?}"}
+      - {<<: *mask, target: "/rootfs${VAR_LIB_PINKA_REAL:?}"}
+      - {<<: *mask, target: "/rootfs${VAR_LIB_PINKA_KEPT_REAL:?}"}
+      - {<<: *mask, target: "/rootfs${RUN_PINKA_REAL:?}"}
+      - {<<: *mask, target: /var/run/pinka}
+      - {<<: *host_ro, source: "${DOCKER_DATA_ROOT:?}", target: "/rootfs${DOCKER_DATA_ROOT:?}"}
 
   # GPU metrics through nvidia-smi (works on WSL2), with the GPU method Docker
   # offers: CDI device or the NVIDIA runtime. COMPOSE_PROFILES in .env enables
