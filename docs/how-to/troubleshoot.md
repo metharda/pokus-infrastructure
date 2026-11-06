@@ -324,8 +324,10 @@ Then run the same `--uninstall` command again. See
 
 ## Exit code 81: uninstall kept items {#exit-code-81}
 
-Uninstall ran to the end, but some items it should have removed are still
-there. The report names each with the reason:
+Uninstall ran to the end, but some items it should have removed or locked
+are still there. Its own records (`/etc/pinka`, `/var/lib/pinka` with the
+install record) stay until a run finishes, so the next run continues from
+them. The report names each item with the reason:
 
 <!-- qa:run env=E2 -->
 ```bash

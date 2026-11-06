@@ -6,9 +6,12 @@
   pinka would remove, restore or keep, in removal order, with the reason. It
   changes nothing; ``--dry-run`` stops after it.
 * ``state: apply`` carries out one phase of the confirmed plan. Every item
-  ends with a result: ``removed``, ``restored``, ``kept``, ``already_gone``
-  or ``failed`` (an item it should have removed and could not, which makes
-  bootstrap exit with 81). A second run finds what is already gone.
+  ends with a result: ``removed``, ``restored``, ``locked``, ``kept``,
+  ``already_gone`` or ``failed`` (an item it should have removed or locked
+  and could not, which makes bootstrap exit with 81). A second run finds what
+  is already gone. Uninstall's own records (``/etc/pinka``, pinka's state
+  with the install record) go last, and only when no item before them
+  failed: a run that did not finish keeps them and can run again.
 * ``state: report`` writes the report (``/var/log/pinka-uninstall/<UTC>.json``)
   from the results. Its one ``pending`` item is ``/opt/pinka``, which
   bootstrap removes after the play that runs from it.
@@ -17,7 +20,12 @@ What is pinka's comes from the install record. A legacy record (the host was
 provisioned before the record existed) or no record at all decides nothing:
 then only what carries pinka's names goes, and Docker, Incus, Tailscale and
 the NVIDIA packages stay ("kept: origin unknown") unless the owner names them
-with ``--remove-component``. The lab's data stays unless ``purge_data``.
+with ``--remove-component``. The lab's data stays unless ``purge_data``, and
+with it every account and group uninstall would remove: the accounts locked
+(password locked, no login shell, expired), so that no UID or GID that owns
+kept data is ever free for another account. They are noted, with what the
+lock changed, in the kept-accounts file, which the next install reads to
+take them over; accounts, groups and data go together, with ``purge_data``.
 
 The module runs on the target's Python (3.9 in the Red Hat family's
 check-mode containers) and uses the standard library only. Commands that
@@ -27,12 +35,15 @@ depend on the package manager come from the role's family variables.
 from __future__ import annotations
 
 import datetime as dt
+import errno
 import fnmatch
 import json
 import os
 import re
 import shutil
+import stat
 import tempfile
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -88,7 +99,9 @@ options:
     description: apply only; the phase to carry out.
     type: str
   results:
-    description: report only; the results of every phase.
+    description: >-
+      apply and report; the results of the phases so far (apply keeps uninstall's own records
+      when one failed), of every phase (report).
     type: list
     elements: dict
     default: []
@@ -137,8 +150,8 @@ PHASE_TITLES = {
     "dropins": "drop-in files and settings",
     "paths": "pinka's paths",
 }
-ACTIONS = ("remove", "restore", "keep")
-RESULTS = ("removed", "restored", "kept", "already_gone", "failed", "pending")
+ACTIONS = ("remove", "restore", "lock", "keep")
+RESULTS = ("removed", "restored", "locked", "kept", "already_gone", "failed", "pending")
 # The item bootstrap finishes after the play (bootstrap/lib/stages.sh).
 PENDING_REASON = "bootstrap removes it after the play"
 COMPONENTS = ("docker", "incus", "tailscale", "nvidia")
@@ -163,6 +176,17 @@ NAMES: dict[str, Any] = {
     "pinka_cli": "/usr/local/bin/pinka",
     "opt_dir": "/opt/pinka",
     "state_dir": "/var/lib/pinka",
+    # Uninstall's own records go last (with the install record): the
+    # configuration, the machine name, the lab's description, the platform's.
+    "config_dir": "/etc/pinka",
+    # The accounts and groups kept with the lab's data, their IDs and what
+    # the lock changed (root only); pinka_install_record reads it (its
+    # KEPT_ACCOUNTS) to take them over at the next install.
+    "kept_accounts": "/var/lib/pinka/kept-accounts.json",
+    # The lock of a kept account: the login shell and the expiry (shadow's
+    # day number) usermod sets with the password lock.
+    "nologin": "/usr/sbin/nologin",
+    "lock_expire": "1",
     "deploy_key": "/var/lib/pinka/git/deploy_key.pub",
     "bin_dir": "/usr/local/bin",
     "unit_dir": "/etc/systemd/system",
@@ -408,6 +432,20 @@ class Host:
         """The real path of a host path."""
         return Path(name) if self.root == "/" else Path(self.root, name.lstrip("/"))
 
+    def real(self, name: str) -> str:
+        """A host path with its links resolved, as a host path."""
+        resolved = os.path.realpath(self.path(name))
+        if self.root == "/":
+            return resolved
+        base = os.path.realpath(self.root)
+        if resolved == base:
+            return "/"
+        return (
+            "/" + os.path.relpath(resolved, base)
+            if resolved.startswith(base + os.sep)
+            else resolved
+        )
+
     def exists(self, name: str) -> bool:
         """Whether a path exists (a dangling link counts)."""
         return os.path.lexists(self.path(name))
@@ -489,7 +527,7 @@ def item(phase: str, kind: str, name: str, action: str, reason: str, **details: 
         phase: One of :data:`PHASES`.
         kind: What it is (``unit``, ``package``, ``path``, ...).
         name: What the report calls it.
-        action: ``remove``, ``restore`` or ``keep``.
+        action: ``remove``, ``restore``, ``lock`` or ``keep``.
         reason: Why, in a few words.
         **details: What the removal needs (a project, a value to set back, ...).
 
@@ -564,6 +602,23 @@ def matches(name: str, patterns: Iterable[str]) -> bool:
     return any(fnmatch.fnmatchcase(name, p) for p in patterns)
 
 
+def untrusted(host: Host, name: str) -> str:
+    """Why a root-only file uninstall reads is not to be trusted, or "" (also when it is missing).
+
+    It must be a regular file that root owns (on the host) and nobody else
+    can write.
+    """
+    try:
+        info = host.path(name).lstat()
+    except OSError:
+        return ""
+    if not stat.S_ISREG(info.st_mode):
+        return f"{name} is no regular file"
+    if info.st_mode & 0o022 or (host.root == "/" and info.st_uid != 0):
+        return f"{name} is not root's own, or others can write it"
+    return ""
+
+
 class Context:
     """What the plan is computed from: the record, the lab, the platforms, the host.
 
@@ -580,9 +635,16 @@ class Context:
         active: The active platform record, or None.
         rendered: What was rendered for the active platform, or None.
         retired: The retired platforms' records.
+        kept: The kept-accounts file an earlier uninstall wrote ({} when missing
+            or not to be trusted).
+        kept_notes: The notes of kept accounts: the record's (taken over by
+            the last install, not unlocked), the file's over them.
+        kept_refused: Why that file is not trusted, or "".
         passwd: ``/etc/passwd`` by account.
+        shadow: ``/etc/shadow`` by account.
         groups: ``/etc/group`` by group.
-        pinka_root: The research space.
+        pinka_root: The research space (the kept-accounts file names it when
+            the lab description is gone).
         purge: Remove the lab's data too.
         remove_components: The components named with --remove-component.
         component_packages: Each component's packages (every source group).
@@ -632,9 +694,25 @@ class Context:
             for r in (read_json(host, p) for p in host.glob(self.names["retired_platforms"]))
             if isinstance(r, dict) and isinstance(r.get("active"), dict)
         ]
+        self.kept_refused = untrusted(host, self.names["kept_accounts"])
+        kept = None if self.kept_refused else read_json(host, self.names["kept_accounts"])
+        self.kept: dict[str, Any] = kept if isinstance(kept, dict) else {}
+        # The notes of kept accounts the last install took over and no role
+        # unlocked (the record's kept_accounts), then the note file's. Only an
+        # entry with the account's UID now counts (kept_entries), and where
+        # both count, the file's, which comes later, wins (plan_kept_accounts).
+        part = (self.record or {}).get("kept_accounts")
+        found = part.get("accounts") if isinstance(part, dict) else None
+        from_record: list[Any] = found if isinstance(found, list) else []
+        found = self.kept.get("accounts")
+        from_file: list[Any] = found if isinstance(found, list) else []
+        self.kept_notes: list[Any] = [*from_record, *from_file]
         self.passwd = parse_db(host.read("/etc/passwd"), 6)
+        self.shadow = parse_db(host.read("/etc/shadow"), 8)
         self.groups = parse_db(host.read("/etc/group"), 3)
-        self.pinka_root = str(self.lab.get("pinka_root") or self.names["pinka_root"])
+        self.pinka_root = str(
+            self.lab.get("pinka_root") or self.kept.get("lab_root") or self.names["pinka_root"]
+        )
         rc, out, _ = (
             host.run(["docker", "info", "--format", "{{.DockerRootDir}}"])
             if host.has("docker")
@@ -1509,8 +1587,8 @@ def plan_packages(ctx: Context) -> list[Item]:
     return items
 
 
-def plan_accounts(ctx: Context) -> list[Item]:  # noqa: PLR0912 - memberships, keys, platforms, accounts, groups
-    """Memberships and keys pinka added, then its accounts and groups, then the platforms'."""
+def plan_memberships(ctx: Context) -> list[Item]:
+    """Memberships and keys pinka added to accounts that existed before it, and memberships it took away."""
     items: list[Item] = []
     passwd, groups = ctx.passwd, ctx.groups
     for entry in ctx.added.get("memberships") or []:
@@ -1557,7 +1635,34 @@ def plan_accounts(ctx: Context) -> list[Item]:  # noqa: PLR0912 - memberships, k
                         group=group,
                     )
                 )
-    users_before = set(ctx.pre.get("users") or [])
+    return items
+
+
+# Why an account or group an earlier uninstall kept is pinka's.
+KEPT_EARLIER = "an earlier uninstall kept it with the lab's data"
+
+
+def kept_entries(ctx: Context, key: str) -> list[dict[str, Any]]:
+    """The noted accounts (the record's and the file's) or groups that are still there with the noted ID.
+
+    An account or group with the name but another UID or GID is not the one
+    uninstall kept: it is left out.
+    """
+    db, ident, field = (ctx.passwd, "uid", 1) if key == "accounts" else (ctx.groups, "gid", 1)
+    source = ctx.kept_notes if key == "accounts" else ctx.kept.get(key)
+    return [
+        dict(e)
+        for e in source or []
+        if isinstance(e, Mapping)
+        and isinstance(e.get("name"), str)
+        and e["name"] in db
+        and len(db[e["name"]]) > field
+        and db[e["name"]][field] == str(e.get(ident))
+    ]
+
+
+def accounts_to_go(ctx: Context) -> dict[str, str]:
+    """The accounts uninstall would remove, with why each is pinka's."""
     accounts: dict[str, str] = {}
     for platform in ctx.platforms():
         for name in (platform.get("names") or {}).get("accounts_groups", []):
@@ -1567,43 +1672,17 @@ def plan_accounts(ctx: Context) -> list[Item]:  # noqa: PLR0912 - memberships, k
             accounts.setdefault(name, "pinka created it")
     else:
         for name in ctx.names["infra_accounts"]:
-            home = (passwd.get(name) or ["", "", "", "", ""])[4]
+            home = (ctx.passwd.get(name) or ["", "", "", "", ""])[4]
             if home.startswith(ctx.names["account_home_prefix"]):
                 accounts.setdefault(name, "pinka's reserved account")
-    researchers = set(lab_researchers(ctx))
-    for name, why in sorted(accounts.items()):
-        if name not in passwd:
-            continue
-        if name in users_before:
-            items.append(item("accounts", "account", name, "keep", "it existed before pinka"))
-            continue
-        home = passwd[name][4]
-        keep_home = (
-            not ctx.purge
-            and home
-            and not home.startswith(ctx.names["account_home_prefix"])
-            and ctx.host.exists(home)
-        )
-        items.append(
-            item(
-                "accounts",
-                "account",
-                name,
-                "remove",
-                why + (f"; its home {home} is kept (--purge-data removes it)" if keep_home else ""),
-                home=home,
-                remove_home=bool(home)
-                and ctx.purge
-                and not home.startswith(ctx.names["account_home_prefix"]),
-            )
-        )
-        researchers.discard(name)
-    if not ctx.usable:
-        items += [
-            item("accounts", "account", name, "keep", "origin unknown (no install record)")
-            for name in sorted(researchers)
-            if name in passwd
-        ]
+    for entry in kept_entries(ctx, "accounts"):
+        accounts.setdefault(entry["name"], KEPT_EARLIER)
+    return accounts
+
+
+def groups_to_go(ctx: Context) -> dict[str, str]:  # noqa: PLR0912 - one source of pinka's groups each
+    """The groups uninstall would remove, with why each is pinka's."""
+    before = ctx.pre.get("groups") or {}
     group_names: dict[str, str] = {}
     for platform in ctx.platforms():
         for name in (platform.get("names") or {}).get("accounts_groups", []):
@@ -1624,10 +1703,300 @@ def plan_accounts(ctx: Context) -> list[Item]:  # noqa: PLR0912 - memberships, k
     else:
         for name in ctx.names["reserved_groups"] + ctx.names["infra_accounts"]:
             group_names.setdefault(name, "pinka's reserved group")
-    for name, why in sorted(group_names.items()):
-        if name in groups and name not in before:
-            items.append(item("accounts", "group", name, "remove", why))
-    return items
+    for entry in kept_entries(ctx, "groups"):
+        group_names.setdefault(entry["name"], KEPT_EARLIER)
+    return {n: w for n, w in group_names.items() if n in ctx.groups and n not in before}
+
+
+def today() -> int:
+    """Today as shadow counts days: since 1970-01-01, UTC."""
+    return int(time.time() // 86400)
+
+
+def account_state(ctx: Context, name: str) -> dict[str, str]:
+    """An account's IDs, home and login shell, and its shadow password field and expiry."""
+    entry = list(ctx.passwd.get(name) or []) + [""] * 6
+    shadow = list(ctx.shadow.get(name) or []) + [""] * 8
+    return {
+        "uid": entry[1],
+        "gid": entry[2],
+        "home": entry[4],
+        "shell": entry[5],
+        "password": shadow[0],
+        "expire": shadow[6],
+    }
+
+
+def account_locked(ctx: Context, state: Mapping[str, str]) -> bool:
+    """Whether an account carries uninstall's lock: no password, no login shell, expired."""
+    expire = state["expire"]
+    return (
+        state["password"].startswith("!")
+        and state["shell"] == ctx.names["nologin"]
+        and expire.isdigit()
+        and 0 < int(expire) <= today()
+    )
+
+
+# What the lock of a kept account does, and how it goes.
+LOCK_REASON = (
+    "kept with the lab's data, locked: its password locked, a login shell that lets nobody "
+    "in, and expired, so nobody logs in as it and its UID stays taken; --purge-data removes "
+    "it with the data"
+)
+
+
+def account_item(ctx: Context, name: str, why: str) -> Item:
+    """An account uninstall would remove: removed with --purge-data, else locked and kept."""
+    state = account_state(ctx, name)
+    home = state["home"]
+    if ctx.purge:
+        return item(
+            "accounts",
+            "account",
+            name,
+            "remove",
+            why,
+            home=home,
+            remove_home=bool(home) and not home.startswith(ctx.names["account_home_prefix"]),
+        )
+    details = {"uid": state["uid"], "gid": state["gid"], "home": home}
+    if account_locked(ctx, state):
+        return item(
+            "accounts", "account", name, "keep", f"{why}; {LOCK_REASON} (locked already)", **details
+        )
+    return item(
+        "accounts",
+        "account",
+        name,
+        "lock",
+        f"{why}; {LOCK_REASON}",
+        before={
+            "shell": state["shell"],
+            "expire": state["expire"],
+            "password_locked": not state["password"].startswith("!"),
+        },
+        **details,
+    )
+
+
+# What a lab root may not be: the host's root and the directories that hold
+# other things than pinka's (a link that resolves to one of them).
+SYSTEM_DIRS = frozenset(
+    {
+        "/",
+        "/bin",
+        "/boot",
+        "/dev",
+        "/etc",
+        "/home",
+        "/lib",
+        "/lib64",
+        "/media",
+        "/mnt",
+        "/opt",
+        "/proc",
+        "/root",
+        "/run",
+        "/sbin",
+        "/srv",
+        "/sys",
+        "/tmp",  # noqa: S108 - a directory a lab root may not be
+        "/usr",
+        "/usr/local",
+        "/var",
+        "/var/lib",
+        "/var/log",
+        "/var/tmp",  # noqa: S108 - a directory a lab root may not be
+    }
+)
+LAB_ROOT_LOCK = (
+    "the lab's data: its top locked to root (root:root 0700 without ACL entries) as an extra "
+    "defense; the files inside keep their owners, groups, modes and ACLs"
+)
+# The reason of a lab root that is not locked: the report's follow-ups name it.
+NOT_LOCKED = "the lab's data: not locked to root, "
+# The reason of a lab root the run locked: a change.
+LAB_ROOT_LOCKED = "locked (was "
+
+
+def writable_parent(host: Host, real: str) -> str:
+    """A directory above a path that a non-root account could change, or ""."""
+    parent = Path(real).parent
+    while True:
+        try:
+            info = host.path(str(parent)).lstat()
+        except OSError:
+            return str(parent)
+        if info.st_mode & 0o022 or (host.root == "/" and info.st_uid != 0):
+            return str(parent)
+        if parent == parent.parent:
+            return ""
+        parent = parent.parent
+
+
+def lab_root_refusal(host: Host, real: str) -> str:
+    """Why the lab root cannot be locked, or ""."""
+    target = host.path(real)
+    if real in SYSTEM_DIRS:
+        return f"{real} is a system directory"
+    if target.is_symlink() or not target.is_dir():
+        return f"{real} is no directory"
+    above = writable_parent(host, real)
+    return f"{above}, above it, is open to other accounts than root" if above else ""
+
+
+def plan_lab_root(ctx: Context) -> list[Item]:
+    """The lab root locked to root as an extra defense (not with --purge-data), or why not.
+
+    A file is unreachable without search permission on every directory above
+    it, so the lock of the top reaches everything below it; nothing inside
+    changes. Nothing waits for it: the accounts that own the data stay.
+    """
+    host, name = ctx.host, ctx.pinka_root
+    if ctx.purge or not host.exists(name):
+        return []
+    real = host.real(name)
+    why = lab_root_refusal(host, real)
+    if why:
+        return [item("accounts", "lab_root", name, "keep", f"{NOT_LOCKED}{why}", counted=False)]
+    # Counted (as a lock) when the lock would change it.
+    return [
+        item(
+            "accounts",
+            "lab_root",
+            name,
+            "keep",
+            LAB_ROOT_LOCK,
+            real=real,
+            counted=not dir_locked(host, real),
+        )
+    ]
+
+
+def dir_locked(host: Host, real: str) -> bool:
+    """Whether a directory is locked already: 0700 without ACL entries, root:root on a host."""
+    path = host.path(real)
+    try:
+        info = path.lstat()
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            acls = acl_names(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        return False
+    owner = host.root != "/" or (info.st_uid, info.st_gid) == (0, 0)
+    return info.st_mode & 0o7777 == LOCKED_MODE and owner and not acls
+
+
+def plan_kept_accounts(ctx: Context, kept: Sequence[Item]) -> list[Item]:
+    """The kept-accounts file: what uninstall keeps with the data and what the lock changes.
+
+    Written before any lock, so that the next install can undo exactly what
+    the lock changed for the accounts it manages. An account locked already
+    keeps an earlier note of it (the file's, else the record's): what it was
+    before the first lock.
+    """
+    accounts = [i for i in kept if i["kind"] == "account"]
+    groups = [i for i in kept if i["kind"] == "group"]
+    if ctx.purge or not (accounts or groups):
+        return []
+    # An earlier note of an account still there with the noted UID, and still
+    # locked: what it was before the first lock. An account not locked now is
+    # noted as it is now. The last entry wins: the file's over the record's.
+    noted = {e["name"]: e for e in kept_entries(ctx, "accounts")}
+    entries = []
+    for it in accounts:
+        if it["action"] == "keep" and it["name"] in noted:
+            entries.append(noted[it["name"]])
+            continue
+        state = account_state(ctx, it["name"])
+        before = it.get("before") or {
+            "shell": state["shell"],
+            "expire": state["expire"],
+            "password_locked": False,
+        }
+        entries.append({"name": it["name"], "uid": it["uid"], "gid": it["gid"], **before})
+    components = {g for names in ctx.names["component_groups"].values() for g in names}
+    return [
+        item(
+            "accounts",
+            "kept_accounts",
+            ctx.names["kept_accounts"],
+            "keep",
+            "the accounts and groups kept with the lab's data, their IDs and what the lock "
+            "changed (root only), noted before the first lock: the next install on this host "
+            "takes them over and undoes the lock of the accounts it manages; --purge-data "
+            "removes them",
+            entries={
+                "lab_root": ctx.pinka_root,
+                "lock": {"shell": ctx.names["nologin"], "expire": ctx.names["lock_expire"]},
+                "accounts": entries,
+                "groups": [
+                    {"name": g["name"], "gid": g["gid"], "component": g["name"] in components}
+                    for g in groups
+                ],
+            },
+        )
+    ]
+
+
+def group_item(ctx: Context, name: str, why: str) -> Item:
+    """A group uninstall would remove: with --purge-data it goes, else it stays with the data.
+
+    A group of Docker's or Incus's packages goes only with that component's
+    data: while the data stays, so does the group that may own it.
+    """
+    component = next(
+        (c for c, names in sorted(ctx.names["component_groups"].items()) if name in names), ""
+    )
+    if ctx.purge and not (component and not ctx.removes(component)):
+        return item("accounts", "group", name, "remove", why)
+    if ctx.purge:
+        how = "" if ctx.usable else f"; --remove-component {component} removes both"
+        reason = f"{why}; kept while {component}'s data stays{how}"
+    else:
+        reason = (
+            f"{why}; kept with the lab's data, so its GID stays taken; --purge-data removes it "
+            "with the data"
+        )
+    return item("accounts", "group", name, "keep", reason, gid=ctx.groups[name][1])
+
+
+def plan_accounts(ctx: Context) -> list[Item]:
+    """The lab root's lock, the kept-accounts file, memberships and keys, accounts, groups.
+
+    Without --purge-data no UID or GID that owns kept data is freed: every
+    account uninstall would remove is locked and kept, and every group kept.
+    """
+    passwd = ctx.passwd
+    users_before = set(ctx.pre.get("users") or [])
+    researchers = set(lab_researchers(ctx))
+    accounts: list[Item] = []
+    for name, why in sorted(accounts_to_go(ctx).items()):
+        if name not in passwd:
+            continue
+        if name in users_before:
+            accounts.append(item("accounts", "account", name, "keep", "it existed before pinka"))
+            continue
+        accounts.append(account_item(ctx, name, why))
+        researchers.discard(name)
+    if not ctx.usable:
+        accounts += [
+            item("accounts", "account", name, "keep", "origin unknown (no install record)")
+            for name in sorted(researchers)
+            if name in passwd
+        ]
+    groups = [group_item(ctx, name, why) for name, why in sorted(groups_to_go(ctx).items())]
+    kept = [i for i in accounts if "uid" in i] + [i for i in groups if "gid" in i]
+    return [
+        *plan_lab_root(ctx),
+        *plan_kept_accounts(ctx, kept),
+        *plan_memberships(ctx),
+        *accounts,
+        *groups,
+    ]
 
 
 def lab_researchers(ctx: Context) -> list[str]:
@@ -1837,27 +2206,73 @@ def platform_links(ctx: Context) -> list[str]:
     return sorted(found)
 
 
+def plan_records(ctx: Context) -> list[Item]:
+    """Uninstall's own records, last of all: they go only when everything before them went.
+
+    Pinka's state (the install record stays for its own item), the
+    configuration with the machine name and the lab's description, then the
+    install record. The kept-accounts file stays without --purge-data.
+    """
+    host, names, items = ctx.host, ctx.names, []
+    state_dir, kept_file = names["state_dir"], names["kept_accounts"]
+    keep = [names["record"]] + ([] if ctx.purge else [kept_file])
+    if host.exists(state_dir) and (
+        not host.is_dir(state_dir)
+        or any(f"{state_dir}/{e.name}" not in keep for e in host.path(state_dir).iterdir())
+    ):
+        items.append(
+            item(
+                "paths",
+                "state_dir",
+                state_dir,
+                "remove",
+                "pinka's state; the install record goes last",
+                keep=keep,
+            )
+        )
+    if host.exists(names["config_dir"]):
+        items.append(
+            item(
+                "paths",
+                "config",
+                names["config_dir"],
+                "remove",
+                "pinka's configuration and records: the machine name, the lab's description, the "
+                "platform's records",
+            )
+        )
+    if host.exists(names["record"]):
+        items.append(
+            item("paths", "record", names["record"], "remove", "the install record, last of all")
+        )
+    if (
+        not ctx.purge
+        and host.exists(kept_file)
+        and not any(i["kind"] == "kept_accounts" for i in ctx.planned)
+    ):
+        items.append(
+            item(
+                "paths",
+                "kept",
+                kept_file,
+                "keep",
+                "the accounts and groups kept with the lab's data (root only): the next install "
+                "takes them over; --purge-data removes them with the data",
+            )
+        )
+    return items
+
+
 def plan_paths(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one kind of path each
-    """Pinka's paths, the record last; the data, the logs and the remote side kept."""
+    """Pinka's paths, its records last; the data, the logs and the remote side kept."""
     host, names, items = ctx.host, ctx.names, []
     for link in sorted(set(names["links"]) | set(platform_links(ctx))):
         target = host.link_target(link)
         if target and target.startswith(tuple(names["link_targets"])):
             items.append(item("paths", "path", link, "remove", f"pinka's link to {target}"))
     for path in names["paths"]:
-        if host.exists(path):
+        if path != names["config_dir"] and host.exists(path):
             items.append(item("paths", "path", path, "remove", "pinka's path"))
-    if host.exists(names["state_dir"]):
-        items.append(
-            item(
-                "paths",
-                "state_dir",
-                names["state_dir"],
-                "remove",
-                "pinka's state; the install record goes last",
-                keep=names["record"],
-            )
-        )
     data = [
         (ctx.pinka_root, "the lab's data: the database files, models, datasets, images, backups")
     ]
@@ -1908,10 +2323,7 @@ def plan_paths(ctx: Context) -> list[Item]:  # noqa: PLR0912 - one kind of path 
                 "its public half stays registered on the Git host: remove it there",
             )
         )
-    if host.exists(names["record"]):
-        items.append(
-            item("paths", "record", names["record"], "remove", "the install record, last of all")
-        )
+    items += plan_records(ctx)
     # Bootstrap installed it for this run when it was missing: then it is no
     # reason to uninstall, though bootstrap removes it all the same.
     items.append(
@@ -1958,7 +2370,19 @@ def warnings_for(ctx: Context, items: Sequence[Item]) -> list[str]:
         found.append(
             "WSL: restart the distribution afterwards (wsl --terminate <distro> on Windows)."
         )
+    if ctx.kept_refused:
+        found.append(
+            f"Uninstall ignores the note of the kept accounts: {ctx.kept_refused}. Check it: "
+            "uninstall does not take from it which accounts and groups are pinka's."
+        )
     return found
+
+
+def changes_something(it: Mapping[str, Any]) -> bool:
+    """Whether an item changes something: what bootstrap counts before it asks."""
+    if it["kind"] == "lab_root":
+        return bool(it.get("counted"))
+    return it["action"] != "keep" and bool(it.get("counted", True))
 
 
 def build_plan(ctx: Context) -> dict[str, Any]:
@@ -1985,7 +2409,7 @@ def build_plan(ctx: Context) -> dict[str, Any]:
         "refusal": refusal,
         "warnings": warnings_for(ctx, items),
         "backup": backup,
-        "to_remove": sum(1 for i in items if i["action"] != "keep" and i.get("counted", True)),
+        "to_remove": sum(1 for i in items if changes_something(i)),
         "keep_for_data": ctx.keep_for_data,
         "kept_dir": ctx.names["keep_dir"],
         "backup_access": backup_access(ctx, items),
@@ -2059,7 +2483,21 @@ def follow_ups(ctx: Context, items: Sequence[Item]) -> list[str]:
             f"Revoke the platform's read-only deploy key {key} on {where}: uninstall removes "
             "its private half from this host."
         )
+    if any(i["kind"] == "kept_accounts" for i in items):
+        found.append(KEPT_FOLLOW_UP)
     return found
+
+
+# What stays with the lab's data without --purge-data, and the ways on.
+KEPT_FOLLOW_UP = (
+    "The lab's data stays on this host with its accounts and groups, the accounts locked: no "
+    "login, and no UID or GID that owns the data is free for another account. To bring the data "
+    "into a new lab, restore it from the backups. Before you install pinka on this host again, "
+    "move the kept lab root away or delete it on purpose; the install then takes the kept "
+    "accounts and groups over and undoes the lock of the accounts it manages (infra's, the "
+    "researchers it lists, the platform it deploys); the others stay locked. To remove the "
+    "accounts, the groups and the data together, run uninstall again with --purge-data."
+)
 
 
 def plan_text(plan: Mapping[str, Any]) -> str:
@@ -2073,12 +2511,20 @@ def plan_text(plan: Mapping[str, Any]) -> str:
     ]
     width = max([len(i["name"]) for i in items] + [10])
     width = min(width, 32)
+    # A lab root whose lock would change it is a lock, not a kept item.
+    locks_root = [i for i in items if i["kind"] == "lab_root" and changes_something(i)]
     for phase in PHASES:
-        acting = [i for i in items if i["phase"] == phase and i["action"] != "keep"]
+        acting = [
+            i for i in items if i["phase"] == phase and (i["action"] != "keep" or i in locks_root)
+        ]
         if acting:
             lines.append(f"{phase}: {PHASE_TITLES[phase]}")
-            lines += [f"  {i['action']:<8} {i['name']:<{width}}  {i['reason']}" for i in acting]
-    kept = [i for i in items if i["action"] == "keep"]
+            lines += [
+                f"  {'lock' if i in locks_root else i['action']:<8} {i['name']:<{width}}  "
+                f"{i['reason']}"
+                for i in acting
+            ]
+    kept = [i for i in items if i["action"] == "keep" and i not in locks_root]
     if kept:
         lines += ["", "Kept:"]
         lines += [f"  keep     {i['name']:<{width}}  {i['reason']}" for i in kept]
@@ -2098,7 +2544,8 @@ def plan_text(plan: Mapping[str, Any]) -> str:
         lines += ["", f"Refused: {plan['refusal']}"]
     restore = sum(1 for i in items if i["action"] == "restore")
     remove = sum(1 for i in items if i["action"] == "remove" and i.get("counted", True))
-    lines += ["", f"{remove} to remove, {restore} to restore, {len(kept)} kept."]
+    lock = sum(1 for i in items if i["action"] == "lock") + len(locks_root)
+    lines += ["", f"{remove} to remove, {restore} to restore, {lock} to lock, {len(kept)} kept."]
     return "\n".join(lines) + "\n"
 
 
@@ -2412,8 +2859,47 @@ def remove_dependencies(ctx: Context) -> tuple[str, str]:
     return "removed", f"{len(removed)}: {', '.join(sorted(removed))}"
 
 
+# What the report says of a locked account that still runs processes.
+STILL_RUNNING = "it still runs processes of a session opened before the lock"
+
+
+def lock_account(ctx: Context, it: Item) -> tuple[str, str]:
+    """Lock a kept account: its password locked, no login shell, expired.
+
+    Only an account the kept-accounts file notes, with the UID the plan
+    found: the next install undoes what the lock changed from that note.
+    """
+    host, name = ctx.host, it["name"]
+    entry = parse_db(host.read("/etc/passwd"), 6).get(name)
+    if entry is None:
+        return "already_gone", ""
+    if entry[1] != it["uid"]:
+        return "failed", f"not locked: {name} has UID {entry[1]} now, {it['uid']} in the plan"
+    noted = read_json(host, ctx.names["kept_accounts"])
+    if not any(
+        isinstance(e, Mapping) and e.get("name") == name and str(e.get("uid")) == it["uid"]
+        for e in (noted.get("accounts") or [] if isinstance(noted, dict) else [])
+    ):
+        return "failed", (
+            f"not locked: {ctx.names['kept_accounts']} does not note it, so the next install "
+            "could not undo the lock"
+        )
+    rc, out, err = host.run(
+        ["usermod", "-L", "-e", ctx.names["lock_expire"], "-s", ctx.names["nologin"], name]
+    )
+    if rc != 0:
+        return (
+            "failed",
+            f"usermod: {(err.strip() or out.strip() or f'exit status {rc}').splitlines()[-1]}",
+        )
+    why = "password locked, no login shell, expired"
+    if host.run(["pgrep", "-u", name])[0] == 0:
+        return "locked", f"{why}; {STILL_RUNNING}: end them (pkill -KILL -u {name})"
+    return "locked", why
+
+
 def apply_account(ctx: Context, it: Item) -> tuple[str, str]:  # noqa: PLR0911, PLR0912 - one command per kind
-    """Remove a membership, a key, an account or a group; or put a membership back."""
+    """Remove a membership, a key, an account or a group; put a membership back; lock an account."""
     host, kind = ctx.host, it["kind"]
     if kind == "membership":
         groups = parse_db(host.read("/etc/group"), 3)
@@ -2441,6 +2927,8 @@ def apply_account(ctx: Context, it: Item) -> tuple[str, str]:  # noqa: PLR0911, 
         if host.root == "/":
             os.chown(path, info.st_uid, info.st_gid)
         return "removed", ""
+    if kind == "account" and it["action"] == "lock":
+        return lock_account(ctx, it)
     if kind == "account":
         rc, out, err = host.run(["userdel", it["name"]])
         if rc == 6:  # noqa: PLR2004 - userdel: the account does not exist
@@ -2579,9 +3067,9 @@ def apply_path(ctx: Context, it: Item) -> tuple[str, str]:
     if missing:
         return "failed", f"not removed: the kept copy of {', '.join(missing)} is missing"
     if kind == "state_dir":
-        keep = str(it.get("keep") or "")
+        keep = {str(k) for k in it.get("keep") or []}
         for entry in sorted(host.path(path).iterdir()):
-            if f"{path}/{entry.name}" != keep:
+            if f"{path}/{entry.name}" not in keep:
                 host.remove(f"{path}/{entry.name}")
         return "removed", "the install record goes last"
     host.remove(path)
@@ -2674,6 +3162,109 @@ def apply_keep_copy(ctx: Context, it: Item) -> tuple[str, str]:
     return "kept", f"copied to {it['dest']}"
 
 
+def apply_kept_accounts(ctx: Context, it: Item) -> tuple[str, str]:
+    """Note the kept accounts and groups, root only, before any lock."""
+    entries = dict(it["entries"])
+    data = {"schema_version": SCHEMA_VERSION, "written_at": utc_now(), **entries}
+    write_json(ctx.host, it["name"], data, 0o600)
+    return "kept", (
+        f"noted {len(entries['accounts'])} accounts and {len(entries['groups'])} groups before "
+        "the lock"
+    )
+
+
+ACL_XATTRS = ("system.posix_acl_access", "system.posix_acl_default")
+# What lock_directory says when the directory it opened is not the one it checked.
+SWAPPED = "it changed while it was being locked"
+# A locked top: root only.
+LOCKED_MODE = 0o700
+
+
+def acl_names(fd: int) -> list[str]:
+    """The POSIX ACL attributes an open file carries (none where the file system has no xattrs)."""
+    try:
+        return [a for a in os.listxattr(fd) if a in ACL_XATTRS]
+    except OSError as exc:
+        if exc.errno not in (errno.ENOTSUP, errno.EOPNOTSUPP):
+            raise
+        return []
+
+
+def lock_directory(path: Path, *, chown: bool) -> tuple[bool, str]:
+    """Make a directory root:root 0700 without ACL entries; nothing inside changes.
+
+    Every change goes through one descriptor of the directory itself, opened
+    without following a link and checked against the path's ``lstat``, so a
+    link swapped in meanwhile changes nothing elsewhere.
+
+    Args:
+        path: The directory (no link).
+        chown: Give it to root:root (uninstall runs as root; tests on a fake
+            root may not).
+
+    Returns:
+        Whether anything changed, and what is still wrong ("" when locked).
+
+    Raises:
+        OSError: The directory cannot be opened or changed.
+    """
+    before = path.lstat()
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        opened = os.fstat(fd)
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            return False, SWAPPED
+        present = acl_names(fd)
+        for name in present:
+            os.removexattr(fd, name)
+        if chown and (opened.st_uid, opened.st_gid) != (0, 0):
+            os.fchown(fd, 0, 0)
+        os.fchmod(fd, LOCKED_MODE)  # exactly 0700: no setgid, sticky or group bits
+        after = os.fstat(fd)
+        left = acl_names(fd)
+    finally:
+        os.close(fd)
+    wrong = []
+    if after.st_mode & 0o7777 != LOCKED_MODE:
+        wrong.append(f"mode {after.st_mode & 0o7777:04o}")
+    if chown and (after.st_uid, after.st_gid) != (0, 0):
+        wrong.append(f"owner {after.st_uid}:{after.st_gid}")
+    if left:
+        wrong.append(f"ACL {', '.join(left)}")
+    changed = bool(present) or (opened.st_mode & 0o7777) != LOCKED_MODE
+    changed = changed or (chown and (opened.st_uid, opened.st_gid) != (0, 0))
+    return changed, "; ".join(wrong)
+
+
+def apply_lab_root(ctx: Context, it: Item) -> tuple[str, str]:  # noqa: PLR0911 - one return per refusal
+    """Lock the lab root to root: root:root 0700, no ACL entries. It blocks nothing: kept either way."""
+    host = ctx.host
+    real = str(it.get("real") or "")
+    if not real:
+        return "kept", it["reason"]
+    as_root = os.geteuid() == 0
+    if host.root == "/" and not as_root:
+        return "kept", f"{NOT_LOCKED}uninstall does not run as root"
+    try:
+        if not host.exists(it["name"]):
+            return "already_gone", ""
+        now = host.real(it["name"])
+        if now != real:
+            return "kept", f"{NOT_LOCKED}it resolves to {now} now, to {real} in the plan"
+        why = lab_root_refusal(host, real)
+        if why:
+            return "kept", f"{NOT_LOCKED}{why}"
+        info = host.path(real).lstat()
+        was = f"{info.st_uid}:{info.st_gid} {info.st_mode & 0o7777:04o}"
+        changed, wrong = lock_directory(host.path(real), chown=as_root)
+    except OSError as exc:
+        return "kept", f"{NOT_LOCKED}{type(exc).__name__}: {exc}"
+    if wrong:
+        return "kept", f"{NOT_LOCKED}{real} {wrong if wrong == SWAPPED else f'has {wrong}'}"
+    done = "already locked" if not changed else f"{LAB_ROOT_LOCKED}{was})"
+    return "kept", f"the lab's data: {done} to root: {real} is root:root 0700 without ACL entries"
+
+
 APPLIERS: dict[str, Callable[[Context, Item], tuple[str, str]]] = {
     "stop": apply_stop,
     "unit": apply_unit,
@@ -2730,8 +3321,14 @@ APPLIERS: dict[str, Callable[[Context, Item], tuple[str, str]]] = {
         k: apply_setting
         for k in ("timezone", "sysctl", "selinux_fcontext", "unit_state", "unmask", "initramfs")
     },
-    **{k: apply_path for k in ("path", "state_dir", "data", "record", "tooling")},
+    **{k: apply_path for k in ("path", "state_dir", "config", "data", "record", "tooling")},
+    "lab_root": apply_lab_root,
+    "kept_accounts": apply_kept_accounts,
 }
+# The items kept that do something: copy, note or lock.
+ACTING_KEEPS = ("keep_copy", "lab_root", "kept_accounts")
+# Uninstall's own records: they go only when no item before them failed.
+RECORDS = ("state_dir", "config", "record")
 EPILOGUES = {
     "units": [["systemctl", "daemon-reload"], ["systemctl", "reset-failed"]],
     "dropins": [["systemctl", "daemon-reload"]],
@@ -2751,13 +3348,20 @@ def result_of(it: Item, result: str, why: str) -> dict[str, Any]:
     }
 
 
-def apply_phase(ctx: Context, plan: Mapping[str, Any], phase: str) -> list[dict[str, Any]]:
+def apply_phase(
+    ctx: Context,
+    plan: Mapping[str, Any],
+    phase: str,
+    earlier: Sequence[Mapping[str, Any]] = (),
+) -> list[dict[str, Any]]:
     """Carry out one phase of a confirmed plan; every item gets its result.
 
     Args:
         ctx: The host and pinka's names.
         plan: The confirmed plan.
         phase: The phase.
+        earlier: The results of the phases before it: uninstall's own
+            records stay when one of them failed.
 
     Returns:
         The results, in the plan's order.
@@ -2772,7 +3376,7 @@ def apply_phase(ctx: Context, plan: Mapping[str, Any], phase: str) -> list[dict[
         stop_components(ctx)
         guarded, problems = guard_data(ctx, [str(p) for p in guard.get("paths") or []])
     try:
-        return apply_items(ctx, items, phase, guarded, problems)
+        return apply_items(ctx, items, phase, guarded, problems, earlier=earlier)
     finally:
         if guarding:
             release_guards(ctx)
@@ -2796,7 +3400,7 @@ def apply_item(
             return apply_keep_copy(ctx, it)
         except OSError as exc:  # the copy failed: the item says why, nothing else stops
             return "failed", f"{type(exc).__name__}: {exc}"
-    if it["action"] == "keep":
+    if it["action"] == "keep" and it["kind"] not in ACTING_KEEPS:
         return "kept", ""
     if it["kind"] == "package":
         return removed_packages[it["name"]]
@@ -2806,10 +3410,25 @@ def apply_item(
         return "failed", f"{type(exc).__name__}: {exc}"
 
 
+def unfinished(failed: int) -> str:
+    """Why uninstall's own records stay: an item before them failed."""
+    return (
+        f"kept: uninstall did not finish ({failed} item{'' if failed == 1 else 's'} could not be "
+        "removed or locked); fix what failed and run uninstall again, which finishes from these "
+        "records"
+    )
+
+
 def apply_items(
-    ctx: Context, items: Sequence[Item], phase: str, guarded: Sequence[str], problems: Sequence[str]
+    ctx: Context,
+    items: Sequence[Item],
+    phase: str,
+    guarded: Sequence[str],
+    problems: Sequence[str],
+    *,
+    earlier: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
-    """Carry out a phase's items (the packages phase inside its guard)."""
+    """Carry out a phase's items (the packages phase inside its guard), the records last."""
     packages = [i["name"] for i in items if i["kind"] == "package" and i["action"] == "remove"]
     if problems:
         # Unguarded, a package script could delete kept data: no package goes.
@@ -2818,12 +3437,17 @@ def apply_items(
     else:
         removed_packages = remove_packages(ctx, packages) if packages else {}
     unmask_after_removal(ctx, removed_packages)
-    results = [
-        result_of(it, *guarded_result(it, guarded, problems))
-        if it["kind"] == "guard" or (it["kind"] == "dependencies" and problems)
-        else result_of(it, *apply_item(ctx, it, removed_packages))
-        for it in items
-    ]
+    failed = sum(1 for r in earlier if r.get("result") == "failed")
+    results = []
+    for it in items:
+        if it["kind"] == "guard" or (it["kind"] == "dependencies" and problems):
+            result = result_of(it, *guarded_result(it, guarded, problems))
+        elif it["kind"] in RECORDS and failed:
+            result = result_of(it, "kept", unfinished(failed))
+        else:
+            result = result_of(it, *apply_item(ctx, it, removed_packages))
+        failed += result["result"] == "failed"
+        results.append(result)
     if any(r["result"] in ("removed", "restored") for r in results):
         for argv in EPILOGUES.get(phase, []):
             ctx.host.run(argv)
@@ -2921,6 +3545,38 @@ def reboot_reasons(items: Sequence[Mapping[str, Any]]) -> list[str]:
     return found
 
 
+def report_follow_ups(plan: Mapping[str, Any], items: Sequence[Mapping[str, Any]]) -> list[str]:
+    """What the owner does afterwards: what did not finish first, then the plan's follow-ups."""
+    found = []
+    failed = sum(1 for r in items if r["result"] == "failed")
+    if failed:
+        found.append(
+            f"Uninstall did not finish: {failed} item{'' if failed == 1 else 's'} could not be "
+            "removed or locked (the report names each and why). Its records stay in "
+            f"{NAMES['config_dir']} and {NAMES['state_dir']}: fix what failed, then run uninstall "
+            "again, which finishes from there."
+        )
+    for r in items:
+        if r["kind"] == "lab_root" and str(r["reason"]).startswith(NOT_LOCKED):
+            found.append(
+                f"The lab's data at {r['name']} is not locked to root "
+                f"({str(r['reason'])[len(NOT_LOCKED) :]}): see that no account but root can "
+                "reach it. Where its top can be locked, every later uninstall offers to lock it "
+                "again until it is root:root 0700 without ACL entries."
+            )
+    running = [
+        str(r["name"])
+        for r in items
+        if r["kind"] == "account" and r["result"] == "locked" and STILL_RUNNING in str(r["reason"])
+    ]
+    if running:
+        found.append(
+            f"Locked, but still running processes of a session opened before the lock: "
+            f"{', '.join(running)}. End them (pkill -KILL -u <account>)."
+        )
+    return found + list(plan.get("follow_ups") or [])
+
+
 def build_report(params: Mapping[str, Any], plan: Mapping[str, Any]) -> dict[str, Any]:
     """The report: every item of the plan with its result."""
     results = [r for r in params.get("results") or [] if isinstance(r, Mapping)]
@@ -2947,7 +3603,7 @@ def build_report(params: Mapping[str, Any], plan: Mapping[str, Any]) -> dict[str
         "reboot_reasons": reboot_reasons(items),
         "kept_dir": str(plan.get("kept_dir") or ""),
         "backup_access": str(plan.get("backup_access") or ""),
-        "follow_ups": list(plan.get("follow_ups") or []),
+        "follow_ups": report_follow_ups(plan, items),
         "items": items,
     }
 
@@ -3002,9 +3658,14 @@ def run_module(
             },
         )
         ctx.keep_for_data = dict(plan.get("keep_for_data") or {})
-        results = apply_phase(ctx, plan, phase)
+        earlier = [r for r in params.get("results") or [] if isinstance(r, Mapping)]
+        results = apply_phase(ctx, plan, phase, earlier)
         return {
-            "changed": any(r["result"] in ("removed", "restored") for r in results),
+            "changed": any(
+                r["result"] in ("removed", "restored", "locked")
+                or (r["kind"] == "lab_root" and LAB_ROOT_LOCKED in r["reason"])
+                for r in results
+            ),
             "results": results,
         }
     report = build_report(params, plan)

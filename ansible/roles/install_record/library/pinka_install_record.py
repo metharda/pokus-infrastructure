@@ -5,7 +5,7 @@ The record ``/var/lib/pinka/install-record.json`` says what existed on the host
 before pinka and what pinka added, so that no role changes a pre-existing
 component and uninstall removes only pinka's part.
 
-* ``state: init`` writes the record once, at the first install: the
+* ``state: init`` writes the record at the first install: the
   ``preexisting`` part (the components preflight found, the full package list
   with versions, the enabled and the masked units, the accounts and the groups
   with their members, and the content of each file pinka manages that already
@@ -15,7 +15,25 @@ component and uninstall removes only pinka's part.
   that reached the play; a run that stopped before it changed nothing) the
   record is marked ``legacy``: its ``preexisting`` part then includes
   pinka's own items, so it decides nothing and uninstall removes by pinka's
-  names only. An existing record is never rewritten.
+  names only. The ``preexisting`` part of an existing record is never
+  rewritten.
+
+  An uninstall without ``--purge-data`` keeps the accounts and groups that
+  own the lab's data, the accounts locked, and notes them in the
+  kept-accounts file (``/var/lib/pinka/kept-accounts.json``) with their IDs
+  and what the lock changed. ``init`` takes them over: each that still has
+  the noted UID or GID is pinka's again (in ``added``, not in
+  ``preexisting``; a group of Docker's or Incus's packages only leaves
+  ``preexisting``), and the accounts' notes go into the record
+  (``kept_accounts``). An existing record (an uninstall that did not
+  finish) gets them added. Then the file goes. No lock is undone here.
+* ``state: unlock`` undoes uninstall's lock of the kept accounts a role
+  names (``accounts``): the roles that manage them (users_groups, the
+  platform role), before they change them. The login shell and the expiry
+  come back as noted; the password is unlocked only where uninstall locked
+  it. An account whose lock someone changed since, or another account with
+  the name, is left as it is. Each named note then leaves the record; a
+  kept account no role names stays locked.
 * ``state: add`` merges items into ``added``: components pinka installs or
   joins (recorded before it acts), packages (only those absent at the first
   install), holds, accounts, groups, memberships and keys added to
@@ -63,9 +81,12 @@ options:
     type: path
     default: /var/lib/pinka/install-record.json
   state:
-    description: init writes the record once; add merges items into added; remove takes listeners reachable again out of closed_access; read returns it.
+    description: >-
+      init writes the record at the first install; add merges items into added; remove takes
+      listeners reachable again out of closed_access; unlock undoes uninstall's lock of the kept
+      accounts named; read returns it.
     type: str
-    choices: [init, add, remove, read]
+    choices: [init, add, remove, unlock, read]
     default: read
   components:
     description: init only; the components section of the host profile.
@@ -96,6 +117,17 @@ options:
       copy it kept of the original (an empty file named <copy>.absent: there was none).
     type: dict
     default: {}
+  kept_accounts:
+    description: >-
+      init only; the kept-accounts file an uninstall without --purge-data wrote: the accounts
+      and groups it kept with the lab's data, taken over by init.
+    type: path
+    default: /var/lib/pinka/kept-accounts.json
+  accounts:
+    description: unlock only; the kept accounts the calling role manages.
+    type: list
+    elements: str
+    default: []
   added:
     description: >-
       add only; the items to merge: components (name to true), packages, holds, accounts,
@@ -129,6 +161,11 @@ PACKAGE_LIST = {
     "pacman": ["pacman", "-Q"],
 }
 UNITS = ["systemctl", "list-unit-files", "--no-legend", "--plain", "--state"]
+# What an uninstall without --purge-data kept with the lab's data
+# (pinka_uninstall's NAMES["kept_accounts"]), and the shadow database the
+# undoing of its lock reads.
+KEPT_ACCOUNTS = "/var/lib/pinka/kept-accounts.json"
+SHADOW = "/etc/shadow"
 # The only items state=remove takes out: listeners reachable again.
 REMOVABLE = "closed_access"
 ONE_WAY = "install_path"
@@ -279,6 +316,182 @@ def gather(
         "files": files,
         "file_modes": modes,
     }
+
+
+def read_kept(path: str) -> dict[str, Any] | None:
+    """The kept-accounts file, or None when there is none.
+
+    Raises:
+        ValueError: If the file is no regular file of this process's user
+            (root on a host) that only it can write, or not a JSON object.
+    """
+    if not os.path.lexists(path):
+        return None
+    info = os.lstat(path)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+        raise ValueError(
+            f"{path} is no regular file of root's that only root can write: check it, then "
+            "delete it or make it root's (chown root:root, chmod 0600)"
+        )
+    with Path(path).open(encoding="utf-8") as handle:
+        data = json.load(handle)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    return data
+
+
+def noted(kept: Mapping[str, Any], key: str, ident: str) -> list[dict[str, Any]]:
+    """The kept accounts or groups that still exist with the noted ID (``uid``, ``gid``)."""
+    found = []
+    for entry in kept.get(key) or []:
+        if not isinstance(entry, Mapping) or not isinstance(entry.get("name"), str):
+            continue
+        try:
+            now = (
+                pwd.getpwnam(entry["name"]).pw_uid
+                if ident == "uid"
+                else grp.getgrnam(entry["name"]).gr_gid
+            )
+        except KeyError:
+            continue
+        if str(now) == str(entry.get(ident)):
+            found.append(dict(entry))
+    return found
+
+
+def shadow_entry(name: str) -> list[str]:
+    """An account's fields in the shadow database (password, ..., expire at 6), or []."""
+    text = Path(SHADOW).read_text(encoding="utf-8")
+    for line in text.splitlines():
+        fields = line.split(":")
+        if fields[0] == name:
+            return fields[1:]
+    return []
+
+
+def undo_lock(
+    run: RunCommand, entry: Mapping[str, Any], lock: Mapping[str, Any], *, check_mode: bool
+) -> bool:
+    """Undo uninstall's lock of a kept account, where the account still carries it.
+
+    The login shell and the expiry come back as noted; the password is
+    unlocked only where uninstall locked it. An account whose shell or
+    expiry is no longer the lock's (someone changed it since) is left as it
+    is.
+
+    Returns:
+        Whether the account changed (in check mode: would change).
+
+    Raises:
+        RuntimeError: If usermod fails.
+    """
+    name = str(entry["name"])
+    shell = pwd.getpwnam(name).pw_shell
+    shadow = shadow_entry(name) + [""] * 7
+    if (shell, shadow[6]) != (str(lock.get("shell")), str(lock.get("expire"))):
+        return False
+    before_shell, before_expire = str(entry.get("shell") or ""), str(entry.get("expire") or "")
+    unlock = bool(entry.get("password_locked")) and shadow[0].startswith("!")
+    if (shell, shadow[6]) == (before_shell, before_expire) and not unlock:
+        return False
+    if check_mode:
+        return True
+    argv = ["usermod", "-s", before_shell, "-e", before_expire]
+    rc, out, err = run([*argv, *(["-U"] if unlock else []), name])
+    if rc != 0:
+        raise RuntimeError(
+            f"cannot undo the lock of the kept account {name}: {(err or out).strip()}"
+        )
+    return True
+
+
+def take_over(kept: Mapping[str, Any] | None) -> tuple[dict[str, list[str]], list[dict[str, Any]]]:
+    """The kept accounts and groups that are pinka's again: those with the noted UID or GID.
+
+    Args:
+        kept: The kept-accounts file, or None.
+
+    Returns:
+        ``accounts``, ``groups`` (pinka's own) and ``component_groups``
+        (Docker's or Incus's), the names taken over; and the notes of the
+        accounts, for state=unlock.
+    """
+    taken: dict[str, list[str]] = {"accounts": [], "groups": [], "component_groups": []}
+    if not kept:
+        return taken, []
+    notes = noted(kept, "accounts", "uid")
+    taken["accounts"] = [e["name"] for e in notes]
+    for entry in noted(kept, "groups", "gid"):
+        key = "component_groups" if entry.get("component") else "groups"
+        taken[key].append(entry["name"])
+    return {k: sorted(v) for k, v in taken.items()}, notes
+
+
+def keep_notes(
+    record: dict[str, Any], kept: Mapping[str, Any], notes: Sequence[Mapping[str, Any]]
+) -> None:
+    """Put the taken accounts' notes into the record (``kept_accounts``).
+
+    The note file's entry of an account wins over the record's: the later
+    uninstall noted it.
+    """
+    if not notes:
+        return
+    part = record.setdefault(
+        "kept_accounts", {"lock": dict(kept.get("lock") or {}), "accounts": []}
+    )
+    newer = {e["name"] for e in notes}
+    part["accounts"] = [e for e in part["accounts"] if str(e.get("name")) not in newer] + [
+        dict(e) for e in notes
+    ]
+    part["accounts"].sort(key=lambda e: str(e.get("name")))
+
+
+def unlock(
+    params: Mapping[str, Any],
+    record: dict[str, Any] | None,
+    *,
+    check_mode: bool,
+    run: RunCommand,
+) -> dict[str, Any]:
+    """Undo uninstall's lock of the kept accounts a role names; their notes leave the record.
+
+    Returns:
+        ``changed``, ``record``, ``exists`` and ``unlocked`` (the accounts
+        whose lock is undone; in check mode, would be).
+
+    Raises:
+        ValueError: If the record is missing (outside check mode).
+        RuntimeError: If usermod fails.
+    """
+    path = str(params["path"])
+    if record is None:
+        if check_mode:
+            return {"changed": False, "record": {}, "exists": False, "unlocked": []}
+        raise ValueError(f"{path} does not exist; the install_record role writes it first")
+    names = {str(n) for n in params.get("accounts") or []}
+    part = record.get("kept_accounts") or {}
+    lock = part.get("lock") or {}
+    left, unlocked, handled = [], [], False
+    for entry in part.get("accounts") or []:
+        name = str(entry.get("name"))
+        if name not in names:
+            left.append(entry)
+            continue
+        handled = True
+        try:
+            uid = pwd.getpwnam(name).pw_uid
+        except KeyError:
+            continue  # gone since: nothing to undo
+        if str(uid) == str(entry.get("uid")) and undo_lock(run, entry, lock, check_mode=check_mode):
+            unlocked.append(name)
+    if handled and not check_mode:
+        if left:
+            record["kept_accounts"]["accounts"] = left
+        else:
+            del record["kept_accounts"]
+        write_record(path, record)
+    return {"changed": handled, "record": record, "exists": True, "unlocked": sorted(unlocked)}
 
 
 def build_record(
@@ -472,6 +685,70 @@ def write_record(path: str, record: Mapping[str, Any]) -> None:
         raise
 
 
+def init(
+    params: Mapping[str, Any],
+    record: dict[str, Any] | None,
+    *,
+    check_mode: bool,
+    run: RunCommand,
+) -> dict[str, Any]:
+    """Write the record at the first install, and take over what an uninstall kept with the data.
+
+    Returns:
+        ``changed``, ``record``, ``exists`` and ``taken_over``.
+
+    Raises:
+        ValueError: If ``pkg_manager`` is missing or the kept-accounts file is not an object.
+    """
+    path = str(params["path"])
+    kept_path = str(params.get("kept_accounts") or KEPT_ACCOUNTS)
+    kept = read_kept(kept_path)
+    taken, notes = take_over(kept)
+    if record is not None:
+        # An uninstall that did not finish kept the record: what it kept is added.
+        if kept is None:
+            return {"changed": False, "record": record, "exists": True, "taken_over": taken}
+        merge(record, {"accounts": taken["accounts"], "groups": taken["groups"]})
+        keep_notes(record, kept, notes)
+        if not check_mode:
+            write_record(path, record)
+            Path(kept_path).unlink()
+        return {"changed": True, "record": record, "exists": True, "taken_over": taken}
+    if not params.get("pkg_manager"):
+        raise ValueError("state=init needs pkg_manager")
+    found = gather(
+        run,
+        str(params["pkg_manager"]),
+        params.get("managed_files") or [],
+        params.get("originals") or {},
+    )
+    found = {
+        **found,
+        "users": [u for u in found["users"] if u not in taken["accounts"]],
+        "groups": {
+            g: m
+            for g, m in found["groups"].items()
+            if g not in taken["groups"] and g not in taken["component_groups"]
+        },
+    }
+    record = build_record(
+        components=params.get("components") or {},
+        found=found,
+        legacy=provisioned_before(str(params["bootstrap_state"])),
+        created_at=utc_now(),
+        access=params.get("access") or {},
+    )
+    record["added"]["accounts"] = list(taken["accounts"])
+    record["added"]["groups"] = list(taken["groups"])
+    if kept is not None:
+        keep_notes(record, kept, notes)
+    if not check_mode:
+        write_record(path, record)
+        if kept is not None:
+            Path(kept_path).unlink()
+    return {"changed": True, "record": record, "exists": not check_mode, "taken_over": taken}
+
+
 def run_module(params: Mapping[str, Any], *, check_mode: bool, run: RunCommand) -> dict[str, Any]:
     """Do what the module's parameters ask.
 
@@ -493,26 +770,9 @@ def run_module(params: Mapping[str, Any], *, check_mode: bool, run: RunCommand) 
     if state == "read":
         return {"changed": False, "record": record or {}, "exists": record is not None}
     if state == "init":
-        if record is not None:
-            return {"changed": False, "record": record, "exists": True}
-        if not params.get("pkg_manager"):
-            raise ValueError("state=init needs pkg_manager")
-        found = gather(
-            run,
-            str(params["pkg_manager"]),
-            params.get("managed_files") or [],
-            params.get("originals") or {},
-        )
-        record = build_record(
-            components=params.get("components") or {},
-            found=found,
-            legacy=provisioned_before(str(params["bootstrap_state"])),
-            created_at=utc_now(),
-            access=params.get("access") or {},
-        )
-        if not check_mode:
-            write_record(path, record)
-        return {"changed": True, "record": record, "exists": not check_mode}
+        return init(params, record, check_mode=check_mode, run=run)
+    if state == "unlock":
+        return unlock(params, record, check_mode=check_mode, run=run)
     if record is None:
         if check_mode:
             return {"changed": False, "record": {}, "exists": False}
@@ -533,7 +793,7 @@ def main() -> None:  # pragma: no cover - exercised on hosts
             "path": {"type": "path", "default": "/var/lib/pinka/install-record.json"},
             "state": {
                 "type": "str",
-                "choices": ["init", "add", "remove", "read"],
+                "choices": ["init", "add", "remove", "unlock", "read"],
                 "default": "read",
             },
             "components": {"type": "dict", "default": {}},
@@ -542,6 +802,8 @@ def main() -> None:  # pragma: no cover - exercised on hosts
             "managed_files": {"type": "list", "elements": "path", "default": []},
             "bootstrap_state": {"type": "path", "default": "/etc/pinka/bootstrap-state.json"},
             "originals": {"type": "dict", "default": {}},
+            "kept_accounts": {"type": "path", "default": KEPT_ACCOUNTS},
+            "accounts": {"type": "list", "elements": "str", "default": []},
             "added": {"type": "dict", "default": {}},
         },
         supports_check_mode=True,

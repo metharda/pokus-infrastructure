@@ -1209,7 +1209,7 @@ uninstall_flow() {
     if "$OPT_DRY_RUN"; then
       log_info "dry run: nothing was removed"
     else
-      log_info "nothing of pinka's is on this host; nothing was removed"
+      log_info "nothing of pinka's is left to remove or lock on this host; nothing was removed"
     fi
     FINAL_RC=$EXIT_OK
     return 0
@@ -1237,7 +1237,7 @@ uninstall_flow() {
     [[ -z $line ]] || log_warn "$line"
   done <<<"$notes"
   if ((failed > 0)); then
-    log_error "$failed item(s) could not be removed; the report names each and why"
+    log_error "$failed item(s) could not be removed or locked; the report names each and why"
     FINAL_RC=$EXIT_UNINSTALL_KEPT
   else
     FINAL_RC=$EXIT_OK

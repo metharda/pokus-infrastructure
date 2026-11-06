@@ -168,6 +168,19 @@ SNAPSHOT: dict[str, list[str]] = {
     "docker": [f"container {preexisting.WORKLOAD} python"],
 }
 UNINSTALL_REPORT = "/var/log/pinka-uninstall/20260101T120000Z.json"
+# Uninstall's note of what it kept with the lab's data.
+KEPT_NOTE: dict[str, Any] = {
+    "lab_root": "/srv/pinka",
+    "lock": {"shell": "/usr/sbin/nologin", "expire": "1"},
+    "accounts": [
+        {"name": "pinka-postgres", "uid": "981", "gid": "975", "shell": "/usr/sbin/nologin"},
+        {"name": "researcher1", "uid": "1001", "gid": "1001", "shell": "/bin/bash"},
+    ],
+    "groups": [
+        {"name": "pinka-postgres", "gid": "975", "component": False},
+        {"name": "pinka", "gid": "989", "component": False},
+    ],
+}
 
 
 def snapshot_text(sections: dict[str, list[str]]) -> str:
@@ -214,6 +227,8 @@ class FakeIncus:
             "tailscale_now": SNAPSHOT["tailscale"],
             "kept_marked": ["/srv/pinka", "/var/lib/docker"],
             "kept_check": 0,
+            "kept_note": json.dumps(KEPT_NOTE),
+            "kept_locked": 0,
             "kept_backup": 0,
             "versions_now": SNAPSHOT["packages"][1:],
             **behaviour,
@@ -343,6 +358,10 @@ class FakeIncus:
             return int(b["kept_check"]), ""
         if script == harness.KEPT_BACKUP:
             return int(b["kept_backup"]), ""
+        if script == f"cat {harness.KEPT_NOTE}":
+            return (0, b["kept_note"]) if b["kept_note"] else (1, "")
+        if script == harness.check_kept_locked(KEPT_NOTE):
+            return int(b["kept_locked"]), ""
         if script == preexisting.CODENAME:
             return 0, "noble\n"
         if script == snapshot.section_script("tailscale"):
@@ -784,8 +803,19 @@ def changed(**sections: list[str]) -> dict[str, list[str]]:
 
 def test_the_uninstall_lane(tmp_path: Path) -> None:
     after = changed(
-        files=[*SNAPSHOT["files"], "/srv/pinka", "/var/log/pinka-uninstall/x.json"],
-        groups=[*SNAPSHOT["groups"], "_chrony:991:"],
+        files=[
+            *SNAPSHOT["files"],
+            "/srv/pinka",
+            "/var/log/pinka-uninstall/x.json",
+            "/var/lib/pinka",
+            "/var/lib/pinka/kept-accounts.json",
+        ],
+        users=[
+            *SNAPSHOT["users"],
+            "pinka-postgres:981:/var/lib/pinka/pinka-postgres:/usr/sbin/nologin",
+            "researcher1:1001:/home/researcher1:/usr/sbin/nologin",
+        ],
+        groups=[*SNAPSHOT["groups"], "_chrony:991:", "pinka-postgres:975:", "pinka:989:"],
         packages=["bash 5.3", *SNAPSHOT["packages"][1:]],
     )
     test, fake = make_test(tmp_path, "debian-13", after=after)
@@ -815,17 +845,28 @@ def test_the_uninstall_lane(tmp_path: Path) -> None:
         harness.check_kept_data(["/srv/pinka", "/var/lib/docker"], "kept-ptd-debian-13-abcdef")
     )
     assert removal < mark < runs[-2] and runs[-1] < settles[-1] < check < snapshots[1]
-    assert scripts.index(harness.KEPT_BACKUP) == check + 1
+    # Then the note of the kept accounts, their lock and the lab root's.
+    assert scripts.index(f"cat {harness.KEPT_NOTE}") == check + 1
+    assert scripts.index(harness.check_kept_locked(KEPT_NOTE)) == check + 2
+    assert scripts.index(harness.KEPT_BACKUP) == check + 3
     out = tmp_path / "out" / "debian-13"
     assert (out / "snapshot-before.txt").read_text() == snapshot_text(SNAPSHOT)
     assert json.loads((out / "uninstall-report.json").read_text())["items"]
     differences = (out / "uninstall-differences.txt").read_text().splitlines()
     assert [d.split(" (kept: ")[0] for d in differences] == [
         "kept: packages: ~bash 5.2 -> 5.3",
+        "kept: users: +pinka-postgres:981:/var/lib/pinka/pinka-postgres:/usr/sbin/nologin",
+        "kept: users: +researcher1:1001:/home/researcher1:/usr/sbin/nologin",
         "kept: groups: +_chrony:991:",
+        "kept: groups: +pinka-postgres:975:",
+        "kept: groups: +pinka:989:",
         "kept: files: +/srv/pinka",
+        "kept: files: +/var/lib/pinka",
+        "kept: files: +/var/lib/pinka/kept-accounts.json",
         "kept: files: +/var/log/pinka-uninstall/x.json",
     ]
+    assert f"(kept: {snapshot.KEPT_ACCOUNT})" in differences[1]
+    assert json.loads((out / "kept-accounts.json").read_text()) == KEPT_NOTE
 
 
 @pytest.mark.parametrize(
@@ -839,10 +880,34 @@ def test_the_uninstall_lane(tmp_path: Path) -> None:
                     {"name": "incus", "result": "failed", "reason": "dpkg: busy"},
                 ],
             },
-            "uninstall ended with exit 81; could not remove incus: dpkg: busy",
+            "uninstall ended with exit 81; could not remove or lock incus: dpkg: busy",
         ),
         ({"uninstall": 80, "report_items": []}, "uninstall ended with exit 80"),
         ({"kept_check": 1}, "the kept data failed (exit 1)"),
+        ({"kept_locked": 1}, "the kept accounts and the lab root locked failed (exit 1)"),
+        ({"kept_note": ""}, "reading the note of the kept accounts failed (exit 1)"),
+        ({"kept_note": "{"}, "the note of the kept accounts is not JSON"),
+        ({"kept_note": json.dumps({**KEPT_NOTE, "lock": None})}, "has no lock or no accounts"),
+        (
+            {"kept_note": json.dumps({**KEPT_NOTE, "accounts": KEPT_NOTE["accounts"][1:]})},
+            "names no pinka-postgres with its IDs",
+        ),
+        (
+            # Kept, but not with the lock's shell: not as uninstall noted it.
+            {
+                "after": changed(
+                    users=[
+                        *SNAPSHOT["users"],
+                        "pinka-postgres:981:/var/lib/pinka/pinka-postgres:/bin/bash",
+                    ]
+                )
+            },
+            "users: +pinka-postgres:981",
+        ),
+        (
+            {"after": changed(groups=[*SNAPSHOT["groups"], "pinka:988:"])},
+            "groups: +pinka:988:",
+        ),
         ({"kept_backup": 1}, "opening the backups with the kept key failed (exit 1)"),
         ({"again": "uninstall: 1 removed"}, "a second uninstall still found something"),
         (
@@ -979,6 +1044,31 @@ def test_snapshot_script_and_parse() -> None:
         snapshot.parse(snapshot_text({k: v for k, v in SNAPSHOT.items() if k != "docker"}))
 
 
+def test_the_lock_check_script() -> None:
+    script = harness.check_kept_locked(KEPT_NOTE)
+    # Every noted account: its UID and the lock's shell, its password locked and expired.
+    assert (
+        'n=pinka-postgres; got=$(getent passwd "$n" | cut -d: -f3,7);'
+        ' test "$got" = 981:/usr/sbin/nologin || { echo "$n is $got" >&2; exit 1; };'
+    ) in script
+    assert 'n=researcher1; got=$(getent passwd "$n" | cut -d: -f3,7);' in script
+    assert (
+        'got=$(getent shadow "$n" | cut -d: -f2,8); case $got in "!"*:1) ;;'
+        ' *) echo "$n is not locked" >&2; exit 1;; esac;'
+    ) in script
+    # The lab root: root:root 0700 without ACL entries, and "Permission denied"
+    # for PostgreSQL's kept account below it; any other failure fails.
+    assert 'got=$(stat -c "%u:%g %a" /srv/pinka); test "$got" = "0:0 700"' in script
+    assert "! ls -ld /srv/pinka | cut -c11 | grep -q +" in script
+    assert "setpriv --reuid=981 --regid=975 --clear-groups cat" in script
+    assert 'case $out in *"Permission denied"*) ;;' in script
+    assert "*) echo" in script and "exit 1;; esac; done" in script
+    # Names are quoted for the shell.
+    odd = {**KEPT_NOTE, "accounts": [*KEPT_NOTE["accounts"], {"name": "a b", "uid": "5"}]}
+    assert "n='a b';" in harness.check_kept_locked(odd)
+    assert subprocess.run(["bash", "-n"], input=script, text=True, check=False).returncode == 0
+
+
 def test_snapshot_differences() -> None:
     before = changed(listening=["tcp 0.0.0.0:22", "tcp 100.64.0.1:41234"])
     after = changed(
@@ -1011,6 +1101,32 @@ def test_snapshot_differences() -> None:
         SNAPSHOT, changed(packages=["bash 5.3", *SNAPSHOT["packages"][1:]])
     )
     assert kept == [f"packages: ~bash 5.2 -> 5.3 (kept: {snapshot.VERSION_CHANGE})"]
+    # With uninstall's note: only what it names, with its ID (an account with
+    # the lock's shell too), is kept.
+    after = changed(
+        users=[
+            *SNAPSHOT["users"],
+            "researcher1:1001:/home/researcher1:/usr/sbin/nologin",
+            "pinka-postgres:982:/var/lib/pinka/pinka-postgres:/usr/sbin/nologin",
+        ],
+        groups=[*SNAPSHOT["groups"], "pinka:989:researcher1", "pinka-admin:987:"],
+    )
+    failing, kept = snapshot.differences(SNAPSHOT, after, ["refplat"], [], KEPT_NOTE)
+    assert failing == [
+        "users: +pinka-postgres:982:/var/lib/pinka/pinka-postgres:/usr/sbin/nologin",
+        "groups: +pinka-admin:987:",
+    ]
+    assert kept == [
+        f"users: +researcher1:1001:/home/researcher1:/usr/sbin/nologin "
+        f"(kept: {snapshot.KEPT_ACCOUNT})",
+        f"groups: +pinka:989:researcher1 (kept: {snapshot.KEPT_GROUP})",
+    ]
+    # A line that is gone, or no account at all, is never the note's.
+    assert (
+        snapshot.kept_account("users", "-researcher1:1001:/h:/usr/sbin/nologin", KEPT_NOTE) is None
+    )
+    assert snapshot.kept_account("files", "+researcher1:1001", KEPT_NOTE) is None
+    assert snapshot.kept_account("users", "+researcher1:1001:/h:/usr/sbin/nologin", None) is None
 
 
 def test_the_lane_matches_bootstrap() -> None:
@@ -1024,6 +1140,11 @@ def test_the_lane_matches_bootstrap() -> None:
     for path in ("/srv/pinka", "/var/log/pinka-bootstrap", "/var/log/pinka-uninstall"):
         assert f'"{path}"' in module
         assert any(k.matches("files", path) for k in snapshot.KEPT)
+    # Its note of the kept accounts, which the lane reads, and the lock's shell.
+    assert f'"kept_accounts": "{harness.KEPT_NOTE}"' in module
+    assert any(k.matches("files", harness.KEPT_NOTE) for k in snapshot.KEPT)
+    assert f'"pinka_root": "{harness.LOCKED_TOP}"' in module
+    assert f'"{harness.PROBE_ACCOUNT}",' in module
 
 
 def test_tailscale_pins(tmp_path: Path) -> None:

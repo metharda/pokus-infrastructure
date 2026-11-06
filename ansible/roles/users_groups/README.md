@@ -29,6 +29,13 @@ Groups and accounts (`docs/contracts.md`).
   shell `nologin`, account expired. They are never deleted and their data is
   kept. A name that is no account is skipped and named in a message, never
   created.
+- Accounts an uninstall without `--purge-data` kept locked with the lab's
+  data, and that this lab names again (infra's accounts and `researchers`),
+  get uninstall's lock undone as the install record noted it, before any
+  task here changes them (`pinka_install_record`, `state: unlock`). A kept
+  researcher this lab no longer names stays locked. A researcher named again
+  gets that account back as it was, with its home, password and keys: a new
+  person needs a new name.
 
 ## Variables
 

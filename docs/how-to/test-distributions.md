@@ -121,11 +121,18 @@ Every target runs the uninstall lane around the rest of its test:
   pinka's left. After another reboot the same snapshot
   (`snapshot-after.txt`) must equal the first, apart from what uninstall
   keeps on purpose: the lab's data below `/srv/pinka`, the logs below
-  `/var/log/pinka-bootstrap` and `/var/log/pinka-uninstall`, system accounts
-  and groups that packages created, and newer versions of packages that
-  were there before (uninstall never downgrades). `uninstall-differences.txt`
-  lists every difference, each kept one with its reason; any other fails
-  the stage.
+  `/var/log/pinka-bootstrap` and `/var/log/pinka-uninstall`, the accounts
+  and groups uninstall kept with the data and noted in
+  `/var/lib/pinka/kept-accounts.json` (with the noted UID or GID, an account
+  with the lock's shell), that note and `/var/lib/pinka`, which holds it,
+  system accounts and groups that packages created, and newer versions of
+  packages that were there before (uninstall never downgrades).
+  `uninstall-differences.txt` lists every difference, each kept one with
+  its reason; any other fails the stage.
+  Before the snapshot, every noted account must be locked (its password
+  locked, the lock's shell, expired), the lab root root:root 0700 without
+  ACL entries, and PostgreSQL's kept account must read nothing below it
+  ("Permission denied"); the note is kept as `kept-accounts.json`.
 
 The target `ubuntu-24.04-preexisting` is the lane's variant. Before pinka,
 `prepare` sets up what a machine's owner would have had: Docker Engine from

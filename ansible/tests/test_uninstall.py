@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pinka_install_record
 import pinka_uninstall as mod
 import pytest
 from test_uninstall_module import DEBIAN
@@ -422,6 +423,62 @@ def test_component_sources_name_real_components() -> None:
     assert sorted(defaults) == sorted(mod.COMPONENTS)
     for entries in defaults.values():
         assert set(entries) <= set(sources)
+
+
+def test_the_kept_accounts_are_where_the_next_install_reads_them() -> None:
+    """Uninstall notes the kept accounts where the install record takes them over."""
+    assert NAMES["kept_accounts"] == pinka_install_record.KEPT_ACCOUNTS
+    assert NAMES["kept_accounts"].startswith(NAMES["state_dir"] + "/")
+    assert f"default: {NAMES['kept_accounts']}" in pinka_install_record.DOCUMENTATION
+    # The lock's shell is the one users_groups gives accounts without a login.
+    defaults = load_yaml(ROLES / "users_groups" / "defaults" / "main.yml")
+    assert NAMES["nologin"] == defaults["users_groups_nologin_shell"]
+    assert NAMES["lock_expire"] == "1"
+    # The records that go last are pinka's paths too.
+    assert NAMES["config_dir"] in NAMES["paths"]
+    # Each phase gets the results so far: the records stay after a failure.
+    phase = load_yaml(ROLE / "tasks" / "phase.yml")[0]["pinka_uninstall"]
+    assert phase["results"] == "{{ uninstall_results | default([]) }}"
+
+
+def test_the_roles_that_manage_kept_accounts_undo_their_lock_first() -> None:
+    """Only the accounts a role manages get their lock undone, before it changes them."""
+    users = load_yaml(ROLES / "users_groups" / "tasks" / "main.yml")
+    names = [t["name"] for t in users]
+    unlock = next(
+        t
+        for t in users
+        if "pinka_install_record" in t and t["pinka_install_record"]["state"] == "unlock"
+    )
+    assert unlock["pinka_install_record"]["accounts"] == (
+        "{{ (infra_accounts + researchers) | map(attribute='name') | list }}"
+    )
+    first_change = min(
+        names.index(n)
+        for n in (
+            "Create the infra accounts",
+            "Create the researchers",
+            "Lock removed researchers (data is kept)",
+        )
+    )
+    assert names.index(unlock["name"]) < first_change
+    # After the refusals, which stop the run before anything changes.
+    refusals = [i for i, n in enumerate(names) if n.startswith("Refuse ")]
+    assert len(refusals) == 2 and max(refusals) < names.index(unlock["name"])
+    render = load_yaml(ROLES / "platform" / "tasks" / "render.yml")
+    names = [t["name"] for t in render]
+    unlock = next(t for t in render if "pinka_install_record" in t)
+    assert unlock["pinka_install_record"] == {
+        "state": "unlock",
+        "accounts": "{{ active_platform.accounts | map(attribute='name') | list }}",
+    }
+    assert names.index(unlock["name"]) < names.index("Create the platform's accounts")
+    # Nothing else undoes a lock: init only takes the accounts over.
+    callers = [p for p in ROLES.rglob("*.yml") if "state: unlock" in p.read_text(encoding="utf-8")]
+    assert sorted(p.relative_to(ROLES).as_posix() for p in callers) == [
+        "platform/tasks/render.yml",
+        "users_groups/tasks/main.yml",
+    ]
 
 
 def test_the_play_runs_without_group_variables() -> None:

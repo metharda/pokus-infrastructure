@@ -2,13 +2,16 @@
 #
 # One phase of the confirmed plan. An item that cannot be
 # removed is a result ("failed", bootstrap exits 81), not a failed task; a
-# failed task stops the phases after it, and the report notes them.
+# failed task stops the phases after it, and the report notes them. The
+# results so far go with each phase: uninstall's own records go last, and
+# stay when an item before them failed.
 - name: Remove {{ uninstall_phase }}
   pinka_uninstall:
     state: apply
     phase: "{{ uninstall_phase }}"
     family: "{{ uninstall_family }}"
     plan_file: "{{ pinka_uninstall.plan_file }}"
+    results: "{{ uninstall_results | default([]) }}"
   register: uninstall_phase_result
 
 - name: Keep the results of {{ uninstall_phase }}

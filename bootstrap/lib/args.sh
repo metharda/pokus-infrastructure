@@ -55,7 +55,7 @@ Uninstall options (with --uninstall, only --machine, --allow-dirty, --offline,
 Exit codes: see docs/reference/exit-codes.md (0 success; 1/2 doctor warnings/failures;
 10, 11, 20, 30, 40 preflight gate; 50 tooling; 60 play; 64 usage; 65 platform
 release refused; 70 internal; 75 WSL restart; 76 reboot; 77 operator action;
-80 uninstall refused or not confirmed; 81 uninstall kept items it could not remove).
+80 uninstall refused or not confirmed; 81 uninstall kept items it could not remove or lock).
 EOF
 }
 

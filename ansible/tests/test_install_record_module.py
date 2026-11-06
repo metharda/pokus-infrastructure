@@ -7,13 +7,17 @@ run on CPython 3.9 (``make test-py39``).
 
 from __future__ import annotations
 
+import grp
 import json
+import os
+import pwd
 import stat
 import tempfile
 import unittest
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pinka_install_record as mod
 
@@ -53,6 +57,8 @@ def params(path: Path, **overrides: Any) -> dict[str, Any]:
         "pkg_manager": "apt",
         "managed_files": [],
         "bootstrap_state": str(path.parent / "bootstrap-state.json"),
+        # Never the host's own: a test reads only what it wrote.
+        "kept_accounts": str(path.parent / "kept-accounts.json"),
         "added": {},
     }
     base.update(overrides)
@@ -308,3 +314,316 @@ class InstallRecordTest(unittest.TestCase):
 
     def test_the_timestamp_is_utc_with_z(self) -> None:
         self.assertRegex(mod.utc_now(), r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+
+
+# The host's accounts and groups as pwd and grp give them, for the kept-accounts tests.
+USERS = [
+    ("root", 0, 0, "/root", "/bin/bash"),
+    ("owner1", 1000, 1000, "/home/owner1", "/bin/bash"),
+    ("researcher1", 1001, 1001, "/home/researcher1", "/usr/sbin/nologin"),
+    ("pinka-build", 990, 990, "/var/lib/pinka/pinka-build", "/usr/sbin/nologin"),
+    ("refplat-api", 60578, 985, "/var/lib/pinka/refplat-api", "/usr/sbin/nologin"),
+    ("reused", 1600, 1600, "/home/reused", "/bin/bash"),
+]
+GROUPS = [
+    ("root", 0, []),
+    ("owner1", 1000, []),
+    ("pinka", 1002, ["owner1"]),
+    ("researcher1", 1001, []),
+    ("docker", 983, []),
+    ("refplat-db", 984, []),
+]
+SHADOW_TEXT = (
+    "root:*:20000:0:99999:7:::\n"
+    "owner1:$6$example$hash:20000:0:99999:7:::\n"
+    "researcher1:!$6$example$hash1:20000:0:99999:7::1:\n"
+    "pinka-build:!:20000:::::1:\n"
+    "refplat-api:!:20000:::::1:\n"
+    "reused:$6$example$hash2:20000:0:99999:7:::\n"
+)
+LOCK = {"shell": "/usr/sbin/nologin", "expire": "1"}
+KEPT: dict[str, Any] = {
+    "schema_version": 1,
+    "lab_root": "/srv/pinka",
+    "lock": LOCK,
+    "accounts": [
+        {
+            "name": "researcher1",
+            "uid": "1001",
+            "gid": "1001",
+            "shell": "/bin/bash",
+            "expire": "",
+            "password_locked": True,
+        },
+        {
+            "name": "pinka-build",
+            "uid": "990",
+            "gid": "990",
+            "shell": "/usr/sbin/nologin",
+            "expire": "",
+            "password_locked": False,
+        },
+        {
+            "name": "refplat-api",
+            "uid": "60578",
+            "gid": "985",
+            "shell": "/usr/sbin/nologin",
+            "expire": "1",
+            "password_locked": False,
+        },
+        # Another account has the name now, and one is gone.
+        {
+            "name": "reused",
+            "uid": "1500",
+            "gid": "1500",
+            "shell": "/bin/bash",
+            "expire": "",
+            "password_locked": True,
+        },
+        {
+            "name": "gone",
+            "uid": "1700",
+            "gid": "1700",
+            "shell": "/bin/bash",
+            "expire": "",
+            "password_locked": True,
+        },
+    ],
+    "groups": [
+        {"name": "pinka", "gid": "1002", "component": False},
+        {"name": "researcher1", "gid": "1001", "component": False},
+        {"name": "docker", "gid": "983", "component": True},
+        {"name": "refplat-db", "gid": "999", "component": False},
+    ],
+}
+
+
+class KeptAccountsTest(unittest.TestCase):
+    """init takes over what an uninstall kept; unlock undoes the lock of the accounts named."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.kept = self.tmp / "kept-accounts.json"
+        self.kept.write_text(json.dumps(KEPT))
+        self.kept.chmod(0o600)
+        self.record_path = self.tmp / "install-record.json"
+        shadow = self.tmp / "shadow"
+        shadow.write_text(SHADOW_TEXT)
+        users = [pwd.struct_passwd((n, "x", u, g, "", d, s)) for n, u, g, d, s in USERS]
+        groups = [grp.struct_group((n, "x", g, m)) for n, g, m in GROUPS]
+        by_user = {u.pw_name: u for u in users}
+        by_group = {g.gr_name: g for g in groups}
+        for patch in (
+            mock.patch.object(mod, "SHADOW", str(shadow)),
+            mock.patch.object(pwd, "getpwall", return_value=users),
+            mock.patch.object(pwd, "getpwnam", side_effect=lambda n: by_user[n]),
+            mock.patch.object(grp, "getgrall", return_value=groups),
+            mock.patch.object(grp, "getgrnam", side_effect=lambda n: by_group[n]),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def run_state(
+        self, state: str, *, check_mode: bool = False, rc: int = 0, **overrides: Any
+    ) -> tuple[dict[str, Any], list[list[str]]]:
+        """Run the module; returns the result and the usermod calls."""
+        run = fake_run()
+        usermods: list[list[str]] = []
+
+        def with_usermod(argv: Sequence[str]) -> tuple[int, str, str]:
+            if argv[0] == "usermod":
+                usermods.append(list(argv))
+                return rc, "", "" if rc == 0 else "usermod: user is busy"
+            return run(argv)  # type: ignore[no-any-return]
+
+        result = mod.run_module(
+            params(self.record_path, state=state, kept_accounts=str(self.kept), **overrides),
+            check_mode=check_mode,
+            run=with_usermod,
+        )
+        return result, usermods
+
+    def record(self) -> dict[str, Any]:
+        return dict(json.loads(self.record_path.read_text()))
+
+    def test_init_takes_over_the_kept_accounts_and_unlocks_none(self) -> None:
+        result, usermods = self.run_state("init")
+        self.assertEqual(usermods, [])
+        self.assertEqual(
+            result["taken_over"],
+            {
+                "accounts": ["pinka-build", "refplat-api", "researcher1"],
+                "groups": ["pinka", "researcher1"],
+                "component_groups": ["docker"],
+            },
+        )
+        record = self.record()
+        before = record["preexisting"]
+        # Taken over: pinka's again, not what existed before pinka.
+        self.assertEqual(before["users"], ["owner1", "reused", "root"])
+        self.assertEqual(sorted(before["groups"]), ["owner1", "refplat-db", "root"])
+        self.assertEqual(record["added"]["accounts"], ["pinka-build", "refplat-api", "researcher1"])
+        # A group of Docker's package only leaves what existed before pinka.
+        self.assertEqual(record["added"]["groups"], ["pinka", "researcher1"])
+        # The notes of the accounts taken over wait in the record for the roles.
+        self.assertEqual(record["kept_accounts"]["lock"], LOCK)
+        self.assertEqual(
+            [e["name"] for e in record["kept_accounts"]["accounts"]],
+            ["pinka-build", "refplat-api", "researcher1"],
+        )
+        self.assertEqual(record["kept_accounts"]["accounts"][2], KEPT["accounts"][0])
+        self.assertFalse(self.kept.exists())
+        # Never rewritten, and nothing left to take over.
+        again, _ = self.run_state("init")
+        self.assertFalse(again["changed"])
+        self.assertEqual(self.record(), record)
+
+    def test_unlock_undoes_the_lock_of_the_named_accounts_only(self) -> None:
+        self.run_state("init")
+        result, usermods = self.run_state("unlock", accounts=["researcher1", "pinka-build", "x"])
+        self.assertEqual(
+            usermods,
+            [
+                ["usermod", "-s", "/usr/sbin/nologin", "-e", "", "pinka-build"],
+                ["usermod", "-s", "/bin/bash", "-e", "", "-U", "researcher1"],
+            ],
+        )
+        self.assertTrue(result["changed"])
+        self.assertEqual(result["unlocked"], ["pinka-build", "researcher1"])
+        # The named notes leave the record; the platform's account no role named stays locked.
+        notes = self.record()["kept_accounts"]
+        self.assertEqual([e["name"] for e in notes["accounts"]], ["refplat-api"])
+        again, usermods = self.run_state("unlock", accounts=["researcher1", "pinka-build"])
+        self.assertEqual((again["changed"], usermods), (False, []))
+        # Its own lock was its state before: nothing to undo, and the note goes.
+        result, usermods = self.run_state("unlock", accounts=["refplat-api"])
+        self.assertEqual((result["changed"], result["unlocked"], usermods), (True, [], []))
+        self.assertNotIn("kept_accounts", self.record())
+
+    def test_a_lock_someone_changed_or_another_account_is_left_alone(self) -> None:
+        self.run_state("init")
+        Path(mod.SHADOW).write_text(
+            SHADOW_TEXT.replace(
+                "researcher1:!$6$example$hash1:20000:0:99999:7::1:",
+                "researcher1:!$6$example$hash1:20000:0:99999:7::30000:",
+            )
+        )
+        # pinka-build carries the lock, but under another UID than the note's:
+        # another account with the name.
+        record = self.record()
+        for entry in record["kept_accounts"]["accounts"]:
+            if entry["name"] == "pinka-build":
+                entry["uid"] = "991"
+        mod.write_record(str(self.record_path), record)
+        result, usermods = self.run_state("unlock", accounts=["researcher1", "pinka-build"])
+        self.assertEqual((result["unlocked"], usermods), ([], []))
+        self.assertEqual(
+            [e["name"] for e in self.record()["kept_accounts"]["accounts"]], ["refplat-api"]
+        )
+
+    def test_an_account_gone_since_loses_its_note(self) -> None:
+        self.run_state("init")
+        with mock.patch.object(pwd, "getpwnam", side_effect=KeyError("researcher1")):
+            result, usermods = self.run_state("unlock", accounts=["researcher1"])
+        self.assertEqual((result["changed"], result["unlocked"], usermods), (True, [], []))
+        self.assertEqual(
+            [e["name"] for e in self.record()["kept_accounts"]["accounts"]],
+            ["pinka-build", "refplat-api"],
+        )
+
+    def test_check_mode_changes_nothing(self) -> None:
+        result, usermods = self.run_state("init", check_mode=True)
+        self.assertEqual(usermods, [])
+        self.assertEqual(
+            result["taken_over"]["accounts"], ["pinka-build", "refplat-api", "researcher1"]
+        )
+        self.assertNotIn("researcher1", result["record"]["preexisting"]["users"])
+        self.assertTrue(self.kept.exists())
+        self.assertFalse(self.record_path.exists())
+        # Without the record a check run of unlock has nothing to say.
+        result, usermods = self.run_state("unlock", check_mode=True, accounts=["researcher1"])
+        self.assertEqual((result["changed"], result["unlocked"], usermods), (False, [], []))
+        # With it, it names what it would undo and changes nothing.
+        self.run_state("init")
+        written = self.record_path.read_text()
+        result, usermods = self.run_state("unlock", check_mode=True, accounts=["researcher1"])
+        self.assertEqual((result["unlocked"], usermods), (["researcher1"], []))
+        self.assertEqual(self.record_path.read_text(), written)
+
+    def test_a_failed_undo_keeps_the_note(self) -> None:
+        self.run_state("init")
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "cannot undo the lock of the kept account researcher1: usermod: user is busy",
+        ):
+            self.run_state("unlock", rc=10, accounts=["researcher1"])
+        self.assertIn(
+            "researcher1", [e["name"] for e in self.record()["kept_accounts"]["accounts"]]
+        )
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            self.record_path.unlink()
+            self.run_state("unlock", accounts=["researcher1"])
+
+    def test_an_existing_record_gets_what_was_kept(self) -> None:
+        mod.write_record(
+            str(self.record_path),
+            {
+                "schema_version": 1,
+                "preexisting": {"users": ["root"], "groups": {"root": []}},
+                "added": {**mod.empty_added(), "accounts": ["pinka-build"]},
+                # An older note of pinka-build, unlike the file's: the file wins.
+                "kept_accounts": {
+                    "lock": LOCK,
+                    "accounts": [{**KEPT["accounts"][1], "shell": "/bin/sh"}],
+                },
+            },
+        )
+        result, usermods = self.run_state("init")
+        self.assertTrue(result["changed"])
+        self.assertEqual(usermods, [])
+        record = self.record()
+        self.assertEqual(record["preexisting"], {"users": ["root"], "groups": {"root": []}})
+        self.assertEqual(record["added"]["accounts"], ["pinka-build", "refplat-api", "researcher1"])
+        self.assertEqual(record["added"]["groups"], ["pinka", "researcher1"])
+        self.assertEqual(
+            [e["name"] for e in record["kept_accounts"]["accounts"]],
+            ["pinka-build", "refplat-api", "researcher1"],
+        )
+        self.assertEqual(record["kept_accounts"]["accounts"][0], KEPT["accounts"][1])
+        self.assertFalse(self.kept.exists())
+
+    def test_a_note_others_could_write_is_refused(self) -> None:
+        for mode in (0o620, 0o602):
+            self.kept.chmod(mode)
+            with self.assertRaisesRegex(ValueError, "is no regular file of root's"):
+                self.run_state("init")
+        self.kept.chmod(0o600)
+        target = self.tmp / "elsewhere.json"
+        self.kept.rename(target)
+        self.kept.symlink_to(target)
+        with self.assertRaisesRegex(ValueError, "is no regular file of root's"):
+            self.run_state("init")
+        self.assertFalse(self.record_path.exists())
+        with mock.patch.object(os, "geteuid", return_value=4242):
+            self.kept.unlink()
+            target.rename(self.kept)
+            with self.assertRaisesRegex(ValueError, "is no regular file of root's"):
+                self.run_state("init")
+
+    def test_no_note_no_change(self) -> None:
+        self.kept.unlink()
+        result, _ = self.run_state("init")
+        self.assertEqual(
+            result["taken_over"], {"accounts": [], "groups": [], "component_groups": []}
+        )
+        self.assertEqual(result["record"]["added"]["accounts"], [])
+        self.assertNotIn("kept_accounts", result["record"])
+        self.kept.write_text("[]")
+        self.kept.chmod(0o600)
+        self.record_path.unlink()
+        with self.assertRaisesRegex(ValueError, "not a JSON object"):
+            self.run_state("init")

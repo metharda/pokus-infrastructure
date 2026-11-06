@@ -46,6 +46,22 @@
     state: present
   loop: "{{ active_platform.groups }}"
 
+# An uninstall without --purge-data kept the platform's accounts locked with
+# the lab's data: the lock of those this release renders is undone as the
+# install record noted it, before they are changed below.
+- name: Undo uninstall's lock of the platform's kept accounts
+  pinka_install_record:
+    state: unlock
+    accounts: "{{ active_platform.accounts | map(attribute='name') | list }}"
+  register: platform_unlocked
+
+- name: Show the platform's kept accounts whose lock was undone
+  ansible.builtin.debug:
+    msg: >-
+      Uninstall's lock {{ 'would be' if ansible_check_mode else 'was' }} undone for
+      {{ platform_unlocked.unlocked | join(', ') }}.
+  when: platform_unlocked.unlocked | default([]) | length > 0
+
 # The memberships follow from the profiles only; the tool refuses any that
 # the contract forbids (the agent and training jobs never join pinka-restricted,
 # the database socket group or pinka-query).

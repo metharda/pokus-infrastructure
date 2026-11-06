@@ -9,12 +9,15 @@ a temporary root and the commands' answers.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import struct
 import tempfile
 import unittest
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Union
+from unittest import mock
 
 import pinka_uninstall as mod
 
@@ -64,16 +67,25 @@ class FakeHost:
         self.file("etc/passwd", "root:x:0:0:root:/root:/bin/bash\n")
         self.file("etc/group", "root:x:0:\n")
 
+    @staticmethod
+    def parents(path: Path) -> None:
+        """Create a path's missing parents 0755, whatever the process's umask."""
+        old = os.umask(0o022)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        finally:
+            os.umask(old)
+
     def file(self, name: str, text: str = "", mode: int = 0o644) -> Path:
         path = self.root / name.lstrip("/")
-        path.parent.mkdir(parents=True, exist_ok=True)
+        self.parents(path)
         path.write_text(text, encoding="utf-8")
         path.chmod(mode)
         return path
 
     def link(self, name: str, target: str) -> None:
         path = self.root / name.lstrip("/")
-        path.parent.mkdir(parents=True, exist_ok=True)
+        self.parents(path)
         path.symlink_to(target)
 
     def answer(self, *prefix: str, rc: int = 0, out: str = "", err: str = "") -> None:
@@ -294,6 +306,15 @@ def full_install(fake: FakeHost) -> None:
         "root:x:0:\nowner1:x:1000:\nresearcher1:x:1001:\npinka:x:1002:owner1,researcher1\n"
         "pinka-admin:x:1003:researcher1\npinka-build:x:990:\nrefplat-api:x:985:\nrefplat-db:x:984:\n"
         "docker:x:983:\n",
+    )
+    fake.file(
+        "etc/shadow",
+        "root:*:20000:0:99999:7:::\n"
+        "owner1:$6$example$hash:20000:0:99999:7:::\n"
+        "researcher1:$6$example$hash1:20000:0:99999:7:::\n"
+        "pinka-build:!:20000::::::\n"
+        "refplat-api:!:20000::::::\n",
+        0o600,
     )
     fake.file("home/researcher1/.profile", "")
     fake.file(
@@ -546,14 +567,54 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(len(named(plan, "key")), 1)
         accounts = named(plan, "account")
         self.assertEqual(set(accounts), {"pinka-build", "refplat-api", "researcher1"})
-        self.assertIn("/home/researcher1 is kept", accounts["researcher1"]["reason"])
-        self.assertFalse(accounts["researcher1"]["remove_home"])
+        # Without --purge-data every account stays, locked; every group stays.
+        self.assertEqual({a["action"] for a in accounts.values()}, {"lock"})
+        self.assertIn("kept with the lab's data, locked", accounts["researcher1"]["reason"])
+        self.assertEqual(
+            accounts["researcher1"]["before"],
+            {"shell": "/bin/bash", "expire": "", "password_locked": True},
+        )
+        self.assertEqual(
+            accounts["pinka-build"]["before"],
+            {"shell": "/usr/sbin/nologin", "expire": "", "password_locked": False},
+        )
+        self.assertEqual(
+            (accounts["refplat-api"]["uid"], accounts["refplat-api"]["gid"]), ("60578", "985")
+        )
         groups = named(plan, "group")
         self.assertTrue(
             {"pinka", "pinka-admin", "refplat-api", "refplat-db", "pinka-build", "researcher1"}
             <= set(groups)
         )
+        self.assertEqual({g["action"] for g in groups.values()}, {"keep"})
+        self.assertEqual(groups["refplat-db"]["gid"], "984")
         self.assertNotIn("docker", groups)  # it existed before pinka
+        # The lab root's lock and the note of what is kept come first in the phase.
+        phase = [i for i in plan["items"] if i["phase"] == "accounts"]
+        self.assertEqual([i["kind"] for i in phase[:2]], ["lab_root", "kept_accounts"])
+        noted = phase[1]["entries"]
+        self.assertEqual(noted["lab_root"], "/srv/pinka")
+        self.assertEqual(noted["lock"], {"shell": "/usr/sbin/nologin", "expire": "1"})
+        self.assertEqual(
+            {a["name"]: (a["uid"], a["shell"], a["password_locked"]) for a in noted["accounts"]},
+            {
+                "pinka-build": ("990", "/usr/sbin/nologin", False),
+                "refplat-api": ("60578", "/usr/sbin/nologin", False),
+                "researcher1": ("1001", "/bin/bash", True),
+            },
+        )
+        self.assertEqual(
+            {g["name"]: g["gid"] for g in noted["groups"]},
+            {n: g["gid"] for n, g in groups.items()},
+        )
+        self.assertEqual(plan["follow_ups"][-1], mod.KEPT_FOLLOW_UP)
+        # With --purge-data they go, the groups too, and nothing is noted or locked.
+        purged = plan_of(self.fake, purge_data=True)
+        self.assertEqual({a["action"] for a in named(purged, "account").values()}, {"remove"})
+        self.assertEqual({g["action"] for g in named(purged, "group").values()}, {"remove"})
+        self.assertEqual(named(purged, "kept_accounts"), {})
+        self.assertEqual(named(purged, "lab_root"), {})
+        self.assertNotIn(mod.KEPT_FOLLOW_UP, purged["follow_ups"])
 
     def test_drop_ins_and_settings_come_back(self) -> None:
         plan, _items = self.full_plan()
@@ -574,9 +635,26 @@ class PlanTest(unittest.TestCase):
 
     def test_paths_go_last_the_data_stays(self) -> None:
         plan, items = self.full_plan()
-        # Paths: the record last, the data and the logs kept, /opt/pinka to bootstrap.
+        # Paths: uninstall's own records last, the data and the logs kept,
+        # /opt/pinka to bootstrap.
         paths = [i for i in items if i["phase"] == "paths"]
-        self.assertEqual([p["kind"] for p in paths[-2:]], ["record", "tooling"])
+        self.assertEqual(
+            [(p["kind"], p["name"]) for p in paths[-4:]],
+            [
+                ("state_dir", "/var/lib/pinka"),
+                ("config", "/etc/pinka"),
+                ("record", "/var/lib/pinka/install-record.json"),
+                ("tooling", "/opt/pinka"),
+            ],
+        )
+        self.assertEqual(
+            paths[-4]["keep"],
+            ["/var/lib/pinka/install-record.json", "/var/lib/pinka/kept-accounts.json"],
+        )
+        # The note is named once: by the accounts phase, which writes it.
+        self.assertEqual(named(plan, "kept_accounts")[NOTE_PATH]["action"], "keep")
+        self.assertNotIn(NOTE_PATH, named(plan, "kept"))
+        self.assertNotIn("/etc/pinka", named(plan, "path"))
         self.assertEqual(paths[-1]["reason"], mod.PENDING_REASON)
         self.assertIn("/usr/local/bin/restic", named(plan, "path"))
         self.assertIn("/usr/local/bin/refplat", named(plan, "path"))
@@ -588,7 +666,18 @@ class PlanTest(unittest.TestCase):
         self.assertTrue(plan["backup"])
         self.assertEqual(plan["record"], "present")
         self.assertEqual(plan["refusal"], "")
-        self.assertEqual(plan["to_remove"], sum(1 for i in items if i["action"] != "keep"))
+        # What bootstrap counts: what goes, comes back or is locked; the lab
+        # root too, since its lock would change it (0755 here).
+        acting = [i for i in items if i["action"] != "keep" or i["kind"] == "lab_root"]
+        self.assertEqual(plan["to_remove"], len(acting))
+        self.assertTrue(named(plan, "lab_root")["/srv/pinka"]["counted"])
+        text_lines = mod.plan_text(plan).splitlines()
+        self.assertIn(" to restore, 4 to lock, ", text_lines[-1])
+        # Counted once: a lock line in its phase, not in the kept list.
+        kept = sum(1 for i in items if i["action"] == "keep") - 1
+        self.assertTrue(text_lines[-1].endswith(f", {kept} kept."))
+        lab_lines = [x for x in text_lines if x.split()[1:2] == ["/srv/pinka"]]
+        self.assertEqual([x.split()[0] for x in lab_lines], ["lock", "keep"])  # the lock, the data
         text = mod.plan_text(plan)
         self.assertTrue(
             text.startswith(
@@ -647,8 +736,9 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(incus["user-1001"], "keep")
         self.assertEqual(incus["incusbr-1001"], "keep")
         accounts = named(plan, "account")
-        self.assertEqual(accounts["pinka-build"]["action"], "remove")
+        self.assertEqual(accounts["pinka-build"]["action"], "lock")
         self.assertEqual(accounts["researcher1"]["action"], "keep")
+        self.assertIn("origin unknown", accounts["researcher1"]["reason"])
         self.assertEqual(named(plan, "edited_line")["/etc/ssh/sshd_config"]["action"], "keep")
         self.assertNotIn("/etc/docker/daemon.json", named(plan, "file"))
         # --remove-component docker: its packages go, from every source group.
@@ -809,7 +899,7 @@ class ApplyTest(unittest.TestCase):
             (self.fake.root / "etc/apt/sources.list.d/pinka-docker-deb.sources").exists()
         )
 
-    def test_accounts_report_a_logged_in_account(self) -> None:
+    def test_purge_data_removes_accounts_and_reports_a_logged_in_one(self) -> None:
         self.fake.answer("gpasswd", rc=0)
         self.fake.answer("userdel", rc=0)
         self.fake.answer(
@@ -819,7 +909,7 @@ class ApplyTest(unittest.TestCase):
             err="userdel: user researcher1 is currently used by process 4242",
         )
         self.fake.answer("groupdel", rc=0)
-        results = self.apply("accounts", kinds=("account", "membership"))
+        results = self.apply("accounts", kinds=("account", "membership"), purge_data=True)
         self.assertEqual(results["researcher1"]["result"], "failed")
         self.assertIn("logged in", results["researcher1"]["reason"])
         self.assertEqual(results["pinka-build"]["result"], "removed")
@@ -827,6 +917,10 @@ class ApplyTest(unittest.TestCase):
         keys = (self.fake.root / "home/owner1/.ssh/authorized_keys").read_text()
         self.assertEqual(keys, "ssh-ed25519 AAAAC3Nz owner-key\n")
         self.assertTrue((self.fake.root / "home/researcher1").exists())
+        # Nothing is locked or noted: accounts, groups and data go together.
+        self.assertEqual(self.fake.ran("usermod"), [])
+        self.assertTrue(self.fake.ran("groupdel"))
+        self.assertFalse((self.fake.root / "var/lib/pinka/kept-accounts.json").exists())
 
     def test_paths_keep_the_record_to_the_end_and_leave_the_tooling_to_bootstrap(self) -> None:
         results = self.apply("paths")
@@ -1058,17 +1152,37 @@ class KeptDataTest(unittest.TestCase):
         self.assertTrue((root / "backup/secrets/repository").exists())
         report = mod.build_report({"results": list(paths.values())}, plan)
         self.assertEqual(report["backup_access"], f"{kept}/backup/secrets")
-        self.assertEqual(report["follow_ups"][0], first)
+        # The report has only the paths' results: the rest did not run, so it
+        # did not finish; then the plan's follow-ups, the kept secrets first.
+        self.assertTrue(report["follow_ups"][0].startswith("Uninstall did not finish: "))
+        self.assertEqual(report["follow_ups"][1:], plan["follow_ups"])
+        self.assertEqual(plan["follow_ups"][0], first)
         # A later run still says so while the copy is on the host.
         self.assertEqual(plan_of(self.fake)["follow_ups"][0], first)
 
     def test_a_missing_kept_copy_keeps_its_path(self) -> None:
         self.backup_files()
         results = self.apply("paths")  # the keep phase never ran
-        self.assertEqual(results["/etc/pinka"]["result"], "failed")
-        self.assertIn("/etc/pinka/secrets/backup", results["/etc/pinka"]["reason"])
+        state = results["/var/lib/pinka"]
+        self.assertEqual(state["result"], "failed")
+        self.assertIn("/var/lib/pinka/backup", state["reason"])
+        # It failed, so uninstall's other records stay too, for the next run.
+        for name in ("/etc/pinka", "/var/lib/pinka/install-record.json"):
+            self.assertEqual(results[name]["result"], "kept")
+            self.assertEqual(results[name]["reason"], mod.unfinished(1))
         self.assertTrue((self.fake.root / "etc/pinka/secrets/backup/password").exists())
-        self.assertEqual(results["/var/lib/pinka"]["result"], "failed")
+        self.assertTrue((self.fake.root / "var/lib/pinka/install-record.json").exists())
+        # Without the record's company: /etc/pinka's own copies are checked too.
+        ctx = mod.Context(make_host(self.fake), params(self.fake))
+        config = named(mod.build_plan(ctx), "config")["/etc/pinka"]
+        self.assertEqual(
+            mod.apply_path(ctx, config),
+            (
+                "failed",
+                "not removed: the kept copy of /etc/pinka/secrets/backup, /etc/pinka/backup, "
+                "/etc/pinka/secrets/vault-pass, /etc/pinka/qa is missing",
+            ),
+        )
 
     def test_purge_data_keeps_the_backups_access_only(self) -> None:
         self.backup_files()
@@ -1154,6 +1268,834 @@ class KeptDataTest(unittest.TestCase):
         self.assertIn("host keys", ssh["reason"])
 
 
+def acl(*users: int) -> bytes:
+    """A POSIX ACL xattr value (version 2): each user r-x, owner, group and mask rwx, other r-x."""
+    undefined = 0xFFFFFFFF
+    entries = [(0x01, 7, undefined)]  # owner
+    entries += [(0x02, 5, uid) for uid in users]  # named users
+    # The owning group, the mask, the others.
+    entries += [(0x04, 7, undefined), (0x10, 7, undefined), (0x20, 5, undefined)]
+    return struct.pack("<I", 2) + b"".join(struct.pack("<HHI", t, p, i) for t, p, i in entries)
+
+
+def acl_names(path: Path) -> list[str]:
+    return sorted(a for a in os.listxattr(path, follow_symlinks=False) if "posix_acl" in a)
+
+
+NOTE = "var/lib/pinka/kept-accounts.json"
+NOTE_PATH = "/" + NOTE
+KEPT_ACCOUNTS = ("pinka-build", "refplat-api", "researcher1")
+
+
+def locked_host(fake: FakeHost) -> None:
+    """What uninstall leaves: the accounts locked, the lab root 0700."""
+    top = fake.root / "srv/pinka"
+    if top.is_dir():
+        top.chmod(0o700)
+    fake.file(
+        "etc/passwd",
+        "root:x:0:0:root:/root:/bin/bash\n"
+        "owner1:x:1000:1000::/home/owner1:/bin/bash\n"
+        "researcher1:x:1001:1001::/home/researcher1:/usr/sbin/nologin\n"
+        "pinka-build:x:990:990::/var/lib/pinka/pinka-build:/usr/sbin/nologin\n"
+        "refplat-api:x:60578:985:service api:/var/lib/pinka/refplat-api:/usr/sbin/nologin\n",
+    )
+    fake.file(
+        "etc/shadow",
+        "root:*:20000:0:99999:7:::\n"
+        "owner1:$6$example$hash:20000:0:99999:7:::\n"
+        "researcher1:!$6$example$hash1:20000:0:99999:7::1:\n"
+        "pinka-build:!:20000:::::1:\n"
+        "refplat-api:!:20000:::::1:\n",
+        0o600,
+    )
+
+
+class AccountLockTest(unittest.TestCase):
+    """Without --purge-data the accounts stay, locked, noted before the lock; the groups stay."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.fake = FakeHost(Path(self._tmp.name))
+        full_install(self.fake)
+        self.fake.answer("gpasswd", rc=0)
+        self.fake.answer("pgrep", rc=1)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def apply(self, phase: str = "accounts", **overrides: Any) -> dict[str, dict[str, Any]]:
+        """The results by name, the groups apart (an account and its group share a name)."""
+        p = params(self.fake, **overrides)
+        mod.run_module(p, run=self.fake.run)
+        result = mod.run_module({**p, "state": "apply", "phase": phase}, run=self.fake.run)
+        self.groups = {r["name"]: r for r in result["results"] if r["kind"] == "group"}
+        return {r["name"]: r for r in result["results"] if r["kind"] != "group"}
+
+    def test_the_accounts_are_noted_then_locked_and_the_groups_stay(self) -> None:
+        note = self.fake.root / NOTE
+        noted_at_lock: list[str] = []
+
+        def usermod(argv: Sequence[str]) -> tuple[int, str, str]:
+            names = [a["name"] for a in json.loads(note.read_text())["accounts"]]
+            noted_at_lock.append(argv[-1] if argv[-1] in names else "")
+            return 0, "", ""
+
+        self.fake.answer_with("usermod", call=usermod)
+        self.fake.answer("pgrep", "-u", "researcher1", rc=0, out="4242\n")
+        results = self.apply()
+        self.assertEqual(results[mod.NAMES["kept_accounts"]]["result"], "kept")
+        self.assertEqual(note.stat().st_mode & 0o777, 0o600)
+        data = json.loads(note.read_text())
+        self.assertEqual(data["schema_version"], mod.SCHEMA_VERSION)
+        self.assertTrue(data["written_at"].endswith("Z"))
+        self.assertEqual(data["lab_root"], "/srv/pinka")
+        self.assertEqual(data["lock"], {"shell": "/usr/sbin/nologin", "expire": "1"})
+        self.assertEqual(
+            data["accounts"][2],
+            {
+                "name": "researcher1",
+                "uid": "1001",
+                "gid": "1001",
+                "shell": "/bin/bash",
+                "expire": "",
+                "password_locked": True,
+            },
+        )
+        # Every lock ran after the note named its account.
+        self.assertEqual(sorted(noted_at_lock), list(KEPT_ACCOUNTS))
+        for name in KEPT_ACCOUNTS:
+            self.assertIn(
+                ["usermod", "-L", "-e", "1", "-s", "/usr/sbin/nologin", name], self.fake.calls
+            )
+            self.assertEqual(results[name]["result"], "locked")
+        self.assertIn(mod.STILL_RUNNING, results["researcher1"]["reason"])
+        self.assertIn("pkill -KILL -u researcher1", results["researcher1"]["reason"])
+        self.assertNotIn(mod.STILL_RUNNING, results["pinka-build"]["reason"])
+        # No account or group goes; what pinka added to the owner's account does.
+        self.assertEqual(self.fake.ran("userdel") + self.fake.ran("groupdel"), [])
+        self.assertIn("refplat-db", self.groups)
+        self.assertEqual({r["result"] for r in self.groups.values()}, {"kept"})
+        self.assertIn(["gpasswd", "-d", "owner1", "pinka"], self.fake.calls)
+        keys = (self.fake.root / "home/owner1/.ssh/authorized_keys").read_text()
+        self.assertEqual(keys, "ssh-ed25519 AAAAC3Nz owner-key\n")
+        self.assertTrue((self.fake.root / "home/researcher1/.profile").exists())
+        # The report names the account whose session still runs.
+        plan = json.loads((self.fake.root / "run/pinka-uninstall/plan.json").read_text())
+        report = mod.build_report({"results": [*results.values(), *self.groups.values()]}, plan)
+        self.assertIn(
+            "Locked, but still running processes of a session opened before the lock: "
+            "researcher1. End them (pkill -KILL -u <account>).",
+            report["follow_ups"],
+        )
+
+    def test_a_second_run_finds_the_locks_and_keeps_the_first_note(self) -> None:
+        first = {
+            "name": "researcher1",
+            "uid": "1001",
+            "gid": "1001",
+            "shell": "/bin/bash",
+            "expire": "",
+            "password_locked": True,
+        }
+        self.fake.file(NOTE, json.dumps({"accounts": [first]}), 0o600)
+        locked_host(self.fake)
+        plan = plan_of(self.fake)
+        accounts = named(plan, "account")
+        self.assertEqual({a["action"] for a in accounts.values()}, {"keep"})
+        self.assertIn("(locked already)", accounts["pinka-build"]["reason"])
+        noted = {
+            a["name"]: a
+            for a in named(plan, "kept_accounts")[mod.NAMES["kept_accounts"]]["entries"]["accounts"]
+        }
+        self.assertEqual(noted["researcher1"], first)
+        self.assertEqual(noted["pinka-build"]["shell"], "/usr/sbin/nologin")
+        self.assertEqual(noted["pinka-build"]["expire"], "1")
+        self.assertFalse(noted["pinka-build"]["password_locked"])
+        self.assertIn(" to restore, 0 to lock, ", mod.plan_text(plan).splitlines()[-1])
+        # An earlier note of another account with that name is not this account's.
+        self.fake.file(NOTE, json.dumps({"accounts": [{**first, "uid": "2001"}]}), 0o600)
+        noted = named(plan_of(self.fake), "kept_accounts")[mod.NAMES["kept_accounts"]]
+        self.assertEqual(
+            next(a for a in noted["entries"]["accounts"] if a["name"] == "researcher1")["shell"],
+            "/usr/sbin/nologin",
+        )
+        # Nor of the account once it is no longer locked: the owner gave it
+        # another shell and locked its password by hand. It is noted as it is now.
+        self.fake.file(NOTE, json.dumps({"accounts": [first]}), 0o600)
+        passwd = (self.fake.root / "etc/passwd").read_text()
+        self.fake.file(
+            "etc/passwd",
+            passwd.replace("/home/researcher1:/usr/sbin/nologin", "/home/researcher1:/bin/zsh"),
+        )
+        shadow = (self.fake.root / "etc/shadow").read_text()
+        self.fake.file(
+            "etc/shadow",
+            shadow.replace(
+                "researcher1:!$6$example$hash1:20000:0:99999:7::1:",
+                "researcher1:!$6$example$hash1:20000:0:99999:7:::",
+            ),
+            0o600,
+        )
+        plan = plan_of(self.fake)
+        self.assertEqual(named(plan, "account")["researcher1"]["action"], "lock")
+        noted = named(plan, "kept_accounts")[mod.NAMES["kept_accounts"]]
+        self.assertEqual(
+            next(a for a in noted["entries"]["accounts"] if a["name"] == "researcher1"),
+            {
+                "name": "researcher1",
+                "uid": "1001",
+                "gid": "1001",
+                "shell": "/bin/zsh",
+                "expire": "",
+                "password_locked": False,
+            },
+        )
+
+    def test_the_notes_the_last_install_kept_in_the_record_survive(self) -> None:
+        # The install took researcher1 over and no role unlocked it (left out
+        # of the researchers): its note is in the record, the file is gone.
+        first = {
+            "name": "researcher1",
+            "uid": "1001",
+            "gid": "1001",
+            "shell": "/bin/bash",
+            "expire": "",
+            "password_locked": True,
+        }
+        rec_path = self.fake.root / "var/lib/pinka/install-record.json"
+        rec = json.loads(rec_path.read_text())
+        rec["kept_accounts"] = {
+            "lock": {"shell": "/usr/sbin/nologin", "expire": "1"},
+            "accounts": [first],
+        }
+        rec_path.write_text(json.dumps(rec))
+        locked_host(self.fake)
+        plan = plan_of(self.fake)
+        self.assertEqual(named(plan, "account")["researcher1"]["action"], "keep")
+        noted = named(plan, "kept_accounts")[NOTE_PATH]["entries"]["accounts"]
+        self.assertEqual(next(a for a in noted if a["name"] == "researcher1"), first)
+        # A note file of a later uninstall wins over the record's.
+        later = {**first, "shell": "/bin/zsh"}
+        self.fake.file(NOTE, json.dumps({"accounts": [later]}), 0o600)
+        noted = named(plan_of(self.fake), "kept_accounts")[NOTE_PATH]["entries"]["accounts"]
+        self.assertEqual(next(a for a in noted if a["name"] == "researcher1"), later)
+        # A file entry under another UID is not this account's: the record's counts.
+        self.fake.file(NOTE, json.dumps({"accounts": [{**later, "uid": "2001"}]}), 0o600)
+        noted = named(plan_of(self.fake), "kept_accounts")[NOTE_PATH]["entries"]["accounts"]
+        self.assertEqual(next(a for a in noted if a["name"] == "researcher1"), first)
+        self.fake.file(NOTE, json.dumps({"accounts": [later]}), 0o600)
+        # Without the record (the paths went), the file's notes still count.
+        rec_path.unlink()
+        noted = named(plan_of(self.fake), "kept_accounts")[NOTE_PATH]["entries"]["accounts"]
+        self.assertEqual(next(a for a in noted if a["name"] == "researcher1"), later)
+
+    def test_an_expiry_in_the_future_or_on_day_0_is_no_lock(self) -> None:
+        locked_host(self.fake)
+        shadow = (self.fake.root / "etc/shadow").read_text()
+        future = mod.today() + 30
+        self.fake.file(
+            "etc/shadow",
+            shadow.replace("pinka-build:!:20000:::::1:", f"pinka-build:!:20000:::::{future}:")
+            .replace("refplat-api:!:20000:::::1:", "refplat-api:!:20000:::::0:")
+            .replace("researcher1:!$6$", "researcher1:$6$"),
+            0o600,
+        )
+        accounts = named(plan_of(self.fake), "account")
+        self.assertEqual(
+            {n: a["action"] for n, a in accounts.items()},
+            dict.fromkeys(KEPT_ACCOUNTS, "lock"),
+        )
+        # Locked and expired, but with a login shell: no lock either.
+        locked_host(self.fake)
+        passwd = (self.fake.root / "etc/passwd").read_text()
+        self.fake.file(
+            "etc/passwd",
+            passwd.replace("/home/researcher1:/usr/sbin/nologin", "/home/researcher1:/bin/bash"),
+        )
+        accounts = named(plan_of(self.fake), "account")
+        self.assertEqual(accounts["researcher1"]["action"], "lock")
+        self.assertEqual(accounts["pinka-build"]["action"], "keep")
+
+    def test_a_lock_alone_is_a_change(self) -> None:
+        self.fake.answer("usermod", rc=0)
+        rec_path = self.fake.root / "var/lib/pinka/install-record.json"
+        rec = json.loads(rec_path.read_text())
+        rec["added"]["memberships"], rec["added"]["keys"] = [], []
+        rec_path.write_text(json.dumps(rec))
+        top = self.fake.root / "srv/pinka"
+        top.chmod(0o700)
+
+        def changed() -> bool:
+            p = params(self.fake)
+            mod.run_module(p, run=self.fake.run)
+            result = mod.run_module({**p, "state": "apply", "phase": "accounts"}, run=self.fake.run)
+            self.assertFalse(any(r["result"] in ("removed", "restored") for r in result["results"]))
+            return bool(result["changed"])
+
+        # Only the accounts' locks change something.
+        self.assertTrue(changed())
+        # Locked already, and the lab root too: nothing changes.
+        locked_host(self.fake)
+        self.assertFalse(changed())
+        # Only the lab root's lock changes something.
+        top.chmod(0o755)
+        self.assertTrue(changed())
+
+    def test_a_lock_needs_its_note_and_the_uid_of_the_plan(self) -> None:
+        self.fake.answer("usermod", rc=0)
+        # The note cannot be written: no lock runs, and each says why.
+        (self.fake.root / NOTE).mkdir(parents=True)
+        results = self.apply()
+        self.assertEqual(results[mod.NAMES["kept_accounts"]]["result"], "failed")
+        for name in KEPT_ACCOUNTS:
+            self.assertEqual(results[name]["result"], "failed")
+            self.assertIn("does not note it", results[name]["reason"])
+        self.assertEqual(self.fake.ran("usermod"), [])
+        (self.fake.root / NOTE).rmdir()
+        # Another account took the name since the plan: it is not locked.
+        p = params(self.fake)
+        mod.run_module(p, run=self.fake.run)
+        text = (self.fake.root / "etc/passwd").read_text()
+        self.fake.file("etc/passwd", text.replace("researcher1:x:1001:", "researcher1:x:2001:"))
+        result = mod.run_module({**p, "state": "apply", "phase": "accounts"}, run=self.fake.run)
+        results = {r["name"]: r for r in result["results"] if r["kind"] != "group"}
+        self.assertEqual(
+            results["researcher1"]["reason"],
+            "not locked: researcher1 has UID 2001 now, 1001 in the plan",
+        )
+        self.assertNotIn(
+            ["usermod", "-L", "-e", "1", "-s", "/usr/sbin/nologin", "researcher1"],
+            self.fake.calls,
+        )
+        self.assertEqual(results["pinka-build"]["result"], "locked")
+
+    def test_a_failed_or_needless_lock(self) -> None:
+        self.fake.answer("usermod", rc=0)
+        self.fake.answer(
+            "usermod",
+            "-L",
+            "-e",
+            "1",
+            "-s",
+            "/usr/sbin/nologin",
+            "pinka-build",
+            rc=6,
+            err="usermod: user 'pinka-build' does not exist\n",
+        )
+        p = params(self.fake)
+        mod.run_module(p, run=self.fake.run)
+        # Gone since the plan: nothing to lock.
+        text = (self.fake.root / "etc/passwd").read_text()
+        self.fake.file(
+            "etc/passwd",
+            "".join(x for x in text.splitlines(keepends=True) if not x.startswith("refplat-api:")),
+        )
+        result = mod.run_module({**p, "state": "apply", "phase": "accounts"}, run=self.fake.run)
+        results = {r["name"]: r for r in result["results"] if r["kind"] != "group"}
+        self.assertEqual(results["refplat-api"]["result"], "already_gone")
+        self.assertEqual(
+            (results["pinka-build"]["result"], results["pinka-build"]["reason"]),
+            ("failed", "usermod: usermod: user 'pinka-build' does not exist"),
+        )
+
+
+class LabRootLockTest(unittest.TestCase):
+    """The lab root becomes root:root 0700 without ACL entries; nothing inside changes."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.fake = FakeHost(Path(self._tmp.name))
+        full_install(self.fake)
+        for command in ("gpasswd", "usermod"):
+            self.fake.answer(command, rc=0)
+        self.fake.answer("pgrep", rc=1)
+        self.top = self.fake.root / "srv/pinka"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def apply(self, **overrides: Any) -> dict[str, dict[str, Any]]:
+        """The accounts phase's results by name, the groups left out."""
+        p = params(self.fake, **overrides)
+        mod.run_module(p, run=self.fake.run)
+        result = mod.run_module({**p, "state": "apply", "phase": "accounts"}, run=self.fake.run)
+        self.results = result["results"]
+        return {r["name"]: r for r in result["results"] if r["kind"] != "group"}
+
+    def lab_root(self, **overrides: Any) -> dict[str, Any]:
+        return named(plan_of(self.fake, **overrides), "lab_root")["/srv/pinka"]
+
+    def test_the_top_is_locked_and_nothing_inside_changes(self) -> None:
+        inner = self.fake.root / "srv/pinka/state/postgres/PG_VERSION"
+        self.top.chmod(0o2775)
+        os.setxattr(self.top, "system.posix_acl_access", acl(4242))
+        os.setxattr(self.top, "system.posix_acl_default", acl(4242))
+        inner.chmod(0o640)
+        os.setxattr(inner, "system.posix_acl_access", acl(4243))
+        inner_before = (inner.stat().st_mode, inner.stat().st_uid, acl_names(inner))
+        self.assertEqual(self.lab_root()["reason"], mod.LAB_ROOT_LOCK)
+        lock = self.apply()["/srv/pinka"]
+        self.assertEqual(lock["result"], "kept")
+        self.assertTrue(lock["reason"].startswith("the lab's data: locked (was "), lock["reason"])
+        self.assertIn(" 2775) to root: /srv/pinka is root:root 0700", lock["reason"])
+        self.assertEqual(self.top.stat().st_mode & 0o7777, 0o700)
+        self.assertEqual(acl_names(self.top), [])
+        if os.geteuid() == 0:
+            self.assertEqual((self.top.stat().st_uid, self.top.stat().st_gid), (0, 0))
+        self.assertEqual(
+            (inner.stat().st_mode, inner.stat().st_uid, acl_names(inner)), inner_before
+        )
+        self.assertEqual(inner.read_text(), "18\n")
+        # A second run finds it locked; with --purge-data there is no lock.
+        self.assertTrue(
+            self.apply()["/srv/pinka"]["reason"].startswith(
+                "the lab's data: already locked to root"
+            )
+        )
+        self.assertEqual(named(plan_of(self.fake, purge_data=True), "lab_root"), {})
+
+    def test_a_lab_root_behind_a_link_is_locked_where_it_leads(self) -> None:
+        data = self.fake.root / "data/lab"
+        FakeHost.parents(data)
+        self.top.rename(data)
+        self.fake.link("srv/pinka", "../data/lab")
+        data.chmod(0o755)
+        self.assertEqual(self.lab_root()["real"], "/data/lab")
+        self.assertIn("locked (was ", self.apply()["/srv/pinka"]["reason"])
+        self.assertEqual(data.stat().st_mode & 0o7777, 0o700)
+        self.assertTrue(self.top.is_symlink())
+
+    def test_a_lab_root_that_cannot_be_locked_is_named_and_stops_nothing(self) -> None:
+        cases = []
+        # A link to a system directory.
+        shutil.rmtree(self.top)
+        self.fake.link("srv/pinka", ".")
+        cases.append(("/srv is a system directory", self.lab_root()))
+        # No directory.
+        self.top.unlink()
+        self.fake.file("srv/pinka", "")
+        cases.append(("/srv/pinka is no directory", self.lab_root()))
+        # A directory above it its group or others could change.
+        self.top.unlink()
+        self.top.mkdir()
+        (self.fake.root / "srv").chmod(0o775)
+        cases.append(("/srv, above it, is open to other accounts than root", self.lab_root()))
+        (self.fake.root / "srv").chmod(0o777)
+        cases.append(("/srv, above it, is open to other accounts than root", self.lab_root()))
+        for why, it in cases:
+            self.assertEqual(it["reason"], f"{mod.NOT_LOCKED}{why}")
+            self.assertNotIn("real", it)
+            self.assertFalse(mod.changes_something(it))  # nothing to lock: not counted
+        results = self.apply()
+        self.assertEqual(results["/srv/pinka"]["result"], "kept")
+        self.assertEqual(
+            results["/srv/pinka"]["reason"],
+            f"{mod.NOT_LOCKED}/srv, above it, is open to other accounts than root",
+        )
+        self.assertEqual(self.top.stat().st_mode & 0o7777, 0o755)
+        self.assertEqual({results[n]["result"] for n in KEPT_ACCOUNTS}, {"locked"})
+        plan = json.loads((self.fake.root / "run/pinka-uninstall/plan.json").read_text())
+        report = mod.build_report({"results": self.results}, plan)
+        self.assertIn(
+            "The lab's data at /srv/pinka is not locked to root (/srv, above it, is open to "
+            "other accounts than root): see that no account but root can reach it. Where its "
+            "top can be locked, every later uninstall offers to lock it again until it is "
+            "root:root 0700 without ACL entries.",
+            report["follow_ups"],
+        )
+
+    def test_a_top_that_changed_since_the_plan_is_not_touched(self) -> None:
+        p = params(self.fake)
+        mod.run_module(p, run=self.fake.run)
+        plan = json.loads((self.fake.root / p["plan_file"].lstrip("/")).read_text())
+        lock = named(plan, "lab_root")["/srv/pinka"]
+        ctx = mod.Context(make_host(self.fake), p)
+        # Swapped for a link elsewhere: that elsewhere keeps its mode.
+        other = self.fake.root / "elsewhere"
+        other.mkdir()
+        other.chmod(0o755)
+        self.top.rename(self.fake.root / "moved")
+        self.fake.link("srv/pinka", "../elsewhere")
+        self.assertEqual(
+            mod.apply_lab_root(ctx, lock),
+            ("kept", f"{mod.NOT_LOCKED}it resolves to /elsewhere now, to /srv/pinka in the plan"),
+        )
+        self.assertEqual(other.stat().st_mode & 0o7777, 0o755)
+        # Gone: nothing to lock.
+        self.top.unlink()
+        self.assertEqual(mod.apply_lab_root(ctx, lock), ("already_gone", ""))
+        # Swapped between its check and the lock: lock_directory refuses.
+        (self.fake.root / "moved").rename(self.top)
+        self.top.chmod(0o2775)
+        real_fstat = os.fstat
+
+        def swapped(fd: int) -> os.stat_result:
+            fields = list(real_fstat(fd))
+            fields[1] += 1  # another inode: not the directory that was checked
+            return os.stat_result(fields)
+
+        with mock.patch.object(os, "fstat", swapped):
+            self.assertEqual(
+                mod.apply_lab_root(ctx, lock),
+                ("kept", f"{mod.NOT_LOCKED}/srv/pinka {mod.SWAPPED}"),
+            )
+        self.assertEqual(self.top.stat().st_mode & 0o7777, 0o2775)
+        # An error is the reason; the lock stops nothing.
+        with mock.patch.object(mod, "lock_directory", side_effect=PermissionError(1, "denied")):
+            self.assertEqual(
+                mod.apply_lab_root(ctx, lock),
+                ("kept", f"{mod.NOT_LOCKED}PermissionError: [Errno 1] denied"),
+            )
+
+    def test_a_lab_root_counts_as_locked_only_when_it_is(self) -> None:
+        host = make_host(self.fake)
+        self.top.chmod(0o755)
+        self.assertFalse(mod.dir_locked(host, "/srv/pinka"))
+        self.top.chmod(0o700)
+        self.assertTrue(mod.dir_locked(host, "/srv/pinka"))
+        # An ACL entry whose mask grants nothing leaves the mode 0700: the
+        # entry alone makes it unlocked.
+        undefined = 0xFFFFFFFF
+        entries = [(0x01, 7, undefined), (0x02, 5, 4242), (0x04, 0, undefined)]
+        entries += [(0x10, 0, undefined), (0x20, 0, undefined)]
+        value = struct.pack("<I", 2) + b"".join(struct.pack("<HHI", *e) for e in entries)
+        os.setxattr(self.top, "system.posix_acl_access", value)
+        self.assertEqual(self.top.stat().st_mode & 0o7777, 0o700)
+        self.assertFalse(mod.dir_locked(host, "/srv/pinka"))
+        os.removexattr(self.top, "system.posix_acl_access")
+        self.assertTrue(mod.dir_locked(host, "/srv/pinka"))
+        self.assertFalse(mod.dir_locked(host, "/srv/pinka/missing"))
+        # On a host, root must own it too: user and group.
+        on_host = mod.Host(self.fake.run, "/")
+        if os.geteuid() == 0:
+            for owner, locked in (((0, 4242), False), ((4242, 0), False), ((0, 0), True)):
+                os.chown(self.top, *owner)
+                self.assertEqual(mod.dir_locked(on_host, str(self.top)), locked, owner)
+            os.chown(self.top, 4242, 4242)
+        self.assertEqual(self.top.stat().st_mode & 0o7777, 0o700)
+        self.assertNotEqual((self.top.stat().st_uid, self.top.stat().st_gid), (0, 0))
+        self.assertFalse(mod.dir_locked(on_host, str(self.top)))
+
+    def test_every_change_goes_through_the_descriptor(self) -> None:
+        self.top.chmod(0o2775)
+        os.setxattr(self.top, "system.posix_acl_access", acl(4242))
+        by_path = mock.Mock(side_effect=AssertionError("changed by path, not by descriptor"))
+        removed = mock.Mock(wraps=os.removexattr)
+        with mock.patch.multiple(
+            os, chmod=by_path, chown=by_path, lchown=by_path, setxattr=by_path, removexattr=removed
+        ):
+            self.assertEqual(mod.lock_directory(self.top, chown=False), (True, ""))
+        self.assertEqual(self.top.stat().st_mode & 0o7777, 0o700)
+        self.assertEqual(acl_names(self.top), [])
+        self.assertTrue(removed.call_args_list)
+        for call in removed.call_args_list:
+            self.assertIsInstance(call.args[0], int)
+
+    def test_it_runs_as_root_and_gives_the_top_to_root(self) -> None:
+        p = params(self.fake)
+        mod.run_module(p, run=self.fake.run)
+        plan = json.loads((self.fake.root / p["plan_file"].lstrip("/")).read_text())
+        lock = named(plan, "lab_root")["/srv/pinka"]
+        ctx = mod.Context(make_host(self.fake), p)
+        calls: list[bool] = []
+
+        def record_lock(path: Path, *, chown: bool) -> tuple[bool, str]:
+            calls.append(chown)
+            return True, ""
+
+        with mock.patch.object(mod, "lock_directory", record_lock):
+            for euid in (0, 4242):
+                with mock.patch.object(os, "geteuid", return_value=euid):
+                    self.assertEqual(mod.apply_lab_root(ctx, lock)[0], "kept")
+        self.assertEqual(calls, [True, False])  # root gives it to root:root
+        # On the real root, uninstall without root locks nothing (and this test never could).
+        on_host = mod.Context(mod.Host(self.fake.run, "/"), p)
+        never = mock.Mock(side_effect=AssertionError("the real root was about to be locked"))
+        # Nested: a parenthesized with is documented from Python 3.10 only.
+        with mock.patch.object(mod, "lock_directory", never):  # noqa: SIM117
+            with mock.patch.object(os, "geteuid", return_value=4242):
+                self.assertEqual(
+                    mod.apply_lab_root(on_host, lock),
+                    ("kept", f"{mod.NOT_LOCKED}uninstall does not run as root"),
+                )
+        never.assert_not_called()
+
+    def test_the_fake_root_does_not_depend_on_the_umask(self) -> None:
+        old = os.umask(0o002)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                fake = FakeHost(Path(tmp))
+                full_install(fake)
+                self.assertEqual(
+                    named(plan_of(fake), "lab_root")["/srv/pinka"]["reason"], mod.LAB_ROOT_LOCK
+                )
+        finally:
+            os.umask(old)
+
+
+class RecordsLastTest(unittest.TestCase):
+    """Uninstall's own records go last, and only when everything before them went."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.fake = FakeHost(Path(self._tmp.name))
+        full_install(self.fake)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def apply(self, phase: str = "paths", **overrides: Any) -> dict[str, dict[str, Any]]:
+        """The results by name, the groups left out."""
+        p = params(self.fake, **overrides)
+        mod.run_module(p, run=self.fake.run)
+        result = mod.run_module({**p, "state": "apply", "phase": phase}, run=self.fake.run)
+        return {r["name"]: r for r in result["results"] if r["kind"] != "group"}
+
+    def exists(self, name: str) -> bool:
+        return os.path.lexists(self.fake.root / name.lstrip("/"))
+
+    def test_a_failure_before_them_keeps_the_records_for_the_next_run(self) -> None:
+        self.fake.file(NOTE, "{}", 0o600)
+        failed = [
+            {
+                "phase": "accounts",
+                "kind": "account",
+                "name": "researcher1",
+                "action": "lock",
+                "result": "failed",
+                "reason": "usermod: example",
+            },
+            {
+                "phase": "units",
+                "kind": "unit",
+                "name": "pinka-core.service",
+                "action": "remove",
+                "result": "removed",
+                "reason": "",
+            },
+        ]
+        results = self.apply(results=failed)
+        records = ("/var/lib/pinka", "/etc/pinka", "/var/lib/pinka/install-record.json")
+        for name in records:
+            self.assertEqual(results[name]["result"], "kept", name)
+            self.assertEqual(results[name]["reason"], mod.unfinished(1))
+        self.assertEqual(
+            mod.unfinished(1),
+            "kept: uninstall did not finish (1 item could not be removed or locked); fix what "
+            "failed and run uninstall again, which finishes from these records",
+        )
+        for name in (
+            "/etc/pinka/lab.json",
+            "/etc/pinka/platform/active.json",
+            "/var/lib/pinka/install-record.json",
+            "/var/lib/pinka/preflight/x.json",
+            "/var/lib/pinka/kept-accounts.json",
+        ):
+            self.assertTrue(self.exists(name), name)
+        # What is no record goes all the same.
+        self.assertEqual(results["/usr/local/lib/pinka"]["result"], "removed")
+        self.assertFalse(self.exists("/usr/local/lib/pinka"))
+        # The report says so first.
+        plan = json.loads((self.fake.root / "run/pinka-uninstall/plan.json").read_text())
+        done = [
+            mod.result_of(i, "kept", "")
+            for i in plan["items"]
+            if i["phase"] != "paths" and (i["kind"], i["name"]) != ("account", "researcher1")
+        ]
+        report = mod.build_report({"results": done + failed + list(results.values())}, plan)
+        self.assertEqual(
+            report["follow_ups"][0],
+            "Uninstall did not finish: 1 item could not be removed or locked (the report names "
+            "each and why). Its records stay in /etc/pinka and /var/lib/pinka: fix what failed, "
+            "then run uninstall again, which finishes from there.",
+        )
+        # The next run, with nothing failed before, finishes.
+        results = self.apply()
+        for name in records:
+            self.assertEqual(results[name]["result"], "removed", name)
+        self.assertFalse(self.exists("/etc/pinka"))
+        self.assertFalse(self.exists("/var/lib/pinka/install-record.json"))
+        # Only the note of the kept accounts stays below pinka's state.
+        self.assertEqual(
+            sorted(p.name for p in (self.fake.root / "var/lib/pinka").iterdir()),
+            ["kept-accounts.json"],
+        )
+        self.assertEqual((self.fake.root / NOTE).read_text(), "{}")
+
+    def test_a_failure_in_the_paths_phase_before_them_keeps_them(self) -> None:
+        self.fake.file("usr/local/share/pinka/x", "")
+        real_remove = mod.Host.remove
+
+        def remove(host: mod.Host, name: str) -> None:
+            if name == "/usr/local/share/pinka":
+                raise PermissionError(13, "Permission denied", name)
+            real_remove(host, name)
+
+        with mock.patch.object(mod.Host, "remove", remove):
+            results = self.apply()
+        self.assertEqual(results["/usr/local/share/pinka"]["result"], "failed")
+        for name in ("/var/lib/pinka", "/etc/pinka", "/var/lib/pinka/install-record.json"):
+            self.assertEqual(results[name]["result"], "kept", name)
+        self.assertEqual(results["/etc/pinka"]["reason"], mod.unfinished(1))
+
+    def test_after_a_finished_run_nothing_is_left_to_remove(self) -> None:
+        # Only the accounts and paths phases run here, so other phases still
+        # have items: to_remove is checked on a host with only what uninstall
+        # kept (the next test).
+        self.fake.answer("gpasswd", rc=0)
+        self.fake.answer("usermod", rc=0)
+        self.fake.answer("pgrep", rc=1)
+        accounts = self.apply("accounts")
+        self.assertEqual({accounts[n]["result"] for n in KEPT_ACCOUNTS}, {"locked"})
+        paths = self.apply()
+        self.assertTrue(self.exists(NOTE))
+        # What the earlier run left, as the locks leave the accounts.
+        locked_host(self.fake)
+        # Bootstrap installs /opt/pinka for the second run: it counts for nothing.
+        plan = plan_of(self.fake, opt_existed=False)
+        self.assertEqual(plan["record"], "missing")
+        acting = [i for i in plan["items"] if i["action"] != "keep" and i.get("counted", True)]
+        self.assertEqual(
+            [(i["kind"], i["name"]) for i in acting if i["phase"] in ("accounts", "paths")], []
+        )
+        self.assertEqual(named(plan, "kept_accounts")[NOTE_PATH]["action"], "keep")
+        self.assertNotIn("/var/lib/pinka", named(plan, "state_dir"))
+        self.assertEqual(
+            {n: a["action"] for n, a in named(plan, "account").items()},
+            dict.fromkeys(KEPT_ACCOUNTS, "keep"),
+        )
+        self.assertEqual(paths["/var/lib/pinka"]["result"], "removed")
+
+    def test_a_host_with_only_what_uninstall_kept_has_nothing_to_remove(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = FakeHost(Path(tmp))
+            locked_host(fake)
+            fake.file(
+                "etc/group",
+                "root:x:0:\nowner1:x:1000:\nresearcher1:x:1001:\npinka:x:1002:researcher1\n",
+            )
+            fake.file("srv/pinka/state/x", "")
+            (fake.root / "srv/pinka").chmod(0o700)
+            note = {
+                "lab_root": "/srv/pinka",
+                "lock": {"shell": "/usr/sbin/nologin", "expire": "1"},
+                "accounts": [{"name": "researcher1", "uid": "1001", "gid": "1001"}],
+                "groups": [{"name": "pinka", "gid": "1002"}],
+            }
+            fake.file(NOTE, json.dumps(note), 0o600)
+            fake.file("var/log/pinka-uninstall/r.json", "{}")
+            # Bootstrap installs /opt/pinka for this run: it counts for nothing.
+            plan = plan_of(fake, opt_existed=False)
+            # What bootstrap reads: nothing left to remove, restore or lock.
+            self.assertEqual(plan["to_remove"], 0)
+            self.assertEqual(named(plan, "account")["researcher1"]["action"], "keep")
+            self.assertEqual(named(plan, "group")["pinka"]["action"], "keep")
+            self.assertEqual(
+                mod.plan_text(plan).splitlines()[-1].split(", ")[:3],
+                ["0 to remove", "0 to restore", "0 to lock"],
+            )
+            # The note is named once, by the accounts phase that rewrites it;
+            # only when nothing is kept any more, by the paths phase.
+            self.assertIn(NOTE_PATH, named(plan, "kept_accounts"))
+            self.assertNotIn(NOTE_PATH, named(plan, "kept"))
+            fake.file("etc/passwd", "root:x:0:0:root:/root:/bin/bash\n")
+            fake.file("etc/group", "root:x:0:\n")
+            plan = plan_of(fake, opt_existed=False)
+            self.assertEqual(named(plan, "kept_accounts"), {})
+            self.assertEqual(named(plan, "kept")[NOTE_PATH]["action"], "keep")
+
+    def test_without_a_record_the_note_says_what_purge_data_removes(self) -> None:
+        note = {
+            "lab_root": "/data/lab",
+            "accounts": [
+                {"name": "researcher1", "uid": "1001", "gid": "1001", "shell": "/bin/bash"},
+                {"name": "refplat-api", "uid": "60578", "gid": "985", "shell": "/usr/sbin/nologin"},
+            ],
+            "groups": [
+                {"name": "refplat-db", "gid": "984", "component": False},
+                {"name": "docker", "gid": "983", "component": True},
+            ],
+        }
+        self.fake.file(NOTE, json.dumps(note), 0o600)
+        for name in (
+            "var/lib/pinka/install-record.json",
+            "etc/pinka/lab.json",
+            "etc/pinka/platform/active.json",
+        ):
+            (self.fake.root / name).unlink()
+        self.fake.file("data/lab/state/x", "")
+        locked_host(self.fake)
+        plan = plan_of(self.fake, purge_data=True)
+        accounts = named(plan, "account")
+        self.assertEqual(accounts["researcher1"]["action"], "remove")
+        self.assertEqual(accounts["researcher1"]["reason"], mod.KEPT_EARLIER)
+        self.assertTrue(accounts["researcher1"]["remove_home"])
+        self.assertEqual(accounts["refplat-api"]["action"], "remove")
+        self.assertEqual(named(plan, "group")["refplat-db"]["action"], "remove")
+        # Docker's group goes only with Docker's data, which stays without
+        # --remove-component on a host without a record.
+        docker = named(plan, "group")["docker"]
+        self.assertEqual(docker["action"], "keep")
+        self.assertEqual(
+            docker["reason"],
+            f"{mod.KEPT_EARLIER}; kept while docker's data stays; --remove-component docker "
+            "removes both",
+        )
+        self.assertNotIn("/var/lib/docker", named(plan, "data"))
+        both = plan_of(self.fake, purge_data=True, remove_components=["docker"])
+        self.assertEqual(named(both, "group")["docker"]["action"], "remove")
+        # The lab root the note names goes with the data.
+        self.assertEqual(named(plan, "data")["/data/lab"]["action"], "remove")
+        # So does the note, with pinka's state.
+        self.assertEqual(
+            named(plan, "state_dir")["/var/lib/pinka"]["keep"],
+            ["/var/lib/pinka/install-record.json"],
+        )
+        self.assertNotIn(mod.NAMES["kept_accounts"], named(plan, "kept"))
+        # Without --purge-data they stay as they are: locked already.
+        plan = plan_of(self.fake)
+        self.assertEqual(named(plan, "account")["researcher1"]["action"], "keep")
+        self.assertEqual(named(plan, "data")["/data/lab"]["action"], "keep")
+
+    def test_a_note_others_could_write_or_with_other_ids_names_nothing(self) -> None:
+        note = {
+            "accounts": [
+                # The owner's account under another UID, and researcher1's.
+                {"name": "owner1", "uid": "4242", "gid": "1000"},
+                {"name": "researcher1", "uid": "1001", "gid": "1001"},
+            ],
+            "groups": [{"name": "owner1", "gid": "4242"}, {"name": "pinka", "gid": "1002"}],
+        }
+        path = self.fake.file(NOTE, json.dumps(note), 0o600)
+        (self.fake.root / "var/lib/pinka/install-record.json").unlink()
+        (self.fake.root / "etc/pinka/lab.json").unlink()
+        plan = plan_of(self.fake, purge_data=True)
+        accounts = named(plan, "account")
+        self.assertNotIn("owner1", accounts)
+        self.assertEqual(accounts["researcher1"]["reason"], mod.KEPT_EARLIER)
+        groups = named(plan, "group")
+        self.assertNotIn("owner1", groups)
+        self.assertEqual(groups["pinka"]["action"], "remove")
+        self.assertEqual(plan["warnings"], [])
+        # A note others could write, or no regular file, names nothing at all.
+        for mode in (0o620, 0o602):
+            path.chmod(mode)
+            plan = plan_of(self.fake, purge_data=True)
+            self.assertNotIn("researcher1", named(plan, "account"))
+            self.assertIn(
+                "Uninstall ignores the note of the kept accounts: "
+                f"{mod.NAMES['kept_accounts']} is not root's own, or others can write it.",
+                plan["warnings"][-1],
+            )
+        path.unlink()
+        self.fake.link(NOTE, "/etc/passwd")
+        plan = plan_of(self.fake, purge_data=True)
+        self.assertNotIn("researcher1", named(plan, "account"))
+        self.assertIn(f"{mod.NAMES['kept_accounts']} is no regular file", plan["warnings"][-1])
+        self.assertIn("Warnings:", mod.plan_text(plan))
+
+
 class FollowUpTest(unittest.TestCase):
     """The report says what the owner does outside the host, and whether to reboot."""
 
@@ -1190,20 +2132,25 @@ class FollowUpTest(unittest.TestCase):
                 "Revoke the platform's read-only deploy key SHA256:examplefingerprint on the Git "
                 "host of git@git.example.com:example-org/refplat.git: uninstall removes its "
                 "private half from this host.",
+                mod.KEPT_FOLLOW_UP,
             ],
         )
         text = mod.plan_text(plan)
         self.assertIn("\nAfterwards:\n  - Delete the node lab1", text)
-        report = mod.build_report({"results": []}, plan)
+        done = [mod.result_of(i, "kept", "") for i in plan["items"]]
+        report = mod.build_report({"results": done}, plan)
         self.assertEqual(report["follow_ups"], plan["follow_ups"])
 
-    def test_none_when_pinka_neither_joined_nor_deployed(self) -> None:
+    def test_only_the_kept_data_when_pinka_neither_joined_nor_deployed(self) -> None:
         rec_path = self.fake.root / "var/lib/pinka/install-record.json"
         rec = json.loads(rec_path.read_text())
         rec["added"]["components"]["tailscale"] = False
         rec_path.write_text(json.dumps(rec))
         (self.fake.root / "var/lib/pinka/git/deploy_key.pub").unlink()
         plan = plan_of(self.fake)
+        self.assertEqual(plan["follow_ups"], [mod.KEPT_FOLLOW_UP])
+        # With --purge-data nothing stays to say anything about.
+        plan = plan_of(self.fake, purge_data=True)
         self.assertEqual(plan["follow_ups"], [])
         self.assertNotIn("Afterwards:", mod.plan_text(plan))
 

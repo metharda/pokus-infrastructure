@@ -66,7 +66,11 @@ command `/usr/local/libexec/pinka/pinka-platform`):
      `<platform>-<job>` and `<platform>-migrate` with exactly the groups
      their profiles allow (whatever the manifest and the profile data say,
      the tool refuses to let the agent or a training job join
-     `pinka-restricted`, the database socket group or `pinka-query`);
+     `pinka-restricted`, the database socket group or `pinka-query`).
+     Right before the accounts change, the role undoes the lock an
+     uninstall without `--purge-data` put on the accounts this rendering
+     names, as the install record noted it (`pinka_install_record`,
+     `state: unlock`);
    - directories (state 0700 per service, secrets 0750 `root:<account>`, the
      signing directory, the QA directories), the services' configuration
      (`/etc/pinka/platform/config/<service>.json`, 0640 `root:<account>`) and

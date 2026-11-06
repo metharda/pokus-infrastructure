@@ -21,7 +21,7 @@ continues past it.
 ## How pinka knows what is its own
 
 The **install record**, `/var/lib/pinka/install-record.json` (root only,
-mode 0600), is written once, at the first install and before any change to
+mode 0600), is created once, at the first install and before any change to
 the host. Its `preexisting` part lists what was there: the components with
 their versions and settings, the installed packages, the enabled and masked
 units, the accounts and groups, and the contents of the few files pinka
@@ -39,8 +39,12 @@ label of a `daemon.json` pinka wrote, a node tag starting with `tag:pinka-`,
 the `/etc/pinka/managed-incus` marker.
 
 Doctor checks that the record is present, readable and only root can change
-it (`install.record`). The record is never rewritten and never edited by
-hand.
+it (`install.record`). Its `preexisting` part is never rewritten, and the
+record is never edited by hand. When an uninstall without `--purge-data`
+kept pinka's accounts and groups with the lab's data, the next install adds
+them to the `added` part, with the notes it needs to undo their lock;
+Docker's and Incus's groups only leave the `preexisting` part, so that they
+go with their component.
 
 ## What pinka does with each component
 

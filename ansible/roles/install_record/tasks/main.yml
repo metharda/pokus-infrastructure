@@ -1,6 +1,6 @@
 # Managed by pinka (ansible/roles/install_record/tasks/main.yml). Local changes will be overwritten.
 #
-# The install record: written once, at the first install
+# The install record: created at the first install
 # and before any change to the host, with what existed before pinka; the
 # roles add what they create (pinka_install_record state=add) and read the
 # record through pinka_preexisting. Check mode writes nothing and shows the
@@ -15,6 +15,21 @@
     managed_files: "{{ install_record_managed_files }}"
     originals: "{{ install_record_originals }}"
   register: install_record_init
+
+# An uninstall without --purge-data kept these with the lab's data, the
+# accounts locked; init took them over. users_groups and the platform role
+# undo the lock of those they manage; any other stays locked.
+- name: Show the kept accounts and groups this install took over
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'Would take' if ansible_check_mode else 'Took' }} over the accounts and groups an
+      uninstall kept with the lab's data: {{ (install_record_init.taken_over.accounts
+      + install_record_init.taken_over.groups + install_record_init.taken_over.component_groups)
+      | unique | join(', ') }}. The lock of the accounts this lab names
+      {{ 'would be' if ansible_check_mode else 'is' }} undone where users_groups and the
+      platform role manage them; any other stays locked.
+  when: >-
+    (install_record_init.taken_over | default({})).values() | map('length') | sum > 0
 
 # A legacy record (the host was provisioned before the record existed) lists
 # pinka's own items as pre-existing, so it decides nothing; components then
