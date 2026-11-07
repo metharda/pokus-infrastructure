@@ -61,8 +61,8 @@ before you press **Install** on the Review screen.
 
 Each screen checks its fields when you go on and shows a message next to a
 wrong field. ++f1++ shows the screen's help. Screens that do not apply to
-the host (the GPU screen without a GPU, Restore outside restore mode) are
-shown greyed out with the reason.
+the host (the NVIDIA driver page without a GPU, on WSL or on a lab node;
+Restore outside restore mode) are shown greyed out with the reason.
 
 | Keys | Action |
 | --- | --- |
@@ -76,48 +76,91 @@ shown greyed out with the reason.
 1. **Install mode**: *Fresh install*, *Restore from backup*, or *Modify the
    existing installation* (offered once a lab is installed here).
 2. **Machine**: the machine name names `host_vars/<machine>.yml` and the
-   tailnet host. A *lab* node and an *inference* node are paired after both
-   are installed (see
-   [How to run inference on a separate GPU node](pair-inference-node.md)).
-3. **Resources**: the CPU split between lab services and targets. The
-   suggestion keeps both threads of a core in one set; a yellow warning
-   shows when your split separates them. On WSL, enter the memory and
-   processors you set in `.wslconfig`.
-4. **Storage**: a loop file, or a dedicated disk. Choosing a disk opens a red
-   dialog in which you type its full `/dev/disk/by-id/` path; a disk with
-   existing signatures also needs `WIPE`.
+   tailnet host.
+3. **Capacity plan**: everything that sizes the lab, and preflight's answer
+   on whether it fits. After every change the installer writes the plan of
+   your choices, as bootstrap will, and runs preflight with it; the bars at
+   the top show RAM, the disk of each mount point and the GPU's memory for
+   serving and for training. Green fits; red does not fit, and Next waits
+   until it does, also on a host you forced on the Preflight screen. When
+   preflight's outcome is degraded, the checkbox under the status line asks
+   for your consent to it (it starts ticked only when you accepted each of
+   its lines already, on the Preflight screen or here). Next also waits where
+   preflight finds the host unsupported (unless you forced it on the
+   Preflight screen) or asks for an action first, as bootstrap's preflight
+   stage would stop there, and while preflight gives no answer (its exit code
+   and last error line are shown). Press ++enter++ on a bar for its items,
+   each number marked estimated, configured or measured; below the bars are
+   the growth per day and week, the day the disk fills, and preflight's
+   reasons word for word (see
+   [Capacity planning](../explanation/capacity-planning.md)).
+   The choices:
 
-    !!! danger "Data loss"
-        The disk you confirm is formatted as the Incus storage pool when the
-        installation runs. Mounted and system disks cannot be chosen.
+    - the node role: a *lab* node and an *inference* node are paired after
+      both are installed (see
+      [How to run inference on a separate GPU node](pair-inference-node.md));
+    - the inference and training switches;
+    - on bare metal or a VM with a GPU (not on WSL or a lab node), the NVIDIA
+      driver: *Install the pinned driver* (`auto`), *I install it myself*
+      (`manual`) or *No driver* (`skip`); preflight judges the GPU with it.
+      With Secure Boot and no driver, *I install it myself* is refused until
+      the driver is installed;
+    - the serving profile and the default model (only the models that fit
+      the GPU are listed). A model must be pinned in `models.lock.yml`: select
+      it and press **Pin model** (this needs the Hugging Face Hub, and the
+      token for a gated model, which the installation also needs to download
+      it: the installer keeps the token in memory and writes it only to the
+      encrypted vault, never to its resume state or the answers file). Until
+      it is pinned the plan is refused and Next waits;
+    - the Incus pool: a loop file, of a size or `auto`, or a dedicated disk,
+      chosen on the next page;
+    - the number of concurrent targets and the telemetry retention
+      (Prometheus by time and by size, Loki, Tempo);
+    - the CPU split between lab services and targets (the suggestion keeps
+      both threads of a core in one set; a yellow warning shows when your
+      split separates them), the expected memory and threads (on WSL, the
+      values you set in `.wslconfig`) and Postgres's shared buffers.
 
-    ![The Storage screen](../assets/installer/storage.svg)
+    ![The capacity plan](../assets/installer/capacity.svg)
 
-5. **Researchers**: add each researcher with **Add**, paste their public keys
+    Its sub-steps, each greyed out with the reason where it does not apply:
+
+    - **Storage device** (a dedicated disk only): choosing a disk opens a red
+      dialog in which you type its full `/dev/disk/by-id/` path; a disk with
+      existing signatures also needs `WIPE`.
+
+        !!! danger "Data loss"
+            The disk you confirm is formatted as the Incus storage pool when
+            the installation runs. Mounted and system disks cannot be chosen.
+
+    - **NVIDIA driver** (bare metal or a VM with a GPU, not on a lab node):
+      the driver chosen on the capacity plan, its pinned packages, and a GPU
+      the pinned driver cannot serve, shown as not usable. With Secure Boot
+      and no driver, *Install the pinned driver* needs the consent from the
+      Preflight screen and a one-time MOK password, entered twice here: the
+      installation imports the key with it, and you type it again in MOK
+      Manager after the reboot. It is never stored.
+    - **Serving** (with a GPU, not on a lab node): whether serving starts
+      after the install; under *GPU arbiter*, whether the default deployment
+      is served after boot or the GPU stays idle, whether the deployment
+      served before a training run comes back when the run ends, and, on a
+      full node, the caps on training jobs (run time, CPUs, memory, dataset,
+      run storage and job tmpfs sizes). The arbiter refuses every run of a job
+      over them.
+
+4. **Researchers**: add each researcher with **Add**, paste their public keys
    (private keys are refused), and make at least one an admin. Removing a
    researcher from an installed lab locks the account; the data stays.
 
     ![The Researchers screen](../assets/installer/researchers.svg)
 
-6. **Remote access**: the Tailscale tag and login. **Copy ACL** copies the
+5. **Remote access**: the Tailscale tag and login. **Copy ACL** copies the
    lines your tailnet policy needs.
-7. **GPU & inference**: the driver (never on WSL), the serving profile and the
-   default model. A model must be pinned in `models.lock.yml`: select it and
-   press **Pin model** (this needs the Hugging Face Hub). With Secure Boot
-   and no driver, `auto` needs the consent from the Preflight screen and a
-   one-time MOK password, entered twice: the installation imports the key
-   with it, and you type it again in MOK Manager after the reboot. It is
-   never stored. `manual` is refused there until the driver is installed.
-   Under *GPU arbiter*, choose whether the default deployment is served after
-   boot or the GPU stays idle, whether the deployment served before a
-   training run comes back when the run ends, and, on a full node, the caps
-   on training jobs (run time, CPUs, memory, dataset, run storage and job
-   tmpfs sizes). The arbiter refuses every run of a job over them.
-8. **Data & backups**: the restic repository and schedule. A generated restic
+6. **Data & backups**: the restic repository and schedule. A generated restic
    password is shown once: store it outside the host and tick
    *I stored this safely*.
-9. **Restore** (restore mode only): pick the snapshot.
-10. **Platform**: *No platform* for a standalone lab, or *Deploy a platform
+7. **Restore** (restore mode only): pick the snapshot.
+8. **Platform**: *No platform* for a standalone lab, or *Deploy a platform
     release*: its repository, release (a tag is recommended), path and tag
     prefix. For an SSH URL, **Deploy key** creates this host's read-only key
     to add to the Git host, and **Test access** checks it; GitHub's host keys
@@ -128,7 +171,7 @@ shown greyed out with the reason.
     each content package it declares, its secrets (leave a field empty to
     have it generated) and the settings of each service with a config schema,
     as YAML.
-11. **Platform review**: the release, its content and its settings pass the
+9. **Platform review**: the release, its content and its settings pass the
     deployment's own checks, or the screen lists why not. Read what the
     platform will be on this host (its accounts and privilege profiles, the
     sockets dedicated to its untrusted agent, its training jobs with their
@@ -138,8 +181,8 @@ shown greyed out with the reason.
 
     ![The Platform review screen](../assets/installer/platform_review.svg)
 
-12. **Golden images**: which images to build, now or later.
-13. **Secrets & vault**: every service password and every platform secret you
+10. **Golden images**: which images to build, now or later.
+11. **Secrets & vault**: every service password and every platform secret you
     left empty is generated. Enter the vault password twice, or the path of a
     file that contains it.
 

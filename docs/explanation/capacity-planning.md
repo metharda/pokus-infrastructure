@@ -50,6 +50,14 @@ training caps and the retention settings.
   same numbers; `pinka preflight --plan FILE` computes another one.
 - Without a plan, preflight takes the configured defaults (what the Ansible
   defaults set).
+- The installer's capacity plan (step 5) writes the plan of the choices on
+  the screen, with the same plan writer as bootstrap, and runs preflight with
+  it after every change (`--plan`, `--offline`); it shows preflight's answer
+  and decides nothing itself: Next waits where bootstrap's preflight stage
+  would stop on that answer, and on a resource that does not fit also on a
+  host forced on the Preflight screen. A result that arrives after a newer
+  change is dropped, so the bars and Next always follow the current choices.
+  The Review screen runs it once more with the final choices.
 
 The features (`gpu_inference`, `gpu_training`, `vm_targets` and the others)
 are not part of the plan: preflight detects them on the machine. The plan's
@@ -313,5 +321,8 @@ one within 7 days ([`disk.free_space`](../how-to/fix-doctor-checks.md#check-disk
 | training caps | `training_caps` (`memory_max: auto`: computed) | `training_caps` |
 | retention | `observability_*_retention`, `observability_prometheus_retention_size`, `backup_pgdump_keep` | `telemetry_retention`, `backups.pg_dumps_kept` |
 
-Run `sudo pinka preflight` after a change to see the new breakdown; bootstrap
-applies it.
+In the installer every choice of the table is on the capacity plan (step 5)
+except the golden images, which come later, and `backup_pgdump_keep`, which
+is set in the answers file only (`backups.pg_dumps_kept`); the Review screen
+shows preflight's answer with every choice. Run `sudo pinka preflight` after
+a change of host_vars to see the new breakdown; bootstrap applies it.

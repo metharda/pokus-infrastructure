@@ -11,17 +11,20 @@ changed SVG.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 from textual.pilot import Pilot
+from textual.widgets import Collapsible
 from tui_fakes import FakeHost, FakeRunner, app, context, preflight, refplat_inspection
 
 from pinka_installer import answers as answers_mod
 from pinka_installer import release
 from pinka_installer.paths import Paths
 from pinka_installer.tui.app import SCREENS, InstallerApp
+from pinka_installer.tui.host import Preflight
 from pinka_installer.tui.screens_install import SignalScreen
 
 PASSWORD = "correct horse battery staple 42"  # noqa: S105 - test fixture
@@ -31,15 +34,44 @@ THEMES = {"dark": "textual-dark", "light": "textual-light"}
 # platform, with the confirmation that asks for its name.
 # "shared": the Remote access screen on a shared host installed over SSH from
 # the LAN (preflight's fixture), with what may close with consent.
-SCREEN_NAMES = [*SCREENS, "signal", "replace", "shared"]
+# "capacity" fits; "capacity_degraded" has memory below the recommended value
+# (yellow, with the consent); "capacity_short" has disks that do not fit (red,
+# Next waits), its first red bar opened to its items; "capacity_forced" is the
+# degraded host made unsupported by another fixture's reason and forced on the
+# Preflight screen: the yellow bar and its reason stay, without a consent;
+# "capacity_baremetal" is the page on bare metal, with the NVIDIA driver field.
+CAPACITY_HOSTS = {
+    "capacity_degraded": "ubuntu2404-memory-below-recommended",
+    "capacity_short": "ubuntu2404-disk-shortfall",
+    # the NVIDIA driver page where a driver can be installed (greyed on WSL)
+    "capacity_driver": "ubuntu2404-baremetal-nvidia-driver-loaded",
+    "capacity_baremetal": "ubuntu2404-baremetal-nvidia-driver-loaded",
+}
+# An unsupported reason an operator can force (no storage backend).
+FORCED_REASON = "ubuntu2404-no-btrfs-no-dmthin"
+SCREEN_NAMES = [
+    *SCREENS,
+    "signal",
+    "replace",
+    "shared",
+    "capacity_degraded",
+    "capacity_short",
+    "capacity_forced",
+    "capacity_baremetal",
+]
 
 
 def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     """The application on one screen, with the wizard filled in."""
     if screen == "shared":
         host = FakeHost(preflight("ubuntu2404-access-shared", ["--researcher", "researcher1"]))
+    elif screen == "capacity_forced":
+        forced = copy.deepcopy(preflight(CAPACITY_HOSTS["capacity_degraded"]).profile)
+        forced["outcome"] = "unsupported"
+        forced["unsupported_reasons"] = preflight(FORCED_REASON).profile["unsupported_reasons"]
+        host = FakeHost(Preflight(20, forced))
     else:
-        host = FakeHost(preflight("ubuntu2404-wsl2-gpu-kvm"))
+        host = FakeHost(preflight(CAPACITY_HOSTS.get(screen, "ubuntu2404-wsl2-gpu-kvm")))
     ctx = context(repo, host, FakeRunner([("events-success.jsonl", 1)]), machine="pinka-lab")
     wizard = ctx.wizard
     result = host.preflight([])
@@ -60,6 +92,10 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
     )
     if screen == "restore":
         answers.mode = "restore"
+    if screen == "capacity_device":
+        answers.storage.source = "device"
+    if screen == "capacity_forced":
+        wizard.consents.add("force_unsupported")
     if screen == "shared":
         answers.remote_access.close_listeners = ["tcp/8080"]
     if screen in ("platform", "platform_review", "replace"):
@@ -80,9 +116,15 @@ def filled(repo: Paths, screen: str, theme: str) -> InstallerApp:
             "replaces it only with --replace-platform oldplat"
         )
         wizard.review = release.Inspection(ok=False, problems=[problem], active="oldplat")
-    first = {"signal": "welcome", "replace": "platform_review", "shared": "remote"}.get(
-        screen, screen
-    )
+    first = {
+        "signal": "welcome",
+        "replace": "platform_review",
+        "shared": "remote",
+        "capacity_degraded": "capacity",
+        "capacity_short": "capacity",
+        "capacity_forced": "capacity",
+        "capacity_baremetal": "capacity",
+    }.get(screen, screen)
     return app(ctx, first=first, theme=theme)
 
 
@@ -106,6 +148,12 @@ def before(screen: str) -> Callable[[Pilot[Any]], Any]:
             await settle(pilot)
         if screen == "shared":
             pilot.app.screen.query_one("#close").scroll_visible(animate=False, top=True)
+            await settle(pilot)
+        if screen == "capacity_short":
+            red = pilot.app.screen.query("Collapsible.does_not_fit").first(Collapsible)
+            red.collapsed = False
+            await settle(pilot)
+            pilot.app.screen.query_one("#budget").scroll_home(animate=False)
             await settle(pilot)
 
     return run

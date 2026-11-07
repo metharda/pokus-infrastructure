@@ -1,4 +1,4 @@
-"""Screens 7-8: Researchers, Remote access."""
+"""Steps 6-7: Researchers, Remote access."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class Entry:
 
 
 class ResearcherForm(ModalScreen[Entry | None]):
-    """Add or edit one researcher (screen 7)."""
+    """Add or edit one researcher (step 6)."""
 
     def __init__(
         self, entry: Entry | None, taken: set[str], service_accounts: frozenset[str]
@@ -138,7 +138,7 @@ class ResearcherForm(ModalScreen[Entry | None]):
 
 
 class ResearchersScreen(StepScreen):
-    """Screen 7: the lab's researchers and their SSH keys."""
+    """Step 6: the lab's researchers and their SSH keys."""
 
     STEP = "researchers"
     HELP = (
@@ -258,7 +258,7 @@ class ResearchersScreen(StepScreen):
 
 
 class RemoteScreen(StepScreen):
-    """Screen 8: Tailscale, Grafana serve, extra SSH interfaces, access from before pinka."""
+    """Step 7: Tailscale, Grafana serve, extra SSH interfaces, access from before pinka."""
 
     STEP = "remote"
     HELP = (

@@ -92,8 +92,13 @@ installer TUI](../how-to/install-with-the-tui.md) explains every screen.
 
 ## Step 3: Answer the screens for bare metal
 
-1. **Machine**: a name such as `pinka` and node role `full`.
-2. **Storage**: choose the dedicated disk and type its full
+1. **Machine**: a name such as `pinka`.
+2. **Capacity plan**: node role `full`, the NVIDIA driver on *Install the
+   pinned driver* (the installation installs it only when none is loaded),
+   the serving profile of your GPU class and a pinned default model, and
+   *Dedicated disk* for the Incus pool. Every bar at the top must be green,
+   or yellow with your consent, before Next goes on.
+3. **Storage device**: choose the dedicated disk and type its full
    `/dev/disk/by-id/` path in the red dialog.
 
     !!! danger "Data loss"
@@ -101,14 +106,11 @@ installer TUI](../how-to/install-with-the-tui.md) explains every screen.
         runs. Mounted and system disks cannot be chosen; a disk with existing
         signatures also needs you to type `WIPE`.
 
-3. **GPU & inference**: keep the driver on `auto`; the installation installs
-   the pinned driver only when none is loaded. With Secure Boot the screen
-   asks for a MOK password: enter a one-time password twice and keep it until
-   the next reboot, when you type it in the key enrollment screen. It is
-   never stored. Choose the serving profile of your GPU class and a pinned
-   default model.
-4. **Researchers**, **Remote access**, **Data & backups**, **Golden images**
-   and **Secrets & vault** as in the how-to.
+4. **NVIDIA driver**: with Secure Boot the page asks for a MOK password:
+   enter a one-time password twice and keep it until the next reboot, when
+   you type it in the key enrollment screen. It is never stored.
+5. **Serving**, **Researchers**, **Remote access**, **Data & backups**,
+   **Golden images** and **Secrets & vault** as in the how-to.
 
 On the Review screen check the storage line, which is shown in red because it
 cannot be undone, then press **Install**.
@@ -151,8 +153,9 @@ Bootstrap reboots by itself only when you start it with `--allow-reboot`
     If you prefer your distribution's documented procedure for the NVIDIA
     driver and its Secure Boot key, install the driver before step 2, enroll
     its key at the next boot and run preflight again (step 1); it then finds
-    the driver loaded. Choose *I install it myself* on the GPU screen. The
-    installation keeps your driver and does not ask for a MOK password.
+    the driver loaded. Choose *I install it myself* for the NVIDIA driver on
+    the capacity plan. The installation keeps your driver and does not ask
+    for a MOK password.
 
 ## Step 5: Check the lab
 

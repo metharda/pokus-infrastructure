@@ -223,3 +223,49 @@ ModalScreen {
 #pair-log {
     height: 8;
 }
+
+/* The capacity plan: preflight's answer above the choices. */
+
+#budget {
+    height: auto;
+    max-height: 45%;
+    padding: 0 1;
+    border-bottom: solid $primary;
+}
+
+#cap-rows {
+    height: auto;
+}
+
+/* The serving choices, built again when the node role changes. */
+#serving {
+    height: auto;
+}
+
+Collapsible.budget {
+    padding: 0;
+    margin: 0;
+    border: none;
+}
+
+Collapsible.budget CollapsibleTitle {
+    padding: 0;
+}
+
+Collapsible.budget.fits CollapsibleTitle {
+    color: $success;
+}
+
+Collapsible.budget.degraded CollapsibleTitle {
+    color: $warning;
+}
+
+Collapsible.budget.does_not_fit CollapsibleTitle {
+    color: $error;
+    text-style: bold;
+}
+
+Collapsible.budget.unknown CollapsibleTitle,
+Collapsible.budget.off CollapsibleTitle {
+    color: $text-muted;
+}

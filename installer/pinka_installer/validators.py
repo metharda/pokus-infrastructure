@@ -499,6 +499,39 @@ def concurrent_targets(value: int) -> str | None:
     return None
 
 
+# The most digits a whole number of a field has (no setting needs more).
+MAX_DIGITS = 9
+
+
+def whole(text: str) -> int | None:
+    """A whole number as typed in a field: ASCII digits only, at most nine.
+
+    ``str.isdigit`` also accepts digits such as ``²`` that ``int`` refuses, and
+    a number of hundreds of digits overflows what the plan computes with.
+
+    Args:
+        text: The field's text.
+
+    Returns:
+        The number, or None.
+    """
+    if text.isascii() and text.isdigit() and len(text) <= MAX_DIGITS:
+        return int(text)
+    return None
+
+
+def concurrent_targets_text(text: str) -> str | None:
+    """The targets that run at once, as typed in a field.
+
+    Args:
+        text: The field's text.
+
+    Returns:
+        The error, or None.
+    """
+    return concurrent_targets(whole(text) or 0)
+
+
 def retention_period(value: str, units: str = "hdwy") -> str | None:
     """A retention period of the telemetry stores, such as ``90d`` or ``720h``.
 
@@ -511,7 +544,8 @@ def retention_period(value: str, units: str = "hdwy") -> str | None:
     """
     match = RETENTION_RE.fullmatch(value)
     if not match or match.group(2) not in units:
-        return f"a whole number with one unit of {', '.join(units)}, such as 90{units[-1]}"
+        example = "90d" if "d" in units else "720h"
+        return f"a whole number with one unit of {', '.join(units)}, such as {example}"
     return None
 
 

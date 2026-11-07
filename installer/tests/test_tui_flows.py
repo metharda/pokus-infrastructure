@@ -36,6 +36,7 @@ from tui_fakes import (
     DISK_BY_ID,
     FakeHost,
     FakeRunner,
+    accepted_on_preflight,
     app,
     context,
     preflight,
@@ -52,6 +53,8 @@ from pinka_installer.tui.widgets import Confirm, PasswordPrompt, ShownOnce, Type
 
 PASSWORD = "correct horse battery staple 42"  # noqa: S105 - test fixture
 SIZE = (120, 40)
+# Step 5: the capacity plan and its sub-steps.
+STEP5 = ("capacity", "capacity_device", "capacity_driver", "capacity_serving")
 Flow = Callable[[Pilot[int]], Awaitable[None]]
 
 
@@ -108,6 +111,13 @@ def fill(pilot: Pilot[Any], **values: str) -> None:
 
 def pick(pilot: Pilot[Any], button: str) -> None:
     pilot.app.screen.query_one(f"#{button}", RadioButton).value = True
+
+
+def choose(pilot: Pilot[Any], select: str, value: str) -> None:
+    pilot.app.screen.query_one(f"#{select}", Select).value = value
+
+
+DRIVER_SHOWN = "NVIDIA driver: {} (chosen on the capacity plan)"
 
 
 def tick(pilot: Pilot[Any], box: str, on: bool = True) -> None:
@@ -175,17 +185,26 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
         await welcome_to_mode(pilot)
         await forward(pilot, "machine")
         assert pilot.app.screen.query_one("#power_policy").disabled  # WSL: Windows decides
-        await forward(pilot, "resources")
-        assert "WSL" in str(
-            pilot.app.screen.query(".banner.warn").results(Static).__next__().content
-        )
-        await forward(pilot, "storage")
-        await forward(pilot, "researchers")  # auto: preflight sizes the loop file
+        await forward(pilot, "capacity")
+        screen = pilot.app.screen
+        banners = [str(s.content) for s in screen.query(".banner.warn").results(Static)]
+        assert any(b.startswith("WSL: the limits come from %UserProfile%") for b in banners)
+        assert screen.query_one("#profile", Select).value  # suggested from the GPU
+        titles = [str(c.title) for c in screen.query(Collapsible)]
+        assert [t.split()[0] for t in titles] == ["RAM", "Disk", "Disk", "VRAM", "VRAM"]
+        # The capacity fields an answers file can set, with values other than the defaults.
+        fill(pilot, targets="3", ret_prometheus="60d", ret_size="20GB", ret_loki="720h")
+        fill(pilot, ret_tempo="168h")
+        await forward(pilot, "capacity_device")
+        greyed = str(pilot.app.screen.query_one(".greyed", Static).content)
+        assert "the Incus pool is a loop file (Capacity plan): no disk to choose" in greyed
+        await forward(pilot, "capacity_driver")
+        assert "WSL" in str(pilot.app.screen.query_one(".greyed", Static).content)
+        await forward(pilot, "capacity_serving")
+        await forward(pilot, "researchers")
         await add_researcher(pilot, "researcher2", key)
         await forward(pilot, "remote")
         assert pilot.app.screen.query_one("#ifaces").disabled  # WSL: Windows owns the network
-        await forward(pilot, "gpu")
-        assert pilot.app.screen.query_one("#profile", Select).value  # suggested from the GPU
         await forward(pilot, "backups")
         pick(pilot, "type-sftp")
         fill(pilot, sftp_host="backup.example.com", sftp_user="backup", path="/srv/restic/lab")
@@ -227,8 +246,18 @@ def test_fresh_wsl2_with_gpu(repo: Paths, tmp_path: Path) -> None:
     assert values["incus_pool_source"] == "loop"
     assert values["power_policy"] == "os_default"
     assert values["vllm_profile"]
+    # The capacity plan's own fields reach host_vars and the answers (and the replay below).
+    assert values["incus_concurrent_targets"] == 3
+    assert (
+        values["observability_prometheus_retention"],
+        values["observability_prometheus_retention_size"],
+        values["observability_loki_retention"],
+        values["observability_tempo_retention"],
+    ) == ("60d", "20GB", "720h", "168h")
     saved = answers_mod.load(repo.answers("pinka-lab"), apply.context(repo))
     assert [r.name for r in saved.researchers] == ["researcher1", "researcher2"]
+    assert saved.resources.concurrent_targets == 3
+    assert saved.telemetry_retention.prometheus_size == "20GB"
     assert saved.backups.repository.host == "backup.example.com"
     assert (
         repo.public_keys("researcher2")
@@ -283,8 +312,10 @@ def test_bare_metal_with_a_dedicated_pool_disk(repo: Paths) -> None:
         await welcome_to_mode(pilot)
         await forward(pilot, "machine")
         fill(pilot, name="pinka-lab")
-        await forward(pilot, "resources")
-        await forward(pilot, "storage")
+        await forward(pilot, "capacity")
+        choose(pilot, "install_driver", "auto")
+        pick(pilot, "source-device")
+        await forward(pilot, "capacity_device")
         table = pilot.app.screen.query_one("#disks", DataTable)
         table.focus()
         table.move_cursor(row=1)  # the mounted system disk cannot be chosen
@@ -304,12 +335,14 @@ def test_bare_metal_with_a_dedicated_pool_disk(repo: Paths) -> None:
         await click(pilot, "#confirm")
         await pilot.pause()
         assert "will be destroyed" in str(pilot.app.screen.query_one("#device", Static).content)
+        await forward(pilot, "capacity_driver")
+        shown = str(pilot.app.screen.query_one("#driver", Static).content)
+        assert shown == DRIVER_SHOWN.format("Install the pinned driver")
+        await forward(pilot, "capacity_serving")
         await forward(pilot, "researchers")
         await forward(pilot, "remote")
         fill(pilot, authkey="authkey-placeholder")
         pick(pilot, "login-key")
-        await forward(pilot, "gpu")
-        pick(pilot, "driver-auto")
         await forward(pilot, "backups")
         await forward(pilot, "restore")
         await forward(pilot, "platform")
@@ -335,7 +368,8 @@ def test_bare_metal_with_a_dedicated_pool_disk(repo: Paths) -> None:
 
 def test_a_disk_with_signatures_needs_wipe(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
-    installer = app(context(repo, host), first="storage")
+    installer = app(context(repo, host), first="capacity_device")
+    installer.ctx.wizard.answers.storage.source = "device"
 
     async def flow(pilot: Pilot[int]) -> None:
         table = pilot.app.screen.query_one("#disks", DataTable)
@@ -373,10 +407,14 @@ def test_degraded_host_without_gpu(repo: Paths) -> None:
         for box in pilot.app.screen.query(".consent-feature").results(Checkbox):
             box.value = True
         await forward(pilot, "mode")
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", "capacity", "capacity_device", "capacity_driver"):
             await forward(pilot, step)
         assert "no GPU detected" in str(pilot.app.screen.query_one(".greyed", Static).content)
-        for step in ("backups", "restore", "platform", "platform_review", "images", "secrets"):
+        await forward(pilot, "capacity_serving")
+        assert "no GPU detected" in str(pilot.app.screen.query_one(".greyed", Static).content)
+        for step in ("researchers", "remote", "backups", "restore", "platform"):
+            await forward(pilot, step)
+        for step in ("platform_review", "images", "secrets"):
             await forward(pilot, step)
         await secrets_to_progress(pilot)
 
@@ -413,20 +451,27 @@ def test_secure_boot_mok_consent(repo: Paths) -> None:
         for box in screen.query(".consent-feature").results(Checkbox):
             box.value = True
         await forward(pilot, "mode")
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", "capacity"):
             await forward(pilot, step)
-        assert pilot.app.screen.query_one("#driver-auto", RadioButton).value
-        pick(pilot, "driver-manual")
+        assert pilot.app.screen.query_one("#install_driver", Select).value == "auto"
+        choose(pilot, "install_driver", "manual")
         await pilot.pause()
-        await forward(pilot, "gpu")
-        assert "install the driver yourself first" in found[-1]
-        pick(pilot, "driver-auto")
-        await pilot.pause()  # the radio set clears driver-manual
+        await forward(pilot, "capacity")  # refused on the capacity plan, at its field
+        assert (
+            "✖ Secure Boot without a driver: install the driver yourself first and Re-check "
+            "on the Preflight screen, or choose Install the pinned driver or No driver"
+        ) in shown_errors(pilot)
+        choose(pilot, "install_driver", "auto")
+        await pilot.pause()
+        for step in ("capacity_device", "capacity_driver"):
+            await forward(pilot, step)
         fill(pilot, mok=mok, mok2="typo")
-        await forward(pilot, "gpu")
+        await forward(pilot, "capacity_driver")
         assert "✖ enter the same one-time password twice" in shown_errors(pilot)
         fill(pilot, mok=mok, mok2=mok)
-        for step in ("backups", "restore", "platform", "platform_review", "images", "secrets"):
+        for step in ("capacity_serving", "researchers", "remote", "backups", "restore"):
+            await forward(pilot, step)
+        for step in ("platform", "platform_review", "images", "secrets"):
             await forward(pilot, step)
         fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
         await forward(pilot, "review")
@@ -466,14 +511,74 @@ def test_secure_boot_without_the_driver(repo: Paths) -> None:
         for box in screen.query(".consent-feature").results(Checkbox):
             box.value = True
         await forward(pilot, "mode")
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", "capacity"):
             await forward(pilot, step)
-        assert pilot.app.screen.query_one("#driver-skip", RadioButton).value
-        await forward(pilot, "backups")
+        assert pilot.app.screen.query_one("#install_driver", Select).value == "skip"
+        for step in ("capacity_device", "capacity_driver"):
+            await forward(pilot, step)
+        shown = str(pilot.app.screen.query_one("#driver", Static).content)
+        assert shown == DRIVER_SHOWN.format("No driver")
+        assert not pilot.app.screen.query("#mok")  # no driver: no MOK password
+        for step in ("capacity_serving", "researchers", "remote", "backups"):
+            await forward(pilot, step)
 
     drive(installer, flow)
     assert installer.ctx.wizard.answers.gpu.install_driver == "skip"
     assert "accept_mok_enrollment" not in installer.ctx.wizard.consents
+
+
+def test_secure_boot_choosing_the_driver_after_continuing_without_it(repo: Paths) -> None:
+    # "Continue without the driver" on the Preflight screen, then "Install the pinned
+    # driver" on the capacity plan: preflight asks for the MOK consent, Next waits, and
+    # back on the Preflight screen the consent is offered again (it judges with the
+    # capacity plan's choice), so the install gets it and the one-time password.
+    host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
+    runner = FakeRunner([("events-signal76.jsonl", 76)])
+    installer = app(context(repo, host, runner, machine="pinka-lab"))
+    mok = "one-time mok"
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        await click(pilot, "#skip-driver")
+        await settle(pilot)
+        for box in pilot.app.screen.query(".consent-feature").results(Checkbox):
+            box.value = True
+        await forward(pilot, "mode")
+        for step in ("machine", "capacity"):
+            await forward(pilot, step)
+        choose(pilot, "install_driver", "auto")
+        await pilot.pause(0.6)
+        await settle(pilot)
+        await forward(pilot, "capacity")  # Next waits: preflight asks for the consent
+        status = str(pilot.app.screen.query_one("#cap-status", Static).content)
+        assert status == "Next waits: preflight asks for an action first (see below)"
+        for step in ("machine", "mode", "preflight"):
+            await pilot.press("ctrl+b")
+            await settle(pilot)
+            assert installer.current == step
+        tick(pilot, "consent-mok")
+        await settle(pilot)
+        assert host.preflight_args[-1] == ["--nvidia-driver", "auto", "--accept-mok-enrollment"]
+        for box in pilot.app.screen.query(".consent-feature").results(Checkbox):
+            box.value = True
+        await forward(pilot, "mode")
+        for step in ("machine", "capacity", "capacity_device", "capacity_driver"):
+            await forward(pilot, step)
+        fill(pilot, mok=mok, mok2=mok)
+        for step in ("capacity_serving", "researchers", "remote", "backups", "restore"):
+            await forward(pilot, step)
+        for step in ("platform", "platform_review", "images", "secrets"):
+            await forward(pilot, step)
+        fill(pilot, vault1=PASSWORD, vault2=PASSWORD)
+        await forward(pilot, "review")
+        await forward(pilot, "progress")
+        await click(pilot, "#quit")
+
+    assert drive(installer, flow) == 76
+    request = runner.requests[0]
+    assert "--accept-mok-enrollment" in request.options
+    assert request.mok_password == mok
+    assert installer.ctx.wizard.answers.gpu.install_driver == "auto"
 
 
 KEPLER = "ubuntu2404-baremetal-nvidia-kepler-secureboot"
@@ -493,15 +598,18 @@ def test_a_gpu_no_driver_is_installed_for(repo: Paths) -> None:
         for box in screen.query(".consent-feature").results(Checkbox):
             box.value = True
         await forward(pilot, "mode")
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", "capacity"):
+            await forward(pilot, step)
+        choose(pilot, "install_driver", "auto")  # installs nothing for this GPU, asks no MOK
+        await pilot.pause()
+        for step in ("capacity_device", "capacity_driver"):
             await forward(pilot, step)
         screen = pilot.app.screen
         banner = str(screen.query_one("#gpu-unsupported", Static).content)
         assert "Not usable: the pinned driver does not support this GPU (PCI 10de:1287)" in banner
         assert not screen.query("#mok")
-        pick(pilot, "driver-auto")  # installs nothing for this GPU, and asks for no MOK
-        await pilot.pause()
-        await forward(pilot, "backups")
+        for step in ("capacity_serving", "researchers", "remote", "backups"):
+            await forward(pilot, step)
 
     drive(installer, flow)
     assert installer.ctx.wizard.answers.gpu.install_driver == "auto"
@@ -540,13 +648,12 @@ def test_restore_mode(repo: Paths) -> None:
     )
     runner = FakeRunner([("events-success.jsonl", 0)])
     installer = app(context(repo, host, runner, machine="pinka-lab"), first="mode")
-    installer.ctx.wizard.consents.add("accept_degraded")
+    accepted_on_preflight(installer.ctx, host)
 
     async def flow(pilot: Pilot[int]) -> None:
         pick(pilot, "mode-restore")
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", *STEP5, "researchers", "remote", "backups"):
             await forward(pilot, step)
-        await forward(pilot, "backups")
         pick(pilot, "type-sftp")
         pick(pilot, "pw-enter")
         fill(
@@ -601,14 +708,14 @@ def test_modify_mode(repo: Paths) -> None:
     assert ctx.wizard.answers.mode == "modify"  # an installed lab opens in modify mode
     assert ctx.wizard.answers.machine.name == "pinka-lab"
     installer = app(ctx, first="mode")
+    accepted_on_preflight(ctx, host)  # the host lacks a GPU: degraded
     before = repo.host_vars("pinka-lab").read_text(encoding="utf-8")
     restic = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
 
     async def flow(pilot: Pilot[int]) -> None:
         assert pilot.app.screen.query_one("#mode-modify", RadioButton).value
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", *STEP5, "researchers", "remote", "backups"):
             await forward(pilot, step)
-        await forward(pilot, "backups")
         fill(pilot, schedule="04:30")
         for step in ("restore", "platform", "platform_review", "images", "secrets"):
             await forward(pilot, step)
@@ -627,7 +734,9 @@ def test_modify_mode(repo: Paths) -> None:
     assert "backup_schedule: '*-*-* 04:30:00'" in repo.host_vars("pinka-lab").read_text(
         encoding="utf-8"
     )
-    assert runner.requests[0].options == []
+    # The host lacks a GPU: its outcome is degraded, which bootstrap accepts only with
+    # the consent, given on the Preflight screen and kept on the capacity plan.
+    assert runner.requests[0].options == ["--accept-degraded"]
 
 
 def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
@@ -641,19 +750,27 @@ def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:
         assert any("lower-case letters" in e for e in errors), errors
         assert any("absolute" in e for e in errors), errors
         fill(pilot, name="pinka-lab", srv_path="/srv/pinka")
-        await forward(pilot, "resources")
+        await forward(pilot, "capacity")
         fill(pilot, cpuset_services="0-11", cpuset_targets="8-23", postgres="lots")
-        await forward(pilot, "resources")
+        await forward(pilot, "capacity")
         assert "✖ services and targets share CPUs 8-11" in shown_errors(pilot)
         fill(pilot, cpuset_services="0-7", cpuset_targets="8-23", postgres="2048MB")
-        await forward(pilot, "storage")
-        fill(pilot, loop_size="10")
-        await forward(pilot, "storage")
-        assert shown_errors(pilot) == ["✖ auto, or at least 20 GiB"]
+        fill(pilot, loop_size="10", targets="0", ret_prometheus="90x", ret_tempo="30d")
+        await forward(pilot, "capacity")
+        assert shown_errors(pilot) == [
+            "✖ auto, or at least 20 GiB (at most nine digits)",
+            "✖ a whole number from 1 to 40",
+            "✖ a whole number with one unit of h, d, w, y, such as 90d",
+            "✖ a whole number with one unit of h, such as 720h",
+        ]
+        fill(pilot, targets="three")
+        await forward(pilot, "capacity")
+        assert "✖ a whole number from 1 to 40" in shown_errors(pilot)
         # No disk rule of the installer's own: preflight's disk budget judges the
-        # size with the free space a loop file leaves beside it (500 GiB free here).
-        fill(pilot, loop_size="460")
-        await forward(pilot, "researchers")
+        # size (this fake host answers every plan alike).
+        fill(pilot, loop_size="460", targets="2", ret_prometheus="90d", ret_tempo="720h")
+        for step in (*STEP5[1:], "researchers"):
+            await forward(pilot, step)
         table = pilot.app.screen.query_one("#people", DataTable)
         table.focus()
         await click(pilot, "#remove")
@@ -702,7 +819,7 @@ def test_an_adopted_tailscale_node_is_shown_as_it_is(repo: Paths) -> None:
         await forward(pilot, "remote")
         assert any("needs your consent" in e for e in shown_errors(pilot)), shown_errors(pilot)
         tick(pilot, "consent")
-        await forward(pilot, "gpu")
+        await forward(pilot, "backups")
 
     drive(installer, flow)
     remote = installer.ctx.wizard.answers.remote_access
@@ -725,7 +842,7 @@ def test_a_shared_host_closes_only_what_the_owner_ticks(repo: Paths) -> None:
         assert listeners.selected == []
         listeners.select("tcp/8080")
         tick(pilot, "close-path")
-        await forward(pilot, "gpu")
+        await forward(pilot, "backups")
 
     drive(installer, flow)
     remote = installer.ctx.wizard.answers.remote_access
@@ -744,19 +861,20 @@ def test_without_access_to_close_the_answers_stand(repo: Paths) -> None:
         await settle(pilot)
         assert not pilot.app.screen.query("#close")
         assert not pilot.app.screen.query("#close-path")
-        await forward(pilot, "gpu")
+        await forward(pilot, "backups")
 
     drive(installer, flow)
     remote = installer.ctx.wizard.answers.remote_access
     assert (remote.close_listeners, remote.close_install_path) == ([], True)
 
 
-def test_the_resources_screen_warns_about_split_smt_cores(repo: Paths) -> None:
+def test_the_capacity_plan_warns_about_split_smt_cores(repo: Paths) -> None:
     # cpu<n> and cpu<n+12> are the two threads of one core (24 threads).
     cores = [frozenset({n, n + 12}) for n in range(12)]
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), cores=cores)
-    installer = app(context(repo, host), first="resources")
+    installer = app(context(repo, host), first="capacity")
     installer.ctx.wizard.profile = {**host.result.profile, "hardware": {"cpu_threads": 24}}
+    accepted_on_preflight(installer.ctx, host)
 
     def warning(pilot: Pilot[Any]) -> str:
         shown = pilot.app.screen.query_one("#smt-warning", Static)
@@ -771,7 +889,7 @@ def test_the_resources_screen_warns_about_split_smt_cores(repo: Paths) -> None:
         assert warning(pilot).startswith("SMT siblings of one core are split")
         assert "0,12; 1,13; 2,14; 3,15 and 4 more" in warning(pilot)
         # A warning, not an error: the operator may go on.
-        await forward(pilot, "storage")
+        await forward(pilot, "capacity_device")
 
     drive(installer, flow)
     resources = installer.ctx.wizard.answers.resources
@@ -896,7 +1014,7 @@ def test_back_keeps_what_was_entered(repo: Paths) -> None:
 
     async def flow(pilot: Pilot[int]) -> None:
         fill(pilot, name="pinka-lab")
-        await forward(pilot, "resources")
+        await forward(pilot, "capacity")
         await pilot.press("ctrl+b")
         await settle(pilot)
         assert at(pilot) == "machine"
@@ -906,16 +1024,19 @@ def test_back_keeps_what_was_entered(repo: Paths) -> None:
 
 
 def test_help_and_greyed_screens(repo: Paths) -> None:
-    installer = app(context(repo, FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))), first="gpu")
+    installer = app(
+        context(repo, FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))), first="capacity_serving"
+    )
 
     async def flow(pilot: Pilot[int]) -> None:
         assert pilot.app.screen.query(".greyed")
+        assert "step 5/14 · Serving" in str(pilot.app.screen.query_one("#step", Static).content)
         await pilot.press("f1")
         await pilot.pause()
-        assert "Help · GPU & inference" in str(pilot.app.screen.query_one(".dialog-title").render())
+        assert "Help · Serving" in str(pilot.app.screen.query_one(".dialog-title").render())
         await pilot.press("escape")
         await pilot.pause()
-        await forward(pilot, "backups")  # a greyed screen asks nothing
+        await forward(pilot, "researchers")  # a greyed screen asks nothing
 
     drive(installer, flow)
 
@@ -1025,6 +1146,7 @@ def test_review_shows_a_password_the_vault_generates(repo: Paths) -> None:
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
     ctx = context(repo, host)
     ctx.wizard.vault_password = PASSWORD
+    accepted_on_preflight(ctx, host)
     installer = app(ctx, first="review")
     shown: list[str] = []
 
@@ -1055,10 +1177,10 @@ def test_a_platform_release_is_inspected_reviewed_and_approved(repo: Paths) -> N
     host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
     runner = FakeRunner([("events-success.jsonl", 0)])
     installer = app(context(repo, host, runner, machine="pinka-lab"), first="mode")
-    installer.ctx.wizard.consents.add("accept_degraded")
+    accepted_on_preflight(installer.ctx, host)
 
     async def flow(pilot: Pilot[int]) -> None:
-        for step in ("machine", "resources", "storage", "researchers", "remote", "gpu"):
+        for step in ("machine", *STEP5, "researchers", "remote"):
             await forward(pilot, step)
         for step in ("backups", "restore", "platform"):
             await forward(pilot, step)

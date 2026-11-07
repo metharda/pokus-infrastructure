@@ -52,7 +52,7 @@ class AnswersError(ValueError):
 
 @dataclass
 class Machine:
-    """Screen 4: the machine."""
+    """Step 4: the machine (the node role on step 5)."""
 
     name: str = ""
     lab_mode: str = "production"
@@ -67,7 +67,10 @@ class Machine:
 
 @dataclass
 class Resources:
-    """Screen 5: expected resources and the CPU split (empty: derived from the host)."""
+    """Step 5, the capacity plan: expected resources, the CPU split, concurrent targets.
+
+    Empty values are derived from the host.
+    """
 
     expected_memory_gib: int | None = None
     expected_cpu_threads: int | None = None
@@ -79,7 +82,7 @@ class Resources:
 
 @dataclass
 class Storage:
-    """Screen 6: the Incus storage pool."""
+    """Step 5, the capacity plan and its Storage device page: the Incus storage pool."""
 
     source: str = "loop"
     # auto: computed by preflight from the targets, the golden images and the
@@ -92,7 +95,7 @@ class Storage:
 
 @dataclass
 class Researcher:
-    """Screen 7: one researcher (SSH keys live in ``users/<name>.pub``)."""
+    """Step 6: one researcher (SSH keys live in ``users/<name>.pub``)."""
 
     name: str
     admin: bool = False
@@ -106,7 +109,7 @@ REMOTE_OPTIONAL = ("tailscale_tag", "close_listeners", "close_install_path")
 
 @dataclass
 class RemoteAccess:
-    """Screen 8: Tailscale and SSH."""
+    """Step 7: Tailscale and SSH."""
 
     tailscale_login: str = "interactive"
     tailscale_tag: str = ""
@@ -122,7 +125,7 @@ class RemoteAccess:
 
 @dataclass
 class Gpu:
-    """Screen 9: GPU and inference."""
+    """Step 5, the capacity plan and its NVIDIA driver and Serving pages: GPU and inference."""
 
     install_driver: str = "skip"
     accept_mok_enrollment: bool = False
@@ -150,7 +153,7 @@ class Features:
 
 @dataclass
 class Repository:
-    """Screen 10: the restic repository (``type`` decides which fields count)."""
+    """Step 8: the restic repository (``type`` decides which fields count)."""
 
     type: str = "later"
     host: str = ""
@@ -184,7 +187,7 @@ class Retention:
 
 @dataclass
 class Backups:
-    """Screen 10: data and backups."""
+    """Step 8: data and backups."""
 
     repository: Repository = field(default_factory=Repository)
     password: str = GENERATE
@@ -207,7 +210,7 @@ class TelemetryRetention:
 
 @dataclass
 class Source:
-    """Screen 12: a Git source of the platform release or of a content package."""
+    """Step 10: a Git source of the platform release or of a content package."""
 
     repo: str = ""
     ref: str = ""
@@ -217,7 +220,7 @@ class Source:
 
 @dataclass
 class SourceTrust:
-    """Screen 12: how the platform's Git sources are trusted."""
+    """Step 10: how the platform's Git sources are trusted."""
 
     known_hosts: list[str] = field(default_factory=list)
     require_signed_tags: bool = False
@@ -226,7 +229,7 @@ class SourceTrust:
 
 @dataclass
 class GpuArbiter:
-    """Screen 9: the GPU arbiter."""
+    """Step 5, Serving: the GPU arbiter."""
 
     after_boot: str = "serve"
     restore_after_training: bool = True
@@ -234,7 +237,7 @@ class GpuArbiter:
 
 @dataclass
 class TrainingCaps:
-    """Screen 9: this host's caps on training jobs."""
+    """Step 5, Serving: this host's caps on training jobs."""
 
     timeout_seconds: int = 86400
     memory_max: str = "auto"
@@ -246,7 +249,7 @@ class TrainingCaps:
 
 @dataclass
 class Secrets:
-    """Screen 15: which secrets are generated and which are provided (never values).
+    """Step 13: which secrets are generated and which are provided (never values).
 
     ``platform`` holds the choice for each secret the platform's manifest
     names, by ``<service>.<name>``.

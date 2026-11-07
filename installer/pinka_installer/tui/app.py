@@ -24,9 +24,15 @@ from pinka_installer import apply, state, vault
 from pinka_installer.paths import Paths
 from pinka_installer.tui.base import Context, StepScreen
 from pinka_installer.tui.host import Host, RealHost
-from pinka_installer.tui.model import STEP_NAMES, Wizard, existing_answers
+from pinka_installer.tui.model import PAGES, REPLACED, Wizard, existing_answers
 from pinka_installer.tui.runner import BootstrapRunner, Runner
-from pinka_installer.tui.screens_host import MachineScreen, ResourcesScreen, StorageScreen
+from pinka_installer.tui.screens_capacity import (
+    CapacityScreen,
+    DeviceScreen,
+    DriverScreen,
+    ServingScreen,
+)
+from pinka_installer.tui.screens_host import MachineScreen
 from pinka_installer.tui.screens_install import (
     DoctorScreen,
     FinishScreen,
@@ -36,12 +42,7 @@ from pinka_installer.tui.screens_install import (
 )
 from pinka_installer.tui.screens_people import RemoteScreen, ResearchersScreen
 from pinka_installer.tui.screens_platform import PlatformReviewScreen, PlatformScreen
-from pinka_installer.tui.screens_services import (
-    BackupsScreen,
-    GpuScreen,
-    ImagesScreen,
-    RestoreScreen,
-)
+from pinka_installer.tui.screens_services import BackupsScreen, ImagesScreen, RestoreScreen
 from pinka_installer.tui.screens_start import ModeScreen, PreflightScreen, WelcomeScreen
 from pinka_installer.tui.screens_uninstall import UninstallRunScreen, UninstallScreen
 from pinka_installer.tui.widgets import Confirm, PasswordPrompt
@@ -62,11 +63,12 @@ SCREENS: dict[str, type[StepScreen]] = {
     "preflight": PreflightScreen,
     "mode": ModeScreen,
     "machine": MachineScreen,
-    "resources": ResourcesScreen,
-    "storage": StorageScreen,
+    "capacity": CapacityScreen,
+    "capacity_device": DeviceScreen,
+    "capacity_driver": DriverScreen,
+    "capacity_serving": ServingScreen,
     "researchers": ResearchersScreen,
     "remote": RemoteScreen,
-    "gpu": GpuScreen,
     "backups": BackupsScreen,
     "restore": RestoreScreen,
     "platform": PlatformScreen,
@@ -163,30 +165,31 @@ class InstallerApp(App[int]):
         if name == "progress" and not self.ctx.wizard.vault_password:
             self.ask_vault_password(lambda: self.goto("progress"))
             return
+        name = REPLACED.get(name, name)
         self.current = name
         if name not in STATELESS:
             self.save_state(name)
         self.show(SCREENS[name]())
 
     def forward(self) -> None:
-        """The next wizard screen; after Install mode, Uninstall when it was chosen."""
+        """The next wizard page; after Install mode, Uninstall when it was chosen."""
         if self.current == "mode" and self.ctx.wizard.uninstall:
             self.goto("uninstall")
             return
-        if self.current in STEP_NAMES:
-            index = STEP_NAMES.index(self.current)
-            if index + 1 < len(STEP_NAMES):
-                self.goto(STEP_NAMES[index + 1])
+        if self.current in PAGES:
+            index = PAGES.index(self.current)
+            if index + 1 < len(PAGES):
+                self.goto(PAGES[index + 1])
 
     def back(self) -> None:
-        """The previous wizard screen (Install mode from Uninstall)."""
+        """The previous wizard page (Install mode from Uninstall)."""
         if self.current == "uninstall":
             self.goto("mode")
             return
-        if self.current in STEP_NAMES:
-            index = STEP_NAMES.index(self.current)
+        if self.current in PAGES:
+            index = PAGES.index(self.current)
             if index > 0:
-                self.goto(STEP_NAMES[index - 1])
+                self.goto(PAGES[index - 1])
 
     # --- resume state and secrets -----------------------------------------------------
 
@@ -292,7 +295,7 @@ class InstallerApp(App[int]):
         screen = self.screen
         if (
             isinstance(screen, StepScreen)
-            and screen.STEP in STEP_NAMES
+            and screen.STEP in PAGES
             and screen.not_applicable() is None
         ):
             screen.save()  # keep what was typed, unchecked, as Back does

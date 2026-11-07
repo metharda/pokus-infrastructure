@@ -16,7 +16,7 @@ from textual.widgets import Button, Footer, Static
 from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
 from pinka_installer.tui.host import GitInfo, Host
-from pinka_installer.tui.model import AFTER_STEPS, STEP_NAMES, STEPS, Wizard
+from pinka_installer.tui.model import AFTER_STEPS, PAGE_STEP, STEP_NAMES, STEPS, SUB_PAGES, Wizard
 from pinka_installer.tui.runner import Runner
 from pinka_installer.tui.widgets import Field, NavBar, StepHeader, TextView
 
@@ -93,13 +93,15 @@ class StepScreen(Screen[None]):
 
     def title_text(self) -> str:
         """The title of this screen."""
-        return dict(STEPS).get(self.STEP) or AFTER_STEPS.get(self.STEP, self.STEP)
+        titles = {**dict(STEPS), **dict(SUB_PAGES)}
+        return titles.get(self.STEP) or AFTER_STEPS.get(self.STEP, self.STEP)
 
     def position(self) -> str:
-        """``step N/15`` for wizard screens, empty after them."""
-        if self.STEP not in STEP_NAMES:
+        """``step N/14`` for wizard screens (a sub-step counts as its step), empty after them."""
+        step = PAGE_STEP.get(self.STEP, self.STEP)
+        if step not in STEP_NAMES:
             return ""
-        return f"step {STEP_NAMES.index(self.STEP) + 1}/{len(STEP_NAMES)}"
+        return f"step {STEP_NAMES.index(step) + 1}/{len(STEP_NAMES)}"
 
     def not_applicable(self) -> str | None:
         """Why this screen does not apply to the host or the choices (shown greyed out).

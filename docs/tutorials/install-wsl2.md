@@ -108,11 +108,12 @@ You now have an Ubuntu 24.04 distribution with the resources of the lab.
 2. Go through the screens as described in
    [How to install a lab with the installer TUI](../how-to/install-with-the-tui.md).
    For this setup choose:
-    - **Machine**: a name such as `pinka`, node role `full`.
-    - **Resources**: the memory and processors you set in `.wslconfig`.
-    - **Storage**: a loop file (WSL has no dedicated disk).
-    - **GPU & inference**: no driver (WSL uses the Windows driver), the serving
-      profile of your GPU class and a pinned default model.
+    - **Machine**: a name such as `pinka`.
+    - **Capacity plan**: node role `full`, a loop file for the Incus pool
+      (WSL has no dedicated disk), the serving profile of your GPU class and
+      a pinned default model, and the memory and processors you set in
+      `.wslconfig`. The NVIDIA driver page is greyed out: WSL uses the
+      Windows driver.
 
 3. On the Review screen press **Install**. The installation writes the rest
    of `/etc/wsl.conf` (no Windows drives, no Windows programs, the machine

@@ -201,11 +201,33 @@ def machine_plan(paths: Paths, machine: str) -> dict[str, Any]:
     host_vars = paths.host_vars(machine)
     if not host_vars.exists():
         raise PlanError(f"{host_vars} does not exist")
+    return plan_of(paths, _yaml(host_vars), _yaml(paths.infra / "models.lock.yml"))
+
+
+def plan_of(paths: Paths, host_vars: Mapping[str, Any], lock: Mapping[str, Any]) -> dict[str, Any]:
+    """The plan of host variables over the checkout's group_vars.
+
+    Bootstrap's plan (:func:`machine_plan`, from the host_vars file) and the
+    installer's capacity plan screen (from the host_vars of the answers being
+    collected, before anything is written) both come from here.
+
+    Args:
+        paths: The installer's paths.
+        host_vars: The machine's host variables.
+        lock: ``models.lock.yml``.
+
+    Returns:
+        The plan.
+
+    Raises:
+        PlanError: If a setting cannot be used, or names a serving profile or
+            a golden image blueprint that does not exist.
+    """
     requirements = json.loads(
         (paths.infra / "preflight" / "requirements.json").read_text(encoding="utf-8")
     )
-    variables = {**_yaml(paths.group_vars_main), **_yaml(host_vars)}
-    found = plan(requirements["defaults"], variables, _yaml(paths.infra / "models.lock.yml"))
+    variables = {**_yaml(paths.group_vars_main), **host_vars}
+    found = plan(requirements["defaults"], variables, lock)
     profiles = requirements["serving"]["profiles"]
     if found["vllm_profile"] not in profiles:
         raise PlanError(validators.unknown_profile(found["vllm_profile"], profiles))

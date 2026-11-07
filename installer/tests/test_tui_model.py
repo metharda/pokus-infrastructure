@@ -19,8 +19,10 @@ from pinka_installer import apply, validators, vault
 from pinka_installer.paths import INFRA, Paths
 from pinka_installer.tui import model
 from pinka_installer.tui.events import Progress, read_new, site_roles
+from pinka_installer.tui.host import Disk
+from pinka_installer.tui.model import PAGES
 from pinka_installer.tui.runner import BootstrapRunner, RunRequest
-from pinka_installer.tui.screens_host import cpu_bar, disk_row
+from pinka_installer.tui.screens_capacity import cpu_bar, disk_row
 from pinka_installer.tui.screens_install import (
     checks_by_category,
     destructive,
@@ -455,16 +457,32 @@ def test_review_summary_and_destructive_actions() -> None:
     answers.machine.name = "pinka-lab"
     answers.researchers = [answers_mod.Researcher("researcher1", True)]
     sections = {step: text for step, _, text in summary(answers)}
-    assert sections["storage"] == "loop file of auto size"
+    assert sections["capacity"] == (
+        "full node · inference auto · training auto\n"
+        "NVIDIA driver: No driver · profile - · model none\n"
+        "Incus pool: loop file of auto size · 2 concurrent targets\n"
+        "retention: Prometheus 90d (by time only), Loki 2160h, Tempo 720h\n"
+        "expected - GiB, - threads · services - · targets - · Postgres derived"
+    )
+    assert sections["capacity_device"] == "-"
     answers.storage.loop_size_gib = 300
-    assert {step: text for step, _, text in summary(answers)}["storage"] == "loop file of 300 GiB"
+    answers.resources.concurrent_targets = 3
+    answers.telemetry_retention.prometheus_size = "20GB"
+    found = {step: text for step, _, text in summary(answers)}
+    assert "Incus pool: loop file of 300 GiB · 3 concurrent targets" in found["capacity"]
+    assert "retention: Prometheus 90d (up to 20GB), Loki 2160h" in found["capacity"]
     assert sections["researchers"] == "researcher1 (admin)"
+    # The Edit buttons go to pages that exist, in the order of the wizard.
+    steps = [step for step, _, _ in summary(answers)]
+    assert steps == sorted(steps, key=PAGES.index)
     assert destructive(answers) == []
     answers.storage.source = "device"
     answers.storage.device = answers.storage.device_confirm = "/dev/disk/by-id/nvme-EXAMPLE"
     answers.storage.force_wipe = True
     answers.mode = "restore"
     answers.researchers_removed = ["researcher9"]
+    found = {step: text for step, _, text in summary(answers)}
+    assert found["capacity_device"] == "/dev/disk/by-id/nvme-EXAMPLE · WIPE signatures"
     assert destructive(answers) == [
         "/dev/disk/by-id/nvme-EXAMPLE is formatted as the Incus pool, wiping its signatures",
         "the lab's data is replaced by snapshot latest",
@@ -497,6 +515,17 @@ def test_preflight_cards_and_disk_rows() -> None:
     assert cards({})[0] == ("Environment", "unknown (no hypervisor), confidence unknown")
     assert disk_row(DISKS[0])[3] == "2.0 TiB"
     assert disk_row(DISKS[1])[-1] == "✖ mounted at /"
+    # A virtual disk without a by-id link, a model or a serial number.
+    bare = Disk("vda", "", "", 2**35, "")
+    assert disk_row(bare)[:5] == ("vda", "-", "-", "32 GiB", "-")
+
+
+def test_page_labels_name_the_step_as_the_header_does() -> None:
+    assert model.page_label("capacity") == "step 5 · Capacity plan"
+    assert model.page_label("capacity_driver") == "step 5 · NVIDIA driver"
+    assert model.page_label("resources") == "step 5 · Capacity plan"  # replaced by it
+    assert model.page_label("review") == "step 14 · Review"
+    assert model.page_label("progress") == "Install progress"
 
 
 def test_build_context(repo: Paths) -> None:
@@ -510,3 +539,13 @@ def test_build_context(repo: Paths) -> None:
     installed = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
     other = context(repo, installed, machine="lab-two")
     assert other.wizard.installed and other.wizard.answers.mode == "fresh"
+
+
+def test_plan_args_are_bootstraps_driver_options() -> None:
+    # Bootstrap passes host_vars' install_nvidia_driver to preflight, and the MOK consent.
+    wizard = model.Wizard()
+    wizard.nvidia_driver = "auto"  # what the Preflight screen judged with
+    assert wizard.plan_args() == ["--nvidia-driver", "skip"]  # the answers' default
+    wizard.answers.gpu.install_driver = "auto"
+    wizard.consents = {"accept_mok_enrollment"}
+    assert wizard.plan_args() == ["--nvidia-driver", "auto", "--accept-mok-enrollment"]

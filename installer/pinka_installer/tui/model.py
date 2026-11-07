@@ -23,17 +23,15 @@ from pinka_installer import release as release_mod
 from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
 
-# The wizard's screens (screens 1-16); 17-19 follow the install.
+# The wizard's screens (steps 1-14); 15-17 follow the install.
 STEPS = (
     ("welcome", "Welcome"),
     ("preflight", "Preflight"),
     ("mode", "Install mode"),
     ("machine", "Machine"),
-    ("resources", "Resources"),
-    ("storage", "Storage"),
+    ("capacity", "Capacity plan"),
     ("researchers", "Researchers"),
     ("remote", "Remote access"),
-    ("gpu", "GPU & inference"),
     ("backups", "Data & backups"),
     ("restore", "Restore"),
     ("platform", "Platform"),
@@ -43,6 +41,21 @@ STEPS = (
     ("review", "Review"),
 )
 STEP_NAMES = tuple(name for name, _ in STEPS)
+# The capacity plan's sub-steps: pages after its main one, counted as its step.
+SUB_PAGES = (
+    ("capacity_device", "Storage device"),
+    ("capacity_driver", "NVIDIA driver"),
+    ("capacity_serving", "Serving"),
+)
+PAGE_STEP = {name: "capacity" for name, _ in SUB_PAGES}
+# Every page of the wizard in order.
+PAGES = tuple(
+    page
+    for name in STEP_NAMES
+    for page in ((name, *(n for n, _ in SUB_PAGES)) if name == "capacity" else (name,))
+)
+# Screens the capacity plan replaced: a resume state that names one goes on there.
+REPLACED = {"resources": "capacity", "storage": "capacity", "gpu": "capacity"}
 AFTER_STEPS = {
     "progress": "Install progress",
     "doctor": "Doctor",
@@ -51,6 +64,25 @@ AFTER_STEPS = {
     "uninstall_run": "Uninstall progress",
 }
 CONSENTS = ("accept_degraded", "accept_experimental", "force_unsupported", "accept_mok_enrollment")
+
+
+def page_label(name: str) -> str:
+    """A page as the Resume button names it, such as ``step 5 · Storage device``.
+
+    Args:
+        name: A screen name (an old one the capacity plan replaced, too).
+
+    Returns:
+        The step and title of a wizard page, else the screen's title.
+    """
+    name = REPLACED.get(name, name)
+    titles = {**dict(STEPS), **dict(SUB_PAGES)}
+    step = PAGE_STEP.get(name, name)
+    if step in STEP_NAMES and name in titles:
+        return f"step {STEP_NAMES.index(step) + 1} · {titles[name]}"
+    return AFTER_STEPS.get(name, name)
+
+
 MIN_VAULT_PASSWORD = 12
 # Strength meter: lengths and character classes (lower, upper, digit, other) that count.
 GOOD_LENGTH = 16
@@ -73,15 +105,17 @@ class Wizard:
         restic_acknowledged: The operator stored the generated restic password.
         mok_password: One-time MOK password (memory only; bootstrap reads it from its
             standard input and gives it to mokutil).
-        nvidia_driver: The driver setting preflight judges with: empty until the
-            Preflight or GPU screen decides (preflight then uses auto, like bootstrap).
+        nvidia_driver: The driver setting the Preflight screen judges with: empty
+            until it decides, or, with Secure Boot and no driver, the capacity plan's
+            choice (preflight then uses auto). The capacity plan's runs take the
+            answers' setting (:meth:`plan_args`).
         build_images_now: Build the chosen golden images during the install.
         installed: A lab is installed on this host (modify mode is offered).
         extra_files: Files the screens prepared besides the plan (models.lock.yml).
-        release: The platform release inspected alone (screen 12), for
+        release: The platform release inspected alone (step 10), for
             ``release_source``.
         release_source: The release source the inspection was made for.
-        review: The deployment's own checks of every platform answer (screen 13).
+        review: The deployment's own checks of every platform answer (step 11).
         review_key: The platform answers the review was made for.
         platform_approved: The operator approved the reviewed platform.
         replace_platform: The active platform the operator confirmed replacing
@@ -91,6 +125,12 @@ class Wizard:
         uninstall: The operator chose to uninstall on the Install mode screen
             (never an answers mode: uninstall is not replayed from a file).
         uninstall_options: The confirmed uninstall's options (memory only).
+        capacity: Preflight's host profile of the capacity plan's last run (the
+            plan of the choices then); empty until the capacity plan ran.
+        degraded_accepted: What the operator accepted as degraded, line by line
+            (:func:`capacity.degraded`), on the Preflight screen or the capacity
+            plan; the capacity plan asks again for anything else (memory only: a
+            resumed wizard asks again).
     """
 
     answers: Answers = field(default_factory=Answers)
@@ -115,6 +155,8 @@ class Wizard:
     replace_key: str = ""
     uninstall: bool = False
     uninstall_options: list[str] = field(default_factory=list)
+    capacity: dict[str, Any] = field(default_factory=dict)
+    degraded_accepted: set[str] = field(default_factory=set)
 
     def replacing(self) -> str:
         """The confirmed replacement, while the platform answers are the confirmed ones."""
@@ -235,6 +277,22 @@ class Wizard:
             ``--accept-mok-enrollment`` with that consent.
         """
         args = ["--nvidia-driver", self.nvidia_driver] if self.nvidia_driver else []
+        if "accept_mok_enrollment" in self.consents:
+            args.append("--accept-mok-enrollment")
+        return args
+
+    def plan_args(self) -> list[str]:
+        """The driver options of bootstrap's own preflight run for these answers.
+
+        The capacity plan and the Review run preflight with them. Bootstrap's run
+        also takes the lab's own options (ports, the pool device, ...) and the
+        operator's pass-through options, which these runs do not see.
+
+        Returns:
+            ``--nvidia-driver`` with the mode host_vars will hold, as bootstrap passes
+            it, and ``--accept-mok-enrollment`` with that consent.
+        """
+        args = ["--nvidia-driver", self.answers.gpu.install_driver]
         if "accept_mok_enrollment" in self.consents:
             args.append("--accept-mok-enrollment")
         return args
@@ -410,7 +468,7 @@ def suggest_profile(serving: Mapping[str, Any]) -> str:
 
 @dataclass(frozen=True)
 class ModelChoice:
-    """A model the GPU screen offers.
+    """A model the capacity plan offers.
 
     Attributes:
         id: Id in the model list or in models.lock.yml.
@@ -443,7 +501,7 @@ def model_choices(
     models.catalog.yml gives what the screen shows of each model.
 
     Args:
-        known: ``models.catalog.yml`` (the models the GPU screen offers).
+        known: ``models.catalog.yml`` (the models the capacity plan offers).
         lock_ids: Ids already in ``models.lock.yml``.
         profile: The chosen serving profile.
         serving: The host profile's ``requirements.serving``.
@@ -522,7 +580,7 @@ def vault_password_problem(first: str, second: str) -> str | None:
 
 
 def acl_snippet(tag: str) -> str:
-    """The tailnet ACL lines the lab needs (shown with a copy action on screen 8).
+    """The tailnet ACL lines the lab needs (shown with a copy action on step 7, Remote access).
 
     Args:
         tag: The machine's tag.
@@ -540,7 +598,7 @@ def acl_snippet(tag: str) -> str:
 
 
 def adopted_text(node: Mapping[str, Any], tag: str) -> str:
-    """What screen 8 says about a Tailscale node logged in before pinka.
+    """What the Remote access screen says about a Tailscale node logged in before pinka.
 
     Args:
         node: The node as preflight saw it (``components.tailscale``).
@@ -593,7 +651,7 @@ def install_path(access: Mapping[str, Any]) -> dict[str, Any] | None:
 
 
 def closable_listeners(access: Mapping[str, Any]) -> list[tuple[str, str]]:
-    """The pre-existing listeners screen 8 offers to close, on a shared host.
+    """The pre-existing listeners the Remote access screen offers to close, on a shared host.
 
     The ones the strict policy admits anyway (DHCP clients, Tailscale's port)
     and the ports Docker publishes for containers (forwarded to the container,

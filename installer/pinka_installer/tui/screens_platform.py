@@ -1,4 +1,4 @@
-"""Screens 12-13: Platform and Platform review (contract v2).
+"""Steps 10-11: Platform and Platform review (contract v2).
 
 The Platform screen takes the release's source and how it is trusted, then
 inspects the release alone with the platform tool: only then does it know
@@ -68,7 +68,7 @@ def _field_of(problem: str) -> str:
 
 
 class PlatformScreen(StepScreen):
-    """Screen 12: the platform release, its sources, secrets and settings."""
+    """Step 10: the platform release, its sources, secrets and settings."""
 
     STEP = "platform"
     HELP = (
@@ -398,7 +398,7 @@ class PlatformScreen(StepScreen):
 
 
 class PlatformReviewScreen(StepScreen):
-    """Screen 13: what the platform will be on this host, approved by the operator."""
+    """Step 11: what the platform will be on this host, approved by the operator."""
 
     STEP = "platform_review"
     HELP = (
