@@ -160,6 +160,45 @@ class ShownTest(unittest.TestCase):
         self.assertEqual(len(golden.shown("é" * 100)), golden.SHOWN)
 
 
+class GoldenAliasesTest(unittest.TestCase):
+    def golden(self, images: list[dict[str, Any]], records: dict[str, Any]) -> dict[str, Any]:
+        return golden.golden_aliases(
+            host(images, records), EXPORT, images, {"_base", "web-nginx-flask"}
+        )
+
+    def test_only_golden_aliases_with_their_image_and_record(self) -> None:
+        both = image("_base/1.0.0")
+        both["aliases"].append({"name": "_base/1.0.1"})
+        other = image("web-nginx-flask/1.0.0", "a" * 64)
+        derived = image("demo/web/1.0.0", "b" * 64)
+        found = self.golden(
+            [both, other, derived, image("web-nginx-flask/2.0.0", "c" * 64)],
+            {
+                "_base/1.0.0": record(),
+                "_base/1.0.1": record(),
+                "web-nginx-flask/1.0.0": record("a" * 64),
+                "demo/web/1.0.0": record("b" * 64),
+                "web-nginx-flask/2.0.0": record("c" * 64, schema_version=1),
+            },
+        )
+        # Both aliases of one image are golden where each version's record
+        # names that image; a derived image's blueprint is not the lab's; a
+        # record of schema 1 is not read.
+        self.assertEqual(sorted(found), ["_base/1.0.0", "_base/1.0.1", "web-nginx-flask/1.0.0"])
+        self.assertEqual(found["web-nginx-flask/1.0.0"], (other, record("a" * 64)))
+
+    def test_a_record_that_cannot_be_read_or_is_empty_is_not_golden(self) -> None:
+        system = host([image("_base/1.0.0")], {})
+        path = f"{EXPORT}/_base/1.0.0/build.json"
+        system.infos[path] = info("root", "pinka-admin", 0o640)
+        self.assertEqual(
+            golden.golden_aliases(system, EXPORT, [image("_base/1.0.0")], {"_base"}), {}
+        )
+        for text in ("", "[]", "{}"):
+            with self.subTest(text):
+                self.assertEqual(self.golden([image("_base/1.0.0")], {"_base/1.0.0": text}), {})
+
+
 class ReviewTest(unittest.TestCase):
     def review(self, images: list[dict[str, Any]], records: dict[str, Any]) -> dict[str, Any]:
         system = host(images, records)

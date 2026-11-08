@@ -33,10 +33,20 @@ RECORD_PATH = "/srv/pinka/images/_base/1.0.0/build.json"
 
 def record(**changes: Any) -> str:
     # The export record of _base/1.0.0, written by the images role.
-    data = {"schema_version": 1, "alias": "_base/1.0.0", "fingerprint": "f" * 64}
+    data = {
+        "schema_version": 2,
+        "alias": "_base/1.0.0",
+        "fingerprint": "f" * 64,
+        "type": "container",
+        "nesting": False,
+        "properties": {"requirements.nesting": "false"},
+    }
     data["packages"] = list(reversed(PACKAGES))
     data.update(changes)
     return json.dumps(data)
+
+
+GOLDEN = {"fingerprint": "f" * 64, "type": "container", "nesting": False, "packages": PACKAGES}
 
 
 def host(**extra_files: str) -> FakeSystem:
@@ -96,8 +106,11 @@ class GoldenImagePackagesTest(unittest.TestCase):
     # Every result can be traced to the exact package versions of its targets:
     # the packages of each golden image are part of the hashed fingerprint.
 
-    def images(self, **files: str) -> dict[str, Any]:
-        fp = fingerprint.compute(host(**files), lab())["fingerprint"]
+    def images(self, listing: Any = None, **files: str) -> dict[str, Any]:
+        system = host(**files)
+        if listing is not None:
+            system.commands["incus image list --format json"] = (0, listing)
+        fp = fingerprint.compute(system, lab())["fingerprint"]
         images: dict[str, Any] = fp["software"]["golden_images"]
         return images
 
@@ -107,11 +120,25 @@ class GoldenImagePackagesTest(unittest.TestCase):
         b = fingerprint.compute(host(**{RECORD_PATH: record(packages=changed)}), lab())["hash"]
         self.assertNotEqual(a, b)
 
-    def test_unproven_lists_are_null(self) -> None:
+    def test_a_golden_image_carries_type_and_nesting_from_its_record(self) -> None:
+        self.assertEqual(self.images(), {"_base/1.0.0": GOLDEN})
+        nested = record(type="vm", nesting=True)
+        self.assertEqual(
+            self.images(**{RECORD_PATH: nested})["_base/1.0.0"],
+            dict(GOLDEN, type="vm", nesting=True),
+        )
+        # Never from the image's properties, which a client can rewrite.
+        rewritten = [
+            {
+                "fingerprint": "f" * 64,
+                "aliases": [{"name": "_base/1.0.0"}],
+                "properties": {"requirements.nesting": "true"},
+            }
+        ]
+        self.assertEqual(self.images(rewritten)["_base/1.0.0"]["nesting"], False)
+
+    def test_unproven_package_lists_are_null(self) -> None:
         cases = {
-            "missing record": "",
-            "not JSON": "{",
-            "record of another image": record(fingerprint="e" * 64),
             "no list": record(packages=None),
             "a field missing": record(packages=[{"name": "libc6", "version": "2.0-1"}]),
             "an extra field": record(packages=[dict(PACKAGES[0], status="installed")]),
@@ -120,23 +147,98 @@ class GoldenImagePackagesTest(unittest.TestCase):
         for case, text in cases.items():
             with self.subTest(case):
                 entry = self.images(**{RECORD_PATH: text})["_base/1.0.0"]
-                self.assertEqual(entry, {"fingerprint": "f" * 64, "packages": None})
+                self.assertEqual(entry, dict(GOLDEN, packages=None))
 
-    def test_only_a_golden_image_alias_names_an_export(self) -> None:
-        # A valid record where a path-escaping alias would point is not read.
-        system = host(**{"/srv/pinka/images/../x/build.json": record()})
-        system.commands["incus image list --format json"] = (
-            0,
-            [{"fingerprint": "f" * 64, "aliases": [{"name": "../x"}, {"name": "x"}]}],
-        )
-        images = fingerprint.compute(system, lab())["fingerprint"]["software"]["golden_images"]
-        self.assertEqual(
-            images,
+    def test_an_alias_that_is_not_golden_is_left_out(self) -> None:
+        # The golden rule doctor and the images role apply: an export record,
+        # its fingerprint, schema 2, no update source.
+        cases = {
+            "missing record": "",
+            "not JSON": "{",
+            "record of another image": record(fingerprint="e" * 64),
+            "record of schema 1": record(schema_version=1),
+        }
+        for case, text in cases.items():
+            with self.subTest(case):
+                self.assertEqual(self.images(**{RECORD_PATH: text}), {})
+        downloaded = [
             {
-                "../x": {"fingerprint": "f" * 64, "packages": None},
-                "x": {"fingerprint": "f" * 64, "packages": None},
-            },
-        )
+                "fingerprint": "f" * 64,
+                "aliases": [{"name": "_base/1.0.0"}],
+                "update_source": {"server": "https://example.com"},
+            }
+        ]
+        self.assertEqual(self.images(downloaded), {})
+
+    def test_a_golden_alias_whose_record_lacks_type_or_nesting_is_left_out(self) -> None:
+        # Golden by the shared rule, but its record proves no type or nesting.
+        cases = {
+            "no type": record(type=None),
+            "another type": record(type="virtual-machine"),
+            "no nesting": record(nesting=None),
+            "nesting as text": record(nesting="false"),
+        }
+        for case, text in cases.items():
+            with self.subTest(case):
+                self.assertEqual(self.images(**{RECORD_PATH: text}), {})
+
+    def test_an_image_without_a_fingerprint_is_left_out(self) -> None:
+        # The contract's fingerprint is always a string: an image and a record
+        # that both lack one match, and still prove nothing.
+        for fingerprint_value in (None, ""):
+            with self.subTest(fingerprint_value):
+                listing = [{"fingerprint": fingerprint_value, "aliases": [{"name": "_base/1.0.0"}]}]
+                text = record(fingerprint=fingerprint_value)
+                self.assertEqual(self.images(listing, **{RECORD_PATH: text}), {})
+
+    def test_type_and_nesting_change_the_hash(self) -> None:
+        a = fingerprint.compute(host(), lab())["hash"]
+        for change in ({"type": "vm"}, {"nesting": True}):
+            with self.subTest(change):
+                b = fingerprint.compute(host(**{RECORD_PATH: record(**change)}), lab())["hash"]
+                self.assertNotEqual(a, b)
+
+    def test_a_node_without_images_lists_none(self) -> None:
+        # No blueprints in lab.json (a node that runs no lab): no alias is
+        # golden, also one with a valid record.
+        system = host()
+        fp = fingerprint.compute(system, lab(images__blueprints=[]))["fingerprint"]
+        self.assertEqual(fp["software"]["golden_images"], {})
+
+    def test_only_aliases_of_the_labs_blueprints_are_listed(self) -> None:
+        # A platform's derived image, an alias of an unknown blueprint, and a
+        # path-escaping alias are never golden, even with a valid record where
+        # they would point.
+        listing = [
+            {
+                "fingerprint": "f" * 64,
+                "aliases": [
+                    {"name": "_base/1.0.0"},
+                    {"name": "demo/web/1.0.0"},
+                    {"name": "other/1.0.0"},
+                    {"name": "_base/../x"},
+                    {"name": "../x"},
+                    {"name": "x"},
+                ],
+            }
+        ]
+        files = {
+            "/srv/pinka/images/demo/web/1.0.0/build.json": record(),
+            "/srv/pinka/images/other/1.0.0/build.json": record(),
+            "/srv/pinka/images/_base/../x/build.json": record(),
+            "/srv/pinka/images/../x/build.json": record(),
+            "/srv/pinka/images/x/build.json": record(),
+        }
+        self.assertEqual(self.images(listing, **files), {"_base/1.0.0": GOLDEN})
+        # A pre-created alias of the next version: no record, not listed.
+        listing = [
+            {"fingerprint": "f" * 64, "aliases": [{"name": "_base/1.0.0"}]},
+            {"fingerprint": "e" * 64, "aliases": [{"name": "_base/1.0.1"}]},
+        ]
+        self.assertEqual(self.images(listing), {"_base/1.0.0": GOLDEN})
+
+    def test_a_listing_that_is_no_list_lists_nothing(self) -> None:
+        self.assertEqual(self.images({"error": "x"}), {})
 
 
 class CanonicalTest(unittest.TestCase):
@@ -169,10 +271,7 @@ class ComputeTest(unittest.TestCase):
         self.assertEqual(
             software["containers"]["pinka-postgres"], "docker.io/library/postgres@" + DIGEST
         )
-        self.assertEqual(
-            software["golden_images"],
-            {"_base/1.0.0": {"fingerprint": "f" * 64, "packages": PACKAGES}},  # sorted
-        )
+        self.assertEqual(software["golden_images"], {"_base/1.0.0": GOLDEN})  # packages sorted
         config = fp["config"]
         self.assertEqual(config["infra_commit"], "c" * 40)
         self.assertEqual(config["versions_lock_sha256"], "0" * 64)
@@ -252,6 +351,27 @@ class SchemaTest(unittest.TestCase):
         document["hash"] = "md5:0"
         errors = validate(document, self.schema, self.schema)
         self.assertEqual(len(errors), 2, errors)
+
+    def test_schema_requires_type_and_nesting(self) -> None:
+        # A golden image without its record's type and nesting is no entry of
+        # the contract; neither is another type, nesting as text or a null
+        # fingerprint.
+        for change in (
+            {"type": None},
+            {"type": "virtual-machine"},
+            {"nesting": "false"},
+            {"fingerprint": None},
+        ):
+            with self.subTest(change):
+                document = fingerprint.compute(host(), lab())
+                entry = document["fingerprint"]["software"]["golden_images"]["_base/1.0.0"]
+                entry.update(change)
+                self.assertTrue(validate(document, self.schema, self.schema))
+        for drop in ("type", "nesting"):
+            with self.subTest(drop):
+                document = fingerprint.compute(host(), lab())
+                del document["fingerprint"]["software"]["golden_images"]["_base/1.0.0"][drop]
+                self.assertTrue(validate(document, self.schema, self.schema))
 
 
 class CurrentTest(unittest.TestCase):

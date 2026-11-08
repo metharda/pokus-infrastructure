@@ -171,6 +171,35 @@ def drift(image: Mapping[str, Any] | None, record: Mapping[str, Any] | None) -> 
     return {"changes": changes, "body": body}
 
 
+def read_record(system: System, export_root: str, alias: str) -> tuple[dict[str, Any], list[str]]:
+    """The export record of an alias ``<blueprint>/<version>``, and why it cannot be read.
+
+    Only a version that names one directory below the blueprint's has a
+    record; any other alias of the form has none, and is not golden.
+
+    Args:
+        system: Host access.
+        export_root: Where the exports are (``images.export_root``).
+        alias: The alias.
+
+    Returns:
+        The record (empty when there is none or it is not a JSON object) and
+        the problem when it exists but cannot be read.
+    """
+    blueprint, _, version = alias.partition("/")
+    if not (PLAIN.fullmatch(version) and "/" not in version and version not in (".", "..")):
+        return {}, []
+    path = f"{export_root}/{blueprint}/{version}/build.json"
+    text = system.read_text(path)
+    if text is None and system.info(path) is not None:
+        return {}, [f"its export record {path} cannot be read"]
+    try:
+        loaded = json.loads(text) if text else {}
+    except ValueError:
+        loaded = {}
+    return (loaded if isinstance(loaded, dict) else {}), []
+
+
 def review(
     system: System, export_root: str, images: list[dict[str, Any]], blueprints: set[str]
 ) -> dict[str, dict[str, list[str]]]:
@@ -191,28 +220,47 @@ def review(
     for image in images:
         for alias in image.get("aliases") or []:
             name = str(alias.get("name", ""))
-            blueprint, _, version = name.partition("/")
-            if blueprint not in blueprints:
+            if name.partition("/")[0] not in blueprints:
                 continue
-            record: dict[str, Any] = {}
-            # Only a version that names one directory below the blueprint's
-            # has a record; any other alias of the form is not golden.
-            if PLAIN.fullmatch(version) and "/" not in version and version not in (".", ".."):
-                path = f"{export_root}/{blueprint}/{version}/build.json"
-                text = system.read_text(path)
-                if text is None and system.info(path) is not None:
-                    found[name] = {
-                        "problems": [f"its export record {path} cannot be read"],
-                        "changes": [],
-                    }
-                    continue
-                try:
-                    loaded = json.loads(text) if text else {}
-                except ValueError:
-                    loaded = {}
-                record = loaded if isinstance(loaded, dict) else {}
+            record, unreadable = read_record(system, export_root, name)
+            if unreadable:
+                found[name] = {"problems": unreadable, "changes": []}
+                continue
             found[name] = {
                 "problems": problems(image, record),
                 "changes": drift(image, record)["changes"],
             }
+    return found
+
+
+def golden_aliases(
+    system: System, export_root: str, images: list[dict[str, Any]], blueprints: set[str]
+) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    """The golden aliases of the image store, each with its image and export record.
+
+    The rule of :func:`problems`, which doctor and the images role apply too:
+    an alias of a blueprint of the lab whose image is the one its export
+    record (of schema 2) names, without an update source. Every other alias of
+    the store, a platform's derived image or an alias a client created before
+    infra built that version among them, is left out.
+
+    Args:
+        system: Host access.
+        export_root: Where the exports are (``images.export_root``).
+        images: ``incus image list --format json``.
+        blueprints: The blueprints of the lab.
+
+    Returns:
+        Golden alias to its image and its export record.
+    """
+    found: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
+    for image in images:
+        for alias in image.get("aliases") or []:
+            name = str(alias.get("name", ""))
+            if name.partition("/")[0] not in blueprints:
+                continue
+            # A record that cannot be read is empty: no export record.
+            record, _ = read_record(system, export_root, name)
+            if not problems(image, record):
+                found[name] = (image, record)
     return found

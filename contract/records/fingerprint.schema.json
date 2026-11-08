@@ -24,14 +24,16 @@
   "$defs": {
     "nullable_string": {"type": ["string", "null"]},
     "golden_image": {
-      "description": "One golden image.",
+      "description": "One golden image, as its export record `build.json` names it.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["fingerprint", "packages"],
+      "required": ["fingerprint", "type", "nesting", "packages"],
       "properties": {
-        "fingerprint": {"description": "Incus image fingerprint, null if missing.", "type": ["string", "null"]},
+        "fingerprint": {"description": "Incus image fingerprint, the one its export record names.", "type": "string"},
+        "type": {"description": "The blueprint's type (`container` or `vm`), from the export record.", "enum": ["container", "vm"]},
+        "nesting": {"description": "Whether the blueprint needs nesting, from the export record; a platform launches the image with `security.nesting=true` exactly when it is true. Never taken from the image's `requirements.nesting` property, which a client of the shared image store can rewrite.", "type": "boolean"},
         "packages": {
-          "description": "Every package installed in the image (from the `packages` of its export record `build.json`), sorted by name and architecture; null when the record is missing, is of another image or has no valid list.",
+          "description": "Every package installed in the image (from the `packages` of its export record `build.json`), sorted by name and architecture; null when the record has no valid list.",
           "type": ["array", "null"],
           "items": {
             "type": "object",
@@ -181,7 +183,7 @@
               "additionalProperties": {"type": ["string", "null"]}
             },
             "golden_images": {
-              "description": "Golden image alias (`<blueprint>/<version>`) to its Incus image fingerprint and the packages its build installed.",
+              "description": "Golden image alias (`<blueprint>/<version>`) to its Incus image fingerprint, its type and nesting and the packages its build installed. Only the aliases infra verified against their export records: an alias of a blueprint of the lab whose image is the one its export record (of schema 2) names, without an update source, and whose record names a valid type and a boolean nesting; every other alias of the image store, a platform's derived image among them, is left out.",
               "type": "object",
               "additionalProperties": {"$ref": "#/$defs/golden_image"}
             }

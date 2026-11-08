@@ -20,15 +20,16 @@ import json
 import re
 from typing import Any
 
+from pinka_lab import golden
 from pinka_lab.config import LabConfig
 from pinka_lab.system import System
 
 SCHEMA_VERSION = 1
 DEFAULT_CACHE = "/var/lib/pinka/fingerprint/current.json"
 VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:[-+~.][0-9A-Za-z.]+)?)")
-# A golden image alias names its export directory: <blueprint>/<version>.
-ALIAS_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*/[A-Za-z0-9_][A-Za-z0-9_.+~-]*$")
 PACKAGE_KEYS = ("name", "version", "architecture")
+# The blueprint types an export record names (image.yaml `type`).
+IMAGE_TYPES = ("container", "vm")
 
 
 class FingerprintError(RuntimeError):
@@ -140,15 +141,30 @@ def _software(system: System, config: LabConfig) -> dict[str, Any]:
         containers[name] = done.stdout.strip() if done.ok else None
     images = {}
     export_root = str(config.get("images", "export_root", default=f"{config.pinka_root}/images"))
+    blueprints = {str(b["name"]) for b in config.get("images", "blueprints", default=[])}
     listing = system.run(["incus", "image", "list", "--format", "json"], timeout=60).json() or []
-    for image in listing:
-        for alias in image.get("aliases") or []:
-            images[alias["name"]] = {
-                "fingerprint": image.get("fingerprint"),
-                "packages": _image_packages(
-                    system, export_root, str(alias["name"]), image.get("fingerprint")
-                ),
-            }
+    # Only the golden aliases, by the rule doctor and the images role apply
+    # (pinka_lab.golden): a platform's derived image or an alias a client of
+    # the shared image store created is never reported as golden.
+    golden_aliases = golden.golden_aliases(
+        system, export_root, listing if isinstance(listing, list) else [], blueprints
+    )
+    for alias, (image, record) in golden_aliases.items():
+        kind, nesting = record.get("type"), record.get("nesting")
+        # Type and nesting come from the export record, never from the
+        # image's properties, which a client can rewrite; a record without
+        # them, or an image without a fingerprint, proves nothing and is left
+        # out.
+        if kind not in IMAGE_TYPES or not isinstance(nesting, bool):
+            continue
+        if not isinstance(image.get("fingerprint"), str) or not image["fingerprint"]:
+            continue
+        images[alias] = {
+            "fingerprint": image.get("fingerprint"),
+            "type": kind,
+            "nesting": nesting,
+            "packages": _record_packages(record),
+        }
     return {
         "versions": versions,
         "containers": containers,
@@ -156,22 +172,10 @@ def _software(system: System, config: LabConfig) -> dict[str, Any]:
     }
 
 
-def _image_packages(
-    system: System,
-    export_root: str,
-    alias: str,
-    image_fingerprint: Any,  # noqa: ANN401
-) -> list[dict[str, str]] | None:
+def _record_packages(record: dict[str, Any]) -> list[dict[str, str]] | None:
     # The packages a golden image's build recorded (name, version and
-    # architecture of every installed package), from its export record
-    # <export_root>/<blueprint>/<version>/build.json. Null when the alias is
-    # not a golden image's, the record is missing or of another image, or its
-    # list is missing or malformed: nothing unproven is reported.
-    if not ALIAS_RE.match(alias):
-        return None
-    record = _json_file(system, f"{export_root}/{alias}/build.json")
-    if not image_fingerprint or record.get("fingerprint") != image_fingerprint:
-        return None
+    # architecture of every installed package), from its export record. Null
+    # when the list is missing or malformed: nothing unproven is reported.
     packages = record.get("packages")
     if not isinstance(packages, list):
         return None

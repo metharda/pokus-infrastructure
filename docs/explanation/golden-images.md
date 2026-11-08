@@ -50,10 +50,15 @@ the current version of each package, so a pin would break every rebuild. The
 build records every installed package (name, version and architecture) in
 the export record `build.json`, and the pinned base fingerprint fixes
 everything the build did not change. The environment fingerprint reports
-each golden image with its package list, so every result can be traced to
-the exact package versions of its targets: a rebuilt image with one changed
-package gives another fingerprint hash. An image whose export record is
-missing or belongs to another image is reported with `packages: null`.
+each golden image with its type, its nesting and its package list, so every
+result can be traced to the exact package versions of its targets: a rebuilt
+image with one changed package gives another fingerprint hash. It reports
+only the aliases of the lab's blueprints that pass the rule in
+[Exports](#exports) below, verified against their export records, whose
+record names a valid type and a boolean nesting, and takes the type and the
+nesting from the record, never from the image's properties; any other alias
+of the store, a platform's derived image among them, is left out. A record
+without a valid package list is reported with `packages: null`.
 
 ## The build flow
 

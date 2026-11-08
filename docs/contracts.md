@@ -262,7 +262,7 @@ against the restricted data.
 | CPU sets | with `cpuset_targets` set, `endpoints.toml` carries `[incus] cpuset_targets` (a Linux cpuset list); the platform sets every target's `limits.cpu` to a CPU range inside it, never a plain count, and refuses measurement campaigns without it; the `bench` project's `limits.cpu` is the number of those CPUs; infra's services run on `cpuset_services` (P3a) |
 | Guest API | target profiles turn it off (`security.guestapi=false`), so instance configuration cannot be read from inside |
 | Events | `pinka-incus-events.service` ships Incus lifecycle and logging events to Loki for the platform's integrity checks |
-| Golden images | aliases `<blueprint>/<version>` with properties `pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint` and Incus's `requirements.nesting`; the platform launches an image with `security.nesting=true` exactly when it carries `requirements.nesting=true` |
+| Golden images | aliases `<blueprint>/<version>` of the lab's blueprints, with properties `pinka.recipe_commit`, `pinka.built_at`, `pinka.base_fingerprint` and Incus's `requirements.nesting`; the fingerprint's `software.golden_images` lists exactly the golden ones, verified against their export records (the image the record of schema 2 names, without an update source, the record naming a valid type and a boolean nesting), each with its blueprint's type and nesting from the export record; the platform takes golden fingerprints only from there and launches an image with `security.nesting=true` exactly when its entry there has `nesting: true`: the blueprint and its export record are the source of nesting, not the image's `requirements.nesting` property, which a client of the shared image store can rewrite |
 
 A restricted Incus certificate has full access inside its projects, so a
 sandbox operator can do in `bench` whatever the controller can; narrowing
@@ -459,6 +459,8 @@ the version (see "Changing the contract" above).
 | Change | What a platform sees |
 | --- | --- |
 | reserved account names `pinka-postgres`, `pinka-otel-journald`, `pinka-node-exporter`, `pinka-gpu-exporter`, `pinka-opa` and `pinka-vllm` (`contract/reserved-names.yml` and the schema's `$defs.reserved_accounts_groups`): the accounts infra's containers run as, each its own; `pinka-monitor`, reserved already, is now the PostgreSQL exporter's | nothing: a platform's accounts start with its own name, and `pinka` is a reserved platform name, so no valid manifest becomes invalid |
+| the fingerprint's `software.golden_images` lists only the aliases infra verified against their export records (`contract/records/fingerprint.schema.json`) | an alias that is not golden, a platform's derived image or an alias a client created before infra built that version, no longer appears there; the golden fingerprints a platform takes from there are verified ones; a fingerprint cached before keeps its old shape until root computes it again (at boot, or `sudo pinka fingerprint`) |
+| each `golden_images` entry carries `type` and `nesting` from its blueprint's export record (required; `fingerprint` is always a string); the Golden images row names the blueprint and its export record as the source of nesting | a platform launches with `security.nesting=true` from the entry's `nesting`, not from the image's `requirements.nesting` property |
 
 ## Resolutions
 

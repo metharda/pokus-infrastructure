@@ -31,8 +31,10 @@ string or null
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `golden_image.fingerprint` | string or null | yes | Incus image fingerprint, null if missing. |
-| `golden_image.packages` | array or null | yes | Every package installed in the image (from the `packages` of its export record `build.json`), sorted by name and architecture; null when the record is missing, is of another image or has no valid list. |
+| `golden_image.fingerprint` | string | yes | Incus image fingerprint, the one its export record names. |
+| `golden_image.type` | one of `container`, `vm` | yes | The blueprint's type (`container` or `vm`), from the export record. |
+| `golden_image.nesting` | boolean | yes | Whether the blueprint needs nesting, from the export record; a platform launches the image with `security.nesting=true` exactly when it is true. Never taken from the image's `requirements.nesting` property, which a client of the shared image store can rewrite. |
+| `golden_image.packages` | array or null | yes | Every package installed in the image (from the `packages` of its export record `build.json`), sorted by name and architecture; null when the record has no valid list. |
 | `golden_image.packages[].name` | string | yes | Package name. |
 | `golden_image.packages[].version` | string | yes | Installed version. |
 | `golden_image.packages[].architecture` | string | yes | Package architecture (such as `amd64` or `all`). |
@@ -97,7 +99,7 @@ string or null
 | `fingerprint.software.versions.ansible_core` | see `nullable_string` | yes | — |
 | `fingerprint.software.containers` | object | yes | Lab container name to the image reference it runs (`<image>@<digest>`), null if missing. |
 | `fingerprint.software.containers.*` | string or null | no | any key; value as described |
-| `fingerprint.software.golden_images` | object | yes | Golden image alias (`<blueprint>/<version>`) to its Incus image fingerprint and the packages its build installed. |
+| `fingerprint.software.golden_images` | object | yes | Golden image alias (`<blueprint>/<version>`) to its Incus image fingerprint, its type and nesting and the packages its build installed. Only the aliases infra verified against their export records: an alias of a blueprint of the lab whose image is the one its export record (of schema 2) names, without an update source, and whose record names a valid type and a boolean nesting; every other alias of the image store, a platform's derived image among them, is left out. |
 | `fingerprint.software.golden_images.*` | see `golden_image` | no | any key; value as described |
 | `fingerprint.config` | object | yes | The configuration the lab was built from. |
 | `fingerprint.config.infra_commit` | string or null | yes | Repository commit bootstrap ran from. |
