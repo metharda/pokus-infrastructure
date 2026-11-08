@@ -98,6 +98,13 @@ doctor_incus:
        + ([{'name': 'target-vm', 'project': 'bench'}] if pinka_features.vm_targets | default(false) else []) }}
   cert_dir: "{{ incus_cert_dir }}"
   certificates: "{{ incus_service_certificates + [incus_metrics_certificate] }}"
+  # The Incus pinka installed, told apart as the incus role and uninstall do
+  # (incus_own); any other (adopted, or a legacy record) pinka leaves as it is.
+  own: >-
+    {{ (not (pinka_record_legacy | default(false) | bool))
+       and ((((pinka_record_added | default({})).components | default({})).incus | default(false) | bool)
+            or not ((((host_profile.components | default({})).incus | default({})).installed
+                     | default(false)) | bool)) }}
 
 # Golden images: the images role is included only on lab nodes, so its
 # defaults are read from its files (doctor_images_defaults) unless host_vars

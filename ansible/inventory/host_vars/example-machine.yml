@@ -55,8 +55,11 @@ docker_data_root: /var/lib/docker
 
 # full | lab | inference (docs/node-roles.md).
 node_role: full
-# Inference: auto (vLLM, its images and the model where the host has a usable
-# GPU) | off (none installed, nothing counted). An inference node needs auto.
+# Inference: auto (vLLM, its images and the model where the GPU can serve them)
+# | on (the same; preflight refuses a host that cannot serve) | off (none
+# installed, nothing counted). An inference node needs auto or on and is
+# refused when it cannot serve (judged after a driver bootstrap installs);
+# a lab node refuses on.
 inference: auto
 # Training jobs, on a full node: auto (where the host has a usable GPU) | cpu
 # (also the CPU-only variant without one) | off.

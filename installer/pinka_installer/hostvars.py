@@ -74,7 +74,7 @@ COMMENTS = {
     "firewall_close_listeners": "Pre-existing listeners closed with the owner's consent.",
     "firewall_close_install_path": "Close the install's access path once tailnet SSH works.",
     "incus_concurrent_targets": "Targets that run at once: the bench project's memory.",
-    "inference": "Inference: auto (vLLM where the GPU is usable) | off.",
+    "inference": "Inference: auto (vLLM where the GPU can serve) | on (else refused) | off.",
     "training": "Training jobs: auto (where the GPU is usable) | cpu | off.",
     "backup_pgdump_keep": "Local PostgreSQL dumps kept (one a day).",
     "observability_prometheus_retention": "Prometheus's retention by time.",

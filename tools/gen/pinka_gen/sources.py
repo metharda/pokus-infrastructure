@@ -82,21 +82,69 @@ def dump_json(data: Any, source: str) -> str:  # noqa: ANN401 - JSON document
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
 
+def bootstrap_installs_nvidia_driver(drivers: dict[str, Any], group: str) -> bool:
+    """Whether bootstrap installs the NVIDIA driver on a source group.
+
+    With ``install_nvidia_driver: auto``.
+
+    As provider_baremetal's ``nvidia.yml`` decides it: the group's entry, else
+    the ``default`` one; bootstrap installs a driver whose entry names packages
+    and has no ``verify``, and stops for every other.
+
+    Args:
+        drivers: ``components.nvidia_driver`` of ``ansible/component-sources.yml``.
+        group: A source group.
+
+    Returns:
+        True where bootstrap installs it.
+
+    Raises:
+        ValueError: For a verified driver from a community repository: the
+            play installs it only with ``--allow-community-repos``, which
+            preflight is not given, so preflight could not tell.
+    """
+    entry = drivers.get(group) or drivers["default"]
+    installs = bool(entry.get("packages")) and "verify" not in entry
+    if installs and entry.get("source") == "community":
+        raise ValueError(
+            f"ansible/component-sources.yml: nvidia_driver of {group} comes from a community "
+            "repository: preflight cannot tell whether bootstrap installs it (it is not given "
+            "--allow-community-repos); give preflight that consent first"
+        )
+    return installs
+
+
 def support_matrix_json(root: Path) -> str:
     """Compile ``preflight/support-matrix.yml``.
+
+    Each OS rule with a ``source_group`` gets ``bootstrap_installs_nvidia_driver``
+    from that group's ``nvidia_driver`` in ``ansible/component-sources.yml``.
 
     Args:
         root: Component root.
 
     Returns:
         JSON text.
+
+    Raises:
+        TypeError: If the support matrix is not a mapping.
+        ValueError: From :func:`bootstrap_installs_nvidia_driver`.
     """
     lock = load_yaml(root / "versions.lock.yml")
     matrix = jsonable(load_yaml(root / "preflight/support-matrix.yml"))
     resolved = resolve_lock_refs(matrix, jsonable(lock))
     if not isinstance(resolved, dict):
         raise TypeError("support matrix must be a mapping")
-    return dump_json(resolved, "preflight/support-matrix.yml")
+    drivers = load_yaml(root / "ansible/component-sources.yml")["components"]["nvidia_driver"]
+    for rule in resolved["os"]:
+        if "source_group" in rule:
+            group = str(rule["source_group"])
+            rule["bootstrap_installs_nvidia_driver"] = bootstrap_installs_nvidia_driver(
+                drivers, group
+            )
+    return dump_json(
+        resolved, "preflight/support-matrix.yml and ansible/component-sources.yml (nvidia_driver)"
+    )
 
 
 def endpoints_json(root: Path) -> str:
@@ -288,6 +336,7 @@ def plan_defaults(root: Path) -> dict[str, Any]:
         },
         "concurrent_targets": int(incus["incus_concurrent_targets"]),
         "model": None,
+        "vllm_profile": str(vllm["vllm_profile"]),
         "images": [str(name) for name in images["images_blueprints"]],
         "gpu_exporter": str(observability["observability_gpu_exporter"]),
         "training": {
@@ -307,6 +356,48 @@ def plan_defaults(root: Path) -> dict[str, Any]:
     }
 
 
+def serving_data(root: Path) -> dict[str, Any]:
+    """The serving profiles' GPU minimums and models.catalog.yml's VRAM estimates.
+
+    Args:
+        root: Component root.
+
+    Returns:
+        ``profiles``: per serving profile (``vllm/profiles/*.yml``) its
+        minimum GPU memory in GiB and its compute capability; ``models``: per
+        model of ``models.catalog.yml`` (both lists) its expected VRAM in GiB
+        per profile.
+
+    Raises:
+        ValueError: If a profile's name is not its file's name, or a model
+            appears twice or names a profile that does not exist.
+    """
+    profiles = {}
+    for path in sorted((root / "vllm/profiles").glob("*.yml")):
+        profile = load_yaml(path)
+        if str(profile["name"]) != path.stem:
+            raise ValueError(f"{path.name}: its name {profile['name']!r} must be {path.stem!r}")
+        gpu = profile["gpu"]
+        profiles[str(profile["name"])] = {
+            "min_vram_gib": float(gpu["min_memory_mib"]) / 1024,
+            "compute_capability": str(gpu["compute_capability"]),
+        }
+    known = load_yaml(root / "models.catalog.yml")
+    models = {}
+    for entry in [*(known.get("models") or []), *(known.get("restricted") or [])]:
+        fits = {
+            str(name): float(fit["expected_vram_gib"])
+            for name, fit in (entry.get("profiles") or {}).items()
+        }
+        if str(entry["id"]) in models:
+            raise ValueError(f"models.catalog.yml: {entry['id']} appears twice")
+        unknown = sorted(set(fits) - set(profiles))
+        if unknown:
+            raise ValueError(f"models.catalog.yml: {entry['id']} names unknown profiles {unknown}")
+        models[str(entry["id"])] = fits
+    return {"profiles": profiles, "models": models}
+
+
 def requirements_json(root: Path) -> str:
     """Compile ``preflight/requirements.yml`` for the requirements computation.
 
@@ -317,10 +408,13 @@ def requirements_json(root: Path) -> str:
         JSON text: the source with, per container image, its reference and
         compressed size per platform (versions.lock.yml), per golden image
         blueprint its version and estimated size (``images/*/image.yaml``), the
-        memory of the target profiles (the incus role) and the default plan.
+        memory of the target profiles (the incus role), the serving data
+        (:func:`serving_data`) and the default plan.
 
     Raises:
-        ValueError: If the images listed and the lock's images differ.
+        ValueError: If the images listed and the lock's images differ, the
+            default plan names a model (:func:`plan_defaults`), or the serving
+            data is inconsistent (:func:`serving_data`).
     """
     data = jsonable(load_yaml(root / "preflight/requirements.yml"))
     lock = jsonable(load_yaml(root / "versions.lock.yml"))["containers"]["images"]
@@ -367,9 +461,10 @@ def requirements_json(root: Path) -> str:
             ("build", "build_instance"),
         )
     }
+    data["serving"] = serving_data(root)
     data["defaults"] = plan_defaults(root)
     return dump_json(
         data,
-        "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml and the"
-        " Ansible defaults",
+        "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml,"
+        " vllm/profiles/*.yml, models.catalog.yml and the Ansible defaults",
     )

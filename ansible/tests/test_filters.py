@@ -6,12 +6,26 @@ import base64
 import hashlib
 import hmac
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 import pinka
-from ansible_testlib import debian_codenames, evaluate, fixture_names, fixture_profile
+from ansible_testlib import (
+    ANSIBLE,
+    FIXTURES,
+    ROLES,
+    debian_codenames,
+    evaluate,
+    fixture_names,
+    fixture_profile,
+    load_yaml,
+)
+from pinka_gen import sources
+from pinka_preflight import matrix
+from pinka_preflight.detect.os_release import detect_os_release
+from pinka_preflight.fs import FileSystem
 
 
 def identity(name: str) -> dict[str, Any]:
@@ -52,6 +66,117 @@ def test_every_installable_fixture_has_an_identity() -> None:
             continue  # bootstrap stops before Ansible (exit code 20)
         result = pinka.release_identity(profile, debian_codenames())
         assert result["source_group"] in set(pinka.SOURCE_GROUPS.values()), name
+
+
+# os-release files of the support matrix's rules that no preflight fixture covers.
+OS_RELEASES = {
+    "ubuntu2204": 'ID=ubuntu\nID_LIKE=debian\nVERSION_ID="22.04"\nVERSION_CODENAME=jammy\n',
+    "rocky10": 'ID=rocky\nID_LIKE="rhel centos fedora"\nVERSION_ID="10.0"\n',
+    "rhel9": 'ID=rhel\nID_LIKE=fedora\nVERSION_ID="9.6"\n',
+    "centos9": 'ID=centos\nID_LIKE="rhel fedora"\nVERSION_ID="9"\n',
+    "leap16": 'ID=opensuse-leap\nID_LIKE="suse opensuse"\nVERSION_ID="16.0"\n',
+    "sles15": 'ID=sles\nID_LIKE=suse\nVERSION_ID="15.7"\n',
+    "debian-derivative": "ID=example\nID_LIKE=debian\nVERSION_ID=1\nDEBIAN_CODENAME=trixie\n",
+    "suse-derivative": 'ID=example\nID_LIKE="suse opensuse"\nVERSION_ID=1\n',
+}
+
+
+def test_the_support_matrix_names_the_source_group_the_play_uses(tmp_path: Path) -> None:
+    """Preflight judges whether bootstrap installs the NVIDIA driver by its OS rule's group."""
+    compiled = matrix.load_matrix()
+    roots = [FIXTURES / name for name in fixture_names()]
+    for name, text in OS_RELEASES.items():
+        (tmp_path / name / "etc").mkdir(parents=True)
+        (tmp_path / name / "etc" / "os-release").write_text(text, encoding="utf-8")
+        roots.append(tmp_path / name)
+    covered = set()
+    for root in roots:
+        osr = detect_os_release(FileSystem(str(root)))
+        rule = matrix.match_os(compiled, osr)
+        if rule["tier"] == "unsupported":
+            assert "source_group" not in rule, root.name
+            continue
+        _, parent = matrix.release_identity(rule, osr)
+        assert osr is not None
+        profile = {
+            "family": rule["family"],
+            "release_model": rule["release_model"],
+            "os": {
+                "id": osr.id,
+                "version_id": osr.version_id,
+                "codename": osr.version_codename,
+                "parent_release": parent,
+            },
+        }
+        try:
+            play = pinka.release_identity(profile, debian_codenames())["source_group"]
+        except pinka.PinkaFilterError:
+            continue  # the play refuses the release (Devuan: no DEBIAN_CODENAME)
+        assert rule["source_group"] == play, root.name
+        covered.add(compiled["os"].index(rule))
+    expected = {i for i, r in enumerate(compiled["os"]) if r["tier"] != "unsupported"}
+    assert covered == expected  # a new rule needs a fixture or an os-release above
+
+
+def _play_installs_the_driver(entry: dict[str, Any]) -> bool:
+    """Whether provider_baremetal's nvidia.yml installs a driver of this source entry.
+
+    For a GPU the pinned driver supports, without a driver, with
+    ``install_nvidia_driver: auto`` and no consent to community repositories.
+    """
+    tasks = {t["name"]: t for t in load_yaml(ROLES / "provider_baremetal/tasks/nvidia.yml")}
+    variables = {
+        "host_profile": {"gpu": {"usable": False}},
+        "provider_baremetal_driver_preexisting": False,
+        "provider_baremetal_gpu_supported": True,
+        "provider_baremetal_driver": entry,
+        "install_nvidia_driver": "auto",
+        "pinka_community_repos_allowed": False,
+    }
+
+    def holds(name: str) -> bool:
+        return all(evaluate(str(c), variables) for c in tasks[name]["when"])
+
+    stops = (
+        "Stop when the driver must be installed by hand",
+        "Stop when the driver source needs consent to a community repository",
+    )
+    return holds("Install the NVIDIA driver") and not any(holds(name) for name in stops)
+
+
+def test_preflight_knows_where_the_play_installs_the_nvidia_driver() -> None:
+    """The generator's rule equals nvidia.yml's own conditions, for every source group."""
+    drivers = load_yaml(ANSIBLE / "component-sources.yml")["components"]["nvidia_driver"]
+    for group in [*SOURCE_GROUP_NAMES, "default"]:
+        entry = pinka.component_source({"nvidia_driver": drivers}, "nvidia_driver", group)
+        assert sources.bootstrap_installs_nvidia_driver(drivers, group) == (
+            _play_installs_the_driver(entry)
+        ), group
+    # Entries the data does not have today, each against the play.
+    for entry in (
+        {"source": "distro", "packages": ["nvidia-driver"]},
+        {"source": "distro", "packages": ["nvidia-driver"], "verify": "x"},
+        {"source": "vendor_repo", "packages": []},
+        {"source": "community", "packages": ["akmod-nvidia"], "verify": "x"},
+    ):
+        assert sources.bootstrap_installs_nvidia_driver({"x": entry}, "x") == (
+            _play_installs_the_driver(entry)
+        ), entry
+    # A verified community source: the play installs it only with consent,
+    # which preflight is not given, so the generator refuses it.
+    community = {"source": "community", "packages": ["akmod-nvidia"]}
+    assert not _play_installs_the_driver(community)
+    with pytest.raises(ValueError, match="community repository"):
+        sources.bootstrap_installs_nvidia_driver({"x": community}, "x")
+
+
+SOURCE_GROUP_NAMES = sorted(set(pinka.SOURCE_GROUPS.values()))
+
+
+def test_the_support_matrix_schema_knows_every_source_group() -> None:
+    schema = json.loads((FIXTURES.parents[1] / "schema/support-matrix.schema.json").read_text())
+    enum = schema["$defs"]["os_rule"]["properties"]["source_group"]["enum"]
+    assert sorted(enum) == SOURCE_GROUP_NAMES
 
 
 def test_release_identity_leap_and_rhel_keys() -> None:
@@ -195,6 +320,11 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_scram_matches",
         "pinka_config_hashes",
         "pinka_image_by_alias",
+        "pinka_golden_image_problems",
+        "pinka_golden_record_problems",
+        "pinka_golden_image_drift",
+        "pinka_golden_image_drifts",
+        "pinka_golden_drift_report",
         "pinka_dpkg_packages",
         "pinka_to_toml",
         "pinka_socket_specs",
@@ -656,6 +786,15 @@ def test_incus_config_before_notes_what_pinka_changes() -> None:
     unchanged = json.dumps({"config": {"core.https_address": "127.0.0.1:8443"}})
     assert pinka.incus_config_before(unchanged, wanted) == {}
     assert pinka.incus_config_before("", wanted) == {}
+    # A project's settings: incus:project:<project>:<key>.
+    interval = {"images.auto_update_interval": "0"}
+    project = json.dumps({"config": {"images.auto_update_interval": "6"}})
+    assert pinka.incus_config_before(project, interval, "default") == {
+        "incus:project:default:images.auto_update_interval": "6"
+    }
+    assert pinka.incus_config_before(json.dumps({"config": {}}), interval, "default") == {
+        "incus:project:default:images.auto_update_interval": ""
+    }
 
 
 def test_component_packages_span_every_source_group() -> None:

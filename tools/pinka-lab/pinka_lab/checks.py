@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from pinka_lab import commands, window
+from pinka_lab import commands, golden, window
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
 from pinka_preflight.detect import access as access_detect
 from pinka_preflight.detect import gpu
@@ -1005,6 +1005,120 @@ def check_incus_objects(ctx: Context) -> Outcome:
     if missing:
         return failed("missing: " + ", ".join(missing))
     return passed("projects and profiles present")
+
+
+# Problems named in the detail of images.golden and images.properties.
+GOLDEN_SHOWN_PROBLEMS = 10
+
+
+def _golden_review(ctx: Context) -> dict[str, dict[str, list[str]]] | Outcome:
+    """The golden-image review of the lab's image store, or the outcome that ends a check."""
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    images = ctx.system.run(["incus", "image", "list", "--format", "json"], timeout=60).json()
+    if not isinstance(images, list):
+        return failed("incus image list gave no list of images")
+    blueprints = {str(b["name"]) for b in ctx.config.get("images", "blueprints", default=[])}
+    export_root = str(
+        ctx.config.get("images", "export_root", default=f"{ctx.config.pinka_root}/images")
+    )
+    return golden.review(ctx.system, export_root, images, blueprints)
+
+
+def _named(found: dict[str, dict[str, list[str]]], key: str) -> str:
+    # Any client of the store can create aliases: the detail stays short.
+    bad = [
+        f"{golden.shown(alias)}: {item}"
+        for alias, review in sorted(found.items())
+        for item in review[key]
+    ]
+    more = len(bad) - GOLDEN_SHOWN_PROBLEMS
+    return "; ".join(bad[:GOLDEN_SHOWN_PROBLEMS]) + (f"; and {more} more" if more > 0 else "")
+
+
+def check_images_golden(ctx: Context) -> Outcome:
+    """Every alias of a blueprint's form points to the golden image its export recorded.
+
+    The projects build and bench share the image store, so a client allowed
+    to create images there can create the alias of a version before infra
+    builds it (pinka_lab.golden).
+    """
+    found = _golden_review(ctx)
+    if not isinstance(found, dict):
+        return found
+    if any(review["problems"] for review in found.values()):
+        return failed(_named(found, "problems"))
+    if not found:
+        return passed("no image of a blueprint is published yet")
+    return passed(f"{len(found)} alias(es), each the golden image its export recorded")
+
+
+def check_images_properties(ctx: Context) -> Outcome:
+    """No client of the image store changed a golden image's record.
+
+    A restricted client can rewrite an existing image's properties, public
+    and auto_update; bootstrap puts them back (pinka_lab.golden.drift).
+    """
+    found = _golden_review(ctx)
+    if not isinstance(found, dict):
+        return found
+    if any(review["changes"] for review in found.values()):
+        return failed(_named(found, "changes"))
+    golden_aliases = sum(1 for review in found.values() if not review["problems"])
+    return passed(f"{golden_aliases} golden image alias(es), each as its build left it")
+
+
+# Incus's own default of images.auto_update_interval, in hours
+# (internal/server/cluster/config/config.go of the pinned 6.0).
+INCUS_AUTO_UPDATE_DEFAULT = "6"
+AUTO_UPDATE = "images.auto_update_interval"
+
+
+def check_incus_auto_update(ctx: Context) -> Outcome:
+    """No image of the default project updates itself (its interval in force is 0).
+
+    The golden images live in the default project's store. Incus updates an
+    image with auto_update on and an update source every so many hours and
+    moves its aliases to the new image; the golden images have no source, but
+    an alias a client of the shared store created on a copy it downloaded
+    would move (pinka_lab.golden). Incus takes the default project's setting,
+    else the server's, else its default; 0 or less disables the update. On
+    the Incus pinka installed, bootstrap sets the default project's own value
+    to 0; any other Incus pinka leaves to its owner. Doctor has no severity
+    below a warning, so an adopted Incus at Incus's default is a warning too.
+    """
+    if not ctx.config.runs_lab:
+        return skipped("no Incus on this node")
+    server = (_incus_query(ctx, "/1.0") or {}).get("config") or {}
+    project = (_incus_query(ctx, "/1.0/projects/default") or {}).get("config") or {}
+    if str(project.get(AUTO_UPDATE, "")) != "":
+        value, where = str(project[AUTO_UPDATE]), "the default project's setting"
+    elif str(server.get(AUTO_UPDATE, "")) != "":
+        value, where = str(server[AUTO_UPDATE]), "the server's setting"
+    else:
+        value, where = INCUS_AUTO_UPDATE_DEFAULT, "Incus's default"
+    try:
+        disabled = int(value) <= 0
+    except ValueError:
+        disabled = False
+    if disabled:
+        return passed(f"{AUTO_UPDATE} is {value} ({where}): Incus updates no image by itself")
+    shown = golden.shown(value)
+    if ctx.config.get("incus", "own", default=False):
+        return failed(
+            f"{AUTO_UPDATE} is {shown} ({where}) on the Incus pinka installed: run bootstrap"
+            " with --tags incus, which sets the default project's own value back to 0"
+        )
+    # A message, no SQL: ruff reads "updates ... set" as a query (S608).
+    return failed(
+        f"{AUTO_UPDATE} is {shown} ({where}) on an Incus pinka did not install"  # noqa: S608
+        " (or one its install record cannot place), which pinka leaves as it is: Incus"
+        " updates every image of the default project with auto_update on and an update"
+        " source this often and moves its aliases, so an alias a client of the shared image"
+        " store created on a copy it downloaded would move between two bootstraps. If"
+        " nothing else in the default project needs it:"
+        f" sudo incus project set default {AUTO_UPDATE} 0"
+    )
 
 
 def check_incus_certificates(ctx: Context) -> Outcome:
@@ -2510,6 +2624,33 @@ CHECKS: tuple[Check, ...] = (
         "error",
         "Run bootstrap with --tags incus.",
         check_incus_objects,
+    ),
+    Check(
+        "incus.auto_update",
+        "No image of the default project updates itself (images.auto_update_interval is 0).",
+        "warning",
+        "On the Incus pinka installed, run bootstrap with --tags incus, which sets the default"
+        " project's interval back to 0. On an Incus pinka did not install (or one its install"
+        " record cannot place), pinka leaves the setting to you: sudo incus project set default"
+        " images.auto_update_interval 0, if nothing else in the default project needs Incus to"
+        " update its images.",
+        check_incus_auto_update,
+    ),
+    Check(
+        "images.golden",
+        "Every alias <blueprint>/<version> points to the image infra built and exported.",
+        "error",
+        "Delete the alias (sudo incus image alias delete <alias>), then run sudo pinka images"
+        " build: it imports the export if there is one (replacing any copy of the image already"
+        " in the store) and builds the image otherwise.",
+        check_images_golden,
+    ),
+    Check(
+        "images.properties",
+        "No client of the image store changed a golden image's properties, public or auto_update.",
+        "warning",
+        "Run sudo pinka images build: bootstrap puts them back from the export record.",
+        check_images_properties,
     ),
     Check(
         "incus.certificates",

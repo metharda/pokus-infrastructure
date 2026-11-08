@@ -155,9 +155,10 @@ training_cap:
 # Disk known at install time is computed from these and the choices: the
 # images below, the selected model's files (models.lock.yml), the Incus pool
 # (a loop file counts fully on its mount point, a dedicated device on none),
-# the golden images to build (estimated_size_gib of their image.yaml, once in
-# the export below the research space and once in Incus's image store) and
-# pinka itself.
+# the free space a loop file leaves beside it (pool loop_reserve_gib), the
+# golden images to build (estimated_size_gib of their image.yaml, once in the
+# export below the research space and once in Incus's image store) and pinka
+# itself.
 disk:
   # pinka itself on the file system of /opt/pinka: the pinned CPython, the
   # Ansible, installer and model tool environments, the collections.
@@ -179,6 +180,12 @@ disk:
 # up to their retention, when the research space shares the mount), and never
 # below floor_gib. An explicit incus_pool_size wins; a pool already created
 # keeps its size (Incus pools are never rewritten).
+#
+# A loop file, of an explicit size or auto, also leaves loop_reserve_gib free
+# on its mount point: an item of its own there, counted while the file does
+# not exist yet (like the file itself), so a shortfall can name it; auto sizes
+# the file from what is left after it. The growth's free space after the
+# install does not count it as used. A dedicated device leaves none.
 pool:
   margin: 0.5
   floor_gib: 30
@@ -188,6 +195,12 @@ pool:
     estimated_size_gib; margin (estimate): the instances' copy-on-write
     divergence from their images, snapshots and the targets' own data;
     floor: the pool the distribution test VMs install with (30 GiB)
+  loop_reserve_gib: 50
+  loop_reserve_source: >-
+    estimate: room the loop file's file system keeps beyond everything pinka
+    puts there, for the host's own use (package updates, logs, temporary
+    files) while the pool's file, which counts fully but grows only with use,
+    fills; never lowered (the schema's minimum)
 
 # The container images each node pulls (keys of versions.lock.yml
 # containers.images). roles: the node roles that run it; features: features

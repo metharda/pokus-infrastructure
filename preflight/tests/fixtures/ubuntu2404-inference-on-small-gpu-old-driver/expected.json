@@ -1,0 +1,10 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "install a driver branch that supports CUDA 13.0. Use a GPU with at least 11.3 GiB of memory. Or set inference: auto"
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": "off"
+  }
+}

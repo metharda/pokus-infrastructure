@@ -1,0 +1,6 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /"
+  ]
+}

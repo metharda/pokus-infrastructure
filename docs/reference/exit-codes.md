@@ -24,7 +24,7 @@ description: Exit codes of the pokus-infrastructure tools.
 | 11 | `EXIT_EXPERIMENTAL` | Experimental | The host is on an experimental tier and there was no consent (--accept-experimental or interactive confirmation) | [Exit code 11](../how-to/troubleshoot.md#exit-code-11) |
 | 20 | `EXIT_UNSUPPORTED` | Unsupported | Preflight or pre-preflight found the host unsupported and --force-unsupported was not given | [Exit code 20](../how-to/troubleshoot.md#exit-code-20) |
 | 30 | `EXIT_NEEDS_ACTION` | Needs action | An operator action is needed before bootstrap can continue; the remediation is printed | [Exit code 30](../how-to/troubleshoot.md#exit-code-30) |
-| 40 | `EXIT_PREFLIGHT_ERROR` | Preflight error | Host detection failed unexpectedly; the traceback is in the log | [Exit code 40](../how-to/troubleshoot.md#exit-code-40) |
+| 40 | `EXIT_PREFLIGHT_ERROR` | Preflight error | Host detection failed unexpectedly (the traceback is in the log), or preflight refused its options or the requirements plan (the reason is in the log) | [Exit code 40](../how-to/troubleshoot.md#exit-code-40) |
 | 50 | `EXIT_TOOLING` | Tooling failed | Installing uv, CPython, the Ansible environment or the Ansible collections failed, or a checksum did not match | [Exit code 50](../how-to/troubleshoot.md#exit-code-50) |
 | 60 | `EXIT_ANSIBLE` | Play failed | An Ansible play failed without a bootstrap signal, or a later stage is not installed yet | [Exit code 60](../how-to/troubleshoot.md#exit-code-60) |
 | 64 | `EXIT_USAGE` | Usage error | Invalid command-line options | [Exit code 64](../how-to/troubleshoot.md#exit-code-64) |
@@ -38,11 +38,12 @@ description: Exit codes of the pokus-infrastructure tools.
 
 ## pinka-preflight
 
-The exit code is the outcome of the support-matrix decision (see [Support matrix](../support-matrix.md)).
+The exit code is the outcome of the support-matrix decision (see [Support matrix](../support-matrix.md)), or 2 (usage error: an option preflight cannot use, or a requirements plan (--plan) it refuses).
 
-| Code | Outcome | Meaning | Bootstrap behavior |
+| Code | Outcome or name | Meaning | Bootstrap behavior |
 | --- | --- | --- | --- |
 | 0 | `supported` | All core requirements met; features computed. | Bootstrap continues. |
+| 2 | `usage_error` | An option preflight cannot use, or a requirements plan (--plan) it refuses: unreadable, not matching its schema, an inference node with inference: off, a lab node with inference: on, or a vllm_profile or golden image blueprint that does not exist. The message names it; nothing is detected. | Bootstrap writes the plan with pinka-installer plan first, which refuses the last four itself (exit code 77, the reason above it); any other refusal of its options or the plan by preflight aborts bootstrap with exit code 40 and preflight's message above it. |
 | 10 | `degraded` | Core requirements met; one or more optional features unavailable, or memory between the required and the recommended value for the choices. | Bootstrap continues only with --accept-degraded or interactive confirmation that lists every disabled feature and its research impact. |
 | 20 | `unsupported` | A core requirement failed, the OS, architecture or environment is unsupported, a blocking conflict exists, or memory or disk is below what the choices require. | Bootstrap aborts; --force-unsupported continues and records overrides.force_unsupported in the host profile and every environment fingerprint. |
 | 30 | `needs_action` | Fixable by operator action (reboot, wsl --terminate, enroll MOK, remove a conflict). | Bootstrap prints the exact remediation steps and aborts; re-run after the action. |

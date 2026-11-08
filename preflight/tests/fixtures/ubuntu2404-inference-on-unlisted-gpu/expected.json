@@ -1,0 +1,10 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "inference: on must serve on this node. No driver is installed for this GPU: the pinned NVIDIA driver does not list it (an older GPU only a legacy branch supports, a GPU newer than the pinned driver, or a PCI device ID that could not be read). Install a driver that supports it yourself (install_nvidia_driver: manual), then run bootstrap again, or use a GPU the pinned driver supports."
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": "off"
+  }
+}

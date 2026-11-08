@@ -25,6 +25,7 @@ TEST_STAGE_TITLES = {
     "access": "Access",
     "platform": "Platform",
     "isolation": "Isolation",
+    "images": "Image store",
     "training": "Training",
     "resume": "Resume",
     "redeploy": "Redeploy",
@@ -304,11 +305,12 @@ def test_results_section(root: Path) -> str:
         "bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which "
         "must change nothing, and then `pinka doctor --smoke`. Then it deploys the reference "
         "platform: the isolation probes of its agent and of every loopback-capable profile, "
-        "the training flow with the CPU-only job, a run interrupted by a reboot and resumed, a "
-        "second deployment that must change nothing, the replacement by a renamed copy, and a "
-        "backup and restore. Last, it uninstalls the lab: after a reboot, the host must equal "
-        "its snapshot from before the install, apart from what uninstall keeps on purpose. A "
-        "result counts for "
+        "what a client certificate restricted like a profile's may do with the shared image "
+        "store, the training flow with the CPU-only job, a run interrupted by a reboot and "
+        "resumed, a second deployment that must change nothing, the replacement by a renamed "
+        "copy, and a backup and restore. Last, it uninstalls the lab: after a reboot, the host "
+        "must equal its snapshot from before the install, apart from what uninstall keeps on "
+        "purpose. A result counts for "
         f"{test_results.VALID_DAYS} days after its test date (*Valid until*); a target whose "
         "last result failed or has expired counts as untested.\n\n",
     ]
@@ -425,6 +427,7 @@ def cli_page(parser: argparse.ArgumentParser, *, title: str, intro: str) -> str:
 def exit_codes_page(
     meanings: dict[str, tuple[str, str]],
     codes: dict[str, int],
+    others: dict[int, tuple[str, str, str]],
     bootstrap_codes: list[bootstrap.ExitCode],
     lab_rows: list[list[str]],
 ) -> str:
@@ -433,16 +436,25 @@ def exit_codes_page(
     Args:
         meanings: Outcome to ``(meaning, bootstrap behavior)``.
         codes: Outcome to exit code.
+        others: pinka-preflight's exit codes that are no outcome: code to
+            ``(name, meaning, bootstrap behavior)``.
         bootstrap_codes: Exit codes of ``bootstrap.sh``.
         lab_rows: ``[code, command, meaning]`` rows of ``pinka``.
 
     Returns:
         Page text.
     """
-    rows = [
-        [codes[o], f"`{o}`", m, b]
-        for o, (m, b) in sorted(meanings.items(), key=lambda kv: codes[kv[0]])
-    ]
+    by_code = {codes[o]: (o, m, b) for o, (m, b) in meanings.items()}
+    if set(by_code) & set(others):
+        raise ValueError(
+            f"exit codes both outcomes and others: {sorted(set(by_code) & set(others))}"
+        )
+    by_code.update(others)
+    besides = "".join(
+        f", or {code} ({name.replace('_', ' ')}: {meaning.split(':', 1)[0].lower()})"
+        for code, (name, meaning, _) in sorted(others.items())
+    )
+    rows = [[code, f"`{n}`", m, b] for code, (n, m, b) in sorted(by_code.items())]
     bootstrap_rows = [
         [
             c.code,
@@ -468,8 +480,8 @@ def exit_codes_page(
             table(["Code", "Constant", "Title", "Meaning", "What to do"], bootstrap_rows),
             "\n## pinka-preflight\n\n",
             "The exit code is the outcome of the support-matrix decision "
-            "(see [Support matrix](../support-matrix.md)).\n\n",
-            table(["Code", "Outcome", "Meaning", "Bootstrap behavior"], rows),
+            f"(see [Support matrix](../support-matrix.md)){besides}.\n\n",
+            table(["Code", "Outcome or name", "Meaning", "Bootstrap behavior"], rows),
             "\n## pinka\n\n",
             "`pinka preflight` passes the exit code of pinka-preflight through. "
             "See [Doctor checks](doctor-checks.md) for the severity of every check.\n\n",

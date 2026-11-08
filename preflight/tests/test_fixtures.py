@@ -172,10 +172,12 @@ class FixtureDecisionTest(unittest.TestCase):
                 self.assertEqual(on, value, f"{name}: overrides")
             elif key == "conflicts":
                 self.assertEqual([c["id"] for c in doc["conflicts"]], value, name)
-            elif key == "warnings_contain":
+            elif key in ("warnings_contain", "warnings_lack"):
                 for needle in value:
-                    self.assertTrue(
-                        any(needle in w for w in doc["warnings"]), f"{name}: warning {needle!r}"
+                    self.assertEqual(
+                        any(needle in w for w in doc["warnings"]),
+                        key == "warnings_contain",
+                        f"{name}: warning {needle!r}",
                     )
             elif key == "unsupported_contains":
                 for needle in value:
@@ -189,6 +191,10 @@ class FixtureDecisionTest(unittest.TestCase):
                         any(needle in r for r in doc["degraded_reasons"]),
                         f"{name}: degraded reason {needle!r}",
                     )
+            elif key == "vram":
+                lines = doc["requirements"]["budgets"]["vram"]
+                got = {use: (lines[use] or {}).get("status") for use in value}
+                self.assertEqual(got, value, f"{name}: vram")
             elif key == "remediation_contains":
                 remediations = [d.get("remediation", "") for d in doc["disabled_features"]]
                 for needle in value:

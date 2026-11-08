@@ -1,7 +1,8 @@
-"""Screens 14-18: Secrets & vault, Review, Install progress, Doctor, Finish."""
+"""Steps 13-14, then the install: Secrets & vault, Review, Install progress, Doctor, Finish."""
 
 from __future__ import annotations
 
+import copy
 import itertools
 import json
 import os
@@ -12,7 +13,7 @@ from typing import Any
 import segno
 from ruamel.yaml import YAML
 from textual import work
-from textual.app import ComposeResult
+from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import (
     Button,
@@ -31,10 +32,12 @@ from pinka_installer import apply, state, vault
 from pinka_installer.answers import GENERATE, PROVIDED, Context
 from pinka_installer.apply import Change, Plan
 from pinka_installer.paths import write_file
+from pinka_installer.tui import capacity
 from pinka_installer.tui.base import Problems, StepScreen
 from pinka_installer.tui.events import Progress, site_roles
 from pinka_installer.tui.model import password_strength, vault_password_problem
 from pinka_installer.tui.runner import RunRequest
+from pinka_installer.tui.screens_capacity import DRIVER_LABELS, lock_text
 from pinka_installer.tui.widgets import Card, Field, NavBar, ShownOnce, TextView
 
 MIN_GRAFANA_ADMIN = 8
@@ -95,7 +98,7 @@ def qr_text(data: str) -> str:
 
 
 class SecretsScreen(StepScreen):
-    """Screen 14: generated service passwords, the Grafana admin, the vault password."""
+    """Step 13: generated service passwords, the Grafana admin, the vault password."""
 
     STEP = "secrets"
     HELP = (
@@ -236,28 +239,53 @@ def summary(
     """
     a = answers.normalized()
     m, r, s, g, b = a.machine, a.resources, a.storage, a.gpu, a.backups
-    caps = a.training_caps
+    caps, t = a.training_caps, a.telemetry_retention
     size = "auto size" if s.loop_size_gib == "auto" else f"{s.loop_size_gib} GiB"
-    pool = f"loop file of {size}" if s.source == "loop" else f"disk {s.device}"
+    by_size = "by time only" if t.prometheus_size == "0" else f"up to {t.prometheus_size}"
+    pool = f"loop file of {size}" if s.source == "loop" else "a dedicated disk"
     return [
         ("mode", "Install mode", a.mode),
         (
             "machine",
             "Machine",
-            f"{m.name} · {m.lab_mode} · {m.node_role}"
-            + (f" (peer {a.split_inference_peer})" if a.split_inference_peer else "")
+            f"{m.name} · {m.lab_mode}"
             + f"\nprovider {m.provider} · power {m.power_policy}"
             + f"\n{m.srv_path} · Docker {m.docker_data_root}",
         ),
         (
-            "resources",
-            "Resources",
+            "capacity",
+            "Capacity plan",
+            f"{m.node_role} node"
+            + (f" (peer {a.split_inference_peer})" if a.split_inference_peer else "")
+            + f" · inference {a.features.inference} · training {a.features.training}\n"
+            f"NVIDIA driver: {DRIVER_LABELS.get(g.install_driver, g.install_driver)} · "
+            f"profile {g.vllm_profile or '-'} · "
+            f"model {g.default_model}\n"
+            f"Incus pool: {pool} · {r.concurrent_targets} concurrent targets\n"
+            f"retention: Prometheus {t.prometheus} ({by_size}), Loki {t.loki}, "
+            f"Tempo {t.tempo}\n"
             f"expected {r.expected_memory_gib or '-'} GiB, "
-            f"{r.expected_cpu_threads or '-'} threads\n"
+            f"{r.expected_cpu_threads or '-'} threads · "
             f"services {r.cpuset_services or '-'} · targets {r.cpuset_targets or '-'} · "
             f"Postgres {r.postgres_shared_buffers or 'derived'}",
         ),
-        ("storage", "Storage", pool + (" · WIPE signatures" if s.force_wipe else "")),
+        (
+            "capacity_device",
+            "Storage device",
+            (s.device + (" · WIPE signatures" if s.force_wipe else ""))
+            if s.source == "device"
+            else "-",
+        ),
+        (
+            "capacity_serving",
+            "Serving",
+            f"start serving after the install: {'yes' if g.start_serving else 'no'}\n"
+            f"arbiter after boot {a.gpu_arbiter.after_boot}, serving again after training "
+            f"{'on' if a.gpu_arbiter.restore_after_training else 'off'} · training caps "
+            f"{caps.timeout_seconds} s, {caps.cpus} CPUs, memory {caps.memory_max}, "
+            f"datasets {caps.dataset_max}, run storage {caps.run_storage_max}, "
+            f"tmpfs {caps.tmp_max}",
+        ),
         (
             "researchers",
             "Researchers",
@@ -280,18 +308,6 @@ def summary(
                 if a.remote_access.close_install_path
                 else ""
             ),
-        ),
-        (
-            "gpu",
-            "GPU & inference",
-            f"inference {a.features.inference} · training {a.features.training} · "
-            f"driver {g.install_driver} · profile {g.vllm_profile or '-'} · "
-            f"model {g.default_model}\n"
-            f"arbiter after boot {a.gpu_arbiter.after_boot}, serving again after training "
-            f"{'on' if a.gpu_arbiter.restore_after_training else 'off'} · training caps "
-            f"{caps.timeout_seconds} s, {caps.cpus} CPUs, memory {caps.memory_max}, "
-            f"datasets {caps.dataset_max}, run storage {caps.run_storage_max}, "
-            f"tmpfs {caps.tmp_max}",
         ),
         (
             "backups",
@@ -342,7 +358,7 @@ def destructive(answers: answers_mod.Answers) -> list[str]:
 
 
 class ReviewScreen(StepScreen):
-    """Screen 15: every setting, every file with its diff, estimates, destructive actions."""
+    """Step 14: every setting, every file with its diff, estimates, destructive actions."""
 
     STEP = "review"
     HELP = (
@@ -357,6 +373,12 @@ class ReviewScreen(StepScreen):
         super().__init__()
         self.plan: Plan | None = None
         self.problems: list[str] = []
+        # Preflight's answer to the final choices: None while it runs, else why
+        # Install waits (empty when nothing does).
+        self.capacity_waits: str | None = None
+        # The operator left the screen (Edit, Back): a run that ends after that drops
+        # its answer (Textual keeps is_mounted true on a screen that is gone).
+        self.left = False
 
     def nav(self) -> NavBar:  # noqa: D102
         return NavBar("Install ▸", extra=(Button("Export answers only", id="export"),))
@@ -383,6 +405,11 @@ class ReviewScreen(StepScreen):
             with Horizontal(classes="review-row"):
                 yield Card(title, text)
                 yield Button("Edit", id=f"edit-{step}", classes="edit")
+        yield Static(
+            "Capacity plan: computing with preflight for these choices…",
+            id="capacity-totals",
+            classes="info",
+        )
         yield Static(self.estimates(), classes="info", id="estimates")
         if self.plan is not None:
             for warning in self.plan.warnings:
@@ -400,6 +427,58 @@ class ReviewScreen(StepScreen):
                     yield Static(
                         change.diff(self.ctx.paths.infra) or "(no difference)", markup=False
                     )
+
+    def on_mount(self) -> None:  # noqa: D102
+        self.check_capacity(
+            self.app, copy.deepcopy(self.answers), lock_text(self), self.wizard.plan_args()
+        )
+
+    def on_unmount(self) -> None:  # noqa: D102
+        self.left = True
+
+    @work(thread=True)
+    def check_capacity(
+        self, app: App[Any], answers: answers_mod.Answers, lock: str, args: list[str]
+    ) -> None:
+        """Run preflight with the plan of the final choices, as bootstrap will.
+
+        Args:
+            app: The application, taken when the run starts: the answer reaches it
+                even after the operator left the screen, which then drops it.
+            answers: A copy of the answers.
+            lock: ``models.lock.yml`` with the models pinned in this session.
+            args: Bootstrap's driver options for these answers (``Wizard.plan_args``).
+        """
+        found = capacity.run(self.ctx.paths, self.ctx.host, answers, lock, args)
+        app.call_from_thread(self.show_capacity, found)
+
+    def show_capacity(self, answer: capacity.Answer) -> None:
+        """Show preflight's answer to the final choices.
+
+        Args:
+            answer: Preflight's answer to the plan of the final choices.
+        """
+        if self.left:
+            return
+        wizard = self.wizard
+        wizard.capacity = answer.profile
+        if answer.profile and not capacity.needs_consent(answer.profile):
+            # Bootstrap judges the final plan: when nothing is degraded, no override.
+            wizard.consents.discard("accept_degraded")
+        self.capacity_waits = capacity.waits(answer, wizard.consents, wizard.degraded_accepted)
+        totals = self.query_one("#capacity-totals", Static)
+        # Every reason, also when nothing waits (a forced host keeps its degraded lines).
+        reasons = capacity.reasons(answer.profile)
+        totals.update(
+            "\n".join(
+                [
+                    "Capacity plan (preflight, these choices):",
+                    *capacity.lines(answer, wizard.consents, wizard.degraded_accepted),
+                    *(f"- {r}" for r in reasons),
+                ]
+            )
+        )
+        totals.set_classes("banner bad" if self.capacity_waits else "info")
 
     def build_plan(self) -> tuple[list[str], Plan | None]:
         """Check the answers and plan the files.
@@ -469,6 +548,16 @@ class ReviewScreen(StepScreen):
     def save(self) -> Problems:  # noqa: D102
         if self.problems or self.plan is None:
             return [("estimates", "fix the problems listed at the top first")]
+        if self.capacity_waits is None:
+            return [("capacity-totals", "wait for preflight's answer to these choices")]
+        if self.capacity_waits:
+            return [
+                (
+                    "capacity-totals",
+                    f"the capacity plan waits: {self.capacity_waits}. Edit the capacity plan: "
+                    "it shows why and runs preflight again",
+                )
+            ]
         return []
 
     def proceed(self) -> None:  # noqa: D102
@@ -489,7 +578,7 @@ class ReviewScreen(StepScreen):
 
 
 class ProgressScreen(StepScreen):
-    """Screen 16: the phase tree, the current task, counts, the log, the Tailscale login."""
+    """Install progress: the phase tree, the current task, counts, the log, the Tailscale login."""
 
     STEP = "progress"
     HELP = (
@@ -749,7 +838,7 @@ def checks_by_category(report: dict[str, Any]) -> dict[str, list[dict[str, Any]]
 
 
 class DoctorScreen(StepScreen):
-    """Screen 17: doctor's results with remediation, and the optional smoke test."""
+    """Doctor: doctor's results with remediation, and the optional smoke test."""
 
     STEP = "doctor"
     HELP = (
@@ -837,7 +926,7 @@ class DoctorScreen(StepScreen):
 
 
 class FinishScreen(StepScreen):
-    """Screen 18: how to connect, what to commit, logs, start and stop, pairing."""
+    """Finish: how to connect, what to commit, logs, start and stop, pairing."""
 
     STEP = "finish"
     HELP = (

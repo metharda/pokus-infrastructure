@@ -121,6 +121,71 @@ SIZE_FACTORS = {
 }
 
 
+# A lab node serves nothing itself (preflight's requirements.LAB_ON says the same;
+# installer/tests/test_plan.py keeps the two equal).
+LAB_ON = (
+    "a lab node serves nothing itself and refuses inference: on; set inference: on on the "
+    "paired inference node instead, whose preflight judges its GPU and model"
+)
+# An inference node exists only to serve (preflight's requirements.INFERENCE_NODE_OFF
+# says the same; installer/tests/test_plan.py keeps the two equal).
+INFERENCE_NODE_OFF = (
+    "an inference node runs only the inference stack; it needs inference: auto or on"
+)
+
+
+def unknown_blueprint(name: object, blueprints: Iterable[str]) -> str:
+    """The refusal of a golden image blueprint that does not exist.
+
+    Preflight's ``requirements.unknown_blueprint`` says the same
+    (installer/tests/test_plan.py keeps the two equal).
+
+    Args:
+        name: The blueprint named.
+        blueprints: The blueprints (``images/``).
+
+    Returns:
+        The message.
+    """
+    return (
+        f"golden image blueprint {str(name)!r} does not exist "
+        f"(images/: {', '.join(sorted(blueprints))})"
+    )
+
+
+def unpinned_model(model_id: object) -> str:
+    """The refusal of a default model that models.lock.yml does not pin.
+
+    The plan writer and the answers check say the same.
+
+    Args:
+        model_id: The model named.
+
+    Returns:
+        The message.
+    """
+    return f"{str(model_id)!r} is not in models.lock.yml; pin it first (docs/how-to/add-a-model.md)"
+
+
+def unknown_profile(profile: object, profiles: Iterable[str]) -> str:
+    """The refusal of a serving profile that does not exist.
+
+    Preflight's ``requirements.unknown_profile`` says the same
+    (installer/tests/test_plan.py keeps the two equal).
+
+    Args:
+        profile: The ``vllm_profile`` given.
+        profiles: The serving profiles (``vllm/profiles/``).
+
+    Returns:
+        The message.
+    """
+    return (
+        f"vllm_profile {str(profile)!r} is not a serving profile "
+        f"(vllm/profiles/: {', '.join(sorted(profiles))})"
+    )
+
+
 def hostname(value: str) -> str | None:
     """A machine name: a lower-case DNS label (it becomes the tailnet host name).
 
@@ -434,6 +499,39 @@ def concurrent_targets(value: int) -> str | None:
     return None
 
 
+# The most digits a whole number of a field has (no setting needs more).
+MAX_DIGITS = 9
+
+
+def whole(text: str) -> int | None:
+    """A whole number as typed in a field: ASCII digits only, at most nine.
+
+    ``str.isdigit`` also accepts digits such as ``²`` that ``int`` refuses, and
+    a number of hundreds of digits overflows what the plan computes with.
+
+    Args:
+        text: The field's text.
+
+    Returns:
+        The number, or None.
+    """
+    if text.isascii() and text.isdigit() and len(text) <= MAX_DIGITS:
+        return int(text)
+    return None
+
+
+def concurrent_targets_text(text: str) -> str | None:
+    """The targets that run at once, as typed in a field.
+
+    Args:
+        text: The field's text.
+
+    Returns:
+        The error, or None.
+    """
+    return concurrent_targets(whole(text) or 0)
+
+
 def retention_period(value: str, units: str = "hdwy") -> str | None:
     """A retention period of the telemetry stores, such as ``90d`` or ``720h``.
 
@@ -446,7 +544,8 @@ def retention_period(value: str, units: str = "hdwy") -> str | None:
     """
     match = RETENTION_RE.fullmatch(value)
     if not match or match.group(2) not in units:
-        return f"a whole number with one unit of {', '.join(units)}, such as 90{units[-1]}"
+        example = "90d" if "d" in units else "720h"
+        return f"a whole number with one unit of {', '.join(units)}, such as {example}"
     return None
 
 

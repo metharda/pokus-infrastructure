@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from pinka_lab import docs_store, window
+from pinka_lab import docs_store, golden, window
 from pinka_lab.config import LabConfig
 from pinka_lab.system import EXIT_NOT_FOUND, System
 
@@ -881,22 +881,24 @@ def images_list(system: System, config: LabConfig) -> int:
     images = system.run(["incus", "image", "list", "--format", "json"], timeout=60).json() or []
     names = {b["name"] for b in _blueprints(config)}
     export_root = str(config.get("images", "export_root", default=f"{config.pinka_root}/images"))
+    found = golden.review(system, export_root, images, names)
     for image in images:
         for alias in image.get("aliases") or []:
-            blueprint, _, version = str(alias.get("name", "")).partition("/")
-            if blueprint not in names:
+            review = found.get(str(alias.get("name", "")))
+            if review is None:
                 continue
-            record_text = system.read_text(f"{export_root}/{blueprint}/{version}/build.json")
-            record = json.loads(record_text) if record_text else {}
-            exported = (
-                "exported"
-                if record.get("fingerprint") == image.get("fingerprint")
-                else "NOT EXPORTED"
-            )
-            built = (image.get("properties") or {}).get("pinka.built_at", "?")
+            if review["problems"]:
+                state = "NOT GOLDEN: " + "; ".join(review["problems"])
+            elif review["changes"]:
+                state = "exported, CHANGED (bootstrap puts it back): " + "; ".join(
+                    review["changes"]
+                )
+            else:
+                state = "exported"
+            built = golden.shown((image.get("properties") or {}).get("pinka.built_at", "?"))
             out(
-                f"{alias['name']:<32} {str(image.get('fingerprint'))[:12]}  "
-                f"built {built}  {exported}"
+                f"{golden.shown(alias['name']):<32} {str(image.get('fingerprint'))[:12]}  "
+                f"built {built}  {state}"
             )
     return 0
 
@@ -931,7 +933,10 @@ def images_build(
 
 
 def images_export(system: System, config: LabConfig, extra: Sequence[str]) -> int:
-    """Export every image that lacks an export, then check every export.
+    """Run the images stage, then check every export against its fingerprint.
+
+    The images stage builds and exports what is missing; it exports no image
+    it did not build, and refuses an alias that is not golden.
 
     Args:
         system: Host access.

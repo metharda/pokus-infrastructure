@@ -1,5 +1,5 @@
 {
-  "_generated_from": "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml and the Ansible defaults by tools/gen (make generate); do not edit",
+  "_generated_from": "preflight/requirements.yml, versions.lock.yml, images/*/image.yaml, vllm/profiles/*.yml, models.catalog.yml and the Ansible defaults by tools/gen (make generate); do not edit",
   "schema_version": 1,
   "image_unpack_factor": 2.5,
   "components": [
@@ -173,7 +173,9 @@
   "pool": {
     "margin": 0.5,
     "floor_gib": 30,
-    "source": "the incus role's root disk sizes (incus_target_container, incus_target_vm, incus_probe_client, incus_build_instance) and the blueprints' estimated_size_gib; margin (estimate): the instances' copy-on-write divergence from their images, snapshots and the targets' own data; floor: the pool the distribution test VMs install with (30 GiB)"
+    "source": "the incus role's root disk sizes (incus_target_container, incus_target_vm, incus_probe_client, incus_build_instance) and the blueprints' estimated_size_gib; margin (estimate): the instances' copy-on-write divergence from their images, snapshots and the targets' own data; floor: the pool the distribution test VMs install with (30 GiB)",
+    "loop_reserve_gib": 50,
+    "loop_reserve_source": "estimate: room the loop file's file system keeps beyond everything pinka puts there, for the host's own use (package updates, logs, temporary files) while the pool's file, which counts fully but grows only with use, fills; never lowered (the schema's minimum)"
   },
   "images": {
     "cadvisor": {
@@ -494,6 +496,31 @@
     "probe_client": 4.0,
     "build": 16.0
   },
+  "serving": {
+    "profiles": {
+      "ada-12g": {
+        "min_vram_gib": 11.23046875,
+        "compute_capability": "8.9"
+      }
+    },
+    "models": {
+      "qwen3-8b-awq": {
+        "ada-12g": 10.5
+      },
+      "qwen3-4b-awq": {
+        "ada-12g": 10.5
+      },
+      "qwen2.5-7b-instruct-awq": {
+        "ada-12g": 10.5
+      },
+      "phi-4-mini-instruct": {
+        "ada-12g": 10.5
+      },
+      "llama-3.1-8b-instruct-awq": {
+        "ada-12g": 10.5
+      }
+    }
+  },
   "defaults": {
     "schema_version": 1,
     "node_role": "full",
@@ -506,6 +533,7 @@
     },
     "concurrent_targets": 2,
     "model": null,
+    "vllm_profile": "ada-12g",
     "images": [
       "_base",
       "web-nginx-flask",

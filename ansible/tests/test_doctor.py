@@ -309,6 +309,24 @@ def test_incus_and_images() -> None:
     assert incus["projects"] == ["bench", "build"]
     assert {"name": "target-vm", "project": "bench"} in incus["profiles"]
     assert incus["cert_dir"] == "/etc/pinka/incus"
+    # As the incus role and uninstall tell pinka's own Incus from any other:
+    # the fixture's host profile has no Incus, so this run installs it.
+    assert incus["own"] is True
+    installed = {
+        "schema_version": 1,
+        "storage_backend": "btrfs",
+        "components": {"incus": {"installed": True}},
+    }
+    for facts, own in (
+        ({"pinka_record_added": {"components": {"incus": True}}, "host_profile": installed}, True),
+        ({"pinka_record_added": {}, "host_profile": installed}, False),
+        (
+            {"pinka_record_added": {"components": {"incus": True}}, "pinka_record_legacy": True},
+            False,
+        ),
+    ):
+        data = render(pinka_features={"gpu_inference": False, "vm_targets": True}, **facts)
+        assert data["incus"]["own"] is own, facts
     assert [c["short"] for c in incus["certificates"]] == ["metrics"]
     assert [c["name"] for c in incus["certificates"]] == ["pinka-metrics"]
     certificate = {

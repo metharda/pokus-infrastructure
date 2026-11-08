@@ -31,7 +31,7 @@ STATE_FILE = Path("/etc/pinka/bootstrap-state.json")
 
 @dataclass(frozen=True)
 class Disk:
-    """A whole disk the Storage screen offers.
+    """A whole disk the Storage device page offers.
 
     Attributes:
         name: Kernel name, such as ``nvme1n1``.

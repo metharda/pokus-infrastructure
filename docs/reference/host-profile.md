@@ -130,7 +130,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `requirements.choices` | object | yes | The effective plan: the operator's choices that size the lab (preflight/schema/plan.schema.json). |
 | `requirements.switches` | object | yes | The feature switches of the plan on this host: what they leave on, and the training cap. |
 | `requirements.switches.inference` | object | yes | — |
-| `requirements.switches.inference.mode` | one of `auto`, `off` | yes | The inference switch. |
+| `requirements.switches.inference.mode` | one of `auto`, `on`, `off` | yes | The inference switch. |
 | `requirements.switches.inference.serves` | boolean | yes | vLLM, its images and the selected model are installed and counted on this node. |
 | `requirements.switches.inference.reason` | string | yes | — |
 | `requirements.switches.training` | object | yes | — |
@@ -169,6 +169,32 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `requirements.pool.size_gib` | number or null | yes | — |
 | `requirements.pool.basis` | one of `computed`, `configured` | yes | — |
 | `requirements.pool.detail` | string | yes | — |
+| `requirements.budgets` | object | yes | One status per resource, with what is needed, what there is and the shortfall: memory, the disk per mount point and the GPU's memory (VRAM). |
+| `requirements.budgets.memory` | object | yes | Memory: does_not_fit below the required value (unsupported), degraded below the recommended value (consent), unknown when MemTotal could not be read. |
+| `requirements.budgets.memory.status` | one of `fits`, `degraded`, `does_not_fit`, `unknown` | yes | The memory's status. |
+| `requirements.budgets.memory.total_gib` | number or null | yes | MemTotal, GiB. |
+| `requirements.budgets.memory.required_gib` | number | yes | The required value (nominal), GiB. |
+| `requirements.budgets.memory.recommended_gib` | number | yes | The recommended value (nominal), GiB. |
+| `requirements.budgets.memory.tolerance` | number | yes | The fraction of each nominal value MemTotal is compared with. |
+| `requirements.budgets.memory.shortfall_gib` | number | yes | How much is missing at the tolerance, GiB: to the required value when does_not_fit, to the recommended value when degraded. |
+| `requirements.budgets.disk` | array | yes | The disk known at install, per mount point. |
+| `requirements.budgets.disk[].mount` | string | yes | The mount point. |
+| `requirements.budgets.disk[].status` | one of `fits`, `does_not_fit`, `unknown` | yes | does_not_fit with a shortfall (unsupported); unknown when the free space could not be measured. |
+| `requirements.budgets.disk[].required_gib` | number | yes | What the install puts there, GiB. |
+| `requirements.budgets.disk[].free_gib` | number or null | yes | Its free space, GiB. |
+| `requirements.budgets.disk[].shortfall_gib` | number | yes | How much is missing, GiB. |
+| `requirements.budgets.vram` | object | yes | The GPU's memory: serving and training never use it at once (the GPU arbiter). serving is null on a lab node, which serves nothing itself; training is null on a node that is not full. |
+| `requirements.budgets.vram.gpu_gib` | number or null | yes | The GPU's memory (measured), GiB; null without a usable NVIDIA GPU or where no line applies. |
+| `requirements.budgets.vram.gpu_mib` | number or null | yes | The GPU's memory as nvidia-smi reports it, MiB, unrounded (the summary prints it); null without a usable NVIDIA GPU, where nvidia-smi does not report the memory, or where no line applies. |
+| `requirements.budgets.vram.serving` | see `vram_line` | yes | — |
+| `requirements.budgets.vram.training` | see `vram_line` | yes | — |
+| `requirements.serving` | object or null | yes | Which serving profiles (vllm/profiles/) and models (models.catalog.yml) fit this GPU's memory, for the installer, which decides nothing itself. fits is null when the GPU's memory is not known. |
+| `requirements.serving.profile` | string | yes | The plan's serving profile (vllm_profile). |
+| `requirements.serving.suggested_profile` | string or null | yes | The profile with the largest minimum that fits the GPU's memory and names its compute capability; null when none fits. |
+| `requirements.serving.profiles` | object | yes | Profile name to min_vram_gib (its stated minimum, GiB), compute_capability (the one it is for) and fits (its minimum fits the GPU's memory). |
+| `requirements.serving.profiles.*` | object | no | any key; value as described |
+| `requirements.serving.models` | object | yes | Model id to profile name to expected_vram_gib (models.catalog.yml's estimate, GiB) and fits (both the profile's minimum and the estimate fit the GPU's memory). |
+| `requirements.serving.models.*` | object | no | any key; value as described |
 | `requirements.notes` | array | yes | — |
 | `features` | object | yes | — |
 | `features.gpu_inference` | boolean | yes | — |
@@ -363,3 +389,21 @@ one of `supported`, `tested`, `experimental`, `unsupported`
 | `growth_item.per_run_gib` | number or null | yes | — |
 | `growth_item.basis` | one of `estimated`, `measured` | yes | — |
 | `growth_item.source` | string | yes | — |
+
+### vram_line
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `vram_line.use` | one of `serving`, `training` | yes | Which use. |
+| `vram_line.switch` | one of `auto`, `on`, `off`, `cpu` | yes | The switch's setting (inference, or training's mode). |
+| `vram_line.status` | one of `fits`, `does_not_fit`, `off`, `unknown` | yes | fits; does_not_fit (inference: on, or an inference node: the host is unsupported); off (switched off, training: cpu, auto on a full node whose GPU cannot serve or train, or any switch while bootstrap installs the NVIDIA driver in this run, with the reason); unknown (the GPU's memory could not be read). |
+| `vram_line.reason` | string | yes | Why it is off, does not fit or is unknown; empty when it fits. |
+| `vram_line.needed_gib` | number | yes | The largest item, GiB. |
+| `vram_line.available_gib` | number or null | yes | The GPU's memory (measured), GiB; null without a usable NVIDIA GPU. |
+| `vram_line.available_mib` | number or null | yes | The GPU's memory as nvidia-smi reports it, MiB, unrounded; null without a usable NVIDIA GPU or where nvidia-smi does not report the memory. |
+| `vram_line.shortfall_gib` | number | yes | How much is missing, GiB (0 when it fits, and without a usable GPU). |
+| `vram_line.items` | array | yes | What needs the memory. |
+| `vram_line.items[].title` | string | yes | What it is. |
+| `vram_line.items[].gib` | number | yes | How much, GiB. |
+| `vram_line.items[].basis` | one of `configured`, `estimated` | yes | configured (a serving profile's or the support matrix's minimum) or estimated (models.catalog.yml's estimate for a model). |
+| `vram_line.items[].mib` | integer or null | yes | A configured minimum as stated, MiB (the summary prints it so); null for an estimate. |

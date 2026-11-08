@@ -37,8 +37,7 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
 - The image is exported to `/srv/pinka/images/<blueprint>/<version>/`: the
   image files, `SHA256SUMS` and `build.json` (written last), which lists
   every package the build installed (name, version, architecture) for the
-  environment fingerprint; an export without a build in the same run keeps
-  the list only from a record of the same image, otherwise it is null.
+  environment fingerprint. Only an image built in the same run is exported.
   The upstream base is exported once to
   `/srv/pinka/images/_upstream/<base>/<fingerprint>/` with `SHA256SUMS` and
   `source.json`, because public image servers rotate their images.
@@ -72,11 +71,32 @@ None; applied on `node_role` `full` and `lab` in `site.yml`.
 
 ## Idempotency
 
-A blueprint whose alias and `build.json` name the same fingerprint is not
-touched. A missing alias is restored by importing the export (or by pointing
-the alias at the image when the store still has it), a missing or different
-export by exporting the image again; only a blueprint with neither is built.
-`images_rebuild: true` builds the listed blueprints again on every run.
+A blueprint whose alias points to the image its `build.json` names is not
+rebuilt or imported. `build.json` (schema 2) holds every property the build
+published, read from the `metadata.yaml` of the export (the fingerprint
+covers it; the build publishes with gzip, and the helper reads only that
+first member, in memory, within a limit on the compressed and on the
+uncompressed bytes); what a client of the store changed in the record of any
+exported version (a property missing, changed or added, `public`,
+`auto_update`) is put back from it (`pinka_golden_image_drifts`, as root with
+a `PUT` of the record's properties over Incus's socket, its size bounded by
+the record; nothing when nothing changed). A record of another schema is
+refused until the version is built again (`pinka_golden_record_problems`).
+The image's profiles are not put back: infra's launches name theirs. A
+missing alias is restored by importing the export; a copy of the image
+already in the store is deleted first, never given the alias. Only a
+blueprint with neither is built. `images_rebuild: true` builds the listed
+blueprints again on every run.
+
+An alias without its export, of another image or of an image with an update
+source is refused, never exported or used (the filter
+`pinka_golden_image_problems`; the restore applies it too): the projects
+`build` and `bench` share the image store, and a client allowed to create
+images there (a platform controller's restricted certificate) can create the
+alias of a version before it is built, put a copy of an exported image into
+the store, and rewrite an image's record, but not change an image's files.
+`pinka doctor`'s checks `images.golden` (the refusal) and `images.properties`
+(a changed record, a warning) apply the same rules.
 
 ## Check mode
 

@@ -20,7 +20,7 @@ from pinka_gen import (
     versions,
 )
 from pinka_preflight.cli import build_parser as preflight_parser
-from pinka_preflight.matrix import EXIT_CODES, OUTCOME_MEANINGS
+from pinka_preflight.matrix import EXIT_CODES, OTHER_EXIT_CODES, OUTCOME_MEANINGS
 
 PREFLIGHT_INTRO = (
     "`pinka-preflight` detects the host and decides whether the lab is supported on it "
@@ -50,7 +50,11 @@ def targets(root: Path) -> dict[str, Callable[[], str]]:
             intro=PREFLIGHT_INTRO,
         ),
         "docs/reference/exit-codes.md": lambda: pages.exit_codes_page(
-            OUTCOME_MEANINGS, EXIT_CODES, bootstrap.exit_codes(root), lab.exit_code_rows()
+            OUTCOME_MEANINGS,
+            EXIT_CODES,
+            OTHER_EXIT_CODES,
+            bootstrap.exit_codes(root),
+            lab.exit_code_rows(),
         ),
         lab.CLI_PAGE: lab.cli_page,
         lab.FINGERPRINT_PAGE: lambda: pages.schema_page(
@@ -159,6 +163,10 @@ def reference_entries(root: Path) -> list[tuple[str, str, str]]:
     entries += [
         (f"pinka-preflight exit code {code} ({outcome})", codes, f"| {code} | `{outcome}` |")
         for outcome, code in EXIT_CODES.items()
+    ]
+    entries += [
+        (f"pinka-preflight exit code {code} ({name})", codes, f"| {code} | `{name}` |")
+        for code, (name, _, _) in OTHER_EXIT_CODES.items()
     ]
     entries += [
         (f"bootstrap exit code {c.code} ({c.name})", codes, f"| {c.code} | `{c.name}` |")

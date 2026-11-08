@@ -75,8 +75,8 @@ says why: the pinned release supports it only with its proprietary module
 supports, or a GPU NVIDIA's list does not name). Bootstrap installs no driver
 for it and asks for no Machine Owner Key, and the lab installs without the
 GPU features. You do not need to set
-`install_nvidia_driver: skip`. The installer's GPU screen shows such a GPU as
-not usable, with the reason.
+`install_nvidia_driver: skip`. The installer's NVIDIA driver page (in the
+capacity plan) shows such a GPU as not usable, with the reason.
 
 A driver that is already loaded is judged by `nvidia-smi` as before, whatever
 the list says. With `manual` the play still stops for you to install a
@@ -104,10 +104,10 @@ You consent on the installer's Preflight screen, with
 `--accept-mok-enrollment`, or with `gpu.accept_mok_enrollment: true` in an
 answers file; the host profile and every environment fingerprint record it.
 Bootstrap wants the one-time MOK password before the play starts: the
-installer asks for it on its GPU screen, bootstrap on a terminal asks itself,
-and a non-interactive run reads it from the first line of its standard input
-(`--mok-password-stdin`). The password reaches `mokutil --import` only
-through its standard input and is never written anywhere.
+installer asks for it on its NVIDIA driver page, bootstrap on a terminal asks
+itself, and a non-interactive run reads it from the first line of its
+standard input (`--mok-password-stdin`). The password reaches `mokutil
+--import` only through its standard input and is never written anywhere.
 
 After installing the driver, the play looks for the module signing key
 (`provider_baremetal_mok_keys`). If that key is neither enrolled nor waiting

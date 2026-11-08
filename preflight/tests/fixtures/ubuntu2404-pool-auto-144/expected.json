@@ -6,6 +6,6 @@
   "outcome": "degraded",
   "pool": {
     "basis": "computed",
-    "size_gib": 66
+    "size_gib": 64
   }
 }

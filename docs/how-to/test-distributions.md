@@ -31,11 +31,14 @@ provisioning play with the reference platform enabled.
     - A developer machine with Incus and VM support (KVM), or a lab host whose
       lab is stopped (`sudo pinka stop`); the harness refuses to run while
       `pinka-lab.target` is active. The tests run one VM at a time, and each
-      VM gets what preflight requires of a lab host: 8 vCPUs, 18 GiB of
-      memory (preflight compares the guest's `MemTotal`, which the kernel's
-      reservations keep below the assigned size, with 16 GiB) and a 300 GiB
-      root disk (150 GiB free for `/var/lib` and 100 GiB for `/srv/pinka`).
-      The machine needs those 8 threads and 18 GiB besides its own, and an
+      VM gets what preflight computes for what it installs
+      (`tests/distros/targets.yml`): 8 vCPUs, 10 GiB of memory (preflight
+      compares the guest's `MemTotal`, which the kernel's reservations keep
+      below the assigned size, with the required 8 GiB) and a 130 GiB root
+      disk (the 87.2 GiB the install needs, the 50 GiB a loop pool's file
+      leaves beside it among them, the system's own 20 GiB and the growth of
+      a run).
+      The machine needs those 8 threads and 10 GiB besides its own, and an
       Incus storage pool that allocates disks thinly (`dir`, `btrfs`, `zfs`
       or LVM thin), so a VM takes only the space it writes.
     - A checkout of the repository with the development tools (`make setup`).
@@ -159,6 +162,7 @@ to GPU hosts.
 | --- | --- | --- |
 | `platform` | While nothing serves on the vLLM port (the VMs have no GPU), installs a stand-in for the inference API there: an enabled root unit (`pinka-test-inference-standin`) that answers `/health` and `/v1/models` like vLLM, so the health gate passes for a platform that requires `inference`, and that outlives the reboot of `resume`; the inference guard decides who reaches it, as it does for vLLM. Then runs bootstrap with the CI answers plus `refplat` and its content package `cases` from the VM's clone at the tested commit (`file:///root/pinka`) and `mode: modify`: the installer inspects the release and generates the passwords of its database roles and its `api-token` secret into the vault, as for any lab (the answers of each stage are kept as `<stage>-answers.yml` in the results) | `refplat` is the active platform, `refplat status` reaches its database, `pinka doctor --smoke` exits 0, and `refplat infer` returns the stand-in's model list through the broker (`inference-broker`): the inference API answers the broker |
 | `isolation` | Reads the probe report of the agent (`untrusted-agent`), then runs the probe as a transient unit for each loopback-capable profile, with that profile's rendered hardening and groups: as the controller's and the broker's own accounts, and as a temporary account from the platform UID range for the profiles `refplat` has no service of | the agent reached nothing; no profile reached Prometheus, Loki or Tempo directly; the query proxy answered exactly the profiles that query; the inference API answered only the controller and the broker, and the GPU arbiter's and the run-network helper's sockets only the controller |
+| `images` | For every set of projects a profile's Incus certificate is restricted to, and each project of it (`bench`, and `bench` and `build` for the controller), trusts a client certificate restricted the same way and tries the image store those projects share with the incus CLI (`guest.py image-store`): root imports a stand-in of a golden image with the alias `pinka-test-store/1.0.0` into the default project; the client imports an image of its own with an alias, creates another alias of the stand-in, sends a new image request that names the stand-in's fingerprint with a property of its own, and tries to create the stand-in's alias again, to point it at its own image (PUT and PATCH), to delete or rename it, to delete its own alias, to change a property of the stand-in through the image's API and to delete either image. Everything it created is removed again, each removal on its own; every incus call has 30 seconds | the client could import its image and create both aliases, which are in the default project's store; the new image request rewrote the stand-in's record (the property is set) and then failed with `Alias already exists`, as Incus 6.0.6 answers a request for an image that has aliases; every other attempt failed with `User does not have permission for project "default"` (creating an alias that exists, with `already exists`), the stand-in kept its aliases and description, every removal and listing succeeded and nothing was left behind. The texts are those of the pinned Incus 6.0.6; `images.json` names each server's version and the error of a run that gave no report. The images role and doctor's `images.golden` rely on this ([How golden images are built](../explanation/golden-images.md#exports)) |
 | `training` | `refplat dataset`, then `refplat train --job tunecpu --wait` and `refplat lineage` | the run succeeded and its lineage names the registered adapter |
 | `resume` | Starts a slow run, waits for its third checkpoint and reboots the VM | the arbiter suspended the run at the shutdown, resumed it at boot, and the run succeeded |
 | `redeploy` | Runs bootstrap again with the same release | it changes nothing |
@@ -166,10 +170,10 @@ to GPU hosts.
 | `restore` | `refplat dataset`, `pinka backup now`, removes a controller record, and runs bootstrap with the answers in `mode: restore` with `restore.snapshot: latest` (and `refplatb`) | the record is back, the platform answers, and `pinka doctor --smoke` exits 0 |
 
 Besides the logs, a test's directory holds the probe reports of every
-profile (`isolation.json`), the arbiter's transition log after the reboot
-(`transitions.jsonl`) and the active platform after each deployment
-(`*-active.json`). The per-profile expectations come from the profile flags
-in `contract/profiles.yml`
+profile (`isolation.json`), the image store reports (`images.json`), the
+arbiter's transition log after the reboot (`transitions.jsonl`) and the
+active platform after each deployment (`*-active.json`). The per-profile
+expectations come from the profile flags in `contract/profiles.yml`
 ([Platform privilege profiles](../reference/platform-profiles.md)).
 
 ## Record the results

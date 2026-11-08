@@ -1,0 +1,11 @@
+{
+  "disabled": [
+    "gpu_inference",
+    "gpu_training"
+  ],
+  "outcome": "degraded",
+  "vram": {
+    "serving": "off",
+    "training": "off"
+  }
+}

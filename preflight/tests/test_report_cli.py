@@ -151,6 +151,25 @@ class CliTest(unittest.TestCase):
         self.assertFalse(doc["overrides"]["adopt_incus"])
         self.assertEqual(doc["repo_commit"], "0" * 40)
 
+    def test_a_plan_the_requirements_cannot_use_is_a_plan_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plan = os.path.join(tmp, "plan.json")
+            with open(plan, "w", encoding="utf-8") as handle:
+                json.dump({"vllm_profile": "ada-12gb"}, handle)
+            err = io.StringIO()
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(contextlib.redirect_stderr(err))
+                stop = stack.enter_context(self.assertRaises(SystemExit))
+                cli.main(["--root", FIXTURE, "--offline", "--plan", plan])
+        self.assertEqual(stop.exception.code, 2)
+        self.assertIn(
+            f"pinka-preflight: error: plan ({plan}): vllm_profile 'ada-12gb' is not a serving "
+            "profile (vllm/profiles/: ada-12g)",
+            err.getvalue(),
+        )
+        self.assertNotIn("Traceback", err.getvalue())
+
     def test_detection_failure_is_preflight_error(self) -> None:
         code, out, err = run_cli("--root", FIXTURE, "--offline", "--matrix", "/nonexistent.json")
         self.assertEqual(code, 40)

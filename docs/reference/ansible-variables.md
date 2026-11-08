@@ -53,7 +53,7 @@ What this host runs: full (everything), lab (everything except vLLM) or inferenc
 
 ### `inference`
 
-The inference switch: auto (vLLM, its images and the selected model where preflight detects gpu_inference on a full or inference node) or off (none of them is installed or counted in the requirements). An inference node needs auto.
+The inference switch: auto (vLLM, its images and the selected model where preflight detects gpu_inference on a full or inference node and the serving profile's minimum and the model's estimate fit the GPU; a full node that cannot serve serves nothing and is degraded), on (the same, but preflight refuses a host that cannot serve) or off (none of them is installed or counted in the requirements). An inference node needs auto or on and is refused when it cannot serve; a lab node serves nothing itself and refuses on.
 
 - Default: `auto`
 

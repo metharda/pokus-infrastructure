@@ -1,12 +1,13 @@
 """The platform release of the answers, inspected with the platform tool.
 
-Screen 12 knows only the release's source at first: :func:`inspect` with
-``full=False`` fetches and validates the release alone and reports what it
-needs (the content packages to name sources for, the secrets the manifest
-names, each service's config schema and the vault keys). With every answer
-given, ``full=True`` runs the deployment's own checks (``deploy prepare
---inspect``: the content packages, the settings against their schemas, the
-one-platform rule) and gives the summary of the Platform review screen.
+The Platform screen (step 10) knows only the release's source at first:
+:func:`inspect` with ``full=False`` fetches and validates the release alone
+and reports what it needs (the content packages to name sources for, the
+secrets the manifest names, each service's config schema and the vault keys).
+With every answer given, ``full=True`` runs the deployment's own checks
+(``deploy prepare --inspect``: the content packages, the settings against
+their schemas, the one-platform rule) and gives the summary of the Platform
+review screen.
 
 Both run the platform tool's code (``tools/platform``, the same rules
 as bootstrap's platform role) with the settings the role would write: the

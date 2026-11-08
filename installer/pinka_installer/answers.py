@@ -52,7 +52,7 @@ class AnswersError(ValueError):
 
 @dataclass
 class Machine:
-    """Screen 4: the machine."""
+    """Step 4: the machine (the node role on step 5)."""
 
     name: str = ""
     lab_mode: str = "production"
@@ -67,7 +67,10 @@ class Machine:
 
 @dataclass
 class Resources:
-    """Screen 5: expected resources and the CPU split (empty: derived from the host)."""
+    """Step 5, the capacity plan: expected resources, the CPU split, concurrent targets.
+
+    Empty values are derived from the host.
+    """
 
     expected_memory_gib: int | None = None
     expected_cpu_threads: int | None = None
@@ -79,7 +82,7 @@ class Resources:
 
 @dataclass
 class Storage:
-    """Screen 6: the Incus storage pool."""
+    """Step 5, the capacity plan and its Storage device page: the Incus storage pool."""
 
     source: str = "loop"
     # auto: computed by preflight from the targets, the golden images and the
@@ -92,7 +95,7 @@ class Storage:
 
 @dataclass
 class Researcher:
-    """Screen 7: one researcher (SSH keys live in ``users/<name>.pub``)."""
+    """Step 6: one researcher (SSH keys live in ``users/<name>.pub``)."""
 
     name: str
     admin: bool = False
@@ -106,7 +109,7 @@ REMOTE_OPTIONAL = ("tailscale_tag", "close_listeners", "close_install_path")
 
 @dataclass
 class RemoteAccess:
-    """Screen 8: Tailscale and SSH."""
+    """Step 7: Tailscale and SSH."""
 
     tailscale_login: str = "interactive"
     tailscale_tag: str = ""
@@ -122,7 +125,7 @@ class RemoteAccess:
 
 @dataclass
 class Gpu:
-    """Screen 9: GPU and inference."""
+    """Step 5, the capacity plan and its NVIDIA driver and Serving pages: GPU and inference."""
 
     install_driver: str = "skip"
     accept_mok_enrollment: bool = False
@@ -135,10 +138,13 @@ class Gpu:
 class Features:
     """The feature switches: what the lab installs and counts.
 
-    ``inference``: ``auto`` (vLLM, its images and the model where the host
-    has a usable GPU) or ``off``. ``training``: ``auto`` (jobs where the host
-    has a usable GPU), ``cpu`` (also the CPU-only variant without one) or
-    ``off``.
+    ``inference``: ``auto`` (vLLM, its images and the model where the
+    host's GPU can serve them), ``on`` (the same, and preflight refuses a host
+    that cannot serve; never on a lab node) or ``off``; an inference node
+    needs ``auto`` or ``on`` and is refused when it cannot serve (judged once
+    a driver bootstrap installs is loaded). ``training``: ``auto``
+    (jobs where the host has a usable GPU), ``cpu`` (also the CPU-only variant
+    without one) or ``off``.
     """
 
     inference: str = "auto"
@@ -147,7 +153,7 @@ class Features:
 
 @dataclass
 class Repository:
-    """Screen 10: the restic repository (``type`` decides which fields count)."""
+    """Step 8: the restic repository (``type`` decides which fields count)."""
 
     type: str = "later"
     host: str = ""
@@ -181,7 +187,7 @@ class Retention:
 
 @dataclass
 class Backups:
-    """Screen 10: data and backups."""
+    """Step 8: data and backups."""
 
     repository: Repository = field(default_factory=Repository)
     password: str = GENERATE
@@ -204,7 +210,7 @@ class TelemetryRetention:
 
 @dataclass
 class Source:
-    """Screen 12: a Git source of the platform release or of a content package."""
+    """Step 10: a Git source of the platform release or of a content package."""
 
     repo: str = ""
     ref: str = ""
@@ -214,7 +220,7 @@ class Source:
 
 @dataclass
 class SourceTrust:
-    """Screen 12: how the platform's Git sources are trusted."""
+    """Step 10: how the platform's Git sources are trusted."""
 
     known_hosts: list[str] = field(default_factory=list)
     require_signed_tags: bool = False
@@ -223,7 +229,7 @@ class SourceTrust:
 
 @dataclass
 class GpuArbiter:
-    """Screen 9: the GPU arbiter."""
+    """Step 5, Serving: the GPU arbiter."""
 
     after_boot: str = "serve"
     restore_after_training: bool = True
@@ -231,7 +237,7 @@ class GpuArbiter:
 
 @dataclass
 class TrainingCaps:
-    """Screen 9: this host's caps on training jobs."""
+    """Step 5, Serving: this host's caps on training jobs."""
 
     timeout_seconds: int = 86400
     memory_max: str = "auto"
@@ -243,7 +249,7 @@ class TrainingCaps:
 
 @dataclass
 class Secrets:
-    """Screen 15: which secrets are generated and which are provided (never values).
+    """Step 13: which secrets are generated and which are provided (never values).
 
     ``platform`` holds the choice for each secret the platform's manifest
     names, by ``<service>.<name>``.
@@ -549,7 +555,7 @@ def problems(answers: Answers, context: Context) -> list[str]:
     _retention_problems(found, answers)
     for name in answers.images_build:
         if context.blueprints and name not in context.blueprints:
-            found.append(f"images/build: no blueprint {name!r} in images/")
+            found.append(f"images/build: {validators.unknown_blueprint(name, context.blueprints)}")
     return found
 
 
@@ -602,12 +608,10 @@ def _researcher_problems(found: list[str], answers: Answers, context: Context) -
 def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
     gpu = answers.gpu
     if gpu.default_model != "none" and gpu.default_model not in context.model_ids:
-        found.append(
-            f"gpu/default_model: {gpu.default_model!r} is not in models.lock.yml "
-            "(add it there first, docs/how-to/add-a-model.md)"
-        )
+        found.append(f"gpu/default_model: {validators.unpinned_model(gpu.default_model)}")
     if gpu.vllm_profile and context.vllm_profiles and gpu.vllm_profile not in context.vllm_profiles:
-        found.append(f"gpu/vllm_profile: no profile {gpu.vllm_profile!r} in vllm/profiles/")
+        unknown = validators.unknown_profile(gpu.vllm_profile, context.vllm_profiles)
+        found.append(f"gpu/vllm_profile: {unknown}")
     if gpu.accept_mok_enrollment and gpu.install_driver != "auto":
         found.append(
             "gpu/accept_mok_enrollment: bootstrap installs the driver only with "
@@ -616,9 +620,9 @@ def _gpu_problems(found: list[str], answers: Answers, context: Context) -> None:
     if answers.machine.node_role == "lab" and gpu.default_model != "none":
         found.append("gpu/default_model: a lab node serves no model (the inference node does)")
     if answers.machine.node_role == "inference" and answers.features.inference == "off":
-        found.append(
-            "features/inference: an inference node runs only the inference stack; it needs auto"
-        )
+        found.append(f"features/inference: {validators.INFERENCE_NODE_OFF}")
+    if answers.machine.node_role == "lab" and answers.features.inference == "on":
+        found.append(f"features/inference: {validators.LAB_ON}")
 
 
 def _backup_problems(found: list[str], answers: Answers) -> None:

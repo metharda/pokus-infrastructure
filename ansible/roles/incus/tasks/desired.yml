@@ -48,10 +48,32 @@
          if (incus_pool_size | string) == 'auto' else incus_pool_size }}
   when: incus_pool_source == 'loop'
 
+# An Incus that is not pinka's (--adopt-incus, at the first install or
+# later) stays the owner's in what pinka does not need, its image auto-update
+# among it. Pinka's own Incus is told apart as uninstall tells it: the
+# install record names it as pinka's (an earlier run installed it), or this
+# run installs it (preflight found no Incus); a legacy record decides
+# nothing, so pinka leaves such an Incus as it is too.
+- name: Tell pinka's own Incus from an adopted one
+  ansible.builtin.set_fact:
+    incus_own: >-
+      {{ (not (pinka_record_legacy | default(false) | bool))
+         and ((((pinka_record_added | default({})).components | default({})).incus | default(false) | bool)
+              or not ((((host_profile.components | default({})).incus | default({})).installed
+                       | default(false)) | bool)) }}
+
+# On pinka's own Incus no image of the default project, whose store holds
+# the golden images, updates itself: pinned images never need it, and the
+# periodic update would move the aliases of an image that has auto_update and
+# an update source (a copy a client of the shared image store downloaded) to
+# whatever that source serves. The default project's own setting (objects.yml)
+# overrides the server's; researchers' own projects keep refreshing theirs.
 - name: Describe the server, the pool and the networks
   ansible.builtin.set_fact:
     incus_server_config:
       core.https_address: "{{ incus_https_address }}"
+    incus_default_project_config:
+      images.auto_update_interval: "0"
     incus_pool:
       name: "{{ incus_pool_name }}"
       description: pinka instances

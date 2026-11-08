@@ -1,0 +1,34 @@
+# Managed by pinka (ansible/roles/incus/tasks/record_settings.yml). Local changes will be overwritten.
+#
+# On pinka's own Incus, the install record notes the server settings and the
+# default project's settings pinka is about to change, with their value
+# before (first value wins), as for any setting pinka changes: uninstall sets
+# them back, also when it keeps Incus and its data. The daemon creates the
+# default project when it first starts, before it is initialized.
+- name: Read the Incus server's settings
+  ansible.builtin.command:
+    argv: ["{{ incus_cli }}", query, /1.0]
+  register: incus_server_now
+  changed_when: false
+  failed_when: incus_server_now.rc != 0 and not ansible_check_mode
+  check_mode: false
+
+- name: Read the default project's settings
+  ansible.builtin.command:
+    argv: ["{{ incus_cli }}", query, /1.0/projects/default]
+  register: incus_default_project_now
+  changed_when: false
+  failed_when: incus_default_project_now.rc != 0 and not ansible_check_mode
+  check_mode: false
+
+- name: Record the settings pinka changes, with their value before
+  pinka_install_record:
+    state: add
+    added:
+      changed: >-
+        {{ (incus_server_now.stdout | pinka_incus_config_before(incus_server_config))
+           | combine(incus_default_project_now.stdout
+                     | pinka_incus_config_before(incus_default_project_config, 'default')) }}
+  when:
+    - incus_server_now.rc == 0
+    - incus_default_project_now.rc == 0

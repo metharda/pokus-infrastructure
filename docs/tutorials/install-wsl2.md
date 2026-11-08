@@ -25,9 +25,11 @@ this tutorial is one you run yourself.
       what `.wslconfig` gives by what the kernel reserves. Room
       for the WSL virtual disk: preflight wants 150 GiB free for `/var/lib`
       and 100 GiB for `/srv/pinka` (400 GiB and 500 GiB recommended).
-    - For local inference: an NVIDIA GPU with at least 8 GiB of memory and the
-      current NVIDIA driver for Windows. Inside WSL nothing else is installed
-      for the GPU.
+    - For the GPU: an NVIDIA GPU with at least 8000 MiB of memory as
+      `nvidia-smi` reports it (an 8 GB card) for training, and 11500 MiB (a
+      12 GB card) for local inference with the default serving profile, and
+      the current NVIDIA driver for Windows. Inside WSL nothing else is
+      installed for the GPU.
     - A Tailscale account for the lab, and the SSH public keys of the
       researchers.
     - The address of the pokus-infrastructure repository (or of your lab's private fork).
@@ -106,11 +108,12 @@ You now have an Ubuntu 24.04 distribution with the resources of the lab.
 2. Go through the screens as described in
    [How to install a lab with the installer TUI](../how-to/install-with-the-tui.md).
    For this setup choose:
-    - **Machine**: a name such as `pinka`, node role `full`.
-    - **Resources**: the memory and processors you set in `.wslconfig`.
-    - **Storage**: a loop file (WSL has no dedicated disk).
-    - **GPU & inference**: no driver (WSL uses the Windows driver), the serving
-      profile of your GPU class and a pinned default model.
+    - **Machine**: a name such as `pinka`.
+    - **Capacity plan**: node role `full`, a loop file for the Incus pool
+      (WSL has no dedicated disk), the serving profile of your GPU class and
+      a pinned default model, and the memory and processors you set in
+      `.wslconfig`. The NVIDIA driver page is greyed out: WSL uses the
+      Windows driver.
 
 3. On the Review screen press **Install**. The installation writes the rest
    of `/etc/wsl.conf` (no Windows drives, no Windows programs, the machine

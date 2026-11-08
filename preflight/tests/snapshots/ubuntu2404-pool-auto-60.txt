@@ -1,4 +1,4 @@
-pinka preflight: DEGRADED (exit 10)
+pinka preflight: UNSUPPORTED (exit 20)
   tier supported (os supported, arch supported) · release model fixed · provider baremetal
 
 Environment
@@ -34,11 +34,15 @@ Requirements
     OPA: 0.1 / 0.2 GiB (estimated)
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
+  VRAM: no usable NVIDIA GPU
+    serving (inference: auto): off: gpu_inference is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= 13.0)
+    training (training: auto): off: gpu_training is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.0); training: cpu would run the CPU-only variant
   CPU estimate 5.1 threads
-  Incus pool: loop file of 30 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; 30.1 GiB free on / after pinka's other needs there (14.6 GiB at install, 15.3 GiB the stores hold at their retention), so 30 GiB (the floor of 30 GiB))
-  disk / (ext4): 60.0 GiB free, 44.6 GiB needed at install
+  Incus pool: loop file of 30 GiB (computed: golden images 3.7 GiB + 2 x (16.0 GiB target + 4.0 GiB probe client) root disks (the 16.0 GiB build instance is not larger) + 50% = 66 GiB; pinka's other needs on / (14.6 GiB at install, 50.0 GiB kept beside the file, 15.3 GiB the stores hold at their retention) exceed its free space by 19.9 GiB, so 30 GiB (the floor of 30 GiB))
+  disk / (ext4): 60.0 GiB free, 94.6 GiB needed at install, 34.6 GiB missing
     pinka itself: 5.0 GiB (estimated)
     container images (11): 2.2 GiB (estimated)
+    the free space kept beside the Incus pool (loop file): 50.0 GiB (estimated)
     golden images (export) (6): 3.7 GiB (estimated)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
     the Incus pool (loop file): 30.0 GiB (estimated)
@@ -50,6 +54,9 @@ Requirements
     the PostgreSQL database: 0.02 GiB a day, no retention
     training runs (output and checkpoints): up to 16 GiB per run
 Network: skipped (--offline)
+
+Unsupported
+  - disk: / has 60.00 GiB free and these choices need 94.60 GiB there: the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 34.6 GiB on /
 
 Disabled features
   - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.

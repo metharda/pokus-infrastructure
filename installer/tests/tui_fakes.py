@@ -24,6 +24,7 @@ from ruamel.yaml import YAML
 from pinka_installer import release
 from pinka_installer.answers import Answers
 from pinka_installer.paths import INFRA, Paths
+from pinka_installer.tui import capacity
 from pinka_installer.tui.app import InstallerApp, build_context
 from pinka_installer.tui.base import Context
 from pinka_installer.tui.events import read_new
@@ -207,10 +208,14 @@ class FakeHost:
     # is refused by the one-platform rule, as the platform tool does
     active_platform: str = ""
     replaces: list[str | None] = field(default_factory=list)
+    plans: list[dict[str, Any]] = field(default_factory=list)  # every --plan, as sent
 
     def preflight(self, args: Sequence[str]) -> Preflight:
         self.preflight_calls += 1
         self.preflight_args.append(list(args))
+        if "--plan" in args:
+            plan_file = Path(args[list(args).index("--plan") + 1])
+            self.plans.append(json.loads(plan_file.read_text(encoding="utf-8")))
         if self.fixture:
             return preflight(self.fixture, args)
         return copy.deepcopy(self.result)
@@ -337,6 +342,17 @@ def context(
     )
     ctx.clock = lambda: 0.0
     return ctx
+
+
+def accepted_on_preflight(ctx: Context, host: FakeHost) -> None:
+    """The consent to the host's degraded features, as the Preflight screen records it.
+
+    Args:
+        ctx: The test context.
+        host: The fake host whose preflight answer the operator accepted.
+    """
+    ctx.wizard.consents.add("accept_degraded")
+    ctx.wizard.degraded_accepted |= set(capacity.degraded(host.result.profile))
 
 
 def app(ctx: Context, first: str = "welcome", theme: str = "") -> InstallerApp:

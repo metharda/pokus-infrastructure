@@ -35,12 +35,16 @@ Requirements
     bootstrap and the installer: 0.5 / 0.8 GiB (estimated)
     concurrent targets: 3 / 5 GiB (estimated; 2 x (a 1.0 GiB container or a 2.0 GiB VM + a 0.5 GiB probe client); at least the 2.0 GiB build instance)
     vLLM serving example-model or a training job: 8.7 / 24 GiB (estimated; the model's files (5.7 GiB) + 3.0 GiB to 5.0 GiB; or a training job at training_caps.memory_max 24G (auto, computed from this host): the GPU arbiter runs one at a time)
+  VRAM: the GPU has 12282 MiB, 12.0 GiB (measured)
+    serving (inference: auto): fits: the serving profile ada-12g 11500 MiB (configured)
+    training (training: auto): fits: the support matrix's minimum for gpu_training 8000 MiB (configured)
   CPU estimate 7.1 threads
   Incus pool: loop file of 300 GiB (configured: incus_pool_size 300.0 GiB)
-  disk / (ext4): 100.0 GiB free, 332.3 GiB needed at install, 232.3 GiB missing
+  disk / (ext4): 100.0 GiB free, 382.3 GiB needed at install, 282.3 GiB missing
     pinka itself: 5.0 GiB (estimated)
     container images (14): 23.6 GiB (estimated)
     the Incus pool (loop file): 300.0 GiB (configured)
+    the free space kept beside the Incus pool (loop file): 50.0 GiB (estimated)
     golden images (Incus image store) (6): 3.7 GiB (estimated)
   disk /srv (ext4): 3.0 GiB free, 9.4 GiB needed at install, 6.4 GiB missing
     model example-model: 5.7 GiB (measured)
@@ -52,8 +56,9 @@ Requirements
     local PostgreSQL dumps (backup staging): 0.05 GiB a day, up to 0.35 GiB
     the PostgreSQL database: 0.02 GiB a day, no retention
     training runs (output and checkpoints): up to 16 GiB per run
+  - the default model example-model has no VRAM estimate in models.catalog.yml: only the serving profile ada-12g's minimum is checked against the GPU's memory
 Network: skipped (--offline)
 
 Unsupported
-  - disk: / has 100.00 GiB free and these choices need 332.29 GiB there: the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /
+  - disk: / has 100.00 GiB free and these choices need 382.29 GiB there: the Incus pool (loop file): 300.0 GiB, missing 282.3 GiB on /
   - disk: /srv has 3.00 GiB free and these choices need 9.40 GiB there: model example-model: 5.7 GiB, missing 5.7 GiB on /srv; golden image docker-host 1.0.0 (export): 0.8 GiB, missing 0.7 GiB on /srv

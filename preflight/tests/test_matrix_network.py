@@ -108,7 +108,7 @@ class MatchTest(unittest.TestCase):
         self.assertRegex(required, r"^[0-9]+\.[0-9]+\.[0-9]+$")
         facts = {
             "nvidia_gpu_usable": True,
-            "gpu_vram_gib": 12.0,
+            "gpu_vram_mib": 12282.0,
             "gpu_compute_capability": "8.9",
             "gpu_driver_cuda": "12.8",
             "environment": "baremetal",
@@ -125,6 +125,69 @@ class MatchTest(unittest.TestCase):
         # No usable GPU: the driver is not the reason, so no driver remediation.
         self.assertEqual(matrix._remediation(spec, {**facts, "nvidia_gpu_usable": False}), "")
 
+    def test_what_makes_the_gpu_usable(self) -> None:
+        # A GPU bootstrap would install the driver for (judged after the driver).
+        base: dict[str, Any] = {
+            "nvidia_gpu_present": True,
+            "environment": "baremetal",
+            "nvidia_driver_installed": False,
+            "nvidia_driver_mode": "auto",
+            "nvidia_gpu_open_module_supported": True,
+            "nvidia_gpu_proprietary_only": False,
+            "nvidia_driver_bootstrap_installs": True,
+            "secure_boot": "disabled",
+            "mok_enrollment_accepted": False,
+        }
+        cases: list[tuple[dict[str, Any], str]] = [
+            ({"nvidia_gpu_present": False}, "Use an NVIDIA GPU that meets them."),
+            (
+                {"nvidia_gpu_present": False, "environment": "wsl2"},
+                "WSL reaches no NVIDIA GPU: it sees one only through the NVIDIA driver on Windows",
+            ),
+            (
+                {"environment": "wsl2"},
+                "In WSL the GPU is reached through the NVIDIA driver on Windows",
+            ),
+            (
+                {"nvidia_driver_installed": True},
+                "An NVIDIA driver is installed but nvidia-smi does not",
+            ),
+            (
+                {"nvidia_driver_mode": "manual"},
+                "install_nvidia_driver is manual: install the NVIDIA",
+            ),
+            (
+                {"nvidia_gpu_open_module_supported": False, "nvidia_gpu_proprietary_only": True},
+                "No driver is installed for this GPU: the pinned NVIDIA driver supports it only",
+            ),
+            (
+                {"nvidia_gpu_open_module_supported": False, "nvidia_gpu_proprietary_only": False},
+                "No driver is installed for this GPU: the pinned NVIDIA driver does not list it",
+            ),
+            (
+                {"nvidia_driver_bootstrap_installs": False},
+                "pinka has no verified installation method for the NVIDIA driver on this",
+            ),
+            ({"nvidia_driver_mode": "skip"}, "install_nvidia_driver is skip: set it to auto"),
+            (
+                {"secure_boot": "enabled"},
+                "Secure Boot is on: consent to the MOK enrollment (--accept-mok-enrollment",
+            ),
+            # Consent given, everything in place: the catch-all.
+            ({"secure_boot": "enabled", "mok_enrollment_accepted": True}, "Make the GPU usable"),
+            ({}, "Make the GPU usable (an NVIDIA driver nvidia-smi reaches)"),
+            # Earlier rules win: skip where bootstrap would not install it anyway.
+            (
+                {"nvidia_driver_mode": "skip", "nvidia_driver_bootstrap_installs": False},
+                "pinka has no verified installation method",
+            ),
+        ]
+        for change, start in cases:
+            with self.subTest(change=change):
+                self.assertTrue(
+                    matrix.without_usable_gpu(self.m, {**base, **change}).startswith(start)
+                )
+
     def test_compute_capability_minimum(self) -> None:
         # V7: 7.5, the oldest the
         # pinned vLLM image has kernels for.
@@ -137,7 +200,7 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(required, "7.5")
         facts = {
             "nvidia_gpu_usable": True,
-            "gpu_vram_gib": 12.0,
+            "gpu_vram_mib": 12282.0,
             "gpu_compute_capability": "7.0",
             "gpu_driver_cuda": "13.0",
             "environment": "baremetal",
@@ -168,15 +231,38 @@ class MatchTest(unittest.TestCase):
         self.assertEqual(matrix.match_arch(self.m, "aarch64")["tier"], "experimental")
         self.assertEqual(matrix.match_arch(self.m, "riscv64")["tier"], "unsupported")
 
+    def test_the_vram_minimum_is_compared_in_mib_unrounded(self) -> None:
+        # The compiled matrix's minimum, for both GPU features.
+        for name in ("gpu_inference", "gpu_training"):
+            (minimum,) = [
+                r["gpu_vram_mib_min"]
+                for r in self.m["features"][name]["requires"]
+                if isinstance(r, dict) and "gpu_vram_mib_min" in r
+            ]
+            self.assertEqual(minimum, 8000, name)
+        rule = {"gpu_vram_mib_min": 8000}
+        # An 8 GB card (8188 MiB reported) passes by the rule itself, the
+        # minimum exactly passes, one MiB less does not (it read 7.8 GiB rounded,
+        # as 8000 MiB does), and a 6 GB card does not.
+        for reported, met in ((8188.0, True), (8000.0, True), (7999.0, False), (6144.0, False)):
+            with self.subTest(reported=reported):
+                self.assertEqual(
+                    matrix.requirement_met(rule, {"gpu_vram_mib": reported}),
+                    (met, "VRAM >= 8000 MiB"),
+                )
+        self.assertEqual(
+            matrix.vram_minimums(self.m), {"gpu_inference": 7.8125, "gpu_training": 7.8125}
+        )
+
     def test_requirements_and_conditions(self) -> None:
         facts = {
-            "gpu_vram_gib": 12.0,
+            "gpu_vram_mib": 12282.0,
             "gpu_compute_capability": "8.9",
             "environment": "wsl2",
             "kvm_usable": False,
         }
-        self.assertTrue(matrix.requirement_met({"gpu_vram_gib_min": 8}, facts)[0])
-        self.assertFalse(matrix.requirement_met({"gpu_vram_gib_min": 16}, facts)[0])
+        self.assertTrue(matrix.requirement_met({"gpu_vram_mib_min": 8000}, facts)[0])
+        self.assertFalse(matrix.requirement_met({"gpu_vram_mib_min": 16000}, facts)[0])
         self.assertTrue(matrix.requirement_met({"gpu_compute_capability_min": "7.5"}, facts)[0])
         volta = {**facts, "gpu_compute_capability": "7.0"}
         self.assertFalse(matrix.requirement_met({"gpu_compute_capability_min": "7.5"}, volta)[0])
@@ -189,7 +275,7 @@ class MatchTest(unittest.TestCase):
         self.assertFalse(matrix.requirement_met(cuda, {})[0])
         self.assertEqual(matrix.requirement_met(cuda, {})[1], "driver CUDA >= 13.0")
         self.assertFalse(matrix.requirement_met("kvm_usable", facts)[0])
-        self.assertFalse(matrix.requirement_met({"gpu_vram_gib_min": 8}, {})[0])
+        self.assertFalse(matrix.requirement_met({"gpu_vram_mib_min": 8000}, {})[0])
         with self.assertRaises(ValueError):
             matrix.requirement_met({"nope": 1}, facts)
         self.assertTrue(

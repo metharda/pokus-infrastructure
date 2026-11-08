@@ -17,7 +17,7 @@ SNAPSHOTS = "installer/tests/__snapshots__/test_tui_snapshots"
 SCREENSHOTS = (
     "welcome",
     "preflight",
-    "storage",
+    "capacity",
     "researchers",
     "platform_review",
     "replace",

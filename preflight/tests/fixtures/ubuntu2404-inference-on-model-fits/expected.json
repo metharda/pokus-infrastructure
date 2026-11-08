@@ -1,0 +1,7 @@
+{
+  "outcome": "supported",
+  "vram": {
+    "serving": "fits",
+    "training": "fits"
+  }
+}

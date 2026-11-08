@@ -200,6 +200,35 @@ def test_server_config_patch_and_check_mode() -> None:
     assert mod.converge(api, p, check_mode=False)["changed"] is False
 
 
+def test_a_changed_auto_update_interval_is_set_back() -> None:
+    # Someone sets the default project's interval after the install: the next
+    # run sets it back to 0 and keeps the project's other settings; the run
+    # after that changes nothing.
+    api = FakeIncus()
+    features = {"features.images": "true", "features.profiles": "true"}
+    api.objects[("/1.0/projects", "default")] = {
+        "default": {
+            "name": "default",
+            "description": "Default Incus project",
+            "config": {**features, "images.auto_update_interval": "12"},
+        }
+    }
+    p = params(kind="project", name="default", config={"images.auto_update_interval": "0"})
+    result = mod.converge(api, p, check_mode=False)
+    assert result["changed"] is True
+    assert result["diff"] == {
+        "before": {"config": {**features, "images.auto_update_interval": "12"}},
+        "after": {"config": {"images.auto_update_interval": "0"}},
+    }
+    stored = api.objects[("/1.0/projects", "default")]["default"]
+    assert stored["config"] == {**features, "images.auto_update_interval": "0"}
+    assert stored["description"] == "Default Incus project"
+    api.calls.clear()
+    again = mod.converge(api, p, check_mode=False)
+    assert again["changed"] is False
+    assert api.calls == [("GET", "/1.0/projects?recursion=1")]
+
+
 def test_check_mode_does_not_create() -> None:
     api = FakeIncus()
     result = mod.converge(api, params(kind="project", name="build"), check_mode=True)

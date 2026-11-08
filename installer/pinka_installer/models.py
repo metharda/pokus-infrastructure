@@ -84,7 +84,7 @@ def _json(get: Getter, path: str, token: str) -> Any:  # noqa: ANN401 - JSON
 
 
 def whoami(token: str, get: Getter = hub_get) -> str:
-    """Check a token (the Secrets of the GPU screen).
+    """Check a token (the token of the capacity plan).
 
     Args:
         token: Hugging Face token.

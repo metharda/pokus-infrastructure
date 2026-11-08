@@ -1,0 +1,10 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "(unmet: VRAM >= 8000 MiB); inference: on must serve on this node. nvidia-smi did not report the GPU's memory; serving needs at least 11.3 GiB. Or set inference: auto"
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": "off"
+  }
+}

@@ -7,6 +7,7 @@ thresholds these tests compute.
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import os
@@ -17,12 +18,13 @@ from typing import Any
 
 from helpers import TempRootCase, runner
 
-from pinka_preflight import matrix
+from pinka_preflight import matrix, render, vram
 from pinka_preflight import requirements as reqs
 from pinka_preflight.requirements import MemoryItem
 
 GIB = 1024**3
 MINIMUMS = matrix.load_matrix()["minimums"]
+VRAM_MINIMUMS = matrix.vram_minimums(matrix.load_matrix())
 DATA = reqs.load_requirements()
 DEFAULTS = DATA["defaults"]
 GPU = {"gpu_inference": True, "gpu_training": True, "vm_targets": True}
@@ -65,6 +67,12 @@ class ComputeCase(TempRootCase):
         self,
         features: dict[str, bool],
         memory_gib: float | None = 64.0,
+        *,
+        vram: float | None = 12.0,
+        capability: str | None = "8.9",
+        data: dict[str, Any] | None = None,
+        unmet: dict[str, str] | None = None,
+        driver_pending: bool = False,
         **plan: Any,
     ) -> reqs.Requirements:
         commands = {
@@ -74,7 +82,7 @@ class ComputeCase(TempRootCase):
         commands.update(self.extra)
         merged = {**json.loads(json.dumps(DEFAULTS)), **plan}
         return reqs.compute(
-            DATA,
+            DATA if data is None else data,
             merged,
             "test",
             minimums=MINIMUMS,
@@ -83,6 +91,11 @@ class ComputeCase(TempRootCase):
             fs=self.fs(),
             runner=runner(commands, which=self.extra.get("which", {})),
             machine="x86_64",
+            gpu_vram_gib=vram,
+            gpu_compute_capability=capability,
+            vram_minimums=VRAM_MINIMUMS,
+            gpu_unmet=unmet,
+            driver_pending=driver_pending,
         )
 
 
@@ -119,7 +132,7 @@ class MemoryTest(ComputeCase):
         self.assertEqual(req.required_gib, 15.8)
 
     def test_a_model_without_gpu_inference_counts_nothing(self) -> None:
-        self.assertNotIn("vllm", self.items(self.compute(NO_GPU, model=MODEL)))
+        self.assertNotIn("vllm", self.items(self.compute(NO_GPU, vram=None, model=MODEL)))
 
     def test_node_roles(self) -> None:
         lab = self.items(self.compute(GPU, node_role="lab", model=MODEL))
@@ -211,13 +224,15 @@ class PoolTest(ComputeCase):
         )
 
     def test_the_free_space_limits_it(self) -> None:
-        # / holds pinka (5 GiB), the images and the Incus image store; /srv is apart.
-        self.free["/"] = 60.0
+        # / holds pinka (5 GiB), the images, the Incus image store and the 50 GiB
+        # the loop file leaves beside it; /srv is apart.
+        self.free["/"] = 110.0
         req = self.compute(GPU, inference="off", training=caps("off"))
-        others = sum(
-            i.size_gib for m in req.disks for i in m.items if m.mount == "/" and i.id != "pool"
-        )
-        self.assertEqual(req.pool["size_gib"], math.floor(60.0 - others))
+        others = {i.id: i.size_gib for m in req.disks for i in m.items if m.mount == "/"}
+        del others["pool"]
+        self.assertEqual(others[reqs.RESERVE_ID], 50.0)
+        self.assertEqual(req.pool["size_gib"], math.floor(110.0 - sum(others.values())))
+        self.assertLess(req.pool["size_gib"], 66)
         self.assertIn("free on / after pinka's other needs there", req.pool["detail"])
         self.assertEqual(req.unsupported, [])
 
@@ -241,7 +256,9 @@ class PoolTest(ComputeCase):
         self.assertEqual((req.pool["size_gib"], req.pool["basis"]), (300, "configured"))
         device = self.compute(GPU, pool={"source": "device", "size_gib": None})
         self.assertEqual(device.pool["source"], "device")
-        self.assertNotIn("pool", {i.id for m in device.disks for i in m.items})
+        ids = {i.id for m in device.disks for i in m.items}
+        self.assertNotIn("pool", ids)
+        self.assertNotIn(reqs.RESERVE_ID, ids)  # a dedicated device leaves no reserve
         image = "/var/lib/incus/disks/pinka-targets.img"
         self.put(image)
         self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
@@ -281,9 +298,9 @@ class SwitchTest(ComputeCase):
 
     def test_training_counts_only_where_it_runs(self) -> None:
         # No usable GPU: auto leaves training off, cpu chooses the CPU-only variant.
-        self.assertNotIn("training", self.items(self.compute(NO_GPU)))
-        self.assertEqual(self.compute(NO_GPU).switches.runs, "off")
-        cpu = self.compute(NO_GPU, training=caps("cpu"))
+        self.assertNotIn("training", self.items(self.compute(NO_GPU, vram=None)))
+        self.assertEqual(self.compute(NO_GPU, vram=None).switches.runs, "off")
+        cpu = self.compute(NO_GPU, vram=None, training=caps("cpu"))
         self.assertEqual(cpu.switches.runs, "cpu")
         self.assertEqual(self.items(cpu)["training"].title, "a training job (CPU-only variant)")
         self.assertEqual(self.items(cpu)["training"].recommended_gib, 24)
@@ -442,6 +459,148 @@ class DiskTest(ComputeCase):
         self.assertIn("could not be measured", " ".join(req.warnings))
 
 
+class LoopReserveTest(ComputeCase):
+    """A loop pool's file leaves 50 GiB free on its mount point (pool loop_reserve_gib)."""
+
+    POOL = {"source": "loop", "size_gib": 30}
+    TITLE = "the free space kept beside the Incus pool (loop file)"
+
+    def reserve(self, req: reqs.Requirements) -> reqs.DiskItem:
+        return next(i for m in req.disks for i in m.items if i.id == reqs.RESERVE_ID)
+
+    def test_never_below_50_gib(self) -> None:
+        self.assertGreaterEqual(DATA["pool"]["loop_reserve_gib"], 50)
+        path = os.path.join(reqs.PREFLIGHT_DIR, "schema", "requirements.schema.json")
+        with open(path, encoding="utf-8") as handle:
+            schema = json.load(handle)
+        loop = schema["properties"]["pool"]["properties"]["loop_reserve_gib"]
+        self.assertEqual(loop["minimum"], 50)
+
+    def test_an_item_beside_the_loop_file(self) -> None:
+        for pool in (self.POOL, {"source": "loop", "size_gib": None}):
+            item = self.reserve(self.compute(GPU, pool=pool))
+            self.assertEqual(
+                (item.title, item.path, item.mount, item.size_gib, item.present, item.basis),
+                (
+                    self.TITLE,
+                    "/var/lib/incus/disks/pinka-targets.img",
+                    "/",
+                    50.0,
+                    False,
+                    "estimated",
+                ),
+            )
+            self.assertEqual(item.source, "loop_reserve_gib of preflight/requirements.yml pool")
+
+    def test_none_beside_a_device_or_without_a_pool(self) -> None:
+        device = self.compute(GPU, pool={"source": "device", "size_gib": None})
+        inference = self.compute(GPU, node_role="inference")
+        for req in (device, inference):
+            self.assertNotIn(reqs.RESERVE_ID, {i.id for m in req.disks for i in m.items})
+
+    def test_just_above_and_just_below(self) -> None:
+        # The loop file, the reserve and what else goes on /: the reserve is the
+        # largest item, so the shortfall falls on it first.
+        needed = {m.mount: m for m in self.compute(GPU, pool=self.POOL).disks}["/"].required_gib
+        others = needed - 30 - 50
+        self.free["/"] = needed + 0.01  # the loop file leaves 50.01 GiB beside the others
+        self.assertEqual(self.compute(GPU, pool=self.POOL).unsupported, [])
+        self.free["/"] = needed - 0.01
+        req = self.compute(GPU, pool=self.POOL)
+        self.assertEqual(
+            req.unsupported,
+            [
+                f"disk: / has {needed - 0.01:.2f} GiB free and these choices need "
+                f"{needed:.2f} GiB there: {self.TITLE}: 50.0 GiB, missing 0.1 GiB on /"
+            ],
+        )
+        self.assertGreater(others, 0)  # stricter than the free space less the file alone
+        root = next(d for d in req.budgets()["disk"] if d["mount"] == "/")
+        self.assertEqual((root["status"], root["shortfall_gib"]), ("does_not_fit", 0.01))
+
+    def test_an_existing_loop_file_needs_none(self) -> None:
+        # Like the file itself it counts nothing once the file exists: 1 GiB more
+        # than the other items fits then, and is refused before.
+        before = {m.mount: m for m in self.compute(GPU, pool=self.POOL).disks}["/"]
+        others = before.required_gib - 30 - 50
+        self.free["/"] = others + 1
+        self.assertIn(self.TITLE, " ".join(self.compute(GPU, pool=self.POOL).unsupported))
+        self.put("/var/lib/incus/disks/pinka-targets.img")
+        req = self.compute(GPU, pool=self.POOL)
+        self.assertTrue(self.reserve(req).present)
+        self.assertEqual(req.unsupported, [])
+
+    def test_auto_leaves_it_free(self) -> None:
+        self.free["/"] = 120.0
+        req = self.compute(GPU, inference="off", training=caps("off"))
+        root = next(m for m in req.disks if m.mount == "/")
+        self.assertEqual(req.unsupported, [])
+        self.assertGreaterEqual(120.0 - root.required_gib, 0)
+        others = sum(i.size_gib for i in root.items if i.id not in ("pool", reqs.RESERVE_ID))
+        self.assertEqual(req.pool["size_gib"], math.floor(120.0 - others - 50))
+        self.assertIn(
+            f"({others:.1f} GiB at install, 50.0 GiB kept beside the file)", req.pool["detail"]
+        )
+        # Where even the floor does not fit, the detail says by how much.
+        self.free["/"] = 60.0
+        short = self.compute(GPU, inference="off", training=caps("off"))
+        self.assertIn(
+            f"; pinka's other needs on / ({others:.1f} GiB at install, 50.0 GiB kept beside "
+            f"the file) exceed its free space by {others + 50 - 60:.1f} GiB, so 30 GiB "
+            "(the floor of 30 GiB)",
+            short.pool["detail"],
+        )
+        self.assertIn(self.TITLE, " ".join(short.unsupported))
+
+    def test_an_existing_file_of_auto_counts_neither(self) -> None:
+        image = "/var/lib/incus/disks/pinka-targets.img"
+        self.put(image)
+        self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
+        req = self.compute(GPU)
+        items = {i.id: i for m in req.disks for i in m.items}
+        self.assertTrue(items["pool"].present and items[reqs.RESERVE_ID].present)
+        self.assertIn("keeps its size", req.pool["detail"])
+
+    def test_on_the_mount_point_of_the_loop_file(self) -> None:
+        # /var/lib/incus on a file system of its own: the file and the reserve count there.
+        self.mkdir("/var/lib/incus/disks")
+        for path in ("/var/lib/incus", "/var/lib/incus/disks"):
+            self.extra[f"df --output=target,fstype,size,avail -B1 {path}"] = df(
+                "/var/lib/incus", 200.0
+            )
+        mounts = {m.mount: m for m in self.compute(GPU, pool=self.POOL).disks}
+        incus = {i.id for i in mounts["/var/lib/incus"].items}
+        self.assertLessEqual({"pool", reqs.RESERVE_ID}, incus)
+        self.assertFalse({"pool", reqs.RESERVE_ID} & {i.id for i in mounts["/"].items})
+        need = mounts["/var/lib/incus"].required_gib
+        for path in ("/var/lib/incus", "/var/lib/incus/disks"):
+            self.extra[f"df --output=target,fstype,size,avail -B1 {path}"] = df(
+                "/var/lib/incus", need - 0.01
+            )
+        text = " ".join(self.compute(GPU, pool=self.POOL).unsupported)
+        self.assertIn(f"{self.TITLE}: 50.0 GiB, missing 0.1 GiB on /var/lib/incus", text)
+
+    def test_the_growth_does_not_count_it_as_used(self) -> None:
+        # /srv on / too: the reserve stays free, so the stores may grow into it.
+        self.extra["df --output=target,fstype,size,avail -B1 /srv"] = df("/", 400.0)
+        req = self.compute(GPU, pool=self.POOL)
+        assert req.growth is not None
+        root = next(m for m in req.disks if m.mount == "/")
+        self.assertEqual(
+            req.growth.free_after_install_gib, round(400.0 - root.required_gib + 50, 2)
+        )
+        # Once the file exists, neither counts: nothing is added back.
+        image = "/var/lib/incus/disks/pinka-targets.img"
+        self.put(image)
+        self.extra[f"df --output=target,fstype,size,avail -B1 {image}"] = df("/", 400.0)
+        existing = self.compute(GPU, pool=self.POOL)
+        assert existing.growth is not None
+        root = next(m for m in existing.disks if m.mount == "/")
+        self.assertEqual(
+            existing.growth.free_after_install_gib, round(400.0 - root.required_gib, 2)
+        )
+
+
 class GrowthTest(ComputeCase):
     def test_retention_caps_each_store(self) -> None:
         growth = self.compute(GPU).growth
@@ -476,6 +635,380 @@ class GrowthTest(ComputeCase):
         growth = self.compute(GPU, node_role="inference").growth
         assert growth is not None
         self.assertEqual(growth.items, [])
+
+
+ON_ELSE = "Or set inference: auto (this node then serves nothing, degraded with consent) or off."
+PROFILE_FIX = "a GPU with at least 11.3 GiB of memory, or another serving profile"
+
+
+class VramTest(ComputeCase):
+    """The GPU memory's serving and training lines, and one status per resource."""
+
+    def line(self, req: reqs.Requirements, use: str) -> dict[str, Any]:
+        found: dict[str, Any] = req.budgets()["vram"][use]
+        return found
+
+    def statuses(self, req: reqs.Requirements) -> tuple[Any, Any]:
+        vram = req.budgets()["vram"]
+        return tuple((vram[use] or {}).get("status") for use in ("serving", "training"))  # type: ignore[return-value]
+
+    def bigger_model(self, estimates: dict[str, float]) -> dict[str, Any]:
+        data = copy.deepcopy(DATA)
+        data["serving"]["models"]["example-model"] = estimates
+        return data
+
+    def test_the_support_matrix_minimums(self) -> None:
+        # 8000 MiB, exactly.
+        self.assertEqual(VRAM_MINIMUMS, {"gpu_inference": 7.8125, "gpu_training": 7.8125})
+
+    def test_the_default_profile_fits_a_12_gib_gpu(self) -> None:
+        req = self.compute(GPU, vram=12.0)
+        self.assertEqual(self.statuses(req), ("fits", "fits"))
+        serving = self.line(req, "serving")
+        self.assertEqual(
+            serving["items"],
+            [
+                {
+                    "title": "the serving profile ada-12g",
+                    "gib": 11.23,
+                    "basis": "configured",
+                    "mib": 11500,
+                }
+            ],
+        )
+        self.assertEqual(
+            (serving["needed_gib"], serving["available_gib"], serving["shortfall_gib"]),
+            (11.23, 12.0, 0.0),
+        )
+        training = self.line(req, "training")
+        self.assertEqual((training["needed_gib"], training["items"][0]["mib"]), (7.81, 8000))
+        self.assertEqual(self.line(req, "serving")["available_mib"], 12288.0)
+        self.assertTrue(req.switches.serves)
+        self.assertEqual((req.unsupported, req.degraded), ([], []))
+
+    def test_a_model_bigger_than_the_gpu(self) -> None:
+        data = self.bigger_model({"ada-12g": 14.0})
+        why = "the model example-model needs 14.0 GiB of VRAM, the GPU has 12.0 GiB"
+        auto = self.compute(GPU, vram=12.0, data=data, model=MODEL)
+        line = self.line(auto, "serving")
+        self.assertEqual((line["status"], line["reason"], line["shortfall_gib"]), ("off", why, 2.0))
+        self.assertEqual(line["items"][-1]["basis"], "estimated")
+        # auto: nothing is served or counted, and the host is degraded.
+        self.assertFalse(auto.switches.serves)
+        self.assertEqual(auto.switches.inference_reason, f"{why}, inference: auto")
+        self.assertNotIn("vllm", [i.id for i in auto.memory_items])
+        self.assertEqual(auto.unsupported, [])
+        self.assertEqual(
+            auto.degraded,
+            [
+                f"vram: {why}, so this node serves nothing (inference: auto). To serve, use a "
+                "smaller model, or a GPU with at least 14.0 GiB of memory; set inference: off to "
+                "go on without consent"
+            ],
+        )
+        # on: refused with the shortfall and the remedy, and nothing is served
+        # either (so --force-unsupported installs no model server that cannot start).
+        on = self.compute(GPU, vram=12.0, data=data, model=MODEL, inference="on")
+        self.assertEqual(self.line(on, "serving")["status"], "does_not_fit")
+        self.assertFalse(on.switches.serves)
+        self.assertNotIn("vllm", [i.id for i in on.memory_items])
+        self.assertEqual(on.degraded, [])
+        self.assertEqual(
+            on.unsupported,
+            [
+                f"vram: {why} (2.0 GiB short); inference: on must serve on this node. Use a "
+                f"smaller model, or a GPU with at least 14.0 GiB of memory. {ON_ELSE}"
+            ],
+        )
+        # The profile's own minimum does not fit either: a smaller model cannot help.
+        both = self.compute(GPU, vram=10.0, data=data, model=MODEL, inference="on")
+        self.assertEqual(
+            both.unsupported,
+            [
+                "vram: the model example-model needs 14.0 GiB of VRAM, the GPU has 10.0 GiB "
+                "(4.0 GiB short); inference: on must serve on this node. Use a GPU with at least "
+                f"14.0 GiB of memory, or another serving profile. {ON_ELSE}"
+            ],
+        )
+        # The same model fits a bigger GPU, and one exactly its size.
+        for size in (16.0, 14.0):
+            self.assertEqual(
+                self.statuses(self.compute(GPU, vram=size, data=data, model=MODEL))[0], "fits"
+            )
+
+    def test_the_serving_profile_decides_on_a_smaller_gpu(self) -> None:
+        on = self.compute(GPU, vram=10.0, model=MODEL, inference="on")
+        # 11.23 GiB, rounded up: a message never understates what is needed.
+        why = "the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 10.0 GiB"
+        self.assertEqual(self.line(on, "serving")["reason"], why)
+        self.assertEqual(self.line(on, "serving")["shortfall_gib"], 1.23)
+        self.assertEqual(
+            on.unsupported,
+            [
+                f"vram: {why} (1.3 GiB short); inference: on must serve on this node. Use "
+                f"{PROFILE_FIX}. {ON_ELSE}"
+            ],
+        )
+        near = self.line(self.compute(GPU, vram=11.2, inference="on"), "serving")
+        self.assertEqual(
+            near["reason"],
+            "the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 11.2 GiB",
+        )
+        # Two decimals where one would read the same.
+        data = self.bigger_model({"ada-12g": 11.27})
+        nearer = self.line(self.compute(GPU, vram=11.26, data=data, model=MODEL), "serving")
+        self.assertEqual(
+            nearer["reason"],
+            "the model example-model needs 11.27 GiB of VRAM, the GPU has 11.26 GiB",
+        )
+        self.assertEqual(vram.at_least(11.23), "11.3 GiB")
+        self.assertEqual(vram.at_least(8.0), "8.0 GiB")
+
+    def test_an_inference_node_that_cannot_serve(self) -> None:
+        # Refused under auto too: an inference node exists only to serve.
+        req = self.compute(GPU, vram=10.0, node_role="inference")
+        self.assertEqual(self.line(req, "serving")["status"], "does_not_fit")
+        self.assertEqual(req.degraded, [])
+        self.assertEqual(
+            req.unsupported,
+            [
+                "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 10.0 GiB "
+                f"(1.3 GiB short); an inference node must serve. Use {PROFILE_FIX}. Or use this "
+                "machine as a full or lab node."
+            ],
+        )
+        self.assertTrue(reqs.must_serve({"inference": "auto", "node_role": "inference"}))
+        self.assertFalse(reqs.must_serve({"inference": "auto", "node_role": "full"}))
+        # Where no remedy precedes it, the alternative is a sentence of its own.
+        node = {"inference": "auto", "node_role": "inference"}
+        self.assertEqual(
+            reqs.serve_or_else(node, after_remedy=False), "Use this machine as a full or lab node."
+        )
+        self.assertEqual(
+            reqs.serve_or_else({"inference": "on", "node_role": "full"}, after_remedy=False),
+            "Set inference: auto (this node then serves nothing, degraded with consent) or off.",
+        )
+
+    def test_a_model_without_settings_for_the_profile(self) -> None:
+        data = self.bigger_model({"other-profile": 5.0})
+        req = self.compute(GPU, vram=24.0, data=data, model=MODEL, inference="on")
+        line = self.line(req, "serving")
+        why = "the model example-model has no settings for the serving profile ada-12g"
+        self.assertEqual(
+            (line["status"], line["reason"], line["shortfall_gib"]), ("does_not_fit", why, 0.0)
+        )
+        self.assertEqual(
+            req.unsupported,
+            [
+                f"vram: {why}; inference: on must serve on this node. Use a model with settings "
+                f"for the serving profile, or another profile. {ON_ELSE}"
+            ],
+        )
+
+    def test_a_model_the_catalog_does_not_know(self) -> None:
+        req = self.compute(GPU, vram=12.0, model=MODEL, inference="on")
+        line = self.line(req, "serving")
+        self.assertEqual(line["status"], "fits")
+        self.assertEqual([i["title"] for i in line["items"]], ["the serving profile ada-12g"])
+        self.assertIn(
+            "the default model example-model has no VRAM estimate in models.catalog.yml: only "
+            "the serving profile ada-12g's minimum is checked against the GPU's memory",
+            req.notes,
+        )
+        # Not where nothing is served, nor where no GPU could serve it.
+        off = self.compute(GPU, vram=12.0, model=MODEL, inference="off")
+        self.assertFalse(any("no VRAM estimate" in n for n in off.notes))
+        no_gpu = self.compute(NO_GPU, vram=None, model=MODEL, inference="on")
+        self.assertFalse(any("no VRAM estimate" in n for n in no_gpu.notes))
+
+    def test_a_gpu_that_cannot_serve_or_train(self) -> None:
+        small = {"gpu_inference": "VRAM >= 8000 MiB", "gpu_training": "VRAM >= 8000 MiB"}
+        on = self.compute(NO_GPU, vram=6.0, inference="on", unmet=small)
+        serving = self.line(on, "serving")
+        self.assertEqual(
+            (serving["status"], serving["reason"], serving["needed_gib"], serving["shortfall_gib"]),
+            (
+                "does_not_fit",
+                "gpu_inference is not available on this host (unmet: VRAM >= 8000 MiB)",
+                11.23,
+                5.23,
+            ),
+        )
+        self.assertEqual(
+            [i["title"] for i in serving["items"]],
+            ["the support matrix's minimum for gpu_inference", "the serving profile ada-12g"],
+        )
+        training = self.line(on, "training")
+        self.assertEqual(
+            (training["status"], training["reason"]),
+            (
+                "off",
+                "gpu_training is not available on this host (unmet: VRAM >= 8000 MiB); training: cpu "
+                "would run the CPU-only variant",
+            ),
+        )
+        none = self.compute(NO_GPU, vram=None)
+        serving = self.line(none, "serving")
+        self.assertEqual(
+            (
+                serving["status"],
+                serving["reason"],
+                serving["available_gib"],
+                serving["shortfall_gib"],
+            ),
+            ("off", "gpu_inference is not available on this host: no usable NVIDIA GPU", None, 0.0),
+        )
+        self.assertEqual(
+            self.line(none, "training")["reason"],
+            "gpu_training is not available on this host: no usable NVIDIA GPU; training: cpu "
+            "would run the CPU-only variant",
+        )
+        # A GPU the support matrix refuses for another reason (its compute
+        # capability), its memory measured.
+        cc = self.compute(NO_GPU, vram=12.0, unmet={"gpu_inference": "compute capability >= 7.5"})
+        self.assertEqual(
+            (self.line(cc, "serving")["status"], self.line(cc, "serving")["reason"]),
+            (
+                "off",
+                "gpu_inference is not available on this host (unmet: compute capability >= 7.5)",
+            ),
+        )
+        unnamed = self.line(self.compute(NO_GPU, vram=12.0), "serving")
+        self.assertEqual(unnamed["reason"], "gpu_inference is not available on this host")
+        # Bootstrap installs the driver in this run: both lines are judged by the next run.
+        pending = self.compute(NO_GPU, vram=None, inference="on", driver_pending=True)
+        self.assertEqual(
+            (self.line(pending, "serving")["status"], self.line(pending, "serving")["reason"]),
+            (
+                "off",
+                "the NVIDIA driver is installed in this run: serving is judged once it is loaded, "
+                "by the next bootstrap run",
+            ),
+        )
+        self.assertEqual(
+            (self.line(pending, "training")["status"], self.line(pending, "training")["reason"]),
+            (
+                "off",
+                "the NVIDIA driver is installed in this run: training on the GPU is judged once "
+                "it is loaded, by the next bootstrap run",
+            ),
+        )
+
+    def test_a_node_that_serves_nothing_has_no_vram_reason(self) -> None:
+        # A small GPU degrades nothing where nothing would be served here.
+        plans: list[dict[str, Any]] = [{"inference": "off"}, {"node_role": "lab"}]
+        for plan in plans:
+            with self.subTest(plan=plan):
+                req = self.compute(GPU, vram=8.0, **plan)
+                self.assertEqual((req.unsupported, req.degraded), ([], []))
+
+    def test_switched_off_and_the_node_roles(self) -> None:
+        off = self.line(self.compute(GPU, vram=12.0, inference="off"), "serving")
+        self.assertEqual(
+            (off["status"], off["reason"], off["items"], off["shortfall_gib"]),
+            ("off", "switched off, inference: off", [], 0.0),
+        )
+        cpu = self.line(self.compute(NO_GPU, vram=None, training=caps("cpu")), "training")
+        self.assertEqual(
+            (cpu["status"], cpu["reason"], cpu["items"]),
+            (
+                "off",
+                "jobs run their CPU-only variant on the CPU (training: cpu); no GPU memory is used",
+                [],
+            ),
+        )
+        trained_off = self.line(self.compute(GPU, vram=12.0, training=caps("off")), "training")
+        self.assertEqual(trained_off["reason"], "switched off, training: off")
+        lab = self.compute(GPU, vram=12.0, node_role="lab").budgets()["vram"]
+        self.assertEqual((lab["serving"], lab["training"], lab["gpu_gib"]), (None, None, None))
+        inference = self.compute(GPU, vram=12.0, node_role="inference").budgets()["vram"]
+        self.assertEqual((inference["serving"]["status"], inference["training"]), ("fits", None))
+
+    def test_unknown_gpu_memory_and_profile(self) -> None:
+        self.assertEqual(self.statuses(self.compute(GPU, vram=None)), ("unknown", "unknown"))
+        with self.assertRaisesRegex(reqs.PlanError, "'nope' is not a serving profile"):
+            self.compute(GPU, vram=12.0, vllm_profile="nope")
+
+    def test_the_fits_the_installer_shows(self) -> None:
+        serving = self.compute(GPU, vram=12.0).serving
+        self.assertEqual((serving["profile"], serving["suggested_profile"]), ("ada-12g", "ada-12g"))
+        self.assertEqual(
+            serving["profiles"]["ada-12g"],
+            {"min_vram_gib": 11.23, "compute_capability": "8.9", "fits": True},
+        )
+        self.assertEqual(
+            serving["models"]["qwen3-8b-awq"],
+            {"ada-12g": {"expected_vram_gib": 10.5, "fits": True}},
+        )
+        # Another compute capability: the profile fits but is not suggested.
+        other = self.compute(GPU, vram=12.0, capability="8.6").serving
+        self.assertEqual(
+            (other["suggested_profile"], other["profiles"]["ada-12g"]["fits"]), (None, True)
+        )
+        # An unknown capability does not stop the suggestion.
+        self.assertEqual(
+            self.compute(GPU, vram=12.0, capability=None).serving["suggested_profile"], "ada-12g"
+        )
+        # An 11 GiB GPU: the model's estimate fits, the profile's minimum does not.
+        eleven = self.compute(GPU, vram=11.0).serving
+        self.assertEqual(eleven["suggested_profile"], None)
+        self.assertEqual(eleven["models"]["qwen3-8b-awq"]["ada-12g"]["fits"], False)
+        # The GPU's memory is not known: no answer either way.
+        unknown = self.compute(NO_GPU, vram=None).serving
+        self.assertEqual(unknown["suggested_profile"], None)
+        self.assertEqual(unknown["profiles"]["ada-12g"]["fits"], None)
+        self.assertEqual(unknown["models"]["qwen3-8b-awq"]["ada-12g"]["fits"], None)
+
+    def test_the_summary_lines(self) -> None:
+        unknown = self.compute(GPU, vram=None).as_dict()
+        self.assertEqual(
+            render.vram_lines(unknown, gpu_usable=True)[0], "  VRAM: the GPU's memory is not known"
+        )
+        self.assertEqual(render.vram_lines(unknown)[0], "  VRAM: no usable NVIDIA GPU")
+        short = render.vram_lines(self.compute(GPU, vram=10.0, inference="on").as_dict())
+        self.assertEqual(short[0], "  VRAM: the GPU has 10240 MiB, 10.0 GiB (measured)")
+        # A configured minimum prints as stated, in MiB; an estimate in GiB, rounded up.
+        model = self.bigger_model({"ada-12g": 10.47})
+        fits = render.vram_lines(self.compute(GPU, vram=12.0, data=model, model=MODEL).as_dict())
+        self.assertEqual(
+            fits[1],
+            "    serving (inference: auto): fits: the serving profile ada-12g 11500 MiB "
+            "(configured); the model example-model 10.5 GiB (estimated)",
+        )
+        self.assertTrue(
+            short[1].startswith("    serving (inference: on): does not fit, 1.3 GiB short: ")
+        )
+
+    def test_one_status_per_resource(self) -> None:
+        memory = self.compute(GPU, vram=12.0).budgets()["memory"]
+        self.assertEqual((memory["status"], memory["shortfall_gib"]), ("fits", 0.0))
+        req = self.compute(GPU, memory_gib=30.0, training=caps("auto", 24))
+        degraded = req.budgets()["memory"]
+        self.assertEqual(
+            (degraded["status"], degraded["shortfall_gib"]),
+            ("degraded", reqs.gib(req.tolerance * req.recommended_gib - 30.0)),
+        )
+        req = self.compute(GPU, memory_gib=9.0, concurrent_targets=4)
+        short = req.budgets()["memory"]
+        self.assertEqual(
+            (short["status"], short["shortfall_gib"]),
+            ("does_not_fit", reqs.gib(req.tolerance * req.required_gib - 9.0)),
+        )
+        self.assertEqual(
+            self.compute(GPU, memory_gib=None).budgets()["memory"]["status"], "unknown"
+        )
+        disks = {d["mount"]: d for d in self.compute(GPU).budgets()["disk"]}
+        self.assertEqual({d["status"] for d in disks.values()}, {"fits"})
+        self.free["/"] = 1.0
+        req = self.compute(GPU)
+        full = {d["mount"]: d for d in req.budgets()["disk"]}
+        check = next(m for m in req.disks if m.mount == "/")
+        self.assertEqual(full["/"]["status"], "does_not_fit")
+        self.assertEqual(
+            (full["/"]["free_gib"], full["/"]["required_gib"], full["/"]["shortfall_gib"]),
+            (check.free_gib, check.required_gib, check.shortfall_gib),
+        )
+        self.assertGreater(check.shortfall_gib, 0)
 
 
 class PlanTest(unittest.TestCase):
@@ -513,6 +1046,26 @@ class PlanTest(unittest.TestCase):
                 reqs.load_plan(self.write(data), DEFAULTS)
         with self.assertRaises(reqs.PlanError):
             reqs.load_plan("/nonexistent/plan.json", DEFAULTS)
+
+    def test_inference_on(self) -> None:
+        plan, _ = reqs.load_plan(self.write({"schema_version": 1, "inference": "on"}), DEFAULTS)
+        self.assertEqual(plan["inference"], "on")
+        node = {"schema_version": 1, "node_role": "inference"}
+        self.assertEqual(
+            reqs.load_plan(self.write({**node, "inference": "on"}), DEFAULTS)[0]["inference"], "on"
+        )
+        with self.assertRaisesRegex(reqs.PlanError, "it needs inference: auto or on"):
+            reqs.load_plan(self.write({**node, "inference": "off"}), DEFAULTS)
+        lab = {"schema_version": 1, "node_role": "lab", "inference": "on"}
+        with self.assertRaises(reqs.PlanError) as caught:
+            reqs.load_plan(self.write(lab), DEFAULTS)
+        self.assertIn(reqs.LAB_ON, str(caught.exception))
+        self.assertIn("set inference: on on the paired inference node instead", reqs.LAB_ON)
+        for value in ("yes", True, "ON"):
+            with self.subTest(value=value), self.assertRaises(reqs.PlanError):
+                reqs.load_plan(self.write({"schema_version": 1, "inference": value}), DEFAULTS)
+        with self.assertRaises(reqs.PlanError):
+            reqs.load_plan(self.write({"schema_version": 1, "vllm_profile": "Bad Name"}), DEFAULTS)
 
     def test_unknown_blueprint(self) -> None:
         with tempfile.TemporaryDirectory() as root:

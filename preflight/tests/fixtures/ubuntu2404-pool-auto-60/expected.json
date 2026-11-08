@@ -3,9 +3,12 @@
     "gpu_inference",
     "gpu_training"
   ],
-  "outcome": "degraded",
+  "outcome": "unsupported",
   "pool": {
     "basis": "computed",
     "size_gib": 30
-  }
+  },
+  "unsupported_contains": [
+    "the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 34.6 GiB on /"
+  ]
 }

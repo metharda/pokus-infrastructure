@@ -1,0 +1,10 @@
+{
+  "outcome": "unsupported",
+  "unsupported_contains": [
+    "an inference node must serve. Use an NVIDIA GPU that meets them. Or use this machine as a full or lab node."
+  ],
+  "vram": {
+    "serving": "does_not_fit",
+    "training": null
+  }
+}

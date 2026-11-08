@@ -19,8 +19,10 @@ from pinka_installer import apply, validators, vault
 from pinka_installer.paths import INFRA, Paths
 from pinka_installer.tui import model
 from pinka_installer.tui.events import Progress, read_new, site_roles
+from pinka_installer.tui.host import Disk
+from pinka_installer.tui.model import PAGES
 from pinka_installer.tui.runner import BootstrapRunner, RunRequest
-from pinka_installer.tui.screens_host import cpu_bar, disk_row
+from pinka_installer.tui.screens_capacity import cpu_bar, disk_row
 from pinka_installer.tui.screens_install import (
     checks_by_category,
     destructive,
@@ -249,28 +251,45 @@ def test_reads_the_smt_siblings(tmp_path: Path) -> None:
     assert apply.read_smt_cores(tmp_path / "missing") == []
 
 
-def test_postgres_and_loop_suggestions() -> None:
+def test_postgres_suggestions() -> None:
     assert model.suggest_postgres(None) == ""
     assert model.suggest_postgres(1) == "128MB"
     assert model.suggest_postgres(32) == "2048MB"
     assert model.suggest_postgres(256) == "4096MB"
-    assert model.loop_size_limit(500) == 450
-    assert model.loop_size_limit(30) == 0
 
 
 def test_serving_profile_and_models_fit_the_gpu() -> None:
-    profiles = model.load_profiles(INFRA / "vllm" / "profiles")
-    gpu = preflight("ubuntu2404-wsl2-gpu-kvm").profile["gpu"]
-    name = model.suggest_profile(gpu, profiles)
+    """The installer shows preflight's answers and decides nothing itself."""
+    serving = preflight("ubuntu2404-wsl2-gpu-kvm").profile["requirements"]["serving"]
+    name = model.suggest_profile(serving)
     assert name == "ada-12g"
-    assert model.suggest_profile({"vram_gib": 2}, profiles) == ""
+    assert model.suggest_profile({"suggested_profile": None}) == ""
     known = YAML(typ="safe").load((INFRA / "models.catalog.yml").read_text(encoding="utf-8"))
-    choices = model.model_choices(known, {"qwen3-8b-awq"}, name, gpu["vram_gib"])
+    choices = model.model_choices(known, {"qwen3-8b-awq"}, name, serving)
+    assert [c.id for c in choices] == sorted(m["id"] for m in known["models"])  # never `restricted`
     assert choices and all(not c.fits for c in choices)
     assert [c.id for c in choices if c.pinned] == ["qwen3-8b-awq"]
-    small = model.model_choices(known, set(), name, 2.0)
-    assert all(c.fits.startswith("needs ") for c in small)
-    assert all(c.fits for c in model.model_choices(known, set(), "no-such-profile", 12.0))
+    # An 8 GiB GPU: preflight says no model fits ada-12g; the profile's minimum
+    # (11.23 GiB, rounded up as preflight rounds a need) decides, not the
+    # models' estimate (10.5 GiB).
+    small = preflight("ubuntu2404-inference-auto-serving-too-large").profile
+    small_choices = model.model_choices(known, set(), name, small["requirements"]["serving"])
+    assert {c.fits for c in small_choices} == {"needs 11.3 GiB"}
+    # Where the model's estimate is the larger need, it decides.
+    lean = {
+        "profiles": {name: {"min_vram_gib": 6.0}},
+        "models": {"qwen3-8b-awq": {name: {"expected_vram_gib": 10.5, "fits": False}}},
+    }
+    lean_choices = model.model_choices(known, set(), name, lean)
+    assert [c.fits for c in lean_choices if c.id == "qwen3-8b-awq"] == ["needs 10.5 GiB"]
+    assert model.suggest_profile(small["requirements"]["serving"]) == ""
+    # No driver yet: preflight does not know the GPU's memory, and neither does the screen.
+    driverless = preflight("ubuntu2404-inference-on-driver-pending").profile
+    unknown = model.model_choices(known, set(), name, driverless["requirements"]["serving"])
+    assert {c.fits for c in unknown} == {"GPU memory unknown"}
+    assert model.suggest_profile(driverless["requirements"]["serving"]) == ""
+    other = model.model_choices(known, set(), "no-such-profile", serving)
+    assert {c.fits for c in other} == {"no settings for profile no-such-profile"}
 
 
 def test_vault_password_rules() -> None:
@@ -438,16 +457,32 @@ def test_review_summary_and_destructive_actions() -> None:
     answers.machine.name = "pinka-lab"
     answers.researchers = [answers_mod.Researcher("researcher1", True)]
     sections = {step: text for step, _, text in summary(answers)}
-    assert sections["storage"] == "loop file of auto size"
+    assert sections["capacity"] == (
+        "full node · inference auto · training auto\n"
+        "NVIDIA driver: No driver · profile - · model none\n"
+        "Incus pool: loop file of auto size · 2 concurrent targets\n"
+        "retention: Prometheus 90d (by time only), Loki 2160h, Tempo 720h\n"
+        "expected - GiB, - threads · services - · targets - · Postgres derived"
+    )
+    assert sections["capacity_device"] == "-"
     answers.storage.loop_size_gib = 300
-    assert {step: text for step, _, text in summary(answers)}["storage"] == "loop file of 300 GiB"
+    answers.resources.concurrent_targets = 3
+    answers.telemetry_retention.prometheus_size = "20GB"
+    found = {step: text for step, _, text in summary(answers)}
+    assert "Incus pool: loop file of 300 GiB · 3 concurrent targets" in found["capacity"]
+    assert "retention: Prometheus 90d (up to 20GB), Loki 2160h" in found["capacity"]
     assert sections["researchers"] == "researcher1 (admin)"
+    # The Edit buttons go to pages that exist, in the order of the wizard.
+    steps = [step for step, _, _ in summary(answers)]
+    assert steps == sorted(steps, key=PAGES.index)
     assert destructive(answers) == []
     answers.storage.source = "device"
     answers.storage.device = answers.storage.device_confirm = "/dev/disk/by-id/nvme-EXAMPLE"
     answers.storage.force_wipe = True
     answers.mode = "restore"
     answers.researchers_removed = ["researcher9"]
+    found = {step: text for step, _, text in summary(answers)}
+    assert found["capacity_device"] == "/dev/disk/by-id/nvme-EXAMPLE · WIPE signatures"
     assert destructive(answers) == [
         "/dev/disk/by-id/nvme-EXAMPLE is formatted as the Incus pool, wiping its signatures",
         "the lab's data is replaced by snapshot latest",
@@ -480,6 +515,17 @@ def test_preflight_cards_and_disk_rows() -> None:
     assert cards({})[0] == ("Environment", "unknown (no hypervisor), confidence unknown")
     assert disk_row(DISKS[0])[3] == "2.0 TiB"
     assert disk_row(DISKS[1])[-1] == "✖ mounted at /"
+    # A virtual disk without a by-id link, a model or a serial number.
+    bare = Disk("vda", "", "", 2**35, "")
+    assert disk_row(bare)[:5] == ("vda", "-", "-", "32 GiB", "-")
+
+
+def test_page_labels_name_the_step_as_the_header_does() -> None:
+    assert model.page_label("capacity") == "step 5 · Capacity plan"
+    assert model.page_label("capacity_driver") == "step 5 · NVIDIA driver"
+    assert model.page_label("resources") == "step 5 · Capacity plan"  # replaced by it
+    assert model.page_label("review") == "step 14 · Review"
+    assert model.page_label("progress") == "Install progress"
 
 
 def test_build_context(repo: Paths) -> None:
@@ -493,3 +539,13 @@ def test_build_context(repo: Paths) -> None:
     installed = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
     other = context(repo, installed, machine="lab-two")
     assert other.wizard.installed and other.wizard.answers.mode == "fresh"
+
+
+def test_plan_args_are_bootstraps_driver_options() -> None:
+    # Bootstrap passes host_vars' install_nvidia_driver to preflight, and the MOK consent.
+    wizard = model.Wizard()
+    wizard.nvidia_driver = "auto"  # what the Preflight screen judged with
+    assert wizard.plan_args() == ["--nvidia-driver", "skip"]  # the answers' default
+    wizard.answers.gpu.install_driver = "auto"
+    wizard.consents = {"accept_mok_enrollment"}
+    assert wizard.plan_args() == ["--nvidia-driver", "auto", "--accept-mok-enrollment"]

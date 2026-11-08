@@ -1,4 +1,4 @@
-"""Screens 1-3: Welcome, Preflight, Install mode."""
+"""Steps 1-3: Welcome, Preflight, Install mode."""
 
 from __future__ import annotations
 
@@ -19,9 +19,10 @@ from textual.widgets import (
 )
 
 from pinka_installer import state
+from pinka_installer.tui import capacity
 from pinka_installer.tui.base import Problems, StepScreen
 from pinka_installer.tui.host import Preflight
-from pinka_installer.tui.model import existing_answers
+from pinka_installer.tui.model import existing_answers, page_label
 from pinka_installer.tui.widgets import Card, NavBar, TextView, TypedConfirm
 
 FORCE_TEXT = "FORCE UNSUPPORTED"
@@ -35,7 +36,7 @@ OUTCOME_STYLE = {
 
 
 class WelcomeScreen(StepScreen):
-    """Screen 1: the checkout, the log, the keys, and resuming a previous install."""
+    """Step 1: the checkout, the log, the keys, and resuming a previous install."""
 
     STEP = "welcome"
     HELP = (
@@ -65,7 +66,7 @@ class WelcomeScreen(StepScreen):
             yield Static("A previous installation was interrupted.", classes="banner warn")
             with RadioSet(id="resume"):
                 yield RadioButton(
-                    f"Resume (step {self.saved.screen}, started at {self.saved.started_at})",
+                    f"Resume ({page_label(self.saved.screen)}, started at {self.saved.started_at})",
                     value=True,
                     id="resume-yes",
                 )
@@ -156,7 +157,7 @@ def cards(profile: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 class PreflightScreen(StepScreen):
-    """Screen 2: preflight with a live spinner, its cards, the outcome and the consents."""
+    """Step 2: preflight with a live spinner, its cards, the outcome and the consents."""
 
     STEP = "preflight"
     HELP = (
@@ -167,15 +168,16 @@ class PreflightScreen(StepScreen):
         "forced by typing FORCE UNSUPPORTED, which is recorded in every fingerprint. "
         "With Secure Boot on and no NVIDIA driver, the installation can install the "
         "driver and import a Machine Owner Key, with your consent: you choose a one-time "
-        "password on the GPU screen and enroll the key at the blue MOK Manager screen "
-        "during the next boot."
+        "password on the capacity plan's NVIDIA driver page and enroll the key at the blue "
+        "MOK Manager screen during the next boot."
     )
     MOK_TEXT = (
         "Secure Boot is on and no NVIDIA driver is installed. The installation can install "
         "the pinned driver and import a Machine Owner Key (MOK) that signs it: you choose a "
-        "one-time password on the GPU screen, the installation stops for a reboot, and "
-        "during the boot you enroll the key at the blue MOK Manager screen (you need the "
-        "console then). Or continue without the driver: no local inference on this host."
+        "one-time password on the capacity plan's NVIDIA driver page, the installation stops "
+        "for a reboot, and during the boot you enroll the key at the blue MOK Manager screen "
+        "(you need the console then). Or continue without the driver: no local inference on "
+        "this host."
     )
     CONSENT_IDS: ClassVar[tuple[str, ...]] = ("consent-feature", "consent-experimental")
 
@@ -266,12 +268,17 @@ class PreflightScreen(StepScreen):
             report.mount(
                 Static("Continue without these features? Tick each one.", classes="banner warn")
             )
+            # A box starts ticked only for a line the operator accepted already (here or
+            # on the capacity plan), not for the bare flag a resume restores.
             for item in profile.get("disabled_features") or []:
+                line = (
+                    f"{item.get('feature')}: {item.get('impact')} "
+                    f"{item.get('remediation') or ''}".rstrip()
+                )
                 report.mount(
                     Checkbox(
-                        f"{item.get('feature')}: {item.get('impact')} "
-                        f"{item.get('remediation') or ''}".rstrip(),
-                        value="accept_degraded" in self.wizard.consents,
+                        line,
+                        value=line in self.wizard.degraded_accepted,
                         classes="consent-feature",
                     )
                 )
@@ -279,7 +286,7 @@ class PreflightScreen(StepScreen):
                 report.mount(
                     Checkbox(
                         str(reason),
-                        value="accept_degraded" in self.wizard.consents,
+                        value=str(reason) in self.wizard.degraded_accepted,
                         classes="consent-feature",
                     )
                 )
@@ -314,10 +321,14 @@ class PreflightScreen(StepScreen):
         problems: Problems = []
         features = list(self.query(".consent-feature").results(Checkbox))
         if features:
+            # What the boxes show, as the capacity plan words it: it asks only for more.
+            shown = set(capacity.degraded(profile))
             if all(c.value for c in features):
                 self.wizard.consents.add("accept_degraded")
+                self.wizard.degraded_accepted |= shown
             else:
                 self.wizard.consents.discard("accept_degraded")
+                self.wizard.degraded_accepted -= shown
                 problems.append(("report", "tick every disabled feature to continue, or Abort"))
         experimental = list(self.query(".consent-experimental").results(Checkbox))
         if experimental:
@@ -393,7 +404,7 @@ class PreflightScreen(StepScreen):
 
 
 class ModeScreen(StepScreen):
-    """Screen 3: fresh install, restore from backup, modify an existing install, or uninstall."""
+    """Step 3: fresh install, restore from backup, modify an existing install, or uninstall."""
 
     STEP = "mode"
     HELP = (

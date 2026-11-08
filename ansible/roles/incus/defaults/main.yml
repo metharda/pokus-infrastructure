@@ -7,7 +7,8 @@ incus_pool_name: pinka-targets
 incus_pool_source: loop
 # Size of a loop pool: auto (computed by preflight from the golden images,
 # the concurrent targets' root disks and a margin, limited by the free space
-# where the loop file goes) or a size such as 300GiB. An
+# where the loop file goes) or a size such as 300GiB. Preflight checks either
+# against that free space, with the 50 GiB the file leaves beside it. An
 # existing pool keeps its size.
 incus_pool_size: auto
 # Dedicated device (use /dev/disk/by-id/...). Nothing is formatted unless

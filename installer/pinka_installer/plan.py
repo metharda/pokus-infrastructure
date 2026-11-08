@@ -53,10 +53,7 @@ def _model(variables: Mapping[str, Any], lock: Mapping[str, Any]) -> dict[str, A
     model_id = _plain("vllm_default_deployment.model_id", deployment["model_id"])
     entry = next((m for m in lock.get("models") or [] if m.get("id") == model_id), None)
     if entry is None:
-        raise PlanError(
-            f"vllm_default_deployment.model_id {model_id!r} is not in models.lock.yml "
-            "(pin it with the installer, docs/how-to/add-a-model.md)"
-        )
+        raise PlanError(f"vllm_default_deployment.model_id {validators.unpinned_model(model_id)}")
     sizes = [f.get("size") for f in entry.get("files") or []]
     if not sizes or not all(isinstance(s, int) and s >= 0 for s in sizes):
         raise PlanError(f"models.lock.yml: {model_id} has a file without its size; pin it again")
@@ -112,6 +109,8 @@ def plan(  # noqa: PLR0912 - one branch per setting
         result["concurrent_targets"] = count
     if "vllm_default_deployment" in variables:
         result["model"] = _model(variables, lock)
+    if "vllm_profile" in variables:
+        result["vllm_profile"] = _plain("vllm_profile", variables["vllm_profile"])
     if "images_blueprints" in variables:
         result["images"] = [_plain("images_blueprints", b) for b in variables["images_blueprints"]]
     if "observability_gpu_exporter" in variables:
@@ -141,11 +140,13 @@ def _switches(result: dict[str, Any], variables: Mapping[str, Any]) -> None:
     """The inference and training switches into ``result``."""
     if "inference" in variables:
         inference = _plain("inference", variables["inference"])
-        if inference not in ("auto", "off"):
-            raise PlanError(f"inference must be auto or off (got {inference!r})")
+        if inference not in ("auto", "on", "off"):
+            raise PlanError(f"inference must be auto, on or off (got {inference!r})")
         result["inference"] = inference
     if result["node_role"] == "inference" and result["inference"] == "off":
-        raise PlanError("an inference node runs only the inference stack: it needs inference: auto")
+        raise PlanError(validators.INFERENCE_NODE_OFF)
+    if result["node_role"] == "lab" and result["inference"] == "on":
+        raise PlanError(validators.LAB_ON)
     if "training" in variables:
         training = _plain("training", variables["training"])
         if training not in ("auto", "cpu", "off"):
@@ -200,8 +201,38 @@ def machine_plan(paths: Paths, machine: str) -> dict[str, Any]:
     host_vars = paths.host_vars(machine)
     if not host_vars.exists():
         raise PlanError(f"{host_vars} does not exist")
+    return plan_of(paths, _yaml(host_vars), _yaml(paths.infra / "models.lock.yml"))
+
+
+def plan_of(paths: Paths, host_vars: Mapping[str, Any], lock: Mapping[str, Any]) -> dict[str, Any]:
+    """The plan of host variables over the checkout's group_vars.
+
+    Bootstrap's plan (:func:`machine_plan`, from the host_vars file) and the
+    installer's capacity plan screen (from the host_vars of the answers being
+    collected, before anything is written) both come from here.
+
+    Args:
+        paths: The installer's paths.
+        host_vars: The machine's host variables.
+        lock: ``models.lock.yml``.
+
+    Returns:
+        The plan.
+
+    Raises:
+        PlanError: If a setting cannot be used, or names a serving profile or
+            a golden image blueprint that does not exist.
+    """
     requirements = json.loads(
         (paths.infra / "preflight" / "requirements.json").read_text(encoding="utf-8")
     )
-    variables = {**_yaml(paths.group_vars_main), **_yaml(host_vars)}
-    return plan(requirements["defaults"], variables, _yaml(paths.infra / "models.lock.yml"))
+    variables = {**_yaml(paths.group_vars_main), **host_vars}
+    found = plan(requirements["defaults"], variables, lock)
+    profiles = requirements["serving"]["profiles"]
+    if found["vllm_profile"] not in profiles:
+        raise PlanError(validators.unknown_profile(found["vllm_profile"], profiles))
+    blueprints = requirements["blueprints"]
+    for name in found["images"]:
+        if name not in blueprints:
+            raise PlanError(validators.unknown_blueprint(name, blueprints))
+    return found

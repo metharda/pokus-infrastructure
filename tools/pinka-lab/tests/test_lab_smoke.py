@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from typing import Any
 
@@ -9,13 +10,43 @@ from labfakes import FakeSystem, context
 
 from pinka_lab import smoke
 
+PROPERTIES = {
+    "pinka.recipe_commit": "c" * 40,
+    "pinka.built_at": "2026-01-01T12:00:00Z",
+    "pinka.base_fingerprint": "b" * 64,
+    "requirements.nesting": "false",
+}
 IMAGES: list[dict[str, Any]] = [
-    {"fingerprint": "a" * 64, "aliases": [{"name": "_base/1.0.0"}]},
-    {"fingerprint": "b" * 64, "aliases": [{"name": "web-nginx-flask/1.2.0"}]},
-    {"fingerprint": "c" * 64, "aliases": [{"name": "web-nginx-flask/1.10.0"}]},
+    {"fingerprint": "a" * 64, "aliases": [{"name": "_base/1.0.0"}], "properties": PROPERTIES},
+    {
+        "fingerprint": "b" * 64,
+        "aliases": [{"name": "web-nginx-flask/1.2.0"}],
+        "properties": PROPERTIES,
+    },
+    {
+        "fingerprint": "c" * 64,
+        "aliases": [{"name": "web-nginx-flask/1.10.0"}],
+        "properties": PROPERTIES,
+    },
     {"fingerprint": "d" * 64, "aliases": [{"name": "web-nginx-flask/latest-ish"}]},
     {"fingerprint": "e" * 64, "aliases": None},
 ]
+# The export records infra wrote for its images (pinka_lab.golden).
+RECORDS = {
+    f"/srv/pinka/images/{alias}/build.json": json.dumps(
+        {
+            "schema_version": 2,
+            "fingerprint": fingerprint * 64,
+            "nesting": False,
+            "properties": PROPERTIES,
+        }
+    )
+    for alias, fingerprint in (
+        ("_base/1.0.0", "a"),
+        ("web-nginx-flask/1.2.0", "b"),
+        ("web-nginx-flask/1.10.0", "c"),
+    )
+}
 BLUEPRINT = {
     "name": "web-nginx-flask",
     "type": "container",
@@ -40,7 +71,7 @@ def healthy_host(**changes: Any) -> FakeSystem:
         "incus network delete *": (0, ""),
     }
     commands.update(changes)
-    return FakeSystem(commands, http={"GET http://127.0.0.1:18702/*": (200, FOUND)})
+    return FakeSystem(commands, files=RECORDS, http={"GET http://127.0.0.1:18702/*": (200, FOUND)})
 
 
 def lines(system: FakeSystem, prefix: str) -> list[list[str]]:
@@ -53,6 +84,11 @@ class AliasTest(unittest.TestCase):
         self.assertEqual(smoke.newest_alias(IMAGES, "web-nginx-flask"), "web-nginx-flask/1.10.0")
         self.assertEqual(smoke.newest_alias(IMAGES, "_base"), "_base/1.0.0")
         self.assertIsNone(smoke.newest_alias(IMAGES, "pg-primary"))
+        accepted = {"web-nginx-flask/1.2.0"}
+        self.assertEqual(
+            smoke.newest_alias(IMAGES, "web-nginx-flask", accepted), "web-nginx-flask/1.2.0"
+        )
+        self.assertIsNone(smoke.newest_alias(IMAGES, "web-nginx-flask", set()))
 
 
 class SmokeTest(unittest.TestCase):
@@ -159,6 +195,26 @@ class ChecksTest(unittest.TestCase):
         outcome = smoke.smoke_checks([BLUEPRINT])[0].run(context(system))
         self.assertEqual(outcome.result, "pass", outcome.detail)
         self.assertEqual(lines(system, "incus launch")[0][2], "web-nginx-flask/1.10.0")
+
+    def test_runs_only_a_golden_image(self) -> None:
+        # The alias of a version infra has not built (no export record) is never launched.
+        forged = {
+            "fingerprint": "9" * 64,
+            "aliases": [{"name": "web-nginx-flask/1.11.0"}],
+            "properties": PROPERTIES,
+        }
+        system = healthy_host(**{"incus image list --format json": (0, [*IMAGES, forged])})
+        outcome = smoke.smoke_checks([BLUEPRINT])[0].run(context(system))
+        self.assertEqual(outcome.result, "pass", outcome.detail)
+        self.assertEqual(lines(system, "incus launch")[0][2], "web-nginx-flask/1.10.0")
+
+    def test_no_golden_image_fails(self) -> None:
+        system = healthy_host()
+        system.files = {}
+        outcome = smoke.smoke_checks([BLUEPRINT])[0].run(context(system))
+        self.assertEqual(outcome.result, "fail")
+        self.assertIn("no image of web-nginx-flask is golden", outcome.detail)
+        self.assertEqual(lines(system, "incus launch"), [])
 
 
 if __name__ == "__main__":

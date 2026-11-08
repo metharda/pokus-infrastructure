@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import copy
+import json
+import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -11,7 +14,8 @@ import pytest
 from ruamel.yaml import YAML
 
 from pinka_installer import answers as answers_mod
-from pinka_installer import apply
+from pinka_installer import apply, hostvars, validators
+from pinka_installer import plan as plan_mod
 from pinka_installer.answers import Answers, Context, Researcher
 from pinka_installer.paths import INFRA, Paths
 
@@ -134,8 +138,8 @@ def test_cross_field_problems(repo: Paths) -> None:
         "at least one researcher must be an admin",
         "still active: researcher2",
         "not in models.lock.yml",
-        "no profile 'no-such-profile'",
-        "no blueprint 'no-such-blueprint'",
+        "gpu/vllm_profile: vllm_profile 'no-such-profile' is not a serving profile",
+        "images/build: golden image blueprint 'no-such-blueprint' does not exist (images/: ",
         "platform/repo: use an SSH URL",
         "source_trust/allowed_signers",
         "platform_settings/ctl: must be a mapping",
@@ -175,6 +179,166 @@ def test_split_inference_rules(repo: Paths) -> None:
     answers.secrets.platform = {}
     answers.split_inference_peer = "pinka-lab-main"
     assert answers_mod.problems(answers, context) == []
+
+
+def test_inference_on_by_node_role(repo: Paths) -> None:
+    context = apply.context(repo)
+    answers = full_answers()
+    answers.features.inference = "on"
+    assert not any("features/inference" in p for p in answers_mod.problems(answers, context))
+    answers.machine.node_role = "lab"
+    found = answers_mod.problems(answers, context)
+    assert f"features/inference: {validators.LAB_ON}" in found
+    answers.machine.node_role = "inference"
+    answers.features.inference = "off"
+    text = "\n".join(answers_mod.problems(answers, context))
+    assert f"features/inference: {validators.INFERENCE_NODE_OFF}" in text
+
+
+@pytest.mark.parametrize(
+    "rule", ["lab node on", "inference node off", "unknown profile", "unknown blueprint"]
+)
+def test_one_text_per_plan_refusal(repo: Paths, tmp_path: Path, rule: str) -> None:
+    """Bootstrap (the plan writer), pinka-preflight and the answers check refuse with one text.
+
+    Each path prints it after its own prefix: ``pinka-installer: the requirements
+    plan:``, ``pinka-preflight: error:`` and the answers field.
+    """
+    from pinka_preflight import requirements  # noqa: PLC0415 - preflight only here
+
+    context = apply.context(repo)
+    profiles = sorted(context.vllm_profiles)
+    answers = full_answers()
+    if rule == "lab node on":
+        settings: dict[str, Any] = {"node_role": "lab", "inference": "on"}
+        text, field = validators.LAB_ON, "features/inference"
+        assert text == requirements.LAB_ON
+    elif rule == "inference node off":
+        settings = {"node_role": "inference", "inference": "off"}
+        text, field = validators.INFERENCE_NODE_OFF, "features/inference"
+        assert text == requirements.INFERENCE_NODE_OFF
+    elif rule == "unknown profile":
+        settings = {"vllm_profile": "ada-12gb"}
+        text, field = validators.unknown_profile("ada-12gb", profiles), "gpu/vllm_profile"
+        assert text == requirements.unknown_profile("ada-12gb", profiles)
+        assert text == "vllm_profile 'ada-12gb' is not a serving profile (vllm/profiles/: ada-12g)"
+    else:
+        settings = {"images": ["no-such-blueprint"]}
+        blueprints = sorted(context.blueprints)
+        text, field = validators.unknown_blueprint("no-such-blueprint", blueprints), "images/build"
+        assert text == requirements.unknown_blueprint("no-such-blueprint", blueprints)
+        assert text.startswith(
+            "golden image blueprint 'no-such-blueprint' does not exist (images/: "
+        )
+    # Bootstrap: the plan writer refuses host_vars (pinka-installer: the requirements plan: ...).
+    (repo.infra / "preflight").mkdir(exist_ok=True)
+    (repo.infra / "preflight" / "requirements.json").write_bytes(
+        (INFRA / "preflight" / "requirements.json").read_bytes()
+    )
+    host_vars = repo.host_vars("lab9")
+    host_settings = {("images_blueprints" if k == "images" else k): v for k, v in settings.items()}
+    host_vars.write_text(
+        "".join(f"{k}: {v!r}\n" for k, v in host_settings.items())
+        + "vllm_default_deployment: null\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(plan_mod.PlanError) as caught:
+        plan_mod.machine_plan(repo, "lab9")
+    assert str(caught.value) == text
+    # pinka-preflight --plan (pinka-preflight: error: plan (<file>): ...).
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps({"schema_version": 1, **settings}), encoding="utf-8")
+    defaults = json.loads((INFRA / "preflight" / "requirements.json").read_text())["defaults"]
+    data = json.loads((INFRA / "preflight" / "requirements.json").read_text())
+    with pytest.raises(requirements.PlanError) as refused:
+        requirements.load_plan(
+            str(plan_file), defaults, profiles=profiles, blueprints=data["blueprints"]
+        )
+    assert str(refused.value) == f"plan ({plan_file}): {text}"
+    # The installer's answers.
+    answers.machine.node_role = settings.get("node_role", answers.machine.node_role)
+    answers.features.inference = settings.get("inference", answers.features.inference)
+    answers.gpu.vllm_profile = settings.get("vllm_profile", answers.gpu.vllm_profile)
+    answers.images_build = settings.get("images", answers.images_build)
+    assert f"{field}: {text}" in answers_mod.problems(answers, context)
+
+
+def _preflight_on(root: Path, plan_file: Path, free_gib: float, out: Path) -> tuple[int, Any]:
+    """pinka-preflight --plan on a fixture root whose / has ``free_gib`` free."""
+    commands = json.loads((root / "commands.json").read_text(encoding="utf-8"))
+    for path in ("/", "/var/lib", "/srv"):
+        commands["commands"][f"df --output=target,fstype,size,avail -B1 {path}"]["stdout"] = (
+            f"Mounted on Type 1B-blocks Avail\n/ ext4 {1000 * 2**30} {int(free_gib * 2**30)}\n"
+        )
+    (root / "commands.json").write_text(json.dumps(commands), encoding="utf-8")
+    preflight = INFRA / "preflight" / "pinka-preflight"
+    args = ["--root", str(root), "--no-write", "--offline", "--plan", str(plan_file)]
+    done = subprocess.run(
+        [str(preflight), *args, "--output", str(out)], capture_output=True, text=True, check=False
+    )
+    return done.returncode, json.loads(out.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("writer", ["by hand", "the installer"])
+def test_the_loop_reserve_holds_whoever_writes_host_vars(
+    repo: Paths, tmp_path: Path, writer: str
+) -> None:
+    """Preflight keeps 50 GiB free beside a 30 GiB loop file, whoever wrote host_vars.
+
+    The TUI and an answers file write host_vars with ``hostvars.render`` (the
+    CI answers file here); bootstrap writes the plan from host_vars with the
+    plan writer, and preflight alone judges the disk.
+    """
+    (repo.infra / "preflight").mkdir(exist_ok=True)
+    (repo.infra / "preflight" / "requirements.json").write_bytes(
+        (INFRA / "preflight" / "requirements.json").read_bytes()
+    )
+    if writer == "by hand":
+        text = "incus_pool_source: loop\nincus_pool_size: 30GiB\nvllm_default_deployment: null\n"
+    else:
+        ci = Answers.from_dict(YAML(typ="safe").load(CI.read_text(encoding="utf-8")))
+        assert (ci.storage.source, ci.storage.loop_size_gib) == ("loop", 30)
+        example = repo.example_host_vars.read_text(encoding="utf-8")
+        text = hostvars.render(ci, None, example)
+    repo.host_vars("lab9").write_text(text, encoding="utf-8")
+    found = plan_mod.machine_plan(repo, "lab9")
+    assert found["pool"] == {"source": "loop", "size_gib": 30.0}
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(json.dumps(found), encoding="utf-8")
+    root = tmp_path / "root"
+    fixtures = INFRA / "preflight" / "tests" / "fixtures"
+    shutil.copytree(fixtures / "ubuntu2404-loop-reserve-above", root)
+    _, roomy = _preflight_on(root, plan_file, 1000.0, tmp_path / "roomy.json")
+    (disk,) = roomy["requirements"]["disk"]
+    reserve = next(i for i in disk["items"] if i["id"] == "pool-reserve")
+    assert (reserve["size_gib"], reserve["mount"]) == (50.0, "/")
+    need = disk["required_gib"]
+    code, below = _preflight_on(root, plan_file, need - 0.01, tmp_path / "below.json")
+    assert code == 20
+    assert below["outcome"] == "unsupported"
+    assert any(
+        "the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /"
+        in reason
+        for reason in below["unsupported_reasons"]
+    ), below["unsupported_reasons"]
+    code, above = _preflight_on(root, plan_file, need + 0.01, tmp_path / "above.json")
+    assert code != 20
+    assert above["requirements"]["budgets"]["disk"][0]["status"] == "fits"
+
+
+def test_one_text_for_a_model_not_pinned(repo: Paths) -> None:
+    """The plan writer and the answers check refuse an unpinned default model alike."""
+    text = validators.unpinned_model("example-unpinned")
+    assert text == (
+        "'example-unpinned' is not in models.lock.yml; pin it first (docs/how-to/add-a-model.md)"
+    )
+    with pytest.raises(plan_mod.PlanError) as caught:
+        defaults = json.loads((INFRA / "preflight" / "requirements.json").read_text())["defaults"]
+        plan_mod.plan(defaults, {"vllm_default_deployment": {"model_id": "example-unpinned"}}, {})
+    assert str(caught.value) == f"vllm_default_deployment.model_id {text}"
+    answers = full_answers()
+    answers.gpu.default_model = "example-unpinned"
+    assert f"gpu/default_model: {text}" in answers_mod.problems(answers, apply.context(repo))
 
 
 def test_restore_needs_a_repository(repo: Paths) -> None:

@@ -2,6 +2,10 @@
 #
 # The blueprint's alias is missing but its export exists (after a restore or a
 # deleted alias): import the exported image instead of building a different one.
+# A copy of it already in the image store is deleted and imported again, never
+# given the alias: any client of the store can put the same files there with
+# properties and an update source of its own, and Incus's auto-update would
+# later move every alias of that copy to whatever the source serves.
 
 - name: Check the export before importing it
   ansible.builtin.command:
@@ -10,6 +14,18 @@
   changed_when: false
   failed_when: images_import_files.rc != 0 or not (images_import_files.stdout | from_json).ok
 
+- name: Find the exported image in the image store
+  ansible.builtin.set_fact:
+    images_in_store: >-
+      {{ images_list.stdout | from_json | selectattr('fingerprint', 'equalto', images_record.fingerprint)
+         | first | default({}) }}
+
+- name: Delete the copy of the exported image that is already in the store
+  ansible.builtin.command:
+    argv: [incus, image, delete, "{{ images_record.fingerprint }}"]
+  changed_when: true
+  when: images_in_store != {}
+
 - name: Import the exported image
   ansible.builtin.command:
     argv: >-
@@ -17,10 +33,3 @@
          + ((images_import_files.stdout | from_json).files | map('regex_replace', '^', images_export_dir ~ '/') | list)
          + ['--alias', images_alias] }}
   changed_when: true
-  when: images_record.fingerprint not in (images_list.stdout | from_json | map(attribute='fingerprint') | list)
-
-- name: Point the alias at the image that is already in the store
-  ansible.builtin.command:
-    argv: [incus, image, alias, create, "{{ images_alias }}", "{{ images_record.fingerprint }}"]
-  changed_when: true
-  when: images_record.fingerprint in (images_list.stdout | from_json | map(attribute='fingerprint') | list)

@@ -14,14 +14,14 @@ from textual.widgets import Button, Checkbox, Input, Label, Static
 
 
 class StepHeader(Horizontal):
-    """``Pokus Infrastructure Installer ─── step 6/15 · Storage``."""
+    """``Pokus Infrastructure Installer ─── step 5/14 · Capacity plan``."""
 
     def __init__(self, title: str, position: str) -> None:
         """Build the header.
 
         Args:
             title: The screen's title.
-            position: Such as ``step 6/15``.
+            position: Such as ``step 5/14``.
         """
         super().__init__(id="step-header")
         self._title = title

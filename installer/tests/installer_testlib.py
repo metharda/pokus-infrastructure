@@ -18,6 +18,7 @@ COPIED = (
     "models.lock.yml",
     "models.catalog.yml",
     "versions.lock.yml",
+    "preflight/requirements.json",
     "vllm/profiles",
     "images",
     "tests/answers/ci.yml",

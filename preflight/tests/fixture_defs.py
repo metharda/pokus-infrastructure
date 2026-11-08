@@ -32,6 +32,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES_DIR = os.path.join(HERE, "fixtures")
 GIB_KB = 1024 * 1024
 GIB = 1024**3
+# What a 30 GiB loop pool and the 50 GiB it leaves beside it need on one root
+# file system with the default images and golden images, GiB (the loop reserve
+# fixtures sit 0.01 GiB above and below it).
+LOOP_RESERVE_NEED = 94.6
 NOW = "2026-10-05T09:12:44Z"
 ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
 EFI_SB = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
@@ -436,6 +440,19 @@ def nvsmi_version(driver: str, cuda: str) -> str:
 # supported by the open kernel module, the GeForce 1030 (Pascal) only by the
 # proprietary module, the GeForce 730 (Kepler) only by the 470 legacy branch.
 RTX_4070_DEVID = "0x2786"
+# Smaller GPUs for the VRAM lines: an 8 GiB Ada and a 6 GiB Turing card; both
+# device IDs are in the pinned driver's open-module list.
+RTX_4060_TI = ("NVIDIA GeForce RTX 4060 Ti", "8188 MiB", "8.9")
+RTX_4060_TI_DEVID = "0x2803"
+RTX_2060 = ("NVIDIA GeForce RTX 2060", "6144 MiB", "7.5")
+RTX_2060_DEVID = "0x1f08"
+# A default model of models.catalog.yml (its estimate for ada-12g is 10.5 GiB).
+SERVED_MODEL = {
+    "id": "qwen3-8b-awq",
+    "hf_repo": "Qwen/Qwen3-8B-AWQ",
+    "revision": "0" * 40,
+    "size_bytes": 6 * 1024**3,
+}
 RTX_2080_TI_DEVID = "0x1e04"
 PASCAL_1030_DEVID = "0x1d01"
 KEPLER_730_DEVID = "0x1287"
@@ -1091,6 +1108,47 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         "NVRM version: NVIDIA UNIX x86_64 Kernel Module  580.82.07\n"
     )
     fx["ubuntu2404-wsl2-linux-nvidia-driver-installed"] = drv
+    # inference: on with a GPU a Linux NVIDIA driver inside WSL makes unusable:
+    # the refusal names the driver on Windows. (The conflict alone makes the
+    # host unsupported. No driver is ever planned on WSL2, where the GPU has no
+    # PCI device, so the provider condition of a pending driver is a guard no
+    # fixture reaches.)
+    drv_on = build(
+        *base_ubuntu,
+        wsl2(),
+        wsl_gpu,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. In WSL the GPU is reached through the "
+                "NVIDIA driver on Windows: install or update it there and remove any Linux NVIDIA "
+                "driver installed inside WSL, then run bootstrap again. Or set inference: auto",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    drv_on.files["/proc/driver/nvidia/version"] = drv.files["/proc/driver/nvidia/version"]
+    fx["ubuntu2404-wsl2-inference-on-gpu-unusable"] = drv_on
+    # inference: on in WSL without the Windows driver: WSL sees no GPU at all,
+    # and the refusal names the driver on Windows, not another GPU.
+    no_windows_driver = build(
+        *base_ubuntu,
+        wsl2(),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. WSL reaches no NVIDIA GPU: it sees one "
+                "only through the NVIDIA driver on Windows. Install or update that driver on "
+                "Windows (on a machine with an NVIDIA GPU that meets them), then run bootstrap "
+                "again. Or set inference: auto",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    no_windows_driver.chardev("/dev/dxg", rw=True)
+    fx["ubuntu2404-wsl2-inference-on-no-windows-driver"] = no_windows_driver
     w1 = build(
         UBUNTU_2404,
         system(kernel="4.4.0-19041-Microsoft"),
@@ -1347,6 +1405,333 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         nvidia_pci("loaded"),
         port_in_use(18700),
         expected={"outcome": "needs_action", "needs_action": ["lab_port_in_use"]},
+    )
+    # The GPU's memory: inference: on refuses a host that cannot serve; auto
+    # serves nothing there and is degraded. The serving profile's minimum
+    # (ada-12g, 11.2 GiB) is the largest need with every model of models.catalog.yml.
+    small_ada = nvidia_pci("loaded", gpu=RTX_4060_TI, devid=RTX_4060_TI_DEVID)
+    fx["ubuntu2404-inference-on-serving-too-large"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        small_ada,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 8.0 GiB "
+                "(3.3 GiB short); inference: on must serve on this node. Use a GPU with at least "
+                "11.3 GiB of memory, or another serving profile. Or set inference: auto (this "
+                "node then serves nothing, degraded with consent) or off.",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "fits"},
+        },
+        plan={"inference": "on", "model": SERVED_MODEL},
+    )
+    fx["ubuntu2404-inference-auto-serving-too-large"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        small_ada,
+        expected={
+            "outcome": "degraded",
+            "degraded_contains": [
+                "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 8.0 GiB, "
+                "so this node serves nothing (inference: auto). To serve, use a GPU with at least "
+                "11.3 GiB of memory, or another serving profile; set inference: off to go on "
+                "without consent",
+            ],
+            "vram": {"serving": "off", "training": "fits"},
+        },
+        plan={"model": SERVED_MODEL},
+    )
+    small_turing = nvidia_pci("loaded", gpu=RTX_2060, devid=RTX_2060_DEVID)
+    fx["ubuntu2404-inference-on-small-gpu"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        small_turing,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: gpu_inference is not available on this host (unmet: VRAM >= 8000 MiB); "
+                "inference: on must serve on this node. Use a GPU with at least 11.3 GiB of "
+                "memory. Or set inference: auto (this node then serves nothing, degraded with "
+                "consent) or off.",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-auto-small-gpu"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        small_turing,
+        expected={
+            "outcome": "degraded",
+            "disabled": ["gpu_inference", "gpu_training"],
+            "vram": {"serving": "off", "training": "off"},
+        },
+    )
+    fx["ubuntu2404-inference-on-model-fits"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={"outcome": "supported", "vram": {"serving": "fits", "training": "fits"}},
+        plan={"inference": "on", "model": SERVED_MODEL},
+    )
+    # inference: on without a GPU, with an old driver, and while bootstrap
+    # installs the driver (judged by the next run).
+    fx["ubuntu2404-inference-on-no-gpu"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: gpu_inference is not available on this host (unmet: "
+                "nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.5, driver CUDA >= "
+                "13.0); inference: on must serve on this node. Use an NVIDIA GPU that meets them. "
+                "Or set inference: auto",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-on-old-driver"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded", version=OLD_DRIVER),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. The NVIDIA driver supports CUDA",
+                "install a driver branch that supports CUDA",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "fits"},
+        },
+        plan={"inference": "on"},
+    )
+    # Both the driver's CUDA and the GPU's memory fall short: both remedies.
+    fx["ubuntu2404-inference-on-small-gpu-old-driver"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded", gpu=RTX_2060, devid=RTX_2060_DEVID, version=OLD_DRIVER),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "install a driver branch that supports CUDA 13.0. Use a GPU with at least "
+                "11.3 GiB of memory. Or set inference: auto",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-on-driver-pending"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("none"),
+        expected={
+            "outcome": "degraded",
+            "disabled": ["gpu_inference", "gpu_training"],
+            "warnings_contain": [
+                "inference: on is judged once the NVIDIA driver this run installs is loaded: run "
+                "bootstrap again after it, after the reboot where one is needed (with "
+                "--refresh-profile if it reports that the host profile changed); that run "
+                "refuses the host if the GPU still cannot serve",
+            ],
+            "vram": {"serving": "off", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    # Where bootstrap does not install the driver in this run, inference: on is
+    # judged now and the refusal says what makes the GPU usable: a distribution
+    # without a verified installation method, Secure Boot without consent to
+    # the MOK enrollment, and install_nvidia_driver: manual.
+    fx["debian13-inference-on-no-driver"] = build(
+        DEBIAN_13,
+        system(kernel="6.12.48+deb13-amd64"),
+        apparmor,
+        baremetal(),
+        kvm(),
+        nvidia_pci("none", devid=RTX_2080_TI_DEVID),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. pinka has no verified installation "
+                "method for the NVIDIA driver on this distribution: install it following your "
+                "distribution's documentation, then run bootstrap again. Until then bootstrap "
+                "stops at the driver, whatever the inference setting; install_nvidia_driver: skip "
+                "installs the lab without the GPU. Or set inference: auto",
+            ],
+            "warnings_lack": ["is judged once the NVIDIA driver this run installs is loaded"],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-on-secureboot-no-consent"] = build(
+        *secureboot,
+        expected={
+            "outcome": "unsupported",
+            "needs_action": ["secure_boot_mok"],
+            "unsupported_contains": [
+                "inference: on must serve on this node. Secure Boot is on: consent to the MOK "
+                "enrollment (--accept-mok-enrollment, or in the installer) so that bootstrap "
+                "installs the NVIDIA driver, or install it yourself. Or set inference: auto",
+            ],
+            "warnings_lack": ["is judged once the NVIDIA driver this run installs is loaded"],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-on-manual"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("none"),
+        args=["--nvidia-driver", "manual"],
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. install_nvidia_driver is manual: install "
+                "the NVIDIA driver following your distribution's documentation, then run "
+                "bootstrap again. Until then bootstrap stops at the driver, whatever the "
+                "inference setting; install_nvidia_driver: skip installs the lab without the GPU. "
+                "Or set inference: auto",
+            ],
+            "warnings_lack": ["is judged once the NVIDIA driver this run installs is loaded"],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    # A GPU the pinned driver lists only with its proprietary module, one it does
+    # not list at all, and a usable GPU whose memory nvidia-smi does not report.
+    fx["ubuntu2404-inference-on-pascal"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("none", devid=PASCAL_1030_DEVID),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. No driver is installed for this GPU: the "
+                "pinned NVIDIA driver supports it only with its proprietary kernel module",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-on-unlisted-gpu"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("none", devid=KEPLER_730_DEVID),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "inference: on must serve on this node. No driver is installed for this GPU: the "
+                "pinned NVIDIA driver does not list it (an older GPU only a legacy branch "
+                "supports, a GPU newer than the pinned driver, or a PCI device ID that could not "
+                "be read). Install a driver that supports it yourself (install_nvidia_driver: "
+                "manual), then run bootstrap again, or use a GPU the pinned driver supports.",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    fx["ubuntu2404-inference-on-memory-unreported"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded", gpu=("NVIDIA GeForce RTX 4070", "[N/A]", "8.9")),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "(unmet: VRAM >= 8000 MiB); inference: on must serve on this node. nvidia-smi did "
+                "not report the GPU's memory; serving needs at least 11.3 GiB. Or set inference: "
+                "auto",
+            ],
+            "vram": {"serving": "does_not_fit", "training": "off"},
+        },
+        plan={"inference": "on"},
+    )
+    # The support matrix's VRAM minimum, 8000 MiB as nvidia-smi reports it, at
+    # the boundary: exactly the minimum passes (the serving profile still does
+    # not fit), one MiB less does not. Both read 7.8 GiB rounded.
+    fx["ubuntu2404-vram-at-the-minimum"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci(
+            "loaded", gpu=("NVIDIA RTX Example", "8000 MiB", "8.9"), devid=RTX_4060_TI_DEVID
+        ),
+        expected={
+            "outcome": "degraded",
+            "features": {"gpu_inference": True, "gpu_training": True},
+            "degraded_contains": [
+                "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 7.8 GiB, "
+                "so this node serves nothing (inference: auto)",
+            ],
+            "vram": {"serving": "off", "training": "fits"},
+        },
+    )
+    fx["ubuntu2404-vram-below-the-minimum"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci(
+            "loaded", gpu=("NVIDIA RTX Example", "7999 MiB", "8.9"), devid=RTX_4060_TI_DEVID
+        ),
+        expected={
+            "outcome": "degraded",
+            "features": {"gpu_inference": False, "gpu_training": False},
+            "disabled": ["gpu_inference", "gpu_training"],
+            "vram": {"serving": "off", "training": "off"},
+        },
+    )
+    # An inference node exists only to serve: refused when it cannot, under auto.
+    fx["ubuntu2404-inference-node-serving-too-large"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        small_ada,
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "vram: the serving profile ada-12g needs 11.3 GiB of VRAM, the GPU has 8.0 GiB "
+                "(3.3 GiB short); an inference node must serve. Use a GPU with at least 11.3 GiB "
+                "of memory, or another serving profile. Or use this machine as a full or lab node.",
+            ],
+            "vram": {"serving": "does_not_fit", "training": None},
+        },
+        plan={"node_role": "inference"},
+    )
+    fx["ubuntu2404-inference-node-no-gpu"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        expected={
+            "outcome": "unsupported",
+            "unsupported_contains": [
+                "an inference node must serve. Use an NVIDIA GPU that meets them. Or use this "
+                "machine as a full or lab node.",
+            ],
+            "vram": {"serving": "does_not_fit", "training": None},
+        },
+        plan={"node_role": "inference"},
+    )
+    # A lab node serves nothing itself and trains nothing: no VRAM lines.
+    fx["ubuntu2404-lab-node-no-vram"] = build(
+        *base_ubuntu,
+        baremetal(),
+        kvm(),
+        nvidia_pci("loaded"),
+        expected={"vram": {"serving": None, "training": None}},
+        plan={"node_role": "lab"},
     )
     # An uninstall kept a lab where this install would put its research space.
     fx["ubuntu2404-kept-lab"] = build(
@@ -1622,16 +2007,61 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
         expected={
             "outcome": "unsupported",
             "unsupported_contains": [
-                "the Incus pool (loop file): 300.0 GiB, missing 232.3 GiB on /",
+                "the Incus pool (loop file): 300.0 GiB, missing 282.3 GiB on /",
                 "model example-model: 5.7 GiB, missing 5.7 GiB on /srv",
             ],
         },
     )
+    # A 30 GiB loop pool leaves 50 GiB free beside it: with everything on one
+    # file system, LOOP_RESERVE_NEED GiB at install; 0.01 GiB above it fits,
+    # 0.01 GiB below it is refused, the shortfall on the reserve (the largest
+    # item).
+    for name, free, expected in (
+        ("above", LOOP_RESERVE_NEED + 0.01, {"outcome": "degraded"}),
+        (
+            "below",
+            LOOP_RESERVE_NEED - 0.01,
+            {
+                "outcome": "unsupported",
+                "unsupported_contains": [
+                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
+                    "missing 0.1 GiB on /"
+                ],
+            },
+        ),
+    ):
+        fx[f"ubuntu2404-loop-reserve-{name}"] = build(
+            UBUNTU_2404,
+            system(),
+            disks(root_free=free),
+            apparmor,
+            baremetal(),
+            kvm(),
+            plan={"pool": {"source": "loop", "size_gib": 30}},
+            expected=expected,
+        )
     # incus_pool_size: auto on one file system: the golden images and two
-    # VM targets with their probe clients, + 50 %, is 66 GiB with 144 or 386 GiB
-    # free; with 60 GiB free the space left after pinka's other needs (14.6 GiB
-    # at install, 15.3 GiB of stores at their retention) sets the 30 GiB floor.
-    for free, size in ((144, 66), (386, 66), (60, 30)):
+    # VM targets with their probe clients, + 50 %, is 66 GiB with 386 GiB free;
+    # the space left after pinka's other needs (14.6 GiB at install, the 50 GiB
+    # the loop file leaves beside it, 15.3 GiB of stores at their retention)
+    # makes it 64 GiB with 144 GiB free, and with 60 GiB free sets the 30 GiB
+    # floor, which does not fit with the 50 GiB beside it.
+    pool_auto = {"disabled": ["gpu_inference", "gpu_training"]}
+    for free, size, outcome in (
+        (144, 64, {"outcome": "degraded"}),
+        (386, 66, {"outcome": "degraded"}),
+        (
+            60,
+            30,
+            {
+                "outcome": "unsupported",
+                "unsupported_contains": [
+                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
+                    "missing 34.6 GiB on /"
+                ],
+            },
+        ),
+    ):
         fx[f"ubuntu2404-pool-auto-{free}"] = build(
             UBUNTU_2404,
             system(),
@@ -1639,11 +2069,7 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             apparmor,
             baremetal(),
             kvm(),
-            expected={
-                "outcome": "degraded",
-                "disabled": ["gpu_inference", "gpu_training"],
-                "pool": {"size_gib": size, "basis": "computed"},
-            },
+            expected={**outcome, **pool_auto, "pool": {"size_gib": size, "basis": "computed"}},
         )
     # Components that existed before pinka
     # are used as they are; preflight stops where the lab could not run with
