@@ -12,14 +12,16 @@ description: Remove what pinka installed from a host, keep the lab's data and ev
 Uninstall removes what pinka installed and sets back what it changed. The
 plan comes from the install record (`/var/lib/pinka/install-record.json`)
 and the host as it is now, and it is removed in this order: the platform,
-pinka's units, its containers and images, its Incus objects, its firewall
+pinka's units, its containers and images, its Incus objects and the Incus
+server and default project settings it changed (set back to their value
+before, on an Incus pinka installed too, since its data stays), its firewall
 tables, the Tailscale node pinka joined, the packages, holds, repositories
 and keys pinka added, the memberships and keys pinka added to accounts that
-were there before it, its drop-in files and settings, and its paths. Its
-own records go last: `/etc/pinka` (with the machine name and the lab's
+were there before it, its drop-in files and settings, and its paths. Its own
+records go last: `/etc/pinka` (with the machine name and the lab's
 description) and pinka's state with the install record, and only when
-everything before them went, so that a run that did not finish can run
-again and finish.
+everything before them went, so that a run that did not finish can run again
+and finish.
 
 Uninstall keeps everything the record lists as there before pinka: Docker
 Engine, Tailscale, LXD, Podman, Incus, an NVIDIA driver, accounts, packages

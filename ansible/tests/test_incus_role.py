@@ -26,6 +26,7 @@ from ansible_testlib import (
     render_file,
     render_template,
     role_vars,
+    template_value,
 )
 from pinka_preflight.detect.conflicts import MANAGED_MARKER
 
@@ -137,13 +138,158 @@ def test_researchers_and_networks(desired: dict[str, Any]) -> None:
 
 
 def test_server_and_pool(desired: dict[str, Any]) -> None:
+    # On pinka's own Incus (the fixture's: preflight found none) no image of
+    # the default project updates itself; the server's interval is left alone.
+    assert desired["incus_own"] is True
     assert desired["incus_server_config"] == {"core.https_address": "127.0.0.1:8443"}
+    assert desired["incus_default_project_config"] == {"images.auto_update_interval": "0"}
     assert desired["incus_pool"] == {
         "name": "pinka-targets",
         "description": "pinka instances",
         "driver": "btrfs",
         "config": {"size": "66GiB"},  # incus_pool_size: auto, computed by preflight
     }
+
+
+def conditions(task: dict[str, Any]) -> list[str]:
+    """A task's ``when``, as a list of conditions."""
+    when = task.get("when", [])
+    return [when] if isinstance(when, str) else list(when)
+
+
+DEFAULT_PROJECT_TASK = "Stop the images of the default project from updating themselves"
+
+
+def task_named(path: Any, name: str) -> dict[str, Any]:
+    """The task of a task file with this name."""
+    return next(t for t in load_yaml(path) if t["name"] == name)
+
+
+def test_the_default_project_keeps_its_images() -> None:
+    project = task_named(ROLES / "incus" / "tasks" / "objects.yml", DEFAULT_PROJECT_TASK)
+    assert project["pinka_incus_object"] == {
+        "kind": "project",
+        "name": "default",
+        "config": "{{ incus_default_project_config }}",
+    }
+    assert project["when"] == "incus_own | bool"
+    names = [t["name"] for t in load_yaml(ROLES / "incus" / "tasks" / "objects.yml")]
+    assert names.index(DEFAULT_PROJECT_TASK) < names.index("Converge the projects")
+
+
+# Each kind of host, as uninstall's incus_scope reads its record: what the
+# role decides and which record it writes ("objects": record.yml, for an
+# Incus that is not pinka's; "settings": record_settings.yml, for pinka's own).
+HOST_KINDS: list[tuple[dict[str, Any], bool, bool, str | None]] = [
+    # The first run installs Incus: preflight found none (uninstall: "all").
+    ({}, False, True, "settings"),
+    # A later run: the record names Incus as pinka's ("all").
+    ({"pinka_record_added": {"components": {"incus": True}}}, True, True, "settings"),
+    # An Incus that was there at the first install (adopted; "recorded").
+    ({"pinka_record_added": {}}, True, False, "objects"),
+    # One installed by its owner and adopted after the first install
+    # ("recorded"): what pinka creates there is recorded too.
+    ({"pinka_record_added": {"components": {}}}, True, False, "objects"),
+    # A legacy record decides nothing, as for uninstall ("names"): pinka
+    # leaves Incus as it is and records nothing uninstall would not read.
+    (
+        {"pinka_record_added": {"components": {"incus": True}}, "pinka_record_legacy": True},
+        True,
+        False,
+        None,
+    ),
+    ({"pinka_record_added": {}, "pinka_record_legacy": True}, False, False, None),
+]
+
+
+@pytest.mark.parametrize(("facts", "installed_before", "own", "records"), HOST_KINDS)
+def test_only_pinkas_own_incus_stops_image_updates(
+    facts: dict[str, Any], installed_before: bool, own: bool, records: str | None
+) -> None:
+    variables = incus_vars()
+    variables.update(facts)
+    profile = dict(variables["host_profile"])
+    profile["components"] = {
+        **profile.get("components", {}),
+        "incus": {"installed": installed_before},
+    }
+    variables["host_profile"] = profile
+    result = run_set_facts(ROLES / "incus" / "tasks" / "desired.yml", variables)
+    assert result["incus_own"] is own
+    assert result["incus_server_config"] == {"core.https_address": "127.0.0.1:8443"}
+    # Only on pinka's own Incus is the default project's interval set.
+    project = task_named(ROLES / "incus" / "tasks" / "objects.yml", DEFAULT_PROJECT_TASK)
+    assert evaluate(project["when"], {**facts, **result}) is own
+    main = {t["name"]: t for t in load_yaml(ROLES / "incus" / "tasks" / "main.yml")}
+    runs = {
+        kind: all(evaluate(condition, {**facts, **result}) for condition in conditions(main[name]))
+        for kind, name in (
+            ("objects", "Record what pinka creates in an Incus that is not its own"),
+            ("settings", "Record the settings pinka changes in its own Incus"),
+        )
+    }
+    assert runs == {"objects": records == "objects", "settings": records == "settings"}
+
+
+def test_the_settings_of_pinkas_own_incus_are_recorded() -> None:
+    main = {t["name"]: t for t in load_yaml(ROLES / "incus" / "tasks" / "main.yml")}
+    record = main["Record what pinka creates in an Incus that is not its own"]
+    own = main["Record the settings pinka changes in its own Incus"]
+    assert record["when"] == [
+        "not (incus_own | bool)",
+        "not (pinka_record_legacy | default(false) | bool)",
+    ]
+    assert own["when"] == "incus_own | bool"
+    assert record["ansible.builtin.include_tasks"] == "record.yml"
+    assert own["ansible.builtin.include_tasks"] == "record_settings.yml"
+    names = list(main)
+    # Before anything configures the server.
+    assert names.index(own["name"]) < names.index("Initialize a new installation")
+    assert names.index(own["name"]) < names.index("Converge the Incus objects")
+    tasks = {t["name"]: t for t in load_yaml(ROLES / "incus" / "tasks" / "record_settings.yml")}
+    for name, url, result in (
+        ("Read the Incus server's settings", "/1.0", "incus_server_now"),
+        (
+            "Read the default project's settings",
+            "/1.0/projects/default",
+            "incus_default_project_now",
+        ),
+    ):
+        read = tasks[name]
+        assert read["ansible.builtin.command"]["argv"] == ["{{ incus_cli }}", "query", url]
+        assert read["check_mode"] is False
+        assert read["failed_when"] == f"{result}.rc != 0 and not ansible_check_mode"
+    entry = tasks["Record the settings pinka changes, with their value before"]
+    assert entry["pinka_install_record"]["state"] == "add"
+    assert entry["when"] == ["incus_server_now.rc == 0", "incus_default_project_now.rc == 0"]
+    changed = entry["pinka_install_record"]["added"]["changed"]
+    for server, project, expected in (
+        (
+            {},
+            {"features.images": "true"},
+            {
+                "incus:config:core.https_address": "",
+                "incus:project:default:images.auto_update_interval": "",
+            },
+        ),
+        (
+            {"core.https_address": "127.0.0.1:8443", "images.auto_update_interval": "3"},
+            {"images.auto_update_interval": "12"},
+            {"incus:project:default:images.auto_update_interval": "12"},
+        ),
+        (
+            {"core.https_address": "127.0.0.1:8443"},
+            {"images.auto_update_interval": "0"},
+            {},
+        ),
+    ):
+        variables = {
+            "incus_server_now": {"stdout": json.dumps({"config": server})},
+            "incus_default_project_now": {"stdout": json.dumps({"config": project})},
+            "incus_server_config": {"core.https_address": "127.0.0.1:8443"},
+            "incus_default_project_config": {"images.auto_update_interval": "0"},
+        }
+        assert template_value(changed, variables) == expected
 
 
 def test_explicit_pool_size_wins() -> None:

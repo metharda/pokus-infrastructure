@@ -128,5 +128,35 @@ blueprint years later from the same base. When an alias is missing but its
 export exists (for example on a restored host), the role checks the export's
 fingerprint and imports it instead of building a different image.
 
+Only an exported image is golden. The projects `build` and `bench` use the
+default project's image store, so every client that may create images in
+them, a platform controller's certificate restricted to those projects among
+them, can create an alias `<blueprint>/<version>` for a version infra has not
+built yet, or put a copy of an exported image into the store. A client
+restricted to those projects can neither delete an image or an alias that
+exists, nor point an alias elsewhere, nor change an image's files; it can
+rewrite an image's record (its properties, `public`, `auto_update`, its
+profiles in the client's project). The fingerprint is therefore the proof:
+the role takes an alias as golden only when it points to the image its
+export record names, without an update source. It refuses any other alias
+of that form for the version a blueprint is at, it exports no image it did
+not build, and it never gives the alias to a copy that is already in the
+store: it deletes the copy and imports the export. The export record holds
+every property the build published, read from the export's own files, which
+a client cannot change; on every bootstrap the role puts back what a
+client changed in the record of each exported version (it removes a
+property the build did not set, such as a `requirements.*` key that would
+stop every instance created from the image) and sets `public` and
+`auto_update` to false. The image's profiles are not put back: infra's own
+launches name theirs. On an Incus pinka installed no image of the default
+project updates itself (its own `images.auto_update_interval` is 0; the
+researchers' own projects keep refreshing theirs): Incus's periodic update
+would otherwise move the aliases of a copy with an update source. A record
+of another schema than 2 is refused until its version is built again.
+Doctor's check `images.golden` applies the same rule to every alias of that
+form, `images.properties` warns about a changed record, its smoke test
+launches only golden images, and `pinka images list` marks the others `NOT
+GOLDEN`.
+
 Related: [How to build and export golden images](../how-to/build-golden-images.md),
 [How benchmark targets are isolated](target-isolation.md).

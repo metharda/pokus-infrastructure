@@ -8,8 +8,10 @@ images_work_dir: /var/lib/pinka/image-builds
 images_guest_dir: /var/tmp/image-build
 # Exports of the upstream base images.
 images_upstream_dir: "{{ images_export_root }}/_upstream"
-# Export helper (fingerprint check and SHA256SUMS).
+# Export helper (fingerprint check, SHA256SUMS, the properties of an export).
 images_files_helper: /usr/local/libexec/pinka/image-files
+# Incus's socket, for a request whose body a command line cannot carry.
+images_incus_socket: /var/lib/incus/unix.socket
 # OTLP endpoint of the in-image agent: the proxy device inside a container,
 # the collector's VM listener for a VM (contracts.md#telemetry).
 images_otlp_endpoint:

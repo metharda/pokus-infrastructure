@@ -417,28 +417,61 @@ class ImagesTest(unittest.TestCase):
             commands.image_chain(lab(), "nope")
 
     def test_list(self) -> None:
+        properties = {
+            "pinka.recipe_commit": "c" * 40,
+            "pinka.built_at": "2026-01-01T00:00:00Z",
+            "pinka.base_fingerprint": "b" * 64,
+            "requirements.nesting": "false",
+        }
         images = [
             {
                 "fingerprint": "a" * 64,
                 "aliases": [{"name": "_base/1.0.0"}],
-                "properties": {"pinka.built_at": "2026-01-01T00:00:00Z"},
+                "properties": properties,
             },
             {"fingerprint": "b" * 64, "aliases": [{"name": "web-nginx-flask/1.0.0"}]},
             {"fingerprint": "c" * 64, "aliases": [{"name": "personal/1"}]},
+            {
+                "fingerprint": "d" * 64,
+                "aliases": [{"name": "_base/1.0.1"}],
+                "properties": {"pinka.built_at": "\x1b[2J"},
+            },
+            {
+                "fingerprint": "e" * 64,
+                "aliases": [{"name": "web-nginx-flask/2.0.0"}],
+                "properties": properties,
+                "public": True,
+            },
         ]
+        record = {
+            "schema_version": 2,
+            "fingerprint": "a" * 64,
+            "nesting": False,
+            "properties": properties,
+        }
         system = FakeSystem(
             {"incus image list --format json": (0, images)},
             files={
-                "/srv/pinka/images/_base/1.0.0/build.json": json.dumps({"fingerprint": "a" * 64})
+                "/srv/pinka/images/_base/1.0.0/build.json": json.dumps(record),
+                "/srv/pinka/images/web-nginx-flask/2.0.0/build.json": json.dumps(
+                    dict(record, fingerprint="e" * 64)
+                ),
             },
         )
         code, out, _ = captured(lambda: commands.images_list(system, lab()))
         lines = out.splitlines()
         self.assertEqual(code, 0)
-        self.assertEqual(len(lines), 2)
+        self.assertEqual(len(lines), 4)
         self.assertTrue(lines[0].startswith("_base/1.0.0"))
         self.assertIn("built 2026-01-01T00:00:00Z  exported", lines[0])
-        self.assertIn("NOT EXPORTED", lines[1])
+        self.assertIn(
+            f"built ?  NOT GOLDEN: it points to {'b' * 64}, which has no export record", lines[1]
+        )
+        self.assertIn('built "\\u001b[2J"  NOT GOLDEN: it points to', lines[2])
+        self.assertNotIn("\x1b", out)
+        self.assertTrue(
+            lines[3].endswith("exported, CHANGED (bootstrap puts it back): it is public"), lines[3]
+        )
 
     def test_build(self) -> None:
         system = FakeSystem()

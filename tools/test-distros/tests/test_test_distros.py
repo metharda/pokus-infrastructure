@@ -18,6 +18,7 @@ from pinka_test_distros import (
     checkmode,
     cli,
     harness,
+    imagestore,
     isolation,
     preexisting,
     refplat,
@@ -190,6 +191,23 @@ def snapshot_text(sections: dict[str, list[str]]) -> str:
     )
 
 
+def store_report(**changes: Any) -> dict[str, Any]:
+    """The guest helper's image store report of a store that behaves."""
+    steps = [{"name": n, "rc": 0, "output": ""} for n in imagestore.ALLOWED]
+    steps += [{"name": n, "rc": 1, "output": f"Error: {e}"} for n, e in imagestore.REFUSED.items()]
+    golden = [f"{imagestore.ALIAS}/1.0.0", f"{imagestore.ALIAS}/2.0.0"]
+    key, value = imagestore.REWRITTEN
+    properties = {"description": "pinka-test-images golden", key: value}
+    return {
+        "steps": steps,
+        "aliases": [*golden, f"{imagestore.ALIAS}/1.0.1"],
+        "golden": {"aliases": golden, "properties": properties},
+        "left": [],
+        "server_version": "6.0.6",
+        **changes,
+    }
+
+
 class FakeIncus:
     """Answers incus commands for one VM; ``exec`` answers come from ``scripts``."""
 
@@ -231,6 +249,7 @@ class FakeIncus:
             "kept_locked": 0,
             "kept_backup": 0,
             "versions_now": SNAPSHOT["packages"][1:],
+            "image_store": {},
             **behaviour,
         }
         self.snapshots = 0
@@ -408,6 +427,12 @@ class FakeIncus:
         return 0, json.dumps(answers[args[0]]) + "\n"
 
     def guest(self, args: tuple[str, ...]) -> tuple[int, str]:
+        if args[0] == "image-store":
+            project = args[args.index("--project") + 1]
+            report = self.behaviour["image_store"].get(project, store_report())
+            if report is None:
+                return 1, json.dumps({"ok": False, "error": "no image store report in time"}) + "\n"
+            return 0, json.dumps({"ok": True, **report}) + "\n"
         if args[0] == "wait-report":
             outcomes = [
                 {"name": n, "reached": n in self.behaviour["agent_reached"], "detail": "x"}
@@ -596,6 +621,15 @@ def test_the_reference_platform_stages(tmp_path: Path) -> None:
     assert any(c[-2:] == (refplat.CLI, "infer") for c in fake.calls)
     reports = json.loads((tmp_path / "out" / "debian-13" / "isolation.json").read_text())
     assert [r["profile"] for r in reports] == isolation.loopback_profiles(CONTRACT)
+    # The image store, once per project of every restricted profile's certificate.
+    stores = json.loads((tmp_path / "out" / "debian-13" / "images.json").read_text())
+    assert [(r["projects"], r["project"]) for r in stores] == imagestore.runs(CONTRACT)
+    tried = [c for c in fake.calls if c[1] == "exec" and "image-store" in c]
+    assert len(tried) == 3
+    for call in tried:
+        args = call[call.index("image-store") :]
+        assert args[args.index("--address") + 1] == imagestore.ADDRESS
+        assert args[args.index("--server-cert") + 1] == imagestore.SERVER_CERT
     assert fake.restarts == 3  # before the snapshot, in resume, after the uninstall
     assert any("--step-seconds" in c for c in fake.calls)
     record = "/srv/pinka/platforms/refplatb/state/ctl/records/datasets.json"
@@ -615,6 +649,20 @@ def test_the_reference_platform_stages(tmp_path: Path) -> None:
             "inference-broker must reach inference",
         ),
         ({"models": []}, "platform", "the broker did not get the inference API's models"),
+        (
+            {
+                "image_store": {
+                    "bench": store_report(
+                        steps=[
+                            {"name": n, "rc": 0, "output": ""}
+                            for n in [*imagestore.ALLOWED, *imagestore.REFUSED]
+                        ]
+                    )
+                }
+            },
+            "images",
+            "bench: the client deletes the golden alias succeeded",
+        ),
         ({"transitions": ["ok"]}, "resume", "was not suspended and resumed"),
         ({"replaced": False}, "replace", "the active platform is refplat, expected refplatb"),
     ],
@@ -626,6 +674,18 @@ def test_reference_platform_failures(
     record = test.run()
     assert record["stages"][stage] == "failed"
     assert message in record["error"], record["error"]
+
+
+def test_the_image_store_reports_are_kept_after_a_failed_run(tmp_path: Path) -> None:
+    test, _ = make_test(tmp_path, "debian-13", keep="never", image_store={"build": None})
+    record = test.run()
+    assert record["stages"]["images"] == "failed"
+    assert "the image store check in build failed" in record["error"]
+    stores = json.loads((tmp_path / "out" / "debian-13" / "images.json").read_text())
+    assert [(r["projects"], r["project"]) for r in stores] == imagestore.runs(CONTRACT)
+    assert (
+        "error" not in stores[0] and "the image store check in build failed" in stores[2]["error"]
+    )
 
 
 def test_a_second_run_that_changes_something(tmp_path: Path) -> None:

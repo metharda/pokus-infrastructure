@@ -801,6 +801,78 @@ class ApplyTest(unittest.TestCase):
         result = mod.run_module({**p, "state": "apply", "phase": phase}, run=self.fake.run)
         return {r["name"]: r for r in result["results"] if not kinds or r["kind"] in kinds}
 
+    def test_pinkas_own_incus_gets_its_settings_back(self) -> None:
+        # Recorded with the value before on the Incus pinka installed: set back,
+        # since uninstall can keep Incus (the researchers' work) and keeps its data.
+        path = self.fake.root / "var/lib/pinka/install-record.json"
+        rec = json.loads(path.read_text())
+        rec["added"]["changed"].update(
+            {
+                "incus:project:default:images.auto_update_interval": "",
+                "incus:project:default:limits.instances": "5",
+                "incus:project:default:images.compression_algorithm": "-1",
+                "incus:project:": "",
+                "incus:project:default:": "",
+                "incus:config:core.https_address": "192.0.2.10:8443",
+            }
+        )
+        path.write_text(json.dumps(rec))
+        plan = plan_of(self.fake)
+        config = named(plan, "incus_config")
+        self.assertEqual(list(config), ["core.https_address"])
+        self.assertEqual(config["core.https_address"]["value"], "192.0.2.10:8443")
+        projects = named(plan, "incus_project_config")
+        # A key without a project or a setting names nothing to set back.
+        self.assertEqual(
+            sorted(projects),
+            [
+                "default images.auto_update_interval",
+                "default images.compression_algorithm",
+                "default limits.instances",
+            ],
+        )
+        interval = projects["default images.auto_update_interval"]
+        self.assertEqual(
+            (interval["action"], interval["project"], interval["setting"], interval["value"]),
+            ("restore", "default", "images.auto_update_interval", ""),
+        )
+        self.assertEqual(interval["reason"], "unset, as before pinka")
+        self.assertEqual(
+            projects["default limits.instances"]["reason"],
+            "set back to '5', its value before pinka",
+        )
+        self.fake.answer("incus", "config", rc=0)
+        self.fake.answer("incus", "project", rc=0)
+        ctx = mod.Context(make_host(self.fake), params(self.fake))
+        applied = mod.apply_phase(ctx, mod.build_plan(ctx), "incus")
+        results = {r["name"]: r for r in applied if r["kind"] == "incus_project_config"}
+        self.assertEqual(results["default images.auto_update_interval"]["result"], "restored")
+        self.assertIn(
+            ["incus", "project", "unset", "default", "images.auto_update_interval"], self.fake.calls
+        )
+        # One key=value argument: a value such as -1 would be read as an option.
+        self.assertIn(["incus", "project", "set", "default", "limits.instances=5"], self.fake.calls)
+        self.assertIn(
+            ["incus", "project", "set", "default", "images.compression_algorithm=-1"],
+            self.fake.calls,
+        )
+        self.assertIn(
+            ["incus", "config", "set", "core.https_address=192.0.2.10:8443"], self.fake.calls
+        )
+        self.assertFalse(
+            any(
+                arg.startswith("-")
+                for call in self.fake.calls
+                for arg in call[1:]
+                if call[:2] == ["incus", "project"]
+            )
+        )
+
+    def test_without_a_record_no_setting_is_set_back(self) -> None:
+        (self.fake.root / "var/lib/pinka/install-record.json").unlink()
+        self.assertEqual(named(plan_of(self.fake), "incus_config"), {})
+        self.assertEqual(named(plan_of(self.fake), "incus_project_config"), {})
+
     def test_units_go_with_their_links_and_a_second_run_finds_them_gone(self) -> None:
         self.fake.answer("systemctl", rc=0)
         results = self.apply("units")

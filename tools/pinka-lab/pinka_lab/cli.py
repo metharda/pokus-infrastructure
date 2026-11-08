@@ -148,7 +148,8 @@ def build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915 - one parser per
         "--rebuild", action="store_true", help="build the blueprint again although its image exists"
     )
     images_sub.add_parser(
-        "export", help="export images that lack an export and check every export (root)"
+        "export",
+        help="build and export what is missing (the images stage), then check every export (root)",
     )
 
     user = sub.add_parser(

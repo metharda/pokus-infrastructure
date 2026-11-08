@@ -39,6 +39,12 @@
     pinka_preexisting: >-
       {{ {} if install_record_init.record.legacy | default(false)
          else install_record_init.record.preexisting | default({}) }}
+    # What earlier runs recorded as pinka's, as uninstall reads it (nothing
+    # for a legacy record, which decides nothing).
+    pinka_record_added: >-
+      {{ {} if install_record_init.record.legacy | default(false)
+         else install_record_init.record.added | default({}) }}
+    pinka_record_legacy: "{{ install_record_init.record.legacy | default(false) | bool }}"
     # The pre-existing access already closed with the owner's consent
     # (tcp/8080, install_path).
     pinka_closed_access: "{{ install_record_init.record.added.closed_access | default([]) }}"

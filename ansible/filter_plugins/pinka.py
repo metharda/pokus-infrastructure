@@ -462,6 +462,202 @@ def image_by_alias(images: Iterable[Mapping[str, Any]] | None, alias: str) -> di
     return {}
 
 
+# The schema of the export records infra reads: a record names every
+# property the build published, read from the export's metadata.yaml
+# (roles/images/tasks/export.yml). pinka's doctor applies the same rule
+# (pinka_lab/golden.py; the tests keep the two equal).
+GOLDEN_RECORD_SCHEMA = 2
+# Values longer than this are shortened in a problem.
+GOLDEN_SHOWN = 80
+GOLDEN_PLAIN = re.compile(r"[\x21-\x7e]+")
+
+
+def _golden_shown(value: Any) -> str:  # noqa: ANN401 - any JSON value
+    # An alias or a property may be chosen by any client of the image store:
+    # printable, quoted unless plain, and shortened.
+    text = value if isinstance(value, str) and GOLDEN_PLAIN.fullmatch(value) else json.dumps(value)
+    return text if len(text) <= GOLDEN_SHOWN else text[: GOLDEN_SHOWN - 3] + "..."
+
+
+def golden_record_problems(record: Mapping[str, Any] | None) -> list[str]:
+    """Why infra does not read an export record (empty when it does, or there is none).
+
+    Args:
+        record: An export record, ``build.json`` (empty if none).
+
+    Returns:
+        The problems: a record of another schema than ``GOLDEN_RECORD_SCHEMA``
+        (an older one names only some of the image's properties).
+    """
+    if not record:
+        return []
+    version = record.get("schema_version")
+    if type(version) is not int or version != GOLDEN_RECORD_SCHEMA:
+        return [
+            f"its export record has schema {_golden_shown(json.dumps(version))}, not"
+            f" {GOLDEN_RECORD_SCHEMA}; build the version again"
+        ]
+    return []
+
+
+def golden_image_problems(
+    image: Mapping[str, Any] | None, record: Mapping[str, Any] | None
+) -> list[str]:
+    """Why the image a golden alias points to is not the golden image of its export.
+
+    The projects build and bench use the default project's image store, so
+    every client that may create images there (a platform controller's
+    restricted certificate among them) can create an alias of the form
+    ``<blueprint>/<version>`` before the role builds that version, or put a copy
+    of an exported image into the store. Restricted to those projects, it can
+    neither delete an image or an alias of the store, nor point an alias
+    elsewhere, nor change an image's files, so the fingerprint is the proof:
+    an alias is golden only when its image is the one its export record
+    (of the schema infra reads) names, without an update source. A client can
+    rewrite an image's record (its properties, ``public``, ``auto_update``):
+    that is not a refusal, see ``golden_image_drift``.
+
+    Args:
+        image: The image the alias points to (empty if none).
+        record: The alias's export record, ``build.json`` (empty if none).
+
+    Returns:
+        The problems; empty when the image is golden or the alias points to none.
+    """
+    if not image:
+        return []
+    fingerprint = _golden_shown(image.get("fingerprint"))
+    if not record:
+        return [f"it points to {fingerprint}, which has no export record"]
+    if record.get("fingerprint") != image.get("fingerprint"):
+        recorded_fingerprint = _golden_shown(record.get("fingerprint"))
+        return [f"it points to {fingerprint}, but its export recorded {recorded_fingerprint}"]
+    unread = golden_record_problems(record)
+    if unread:
+        return unread
+    # Infra publishes or imports its images from files; only a download has a source.
+    source = image.get("update_source")
+    if source:
+        server = source.get("server") if isinstance(source, Mapping) else source
+        return [
+            f"it has an update source ({_golden_shown(server)}), which infra's images never have"
+        ]
+    return []
+
+
+def golden_image_drift(
+    image: Mapping[str, Any] | None, record: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """What a client of the image store changed in a golden image's record.
+
+    A restricted client can rewrite an existing image's record through a new
+    image request that names its fingerprint. The export record names every
+    property the build published: bootstrap puts back a missing or changed
+    one, removes one the build did not set, and sets ``public`` and
+    ``auto_update`` to false; doctor reports the change as a warning. An empty
+    value is no property, on either side: Incus stores one when it creates an
+    image's record, never when it updates one (internal/server/db/images.go,
+    CreateImage and UpdateImage).
+
+    Args:
+        image: The image the alias points to (empty if none).
+        record: The alias's export record, ``build.json`` (empty if none).
+
+    Returns:
+        ``changes``, each change in words, and ``body``, the body of the
+        ``PUT /1.0/images/<fingerprint>`` that puts it back (empty when nothing
+        changed): the record's properties, ``public`` and ``auto_update``
+        false, and the image's profiles as they are (a ``PUT`` sets them too).
+        Its size follows from the record, not from what a client added. Both
+        are empty for an image that is not golden.
+    """
+    if not image or not record or golden_image_problems(image, record):
+        return {"changes": [], "body": {}}
+    wanted = {
+        key: value
+        for key, value in (record.get("properties") or {}).items()
+        if isinstance(value, str) and value
+    }
+    found = {key: value for key, value in (image.get("properties") or {}).items() if value != ""}
+    changes = []
+    for key in sorted(set(wanted) | set(found)):
+        if key not in wanted:
+            changes.append(
+                f"it has the property {_golden_shown(key)} ({_golden_shown(found.get(key))}),"
+                " which its build did not set"
+            )
+        elif key not in found:
+            changes.append(
+                f"it lacks its property {_golden_shown(key)}"
+                f" ({_golden_shown(wanted[key])} in its export record)"
+            )
+        elif found[key] != wanted[key]:
+            changes.append(
+                f"its property {_golden_shown(key)} is {_golden_shown(found[key])},"
+                f" not {_golden_shown(wanted[key])} as in its export record"
+            )
+    if image.get("public"):
+        changes.append("it is public")
+    if image.get("auto_update"):
+        changes.append("its auto_update is on")
+    if not changes:
+        return {"changes": [], "body": {}}
+    body: dict[str, Any] = {"properties": wanted, "public": False, "auto_update": False}
+    profiles = image.get("profiles")
+    if isinstance(profiles, list):
+        body["profiles"] = profiles
+    return {"changes": changes, "body": body}
+
+
+def golden_image_drifts(
+    images: Iterable[Mapping[str, Any]] | None, records: Iterable[Mapping[str, Any]] | None
+) -> list[dict[str, Any]]:
+    """The golden images of a blueprint's exported versions that a client changed.
+
+    Args:
+        images: Output of ``incus image list --format json``.
+        records: The export records (``build.json``) of every exported version.
+
+    Returns:
+        ``alias``, ``fingerprint``, ``changes`` and ``body`` (see
+        :func:`golden_image_drift`) of each version's golden image that a
+        client changed, in the records' order.
+    """
+    listed = list(images or [])
+    found = []
+    for record in records or []:
+        alias = record.get("alias")
+        image = image_by_alias(listed, alias) if isinstance(alias, str) else {}
+        drift = golden_image_drift(image, record)
+        if drift["body"]:
+            found.append({"alias": alias, "fingerprint": image.get("fingerprint"), **drift})
+    return found
+
+
+# Changes shown in bootstrap's check-mode report, as many as doctor shows
+# (pinka_lab/checks.py, GOLDEN_SHOWN_PROBLEMS).
+GOLDEN_SHOWN_CHANGES = 10
+
+
+def golden_drift_report(drifts: Iterable[Mapping[str, Any]] | None) -> str:
+    """The changes of :func:`golden_image_drifts` in words, shortened.
+
+    Args:
+        drifts: Output of :func:`golden_image_drifts`.
+
+    Returns:
+        ``<alias>: <change>`` joined by ``; ``, at most ``GOLDEN_SHOWN_CHANGES``
+        of them and how many more (a client can add any number of properties).
+    """
+    changes = [
+        f"{_golden_shown(drift.get('alias'))}: {change}"
+        for drift in drifts or []
+        for change in drift.get("changes") or []
+    ]
+    more = len(changes) - GOLDEN_SHOWN_CHANGES
+    return "; ".join(changes[:GOLDEN_SHOWN_CHANGES]) + (f"; and {more} more" if more > 0 else "")
+
+
 # The --showformat of dpkg-query in the images role's package record
 # (roles/images/tasks/build.yml; the tests keep the two identical).
 DPKG_FORMAT = "${Status}\\t${Package}\\t${Version}\\t${Architecture}\\n"
@@ -872,23 +1068,28 @@ def incus_new_objects(found: Mapping[str, str], desired: Mapping[str, Any]) -> l
     return sorted(new)
 
 
-def incus_config_before(server: str, wanted: Mapping[str, Any]) -> dict[str, str]:
-    """The server settings pinka is about to change, as they are.
+def incus_config_before(
+    document: str, wanted: Mapping[str, Any], project: str | None = None
+) -> dict[str, str]:
+    """The server's or a project's settings pinka is about to change, as they are.
 
     Args:
-        server: ``incus query /1.0`` (JSON).
-        wanted: The server configuration pinka sets.
+        document: ``incus query /1.0`` or ``incus query /1.0/projects/<project>`` (JSON).
+        wanted: The configuration pinka sets.
+        project: The project, for a project's settings.
 
     Returns:
-        ``incus:config:<key>`` with the value now ("" when unset) for every key
-        whose value differs from pinka's.
+        ``incus:config:<key>`` (the server) or ``incus:project:<project>:<key>``
+        with the value now ("" when unset) for every key whose value differs
+        from pinka's.
     """
     try:
-        config = (json.loads(server) or {}).get("config") or {}
+        config = (json.loads(document) or {}).get("config") or {}
     except (ValueError, AttributeError):
         return {}
+    prefix = "incus:config:" if project is None else f"incus:project:{project}:"
     return {
-        f"incus:config:{key}": str(config.get(key, ""))
+        f"{prefix}{key}": str(config.get(key, ""))
         for key, value in wanted.items()
         if str(config.get(key, "")) != str(value)
     }
@@ -1159,6 +1360,11 @@ class FilterModule:
             "pinka_scram_matches": scram_matches,
             "pinka_config_hashes": config_hashes,
             "pinka_image_by_alias": image_by_alias,
+            "pinka_golden_image_problems": golden_image_problems,
+            "pinka_golden_record_problems": golden_record_problems,
+            "pinka_golden_image_drift": golden_image_drift,
+            "pinka_golden_image_drifts": golden_image_drifts,
+            "pinka_golden_drift_report": golden_drift_report,
             "pinka_dpkg_packages": dpkg_packages,
             "pinka_to_toml": to_toml,
             "pinka_socket_specs": socket_specs,

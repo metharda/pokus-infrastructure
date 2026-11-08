@@ -10,7 +10,7 @@ from typing import Any
 
 from labfakes import DIGEST, LAB, NOW, PROFILE, FakeSystem, context, info, lab_data
 
-from pinka_lab import checks, fingerprint
+from pinka_lab import checks, doctor, fingerprint
 from pinka_lab.checks import CHECKS
 from pinka_lab.doctor import Check, Outcome
 
@@ -764,6 +764,78 @@ class IncusTest(Base):
         self.assertOutcome(
             run(checks.check_incus_pool, FakeSystem(), node_role="inference"), "skip"
         )
+
+    def auto_update(self, server: str | None, project: str | None = None) -> FakeSystem:
+        key = "images.auto_update_interval"
+        return FakeSystem(
+            {
+                "incus query /1.0": (0, {"config": {} if server is None else {key: server}}),
+                "incus query /1.0/projects/default": (
+                    0,
+                    {"config": {} if project is None else {key: project}},
+                ),
+            }
+        )
+
+    def test_auto_update(self) -> None:
+        check = checks.check_incus_auto_update
+        self.assertOutcome(
+            run(check, self.auto_update(None, project="0")),
+            "pass",
+            "is 0 (the default project's setting)",
+        )
+        # The server's setting applies where the default project has none.
+        self.assertOutcome(run(check, self.auto_update("0")), "pass", "is 0 (the server's setting)")
+        # Incus disables the update for any interval of 0 or less.
+        self.assertOutcome(run(check, self.auto_update("-1")), "pass", "is -1")
+        # The default project's own setting overrides the server's.
+        self.assertOutcome(run(check, self.auto_update("6", project="0")), "pass")
+        # Pinka's own Incus: bootstrap sets the default project's own value back.
+        own = (
+            "on the Incus pinka installed: run bootstrap with --tags incus, which sets the"
+            " default project's own value back to 0"
+        )
+        for server, project, shown in (
+            (None, None, "6 (Incus's default)"),
+            ("12", None, "12 (the server's setting)"),
+            ("0", "3", "3 (the default project's setting)"),
+        ):
+            outcome = run(check, self.auto_update(server, project=project))
+            self.assertOutcome(outcome, "fail")
+            self.assertEqual(outcome.detail, f"images.auto_update_interval is {shown} {own}")
+        # An Incus pinka did not install: pinka leaves it to its owner, as a
+        # warning also at Incus's default (doctor has no lower severity).
+        adopted = (
+            "on an Incus pinka did not install (or one its install record cannot place), which"
+            " pinka leaves as it is: Incus updates every image of the default project with"
+            " auto_update on and an update source this often and moves its aliases, so an"
+            " alias a client of the shared image store created on a copy it downloaded would"
+            " move between two bootstraps. If nothing else in the default project needs it:"
+            " sudo incus project set default images.auto_update_interval 0"
+        )
+        for server, project, shown in (
+            (None, None, "6 (Incus's default)"),
+            ("12", None, "12 (the server's setting)"),
+            ("0", "6", "6 (the default project's setting)"),
+        ):
+            outcome = run(check, self.auto_update(server, project=project), incus__own=False)
+            self.assertOutcome(outcome, "fail")
+            self.assertEqual(outcome.detail, f"images.auto_update_interval is {shown} {adopted}")
+        self.assertOutcome(run(check, self.auto_update("0"), incus__own=False), "pass")
+        self.assertOutcome(run(check, self.auto_update("\x1b[2J")), "fail", '"\\u001b[2J"')
+        self.assertOutcome(run(check, FakeSystem(), node_role="inference"), "skip")
+        registered = next(c for c in CHECKS if c.id == "incus.auto_update")
+        self.assertEqual(registered.severity, "warning")
+        self.assertEqual(
+            registered.remediation,
+            "On the Incus pinka installed, run bootstrap with --tags incus, which sets the default"
+            " project's interval back to 0. On an Incus pinka did not install (or one its install"
+            " record cannot place), pinka leaves the setting to you: sudo incus project set default"
+            " images.auto_update_interval 0, if nothing else in the default project needs Incus to"
+            " update its images.",
+        )
+        # A warning: doctor's lowest severity, which makes doctor exit 1.
+        self.assertEqual(doctor.SEVERITIES, ("error", "warning"))
 
     def test_query_failure_raises(self) -> None:
         with self.assertRaises(RuntimeError):

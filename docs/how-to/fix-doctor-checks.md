@@ -465,6 +465,115 @@ The `bench` or `build` project or one of the lab's profiles is missing. Run
 bootstrap with `--tags incus`; it creates missing objects and never deletes
 any.
 
+## `images.golden`: an alias is not the golden image of its export {#check-images-golden}
+
+An alias `<blueprint>/<version>` of one of the lab's blueprints is not the
+golden image of its export: it has no export record in
+`/srv/pinka/images/<blueprint>/<version>/build.json`, or it points to
+another image than the record names, or to an image with an update source
+(an image infra built or imported from its export never has one), or its
+record has another schema than 2 (an older record names only some of the
+image's properties). The projects `build` and `bench` share the image store,
+so a client allowed to create images there (a platform controller) can
+create the alias of a version before infra builds it; an earlier run that
+stopped between the build and its export leaves an alias without a record
+too. Bootstrap refuses such an alias for the version a blueprint is at,
+doctor names every alias of that form, and doctor's smoke test launches only
+golden images. Delete the alias:
+
+<!-- qa:skip reason="needs an alias that is not golden on the lab host" -->
+```bash
+sudo incus image alias delete <alias>
+```
+
+`<alias>` is the alias the check names. The check prints an alias with
+characters a terminal could act on in quotes with JSON escapes; find its
+exact name with `sudo incus image alias list --format json`. Then build or
+import the images again: bootstrap imports a version's export if there is
+one, replacing any copy of that image already in the store, and builds the
+image otherwise.
+
+<!-- qa:skip reason="builds images on the lab host" -->
+```bash
+sudo pinka images build
+```
+
+When the check names a record of another schema, build that version again
+instead; the build writes a record of schema 2:
+
+<!-- qa:skip reason="rebuilds an image on the lab host" -->
+```bash
+sudo pinka images build <blueprint> --rebuild
+```
+
+`<blueprint>` is the part of the alias before the `/`. The command builds
+the version the blueprint is at; for an older version, delete its alias as
+above and its export directory `/srv/pinka/images/<blueprint>/<version>`.
+
+To find the client that created the alias, read the alias's
+`image-alias-created` event in the journal of
+`pinka-incus-events.service` (`sudo journalctl -u pinka-incus-events.service
+-g image-alias-created`): its `requestor` names a client certificate by its
+fingerprint, which `sudo incus config trust list` names.
+
+## `images.properties`: a client changed a golden image's record {#check-images-properties}
+
+A golden image of any exported version (its alias and fingerprint as its
+export recorded) lacks a property its build published, has another value of
+one, has a property its build did not set (such as a `requirements.*` key
+that stops every instance created from it), is public, or has its
+`auto_update` on. A client allowed to create images in the projects `build`
+and `bench` can rewrite an existing image's record this way, through a new
+image request that names its fingerprint; it cannot change the image's
+files, so the image is still the golden one. The export record holds every
+property the build published, read from the export's own files; bootstrap
+sets the image's properties to exactly those, and `public` and
+`auto_update` to false, for every exported version of the blueprints it
+processes:
+
+<!-- qa:skip reason="needs a changed golden image on the lab host" -->
+```bash
+sudo pinka images build
+```
+
+Such a request can also set the image's profiles in the client's project;
+that is not put back. Infra's own launches (the image builds, doctor's smoke
+test) name their profiles; a platform's launches should name theirs too.
+
+## `incus.auto_update`: Incus would update images by itself {#check-incus-auto_update}
+
+The interval in force for the default project, whose image store holds the
+golden images, is above 0: its own `images.auto_update_interval`, else
+the server's, else Incus's default of 6 hours. Incus then updates every
+image of the default project with `auto_update` on and an update source that
+often and moves its aliases to the new image. Pinka's images have no update
+source, but an alias a client of the shared image store created on a copy
+it downloaded would move between two bootstraps.
+
+On the Incus pinka installed, bootstrap sets the default project's own
+interval back to 0; the server's interval, and with it the researchers' own
+projects, it leaves alone:
+
+<!-- qa:skip reason="changes the lab host" -->
+```bash
+sudo ./bootstrap/bootstrap.sh --machine <machine> --tags incus
+```
+
+`<machine>` is the name of this lab host's host_vars file.
+
+On an Incus pinka did not install (one that existed before pinka, adopted
+with `--adopt-incus`, or one its install record cannot place), pinka leaves
+the setting to you, since it also governs the default project's other
+images. The check warns there too when the interval is Incus's default:
+doctor has no lower severity than a warning. If nothing else in the default
+project needs Incus to update its images, set the default project's
+interval to 0:
+
+<!-- qa:skip reason="changes the lab host" -->
+```bash
+sudo incus project set default images.auto_update_interval 0
+```
+
 ## `incus.certificates`: a client certificate is missing or untrusted {#check-incus-certificates}
 
 A service's client certificate or key under `/etc/pinka/incus/` is missing,
@@ -726,9 +835,10 @@ is), then run `wsl --shutdown` on Windows. See [WSL2 hosts](../providers/wsl2.md
 
 ## `smoke.<blueprint>`: a throwaway target failed {#check-smoke}
 
-With `--smoke`, doctor launches the newest image of every blueprint. A
-failure names the image and the problem: systemd degraded or a service
-inactive (inspect the image with
+With `--smoke`, doctor launches the newest golden image of every blueprint
+(an alias that is not golden is left out; see
+[`images.golden`](#check-images-golden)). A failure names the image and the
+problem: systemd degraded or a service inactive (inspect the image with
 [How to build golden images](build-golden-images.md)), no log line in Loki
 (the image's telemetry agent or the proxy device), the internet or the lab
 host reachable from the target (the run ACL `pinka-run-default` and the

@@ -10,6 +10,23 @@ Incus for benchmark targets and personal sandboxes:
   fingerprint.
 - **Ownership:** an Incus that someone else configured is only touched with
   `--adopt-incus`; `/etc/pinka/managed-incus` marks a Pokus Infrastructure (pinka) installation.
+- **Settings:** the server's `core.https_address`, and on an Incus pinka
+  installed the default project's own `images.auto_update_interval: 0` (no
+  image of the default project, whose store holds the golden images, updates
+  itself: pinned images never need it, and the periodic update would move
+  the aliases of a copy a client of the shared image store downloaded; the
+  server's interval, and with it the researchers' own projects, stays as it
+  is). Pinka's own Incus is told apart as uninstall tells it (`incus_own`:
+  the install record names it as pinka's, or this run installs it; a legacy
+  record decides nothing). Any other Incus keeps its own interval; doctor's
+  `incus.auto_update` warns when the interval in force for the default
+  project is above 0. Every run
+  sets them back when they differ. The install record notes each with its
+  value before (first value wins; `incus:config:<key>` for the server,
+  `incus:project:default:<key>` for the project): on an adopted Incus in
+  `record.yml`, on pinka's own in `record_settings.yml`; uninstall sets them
+  back on both (on pinka's own also `core.https_address`, unset before
+  pinka).
 - **Storage:** one pool `pinka-targets`, btrfs or LVM thin as preflight
   decided, on a loop file (`incus_pool_size`) or a dedicated device. A device
   is formatted only after these checks: the confirmation

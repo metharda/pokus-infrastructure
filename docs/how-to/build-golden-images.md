@@ -4,7 +4,7 @@ type: how-to
 audience: [operator, scenario-author]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: Pin the upstream base image, build the blueprints of images/, change a blueprint, handle a failed build or a leakage finding, and check the exports.
+description: Pin the upstream base image, build the blueprints of images/, change a blueprint, handle a failed build, a leakage finding or a refused alias, and check the exports.
 ---
 
 # How to build, test and export golden images
@@ -111,6 +111,28 @@ images_leakage_allow:
 file's path below the root, without the leading `/`. Keep the two default
 rules: the setting replaces the whole list.
 
+## When the role refuses an alias
+
+The role refuses a blueprint whose alias `<blueprint>/<version>` is not the
+golden image of its export: the alias has no export record, or it points to
+another image than the record names, or to an image with an update source.
+A client of the shared image store (the projects `build` and `bench`) can
+create such an alias before the version is built, and a run that stopped
+between the build and its export leaves an alias without a record. The role
+neither exports nor uses such an image. What a client changed in a golden
+image's properties, `public` or `auto_update` is no refusal: the role puts
+it back.
+[`images.golden`](fix-doctor-checks.md#check-images-golden) says how to
+delete the alias and import or build the image again. To build the version
+again at once instead:
+
+<!-- qa:skip reason="builds an image on the lab host" -->
+```bash
+sudo pinka images build <blueprint> --rebuild
+```
+
+`<blueprint>` is the blueprint of the alias the message names.
+
 ## Verify the images
 
 List the golden images with their properties:
@@ -145,6 +167,10 @@ sudo jq -r '.packages[] | [.name, .version, .architecture] | @tsv' build.json | 
 
 `<blueprint>` and `<version>` name the export, as above. Each line names a
 package, its version and its architecture.
+
+`sudo pinka doctor` checks every alias of a blueprint against its export
+(the check `images.golden`), and `sudo pinka images list` prints `exported`
+for a golden image and `NOT GOLDEN` with the reason for any other alias.
 
 Related: [How golden images are built](../explanation/golden-images.md),
 [ADR-0012](../adr/0012-leakage-lint.md).

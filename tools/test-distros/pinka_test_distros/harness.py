@@ -33,7 +33,7 @@ from typing import Any
 import yaml
 
 from pinka_platform import contract as contract_mod
-from pinka_test_distros import isolation, preexisting, refplat, snapshot
+from pinka_test_distros import imagestore, isolation, preexisting, refplat, snapshot
 from pinka_test_distros.incus import Incus, IncusError, Result
 from pinka_test_distros.targets import Target
 
@@ -47,6 +47,7 @@ STAGES = (
     "access",
     "platform",
     "isolation",
+    "images",
     "training",
     "resume",
     "redeploy",
@@ -821,6 +822,54 @@ class Test:
             extra = len(problems) - SHOWN_PROBLEMS
             more = f" and {extra} more" if extra > 0 else ""
             raise StageError(shown + more)
+
+    def images(self) -> None:
+        """A client restricted like a platform service creates in the image store, never changes it.
+
+        For each set of projects a profile's certificate is restricted to, and
+        each of its projects (pinka_test_distros.imagestore).
+        """
+        problems: list[str] = []
+        reports: list[dict[str, Any]] = []
+        try:
+            for projects, project in imagestore.runs(self.contract):
+                problems += self._image_store(projects, project, reports)
+        finally:
+            text = json.dumps(reports, indent=2, sort_keys=True)
+            (self.dir / "images.json").write_text(text + "\n", encoding="utf-8")
+        if problems:
+            shown = "; ".join(problems[:SHOWN_PROBLEMS])
+            extra = len(problems) - SHOWN_PROBLEMS
+            more = f" and {extra} more" if extra > 0 else ""
+            raise StageError(shown + more)
+
+    def _image_store(
+        self, projects: list[str], project: str, reports: list[dict[str, Any]]
+    ) -> list[str]:
+        """One run of the guest helper's image store check; its report joins ``reports``."""
+        argv = refplat.guest(
+            "image-store",
+            "--projects",
+            ",".join(projects),
+            "--project",
+            project,
+            "--address",
+            imagestore.ADDRESS,
+            "--server-cert",
+            imagestore.SERVER_CERT,
+        )
+        try:
+            report = self._answer(
+                "images",
+                argv,
+                f"the image store check in {project}",
+                timeout=imagestore.STAGE_TIMEOUT,
+            )
+        except StageError as exc:
+            reports.append({"projects": projects, "project": project, "error": str(exc)})
+            raise
+        reports.append({"projects": projects, "project": project, **report})
+        return imagestore.compare(report, project)
 
     def training(self) -> None:
         """Dataset, the CPU-only job, its adapter and lineage."""

@@ -320,6 +320,11 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_scram_matches",
         "pinka_config_hashes",
         "pinka_image_by_alias",
+        "pinka_golden_image_problems",
+        "pinka_golden_record_problems",
+        "pinka_golden_image_drift",
+        "pinka_golden_image_drifts",
+        "pinka_golden_drift_report",
         "pinka_dpkg_packages",
         "pinka_to_toml",
         "pinka_socket_specs",
@@ -781,6 +786,15 @@ def test_incus_config_before_notes_what_pinka_changes() -> None:
     unchanged = json.dumps({"config": {"core.https_address": "127.0.0.1:8443"}})
     assert pinka.incus_config_before(unchanged, wanted) == {}
     assert pinka.incus_config_before("", wanted) == {}
+    # A project's settings: incus:project:<project>:<key>.
+    interval = {"images.auto_update_interval": "0"}
+    project = json.dumps({"config": {"images.auto_update_interval": "6"}})
+    assert pinka.incus_config_before(project, interval, "default") == {
+        "incus:project:default:images.auto_update_interval": "6"
+    }
+    assert pinka.incus_config_before(json.dumps({"config": {}}), interval, "default") == {
+        "incus:project:default:images.auto_update_interval": ""
+    }
 
 
 def test_component_packages_span_every_source_group() -> None:

@@ -25,6 +25,7 @@ TEST_STAGE_TITLES = {
     "access": "Access",
     "platform": "Platform",
     "isolation": "Isolation",
+    "images": "Image store",
     "training": "Training",
     "resume": "Resume",
     "redeploy": "Redeploy",
@@ -304,11 +305,12 @@ def test_results_section(root: Path) -> str:
         "bootstraps the lab in a disposable VM per target, runs bootstrap a second time, which "
         "must change nothing, and then `pinka doctor --smoke`. Then it deploys the reference "
         "platform: the isolation probes of its agent and of every loopback-capable profile, "
-        "the training flow with the CPU-only job, a run interrupted by a reboot and resumed, a "
-        "second deployment that must change nothing, the replacement by a renamed copy, and a "
-        "backup and restore. Last, it uninstalls the lab: after a reboot, the host must equal "
-        "its snapshot from before the install, apart from what uninstall keeps on purpose. A "
-        "result counts for "
+        "what a client certificate restricted like a profile's may do with the shared image "
+        "store, the training flow with the CPU-only job, a run interrupted by a reboot and "
+        "resumed, a second deployment that must change nothing, the replacement by a renamed "
+        "copy, and a backup and restore. Last, it uninstalls the lab: after a reboot, the host "
+        "must equal its snapshot from before the install, apart from what uninstall keeps on "
+        "purpose. A result counts for "
         f"{test_results.VALID_DAYS} days after its test date (*Valid until*); a target whose "
         "last result failed or has expired counts as untested.\n\n",
     ]

@@ -103,6 +103,7 @@ LAB: dict[str, Any] = {
         "profiles": [{"name": "target-container", "project": "bench"}],
         "cert_dir": "/etc/pinka/incus",
         "certificates": [{"account": "demo-ctl", "short": "demo-ctl", "name": "demo-ctl"}],
+        "own": True,
     },
     "postgres": {
         "container": "pinka-postgres",

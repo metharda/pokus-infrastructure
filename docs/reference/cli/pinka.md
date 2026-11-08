@@ -50,7 +50,7 @@ Every command also accepts `-h`, `--help`.
 | `pinka images` | golden images: list, build, export |
 | `pinka images list` | aliases, fingerprints, build time and export state |
 | `pinka images build` | build missing images, or one blueprint (root) |
-| `pinka images export` | export images that lack an export and check every export (root) |
+| `pinka images export` | build and export what is missing (the images stage), then check every export (root) |
 | `pinka user` | edit the researcher list of the configuration (never the host) |
 | `pinka user add` | add a researcher |
 | `pinka user remove` | lock a researcher (moved to researchers_removed) |
@@ -259,7 +259,7 @@ pinka images build [-h] [--rebuild] [blueprint]
 
 ### pinka images export
 
-Export images that lack an export and check every export (root).
+Build and export what is missing (the images stage), then check every export (root).
 
 ```text
 pinka images export [-h]

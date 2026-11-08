@@ -155,6 +155,9 @@ RESULTS = ("removed", "restored", "locked", "kept", "already_gone", "failed", "p
 # The item bootstrap finishes after the play (bootstrap/lib/stages.sh).
 PENDING_REASON = "bootstrap removes it after the play"
 COMPONENTS = ("docker", "incus", "tailscale", "nvidia")
+# The install record's key of a project's setting pinka changed:
+# incus:project:<project>:<key> (the server's: incus:config:<key>).
+INCUS_PROJECT_CONFIG = "incus:project:"
 # Record component names for the --remove-component names.
 RECORD_COMPONENT = {
     "docker": "docker",
@@ -1180,7 +1183,9 @@ def plan_incus(ctx: Context) -> list[Item]:  # noqa: PLR0912, PLR0915 - one pass
                 )
             )
     for key, before in sorted(ctx.changed.items()):
-        if key.startswith("incus:config:") and mode == "recorded":
+        # Recorded on an Incus pinka adopted and on its own, which uninstall
+        # may keep (the researchers' work) and whose data it keeps.
+        if key.startswith("incus:config:") and mode in ("recorded", "all"):
             setting = key[len("incus:config:") :]
             items.append(
                 item(
@@ -1194,6 +1199,24 @@ def plan_incus(ctx: Context) -> list[Item]:  # noqa: PLR0912, PLR0915 - one pass
                     value=before or "",
                 )
             )
+        elif key.startswith(INCUS_PROJECT_CONFIG) and mode in ("recorded", "all"):
+            # incus:project:<project>:<key>; a project's name holds no colon.
+            project, _, setting = key[len(INCUS_PROJECT_CONFIG) :].partition(":")
+            if project and setting:
+                items.append(
+                    item(
+                        "incus",
+                        "incus_project_config",
+                        f"{project} {setting}",
+                        "restore",
+                        f"set back to {before!r}, its value before pinka"
+                        if before
+                        else "unset, as before pinka",
+                        project=project,
+                        setting=setting,
+                        value=before or "",
+                    )
+                )
     if "incus" in ctx.keep_for_data:
         items.append(item("incus", "component", "Incus", "keep", ctx.keep_for_data["incus"]))
     return items + kept_component(ctx, "incus", "incus", "Incus")
@@ -2608,7 +2631,7 @@ def apply_unit(ctx: Context, it: Item) -> tuple[str, str]:
 
 
 def apply_incus(ctx: Context, it: Item) -> tuple[str, str]:
-    """Remove one Incus object pinka created, or set a server setting back."""
+    """Remove one Incus object pinka created, or set a server or project setting back."""
     project = ["--project", str(it.get("project", ""))] if it.get("project") else []
     obj = str(it.get("object", it["name"]))
     commands = {
@@ -2622,12 +2645,23 @@ def apply_incus(ctx: Context, it: Item) -> tuple[str, str]:
         "certificate": ["incus", "config", "trust", "remove", obj],
         "pool": ["incus", "storage", "delete", obj],
     }
+    # A value is set as one key=value argument: as an argument of its own, a
+    # value such as -1 would be read as an option (cmd/incus/utils.go, getConfig).
     if it["kind"] == "incus_config":
         value = str(it.get("value") or "")
         argv = (
-            ["incus", "config", "set", it["name"], value]
+            ["incus", "config", "set", f"{it['name']}={value}"]
             if value
             else ["incus", "config", "unset", it["name"]]
+        )
+        return outcome(ctx.host, argv, done="restored")
+    if it["kind"] == "incus_project_config":
+        value = str(it.get("value") or "")
+        target, setting = str(it["project"]), str(it["setting"])
+        argv = (
+            ["incus", "project", "set", target, f"{setting}={value}"]
+            if value
+            else ["incus", "project", "unset", target, setting]
         )
         return outcome(ctx.host, argv, done="restored")
     return outcome(ctx.host, commands[it["kind"]])
@@ -3292,6 +3326,7 @@ APPLIERS: dict[str, Callable[[Context, Item], tuple[str, str]]] = {
             "certificate",
             "pool",
             "incus_config",
+            "incus_project_config",
         )
     },
     **{

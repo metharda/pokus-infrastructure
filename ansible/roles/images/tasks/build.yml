@@ -177,7 +177,8 @@
     - name: Publish the image
       ansible.builtin.command:
         argv: >-
-          {{ ['incus', 'publish', '--project', images_project, images_instance, '--alias', images_alias]
+          {{ ['incus', 'publish', '--project', images_project, images_instance, '--alias', images_alias,
+              '--compression', 'gzip']
              + (['--reuse'] if images_image != {} else [])
              + ['pinka.recipe_commit=' ~ pinka_bootstrap.repo_commit ~ ('-dirty' if pinka_bootstrap.infra_dirty | default(false) else ''),
                 'pinka.built_at=' ~ now(utc=true).strftime('%Y-%m-%dT%H:%M:%SZ'),

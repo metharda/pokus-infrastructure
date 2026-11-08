@@ -16,9 +16,11 @@
   ansible.builtin.set_fact:
     images_alias: "{{ images_record.alias }}"
 
+# In the default project, whose store holds the golden images and to which
+# the put-back's PUT goes, whatever project root's incus client is switched to.
 - name: List the images of the image store
   ansible.builtin.command:
-    argv: [incus, image, list, --format, json]
+    argv: [incus, image, list, --project, default, --format, json]
   register: images_list
   changed_when: false
   check_mode: false
@@ -27,15 +29,28 @@
   ansible.builtin.set_fact:
     images_image: "{{ images_list.stdout | from_json | pinka_image_by_alias(images_alias) }}"
 
-- name: Refuse an alias that points to a different image
+- name: Refuse an export record of another schema
   ansible.builtin.assert:
-    that: images_image == {} or images_image.fingerprint == images_record.fingerprint
+    that: images_unread == []
     fail_msg: >-
-      {{ images_alias }} points to {{ images_image.fingerprint | default('') }}, but its export in
-      {{ images_export_dir }} recorded {{ images_record.fingerprint }}. Delete the alias
-      (incus image alias delete {{ images_alias }}) to restore the exported image, or move the
-      export away to keep the current one.
+      {{ images_record_path }}: {{ images_unread | join('; ') }}
+      (sudo pinka images build {{ images_record.blueprint | default(images_alias | dirname) }} --rebuild),
+      then run the restore again. Infra reads only records of schema 2, which name every property of
+      the image, and does not import the image of another.
     quiet: true
+  vars:
+    images_unread: "{{ images_record | pinka_golden_record_problems }}"
+
+- name: Refuse an alias that is not the golden image of its export
+  ansible.builtin.assert:
+    that: images_problems == []
+    fail_msg: >-
+      {{ images_alias }} is not the golden image its export in {{ images_export_dir }} recorded:
+      {{ images_problems | join('; ') }}. Delete the alias (sudo incus image alias delete
+      {{ images_alias }}) and run the restore again to import the exported image.
+    quiet: true
+  vars:
+    images_problems: "{{ images_image | pinka_golden_image_problems(images_record) }}"
 
 - name: Import the exported image
   ansible.builtin.include_tasks: import.yml

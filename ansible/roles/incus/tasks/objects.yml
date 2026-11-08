@@ -8,6 +8,13 @@
     kind: server
     config: "{{ incus_server_config }}"
 
+- name: Stop the images of the default project from updating themselves
+  pinka_incus_object:
+    kind: project
+    name: default
+    config: "{{ incus_default_project_config }}"
+  when: incus_own | bool
+
 - name: Create the storage pool {{ incus_pool_name }}
   pinka_incus_object:
     kind: storage_pool

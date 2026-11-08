@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Container
 from typing import Any
 from urllib.parse import quote
 
+from pinka_lab import golden
 from pinka_lab.doctor import Check, Context, Outcome, failed, passed, skipped
 from pinka_lab.system import System
 
@@ -28,12 +29,15 @@ def _incus(system: System, *args: str, timeout: float = 120.0) -> Any:  # noqa: 
     return system.run(["incus", *args], timeout=timeout)
 
 
-def newest_alias(images: list[dict[str, Any]], blueprint: str) -> str | None:
+def newest_alias(
+    images: list[dict[str, Any]], blueprint: str, accepted: Container[str] | None = None
+) -> str | None:
     """The alias of a blueprint's newest version.
 
     Args:
         images: ``incus image list --format json``.
         blueprint: Blueprint name.
+        accepted: Only these aliases (the golden ones), or None for all.
 
     Returns:
         ``<blueprint>/<version>`` with the highest version, or None.
@@ -42,6 +46,8 @@ def newest_alias(images: list[dict[str, Any]], blueprint: str) -> str | None:
     for image in images:
         for alias in image.get("aliases") or []:
             name, _, version = str(alias.get("name", "")).partition("/")
+            if accepted is not None and alias.get("name") not in accepted:
+                continue
             if name == blueprint and version:
                 try:
                     versions.append((tuple(int(p) for p in version.split(".")), alias["name"]))
@@ -194,9 +200,17 @@ def _runner(blueprint: dict[str, Any]) -> Callable[[Context], Outcome]:
         images = (
             ctx.system.run(["incus", "image", "list", "--format", "json"], timeout=60).json() or []
         )
-        alias = newest_alias(images, str(blueprint["name"]))
+        name = str(blueprint["name"])
+        if newest_alias(images, name) is None:
+            return failed(f"no image of {name} is published")
+        # Only a golden image is launched; images.golden names the others.
+        export_root = str(
+            ctx.config.get("images", "export_root", default=f"{ctx.config.pinka_root}/images")
+        )
+        found = golden.review(ctx.system, export_root, images, {name})
+        alias = newest_alias(images, name, {a for a, r in found.items() if not r["problems"]})
         if alias is None:
-            return failed(f"no image of {blueprint['name']} is published")
+            return failed(f"no image of {name} is golden (see the check images.golden)")
         return smoke_one(ctx, blueprint, alias)
 
     return run

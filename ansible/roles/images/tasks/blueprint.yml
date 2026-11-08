@@ -1,8 +1,16 @@
 # Managed by pinka (ansible/roles/images/tasks/blueprint.yml). Local changes will be overwritten.
 #
 # One blueprint (images_name): build it when neither its alias nor its export
-# exist, import it from its export when only the alias is missing, export it
-# when only the export is missing. images_rebuild builds it again.
+# exist, import it from its export when only the alias is missing.
+# images_rebuild builds it again. An alias whose image is not the one its
+# export records (or that has an update source) is refused, never exported
+# or used: the projects build and bench share this image store, and a client
+# allowed to create images there (a platform controller's restricted
+# certificate) can create the alias of a version before it is built. Such a
+# client can also rewrite a golden image's record; what it changed (its
+# properties, public, auto_update) is put back from the export record, for
+# every exported version. An export record of another schema than the one
+# infra reads is refused until the version is built again.
 
 - name: Describe the blueprint
   ansible.builtin.set_fact:
@@ -11,9 +19,11 @@
     images_export_dir: "{{ images_export_root }}/{{ images_name }}/{{ images_specs[images_name].version }}"
     images_package_list: null
 
+# In the default project, whose store holds the golden images and to which
+# the put-back's PUT goes, whatever project root's incus client is switched to.
 - name: List the images of the image store
   ansible.builtin.command:
-    argv: [incus, image, list, --format, json]
+    argv: [incus, image, list, --project, default, --format, json]
   register: images_list
   changed_when: false
   check_mode: false
@@ -40,12 +50,92 @@
       {{ 'build' if images_rebuild | bool or images_name in images_rebuild_names
                      or (images_image == {} and images_record == {})
          else 'import' if images_image == {}
-         else 'export' if images_record.fingerprint | default('') != images_image.fingerprint
          else 'none' }}
+
+- name: Refuse an export record of another schema
+  ansible.builtin.assert:
+    that: images_unread == []
+    fail_msg: >-
+      {{ images_export_dir }}/build.json: {{ images_unread | join('; ') }}: sudo pinka images build
+      {{ images_name }} --rebuild. Infra reads only records of schema 2, which name every property
+      of the image, and neither imports nor uses the image of another.
+    quiet: true
+  vars:
+    images_unread: "{{ images_record | pinka_golden_record_problems }}"
+  when: images_action != 'build'
+
+- name: Refuse an alias that is not the golden image of its export
+  ansible.builtin.assert:
+    that: images_problems == []
+    fail_msg: >-
+      {{ images_alias }} is not the golden image of this version: {{ images_problems | join('; ') }}.
+      The projects build and bench share this image store, and a client allowed to create images
+      there can create the alias of a version before it is built (or an earlier run stopped before
+      it recorded the export); the role neither exports nor uses such an image. Delete the alias
+      (sudo incus image alias delete {{ images_alias }}) and run bootstrap again: it imports the
+      export in {{ images_export_dir }} if there is one, and builds the image otherwise. Or build
+      it again at once: sudo pinka images build {{ images_name }} --rebuild.
+    quiet: true
+  vars:
+    images_problems: "{{ images_image | pinka_golden_image_problems(images_record) }}"
+  when: images_action == 'none'
+
+# Every exported version of the blueprint, not only the one it is at: an
+# older version's golden image stays in the store, and doctor names a change
+# to any of them.
+- name: Look for the exports of the blueprint
+  ansible.builtin.stat:
+    path: "{{ images_export_root }}/{{ images_name }}"
+  register: images_exports
+
+- name: Find the export records of every version of the blueprint
+  ansible.builtin.find:
+    paths: "{{ images_export_root }}/{{ images_name }}"
+    patterns: build.json
+    recurse: true
+    depth: 2
+  register: images_version_files
+  when: images_exports.stat.isdir | default(false)
+
+- name: Read the export records of every version of the blueprint
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ images_version_files.files | default([]) | sort(attribute='path') }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: images_version_records
+
+- name: Find what a client of the image store changed in the blueprint's golden images
+  ansible.builtin.set_fact:
+    images_drifts: >-
+      {{ images_list.stdout | from_json | pinka_golden_image_drifts(
+           images_version_records.results | default([]) | map(attribute='content')
+           | map('b64decode') | map('from_json') | list) }}
+
+# A PUT of the record's properties, public and auto_update false, and the
+# image's profiles as they are: its size follows from the record, not from
+# what a client added. JSON over Incus's socket, as root; no shell, no
+# command line.
+- name: Put back what a client of the image store changed in the blueprint's golden images
+  ansible.builtin.uri:
+    unix_socket: "{{ images_incus_socket }}"
+    url: "http://incus/1.0/images/{{ item.fingerprint }}"
+    method: PUT
+    body_format: json
+    body: "{{ item.body }}"
+    status_code: 200
+    use_proxy: false
+  loop: "{{ images_drifts }}"
+  loop_control:
+    label: "{{ item.alias }}"
+  changed_when: true
+  when: not ansible_check_mode
 
 - name: Report the planned action in check mode
   ansible.builtin.debug:
-    msg: "{{ images_alias }}: {{ images_action }}"
+    msg: >-
+      {{ images_alias }}: {{ images_action }}{{ ('; put back: ' ~ (images_drifts
+      | pinka_golden_drift_report)) if images_drifts else '' }}
   when: ansible_check_mode
 
 - name: Make the upstream base image available and exported
@@ -80,5 +170,5 @@
 - name: Export the blueprint's image
   ansible.builtin.include_tasks: export.yml
   when:
-    - images_action in ['build', 'export']
+    - images_action == 'build'
     - not ansible_check_mode
