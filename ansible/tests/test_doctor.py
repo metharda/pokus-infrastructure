@@ -345,15 +345,15 @@ def test_incus_and_images() -> None:
     ]
     assert data["listeners"]["addresses"] == ["198.18.0.1"]
     blueprints = {b["name"]: b for b in data["images"]["blueprints"]}
-    assert next(iter(blueprints)) == "_base"
+    assert next(iter(blueprints)) == "base"
     assert blueprints["web-nginx-flask"] == {
         "name": "web-nginx-flask",
         "type": "container",
         "nesting": False,
         "services": ["nginx", "webapp"],
-        "base_blueprint": "_base",
+        "base_blueprint": "base",
     }
-    assert blueprints["_base"]["base_blueprint"] is None
+    assert blueprints["base"]["base_blueprint"] is None
     assert blueprints["docker-host"]["nesting"] is True
 
 

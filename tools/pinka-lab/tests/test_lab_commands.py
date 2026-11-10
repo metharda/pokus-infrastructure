@@ -411,7 +411,7 @@ class UninstallTest(unittest.TestCase):
 class ImagesTest(unittest.TestCase):
     def test_chain(self) -> None:
         self.assertEqual(
-            commands.image_chain(lab(), "web-nginx-flask"), ["_base", "web-nginx-flask"]
+            commands.image_chain(lab(), "web-nginx-flask"), ["base", "web-nginx-flask"]
         )
         with self.assertRaisesRegex(CommandError, "unknown blueprint 'nope'"):
             commands.image_chain(lab(), "nope")
@@ -426,14 +426,14 @@ class ImagesTest(unittest.TestCase):
         images = [
             {
                 "fingerprint": "a" * 64,
-                "aliases": [{"name": "_base/1.0.0"}],
+                "aliases": [{"name": "base/1.0.0"}],
                 "properties": properties,
             },
             {"fingerprint": "b" * 64, "aliases": [{"name": "web-nginx-flask/1.0.0"}]},
             {"fingerprint": "c" * 64, "aliases": [{"name": "personal/1"}]},
             {
                 "fingerprint": "d" * 64,
-                "aliases": [{"name": "_base/1.0.1"}],
+                "aliases": [{"name": "base/1.0.1"}],
                 "properties": {"pinka.built_at": "\x1b[2J"},
             },
             {
@@ -452,7 +452,7 @@ class ImagesTest(unittest.TestCase):
         system = FakeSystem(
             {"incus image list --format json": (0, images)},
             files={
-                "/srv/pinka/images/_base/1.0.0/build.json": json.dumps(record),
+                "/srv/pinka/images/base/1.0.0/build.json": json.dumps(record),
                 "/srv/pinka/images/web-nginx-flask/2.0.0/build.json": json.dumps(
                     dict(record, fingerprint="e" * 64)
                 ),
@@ -462,7 +462,7 @@ class ImagesTest(unittest.TestCase):
         lines = out.splitlines()
         self.assertEqual(code, 0)
         self.assertEqual(len(lines), 4)
-        self.assertTrue(lines[0].startswith("_base/1.0.0"))
+        self.assertTrue(lines[0].startswith("base/1.0.0"))
         self.assertIn("built 2026-01-01T00:00:00Z  exported", lines[0])
         self.assertIn(
             f"built ?  NOT GOLDEN: it points to {'b' * 64}, which has no export record", lines[1]
@@ -484,7 +484,7 @@ class ImagesTest(unittest.TestCase):
         self.assertEqual(
             env,
             {
-                "PINKA_IMAGES_BLUEPRINTS": "_base,web-nginx-flask",
+                "PINKA_IMAGES_BLUEPRINTS": "base,web-nginx-flask",
                 "PINKA_IMAGES_REBUILD": "web-nginx-flask",
             },
         )
@@ -499,13 +499,13 @@ class ImagesTest(unittest.TestCase):
         system = FakeSystem(
             {"/usr/local/libexec/pinka/image-files verify *": verify},
             files={
-                "/srv/pinka/images/_base/1.0.0/build.json": json.dumps({"fingerprint": "a" * 64}),
+                "/srv/pinka/images/base/1.0.0/build.json": json.dumps({"fingerprint": "a" * 64}),
                 "/srv/pinka/images/web-nginx-flask/1.0.0/build.json": json.dumps(
                     {"fingerprint": "b" * 64}
                 ),
             },
             dirs={
-                "/srv/pinka/images/_base": ["1.0.0"],
+                "/srv/pinka/images/base": ["1.0.0"],
                 "/srv/pinka/images/web-nginx-flask": ["1.0.0"],
             },
         )
@@ -513,7 +513,7 @@ class ImagesTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(
             out.splitlines(),
-            ["_base/1.0.0: ok", "web-nginx-flask/1.0.0: DOES NOT MATCH ITS FINGERPRINT"],
+            ["base/1.0.0: ok", "web-nginx-flask/1.0.0: DOES NOT MATCH ITS FINGERPRINT"],
         )
         failing = FakeSystem(interactive_rc=4)
         self.assertEqual(commands.images_export(failing, lab(), []), 4)

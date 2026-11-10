@@ -82,7 +82,7 @@ def added(text: str, path: str = "etc/example.conf") -> list[str]:
 
 def test_the_required_blueprints_exist() -> None:
     required = {
-        "_base",
+        "base",
         "web-nginx-flask",
         "pg-primary",
         "redis-cache",
@@ -98,6 +98,149 @@ def test_blueprint_matches_its_schema(name: str) -> None:
     findings = checks.schema_findings(spec(name), SCHEMA)
     assert [str(f) for f in findings] == []
     assert spec(name)["name"] == name
+
+
+# Incus's rule for an image alias name, as Incus 6.0.6 applies it (the version
+# the lock pins; tag v6.0.6, commit 5231e7a1beca905d57208b441040f9ebdc6a2c6f):
+# validate.IsAPIName(name, true), shared/validate/validate.go lines 562-599.
+# The daemon applies it to a new alias in imageAliasesPost
+# (cmd/incusd/images.go line 3491) and to a renamed one in imageAliasPost
+# (line 4103). `incus publish --alias` (cmd/incus/publish.go line 334) and
+# `incus image import --alias` (cmd/incus/image.go line 932), the two commands
+# the images role names an alias with, create it through ensureImageAliases
+# (cmd/incus/utils.go lines 164-202), whose CreateImageAlias posts it to
+# /1.0/images/aliases (client/incus_images.go lines 1036-1044), that is to
+# imageAliasesPost.
+INCUS_RULE_VERSION = "6.0.6"
+# unicode.IsSpace (Go): the Latin-1 white space, then Unicode's White_Space.
+GO_SPACE = frozenset(
+    "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+    "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+)
+INCUS_RESERVED = ("$", "?", "&", "+", '"', "'", "`", "*")
+INCUS_ENDS = re.compile(r"[a-zA-Z0-9]+.*[a-zA-Z0-9]+")
+
+
+def incus_api_name_error(value: str, allow_slashes: bool) -> str | None:
+    """Incus 6.0.6's IsAPIName: the error it returns for VALUE, or None."""
+    if len(value.encode("utf-8")) > 64:  # Go's len() counts bytes
+        return "Maximum name length is 64 characters"
+    if any(c in GO_SPACE for c in value):
+        return "Name cannot contain white space"
+    reserved = INCUS_RESERVED if allow_slashes else (*INCUS_RESERVED, "/")
+    for char in reserved:
+        if char in value:
+            # Go's %q; json.dumps quotes each of these characters the same way.
+            return f"Name contains invalid character {json.dumps(char)}"
+    # Go's regexp: ^...$ match the whole text and `.` matches no newline.
+    if not INCUS_ENDS.fullmatch(value):
+        return "Names must start and end with an alphanumeric character"
+    return None
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [
+        ("base/1.0.1", None),
+        ("web-nginx-flask/1.0.1", None),
+        ("a1", None),
+        ("a/b", None),
+        ("a" * 64, None),
+        ("_base/1.0.0", "Names must start and end with an alphanumeric character"),
+        ("base-", "Names must start and end with an alphanumeric character"),
+        ("a", "Names must start and end with an alphanumeric character"),
+        ("", "Names must start and end with an alphanumeric character"),
+        ("\xe9/1", "Names must start and end with an alphanumeric character"),
+        ("a\nb", "Name cannot contain white space"),
+        ("a\xa0b", "Name cannot contain white space"),
+        ("a\u3000b", "Name cannot contain white space"),
+        ("a" * 65, "Maximum name length is 64 characters"),
+        ("\xe9" * 33, "Maximum name length is 64 characters"),
+        ("base/1.0.1+1", 'Name contains invalid character "+"'),
+        ("a`b", 'Name contains invalid character "`"'),
+        ('a"b', 'Name contains invalid character "\\""'),
+        # The order of the checks: length, white space, the reserved characters
+        # in their order, then the first and last character.
+        ("a" * 64 + " ", "Maximum name length is 64 characters"),
+        ("a b+", "Name cannot contain white space"),
+        ("-+", 'Name contains invalid character "+"'),
+        ("a*$b", 'Name contains invalid character "$"'),
+    ],
+)
+def test_the_incus_alias_name_rule(value: str, error: str | None) -> None:
+    assert incus_api_name_error(value, True) == error
+
+
+# Each reserved character as Go's %q prints it.
+GO_QUOTED = {
+    "$": '"$"',
+    "?": '"?"',
+    "&": '"&"',
+    "+": '"+"',
+    '"': '"\\""',
+    "'": '"\'"',
+    "`": '"`"',
+    "*": '"*"',
+}
+
+
+def test_the_reserved_characters_are_incus_s() -> None:
+    assert tuple(GO_QUOTED) == INCUS_RESERVED
+
+
+@pytest.mark.parametrize(("char", "quoted"), GO_QUOTED.items())
+def test_every_reserved_character_is_refused(char: str, quoted: str) -> None:
+    assert incus_api_name_error(f"a{char}b", True) == f"Name contains invalid character {quoted}"
+
+
+def test_the_incus_rule_without_slashes() -> None:
+    assert incus_api_name_error("a/b", False) == 'Name contains invalid character "/"'
+    assert incus_api_name_error("a-b", False) is None
+
+
+def test_the_alias_rule_is_the_pinned_incus_version() -> None:
+    # The rule above is read from this version's source: read it again when the pin moves.
+    pins = [p for p in LOCK["packages"]["incus"].values() if isinstance(p, dict)]
+    assert pins
+    for pin in pins:
+        # A Debian version: an optional epoch, the upstream version, a revision.
+        version = rf"([0-9]+:)?{re.escape(INCUS_RULE_VERSION)}([-~+].+)?"
+        assert re.fullmatch(version, pin["incus"]), pin
+
+
+def role_alias(name: str) -> str:
+    """The alias the images role publishes and imports a blueprint's image with."""
+    tasks = load_yaml(TASKS / "blueprint.yml")
+    values = [
+        t["ansible.builtin.set_fact"]["images_alias"]
+        for t in tasks
+        if "images_alias" in t.get("ansible.builtin.set_fact", {})
+    ]
+    assert len(values) == 1
+    alias = template_value(values[0], {"images_name": name, "images_specs": {name: spec(name)}})
+    assert isinstance(alias, str)
+    return alias
+
+
+@pytest.mark.parametrize("name", BLUEPRINTS)
+def test_the_role_s_alias_is_blueprint_slash_version(name: str) -> None:
+    assert role_alias(name) == f"{name}/{spec(name)['version']}"
+
+
+@pytest.mark.parametrize("name", BLUEPRINTS)
+def test_the_blueprint_s_alias_passes_incus_s_name_rule(name: str) -> None:
+    alias = role_alias(name)
+    assert incus_api_name_error(alias, True) is None, alias
+
+
+@pytest.mark.parametrize("name", BLUEPRINTS)
+def test_the_build_instance_is_named_the_same_everywhere(name: str) -> None:
+    facts = load_yaml(TASKS / "build.yml")[0]["ansible.builtin.set_fact"]
+    variables = {"images_name": name, "images_project": "build"}
+    instance = template_value(facts["images_instance"], variables)
+    command = template_value(facts["images_incus_exec"], variables)
+    assert instance == f"build-{name}"
+    assert command == ["incus", "exec", "--project", "build", instance, "--"]
 
 
 @pytest.mark.parametrize("name", BLUEPRINTS)
@@ -172,7 +315,7 @@ def test_installed_files_carry_no_managed_header(path: Path) -> None:
 
 def agent_config(name: str, endpoint: str = "127.0.0.1:4317") -> dict[str, Any]:
     text = render_file(
-        IMAGES / "_base" / "files" / "otel-agent.yaml.j2",
+        IMAGES / "base" / "files" / "otel-agent.yaml.j2",
         {"image": spec(name), "otlp_endpoint": endpoint},
     )
     result: dict[str, Any] = yaml.safe_load(text)
@@ -771,7 +914,7 @@ def expression(template: str) -> str:
     return text[2:-2]
 
 
-IMAGE = {"fingerprint": "f" * 64, "aliases": [{"name": "_base/1.0.0"}]}
+IMAGE = {"fingerprint": "f" * 64, "aliases": [{"name": "base/1.0.0"}]}
 
 # What the build publishes (build.yml, "Publish the image") and the export
 # records (export.yml, "Write the export record") for one image.
@@ -801,7 +944,7 @@ GOLDEN = dict(IMAGE, properties=dict(GOLDEN_PROPERTIES))
         (False, [], IMAGE, {}, "none"),
         (False, [], IMAGE, {"fingerprint": "e" * 64}, "none"),
         (True, [], IMAGE, {"fingerprint": "f" * 64}, "build"),
-        (False, ["_base"], IMAGE, {"fingerprint": "f" * 64}, "build"),
+        (False, ["base"], IMAGE, {"fingerprint": "f" * 64}, "build"),
         (False, ["probe-client"], IMAGE, {"fingerprint": "f" * 64}, "none"),
     ],
 )
@@ -816,7 +959,7 @@ def test_action_of_a_blueprint(
         {
             "images_rebuild": rebuild,
             "images_rebuild_names": names,
-            "images_name": "_base",
+            "images_name": "base",
             "images_image": image,
             "images_record": record,
         },
@@ -828,7 +971,7 @@ def test_action_of_a_blueprint(
     ("selected", "rebuild", "order", "names"),
     [
         ("", "", None, []),
-        ("_base,probe-client", "probe-client", ["_base", "probe-client"], ["probe-client"]),
+        ("base,probe-client", "probe-client", ["base", "probe-client"], ["probe-client"]),
     ],
 )
 def test_blueprints_of_a_run(
@@ -849,7 +992,7 @@ def test_blueprints_of_a_run(
 
 def test_image_by_alias_filter() -> None:
     images = [{"fingerprint": "a", "aliases": None}, IMAGE]
-    assert evaluate("images | pinka_image_by_alias('_base/1.0.0')", {"images": images}) == IMAGE
+    assert evaluate("images | pinka_image_by_alias('base/1.0.0')", {"images": images}) == IMAGE
     assert evaluate("images | pinka_image_by_alias('x/1')", {"images": images}) == {}
 
 
@@ -911,9 +1054,9 @@ def test_the_export_record_carries_the_package_list(record: dict[str, Any]) -> N
     text = evaluate(
         expression(content),
         {
-            "images_name": "_base",
+            "images_name": "base",
             "images_spec": {"version": "1.0.0", "type": "container", "nesting": False, "base": {}},
-            "images_alias": "_base/1.0.0",
+            "images_alias": "base/1.0.0",
             "images_image": {**IMAGE, "architecture": "x86_64", "properties": {}},
             "images_written": {"stdout": json.dumps({"files": ["f.tar.gz"], "properties": {}})},
             "images_package_list": PACKAGES,
@@ -958,7 +1101,7 @@ def test_publish_sets_the_contract_properties() -> None:
         {
             "images_project": "build",
             "images_instance": "build-base",
-            "images_alias": "_base/1.0.0",
+            "images_alias": "base/1.0.0",
             "images_image": {},
             "pinka_bootstrap": {"repo_commit": "c" * 40, "infra_dirty": True},
             "images_base_fingerprint": "b" * 64,
@@ -972,7 +1115,7 @@ def test_publish_sets_the_contract_properties() -> None:
         "build",
         "build-base",
         "--alias",
-        "_base/1.0.0",
+        "base/1.0.0",
         # The export record reads metadata.yaml from the export
         # (pinka_image_files.py --properties), whatever compression the server
         # or the project names.
@@ -1017,12 +1160,12 @@ def test_restore_keeps_aliases_and_checks_fingerprints(image: dict[str, Any], ok
         "Refuse an alias that is not the golden image of its export",
         image,
         GOLDEN_RECORD,
-        images_alias="_base/1.0.0",
-        images_export_dir="/srv/pinka/images/_base/1.0.0",
+        images_alias="base/1.0.0",
+        images_export_dir="/srv/pinka/images/base/1.0.0",
     )
     assert passed is ok
     if not ok:
-        assert "sudo incus image alias delete _base/1.0.0" in message
+        assert "sudo incus image alias delete base/1.0.0" in message
         assert "run the restore again" in message
 
 
@@ -1278,7 +1421,7 @@ def test_the_fixture_holds_every_property_the_build_publishes() -> None:
         {
             "images_project": "build",
             "images_instance": "build-base",
-            "images_alias": "_base/1.0.0",
+            "images_alias": "base/1.0.0",
             "images_image": {},
             "pinka_bootstrap": {"repo_commit": "c" * 40, "infra_dirty": False},
             "images_base_fingerprint": "b" * 64,
@@ -1312,9 +1455,9 @@ def test_an_exported_image_is_golden() -> None:
     text = evaluate(
         expression(content),
         {
-            "images_name": "_base",
+            "images_name": "base",
             "images_spec": {"version": "1.0.0", "type": "container", "nesting": False, "base": {}},
-            "images_alias": "_base/1.0.0",
+            "images_alias": "base/1.0.0",
             "images_image": raced,
             "images_written": {"stdout": json.dumps(written)},
             "images_package_list": [],
@@ -1355,16 +1498,16 @@ def test_an_alias_that_is_not_golden_is_refused(
         name,
         image,
         record,
-        images_alias="_base/1.0.0",
-        images_name="_base",
-        images_export_dir="/srv/pinka/images/_base/1.0.0",
+        images_alias="base/1.0.0",
+        images_name="base",
+        images_export_dir="/srv/pinka/images/base/1.0.0",
     )
     assert passed is ok
     assert task("blueprint.yml", name)["when"] == "images_action == 'none'"
     if not ok:
-        assert message.startswith("_base/1.0.0 is not the golden image of this version: it")
-        assert "(sudo incus image alias delete _base/1.0.0)" in message
-        assert "sudo pinka images build _base --rebuild" in message
+        assert message.startswith("base/1.0.0 is not the golden image of this version: it")
+        assert "(sudo incus image alias delete base/1.0.0)" in message
+        assert "sudo pinka images build base --rebuild" in message
         assert "an earlier run stopped before it recorded the export" in message
 
 
@@ -1406,21 +1549,21 @@ def test_a_record_of_another_schema_is_refused_until_rebuilt(
     record: dict[str, Any], ok: bool
 ) -> None:
     variables = {
-        "images_name": "_base",
-        "images_export_dir": "/srv/pinka/images/_base/1.0.0",
-        "images_record_path": "/srv/pinka/images/_base/1.0.0/build.json",
-        "images_alias": "_base/1.0.0",
+        "images_name": "base",
+        "images_export_dir": "/srv/pinka/images/base/1.0.0",
+        "images_record_path": "/srv/pinka/images/base/1.0.0/build.json",
+        "images_alias": "base/1.0.0",
     }
     for file in ("blueprint.yml", "restore_one.yml"):
         passed, message = schema_refusal(
-            file, dict(record, blueprint="_base") if record else {}, **variables
+            file, dict(record, blueprint="base") if record else {}, **variables
         )
         assert passed is ok
         if not passed:
             assert (
-                "/srv/pinka/images/_base/1.0.0/build.json: its export record has schema" in message
+                "/srv/pinka/images/base/1.0.0/build.json: its export record has schema" in message
             )
-            assert "sudo pinka images build _base --rebuild" in message
+            assert "sudo pinka images build base --rebuild" in message
     # Not when the blueprint is built again: the build writes a record of schema 2.
     check = task("blueprint.yml", "Refuse an export record of another schema")
     assert check["when"] == "images_action != 'build'"
@@ -1450,14 +1593,14 @@ def test_every_version_is_put_back() -> None:
         "blueprint.yml",
         "Find what a client of the image store changed in the blueprint's golden images",
     )
-    old = dict(GOLDEN_RECORD, schema_version=2, alias="_base/0.9.0", fingerprint="9" * 64)
+    old = dict(GOLDEN_RECORD, schema_version=2, alias="base/0.9.0", fingerprint="9" * 64)
     old["properties"] = dict(GOLDEN_PROPERTIES)
     current = dict(
-        GOLDEN_RECORD, schema_version=2, alias="_base/1.0.0", properties=dict(GOLDEN_PROPERTIES)
+        GOLDEN_RECORD, schema_version=2, alias="base/1.0.0", properties=dict(GOLDEN_PROPERTIES)
     )
     extra: dict[str, Any] = {**GOLDEN_PROPERTIES, "user.extra": "x"}
     listing: list[dict[str, Any]] = [
-        {**GOLDEN, "fingerprint": "9" * 64, "aliases": [{"name": "_base/0.9.0"}], "public": True},
+        {**GOLDEN, "fingerprint": "9" * 64, "aliases": [{"name": "base/0.9.0"}], "public": True},
         {**GOLDEN, "properties": extra, "profiles": ["default"]},
     ]
     results = [
@@ -1473,13 +1616,13 @@ def test_every_version_is_put_back() -> None:
     put_back = {"properties": GOLDEN_PROPERTIES, "public": False, "auto_update": False}
     assert drifts == [
         {
-            "alias": "_base/0.9.0",
+            "alias": "base/0.9.0",
             "fingerprint": "9" * 64,
             "changes": ["it is public"],
             "body": put_back,
         },
         {
-            "alias": "_base/1.0.0",
+            "alias": "base/1.0.0",
             "fingerprint": "f" * 64,
             "changes": ["it has the property user.extra (x), which its build did not set"],
             "body": {**put_back, "profiles": ["default"]},
@@ -1540,36 +1683,36 @@ def test_every_version_is_put_back() -> None:
     shown = str(
         template_value(
             report,
-            {"images_alias": "_base/1.0.0", "images_action": "none", "images_drifts": drifts},
+            {"images_alias": "base/1.0.0", "images_action": "none", "images_drifts": drifts},
         )
     )
     assert shown == (
-        "_base/1.0.0: none; put back: _base/0.9.0: it is public; _base/1.0.0: it has the property"
+        "base/1.0.0: none; put back: base/0.9.0: it is public; base/1.0.0: it has the property"
         " user.extra (x), which its build did not set"
     )
     assert (
         str(
             template_value(
                 report,
-                {"images_alias": "_base/1.0.0", "images_action": "none", "images_drifts": []},
+                {"images_alias": "base/1.0.0", "images_action": "none", "images_drifts": []},
             )
         )
-        == "_base/1.0.0: none"
+        == "base/1.0.0: none"
     )
 
 
 def test_the_check_mode_report_is_shortened() -> None:
     # A client can add any number of properties: ten changes and a count.
     drifts = [
-        {"alias": "_base/1.0.0", "changes": [f"change {n}" for n in range(8)]},
+        {"alias": "base/1.0.0", "changes": [f"change {n}" for n in range(8)]},
         {"alias": "\x1b[2J", "changes": ["it is public", "its auto_update is on", "a", "b"]},
     ]
     assert pinka.golden_drift_report(drifts) == (
-        "; ".join(f"_base/1.0.0: change {n}" for n in range(8))
+        "; ".join(f"base/1.0.0: change {n}" for n in range(8))
         + '; "\\u001b[2J": it is public; "\\u001b[2J": its auto_update is on; and 2 more'
     )
     assert pinka.golden_drift_report(drifts[:1]) == "; ".join(
-        f"_base/1.0.0: change {n}" for n in range(8)
+        f"base/1.0.0: change {n}" for n in range(8)
     )
     ten = [{"alias": "a/1", "changes": [str(n) for n in range(10)]}]
     assert pinka.golden_drift_report(ten).count("; ") == 9
@@ -1579,11 +1722,11 @@ def test_the_check_mode_report_is_shortened() -> None:
 
 
 def test_drifts_of_versions_that_are_not_golden_are_left_out() -> None:
-    record = dict(GOLDEN_RECORD, alias="_base/1.0.0")
+    record = dict(GOLDEN_RECORD, alias="base/1.0.0")
     changed = dict(GOLDEN, public=True)
     assert pinka.golden_image_drifts([changed], [record])[0]["changes"] == ["it is public"]
     assert pinka.golden_image_drifts([changed], [dict(record, fingerprint="e" * 64)]) == []
-    assert pinka.golden_image_drifts([changed], [dict(record, alias="_base/2.0.0")]) == []
+    assert pinka.golden_image_drifts([changed], [dict(record, alias="base/2.0.0")]) == []
     assert pinka.golden_image_drifts([changed], [dict(record, alias=None)]) == []
     assert pinka.golden_image_drifts(None, None) == []
 
@@ -1630,16 +1773,16 @@ def test_a_copy_in_the_store_is_replaced_never_adopted() -> None:
             "images_import_files": {
                 "stdout": json.dumps({"files": ["meta.tar.xz", "root.squashfs"]})
             },
-            "images_export_dir": "/srv/pinka/images/_base/1.0.0",
-            "images_alias": "_base/1.0.0",
+            "images_export_dir": "/srv/pinka/images/base/1.0.0",
+            "images_alias": "base/1.0.0",
         },
     )
     assert command == [
         "incus",
         "image",
         "import",
-        "/srv/pinka/images/_base/1.0.0/meta.tar.xz",
-        "/srv/pinka/images/_base/1.0.0/root.squashfs",
+        "/srv/pinka/images/base/1.0.0/meta.tar.xz",
+        "/srv/pinka/images/base/1.0.0/root.squashfs",
         "--alias",
-        "_base/1.0.0",
+        "base/1.0.0",
     ]

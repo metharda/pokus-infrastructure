@@ -142,7 +142,7 @@ LAB: dict[str, Any] = {
     "images": {
         "blueprints": [
             {
-                "name": "_base",
+                "name": "base",
                 "type": "container",
                 "nesting": False,
                 "services": ["otelcol-contrib"],
@@ -153,7 +153,7 @@ LAB: dict[str, Any] = {
                 "type": "container",
                 "nesting": False,
                 "services": ["nginx", "webapp"],
-                "base_blueprint": "_base",
+                "base_blueprint": "base",
             },
         ],
         "bench_project": "bench",

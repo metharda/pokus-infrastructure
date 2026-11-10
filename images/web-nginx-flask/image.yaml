@@ -4,9 +4,9 @@
 # 80 in front of gunicorn serving a small Flask application on 127.0.0.1:8000.
 schema_version: 1
 name: web-nginx-flask
-version: "1.0.0"
+version: "1.0.1"
 description: nginx reverse proxy in front of gunicorn and a small Flask application
-base: {blueprint: _base}
+base: {blueprint: base}
 type: container
 nesting: false
 # Space one build takes below /srv/pinka/images (the exported image),

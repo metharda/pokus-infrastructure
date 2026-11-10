@@ -356,11 +356,11 @@ def test_image_by_alias() -> None:
     images: list[dict[str, Any]] = [
         {"fingerprint": "a", "aliases": None},
         {"fingerprint": "b", "aliases": []},
-        {"fingerprint": "c", "aliases": [{"name": "web/1.0.0"}, {"name": "_base/1.0.0"}]},
+        {"fingerprint": "c", "aliases": [{"name": "web/1.0.0"}, {"name": "base/1.0.0"}]},
     ]
-    assert pinka.image_by_alias(images, "_base/1.0.0")["fingerprint"] == "c"
-    assert pinka.image_by_alias(images, "_base/2.0.0") == {}
-    assert pinka.image_by_alias(None, "_base/1.0.0") == {}
+    assert pinka.image_by_alias(images, "base/1.0.0")["fingerprint"] == "c"
+    assert pinka.image_by_alias(images, "base/2.0.0") == {}
+    assert pinka.image_by_alias(None, "base/1.0.0") == {}
 
 
 # RFC 7677 section 3 exchange (user "user", password "pencil"); StoredKey and

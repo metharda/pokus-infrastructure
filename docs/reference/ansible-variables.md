@@ -1363,7 +1363,7 @@ Variables the role reads from elsewhere:
 Blueprints to build, in build order (a base blueprint before the blueprints that start from it).
 
 - Type: `list` of `str`
-- Default: `[_base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]`
+- Default: `[base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]`
 
 ### `images_rebuild`
 

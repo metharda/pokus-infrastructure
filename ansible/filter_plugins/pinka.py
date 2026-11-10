@@ -451,7 +451,7 @@ def image_by_alias(images: Iterable[Mapping[str, Any]] | None, alias: str) -> di
 
     Args:
         images: Output of ``incus image list --format json``.
-        alias: Alias name, such as ``_base/1.0.0``.
+        alias: Alias name, such as ``base/1.0.0``.
 
     Returns:
         The image, or an empty dict if no image carries the alias.

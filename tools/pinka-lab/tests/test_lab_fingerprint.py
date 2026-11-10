@@ -28,14 +28,14 @@ PACKAGES = [
     {"name": "libc6", "version": "2.0-1", "architecture": "amd64"},
     {"name": "tzdata", "version": "3.0-1", "architecture": "all"},
 ]
-RECORD_PATH = "/srv/pinka/images/_base/1.0.0/build.json"
+RECORD_PATH = "/srv/pinka/images/base/1.0.0/build.json"
 
 
 def record(**changes: Any) -> str:
-    # The export record of _base/1.0.0, written by the images role.
+    # The export record of base/1.0.0, written by the images role.
     data = {
         "schema_version": 2,
-        "alias": "_base/1.0.0",
+        "alias": "base/1.0.0",
         "fingerprint": "f" * 64,
         "type": "container",
         "nesting": False,
@@ -95,7 +95,7 @@ def host(**extra_files: str) -> FakeSystem:
             ),
             "incus image list --format json": (
                 0,
-                [{"fingerprint": "f" * 64, "aliases": [{"name": "_base/1.0.0"}]}],
+                [{"fingerprint": "f" * 64, "aliases": [{"name": "base/1.0.0"}]}],
             ),
         },
         files=files,
@@ -121,21 +121,21 @@ class GoldenImagePackagesTest(unittest.TestCase):
         self.assertNotEqual(a, b)
 
     def test_a_golden_image_carries_type_and_nesting_from_its_record(self) -> None:
-        self.assertEqual(self.images(), {"_base/1.0.0": GOLDEN})
+        self.assertEqual(self.images(), {"base/1.0.0": GOLDEN})
         nested = record(type="vm", nesting=True)
         self.assertEqual(
-            self.images(**{RECORD_PATH: nested})["_base/1.0.0"],
+            self.images(**{RECORD_PATH: nested})["base/1.0.0"],
             dict(GOLDEN, type="vm", nesting=True),
         )
         # Never from the image's properties, which a client can rewrite.
         rewritten = [
             {
                 "fingerprint": "f" * 64,
-                "aliases": [{"name": "_base/1.0.0"}],
+                "aliases": [{"name": "base/1.0.0"}],
                 "properties": {"requirements.nesting": "true"},
             }
         ]
-        self.assertEqual(self.images(rewritten)["_base/1.0.0"]["nesting"], False)
+        self.assertEqual(self.images(rewritten)["base/1.0.0"]["nesting"], False)
 
     def test_unproven_package_lists_are_null(self) -> None:
         cases = {
@@ -146,7 +146,7 @@ class GoldenImagePackagesTest(unittest.TestCase):
         }
         for case, text in cases.items():
             with self.subTest(case):
-                entry = self.images(**{RECORD_PATH: text})["_base/1.0.0"]
+                entry = self.images(**{RECORD_PATH: text})["base/1.0.0"]
                 self.assertEqual(entry, dict(GOLDEN, packages=None))
 
     def test_an_alias_that_is_not_golden_is_left_out(self) -> None:
@@ -164,7 +164,7 @@ class GoldenImagePackagesTest(unittest.TestCase):
         downloaded = [
             {
                 "fingerprint": "f" * 64,
-                "aliases": [{"name": "_base/1.0.0"}],
+                "aliases": [{"name": "base/1.0.0"}],
                 "update_source": {"server": "https://example.com"},
             }
         ]
@@ -187,7 +187,7 @@ class GoldenImagePackagesTest(unittest.TestCase):
         # that both lack one match, and still prove nothing.
         for fingerprint_value in (None, ""):
             with self.subTest(fingerprint_value):
-                listing = [{"fingerprint": fingerprint_value, "aliases": [{"name": "_base/1.0.0"}]}]
+                listing = [{"fingerprint": fingerprint_value, "aliases": [{"name": "base/1.0.0"}]}]
                 text = record(fingerprint=fingerprint_value)
                 self.assertEqual(self.images(listing, **{RECORD_PATH: text}), {})
 
@@ -213,10 +213,10 @@ class GoldenImagePackagesTest(unittest.TestCase):
             {
                 "fingerprint": "f" * 64,
                 "aliases": [
-                    {"name": "_base/1.0.0"},
+                    {"name": "base/1.0.0"},
                     {"name": "demo/web/1.0.0"},
                     {"name": "other/1.0.0"},
-                    {"name": "_base/../x"},
+                    {"name": "base/../x"},
                     {"name": "../x"},
                     {"name": "x"},
                 ],
@@ -225,17 +225,17 @@ class GoldenImagePackagesTest(unittest.TestCase):
         files = {
             "/srv/pinka/images/demo/web/1.0.0/build.json": record(),
             "/srv/pinka/images/other/1.0.0/build.json": record(),
-            "/srv/pinka/images/_base/../x/build.json": record(),
+            "/srv/pinka/images/base/../x/build.json": record(),
             "/srv/pinka/images/../x/build.json": record(),
             "/srv/pinka/images/x/build.json": record(),
         }
-        self.assertEqual(self.images(listing, **files), {"_base/1.0.0": GOLDEN})
+        self.assertEqual(self.images(listing, **files), {"base/1.0.0": GOLDEN})
         # A pre-created alias of the next version: no record, not listed.
         listing = [
-            {"fingerprint": "f" * 64, "aliases": [{"name": "_base/1.0.0"}]},
-            {"fingerprint": "e" * 64, "aliases": [{"name": "_base/1.0.1"}]},
+            {"fingerprint": "f" * 64, "aliases": [{"name": "base/1.0.0"}]},
+            {"fingerprint": "e" * 64, "aliases": [{"name": "base/1.0.1"}]},
         ]
-        self.assertEqual(self.images(listing), {"_base/1.0.0": GOLDEN})
+        self.assertEqual(self.images(listing), {"base/1.0.0": GOLDEN})
 
     def test_a_listing_that_is_no_list_lists_nothing(self) -> None:
         self.assertEqual(self.images({"error": "x"}), {})
@@ -271,7 +271,7 @@ class ComputeTest(unittest.TestCase):
         self.assertEqual(
             software["containers"]["pinka-postgres"], "docker.io/library/postgres@" + DIGEST
         )
-        self.assertEqual(software["golden_images"], {"_base/1.0.0": GOLDEN})  # packages sorted
+        self.assertEqual(software["golden_images"], {"base/1.0.0": GOLDEN})  # packages sorted
         config = fp["config"]
         self.assertEqual(config["infra_commit"], "c" * 40)
         self.assertEqual(config["versions_lock_sha256"], "0" * 64)
@@ -364,13 +364,13 @@ class SchemaTest(unittest.TestCase):
         ):
             with self.subTest(change):
                 document = fingerprint.compute(host(), lab())
-                entry = document["fingerprint"]["software"]["golden_images"]["_base/1.0.0"]
+                entry = document["fingerprint"]["software"]["golden_images"]["base/1.0.0"]
                 entry.update(change)
                 self.assertTrue(validate(document, self.schema, self.schema))
         for drop in ("type", "nesting"):
             with self.subTest(drop):
                 document = fingerprint.compute(host(), lab())
-                del document["fingerprint"]["software"]["golden_images"]["_base/1.0.0"][drop]
+                del document["fingerprint"]["software"]["golden_images"]["base/1.0.0"][drop]
                 self.assertTrue(validate(document, self.schema, self.schema))
 
 

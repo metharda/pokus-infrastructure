@@ -1,7 +1,7 @@
 #!/bin/sh
-# Managed by pinka (images/_base/tests/test_base.sh). Local changes will be overwritten.
+# Managed by pinka (images/base/tests/test_base.sh). Local changes will be overwritten.
 #
-# Post-build assertions of `_base`, run inside the build instance.
+# Post-build assertions of `base`, run inside the build instance.
 set -eu
 fail() {
   echo "test_base: $*" >&2

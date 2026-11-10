@@ -18,7 +18,7 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
      data, and wait for cloud-init;
   2. record the leakage baseline of the base (`files/pinka_leakage_lint.py
      scan`, run inside the instance with its own `python3`);
-  3. run `provision.yml` and then `images/_base/agent.yml` (the agent
+  3. run `provision.yml` and then `images/base/agent.yml` (the agent
      configuration of the blueprint's `telemetry`) with a nested
      `ansible-playbook` over the `community.general.incus` connection;
   4. run the blueprint's tests and record the installed packages;

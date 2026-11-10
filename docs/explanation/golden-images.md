@@ -32,7 +32,7 @@ The schema is `tools/lockcheck/schema/image-blueprint.schema.json`;
 
 ```mermaid
 flowchart LR
-  upstream["ubuntu/24.04/cloud<br/>(pinned fingerprint)"] --> base["_base/1.0.0"]
+  upstream["ubuntu/24.04/cloud<br/>(pinned fingerprint)"] --> base["base/1.0.1"]
   base --> web["web-nginx-flask"]
   base --> pg["pg-primary"]
   base --> redis["redis-cache"]
@@ -40,10 +40,10 @@ flowchart LR
   base --> probe["probe-client"]
 ```
 
-`_base` adds the OpenTelemetry agent (the pinned `otelcol-contrib` package),
+`base` adds the OpenTelemetry agent (the pinned `otelcol-contrib` package),
 common administration tools, a persistent journal, UTC, and disables
 automatic package updates so that an image never changes after its build.
-The other blueprints start from `_base`.
+The other blueprints start from `base`.
 
 Distribution packages are not pinned to versions: Ubuntu's archive keeps only
 the current version of each package, so a pin would break every rebuild. The
@@ -72,7 +72,7 @@ sequenceDiagram
   participant I as build instance
   R->>I: launch from the base (fingerprint), wait for cloud-init
   R->>I: leakage lint: scan (baseline)
-  R->>I: provision.yml, then _base/agent.yml (nested ansible-playbook)
+  R->>I: provision.yml, then base/agent.yml (nested ansible-playbook)
   R->>I: tests/*.sh, record packages
   R->>I: leakage lint: check
   R->>I: clean, stop

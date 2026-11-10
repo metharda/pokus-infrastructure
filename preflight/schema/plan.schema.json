@@ -36,7 +36,7 @@
       }
     },
     "vllm_profile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$", "description": "The serving profile (vllm_profile, vllm/profiles/<name>.yml) whose GPU minimum and model estimates apply."},
-    "images": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^(_base|[a-z][a-z0-9-]{1,40})$"}, "description": "The golden image blueprints to build (images_blueprints)."},
+    "images": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$"}, "description": "The golden image blueprints to build (images_blueprints)."},
     "gpu_exporter": {"enum": ["nvidia_smi", "dcgm"], "description": "observability_gpu_exporter."},
     "training": {
       "type": "object",

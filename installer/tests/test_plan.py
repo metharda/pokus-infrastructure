@@ -72,7 +72,7 @@ def test_settings_become_the_plan() -> None:
         incus_pool_source="device",
         incus_pool_size="500GiB",
         incus_concurrent_targets=4,
-        images_blueprints=["_base"],
+        images_blueprints=["base"],
         observability_gpu_exporter="dcgm",
         training_caps={"memory_max": "12G", "run_storage_max": "512M"},
         observability_prometheus_retention="2w",
@@ -84,7 +84,7 @@ def test_settings_become_the_plan() -> None:
     assert found["node_role"] == "lab"
     assert (found["srv_path"], found["docker_data_root"]) == ("/data/pinka", "/data/docker")
     assert found["pool"] == {"source": "device", "size_gib": 500.0}
-    assert (found["concurrent_targets"], found["images"]) == (4, ["_base"])
+    assert (found["concurrent_targets"], found["images"]) == (4, ["base"])
     assert found["gpu_exporter"] == "dcgm"
     assert found["training"] == {"mode": "auto", "memory_max_gib": 12.0, "run_storage_max_gib": 0.5}
     assert found["retention"] == {

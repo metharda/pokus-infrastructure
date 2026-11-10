@@ -61,4 +61,4 @@ Network: skipped (--offline)
 
 Unsupported
   - disk: / has 100.00 GiB free and these choices need 382.29 GiB there: the Incus pool (loop file): 300.0 GiB, missing 282.3 GiB on /
-  - disk: /srv has 3.00 GiB free and these choices need 9.40 GiB there: model example-model: 5.7 GiB, missing 5.7 GiB on /srv; golden image docker-host 1.0.0 (export): 0.8 GiB, missing 0.7 GiB on /srv
+  - disk: /srv has 3.00 GiB free and these choices need 9.40 GiB there: model example-model: 5.7 GiB, missing 5.7 GiB on /srv; golden image docker-host 1.0.1 (export): 0.8 GiB, missing 0.7 GiB on /srv

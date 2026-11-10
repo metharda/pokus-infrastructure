@@ -212,10 +212,10 @@ class PoolTest(ComputeCase):
         self.assertEqual(four.pool["size_gib"], 126)  # (3.7 + 4 x 20) x 1.5, rounded up
 
     def test_the_build_instance_counts_when_larger(self) -> None:
-        req = self.compute(GPU, concurrent_targets=1, images=["_base"])
+        req = self.compute(GPU, concurrent_targets=1, images=["base"])
         # 0.5 GiB + the 16 GiB build instance (one 20 GiB target is larger).
         self.assertEqual(req.pool["size_gib"], 31)
-        alone = self.compute({**GPU, "vm_targets": False}, concurrent_targets=1, images=["_base"])
+        alone = self.compute({**GPU, "vm_targets": False}, concurrent_targets=1, images=["base"])
         self.assertEqual(alone.pool["size_gib"], 30)  # (0.5 + 16) x 1.5 = 24.75: the floor
         self.assertIn("the 16.0 GiB build instance is not larger", req.pool["detail"])
         self.assertIn(
@@ -390,7 +390,7 @@ class DiskTest(ComputeCase):
         req = self.compute(GPU, model=MODEL)
         mounts = self.mounts(req)
         root = {i.id for i in mounts["/"].items}
-        self.assertLessEqual({"pinka", "pool", "image:vllm", "golden-store:_base"}, root)
+        self.assertLessEqual({"pinka", "pool", "image:vllm", "golden-store:base"}, root)
         self.assertNotIn("image:dcgm_exporter", root)  # the nvidia_smi exporter is chosen
         self.assertNotIn("image:refplat_job", root)  # tests only
         srv = {i.id for i in mounts["/srv"].items}
@@ -427,7 +427,7 @@ class DiskTest(ComputeCase):
     def test_what_is_on_the_host_needs_no_space(self) -> None:
         self.put("/var/lib/incus/disks/pinka-targets.img")
         self.put(f"/srv/pinka/models/example-org/example-model/{'0' * 40}/MANIFEST.json")
-        self.mkdir("/srv/pinka/images/_base/1.0.0")
+        self.mkdir(f"/srv/pinka/images/base/{DATA['blueprints']['base']['version']}")
         vllm = DATA["images"]["vllm"]
         inspect = ["docker", "image", "inspect", "--format", "{{.Size}}"]
         self.extra = {
@@ -435,7 +435,7 @@ class DiskTest(ComputeCase):
             "which": {"docker": "/usr/bin/docker"},
         }
         items = {i.id: i for m in self.compute(GPU, model=MODEL).disks for i in m.items}
-        for key in ("pool", "model:example-model", "golden:_base", "golden-store:_base"):
+        for key in ("pool", "model:example-model", "golden:base", "golden-store:base"):
             self.assertTrue(items[key].present, key)
         self.assertFalse(items["golden:docker-host"].present)
         self.assertEqual(

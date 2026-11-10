@@ -1,11 +1,11 @@
-# Managed by pinka (images/_base/image.yaml). Local changes will be overwritten.
+# Managed by pinka (images/base/image.yaml). Local changes will be overwritten.
 #
-# Golden image blueprint `_base`: Ubuntu 24.04 with the
+# Golden image blueprint `base`: Ubuntu 24.04 with the
 # OpenTelemetry agent and common tooling; every other blueprint starts from it.
 # Schema: tools/lockcheck/schema/image-blueprint.schema.json.
 schema_version: 1
-name: _base
-version: "1.0.0"
+name: base
+version: "1.0.1"
 description: Ubuntu 24.04 with the OpenTelemetry agent and common administration tooling
 base: {image: ubuntu-24.04}
 type: container

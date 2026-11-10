@@ -48,7 +48,7 @@ PY_SOURCES := tools/repo-checks tools/gen tools/lockcheck preflight bootstrap/te
   ansible/roles/lab_session/files ansible/roles/backup/files \
   ansible/roles/platform/files ansible/roles/inference_control/files ansible/roles/gpu_arbiter/files ansible/roles/firewall/files ansible/tests tools/pinka-lab \
   tools/test-distros installer ansible/callback_plugins tools/platform tests/reference-platform
-PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/_base/agent.yml
+PLAYBOOKS := ansible/site.yml ansible/check-mode.yml ansible/restore.yml ansible/rotate.yml $(sort $(wildcard images/*/provision.yml)) images/base/agent.yml
 # Pinned Ansible collections for linting (ansible/requirements.yml).
 DEV_COLLECTIONS := .ansible-collections
 # Ansible runs in user space for linting: its state stays below build/, and it
