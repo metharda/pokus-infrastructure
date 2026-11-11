@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import resource
 import shutil
+import subprocess
+import sys
+import textwrap
 
 import pytest
 from installer_testlib import private_key, public_key
@@ -63,6 +68,96 @@ def test_cpusets() -> None:
     assert validators.cpusets_disjoint("0-5", "6-19") is None
     assert "share CPUs 4-5" in (validators.cpusets_disjoint("0-5", "4-9") or "")
     assert validators.format_cpuset([0, 1, 2, 5, 7, 8]) == "0-2,5,7-8"
+    assert validators.cpuset_ranges("0-2,5") == [(0, 2), (5, 5)]
+    assert validators.in_cpuset(2, [(0, 2)]) and not validators.in_cpuset(3, [(0, 2)])
+    assert validators.format_ranges([(5, 9), (0, 3), (4, 4), (20, 21), (21, 30)]) == "0-9,20-30"
+    assert validators.format_ranges([(7, 7)]) == "7"
+
+
+# A child process with this much address space and time: a range built one CPU at a time
+# fails with MemoryError or is killed, instead of hanging the test run.
+BOUNDED_BYTES = 2 * 2**30
+BOUNDED_SECONDS = 60
+
+
+def run_bounded(code: str) -> list[str]:
+    """Run Python code in a child process with bounded memory and time; its output lines."""
+
+    def limit() -> None:
+        resource.setrlimit(resource.RLIMIT_AS, (BOUNDED_BYTES, BOUNDED_BYTES))
+
+    done = subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(code)],
+        capture_output=True,
+        text=True,
+        timeout=BOUNDED_SECONDS,
+        preexec_fn=limit,
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    return done.stdout.splitlines()
+
+
+def test_a_cpuset_range_of_many_digits_is_never_built() -> None:
+    # The operator's CPU sets are handled as ranges: one of many digits is checked,
+    # compared and drawn as fast as a short one (the CPU bar runs on every keystroke).
+    assert run_bounded(
+        """
+        from pinka_installer import validators as v
+        from pinka_installer.tui.screens_capacity import cpu_bar
+        huge = "0-99999999999"
+        print(v.cpuset(huge, 8))
+        print(v.cpuset(huge))
+        print(v.cpusets_disjoint(huge, "5-99999999998,3"))
+        print(v.smt_split(huge, "4-7", [{0, 8}, {4, 12}]))
+        print(cpu_bar(huge, "4-7", 8))
+        print(v.cpuset("99999999999"))
+        even = ",".join(str(n) for n in range(0, 40000, 2))
+        odd = ",".join(str(n) for n in range(1, 40000, 2))
+        print(v.cpusets_disjoint(even, odd))
+        print(v.cpusets_disjoint(even, "100-103," + odd))
+        bar = cpu_bar(even, odd, 40000)
+        evens = {bar[n] for n in range(0, len(bar), 2)}
+        odds = {bar[n] for n in range(1, len(bar), 2)}
+        print(len(bar), bar[:6], evens, odds)
+        print(v.smt_split(even, odd, [{0, 1}, {2, 3}]))
+        """
+    ) == [
+        "CPU 99999999999 does not exist (this host has CPUs 0-7)",
+        "None",
+        "services and targets share CPUs 3,5-99999999998",
+        "SMT siblings of one core are split between services and targets (4,12): target "
+        "measurements would share cores with the lab services; keep both threads of a core "
+        "in the same set",
+        "SSSSXXXX",
+        "None",
+        "None",
+        "services and targets share CPUs 100,102",
+        "40000 STSTST {'S'} {'T'}",
+        "SMT siblings of one core are split between services and targets (0-1; 2-3): target "
+        "measurements would share cores with the lab services; keep both threads of a core "
+        "in the same set",
+    ]
+
+
+def test_a_value_no_dropdown_offers() -> None:
+    choices = ("full", "lab", "inference")
+    assert validators.offered("lab", choices) is None
+    assert validators.offered("edge", choices) == (
+        "'edge' is not one of the choices (full, lab, inference): choose one"
+    )
+    assert validators.offered("", choices) == "nothing is chosen: choose full, lab, inference"
+    # Not a string (YAML read a number or a boolean): refused, shown as read.
+    assert validators.offered(5, ["5"]) == "'5' is not one of the choices (5): choose one"
+    assert validators.offered(False, ["off"]) == (
+        "'False' is not one of the choices (off): choose one"
+    )
+    long = "x" * 100
+    assert validators.offered(long, choices) == (
+        f"'{'x' * validators.OFFERED_SHOWN}...' is not one of the choices "
+        "(full, lab, inference): choose one"
+    )
 
 
 def test_sizes() -> None:

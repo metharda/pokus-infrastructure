@@ -132,7 +132,14 @@ failed while uninstall ran (a read-only file system, for example) counts as
     checkout, `sudo ./bootstrap/bootstrap.sh --uninstall` does the same;
     the installer offers it as *Uninstall pinka from this host* on its
     *Install mode* screen, then shows the dry run, the backup offer and the
-    machine name fields:
+    machine name fields. Uninstall runs whatever preflight's outcome (it stops
+    only when preflight fails): on an unsupported host, or one where preflight
+    asks for an action or a consent, the installer goes on to it without
+    *Force* or the consent, and
+    neither bootstrap nor the installer records an override for an
+    uninstall (bootstrap refuses `--force-unsupported`, `--accept-degraded`,
+    `--accept-experimental`, `--accept-mok-enrollment` and
+    `--refresh-profile` with `--uninstall`):
 
     ![The Uninstall screen](../assets/installer/uninstall.svg)
 

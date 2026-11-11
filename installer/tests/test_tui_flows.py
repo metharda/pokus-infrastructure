@@ -9,6 +9,7 @@ fields filled the way an operator would; the files written are then checked.
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import shutil
@@ -18,6 +19,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 from installer_testlib import copy_repo, private_key, public_key
 from textual.pilot import Pilot
 from textual.widgets import (
@@ -49,7 +51,7 @@ from pinka_installer.paths import Paths
 from pinka_installer.tui import capacity, screens_start
 from pinka_installer.tui.app import InstallerApp
 from pinka_installer.tui.base import Context, StepScreen
-from pinka_installer.tui.host import CommandResult
+from pinka_installer.tui.host import CommandResult, Preflight
 from pinka_installer.tui.screens_install import SignalScreen
 from pinka_installer.tui.widgets import Confirm, PasswordPrompt, ShownOnce, TypedConfirm
 
@@ -498,6 +500,51 @@ def test_secure_boot_mok_consent(repo: Paths) -> None:
     assert mok not in exported
 
 
+def test_a_lab_node_with_secure_boot_gets_the_mok_password_page(repo: Paths) -> None:
+    # A lab node serves no model, but the play installs the driver on it too: with the
+    # MOK consent, the driver field and the NVIDIA driver page stay, and the page asks for
+    # the one-time password bootstrap needs to import the key.
+    host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
+    installer = app(context(repo, host, machine="pinka-lab"))
+    mok = "one-time mok"
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        tick(pilot, "consent-mok")
+        await settle(pilot)
+        for box in pilot.app.screen.query(".consent-feature").results(Checkbox):
+            box.value = True
+        await forward(pilot, "mode")
+        for step in ("machine", "capacity"):
+            await forward(pilot, step)
+        choose(pilot, "node_role", "lab")
+        await settle(pilot)
+        screen = pilot.app.screen
+        assert screen.query_one("#install_driver", Select).value == "auto"
+        assert not screen.query("#profile")  # a lab node serves no model
+        if screen.query_one("#cap-consent", Checkbox).display:
+            tick(pilot, "cap-consent")
+            await settle(pilot)
+        for step in ("capacity_device", "capacity_driver"):
+            await forward(pilot, step)
+        screen = pilot.app.screen
+        assert DRIVER_SHOWN.format("Install the pinned driver") in str(
+            screen.query_one("#driver", Static).content
+        )
+        await forward(pilot, "capacity_driver")
+        assert "✖ enter the same one-time password twice" in shown_errors(pilot)
+        fill(pilot, mok=mok, mok2=mok)
+        await forward(pilot, "capacity_serving")
+
+    drive(installer, flow)
+    wizard = installer.ctx.wizard
+    assert wizard.answers.machine.node_role == "lab"
+    assert wizard.mok_password == mok
+    options = wizard.bootstrap_options()
+    assert "--accept-mok-enrollment" in options
+    assert "--mok-password-stdin" in options
+
+
 def test_secure_boot_without_the_driver(repo: Paths) -> None:
     host = FakeHost(preflight(SECURE_BOOT), fixture=SECURE_BOOT)
     installer = app(context(repo, host, machine="pinka-lab"))
@@ -696,12 +743,257 @@ def test_a_kept_lab_alone_goes_on_to_uninstall(repo: Paths) -> None:
         assert "the capacity plan and the Review screen check the research space" in text
         banners = "".join(str(s.content) for s in screen.query(".banner").results(Static))
         assert "To install, do this first, then Re-check:" in banners
+        assert not screen.query("#installed")  # the kept lab's own banner says it
         await forward(pilot, "mode")
         pick(pilot, "mode-uninstall")
         await forward(pilot, "uninstall")
         assert runner.uninstall_calls == [["--dry-run"]]
 
     drive(installer, flow)
+
+
+UNINSTALL_OVERRIDES = (
+    "--force-unsupported",
+    "--accept-degraded",
+    "--accept-experimental",
+    "--accept-mok-enrollment",
+    "--refresh-profile",
+)
+
+
+@pytest.mark.parametrize(
+    ("fixture", "args", "outcome", "held"),
+    [
+        (
+            "ubuntu2404-no-btrfs-no-dmthin",
+            (),
+            "unsupported",
+            "this host is unsupported: Abort, or Force",
+        ),
+        # Unsupported with an action (the MOK consent), which Force would not skip either.
+        (
+            "ubuntu2404-inference-on-secureboot-no-consent",
+            ("--plan", "plan.json"),
+            "unsupported",
+            "follow the remediation, then Re-check",
+        ),
+        (SECURE_BOOT, (), "needs_action", "follow the remediation, then Re-check"),
+        # Degraded, its lines not ticked; and an experimental tier without the consent.
+        (
+            "ubuntu2404-baremetal-no-gpu",
+            (),
+            "degraded",
+            "tick every disabled feature to continue, or Abort",
+        ),
+        ("linuxmint22-baremetal", (), "degraded", "consent to the experimental tier to continue"),
+    ],
+)
+def test_uninstall_is_reached_without_force_or_a_consent(
+    repo: Paths, fixture: str, args: tuple[str, ...], outcome: str, held: str
+) -> None:
+    # Bootstrap's uninstall takes any preflight outcome and excludes every override: on a
+    # host with a lab installed, the Preflight screen goes on to Uninstall, nothing is
+    # forced or consented, and no override reaches bootstrap.
+    installed(repo)
+    plan = [a.replace("plan.json", str(FIXTURES / fixture / "plan.json")) for a in args]
+    host = FakeHost(preflight(fixture, plan), installed="pinka-lab")
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    installer = app(context(repo, host, runner))
+    found = notes(installer)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        screen = pilot.app.screen
+        assert f"Outcome: {outcome}" in str(screen.query_one("#outcome", Static).content)
+        text = str(screen.query_one("#installed", Static).content)
+        assert "Uninstall runs whatever preflight's outcome here, without Force or a" in text
+        assert "no override is recorded for it" in text
+        await forward(pilot, "mode")
+        banner = str(pilot.app.screen.query_one("#install-held", Static).content)
+        assert banner.startswith("Uninstall runs on this host. An install, a restore or a")
+        assert held in banner
+        # An install, a restore or a modification waits: Next stays here.
+        assert pilot.app.screen.query_one("#mode-modify", RadioButton).value
+        await forward(pilot, "mode")
+        assert found[-1].startswith("choose Uninstall, or go Back to the Preflight screen: ")
+        assert held in found[-1]
+        pick(pilot, "mode-uninstall")
+        await forward(pilot, "uninstall")
+        assert runner.uninstall_calls == [["--dry-run"]]
+        fill(pilot, confirm="pinka-lab")
+        await forward(pilot, "uninstall_run")
+
+    drive(installer, flow)
+    wizard = installer.ctx.wizard
+    assert not wizard.consents & {"force_unsupported", "accept_degraded", "accept_experimental"}
+    assert runner.uninstall_calls[1] == ["--confirm-machine", "pinka-lab"]
+    for call in runner.uninstall_calls:
+        assert not set(call) & set(UNINSTALL_OVERRIDES)
+    assert runner.requests == []  # no install ran
+
+
+def test_a_forced_host_uninstalls_without_the_override(repo: Paths) -> None:
+    # Forcing first changes nothing for an uninstall: the override is for an install.
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    installer = app(context(repo, host, runner))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        await click(pilot, "#force")
+        await pilot.pause()
+        pilot.app.screen.query_one("#typed", Input).value = "FORCE UNSUPPORTED"
+        await pilot.pause()
+        await click(pilot, "#confirm")
+        await pilot.pause()
+        await forward(pilot, "mode")
+        assert not pilot.app.screen.query("#install-held")  # forced: nothing holds an install
+        pick(pilot, "mode-uninstall")
+        await forward(pilot, "uninstall")
+        fill(pilot, confirm="pinka-lab")
+        await forward(pilot, "uninstall_run")
+
+    drive(installer, flow)
+    assert "force_unsupported" in installer.ctx.wizard.consents
+    assert runner.uninstall_calls == [["--dry-run"], ["--confirm-machine", "pinka-lab"]]
+
+
+def test_the_held_reasons_go_once_the_preflight_screen_no_longer_holds(repo: Paths) -> None:
+    # Held on the way to Uninstall, then back, forced and on again: nothing holds an
+    # install any more, and modify mode goes on.
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    installer = app(context(repo, host))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        await forward(pilot, "mode")
+        assert pilot.app.screen.query("#install-held")
+        await pilot.press("ctrl+b")
+        await settle(pilot)
+        assert at(pilot) == "preflight"
+        await click(pilot, "#force")
+        await pilot.pause()
+        pilot.app.screen.query_one("#typed", Input).value = "FORCE UNSUPPORTED"
+        await pilot.pause()
+        await click(pilot, "#confirm")
+        await pilot.pause()
+        await forward(pilot, "mode")
+        assert not pilot.app.screen.query("#install-held")
+        await forward(pilot, "machine")
+
+    drive(installer, flow)
+    assert installer.ctx.wizard.install_held == []
+
+
+def test_a_resumed_wizard_still_holds_the_install(repo: Paths) -> None:
+    # Quit on the Install mode screen while the Preflight screen holds an install: the
+    # resumed wizard opens there and still offers only Uninstall.
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    installer = app(context(repo, host))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        await forward(pilot, "mode")
+        await pilot.press("ctrl+q")
+        await pilot.pause()
+        await click(pilot, "#yes")
+
+    drive(installer, flow)
+    saved = state.load(repo.state_file)
+    assert saved is not None and saved.screen == "mode"
+    assert saved.answers["install_held"] == ["this host is unsupported: Abort, or Force"]
+    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"), installed="pinka-lab")
+    again = app(context(repo, host))
+    found = notes(again)
+
+    async def resumed(pilot: Pilot[int]) -> None:
+        await forward(pilot, "mode")  # resumes at the saved screen
+        banner = str(pilot.app.screen.query_one("#install-held", Static).content)
+        assert "this host is unsupported: Abort, or Force" in banner
+        await forward(pilot, "mode")
+        assert found[-1].startswith("choose Uninstall, or go Back to the Preflight screen: ")
+        pick(pilot, "mode-uninstall")
+        await forward(pilot, "uninstall")
+
+    drive(again, resumed)
+
+
+def test_a_resumed_hold_without_a_lab_goes_back_to_the_preflight_screen(repo: Paths) -> None:
+    # A wizard resumed after the lab was removed outside the installer: Uninstall is not
+    # offered, and the Preflight screen's checks never passed, so the only way on is
+    # Back, where the Preflight screen judges the host again (here: still unsupported).
+    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))  # nothing installed
+    ctx = context(repo, host, machine="pinka-lab")
+    ctx.wizard.install_held = ["this host is unsupported: Abort, or Force"]
+    installer = app(ctx, first="mode")
+    found = notes(installer)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        banner = str(pilot.app.screen.query_one("#install-held", Static).content)
+        assert banner.startswith("An install, a restore or a modification waits until")
+        assert "Uninstall runs" not in banner
+        await forward(pilot, "mode")
+        assert found[-1] == (
+            "go Back to the Preflight screen: this host is unsupported: Abort, or Force"
+        )
+        await pilot.press("ctrl+b")
+        await settle(pilot)
+        assert at(pilot) == "preflight"
+        await forward(pilot, "preflight")
+        assert found[-1] == "this host is unsupported: Abort, or Force"
+
+    drive(installer, flow)
+    assert installer.ctx.wizard.install_held == []  # no lab: the screen holds it itself
+
+
+def test_a_supported_host_with_a_lab_holds_nothing(repo: Paths) -> None:
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-baremetal-nvidia-driver-loaded"), installed="pinka-lab")
+    installer = app(context(repo, host))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        assert not pilot.app.screen.query("#installed")
+        await forward(pilot, "mode")
+        assert not pilot.app.screen.query("#install-held")
+        await forward(pilot, "machine")  # modify mode goes on
+
+    drive(installer, flow)
+
+
+def test_a_preflight_error_does_not_go_on_to_uninstall(repo: Paths) -> None:
+    # Bootstrap's uninstall stops on a preflight error (exit 40) too: the screen holds.
+    installed(repo)
+    profile = preflight("ubuntu2404-no-btrfs-no-dmthin").profile
+    host = FakeHost(Preflight(40, profile), installed="pinka-lab")
+    installer = app(context(repo, host))
+    found = notes(installer)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        assert not pilot.app.screen.query("#installed")
+        await forward(pilot, "preflight")
+        assert found[-1] == "this host is unsupported: Abort, or Force"
+
+    drive(installer, flow)
+
+
+def test_an_unsupported_host_without_a_lab_still_needs_force(repo: Paths) -> None:
+    host = FakeHost(preflight("ubuntu2404-no-btrfs-no-dmthin"))  # nothing installed
+    installer = app(context(repo, host))
+    found = notes(installer)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        assert not pilot.app.screen.query("#installed")
+        await forward(pilot, "preflight")
+        assert found[-1] == "this host is unsupported: Abort, or Force"
+
+    drive(installer, flow)
+    assert installer.ctx.wizard.install_held == []
 
 
 def test_only_the_kept_lab_alone_lets_the_preflight_screen_go_on() -> None:
@@ -798,6 +1090,7 @@ def test_modify_mode(repo: Paths) -> None:
     assert ctx.wizard.answers.machine.name == "pinka-lab"
     installer = app(ctx, first="mode")
     accepted_on_preflight(ctx, host)  # the host lacks a GPU: degraded
+    host.stored = copy.deepcopy(host.result.profile)  # the last bootstrap's, unchanged
     before = repo.host_vars("pinka-lab").read_text(encoding="utf-8")
     restic = vault.decrypt(repo.vault.read_text(encoding="utf-8"), PASSWORD)
 
@@ -814,6 +1107,7 @@ def test_modify_mode(repo: Paths) -> None:
         assert "ansible/inventory/host_vars/pinka-lab.yml (changed)" in titles
         assert "ansible/group_vars/all/main.yml (unchanged)" in titles
         assert repo.host_vars("pinka-lab").read_text(encoding="utf-8") == before  # not yet
+        assert not pilot.app.screen.query_one("#profile-changes", Static).display
         await forward(pilot, "progress")
 
     drive(installer, flow)
@@ -826,6 +1120,120 @@ def test_modify_mode(repo: Paths) -> None:
     # The host lacks a GPU: its outcome is degraded, which bootstrap accepts only with
     # the consent, given on the Preflight screen and kept on the capacity plan.
     assert runner.requests[0].options == ["--accept-degraded"]
+
+
+def test_a_changed_host_profile_is_shown_and_accepted(repo: Paths) -> None:
+    # Bootstrap stops (exit 77) when the host profile differs from the stored one in
+    # outcome, provider or features without --refresh-profile: the Review screen shows
+    # each change, and Install passes it.
+    installed(repo)
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"), installed="pinka-lab")
+    stored = copy.deepcopy(host.result.profile)
+    stored["outcome"] = "supported"
+    stored["features"]["gpu_inference"] = True
+    host.stored = stored
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    ctx = context(repo, host, runner)
+    installer = app(ctx, first="mode")
+    accepted_on_preflight(ctx, host)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        for step in ("machine", *STEP5, "researchers", "remote", "backups", "restore"):
+            await forward(pilot, step)
+        for step in ("platform", "platform_review", "images", "secrets"):
+            await forward(pilot, step)
+        fill(pilot, vault1=PASSWORD)
+        await forward(pilot, "review")
+        shown = pilot.app.screen.query_one("#profile-changes", Static)
+        assert shown.display
+        assert str(shown.content) == (
+            "The host profile changes from the one the last bootstrap stored "
+            "(/etc/pinka/host-profile.json):\n"
+            "- outcome: supported -> degraded\n"
+            "- features.gpu_inference: true -> false\n"
+            "Install accepts them with bootstrap's --refresh-profile (recorded with its run), "
+            "which accepts the host profile bootstrap's own preflight run finds."
+        )
+        await forward(pilot, "progress")
+
+    drive(installer, flow)
+    assert runner.requests[0].options == ["--accept-degraded", "--refresh-profile"]
+
+
+def test_a_dropdown_value_it_does_not_offer_is_refused_never_a_crash(repo: Paths) -> None:
+    # A host_vars file edited by hand or a resumed state can hold a value
+    # a dropdown does not offer: the dropdown starts blank, Next names the value (shown
+    # as it is, also with markup in it), and nothing shows or keeps another value.
+    loaded = preflight("ubuntu2404-baremetal-nvidia-driver-loaded")
+    profile = copy.deepcopy(loaded.profile)
+    profile["environment"]["confidence"] = "low"  # the provider dropdown is shown
+    host = FakeHost(Preflight(loaded.exit_code, profile))
+    ctx = context(repo, host, machine="pinka-lab")
+    ctx.wizard.profile = profile
+    accepted_on_preflight(ctx, host)
+    answers = ctx.wizard.answers
+    answers.machine.lab_mode = "[B]qa [/]"
+    answers.machine.provider = "cloud"
+    answers.machine.power_policy = "sleep"
+    answers.machine.node_role = "[/]"
+    answers.features.inference = ""
+    answers.features.training = "gpu"
+    answers.gpu.install_driver = "magic"
+    answers.gpu.vllm_profile = "nonexistent"
+    installer = app(ctx, first="machine")
+
+    async def flow(pilot: Pilot[int]) -> None:
+        screen = pilot.app.screen
+        for select in ("lab_mode", "provider", "power_policy"):
+            assert screen.query_one(f"#{select}", Select).value is Select.NULL
+        await forward(pilot, "machine")
+        # Drawn as plain text: the markup in the value is shown as typed, never applied.
+        assert shown_errors(pilot) == [
+            "✖ '[B]qa [/]' is not one of the choices (production, staging): choose one",
+            "✖ 'cloud' is not one of the choices (auto, baremetal, vm, wsl2): choose one",
+            "✖ 'sleep' is not one of the choices (lab_session_inhibit, never_sleep, "
+            "os_default): choose one",
+        ]
+        assert answers.machine.lab_mode == "[B]qa [/]"  # the value read stays until a choice
+        choose(pilot, "lab_mode", "production")
+        choose(pilot, "provider", "auto")
+        choose(pilot, "power_policy", "never_sleep")
+        await forward(pilot, "capacity")
+        screen = pilot.app.screen
+        for select in ("node_role", "inference", "training", "install_driver", "profile"):
+            assert screen.query_one(f"#{select}", Select).value is Select.NULL, select
+        await forward(pilot, "capacity")
+        # Below the status line: preflight's run refuses the plan of these answers.
+        status, *fields = shown_errors(pilot)
+        assert status == (
+            "Next waits: the plan is refused: node_role must be full, lab or inference (got '[/]')"
+        )
+        assert fields == [
+            "✖ '[/]' is not one of the choices (full, lab, inference): choose one",
+            "✖ nothing is chosen: choose auto, on, off",
+            "✖ 'gpu' is not one of the choices (auto, cpu, off): choose one",
+            "✖ 'magic' is not one of the choices (auto, manual, skip): choose one",
+            "✖ vllm_profile 'nonexistent' is not a serving profile (vllm/profiles/: ada-12g)",
+        ]
+        assert (answers.gpu.install_driver, answers.gpu.vllm_profile) == ("magic", "nonexistent")
+        choose(pilot, "node_role", "full")
+        await settle(pilot)
+        choose(pilot, "inference", "auto")
+        choose(pilot, "training", "off")
+        choose(pilot, "install_driver", "skip")
+        choose(pilot, "profile", "ada-12g")
+        await settle(pilot)
+        await forward(pilot, "capacity_device")
+
+    drive(installer, flow)
+    machine, features, gpu = answers.machine, answers.features, answers.gpu
+    assert (machine.lab_mode, machine.provider, machine.power_policy) == (
+        "production",
+        "auto",
+        "never_sleep",
+    )
+    assert (machine.node_role, features.inference, features.training) == ("full", "auto", "off")
+    assert (gpu.install_driver, gpu.vllm_profile) == ("skip", "ada-12g")
 
 
 def test_validation_errors_stay_on_the_screen(repo: Paths) -> None:

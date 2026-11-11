@@ -196,6 +196,7 @@ class FakeHost:
     free: tuple[float, str] = (500.0, "ext4")
     cores: Sequence[frozenset[int]] = ()
     installed: str = ""
+    stored: dict[str, Any] = field(default_factory=dict)  # /etc/pinka/host-profile.json
     user: str = "researcher1"
     replies: dict[str, CommandResult] = field(default_factory=dict)
     calls: list[tuple[list[str], dict[str, str], str | None]] = field(default_factory=list)
@@ -257,6 +258,9 @@ class FakeHost:
 
     def installed_machine(self) -> str:
         return self.installed
+
+    def stored_profile(self) -> dict[str, Any]:
+        return self.stored
 
     def invoking_user(self) -> str:
         return self.user

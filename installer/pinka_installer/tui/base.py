@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Static
+from textual.widgets import Button, Footer, Select, Static
 
 from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
@@ -142,6 +142,28 @@ class StepScreen(Screen[None]):
         """
         return []
 
+    def chosen(self, field_id: str, current: str, refusal: str | None, problems: Problems) -> str:
+        """A dropdown's choice (:func:`pinka_installer.tui.widgets.dropdown`).
+
+        While the dropdown is blank, it started on a value it does not offer and
+        nothing was chosen since: the value read stays, and the field is refused.
+
+        Args:
+            field_id: The dropdown's id.
+            current: The value read.
+            refusal: The field's message for that value (fields draw their messages
+                as plain text, so a value with markup in it shows as it is).
+            problems: Where the refusal goes.
+
+        Returns:
+            The choice, or the value read while nothing is chosen.
+        """
+        value = self.query_one(f"#{field_id}", Select).value
+        if value is Select.NULL:
+            problems.append((field_id, refusal or "choose one"))
+            return current
+        return str(value)
+
     def show_problems(self, problems: Problems) -> None:
         """Show each message next to its field (or as a notification).
 
@@ -155,7 +177,8 @@ class StepScreen(Screen[None]):
             if found:
                 cast(Field, found.first()).set_error(message)
             else:
-                self.notify(message, severity="error")
+                # Plain text, as the fields' messages: it can name a value read from a file.
+                self.notify(message, severity="error", markup=False)
 
     def action_next(self) -> None:
         """Validate and go on."""

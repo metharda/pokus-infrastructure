@@ -40,6 +40,7 @@ from pinka_installer.tui import capacity
 from pinka_installer.tui.base import Problems, StepScreen
 from pinka_installer.tui.host import Disk
 from pinka_installer.tui.model import (
+    DRIVER_MODES,
     ModelChoice,
     load_profiles,
     model_choices,
@@ -47,7 +48,7 @@ from pinka_installer.tui.model import (
     suggest_postgres,
     suggest_profile,
 )
-from pinka_installer.tui.widgets import Field, NavBar, StepHeader, TypedConfirm
+from pinka_installer.tui.widgets import Field, NavBar, StepHeader, TypedConfirm, dropdown
 
 SAFE = YAML(typ="safe")
 NODE_ROLES = [
@@ -55,6 +56,7 @@ NODE_ROLES = [
     ("lab: lab services, inference on another node", "lab"),
     ("inference: vLLM only, paired with a lab node", "inference"),
 ]
+NODE_ROLE_VALUES = [value for _label, value in NODE_ROLES]
 INFERENCE = [
     ("auto: serve where the GPU can", "auto"),
     ("on: serve, or refuse the host", "on"),
@@ -65,12 +67,12 @@ TRAINING = [
     ("cpu: also the CPU-only variant", "cpu"),
     ("off: no training jobs", "off"),
 ]
-NVIDIA_DRIVER = [
-    ("Install the pinned driver", "auto"),
-    ("I install it myself", "manual"),
-    ("No driver", "skip"),
-]
-DRIVER_LABELS = {value: label for label, value in NVIDIA_DRIVER}
+DRIVER_LABELS = {
+    "auto": "Install the pinned driver",
+    "manual": "I install it myself",
+    "skip": "No driver",
+}
+NVIDIA_DRIVER = [(DRIVER_LABELS[mode], mode) for mode in DRIVER_MODES]
 MIN_LOOP_GIB = 20  # the answers schema's minimum
 # Seconds after the last change before preflight runs again.
 DEBOUNCE = 0.4
@@ -82,7 +84,7 @@ def _value(screen: StepScreen, selector: str) -> str:
 
 def _select(screen: StepScreen, selector: str) -> str:
     value = screen.query_one(selector, Select).value
-    return "" if value is Select.BLANK else str(value)
+    return "" if value is Select.NULL else str(value)
 
 
 def cpu_bar(services: str, targets: str, threads: int) -> str:
@@ -97,15 +99,14 @@ def cpu_bar(services: str, targets: str, threads: int) -> str:
         The bar.
     """
     try:
-        s = validators.parse_cpuset(services)
-        t = validators.parse_cpuset(targets)
+        s = validators.merged_ranges(validators.cpuset_ranges(services))
+        t = validators.merged_ranges(validators.cpuset_ranges(targets))
     except ValueError:
         return ""
     cells = []
     for cpu in range(threads):
-        cells.append(
-            "X" if cpu in s and cpu in t else "S" if cpu in s else "T" if cpu in t else "·"
-        )
+        in_s, in_t = validators.in_cpuset(cpu, s), validators.in_cpuset(cpu, t)
+        cells.append("X" if in_s and in_t else "S" if in_s else "T" if in_t else "·")
     return "".join(cells)
 
 
@@ -255,7 +256,10 @@ class CapacityScreen(StepScreen):
     def compose(self) -> ComposeResult:  # noqa: D102
         yield StepHeader(self.title_text(), self.position())
         with VerticalScroll(id="budget"):
-            yield Static("Computing the plan with preflight…", id="cap-status", classes="info")
+            # Plain text: a refusal names a value read from host_vars or a resumed state.
+            yield Static(
+                "Computing the plan with preflight…", id="cap-status", classes="info", markup=False
+            )
             consent = Checkbox(
                 "I accept what is degraded below (recorded as --accept-degraded)",
                 False,
@@ -265,7 +269,7 @@ class CapacityScreen(StepScreen):
             yield consent
             yield Vertical(id="cap-rows")
             yield Static("", id="cap-growth", classes="hint")
-            yield Static("", id="cap-reasons", classes="banner bad")
+            yield Static("", id="cap-reasons", classes="banner bad", markup=False)
             yield Static(capacity.LEGEND, classes="hint")
         with VerticalScroll(id="body"):
             yield from self.body()
@@ -312,10 +316,7 @@ class CapacityScreen(StepScreen):
 
     def _roles(self) -> ComposeResult:
         machine, features = self.answers.machine, self.answers.features
-        yield Field(
-            "Node role",
-            Select(NODE_ROLES, value=machine.node_role, allow_blank=False, id="node_role"),
-        )
+        yield Field("Node role", dropdown(NODE_ROLES, machine.node_role, "node_role"))
         yield Field(
             "Paired node (optional)",
             Input(
@@ -326,47 +327,37 @@ class CapacityScreen(StepScreen):
             hint="lab and inference nodes only: the machine name of the other node",
         )
         with Horizontal(classes="inline"):
-            yield Field(
-                "Inference",
-                Select(INFERENCE, value=features.inference, allow_blank=False, id="inference"),
-            )
-            yield Field(
-                "Training",
-                Select(TRAINING, value=features.training, allow_blank=False, id="training"),
-            )
+            yield Field("Inference", dropdown(INFERENCE, features.inference, "inference"))
+            yield Field("Training", dropdown(TRAINING, features.training, "training"))
 
     def _serving(self) -> ComposeResult:
         gpu = self.answers.gpu
+        if self.wizard.has_gpu and not self.wizard.is_wsl:
+            # Chosen here, not on the NVIDIA driver page: preflight judges the GPU with it.
+            # On every node role: the play installs the driver on a lab node too.
+            yield Field(
+                "NVIDIA driver",
+                dropdown(NVIDIA_DRIVER, gpu.install_driver, "install_driver"),
+                hint="the NVIDIA driver page shows the pinned packages, and with Secure Boot "
+                "asks the one-time MOK password",
+            )
         reason = serving_unavailable(self)
         if reason:
             yield Static(f"Serving: not applicable here: {reason}", classes="greyed")
             return
-        if not self.wizard.is_wsl:
-            # Chosen here, not on the NVIDIA driver page: preflight judges the GPU with it.
-            yield Field(
-                "NVIDIA driver",
-                Select(
-                    NVIDIA_DRIVER,
-                    # A value no field offers (a host_vars file edited by hand) would end
-                    # the installer when the field mounts: the answers' default instead.
-                    value=gpu.install_driver if gpu.install_driver in DRIVER_LABELS else "skip",
-                    allow_blank=False,
-                    id="install_driver",
-                ),
-                hint="the NVIDIA driver page shows the pinned packages, and with Secure Boot "
-                "asks the one-time MOK password",
-            )
         self.profiles = load_profiles(self.ctx.paths.vllm_profiles)
         profile = (
             gpu.vllm_profile
             or suggest_profile(self.serving_answer())
             or next(iter(self.profiles), "")
         )
+        # A profile that does not exist starts blank and is refused on Next.
+        offered = isinstance(profile, str) and profile in self.profiles
         yield Field(
             "Serving profile",
             Select(
                 [(f"{n}: {p.get('description', '')}", n) for n, p in self.profiles.items()],
-                value=profile or Select.BLANK,
+                value=profile if offered else Select.NULL,
                 id="profile",
             ),
         )
@@ -773,6 +764,7 @@ class CapacityScreen(StepScreen):
     def save(self) -> Problems:  # noqa: D102
         problems: Problems = []
         problems += self._save_roles()
+        problems += self._save_driver()
         problems += self._save_serving()
         problems += self._save_storage()
         problems += self._save_resources()
@@ -833,7 +825,12 @@ class CapacityScreen(StepScreen):
     def _save_roles(self) -> Problems:
         machine, features = self.answers.machine, self.answers.features
         problems: Problems = []
-        machine.node_role = _select(self, "#node_role")
+        machine.node_role = self.chosen(
+            "node_role",
+            machine.node_role,
+            validators.offered(machine.node_role, NODE_ROLE_VALUES),
+            problems,
+        )
         peer = _value(self, "#peer")
         self.answers.split_inference_peer = peer if machine.node_role != "full" else ""
         if peer and machine.node_role != "full":
@@ -841,8 +838,46 @@ class CapacityScreen(StepScreen):
                 problems.append(("peer", error))
             elif peer == machine.name:
                 problems.append(("peer", "the other node, not this machine"))
-        features.inference = _select(self, "#inference")
-        features.training = _select(self, "#training")
+        features.inference = self.chosen(
+            "inference",
+            features.inference,
+            validators.offered(features.inference, [v for _label, v in INFERENCE]),
+            problems,
+        )
+        features.training = self.chosen(
+            "training",
+            features.training,
+            validators.offered(features.training, [v for _label, v in TRAINING]),
+            problems,
+        )
+        return problems
+
+    def _save_driver(self) -> Problems:
+        if not self.query("#install_driver"):
+            return []
+        gpu = self.answers.gpu
+        problems: Problems = []
+        gpu.install_driver = self.chosen(
+            "install_driver",
+            gpu.install_driver,
+            validators.offered(gpu.install_driver, DRIVER_MODES),
+            problems,
+        )
+        # A tuple compares, never hashes: a value of any type from a resumed state is safe.
+        if self.wizard.mok_enrollment_needed and gpu.install_driver in DRIVER_MODES:
+            # The Preflight screen judges with it too, and offers the MOK consent
+            # unless it is "No driver" (as after "Continue without the driver").
+            self.wizard.nvidia_driver = gpu.install_driver
+        if self.wizard.mok_enrollment_needed and gpu.install_driver == "manual":
+            # It would stop the installation at bootstrap's preflight (exit 30).
+            problems.append(
+                (
+                    "install_driver",
+                    "Secure Boot without a driver: install the driver yourself first and "
+                    "Re-check on the Preflight screen, or choose Install the pinned driver "
+                    "or No driver",
+                )
+            )
         return problems
 
     def _save_serving(self) -> Problems:
@@ -850,23 +885,15 @@ class CapacityScreen(StepScreen):
             return []
         gpu = self.answers.gpu
         problems: Problems = []
-        if self.query("#install_driver"):
-            gpu.install_driver = _select(self, "#install_driver")
-            if self.wizard.mok_enrollment_needed:
-                # The Preflight screen judges with it too, and offers the MOK consent
-                # unless it is "No driver" (as after "Continue without the driver").
-                self.wizard.nvidia_driver = gpu.install_driver
-            if self.wizard.mok_enrollment_needed and gpu.install_driver == "manual":
-                # It would stop the installation at bootstrap's preflight (exit 30).
-                problems.append(
-                    (
-                        "install_driver",
-                        "Secure Boot without a driver: install the driver yourself first and "
-                        "Re-check on the Preflight screen, or choose Install the pinned driver "
-                        "or No driver",
-                    )
-                )
-        gpu.vllm_profile = _select(self, "#profile")
+        if gpu.vllm_profile and str(gpu.vllm_profile) not in self.profiles:
+            gpu.vllm_profile = self.chosen(
+                "profile",
+                gpu.vllm_profile,
+                validators.unknown_profile(gpu.vllm_profile, self.profiles),
+                problems,
+            )
+        else:
+            gpu.vllm_profile = _select(self, "#profile")
         token = _value(self, "#hf")
         self.wizard.provided.hf_token = token
         self.answers.secrets.hf_token = "provided" if token else "none"
@@ -1049,7 +1076,9 @@ class DriverScreen(StepScreen):
     def not_applicable(self) -> str | None:  # noqa: D102
         if self.wizard.is_wsl:
             return "WSL: the Windows driver provides the GPU; no Linux driver is installed"
-        return serving_unavailable(self)
+        if not self.wizard.has_gpu:
+            return "no GPU detected; no NVIDIA driver is installed"
+        return None  # also on a lab node: the play installs the driver on every node role
 
     def body(self) -> ComposeResult:  # noqa: D102
         gpu = self.answers.gpu
@@ -1073,10 +1102,11 @@ class DriverScreen(StepScreen):
                 id="gpu-unsupported",
             )
         yield Static(
-            f"NVIDIA driver: {DRIVER_LABELS.get(gpu.install_driver, gpu.install_driver)} "
+            f"NVIDIA driver: {DRIVER_LABELS.get(str(gpu.install_driver), gpu.install_driver)} "
             "(chosen on the capacity plan)",
             id="driver",
             classes="info",
+            markup=False,  # a value read from host_vars or a resumed state
         )
         yield Static(driver_pin(self.ctx.paths.versions_lock, str(release)), classes="hint")
         if self.wizard.mok_enrollment_needed and gpu.install_driver == "auto":
