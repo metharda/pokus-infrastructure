@@ -35,7 +35,7 @@ Detect the host, decide whether the Pokus lab is supported on it, and print a JS
 | `-h`, `--help` | — | — | show the help and exit |
 | `--root` | `PATH` | — | inspect a fixture root instead of this host; commands come from PATH/commands.json |
 | `--output` | `FILE` | — | write the JSON report to FILE instead of stdout |
-| `--offline` | — | — | skip network reachability checks (for testing only) |
+| `--offline` | — | — | skip the network reachability checks (the installer's capacity plan and Review screen use it, after its Preflight screen ran them) |
 | `--srv-path` | `PATH` | — | configured location of the research space (default: the plan's srv_path, else /srv/pinka) |
 | `--plan` | `FILE` | — | the operator's choices that size the lab, as bootstrap and the installer write them (JSON, preflight/schema/plan.schema.json); without it, the configured defaults |
 | `--accept-degraded` | — | — | record consent to continue with missing optional features |

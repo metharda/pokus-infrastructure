@@ -23,8 +23,12 @@ this tutorial is one you run yourself.
       threads to give to WSL (24 GiB and 16 threads recommended): preflight
       needs 16 GiB of memory as WSL sees it (`MemTotal`), which is below
       what `.wslconfig` gives by what the kernel reserves. Room
-      for the WSL virtual disk: preflight wants 150 GiB free for `/var/lib`
-      and 100 GiB for `/srv/pinka` (400 GiB and 500 GiB recommended).
+      for the WSL virtual disk: preflight computes what your choices need on
+      `/var/lib` and `/srv/pinka`, and the installer's capacity plan shows it
+      per mount point before anything is installed. The free space preflight
+      sees is the virtual disk's (`ext4.vhdx`, up to its maximum size), not
+      the Windows drive's: check that the Windows drive that holds the
+      virtual disk has that much free too.
     - For the GPU: an NVIDIA GPU with at least 8000 MiB of memory as
       `nvidia-smi` reports it (an 8 GB card) for training, and 11500 MiB (a
       12 GB card) for local inference with the default serving profile, and

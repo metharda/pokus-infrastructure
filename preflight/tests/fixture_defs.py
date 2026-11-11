@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import os
 import shutil
 import sys
@@ -36,6 +37,11 @@ GIB = 1024**3
 # file system with the default images and golden images, GiB (the loop reserve
 # fixtures sit 0.01 GiB above and below it).
 LOOP_RESERVE_NEED = 94.6
+# The same need exactly (the sum of the items' sizes as preflight adds them):
+# the disk boundary fixtures sit on it. When an estimate changes,
+# test_the_boundary_fixture_sits_on_the_byte (test_fixtures.py) fails; set
+# this to the new sum.
+LOOP_RESERVE_NEED_EXACT = 94.59900820637122
 NOW = "2026-10-05T09:12:44Z"
 ANY_V4 = "0.0.0.0"  # noqa: S104 - a recorded listening address, nothing binds
 EFI_SB = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
@@ -2039,6 +2045,46 @@ def fixtures() -> dict[str, Fixture]:  # noqa: PLR0915 - one entry per required 
             kvm(),
             plan={"pool": {"source": "loop", "size_gib": 30}},
             expected=expected,
+        )
+    # The disk comparison is exact: 0.001 GiB short (below the 0.005 GiB that
+    # rounding to 0.01 would hide) is refused, and the requirements' disk
+    # figures show it (the need and the missing part rounded up, the free
+    # space down, to a tenth); the need rounded up to a whole byte, or 0.001
+    # GiB more, fits. test_the_boundary_fixture_sits_on_the_byte checks -at.
+    for case, room, wanted in (
+        (
+            "under",
+            LOOP_RESERVE_NEED_EXACT - 0.001,
+            {
+                "outcome": "unsupported",
+                "disk": {"/": "does_not_fit"},
+                "unsupported_contains": [
+                    "disk: / has 94.5 GiB free and these choices need 94.6 GiB there: ",
+                    "the free space kept beside the Incus pool (loop file): 50.0 GiB, "
+                    "missing 0.1 GiB on /",
+                ],
+            },
+        ),
+        (
+            "at",
+            math.ceil(LOOP_RESERVE_NEED_EXACT * GIB) / GIB,
+            {"outcome": "degraded", "disk": {"/": "fits"}},
+        ),
+        (
+            "over",
+            LOOP_RESERVE_NEED_EXACT + 0.001,
+            {"outcome": "degraded", "disk": {"/": "fits"}},
+        ),
+    ):
+        fx[f"ubuntu2404-disk-boundary-{case}"] = build(
+            UBUNTU_2404,
+            system(),
+            disks(root_free=room),
+            apparmor,
+            baremetal(),
+            kvm(),
+            plan={"pool": {"source": "loop", "size_gib": 30}},
+            expected=wanted,
         )
     # incus_pool_size: auto on one file system: the golden images and two
     # VM targets with their probe clients, + 50 %, is 66 GiB with 386 GiB free;

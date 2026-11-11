@@ -39,7 +39,7 @@ Requirements
     training (training: auto): off: gpu_training is not available on this host (unmet: nvidia_gpu_usable, VRAM >= 8000 MiB, compute capability >= 7.0); training: cpu would run the CPU-only variant
   CPU estimate 5.1 threads
   Incus pool: loop file of 30 GiB (configured: incus_pool_size 30.0 GiB)
-  disk / (ext4): 94.6 GiB free, 94.6 GiB needed at install, 0.0 GiB missing
+  disk / (ext4): 94.5 GiB free, 94.6 GiB needed at install, 0.1 GiB missing
     pinka itself: 5.0 GiB (estimated)
     container images (11): 2.2 GiB (estimated)
     the Incus pool (loop file): 30.0 GiB (configured)
@@ -56,7 +56,7 @@ Requirements
 Network: skipped (--offline)
 
 Unsupported
-  - disk: / has 94.59 GiB free and these choices need 94.60 GiB there: the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /
+  - disk: / has 94.5 GiB free and these choices need 94.6 GiB there: the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 0.1 GiB on /
 
 Disabled features
   - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.

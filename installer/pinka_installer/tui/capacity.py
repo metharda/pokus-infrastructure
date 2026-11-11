@@ -247,8 +247,10 @@ def _memory(req: Mapping[str, Any]) -> Row:
     return Row("memory", "RAM", status, _fill(recommended, total), line, items)
 
 
-def _disk_item(item: Mapping[str, Any]) -> str:
-    text = f"{item['title']}: {gib(item['size_gib'])} ({item['basis']})"
+def _disk_item(item: Mapping[str, Any], short: bool) -> str:
+    """One item: its size rounded up where the mount point falls short (a need), as preflight."""
+    size = up(item["size_gib"]) if short else item["size_gib"]
+    text = f"{item['title']}: {gib(size)} ({item['basis']})"
     if item["present"]:
         text += ", on the host already"
     elif item["missing_gib"]:
@@ -266,7 +268,7 @@ def _disks(req: Mapping[str, Any]) -> list[Row]:
             f"{_status(status, budget['shortfall_gib'])} · needs {gib(_need(status, need))}, "
             f"has {gib(_has(status, free))} free"
         )
-        items = tuple(_disk_item(i) for i in items_by_mount.get(mount, []))
+        items = tuple(_disk_item(i, _short(status)) for i in items_by_mount.get(mount, []))
         rows.append(Row(f"disk:{mount}", f"Disk {mount}", status, _fill(need, free), line, items))
     return rows
 

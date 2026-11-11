@@ -11,6 +11,7 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
+from pinka_preflight.requirements import disk_size_text, disk_texts
 from pinka_preflight.vram import at_least
 
 RESET = "\033[0m"
@@ -44,10 +45,10 @@ def _gib(value: float | None) -> str:
 
 def _disk_lines(mount: Mapping[str, Any]) -> list[str]:
     """One mount point: the total, then its items (container and golden images summed)."""
+    need, free, short = disk_texts(mount["required_gib"], mount["free_gib"], mount["shortfall_gib"])
     lines = [
-        f"  disk {mount['mount']} ({_fmt(mount['fstype'])}): {_gib(mount['free_gib'])} free, "
-        f"{_gib(mount['required_gib'])} needed at install"
-        + (f", {_gib(mount['shortfall_gib'])} missing" if mount["shortfall_gib"] else "")
+        f"  disk {mount['mount']} ({_fmt(mount['fstype'])}): {free} free, "
+        f"{need} needed at install" + (f", {short} missing" if short else "")
     ]
     groups: dict[str, list[Mapping[str, Any]]] = {}
     for item in mount["items"]:
@@ -65,8 +66,31 @@ def _disk_lines(mount: Mapping[str, Any]) -> list[str]:
         label = f"{title} ({len(items)})" if title else items[0]["title"]
         state = f", {present} present" if present else ""
         basis = sorted({i["basis"] for i in items})
-        lines.append(f"    {label}: {_gib(size)}{state} ({', '.join(basis)})")
+        size_text = disk_size_text(size, bool(short))
+        lines.append(f"    {label}: {size_text}{state} ({', '.join(basis)})")
     return lines
+
+
+def growth_when(growth: Mapping[str, Any]) -> str:
+    """When the research space fills, or why that is not known.
+
+    The installer's capacity plan tells the same three cases of a null date
+    apart: nothing grows, the free space is not measured, or the stores stay
+    below it for ten years with the retention's limits counted.
+
+    Args:
+        growth: The host profile's ``requirements.growth``.
+
+    Returns:
+        Such as ``full in about 120 days at this rate``.
+    """
+    if growth["days_until_full"] is not None:
+        return f"full in about {growth['days_until_full']} days at this rate"
+    if not growth["gib_per_day"]:
+        return "nothing grows there"
+    if growth["free_after_install_gib"] is None:
+        return "when the disk fills is not known: its free space is not measured"
+    return "the disk does not fill within ten years, the retention's limits counted"
 
 
 STATUS_TEXT = {"fits": "fits", "does_not_fit": "does not fit", "off": "off", "unknown": "unknown"}
@@ -159,10 +183,7 @@ def requirements_lines(req: Mapping[str, Any], *, gpu_usable: bool = False) -> l
         lines.extend(_disk_lines(mount))
     growth = req.get("growth")
     if growth:
-        if growth["days_until_full"] is None:
-            when = "not full within ten years at this rate"
-        else:
-            when = f"full in about {growth['days_until_full']} days at this rate"
+        when = growth_when(growth)
         lines.append(
             f"  growth on {_fmt(growth['mount'])}: {growth['gib_per_day']:g} GiB a day,"
             f" {growth['gib_per_week']:g} GiB a week; {when}"

@@ -1066,7 +1066,7 @@
                 "null"
               ],
               "minimum": 0,
-              "description": "The day the disk fills at this rate; null if the retention keeps it below the free space for ten years."
+              "description": "The day the disk fills at this rate; null if nothing grows, if the free space is not measured, or if the stores, with the retention's limits counted, stay below the free space for ten years."
             },
             "items": {
               "type": "array",
@@ -1203,19 +1203,19 @@
                   "required_gib": {
                     "type": "number",
                     "minimum": 0,
-                    "description": "What the install puts there, GiB."
+                    "description": "What the install puts there, GiB: to the nearest 0.01, rounded up when does_not_fit."
                   },
                   "free_gib": {
                     "type": [
                       "number",
                       "null"
                     ],
-                    "description": "Its free space, GiB."
+                    "description": "Its free space, GiB: to the nearest 0.01, rounded down when does_not_fit."
                   },
                   "shortfall_gib": {
                     "type": "number",
                     "minimum": 0,
-                    "description": "How much is missing, GiB."
+                    "description": "How much is missing, GiB: rounded up to 0.01 and at least 0.01 when does_not_fit (the comparison itself is exact), else 0."
                   }
                 }
               }

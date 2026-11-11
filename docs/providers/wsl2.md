@@ -110,6 +110,12 @@ add it to your PowerShell profile.
 - **Nested virtualization.** VM targets need `/dev/kvm`, which depends on the
   Windows version, the CPU and `nestedVirtualization`. Without it preflight
   reports `vm_targets` as disabled and the lab runs container targets only.
+- **The free space is the virtual disk's.** Inside WSL, preflight and doctor
+  measure the free space of the WSL virtual disk (`ext4.vhdx`, which grows up
+  to its maximum size), not of the Windows drive that holds it, so every disk
+  check can pass while that drive is nearly full. Preflight never queries
+  Windows: check the Windows drive's free space yourself, before the install
+  and as the lab grows.
 - **The Windows side is not observable.** The Windows build, its drivers and
   other Windows load are outside the fingerprint. Measurements include the
   overhead of WSL's virtual machine; reports keep WSL2 results apart from

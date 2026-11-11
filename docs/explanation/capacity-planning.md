@@ -250,6 +250,26 @@ everything on one file system, 0.01 GiB short of the 50 GiB beside it reads
 `the free space kept beside the Incus pool (loop file): 50.0 GiB, missing
 0.1 GiB on /`.
 
+The comparison is exact, in bytes: a shortfall of any size refuses, a
+single byte included. The disk figures of the requirements print the same
+way in the refusal, preflight's summary and the installer's capacity plan:
+where a mount point falls short, its need and each item's size rounded up,
+its free space rounded down and what is missing rounded up, to a tenth of a
+GiB, so none of them shows a fit where preflight refuses; where it fits, to
+the nearest tenth. Each is rounded on its own, so the need less the free
+space can read up to 0.2 GiB more than what is missing. So 0.001 GiB short
+of the 94.6 GiB that setup needs reads `/ has 94.5 GiB free and these
+choices need 94.6 GiB there`, and the summary's line `94.5 GiB free, 94.6
+GiB needed at install, 0.1 GiB missing`. The summary's Hardware section
+shows each file system's free space as measured, to the nearest tenth
+(`94.6 GiB free` there).
+
+Under WSL2 the free space preflight measures is the WSL virtual disk's
+(`ext4.vhdx`, which grows up to its maximum size), not the Windows drive's:
+the disk checks can pass while the Windows drive that holds the virtual
+disk is nearly full. Preflight never queries Windows; check that drive's
+free space yourself ([WSL2 hosts](../providers/wsl2.md#known-limitations)).
+
 ## The pool's size
 
 A loop pool's size is `incus_pool_size: auto` unless you set one; preflight
@@ -292,7 +312,9 @@ breakdown: per store, its growth per day and the size its retention holds it
 to, then the growth per day and per week below the research space and the
 day the disk fills at that rate. The 50 GiB kept beside a loop file counts as
 free there: the day is when the disk is full, not when the stores reach that
-reserve.
+reserve. Where there is no day, the line says why: nothing grows there, the
+free space is not measured, or the stores, with their retention's limits,
+stay below the free space for ten years.
 
 | Store | Growth (estimated) | Held by |
 | --- | --- | --- |

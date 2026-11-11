@@ -19,7 +19,7 @@ import pytest
 from ruamel.yaml import YAML
 from textual.pilot import Pilot
 from textual.widgets import Checkbox, Collapsible, DataTable, RadioButton, Select, Static
-from tui_fakes import FakeHost, app, context, preflight
+from tui_fakes import FIXTURES, FakeHost, app, context, preflight
 
 from pinka_installer import answers as answers_mod
 from pinka_installer import hostvars, state, validators
@@ -31,7 +31,7 @@ from pinka_installer.tui.app import InstallerApp
 from pinka_installer.tui.host import Preflight
 from pinka_installer.tui.screens_capacity import DEBOUNCE, CapacityScreen
 from pinka_installer.tui.screens_install import ReviewScreen
-from pinka_preflight import render
+from pinka_preflight import render, requirements
 
 SIZE = (120, 40)
 FITS = "ubuntu2404-wsl2-gpu-kvm"
@@ -432,16 +432,21 @@ def test_rows_bars_growth_and_consent() -> None:
         "Growth on /srv: 0.27 GiB a day, 1.89 GiB a week (estimated); full in about 28 days "
         "at this rate, around 2026-11-02"
     )
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}, around 2026-11-02")
     growth["days_until_full"] = None
     assert capacity.growth(profile).endswith(
         "; the disk does not fill within ten years, the retention's limits counted"
     )
+    # Preflight's summary takes the same words for each case of a null date.
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}")
     growth["free_after_install_gib"] = None
     assert capacity.growth(profile).endswith(
         "; when the disk fills is not known: its free space is not measured"
     )
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}")
     growth["gib_per_day"] = 0
     assert capacity.growth(profile).endswith("; nothing grows there")
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}")
     growth["items"] = [{"id": "training", "per_run_gib": 50.0}]
     assert capacity.growth(profile).endswith("; nothing grows there (training runs come on top)")
     assert capacity.needs_consent({"outcome": "degraded"})
@@ -463,6 +468,54 @@ def test_rows_bars_growth_and_consent() -> None:
             capacity.Row("d", "Disk /srv/pinka", "fits", 0.0, "b", ()),
         ]
     ) == ["RAM             ░░░░░░░░░░ a", "Disk /srv/pinka ░░░░░░░░░░ b"]
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "ubuntu2404-disk-boundary-under",
+        "ubuntu2404-disk-boundary-at",
+        "ubuntu2404-loop-reserve-below",
+        "ubuntu2404-disk-shortfall",
+    ],
+)
+def test_the_disk_rows_print_preflight_s_figures(fixture: str) -> None:
+    # One rounding: the capacity plan prints each disk budget's need, free space
+    # and shortfall as preflight's refusal and summary print them.
+    profile = preflight(fixture, ["--plan", str(FIXTURES / fixture / "plan.json")]).profile
+    lines = {r.key: r.line for r in capacity.rows(profile)}
+    budgets = profile["requirements"]["budgets"]["disk"]
+    assert budgets
+    for budget in budgets:
+        need, free, short = requirements.disk_texts(
+            budget["required_gib"], budget["free_gib"], budget["shortfall_gib"]
+        )
+        line = lines[f"disk:{budget['mount']}"]
+        assert f"needs {need}, has {free} free" in line, line
+        assert (f", {short} short" in line) == bool(short), line
+        assert bool(short) == (budget["status"] == "does_not_fit")
+
+
+def test_a_short_disk_row_rounds_the_need_up_and_the_free_space_down() -> None:
+    # Figures whose tenths differ by the direction of the rounding.
+    fixture = "ubuntu2404-disk-shortfall"
+    profile = preflight(fixture, ["--plan", str(FIXTURES / fixture / "plan.json")]).profile
+    budget = profile["requirements"]["budgets"]["disk"][-1]
+    budget.update(status="does_not_fit", required_gib=9.41, free_gib=3.09, shortfall_gib=6.32)
+    line = {r.key: r.line for r in capacity.rows(profile)}[f"disk:{budget['mount']}"]
+    assert line == "does not fit, 6.4 GiB short · needs 9.5 GiB, has 3.0 GiB free"
+    assert requirements.disk_texts(9.41, 3.09, 6.32) == ("9.5 GiB", "3.0 GiB", "6.4 GiB")
+    # A need of exactly 10 GiB with one byte less free: never "has 10.0 GiB free".
+    budget.update(required_gib=10.0, free_gib=9.99, shortfall_gib=0.01)
+    line = {r.key: r.line for r in capacity.rows(profile)}[f"disk:{budget['mount']}"]
+    assert line == "does not fit, 0.1 GiB short · needs 10.0 GiB, has 9.9 GiB free"
+    # An item's size is a need there: rounded up, as preflight prints it.
+    item = next(m for m in profile["requirements"]["disk"] if m["mount"] == budget["mount"])
+    item["items"][0].update(size_gib=0.03, present=False, missing_gib=0.01)
+    row = {r.key: r for r in capacity.rows(profile)}[f"disk:{budget['mount']}"]
+    assert row.items[0].startswith(f"{item['items'][0]['title']}: 0.1 GiB (")
+    assert row.items[0].endswith(", missing 0.1 GiB")
+    assert requirements.disk_size_text(0.03, True) == "0.1 GiB"
 
 
 def test_the_outcome_decides_whether_next_waits() -> None:
