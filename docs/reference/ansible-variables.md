@@ -1360,7 +1360,7 @@ Variables the role reads from elsewhere:
 
 ### `images_blueprints`
 
-Blueprints to build, in build order (a base blueprint before the blueprints that start from it).
+Blueprints to build, in any order: the role builds a base blueprint before the blueprints that start from it; a base blueprint not listed, or bases that form a cycle, are refused with their names.
 
 - Type: `list` of `str`
 - Default: `[base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]`

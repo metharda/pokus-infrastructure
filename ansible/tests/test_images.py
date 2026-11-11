@@ -18,6 +18,7 @@ import lzma
 import os
 import re
 import tarfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -199,7 +200,8 @@ def test_the_incus_rule_without_slashes() -> None:
 
 
 def test_the_alias_rule_is_the_pinned_incus_version() -> None:
-    # The rule above is read from this version's source: read it again when the pin moves.
+    # The alias rule above and the instance name rule below are read from this version's
+    # source: read them again when the pin moves.
     pins = [p for p in LOCK["packages"]["incus"].values() if isinstance(p, dict)]
     assert pins
     for pin in pins:
@@ -231,6 +233,125 @@ def test_the_role_s_alias_is_blueprint_slash_version(name: str) -> None:
 def test_the_blueprint_s_alias_passes_incus_s_name_rule(name: str) -> None:
     alias = role_alias(name)
     assert incus_api_name_error(alias, True) is None, alias
+
+
+# Incus's rule for an instance name, as Incus 6.0.6 applies it (the version above;
+# tag v6.0.6, commit 5231e7a1beca905d57208b441040f9ebdc6a2c6f):
+# instance.ValidName(name, false), internal/server/instance/instance_utils.go
+# lines 669-692: the snapshot delimiter "/" (internal/instance/snapshot.go line 8)
+# is refused, then validate.IsHostname, shared/validate/validate.go lines 792-823.
+# The daemon applies it to a new instance in instancesPost
+# (cmd/incusd/instances_post.go line 1234; the handler of POST /1.0/instances,
+# cmd/incusd/instances.go lines 34-39) and again in CreateInternal
+# (instance_utils.go line 749). `incus launch <fingerprint> <name>`, the command
+# the images role creates the build instance with (build.yml), creates it in
+# cmdCreate.create (cmd/incus/launch.go line 71, cmd/incus/create.go lines 101
+# and 397) through CreateInstanceFromImage (client/incus_instances.go line 723),
+# which posts it with CreateInstance (line 610) to /1.0/instances.
+GO_MAX_UINT64 = 2**64 - 1  # strconv.ParseUint(name, 10, 64) refuses larger numbers
+HOSTNAME_CHARS = re.compile(r"[\-a-zA-Z0-9]+")  # Go's ^[\-a-zA-Z0-9]+$ on the whole text
+
+
+def incus_instance_name_error(name: str) -> str | None:
+    """Incus 6.0.6's ValidName(name, false): the error it returns for NAME, or None."""
+    if "/" in name:
+        return 'The character "/" is reserved for snapshots'  # Go's %q of "/"
+    # IsHostname's checks in their order, each run only when the ones before passed.
+    checks: tuple[tuple[Callable[[], bool], str], ...] = (
+        # Go's len() counts bytes
+        (lambda: not 1 <= len(name.encode("utf-8")) <= 63, "Name must be 1-63 characters long"),
+        (lambda: name.startswith("-"), 'Name must not start with "-" character'),
+        (lambda: name.endswith("-"), 'Name must not end with "-" character'),
+        (
+            lambda: name.isascii() and name.isdigit() and int(name) <= GO_MAX_UINT64,
+            "Name cannot be a number",
+        ),
+        (
+            lambda: not HOSTNAME_CHARS.fullmatch(name),
+            "Name can only contain alphanumeric and hyphen characters",
+        ),
+    )
+    return next((f"Invalid instance name: {text}" for failed, text in checks if failed()), None)
+
+
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [
+        ("build-base", None),
+        ("build-web-nginx-flask", None),
+        ("a", None),
+        ("A-1", None),
+        ("a" * 63, None),
+        # A number past uint64 is not "a number" to ParseUint: the characters decide.
+        (str(GO_MAX_UINT64 + 1), None),
+        ("build-base-", 'Invalid instance name: Name must not end with "-" character'),
+        ("-a", 'Invalid instance name: Name must not start with "-" character'),
+        ("", "Invalid instance name: Name must be 1-63 characters long"),
+        ("a" * 64, "Invalid instance name: Name must be 1-63 characters long"),
+        ("\xe9" * 32, "Invalid instance name: Name must be 1-63 characters long"),
+        ("123", "Invalid instance name: Name cannot be a number"),
+        (str(GO_MAX_UINT64), "Invalid instance name: Name cannot be a number"),
+        ("a_b", "Invalid instance name: Name can only contain alphanumeric and hyphen characters"),
+        ("a.b", "Invalid instance name: Name can only contain alphanumeric and hyphen characters"),
+        ("\xe9", "Invalid instance name: Name can only contain alphanumeric and hyphen characters"),
+        ("a\n", "Invalid instance name: Name can only contain alphanumeric and hyphen characters"),
+        ("a/b", 'The character "/" is reserved for snapshots'),
+        # The order of the checks: the delimiter, the length, the first and the last
+        # character, a number, then the characters.
+        ("-" * 64 + "/", 'The character "/" is reserved for snapshots'),
+        ("-" + "a" * 63, "Invalid instance name: Name must be 1-63 characters long"),
+        ("-a-", 'Invalid instance name: Name must not start with "-" character'),
+        ("a_-", 'Invalid instance name: Name must not end with "-" character'),
+    ],
+)
+def test_the_incus_instance_name_rule(value: str, error: str | None) -> None:
+    assert incus_instance_name_error(value) == error
+
+
+NAME_PATTERN_FILES = (
+    SCHEMA,
+    INFRA / "preflight" / "schema" / "plan.schema.json",
+    INFRA / "installer" / "schema" / "answers.schema.json",
+)
+
+
+def blueprint_name_patterns() -> list[str]:
+    """The pattern of a blueprint name in the blueprint, plan and answers schemas."""
+    blueprint = json.loads(SCHEMA.read_text(encoding="utf-8"))["properties"]["name"]
+    plan = json.loads(NAME_PATTERN_FILES[1].read_text(encoding="utf-8"))["properties"]["images"]
+    answers = json.loads(NAME_PATTERN_FILES[2].read_text(encoding="utf-8"))
+    build = answers["properties"]["images"]["properties"]["build"]
+    return [blueprint["pattern"], plan["items"]["pattern"], build["items"]["pattern"]]
+
+
+def test_one_blueprint_name_pattern() -> None:
+    patterns = blueprint_name_patterns()
+    assert len(set(patterns)) == 1, patterns
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["ab", "a1", "base", "web-nginx-flask", "a" + "-" * 39 + "b", "a" * 41, "z9"],
+)
+def test_a_name_the_pattern_allows_makes_a_valid_build_instance(name: str) -> None:
+    # Every name the shared pattern allows, at its bounds, names a build instance
+    # Incus accepts (build-<name>, at most 47 characters).
+    assert re.fullmatch(blueprint_name_patterns()[0], name)
+    assert incus_instance_name_error(f"build-{name}") is None
+
+
+@pytest.mark.parametrize(
+    "name", ["base-", "a-", "web-", "a", "1base", "-base", "a" * 42, "Base", "a_b", "a.b"]
+)
+def test_the_pattern_refuses_a_name_ending_in_a_hyphen_and_the_rest(name: str) -> None:
+    assert not re.fullmatch(blueprint_name_patterns()[0], name)
+
+
+@pytest.mark.parametrize("name", BLUEPRINTS)
+def test_the_blueprint_s_build_instance_passes_incus_s_name_rule(name: str) -> None:
+    facts = load_yaml(TASKS / "build.yml")[0]["ansible.builtin.set_fact"]
+    instance = template_value(facts["images_instance"], {"images_name": name})
+    assert incus_instance_name_error(instance) is None, instance
 
 
 @pytest.mark.parametrize("name", BLUEPRINTS)
@@ -269,6 +390,66 @@ def test_build_order_and_bases() -> None:
             assert base["image"] in upstream, name
             types = {"container": "container", "vm": "virtual-machine"}
             assert upstream[base["image"]]["type"] == types[spec(name)["type"]]
+
+
+def role_order(names: list[str]) -> Any:
+    """The order the images role builds NAMES in (its ordering task, templated).
+
+    With the variables the role has then: the specs of the listed blueprints
+    only (``Read the blueprints``), and none at all for an empty list.
+    """
+    tasks = load_yaml(TASKS / "main.yml")
+    titles = [t["name"] for t in tasks]
+    ordering = titles.index("Order the blueprints by their bases")
+    # After the blueprints are read; before the check, anything that changes the
+    # host, check mode's early end and the build.
+    assert titles.index("Read the blueprints") < ordering
+    assert all("ansible.builtin.set_fact" in t for t in tasks[:ordering]), titles[:ordering]
+    # Nothing skips it (no when:, no tags): a name and the fact alone.
+    assert set(tasks[ordering]) == {"name", "ansible.builtin.set_fact"}
+    assert set(tasks[ordering]["ansible.builtin.set_fact"]) == {"images_order"}
+    for later in (
+        "Check the blueprints against the build order and the pinned versions",
+        "Create the directories of the exports and the build state",
+        "Skip the blueprints in check mode before Incus is installed",
+        "Process the blueprints",
+    ):
+        assert ordering < titles.index(later), later
+    expression = tasks[ordering]["ansible.builtin.set_fact"]["images_order"]
+    variables: dict[str, Any] = {"images_order": names}
+    if names:
+        variables["images_specs"] = {name: spec(name) for name in names}
+    return template_value(expression, variables)
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        list(DEFAULTS["images_blueprints"]),
+        list(reversed(DEFAULTS["images_blueprints"])),
+        sorted(BLUEPRINTS, reverse=True),
+        ["web-nginx-flask", "base"],
+        [],
+    ],
+)
+def test_the_role_builds_a_base_blueprint_first_in_any_order(names: list[str]) -> None:
+    order = role_order(names)
+    assert sorted(order) == sorted(names)
+    for index, name in enumerate(order):
+        base = spec(name)["base"].get("blueprint")
+        assert base is None or base in order[:index], (name, order)
+
+
+def test_the_default_list_keeps_its_order() -> None:
+    defaults = list(DEFAULTS["images_blueprints"])
+    assert role_order(defaults) == defaults
+
+
+def test_the_role_refuses_a_base_blueprint_not_in_the_run() -> None:
+    from ansible.errors import AnsibleError  # noqa: PLC0415 - heavy import
+
+    with pytest.raises(AnsibleError, match=r"not built in this run: web-nginx-flask \(base base\)"):
+        role_order(["web-nginx-flask"])
 
 
 @pytest.mark.parametrize("name", BLUEPRINTS)

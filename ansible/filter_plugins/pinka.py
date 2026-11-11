@@ -1336,6 +1336,86 @@ def tailnet_logins(
     return found
 
 
+def image_build_order(names: Iterable[str], specs: Mapping[str, Any]) -> list[str]:
+    """The golden image blueprints in build order: each after the one it starts from.
+
+    The order follows each blueprint's ``base.blueprint``: the first listed
+    blueprint whose base is already placed (or that starts from an upstream
+    image) comes next, so blueprints that start from the same base keep the
+    order they were listed in, a list already in a valid order stays as it
+    is, and the blueprints build in any order of the list (host_vars, an
+    answers file, the installer). A name listed twice is built once.
+
+    Args:
+        names: The blueprints of the run, in any order.
+        specs: Each blueprint's ``image.yaml``.
+
+    Returns:
+        The same blueprints, each after its base blueprint.
+
+    Raises:
+        PinkaFilterError: A base blueprint that is not built in this run, or
+            bases that form a cycle, named.
+    """
+    listed = list(dict.fromkeys(str(name) for name in names))
+    bases: dict[str, str] = {}
+    for name in listed:
+        base = (specs.get(name) or {}).get("base") or {}
+        bases[name] = str(base.get("blueprint") or "") if isinstance(base, Mapping) else ""
+    missing = [f"{name} (base {base})" for name, base in bases.items() if base not in ("", *bases)]
+    if missing:
+        raise PinkaFilterError(
+            "golden image blueprints whose base blueprint is not built in this run: "
+            + ", ".join(missing)
+            + "; add the base blueprint to the list"
+        )
+    order: list[str] = []
+    placed: set[str] = set()
+    while len(order) < len(listed):
+        ready = next(
+            (n for n in listed if n not in placed and (not bases[n] or bases[n] in placed)), None
+        )
+        if ready is None:
+            left = [n for n in listed if n not in placed]
+            after = ", ".join(n for n in left if not _in_cycle(n, bases))
+            raise PinkaFilterError(
+                "golden image blueprints whose bases form a cycle: "
+                + "; ".join(_base_cycles(left, bases))
+                + (f" (and the blueprints that start from one: {after})" if after else "")
+            )
+        order.append(ready)
+        placed.add(ready)
+    return order
+
+
+def _in_cycle(name: str, bases: Mapping[str, str]) -> bool:
+    seen: set[str] = set()
+    current = bases.get(name, "")
+    while current and current not in seen:
+        if current == name:
+            return True
+        seen.add(current)
+        current = bases.get(current, "")
+    return False
+
+
+def _base_cycles(left: Sequence[str], bases: Mapping[str, str]) -> list[str]:
+    """Each cycle of bases among ``left``, as ``a -> b -> a``, from its first listed name."""
+    cycles: list[str] = []
+    done: set[str] = set()
+    for name in left:
+        if name in done or not _in_cycle(name, bases):
+            continue
+        loop = [name]
+        current = bases[name]
+        while current != name:
+            loop.append(current)
+            current = bases[current]
+        done.update(loop)
+        cycles.append(" -> ".join([*loop, name]))
+    return cycles
+
+
 class FilterModule:
     """Ansible filter plugin entry point."""
 
@@ -1360,6 +1440,7 @@ class FilterModule:
             "pinka_scram_matches": scram_matches,
             "pinka_config_hashes": config_hashes,
             "pinka_image_by_alias": image_by_alias,
+            "pinka_image_build_order": image_build_order,
             "pinka_golden_image_problems": golden_image_problems,
             "pinka_golden_record_problems": golden_record_problems,
             "pinka_golden_image_drift": golden_image_drift,

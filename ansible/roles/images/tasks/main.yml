@@ -16,6 +16,13 @@
          | combine({item: lookup('ansible.builtin.file', images_recipe_root ~ '/' ~ item ~ '/image.yaml') | from_yaml}) }}
   loop: "{{ images_order }}"
 
+# Any order of the list builds: a base blueprint before the blueprints that start
+# from it. A base blueprint not in the list, or bases that form a cycle, are
+# refused with their names. An empty list reads no blueprint (no images_specs).
+- name: Order the blueprints by their bases
+  ansible.builtin.set_fact:
+    images_order: "{{ images_order | pinka_image_build_order(images_specs | default({})) }}"
+
 - name: Check the blueprints against the build order and the pinned versions
   ansible.builtin.assert:
     that:
@@ -30,8 +37,8 @@
         or images_spec.type == images_specs[images_spec.base.blueprint].type | default('')
       - images_spec.docker_images | difference(pinka_versions.containers.target_images | default({}) | list) == []
     fail_msg: >-
-      Blueprint {{ item }}: the name must match its directory, a base blueprint must come
-      earlier in the list of blueprints and have the same type, a base image must be a key of
+      Blueprint {{ item }}: the name must match its directory, a base blueprint must be
+      built in this run (it builds first) and have the same type, a base image must be a key of
       versions.lock.yml incus_base_images with the same type, and docker_images must be keys
       of containers.target_images.
     quiet: true

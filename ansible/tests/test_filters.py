@@ -320,6 +320,7 @@ def test_filters_are_registered_with_ansible() -> None:
         "pinka_scram_matches",
         "pinka_config_hashes",
         "pinka_image_by_alias",
+        "pinka_image_build_order",
         "pinka_golden_image_problems",
         "pinka_golden_record_problems",
         "pinka_golden_image_drift",
@@ -836,3 +837,67 @@ def test_component_repos_span_every_source_group() -> None:
     ]
     with pytest.raises(pinka.PinkaFilterError, match="unknown component"):
         pinka.component_repos(["podman"], matrix)
+
+
+def blueprints(**bases: str) -> dict[str, Any]:
+    """image.yaml specs: each name with its base blueprint, or an upstream image ('')."""
+    return {
+        name: {"base": {"blueprint": base} if base else {"image": "ubuntu-24.04"}}
+        for name, base in bases.items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("names", "expected"),
+    [
+        (["base", "web", "pg"], ["base", "web", "pg"]),
+        (["web", "pg", "base"], ["base", "web", "pg"]),
+        (["pg", "base", "web"], ["base", "pg", "web"]),
+        (["c", "b", "a"], ["a", "b", "c"]),  # a chain, listed backwards
+        (["web", "base", "web"], ["base", "web"]),  # a name listed twice builds once
+        (["other", "base"], ["other", "base"]),  # independent: the given order
+        # The first listed blueprint whose base is placed comes next: web waits for base,
+        # so the independent other goes before it.
+        (["web", "other", "base"], ["other", "base", "web"]),
+        (["pg", "web", "base"], ["base", "pg", "web"]),  # the same base: the listed order
+        ([], []),
+    ],
+)
+def test_the_image_build_order_follows_the_bases(names: list[str], expected: list[str]) -> None:
+    specs = blueprints(base="", web="base", pg="base", other="", a="", b="a", c="b")
+    assert pinka.image_build_order(names, specs) == expected
+
+
+def test_a_missing_base_is_named_before_a_cycle() -> None:
+    # Both refused by name: the missing base first, the cycle once the base is listed.
+    specs = blueprints(base="", web="base", a="b", b="a")
+    with pytest.raises(pinka.PinkaFilterError, match=r"not built in this run: web \(base base\)"):
+        pinka.image_build_order(["web", "a", "b"], specs)
+    with pytest.raises(pinka.PinkaFilterError, match="form a cycle: a -> b -> a"):
+        pinka.image_build_order(["web", "a", "b", "base"], specs)
+
+
+def test_a_base_blueprint_not_in_the_run_is_refused_by_name() -> None:
+    specs = blueprints(base="", web="base", pg="base")
+    with pytest.raises(pinka.PinkaFilterError) as refused:
+        pinka.image_build_order(["web", "pg"], specs)
+    assert str(refused.value) == (
+        "golden image blueprints whose base blueprint is not built in this run: "
+        "web (base base), pg (base base); add the base blueprint to the list"
+    )
+
+
+@pytest.mark.parametrize(
+    ("bases", "message"),
+    [
+        ({"a": "b", "b": "a"}, "a -> b -> a"),
+        ({"a": "a"}, "a -> a"),
+        ({"x": "", "a": "b", "b": "c", "c": "a"}, "a -> b -> c -> a"),
+        ({"a": "b", "b": "a", "d": "a"}, "a -> b -> a (and the blueprints that start from one: d)"),
+        ({"a": "b", "b": "a", "c": "d", "d": "c"}, "a -> b -> a; c -> d -> c"),
+    ],
+)
+def test_bases_that_form_a_cycle_are_refused_by_name(bases: dict[str, str], message: str) -> None:
+    with pytest.raises(pinka.PinkaFilterError) as refused:
+        pinka.image_build_order(list(bases), blueprints(**bases))
+    assert str(refused.value) == f"golden image blueprints whose bases form a cycle: {message}"

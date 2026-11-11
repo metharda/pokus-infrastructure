@@ -1,7 +1,7 @@
 # Managed by pinka (ansible/roles/images/defaults/main.yml). Local changes will be overwritten.
 
-# Blueprints of images/ to build, in build order: a blueprint that starts from
-# another blueprint comes after it.
+# Blueprints of images/ to build, in any order: the role builds a blueprint after
+# the blueprint it starts from (base.blueprint), which must be listed too.
 images_blueprints: [base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]
 # Build the listed blueprints again although their alias and export exist; the
 # new build replaces the alias and the export of the same version.
