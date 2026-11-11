@@ -34,6 +34,7 @@ from textual.widgets import (
 )
 from tui_fakes import (
     DISK_BY_ID,
+    FIXTURES,
     FakeHost,
     FakeRunner,
     accepted_on_preflight,
@@ -45,6 +46,7 @@ from tui_fakes import (
 from pinka_installer import answers as answers_mod
 from pinka_installer import apply, cli, hostvars, state, vault
 from pinka_installer.paths import Paths
+from pinka_installer.tui import capacity, screens_start
 from pinka_installer.tui.app import InstallerApp
 from pinka_installer.tui.base import Context, StepScreen
 from pinka_installer.tui.host import CommandResult
@@ -635,6 +637,93 @@ def test_unsupported_host_can_only_be_forced_by_typing(repo: Paths) -> None:
     drive(installer, flow)
     assert installer.ctx.wizard.consents == {"force_unsupported"}
     assert installer.ctx.wizard.bootstrap_options() == ["--force-unsupported"]
+
+
+def test_forcing_a_host_does_not_skip_an_action(repo: Paths) -> None:
+    # Unsupported and an action (the MOK consent): bootstrap refuses it with
+    # --force-unsupported too, so the screen does.
+    # The fixture's profile with its plan (inference: on): unsupported, with an action;
+    # the screen is given it as its preflight result.
+    fixture = "ubuntu2404-inference-on-secureboot-no-consent"
+    host = FakeHost(preflight(fixture, ["--plan", str(FIXTURES / fixture / "plan.json")]))
+    installer = app(context(repo, host))
+    found = notes(installer)
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        screen = pilot.app.screen
+        assert "Outcome: unsupported" in str(screen.query_one("#outcome", Static).content)
+        banners = "".join(str(s.content) for s in screen.query(".banner").results(Static))
+        assert "Do this first, then Re-check:" in banners
+        assert "To install, do this first" not in banners
+        assert not screen.query("#kept-lab")
+        screen.query_one("#force", Button).press()  # below the MOK banner, out of view
+        await pilot.pause()
+        await pilot.pause()
+        dialog = pilot.app.screen
+        assert isinstance(dialog, TypedConfirm)
+        dialog.query_one("#typed", Input).value = "FORCE UNSUPPORTED"
+        await pilot.pause()
+        await click(pilot, "#confirm")
+        await pilot.pause()
+        await forward(pilot, "preflight")
+        assert found[-1] == (
+            "follow the remediation, then Re-check: forcing the host does not skip it"
+        )
+
+    drive(installer, flow)
+    assert "force_unsupported" in installer.ctx.wizard.consents
+
+
+KEPT_LAB = "ubuntu2404-kept-lab"
+
+
+def test_a_kept_lab_alone_goes_on_to_uninstall(repo: Paths) -> None:
+    # After an uninstall that did not finish, the lab it kept in the research space
+    # is the only action: the screen goes on, and Uninstall finishes it.
+    installed(repo)
+    host = FakeHost(preflight(KEPT_LAB), installed="pinka-lab", fixture=KEPT_LAB)
+    runner = FakeRunner([("events-success.jsonl", 0)])
+    installer = app(context(repo, host, runner))
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await forward(pilot, "preflight")
+        screen = pilot.app.screen
+        assert "Outcome: needs_action" in str(screen.query_one("#outcome", Static).content)
+        text = str(screen.query_one("#kept-lab", Static).content)
+        assert "This action alone does not hold Next here" in text
+        assert "did not finish, choose Uninstall on the next screen" in text
+        assert "the capacity plan and the Review screen check the research space" in text
+        banners = "".join(str(s.content) for s in screen.query(".banner").results(Static))
+        assert "To install, do this first, then Re-check:" in banners
+        await forward(pilot, "mode")
+        pick(pilot, "mode-uninstall")
+        await forward(pilot, "uninstall")
+        assert runner.uninstall_calls == [["--dry-run"]]
+
+    drive(installer, flow)
+
+
+def test_only_the_kept_lab_alone_lets_the_preflight_screen_go_on() -> None:
+    kept = {"id": "kept_lab", "action": "restore the lab, or purge it"}
+    port = {"id": "lab_port_in_use", "action": "free the port"}
+    assert screens_start.only_kept_lab({"needs_action": [kept]})
+    assert not screens_start.only_kept_lab({"needs_action": [kept, port]})
+    assert not screens_start.only_kept_lab({"needs_action": [port]})
+    assert not screens_start.only_kept_lab({"needs_action": []})
+    assert not screens_start.only_kept_lab({})
+
+
+def test_the_capacity_plan_waits_while_the_planned_research_space_is_the_kept_lab() -> None:
+    # The capacity plan's preflight run (and the Review screen's) gets the plan, whose
+    # research space is the Machine screen's (test_plan.py); its waits stop on the kept lab.
+    kept = preflight(KEPT_LAB).profile  # the default research space, /srv/pinka
+    assert capacity.waits(capacity.Answer(kept), set(), set()) == (
+        "preflight asks for an action first"
+    )
+    other = "ubuntu2404-kept-lab-other-space"
+    elsewhere = preflight(other, ["--plan", str(FIXTURES / other / "plan.json")]).profile
+    assert capacity.waits(capacity.Answer(elsewhere), set(), set()) == ""
 
 
 def test_restore_mode(repo: Paths) -> None:

@@ -49,7 +49,17 @@ before you press **Install** on the Review screen.
 2. Press ++ctrl+n++ (or **Next**) to run preflight. The cards show what it
    found; a degraded host lists each missing feature with its consequence,
    and you tick each one to accept it. An unsupported host can only be forced
-   by typing `FORCE UNSUPPORTED`, which every fingerprint then records. With
+   by typing `FORCE UNSUPPORTED`, which every fingerprint then records. An
+   action preflight asks for (`needs_action`) holds the screen until you have
+   done it and pressed *Re-check* (for the MOK, the consent box runs preflight
+   again), on a forced host too: bootstrap refuses it even with
+   `--force-unsupported`. The one exception is the lab an earlier uninstall
+   kept in the research space (`kept_lab`) when it is the only action: it
+   alone does not hold the screen, so that you can choose *Uninstall* and
+   finish that uninstall if it did not finish; an install waits on the
+   capacity plan and the Review screen while the research space you choose
+   is the kept lab, lies inside it or holds it, also with symbolic links
+   followed. With
    Secure Boot on and no NVIDIA driver, the screen explains the Machine Owner
    Key (MOK) enrollment: tick *Install the driver and enroll a MOK at the
    next boot* to consent (recorded), or press *Continue without the driver*.

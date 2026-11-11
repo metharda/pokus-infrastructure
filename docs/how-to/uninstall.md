@@ -167,7 +167,7 @@ takes the plan from these records and finishes. Only a run in which nothing
 before them failed removes them.
 
 Such a run has removed `/opt/pinka`, and with it the `pinka` command, so
-run uninstall again from the checkout, on the command line; it reads the
+run uninstall again from the checkout. On the command line it reads the
 machine name from the kept records:
 
 <!-- qa:skip reason="removes the lab from the host" -->
@@ -176,11 +176,14 @@ sudo ./bootstrap/bootstrap.sh --uninstall
 ```
 
 Its preflight run only reads the host: no finding of it stops the
-uninstall. Do not use the installer for this run. Its *Preflight* screen
-checks the default research space, `/srv/pinka`, and stops there, before
-it offers *Uninstall pinka from this host*, while the kept lab root is
-that directory, lies inside it or holds it, also with symbolic links
-followed (`kept_lab`, see [Install again on this host](#install-again-on-this-host)).
+uninstall. The installer can run it too: start it from the checkout
+(`sudo ./bootstrap/bootstrap.sh`, as in
+[How to install a lab with the installer TUI](install-with-the-tui.md)).
+Its *Preflight* screen checks the default research space, `/srv/pinka`;
+the kept lab at, in or above it (`kept_lab`, see
+[Install again on this host](#install-again-on-this-host)) does not hold
+the screen when it is the only action preflight asks for: go on and choose
+*Uninstall pinka from this host*.
 
 ## Take the kept secrets off the host
 
@@ -292,7 +295,7 @@ refused the same way. Either way forward ends the refusal:
   For a lab root that is a symbolic link it removes the link: delete the
   directory it leads to as well.
 
-If the uninstall did not finish, finish it first, from the command line
+If the uninstall did not finish, finish it first
 ([If uninstall did not finish](#if-uninstall-did-not-finish)).
 
 An install on this host takes the kept accounts and groups over from

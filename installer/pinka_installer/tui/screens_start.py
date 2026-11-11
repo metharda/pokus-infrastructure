@@ -33,6 +33,32 @@ OUTCOME_STYLE = {
     "needs_action": "warn",
     "unsupported": "bad",
 }
+# preflight's finding: the research space is a lab an uninstall kept, lies inside it or holds it
+KEPT_LAB = "kept_lab"
+KEPT_LAB_TEXT = (
+    "This action alone does not hold Next here. If the uninstall that kept the lab did not "
+    "finish, choose Uninstall on the next screen: it runs although the data is kept. To "
+    "install, do the action above, or choose a research space on the Machine screen that "
+    "is not the kept lab, does not lie inside it and does not hold it (symbolic links "
+    "followed): the capacity plan and the Review screen check the research space you choose."
+)
+
+
+def only_kept_lab(profile: dict[str, Any]) -> bool:
+    """Whether the kept lab is the only action preflight asks for.
+
+    Uninstall runs on such a host (bootstrap's uninstall takes any preflight
+    outcome), and an install is checked again on the capacity plan, with the
+    research space chosen on the Machine screen.
+
+    Args:
+        profile: Preflight's host profile.
+
+    Returns:
+        True when every action is ``kept_lab``.
+    """
+    actions = profile.get("needs_action") or []
+    return bool(actions) and all(a.get("id") == KEPT_LAB for a in actions)
 
 
 class WelcomeScreen(StepScreen):
@@ -164,7 +190,10 @@ class PreflightScreen(StepScreen):
         "Preflight detects the environment, the OS, hardware, GPU, virtualization, "
         "storage, network and conflicts, and decides whether the lab is supported here. "
         "Degraded hosts need your consent per disabled feature; experimental tiers need "
-        "consent; needs_action lists what to do first; unsupported hosts can only be "
+        "consent; needs_action lists what to do first, and Next waits until it is done, on "
+        "a forced host too, since forcing does not skip it; when the only action is the lab "
+        "an earlier uninstall kept, you can go on to Uninstall, and an install is checked on "
+        "the capacity plan; unsupported hosts can only be "
         "forced by typing FORCE UNSUPPORTED, which is recorded in every fingerprint. "
         "With Secure Boot on and no NVIDIA driver, the installation can install the "
         "driver and import a Machine Owner Key, with your consent: you choose a one-time "
@@ -298,9 +327,15 @@ class PreflightScreen(StepScreen):
                     classes="consent-experimental",
                 )
             )
-        if outcome == "needs_action":
-            steps = "\n".join(f"• {a.get('action')}" for a in profile.get("needs_action") or [])
-            report.mount(Static(f"Do this first, then Re-check:\n{steps}", classes="banner warn"))
+        actions = profile.get("needs_action") or []
+        if actions:
+            # Also on an unsupported host: forcing it does not skip an action, as in bootstrap.
+            steps = "\n".join(f"• {a.get('action')}" for a in actions)
+            kept = only_kept_lab(profile)
+            first = "To install, do this first" if kept else "Do this first"
+            report.mount(Static(f"{first}, then Re-check:\n{steps}", classes="banner warn"))
+            if kept:
+                report.mount(Static(KEPT_LAB_TEXT, classes="banner warn", id="kept-lab"))
         if outcome == "unsupported":
             reasons = "\n".join(f"• {r}" for r in profile.get("unsupported_reasons") or [])
             report.mount(Static(f"This host is not supported:\n{reasons}", classes="banner bad"))
@@ -337,10 +372,21 @@ class PreflightScreen(StepScreen):
             else:
                 problems.append(("report", "consent to the experimental tier to continue"))
         outcome = profile.get("outcome")
-        if outcome == "needs_action":
-            problems.append(("report", "follow the remediation, then Re-check"))
         if outcome == "unsupported" and "force_unsupported" not in self.wizard.consents:
             problems.append(("report", "this host is unsupported: Abort, or Force"))
+        # An action stops here as it stops bootstrap, on a forced host too; the kept lab
+        # alone does not: Uninstall runs with it, and the capacity plan checks an install.
+        if (profile.get("needs_action") or outcome == "needs_action") and not only_kept_lab(
+            profile
+        ):
+            forced = outcome == "unsupported" and "force_unsupported" in self.wizard.consents
+            problems.append(
+                (
+                    "report",
+                    "follow the remediation, then Re-check"
+                    + (": forcing the host does not skip it" if forced else ""),
+                )
+            )
         return problems
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
