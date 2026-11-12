@@ -1496,3 +1496,54 @@ def test_a_cpu_range_of_many_digits_is_refused_at_once(repo: Paths) -> None:
         f"✖ CPU 99999999999 does not exist (this host has CPUs 0-{threads - 1})" in seen["errors"]
     )
     assert installer.current == "capacity"
+
+
+def test_the_default_model_line_shows_a_value_with_markup_as_it_is(repo: Paths) -> None:
+    # A default model read from host_vars or a resumed state can hold markup (a closing
+    # tag ended the installer when the serving section composed).
+    host = FakeHost(preflight("ubuntu2404-baremetal-nvidia-driver-loaded"))
+    installer = on_capacity(repo, host)
+    installer.ctx.wizard.answers.gpu.default_model = "[/]example/model"
+    seen: dict[str, Any] = {}
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        seen["chosen"] = str(pilot.app.screen.query_one("#chosen", Static).render())
+
+    run(installer, flow)
+    assert seen["chosen"] == "Default model: [/]example/model"
+    assert installer.current == "capacity"
+
+
+def test_the_review_shows_values_with_markup_as_they_are(repo: Paths) -> None:
+    # The summary cards, the "Fix these first" banner and the capacity totals show values
+    # read from files and refusals that name them: a closing tag ended the installer.
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
+    installer = app(context(repo, host, machine="pinka-lab"), first="review")
+    answers = installer.ctx.wizard.answers
+    answers.machine.name = "pinka-lab"
+    answers.machine.srv_path = "/srv/[/]lab"
+    answers.machine.node_role = "[/]"
+    answers.gpu.default_model = "[/]example/model"  # the downloads estimate
+    answers.mode = "restore"
+    answers.restore_snapshot = "[/]snap"  # a destructive action's banner
+    seen: dict[str, Any] = {}
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        screen = pilot.app.screen
+        seen["cards"] = "\n".join(str(c.render()) for c in screen.query(".card").results(Static))
+        seen["banners"] = "\n".join(
+            str(b.render()) for b in screen.query(".banner").results(Static)
+        )
+        seen["totals"] = str(screen.query_one("#capacity-totals", Static).render())
+        seen["estimates"] = str(screen.query_one("#estimates", Static).render())
+
+    run(installer, flow)
+    assert "/srv/[/]lab" in seen["cards"]
+    assert "Fix these first:" in seen["banners"]
+    assert "'[/]'" in seen["banners"]
+    assert "node_role must be full, lab or inference (got '[/]')" in seen["totals"]
+    assert "⚠ the lab's data is replaced by snapshot [/]snap" in seen["banners"]
+    assert "model [/]example/model" in seen["estimates"]
+    assert installer.current == "review"

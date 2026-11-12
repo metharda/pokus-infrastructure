@@ -14,7 +14,7 @@ import copy
 import io
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,7 @@ import jsonschema
 from ruamel.yaml import YAML
 
 from pinka_installer import validators, yamlio
+from pinka_platform.schema import end_anchored
 
 SCHEMA_VERSION = 1
 # How a secret comes to the vault (the answers record the choice, never the value).
@@ -463,6 +464,78 @@ def _repository_dict(repository: Repository) -> dict[str, Any]:
     return {"type": repository.type, **{k: getattr(repository, k) for k in keys}}
 
 
+def _pattern(
+    validator: Any,  # noqa: ANN401 - jsonschema's validator; its protocol has no descend
+    pattern: str,
+    instance: object,
+    schema: Mapping[str, Any],
+) -> Iterator[jsonschema.ValidationError]:
+    if isinstance(instance, str) and not re.search(end_anchored(pattern), instance):
+        yield jsonschema.ValidationError(f"{instance!r} does not match {pattern!r}")
+
+
+def _pattern_properties(
+    validator: Any,  # noqa: ANN401 - jsonschema's validator; its protocol has no descend
+    patterns: Mapping[str, Any],
+    instance: object,
+    schema: Mapping[str, Any],
+) -> Iterator[jsonschema.ValidationError]:
+    if not isinstance(instance, Mapping):
+        return
+    for pattern, subschema in patterns.items():
+        for key, value in instance.items():
+            if re.search(end_anchored(pattern), key):
+                yield from validator.descend(value, subschema, path=key, schema_path=pattern)
+
+
+def _additional_properties(
+    validator: Any,  # noqa: ANN401 - jsonschema's validator; its protocol has no descend
+    additional: object,
+    instance: object,
+    schema: Mapping[str, Any],
+) -> Iterator[jsonschema.ValidationError]:
+    if not isinstance(instance, Mapping):
+        return
+    properties = schema.get("properties", {})
+    patterns = [end_anchored(p) for p in schema.get("patternProperties", {})]
+    extras = {
+        key
+        for key in instance
+        if key not in properties and not any(re.search(p, key) for p in patterns)
+    }
+    if isinstance(additional, Mapping):
+        for extra in extras:
+            yield from validator.descend(instance[extra], additional, path=extra)
+    elif not additional and extras:
+        # jsonschema's own messages, with the patterns as the schema writes them.
+        if "patternProperties" in schema:
+            verb = "does" if len(extras) == 1 else "do"
+            joined = ", ".join(repr(each) for each in sorted(extras))
+            regexes = ", ".join(repr(each) for each in sorted(schema["patternProperties"]))
+            yield jsonschema.ValidationError(
+                f"{joined} {verb} not match any of the regexes: {regexes}"
+            )
+        else:
+            listed = sorted(extras, key=str)
+            verb = "was" if len(listed) == 1 else "were"
+            names = ", ".join(repr(each) for each in listed)
+            yield jsonschema.ValidationError(
+                f"Additional properties are not allowed ({names} {verb} unexpected)"
+            )
+
+
+# Draft 2020-12 with JSON Schema's "$" in pattern, patternProperties and
+# additionalProperties (end_anchored).
+Validator = jsonschema.validators.extend(  # type: ignore[no-untyped-call]
+    jsonschema.Draft202012Validator,
+    {
+        "pattern": _pattern,
+        "patternProperties": _pattern_properties,
+        "additionalProperties": _additional_properties,
+    },
+)
+
+
 def schema() -> dict[str, Any]:
     """The answers JSON Schema.
 
@@ -482,7 +555,7 @@ def schema_problems(data: object) -> list[str]:
     Returns:
         One ``path: message`` per violation.
     """
-    validator = jsonschema.Draft202012Validator(schema())
+    validator = Validator(schema())
     found = []
     for error in sorted(validator.iter_errors(data), key=lambda e: list(e.absolute_path)):
         where = "/".join(str(p) for p in error.absolute_path) or "(top)"

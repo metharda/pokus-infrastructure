@@ -111,6 +111,124 @@ def load_text(text: str, label: str = "versions.lock.yml") -> dict[str, Any]:
     return data
 
 
+def end_anchored(pattern: str) -> str:
+    r"""A schema pattern for Python's ``re`` with JSON Schema's ``$``.
+
+    JSON Schema reads a pattern as ECMA 262 does, where ``$`` (without the
+    multiline flag) matches only at the end of the value; Python's ``$`` also
+    matches before a final newline, so ``^[a-z]+$`` would accept ``"ab\n"``.
+    Each ``$`` outside a character class becomes ``\Z``.
+
+    Args:
+        pattern: The schema's pattern.
+
+    Returns:
+        The pattern for ``re.search``.
+    """
+    out: list[str] = []
+    i = 0
+    in_class = False
+    while i < len(pattern):
+        char = pattern[i]
+        if char == "\\" and i + 1 < len(pattern):
+            out.append(pattern[i : i + 2])
+            i += 2
+            continue
+        if in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+            out.append(char)
+            i += 1
+            # A "]" first in the class (after an optional "^") is a literal.
+            if pattern[i : i + 1] == "^":
+                out.append("^")
+                i += 1
+            if pattern[i : i + 1] == "]":
+                out.append("]")
+                i += 1
+            continue
+        elif char == "$":
+            out.append(r"\Z")
+            i += 1
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)
+
+
+def _pattern(
+    validator: Any,  # noqa: ANN401 - jsonschema's validator; its protocol has no descend
+    pattern: str,
+    instance: object,
+    schema: Mapping[str, Any],
+) -> Iterator[jsonschema.ValidationError]:
+    if isinstance(instance, str) and not re.search(end_anchored(pattern), instance):
+        yield jsonschema.ValidationError(f"{instance!r} does not match {pattern!r}")
+
+
+def _pattern_properties(
+    validator: Any,  # noqa: ANN401 - jsonschema's validator; its protocol has no descend
+    patterns: Mapping[str, Any],
+    instance: object,
+    schema: Mapping[str, Any],
+) -> Iterator[jsonschema.ValidationError]:
+    if not isinstance(instance, Mapping):
+        return
+    for pattern, subschema in patterns.items():
+        for key, value in instance.items():
+            if re.search(end_anchored(pattern), key):
+                yield from validator.descend(value, subschema, path=key, schema_path=pattern)
+
+
+def _additional_properties(
+    validator: Any,  # noqa: ANN401 - jsonschema's validator; its protocol has no descend
+    additional: object,
+    instance: object,
+    schema: Mapping[str, Any],
+) -> Iterator[jsonschema.ValidationError]:
+    if not isinstance(instance, Mapping):
+        return
+    properties = schema.get("properties", {})
+    patterns = [end_anchored(p) for p in schema.get("patternProperties", {})]
+    extras = {
+        key
+        for key in instance
+        if key not in properties and not any(re.search(p, key) for p in patterns)
+    }
+    if isinstance(additional, Mapping):
+        for extra in extras:
+            yield from validator.descend(instance[extra], additional, path=extra)
+    elif not additional and extras:
+        # jsonschema's own messages, with the patterns as the schema writes them.
+        if "patternProperties" in schema:
+            verb = "does" if len(extras) == 1 else "do"
+            joined = ", ".join(repr(each) for each in sorted(extras))
+            regexes = ", ".join(repr(each) for each in sorted(schema["patternProperties"]))
+            yield jsonschema.ValidationError(
+                f"{joined} {verb} not match any of the regexes: {regexes}"
+            )
+        else:
+            listed = sorted(extras, key=str)
+            verb = "was" if len(listed) == 1 else "were"
+            names = ", ".join(repr(each) for each in listed)
+            yield jsonschema.ValidationError(
+                f"Additional properties are not allowed ({names} {verb} unexpected)"
+            )
+
+
+# Draft 2020-12 with JSON Schema's "$" in pattern, patternProperties and
+# additionalProperties (end_anchored).
+Validator = jsonschema.validators.extend(  # type: ignore[no-untyped-call]
+    jsonschema.Draft202012Validator,
+    {
+        "pattern": _pattern,
+        "patternProperties": _pattern_properties,
+        "additionalProperties": _additional_properties,
+    },
+)
+
+
 def schema_findings(doc: Mapping[str, Any], schema_path: Path = SCHEMA_PATH) -> list[Finding]:
     """Validate the document against the JSON Schema.
 
@@ -122,7 +240,7 @@ def schema_findings(doc: Mapping[str, Any], schema_path: Path = SCHEMA_PATH) -> 
         One error per violation.
     """
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    validator = jsonschema.Draft202012Validator(schema)
+    validator = Validator(schema)
     return [
         Finding(ERROR, ".".join(str(p) for p in e.absolute_path) or "(root)", e.message)
         for e in sorted(validator.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))

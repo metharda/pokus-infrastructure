@@ -363,7 +363,10 @@ class CapacityScreen(StepScreen):
         )
         table: DataTable[str] = DataTable(id="models", cursor_type="row")
         yield table
-        yield Static(f"Default model: {gpu.default_model}", id="chosen", classes="info")
+        # Plain text: a default model read from host_vars or a resumed state.
+        yield Static(
+            f"Default model: {gpu.default_model}", id="chosen", classes="info", markup=False
+        )
         with Horizontal(classes="inline"):
             yield Input(placeholder="custom: <owner>/<name>", id="custom-repo")
             yield Input(placeholder="branch, tag or commit", id="custom-ref")

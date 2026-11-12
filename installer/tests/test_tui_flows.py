@@ -1989,3 +1989,30 @@ def test_a_refused_plan_offers_no_uninstall(repo: Paths) -> None:
         assert at(pilot) == "mode"
 
     drive(installer, flow)
+
+
+@pytest.mark.parametrize(("vm_targets", "offered"), [(False, False), (True, True)])
+def test_a_vm_blueprint_is_offered_only_where_vm_targets_work(
+    repo: Paths, vm_targets: bool, offered: bool
+) -> None:
+    # The blueprint schema's VM type is "vm" (image-blueprint.schema.json).
+    base = repo.images_dir / "base" / "image.yaml"
+    vm = repo.images_dir / "vm-desk" / "image.yaml"
+    vm.parent.mkdir()
+    spec = base.read_text(encoding="utf-8").replace("name: base", "name: vm-desk")
+    vm.write_text(spec.replace("type: container", "type: vm"), encoding="utf-8")
+    assert "type: vm" in vm.read_text(encoding="utf-8")
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
+    ctx = context(repo, host, machine="pinka-lab")
+    ctx.wizard.profile = copy.deepcopy(host.result.profile)
+    ctx.wizard.profile["features"]["vm_targets"] = vm_targets
+    installer = app(ctx, first="images")
+    seen: list[str] = []
+
+    async def flow(pilot: Pilot[int]) -> None:
+        listed = pilot.app.screen.query_one("#blueprints", SelectionList)
+        seen.extend(str(listed.get_option_at_index(i).value) for i in range(listed.option_count))
+
+    drive(installer, flow)
+    assert "base" in seen
+    assert ("vm-desk" in seen) is offered

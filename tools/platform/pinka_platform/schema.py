@@ -5,7 +5,9 @@ which carries PyYAML but not ``jsonschema``. This module implements exactly
 the keywords ``contract/platform-manifest.schema.json`` uses; any other
 keyword raises :class:`SchemaError`, so the schema cannot grow beyond what is
 checked. The tests check every fixture against the reference ``jsonschema``
-implementation as well.
+implementation as well. A pattern's ``$`` matches only at the end of
+the value here, as JSON Schema reads it (:func:`end_anchored`); the reference
+implementation lets it also match before a final newline.
 """
 
 from __future__ import annotations
@@ -59,6 +61,52 @@ _TYPES: dict[str, type | tuple[type, ...]] = {
 
 class SchemaError(Exception):
     """The schema uses a keyword this validator does not implement."""
+
+
+def end_anchored(pattern: str) -> str:
+    r"""A schema pattern for Python's ``re`` with JSON Schema's ``$``.
+
+    JSON Schema reads a pattern as ECMA 262 does, where ``$`` (without the
+    multiline flag) matches only at the end of the value; Python's ``$`` also
+    matches before a final newline, so ``^[a-z]+$`` would accept ``"ab\n"``.
+    Each ``$`` outside a character class becomes ``\Z``.
+
+    Args:
+        pattern: The schema's pattern.
+
+    Returns:
+        The pattern for ``re.search``.
+    """
+    out: list[str] = []
+    i = 0
+    in_class = False
+    while i < len(pattern):
+        char = pattern[i]
+        if char == "\\" and i + 1 < len(pattern):
+            out.append(pattern[i : i + 2])
+            i += 2
+            continue
+        if in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+            out.append(char)
+            i += 1
+            # A "]" first in the class (after an optional "^") is a literal.
+            if pattern[i : i + 1] == "^":
+                out.append("^")
+                i += 1
+            if pattern[i : i + 1] == "]":
+                out.append("]")
+                i += 1
+            continue
+        elif char == "$":
+            out.append(r"\Z")
+            i += 1
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)
 
 
 def _is_type(value: Any, name: str) -> bool:  # noqa: ANN401 - a JSON value
@@ -148,7 +196,7 @@ def errors(  # noqa: PLR0912, PLR0915 - one branch per keyword
             yield path, f"is shorter than {schema['minLength']} characters"
         if "maxLength" in schema and len(value) > schema["maxLength"]:
             yield path, f"is longer than {schema['maxLength']} characters"
-        if "pattern" in schema and not re.search(schema["pattern"], value):
+        if "pattern" in schema and not re.search(end_anchored(schema["pattern"]), value):
             yield path, f"{value!r} does not match {schema['pattern']}"
     if isinstance(value, list):
         if "minItems" in schema and len(value) < schema["minItems"]:

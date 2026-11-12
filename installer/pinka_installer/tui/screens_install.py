@@ -387,35 +387,40 @@ class ReviewScreen(StepScreen):
 
     def body(self) -> ComposeResult:  # noqa: D102
         self.problems, self.plan = self.build_plan()
+        # Plain text where the screen shows values read from host_vars, an answers file
+        # or a resumed state (and refusals that name them): they may hold markup.
         if self.problems:
             yield Static(
                 "Fix these first:\n" + "\n".join(f"• {p}" for p in self.problems),
                 classes="banner bad",
+                markup=False,
             )
         for warning in destructive(self.answers):
-            yield Static(f"⚠ {warning}", classes="banner bad")
+            yield Static(f"⚠ {warning}", classes="banner bad", markup=False)
         replacing = self.wizard.replacing()
         if replacing:
             yield Static(
                 f"⚠ The active platform {replacing} is replaced (you typed its name); its data "
                 f"stays until pinka platform purge {replacing}",
                 classes="banner bad",
+                markup=False,
             )
         for step, title, text in summary(
             self.answers, approved=self.wizard.platform_approved, replacing=replacing
         ):
             with Horizontal(classes="review-row"):
-                yield Card(title, text)
+                yield Card(title, text, markup=False)
                 yield Button("Edit", id=f"edit-{step}", classes="edit")
         yield Static(
             "Capacity plan: computing with preflight for these choices…",
             id="capacity-totals",
             classes="info",
+            markup=False,
         )
         changes = Static("", id="profile-changes", classes="banner warn", markup=False)
         changes.display = False
         yield changes
-        yield Static(self.estimates(), classes="info", id="estimates")
+        yield Static(self.estimates(), classes="info", id="estimates", markup=False)
         if self.plan is not None:
             for warning in self.plan.warnings:
                 yield Static(f"Note: {warning}", classes="hint")

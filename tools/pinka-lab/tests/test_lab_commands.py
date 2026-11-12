@@ -14,6 +14,7 @@ from labfakes import PROFILE, FakeSystem, info, lab
 
 from pinka_lab import commands, docs_store
 from pinka_lab.commands import CommandError
+from pinka_lab.config import LabConfig
 
 INFRA = "/srv/checkout/pinka"
 BOOTSTRAP = f"{INFRA}/bootstrap/bootstrap.sh"
@@ -415,6 +416,46 @@ class ImagesTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(CommandError, "unknown blueprint 'nope'"):
             commands.image_chain(lab(), "nope")
+
+    def test_a_base_not_listed_and_a_cycle_are_refused_by_name(self) -> None:
+        # The images role's rule and messages (ansible/tests/test_image_build_rules.py keeps them equal).
+        def chain_of(**bases: str) -> LabConfig:
+            return lab(
+                images__blueprints=[
+                    {"name": n, "type": "container", "base_blueprint": b or None}
+                    for n, b in bases.items()
+                ]
+            )
+
+        missing = chain_of(c="b", b="x")
+        with self.assertRaises(CommandError) as refused:
+            commands.image_chain(missing, "c")
+        self.assertEqual(
+            str(refused.exception),
+            "golden image blueprints whose base blueprint is not built in this run: "
+            "b (base x); add the base blueprint to the list",
+        )
+        # An empty base starts from an upstream image, as the role reads it.
+        empty = lab(
+            images__blueprints=[
+                {"name": "base", "type": "container", "base_blueprint": ""},
+                {"name": "web", "type": "container", "base_blueprint": "base"},
+            ]
+        )
+        self.assertEqual(commands.image_chain(empty, "web"), ["base", "web"])
+        cycle = chain_of(d="a", a="b", b="a", s="s")
+        for name, message in (
+            ("a", "a -> b -> a"),
+            ("b", "b -> a -> b"),
+            ("d", "a -> b -> a (and the blueprints that start from one: d)"),
+            ("s", "s -> s"),
+        ):
+            with self.subTest(name=name), self.assertRaises(CommandError) as refused:
+                commands.image_chain(cycle, name)
+            self.assertEqual(
+                str(refused.exception),
+                f"golden image blueprints whose bases form a cycle: {message}",
+            )
 
     def test_list(self) -> None:
         properties = {

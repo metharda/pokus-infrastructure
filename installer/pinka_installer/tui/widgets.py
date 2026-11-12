@@ -122,15 +122,17 @@ def dropdown(options: Sequence[tuple[str, str]], value: object, select_id: str) 
 class Card(Static):
     """A bordered panel with a title (preflight cards, review groups)."""
 
-    def __init__(self, title: str, body: str, classes: str = "") -> None:
+    def __init__(self, title: str, body: str, classes: str = "", *, markup: bool = True) -> None:
         """Build the card.
 
         Args:
             title: Border title.
-            body: Rich text.
+            body: Rich text, or plain text with ``markup=False``.
             classes: More CSS classes.
+            markup: False for a body that shows values read from files, which may
+                hold markup.
         """
-        super().__init__(body, classes=f"card {classes}".strip())
+        super().__init__(body, classes=f"card {classes}".strip(), markup=markup)
         self.border_title = title
 
 
