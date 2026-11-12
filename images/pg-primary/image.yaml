@@ -5,9 +5,9 @@
 # Network access to it is configured by whoever uses the target.
 schema_version: 1
 name: pg-primary
-version: "1.0.0"
+version: "1.0.1"
 description: PostgreSQL server with an application database
-base: {blueprint: _base}
+base: {blueprint: base}
 type: container
 nesting: false
 # Space one build takes below /srv/pinka/images (the exported image),

@@ -4,9 +4,9 @@
 # Ubuntu archive with its packaged configuration.
 schema_version: 1
 name: redis-cache
-version: "1.0.0"
+version: "1.0.1"
 description: Redis in-memory cache
-base: {blueprint: _base}
+base: {blueprint: base}
 type: container
 nesting: false
 # Space one build takes below /srv/pinka/images (the exported image),

@@ -35,7 +35,7 @@ Requirements
   disk / (ext4): 400.0 GiB free, 5.4 GiB needed at install
     pinka itself: 5.0 GiB (estimated)
     container images (3): 0.4 GiB (estimated)
-  growth on /srv: 0 GiB a day, 0 GiB a week; not full within ten years at this rate
+  growth on /srv: 0 GiB a day, 0 GiB a week; nothing grows there
 Network: skipped (--offline)
 
 Unsupported

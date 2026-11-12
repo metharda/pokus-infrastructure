@@ -33,6 +33,41 @@ OUTCOME_STYLE = {
     "needs_action": "warn",
     "unsupported": "bad",
 }
+# preflight's finding: the research space is a lab an uninstall kept, lies inside it or holds it
+KEPT_LAB = "kept_lab"
+KEPT_LAB_TEXT = (
+    "This action alone does not hold Next here. If the uninstall that kept the lab did not "
+    "finish, choose Uninstall on the next screen: it runs although the data is kept. To "
+    "install, do the action above, or choose a research space on the Machine screen that "
+    "is not the kept lab, does not lie inside it and does not hold it (symbolic links "
+    "followed): the capacity plan and the Review screen check the research space you choose."
+)
+
+# Preflight's exit codes whose host profile bootstrap's uninstall goes on with.
+UNINSTALL_EXITS = (0, 10, 20, 30)
+INSTALLED_TEXT = (
+    "A lab is installed on this host. Uninstall runs whatever preflight's outcome here, "
+    "without Force or a consent, and no override is recorded for it: Next goes on to the "
+    "Install mode screen, where you can choose it. An install, a restore or a modification "
+    "waits there while this screen holds it."
+)
+
+
+def only_kept_lab(profile: dict[str, Any]) -> bool:
+    """Whether the kept lab is the only action preflight asks for.
+
+    Uninstall runs on such a host (bootstrap's uninstall takes any preflight
+    outcome), and an install is checked again on the capacity plan, with the
+    research space chosen on the Machine screen.
+
+    Args:
+        profile: Preflight's host profile.
+
+    Returns:
+        True when every action is ``kept_lab``.
+    """
+    actions = profile.get("needs_action") or []
+    return bool(actions) and all(a.get("id") == KEPT_LAB for a in actions)
 
 
 class WelcomeScreen(StepScreen):
@@ -164,8 +199,14 @@ class PreflightScreen(StepScreen):
         "Preflight detects the environment, the OS, hardware, GPU, virtualization, "
         "storage, network and conflicts, and decides whether the lab is supported here. "
         "Degraded hosts need your consent per disabled feature; experimental tiers need "
-        "consent; needs_action lists what to do first; unsupported hosts can only be "
+        "consent; needs_action lists what to do first, and Next waits until it is done, on "
+        "a forced host too, since forcing does not skip it; when the only action is the lab "
+        "an earlier uninstall kept, you can go on to Uninstall, and an install is checked on "
+        "the capacity plan; unsupported hosts can only be "
         "forced by typing FORCE UNSUPPORTED, which is recorded in every fingerprint. "
+        "On a host with a lab installed, Next goes on to the Install mode screen unless "
+        "preflight failed: Uninstall runs whatever preflight's outcome, and an install, a "
+        "restore or a modification waits there until this screen no longer holds it. "
         "With Secure Boot on and no NVIDIA driver, the installation can install the "
         "driver and import a Machine Owner Key, with your consent: you choose a one-time "
         "password on the capacity plan's NVIDIA driver page and enroll the key at the blue "
@@ -298,9 +339,15 @@ class PreflightScreen(StepScreen):
                     classes="consent-experimental",
                 )
             )
-        if outcome == "needs_action":
-            steps = "\n".join(f"• {a.get('action')}" for a in profile.get("needs_action") or [])
-            report.mount(Static(f"Do this first, then Re-check:\n{steps}", classes="banner warn"))
+        actions = profile.get("needs_action") or []
+        if actions:
+            # Also on an unsupported host: forcing it does not skip an action, as in bootstrap.
+            steps = "\n".join(f"• {a.get('action')}" for a in actions)
+            kept = only_kept_lab(profile)
+            first = "To install, do this first" if kept else "Do this first"
+            report.mount(Static(f"{first}, then Re-check:\n{steps}", classes="banner warn"))
+            if kept:
+                report.mount(Static(KEPT_LAB_TEXT, classes="banner warn", id="kept-lab"))
         if outcome == "unsupported":
             reasons = "\n".join(f"• {r}" for r in profile.get("unsupported_reasons") or [])
             report.mount(Static(f"This host is not supported:\n{reasons}", classes="banner bad"))
@@ -313,6 +360,13 @@ class PreflightScreen(StepScreen):
                     disabled=forced,
                 )
             )
+        # Whatever could hold an install here (a consent or Force may still lift it); the
+        # kept lab alone has its own banner above.
+        experimental = profile.get("tier") == "experimental"
+        kept_alone = only_kept_lab(profile) and outcome == "needs_action" and not experimental
+        holds = (outcome != "supported" or experimental or bool(actions)) and not kept_alone
+        if holds and self._uninstall_reachable():
+            report.mount(Static(INSTALLED_TEXT, classes="banner warn", id="installed"))
 
     def save(self) -> Problems:  # noqa: D102
         profile = self.wizard.profile
@@ -337,11 +391,32 @@ class PreflightScreen(StepScreen):
             else:
                 problems.append(("report", "consent to the experimental tier to continue"))
         outcome = profile.get("outcome")
-        if outcome == "needs_action":
-            problems.append(("report", "follow the remediation, then Re-check"))
         if outcome == "unsupported" and "force_unsupported" not in self.wizard.consents:
             problems.append(("report", "this host is unsupported: Abort, or Force"))
+        # An action stops here as it stops bootstrap, on a forced host too; the kept lab
+        # alone does not: Uninstall runs with it, and the capacity plan checks an install.
+        if (profile.get("needs_action") or outcome == "needs_action") and not only_kept_lab(
+            profile
+        ):
+            forced = outcome == "unsupported" and "force_unsupported" in self.wizard.consents
+            problems.append(
+                (
+                    "report",
+                    "follow the remediation, then Re-check"
+                    + (": forcing the host does not skip it" if forced else ""),
+                )
+            )
+        if problems and self._uninstall_reachable():
+            # Bootstrap's uninstall takes any of these outcomes and excludes every
+            # override: the Install mode screen offers it, and holds the rest.
+            self.wizard.install_held = [message for _field, message in problems]
+            return []
+        self.wizard.install_held = []
         return problems
+
+    def _uninstall_reachable(self) -> bool:
+        """Whether a lab is installed and bootstrap's uninstall goes on with this outcome."""
+        return self.wizard.installed and self.wizard.preflight_exit in UNINSTALL_EXITS
 
     def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
         """Consent to the MOK enrollment (or take it back) and judge the host again.
@@ -413,7 +488,9 @@ class ModeScreen(StepScreen):
         "installed lab: every screen starts from its host_vars and answers, and the "
         "Review screen shows a diff of each file. Uninstall removes what pinka installed "
         "and keeps the lab's data: it shows the plan first, offers a backup and asks for "
-        "the machine name."
+        "the machine name. It runs whatever preflight finds: while the Preflight screen "
+        "holds an install (an unsupported host not forced, an action, a consent not given), "
+        "only Uninstall goes on from here."
     )
 
     def body(self) -> ComposeResult:  # noqa: D102
@@ -445,9 +522,28 @@ class ModeScreen(StepScreen):
                 "Modify and Uninstall are offered once a lab is installed on this host.",
                 classes="hint",
             )
+        if self.wizard.install_held:
+            # Without a lab (removed since a resumed state was saved), only Back is left.
+            first = "Uninstall runs on this host. " if self.wizard.installed else ""
+            yield Static(
+                first + "An install, a restore or a modification waits until the Preflight "
+                "screen no longer holds it: " + "; ".join(self.wizard.install_held),
+                classes="banner warn",
+                id="install-held",
+                markup=False,
+            )
 
     def save(self) -> Problems:  # noqa: D102
-        self.wizard.uninstall = self.query_one("#mode-uninstall", RadioButton).value
+        uninstall = self.query_one("#mode-uninstall", RadioButton).value
+        if not uninstall and self.wizard.install_held:
+            way = "choose Uninstall, or go" if self.wizard.installed else "go"
+            return [
+                (
+                    "mode",
+                    f"{way} Back to the Preflight screen: " + "; ".join(self.wizard.install_held),
+                )
+            ]
+        self.wizard.uninstall = uninstall
         for mode in ("fresh", "restore", "modify"):
             if self.query_one(f"#mode-{mode}", RadioButton).value:
                 if mode == "modify" and self.answers.mode != "modify":

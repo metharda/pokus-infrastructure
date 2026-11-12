@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import ClassVar
 
 from textual.app import ComposeResult
@@ -10,7 +10,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widget import Widget
-from textual.widgets import Button, Checkbox, Input, Label, Static
+from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
 
 class StepHeader(Horizontal):
@@ -84,7 +84,8 @@ class Field(Vertical):
         yield self._widget
         if self._hint:
             yield Static(self._hint, classes="hint")
-        yield Static("", classes="error")
+        # Plain text: a message can name a value read from a file, which may hold markup.
+        yield Static("", classes="error", markup=False)
 
     def set_error(self, message: str) -> None:
         """Show or clear the field's message.
@@ -97,18 +98,41 @@ class Field(Vertical):
         self.set_class(bool(message), "invalid")
 
 
+def dropdown(options: Sequence[tuple[str, str]], value: object, select_id: str) -> Select[str]:
+    """A dropdown that also mounts on a value it does not offer.
+
+    Textual refuses such a value when the dropdown mounts, which would end the
+    installer. The dropdown then starts blank instead, and its screen refuses
+    the field with :func:`pinka_installer.validators.offered`'s message (or
+    the field's own) until a choice is made; it never shows another value.
+
+    Args:
+        options: ``(label, value)`` pairs.
+        value: The value read (host_vars, a resumed state).
+        select_id: The widget's id.
+
+    Returns:
+        The dropdown.
+    """
+    if isinstance(value, str) and value in {v for _label, v in options}:
+        return Select(options, value=value, allow_blank=False, id=select_id)
+    return Select(options, value=Select.NULL, allow_blank=True, id=select_id)
+
+
 class Card(Static):
     """A bordered panel with a title (preflight cards, review groups)."""
 
-    def __init__(self, title: str, body: str, classes: str = "") -> None:
+    def __init__(self, title: str, body: str, classes: str = "", *, markup: bool = True) -> None:
         """Build the card.
 
         Args:
             title: Border title.
-            body: Rich text.
+            body: Rich text, or plain text with ``markup=False``.
             classes: More CSS classes.
+            markup: False for a body that shows values read from files, which may
+                hold markup.
         """
-        super().__init__(body, classes=f"card {classes}".strip())
+        super().__init__(body, classes=f"card {classes}".strip(), markup=markup)
         self.border_title = title
 
 

@@ -5,7 +5,10 @@ against ``host-profile.schema.json``. This validator
 implements exactly the keywords that schema uses; any other keyword raises an
 error, so the schema cannot silently grow beyond what is checked. The test
 suite also validates every fixture's profile with the reference
-``jsonschema`` implementation when it is installed.
+``jsonschema`` implementation when it is installed. A pattern's ``$``
+matches only at the end of the value here, as JSON Schema reads it
+(:func:`end_anchored`); the reference implementation lets it also match
+before a final newline.
 """
 
 from __future__ import annotations
@@ -44,6 +47,52 @@ _TYPES = {
     "boolean": bool,
     "null": type(None),
 }
+
+
+def end_anchored(pattern: str) -> str:
+    r"""A schema pattern for Python's ``re`` with JSON Schema's ``$``.
+
+    JSON Schema reads a pattern as ECMA 262 does, where ``$`` (without the
+    multiline flag) matches only at the end of the value; Python's ``$`` also
+    matches before a final newline, so ``^[a-z]+$`` would accept ``"ab\n"``.
+    Each ``$`` outside a character class becomes ``\Z``.
+
+    Args:
+        pattern: The schema's pattern.
+
+    Returns:
+        The pattern for ``re.search``.
+    """
+    out: list[str] = []
+    i = 0
+    in_class = False
+    while i < len(pattern):
+        char = pattern[i]
+        if char == "\\" and i + 1 < len(pattern):
+            out.append(pattern[i : i + 2])
+            i += 2
+            continue
+        if in_class:
+            in_class = char != "]"
+        elif char == "[":
+            in_class = True
+            out.append(char)
+            i += 1
+            # A "]" first in the class (after an optional "^") is a literal.
+            if pattern[i : i + 1] == "^":
+                out.append("^")
+                i += 1
+            if pattern[i : i + 1] == "]":
+                out.append("]")
+                i += 1
+            continue
+        elif char == "$":
+            out.append(r"\Z")
+            i += 1
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)
 
 
 def _is_type(value: Any, name: str) -> bool:  # noqa: ANN401 - JSON value
@@ -106,7 +155,7 @@ def validate(  # noqa: PLR0912 - one branch per keyword
     if isinstance(value, str):
         if "minLength" in schema and len(value) < schema["minLength"]:
             errors.append(f"{path}: shorter than {schema['minLength']}")
-        if "pattern" in schema and not re.search(schema["pattern"], value):
+        if "pattern" in schema and not re.search(end_anchored(schema["pattern"]), value):
             errors.append(f"{path}: does not match {schema['pattern']!r}")
     if isinstance(value, list):
         if "minItems" in schema and len(value) < schema["minItems"]:

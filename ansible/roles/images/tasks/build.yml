@@ -9,10 +9,10 @@
 
 - name: Describe the build
   ansible.builtin.set_fact:
-    images_instance: "build-{{ images_name | replace('_', '') }}"
+    images_instance: "build-{{ images_name }}"
     images_build_dir: "{{ images_work_dir }}/{{ images_name }}"
     images_recipe_dir: "{{ images_recipe_root }}/{{ images_name }}"
-    images_incus_exec: [incus, exec, --project, "{{ images_project }}", "build-{{ images_name | replace('_', '') }}", --]
+    images_incus_exec: [incus, exec, --project, "{{ images_project }}", "build-{{ images_name }}", --]
     images_provision: {}
 
 - name: List the instances of the build project
@@ -135,7 +135,7 @@
           - --extra-vars
           - "@{{ images_build_dir }}/vars.json"
           - "{{ images_recipe_dir }}/provision.yml"
-          - "{{ images_recipe_root }}/_base/agent.yml"
+          - "{{ images_recipe_root }}/base/agent.yml"
       environment:
         ANSIBLE_CONFIG: "{{ pinka_dir }}/ansible/ansible.cfg"
         ANSIBLE_NOCOLOR: "1"

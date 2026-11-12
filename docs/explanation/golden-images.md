@@ -28,11 +28,14 @@ A blueprint is a directory `images/<blueprint>/`:
 | `tests/` | shell scripts that assert the result inside the instance |
 
 The schema is `tools/lockcheck/schema/image-blueprint.schema.json`;
-`make lint-schemas` checks every blueprint against it.
+`make lint-schemas` checks every blueprint against it. A blueprint's name is
+2 to 41 lower-case letters, digits and hyphens, starts with a letter and
+does not end with a hyphen, so its build instance, `build-<blueprint>`,
+passes Incus's instance name rule.
 
 ```mermaid
 flowchart LR
-  upstream["ubuntu/24.04/cloud<br/>(pinned fingerprint)"] --> base["_base/1.0.0"]
+  upstream["ubuntu/24.04/cloud<br/>(pinned fingerprint)"] --> base["base/1.0.1"]
   base --> web["web-nginx-flask"]
   base --> pg["pg-primary"]
   base --> redis["redis-cache"]
@@ -40,10 +43,15 @@ flowchart LR
   base --> probe["probe-client"]
 ```
 
-`_base` adds the OpenTelemetry agent (the pinned `otelcol-contrib` package),
+`base` adds the OpenTelemetry agent (the pinned `otelcol-contrib` package),
 common administration tools, a persistent journal, UTC, and disables
 automatic package updates so that an image never changes after its build.
-The other blueprints start from `_base`.
+The other blueprints start from `base`. The images role builds the
+blueprints of a run in the order of their bases, whatever order they are
+listed in (`images_blueprints`, or the installer's ticked blueprints): a
+blueprint after the one it starts from, which must be in the run too; a
+missing base blueprint, or bases that form a cycle, are refused with their
+names before anything is built.
 
 Distribution packages are not pinned to versions: Ubuntu's archive keeps only
 the current version of each package, so a pin would break every rebuild. The
@@ -72,7 +80,7 @@ sequenceDiagram
   participant I as build instance
   R->>I: launch from the base (fingerprint), wait for cloud-init
   R->>I: leakage lint: scan (baseline)
-  R->>I: provision.yml, then _base/agent.yml (nested ansible-playbook)
+  R->>I: provision.yml, then base/agent.yml (nested ansible-playbook)
   R->>I: tests/*.sh, record packages
   R->>I: leakage lint: check
   R->>I: clean, stop

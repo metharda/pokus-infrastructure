@@ -324,7 +324,7 @@ class ImagesScreen(StepScreen):
         options = []
         for spec in blueprints(self.ctx.paths.images_dir):
             name = str(spec.get("name"))
-            if spec.get("type") == "virtual-machine" and not vm_ok:
+            if spec.get("type") == "vm" and not vm_ok:  # the blueprint schema's VM type
                 continue
             packages = len(spec.get("packages") or [])
             label = (

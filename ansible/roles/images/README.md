@@ -10,6 +10,11 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
   `binaries.otelcol_contrib` (the in-image agent package) and
   `containers.target_images` (container images that blueprints with a
   container engine pull by digest).
+- The blueprints of the run (`images_blueprints`, or the selection of
+  `pinka images build`) may be listed in any
+  order: the role builds each after the blueprint it starts from
+  (`base.blueprint`, filter `pinka_image_build_order`) and refuses a base
+  blueprint that is not listed, or bases that form a cycle, naming them.
 - Every listed blueprint that has neither the alias `<blueprint>/<version>`
   nor an export is built in the Incus project `build` (profile `build`,
   network `pinka-build0`), as instance `build-<blueprint>`:
@@ -18,7 +23,7 @@ images), applied on `full` and `lab` nodes; tag `images`, skippable.
      data, and wait for cloud-init;
   2. record the leakage baseline of the base (`files/pinka_leakage_lint.py
      scan`, run inside the instance with its own `python3`);
-  3. run `provision.yml` and then `images/_base/agent.yml` (the agent
+  3. run `provision.yml` and then `images/base/agent.yml` (the agent
      configuration of the blueprint's `telemetry`) with a nested
      `ansible-playbook` over the `community.general.incus` connection;
   4. run the blueprint's tests and record the installed packages;

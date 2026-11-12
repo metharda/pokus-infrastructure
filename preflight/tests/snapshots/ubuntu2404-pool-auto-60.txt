@@ -56,7 +56,7 @@ Requirements
 Network: skipped (--offline)
 
 Unsupported
-  - disk: / has 60.00 GiB free and these choices need 94.60 GiB there: the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 34.6 GiB on /
+  - disk: / has 60.0 GiB free and these choices need 94.6 GiB there: the free space kept beside the Incus pool (loop file): 50.0 GiB, missing 34.6 GiB on /
 
 Disabled features
   - gpu_inference: No usable GPU: vLLM will not be installed; inference campaigns cannot run on this host.

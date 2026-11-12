@@ -19,8 +19,10 @@ needs, and formatting the pool disk. At the end doctor accepts the lab.
       `tested` release of the [support matrix](../support-matrix.md) works the
       same way), at least 16 GiB of memory as the system reports it
       (`MemTotal`; a machine with 16 GiB installed reports less, so plan for
-      more) and 8 CPU threads (24 GiB and 16 threads recommended), 150 GiB
-      free for `/var/lib` and 100 GiB for `/srv/pinka`.
+      more) and 8 CPU threads (24 GiB and 16 threads recommended), and the
+      free disk space your choices need on `/var/lib` and `/srv/pinka`:
+      preflight computes it, and the installer's Capacity plan screen (step
+      3 below) shows it per mount point before anything is installed.
     - An NVIDIA GPU with at least 8000 MiB of memory as `nvidia-smi`
       reports it (an 8 GB card) for training, and 11500 MiB (a 12 GB card)
       for local inference with the default serving profile. No driver needs

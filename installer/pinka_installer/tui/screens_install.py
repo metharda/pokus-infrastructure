@@ -379,38 +379,48 @@ class ReviewScreen(StepScreen):
         # The operator left the screen (Edit, Back): a run that ends after that drops
         # its answer (Textual keeps is_mounted true on a screen that is gone).
         self.left = False
+        # The host profile the last bootstrap stored (empty when there is none).
+        self.stored: dict[str, Any] = {}
 
     def nav(self) -> NavBar:  # noqa: D102
         return NavBar("Install ▸", extra=(Button("Export answers only", id="export"),))
 
     def body(self) -> ComposeResult:  # noqa: D102
         self.problems, self.plan = self.build_plan()
+        # Plain text where the screen shows values read from host_vars, an answers file
+        # or a resumed state (and refusals that name them): they may hold markup.
         if self.problems:
             yield Static(
                 "Fix these first:\n" + "\n".join(f"• {p}" for p in self.problems),
                 classes="banner bad",
+                markup=False,
             )
         for warning in destructive(self.answers):
-            yield Static(f"⚠ {warning}", classes="banner bad")
+            yield Static(f"⚠ {warning}", classes="banner bad", markup=False)
         replacing = self.wizard.replacing()
         if replacing:
             yield Static(
                 f"⚠ The active platform {replacing} is replaced (you typed its name); its data "
                 f"stays until pinka platform purge {replacing}",
                 classes="banner bad",
+                markup=False,
             )
         for step, title, text in summary(
             self.answers, approved=self.wizard.platform_approved, replacing=replacing
         ):
             with Horizontal(classes="review-row"):
-                yield Card(title, text)
+                yield Card(title, text, markup=False)
                 yield Button("Edit", id=f"edit-{step}", classes="edit")
         yield Static(
             "Capacity plan: computing with preflight for these choices…",
             id="capacity-totals",
             classes="info",
+            markup=False,
         )
-        yield Static(self.estimates(), classes="info", id="estimates")
+        changes = Static("", id="profile-changes", classes="banner warn", markup=False)
+        changes.display = False
+        yield changes
+        yield Static(self.estimates(), classes="info", id="estimates", markup=False)
         if self.plan is not None:
             for warning in self.plan.warnings:
                 yield Static(f"Note: {warning}", classes="hint")
@@ -429,6 +439,7 @@ class ReviewScreen(StepScreen):
                     )
 
     def on_mount(self) -> None:  # noqa: D102
+        self.stored = self.ctx.host.stored_profile()
         self.check_capacity(
             self.app, copy.deepcopy(self.answers), lock_text(self), self.wizard.plan_args()
         )
@@ -479,6 +490,23 @@ class ReviewScreen(StepScreen):
             )
         )
         totals.set_classes("banner bad" if self.capacity_waits else "info")
+        # Bootstrap compares the profile with the stored one and stops on a change
+        # without --refresh-profile: the operator sees each change here, and Install
+        # accepts them (an answer for other choices replaces them).
+        wizard.profile_changes = (
+            capacity.profile_changes(self.stored, answer.profile)
+            if self.stored and answer.profile
+            else []
+        )
+        changes = self.query_one("#profile-changes", Static)
+        changes.update(
+            "The host profile changes from the one the last bootstrap stored "
+            "(/etc/pinka/host-profile.json):\n"
+            + "\n".join(f"- {line}" for line in wizard.profile_changes)
+            + "\nInstall accepts them with bootstrap's --refresh-profile (recorded with its "
+            "run), which accepts the host profile bootstrap's own preflight run finds."
+        )
+        changes.display = bool(wizard.profile_changes)
 
     def build_plan(self) -> tuple[list[str], Plan | None]:
         """Check the answers and plan the files.

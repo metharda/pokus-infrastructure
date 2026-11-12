@@ -1583,6 +1583,30 @@ def test_a_plan_preflight_refuses_is_named_as_such(tmp_path: Path) -> None:
     ) in uninstall.stderr
 
 
+@pytest.mark.parametrize("code", [0, 10, 20, 30])
+def test_the_uninstall_takes_any_preflight_outcome_and_stores_no_profile(
+    tmp_path: Path, code: int
+) -> None:
+    # Supported, degraded, unsupported or an action: the uninstall goes on, with no
+    # override, and its preflight run stores no host profile (only its own copy).
+    fake = tmp_path / "preflight" / "pinka-preflight"
+    fake.parent.mkdir()
+    fake.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {q(str(tmp_path / "args"))}\nexit {code}\n')
+    fake.chmod(0o755)
+    res = bash(
+        f"INFRA_DIR={q(tmp_path)} GIT_COMMIT=0; "
+        "install() { :; }; enter_stage() { :; }; leave_stage() { :; }; "
+        "stage_uninstall_profile && echo went-on"
+    )
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "went-on"
+    args = (tmp_path / "args").read_text().splitlines()
+    assert args[:3] == ["--no-write", "--quiet", "--offline"]
+    # Its own copy below /run/pinka-uninstall, never /etc/pinka/host-profile.json.
+    assert args[args.index("--output") + 1] == "/run/pinka-uninstall/host-profile.json"
+    assert not [a for a in args if a.startswith(("--force", "--accept", "--refresh"))]
+
+
 def test_preflight_gets_the_configured_researchers(tmp_path: Path) -> None:
     # A host is dedicated when its login accounts are all
     # researchers; bootstrap passes their names from group_vars, or from
@@ -1680,6 +1704,15 @@ def test_help_lists_the_uninstall_options() -> None:
         (["--uninstall", "--tags", "base"], "--uninstall excludes --tags"),
         (["--uninstall", "--answers", "/etc/hostname"], "--uninstall excludes --answers"),
         (["--uninstall", "--tui"], "--uninstall excludes --tui"),
+        # No override for an uninstall: it takes any preflight outcome and records none.
+        (["--uninstall", "--force-unsupported"], "--uninstall excludes --force-unsupported"),
+        (["--uninstall", "--accept-degraded"], "--uninstall excludes --accept-degraded"),
+        (["--uninstall", "--accept-experimental"], "--uninstall excludes --accept-experimental"),
+        (
+            ["--uninstall", "--accept-mok-enrollment"],
+            "--uninstall excludes --accept-mok-enrollment",
+        ),
+        (["--uninstall", "--refresh-profile"], "--uninstall excludes --refresh-profile"),
         (
             ["--uninstall", "--remove-component", "podman"],
             "takes docker, incus, tailscale or nvidia",

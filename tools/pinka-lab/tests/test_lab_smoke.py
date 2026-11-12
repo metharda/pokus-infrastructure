@@ -17,7 +17,7 @@ PROPERTIES = {
     "requirements.nesting": "false",
 }
 IMAGES: list[dict[str, Any]] = [
-    {"fingerprint": "a" * 64, "aliases": [{"name": "_base/1.0.0"}], "properties": PROPERTIES},
+    {"fingerprint": "a" * 64, "aliases": [{"name": "base/1.0.0"}], "properties": PROPERTIES},
     {
         "fingerprint": "b" * 64,
         "aliases": [{"name": "web-nginx-flask/1.2.0"}],
@@ -42,7 +42,7 @@ RECORDS = {
         }
     )
     for alias, fingerprint in (
-        ("_base/1.0.0", "a"),
+        ("base/1.0.0", "a"),
         ("web-nginx-flask/1.2.0", "b"),
         ("web-nginx-flask/1.10.0", "c"),
     )
@@ -82,7 +82,7 @@ def lines(system: FakeSystem, prefix: str) -> list[list[str]]:
 class AliasTest(unittest.TestCase):
     def test_newest_alias(self) -> None:
         self.assertEqual(smoke.newest_alias(IMAGES, "web-nginx-flask"), "web-nginx-flask/1.10.0")
-        self.assertEqual(smoke.newest_alias(IMAGES, "_base"), "_base/1.0.0")
+        self.assertEqual(smoke.newest_alias(IMAGES, "base"), "base/1.0.0")
         self.assertIsNone(smoke.newest_alias(IMAGES, "pg-primary"))
         accepted = {"web-nginx-flask/1.2.0"}
         self.assertEqual(
@@ -176,8 +176,8 @@ class SmokeTest(unittest.TestCase):
 
 class ChecksTest(unittest.TestCase):
     def test_one_check_per_blueprint(self) -> None:
-        checks = smoke.smoke_checks([{"name": "_base"}, BLUEPRINT])
-        self.assertEqual([c.id for c in checks], ["smoke._base", "smoke.web-nginx-flask"])
+        checks = smoke.smoke_checks([{"name": "base"}, BLUEPRINT])
+        self.assertEqual([c.id for c in checks], ["smoke.base", "smoke.web-nginx-flask"])
         self.assertTrue(all(c.severity == "error" for c in checks))
 
     def test_skips_and_missing_images(self) -> None:

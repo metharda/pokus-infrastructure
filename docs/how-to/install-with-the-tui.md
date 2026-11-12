@@ -49,7 +49,22 @@ before you press **Install** on the Review screen.
 2. Press ++ctrl+n++ (or **Next**) to run preflight. The cards show what it
    found; a degraded host lists each missing feature with its consequence,
    and you tick each one to accept it. An unsupported host can only be forced
-   by typing `FORCE UNSUPPORTED`, which every fingerprint then records. With
+   by typing `FORCE UNSUPPORTED`, which every fingerprint then records. An
+   action preflight asks for (`needs_action`) holds the screen until you have
+   done it and pressed *Re-check* (for the MOK, the consent box runs preflight
+   again), on a forced host too: bootstrap refuses it even with
+   `--force-unsupported`. The one exception is the lab an earlier uninstall
+   kept in the research space (`kept_lab`) when it is the only action: it
+   alone does not hold the screen, so that you can choose *Uninstall* and
+   finish that uninstall if it did not finish; an install waits on the
+   capacity plan and the Review screen while the research space you choose
+   is the kept lab, lies inside it or holds it, also with symbolic links
+   followed. On a host with a lab installed, nothing on this screen holds
+   *Uninstall* unless preflight fails: bootstrap's uninstall runs whatever
+   preflight's outcome and takes no override, so the screen goes on without
+   Force or a consent, and the *Install mode* screen offers *Uninstall* while
+   an install, a restore or a modification waits until this screen no longer
+   holds it (also when you resume the installer there). With
    Secure Boot on and no NVIDIA driver, the screen explains the Machine Owner
    Key (MOK) enrollment: tick *Install the driver and enroll a MOK at the
    next boot* to consent (recorded), or press *Continue without the driver*.
@@ -60,9 +75,12 @@ before you press **Install** on the Review screen.
 ## Answer the screens
 
 Each screen checks its fields when you go on and shows a message next to a
-wrong field. ++f1++ shows the screen's help. Screens that do not apply to
-the host (the NVIDIA driver page without a GPU, on WSL or on a lab node;
-Restore outside restore mode) are shown greyed out with the reason.
+wrong field. A dropdown whose value from `host_vars` or the saved progress is
+not one of its choices starts empty, and the message names that value until
+you choose one (an answers file with such a value is refused when it is
+loaded). ++f1++ shows the screen's help. Screens
+that do not apply to the host (the NVIDIA driver page without a GPU or on
+WSL; Restore outside restore mode) are shown greyed out with the reason.
 
 | Keys | Action |
 | --- | --- |
@@ -74,7 +92,9 @@ Restore outside restore mode) are shown greyed out with the reason.
 | ++ctrl+q++ | Quit; your choices so far are kept for the next start |
 
 1. **Install mode**: *Fresh install*, *Restore from backup*, or *Modify the
-   existing installation* (offered once a lab is installed here).
+   existing installation* (offered once a lab is installed here). While the
+   Preflight screen holds an install, only *Uninstall pinka from this host*
+   goes on; the screen says what holds the rest.
 2. **Machine**: the machine name names `host_vars/<machine>.yml` and the
    tailnet host.
 3. **Capacity plan**: everything that sizes the lab, and preflight's answer
@@ -100,8 +120,10 @@ Restore outside restore mode) are shown greyed out with the reason.
       both are installed (see
       [How to run inference on a separate GPU node](pair-inference-node.md));
     - the inference and training switches;
-    - on bare metal or a VM with a GPU (not on WSL or a lab node), the NVIDIA
-      driver: *Install the pinned driver* (`auto`), *I install it myself*
+    - on bare metal or a VM with a GPU (not on WSL), the NVIDIA driver, on
+      every node role (a lab node serves no model, but the installation
+      installs the driver you choose there too): *Install the pinned driver*
+      (`auto`), *I install it myself*
       (`manual`) or *No driver* (`skip`); preflight judges the GPU with it.
       With Secure Boot and no driver, *I install it myself* is refused until
       the driver is installed;
@@ -133,7 +155,7 @@ Restore outside restore mode) are shown greyed out with the reason.
             The disk you confirm is formatted as the Incus storage pool when
             the installation runs. Mounted and system disks cannot be chosen.
 
-    - **NVIDIA driver** (bare metal or a VM with a GPU, not on a lab node):
+    - **NVIDIA driver** (bare metal or a VM with a GPU, on every node role):
       the driver chosen on the capacity plan, its pinned packages, and a GPU
       the pinned driver cannot serve, shown as not usable. With Secure Boot
       and no driver, *Install the pinned driver* needs the consent from the
@@ -195,6 +217,15 @@ Restore outside restore mode) are shown greyed out with the reason.
    [installation without the TUI](install-without-the-tui.md).
 
     ![The Review screen](../assets/installer/review.svg)
+
+    When the last bootstrap stored a host profile here
+    (`/etc/pinka/host-profile.json`), the Review screen also compares
+    preflight's answer to your choices with it, as bootstrap does: it lists
+    each change of outcome, provider or feature, and **Install** accepts them
+    with bootstrap's `--refresh-profile`, which the run records and which
+    accepts the profile bootstrap's own preflight run finds. Without a change
+    the installer does not add the option (it is passed when you gave it to
+    the first bootstrap).
 
 2. Press **Install**. The installer writes the files (owned by your user,
    the vault encrypted) and runs bootstrap. The tree shows each stage and

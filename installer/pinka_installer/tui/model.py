@@ -63,6 +63,8 @@ AFTER_STEPS = {
     "uninstall": "Uninstall",
     "uninstall_run": "Uninstall progress",
 }
+# install_nvidia_driver's modes (preflight's --nvidia-driver choices).
+DRIVER_MODES = ("auto", "manual", "skip")
 CONSENTS = ("accept_degraded", "accept_experimental", "force_unsupported", "accept_mok_enrollment")
 
 
@@ -125,6 +127,15 @@ class Wizard:
         uninstall: The operator chose to uninstall on the Install mode screen
             (never an answers mode: uninstall is not replayed from a file).
         uninstall_options: The confirmed uninstall's options (memory only).
+        profile_changes: How the Review screen's host profile differs from the one
+            the last bootstrap stored, in outcome, provider or features (bootstrap's
+            comparison): the install then accepts them with ``--refresh-profile``
+            (memory only; empty when they match or none is stored).
+        install_held: What holds an install, a restore or a modification on the
+            Preflight screen of a host with a lab installed, which goes on to the
+            Install mode screen for Uninstall (kept in the resume state, so a
+            resumed wizard holds them too, until the Preflight screen no longer
+            does; empty when nothing holds one).
         capacity: Preflight's host profile of the capacity plan's last run (the
             plan of the choices then); empty until the capacity plan ran.
         degraded_accepted: What the operator accepted as degraded, line by line
@@ -155,6 +166,8 @@ class Wizard:
     replace_key: str = ""
     uninstall: bool = False
     uninstall_options: list[str] = field(default_factory=list)
+    profile_changes: list[str] = field(default_factory=list)
+    install_held: list[str] = field(default_factory=list)
     capacity: dict[str, Any] = field(default_factory=dict)
     degraded_accepted: set[str] = field(default_factory=set)
 
@@ -276,7 +289,7 @@ class Wizard:
             ``--nvidia-driver`` once a screen decided it, and
             ``--accept-mok-enrollment`` with that consent.
         """
-        args = ["--nvidia-driver", self.nvidia_driver] if self.nvidia_driver else []
+        args = ["--nvidia-driver", self.nvidia_driver] if self.nvidia_driver in DRIVER_MODES else []
         if "accept_mok_enrollment" in self.consents:
             args.append("--accept-mok-enrollment")
         return args
@@ -292,7 +305,10 @@ class Wizard:
             ``--nvidia-driver`` with the mode host_vars will hold, as bootstrap passes
             it, and ``--accept-mok-enrollment`` with that consent.
         """
-        args = ["--nvidia-driver", self.answers.gpu.install_driver]
+        # A mode no dropdown offers (read from a file, refused on its field) is left
+        # out: preflight refuses an option it does not take.
+        mode = self.answers.gpu.install_driver
+        args = ["--nvidia-driver", mode] if mode in DRIVER_MODES else []
         if "accept_mok_enrollment" in self.consents:
             args.append("--accept-mok-enrollment")
         return args
@@ -315,6 +331,8 @@ class Wizard:
             options.append("--restore")
         if self.mok_password and "--mok-password-stdin" not in options:
             options.append("--mok-password-stdin")
+        if self.profile_changes and "--refresh-profile" not in options:
+            options.append("--refresh-profile")
         replacing = self.replacing()
         if replacing and not any(o.startswith("--replace-platform") for o in options):
             options.append(f"--replace-platform={replacing}")
@@ -327,7 +345,9 @@ class Wizard:
         return options
 
     def resume_data(self) -> dict[str, Any]:
-        """What the resume state keeps: the answers and the consents, no secret.
+        """What the resume state keeps: the answers, the consents and the held install.
+
+        No secret.
 
         Returns:
             JSON-serializable data.
@@ -336,6 +356,7 @@ class Wizard:
             "answers": self.answers.to_dict(),
             "consents": sorted(self.consents),
             "build_images_now": self.build_images_now,
+            "install_held": list(self.install_held),
         }
 
     def restore(self, data: Mapping[str, Any]) -> None:
@@ -354,6 +375,8 @@ class Wizard:
                 self.answers = Answers()  # an unreadable state starts over
         self.consents = {c for c in data.get("consents", []) if c in CONSENTS}
         self.build_images_now = bool(data.get("build_images_now", True))
+        held = data.get("install_held")
+        self.install_held = [str(h) for h in held] if isinstance(held, list) else []
 
 
 def existing_answers(paths: Paths, machine: str) -> Answers:

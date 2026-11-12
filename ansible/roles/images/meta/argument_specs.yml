@@ -24,8 +24,11 @@ argument_specs:
       images_blueprints:
         type: list
         elements: str
-        default: [_base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]
-        description: Blueprints to build, in build order (a base blueprint before the blueprints that start from it).
+        default: [base, web-nginx-flask, pg-primary, redis-cache, docker-host, probe-client]
+        description: >-
+          Blueprints to build, in any order: the role builds a base blueprint before the
+          blueprints that start from it; a base blueprint not listed, or bases that form a
+          cycle, are refused with their names.
       images_rebuild:
         type: bool
         default: false

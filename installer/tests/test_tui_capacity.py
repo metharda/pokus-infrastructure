@@ -18,8 +18,8 @@ from typing import Any, cast
 import pytest
 from ruamel.yaml import YAML
 from textual.pilot import Pilot
-from textual.widgets import Checkbox, Collapsible, DataTable, RadioButton, Select, Static
-from tui_fakes import FakeHost, app, context, preflight
+from textual.widgets import Checkbox, Collapsible, DataTable, Input, RadioButton, Select, Static
+from tui_fakes import FIXTURES, FakeHost, app, context, preflight
 
 from pinka_installer import answers as answers_mod
 from pinka_installer import hostvars, state, validators
@@ -27,11 +27,13 @@ from pinka_installer import plan as plan_mod
 from pinka_installer.answers import Answers
 from pinka_installer.paths import Paths
 from pinka_installer.tui import capacity
+from pinka_installer.tui import host as host_mod
 from pinka_installer.tui.app import InstallerApp
 from pinka_installer.tui.host import Preflight
-from pinka_installer.tui.screens_capacity import DEBOUNCE, CapacityScreen
+from pinka_installer.tui.model import DRIVER_MODES
+from pinka_installer.tui.screens_capacity import DEBOUNCE, NVIDIA_DRIVER, CapacityScreen
 from pinka_installer.tui.screens_install import ReviewScreen
-from pinka_preflight import render
+from pinka_preflight import matrix, profile_tool, render, requirements
 
 SIZE = (120, 40)
 FITS = "ubuntu2404-wsl2-gpu-kvm"
@@ -432,16 +434,21 @@ def test_rows_bars_growth_and_consent() -> None:
         "Growth on /srv: 0.27 GiB a day, 1.89 GiB a week (estimated); full in about 28 days "
         "at this rate, around 2026-11-02"
     )
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}, around 2026-11-02")
     growth["days_until_full"] = None
     assert capacity.growth(profile).endswith(
         "; the disk does not fill within ten years, the retention's limits counted"
     )
+    # Preflight's summary takes the same words for each case of a null date.
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}")
     growth["free_after_install_gib"] = None
     assert capacity.growth(profile).endswith(
         "; when the disk fills is not known: its free space is not measured"
     )
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}")
     growth["gib_per_day"] = 0
     assert capacity.growth(profile).endswith("; nothing grows there")
+    assert capacity.growth(profile).endswith(f"; {render.growth_when(growth)}")
     growth["items"] = [{"id": "training", "per_run_gib": 50.0}]
     assert capacity.growth(profile).endswith("; nothing grows there (training runs come on top)")
     assert capacity.needs_consent({"outcome": "degraded"})
@@ -463,6 +470,54 @@ def test_rows_bars_growth_and_consent() -> None:
             capacity.Row("d", "Disk /srv/pinka", "fits", 0.0, "b", ()),
         ]
     ) == ["RAM             ░░░░░░░░░░ a", "Disk /srv/pinka ░░░░░░░░░░ b"]
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "ubuntu2404-disk-boundary-under",
+        "ubuntu2404-disk-boundary-at",
+        "ubuntu2404-loop-reserve-below",
+        "ubuntu2404-disk-shortfall",
+    ],
+)
+def test_the_disk_rows_print_preflight_s_figures(fixture: str) -> None:
+    # One rounding: the capacity plan prints each disk budget's need, free space
+    # and shortfall as preflight's refusal and summary print them.
+    profile = preflight(fixture, ["--plan", str(FIXTURES / fixture / "plan.json")]).profile
+    lines = {r.key: r.line for r in capacity.rows(profile)}
+    budgets = profile["requirements"]["budgets"]["disk"]
+    assert budgets
+    for budget in budgets:
+        need, free, short = requirements.disk_texts(
+            budget["required_gib"], budget["free_gib"], budget["shortfall_gib"]
+        )
+        line = lines[f"disk:{budget['mount']}"]
+        assert f"needs {need}, has {free} free" in line, line
+        assert (f", {short} short" in line) == bool(short), line
+        assert bool(short) == (budget["status"] == "does_not_fit")
+
+
+def test_a_short_disk_row_rounds_the_need_up_and_the_free_space_down() -> None:
+    # Figures whose tenths differ by the direction of the rounding.
+    fixture = "ubuntu2404-disk-shortfall"
+    profile = preflight(fixture, ["--plan", str(FIXTURES / fixture / "plan.json")]).profile
+    budget = profile["requirements"]["budgets"]["disk"][-1]
+    budget.update(status="does_not_fit", required_gib=9.41, free_gib=3.09, shortfall_gib=6.32)
+    line = {r.key: r.line for r in capacity.rows(profile)}[f"disk:{budget['mount']}"]
+    assert line == "does not fit, 6.4 GiB short · needs 9.5 GiB, has 3.0 GiB free"
+    assert requirements.disk_texts(9.41, 3.09, 6.32) == ("9.5 GiB", "3.0 GiB", "6.4 GiB")
+    # A need of exactly 10 GiB with one byte less free: never "has 10.0 GiB free".
+    budget.update(required_gib=10.0, free_gib=9.99, shortfall_gib=0.01)
+    line = {r.key: r.line for r in capacity.rows(profile)}[f"disk:{budget['mount']}"]
+    assert line == "does not fit, 0.1 GiB short · needs 10.0 GiB, has 9.9 GiB free"
+    # An item's size is a need there: rounded up, as preflight prints it.
+    item = next(m for m in profile["requirements"]["disk"] if m["mount"] == budget["mount"])
+    item["items"][0].update(size_gib=0.03, present=False, missing_gib=0.01)
+    row = {r.key: r for r in capacity.rows(profile)}[f"disk:{budget['mount']}"]
+    assert row.items[0].startswith(f"{item['items'][0]['title']}: 0.1 GiB (")
+    assert row.items[0].endswith(", missing 0.1 GiB")
+    assert requirements.disk_size_text(0.03, True) == "0.1 GiB"
 
 
 def test_the_outcome_decides_whether_next_waits() -> None:
@@ -1151,18 +1206,29 @@ def test_the_driver_is_chosen_on_the_main_page_and_preflight_judges_with_it(
     assert installer.ctx.wizard.answers.gpu.install_driver == "auto"
 
 
-def test_no_driver_field_on_wsl_or_a_lab_node(repo: Paths) -> None:
-    for fixture, role in ((FITS, "full"), ("ubuntu2404-baremetal-nvidia-driver-loaded", "lab")):
+def test_the_driver_field_is_shown_off_wsl_on_every_node_role(repo: Paths) -> None:
+    # WSL: the Windows driver provides the GPU. A lab node serves no model, but the play
+    # installs the driver there too (and with Secure Boot it needs the MOK password page).
+    loaded, no_gpu = "ubuntu2404-baremetal-nvidia-driver-loaded", "ubuntu2404-baremetal-no-gpu"
+    for fixture, role, shown in (
+        (FITS, "full", False),
+        (no_gpu, "full", False),  # no GPU: no driver, and no serving either
+        (loaded, "lab", True),
+        (loaded, "full", True),
+    ):
         installer = on_capacity(repo, FakeHost(preflight(fixture)))
         installer.ctx.wizard.answers.machine.node_role = role
         seen: dict[str, Any] = {}
 
         async def flow(pilot: Pilot[int], seen: dict[str, Any] = seen) -> None:
             await settle(pilot)
-            seen["field"] = bool(pilot.app.screen.query("#install_driver"))
+            screen = pilot.app.screen
+            seen["field"] = bool(screen.query("#install_driver"))
+            seen["serving"] = bool(screen.query("#profile"))
 
         run(installer, flow)
-        assert seen["field"] is False, (fixture, role)
+        assert seen["field"] is shown, (fixture, role)
+        assert seen["serving"] is (role == "full" and fixture != no_gpu), (fixture, role)
 
 
 def test_a_forced_host_keeps_its_yellow_bars_and_their_reasons(repo: Paths) -> None:
@@ -1233,8 +1299,9 @@ def test_the_review_lists_a_forced_hosts_degraded_reasons(repo: Paths) -> None:
         assert f"\n- {reason}" in seen["totals"]
 
 
-def test_a_driver_mode_no_field_offers_does_not_end_the_installer(repo: Paths) -> None:
-    # A host_vars file edited by hand: the field shows the answers' default instead.
+def test_a_driver_mode_no_field_offers_is_refused_never_replaced(repo: Paths) -> None:
+    # A host_vars file edited by hand: the field starts blank and Next names the value;
+    # it is neither shown nor saved as another mode, and the installer goes on running.
     host = FakeHost(preflight("ubuntu2404-baremetal-nvidia-driver-loaded"))
     installer = on_capacity(repo, host)
     installer.ctx.wizard.answers.gpu.install_driver = "bogus"
@@ -1242,11 +1309,116 @@ def test_a_driver_mode_no_field_offers_does_not_end_the_installer(repo: Paths) -
 
     async def flow(pilot: Pilot[int]) -> None:
         await settle(pilot)
-        seen["field"] = pilot.app.screen.query_one("#install_driver", Select).value
+        screen = pilot.app.screen
+        seen["field"] = screen.query_one("#install_driver", Select).value
+        await pilot.press("ctrl+n")
+        await settle(pilot)
+        seen["errors"] = [
+            str(s.content) for s in screen.query(".error").results(Static) if str(s.content)
+        ]
 
     run(installer, flow)
-    assert seen["field"] == "skip"
-    assert installer.ctx.wizard.answers.gpu.install_driver == "skip"
+    assert seen["field"] is Select.NULL
+    assert "✖ 'bogus' is not one of the choices (auto, manual, skip): choose one" in seen["errors"]
+    assert installer.ctx.wizard.answers.gpu.install_driver == "bogus"
+    assert installer.current == "capacity"
+
+
+def test_a_driver_mode_no_field_offers_never_reaches_preflight(repo: Paths) -> None:
+    # Preflight refuses a --nvidia-driver it does not take (no profile, a dead end on the
+    # Preflight screen): such a mode, or one of another type from a resumed state, is
+    # left out of its runs while the field refuses it.
+    secure_boot = "ubuntu2404-baremetal-nvidia-no-driver-secureboot"
+    host = FakeHost(preflight(secure_boot), fixture=secure_boot)
+    installer = on_capacity(repo, host)
+    wizard = installer.ctx.wizard
+    wizard.answers.gpu.install_driver = "magic"
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        await pilot.pause(capacity_debounce())
+        await settle(pilot)
+
+    run(installer, flow)
+    assert wizard.mok_enrollment_needed
+    assert host.preflight_args
+    assert not any("magic" in args for args in host.preflight_args)
+    assert wizard.nvidia_driver != "magic"
+    assert "--nvidia-driver" not in wizard.plan_args()
+    wizard.nvidia_driver = "magic"
+    assert "--nvidia-driver" not in wizard.preflight_args()
+    wizard.answers.gpu.install_driver = ["auto"]  # type: ignore[assignment]  # a hand-edited state
+    assert "--nvidia-driver" not in wizard.plan_args()
+
+
+def test_a_driver_mode_of_another_type_is_refused_never_a_crash(repo: Paths) -> None:
+    # A hand-edited resumed state can hold a mode of any type; with Secure Boot (the MOK
+    # consent given) the driver's save compares it, and the field refuses it.
+    secure_boot = "ubuntu2404-baremetal-nvidia-no-driver-secureboot"
+    installer = on_capacity(repo, FakeHost(preflight(secure_boot), fixture=secure_boot))
+    wizard = installer.ctx.wizard
+    wizard.consents.add("accept_mok_enrollment")
+    wizard.answers.gpu.install_driver = ["auto"]  # type: ignore[assignment]  # a hand-edited state
+    seen: dict[str, Any] = {}
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        screen = pilot.app.screen
+        await pilot.press("ctrl+n")
+        await settle(pilot)
+        seen["errors"] = [
+            str(s.content) for s in screen.query(".error").results(Static) if str(s.content)
+        ]
+
+    run(installer, flow)
+    assert wizard.mok_enrollment_needed
+    assert (
+        "✖ \"['auto']\" is not one of the choices (auto, manual, skip): choose one"
+        in seen["errors"]
+    )
+    assert installer.current == "capacity"
+
+
+def test_the_driver_modes_are_preflight_s() -> None:
+    assert DRIVER_MODES == matrix.NVIDIA_DRIVER_MODES
+    assert [value for _label, value in NVIDIA_DRIVER] == list(DRIVER_MODES)
+
+
+def test_a_stored_profile_bootstrap_cannot_compare_is_unreadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Bootstrap stops on such a file until it is fixed or replaced: the Review screen
+    # compares nothing, and passes no --refresh-profile that would replace it unseen.
+    stored = tmp_path / "host-profile.json"
+    monkeypatch.setattr(host_mod, "PROFILE_FILE", stored)
+    real = host_mod.RealHost(cast(Paths, None))
+    assert real.stored_profile() == {}  # none
+    for text in ("{", "[]", '{"features": ["x"]}', '{"features": "x"}', '{"features": 5}'):
+        stored.write_text(text, encoding="utf-8")
+        assert real.stored_profile() == {}, text
+    stored.write_text('{"outcome": "supported", "features": {"vm_targets": true}}')
+    assert real.stored_profile() == {"outcome": "supported", "features": {"vm_targets": True}}
+
+
+def test_a_message_without_a_field_is_plain_text(repo: Paths) -> None:
+    # Shown as a notification: a refusal can name a value read from a file, with markup in
+    # it (a closing tag would end the installer when the notification is drawn).
+    installer = on_capacity(repo, FakeHost(preflight(FITS)))
+    drawn: list[str] = []
+
+    async def main() -> None:
+        # run_test turns notifications off unless asked: the toast must be drawn here.
+        async with installer.run_test(size=SIZE, notifications=True) as pilot:
+            await settle(pilot)
+            screen = cast(CapacityScreen, pilot.app.screen)
+            screen.show_problems([("nowhere", "Next waits: the plan is refused: x ('[/]')")])
+            for _ in range(3):
+                await pilot.pause()
+            drawn.extend(str(t.render()) for t in pilot.app.screen.query("Toast"))
+
+    asyncio.run(main())
+    assert drawn == ["Next waits: the plan is refused: x ('[/]')"]
+    assert installer.current == "capacity"
 
 
 def test_the_preflight_screen_ticks_each_accepted_line_alone(repo: Paths) -> None:
@@ -1266,3 +1438,112 @@ def test_the_preflight_screen_ticks_each_accepted_line_alone(repo: Paths) -> Non
 
     run(installer, flow)
     assert seen["boxes"] == {line: line == lines[0] for line in lines}
+
+
+def test_the_profile_changes_are_bootstrap_s(repo: Paths) -> None:
+    # The Review screen's comparison is a copy of the one bootstrap and the play's
+    # preflight gate stop on (preflight's profile_tool.differences): the same lines.
+    base = preflight("ubuntu2404-baremetal-no-gpu").profile
+    other = preflight("ubuntu2404-baremetal-nvidia-driver-loaded").profile
+    unsupported = preflight("ubuntu2404-no-btrfs-no-dmthin").profile
+    no_features = {k: v for k, v in base.items() if k != "features"}
+    none_provider = {**base, "provider": None}
+    extra = {**base, "features": {**base["features"], "new_feature": {"nested": [1, 2]}}}
+    pairs = [
+        (base, base),
+        (base, other),
+        (other, base),
+        (base, unsupported),
+        (base, no_features),
+        (no_features, base),
+        (base, none_provider),
+        (base, extra),
+        (extra, base),
+    ]
+    for stored, new in pairs:
+        assert capacity.profile_changes(stored, new) == profile_tool.differences(
+            copy.deepcopy(stored), copy.deepcopy(new)
+        )
+    assert capacity.profile_changes(base, base) == []
+    assert capacity.profile_changes(base, unsupported)[0] == "outcome: degraded -> unsupported"
+    assert capacity.profile_changes(base, extra) == ['features.new_feature:  -> {"nested": [1, 2]}']
+
+
+def test_a_cpu_range_of_many_digits_is_refused_at_once(repo: Paths) -> None:
+    # The CPU bar runs on every keystroke and the check on Next: both handle the range
+    # as a range (test_validators.py runs them with bounded memory and time).
+    installer = on_capacity(repo, FakeHost(preflight(FITS)))
+    threads = installer.ctx.wizard.cpu_threads
+    assert threads
+    seen: dict[str, Any] = {}
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        screen = pilot.app.screen
+        screen.query_one("#cpuset_services", Input).value = "0-99999999999"
+        screen.query_one("#cpuset_targets", Input).value = "0"
+        await pilot.pause()
+        seen["bar"] = str(screen.query_one("#cpu-bar", Static).content)
+        await pilot.press("ctrl+n")
+        await settle(pilot)
+        seen["errors"] = [
+            str(s.content) for s in screen.query(".error").results(Static) if str(s.content)
+        ]
+
+    run(installer, flow)
+    assert seen["bar"].startswith("[X" + "S" * (threads - 1) + "]")
+    assert (
+        f"✖ CPU 99999999999 does not exist (this host has CPUs 0-{threads - 1})" in seen["errors"]
+    )
+    assert installer.current == "capacity"
+
+
+def test_the_default_model_line_shows_a_value_with_markup_as_it_is(repo: Paths) -> None:
+    # A default model read from host_vars or a resumed state can hold markup (a closing
+    # tag ended the installer when the serving section composed).
+    host = FakeHost(preflight("ubuntu2404-baremetal-nvidia-driver-loaded"))
+    installer = on_capacity(repo, host)
+    installer.ctx.wizard.answers.gpu.default_model = "[/]example/model"
+    seen: dict[str, Any] = {}
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        seen["chosen"] = str(pilot.app.screen.query_one("#chosen", Static).render())
+
+    run(installer, flow)
+    assert seen["chosen"] == "Default model: [/]example/model"
+    assert installer.current == "capacity"
+
+
+def test_the_review_shows_values_with_markup_as_they_are(repo: Paths) -> None:
+    # The summary cards, the "Fix these first" banner and the capacity totals show values
+    # read from files and refusals that name them: a closing tag ended the installer.
+    host = FakeHost(preflight("ubuntu2404-baremetal-no-gpu"))
+    installer = app(context(repo, host, machine="pinka-lab"), first="review")
+    answers = installer.ctx.wizard.answers
+    answers.machine.name = "pinka-lab"
+    answers.machine.srv_path = "/srv/[/]lab"
+    answers.machine.node_role = "[/]"
+    answers.gpu.default_model = "[/]example/model"  # the downloads estimate
+    answers.mode = "restore"
+    answers.restore_snapshot = "[/]snap"  # a destructive action's banner
+    seen: dict[str, Any] = {}
+
+    async def flow(pilot: Pilot[int]) -> None:
+        await settle(pilot)
+        screen = pilot.app.screen
+        seen["cards"] = "\n".join(str(c.render()) for c in screen.query(".card").results(Static))
+        seen["banners"] = "\n".join(
+            str(b.render()) for b in screen.query(".banner").results(Static)
+        )
+        seen["totals"] = str(screen.query_one("#capacity-totals", Static).render())
+        seen["estimates"] = str(screen.query_one("#estimates", Static).render())
+
+    run(installer, flow)
+    assert "/srv/[/]lab" in seen["cards"]
+    assert "Fix these first:" in seen["banners"]
+    assert "'[/]'" in seen["banners"]
+    assert "node_role must be full, lab or inference (got '[/]')" in seen["totals"]
+    assert "⚠ the lab's data is replaced by snapshot [/]snap" in seen["banners"]
+    assert "model [/]example/model" in seen["estimates"]
+    assert installer.current == "review"

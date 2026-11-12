@@ -350,7 +350,7 @@ def test_bootstrap_options_and_resume_data() -> None:
     wizard = model.Wizard()
     wizard.consents = {"force_unsupported", "accept_degraded"}
     wizard.answers.mode = "restore"
-    wizard.answers.images_build = ["_base"]
+    wizard.answers.images_build = ["base"]
     wizard.build_images_now = False
     wizard.vault_password = "never stored"  # noqa: S105 - test fixture
     assert wizard.bootstrap_options(["--allow-dirty", "--skip-tags=backup"]) == [

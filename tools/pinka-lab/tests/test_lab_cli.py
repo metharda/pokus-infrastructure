@@ -35,7 +35,7 @@ class ParserTest(unittest.TestCase):
         self.assertEqual(parser.parse_args(["doctor", "--json", "--smoke"]).smoke, True)
         self.assertEqual(parser.parse_args(["stop", "--timeout", "60"]).timeout, 60.0)
         self.assertEqual(
-            parser.parse_args(["images", "build", "_base", "--rebuild"]).blueprint, "_base"
+            parser.parse_args(["images", "build", "base", "--rebuild"]).blueprint, "base"
         )
         self.assertEqual(
             parser.parse_args(["restore", "--", "--non-interactive"]).bootstrap_options,
@@ -109,7 +109,7 @@ class MainTest(unittest.TestCase):
         self.assertEqual(report["machine"], "pinka-lab")
         ids = [c["id"] for c in report["checks"]]
         self.assertIn("preflight.outcome", ids)
-        self.assertEqual(ids[-2:], ["smoke._base", "smoke.web-nginx-flask"])
+        self.assertEqual(ids[-2:], ["smoke.base", "smoke.web-nginx-flask"])
         code, text, _ = call(["doctor"], configured())
         self.assertEqual(code, 2)
         self.assertRegex(text.splitlines()[-1], r"^doctor: \d+ passed, \d+ failed, \d+ skipped$")

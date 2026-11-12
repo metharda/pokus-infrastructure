@@ -162,7 +162,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `requirements.growth.free_after_install_gib` | number or null | yes | — |
 | `requirements.growth.gib_per_day` | number | yes | — |
 | `requirements.growth.gib_per_week` | number | yes | — |
-| `requirements.growth.days_until_full` | integer or null | yes | The day the disk fills at this rate; null if the retention keeps it below the free space for ten years. |
+| `requirements.growth.days_until_full` | integer or null | yes | The day the disk fills at this rate; null if nothing grows, if the free space is not measured, or if the stores, with the retention's limits counted, stay below the free space for ten years. |
 | `requirements.growth.items` | array | yes | — |
 | `requirements.pool` | object or null | yes | The Incus pool's size: a loop file of incus_pool_size, or computed for auto (the golden images and the concurrent targets' root disks with a margin, limited by the free space where the loop file goes); null on an inference node. |
 | `requirements.pool.source` | one of `loop`, `device` | yes | — |
@@ -180,9 +180,9 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `requirements.budgets.disk` | array | yes | The disk known at install, per mount point. |
 | `requirements.budgets.disk[].mount` | string | yes | The mount point. |
 | `requirements.budgets.disk[].status` | one of `fits`, `does_not_fit`, `unknown` | yes | does_not_fit with a shortfall (unsupported); unknown when the free space could not be measured. |
-| `requirements.budgets.disk[].required_gib` | number | yes | What the install puts there, GiB. |
-| `requirements.budgets.disk[].free_gib` | number or null | yes | Its free space, GiB. |
-| `requirements.budgets.disk[].shortfall_gib` | number | yes | How much is missing, GiB. |
+| `requirements.budgets.disk[].required_gib` | number | yes | What the install puts there, GiB: to the nearest 0.01, rounded up when does_not_fit. |
+| `requirements.budgets.disk[].free_gib` | number or null | yes | Its free space, GiB: to the nearest 0.01, rounded down when does_not_fit. |
+| `requirements.budgets.disk[].shortfall_gib` | number | yes | How much is missing, GiB: rounded up to 0.01 and at least 0.01 when does_not_fit (the comparison itself is exact), else 0. |
 | `requirements.budgets.vram` | object | yes | The GPU's memory: serving and training never use it at once (the GPU arbiter). serving is null on a lab node, which serves nothing itself; training is null on a node that is not full. |
 | `requirements.budgets.vram.gpu_gib` | number or null | yes | The GPU's memory (measured), GiB; null without a usable NVIDIA GPU or where no line applies. |
 | `requirements.budgets.vram.gpu_mib` | number or null | yes | The GPU's memory as nvidia-smi reports it, MiB, unrounded (the summary prints it); null without a usable NVIDIA GPU, where nvidia-smi does not report the memory, or where no line applies. |

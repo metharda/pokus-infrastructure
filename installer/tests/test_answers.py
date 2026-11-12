@@ -56,7 +56,7 @@ def full_answers() -> Answers:
     answers.secrets.platform = {"ctl.api-token": "generate", "ctl.webhook": "provided"}
     answers.gpu_arbiter = answers_mod.GpuArbiter("idle", restore_after_training=False)
     answers.training_caps = answers_mod.TrainingCaps(3600, "8G", 4, "2G", "4G", "512M")
-    answers.images_build = ["_base", "web-nginx-flask"]
+    answers.images_build = ["base", "web-nginx-flask"]
     return answers
 
 
@@ -103,6 +103,7 @@ def test_schema_rejects_bad_structure() -> None:
             lambda d: d["remote_access"].update(close_install_path="yes"),
             "remote_access/close_install_path",
         ),
+        (lambda d: d["images"].update(build=["_base"]), "images/build"),
     ]
     for mutate, where in cases:
         broken = copy.deepcopy(data)

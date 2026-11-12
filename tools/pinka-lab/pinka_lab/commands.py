@@ -847,6 +847,10 @@ def _blueprints(config: LabConfig) -> list[dict[str, Any]]:
 def image_chain(config: LabConfig, name: str) -> list[str]:
     """A blueprint and the blueprints it starts from, base first.
 
+    The images role's rule (its filter ``pinka_image_build_order``, which a test
+    keeps equal to this one): a base blueprint the lab does not list, or bases
+    that form a cycle, are refused with the role's own messages.
+
     Args:
         config: The lab description.
         name: Blueprint name.
@@ -855,17 +859,33 @@ def image_chain(config: LabConfig, name: str) -> list[str]:
         Blueprint names in build order.
 
     Raises:
-        CommandError: If the blueprint is unknown.
+        CommandError: If the blueprint is unknown, a base blueprint in its chain
+            is not listed, or the bases form a cycle.
     """
     known = {b["name"]: b for b in _blueprints(config)}
-    chain: list[str] = []
+    if name not in known:
+        raise CommandError(f"unknown blueprint {name!r}; known: {', '.join(sorted(known))}")
+    walk: list[str] = []
     current: str | None = name
     while current is not None:
-        if current not in known:
-            raise CommandError(f"unknown blueprint {current!r}; known: {', '.join(sorted(known))}")
-        chain.insert(0, current)
-        current = known[current].get("base_blueprint")
-    return chain
+        if current in walk:
+            start = walk.index(current)
+            loop = " -> ".join([*walk[start:], current])
+            after = ", ".join(walk[:start])
+            raise CommandError(
+                "golden image blueprints whose bases form a cycle: "
+                + loop
+                + (f" (and the blueprints that start from one: {after})" if after else "")
+            )
+        walk.append(current)
+        base = known[current].get("base_blueprint") or None  # "" starts from an upstream image
+        if base is not None and base not in known:
+            raise CommandError(
+                "golden image blueprints whose base blueprint is not built in this run: "
+                f"{current} (base {base}); add the base blueprint to the list"
+            )
+        current = base
+    return list(reversed(walk))
 
 
 def images_list(system: System, config: LabConfig) -> int:

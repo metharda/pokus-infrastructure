@@ -459,28 +459,28 @@
     }
   ],
   "blueprints": {
-    "_base": {
-      "version": "1.0.0",
+    "base": {
+      "version": "1.0.1",
       "estimated_size_gib": 0.5
     },
     "docker-host": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "estimated_size_gib": 0.8
     },
     "pg-primary": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "estimated_size_gib": 0.6
     },
     "probe-client": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "estimated_size_gib": 0.6
     },
     "redis-cache": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "estimated_size_gib": 0.6
     },
     "web-nginx-flask": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "estimated_size_gib": 0.6
     }
   },
@@ -535,7 +535,7 @@
     "model": null,
     "vllm_profile": "ada-12g",
     "images": [
-      "_base",
+      "base",
       "web-nginx-flask",
       "pg-primary",
       "redis-cache",

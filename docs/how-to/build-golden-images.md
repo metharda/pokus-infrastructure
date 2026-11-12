@@ -55,7 +55,7 @@ sudo ./bootstrap/bootstrap.sh --machine <machine> --tags images
 ```
 
 `<machine>` is the name of this lab host's host_vars file. The first run
-builds `_base` and then the other blueprints, each in its own instance
+builds `base` and then the other blueprints, each in its own instance
 `build-<blueprint>` in the project `build`. A second run changes nothing.
 
 ## Change a blueprint
@@ -89,8 +89,8 @@ The failed build's instance stays in the project `build`. Open a shell in it:
 sudo incus exec --project build build-<blueprint> -- bash
 ```
 
-`<blueprint>` is the blueprint's name without underscores (`build-base` for
-`_base`). The output of the provisioning run is in
+`<blueprint>` is the blueprint's name (`build-base` for `base`). The output
+of the provisioning run is in
 `/var/lib/pinka/image-builds/<blueprint>/provision.log`. The next run deletes
 the instance and builds again.
 

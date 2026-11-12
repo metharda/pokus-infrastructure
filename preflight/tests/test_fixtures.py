@@ -13,7 +13,9 @@ import filecmp
 import importlib
 import io
 import json
+import math
 import os
+import shutil
 import tempfile
 import unittest
 from typing import Any
@@ -133,10 +135,43 @@ class FixtureTreeTest(unittest.TestCase):
         self.assertLessEqual(required, set(os.listdir(FIXTURES_DIR)))
 
 
+class DiskBoundaryTest(unittest.TestCase):
+    def test_the_boundary_fixture_sits_on_the_byte(self) -> None:
+        # ubuntu2404-disk-boundary-at holds its plan's exact need rounded up to a
+        # whole byte: it fits (its expectation), and one byte less is refused.
+        # If an estimate changes, set LOOP_RESERVE_NEED_EXACT to the new need.
+        name = "ubuntu2404-disk-boundary-at"
+        at = math.ceil(fixture_defs.LOOP_RESERVE_NEED_EXACT * fixture_defs.GIB)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, name)
+            shutil.copytree(os.path.join(FIXTURES_DIR, name), root, symlinks=True)
+            path = os.path.join(root, "commands.json")
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+            answers = [a for c, a in data["commands"].items() if c.startswith("df ")]
+            self.assertTrue(answers)
+            for answer in answers:
+                self.assertTrue(answer["stdout"].endswith(f" {at}\n"), answer["stdout"])
+                answer["stdout"] = answer["stdout"][: -len(f"{at}\n")] + f"{at - 1}\n"
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                cli.main(["--root", root, "--offline", "--quiet", *fixture_args(name)])
+        doc = json.loads(out.getvalue())
+        reasons = [r for r in doc["unsupported_reasons"] if r.startswith("disk: / ")]
+        self.assertEqual(len(reasons), 1, doc["unsupported_reasons"])
+        budget = doc["requirements"]["budgets"]["disk"]
+        self.assertEqual([(b["mount"], b["status"]) for b in budget], [("/", "does_not_fit")])
+        # The free disk minimum fails with it.
+        minimum = [m for m in doc["requirements"]["minimums"] if m["id"] == "free_disk:/"]
+        self.assertEqual([m["ok"] for m in minimum], [False])
+
+
 class FixtureDecisionTest(unittest.TestCase):
     maxDiff = None
 
-    def check(self, name: str) -> None:  # noqa: PLR0912 - one branch per expectation key
+    def check(self, name: str) -> None:  # noqa: PLR0912, PLR0915 - one branch and its statements per expectation key
         doc = run_fixture(name)
         exp = expected(name)
         simple = {
@@ -195,6 +230,16 @@ class FixtureDecisionTest(unittest.TestCase):
                 lines = doc["requirements"]["budgets"]["vram"]
                 got = {use: (lines[use] or {}).get("status") for use in value}
                 self.assertEqual(got, value, f"{name}: vram")
+            elif key == "disk":
+                self.assertEqual(
+                    {
+                        b["mount"]: b["status"]
+                        for b in doc["requirements"]["budgets"]["disk"]
+                        if b["mount"] in value
+                    },
+                    value,
+                    f"{name}: disk",
+                )
             elif key == "remediation_contains":
                 remediations = [d.get("remediation", "") for d in doc["disabled_features"]]
                 for needle in value:

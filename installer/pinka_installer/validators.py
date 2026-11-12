@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import bisect
 import hashlib
 import ipaddress
+import math
 import re
 import shutil
 import subprocess
 import urllib.parse
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,6 +43,8 @@ PROMETHEUS_SIZE_RE = re.compile(r"^(?:0|([1-9][0-9]*)(KB|MB|GB|TB|KiB|MiB|GiB|Ti
 RETENTION_DAYS = {"h": 1 / 24, "d": 1, "w": 7, "y": 365}
 CAP_FACTORS = {"K": 2**10, "M": 2**20, "G": 2**30}
 MAX_CONCURRENT_TARGETS = 40
+# Characters of a value no dropdown offers shown in its refusal.
+OFFERED_SHOWN = 40
 SERVICE_SECRET_RE = re.compile(r"^[a-z][a-z0-9]{0,9}\.[a-z][a-z0-9_-]{0,63}$")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----")
 LISTENER_RE = re.compile(r"^(tcp|udp)/([1-9][0-9]{0,4})$")
@@ -186,6 +190,31 @@ def unknown_profile(profile: object, profiles: Iterable[str]) -> str:
     )
 
 
+def offered(value: object, choices: Iterable[str]) -> str | None:
+    """A dropdown's value is one of its choices.
+
+    A host_vars file edited by hand or a resumed state can hold a value a
+    dropdown does not offer (an answers file holding one is refused when it
+    is loaded): the dropdown then starts blank and the field is refused with
+    this message until a choice is made.
+
+    Args:
+        value: The value read.
+        choices: The values the dropdown offers.
+
+    Returns:
+        The error, or None.
+    """
+    allowed = list(choices)
+    if isinstance(value, str) and value in allowed:
+        return None
+    text = str(value)
+    if not text:
+        return f"nothing is chosen: choose {', '.join(allowed)}"
+    shown = repr(text if len(text) <= OFFERED_SHOWN else text[:OFFERED_SHOWN] + "...")
+    return f"{shown} is not one of the choices ({', '.join(allowed)}): choose one"
+
+
 def hostname(value: str) -> str | None:
     """A machine name: a lower-case DNS label (it becomes the tailnet host name).
 
@@ -241,8 +270,54 @@ def absolute_path(value: str) -> str | None:
     return None
 
 
+def cpuset_ranges(value: str) -> list[tuple[int, int]]:
+    """The ranges of a cpuset list such as ``0-5,8``, without building them.
+
+    The operator's lists are only ever handled as ranges: a range of many
+    digits (``0-99999999999``) is checked and compared as fast as a short one.
+
+    Args:
+        value: The list.
+
+    Returns:
+        Each part as ``(first, last)``.
+
+    Raises:
+        ValueError: For a malformed list.
+    """
+    ranges: list[tuple[int, int]] = []
+    if not value:
+        raise ValueError("empty")
+    for part in value.split(","):
+        first, sep, last = part.partition("-")
+        if not first.isdigit() or (sep and not last.isdigit()):
+            raise ValueError(part)
+        low, high = int(first), int(last) if sep else int(first)
+        if high < low:
+            raise ValueError(part)
+        ranges.append((low, high))
+    return ranges
+
+
+def in_cpuset(cpu: int, ranges: Sequence[tuple[int, int]]) -> bool:
+    """Whether a CPU lies in one of the ranges of :func:`merged_ranges`.
+
+    Args:
+        cpu: The CPU number.
+        ranges: Disjoint ranges in ascending order (:func:`merged_ranges`).
+
+    Returns:
+        True when it does.
+    """
+    i = bisect.bisect_right(ranges, (cpu, math.inf)) - 1
+    return i >= 0 and ranges[i][0] <= cpu <= ranges[i][1]
+
+
 def parse_cpuset(value: str) -> set[int]:
-    """The CPUs of a cpuset list such as ``0-5,8``.
+    """The CPUs of a cpuset list the kernel wrote, such as ``thread_siblings_list``.
+
+    The operator's lists go through :func:`cpuset_ranges` instead, which never
+    builds a range.
 
     Args:
         value: The list.
@@ -254,15 +329,7 @@ def parse_cpuset(value: str) -> set[int]:
         ValueError: For a malformed list.
     """
     cpus: set[int] = set()
-    if not value:
-        raise ValueError("empty")
-    for part in value.split(","):
-        first, sep, last = part.partition("-")
-        if not first.isdigit() or (sep and not last.isdigit()):
-            raise ValueError(part)
-        low, high = int(first), int(last) if sep else int(first)
-        if high < low:
-            raise ValueError(part)
+    for low, high in cpuset_ranges(value):
         cpus.update(range(low, high + 1))
     return cpus
 
@@ -278,11 +345,12 @@ def cpuset(value: str, cpu_count: int | None = None) -> str | None:
         The error, or None.
     """
     try:
-        cpus = parse_cpuset(value)
+        ranges = cpuset_ranges(value)
     except ValueError:
         return "a list of CPU numbers and ranges, such as 0-5,8"
-    if cpu_count is not None and max(cpus) >= cpu_count:
-        return f"CPU {max(cpus)} does not exist (this host has CPUs 0-{cpu_count - 1})"
+    top = max(high for _low, high in ranges)
+    if cpu_count is not None and top >= cpu_count:
+        return f"CPU {top} does not exist (this host has CPUs 0-{cpu_count - 1})"
     return None
 
 
@@ -297,11 +365,24 @@ def cpusets_disjoint(services: str, targets: str) -> str | None:
         The error, or None (also None when either list is malformed; see :func:`cpuset`).
     """
     try:
-        shared = parse_cpuset(services) & parse_cpuset(targets)
+        first, second = (
+            merged_ranges(cpuset_ranges(services)),
+            merged_ranges(cpuset_ranges(targets)),
+        )
     except ValueError:
         return None
+    shared: list[tuple[int, int]] = []
+    i = j = 0
+    while i < len(first) and j < len(second):
+        low, high = max(first[i][0], second[j][0]), min(first[i][1], second[j][1])
+        if low <= high:
+            shared.append((low, high))
+        if first[i][1] < second[j][1]:
+            i += 1
+        else:
+            j += 1
     if shared:
-        return f"services and targets share CPUs {format_cpuset(shared)}"
+        return f"services and targets share CPUs {format_ranges(shared)}"
     return None
 
 
@@ -325,10 +406,16 @@ def smt_split(services: str, targets: str, cores: Iterable[Iterable[int]]) -> st
         The warning, or None (also None when either list is empty or malformed).
     """
     try:
-        s, t = parse_cpuset(services), parse_cpuset(targets)
+        s, t = merged_ranges(cpuset_ranges(services)), merged_ranges(cpuset_ranges(targets))
     except ValueError:
         return None
-    split = sorted({tuple(sorted(core)) for core in cores if s & set(core) and t & set(core)})
+    split = sorted(
+        {
+            tuple(sorted(core))
+            for core in (set(c) for c in cores)
+            if any(in_cpuset(cpu, s) for cpu in core) and any(in_cpuset(cpu, t) for cpu in core)
+        }
+    )
     if not split:
         return None
     shown = "; ".join(format_cpuset(core) for core in split[:SMT_CORES_SHOWN])
@@ -359,6 +446,38 @@ def format_cpuset(cpus: Iterable[int]) -> str:
         parts.append(str(ordered[i]) if i == j else f"{ordered[i]}-{ordered[j]}")
         i = j + 1
     return ",".join(parts)
+
+
+def merged_ranges(ranges: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Ranges of CPU numbers sorted, with overlapping and adjacent ones joined.
+
+    Args:
+        ranges: ``(first, last)`` pairs, in any order, overlapping or not.
+
+    Returns:
+        Disjoint ranges in ascending order.
+    """
+    merged: list[list[int]] = []
+    for low, high in sorted(ranges):
+        if merged and low <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], high)
+        else:
+            merged.append([low, high])
+    return [(low, high) for low, high in merged]
+
+
+def format_ranges(ranges: Iterable[tuple[int, int]]) -> str:
+    """Render ranges of CPU numbers as a cpuset list, without building them.
+
+    Args:
+        ranges: ``(first, last)`` pairs, in any order, overlapping or not.
+
+    Returns:
+        The list, such as ``0-5,8``: overlapping and adjacent ranges joined.
+    """
+    return ",".join(
+        str(low) if low == high else f"{low}-{high}" for low, high in merged_ranges(ranges)
+    )
 
 
 def size(value: str) -> str | None:

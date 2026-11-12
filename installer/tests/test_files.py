@@ -56,7 +56,7 @@ def test_host_vars_from_the_example(repo: Paths) -> None:
     assert values["platform_settings"] == {"ctl": {"job": "tunecpu"}}
     assert values["gpu_arbiter"] == {"after_boot": "idle", "restore_after_training": False}
     assert values["training_caps"]["memory_max"] == "8G"
-    assert values["images_blueprints"] == ["_base", "web-nginx-flask"]
+    assert values["images_blueprints"] == ["base", "web-nginx-flask"]
     assert "# The platform release to deploy (contract v2)" in text  # the example's comment
     assert values["expected"] == {"memory_gib": 22, "cpu_threads": 20}
     assert "tailscale_tag" not in values  # the lab mode's default applies

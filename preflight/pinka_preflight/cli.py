@@ -103,7 +103,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--output", metavar="FILE", help="write the JSON report to FILE instead of stdout"
     )
     parser.add_argument(
-        "--offline", action="store_true", help="skip network reachability checks (for testing only)"
+        "--offline",
+        action="store_true",
+        help=(
+            "skip the network reachability checks (the installer's capacity plan and Review "
+            "screen use it, after its Preflight screen ran them)"
+        ),
     )
     parser.add_argument(
         "--srv-path",

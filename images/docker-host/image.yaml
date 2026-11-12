@@ -5,9 +5,9 @@
 # service from an image preloaded by digest.
 schema_version: 1
 name: docker-host
-version: "1.0.0"
+version: "1.0.1"
 description: Docker Engine with one containerized web service on port 8080
-base: {blueprint: _base}
+base: {blueprint: base}
 type: container
 nesting: true
 # Space one build takes below /srv/pinka/images (the exported image),

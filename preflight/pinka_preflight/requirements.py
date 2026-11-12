@@ -131,6 +131,11 @@ class MountCheck:
         required_gib: The items not yet on the host.
         shortfall_gib: How much is missing (0 when it fits).
         items: The items.
+
+    The comparison is exact (bytes); the stored sizes are rounded to 0.01
+    GiB: to the nearest where the mount point fits, and where it falls short
+    the need up, the free space down and the shortfall up, at least 0.01, so
+    a stored or printed figure never shows a fit where preflight refuses.
     """
 
     mount: str
@@ -173,8 +178,9 @@ class Growth:
         free_after_install_gib: Its free space once the install's items are there.
         gib_per_day: The growth per day while every store fills.
         gib_per_week: Seven days of it.
-        days_until_full: The day the disk fills at that rate, or None if the
-            retention keeps it below the free space for ten years.
+        days_until_full: The day the disk fills at that rate, or None if
+            nothing grows, if the free space is not measured, or if the stores
+            (the retention's limits counted) stay below it for ten years.
         items: What grows.
     """
 
@@ -427,6 +433,74 @@ def text_gib(value: float) -> str:
         Such as ``5.7 GiB``.
     """
     return f"{value:.1f} GiB"
+
+
+def round_up(value: float, digits: int) -> float:
+    """Round up to ``digits`` decimals (a size that must not be understated).
+
+    Args:
+        value: The value.
+        digits: Decimals.
+
+    Returns:
+        The value rounded up, ignoring float noise below a billionth of a step
+        (far below a byte, so a shortfall of one byte still counts).
+    """
+    scale = 10.0**digits
+    return math.ceil(round(value * scale, 9)) / scale
+
+
+def round_down(value: float, digits: int) -> float:
+    """Round down to ``digits`` decimals (free space that must not be overstated).
+
+    Args:
+        value: The value.
+        digits: Decimals.
+
+    Returns:
+        The value rounded down, ignoring float noise below a billionth of a step
+        (far below a byte).
+    """
+    scale = 10.0**digits
+    return math.floor(round(value * scale, 9)) / scale
+
+
+def disk_texts(needed: float, free: float | None, shortfall: float) -> tuple[str, str, str]:
+    """A mount point's need, free space and shortfall as every disk message prints them.
+
+    One rule for the refusal, the summary and the installer's capacity plan:
+    where the mount point falls short, the need is rounded up, the free space
+    down and the shortfall up, to a tenth of a GiB; where it fits, both to the
+    nearest tenth.
+
+    Args:
+        needed: What the items not yet on the host need (GiB).
+        free: The free space (GiB), or None if not measured.
+        shortfall: How much is missing (GiB; 0 when it fits).
+
+    Returns:
+        ``(need, free, shortfall)``, such as ``("94.6 GiB", "94.5 GiB",
+        "0.1 GiB")``; the shortfall is empty when it fits, and the free space
+        ``-`` when it is not measured.
+    """
+    if shortfall <= 0:
+        return text_gib(needed), "-" if free is None else text_gib(free), ""
+    shown_free = "-" if free is None else text_gib(round_down(free, 1))
+    return text_gib(round_up(needed, 1)), shown_free, text_gib(round_up(shortfall, 1))
+
+
+def disk_size_text(size: float, short: bool) -> str:
+    """An item's size (or a group's) on a mount point, as every disk message prints it.
+
+    Args:
+        size: GiB.
+        short: Whether the mount point falls short: the size is a need then,
+            rounded up to a tenth like the total; else to the nearest tenth.
+
+    Returns:
+        Such as ``0.1 GiB`` for an image of 0.03 GiB where the space falls short.
+    """
+    return text_gib(round_up(size, 1) if short else size)
 
 
 def size_text(value: float) -> str:
@@ -1166,18 +1240,24 @@ def _pool(
 
 def _up(value: float) -> float:
     """Round up to a tenth, so that a small shortfall never reads as 0.0."""
-    return math.ceil(value * 10 - 1e-9) / 10
+    return round_up(value, 1)
 
 
 def _distribute(items: list[DiskItem], shortfall: float) -> None:
     """Mark the missing part of the items, the largest first (the one to shrink)."""
     remaining = shortfall
+    named = False
     for item in sorted(items, key=lambda i: -i.size_gib):
-        if remaining <= 0:
+        # The first item always carries the shortfall; less than half a byte
+        # left after it is float noise, not a byte, and names no other.
+        if remaining <= 0 or (named and remaining < 0.5 / GIB):
             break
         if item.present:
             continue
-        item.missing_gib = round(min(item.size_gib, remaining), 4)
+        # Rounded up and at least 0.01, so that the item carrying a shortfall of
+        # any size is named.
+        item.missing_gib = max(0.01, round_up(min(item.size_gib, remaining), 2))
+        named = True
         remaining -= item.size_gib
 
 
@@ -1209,17 +1289,24 @@ def _disks(
         if free is None:
             req.warnings.append(f"disk: the free space of {check.mount} could not be measured")
         elif needed > free:
-            check.shortfall_gib = gib(needed - free)
+            # The exact comparison decides; what is stored and printed follows it.
+            check.required_gib = round_up(needed, 2)
+            check.free_gib = round_down(free, 2)
+            check.shortfall_gib = max(0.01, round_up(needed - free, 2))
             _distribute(check.items, needed - free)
             missing = [
-                f"{i.title}: {text_gib(i.size_gib)}, missing {text_gib(_up(i.missing_gib))} on "
-                f"{check.mount}"
+                f"{i.title}: {disk_size_text(i.size_gib, True)}, "
+                f"missing {text_gib(_up(i.missing_gib))} on {check.mount}"
                 for i in check.items
                 if i.missing_gib
             ]
+            # From the stored figures: the summary and the capacity plan print these.
+            need_text, free_text, _ = disk_texts(
+                check.required_gib, check.free_gib, check.shortfall_gib
+            )
             req.unsupported.append(
-                f"disk: {check.mount} has {free:.2f} GiB free and these choices need "
-                f"{needed:.2f} GiB there: " + "; ".join(missing)
+                f"disk: {check.mount} has {free_text} free and these choices need "
+                f"{need_text} there: " + "; ".join(missing)
             )
         for item in check.items:
             item.size_gib = gib(item.size_gib)

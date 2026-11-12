@@ -47,7 +47,7 @@ Requirements
     the Incus pool (loop file): 126.0 GiB (estimated)
   disk /srv (ext4): 500.0 GiB free, 3.7 GiB needed at install
     golden images (export) (6): 3.7 GiB (estimated)
-  growth on /srv: 0.27 GiB a day, 1.89 GiB a week; not full within ten years at this rate
+  growth on /srv: 0.27 GiB a day, 1.89 GiB a week; the disk does not fill within ten years, the retention's limits counted
     Prometheus samples: 0.05 GiB a day, up to 4.5 GiB
     Loki logs: 0.1 GiB a day, up to 9 GiB
     Tempo traces: 0.05 GiB a day, up to 1.5 GiB

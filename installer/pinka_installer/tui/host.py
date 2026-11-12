@@ -27,6 +27,7 @@ from pinka_installer.paths import Paths
 COMMAND_TIMEOUT = 60
 BY_ID = Path("/dev/disk/by-id")
 STATE_FILE = Path("/etc/pinka/bootstrap-state.json")
+PROFILE_FILE = Path("/etc/pinka/host-profile.json")  # bootstrap/lib/stages.sh
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,10 @@ class Host(Protocol):
         """The machine name of the lab installed here (bootstrap state), or empty."""
         ...
 
+    def stored_profile(self) -> dict[str, Any]:
+        """The host profile the last bootstrap stored, or empty when none can be read."""
+        ...
+
     def invoking_user(self) -> str:
         """The user who ran sudo."""
         ...
@@ -290,6 +295,17 @@ class RealHost:
         except (OSError, ValueError):
             return ""
         return str(data.get("machine", "")) if isinstance(data, dict) else ""
+
+    def stored_profile(self) -> dict[str, Any]:  # noqa: D102
+        try:
+            data = json.loads(PROFILE_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        # Bootstrap stores it after its schema check; anything else counts as unreadable,
+        # as bootstrap counts it (it stops until the file is fixed or replaced).
+        if not isinstance(data, dict) or not isinstance(data.get("features", {}), dict):
+            return {}
+        return data
 
     def invoking_user(self) -> str:  # noqa: D102
         return os.environ.get("SUDO_USER", "")

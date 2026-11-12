@@ -14,12 +14,14 @@ import os
 import shlex
 import tempfile
 import unittest
-from typing import Any
+from dataclasses import asdict
+from typing import Any, cast
 
 from helpers import TempRootCase, runner
 
 from pinka_preflight import matrix, render, vram
 from pinka_preflight import requirements as reqs
+from pinka_preflight.detect.hardware import DiskInfo
 from pinka_preflight.requirements import MemoryItem
 
 GIB = 1024**3
@@ -212,10 +214,10 @@ class PoolTest(ComputeCase):
         self.assertEqual(four.pool["size_gib"], 126)  # (3.7 + 4 x 20) x 1.5, rounded up
 
     def test_the_build_instance_counts_when_larger(self) -> None:
-        req = self.compute(GPU, concurrent_targets=1, images=["_base"])
+        req = self.compute(GPU, concurrent_targets=1, images=["base"])
         # 0.5 GiB + the 16 GiB build instance (one 20 GiB target is larger).
         self.assertEqual(req.pool["size_gib"], 31)
-        alone = self.compute({**GPU, "vm_targets": False}, concurrent_targets=1, images=["_base"])
+        alone = self.compute({**GPU, "vm_targets": False}, concurrent_targets=1, images=["base"])
         self.assertEqual(alone.pool["size_gib"], 30)  # (0.5 + 16) x 1.5 = 24.75: the floor
         self.assertIn("the 16.0 GiB build instance is not larger", req.pool["detail"])
         self.assertIn(
@@ -390,7 +392,7 @@ class DiskTest(ComputeCase):
         req = self.compute(GPU, model=MODEL)
         mounts = self.mounts(req)
         root = {i.id for i in mounts["/"].items}
-        self.assertLessEqual({"pinka", "pool", "image:vllm", "golden-store:_base"}, root)
+        self.assertLessEqual({"pinka", "pool", "image:vllm", "golden-store:base"}, root)
         self.assertNotIn("image:dcgm_exporter", root)  # the nvidia_smi exporter is chosen
         self.assertNotIn("image:refplat_job", root)  # tests only
         srv = {i.id for i in mounts["/srv"].items}
@@ -413,8 +415,134 @@ class DiskTest(ComputeCase):
         self.assertEqual(self.compute(GPU, pool=pool).unsupported, [])
         self.free["/"] = needed - 0.01
         text = " ".join(self.compute(GPU, pool=pool).unsupported)
-        self.assertIn(f"/ has {needed - 0.01:.2f} GiB free", text)
+        # The free space where it falls short: rounded down to a tenth.
+        self.assertIn(f"/ has {reqs.round_down(needed - 0.01, 1):.1f} GiB free", text)
         self.assertIn("the Incus pool (loop file): 300.0 GiB, missing 0.1 GiB on /", text)
+
+    def test_a_need_just_above_a_tenth_reads_rounded_up(self) -> None:
+        # Stored and printed: the need up (10.0004 reads 10.1, never 10.0), the
+        # free space down and the shortfall up.
+        req = self.compute(GPU)
+        req.unsupported.clear()
+        item = reqs.DiskItem(
+            "model:x", "model x", "/srv/x", "", 10.0004, False, 0.0, "estimated", "a test"
+        )
+        info = DiskInfo("/srv/x", "/srv", "/srv", "ext4", 1000.0, 5.0, int(5.0049 * GIB))
+        reqs._disks([(item, "/srv/x")], cast(Any, None), cast(Any, None), req, {"/srv/x": info})
+        (srv,) = req.disks
+        self.assertEqual((srv.required_gib, srv.free_gib, srv.shortfall_gib), (10.01, 5.0, 5.0))
+        self.assertEqual(
+            req.unsupported,
+            [
+                "disk: /srv has 5.0 GiB free and these choices need 10.1 GiB there: "
+                "model x: 10.1 GiB, missing 5.0 GiB on /srv"
+            ],
+        )
+
+    def test_a_whole_gib_need_one_byte_short_reads_short_everywhere(self) -> None:
+        # Free space one byte below a need of exactly 10 GiB: no stored or printed
+        # figure shows a fit (the free space reads 9.9, never 10.0).
+        req = self.compute(GPU)
+        req.unsupported.clear()
+        item = reqs.DiskItem("model:x", "model x", "/srv/x", "", 10.0, False, 0.0, "estimated", "")
+        info = DiskInfo("/srv/x", "/srv", "/srv", "ext4", 1000.0, 10.0, 10 * GIB - 1)
+        reqs._disks([(item, "/srv/x")], cast(Any, None), cast(Any, None), req, {"/srv/x": info})
+        (srv,) = req.disks
+        self.assertEqual((srv.required_gib, srv.free_gib, srv.shortfall_gib), (10.0, 9.99, 0.01))
+        self.assertEqual(
+            req.unsupported,
+            [
+                "disk: /srv has 9.9 GiB free and these choices need 10.0 GiB there: "
+                "model x: 10.0 GiB, missing 0.1 GiB on /srv"
+            ],
+        )
+        lines = render._disk_lines(asdict(srv))
+        self.assertEqual(
+            lines[0],
+            "  disk /srv (ext4): 9.9 GiB free, 10.0 GiB needed at install, 0.1 GiB missing",
+        )
+
+    def test_a_shortfall_of_float_noise_still_reads_short_and_names_an_item(self) -> None:
+        # The exact comparison refuses a need above the free space by any amount,
+        # even float noise of a sum: the stored shortfall and the item follow it.
+        req = self.compute(GPU)
+        req.unsupported.clear()
+        a = reqs.DiskItem("model:a", "a", "/srv/a", "", 5.0, False, 0.0, "estimated", "")
+        b = reqs.DiskItem("model:b", "b", "/srv/b", "", 1e-15, False, 0.0, "estimated", "")
+        info = DiskInfo("/srv/a", "/srv", "/srv", "ext4", 1000.0, 5.0, 5 * GIB)
+        entries = [(a, "/srv/a"), (b, "/srv/b")]
+        reqs._disks(
+            entries, cast(Any, None), cast(Any, None), req, {"/srv/a": info, "/srv/b": info}
+        )
+        (srv,) = req.disks
+        self.assertEqual(srv.shortfall_gib, 0.01)
+        self.assertEqual(req.budgets()["disk"][0]["status"], "does_not_fit")
+        self.assertEqual((a.missing_gib, b.missing_gib), (0.01, 0.0))
+        self.assertEqual(len(req.unsupported), 1)
+        self.assertTrue(req.unsupported[0].endswith(": a: 5.0 GiB, missing 0.1 GiB on /srv"))
+
+    def test_item_sizes_read_rounded_up_where_the_space_falls_short(self) -> None:
+        # A 0.03 GiB image never reads 0.0 GiB beside a shortfall.
+        mount = {
+            "mount": "/",
+            "fstype": "ext4",
+            "free_gib": 1.0,
+            "required_gib": 9.03,
+            "shortfall_gib": 8.03,
+            "items": [
+                {"id": "image:a", "title": "a", "size_gib": 0.03, "present": False,
+                 "basis": "estimated"},
+                {"id": "pool", "title": "the pool", "size_gib": 9.0, "present": False,
+                 "basis": "configured"},
+            ],
+        }  # fmt: skip
+        lines = render._disk_lines(mount)
+        self.assertIn("    container images (1): 0.1 GiB (estimated)", lines)
+        self.assertIn("    the pool: 9.0 GiB (configured)", lines)
+        fits = {**mount, "free_gib": 20.0, "shortfall_gib": 0}
+        self.assertIn("    container images (1): 0.0 GiB (estimated)", render._disk_lines(fits))
+        self.assertEqual(reqs.disk_size_text(0.03, True), "0.1 GiB")
+        self.assertEqual(reqs.disk_size_text(0.03, False), "0.0 GiB")
+
+    def edge(self, pool: dict[str, Any]) -> int:
+        """The fewest whole bytes free on / that hold the plan's items there."""
+        needed = self.mounts(self.compute(GPU, pool=pool))["/"].required_gib
+
+        def fits(free: int) -> bool:
+            self.free["/"] = free / GIB  # exact: the df answer is these bytes
+            return not self.compute(GPU, pool=pool).unsupported
+
+        low, high = int((needed - 0.02) * GIB), int((needed + 0.02) * GIB)
+        self.assertFalse(fits(low))
+        self.assertTrue(fits(high))
+        while high - low > 1:
+            middle = (low + high) // 2
+            low, high = (low, middle) if fits(middle) else (middle, high)
+        return high
+
+    def test_one_byte_short_is_refused_and_shown(self) -> None:
+        pool = {"source": "loop", "size_gib": 300}
+        edge = self.edge(pool)
+        self.free["/"] = edge / GIB
+        req = self.compute(GPU, pool=pool)
+        root = self.mounts(req)["/"]
+        self.assertEqual((req.unsupported, root.shortfall_gib), ([], 0))
+        self.assertEqual(req.budgets()["disk"][0]["status"], "fits")
+        self.free["/"] = (edge - 1) / GIB
+        req = self.compute(GPU, pool=pool)
+        root = self.mounts(req)["/"]
+        # Stored: at least 0.01 short, the need up and the free space down.
+        self.assertEqual(root.shortfall_gib, 0.01)
+        assert root.free_gib is not None
+        self.assertLessEqual(root.free_gib, root.required_gib - 0.01)
+        budget = req.budgets()["disk"][0]
+        self.assertEqual((budget["mount"], budget["status"]), ("/", "does_not_fit"))
+        need, free, short = reqs.disk_texts(root.required_gib, root.free_gib, root.shortfall_gib)
+        self.assertEqual(short, "0.1 GiB")
+        text = " ".join(req.unsupported)
+        self.assertIn(f"disk: / has {free} free and these choices need {need} there: ", text)
+        self.assertIn("the Incus pool (loop file): 300.0 GiB, missing 0.1 GiB on /", text)
+        self.assertEqual(len(req.unsupported), 1)
 
     def test_the_shortfall_falls_on_the_largest_items(self) -> None:
         self.free["/srv"] = 3.0
@@ -427,7 +555,7 @@ class DiskTest(ComputeCase):
     def test_what_is_on_the_host_needs_no_space(self) -> None:
         self.put("/var/lib/incus/disks/pinka-targets.img")
         self.put(f"/srv/pinka/models/example-org/example-model/{'0' * 40}/MANIFEST.json")
-        self.mkdir("/srv/pinka/images/_base/1.0.0")
+        self.mkdir(f"/srv/pinka/images/base/{DATA['blueprints']['base']['version']}")
         vllm = DATA["images"]["vllm"]
         inspect = ["docker", "image", "inspect", "--format", "{{.Size}}"]
         self.extra = {
@@ -435,7 +563,7 @@ class DiskTest(ComputeCase):
             "which": {"docker": "/usr/bin/docker"},
         }
         items = {i.id: i for m in self.compute(GPU, model=MODEL).disks for i in m.items}
-        for key in ("pool", "model:example-model", "golden:_base", "golden-store:_base"):
+        for key in ("pool", "model:example-model", "golden:base", "golden-store:base"):
             self.assertTrue(items[key].present, key)
         self.assertFalse(items["golden:docker-host"].present)
         self.assertEqual(
@@ -507,11 +635,13 @@ class LoopReserveTest(ComputeCase):
         self.assertEqual(self.compute(GPU, pool=self.POOL).unsupported, [])
         self.free["/"] = needed - 0.01
         req = self.compute(GPU, pool=self.POOL)
+        stored = {m.mount: m for m in req.disks}["/"].required_gib  # the need, rounded up
         self.assertEqual(
             req.unsupported,
             [
-                f"disk: / has {needed - 0.01:.2f} GiB free and these choices need "
-                f"{needed:.2f} GiB there: {self.TITLE}: 50.0 GiB, missing 0.1 GiB on /"
+                f"disk: / has {reqs.round_down(needed - 0.01, 1):.1f} GiB free and these choices "
+                f"need {reqs.round_up(stored, 1):.1f} GiB there: {self.TITLE}: 50.0 GiB, "
+                "missing 0.1 GiB on /"
             ],
         )
         self.assertGreater(others, 0)  # stricter than the free space less the file alone
@@ -1083,6 +1213,57 @@ class PlanTest(unittest.TestCase):
                     runner=runner(),
                     machine="x86_64",
                 )
+
+
+class DiskTextTest(unittest.TestCase):
+    def test_rounding_ignores_float_noise(self) -> None:
+        self.assertEqual(reqs.round_up(94.60000000000001, 1), 94.6)
+        self.assertEqual(reqs.round_down(94.6 - 1e-13, 1), 94.6)
+        self.assertEqual(reqs.round_up(94.6 + 1e-13, 1), 94.6)
+        self.assertEqual(reqs.round_up(94.61, 1), 94.7)
+        self.assertEqual(reqs.round_down(94.59, 1), 94.5)
+        self.assertEqual(reqs.round_up(0.000001, 2), 0.01)
+        self.assertEqual(reqs.round_down(94.599, 2), 94.59)
+        # One byte from a tenth is a byte, not float noise.
+        self.assertEqual(reqs.round_up(10 + 1 / GIB, 1), 10.1)
+        self.assertEqual(reqs.round_down(10 - 1 / GIB, 1), 9.9)
+
+    def test_float_noise_left_after_the_items_names_no_more(self) -> None:
+        big = reqs.DiskItem("a", "a", "/a", "/", 5.0, False, 0.0, "estimated", "")
+        small = reqs.DiskItem("b", "b", "/b", "/", 3.0, False, 0.0, "estimated", "")
+        reqs._distribute([big, small], 5.0 + 1e-15)
+        self.assertEqual((big.missing_gib, small.missing_gib), (5.0, 0.0))
+        reqs._distribute([big, small], 5.0 + 1 / GIB)  # a byte more: named
+        self.assertEqual((big.missing_gib, small.missing_gib), (5.0, 0.01))
+
+    def test_where_it_fits_both_to_the_nearest_tenth(self) -> None:
+        self.assertEqual(reqs.disk_texts(94.56, 94.64, 0), ("94.6 GiB", "94.6 GiB", ""))
+        self.assertEqual(reqs.disk_texts(9.44, None, 0), ("9.4 GiB", "-", ""))
+
+    def test_where_it_falls_short_need_up_free_down_shortfall_up(self) -> None:
+        self.assertEqual(reqs.disk_texts(94.6, 94.59, 0.01), ("94.6 GiB", "94.5 GiB", "0.1 GiB"))
+        self.assertEqual(reqs.disk_texts(9.41, 3.09, 6.32), ("9.5 GiB", "3.0 GiB", "6.4 GiB"))
+        self.assertEqual(reqs.disk_texts(9.4, None, 9.4), ("9.4 GiB", "-", "9.4 GiB"))
+
+    def test_the_growth_line_names_why_no_date(self) -> None:
+        growth: dict[str, Any] = {
+            "days_until_full": 28,
+            "gib_per_day": 0.27,
+            "free_after_install_gib": 6.3,
+        }
+        self.assertEqual(render.growth_when(growth), "full in about 28 days at this rate")
+        growth["days_until_full"] = None
+        self.assertEqual(
+            render.growth_when(growth),
+            "the disk does not fill within ten years, the retention's limits counted",
+        )
+        growth["free_after_install_gib"] = None
+        self.assertEqual(
+            render.growth_when(growth),
+            "when the disk fills is not known: its free space is not measured",
+        )
+        growth["gib_per_day"] = 0
+        self.assertEqual(render.growth_when(growth), "nothing grows there")
 
 
 if __name__ == "__main__":

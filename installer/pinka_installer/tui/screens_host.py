@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.widgets import Input, Select, Static
+from textual.widgets import Input, Static
 
 from pinka_installer import validators
 from pinka_installer.tui.base import Problems, StepScreen
-from pinka_installer.tui.widgets import Field
+from pinka_installer.tui.widgets import Field, dropdown
 
 LAB_MODES = [("production", "production"), ("staging (QA: tag:pinka-qa, own vault)", "staging")]
 POWER_POLICIES = [
@@ -27,9 +27,8 @@ def _value(screen: StepScreen, selector: str) -> str:
     return screen.query_one(selector, Input).value.strip()
 
 
-def _select(screen: StepScreen, selector: str) -> str:
-    value = screen.query_one(selector, Select).value
-    return "" if value is Select.BLANK else str(value)
+def _offered(value: str, options: list[tuple[str, str]]) -> str | None:
+    return validators.offered(value, [v for _label, v in options])
 
 
 class MachineScreen(StepScreen):
@@ -47,21 +46,17 @@ class MachineScreen(StepScreen):
     def body(self) -> ComposeResult:  # noqa: D102
         machine = self.answers.machine
         yield Field("Machine name", Input(machine.name or self.ctx.machine, id="name"))
-        yield Field(
-            "Lab mode", Select(LAB_MODES, value=machine.lab_mode, allow_blank=False, id="lab_mode")
-        )
+        yield Field("Lab mode", dropdown(LAB_MODES, machine.lab_mode, "lab_mode"))
         confidence = (self.wizard.profile.get("environment") or {}).get("confidence")
         detected = self.wizard.provider or "unknown"
         if confidence == "low":
             yield Field(
                 f"Provider (detected: {detected}, low confidence)",
-                Select(PROVIDERS, value=machine.provider, allow_blank=False, id="provider"),
+                dropdown(PROVIDERS, machine.provider, "provider"),
             )
         else:
             yield Static(f"Provider: {detected} (from preflight)", classes="info")
-        power = Select(
-            POWER_POLICIES, value=machine.power_policy, allow_blank=False, id="power_policy"
-        )
+        power = dropdown(POWER_POLICIES, machine.power_policy, "power_policy")
         power.disabled = self.wizard.is_wsl
         yield Field(
             "Power policy",
@@ -102,11 +97,22 @@ class MachineScreen(StepScreen):
             problems.append(
                 ("name", "host_vars exist for this name: choose Modify, or another name")
             )
-        machine.lab_mode = _select(self, "#lab_mode")
+        machine.lab_mode = self.chosen(
+            "lab_mode", machine.lab_mode, _offered(machine.lab_mode, LAB_MODES), problems
+        )
         if self.query("#provider"):
-            machine.provider = _select(self, "#provider")
+            machine.provider = self.chosen(
+                "provider", machine.provider, _offered(machine.provider, PROVIDERS), problems
+            )
         machine.power_policy = (
-            "os_default" if self.wizard.is_wsl else _select(self, "#power_policy")
+            "os_default"
+            if self.wizard.is_wsl
+            else self.chosen(
+                "power_policy",
+                machine.power_policy,
+                _offered(machine.power_policy, POWER_POLICIES),
+                problems,
+            )
         )
         for key in ("srv_path", "docker_data_root"):
             setattr(machine, key, _value(self, f"#{key}"))

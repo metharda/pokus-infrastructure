@@ -58,22 +58,22 @@ def host(images: list[dict[str, Any]], records: dict[str, Any]) -> FakeSystem:
 
 class ProblemsTest(unittest.TestCase):
     def test_a_golden_image(self) -> None:
-        self.assertEqual(golden.problems(image("_base/1.0.0"), record()), [])
+        self.assertEqual(golden.problems(image("base/1.0.0"), record()), [])
         self.assertEqual(golden.problems({}, record()), [])
         self.assertEqual(golden.problems({}, {}), [])
 
     def test_an_alias_without_its_export(self) -> None:
         self.assertEqual(
-            golden.problems(image("_base/1.0.1"), {}),
+            golden.problems(image("base/1.0.1"), {}),
             [f"it points to {'f' * 64}, which has no export record"],
         )
         self.assertEqual(
-            golden.problems(image("_base/1.0.0"), record("e" * 64)),
+            golden.problems(image("base/1.0.0"), record("e" * 64)),
             [f"it points to {'f' * 64}, but its export recorded {'e' * 64}"],
         )
 
     def test_an_update_source_is_never_infras(self) -> None:
-        downloaded = dict(image("_base/1.0.0"), update_source={"server": "https://example.com"})
+        downloaded = dict(image("base/1.0.0"), update_source={"server": "https://example.com"})
         self.assertEqual(
             golden.problems(downloaded, record()),
             ["it has an update source (https://example.com), which infra's images never have"],
@@ -81,7 +81,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_the_properties_prove_nothing(self) -> None:
         # A client can rewrite them: bootstrap puts them back, nothing is refused.
-        changed = image("_base/1.0.0", changes={"pinka.built_at": None, "pinka.recipe_commit": "x"})
+        changed = image("base/1.0.0", changes={"pinka.built_at": None, "pinka.recipe_commit": "x"})
         self.assertEqual(golden.problems(changed, record(properties={})), [])
 
     def test_only_a_record_of_schema_2_is_read(self) -> None:
@@ -94,7 +94,7 @@ class ProblemsTest(unittest.TestCase):
             (None, "null"),
         ):
             self.assertEqual(
-                golden.problems(image("_base/1.0.0"), record(schema_version=version)),
+                golden.problems(image("base/1.0.0"), record(schema_version=version)),
                 [f"its export record has schema {shown}, not 2; build the version again"],
             )
         self.assertEqual(golden.record_problems({}), [])
@@ -103,13 +103,13 @@ class ProblemsTest(unittest.TestCase):
 
 class DriftTest(unittest.TestCase):
     def test_nothing_changed(self) -> None:
-        self.assertEqual(golden.drift(image("_base/1.0.0"), record()), {"changes": [], "body": {}})
+        self.assertEqual(golden.drift(image("base/1.0.0"), record()), {"changes": [], "body": {}})
         # The record's properties decide, not its nesting field.
-        self.assertEqual(golden.drift(image("_base/1.0.0"), record(nesting=True))["body"], {})
+        self.assertEqual(golden.drift(image("base/1.0.0"), record(nesting=True))["body"], {})
 
     def test_what_a_client_changed(self) -> None:
         changed = dict(
-            image("_base/1.0.0", changes={"pinka.built_at": None, "pinka.recipe_commit": "x"}),
+            image("base/1.0.0", changes={"pinka.built_at": None, "pinka.recipe_commit": "x"}),
             public=True,
             auto_update=True,
             profiles=["default"],
@@ -128,7 +128,7 @@ class DriftTest(unittest.TestCase):
         )
 
     def test_what_a_client_added_is_removed(self) -> None:
-        changed = image("_base/1.0.0", changes={"requirements.cgroup": "v1", "description": None})
+        changed = image("base/1.0.0", changes={"requirements.cgroup": "v1", "description": None})
         self.assertEqual(
             golden.drift(changed, record()),
             {
@@ -141,7 +141,7 @@ class DriftTest(unittest.TestCase):
         )
 
     def test_an_image_that_is_not_golden_is_not_put_back(self) -> None:
-        changed = image("_base/1.0.0", changes={"pinka.built_at": "x"})
+        changed = image("base/1.0.0", changes={"pinka.built_at": "x"})
         nothing: dict[str, Any] = {"changes": [], "body": {}}
         self.assertEqual(golden.drift(changed, {}), nothing)
         self.assertEqual(golden.drift(changed, record("e" * 64)), nothing)
@@ -151,7 +151,7 @@ class DriftTest(unittest.TestCase):
 
 class ShownTest(unittest.TestCase):
     def test_values_are_printable_and_short(self) -> None:
-        self.assertEqual(golden.shown("_base/1.0.0"), "_base/1.0.0")
+        self.assertEqual(golden.shown("base/1.0.0"), "base/1.0.0")
         self.assertEqual(golden.shown("a b"), '"a b"')
         self.assertEqual(golden.shown("\x1b[2J"), '"\\u001b[2J"')
         self.assertEqual(golden.shown(None), "null")
@@ -163,19 +163,19 @@ class ShownTest(unittest.TestCase):
 class GoldenAliasesTest(unittest.TestCase):
     def golden(self, images: list[dict[str, Any]], records: dict[str, Any]) -> dict[str, Any]:
         return golden.golden_aliases(
-            host(images, records), EXPORT, images, {"_base", "web-nginx-flask"}
+            host(images, records), EXPORT, images, {"base", "web-nginx-flask"}
         )
 
     def test_only_golden_aliases_with_their_image_and_record(self) -> None:
-        both = image("_base/1.0.0")
-        both["aliases"].append({"name": "_base/1.0.1"})
+        both = image("base/1.0.0")
+        both["aliases"].append({"name": "base/1.0.1"})
         other = image("web-nginx-flask/1.0.0", "a" * 64)
         derived = image("demo/web/1.0.0", "b" * 64)
         found = self.golden(
             [both, other, derived, image("web-nginx-flask/2.0.0", "c" * 64)],
             {
-                "_base/1.0.0": record(),
-                "_base/1.0.1": record(),
+                "base/1.0.0": record(),
+                "base/1.0.1": record(),
                 "web-nginx-flask/1.0.0": record("a" * 64),
                 "demo/web/1.0.0": record("b" * 64),
                 "web-nginx-flask/2.0.0": record("c" * 64, schema_version=1),
@@ -184,51 +184,49 @@ class GoldenAliasesTest(unittest.TestCase):
         # Both aliases of one image are golden where each version's record
         # names that image; a derived image's blueprint is not the lab's; a
         # record of schema 1 is not read.
-        self.assertEqual(sorted(found), ["_base/1.0.0", "_base/1.0.1", "web-nginx-flask/1.0.0"])
+        self.assertEqual(sorted(found), ["base/1.0.0", "base/1.0.1", "web-nginx-flask/1.0.0"])
         self.assertEqual(found["web-nginx-flask/1.0.0"], (other, record("a" * 64)))
 
     def test_a_record_that_cannot_be_read_or_is_empty_is_not_golden(self) -> None:
-        system = host([image("_base/1.0.0")], {})
-        path = f"{EXPORT}/_base/1.0.0/build.json"
+        system = host([image("base/1.0.0")], {})
+        path = f"{EXPORT}/base/1.0.0/build.json"
         system.infos[path] = info("root", "pinka-admin", 0o640)
-        self.assertEqual(
-            golden.golden_aliases(system, EXPORT, [image("_base/1.0.0")], {"_base"}), {}
-        )
+        self.assertEqual(golden.golden_aliases(system, EXPORT, [image("base/1.0.0")], {"base"}), {})
         for text in ("", "[]", "{}"):
             with self.subTest(text):
-                self.assertEqual(self.golden([image("_base/1.0.0")], {"_base/1.0.0": text}), {})
+                self.assertEqual(self.golden([image("base/1.0.0")], {"base/1.0.0": text}), {})
 
 
 class ReviewTest(unittest.TestCase):
     def review(self, images: list[dict[str, Any]], records: dict[str, Any]) -> dict[str, Any]:
         system = host(images, records)
-        found = golden.review(system, EXPORT, images, {"_base", "web-nginx-flask"})
+        found = golden.review(system, EXPORT, images, {"base", "web-nginx-flask"})
         return found
 
     def test_every_alias_of_a_blueprint(self) -> None:
-        both = image("_base/1.0.0")
-        both["aliases"].append({"name": "_base/1.0.1"})
+        both = image("base/1.0.0")
+        both["aliases"].append({"name": "base/1.0.1"})
         found = self.review(
             [both, image("personal/1"), image("web-nginx-flask/1.0.0", "a" * 64)],
-            {"_base/1.0.0": record(), "web-nginx-flask/1.0.0": record("a" * 64)},
+            {"base/1.0.0": record(), "web-nginx-flask/1.0.0": record("a" * 64)},
         )
         self.assertEqual(
             found,
             {
-                "_base/1.0.0": {"problems": [], "changes": []},
-                "_base/1.0.1": {"problems": [NO_RECORD], "changes": []},
+                "base/1.0.0": {"problems": [], "changes": []},
+                "base/1.0.1": {"problems": [NO_RECORD], "changes": []},
                 "web-nginx-flask/1.0.0": {"problems": [], "changes": []},
             },
         )
 
     def test_only_a_version_directory_has_a_record(self) -> None:
         # A record elsewhere below the export root never makes an alias golden.
-        aliases = ["_base/", "_base/..", "_base/.", "_base/../web-nginx-flask/1.0.0", "_base"]
+        aliases = ["base/", "base/..", "base/.", "base/../web-nginx-flask/1.0.0", "base"]
         records = {
-            "_base/": record(),
-            "_base/..": record(),
-            "_base/.": record(),
-            "_base/../web-nginx-flask/1.0.0": record(),
+            "base/": record(),
+            "base/..": record(),
+            "base/.": record(),
+            "base/../web-nginx-flask/1.0.0": record(),
             "web-nginx-flask/1.0.0": record(),
         }
         found = self.review([image(a) for a in aliases], records)
@@ -238,24 +236,24 @@ class ReviewTest(unittest.TestCase):
 
     def test_a_version_with_control_characters_reads_no_record(self) -> None:
         # open() refuses a NUL; neither is ever a version directory.
-        for alias in ("_base/1.0.0\x00", "_base/1.0.\x1b"):
+        for alias in ("base/1.0.0\x00", "base/1.0.\x1b"):
             found = self.review([image(alias)], {alias: record()})
             self.assertEqual(found[alias], {"problems": [NO_RECORD], "changes": []})
 
     def test_a_record_that_cannot_be_read(self) -> None:
-        system = host([image("_base/1.0.0")], {})
-        path = f"{EXPORT}/_base/1.0.0/build.json"
+        system = host([image("base/1.0.0")], {})
+        path = f"{EXPORT}/base/1.0.0/build.json"
         system.infos[path] = info("root", "pinka-admin", 0o640)
-        found = golden.review(system, EXPORT, [image("_base/1.0.0")], {"_base"})
+        found = golden.review(system, EXPORT, [image("base/1.0.0")], {"base"})
         self.assertEqual(
-            found["_base/1.0.0"],
+            found["base/1.0.0"],
             {"problems": [f"its export record {path} cannot be read"], "changes": []},
         )
 
     def test_an_unreadable_record_is_none(self) -> None:
         for text in ("{", "[]", '"x"', ""):
-            found = self.review([image("_base/1.0.0")], {"_base/1.0.0": text})
-            self.assertEqual(found["_base/1.0.0"], {"problems": [NO_RECORD], "changes": []})
+            found = self.review([image("base/1.0.0")], {"base/1.0.0": text})
+            self.assertEqual(found["base/1.0.0"], {"problems": [NO_RECORD], "changes": []})
 
 
 class DoctorCheckTest(unittest.TestCase):
@@ -267,7 +265,7 @@ class DoctorCheckTest(unittest.TestCase):
         self.assertIn("pinka images build", check.remediation)
 
     def test_golden_aliases_pass(self) -> None:
-        system = host([image("_base/1.0.0"), image("personal/1")], {"_base/1.0.0": record()})
+        system = host([image("base/1.0.0"), image("personal/1")], {"base/1.0.0": record()})
         outcome = checks.check_images_golden(context(system))
         self.assertEqual(outcome.result, "pass", outcome.detail)
         self.assertIn("1 alias(es)", outcome.detail)
@@ -277,30 +275,30 @@ class DoctorCheckTest(unittest.TestCase):
 
     def test_an_alias_created_before_its_build_fails(self) -> None:
         # A client of the shared store creates the next version's alias.
-        forged = image("_base/1.0.1", "e" * 64)
-        system = host([image("_base/1.0.0"), forged], {"_base/1.0.0": record()})
+        forged = image("base/1.0.1", "e" * 64)
+        system = host([image("base/1.0.0"), forged], {"base/1.0.0": record()})
         outcome = checks.check_images_golden(context(system))
         self.assertEqual(outcome.result, "fail")
         self.assertEqual(
-            outcome.detail, f"_base/1.0.1: it points to {'e' * 64}, which has no export record"
+            outcome.detail, f"base/1.0.1: it points to {'e' * 64}, which has no export record"
         )
 
     def test_every_problem_is_named(self) -> None:
-        source = dict(image("_base/1.0.0"), update_source={"server": "https://example.com"})
-        escaped = image("_base/\x1b[2J", "a" * 64)
-        system = host([source, escaped], {"_base/1.0.0": record()})
+        source = dict(image("base/1.0.0"), update_source={"server": "https://example.com"})
+        escaped = image("base/\x1b[2J", "a" * 64)
+        system = host([source, escaped], {"base/1.0.0": record()})
         outcome = checks.check_images_golden(context(system))
         self.assertEqual(outcome.result, "fail")
-        self.assertIn("_base/1.0.0: it has an update source (https://example.com)", outcome.detail)
-        self.assertIn('"_base/\\u001b[2J": it points to', outcome.detail)
+        self.assertIn("base/1.0.0: it has an update source (https://example.com)", outcome.detail)
+        self.assertIn('"base/\\u001b[2J": it points to', outcome.detail)
         self.assertNotIn("\x1b", outcome.detail)
         # A changed record is the warning's, never this error's.
-        changed = dict(image("_base/1.0.0", changes={"pinka.built_at": None}), public=True)
-        outcome = checks.check_images_golden(context(host([changed], {"_base/1.0.0": record()})))
+        changed = dict(image("base/1.0.0", changes={"pinka.built_at": None}), public=True)
+        outcome = checks.check_images_golden(context(host([changed], {"base/1.0.0": record()})))
         self.assertEqual(outcome.result, "pass", outcome.detail)
 
     def test_the_detail_stays_short(self) -> None:
-        many = [image(f"_base/1.0.{n}", f"{n:064x}") for n in range(25)]
+        many = [image(f"base/1.0.{n}", f"{n:064x}") for n in range(25)]
         outcome = checks.check_images_golden(context(host(many, {})))
         self.assertEqual(outcome.result, "fail")
         self.assertEqual(outcome.detail.count("which has no export record"), 10)
@@ -320,17 +318,17 @@ class DoctorCheckTest(unittest.TestCase):
         self.assertEqual(check.severity, "warning")
         self.assertIs(check.run, checks.check_images_properties)
         self.assertIn("pinka images build", check.remediation)
-        changed = dict(image("_base/1.0.0", changes={"pinka.built_at": None}), auto_update=True)
-        forged = image("_base/1.0.1", "e" * 64, changes={"pinka.built_at": "x"})
-        system = host([changed, forged, image("personal/1")], {"_base/1.0.0": record()})
+        changed = dict(image("base/1.0.0", changes={"pinka.built_at": None}), auto_update=True)
+        forged = image("base/1.0.1", "e" * 64, changes={"pinka.built_at": "x"})
+        system = host([changed, forged, image("personal/1")], {"base/1.0.0": record()})
         outcome = checks.check_images_properties(context(system))
         self.assertEqual(outcome.result, "fail")
         self.assertEqual(
             outcome.detail,
-            "_base/1.0.0: it lacks its property pinka.built_at (2026-01-01T12:00:00Z in its"
-            " export record); _base/1.0.0: its auto_update is on",
+            "base/1.0.0: it lacks its property pinka.built_at (2026-01-01T12:00:00Z in its"
+            " export record); base/1.0.0: its auto_update is on",
         )
-        system = host([image("_base/1.0.0"), forged], {"_base/1.0.0": record()})
+        system = host([image("base/1.0.0"), forged], {"base/1.0.0": record()})
         outcome = checks.check_images_properties(context(system))
         self.assertEqual(outcome.result, "pass", outcome.detail)
         self.assertIn("1 golden image alias(es)", outcome.detail)
@@ -339,8 +337,8 @@ class DoctorCheckTest(unittest.TestCase):
         self.assertEqual(skipped.result, "skip")
 
     def test_the_export_root_of_the_lab(self) -> None:
-        system = host([image("_base/1.0.0")], {})
-        system.files["/elsewhere/_base/1.0.0/build.json"] = json.dumps(record())
+        system = host([image("base/1.0.0")], {})
+        system.files["/elsewhere/base/1.0.0/build.json"] = json.dumps(record())
         outcome = checks.check_images_golden(context(system, images__export_root="/elsewhere"))
         self.assertEqual(outcome.result, "pass", outcome.detail)
 

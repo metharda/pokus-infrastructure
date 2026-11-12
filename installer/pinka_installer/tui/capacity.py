@@ -247,8 +247,10 @@ def _memory(req: Mapping[str, Any]) -> Row:
     return Row("memory", "RAM", status, _fill(recommended, total), line, items)
 
 
-def _disk_item(item: Mapping[str, Any]) -> str:
-    text = f"{item['title']}: {gib(item['size_gib'])} ({item['basis']})"
+def _disk_item(item: Mapping[str, Any], short: bool) -> str:
+    """One item: its size rounded up where the mount point falls short (a need), as preflight."""
+    size = up(item["size_gib"]) if short else item["size_gib"]
+    text = f"{item['title']}: {gib(size)} ({item['basis']})"
     if item["present"]:
         text += ", on the host already"
     elif item["missing_gib"]:
@@ -266,7 +268,7 @@ def _disks(req: Mapping[str, Any]) -> list[Row]:
             f"{_status(status, budget['shortfall_gib'])} · needs {gib(_need(status, need))}, "
             f"has {gib(_has(status, free))} free"
         )
-        items = tuple(_disk_item(i) for i in items_by_mount.get(mount, []))
+        items = tuple(_disk_item(i, _short(status)) for i in items_by_mount.get(mount, []))
         rows.append(Row(f"disk:{mount}", f"Disk {mount}", status, _fill(need, free), line, items))
     return rows
 
@@ -441,3 +443,46 @@ def waits(answer: Answer, consents: Collection[str], accepted: Collection[str]) 
         (needs_consent(profile) and not consented, "what is degraded needs your consent"),
     )
     return next((text for stops_here, text in stops if stops_here), "")
+
+
+# What bootstrap compares with the host profile the last bootstrap stored
+# (preflight's profile_tool.differences; installer/tests/test_tui_capacity.py
+# keeps the two equal).
+COMPARED_KEYS = ("outcome", "provider")
+
+
+def _shown(value: Any) -> str:  # noqa: ANN401 - a JSON value
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+
+
+def profile_changes(stored: Mapping[str, Any], new: Mapping[str, Any]) -> list[str]:
+    """How a host profile differs from the stored one, as bootstrap compares them.
+
+    Bootstrap stops (exit code 77) on any of these without ``--refresh-profile``;
+    the option also turns off the play's preflight gate's own check, which
+    compares its run with the profile bootstrap validated.
+
+    Args:
+        stored: The host profile the last bootstrap stored.
+        new: Preflight's host profile for the choices.
+
+    Returns:
+        One line per difference in outcome, provider or a feature; empty when they
+        match.
+    """
+    found = [
+        f"{key}: {_shown(stored.get(key))} -> {_shown(new.get(key))}"
+        for key in COMPARED_KEYS
+        if stored.get(key) != new.get(key)
+    ]
+    old_features = stored.get("features") or {}
+    new_features = new.get("features") or {}
+    for name in sorted(set(old_features) | set(new_features)):
+        if old_features.get(name) != new_features.get(name):
+            found.append(
+                f"features.{name}: {_shown(old_features.get(name))} -> "
+                f"{_shown(new_features.get(name))}"
+            )
+    return found
