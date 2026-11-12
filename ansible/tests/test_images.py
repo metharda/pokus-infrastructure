@@ -101,29 +101,29 @@ def test_blueprint_matches_its_schema(name: str) -> None:
     assert spec(name)["name"] == name
 
 
-# Incus's rule for an image alias name, as Incus 6.0.6 applies it (the version
-# the lock pins; tag v6.0.6, commit 5231e7a1beca905d57208b441040f9ebdc6a2c6f):
+# Incus's rule for an image alias name, as Incus 6.0.7 applies it (the version
+# the lock pins; tag v6.0.7, commit 7678ccc46b2d0b8092b2b9419ab6255e3ca98f00):
 # validate.IsAPIName(name, true), shared/validate/validate.go lines 562-599.
 # The daemon applies it to a new alias in imageAliasesPost
-# (cmd/incusd/images.go line 3491) and to a renamed one in imageAliasPost
-# (line 4103). `incus publish --alias` (cmd/incus/publish.go line 334) and
+# (cmd/incusd/images.go line 3509) and to a renamed one in imageAliasPost
+# (line 4121). `incus publish --alias` (cmd/incus/publish.go line 334) and
 # `incus image import --alias` (cmd/incus/image.go line 932), the two commands
 # the images role names an alias with, create it through ensureImageAliases
 # (cmd/incus/utils.go lines 164-202), whose CreateImageAlias posts it to
-# /1.0/images/aliases (client/incus_images.go lines 1036-1044), that is to
+# /1.0/images/aliases (client/incus_images.go lines 1038-1046), that is to
 # imageAliasesPost.
-INCUS_RULE_VERSION = "6.0.6"
+INCUS_RULE_VERSION = "6.0.7"
 # unicode.IsSpace (Go): the Latin-1 white space, then Unicode's White_Space.
 GO_SPACE = frozenset(
     "\t\n\v\f\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
     "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 )
 INCUS_RESERVED = ("$", "?", "&", "+", '"', "'", "`", "*")
-INCUS_ENDS = re.compile(r"[a-zA-Z0-9]+.*[a-zA-Z0-9]+")
+INCUS_ENDS = re.compile(r"[a-zA-Z0-9]+(.*[a-zA-Z0-9]+)?")
 
 
 def incus_api_name_error(value: str, allow_slashes: bool) -> str | None:
-    """Incus 6.0.6's IsAPIName: the error it returns for VALUE, or None."""
+    """Incus 6.0.7's IsAPIName: the error it returns for VALUE, or None."""
     if len(value.encode("utf-8")) > 64:  # Go's len() counts bytes
         return "Maximum name length is 64 characters"
     if any(c in GO_SPACE for c in value):
@@ -149,7 +149,8 @@ def incus_api_name_error(value: str, allow_slashes: bool) -> str | None:
         ("a" * 64, None),
         ("_base/1.0.0", "Names must start and end with an alphanumeric character"),
         ("base-", "Names must start and end with an alphanumeric character"),
-        ("a", "Names must start and end with an alphanumeric character"),
+        ("a", None),
+        ("-a", "Names must start and end with an alphanumeric character"),
         ("", "Names must start and end with an alphanumeric character"),
         ("\xe9/1", "Names must start and end with an alphanumeric character"),
         ("a\nb", "Name cannot contain white space"),
@@ -235,13 +236,13 @@ def test_the_blueprint_s_alias_passes_incus_s_name_rule(name: str) -> None:
     assert incus_api_name_error(alias, True) is None, alias
 
 
-# Incus's rule for an instance name, as Incus 6.0.6 applies it (the version above;
-# tag v6.0.6, commit 5231e7a1beca905d57208b441040f9ebdc6a2c6f):
+# Incus's rule for an instance name, as Incus 6.0.7 applies it (the version above;
+# tag v6.0.7, commit 7678ccc46b2d0b8092b2b9419ab6255e3ca98f00):
 # instance.ValidName(name, false), internal/server/instance/instance_utils.go
-# lines 669-692: the snapshot delimiter "/" (internal/instance/snapshot.go line 8)
-# is refused, then validate.IsHostname, shared/validate/validate.go lines 792-823.
+# lines 669-693: the snapshot delimiter "/" (internal/instance/snapshot.go line 8)
+# is refused, then validate.IsHostname, shared/validate/validate.go lines 810-841.
 # The daemon applies it to a new instance in instancesPost
-# (cmd/incusd/instances_post.go line 1234; the handler of POST /1.0/instances,
+# (cmd/incusd/instances_post.go line 1359; the handler of POST /1.0/instances,
 # cmd/incusd/instances.go lines 34-39) and again in CreateInternal
 # (instance_utils.go line 749). `incus launch <fingerprint> <name>`, the command
 # the images role creates the build instance with (build.yml), creates it in
@@ -253,7 +254,7 @@ HOSTNAME_CHARS = re.compile(r"[\-a-zA-Z0-9]+")  # Go's ^[\-a-zA-Z0-9]+$ on the w
 
 
 def incus_instance_name_error(name: str) -> str | None:
-    """Incus 6.0.6's ValidName(name, false): the error it returns for NAME, or None."""
+    """Incus 6.0.7's ValidName(name, false): the error it returns for NAME, or None."""
     if "/" in name:
         return 'The character "/" is reserved for snapshots'  # Go's %q of "/"
     # IsHostname's checks in their order, each run only when the ones before passed.
@@ -782,7 +783,7 @@ def test_helper_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert json.loads(capsys.readouterr().out)["ok"] is False
 
 
-# metadata.yaml in the form Incus 6.0.6 writes it at publication
+# metadata.yaml in the form Incus 6.0.7 writes it at publication
 # (gopkg.in/yaml.v2, internal/server/instance/drivers/driver_lxc.go, Export).
 # The reader takes every scalar as its text, so a value YAML would read as a
 # timestamp or a number is a string whether it is quoted (the all-digit

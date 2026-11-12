@@ -20,7 +20,7 @@ else ufw if active, else nftables):
 | `ufw` | `allow in on tailscale0` rules; DHCP and DNS from `r-+`; allow and route rules for the build and personal bridges; ufw's defaults untouched |
 
 The Incus bridge rules follow Incus's firewall guide
-(`doc/howto/network_bridge_firewalld.md`, Incus 6.0.6). Run networks are
+(`doc/howto/network_bridge_firewalld.md`, Incus 6.0.7). Run networks are
 created at run time and matched with interface wildcards (`r-*` in nftables,
 `r-+` in firewalld and ufw).
 

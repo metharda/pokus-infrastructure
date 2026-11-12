@@ -325,7 +325,7 @@ generate: setup ## Regenerate generated files (matrix JSON, pins, reference page
 	$(BIN)/python preflight/tests/fixture_defs.py --write
 
 .PHONY: lock-check
-lock-check: setup ## Verify versions.lock.yml: schema, no unverified markers, digests, checksums, key fingerprints (network)
+lock-check: setup ## Verify versions.lock.yml: schema, no unverified markers, digests, checksums, key fingerprints, apt package pins in their signed indexes (network)
 	$(LOCKCHECK) check
 
 .PHONY: lock-check-markers

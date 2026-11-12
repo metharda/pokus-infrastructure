@@ -4,7 +4,8 @@
   (``make lint``; no network).
 * ``check``: the lock check (``make lock-check``): schema, remaining markers,
   and, unless ``--offline``, every container digest, binary checksum,
-  repository key fingerprint, base image and NVIDIA GPU list over the network;
+  repository key fingerprint, base image, NVIDIA GPU list and apt package pin
+  (still in its signed index) over the network;
   ``--skip-markers`` leaves the markers to ``markers`` (CI's lock-check job),
   ``--summary FILE`` appends the warnings to a Markdown file (the job summary).
 * ``markers --allowed FILE``: the lines of the lock with an unverified marker,
@@ -34,10 +35,13 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from pinka_lockcheck import bundle, checks, devsetup, net
 
-CATEGORIES = ("containers", "binaries", "keys", "images", "gpus")
+CATEGORIES = ("containers", "binaries", "keys", "images", "gpus", "packages")
 # Files that discuss the marker or mirror the lock file, and tests that use it as data.
 TODO_EXCLUDES = (
     "docs/how-to/update-versions.md",
@@ -67,6 +71,18 @@ def _validate(pairs: Sequence[str]) -> int:
         print(f"schema: {file_name}: {len(findings)} error(s)", file=sys.stderr)
         failed += bool(findings)
     return 1 if failed else 0
+
+
+def _package_findings(doc: dict[str, Any], root: Path) -> list[checks.Finding]:
+    """Every apt package pin of the lock in its index, with the tree's sources."""
+    sources = root / "ansible" / "component-sources.yml"
+    facts = root / "ansible" / "roles" / "platform_facts" / "vars" / "debian.yml"
+    try:
+        codenames = checks.apt_codenames(yaml.safe_load(facts.read_text(encoding="utf-8")))
+        layout = yaml.safe_load(sources.read_text(encoding="utf-8"))
+    except (OSError, KeyError, TypeError, yaml.YAMLError) as exc:
+        return [checks.Finding(checks.ERROR, "packages", f"cannot read the sources: {exc}")]
+    return checks.package_findings(doc, layout, codenames)
 
 
 def _check(
@@ -101,6 +117,8 @@ def _check(
             findings += checks.base_image_findings(doc)
         if "gpus" in only:
             findings += checks.gpu_list_findings(doc)
+        if "packages" in only:
+            findings += _package_findings(doc, lock.parent)
     for finding in findings:
         print(finding)
     errors = sum(f.severity == checks.ERROR for f in findings)

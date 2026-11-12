@@ -20,7 +20,7 @@ CONTRACT = contract_mod.load()
 INFRA = Path(__file__).resolve().parents[3]
 INCUS_ROLE = INFRA / "ansible" / "roles" / "incus"
 PEM = "-----BEGIN CERTIFICATE-----\nAAECAwQ=\n-----END CERTIFICATE-----\n"
-# What Incus 6.0.6 prints, written out here rather than taken from the module:
+# What Incus 6.0.7 prints, written out here rather than taken from the module:
 # a trusted certificate restricted to other projects (internal/server/auth/
 # driver_tls.go, CheckPermission), and an alias that exists (cmd/incusd/
 # images.go, imageAliasesPost).
@@ -49,7 +49,7 @@ def good_report() -> dict[str, Any]:
             },
         },
         "left": [],
-        "server_version": "6.0.6",
+        "server_version": "6.0.7",
     }
 
 
@@ -188,7 +188,7 @@ def described(tar: str) -> str:
 
 
 class FakeStore:
-    """The incus CLI on a store with features.images false, as 6.0.6 answers.
+    """The incus CLI on a store with features.images false, as 6.0.7 answers.
 
     The client may create images and aliases and rewrite an image's record
     through a new image request; everything else on the store is refused.
@@ -238,7 +238,7 @@ class FakeStore:
             (conf / "client.crt").write_text(PEM)
             return self.done(args)
         if args[:2] == ["query", "/1.0"]:
-            return self.done(args, out=json.dumps({"environment": {"server_version": "6.0.6"}}))
+            return self.done(args, out=json.dumps({"environment": {"server_version": "6.0.7"}}))
         if args[:2] == ["config", "trust"]:
             return self.trust_command(args)
         if args[:2] == ["image", "list"]:
@@ -267,7 +267,7 @@ class FakeStore:
             self.images[args[4]]["aliases"].append(name)
             return self.done(args)
         if args[:2] == ["query", "--wait"] and "POST" in args:
-            # As 6.0.6: the record is rewritten, then the request fails on the
+            # As 6.0.7: the record is rewritten, then the request fails on the
             # image's own aliases (cmd/incusd/images.go, imagesPost).
             body = json.loads(args[args.index("-d") + 1])
             image = self.images[body["source"]["fingerprint"]]
@@ -310,7 +310,7 @@ def test_the_image_store_check(tmp_path: Path) -> None:
     store = FakeStore()
     report = check(tmp_path, store)
     assert imagestore.compare(report, "build") == []
-    assert report["server_version"] == "6.0.6"
+    assert report["server_version"] == "6.0.7"
     client = [a for a, conf in store.calls if conf is not None]
     root = [a for a, conf in store.calls if conf is None]
     # The client works in the project: the configuration's, its flag or the

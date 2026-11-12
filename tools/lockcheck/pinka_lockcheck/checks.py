@@ -17,6 +17,9 @@
 * ``gpu_list_findings``: every pinned GPU list's package downloads with its
   sha256, and the list recomputed from it equals the pinned one; a package
   that has left the archive is a warning (the pin stays valid by its sha256).
+* ``package_findings``: every package version of an apt release is still in
+  the index apt installs it from (:mod:`pinka_lockcheck.aptindex`); one that
+  has left it is an error, since apt cannot install it.
 
 Network functions are parameters, so the tests run without a network.
 """
@@ -39,7 +42,7 @@ from typing import Any, BinaryIO
 import jsonschema
 import yaml
 
-from pinka_lockcheck import net, nvidia_gpus, openpgp, retry
+from pinka_lockcheck import aptindex, net, nvidia_gpus, openpgp, retry
 
 MARKER = "TODO(verify)"
 MARKER_RE = re.compile(r"TODO\(verify\)|<verify>")
@@ -682,4 +685,244 @@ def gpu_list_findings(
             )
             continue
         findings += [Finding(ERROR, where, problem) for problem in problems]
+    return findings
+
+
+# --- package pins in their indexes ---------------------------------------------------------------
+
+# The lock's package versions are the x86_64 builds (it pins one version per
+# release), so their indexes are read for amd64.
+APT_ARCH = "amd64"
+
+
+@dataclass(frozen=True)
+class DistroArchive:
+    """A distribution's own archive, for a component that comes from the distribution.
+
+    Attributes:
+        uri: The archive's URI.
+        suites: The suites searched, in order (``{codename}`` is replaced).
+        components: The components searched in each suite, in order.
+        keyring: The archive's keyring on the machine (binary).
+    """
+
+    uri: str
+    suites: tuple[str, ...]
+    components: tuple[str, ...]
+    keyring: str
+
+
+DISTRO_ARCHIVES = {
+    "ubuntu": DistroArchive(
+        "https://archive.ubuntu.com/ubuntu",
+        ("{codename}-updates", "{codename}-security", "{codename}"),
+        ("main", "restricted", "universe", "multiverse"),
+        "/usr/share/keyrings/ubuntu-archive-keyring.gpg",
+    ),
+}
+
+
+def apt_codenames(platform_facts_vars: Mapping[str, Any]) -> dict[str, str]:
+    """The lock's apt release keys and their codenames (``ubuntu-24.04`` -> ``noble``).
+
+    Args:
+        platform_facts_vars: ``ansible/roles/platform_facts/vars/debian.yml``.
+
+    Returns:
+        Release key -> codename.
+    """
+    table = platform_facts_vars["platform_facts_family"]["codenames"]
+    return {f"{v['distro']}-{v['version']}": str(name) for name, v in table.items()}
+
+
+def _read_bytes(path: str) -> bytes:
+    return Path(path).read_bytes()
+
+
+@dataclass
+class _Indexes:
+    """Reads release files, keys and indexes once each, every download tried again."""
+
+    doc: Mapping[str, Any]
+    fetch: Fetcher
+    verify: Callable[[bytes, bytes], str]
+    read_file: Callable[[str], bytes]
+    policy: retry.Policy
+    keyrings: dict[str, bytes]
+    releases: dict[tuple[str, bytes], str]
+    indexes: dict[tuple[str, str, bytes], aptindex.Index]
+
+    def download(self, url: str) -> bytes:
+        return self.policy.run(functools.partial(self.fetch, url), f"download {url}")
+
+    def vendor_keyring(self, name: str) -> bytes:
+        """The pinned vendor key, downloaded and its fingerprint checked."""
+        if name not in self.keyrings:
+            entry = self.doc["repository_keys"]["keys"][name]
+            url = entry["urls"][0]
+            data = self.download(url)
+            found = openpgp.primary_fingerprints(data)
+            if found != [entry["fingerprint"]]:
+                raise aptindex.AptIndexError(
+                    f"{url} has primary key(s) {', '.join(found)}, pinned {entry['fingerprint']}"
+                )
+            self.keyrings[name] = openpgp.key_bytes(data)
+        return self.keyrings[name]
+
+    def file_keyring(self, path: str) -> bytes:
+        """A keyring of the machine (a distribution's archive key)."""
+        if path not in self.keyrings:
+            try:
+                self.keyrings[path] = self.read_file(path)
+            except OSError as exc:
+                raise aptindex.AptIndexError(
+                    f"the archive keyring {path} cannot be read ({exc}); install it"
+                    " (Ubuntu's package ubuntu-keyring)"
+                ) from exc
+        return self.keyrings[path]
+
+    def index(self, keyring: bytes, repository: aptindex.Repository) -> aptindex.Index:
+        """One package index, its release file's signature and its hash checked.
+
+        Both are kept per keyring too, so a release file is never trusted on
+        another key's check.
+        """
+        release = (repository.base, keyring)
+        if release not in self.releases:
+            self.releases[release] = aptindex.read_release(
+                self.download, self.verify, keyring, repository.base
+            )
+        key = (repository.base, repository.prefix, keyring)
+        if key not in self.indexes:
+            self.indexes[key] = aptindex.read_index(
+                self.download, self.releases[release], repository
+            )
+        return self.indexes[key]
+
+
+def _candidates(
+    reader: _Indexes, sources: Mapping[str, Any], component: str, release: str, codename: str
+) -> Iterator[aptindex.Index]:
+    """The indexes a release's component is installed from, read one by one."""
+    group, _, version = release.partition("-")
+    entries = sources["components"].get(component) or {}
+    entry = entries.get(group) or entries.get("default") or {}
+    if entry.get("source") == "vendor_repo":
+        repo = sources["repositories"][entry["repo"]]
+        if repo.get("type") != "apt":
+            raise aptindex.AptIndexError(f"repository {entry['repo']} is not an apt repository")
+        values = {
+            "distro": group,
+            "codename": codename,
+            "major": version.split(".")[0],
+            "deb_arch": APT_ARCH,
+        }
+        keyring = reader.vendor_keyring(str(repo["key"]))
+        for part in repo.get("components") or [""]:
+            repository = aptindex.Repository.of(
+                str(repo["uri"]).format(**values),
+                str(repo["suite"]).format(**values),
+                str(part),
+                APT_ARCH,
+            )
+            yield reader.index(keyring, repository)
+        return
+    archive = DISTRO_ARCHIVES.get(group)
+    if entry.get("source") == "distro" and archive is not None:
+        keyring = reader.file_keyring(archive.keyring)
+        for suite in archive.suites:
+            for part in archive.components:
+                yield reader.index(
+                    keyring,
+                    aptindex.Repository.of(
+                        archive.uri, suite.format(codename=codename), part, APT_ARCH
+                    ),
+                )
+        return
+    raise aptindex.AptIndexError(
+        f"no package index is known for source {entry.get('source')!r} on {release}"
+        " (ansible/component-sources.yml)"
+    )
+
+
+def package_findings(
+    doc: Mapping[str, Any],
+    sources: Mapping[str, Any],
+    codenames: Mapping[str, str],
+    *,
+    fetch: Fetcher = net.download,
+    verify: Callable[[bytes, bytes], str] = aptindex.verify_signature,
+    read_file: Callable[[str], bytes] = _read_bytes,
+    policy: retry.Policy = retry.DEFAULT,
+) -> list[Finding]:
+    """Check that every verified apt package pin is still in its signed index.
+
+    apt installs only versions an index lists, and some repositories list only
+    their newest builds (Zabbly) or the newest version of a pocket (Ubuntu's
+    archive), so a pin can stop being installable without changing. For every
+    apt release of the lock (a codename of the Debian family's
+    ``platform_facts``), each verified package version is looked up in the
+    index ``ansible/component-sources.yml`` installs it from: a vendor
+    repository's, read through its release file signed with the pinned key, or
+    the distribution's own archive (every suite and component, through the
+    archive keyring of the machine). A download is tried again after a
+    transport error.
+
+    Args:
+        doc: Lock document.
+        sources: ``ansible/component-sources.yml``.
+        codenames: Release key -> codename (:func:`apt_codenames`).
+        fetch: ``url -> content``.
+        verify: ``(keyring, signed) -> signed text``, raising on a bad signature.
+        read_file: ``path -> content`` of a keyring on the machine.
+        policy: How often to try a download.
+
+    Returns:
+        One error per package version no index lists, naming the pin and the
+        indexes read, and one per pin whose indexes cannot be read or trusted.
+    """
+    reader = _Indexes(doc, fetch, verify, read_file, policy, {}, {}, {})
+    findings: list[Finding] = []
+    for component, releases in doc["packages"].items():
+        if not isinstance(releases, Mapping):
+            continue
+        for release, pin in releases.items():
+            codename = codenames.get(str(release))
+            if codename is None or not isinstance(pin, Mapping):
+                continue
+            wanted = {str(p): str(v) for p, v in pin.items() if _verified(v)}
+            if not wanted:
+                continue
+            where = f"packages.{component}.{release}"
+            read: list[str] = []
+            try:
+                for index in _candidates(reader, sources, str(component), str(release), codename):
+                    read.append(index.url)
+                    wanted = {
+                        p: v for p, v in wanted.items() if v not in index.versions.get(p, set())
+                    }
+                    if not wanted:
+                        break
+            except (aptindex.AptIndexError, net.FetchError, openpgp.OpenPGPError) as exc:
+                findings.append(Finding(ERROR, where, f"cannot check the pin: {exc}"))
+                continue
+            except (KeyError, IndexError, ValueError, TypeError, AttributeError) as exc:
+                # The lock or component-sources.yml lacks what the lookup needs
+                # (a key, a repository, a placeholder's value) or has another shape.
+                findings.append(
+                    Finding(ERROR, where, f"cannot check the pin: {type(exc).__name__}: {exc}")
+                )
+                continue
+            absent = (
+                f"is not in {read[0]}" if len(read) == 1 else f"is in none of {', '.join(read)}"
+            )
+            for package, version in wanted.items():
+                findings.append(
+                    Finding(
+                        ERROR,
+                        where,
+                        f"{package} {version} {absent}, so apt cannot install it;"
+                        " renew the pin (docs/how-to/update-versions.md)",
+                    )
+                )
     return findings

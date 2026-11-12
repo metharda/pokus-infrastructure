@@ -15,10 +15,10 @@ before it is committed. It covers:
 * the package versions of Incus (Zabbly) and Tailscale for every apt release
   of the lock, with the repository layout of
   ``ansible/component-sources.yml``: the release file (``InRelease``) must
-  carry a valid signature of that key (checked with ``gpgv``), name the
-  components the layout uses and list the package index whose sha256 it
-  states; the newest version of every package the component installs is
-  read from that index, for x86_64 and aarch64;
+  carry a valid signature of that key (checked with ``gpgv``; only the text
+  gpgv verified is read), name the components the layout uses and list the
+  package index whose sha256 it states; the newest version of every package
+  the component installs is read from that index, for x86_64 and aarch64;
 * the DCGM exporter image: the newest release tag on nvcr.io, cross-checked
   with the release's own ``hack/versions.env`` on GitHub, and its index
   digest and platforms;
@@ -55,7 +55,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import textwrap
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -64,7 +63,7 @@ from typing import Any
 
 import yaml
 
-from pinka_lockcheck import checks, net, nvidia_gpus, openpgp
+from pinka_lockcheck import aptindex, checks, net, nvidia_gpus, openpgp
 
 # The components and repository keys this tool pins.
 COMPONENTS = ("incus", "tailscale")
@@ -137,22 +136,11 @@ def _keyscan(host: str) -> str | None:
     return done.stdout if done.returncode == 0 and done.stdout.strip() else None
 
 
-def _gpgv(keyring: bytes, signed: bytes) -> None:
-    command = shutil.which("gpgv")
-    if command is None:
-        raise PinError("gpgv is not installed (Debian and Ubuntu package gpgv)")
-    with tempfile.TemporaryDirectory() as tmp:
-        ring = Path(tmp, "keyring.gpg")
-        ring.write_bytes(keyring)
-        done = subprocess.run(  # noqa: S603 - fixed arguments
-            [command, "--keyring", str(ring), "-"],
-            input=signed,
-            capture_output=True,
-            check=False,
-        )
-    if done.returncode != 0:
-        detail = done.stderr.decode(errors="replace").strip().splitlines()
-        raise PinError(f"the signature does not verify with the key: {' / '.join(detail)}")
+def _gpgv(keyring: bytes, signed: bytes) -> str:
+    try:
+        return aptindex.verify_signature(keyring, signed)
+    except aptindex.AptIndexError as exc:
+        raise PinError(str(exc)) from exc
 
 
 def _read_file(path: str) -> bytes:
@@ -169,7 +157,8 @@ class Network:
         registry_json: ``(image, path) -> (headers, JSON)`` from a registry's v2 API
             (header names in lower case).
         keyscan: ``host -> ssh-keyscan output``, or None when it cannot run.
-        gpgv: ``(keyring, signed) -> None``; raises :class:`PinError` on a bad signature.
+        gpgv: ``(keyring, signed) -> signed text``, the text gpgv verified (its
+            output); raises :class:`PinError` on a bad signature.
         read_file: ``path -> content`` of a local file (the Ubuntu archive keyring).
         extract: ``(deb, path) -> content`` of a file inside a Debian package.
     """
@@ -178,7 +167,7 @@ class Network:
     hash_into: Callable[[str, Any], None] = _hash_into
     registry_json: Callable[[str, str], tuple[Mapping[str, str], Any]] = net.registry_json
     keyscan: Callable[[str], str | None] = _keyscan
-    gpgv: Callable[[bytes, bytes], None] = _gpgv
+    gpgv: Callable[[bytes, bytes], str] = _gpgv
     read_file: Callable[[str], bytes] = _read_file
     extract: Callable[[bytes, str], bytes] = nvidia_gpus.extract_member
 
@@ -343,18 +332,7 @@ def _codenames(platform_facts_vars: Mapping[str, Any]) -> dict[str, str]:
     return {f"{v['distro']}-{v['version']}": name for name, v in table.items()}
 
 
-def _paragraphs(text: str) -> Iterable[dict[str, str]]:
-    for block in re.split(r"\n\s*\n", text):
-        fields: dict[str, str] = {}
-        key = ""
-        for line in block.splitlines():
-            if line.startswith((" ", "\t")) and key:
-                fields[key] += "\n" + line.strip()
-            elif ":" in line:
-                key, _, value = line.partition(":")
-                fields[key] = value.strip()
-        if fields:
-            yield fields
+_paragraphs = aptindex.paragraphs
 
 
 def _release_sha256(release: str, path: str) -> str | None:
@@ -364,12 +342,6 @@ def _release_sha256(release: str, path: str) -> str | None:
             if len(parts) == 3 and parts[2] == path:  # noqa: PLR2004 - sha256 size path
                 return parts[0]
     return None
-
-
-def _signed_text(signed: bytes) -> str:
-    text = signed.decode("utf-8")
-    body = text.split("\n\n", 1)[1] if text.startswith("-----BEGIN PGP SIGNED") else text
-    return body.split("\n-----BEGIN PGP SIGNATURE-----", 1)[0]
 
 
 @dataclass(frozen=True)
@@ -411,10 +383,9 @@ def pin_packages(network: Network, source: AptSource, codename: str, key: KeyPin
     base = f"{uri}/dists/{suite}"
     signed = network.download(f"{base}/InRelease")
     try:
-        network.gpgv(key.keyring, signed)
+        release_text = network.gpgv(key.keyring, signed)
     except PinError as exc:
         raise PinError(f"{base}/InRelease: {exc}") from exc
-    release_text = _signed_text(signed)
     head = next(iter(_paragraphs(release_text)), {})
     components = head.get("Components", "").split()
     arches = head.get("Architectures", "").split()
@@ -754,10 +725,9 @@ def _ubuntu_restricted(network: Network, codename: str) -> tuple[str, list[dict[
     except OSError as exc:
         raise PinError(f"the Ubuntu archive keyring is missing ({exc}); run on Ubuntu") from exc
     try:
-        network.gpgv(keyring, signed)
+        release_text = network.gpgv(keyring, signed)
     except PinError as exc:
         raise PinError(f"{base}/InRelease: {exc}") from exc
-    release_text = _signed_text(signed)
     for name, opener in (("Packages.xz", lzma.decompress), ("Packages.gz", gzip.decompress)):
         path = f"restricted/binary-amd64/{name}"
         expected = _release_sha256(release_text, path)

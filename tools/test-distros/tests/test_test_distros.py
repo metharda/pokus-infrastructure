@@ -203,7 +203,7 @@ def store_report(**changes: Any) -> dict[str, Any]:
         "aliases": [*golden, f"{imagestore.ALIAS}/1.0.1"],
         "golden": {"aliases": golden, "properties": properties},
         "left": [],
-        "server_version": "6.0.6",
+        "server_version": "6.0.7",
         **changes,
     }
 

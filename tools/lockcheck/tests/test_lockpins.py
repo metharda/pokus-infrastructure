@@ -292,9 +292,13 @@ class World:
     def network(self) -> lockpins.Network:
         trusted = {ZABBLY, TAILSCALE, UBUNTU}
 
-        def gpgv(keyring: bytes, signed: bytes) -> None:
+        def gpgv(keyring: bytes, signed: bytes) -> str:
             if keyring not in trusted or b"tampered" in signed:
                 raise lockpins.PinError("BAD signature")
+            # As gpgv: the signed block wherever it is, its text alone as the output.
+            block = signed.decode().split("-----BEGIN PGP SIGNED MESSAGE-----\n", 1)[1]
+            body = block.split("\n\n", 1)[1]
+            return body.split("\n-----BEGIN PGP SIGNATURE-----", 1)[0] + "\n"
 
         def read_file(path: str) -> bytes:
             assert path == lockpins.UBUNTU_KEYRING
@@ -417,6 +421,7 @@ def test_the_newest_version_of_each_architecture_is_read_from_the_signed_index()
         ("index", "InRelease says"),
         ("component", "names no component 'main'"),
         ("package", "has no package incus"),
+        ("injected", "InRelease says"),
     ],
 )
 def test_a_repository_that_does_not_check_out_is_refused(change: str, message: str) -> None:
@@ -432,6 +437,18 @@ def test_a_repository_that_does_not_check_out_is_refused(change: str, message: s
             for p in ("main/binary-amd64/Packages.gz", "main/binary-arm64/Packages.gz")
         }
         world.files[f"{base}/InRelease"] = in_release(files, components="contrib")
+    elif change == "injected":
+        # Unsigned text before the signed block, with a hash of its own for
+        # another index: what gpgv verified decides, so the index is refused.
+        evil = packages_index({"incus": ["9:evil"]})
+        world.files[f"{base}/main/binary-amd64/Packages.gz"] = evil
+        world.files[f"{base}/InRelease"] = (
+            in_release({"main/binary-amd64/Packages.gz": evil}).split(b"-----BEGIN PGP SIGNED")[0]
+            + b"Components: main\nSHA256:\n "
+            + hashlib.sha256(evil).hexdigest().encode()
+            + b" 1 main/binary-amd64/Packages.gz\n\n"
+            + world.files[f"{base}/InRelease"]
+        )
     else:
         world.files.update(apt_repo(base, {a: {"other": ["1"]} for a in ("amd64", "arm64")}))
     key = lockpins.pin_key(world.network(), "zabbly")
@@ -523,6 +540,7 @@ def test_the_gpu_list_is_pinned_from_the_signed_index_and_cross_checked() -> Non
         ("readme-turing", "no longer states which GPUs"),
         ("package", "the index says otherwise"),
         ("signature", "BAD signature"),
+        ("injected", "InRelease says"),
     ],
 )
 def test_a_gpu_list_that_does_not_check_out_is_refused(change: str, message: str) -> None:
@@ -538,6 +556,17 @@ def test_a_gpu_list_that_does_not_check_out_is_refused(change: str, message: str
     elif change == "package":
         deb = next(u for u in world.files if u.endswith(".deb") and "24.04" in u)
         world.files[deb] += b"tampered"
+    elif change == "injected":
+        # Unsigned text before the signed block, stating another index's hash.
+        index = noble.replace("InRelease", "restricted/binary-amd64/Packages.gz")
+        evil = gzip.compress(b"Package: nvidia-driver-580-open\nVersion: 9:evil\n", mtime=0)
+        world.files[index] = evil
+        world.files[noble] = (
+            b"SHA256:\n "
+            + hashlib.sha256(evil).hexdigest().encode()
+            + b" 1 restricted/binary-amd64/Packages.gz\n\n"
+            + world.files[noble]
+        )
     else:
         world.files[noble] += b"tampered"
     with pytest.raises(lockpins.PinError, match=message):
@@ -627,9 +656,15 @@ def test_a_section_that_cannot_be_pinned_is_named_and_the_rest_is_printed() -> N
 
 
 @pytest.mark.skipif(shutil.which("gpg") is None or shutil.which("gpgv") is None, reason="needs gpg")
-def test_the_signature_check_runs_gpgv_with_only_the_pinned_key(tmp_path: Path) -> None:
+def test_the_signature_check_runs_gpgv_with_only_the_pinned_key(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
     env = {**os.environ, "GNUPGHOME": str(tmp_path)}
     tmp_path.chmod(0o700)
+    # gpg starts an agent for the key; stop it with the test.
+    request.addfinalizer(
+        lambda: subprocess.run(["gpgconf", "--kill", "gpg-agent"], env=env, check=False)  # noqa: S607
+    )
 
     def gpg(*args: str, data: bytes | None = None) -> bytes:
         return subprocess.run(  # noqa: S603 - fixed arguments
@@ -643,7 +678,10 @@ def test_the_signature_check_runs_gpgv_with_only_the_pinned_key(tmp_path: Path) 
     gpg("--quick-gen-key", "Test Repository <repo@example.com>", "ed25519", "sign", "never")
     signed = gpg("--clearsign", data=b"Suite: test\n")
     keyring = gpg("--export")
-    lockpins._gpgv(keyring, signed)
+    assert lockpins._gpgv(keyring, signed) == "Suite: test\n"
+    # Unsigned text before the signed block is not in what is read.
+    assert lockpins._gpgv(keyring, b"Suite: evil\n\n" + signed) == "Suite: test\n"
+    assert lockpins._gpgv(keyring, signed + b"Suite: evil\n") == "Suite: test\n"
     with pytest.raises(lockpins.PinError, match="does not verify"):
         lockpins._gpgv(keyring, signed.replace(b"Suite: test", b"Suite: evil"))
     other = public_key_packet(b"another key")

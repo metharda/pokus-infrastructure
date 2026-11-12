@@ -32,7 +32,7 @@ from pinka_preflight.detect.conflicts import MANAGED_MARKER
 
 INCUS_DIR = INFRA / "incus"
 FIXTURE = "ubuntu2404-baremetal-nvidia-driver-loaded"
-# Config keys incus-user sets on a personal project (Incus 6.0.6 cmd/incus-user/server.go).
+# Config keys incus-user sets on a personal project (Incus 6.0.7 cmd/incus-user/server.go).
 INCUS_USER_KEYS = {
     "features.images",
     "features.networks",

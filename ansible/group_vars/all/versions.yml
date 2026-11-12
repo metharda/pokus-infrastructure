@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml.
-pinka_versions_lock_sha256: "b5ad79ad0f343c6dca47193171b216d794aab786839150fe47f42cfe2863b630"
+pinka_versions_lock_sha256: "779046df789df779ab98fe6c77a6b5c421b0a68b46eec7d609e20ced2bf6c412"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -348,9 +348,10 @@ pinka_versions:
     verified_on: '2026-10-05'
     source: 'Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata
       for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of
-      NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Incus (Zabbly)
-      and Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z (signed InRelease and
-      index sha256 checked)'
+      NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Tailscale on
+      the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z,
+      each with the signed InRelease and the index sha256 checked. verified_on is the oldest of these
+      reads.'
     docker:
       ubuntu-24.04:
         docker-ce: 5:29.8.2-1~ubuntu.24.04~noble
@@ -444,11 +445,11 @@ pinka_versions:
         libnvidia-container1: 1.20.1-1
     incus:
       ubuntu-24.04:
-        incus: 1:6.0.6-ubuntu24.04-202603272003
+        incus: 1:6.0.7-ubuntu24.04-202610301755
       ubuntu-22.04:
-        incus: 1:6.0.6-ubuntu22.04-202603271957
+        incus: 1:6.0.7-ubuntu22.04-202610301755
       debian-13:
-        incus: 1:6.0.6-debian13-202603272000
+        incus: 1:6.0.7-debian13-202610301800
       fedora-43: TODO(verify)
       fedora-44: TODO(verify)
       el-9: TODO(verify)

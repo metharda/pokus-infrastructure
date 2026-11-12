@@ -28,7 +28,7 @@ on:
     branches: ["**"]
   pull_request:
   schedule:
-    - cron: "17 5 * * 1"  # weekly external link check
+    - cron: "17 5 * * 1"  # weekly: the external link check and the lock check
   workflow_dispatch:
 
 permissions:
@@ -186,8 +186,10 @@ jobs:
     # count recorded in tools/lockcheck/marker-count (a test keeps it equal to
     # the lock's; a release needs 0), and every other check of the lock,
     # which re-verifies every pin over the network and must pass; its
-    # warnings go into the job summary.
-    if: github.event_name != 'schedule' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
+    # warnings go into the job summary. It also runs in the weekly run: a
+    # pin can stop being valid without a commit (a package version that
+    # leaves its index), and a failure there blocks like any other.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

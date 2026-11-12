@@ -180,6 +180,14 @@ def test_the_weekly_and_manual_runs_keep_working() -> None:
             assert condition(job, weekly), (name, job_name)
     links = workflow("ci.yml")["jobs"]["links"]
     assert condition(links, weekly) and condition(links, event("workflow_dispatch"))
+    # The lock check runs weekly too: a pin can stop being valid without a
+    # commit (a package that leaves its index).
+    lock_check = workflow("ci.yml")["jobs"]["lock-check"]
+    assert condition(lock_check, weekly)
+    # Every other job of ci.yml stays off the weekly run.
+    for job_name, job in workflow("ci.yml")["jobs"].items():
+        if job_name not in ("links", "lock-check"):
+            assert not condition(job, weekly), job_name
     release = workflow("release.yml")[True]
     assert release == {"push": {"tags": ["v*"]}}
 

@@ -117,7 +117,8 @@ pins; the run then exits 1, and the other sections are still printed.
 ## Verify the result
 
 The lock check accepts the new pins and re-verifies the keys, the image
-digests and sizes, that every pinned base image is still on its server, and the GPU
+digests and sizes, that every pinned base image is still on its server, that
+every package pin of an apt release is still in its signed index, and the GPU
 list (it downloads the pinned package again and recomputes the list):
 
 <!-- qa:skip reason="needs network access to the vendor sources and the registries" -->
@@ -135,6 +136,8 @@ golden image build.
 
 The GPU list is checked offline too: every verified NVIDIA driver pin needs
 the list of its release, so changing the driver pin without running
-`make lock-pins` fails `make lock-check`. A pinned package that has left the
-archive is a warning: the pin stays valid by its sha256, and you renew it
-with `make lock-pins` when the driver pin changes.
+`make lock-pins` fails `make lock-check`. If the package the GPU list was
+read from has left the archive, that is a warning: the list stays valid by
+its sha256, and you renew it with `make lock-pins` when the driver pin
+changes. The driver pin itself, like every package pin of an apt release,
+must still be in its index: `make lock-check` fails otherwise.
