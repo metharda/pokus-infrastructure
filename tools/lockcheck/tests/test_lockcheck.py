@@ -1164,10 +1164,11 @@ def test_every_verified_driver_pin_has_the_gpu_list_of_its_release(lock: dict[st
     assert [w for _, w, _ in found] == [
         "packages.nvidia_driver.ubuntu-24.04",
         "packages.nvidia_driver.ubuntu-22.04",
+        "packages.nvidia_driver.ubuntu-26.04",
         "packages.nvidia_driver.debian-13",
     ]
     assert {s for s, _, _ in found} == {checks.ERROR}
-    assert "no GPU list for 575.64 in nvidia_driver_gpus.releases" in found[2][2]
+    assert "no GPU list for 575.64 in nvidia_driver_gpus.releases" in found[3][2]
 
 
 def test_a_pinned_gpu_list_is_recomputed_and_a_package_gone_is_a_warning(

@@ -185,7 +185,24 @@ def read_release(
         raise AptIndexError(f"{url}: {exc}") from exc
 
 
-def read_index(fetch: Callable[[str], bytes], release: str, repository: Repository) -> Index:
+@dataclass(frozen=True)
+class IndexFile:
+    """One package index as read, its hash checked against the release file.
+
+    Attributes:
+        url: Where the index was read.
+        field: The release file's hash field it was checked with (``SHA256``).
+        digest: Its hash.
+        packages: Its paragraphs, one per package version.
+    """
+
+    url: str
+    field: str
+    digest: str
+    packages: list[dict[str, str]]
+
+
+def read_packages(fetch: Callable[[str], bytes], release: str, repository: Repository) -> IndexFile:
     """Download a package index and check it against its signed release file.
 
     Args:
@@ -194,7 +211,7 @@ def read_index(fetch: Callable[[str], bytes], release: str, repository: Reposito
         repository: Where the index is.
 
     Returns:
-        The index's packages and versions.
+        The index with its paragraphs.
 
     Raises:
         AptIndexError: If the release file does not name the component or the
@@ -220,12 +237,28 @@ def read_index(fetch: Callable[[str], bytes], release: str, repository: Reposito
             text = opener(data).decode("utf-8")
         except (OSError, EOFError, lzma.LZMAError, zlib.error, UnicodeDecodeError) as exc:
             raise AptIndexError(f"{url} cannot be read: {exc}") from exc
-        versions: dict[str, set[str]] = {}
-        for paragraph in paragraphs(text):
-            versions.setdefault(paragraph.get("Package", ""), set()).add(
-                paragraph.get("Version", "")
-            )
-        return Index(url, versions)
+        return IndexFile(url, field, actual, list(paragraphs(text)))
     raise AptIndexError(
         f"{repository.base}/InRelease lists no package index in {repository.prefix or './'}"
     )
+
+
+def read_index(fetch: Callable[[str], bytes], release: str, repository: Repository) -> Index:
+    """The packages and versions of a package index (:func:`read_packages`).
+
+    Args:
+        fetch: ``url -> content``.
+        release: The release file's signed text (:func:`read_release`).
+        repository: Where the index is.
+
+    Returns:
+        The index's packages and versions.
+
+    Raises:
+        AptIndexError: As :func:`read_packages`.
+    """
+    index = read_packages(fetch, release, repository)
+    versions: dict[str, set[str]] = {}
+    for paragraph in index.packages:
+        versions.setdefault(paragraph.get("Package", ""), set()).add(paragraph.get("Version", ""))
+    return Index(index.url, versions)

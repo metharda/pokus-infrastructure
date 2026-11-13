@@ -23,6 +23,7 @@ Report written by pinka-preflight to /etc/pinka/host-profile.json. generated_at 
 | `exit_code` | one of `0`, `10`, `20`, `30` | yes | Exit code that belongs to the outcome. |
 | `tier` | see `tier` | yes | Worst of the OS, architecture and environment tiers. |
 | `os_tier` | see `tier` | yes | Tier of the matched OS rule. |
+| `pending_verification` | boolean | yes | Whether the matched OS rule is pending verification: no passing make test-distros run of the release yet, or its latest run failed (the support matrix's pending_verification, decided from tests/distros/results.yml). |
 | `arch_tier` | see `tier` | yes | Tier of the matched architecture rule. |
 | `release_model` | one of `fixed`, `fast`, `rolling`, `null` | yes | Release model of the distribution. |
 | `family` | one of `debian`, `redhat`, `suse`, `archlinux`, `null` | yes | Implementation family. |

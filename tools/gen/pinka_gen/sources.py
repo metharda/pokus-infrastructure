@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pinka_test_distros import results as test_results
+from pinka_test_distros import targets as test_targets
+from pinka_test_distros.harness import STAGES as TEST_STAGES
 
 VERSIONS_LOCK_PREFIX = "@versions.lock:"
 
@@ -114,11 +117,88 @@ def bootstrap_installs_nvidia_driver(drivers: dict[str, Any], group: str) -> boo
     return installs
 
 
+def pending_verification(
+    rule: dict[str, Any],
+    targets: test_targets.TargetFile,
+    latest: dict[str, dict[str, Any]],
+) -> bool:
+    """Whether a release marked pending verification is still pending.
+
+    It is, unless the latest run of every target of the release passed every
+    stage of the harness: a passing run clears it, a later failing run brings
+    it back. A run that does not name every stage as passed does not count.
+
+    Args:
+        rule: The OS rule (with ``pending_verification: true``).
+        targets: ``tests/distros/targets.yml``.
+        latest: The latest run of each target (:func:`test_results.latest`).
+
+    Returns:
+        True while pending.
+
+    Raises:
+        ValueError: If the rule matches more than one id and version_id, or no
+            target tests the release.
+    """
+    match = rule["match"]
+    if set(match) != {"id", "version_id"}:
+        raise ValueError(
+            f"the support matrix marks {match} pending_verification; only a rule that matches"
+            " one id and one version_id can be"
+        )
+    mine = [
+        t
+        for t in targets.targets
+        if t.os_id == match.get("id") and t.version_id == match.get("version_id")
+    ]
+    if not mine:
+        raise ValueError(
+            f"no target of tests/distros/targets.yml tests {match}, which the support"
+            " matrix marks pending_verification"
+        )
+    return not all(_passed_every_stage(latest.get(t.id)) for t in mine)
+
+
+def _passed_every_stage(record: dict[str, Any] | None) -> bool:
+    stages = (record or {}).get("stages") or {}
+    return all(stages.get(stage) == "passed" for stage in TEST_STAGES)
+
+
+def tier_text(rule: dict[str, Any]) -> str:
+    """A compiled OS rule's tier as the generated pages show it.
+
+    Args:
+        rule: An OS rule of :func:`support_matrix`.
+
+    Returns:
+        The tier, with "(pending verification)" while the rule is pending.
+    """
+    tier = str(rule["tier"])
+    return f"{tier} (pending verification)" if rule.get("pending_verification") else tier
+
+
+def support_matrix(root: Path) -> dict[str, Any]:
+    """The compiled support matrix (:func:`support_matrix_json` without its provenance).
+
+    Args:
+        root: Component root.
+
+    Returns:
+        The matrix.
+    """
+    data = json.loads(support_matrix_json(root))
+    data.pop("_generated_from")
+    return dict(data)
+
+
 def support_matrix_json(root: Path) -> str:
     """Compile ``preflight/support-matrix.yml``.
 
     Each OS rule with a ``source_group`` gets ``bootstrap_installs_nvidia_driver``
-    from that group's ``nvidia_driver`` in ``ansible/component-sources.yml``.
+    from that group's ``nvidia_driver`` in ``ansible/component-sources.yml``. A
+    rule marked ``pending_verification`` keeps it only while the latest
+    ``make test-distros`` run of its targets has not passed
+    (:func:`pending_verification`, from ``tests/distros/results.yml``).
 
     Args:
         root: Component root.
@@ -128,7 +208,8 @@ def support_matrix_json(root: Path) -> str:
 
     Raises:
         TypeError: If the support matrix is not a mapping.
-        ValueError: From :func:`bootstrap_installs_nvidia_driver`.
+        ValueError: From :func:`bootstrap_installs_nvidia_driver` and
+            :func:`pending_verification`.
     """
     lock = load_yaml(root / "versions.lock.yml")
     matrix = jsonable(load_yaml(root / "preflight/support-matrix.yml"))
@@ -136,14 +217,20 @@ def support_matrix_json(root: Path) -> str:
     if not isinstance(resolved, dict):
         raise TypeError("support matrix must be a mapping")
     drivers = load_yaml(root / "ansible/component-sources.yml")["components"]["nvidia_driver"]
+    targets = test_targets.load(root / "tests/distros/targets.yml")
+    latest = test_results.latest(test_results.load(root / "tests/distros/results.yml"))
     for rule in resolved["os"]:
+        if rule.get("pending_verification"):
+            rule["pending_verification"] = pending_verification(rule, targets, latest)
         if "source_group" in rule:
             group = str(rule["source_group"])
             rule["bootstrap_installs_nvidia_driver"] = bootstrap_installs_nvidia_driver(
                 drivers, group
             )
     return dump_json(
-        resolved, "preflight/support-matrix.yml and ansible/component-sources.yml (nvidia_driver)"
+        resolved,
+        "preflight/support-matrix.yml, ansible/component-sources.yml (nvidia_driver) and"
+        " tests/distros/results.yml (pending_verification)",
     )
 
 

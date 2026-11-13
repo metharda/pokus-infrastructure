@@ -4,7 +4,7 @@ type: how-to
 audience: [developer]
 applies_to: {infra: ">=0.1"}
 last_verified: {date: null, rc: null, by: null}
-description: As a maintainer, pin the Zabbly and Tailscale repository keys and packages, the DCGM exporter image, the lab images' sizes, the Incus base images, the GPU list of the NVIDIA driver and GitHub's SSH host keys with make lock-pins, review its output and land the change only after the full gate and CI pass.
+description: As a maintainer, pin the Zabbly and Tailscale repository keys, the apt packages of the vendor repositories and Ubuntu's NVIDIA driver, the DCGM exporter image, the lab images' sizes, the Incus base images, the GPU list of the NVIDIA driver and GitHub's SSH host keys with make lock-pins, review its output and land the change only after the full gate and CI pass.
 ---
 
 # How to pin the vendor sources
@@ -23,15 +23,32 @@ and changes no file. It covers:
   keyserver.ubuntu.com returns for that fingerprint (which shows that the
   key was published there, not who owns it). Tailscale publishes its
   fingerprint nowhere apart from the key files, which the output says.
-- **The Incus (Zabbly) and Tailscale packages** of every apt release the
-  lock pins, from the repository layout in `ansible/component-sources.yml`:
-  the repository's `InRelease` must carry a valid signature of the key above
-  (checked with `gpgv` and that key alone), name the components the layout
-  uses, and list the package index whose sha256 it states. The newest
-  version of each package the component installs is read for x86_64 and
-  aarch64. Zabbly builds each architecture separately, so the two versions
-  differ; the lock holds one version per release, the x86_64 one, and the
-  output says so.
+- **The packages of every apt release the lock pins** whose component comes
+  from a vendor repository (Docker, the NVIDIA Container Toolkit, Incus from
+  Zabbly, Tailscale), from the repository layout in
+  `ansible/component-sources.yml`: the repository's `InRelease` must carry a
+  valid signature of its key (checked with `gpgv` and that key alone; the
+  Zabbly and Tailscale keys above, Docker's and the Toolkit's as the lock
+  pins them, their fingerprints checked), name the components the layout
+  uses, and list each package index with the hash it states (SHA256, or
+  SHA512 where only that is stated). Only the text gpgv verified is read. The
+  newest version of each package the component installs is read for x86_64
+  and aarch64, from every component the layout names (the Toolkit's flat
+  repository has one release file per architecture). Zabbly builds each
+  architecture separately, so the two versions differ; the lock holds one
+  version per release, the x86_64 one, and the output says so.
+- **The NVIDIA driver's packages** of every Ubuntu release the lock pins:
+  the newest version in Ubuntu's restricted pocket (`-updates`, `-security`
+  and the release suite), amd64, through the machine's Ubuntu archive
+  keyring.
+- **Every pinned package version that is no longer in its index**, for each
+  of the above: the version the lock pins is looked up in every package of
+  the x86_64 (amd64) indexes read, the architecture the lock pins (the
+  driver's in the `restricted` component only, where Ubuntu publishes it).
+  The output names each one gone (`NOT IN THE INDEX`), still prints the new
+  pin, and the run exits 1, as `make lock-check` fails on it. A verified pin
+  of an apt release outside these sources (the NVIDIA driver on Debian, once
+  verified) is not covered.
 - **The DCGM exporter image.** The newest release tag on nvcr.io, the digest
   of its image index and its platforms; the release's own
   `hack/versions.env` on GitHub must name the same exporter version, and its
@@ -69,17 +86,21 @@ and changes no file. It covers:
   its key and compared with the one published next to it.
 
 A section that cannot be pinned prints `NOT PINNED` with the reason and no
-pins; the run then exits 1, and the other sections are still printed.
+pins; the run then exits 1, and the other sections are still printed. The
+last lines count the sections not pinned and the pinned versions not in
+their index.
 
 !!! note "Prerequisites"
     - A development checkout of the repository; the target sets up its own
       Python environment.
     - `gpgv` (Debian and Ubuntu install it by default), and for GitHub's
       keys `ssh-keyscan` (package `openssh-client`).
-    - For the GPU list: an Ubuntu machine, for the Ubuntu archive keyring
-      (package `ubuntu-keyring`), and `dpkg-deb` (package `dpkg`), which
-      reads the zstd-compressed packages.
-    - Network access to `pkgs.zabbly.com`, `pkgs.tailscale.com`, `nvcr.io`,
+    - For the NVIDIA driver's pins and the GPU list: an Ubuntu machine, for
+      the Ubuntu archive keyring (package `ubuntu-keyring`), and for the GPU
+      list `dpkg-deb` (package `dpkg`), which reads the zstd-compressed
+      packages.
+    - Network access to `download.docker.com`, `nvidia.github.io`,
+      `pkgs.zabbly.com`, `pkgs.tailscale.com`, `nvcr.io`,
       `images.linuxcontainers.org`, `archive.ubuntu.com`, `keyserver.ubuntu.com`,
       `raw.githubusercontent.com`, `api.github.com` and `github.com` on SSH
       port 22.
@@ -96,16 +117,19 @@ pins; the run then exits 1, and the other sections are still printed.
     ```
 
     `<checkout>` is the directory where you cloned the repository. Exit
-    code 0 means every section was pinned; 1 means at least one says
-    `NOT PINNED`.
+    code 0 means every section was pinned and every pinned version is still
+    in its index; 1 means at least one line says `NOT PINNED` or
+    `NOT IN THE INDEX`.
 
 2. Review the output: every fingerprint's sources, that the signed indexes
    and the image downloads checked out, the versions, the DCGM version, and
    the GPU list's cross-checks and its number of open-module device IDs.
 
 3. Paste each block under the key its header names in `versions.lock.yml`
-   (`repository_keys.keys`, `packages.incus`, `packages.tailscale`,
-   `containers.images`, each image's `sizes`, `incus_base_images.images`,
+   (`repository_keys.keys`, `packages.docker`,
+   `packages.nvidia_container_toolkit`, `packages.incus`,
+   `packages.tailscale`, `packages.nvidia_driver`, `containers.images`,
+   each image's `sizes`, `incus_base_images.images`,
    `nvidia_driver_gpus.releases`, `github_ssh_host_keys`),
    set `verified_on` and `source` to the run, and remove the matching
    `verify` entries of `ansible/component-sources.yml` whose layout the run

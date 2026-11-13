@@ -268,7 +268,7 @@ def test_the_makefile_runs_the_same_steps_in_both_modes() -> None:
         "lint-mermaid",
         "privacy",
     ]
-    assert makefile_list(makefile, "TEST_STEPS") == ["test-py39", "test-pytest"]
+    assert makefile_list(makefile, "TEST_STEPS") == ["test-py39", "test-py314", "test-pytest"]
     assert makefile_list(makefile, "DOCS_STEPS") == ["drift-check", "docs-coverage", "docs-build"]
     for target, steps in (("lint", "LINT_STEPS"), ("test", "TEST_STEPS"), ("docs", "DOCS_STEPS")):
         block = makefile[makefile.index(f"\n{target}: ## ") :].split("\nendif", 1)[0]

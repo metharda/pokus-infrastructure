@@ -48,7 +48,7 @@ repository and its security alerts:
     | --- | --- |
     | Container image | The registry: the digest of the image index for the tag, and that it contains `linux/amd64` (and `linux/arm64`); for a lab image also each platform's compressed size (`sizes`, the sum of its layers), which `make lock-pins` prints for every image of the lock. The DCGM exporter: `make lock-pins` ([How to pin the vendor sources](pin-vendor-sources.md)). |
     | Binary | The release page: download each archive, hash it with `sha256sum`, and compare with the checksum file of the release. |
-    | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. Incus from Zabbly and Tailscale on the apt releases: `make lock-pins`. |
+    | Package | The repository index (apt `Packages`, rpm `repodata`) of each pinned release, for every architecture. Every package of an apt release (Docker, the NVIDIA Container Toolkit, Incus from Zabbly, Tailscale, the NVIDIA driver on Ubuntu): `make lock-pins`. |
     | Repository key | Download the key and compare its primary key fingerprint with the one the vendor documents. The Zabbly and Tailscale keys: `make lock-pins`. |
     | Incus base image | `make lock-pins`, right before a lab's first golden image build: the image server keeps only its newest builds, a few days. |
     | GitHub's SSH host keys | `make lock-pins`, which needs two agreeing sources (GitHub's meta API, its documentation, `ssh-keyscan`). |

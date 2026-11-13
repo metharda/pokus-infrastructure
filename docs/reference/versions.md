@@ -86,6 +86,7 @@ Base images of the CI fast lane's systemd containers (the provisioning play in c
 | Name | Image | Tag | Digest | Platforms |
 | --- | --- | --- | --- | --- |
 | ubuntu_2404 | `docker.io/library/ubuntu` | `24.04` | `sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55` | linux/amd64 |
+| ubuntu_2604 | `docker.io/library/ubuntu` | `26.04` | `sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96` | linux/amd64 |
 | debian_13 | `docker.io/library/debian` | `13` | `sha256:913f6706df59a68922d1dd08f78c2476560a8d367897200a6005b00e5f67c2d5` | linux/amd64 |
 | fedora_44 | `docker.io/library/fedora` | `44` | `sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80` | linux/amd64 |
 | almalinux_9 | `docker.io/library/almalinux` | `9` | `sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16` | linux/amd64 |
@@ -101,12 +102,12 @@ Verified on 2026-10-05. Source: Keys downloaded from the listed URLs and fingerp
 | docker-deb | `https://download.docker.com/linux/ubuntu/gpg`, `https://download.docker.com/linux/debian/gpg` | `9DC858229FC7DD38854AE2D88D81803C0EBFCD88` |
 | docker-rpm | `https://download.docker.com/linux/fedora/gpg`, `https://download.docker.com/linux/centos/gpg` | `060A61C51B558A7F742B77AAC52FEB6B621E9F35` |
 | nvidia-container-toolkit | `https://nvidia.github.io/libnvidia-container/gpgkey` | `C95B321B61E88C1809C4F759DDCAE044F796ECB0` |
-| tailscale | `https://pkgs.tailscale.com/stable/ubuntu/noble.asc`, `https://pkgs.tailscale.com/stable/ubuntu/jammy.asc`, `https://pkgs.tailscale.com/stable/debian/trixie.asc`, `https://pkgs.tailscale.com/stable/fedora/repo.gpg` | `2596A99EAAB33821893C0A79458CA832957F5868` |
+| tailscale | `https://pkgs.tailscale.com/stable/ubuntu/noble.asc`, `https://pkgs.tailscale.com/stable/ubuntu/resolute.asc`, `https://pkgs.tailscale.com/stable/ubuntu/jammy.asc`, `https://pkgs.tailscale.com/stable/debian/trixie.asc`, `https://pkgs.tailscale.com/stable/fedora/repo.gpg` | `2596A99EAAB33821893C0A79458CA832957F5868` |
 | zabbly | `https://pkgs.zabbly.com/key.asc` | `4EFC590696CB15B87C73A3AD82CC8797C838DCFD` |
 
 ## Packages
 
-Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z, each with the signed InRelease and the index sha256 checked. verified_on is the oldest of these reads.
+Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.docker.com (apt Packages and rpm repodata for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Tailscale on the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z, each with the signed InRelease and the index sha256 checked. Ubuntu 26.04 (2026-11-12): Docker, the NVIDIA container toolkit, the NVIDIA driver and Tailscale on the versions of the other releases, Incus (Zabbly) on the newest build, each found in its signed index with make lock-pins. verified_on is the oldest of these reads.
 
 ### docker
 
@@ -117,6 +118,11 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 | ubuntu-24.04 | containerd.io | `2.3.6-1~ubuntu.24.04~noble` |
 | ubuntu-24.04 | docker-buildx-plugin | `0.37.1-1~ubuntu.24.04~noble` |
 | ubuntu-24.04 | docker-compose-plugin | `5.6.0-1~ubuntu.24.04~noble` |
+| ubuntu-26.04 | docker-ce | `5:29.8.2-1~ubuntu.26.04~resolute` |
+| ubuntu-26.04 | docker-ce-cli | `5:29.8.2-1~ubuntu.26.04~resolute` |
+| ubuntu-26.04 | containerd.io | `2.3.6-1~ubuntu.26.04~resolute` |
+| ubuntu-26.04 | docker-buildx-plugin | `0.37.1-1~ubuntu.26.04~resolute` |
+| ubuntu-26.04 | docker-compose-plugin | `5.6.0-1~ubuntu.26.04~resolute` |
 | ubuntu-22.04 | docker-ce | `5:29.8.2-1~ubuntu.22.04~jammy` |
 | ubuntu-22.04 | docker-ce-cli | `5:29.8.2-1~ubuntu.22.04~jammy` |
 | ubuntu-22.04 | containerd.io | `2.3.6-1~ubuntu.22.04~jammy` |
@@ -162,6 +168,10 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 | ubuntu-22.04 | nvidia-container-toolkit-base | `1.20.1-1` |
 | ubuntu-22.04 | libnvidia-container-tools | `1.20.1-1` |
 | ubuntu-22.04 | libnvidia-container1 | `1.20.1-1` |
+| ubuntu-26.04 | nvidia-container-toolkit | `1.20.1-1` |
+| ubuntu-26.04 | nvidia-container-toolkit-base | `1.20.1-1` |
+| ubuntu-26.04 | libnvidia-container-tools | `1.20.1-1` |
+| ubuntu-26.04 | libnvidia-container1 | `1.20.1-1` |
 | debian-13 | nvidia-container-toolkit | `1.20.1-1` |
 | debian-13 | nvidia-container-toolkit-base | `1.20.1-1` |
 | debian-13 | libnvidia-container-tools | `1.20.1-1` |
@@ -196,6 +206,7 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 | Release | Package | Version |
 | --- | --- | --- |
 | ubuntu-24.04 | incus | `1:6.0.7-ubuntu24.04-202610301755` |
+| ubuntu-26.04 | incus | `1:6.0.7-ubuntu26.04-202610301755` |
 | ubuntu-22.04 | incus | `1:6.0.7-ubuntu22.04-202610301755` |
 | debian-13 | incus | `1:6.0.7-debian13-202610301800` |
 | fedora-43 | — | TODO(verify) |
@@ -211,6 +222,7 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 | --- | --- | --- |
 | ubuntu-24.04 | nvidia-driver-580-open | `580.178.04-0ubuntu0.24.04.1` |
 | ubuntu-22.04 | nvidia-driver-580-open | `580.178.04-0ubuntu0.22.04.1` |
+| ubuntu-26.04 | nvidia-driver-580-open | `580.178.04-0ubuntu0.26.04.1` |
 | debian-13 | — | TODO(verify) |
 | fedora-43 | — | TODO(verify) |
 | fedora-44 | — | TODO(verify) |
@@ -224,6 +236,7 @@ Verified on 2026-10-05. Source: Repository indexes read on 2026-10-05: download.
 | Release | Package | Version |
 | --- | --- | --- |
 | ubuntu-24.04 | tailscale | `1.104.1` |
+| ubuntu-26.04 | tailscale | `1.104.1` |
 | ubuntu-22.04 | tailscale | `1.104.1` |
 | debian-13 | tailscale | `1.104.1` |
 | fedora-43 | — | TODO(verify) |
@@ -256,7 +269,7 @@ Verified on 2026-10-17. Source: make lock-pins at 2026-10-17T22:47:21Z: build 20
 
 ## NVIDIA driver GPU lists
 
-Verified on 2026-10-18. Source: make lock-pins at 2026-10-18T19:18:58Z (the signed index, the package's and the list's sha256 and the cross-checks of each entry's comment)
+Verified on 2026-11-12. Source: make lock-pins at 2026-11-12T18:13:00Z (the signed index, the package's and the list's sha256 and the cross-checks of each entry's comment)
 
 A driver is installed automatically only for a GPU whose PCI device ID is in the open-module list of the pinned release ([Bare-metal hosts](../providers/baremetal.md#which-gpus-get-a-driver)).
 

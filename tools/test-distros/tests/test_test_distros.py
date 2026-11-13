@@ -1244,18 +1244,60 @@ def record(target: str, stages: dict[str, str], day: str = "2026-01-01") -> dict
     return {"target": target, "tested_on": day, "stages": stages}
 
 
+@pytest.mark.parametrize(
+    ("bad", "message"),
+    [
+        ({"tested_on": "2026-01-01"}, "result 1 names no target"),
+        ({"target": "a"}, r"result 1 \(a\) has no tested_on date .*None"),
+        ({"target": "a", "tested_on": None}, "has no tested_on date"),
+        ({"target": "a", "tested_on": "2026-1-1"}, "has no tested_on date"),
+        ({"target": "a", "tested_on": "2026-02-30"}, "has no tested_on date"),
+        # Forms Python reads as dates that would not sort with the others.
+        ({"target": "a", "tested_on": "20260101"}, "has no tested_on date"),
+        ({"target": "a", "tested_on": "2026-W01-1"}, "has no tested_on date"),
+    ],
+)
+def test_results_file_refuses_a_record_without_target_or_date(
+    tmp_path: Path, bad: dict[str, Any], message: str
+) -> None:
+    path = tmp_path / "results.yml"
+    path.write_text(yaml.safe_dump({"schema_version": 1, "results": [bad]}), encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        results.load(path)
+    # Unquoted, YAML reads a date: the harness always writes it quoted.
+    path.write_text("schema_version: 1\nresults:\n- {target: a, tested_on: 2026-01-01}\n")
+    with pytest.raises(ValueError, match="has no tested_on date"):
+        results.load(path)
+
+
 def test_results_file(tmp_path: Path) -> None:
     path = tmp_path / "results.yml"
     passed = dict.fromkeys(harness.STAGES, "passed")
-    results.update(path, [record("b", passed)], ["a", "b"])
-    results.update(path, [record("a", {**passed, "smoke": "failed"})], ["a", "b"])
+    results.update(path, [record("b", passed)])
+    results.update(path, [record("a", {**passed, "smoke": "failed"})])
+    # Every run is kept, oldest first; a later run of a target adds to it.
+    results.update(path, [record("b", {**passed, "smoke": "failed"}, "2026-02-01")])
     loaded = results.load(path)
-    assert [r["target"] for r in loaded] == ["a", "b"]
+    assert [(r["target"], r["tested_on"]) for r in loaded] == [
+        ("b", "2026-01-01"),
+        ("a", "2026-01-01"),
+        ("b", "2026-02-01"),
+    ]
     assert path.read_text().startswith("# Managed by pinka (tests/distros/results.yml).")
-    assert results.status(loaded[0]) == "failed: smoke"
-    assert results.status(loaded[1]) == "passed"
+    assert results.status(loaded[0]) == "passed"
+    assert results.status(loaded[1]) == "failed: smoke"
     assert results.status(None) == "not tested"
-    assert results.valid_until(loaded[1]) == "2026-04-01"
+    assert results.valid_until(loaded[0]) == "2026-04-01"
+    # The latest run of each target decides.
+    latest = results.latest(loaded)
+    assert results.status(latest["b"]) == "failed: smoke"
+    assert results.status(latest["a"]) == "failed: smoke"
+    # By date, also in a file whose order a merge changed; of runs on the same
+    # day, the one written last.
+    assert results.latest([loaded[2], loaded[0]])["b"] is loaded[2]
+    same_day = record("b", passed, "2026-02-01")
+    assert results.latest([*loaded, same_day])["b"] is same_day
+    assert results.latest([same_day, loaded[2]])["b"] is loaded[2]
     committed = results.load(INFRA / "tests" / "distros" / "results.yml")
     ids = {t.id for t in target_file().targets}
     assert {r["target"] for r in committed} <= ids
@@ -1279,6 +1321,22 @@ def test_cli_list(capsys: pytest.CaptureFixture[str]) -> None:
     assert run_cli(["list"]) == 0
     out = capsys.readouterr().out
     assert "fedora-43" in out and "SELinux enforcing" in out
+
+
+def test_cli_list_shows_each_targets_latest_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "results.yml"
+    passed = dict.fromkeys(harness.STAGES, "passed")
+    # The newest run is neither the first nor the last in the file: the list
+    # orders by date, not by place.
+    results.update(path, [record("debian-13", passed, "2026-11-01")])
+    results.update(path, [record("debian-13", {**passed, "smoke": "failed"}, "2026-11-03")])
+    results.update(path, [record("debian-13", passed, "2026-11-02")])
+    monkeypatch.setattr(cli, "RESULTS", path)
+    assert run_cli(["list"]) == 0
+    (line,) = [x for x in capsys.readouterr().out.splitlines() if x.startswith("debian-13 ")]
+    assert line.endswith("failed: smoke (2026-11-03)"), line
 
 
 def test_lab_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1527,7 +1585,7 @@ def test_every_family_has_a_ci_image() -> None:
     lock = yaml.safe_load((INFRA / "versions.lock.yml").read_text())
     images = lock["containers"]["ci_images"]
     families = {
-        "debian": {"ubuntu_2404", "debian_13"},
+        "debian": {"ubuntu_2604", "ubuntu_2404", "debian_13"},
         "redhat": {"fedora_44", "almalinux_9"},
         "suse": {"opensuse_leap_156"},
         "archlinux": {"archlinux"},

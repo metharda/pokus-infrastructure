@@ -127,6 +127,7 @@ def test_matrix_release_keys() -> None:
             "opensuse-leap-16.0",
             "ubuntu-22.04",
             "ubuntu-24.04",
+            "ubuntu-26.04",
         ]
     )
 

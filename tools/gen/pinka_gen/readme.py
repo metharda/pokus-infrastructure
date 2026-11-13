@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pinka_gen import bootstrap
 from pinka_gen.pages import GENERATED_NOTE, match_text, table
-from pinka_gen.sources import jsonable, load_yaml, resolve_lock_refs
+from pinka_gen.sources import support_matrix, tier_text
 
 README = "README.md"
 # Tiers shown in the README; the full matrix is in docs/support-matrix.md.
@@ -62,12 +62,9 @@ def environments(root: Path) -> str:
     Returns:
         Markdown tables.
     """
-    m = resolve_lock_refs(
-        jsonable(load_yaml(root / "preflight/support-matrix.yml")),
-        jsonable(load_yaml(root / "versions.lock.yml")),
-    )
+    m = support_matrix(root)
     distributions = [
-        [match_text(rule["match"]), rule.get("family"), rule["tier"]]
+        [match_text(rule["match"]), rule.get("family"), tier_text(rule)]
         for rule in m["os"]
         if rule["tier"] in SHOWN_TIERS
     ]

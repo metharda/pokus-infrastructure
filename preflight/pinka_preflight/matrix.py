@@ -153,6 +153,10 @@ class Decision:
             ``bootstrap_installs_nvidia_driver``), provider baremetal or vm,
             MOK consent under Secure Boot): the GPU is judged once the driver
             is loaded.
+        pending_verification: The OS rule is pending verification (the
+            compiled matrix's ``pending_verification``: no passing
+            ``make test-distros`` run of the release yet, or its latest run
+            failed); its note is in ``notes``.
         without_usable_gpu: What makes the GPU usable for ``gpu_inference``
             when it is not (the feature's first ``without_usable_gpu`` rule
             that holds); empty with a usable GPU.
@@ -182,6 +186,7 @@ class Decision:
     needs_action: list[dict[str, str]] = field(default_factory=list)
     planned_actions: list[dict[str, str]] = field(default_factory=list)
     driver_pending: bool = False
+    pending_verification: bool = False
     without_usable_gpu: str = ""
     warnings: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -641,6 +646,9 @@ def evaluate(  # noqa: PLR0912, PLR0915 - one pass over the documented matrix se
         and d.provider in ("baremetal", "vm")
         and (facts["secure_boot"] != "enabled" or facts["mok_enrollment_accepted"])
     )
+    d.pending_verification = bool(os_rule.get("pending_verification"))
+    if d.pending_verification:
+        d.notes.append(str(matrix["pending_verification_note"]))
     for rule in (os_rule, arch_rule, env_rule):
         if rule["tier"] == "unsupported":
             d.unsupported_reasons.append(str(rule.get("reason", "unsupported")))

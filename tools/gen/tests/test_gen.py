@@ -6,10 +6,12 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 from pinka_lab.cli import build_parser
+from pinka_test_distros.harness import STAGES as TEST_STAGES
 
 from pinka_gen import bootstrap, cli, lab, pages, sources
 
@@ -297,3 +299,136 @@ def test_the_exit_codes_page_refuses_a_code_both_outcome_and_other() -> None:
         pages.exit_codes_page(
             {"supported": ("m", "b")}, {"supported": 2}, {2: ("usage_error", "x: y", "z")}, [], []
         )
+
+
+# --- pending verification -----------------------------------------------------------------------
+
+
+def _targets(*ids_and_os: tuple[str, str, str | None]) -> Any:
+    from pinka_test_distros import targets as test_targets  # noqa: PLC0415
+
+    return test_targets.TargetFile(
+        tuple(
+            test_targets.Target(
+                id=i,
+                remote="images",
+                image="x/y/cloud",
+                os_id=os_id,
+                version_id=version,
+                firewall="nftables",
+                selinux=None,
+                cpus=8,
+                memory="10GiB",
+                disk="130GiB",
+            )
+            for i, os_id, version in ids_and_os
+        ),
+        None,
+    )
+
+
+RULE = {"match": {"id": "ubuntu", "version_id": "26.04"}, "pending_verification": True}
+PASSED = {"stages": dict.fromkeys(TEST_STAGES, "passed")}
+FAILED = {"stages": {**dict.fromkeys(TEST_STAGES, "passed"), "smoke": "failed"}}
+
+
+def test_a_release_stays_pending_until_the_latest_run_of_its_target_passed() -> None:
+    targets = _targets(("ubuntu-26.04", "ubuntu", "26.04"), ("ubuntu-24.04", "ubuntu", "24.04"))
+    pending = sources.pending_verification
+    assert pending(RULE, targets, {}) is True
+    assert pending(RULE, targets, {"ubuntu-24.04": {**PASSED, "target": "ubuntu-24.04"}}) is True
+    assert pending(RULE, targets, {"ubuntu-26.04": {**PASSED, "target": "ubuntu-26.04"}}) is False
+    # The latest run decides: a failing run after a passing one brings it back.
+    from pinka_test_distros import results as test_results  # noqa: PLC0415
+
+    runs = [
+        {**PASSED, "target": "ubuntu-26.04", "tested_on": "2026-11-01"},
+        {**FAILED, "target": "ubuntu-26.04", "tested_on": "2026-11-02"},
+    ]
+    assert pending(RULE, targets, test_results.latest(runs)) is True
+    # An older passing run written after it does not count; a newer one does.
+    assert pending(RULE, targets, test_results.latest([*runs, runs[0]])) is True
+    newer = {**PASSED, "target": "ubuntu-26.04", "tested_on": "2026-11-03"}
+    assert pending(RULE, targets, test_results.latest([*runs, newer])) is False
+
+
+def test_every_target_of_a_pending_release_must_have_passed() -> None:
+    targets = _targets(("ubuntu-26.04", "ubuntu", "26.04"), ("ubuntu-26.04-ufw", "ubuntu", "26.04"))
+    latest = {"ubuntu-26.04": {**PASSED, "target": "ubuntu-26.04"}}
+    assert sources.pending_verification(RULE, targets, latest) is True
+    latest["ubuntu-26.04-ufw"] = {**PASSED, "target": "ubuntu-26.04-ufw"}
+    assert sources.pending_verification(RULE, targets, latest) is False
+
+
+def test_only_a_run_that_passed_every_stage_clears_it() -> None:
+    targets = _targets(("ubuntu-26.04", "ubuntu", "26.04"))
+    for stages in (
+        {},
+        {"launch": "passed", "bootstrap": "passed"},
+        {**dict.fromkeys(TEST_STAGES, "passed"), "uninstall": "skipped"},
+    ):
+        latest = {"ubuntu-26.04": {"target": "ubuntu-26.04", "stages": stages}}
+        assert sources.pending_verification(RULE, targets, latest) is True, stages
+    assert sources.pending_verification(RULE, targets, {"ubuntu-26.04": PASSED}) is False
+
+
+def test_a_pending_release_without_a_target_is_refused() -> None:
+    with pytest.raises(ValueError, match=r"no target of tests/distros/targets\.yml tests"):
+        sources.pending_verification(RULE, _targets(("ubuntu-24.04", "ubuntu", "24.04")), {})
+
+
+def test_only_a_rule_of_one_id_and_version_can_be_pending() -> None:
+    targets = _targets(("ubuntu-26.04", "ubuntu", "26.04"))
+    for match in (
+        {"id": "ubuntu", "version_id_in": ["26.04"]},
+        {"id_in": ["ubuntu"], "version_id": "26.04"},
+        {"id": "ubuntu"},
+        {"id": "ubuntu", "version_id": "26.04", "version_major_in": ["26"]},
+    ):
+        rule = {"match": match, "pending_verification": True}
+        with pytest.raises(ValueError, match="only a rule that matches one id and one version_id"):
+            sources.pending_verification(rule, targets, {})
+
+
+def test_the_compiled_matrix_marks_ubuntu_2604_pending_from_the_results() -> None:
+    data = json.loads(sources.support_matrix_json(ROOT))
+    (rule,) = [r for r in data["os"] if r["match"] == {"id": "ubuntu", "version_id": "26.04"}]
+    # No run of its target is recorded yet.
+    assert rule["pending_verification"] is True
+    assert rule["tier"] == "supported"
+    assert rule["source_group"] == "ubuntu"
+    assert all("pending_verification" not in r for r in data["os"] if r is not rule)
+
+
+def test_the_compiled_matrix_follows_the_latest_run_in_the_results(tmp_path: Path) -> None:
+    from pinka_test_distros import results as test_results  # noqa: PLC0415
+
+    for rel in (
+        "versions.lock.yml",
+        "preflight/support-matrix.yml",
+        "ansible/component-sources.yml",
+        "tests/distros/targets.yml",
+    ):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / rel, tmp_path / rel)
+    results = tmp_path / "tests" / "distros" / "results.yml"
+
+    def pending() -> bool:
+        data = json.loads(sources.support_matrix_json(tmp_path))
+        (rule,) = [r for r in data["os"] if r["match"] == {"id": "ubuntu", "version_id": "26.04"}]
+        return bool(rule["pending_verification"])
+
+    def run(stages: dict[str, Any], day: str) -> dict[str, Any]:
+        return {**stages, "target": "ubuntu-26.04", "tested_on": day}
+
+    assert pending() is True  # no run recorded
+    test_results.update(results, [run(PASSED, "2026-11-01")])
+    assert pending() is False
+    test_results.update(results, [run(FAILED, "2026-11-02")])
+    assert pending() is True
+    # An older passing run written later does not count; a newer one does.
+    test_results.update(results, [run(PASSED, "2026-10-30")])
+    assert pending() is True
+    test_results.update(results, [run(PASSED, "2026-11-03")])
+    assert pending() is False
+    assert len(test_results.load(results)) == 4  # every run kept

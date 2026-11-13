@@ -223,6 +223,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: ubuntu_2604
           - image: ubuntu_2404
           - image: debian_13
           - image: fedora_44

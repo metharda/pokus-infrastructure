@@ -139,7 +139,7 @@ def cmd_list(file: targets.TargetFile) -> int:
     Returns:
         0.
     """
-    recorded = {r["target"]: r for r in results.load(RESULTS)}
+    recorded = results.latest(results.load(RESULTS))
     for t in file.targets:
         record = recorded.get(t.id)
         when = f" ({record['tested_on']})" if record else ""
@@ -217,7 +217,7 @@ def cmd_run(  # noqa: PLR0911 - one exit per refusal
             kept = f" (kept: {test.name})" if test.kept else ""
             print(f"   {results.status(record)}{kept}; logs in {out_dir / target.id}", flush=True)
     if not args.no_record:
-        results.update(RESULTS, records, [t.id for t in file.targets])
+        results.update(RESULTS, records)
         print(
             f"recorded in {RESULTS.relative_to(INFRA)} (tested commit {commit[:12]});"
             " run make generate and commit both"

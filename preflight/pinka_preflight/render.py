@@ -223,8 +223,9 @@ def render(report: Mapping[str, Any], *, color: bool = False) -> str:  # noqa: P
     lines: list[str] = []
     banner = f"pinka preflight: {OUTCOME_TITLES[outcome]} (exit {report['exit_code']})"
     lines.append(paint(banner, outcome))
+    pending = ", pending verification;" if report.get("pending_verification") else ","
     lines.append(
-        f"  tier {report['tier']} (os {report['os_tier']}, arch {report['arch_tier']})"
+        f"  tier {report['tier']} (os {report['os_tier']}{pending} arch {report['arch_tier']})"
         f" · release model {_fmt(report['release_model'])} · provider {_fmt(report['provider'])}"
     )
     lines.append("")

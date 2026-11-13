@@ -1,7 +1,8 @@
 """The CI skip list: which tests may skip in CI, and why.
 
 ``ci_skips.json`` names every test that may skip in CI, with the run it skips
-in (``pytest``, or ``py39`` for the unittest runs of ``make test-py39``) and its
+in (``pytest``, or ``py39`` and ``py314`` for the unittest runs of ``make
+test-py39`` and ``make test-py314``) and its
 reason. In CI (``CI=true``) any other skip fails the job. Every run names each
 skipped test with its reason in one line of the form of :func:`line`, locally
 too, so the gate and the CI logs list them.
@@ -25,7 +26,7 @@ def allowed(run: str, path: Path = LIST) -> dict[str, str]:
     """The tests that may skip in CI in one run.
 
     Args:
-        run: ``pytest`` or ``py39``.
+        run: ``pytest``, ``py39`` or ``py314``.
         path: The list.
 
     Returns:

@@ -2,7 +2,7 @@
 # Generated from versions.lock.yml by tools/gen (make generate); do not edit.
 # bootstrap.sh stops when pinka_versions_lock_sha256 is not the sha256 of
 # versions.lock.yml.
-pinka_versions_lock_sha256: "779046df789df779ab98fe6c77a6b5c421b0a68b46eec7d609e20ced2bf6c412"
+pinka_versions_lock_sha256: "a9a1c16a271bed61ec66646b9e6898fa9579620f663d9d45104e3afce97c77fd"
 pinka_versions:
   schema_version: 1
   verified_on: '2026-10-05'
@@ -283,6 +283,12 @@ pinka_versions:
         digest: sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
         platforms:
           - linux/amd64
+      ubuntu_2604:
+        image: docker.io/library/ubuntu
+        tag: '26.04'
+        digest: sha256:065aa8626841f16057b78b027b464cd59c4fac36c204c72dcbf48d66f5fa8a96
+        platforms:
+          - linux/amd64
       debian_13:
         image: docker.io/library/debian
         tag: '13'
@@ -336,6 +342,7 @@ pinka_versions:
       tailscale:
         urls:
           - https://pkgs.tailscale.com/stable/ubuntu/noble.asc
+          - https://pkgs.tailscale.com/stable/ubuntu/resolute.asc
           - https://pkgs.tailscale.com/stable/ubuntu/jammy.asc
           - https://pkgs.tailscale.com/stable/debian/trixie.asc
           - https://pkgs.tailscale.com/stable/fedora/repo.gpg
@@ -350,8 +357,10 @@ pinka_versions:
       for amd64/x86_64 and arm64/aarch64), the NVIDIA container toolkit repository (gh-pages branch of
       NVIDIA/libnvidia-container), archive.ubuntu.com; the newest version in each index. Tailscale on
       the apt releases: make lock-pins at 2026-10-17T22:47:21Z, and Incus (Zabbly) at 2026-11-12T09:45:13Z,
-      each with the signed InRelease and the index sha256 checked. verified_on is the oldest of these
-      reads.'
+      each with the signed InRelease and the index sha256 checked. Ubuntu 26.04 (2026-11-12): Docker,
+      the NVIDIA container toolkit, the NVIDIA driver and Tailscale on the versions of the other releases,
+      Incus (Zabbly) on the newest build, each found in its signed index with make lock-pins. verified_on
+      is the oldest of these reads.'
     docker:
       ubuntu-24.04:
         docker-ce: 5:29.8.2-1~ubuntu.24.04~noble
@@ -359,6 +368,12 @@ pinka_versions:
         containerd.io: 2.3.6-1~ubuntu.24.04~noble
         docker-buildx-plugin: 0.37.1-1~ubuntu.24.04~noble
         docker-compose-plugin: 5.6.0-1~ubuntu.24.04~noble
+      ubuntu-26.04:
+        docker-ce: 5:29.8.2-1~ubuntu.26.04~resolute
+        docker-ce-cli: 5:29.8.2-1~ubuntu.26.04~resolute
+        containerd.io: 2.3.6-1~ubuntu.26.04~resolute
+        docker-buildx-plugin: 0.37.1-1~ubuntu.26.04~resolute
+        docker-compose-plugin: 5.6.0-1~ubuntu.26.04~resolute
       ubuntu-22.04:
         docker-ce: 5:29.8.2-1~ubuntu.22.04~jammy
         docker-ce-cli: 5:29.8.2-1~ubuntu.22.04~jammy
@@ -408,6 +423,11 @@ pinka_versions:
         nvidia-container-toolkit-base: 1.20.1-1
         libnvidia-container-tools: 1.20.1-1
         libnvidia-container1: 1.20.1-1
+      ubuntu-26.04:
+        nvidia-container-toolkit: 1.20.1-1
+        nvidia-container-toolkit-base: 1.20.1-1
+        libnvidia-container-tools: 1.20.1-1
+        libnvidia-container1: 1.20.1-1
       debian-13:
         nvidia-container-toolkit: 1.20.1-1
         nvidia-container-toolkit-base: 1.20.1-1
@@ -446,6 +466,8 @@ pinka_versions:
     incus:
       ubuntu-24.04:
         incus: 1:6.0.7-ubuntu24.04-202610301755
+      ubuntu-26.04:
+        incus: 1:6.0.7-ubuntu26.04-202610301755
       ubuntu-22.04:
         incus: 1:6.0.7-ubuntu22.04-202610301755
       debian-13:
@@ -461,6 +483,8 @@ pinka_versions:
         nvidia-driver-580-open: 580.178.04-0ubuntu0.24.04.1
       ubuntu-22.04:
         nvidia-driver-580-open: 580.178.04-0ubuntu0.22.04.1
+      ubuntu-26.04:
+        nvidia-driver-580-open: 580.178.04-0ubuntu0.26.04.1
       debian-13: TODO(verify)
       fedora-43: TODO(verify)
       fedora-44: TODO(verify)
@@ -470,6 +494,8 @@ pinka_versions:
       opensuse-leap-16.0: TODO(verify)
     tailscale:
       ubuntu-24.04:
+        tailscale: 1.104.1
+      ubuntu-26.04:
         tailscale: 1.104.1
       ubuntu-22.04:
         tailscale: 1.104.1
@@ -482,8 +508,8 @@ pinka_versions:
       opensuse-leap-15.6: TODO(verify)
       opensuse-leap-16.0: TODO(verify)
   nvidia_driver_gpus:
-    verified_on: '2026-10-18'
-    source: make lock-pins at 2026-10-18T19:18:58Z (the signed index, the package's and the list's sha256
+    verified_on: '2026-11-12'
+    source: make lock-pins at 2026-11-12T18:13:00Z (the signed index, the package's and the list's sha256
       and the cross-checks of each entry's comment)
     releases:
       580.178.04:

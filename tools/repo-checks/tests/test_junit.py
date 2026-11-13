@@ -96,6 +96,13 @@ def test_the_unittest_runs_write_pytests_junit_names(
     assert suite.get("name") == "py39 x/tests"
     counts = [suite.get(key) for key in ("tests", "failures", "errors", "skipped")]
     assert counts == ["8", "3", "2", "2"]
+    # The 3.14 run names its suite after itself.
+    out314 = tmp_path / "junit" / "py314.xml"
+    argv314 = ["--run", "py314", "--prefix", "x/tests", "--junit-xml", str(out314)]
+    assert unittest_run.main([*argv314, "discover", "-s", str(tests)]) == 1
+    capsys.readouterr()
+    assert ET.parse(out314).getroot()[0].get("name") == "py314 x/tests"  # noqa: S314
+    assert results(out314) == found
     # pytest names the same tests the same way, with the same results.
     pytest_xml = tmp_path / "junit" / "pytest.xml"
     env = {k: v for k, v in os.environ.items() if k not in ("CI", "PYTEST_ADDOPTS")}
@@ -143,12 +150,30 @@ def test_the_isolated_run_writes_one_file_per_test_file(tmp_path: Path) -> None:
     }
 
 
+def test_each_unittest_run_runs_on_its_python() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "\nPREFLIGHT_MIN_PYTHON := 3.9\n" in makefile
+    assert "\nPREFLIGHT_NEWEST_PYTHON := 3.14\n" in makefile
+    for name, python, other in (
+        ("py39", "PREFLIGHT_MIN_PYTHON", "PREFLIGHT_NEWEST_PYTHON"),
+        ("py314", "PREFLIGHT_NEWEST_PYTHON", "PREFLIGHT_MIN_PYTHON"),
+    ):
+        block = makefile[makefile.index(f"\ntest-{name}:") :].split("\n\n", 1)[0]
+        assert block.count(f"--python $({python})") == 4, name
+        assert other not in block, name
+    py314 = makefile[makefile.index("\ntest-py314:") :].split("\n\n", 1)[0]
+    assert py314.count("--run py314") == 4
+    py39 = makefile[makefile.index("\ntest-py39:") :].split("\n\n", 1)[0]
+    assert "--run" not in py39  # the default run, py39
+
+
 def test_every_test_job_writes_and_keeps_junit_xml() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    block = makefile[makefile.index("\ntest-py39:") :].split("\n\n", 1)[0]
-    assert block.count("--junit-xml $(CURDIR)/$(JUNIT)/py39-") == 4
-    for run in ("preflight", "pinka-lab", "install-record", "uninstall"):
-        assert f"--junit-xml $(CURDIR)/$(JUNIT)/py39-{run}.xml" in block, run
+    for name in ("py39", "py314"):
+        block = makefile[makefile.index(f"\ntest-{name}:") :].split("\n\n", 1)[0]
+        assert block.count(f"--junit-xml $(CURDIR)/$(JUNIT)/{name}-") == 4, name
+        for run in ("preflight", "pinka-lab", "install-record", "uninstall"):
+            assert f"--junit-xml $(CURDIR)/$(JUNIT)/{name}-{run}.xml" in block, (name, run)
     for line in (
         "--junitxml=$(JUNIT)/pytest.xml",
         "--junitxml=$(JUNIT)/random-order.xml",

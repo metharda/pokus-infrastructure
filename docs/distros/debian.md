@@ -10,9 +10,12 @@ description: Sources, holds, updates, firewall, MAC and NVIDIA notes for Debian,
 # Debian family
 
 The `debian` family covers Debian, Ubuntu and their derivatives (Linux Mint,
-Pop!_OS, Zorin OS, elementary OS, Kali, ...). Ubuntu 24.04 LTS and Debian 13
-are the **supported** releases; which other releases are accepted is in the
-[support matrix](../support-matrix.md).
+Pop!_OS, Zorin OS, elementary OS, Kali, ...). Ubuntu 24.04 LTS, Ubuntu 26.04
+LTS and Debian 13 are the **supported** releases. Ubuntu 26.04 is pending
+verification while the latest run of the distribution tests on it has not
+passed; a later failing run makes it pending again. The
+[support matrix](../support-matrix.md) shows its state and which other
+releases are accepted.
 
 ## Derivatives
 
@@ -28,7 +31,7 @@ Derivatives are in the experimental tier and need `--accept-experimental`.
 | --- | --- |
 | Docker Engine, Compose, buildx | Docker's apt repository `download.docker.com/linux/<distro>` |
 | NVIDIA Container Toolkit | NVIDIA's apt repository |
-| Incus | Zabbly's Incus 6.0 LTS repository (being verified) |
+| Incus | Zabbly's Incus 6.0 LTS repository on every release: the same Incus release everywhere, in each release's own build (being verified) |
 | Tailscale | Tailscale's apt repository (being verified) |
 | NVIDIA driver | the distribution: `nvidia-driver-580-open` on Ubuntu, `nvidia-driver` from `non-free` on Debian |
 
@@ -69,5 +72,7 @@ initramfs is rebuilt with `update-initramfs`.
 
 - The SSH service is called `ssh` on this family (`sshd` elsewhere); Pokus Infrastructure
   handles this, but keep it in mind when you check the service yourself.
-- Ubuntu 26.04 LTS is listed in the matrix as soon as Docker, Incus, the
-  NVIDIA Container Toolkit and Tailscale publish packages for it.
+- Ubuntu 26.04 LTS installs the Rust coreutils (uutils) as its coreutils
+  commands, and `sudo-rs`, by default. The distribution tests have to prove
+  the install on them; until the latest run on 26.04 has passed, the release
+  is pending verification.

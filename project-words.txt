@@ -116,6 +116,7 @@ tmpfs
 trixie
 tunecpu
 typst
+uutils
 versionlock
 veth
 VFIO

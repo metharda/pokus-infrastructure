@@ -33,6 +33,8 @@ SCHEMA_PAIRS := versions.lock.yml=tools/lockcheck/schema/versions-lock.schema.js
   $(foreach f,$(sort $(wildcard images/*/image.yaml)),$(f)=tools/lockcheck/schema/image-blueprint.schema.json)
 # Oldest Python preflight must run on.
 PREFLIGHT_MIN_PYTHON := 3.9
+# The newest supported distribution's Python (Ubuntu 26.04).
+PREFLIGHT_NEWEST_PYTHON := 3.14
 BUILD := build
 # Where make release-package writes the package and its .sha256.
 RELEASE_OUT ?= $(BUILD)/release
@@ -100,7 +102,7 @@ VERBOSE ?= 0
 GATE = PYTHONPATH=tools/repo-checks python3 -m pinka_repo_checks gate --make "$(MAKE)" --log-dir $(BUILD)/gate
 LINT_STEPS := lint-python lint-shell lint-yaml lint-schemas lint-ansible lint-portability lint-neutral \
   lint-references lint-markdown lint-spelling lint-docs lint-mermaid privacy
-TEST_STEPS := test-py39 test-pytest
+TEST_STEPS := test-py39 test-py314 test-pytest
 DOCS_STEPS := drift-check docs-coverage docs-build
 
 ifeq ($(GATE_SETUP_DONE),1)
@@ -252,7 +254,7 @@ links: ## Check external links in Markdown files (network; weekly in CI)
 JUNIT := $(BUILD)/junit
 
 .PHONY: test test-pytest
-test: ## Unit tests (pytest) and the preflight suite on the oldest supported Python (quiet; VERBOSE=1 prints everything)
+test: ## Unit tests (pytest) and the preflight suite on the oldest and the newest supported Python (quiet; VERBOSE=1 prints everything)
 ifeq ($(VERBOSE),1)
 test: setup $(TEST_STEPS)
 else
@@ -319,6 +321,26 @@ test-py39: ## Preflight, pinka, install record and uninstall module tests with p
 	  --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py39-uninstall.xml \
 	  test_uninstall_module
 
+.PHONY: test-py314
+test-py314: ## The same tests on the newest supported distribution's Python (Ubuntu 26.04: CPython 3.14)
+	@# unittest_run: python -m unittest plus the CI skip list (it names every skipped test).
+	cd preflight && PYTHONPATH=.:tests:../tools/repo-checks $(UV) run --no-project \
+	  --python $(PREFLIGHT_NEWEST_PYTHON) python -m pinka_repo_checks.unittest_run --run py314 \
+	  --prefix preflight/tests --junit-xml $(CURDIR)/$(JUNIT)/py314-preflight.xml discover -s tests -t tests
+	cd tools/pinka-lab && PYTHONPATH=.:tests:../../preflight:../repo-checks $(UV) run --no-project \
+	  --python $(PREFLIGHT_NEWEST_PYTHON) python -m pinka_repo_checks.unittest_run --run py314 \
+	  --prefix tools/pinka-lab/tests --junit-xml $(CURDIR)/$(JUNIT)/py314-pinka-lab.xml \
+	  discover -s tests -t tests
+	@# The module runs on the target's Python: 3.14 in Ubuntu 26.04's check-mode container.
+	cd ansible/tests && PYTHONPATH=../roles/install_record/library:../../tools/repo-checks $(UV) run \
+	  --no-project --python $(PREFLIGHT_NEWEST_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --run py314 --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py314-install-record.xml \
+	  test_install_record_module
+	cd ansible/tests && PYTHONPATH=../roles/uninstall/library:../../tools/repo-checks $(UV) run \
+	  --no-project --python $(PREFLIGHT_NEWEST_PYTHON) python -m pinka_repo_checks.unittest_run \
+	  --run py314 --prefix ansible/tests --junit-xml $(CURDIR)/$(JUNIT)/py314-uninstall.xml \
+	  test_uninstall_module
+
 .PHONY: generate
 generate: setup ## Regenerate generated files (matrix JSON, pins, reference pages, fixtures)
 	$(GEN) generate
@@ -358,7 +380,7 @@ lock-collections-check: $(VENV)/.synced ## CI: make lock-collections, failing wh
 	@$(LOCKCHECK).lockcollections --lock versions.lock.yml --check
 
 .PHONY: lock-pins
-lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the lab images' sizes, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
+lock-pins: $(VENV)/.synced ## Maintainers only: print the checked pins of the Zabbly and Tailscale keys, the apt packages of the vendor repositories and of Ubuntu's NVIDIA driver (and the pins gone from their index), the DCGM exporter image, the lab images' sizes, the Incus base images, the NVIDIA driver's GPU list and GitHub's SSH host keys (reads public URLs, changes nothing)
 	@$(LOCKCHECK).lockpins --lock versions.lock.yml
 
 .PHONY: lock-update

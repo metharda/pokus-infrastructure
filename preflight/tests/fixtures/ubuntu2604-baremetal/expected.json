@@ -1,0 +1,17 @@
+{
+  "env_class": "baremetal",
+  "family": "debian",
+  "features": {
+    "btrfs_pool": true,
+    "dcgm_metrics": true,
+    "gpu_inference": true,
+    "vm_targets": true
+  },
+  "notes_contain": [
+    "Pending verification: no make test-distros run of this release"
+  ],
+  "outcome": "supported",
+  "pending_verification": true,
+  "provider": "baremetal",
+  "tier": "supported"
+}

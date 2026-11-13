@@ -178,19 +178,34 @@ expectations come from the profile flags in `contract/profiles.yml`
 
 ## Record the results
 
-1. The harness writes the latest result per target to
-   `tests/distros/results.yml`: the date, the tested commit, the image
-   fingerprint it used and the result of every stage. Regenerate the support
-   matrix:
+1. The harness adds the result of every target it ran to
+   `tests/distros/results.yml`, after the earlier runs (no run is replaced):
+   the date, the tested commit, the image fingerprint it used and the result
+   of every stage. The latest run of each target counts. Regenerate the
+   support matrix:
 
     <!-- qa:run env=E0 -->
     ```bash
     make generate
     ```
 
-2. Commit `tests/distros/results.yml` and `docs/support-matrix.md` together.
-   A result counts for 90 days; the *Last test results* table shows the date
-   until which it is valid.
+2. Commit `tests/distros/results.yml` together with what `make generate`
+   changed: `docs/support-matrix.md`, and `preflight/support-matrix.json` and
+   `README.md` when a pending verification changes. A result counts for 90
+   days; the *Last test results* table shows the date until which it is
+   valid. A release marked `pending_verification` in the support matrix
+   (Ubuntu 26.04) is shown as "pending verification" unless the latest run
+   of every target of the release passed every stage: a passing run clears
+   it, a later failing run brings it back. Pending verification does not
+   expire with the 90 days; only a later run changes it.
+
+3. A result that clears or brings back a release's pending verification
+   changes what preflight reports on that release. In the same commit,
+   update the expectations of its fixtures (`pending_verification` and the
+   note, in `preflight/tests/fixture_defs.py`), their snapshots
+   (`PINKA_UPDATE_SNAPSHOTS=1`, then review the diff) and the tests that
+   name the release's state (`tools/gen/tests/test_gen.py`,
+   `installer/tests/test_tui_flows.py`).
 
 ## Run the CI fast lane locally
 

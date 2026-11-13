@@ -25,6 +25,7 @@ a lab host, `pinka docs serve` serves it on `127.0.0.1` for offline use.
 | Distribution | Family | Tier |
 | --- | --- | --- |
 | `id` = ubuntu; `version_id` = 24.04 | debian | supported |
+| `id` = ubuntu; `version_id` = 26.04 | debian | supported (pending verification) |
 | `id` = debian; `version_id` = 13 | debian | supported |
 | `id` = ubuntu; `version_id` = 22.04 | debian | tested |
 | `id` = fedora; `version_id_in` = 43, 44 | redhat | tested |
@@ -145,7 +146,7 @@ Each code has a section in [docs/how-to/troubleshoot.md](docs/how-to/troubleshoo
 | `tools/pinka-lab/` | `pinka`, the operator CLI of a provisioned host (doctor, fingerprint, start and stop, backups, pairing). |
 | `tools/test-distros/` | `make test-distros`: the distribution tests in Incus VMs and the CI fast lane. |
 | `tools/gen/` | Generators: compiled matrix JSON, bootstrap pins, Ansible `versions.yml` and the generated reference pages (`make generate`, drift and coverage checks). |
-| `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key, and of every apt package pin in its signed index. `make lock-collections` (maintainers) and `make lock-collections-check` (CI, weekly too): Galaxy's checked artifacts of the Ansible collections, and the one artifact check `make setup` and bootstrap run. `make lock-pins` (maintainers): the checked pins of the Zabbly and Tailscale keys and packages, the DCGM exporter image, the Incus base images and GitHub's SSH host keys ([How to pin the vendor sources](docs/how-to/pin-vendor-sources.md)). `make release-package` and `make release-package-check`: the release package of a `vX.Y.Z` tag with its pinned collections and `NOTICE` ([How to publish a release package](docs/how-to/publish-a-release-package.md)). |
+| `tools/lockcheck/` | `make lock-check` and `make verify-todos`: schema, unverified markers, and network re-verification of every pinned digest, checksum and key, and of every apt package pin in its signed index. `make lock-collections` (maintainers) and `make lock-collections-check` (CI, weekly too): Galaxy's checked artifacts of the Ansible collections, and the one artifact check `make setup` and bootstrap run. `make lock-pins` (maintainers): the checked pins of the Zabbly and Tailscale keys, the apt packages of the vendor repositories and of Ubuntu's NVIDIA driver, the DCGM exporter image, the Incus base images and GitHub's SSH host keys ([How to pin the vendor sources](docs/how-to/pin-vendor-sources.md)). `make release-package` and `make release-package-check`: the release package of a `vX.Y.Z` tag with its pinned collections and `NOTICE` ([How to publish a release package](docs/how-to/publish-a-release-package.md)). |
 | `tools/repo-checks/` | Repository checks: privacy scan, docs lint, link check, Mermaid extraction. |
 | `tools/platform/` | `pinka-platform`: the contract v2 validator, the platform deployment (sources, mirrors, staging, sandboxed build, publishing, replace and purge) and the renderer of the principals and endpoints files. |
 | `versions.lock.yml` | Every pinned external artifact with its verification source (`docs/reference/versions.md`). |
